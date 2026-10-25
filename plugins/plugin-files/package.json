@@ -1,0 +1,64 @@
+{
+  "name": "@elizaos/plugin-files",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "description": "Browser managed files, revision-bound selections, exact-byte attachments and durable operation receipts.",
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./browser/*": {
+      "eliza-source": "./src/browser/*.ts",
+      "types": "./dist/browser/*.d.ts",
+      "import": "./dist/browser/*.js",
+      "default": "./dist/browser/*.js"
+    },
+    "./documents/*": {
+      "eliza-source": "./src/documents/*.ts",
+      "types": "./dist/documents/*.d.ts",
+      "import": "./dist/documents/*.js",
+      "default": "./dist/documents/*.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "peerDependencies": {
+    "@capacitor/core": "^8.5.2",
+    "pdfjs-dist": "^6.4.299"
+  },
+  "scripts": {
+    "build": "bun run build:js && bun run build:types",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-transform-types test/*.test.mjs",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.5.2",
+    "pdfjs-dist": "^6.4.299",
+    "@types/node": "^25.0.6",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  }
+}

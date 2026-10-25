@@ -1,0 +1,794 @@
+/**
+ * Base Vitest configuration for the plugin: extends the repo default config and
+ * wires the LifeOps and app test setup, stub roots, and workspace aliases
+ * so unit specs resolve source and native-library policy correctly.
+ */
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+import baseConfig from "../../packages/scripts/vitest/default.config";
+import { repoRoot } from "../../packages/scripts/vitest/repo-root";
+import { getElizaWorkspaceRoot } from "../../packages/scripts/vitest/workspace-aliases";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const elizaRoot = getElizaWorkspaceRoot(repoRoot);
+const packageRootFromRepo = path
+  .relative(elizaRoot, here)
+  .split(path.sep)
+  .join("/");
+const appCoreTestSetup = path.join(
+  elizaRoot,
+  "packages",
+  "app",
+  "test",
+  "setup.ts",
+);
+const lifeopsTestSetup = path.join(here, "test", "setup.ts");
+const lifeopsTestStubsRoot = path.join(here, "test", "stubs");
+const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
+const assistantPackageRequire = createRequire(
+  path.join(elizaRoot, "plugins", "plugin-assistant", "package.json"),
+);
+const corePackageRequire = createRequire(
+  path.join(elizaRoot, "packages", "core", "package.json"),
+);
+const lifeopsPackageRequire = createRequire(path.join(here, "package.json"));
+const escapedAgentSourceRoot = agentSourceRoot.replace(
+  /[.*+?^${}()|[\]\\]/g,
+  "\\$&",
+);
+const optionalCorePluginStubPrefix = "\0lifeops-optional-core-plugin-stub:";
+const optionalCorePluginStubPackages = new Set([
+  "@elizaos/plugin-agent-orchestrator",
+  "@elizaos/plugin-coding-tools",
+  "@elizaos/plugin-pty",
+  "@elizaos/plugin-video",
+  "@elizaos/plugin-vision",
+  "@elizaos/plugin-background-runner",
+  "@elizaos/plugin-native-filesystem",
+  "@elizaos/plugin-elizacloud",
+  "@elizaos/plugin-anthropic",
+  "@elizaos/plugin-openai",
+]);
+const agentSourceJsToTsPlugin = {
+  name: "lifeops-agent-source-js-to-ts",
+  enforce: "pre" as const,
+  resolveId(source: string, importer?: string) {
+    // Native built-ins remain lazy runtime imports in the UI test graph.
+    if (source.startsWith("bun:")) return { id: source, external: true };
+    if (optionalCorePluginStubPackages.has(source)) {
+      return `${optionalCorePluginStubPrefix}${source}`;
+    }
+    if (source === "@elizaos/agent") {
+      return path.join(lifeopsTestStubsRoot, "agent.ts");
+    }
+    if (source === "@elizaos/agent/api/connector-account-routes") {
+      return path.join(agentSourceRoot, "api", "connector-account-routes.ts");
+    }
+    if (source === "@elizaos/agent/api/zip-utils") {
+      return path.join(agentSourceRoot, "api", "zip-utils.ts");
+    }
+    if (source === "@elizaos/agent/services/agent-backup") {
+      return path.join(agentSourceRoot, "services", "agent-backup.ts");
+    }
+    if (source === "@elizaos/agent/services/agent-backup-authority") {
+      return path.join(
+        agentSourceRoot,
+        "services",
+        "agent-backup-authority.ts",
+      );
+    }
+    if (source === "@elizaos/agent/api/server-helpers") {
+      return path.join(agentSourceRoot, "api", "server-helpers.ts");
+    }
+    if (source === "@elizaos/agent/runtime/plugin-collector") {
+      return path.join(agentSourceRoot, "runtime", "plugin-collector.ts");
+    }
+    if (source === "@elizaos/ui") {
+      return path.join(lifeopsTestStubsRoot, "ui.ts");
+    }
+    if (source === "@elizaos/plugin-google-workspace") {
+      return path.join(lifeopsTestStubsRoot, "plugin-google-workspace.ts");
+    }
+
+    const normalizedImporter = importer?.replace(/^\/@fs/, "");
+    if (
+      normalizedImporter &&
+      (source.startsWith("./") || source.startsWith("../")) &&
+      source.endsWith(".js")
+    ) {
+      const candidate = path.resolve(path.dirname(normalizedImporter), source);
+      if (candidate.startsWith(`${agentSourceRoot}${path.sep}`)) {
+        const tsCandidate = `${candidate.slice(0, -".js".length)}.ts`;
+        if (fs.existsSync(tsCandidate)) {
+          return tsCandidate;
+        }
+      }
+    }
+
+    return null;
+  },
+  load(id: string) {
+    if (!id.startsWith(optionalCorePluginStubPrefix)) return null;
+    const packageName = id.slice(optionalCorePluginStubPrefix.length);
+    const name = `${packageName.slice("@elizaos/".length)}-test-stub`;
+    return [
+      `const plugin = ${JSON.stringify({
+        name,
+        description: `Test stub for ${packageName}`,
+        actions: [],
+        providers: [],
+        evaluators: [],
+        services: [],
+      })};`,
+      "export { plugin };",
+      "export default plugin;",
+    ].join("\n");
+  },
+};
+function resolveNodePackageRoot(packageName: string): string {
+  const directCandidates = [
+    path.join(elizaRoot, "node_modules", packageName),
+    path.join(repoRoot, "node_modules", packageName),
+    path.join(here, "node_modules", packageName),
+  ];
+  for (const candidate of directCandidates) {
+    if (fs.existsSync(path.join(candidate, "package.json"))) {
+      return candidate;
+    }
+  }
+
+  const bunStoreRoot = path.join(repoRoot, "node_modules", ".bun");
+  if (fs.existsSync(bunStoreRoot)) {
+    const match = fs
+      .readdirSync(bunStoreRoot)
+      .find((entry) => entry.startsWith(`${packageName}@`));
+    if (match) {
+      return path.join(bunStoreRoot, match, "node_modules", packageName);
+    }
+  }
+
+  return path.join(here, "node_modules", packageName);
+}
+
+const reactRoot = resolveNodePackageRoot("react");
+const reactDomRoot = resolveNodePackageRoot("react-dom");
+// Bun's isolated install puts the logger's transitive deps deep under
+// `node_modules/.bun/...`. Vite's default resolver, walking up from the
+// (realpath of) `packages/logger/src/logger.ts`, sees the local
+// `packages/logger/node_modules/<dep>` symlink — but after `preserveSymlinks:
+// false` it resolves to a path that Vite then re-walks for nested deps and
+// loses the chain on Windows. Anchor adze/fast-redact explicitly to their
+// real install dirs so resolution is one hop on every platform.
+const adzeRoot = resolveNodePackageRoot("adze");
+const fastRedactRoot = resolveNodePackageRoot("fast-redact");
+const aiEntry = assistantPackageRequire.resolve("ai");
+const fsExtraEntry = lifeopsPackageRequire.resolve("fs-extra");
+const handlebarsEntry = corePackageRequire.resolve("handlebars");
+const mammothEntry = assistantPackageRequire.resolve("mammoth");
+const markdownItRoot = path.dirname(
+  corePackageRequire.resolve("markdown-it/package.json"),
+);
+const telegramSessionsEntry = path.join(
+  elizaRoot,
+  "plugins",
+  "plugin-telegram",
+  "node_modules",
+  "telegram",
+  "sessions",
+  "index.js",
+);
+const pluginHealthSrc = path.join(elizaRoot, "plugins", "plugin-health", "src");
+const defaultUnitExcludes = [
+  "dist/**",
+  "**/node_modules/**",
+  "**/*-live.test.{ts,tsx}",
+  "**/*.live.test.{ts,tsx}",
+  "**/*-real.test.{ts,tsx}",
+  "**/*.real.test.{ts,tsx}",
+  "**/*.integration.test.{ts,tsx}",
+  "**/*.e2e.test.{ts,tsx}",
+  "**/*.e2e.spec.{ts,tsx}",
+  "**/*.live.e2e.test.{ts,tsx}",
+  "**/*.real.e2e.test.{ts,tsx}",
+];
+
+export default defineConfig({
+  ...baseConfig,
+  root: elizaRoot,
+  plugins: [
+    ...(Array.isArray(baseConfig.plugins) ? baseConfig.plugins : []),
+    agentSourceJsToTsPlugin,
+  ],
+  ssr: {
+    ...baseConfig.ssr,
+    noExternal: [
+      "@elizaos/agent",
+      "@elizaos/ui",
+      ...(Array.isArray(baseConfig.ssr?.noExternal)
+        ? baseConfig.ssr.noExternal
+        : []),
+    ],
+  },
+  resolve: {
+    ...baseConfig.resolve,
+    preserveSymlinks: false,
+    alias: [
+      {
+        find: /^@elizaos\/app\/api\/compat-route-shared$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app",
+          "src",
+          "api",
+          "compat-route-shared.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app\/api\/auth$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app",
+          "src",
+          "api",
+          "auth.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app",
+          "src",
+          "services",
+          "auth-store.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/connector-account-routes$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "api",
+          "connector-account-routes.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/loopback-trust$/,
+        replacement: path.join(agentSourceRoot, "api", "loopback-trust.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/server-helpers$/,
+        replacement: path.join(agentSourceRoot, "api", "server-helpers.ts"),
+      },
+      {
+        // The real plugin collector, so a runtime test can register plugins
+        // in the order the standalone agent derives (#30943).
+        find: /^@elizaos\/agent\/runtime\/plugin-collector$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "runtime",
+          "plugin-collector.ts",
+        ),
+      },
+      // Registered HTTP routes must exercise the real owner authentication
+      // boundary even when app's distribution has not been built.
+      {
+        find: /^@elizaos\/app\/api\/(auth|compat-route-shared)$/,
+        replacement: path.join(elizaRoot, "packages/app/src/api/$1.ts"),
+      },
+      {
+        find: /^@elizaos\/app\/services\/auth-store$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/app/src/services/auth-store.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/core\/node$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "core",
+          "src",
+          "index.node.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/auth\/vault$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "auth",
+          "src",
+          "vault",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/contracts\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/contracts$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "index.ts",
+        ),
+      },
+      // These packages are imported by @elizaos/core while this suite inlines
+      // core. Resolve them through Bun's real package-store path so their own
+      // nested dependencies remain visible with preserveSymlinks enabled.
+      {
+        find: /^adze$/,
+        replacement: path.join(adzeRoot, "dist", "index.js"),
+      },
+      {
+        find: /^adze\/(.*)$/,
+        replacement: path.join(adzeRoot, "$1"),
+      },
+      {
+        find: /^fast-redact$/,
+        replacement: path.join(fastRedactRoot, "index.js"),
+      },
+      { find: /^ai$/, replacement: aiEntry },
+      { find: /^fs-extra$/, replacement: fsExtraEntry },
+      { find: /^handlebars$/, replacement: handlebarsEntry },
+      { find: /^mammoth$/, replacement: mammothEntry },
+      {
+        find: /^markdown-it$/,
+        replacement: path.join(markdownItRoot, "index.mjs"),
+      },
+      {
+        find: new RegExp(`^${escapedAgentSourceRoot}/(.+)\\.js$`),
+        replacement: `${agentSourceRoot}/$1.ts`,
+      },
+      {
+        find: new RegExp(`^/@fs${escapedAgentSourceRoot}/(.+)\\.js$`),
+        replacement: `${agentSourceRoot}/$1.ts`,
+      },
+      {
+        find: "@elizaos/ui",
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/security\/access$/,
+        replacement: path.join(agentSourceRoot, "security", "access.ts"),
+      },
+      // The owner-scope invariant test exercises the real chat-surface and
+      // trust-fallback owner derivations; anchor both to source ahead of the
+      // bare `@elizaos/agent` stub alias below.
+      {
+        find: /^@elizaos\/agent\/api\/zip-utils$/,
+        replacement: path.join(agentSourceRoot, "api", "zip-utils.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/api\/client-chat-admin$/,
+        replacement: path.join(agentSourceRoot, "api", "client-chat-admin.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/eliza$/,
+        replacement: path.join(agentSourceRoot, "runtime", "eliza.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/owner-entity$/,
+        replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-relationships$/,
+        replacement: path.resolve(here, "../plugin-relationships/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/config\/config$/,
+        replacement: path.join(agentSourceRoot, "config", "config.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/config\/paths$/,
+        replacement: path.join(agentSourceRoot, "config", "paths.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/agent-backup-authority$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "services",
+          "agent-backup-authority.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/agent\/services\/agent-backup$/,
+        replacement: path.join(agentSourceRoot, "services", "agent-backup.ts"),
+      },
+      {
+        find: /^@elizaos\/agent$/,
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-workflow$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-workflow",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-calendar\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-calendar",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-calendar$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-calendar",
+          "src",
+          "index.ts",
+        ),
+      },
+      // Lifeops decomposition: plugin-inbox / plugin-blocker are carved deps that
+      // are NOT in build:core, so their unbuilt dist can't satisfy the subpath +
+      // barrel imports plugin-personal-assistant pulls from them (vitest has no
+      // eliza-source condition; bare resolution falls through to missing dist).
+      // Anchor both to source (mirrors the plugin-workflow alias above). Subpath
+      // rules must precede the barrels so deeper paths match first.
+      {
+        find: /^@elizaos\/plugin-inbox\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-inbox",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-inbox$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-inbox",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-blocker\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-blocker",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-blocker$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-blocker",
+          "src",
+          "index.ts",
+        ),
+      },
+      // Further lifeops carves p-a imports as bare barrels AND deep subpaths
+      // (data-layer plugins not in build:core, no eliza-source condition) — the
+      // package `exports` map only sends subpaths to ./src under the eliza-source
+      // condition, so without dist they resolve to missing ./dist/*.js. Anchor
+      // both the barrel and every subpath to source, same as plugin-blocker.
+      {
+        find: /^@elizaos\/plugin-goals\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-goals",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-goals$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-goals",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-reminders\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-reminders",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-reminders$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-reminders",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-scheduling$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-scheduling",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-whatsapp$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-whatsapp",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-personal-assistant$/,
+        replacement: path.join(here, "src", "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-personal-assistant\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-personal-assistant",
+          "src",
+          "$1.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/testing$/,
+        replacement: path.join(elizaRoot, "packages/testing/src/index.ts"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: path.join(reactRoot, "jsx-dev-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: path.join(reactRoot, "jsx-runtime.js"),
+      },
+      { find: /^react$/, replacement: path.join(reactRoot, "index.js") },
+      { find: /^react\/(.*)$/, replacement: path.join(reactRoot, "$1") },
+      {
+        find: /^react-dom\/client$/,
+        replacement: path.join(reactDomRoot, "client.js"),
+      },
+      {
+        find: /^react-dom\/server$/,
+        replacement: path.join(reactDomRoot, "server.js"),
+      },
+      {
+        find: /^react-dom\/test-utils$/,
+        replacement: path.join(reactDomRoot, "test-utils.js"),
+      },
+      { find: /^react-dom$/, replacement: path.join(reactDomRoot, "index.js") },
+      {
+        find: /^react-dom\/(.*)$/,
+        replacement: path.join(reactDomRoot, "$1"),
+      },
+      {
+        find: /^@capacitor\/core$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "app",
+          "test",
+          "stubs",
+          "capacitor-core.ts",
+        ),
+      },
+      { find: /^telegram\/sessions$/, replacement: telegramSessionsEntry },
+      {
+        find: /^@elizaos\/plugin-browser\/password-manager-bridge$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-browser",
+          "src",
+          "password-manager-bridge.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-browser\/schema$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-browser",
+          "src",
+          "schema.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-x\/lifeops-message-adapter$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-x",
+          "src",
+          "lifeops-message-adapter.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-native-phone\/twilio$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-native-phone",
+          "src",
+          "twilio.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud\/cloud\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-elizacloud",
+          "src",
+          "cloud",
+          "$1.ts",
+        ),
+      },
+      // PA's barrel re-exports the travel-provider relay route from
+      // `@elizaos/plugin-elizacloud/routes/*`. elizacloud is stubbed at the
+      // barrel and not in build:core, so — exactly like the `/cloud/` subpath
+      // above — this deep subpath must be anchored to source; without it the
+      // package `exports` map sends it to a `./dist/*.js` that never gets built
+      // in this lane.
+      {
+        find: /^@elizaos\/plugin-elizacloud\/routes\/(.+)$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-elizacloud",
+          "src",
+          "routes",
+          "$1.ts",
+        ),
+      },
+      {
+        // CalendarService imports the dependency-light runtime error classes
+        // from this subpath. The src-integration lane does not build workspace
+        // dist first, so resolve the subpath to source just as the bare package
+        // is resolved to its test stub below.
+        find: /^@elizaos\/plugin-google-workspace\/calendar$/,
+        replacement: path.join(
+          elizaRoot,
+          "plugins",
+          "plugin-google-workspace",
+          "src",
+          "calendar.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-google-workspace$/,
+        replacement: path.join(
+          lifeopsTestStubsRoot,
+          "plugin-google-workspace.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-elizacloud$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-elizacloud.ts"),
+      },
+      {
+        // service-mixin-discord imports the browser-scraper helpers from the
+        // `/user-account-scraper` subpath; discord isn't in build:core so there
+        // is no dist, and the bare alias below only catches the barrel. Point the
+        // subpath at the same stub (it exports probeDiscordTab et al.) so the
+        // suite never pulls the real browser-automation module.
+        find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-discord.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-discord$/,
+        replacement: path.join(lifeopsTestStubsRoot, "plugin-discord.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-health$/,
+        replacement: path.join(pluginHealthSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-health\/(.+)$/,
+        replacement: path.join(pluginHealthSrc, "$1"),
+      },
+      ...(Array.isArray(baseConfig.resolve?.alias)
+        ? baseConfig.resolve.alias
+        : []),
+      {
+        find: "@elizaos/ui",
+        replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
+      },
+      {
+        find: /^@elizaos\/agent$/,
+        replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
+      },
+    ],
+  },
+  test: {
+    ...baseConfig.test,
+    pool: "forks",
+    maxWorkers: 1,
+    fileParallelism: false,
+    include: [
+      `${packageRootFromRepo}/src/**/*.test.ts`,
+      `${packageRootFromRepo}/src/**/*.test.tsx`,
+      `${packageRootFromRepo}/test/**/*.test.ts`,
+      `${packageRootFromRepo}/test/**/*.test.tsx`,
+      `${packageRootFromRepo}/extensions/**/*.test.ts`,
+      `${packageRootFromRepo}/extensions/**/*.test.tsx`,
+    ],
+    exclude: defaultUnitExcludes,
+    setupFiles: [lifeopsTestSetup, appCoreTestSetup],
+    server: {
+      ...baseConfig.test?.server,
+      deps: {
+        ...baseConfig.test?.server?.deps,
+        inline: true,
+      },
+    },
+    coverage: {
+      ...baseConfig.test?.coverage,
+      include: [
+        `${packageRootFromRepo}/src/**/*.{ts,tsx}`,
+        path
+          .relative(
+            repoRoot,
+            path.join(
+              elizaRoot,
+              "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts",
+            ),
+          )
+          .replaceAll(path.sep, "/"),
+      ],
+      exclude: [
+        `${packageRootFromRepo}/src/**/*.test.{ts,tsx}`,
+        `${packageRootFromRepo}/src/**/*.live.test.{ts,tsx}`,
+        `${packageRootFromRepo}/src/**/*.real.test.{ts,tsx}`,
+        `${packageRootFromRepo}/src/**/*.integration.test.{ts,tsx}`,
+        `${packageRootFromRepo}/src/**/*.e2e.test.{ts,tsx}`,
+        `${packageRootFromRepo}/src/**/*.live.e2e.test.{ts,tsx}`,
+        `${packageRootFromRepo}/src/**/*.real.e2e.test.{ts,tsx}`,
+      ],
+    },
+  },
+});

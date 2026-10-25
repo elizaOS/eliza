@@ -1,0 +1,713 @@
+/**
+ * Local-runtime compat routes for the voice sub-model auto-updater
+ * (R5-versioning §3 + §4 + §5).
+ *
+ * Mirrors the signed Cloud catalog endpoint
+ * (`cloud/apps/api/v1/voice-models/catalog/route.ts`) for the on-device
+ * surface so the UI can talk to the local runtime without depending on
+ * Cloud being reachable. The endpoints expose:
+ *
+ *   GET  /api/local-inference/voice-models
+ *     → { installations: VoiceModelInstallationView[] }
+ *     Resolves currently-installed versions by reading the bundle voice
+ *     directory (`<state-dir>/models/voice/`) and matching filenames
+ *     against `VOICE_MODEL_VERSIONS`.
+ *
+ *   GET  /api/local-inference/voice-models/check
+ *     → { lastCheckedAt, statuses: VoiceModelStatus[] }
+ *     Invokes `VoiceModelUpdater.check()` which walks the cascade
+ *     (Cloud → GitHub → HF) and returns a per-id decision.
+ *
+ *   POST /api/local-inference/voice-models/:id/update
+ *     → { ok: true, finalPath, sha256, sizeBytes }
+ *     Triggers `downloadVoiceModel()` for the named id as an explicit user
+ *     request. The `NetworkPolicy` decision (R5 §4) gates automatic updates
+ *     only; its ask outcomes are answered by this request. Returns 409 for
+ *     ids with no standalone install path (everything but `wakeword`).
+ *
+ *   POST /api/local-inference/voice-models/:id/pin
+ *     Body: { pinned: boolean }
+ *     → { ok: true, id, pinned }
+ *     Toggles the on-disk pin file so the auto-updater skips this id.
+ *
+ *   GET  /api/local-inference/voice-models/preferences
+ *     → { preferences: NetworkPolicyPreferences }
+ *
+ *   POST /api/local-inference/voice-models/preferences
+ *     Body: Partial<NetworkPolicyPreferences>
+ *     → { ok: true, preferences }
+ *     Writes the user's Wi-Fi/cellular/metered policy preferences.
+ *     Per R5 §5.4 the cellular + metered toggles are OWNER-only — the
+ *     route returns 403 if a non-OWNER caller tries to flip them. The role
+ *     comes from the host's in-process resolver, never from the request.
+ *
+ * Preferences land at
+ * `<state-dir>/local-inference/voice-update-prefs.json`; the pin set is
+ * stored as a sibling `voice-update-pins.json`.
+ */
+import fsp from "node:fs/promises";
+import type * as http from "node:http";
+import path from "node:path";
+import { logger, resolveStateDir } from "@elizaos/core";
+import { sendJson, sendJsonError } from "@elizaos/host";
+import type { NetworkPolicyPreferences } from "@elizaos/plugin-native-inference/model-catalog/network-policy";
+import {
+	compareVoiceModelSemver,
+	VOICE_MODEL_VERSIONS,
+	type VoiceModelId,
+	type VoiceModelVersion,
+} from "@elizaos/plugin-native-inference/model-catalog/voice-models";
+import {
+	normalizeNetworkPreferences as normalizePrefs,
+	readVoiceNetworkPreferences as readPreferences,
+	voiceNetworkPreferencesPath as voicePrefsPath,
+} from "@elizaos/plugin-native-inference/voice-network-preferences";
+import { evaluateRuntimePolicy } from "../services/network-policy";
+import {
+	hasStandaloneVoiceModelStaging,
+	stageWakeWordModel,
+} from "../services/voice/wake-word-staging";
+import {
+	downloadVoiceModel,
+	VoiceModelDownloadError,
+	type VoiceModelStatus,
+	VoiceModelUpdater,
+} from "../services/voice-model-updater";
+import { readCompatJsonBody } from "./compat-helpers";
+
+const ROUTE_PREFIX = "/api/local-inference/voice-models";
+/** All known voice model ids (used to validate path params). */
+const KNOWN_VOICE_MODEL_IDS: ReadonlySet<string> = new Set(
+	VOICE_MODEL_VERSIONS.map((v) => v.id),
+);
+export interface VoiceModelInstallationView {
+	readonly id: VoiceModelId;
+	readonly installedVersion: string | null;
+	readonly pinned: boolean;
+	readonly lastError: string | null;
+}
+interface PreferencesFile {
+	autoUpdateOnWifi: boolean;
+	autoUpdateOnCellular: boolean;
+	autoUpdateOnMetered: boolean;
+	quietHours: Array<{
+		start: string;
+		end: string;
+	}>;
+}
+interface PinsFile {
+	pinned: VoiceModelId[];
+}
+export interface VoiceModelManagementInput {
+	op:
+		| "trigger_voice_model_update"
+		| "pin_voice_model"
+		| "set_voice_model_preferences";
+	id?: string;
+	pinned?: boolean;
+	preferences?: Partial<NetworkPolicyPreferences>;
+}
+export type VoiceModelManagementResult =
+	| {
+			op: "trigger_voice_model_update";
+			id: VoiceModelId;
+			result: unknown;
+	  }
+	| {
+			op: "pin_voice_model";
+			id: VoiceModelId;
+			pinned: boolean;
+	  }
+	| {
+			op: "set_voice_model_preferences";
+			preferences: NetworkPolicyPreferences;
+	  };
+/* ----------------------------------------------------------------- *
+ * Owner gate — the cellular + metered toggles are OWNER-only.        *
+ * ----------------------------------------------------------------- */
+/**
+ * What the serving host supplies. The plugin does not own roles, so the OWNER
+ * decision is delegated to the host that resolved the caller's session.
+ */
+export interface VoiceModelsRouteHost {
+	/**
+	 * In-process host resolver for the OWNER role; never populated from request
+	 * headers or body. Resolves `true` for an owner. Otherwise it writes the
+	 * 401/403 response itself and resolves `false`.
+	 *
+	 * A host that serves these routes without it cannot establish an owner, so
+	 * the owner-only toggles stay locked there.
+	 */
+	authorizeOwnerRequest?: (
+		req: http.IncomingMessage,
+		res: http.ServerResponse,
+	) => Promise<boolean>;
+}
+/* ----------------------------------------------------------------- *
+ * State-dir helpers — pure I/O around the prefs + pins files.        *
+ * ----------------------------------------------------------------- */
+function voicePrefsDir(): string {
+	return path.join(resolveStateDir(process.env), "local-inference");
+}
+function voicePinsPath(): string {
+	return path.join(voicePrefsDir(), "voice-update-pins.json");
+}
+function bundleVoiceDir(): string {
+	return path.join(resolveStateDir(process.env), "models", "voice");
+}
+function voiceStagingDir(): string {
+	return path.join(resolveStateDir(process.env), "cache", "voice-staging");
+}
+async function writePreferences(
+	prefs: NetworkPolicyPreferences,
+): Promise<void> {
+	await fsp.mkdir(voicePrefsDir(), { recursive: true });
+	const out: PreferencesFile = {
+		autoUpdateOnWifi: prefs.autoUpdateOnWifi,
+		autoUpdateOnCellular: prefs.autoUpdateOnCellular,
+		autoUpdateOnMetered: prefs.autoUpdateOnMetered,
+		quietHours: prefs.quietHours.map((q) => ({ start: q.start, end: q.end })),
+	};
+	await fsp.writeFile(voicePrefsPath(), JSON.stringify(out, null, 2), "utf8");
+}
+async function readPins(): Promise<Set<VoiceModelId>> {
+	try {
+		const raw = await fsp.readFile(voicePinsPath(), "utf8");
+		const parsed = JSON.parse(raw) as Partial<PinsFile>;
+		if (!Array.isArray(parsed.pinned)) return new Set();
+		return new Set(
+			parsed.pinned.filter((id): id is VoiceModelId =>
+				KNOWN_VOICE_MODEL_IDS.has(id),
+			),
+		);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+		logger.warn(
+			{ err },
+			"[voice-models-routes] failed to read voice-update-pins.json — treating as empty",
+		);
+		return new Set();
+	}
+}
+async function writePins(pins: ReadonlySet<VoiceModelId>): Promise<void> {
+	await fsp.mkdir(voicePrefsDir(), { recursive: true });
+	const out: PinsFile = { pinned: Array.from(pins).sort() };
+	await fsp.writeFile(voicePinsPath(), JSON.stringify(out, null, 2), "utf8");
+}
+function requireVoiceModelId(id: string | undefined, op: string): VoiceModelId {
+	if (typeof id !== "string" || !id.trim()) {
+		throw new Error(`${op} requires id`);
+	}
+	const trimmed = id.trim();
+	if (!KNOWN_VOICE_MODEL_IDS.has(trimmed)) {
+		throw new Error(`unknown voice model id: ${trimmed}`);
+	}
+	return trimmed as VoiceModelId;
+}
+/**
+ * The requested sub-model has no standalone install path: no loader reads a
+ * flat download of it, so reporting it as updated would be false.
+ */
+export class VoiceModelNotStandaloneError extends Error {
+	readonly code = "voice-model-not-standalone";
+	constructor(id: VoiceModelId) {
+		super(
+			`voice model ${id} cannot be updated on its own: it ships inside the Eliza-1 bundle and no loader reads a standalone download`,
+		);
+		this.name = "VoiceModelNotStandaloneError";
+	}
+}
+export async function applyVoiceModelManagementMutation(
+	input: VoiceModelManagementInput,
+): Promise<VoiceModelManagementResult> {
+	if (input.op === "pin_voice_model") {
+		const id = requireVoiceModelId(input.id, input.op);
+		// An omitted `pinned` must not be read as "unpin": that would remove an
+		// existing pin on a request that asked to pin.
+		if (typeof input.pinned !== "boolean") {
+			throw new Error(
+				"pin_voice_model requires pinned: true to pin or false to unpin",
+			);
+		}
+		const pins = await readPins();
+		const pinned = input.pinned;
+		if (pinned) pins.add(id);
+		else pins.delete(id);
+		await writePins(pins);
+		return { op: input.op, id, pinned };
+	}
+	if (input.op === "set_voice_model_preferences") {
+		const current = await readPreferences();
+		const preferences = normalizePrefs({
+			autoUpdateOnWifi:
+				typeof input.preferences?.autoUpdateOnWifi === "boolean"
+					? input.preferences.autoUpdateOnWifi
+					: current.autoUpdateOnWifi,
+			autoUpdateOnCellular:
+				typeof input.preferences?.autoUpdateOnCellular === "boolean"
+					? input.preferences.autoUpdateOnCellular
+					: current.autoUpdateOnCellular,
+			autoUpdateOnMetered:
+				typeof input.preferences?.autoUpdateOnMetered === "boolean"
+					? input.preferences.autoUpdateOnMetered
+					: current.autoUpdateOnMetered,
+			quietHours: Array.isArray(input.preferences?.quietHours)
+				? input.preferences.quietHours.map((q) => ({
+						start: q.start,
+						end: q.end,
+					}))
+				: current.quietHours.map((q) => ({ start: q.start, end: q.end })),
+		});
+		await writePreferences(preferences);
+		return { op: input.op, preferences };
+	}
+	const id = requireVoiceModelId(input.id, input.op);
+	if (!hasStandaloneVoiceModelStaging(id)) {
+		throw new VoiceModelNotStandaloneError(id);
+	}
+	const updater = getUpdater();
+	const [installed, pins] = await Promise.all([
+		resolveInstalledVersions(),
+		readPins(),
+	]);
+	const statuses = await updater.check(
+		{ installed, bundleVersion: resolveBundleVersion() },
+		{ pinned: pins },
+		{ force: true },
+	);
+	const status = statuses.find((s) => s.id === id);
+	if (!status?.latestKnown) throw new Error(`no candidate version for ${id}`);
+	const prefs = await readPreferences();
+	const totalBytes = status.latestKnown.ggufAssets.reduce(
+		(sum, a) => sum + a.sizeBytes,
+		0,
+	);
+	const networkPolicy = await evaluateRuntimePolicy({
+		prefs,
+		estimatedBytes: totalBytes,
+	});
+	if (status.latestKnown.ggufAssets.length === 0) {
+		throw new Error(`no assets published for ${id}`);
+	}
+	const results: Array<{
+		finalPath: string;
+		sha256: string;
+		sizeBytes: number;
+	}> = [];
+	const controller = new AbortController();
+	for (
+		let assetIndex = 0;
+		assetIndex < status.latestKnown.ggufAssets.length;
+		assetIndex++
+	) {
+		results.push(
+			await getDownloader()({
+				version: status.latestKnown,
+				bundleVoiceDir: bundleVoiceDir(),
+				stagingDir: voiceStagingDir(),
+				assetIndex,
+				trigger: "explicit",
+				networkPolicy,
+				signal: controller.signal,
+			}),
+		);
+	}
+	const staged = await stageWakeWordModel(status.latestKnown, bundleVoiceDir());
+	return {
+		op: input.op,
+		id,
+		result: {
+			ok: true,
+			id,
+			version: status.latestKnown.version,
+			finalPath: results[0]?.finalPath,
+			finalPaths: results.map((r) => r.finalPath),
+			stagedPaths: staged,
+			sha256: results[0]?.sha256,
+			sizeBytes: results.reduce((n, r) => n + r.sizeBytes, 0),
+		},
+	};
+}
+/* ----------------------------------------------------------------- *
+ * Installed-version resolution                                       *
+ * Filenames written by `downloadVoiceModel` follow the pattern        *
+ *   `<id>-<version>-<asset-basename>`                                 *
+ * so we can recover `installedVersion` by directory listing. Only     *
+ * ids whose download is staged into a loader path are reported.       *
+ * ----------------------------------------------------------------- */
+/**
+ * Asset basenames per standalone-staged id. The version is recovered by
+ * stripping the known `<id>-` prefix and `-<asset-basename>` suffix: a regex
+ * cannot split `wakeword-0.3.0-hey-eliza.melspec.gguf` on its own, because
+ * `-hey` also reads as a semver pre-release tag.
+ */
+const STANDALONE_ASSET_BASENAMES: ReadonlyMap<
+	VoiceModelId,
+	ReadonlySet<string>
+> = (() => {
+	const out = new Map<VoiceModelId, Set<string>>();
+	for (const v of VOICE_MODEL_VERSIONS) {
+		if (!hasStandaloneVoiceModelStaging(v.id)) continue;
+		const names = out.get(v.id) ?? new Set<string>();
+		for (const asset of v.ggufAssets) names.add(path.basename(asset.filename));
+		out.set(v.id, names);
+	}
+	return out;
+})();
+function parseInstalledFilename(
+	entry: string,
+): { id: VoiceModelId; version: string } | null {
+	for (const [id, basenames] of STANDALONE_ASSET_BASENAMES) {
+		if (!entry.startsWith(`${id}-`)) continue;
+		const rest = entry.slice(id.length + 1);
+		for (const basename of basenames) {
+			if (!rest.endsWith(`-${basename}`)) continue;
+			const version = rest.slice(0, -(basename.length + 1));
+			if (compareVoiceModelSemver(version, version) === 0) {
+				return { id, version };
+			}
+		}
+	}
+	return null;
+}
+export async function resolveInstalledVersions(
+	dir: string = bundleVoiceDir(),
+): Promise<Map<VoiceModelId, string>> {
+	const installed = new Map<VoiceModelId, string>();
+	let entries: string[];
+	try {
+		entries = await fsp.readdir(dir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return installed;
+		throw err;
+	}
+	for (const entry of entries) {
+		// A flat download no loader reads is not an installed model, so only
+		// standalone-staged ids parse.
+		const parsed = parseInstalledFilename(entry);
+		if (!parsed) continue;
+		const prior = installed.get(parsed.id);
+		if (!prior || compareVoiceModelSemver(prior, parsed.version) === -1) {
+			installed.set(parsed.id, parsed.version);
+		}
+	}
+	return installed;
+}
+/* ----------------------------------------------------------------- *
+ * Updater dependency-injection hook (tests inject a fake updater).   *
+ * ----------------------------------------------------------------- */
+let updaterOverride: VoiceModelUpdater | null = null;
+export function setVoiceModelsUpdater(updater: VoiceModelUpdater | null): void {
+	updaterOverride = updater;
+}
+function getUpdater(): VoiceModelUpdater {
+	if (updaterOverride) return updaterOverride;
+	return new VoiceModelUpdater({});
+}
+/* ----------------------------------------------------------------- *
+ * Download dependency-injection hook (tests inject a fake downloader  *
+ * avoid touching the network).                                        *
+ * ----------------------------------------------------------------- */
+type DownloadFn = typeof downloadVoiceModel;
+let downloadOverride: DownloadFn | null = null;
+export function setVoiceModelDownloader(fn: DownloadFn | null): void {
+	downloadOverride = fn;
+}
+function getDownloader(): DownloadFn {
+	return downloadOverride ?? downloadVoiceModel;
+}
+/* ----------------------------------------------------------------- *
+ * Bundle-version override (tests pass a deterministic bundle version  *
+ * so the updater's decision rule is reproducible).                    *
+ * ----------------------------------------------------------------- */
+let bundleVersionOverride: string | null = null;
+export function setVoiceModelsBundleVersionForTest(
+	bundleVersion: string | null,
+): void {
+	bundleVersionOverride = bundleVersion;
+}
+function resolveBundleVersion(): string {
+	if (bundleVersionOverride !== null) return bundleVersionOverride;
+	return process.env.ELIZA_BUNDLE_VERSION?.trim() ?? "0.0.0";
+}
+/* ----------------------------------------------------------------- *
+ * Route handler                                                       *
+ * ----------------------------------------------------------------- */
+export async function handleVoiceModelsRoutes(
+	req: http.IncomingMessage,
+	res: http.ServerResponse,
+	host?: VoiceModelsRouteHost,
+): Promise<boolean> {
+	const method = (req.method ?? "GET").toUpperCase();
+	const url = new URL(req.url ?? "/", "http://localhost");
+	const pathname = url.pathname;
+	if (!pathname.startsWith(ROUTE_PREFIX)) return false;
+	// GET /api/local-inference/voice-models
+	if (method === "GET" && pathname === ROUTE_PREFIX) {
+		const [installed, pins] = await Promise.all([
+			resolveInstalledVersions(),
+			readPins(),
+		]);
+		const ids = new Set<VoiceModelId>([
+			...VOICE_MODEL_VERSIONS.map((v) => v.id),
+			...installed.keys(),
+		]);
+		const installations: VoiceModelInstallationView[] = Array.from(ids)
+			.sort()
+			.map((id) => ({
+				id,
+				installedVersion: installed.get(id) ?? null,
+				pinned: pins.has(id),
+				lastError: null,
+			}));
+		sendJson(res, { installations });
+		return true;
+	}
+	// GET /api/local-inference/voice-models/check
+	if (method === "GET" && pathname === `${ROUTE_PREFIX}/check`) {
+		const requestedForceValues = url.searchParams.getAll("force");
+		const requestedForce = requestedForceValues[0];
+		if (
+			requestedForceValues.length > 1 ||
+			(requestedForce != null &&
+				requestedForce !== "" &&
+				requestedForce !== "1")
+		) {
+			sendJsonError(res, 'force must be specified at most once as "1".', 400);
+			return true;
+		}
+		const force = requestedForce === "1";
+		const [installed, pins] = await Promise.all([
+			resolveInstalledVersions(),
+			readPins(),
+		]);
+		const updater = getUpdater();
+		let statuses: ReadonlyArray<VoiceModelStatus>;
+		try {
+			statuses = await updater.check(
+				{ installed, bundleVersion: resolveBundleVersion() },
+				{ pinned: pins },
+				{ force },
+			);
+		} catch (err) {
+			logger.warn(
+				{ err },
+				"[voice-models-routes] updater.check failed — surfacing as 502",
+			);
+			sendJsonError(
+				res,
+				err instanceof Error ? err.message : "updater check failed",
+				502,
+			);
+			return true;
+		}
+		sendJson(res, {
+			lastCheckedAt: new Date().toISOString(),
+			statuses: statuses.map(serializeStatus),
+		});
+		return true;
+	}
+	// GET /api/local-inference/voice-models/preferences
+	if (method === "GET" && pathname === `${ROUTE_PREFIX}/preferences`) {
+		const preferences = await readPreferences();
+		sendJson(res, { preferences });
+		return true;
+	}
+	// POST /api/local-inference/voice-models/preferences
+	if (method === "POST" && pathname === `${ROUTE_PREFIX}/preferences`) {
+		const body = await readCompatJsonBody(req, res);
+		if (!body) return true;
+		const current = await readPreferences();
+		// Build the candidate by overlaying provided fields onto current.
+		const candidate = normalizePrefs({
+			autoUpdateOnWifi:
+				typeof body.autoUpdateOnWifi === "boolean"
+					? body.autoUpdateOnWifi
+					: current.autoUpdateOnWifi,
+			autoUpdateOnCellular:
+				typeof body.autoUpdateOnCellular === "boolean"
+					? body.autoUpdateOnCellular
+					: current.autoUpdateOnCellular,
+			autoUpdateOnMetered:
+				typeof body.autoUpdateOnMetered === "boolean"
+					? body.autoUpdateOnMetered
+					: current.autoUpdateOnMetered,
+			quietHours: Array.isArray(body.quietHours)
+				? (body.quietHours as Array<{
+						start: string;
+						end: string;
+					}>)
+				: current.quietHours.map((q) => ({ start: q.start, end: q.end })),
+		});
+		// OWNER gate: only the OWNER can change the cellular or metered toggle.
+		if (
+			candidate.autoUpdateOnCellular !== current.autoUpdateOnCellular ||
+			candidate.autoUpdateOnMetered !== current.autoUpdateOnMetered
+		) {
+			if (!host?.authorizeOwnerRequest) {
+				sendJsonError(
+					res,
+					"cellular + metered auto-update toggles are owner-only",
+					403,
+				);
+				return true;
+			}
+			if (!(await host.authorizeOwnerRequest(req, res))) return true;
+		}
+		await writePreferences(candidate);
+		sendJson(res, { ok: true, preferences: candidate });
+		return true;
+	}
+	// POST /api/local-inference/voice-models/:id/update | :id/pin
+	const idActionMatch =
+		method === "POST"
+			? /^\/api\/local-inference\/voice-models\/([^/]+)\/(update|pin)$/.exec(
+					pathname,
+				)
+			: null;
+	if (idActionMatch) {
+		let rawId: string;
+		try {
+			rawId = decodeURIComponent(idActionMatch[1] ?? "");
+		} catch {
+			// error-policy:J3 untrusted-input sanitizing — malformed percent-encoding
+			// is an invalid voice-model id, not a route/server failure.
+			sendJsonError(res, "Invalid voice model id encoding", 400);
+			return true;
+		}
+		const action = idActionMatch[2] as "update" | "pin";
+		if (!KNOWN_VOICE_MODEL_IDS.has(rawId)) {
+			sendJsonError(res, `unknown voice model id: ${rawId}`, 404);
+			return true;
+		}
+		const id = rawId as VoiceModelId;
+		if (action === "pin") {
+			const body = await readCompatJsonBody(req, res);
+			if (!body) return true;
+			const pinned = body.pinned === true;
+			const pins = await readPins();
+			if (pinned) pins.add(id);
+			else pins.delete(id);
+			await writePins(pins);
+			sendJson(res, { ok: true, id, pinned });
+			return true;
+		}
+		// action === "update"
+		if (!hasStandaloneVoiceModelStaging(id)) {
+			sendJsonError(res, new VoiceModelNotStandaloneError(id).message, 409);
+			return true;
+		}
+		const updater = getUpdater();
+		const [installed, pins] = await Promise.all([
+			resolveInstalledVersions(),
+			readPins(),
+		]);
+		let statuses: ReadonlyArray<VoiceModelStatus>;
+		try {
+			statuses = await updater.check(
+				{ installed, bundleVersion: resolveBundleVersion() },
+				{ pinned: pins },
+				{ force: true },
+			);
+		} catch (err) {
+			sendJsonError(
+				res,
+				err instanceof Error ? err.message : "updater check failed",
+				502,
+			);
+			return true;
+		}
+		const status = statuses.find((s) => s.id === id);
+		if (!status?.latestKnown) {
+			sendJsonError(res, `no candidate version for ${id}`, 404);
+			return true;
+		}
+		// R5 §4 — the policy decision gates automatic updates. This request is
+		// the user's explicit answer to its ask outcomes, so it is recorded on
+		// the download but does not refuse it.
+		const prefs = await readPreferences();
+		const totalBytes = status.latestKnown.ggufAssets.reduce(
+			(sum, a) => sum + a.sizeBytes,
+			0,
+		);
+		const networkPolicy = await evaluateRuntimePolicy({
+			prefs,
+			estimatedBytes: totalBytes,
+		});
+		if (status.latestKnown.ggufAssets.length === 0) {
+			sendJsonError(res, `no assets published for ${id}`, 409);
+			return true;
+		}
+		const controller = new AbortController();
+		try {
+			// Download EVERY published asset for this version. Multi-asset models
+			// (e.g. `wakeword` ships melspec + embedding + classifier) were only
+			// fetching asset 0 before, leaving the model unusable (#9880).
+			const results: Array<{
+				finalPath: string;
+				sha256: string;
+				sizeBytes: number;
+			}> = [];
+			for (
+				let assetIndex = 0;
+				assetIndex < status.latestKnown.ggufAssets.length;
+				assetIndex++
+			) {
+				results.push(
+					await getDownloader()({
+						version: status.latestKnown,
+						bundleVoiceDir: bundleVoiceDir(),
+						stagingDir: voiceStagingDir(),
+						assetIndex,
+						trigger: "explicit",
+						networkPolicy,
+						signal: controller.signal,
+					}),
+				);
+			}
+			// Stage the wake-word head into the loader's `wake/<head>.<kind>.gguf`
+			// layout — the downloader's flat `models/voice/` names are not where
+			// the runtime resolves the standalone three-GGUF head (#9880).
+			const staged = await stageWakeWordModel(
+				status.latestKnown,
+				bundleVoiceDir(),
+			);
+			sendJson(res, {
+				ok: true,
+				id,
+				version: status.latestKnown.version,
+				// `finalPath` keeps its single-asset shape for back-compat.
+				finalPath: results[0]?.finalPath,
+				finalPaths: results.map((r) => r.finalPath),
+				stagedPaths: staged,
+				sha256: results[0]?.sha256,
+				sizeBytes: results.reduce((n, r) => n + r.sizeBytes, 0),
+			});
+		} catch (err) {
+			if (err instanceof VoiceModelDownloadError) {
+				sendJsonError(res, err.message, 502);
+				return true;
+			}
+			throw err;
+		}
+		return true;
+	}
+	return false;
+}
+function serializeStatus(s: VoiceModelStatus): {
+	id: VoiceModelId;
+	installedVersion: string | null;
+	pinned: boolean;
+	latestKnown: VoiceModelVersion | null;
+	allow: boolean;
+	reason: VoiceModelStatus["decision"]["reason"];
+} {
+	return {
+		id: s.id,
+		installedVersion: s.installedVersion,
+		pinned: s.pinned,
+		latestKnown: s.latestKnown,
+		allow: s.decision.allow,
+		reason: s.decision.reason,
+	};
+}

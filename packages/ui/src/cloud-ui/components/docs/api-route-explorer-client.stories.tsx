@@ -1,0 +1,175 @@
+/**
+ * Storybook stories for the API route explorer.
+ */
+
+import type { DiscoveredApiRouteDto } from "@elizaos/cloud-sdk";
+import type { Meta, StoryObj } from "@storybook/react";
+import { expect, userEvent, within } from "storybook/test";
+import { ApiRouteExplorerClient } from "./api-route-explorer-client";
+
+const routes: DiscoveredApiRouteDto[] = [
+  {
+    path: "/api/v1/agents",
+    methods: ["GET", "POST"],
+    filePath: "src/routes/agents/index.ts",
+    meta: {
+      name: "List & Create Agents",
+      description:
+        "Retrieve all agents in your workspace, or provision a new agent with a character definition.",
+      category: "agents",
+      requiresAuth: true,
+      rateLimit: { requests: 120, window: "min" },
+      pricing: "Credits",
+      tags: ["agents", "core"],
+    },
+  },
+  {
+    path: "/api/v1/agents/{id}",
+    methods: ["GET", "PATCH", "DELETE"],
+    filePath: "src/routes/agents/[id].ts",
+    meta: {
+      name: "Agent Detail",
+      description: "Read, update, or delete a single agent by id.",
+      category: "agents",
+      requiresAuth: true,
+      rateLimit: "60/min",
+      tags: ["agents"],
+    },
+  },
+  {
+    path: "/api/v1/chat/completions",
+    methods: ["POST"],
+    filePath: "src/routes/chat/completions.ts",
+    meta: {
+      name: "Chat Completions",
+      description:
+        "Stream a chat completion from a model. OpenAI-compatible request body.",
+      category: "chat",
+      requiresAuth: true,
+      pricing: { type: "metered" },
+      tags: ["chat", "inference"],
+    },
+  },
+  {
+    path: "/api/v1/discovery/routes",
+    methods: ["GET"],
+    filePath: "src/routes/discovery/routes.ts",
+    meta: {
+      name: "Route Discovery",
+      description: "Public list of documented API routes.",
+      category: "discovery",
+      requiresAuth: false,
+      tags: ["public"],
+    },
+  },
+  {
+    path: "/api/v1/credits/balance",
+    methods: ["GET"],
+    filePath: "src/routes/credits/balance.ts",
+  },
+  {
+    path: "/api/v1/admin/users",
+    methods: ["GET"],
+    filePath: "src/routes/admin/users.ts",
+    meta: {
+      name: "Admin: Users",
+      description: "Administrative user listing (hidden unless Show all).",
+      category: "admin",
+      requiresAuth: true,
+      tags: ["admin"],
+    },
+  },
+];
+
+const meta = {
+  title: "Docs/ApiRouteExplorerClient",
+  component: ApiRouteExplorerClient,
+  tags: ["autodocs"],
+  globals: { theme: "dark" },
+  parameters: { backgrounds: { default: "dark" } },
+  decorators: [
+    (Story, context) => (
+      <div
+        className={
+          context.globals.theme === "light"
+            ? "bg-bg p-6 text-txt"
+            : "dark bg-black p-6 text-white"
+        }
+      >
+        <Story />
+      </div>
+    ),
+  ],
+} satisfies Meta<typeof ApiRouteExplorerClient>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {
+  args: { routes },
+};
+
+export const LightTheme: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+};
+
+export const Empty: Story = {
+  args: { routes: [] },
+};
+
+export const SingleRoute: Story = {
+  args: { routes: [routes[2]] },
+};
+
+export const SelectedDetailLight: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(canvas.getByRole("button", { name: /Agent Detail/ }));
+    await expect(
+      canvas.getByRole("heading", { name: "Agent Detail" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("Required", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "Copy cURL example" }),
+    ).toBeVisible();
+  },
+};
+
+export const SelectedPostLight: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /Chat Completions/ }),
+    );
+    await expect(
+      canvas.getByRole("heading", { name: "Chat Completions" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("Required", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "Copy cURL example" }),
+    ).toBeVisible();
+  },
+};
+
+export const SelectedPublicLight: Story = {
+  args: { routes },
+  globals: { theme: "light" },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /Route Discovery/ }),
+    );
+    await expect(
+      canvas.getByRole("heading", { name: "Route Discovery" }),
+    ).toBeVisible();
+    await expect(canvas.getByText("Public", { exact: true })).toBeVisible();
+    await expect(
+      canvas.getByRole("button", { name: "Copy cURL example" }),
+    ).toBeVisible();
+  },
+};

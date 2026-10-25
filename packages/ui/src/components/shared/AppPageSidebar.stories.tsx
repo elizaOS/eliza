@@ -1,0 +1,85 @@
+/** Storybook stories for AppPageSidebar: default/collapsible/header+action/mobile variants over a stub nav list. */
+
+import type { Meta, StoryObj } from "@storybook/react";
+import { Button } from "../ui/button";
+import { AppPageSidebar } from "./AppPageSidebar";
+
+const navItems = ["Overview", "Activity", "Members", "Settings"];
+
+function NavList() {
+  return (
+    <nav className="flex flex-col gap-1 p-2 text-sm">
+      {navItems.map((label) => (
+        <Button
+          key={label}
+          type="button"
+          variant="ghostMuted"
+          size="compact"
+          align="start"
+        >
+          {label}
+        </Button>
+      ))}
+    </nav>
+  );
+}
+
+const meta = {
+  title: "Shared/AppPageSidebar",
+  component: AppPageSidebar,
+  tags: ["autodocs"],
+  argTypes: {
+    variant: {
+      control: "select",
+      options: ["default", "game-modal", "mobile"],
+    },
+    collapsible: { control: "boolean" },
+    collapsed: { control: "boolean" },
+    resizable: { control: "boolean" },
+    defaultWidth: { control: "number" },
+  },
+  args: {
+    variant: "default",
+    contentIdentity: "demo-page",
+    children: <NavList />,
+  },
+  decorators: [
+    (Story) => (
+      <div style={{ height: 420, display: "flex" }}>
+        <Story />
+      </div>
+    ),
+  ],
+} satisfies Meta<typeof AppPageSidebar>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Default: Story = {};
+
+export const Collapsible: Story = {
+  args: { collapsible: true },
+};
+
+export const WithHeaderAndAction: Story = {
+  args: {
+    collapsible: true,
+    header: (
+      <div className="p-2 text-xs font-medium uppercase tracking-wide text-muted">
+        Workspace
+      </div>
+    ),
+    bottomAction: (
+      <Button type="button" variant="ghostMuted" size="tiny">
+        New
+      </Button>
+    ),
+  },
+};
+
+export const Mobile: Story = {
+  args: {
+    variant: "mobile",
+    mobileTitle: "Workspace",
+  },
+};

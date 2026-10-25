@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-rest
+  namespace: eliza-infra
+  labels:
+    app: redis-rest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-rest
+  template:
+    metadata:
+      labels:
+        app: redis-rest
+    spec:
+      # SOC2 CC6.3 / A1.2 — pod-level hardening defaults.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: redis-rest
+          image: hiett/serverless-redis-http@sha256:5b0bb9239fce53abf87b2018a7a0deb9ec7bd900c5360738fe5fbeeb426f9150
+          ports:
+            - containerPort: 80
+          # SOC2 CC6.3 — container-level hardening.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: SRH_MODE
+              value: env
+            - name: SRH_TOKEN
+              # Local dev only. Production loads via ESO -> Steward.
+              # Production boundary: replace this with secretKeyRef once ESO is wired.
+              value: local_dev_token
+            - name: SRH_CONNECTION_STRING
+              value: redis://redis-master.eliza-infra.svc:6379
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            # readOnlyRootFilesystem demands explicit writable mounts.
+            - name: tmp
+              mountPath: /tmp
+            - name: var-cache
+              mountPath: /var/cache
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: var-cache
+          emptyDir:
+            sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-rest
+  namespace: eliza-infra
+  labels:
+    app: redis-rest
+spec:
+  selector:
+    app: redis-rest
+  ports:
+    - port: 8079
+      targetPort: 80

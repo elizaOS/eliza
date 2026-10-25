@@ -1,0 +1,147 @@
+/**
+ * Builds, simulates, prioritizes, and submits a versioned Solana transaction
+ * for the Meteora DEX adapters, retrying send + status polling until
+ * confirmed or a 90s timeout. Compute unit limit is derived from simulation
+ * (with a 30% safety margin) and the priority fee from the 95th-percentile
+ * recent prioritization fee, both added as compute-budget instructions ahead
+ * of the caller's instructions. Adapted from the pattern documented at
+ * https://orca-so.github.io/whirlpools/Whirlpools%20SDKs/Whirlpools/Send%20Transaction.
+ */
+import { ElizaError, elizaLogger } from "@elizaos/core";
+import {
+  ComputeBudgetProgram,
+  type Connection,
+  type Keypair,
+  type TransactionInstruction,
+  TransactionMessage,
+  VersionedTransaction,
+} from "@solana/web3.js";
+
+export function calculatePrioritizationFee(
+  recentPrioritizationFees: Array<{ prioritizationFee?: number } | null | undefined>,
+  percentile = 0.95
+): number {
+  if (!recentPrioritizationFees || recentPrioritizationFees.length === 0) return 0;
+  const sorted = recentPrioritizationFees
+    .map((fee) =>
+      typeof fee?.prioritizationFee === "number" && Number.isFinite(fee.prioritizationFee)
+        ? fee.prioritizationFee
+        : 0
+    )
+    .sort((a, b) => a - b);
+  const index = Math.ceil(percentile * sorted.length) - 1;
+  return sorted[Math.max(0, index)] ?? 0;
+}
+
+const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
+
+/**
+ * Meteora SDK methods already prepend `SetComputeUnitLimit`. A second limit
+ * in the same message is rejected as `DuplicateInstruction`. Replace only
+ * limit/price for submission; retain heap/data requests. Simulation uses the
+ * original SDK instructions and budgets.
+ */
+export function withoutComputeUnitLimitAndPrice(
+  instructions: readonly TransactionInstruction[]
+): TransactionInstruction[] {
+  return instructions.filter(
+    (instruction) =>
+      !instruction.programId.equals(COMPUTE_BUDGET_PROGRAM_ID) ||
+      (instruction.data[0] !== 2 && instruction.data[0] !== 3)
+  );
+}
+
+/** Fee payer first, then any other required signers, without duplicates. */
+export function collectSigners(
+  feePayer: Keypair,
+  extraSigners: readonly Keypair[] = []
+): Keypair[] {
+  const signers = [feePayer];
+  const seen = new Set([feePayer.publicKey.toBase58()]);
+  for (const signer of extraSigners) {
+    const key = signer.publicKey.toBase58();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    signers.push(signer);
+  }
+  return signers;
+}
+
+export async function sendTransaction(
+  connection: Connection,
+  instructions: TransactionInstruction[],
+  wallet: Keypair,
+  extraSigners: readonly Keypair[] = []
+): Promise<string> {
+  const latestBlockhash = await connection.getLatestBlockhash();
+  const workInstructions = withoutComputeUnitLimitAndPrice(instructions);
+
+  const messageV0 = new TransactionMessage({
+    payerKey: wallet.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions,
+  }).compileToV0Message();
+
+  const signers = collectSigners(wallet, extraSigners);
+  const simulatedTx = new VersionedTransaction(messageV0);
+  simulatedTx.sign(signers);
+  const simulation = await connection.simulateTransaction(simulatedTx);
+  if (simulation.value.err) {
+    throw new ElizaError("Meteora transaction simulation failed", {
+      code: "METEORA_SIMULATION_FAILED",
+      context: { simulationError: simulation.value.err },
+      severity: "ephemeral",
+    });
+  }
+  const computeUnits = simulation.value.unitsConsumed || 200_000;
+  const safeComputeUnits = Math.ceil(Math.max(computeUnits * 1.3, computeUnits + 100_000));
+
+  const recentPrioritizationFees = await connection.getRecentPrioritizationFees();
+  const prioritizationFee = calculatePrioritizationFee(recentPrioritizationFees);
+
+  const computeBudgetInstructions = [
+    ComputeBudgetProgram.setComputeUnitLimit({ units: safeComputeUnits }),
+    ComputeBudgetProgram.setComputeUnitPrice({
+      microLamports: prioritizationFee,
+    }),
+  ];
+
+  const finalMessage = new TransactionMessage({
+    payerKey: wallet.publicKey,
+    recentBlockhash: latestBlockhash.blockhash,
+    instructions: [...computeBudgetInstructions, ...workInstructions],
+  }).compileToV0Message();
+
+  const transaction = new VersionedTransaction(finalMessage);
+  transaction.sign(signers);
+
+  const timeoutMs = 90000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const transactionStartTime = Date.now();
+
+    const signature = await connection.sendTransaction(transaction, {
+      maxRetries: 0,
+      skipPreflight: true,
+    });
+
+    const statuses = await connection.getSignatureStatuses([signature]);
+    if (statuses.value[0]) {
+      if (!statuses.value[0].err) {
+        elizaLogger.log(`Transaction confirmed: ${signature}`);
+        return signature;
+      } else {
+        throw new Error(`Transaction failed: ${statuses.value[0].err.toString()}`);
+      }
+    }
+
+    const elapsedTime = Date.now() - transactionStartTime;
+    const remainingTime = Math.max(0, 1000 - elapsedTime);
+    if (remainingTime > 0) {
+      await new Promise((resolve) => setTimeout(resolve, remainingTime));
+    }
+  }
+
+  throw new Error("Transaction timeout");
+}

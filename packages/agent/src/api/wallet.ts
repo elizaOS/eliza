@@ -1,0 +1,1256 @@
+/**
+ * Wallet key generation, address derivation, and balance/NFT fetching.
+ * Uses Node crypto primitives + Noble curves/hashes for key derivation.
+ * Balance data from Alchemy/Ankr (EVM), NodeReal/QuickNode (BSC RPC),
+ * and Helius (Solana) REST APIs.
+ *
+ * DEX price oracle logic lives in @elizaos/plugin-wallet/read.
+ * EVM balance + NFT fetching lives in ./wallet-evm-balance.ts
+ */
+import fs from "node:fs";
+import { rpcJsonRequest } from "@elizaos/plugin-wallet/read";
+import {
+  decodeSolanaBase58,
+  decodeSolanaPrivateKey,
+  deriveEvmAddress,
+  deriveSolanaAddress,
+  isWalletKeyPlaceholder,
+  setSolanaWalletEnv,
+} from "./wallet-keygen.ts";
+
+export {
+  deriveEvmAddress,
+  deriveSolanaAddress,
+  generateWalletForChain,
+  generateWalletKeys,
+  setSolanaWalletEnv,
+  syncSolanaPublicKeyEnv,
+} from "./wallet-keygen.ts";
+
+import type {
+  KeyValidationResult,
+  SolanaTokenBalance,
+  WalletAddresses,
+  WalletChain,
+  WalletImportResult,
+} from "@elizaos/contracts";
+import { logger, toWellFormedUnicode, truncateWellFormed } from "@elizaos/core";
+
+import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { computeValueUsd } from "@elizaos/plugin-wallet/read";
+import { resolveStewardCredentialsPath } from "../config/paths.ts";
+
+type StewardAgentPayload = {
+  walletAddress?: string;
+  walletAddresses?: { evm?: string; solana?: string };
+};
+
+export type {
+  BscTradeExecuteRequest,
+  BscTradeExecuteResponse,
+  BscTradeExecutionResult,
+  BscTradePreflightRequest,
+  BscTradePreflightResponse,
+  BscTradeQuoteRequest,
+  BscTradeQuoteResponse,
+  BscTradeSide,
+  BscTradeTxStatus,
+  BscTradeTxStatusResponse,
+  BscTransferExecuteRequest,
+  BscTransferExecuteResponse,
+  BscTransferExecutionResult,
+  BscUnsignedApprovalTx,
+  BscUnsignedTradeTx,
+  BscUnsignedTransferTx,
+  EvmChainBalance,
+  EvmTokenBalance,
+  KeyValidationResult,
+  SolanaTokenBalance,
+  TradePermissionMode,
+  WalletAddresses,
+  WalletBalancesResponse,
+  WalletChain,
+  WalletConfigStatus,
+  WalletGenerateResult,
+  WalletImportResult,
+  WalletKeys,
+  WalletTradeLedgerEntry,
+  WalletTradeSource,
+  WalletTradingProfileResponse,
+  WalletTradingProfileSourceFilter,
+  WalletTradingProfileWindow,
+} from "@elizaos/contracts";
+
+// ── Re-exports from extracted modules ─────────────────────────────────
+
+export {
+  computeValueUsd,
+  DEX_PRICE_TIMEOUT_MS,
+  DEXPAPRIKA_CHAIN_MAP,
+  DEXSCREENER_CHAIN_MAP,
+  type DexScreenerPair,
+  type DexTokenMeta,
+  fetchDexPaprikaPrices,
+  fetchDexPrices,
+  fetchDexScreenerPrices,
+  WRAPPED_NATIVE,
+} from "@elizaos/plugin-wallet/read";
+
+export {
+  type AnkrTokenAsset,
+  DEFAULT_EVM_CHAINS,
+  type EvmProviderKeys,
+  fetchEvmBalances,
+  resolveEvmProviderKeys,
+} from "./wallet-evm-balance.ts";
+
+// ── Constants ─────────────────────────────────────────────────────────
+
+const FETCH_TIMEOUT_MS = 15_000;
+export const MANAGED_EVM_ADDRESS_ENV_KEY = "ELIZA_MANAGED_EVM_ADDRESS";
+export const MANAGED_SOLANA_ADDRESS_ENV_KEY = "ELIZA_MANAGED_SOLANA_ADDRESS";
+export const CLOUD_EVM_ADDRESS_ENV_KEY = "ELIZA_CLOUD_EVM_ADDRESS";
+export const CLOUD_SOLANA_ADDRESS_ENV_KEY = "ELIZA_CLOUD_SOLANA_ADDRESS";
+export const WALLET_SOURCE_EVM_ENV_KEY = "WALLET_SOURCE_EVM";
+export const WALLET_SOURCE_SOLANA_ENV_KEY = "WALLET_SOURCE_SOLANA";
+const SOLANA_WRAPPED_NATIVE_MINT =
+  "So11111111111111111111111111111111111111112";
+const SOLANA_SPL_TOKEN_PROGRAM_ID =
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+
+/** Module-level cache for steward wallet addresses (avoids process.env mutation). */
+let stewardAddressCache: { evm: string | null; solana: string | null } | null =
+  null;
+
+type AgentAddressCacheEntry = {
+  evm: string | null;
+  solana: string | null;
+};
+
+/** Ownership token for one constructed runtime's public-address cache writes. */
+export interface AgentWalletAddressCacheSession {
+  readonly agentId: string;
+  readonly generation: symbol;
+  readonly activation: "active" | "deferred";
+}
+
+/**
+ * Public addresses for Eliza agents' vault-backed wallets, isolated by the
+ * runtime agent id that owns them. A process can hot-swap or host more than one
+ * runtime, so a single "active agent" slot would let the next runtime observe
+ * the previous agent's wallet until its own deferred bootstrap completed.
+ */
+const agentAddressCache = new Map<string, AgentAddressCacheEntry>();
+const activeAgentAddressCacheGenerations = new Map<string, symbol>();
+const pendingAgentAddressCacheGenerations = new Map<string, symbol>();
+const pendingAgentAddressCacheEntries = new Map<
+  symbol,
+  AgentAddressCacheEntry | null
+>();
+
+function createAgentWalletAddressCacheSession(
+  agentId: string,
+  activation: AgentWalletAddressCacheSession["activation"],
+): AgentWalletAddressCacheSession {
+  const cacheKey = agentId.trim();
+  if (!cacheKey) {
+    throw new TypeError(
+      "wallet: agent id is required to start an address cache session",
+    );
+  }
+  return Object.freeze({
+    agentId: cacheKey,
+    generation: Symbol(cacheKey),
+    activation,
+  });
+}
+
+/**
+ * Start and immediately activate an empty public-address cache generation for
+ * a cold runtime. This also invalidates any pending build for the same agent.
+ */
+export function beginAgentWalletAddressCacheSession(
+  agentId: string,
+): AgentWalletAddressCacheSession {
+  const session = createAgentWalletAddressCacheSession(agentId, "active");
+  const pendingGeneration = pendingAgentAddressCacheGenerations.get(
+    session.agentId,
+  );
+  if (pendingGeneration) {
+    pendingAgentAddressCacheEntries.delete(pendingGeneration);
+    pendingAgentAddressCacheGenerations.delete(session.agentId);
+  }
+  activeAgentAddressCacheGenerations.set(session.agentId, session.generation);
+  agentAddressCache.delete(session.agentId);
+  return session;
+}
+
+/**
+ * Start a replacement runtime's private cache generation without changing the
+ * incumbent's active addresses. A newer pending build supersedes the previous
+ * one for the same agent.
+ */
+export function beginDeferredAgentWalletAddressCacheSession(
+  agentId: string,
+): AgentWalletAddressCacheSession {
+  const session = createAgentWalletAddressCacheSession(agentId, "deferred");
+  const previousGeneration = pendingAgentAddressCacheGenerations.get(
+    session.agentId,
+  );
+  if (previousGeneration) {
+    pendingAgentAddressCacheEntries.delete(previousGeneration);
+  }
+  pendingAgentAddressCacheGenerations.set(session.agentId, session.generation);
+  pendingAgentAddressCacheEntries.set(session.generation, null);
+  return session;
+}
+
+/** Atomically promote the current pending generation and its staged addresses. */
+export function activateAgentWalletAddressCacheSession(
+  session: AgentWalletAddressCacheSession,
+): boolean {
+  if (
+    activeAgentAddressCacheGenerations.get(session.agentId) ===
+    session.generation
+  ) {
+    return true;
+  }
+  if (
+    session.activation !== "deferred" ||
+    pendingAgentAddressCacheGenerations.get(session.agentId) !==
+      session.generation
+  ) {
+    return false;
+  }
+
+  const stagedAddresses =
+    pendingAgentAddressCacheEntries.get(session.generation) ?? null;
+  activeAgentAddressCacheGenerations.set(session.agentId, session.generation);
+  pendingAgentAddressCacheGenerations.delete(session.agentId);
+  pendingAgentAddressCacheEntries.delete(session.generation);
+  if (stagedAddresses) {
+    agentAddressCache.set(session.agentId, stagedAddresses);
+  } else {
+    agentAddressCache.delete(session.agentId);
+  }
+  return true;
+}
+
+/** Abandon the current pending generation without changing the incumbent. */
+export function abandonAgentWalletAddressCacheSession(
+  session: AgentWalletAddressCacheSession,
+): boolean {
+  if (
+    session.activation !== "deferred" ||
+    pendingAgentAddressCacheGenerations.get(session.agentId) !==
+      session.generation
+  ) {
+    return false;
+  }
+  pendingAgentAddressCacheGenerations.delete(session.agentId);
+  pendingAgentAddressCacheEntries.delete(session.generation);
+  return true;
+}
+
+function normalizeWalletSource(
+  value: string | undefined,
+): "local" | "cloud" | null {
+  if (value === "local" || value === "cloud") {
+    return value;
+  }
+  return null;
+}
+
+function readValidatedEvmAddress(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
+    return null;
+  }
+  return trimmed;
+}
+
+function readValidatedSolanaAddress(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  try {
+    const decoded = decodeSolanaBase58(trimmed);
+    return decoded.length === 32 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Publish one agent's public wallet identities to read-only wallet surfaces.
+ * Private keys remain in the vault; this cache contains addresses only and
+ * therefore does not require the opt-in process-env signing bridge. Returns
+ * false without mutation when a replacement runtime has superseded the session.
+ */
+export function cacheAgentWalletAddresses(
+  session: AgentWalletAddressCacheSession,
+  addresses: WalletAddresses,
+): boolean {
+  const cacheKey = session.agentId.trim();
+  const ownsActiveGeneration =
+    activeAgentAddressCacheGenerations.get(cacheKey) === session.generation;
+  const ownsPendingGeneration =
+    session.activation === "deferred" &&
+    pendingAgentAddressCacheGenerations.get(cacheKey) === session.generation;
+  if (!cacheKey || (!ownsActiveGeneration && !ownsPendingGeneration)) {
+    return false;
+  }
+
+  const evmAddress = addresses.evmAddress
+    ? readValidatedEvmAddress(addresses.evmAddress)
+    : null;
+  const solanaAddress = addresses.solanaAddress
+    ? readValidatedSolanaAddress(addresses.solanaAddress)
+    : null;
+
+  if (addresses.evmAddress && !evmAddress) {
+    throw new TypeError("wallet: invalid agent EVM address");
+  }
+  if (addresses.solanaAddress && !solanaAddress) {
+    throw new TypeError("wallet: invalid agent Solana address");
+  }
+
+  const cacheEntry =
+    !evmAddress && !solanaAddress
+      ? null
+      : {
+          evm: evmAddress,
+          solana: solanaAddress,
+        };
+  if (ownsPendingGeneration) {
+    pendingAgentAddressCacheEntries.set(session.generation, cacheEntry);
+  } else if (cacheEntry) {
+    agentAddressCache.set(cacheKey, cacheEntry);
+  } else {
+    agentAddressCache.delete(cacheKey);
+  }
+  return true;
+}
+
+// A configured-but-unusable key is an operator misconfiguration, not an absent
+// wallet: the address resolves to null and every downstream balance and signing
+// surface then reports "no wallet" with no indication why. The validator already
+// names the defect, so surface it rather than discarding it.
+//
+// These derivations run per wallet request, so the warning is keyed on the
+// offending value to stay a one-line boot-time signal instead of per-request
+// noise. Only the validator's diagnosis is logged, never the key: the messages
+// are shape descriptions ("Must be 64 hex characters") and at most echo the one
+// character that failed base58 decoding.
+const warnedInvalidKeys = new Set<string>();
+
+function warnInvalidKeyOnce(
+  envKey: string,
+  value: string,
+  reason: string | null,
+): void {
+  const fingerprint = `${envKey}:${value.length}:${reason ?? ""}`;
+  if (warnedInvalidKeys.has(fingerprint)) return;
+  warnedInvalidKeys.add(fingerprint);
+  logger.warn(`[wallet] ${envKey} is set but unusable: ${reason ?? "unknown"}`);
+}
+
+function deriveLocalEvmAddress(): string | null {
+  const evmKey = process.env.EVM_PRIVATE_KEY?.trim();
+  if (!evmKey || isWalletKeyPlaceholder(evmKey)) return null;
+  const validated = validateEvmPrivateKey(evmKey);
+  if (!validated.valid) {
+    warnInvalidKeyOnce("EVM_PRIVATE_KEY", evmKey, validated.error);
+    return null;
+  }
+  return validated.address;
+}
+
+function deriveLocalSolanaAddress(): string | null {
+  const solKey = process.env.SOLANA_PRIVATE_KEY?.trim();
+  if (!solKey || isWalletKeyPlaceholder(solKey)) return null;
+  const validated = validateSolanaPrivateKey(solKey);
+  if (!validated.valid) {
+    warnInvalidKeyOnce("SOLANA_PRIVATE_KEY", solKey, validated.error);
+    return null;
+  }
+  return validated.address;
+}
+
+function readStewardEvmAddress(): string | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative && !authoritative.enabled) return null;
+  const stewardEvm =
+    stewardAddressCache?.evm?.trim() ??
+    process.env[STEWARD_EVM_ADDRESS_ENV_KEY]?.trim();
+  return readValidatedEvmAddress(stewardEvm);
+}
+
+function readStewardSolanaAddress(): string | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative && !authoritative.enabled) return null;
+  const stewardSolana =
+    stewardAddressCache?.solana?.trim() ??
+    process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY]?.trim();
+  return readValidatedSolanaAddress(stewardSolana);
+}
+
+function readAgentAddressCache(
+  agentId: string | null | undefined,
+): AgentAddressCacheEntry | null {
+  const cacheKey = agentId?.trim();
+  if (!cacheKey) return null;
+  return agentAddressCache.get(cacheKey) ?? null;
+}
+
+function readAgentEvmAddress(
+  agentId: string | null | undefined,
+): string | null {
+  return readValidatedEvmAddress(
+    readAgentAddressCache(agentId)?.evm ?? undefined,
+  );
+}
+
+function readAgentSolanaAddress(
+  agentId: string | null | undefined,
+): string | null {
+  return readValidatedSolanaAddress(
+    readAgentAddressCache(agentId)?.solana ?? undefined,
+  );
+}
+
+function readManagedEvmAddress(): string | null {
+  const managed = readValidatedEvmAddress(
+    process.env[MANAGED_EVM_ADDRESS_ENV_KEY],
+  );
+  if (!managed && process.env[MANAGED_EVM_ADDRESS_ENV_KEY]?.trim()) {
+    logger.warn("Bad managed EVM address in env");
+  }
+  return managed;
+}
+
+function readManagedSolanaAddress(): string | null {
+  const managed = readValidatedSolanaAddress(
+    process.env[MANAGED_SOLANA_ADDRESS_ENV_KEY],
+  );
+  if (!managed && process.env[MANAGED_SOLANA_ADDRESS_ENV_KEY]?.trim()) {
+    logger.warn("Bad managed Solana address in env");
+  }
+  return managed;
+}
+
+function resolveEvmAddressForConfiguredSource(
+  source: "local" | "cloud" | null,
+): string | null {
+  if (source === "local") {
+    return deriveLocalEvmAddress();
+  }
+  if (source === "cloud") {
+    return (
+      readValidatedEvmAddress(process.env[CLOUD_EVM_ADDRESS_ENV_KEY]) ??
+      readManagedEvmAddress()
+    );
+  }
+  return null;
+}
+
+function resolveSolanaAddressForConfiguredSource(
+  source: "local" | "cloud" | null,
+): string | null {
+  if (source === "local") {
+    return deriveLocalSolanaAddress();
+  }
+  if (source === "cloud") {
+    return (
+      readValidatedSolanaAddress(process.env[CLOUD_SOLANA_ADDRESS_ENV_KEY]) ??
+      readManagedSolanaAddress()
+    );
+  }
+  return null;
+}
+
+// ── Key validation ────────────────────────────────────────────────────
+
+const HEX_RE = /^[0-9a-fA-F]+$/;
+
+export function validateEvmPrivateKey(key: string): KeyValidationResult {
+  const cleaned = /^0x/i.test(key) ? key.slice(2) : key;
+  if (cleaned.length !== 64)
+    return {
+      valid: false,
+      chain: "evm",
+      address: null,
+      error: "Must be 64 hex characters",
+    };
+  if (!HEX_RE.test(cleaned))
+    return {
+      valid: false,
+      chain: "evm",
+      address: null,
+      error: "Invalid hex characters",
+    };
+  try {
+    return {
+      valid: true,
+      chain: "evm",
+      address: deriveEvmAddress(key),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      chain: "evm",
+      address: null,
+      error: `Derivation failed: ${String(err)}`,
+    };
+  }
+}
+
+export function validateSolanaPrivateKey(key: string): KeyValidationResult {
+  try {
+    const bytes = decodeSolanaPrivateKey(key);
+    if (bytes.length !== 64 && bytes.length !== 32) {
+      return {
+        valid: false,
+        chain: "solana",
+        address: null,
+        error: `Must be 32 or 64 bytes, got ${bytes.length}`,
+      };
+    }
+    return {
+      valid: true,
+      chain: "solana",
+      address: deriveSolanaAddress(key),
+      error: null,
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      chain: "solana",
+      address: null,
+      error: `Invalid key: ${String(err)}`,
+    };
+  }
+}
+
+/** Auto-detect chain from key format and validate. */
+export function validatePrivateKey(key: string): KeyValidationResult {
+  const trimmed = key.trim();
+  if (/^0x/i.test(trimmed) || (trimmed.length === 64 && HEX_RE.test(trimmed)))
+    return validateEvmPrivateKey(trimmed);
+  return validateSolanaPrivateKey(trimmed);
+}
+
+/** Mask a secret string for safe display (e.g. logs, UI). */
+export function maskSecret(value: string): string {
+  if (!value || value.length <= 8) return "****";
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
+/** Validate key, store in process.env. Caller persists to config if needed. */
+export function importWallet(
+  chain: WalletChain,
+  privateKey: string,
+): WalletImportResult {
+  const trimmed = privateKey.trim();
+  if (chain === "evm") {
+    const v = validateEvmPrivateKey(trimmed);
+    if (!v.valid)
+      return { success: false, chain, address: null, error: v.error };
+    const hexBody = /^0x/i.test(trimmed) ? trimmed.slice(2) : trimmed;
+    process.env.EVM_PRIVATE_KEY = `0x${hexBody}`;
+    logger.info(`[wallet] Imported EVM wallet: ${v.address}`);
+    return { success: true, chain, address: v.address, error: null };
+  }
+  const v = validateSolanaPrivateKey(trimmed);
+  if (!v.valid) return { success: false, chain, address: null, error: v.error };
+  setSolanaWalletEnv(trimmed);
+  logger.info(`[wallet] Imported Solana wallet: ${v.address}`);
+  return { success: true, chain, address: v.address, error: null };
+}
+
+// ── Steward wallet cache env keys ─────────────────────────────────────
+
+export const STEWARD_EVM_ADDRESS_ENV_KEY = "STEWARD_EVM_ADDRESS";
+export const STEWARD_SOLANA_ADDRESS_ENV_KEY = "STEWARD_SOLANA_ADDRESS";
+
+type PersistedStewardCredentials = {
+  apiUrl?: string;
+  tenantId?: string;
+  agentId?: string;
+  apiKey?: string;
+  agentToken?: string;
+};
+
+type OperationalStewardConnection = {
+  apiUrl: string;
+  tenantId?: string;
+  agentId: string;
+  apiKey?: string;
+  agentToken?: string;
+};
+
+function normalizeOptionalString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readPersistedStewardCredentials(): {
+  apiUrl: string | null;
+  tenantId: string | null;
+  agentId: string | null;
+  apiKey: string | null;
+  agentToken: string | null;
+} | null {
+  const credentialsPath = resolveStewardCredentialsPath();
+  try {
+    if (!fs.existsSync(credentialsPath)) {
+      return null;
+    }
+    const parsed = JSON.parse(
+      fs.readFileSync(credentialsPath, "utf8"),
+    ) as PersistedStewardCredentials;
+    return {
+      apiUrl: normalizeOptionalString(parsed.apiUrl),
+      tenantId: normalizeOptionalString(parsed.tenantId),
+      agentId: normalizeOptionalString(parsed.agentId),
+      apiKey: normalizeOptionalString(parsed.apiKey),
+      agentToken: normalizeOptionalString(parsed.agentToken),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function resolveOperationalStewardConnection(
+  includePersisted: boolean,
+  fallbackAgentId?: string | null,
+): OperationalStewardConnection | null {
+  const authoritative = resolveDevCloudStewardOperationalTuple();
+  if (authoritative) {
+    return authoritative.enabled
+      ? {
+          apiUrl: authoritative.apiUrl,
+          ...(authoritative.tenantId
+            ? { tenantId: authoritative.tenantId }
+            : {}),
+          agentId: authoritative.agentId,
+          ...(authoritative.apiKey ? { apiKey: authoritative.apiKey } : {}),
+          ...(authoritative.agentToken
+            ? { agentToken: authoritative.agentToken }
+            : {}),
+        }
+      : null;
+  }
+
+  const persisted = includePersisted ? readPersistedStewardCredentials() : null;
+  const apiUrl =
+    normalizeOptionalString(process.env.STEWARD_API_URL) ?? persisted?.apiUrl;
+  const agentId =
+    normalizeOptionalString(process.env.STEWARD_AGENT_ID) ??
+    normalizeOptionalString(process.env.ELIZA_STEWARD_AGENT_ID) ??
+    persisted?.agentId ??
+    normalizeOptionalString(fallbackAgentId);
+  if (!apiUrl || !agentId) return null;
+
+  const tenantId =
+    normalizeOptionalString(process.env.STEWARD_TENANT_ID) ??
+    persisted?.tenantId ??
+    undefined;
+  const apiKey =
+    normalizeOptionalString(process.env.STEWARD_API_KEY) ??
+    persisted?.apiKey ??
+    undefined;
+  const agentToken =
+    normalizeOptionalString(process.env.STEWARD_AGENT_TOKEN) ??
+    persisted?.agentToken ??
+    undefined;
+  return {
+    apiUrl,
+    ...(tenantId ? { tenantId } : {}),
+    agentId,
+    ...(apiKey ? { apiKey } : {}),
+    ...(agentToken ? { agentToken } : {}),
+  };
+}
+
+/**
+ * Initialise the steward wallet address cache.
+ *
+ * Call once during server startup.  Fetches addresses from the steward API
+ * and writes them to `process.env.STEWARD_EVM_ADDRESS` /
+ * `process.env.STEWARD_SOLANA_ADDRESS` so the synchronous
+ * `getWalletAddresses()` can use them without hitting the network.
+ */
+export async function initStewardWalletCache(): Promise<void> {
+  const connection = resolveOperationalStewardConnection(true);
+  if (!connection) {
+    if (resolveDevCloudStewardOperationalTuple()) {
+      stewardAddressCache = null;
+      delete process.env[STEWARD_EVM_ADDRESS_ENV_KEY];
+      delete process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY];
+    }
+    return;
+  }
+
+  try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (connection.agentToken) {
+      headers.Authorization = `Bearer ${connection.agentToken}`;
+    } else if (connection.apiKey) {
+      headers["X-Steward-Key"] = connection.apiKey;
+    }
+    if (connection.tenantId) {
+      headers["X-Steward-Tenant"] = connection.tenantId;
+    }
+
+    const res = await fetch(
+      `${connection.apiUrl}/agents/${encodeURIComponent(connection.agentId)}`,
+      { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+    );
+
+    if (!res.ok) {
+      logger.warn(
+        `[wallet] Steward wallet cache init: agent lookup returned ${res.status}`,
+      );
+      return;
+    }
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      data?: StewardAgentPayload;
+    } & StewardAgentPayload;
+
+    const agent = body.data ?? body;
+    const stewardEvm =
+      agent.walletAddresses?.evm?.trim() || agent.walletAddress?.trim() || null;
+    const stewardSolana = agent.walletAddresses?.solana?.trim() || null;
+
+    stewardAddressCache = { evm: stewardEvm, solana: stewardSolana };
+    if (stewardEvm) {
+      process.env[STEWARD_EVM_ADDRESS_ENV_KEY] = stewardEvm;
+    } else {
+      delete process.env[STEWARD_EVM_ADDRESS_ENV_KEY];
+    }
+    if (stewardSolana) {
+      process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY] = stewardSolana;
+      if (!process.env.SOLANA_PUBLIC_KEY?.trim()) {
+        process.env.SOLANA_PUBLIC_KEY = stewardSolana;
+      }
+      if (!process.env.WALLET_PUBLIC_KEY?.trim()) {
+        process.env.WALLET_PUBLIC_KEY = stewardSolana;
+      }
+    } else {
+      delete process.env[STEWARD_SOLANA_ADDRESS_ENV_KEY];
+    }
+
+    if (stewardEvm) {
+      logger.info(`[wallet] Steward EVM address cached: ${stewardEvm}`);
+    }
+    if (stewardSolana) {
+      logger.info(`[wallet] Steward Solana address cached: ${stewardSolana}`);
+    }
+  } catch (err) {
+    logger.debug(`[wallet] Steward wallet cache init unavailable: ${err}`);
+  }
+}
+
+/**
+ * Derive addresses from env keys.  Works without a running runtime.
+ *
+ * Resolution order (steward-first):
+ *   1. Steward cached addresses  (`STEWARD_EVM_ADDRESS` / `STEWARD_SOLANA_ADDRESS`)
+ *   2. Local private key derivation  (`EVM_PRIVATE_KEY` / `SOLANA_PRIVATE_KEY`)
+ *   3. The requested agent's public addresses (vault-backed; no private-key export)
+ *   4. Managed address env vars  (`ELIZA_MANAGED_EVM_ADDRESS` / `ELIZA_MANAGED_SOLANA_ADDRESS`)
+ *
+ * Calls without an agent id intentionally skip the agent cache. Environment
+ * and source-selected wallets retain their legacy process-wide behavior, but
+ * an unscoped caller must never inherit whichever runtime bootstrapped last.
+ */
+export function getWalletAddresses(agentId?: string | null): WalletAddresses {
+  const configuredEvmSource = normalizeWalletSource(
+    process.env[WALLET_SOURCE_EVM_ENV_KEY],
+  );
+  const configuredSolanaSource = normalizeWalletSource(
+    process.env[WALLET_SOURCE_SOLANA_ENV_KEY],
+  );
+
+  let evmAddress = resolveEvmAddressForConfiguredSource(configuredEvmSource);
+  let solanaAddress = resolveSolanaAddressForConfiguredSource(
+    configuredSolanaSource,
+  );
+
+  // Legacy fallback order when no explicit source selection exists yet.
+  if (!evmAddress && !configuredEvmSource) {
+    evmAddress =
+      readStewardEvmAddress() ??
+      deriveLocalEvmAddress() ??
+      readAgentEvmAddress(agentId) ??
+      readManagedEvmAddress();
+  }
+
+  if (!solanaAddress && !configuredSolanaSource) {
+    solanaAddress =
+      readStewardSolanaAddress() ??
+      deriveLocalSolanaAddress() ??
+      readAgentSolanaAddress(agentId) ??
+      readManagedSolanaAddress();
+  }
+
+  return { evmAddress, solanaAddress };
+}
+
+/**
+ * Extended wallet addresses including steward-managed wallets.
+ * Calls steward API (async) to discover additional addresses.
+ * Key-derived addresses are always preferred; steward addresses fill gaps.
+ */
+export async function getWalletAddressesWithSteward(
+  runtimeAgentId?: string | null,
+): Promise<
+  WalletAddresses & {
+    stewardEvmAddress?: string | null;
+    stewardSolanaAddress?: string | null;
+  }
+> {
+  const base = getWalletAddresses(runtimeAgentId);
+
+  const connection = resolveOperationalStewardConnection(
+    false,
+    base.evmAddress,
+  );
+  if (!connection) return base;
+
+  try {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    };
+    if (connection.agentToken) {
+      headers.Authorization = `Bearer ${connection.agentToken}`;
+    } else if (connection.apiKey) {
+      headers["X-Steward-Key"] = connection.apiKey;
+    }
+    if (connection.tenantId) {
+      headers["X-Steward-Tenant"] = connection.tenantId;
+    }
+
+    const res = await fetch(
+      `${connection.apiUrl}/agents/${encodeURIComponent(connection.agentId)}`,
+      { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+    );
+
+    if (!res.ok) {
+      logger.warn(`Steward agent lookup returned ${res.status}`);
+      return base;
+    }
+
+    const body = (await res.json()) as {
+      ok?: boolean;
+      data?: StewardAgentPayload;
+    } & StewardAgentPayload;
+
+    const agent = body.data ?? body;
+    const stewardEvm =
+      agent.walletAddresses?.evm?.trim() || agent.walletAddress?.trim() || null;
+    const stewardSolana = agent.walletAddresses?.solana?.trim() || null;
+
+    return {
+      evmAddress: base.evmAddress ?? stewardEvm,
+      solanaAddress: base.solanaAddress ?? stewardSolana,
+      stewardEvmAddress: stewardEvm,
+      stewardSolanaAddress: stewardSolana,
+    };
+  } catch (err) {
+    logger.warn(`Steward wallet address lookup failed: ${err}`);
+    return base;
+  }
+}
+
+// ── Helius API (Solana tokens + NFTs) ─────────────────────────────────
+
+interface HeliusAsset {
+  id: string;
+  interface: string;
+  content?: {
+    metadata?: { name?: string; symbol?: string; description?: string };
+    links?: { image?: string };
+  };
+  token_info?: {
+    balance?: number;
+    decimals?: number;
+    price_info?: { total_price?: number };
+    symbol?: string;
+  };
+  grouping?: Array<{
+    group_key?: string;
+    collection_metadata?: { name?: string };
+  }>;
+}
+
+interface SolanaDexScreenerPair {
+  baseToken?: {
+    address?: string;
+    name?: string;
+    symbol?: string;
+  };
+  priceUsd?: string | null;
+  liquidity?: { usd?: number };
+  info?: { imageUrl?: string };
+}
+
+interface SolanaParsedTokenAccountResponse {
+  result?: {
+    value?: Array<{
+      account?: {
+        data?: {
+          parsed?: {
+            info?: {
+              mint?: string;
+              tokenAmount?: {
+                amount?: string;
+                decimals?: number;
+                uiAmountString?: string;
+              };
+            };
+          };
+        };
+      };
+    }>;
+  };
+  error?: { message?: string };
+}
+
+interface SolanaDexMeta {
+  priceUsd: string | null;
+  imageUrl?: string;
+  name?: string;
+  symbol?: string;
+}
+
+function shortenMint(mint: string): string {
+  if (mint.length <= 10) return mint;
+  return `${mint.slice(0, 4)}...${mint.slice(-4)}`;
+}
+
+async function fetchSolanaDexMeta(
+  addresses: string[],
+): Promise<Map<string, SolanaDexMeta>> {
+  const uniqueAddresses = [
+    ...new Set(addresses.map((address) => address.trim())),
+  ].filter(Boolean);
+  const results = new Map<string, SolanaDexMeta>();
+  if (uniqueAddresses.length === 0) return results;
+
+  for (let index = 0; index < uniqueAddresses.length; index += 30) {
+    const batch = uniqueAddresses.slice(index, index + 30);
+    try {
+      const res = await fetch(
+        `https://api.dexscreener.com/tokens/v1/solana/${batch.join(",")}`,
+        { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+      );
+      if (!res.ok) continue;
+      const pairs = (await res.json()) as SolanaDexScreenerPair[];
+      if (!Array.isArray(pairs)) continue;
+
+      const bestPairByMint = new Map<string, SolanaDexScreenerPair>();
+      for (const pair of pairs) {
+        const mint = pair.baseToken?.address?.trim();
+        if (!mint) continue;
+        const existing = bestPairByMint.get(mint);
+        if (
+          !existing ||
+          (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)
+        ) {
+          bestPairByMint.set(mint, pair);
+        }
+      }
+
+      for (const [mint, pair] of bestPairByMint) {
+        results.set(mint, {
+          priceUsd: pair.priceUsd ?? null,
+          imageUrl: pair.info?.imageUrl?.trim() || undefined,
+          name: pair.baseToken?.name?.trim() || undefined,
+          symbol: pair.baseToken?.symbol?.trim() || undefined,
+        });
+      }
+    } catch (err) {
+      logger.warn(`[wallet] Solana DexScreener fetch failed: ${String(err)}`);
+    }
+  }
+
+  return results;
+}
+
+function buildSolanaTokenBalance(
+  token: {
+    mint: string;
+    balance: string;
+    decimals: number;
+    symbol?: string | null;
+    name?: string | null;
+    valueUsd?: string | null;
+    logoUrl?: string | null;
+  },
+  dexMeta: Map<string, SolanaDexMeta>,
+): SolanaTokenBalance {
+  const meta = dexMeta.get(token.mint);
+  const computedValueUsd =
+    meta?.priceUsd && meta.priceUsd.length > 0
+      ? computeValueUsd(token.balance, meta.priceUsd)
+      : "0";
+
+  return {
+    mint: token.mint,
+    symbol:
+      token.symbol?.trim() ||
+      meta?.symbol?.trim() ||
+      shortenMint(token.mint).toUpperCase(),
+    name: token.name?.trim() || meta?.name?.trim() || token.mint,
+    balance: token.balance,
+    decimals: token.decimals,
+    valueUsd:
+      token.valueUsd && Number.parseFloat(token.valueUsd) > 0
+        ? token.valueUsd
+        : computedValueUsd,
+    logoUrl: token.logoUrl?.trim() || meta?.imageUrl || "",
+  };
+}
+
+function describeRpcEndpoint(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "rpc";
+  }
+}
+
+/** Parse JSON from a fetch response. If the body isn't JSON, throw with the raw text. */
+async function jsonOrThrow<T>(res: Response): Promise<T> {
+  const text = await res.text();
+  if (!res.ok)
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) ||
+        `HTTP ${res.status}`,
+    );
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(
+      truncateWellFormed(toWellFormedUnicode(text), 200) || "Invalid JSON",
+    );
+  }
+}
+
+export async function fetchSolanaBalances(
+  address: string,
+  heliusKey: string,
+): Promise<{
+  solBalance: string;
+  solValueUsd: string;
+  tokens: SolanaTokenBalance[];
+}> {
+  const url = `https://mainnet.helius-rpc.com/?api-key=${heliusKey}`;
+  const rpc = (body: string): RequestInit => ({
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    body,
+  });
+
+  let solBalance = "0";
+  const balanceData = await jsonOrThrow<{
+    result?: { value?: number };
+    error?: { message?: string };
+  }>(
+    await fetch(
+      url,
+      rpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getBalance",
+          params: [address],
+        }),
+      ),
+    ),
+  );
+  if (balanceData.error?.message) throw new Error(balanceData.error.message);
+  solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
+
+  const tokenData = await jsonOrThrow<{
+    result?: { items?: HeliusAsset[] };
+    error?: { message?: string };
+  }>(
+    await fetch(
+      url,
+      rpc(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "getAssetsByOwner",
+          params: {
+            ownerAddress: address,
+            displayOptions: { showFungible: true, showNativeBalance: true },
+            page: 1,
+            limit: 100,
+          },
+        }),
+      ),
+    ),
+  );
+  if (tokenData.error?.message) throw new Error(tokenData.error.message);
+  const fungibleAssets = (tokenData.result?.items ?? []).filter(
+    (item) =>
+      item.interface === "FungibleToken" || item.interface === "FungibleAsset",
+  );
+  const dexMeta = await fetchSolanaDexMeta([
+    SOLANA_WRAPPED_NATIVE_MINT,
+    ...fungibleAssets.map((item) => item.id),
+  ]);
+  const tokens: SolanaTokenBalance[] = [];
+  for (const item of tokenData.result?.items ?? []) {
+    if (
+      item.interface !== "FungibleToken" &&
+      item.interface !== "FungibleAsset"
+    )
+      continue;
+    const decimals = item.token_info?.decimals ?? 0;
+    const rawBalance = item.token_info?.balance ?? 0;
+    const balance =
+      decimals > 0
+        ? (rawBalance / 10 ** decimals).toString()
+        : rawBalance.toString();
+    tokens.push(
+      buildSolanaTokenBalance(
+        {
+          mint: item.id,
+          symbol: item.token_info?.symbol ?? item.content?.metadata?.symbol,
+          name: item.content?.metadata?.name ?? null,
+          balance,
+          decimals,
+          valueUsd:
+            item.token_info?.price_info?.total_price?.toFixed(2) ?? null,
+          logoUrl: item.content?.links?.image ?? null,
+        },
+        dexMeta,
+      ),
+    );
+  }
+
+  const solPriceUsd = dexMeta.get(SOLANA_WRAPPED_NATIVE_MINT)?.priceUsd ?? "0";
+  return {
+    solBalance,
+    solValueUsd: computeValueUsd(solBalance, solPriceUsd),
+    tokens,
+  };
+}
+
+export async function fetchSolanaNativeBalanceViaRpc(
+  address: string,
+  rpcUrls: string[],
+): Promise<{
+  solBalance: string;
+  solValueUsd: string;
+  tokens: SolanaTokenBalance[];
+}> {
+  const urls = [...new Set(rpcUrls)].filter((u) => Boolean(u.trim()));
+  const errors: string[] = [];
+
+  for (const rpcUrl of urls) {
+    try {
+      const balanceData = await jsonOrThrow<{
+        result?: { value?: number };
+        error?: { message?: string };
+      }>(
+        await fetch(
+          rpcUrl,
+          rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              method: "getBalance",
+              params: [address],
+            }),
+          ),
+        ),
+      );
+      if (balanceData.error?.message)
+        throw new Error(balanceData.error.message);
+
+      const tokenAccounts = await jsonOrThrow<SolanaParsedTokenAccountResponse>(
+        await fetch(
+          rpcUrl,
+          rpcJsonRequest(
+            FETCH_TIMEOUT_MS,
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 2,
+              method: "getTokenAccountsByOwner",
+              params: [
+                address,
+                { programId: SOLANA_SPL_TOKEN_PROGRAM_ID },
+                { encoding: "jsonParsed" },
+              ],
+            }),
+          ),
+        ),
+      );
+      if (tokenAccounts.error?.message) {
+        throw new Error(tokenAccounts.error.message);
+      }
+
+      const rawTokens = (tokenAccounts.result?.value ?? [])
+        .map((item) => {
+          const info = item.account?.data?.parsed?.info;
+          const mint = info?.mint?.trim();
+          const tokenAmount = info?.tokenAmount;
+          const balance =
+            tokenAmount?.uiAmountString?.trim() ||
+            tokenAmount?.amount?.trim() ||
+            "0";
+          const decimals = tokenAmount?.decimals ?? 0;
+          if (!mint || Number.parseFloat(balance) <= 0) return null;
+          return {
+            mint,
+            balance,
+            decimals,
+          };
+        })
+        .filter(
+          (
+            token,
+          ): token is { mint: string; balance: string; decimals: number } =>
+            token !== null,
+        );
+
+      const dexMeta = await fetchSolanaDexMeta([
+        SOLANA_WRAPPED_NATIVE_MINT,
+        ...rawTokens.map((token) => token.mint),
+      ]);
+      const tokens = rawTokens.map((token) =>
+        buildSolanaTokenBalance(token, dexMeta),
+      );
+      const solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
+      const solPriceUsd =
+        dexMeta.get(SOLANA_WRAPPED_NATIVE_MINT)?.priceUsd ?? "0";
+      return {
+        solBalance,
+        solValueUsd: computeValueUsd(solBalance, solPriceUsd),
+        tokens,
+      };
+    } catch (err) {
+      const msg = String(err);
+      errors.push(`${describeRpcEndpoint(rpcUrl)}: ${msg}`);
+    }
+  }
+
+  throw new Error(
+    truncateWellFormed(toWellFormedUnicode(errors.join(" | ")), 400) ||
+      "Solana RPC unavailable",
+  );
+}

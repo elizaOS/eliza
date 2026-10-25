@@ -1,0 +1,133 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: direct-routing
+spec:
+  description: Verify a shared-eliza Server CR creates a routable agent-server that accepts messages
+  steps:
+    - name: Create shared-eliza Server CR
+      try:
+        - apply:
+            file: server-cr.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server shared-eliza -n eliza-agents --ignore-not-found
+
+    - name: Assert Deployment and Service created
+      try:
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: shared-eliza
+                namespace: eliza-agents
+              spec:
+                template:
+                  spec:
+                    containers:
+                      - name: agent-server
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: shared-eliza
+                namespace: eliza-agents
+              spec:
+                ports:
+                  - port: 3000
+
+    - name: Assert Redis routing keys
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              STATUS=$(kubectl run cs-redis-status-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis GET "server:shared-eliza:status" 2>/dev/null)
+              echo "$STATUS" | grep -qE "(pending|scaleddown|running)" || { echo "FAIL: server status=$STATUS, expected pending, scaleddown, or running"; exit 1; }
+
+              URL=$(kubectl run cs-redis-url-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis GET "server:shared-eliza:url" 2>/dev/null)
+              echo "$URL" | grep -q "shared-eliza.eliza-agents.svc:3000" || { echo "FAIL: server url=$URL"; exit 1; }
+
+    - name: Wake via KEDA
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              for attempt in 1 2 3; do
+                RESULT=$(kubectl run cs-wake-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                  --image=redis:7-alpine --quiet -- \
+                  redis-cli -h redis LPUSH "keda:shared-eliza:activity" "wake" 2>&1)
+                echo "$RESULT" | grep -qE "^\(integer\)|^[0-9]" && exit 0
+                echo "KEDA wake attempt $attempt failed: $RESULT"
+                sleep 3
+              done
+              echo "FAIL: KEDA wake LPUSH failed after 3 attempts"
+              exit 1
+
+    - name: Wait for pod ready
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              for i in $(seq 1 60); do
+                POD=$(kubectl get pods -n eliza-agents -l "eliza.ai/server=shared-eliza" --no-headers 2>/dev/null || true)
+                if echo "$POD" | grep -q "1/1.*Running"; then
+                  echo "Pod is ready"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: Pod not ready within 300s"
+              kubectl get pods -n eliza-agents -l "eliza.ai/server=shared-eliza" --no-headers 2>/dev/null || true
+              kubectl logs -n eliza-agents -l "eliza.ai/server=shared-eliza" --tail=20 2>/dev/null || true
+              exit 1
+
+    - name: Assert CR phase Running
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              sleep 3
+              PHASE=$(kubectl get server shared-eliza -n eliza-agents -o jsonpath='{.status.phase}')
+              [ "$PHASE" = "Running" ] || { echo "FAIL: phase=$PHASE, expected Running"; exit 1; }
+
+    - name: Send test message to agent-server
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              SECRET=$(kubectl get secret eliza-agent-secrets -n eliza-agents -o jsonpath='{.data.AGENT_SERVER_SHARED_SECRET}' | base64 -d)
+              for i in $(seq 1 10); do
+                RESPONSE=$(kubectl run cs-msg-$RANDOM --rm -i --restart=Never -n eliza-agents \
+                  --image=curlimages/curl:latest --quiet -- \
+                  curl -s -X POST http://shared-eliza.eliza-agents.svc:3000/agents/eliza/message \
+                    -H "Content-Type: application/json" \
+                    -H "X-Server-Token: $SECRET" \
+                    -d '{"userId":"test-user","text":"hello"}' 2>/dev/null)
+                echo "Attempt $i — Response: $RESPONSE"
+                echo "$RESPONSE" | grep -q '"response"' && exit 0
+                sleep 3
+              done
+              echo "FAIL: no response field after 10 attempts"
+              exit 1
+
+    - name: Verify KEDA activity key after manual push
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              kubectl run cs-keda-push-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis LPUSH "keda:shared-eliza:activity" "$(date +%s)" 2>/dev/null
+
+              LEN=$(kubectl run cs-keda-check-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis LLEN "keda:shared-eliza:activity" 2>/dev/null)
+              [ "$LEN" -ge 1 ] || { echo "FAIL: KEDA activity list empty"; exit 1; }

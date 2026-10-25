@@ -1,0 +1,13 @@
+{
+  "_comment": "Regression budgets for the chat message searchbench (#13534). run-all.mjs / searchbench-kpi.ts compare MEASURED aggregates against these and exit non-zero when a hard budget regresses. A metric is only checked when it was really measured against a >=10k-row PGlite corpus; an unmeasured (null) metric fails closed, never passes. Quality budgets guard the correctness fixes (multi-word non-adjacent recall, older-than-window recall, phrase precision). The latency budget is capability-aware: with pg_trgm the substring/partial fallback is a trigram-GIN index scan (maxP95LatencyMsTrigram, cloud/production); without it the fallback is an unindexed scan of the STORED message_search_document column (maxP95LatencyMsNoTrigram, the bundled PGlite build, ~10x slower under WASM). Both still catch the pre-materialization O(n)-recompute regression (which was ~11s). Ratchet the ceilings down as the plan tightens; raise the quality floors only when the gold set proves it.",
+  "budgets": {
+    "minCorpus": 10000,
+    "minRecallAt10": 0.99,
+    "minPrecisionAt10": 0.9,
+    "minMrr": 0.9,
+    "minNdcgAt10": 0.9,
+    "maxP95LatencyMsTrigram": 250,
+    "maxP95LatencyMsNoTrigram": 2500,
+    "maxIndexBuildMs": 60000
+  }
+}

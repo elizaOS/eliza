@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Speech recognizer metadata for ElizaRecognitionService. Eliza's actual
+    voice loop runs in the app; this service exists so the VoiceInteraction
+    contract has a fully declared, platform-resolvable recognizer.
+-->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />

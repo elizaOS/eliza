@@ -1,0 +1,44 @@
+/**
+ * Runs health tests against real workspace sources with explicit browser-safe UI entries.
+ */
+
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+import { buildWorkspaceSourceAliases } from "../../packages/scripts/vitest/source-aliases.ts";
+
+// Array form with an exact barrel entry AND a separate subpath entry: a bare
+// string / exact-only `@elizaos/core` alias prefix-matches subpaths and
+// rewrites `@elizaos/core/runtime-env` into `.../src/index.ts/runtime-env`
+// (ENOTDIR). Each subpath must resolve to its own source module instead.
+const aliases = [
+  {
+    find: /^@elizaos\/plugin-scheduling$/,
+    replacement: fileURLToPath(
+      new URL("../plugin-scheduling/src/index.ts", import.meta.url),
+    ),
+  },
+  {
+    find: /^@elizaos\/ui$/,
+    replacement: fileURLToPath(
+      new URL("../../packages/ui/src/index.ts", import.meta.url),
+    ),
+  },
+  ...buildWorkspaceSourceAliases(),
+];
+export default defineConfig({
+  resolve: {
+    alias: aliases,
+  },
+  test: {
+    alias: aliases,
+    // Pin local-day helpers so screen-time assertions match across dev and CI.
+    env: { TZ: "America/Los_Angeles" },
+    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
+    exclude: [
+      "dist/**",
+      "**/node_modules/**",
+      "**/*.live.test.ts",
+      "**/*.e2e.test.ts",
+    ],
+  },
+});

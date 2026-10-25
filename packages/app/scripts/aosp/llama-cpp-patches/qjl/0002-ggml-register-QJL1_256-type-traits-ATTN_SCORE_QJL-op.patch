@@ -1,0 +1,1392 @@
+From 7d2466c941c4afc0b5de58a7aac507d4d1d1e61c Mon Sep 17 00:00:00 2001
+From: qjl-port <qjl@local>
+Date: Sat, 9 May 2026 02:49:31 -0700
+Subject: [PATCH 2/4] ggml: register QJL1_256 type traits + ATTN_SCORE_QJL op
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Vendor packages/native-plugins/qjl-cpu/ kernel sources into
+  ggml/src/ggml-cpu/qjl/ (kernel files unchanged, bit-parity-validated
+  scalar/AVX2/NEON paths).
+- Add quants-qjl.c shim mapping the kernel-library API to the
+  ggml-shaped names quantize_row_qjl1_256_ref / quantize_row_qjl1_256
+  / dequantize_row_qjl1_256 / quantize_qjl1_256.
+- Wire the type-traits entry in ggml.c and the type-traits-cpu entry
+  in ggml-cpu.c (from_float only — QJL is K-cache-only and never
+  participates in mul_mat).
+- Wire the GGML_OP_ATTN_SCORE_QJL constructor + name/symbol slots in
+  ggml.c, dispatcher case + n_tasks in ggml-cpu/ggml-cpu.c.
+- Provide a lazily-built default seeded projection matrix Π
+  (head_dim=128 / proj_dim=256 / seed=42) for the type-traits round
+  trip; production deployments inject Π via the per-layer sidecar.
+- CMakeLists adds ggml-cpu/qjl/ to the source list and exposes
+  ggml-cpu/qjl/{,include} on the private include path.
+---
+ ggml/src/ggml-cpu/CMakeLists.txt          |  36 ++
+ ggml/src/ggml-cpu/ggml-cpu.c              |  19 ++
+ ggml/src/ggml-cpu/qjl/include/qjl/qjl.h   | 162 +++++++++++++++
+ ggml/src/ggml-cpu/qjl/qjl_block.h         |  18 ++
+ ggml/src/ggml-cpu/qjl/qjl_dispatch.c      |  51 +++++
+ ggml/src/ggml-cpu/qjl/qjl_projection.c    |  77 +++++++
+ ggml/src/ggml-cpu/qjl/qjl_quantize_avx2.c | 110 ++++++++++
+ ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c | 107 ++++++++++
+ ggml/src/ggml-cpu/qjl/qjl_quantize_ref.c  |  65 ++++++
+ ggml/src/ggml-cpu/qjl/qjl_score_avx2.c    |  70 +++++++
+ ggml/src/ggml-cpu/qjl/qjl_score_neon.c    |  66 ++++++
+ ggml/src/ggml-cpu/qjl/qjl_score_ref.c     |  42 ++++
+ ggml/src/ggml-cpu/qjl/quants-qjl.c        | 232 ++++++++++++++++++++++
+ ggml/src/ggml-cpu/quants.h                |   9 +
+ ggml/src/ggml-quants.h                    |   3 +
+ ggml/src/ggml.c                           |  68 ++++++-
+ 16 files changed, 1133 insertions(+), 2 deletions(-)
+ create mode 100644 ggml/src/ggml-cpu/qjl/include/qjl/qjl.h
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_block.h
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_dispatch.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_projection.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_quantize_avx2.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_quantize_ref.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_score_avx2.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_score_neon.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/qjl_score_ref.c
+ create mode 100644 ggml/src/ggml-cpu/qjl/quants-qjl.c
+
+diff --git a/ggml/src/ggml-cpu/CMakeLists.txt b/ggml/src/ggml-cpu/CMakeLists.txt
+index 3dc948e4..ad4701f2 100644
+--- a/ggml/src/ggml-cpu/CMakeLists.txt
++++ b/ggml/src/ggml-cpu/CMakeLists.txt
+@@ -52,8 +52,44 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
+         ggml-cpu/vec.cpp
+         ggml-cpu/ops.h
+         ggml-cpu/ops.cpp
++        # QJL 1-bit packed-K quant + attention-score op. Vendored from the
++        # standalone packages/native-plugins/qjl-cpu/ kernel library; the
++        # kernel files themselves carry their own SIMD guards (__AVX2__ /
++        # __ARM_NEON), so we always compile all of them and the dispatcher
++        # picks the right one at link/runtime.
++        ggml-cpu/qjl/quants-qjl.c
++        ggml-cpu/qjl/qjl_block.h
++        ggml-cpu/qjl/qjl_dispatch.c
++        ggml-cpu/qjl/qjl_projection.c
++        ggml-cpu/qjl/qjl_quantize_ref.c
++        ggml-cpu/qjl/qjl_quantize_avx2.c
++        ggml-cpu/qjl/qjl_quantize_neon.c
++        ggml-cpu/qjl/qjl_score_ref.c
++        ggml-cpu/qjl/qjl_score_avx2.c
++        ggml-cpu/qjl/qjl_score_neon.c
+         )
+ 
++    # qjl/include lets `#include "qjl/qjl.h"` resolve to the vendored kernel
++    # public header without polluting the rest of ggml-cpu's include surface.
++    # qjl/ itself is on the include path so the kernel files reach
++    # `qjl_block.h` (their internal header) the same way they do in the
++    # standalone packages/native-plugins/qjl-cpu/ build.
++    target_include_directories(${GGML_CPU_NAME} PRIVATE ggml-cpu/qjl/include ggml-cpu/qjl)
++
++    # Per-source SIMD flags. The AOSP cross-build sets GGML_NATIVE=OFF for
++    # portability, so the AVX2 TUs would otherwise compile without
++    # `__AVX2__` defined and the kernels would #if-out to nothing — leaving
++    # the cuttlefish x86_64 build with only the scalar `_ref` path. Add
++    # `-mavx2 -mfma` per-source so the AVX2 entry points (`qjl_quantize_row_avx2`,
++    # `qjl_score_qk_avx2`) get emitted regardless of the global GGML_NATIVE
++    # setting. NEON sources don't need this on AArch64 (NEON is on by
++    # default for the AArch64 ABI).
++    set_source_files_properties(
++        ggml-cpu/qjl/qjl_quantize_avx2.c
++        ggml-cpu/qjl/qjl_score_avx2.c
++        PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
++    )
++
+     target_compile_features(${GGML_CPU_NAME} PRIVATE c_std_11 cxx_std_17)
+     target_include_directories(${GGML_CPU_NAME} PRIVATE . ggml-cpu)
+ 
+diff --git a/ggml/src/ggml-cpu/ggml-cpu.c b/ggml/src/ggml-cpu/ggml-cpu.c
+index 2cf69f93..fca430d1 100644
+--- a/ggml/src/ggml-cpu/ggml-cpu.c
++++ b/ggml/src/ggml-cpu/ggml-cpu.c
+@@ -408,6 +408,13 @@ static const struct ggml_type_traits_cpu type_traits_cpu[GGML_TYPE_COUNT] = {
+         .vec_dot_type             = GGML_TYPE_F32,
+         .nrows                    = 1,
+     },
++    [GGML_TYPE_QJL1_256] = {
++        // QJL is K-cache-only; it is never an operand to mul_mat. The
++        // attention path uses GGML_OP_ATTN_SCORE_QJL instead, which calls
++        // qjl_score_qk() directly and bypasses the vec_dot table. We only
++        // need from_float so ggml_cpy(K_cur -> K_view) can quantize.
++        .from_float               = quantize_row_qjl1_256,
++    },
+     [GGML_TYPE_I32] = {
+         .from_float               = (ggml_from_float_t) ggml_cpu_fp32_to_i32,
+     },
+@@ -1990,6 +1997,10 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
+             {
+                 ggml_compute_forward_flash_attn_ext(params, tensor);
+             } break;
++        case GGML_OP_ATTN_SCORE_QJL:
++            {
++                ggml_compute_forward_attn_score_qjl(params, tensor);
++            } break;
+         case GGML_OP_FLASH_ATTN_BACK:
+             {
+                 int32_t t = ggml_get_op_params_i32(tensor, 0);
+@@ -2369,6 +2380,14 @@ static int ggml_get_n_tasks(struct ggml_tensor * node, int n_threads) {
+             {
+                 n_tasks = n_threads;
+             } break;
++        case GGML_OP_ATTN_SCORE_QJL:
++            {
++                // QJL score forward dispatches over (h_q, t) inside the
++                // SIMD path itself; the outer loop here is a small
++                // n_batch * ne3 fan-out. Single-thread for now — revisit
++                // when we have a real per-token decode profile on arm64.
++                n_tasks = 1;
++            } break;
+         case GGML_OP_WIN_PART:
+         case GGML_OP_WIN_UNPART:
+         case GGML_OP_GET_REL_POS:
+diff --git a/ggml/src/ggml-cpu/qjl/include/qjl/qjl.h b/ggml/src/ggml-cpu/qjl/include/qjl/qjl.h
+new file mode 100644
+index 00000000..8ff42243
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/include/qjl/qjl.h
+@@ -0,0 +1,162 @@
++/*
++ * QJL 1-bit JL Transform K-cache compression — public API.
++ *
++ * Reference: Zandieh, Daliri, Han. "QJL: 1-Bit Quantized JL Transform
++ * for KV Cache Quantization with Zero Overhead", AAAI 2025
++ * (arXiv:2406.03482). The original CUDA reference lives at
++ *   packages/training/scripts/quantization/qjl/csrc/qjl_quant_kernel.cu
++ *   packages/training/scripts/quantization/qjl/csrc/qjl_gqa_score_kernel.cu
++ * and the pure-PyTorch reference at
++ *   packages/training/scripts/quantization/test_qjl.py
++ * This library implements the inlier-only branch (no outlier sketch),
++ * which is the form that ships through the CPU KV-cache path.
++ *
++ * Canonical paper defaults that this library is dimensioned around:
++ *   head_dim                   = 128
++ *   projection_dim_per_head    = 256
++ *   projection_seed            = 42
++ *
++ * Block layout (`block_qjl1_256`): 32 bytes packed signs + bf16 norm = 34 B.
++ * Compression ratio at head_dim=128: 128 * 2 / 34 = 7.53x vs bf16 K-cache.
++ */
++
++#ifndef QJL_QJL_H
++#define QJL_QJL_H
++
++#include <stdint.h>
++#include <stddef.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++/* Canonical paper defaults. */
++#define QJL_HEAD_DIM            128
++#define QJL_PROJECTION_DIM      256
++#define QJL_PACKED_BYTES        (QJL_PROJECTION_DIM / 8)   /* 32 */
++#define QJL_BLOCK_BYTES         (QJL_PACKED_BYTES + 2)     /* 34 */
++
++/* On-disk / on-cache block layout for one cached key vector. */
++typedef struct {
++    uint8_t  qs[QJL_PACKED_BYTES]; /* 256 sign bits, LSB = bit 0 of byte 0 */
++    uint16_t norm_bf16;            /* bf16 L2 norm of the original key */
++} qjl_block_qjl1_256;
++
++/*
++ * Build a JL projection matrix Π in row-major (head_dim, projection_dim)
++ * layout, deterministic from `seed`. The standalone reference uses an
++ * external matrix supplied by the caller (see `qjl_quantize_row_*`); this
++ * helper exists for hosts that want to derive Π from a seed alone, using
++ * a Box-Muller draw on top of a Mersenne-Twister-derived stream. Note
++ * that PyTorch's torch.randn is a different draw — fixtures generated
++ * from PyTorch will ship the projection matrix explicitly.
++ *
++ * Returns 0 on success.
++ */
++int qjl_make_projection_mt(float *prj, int head_dim, int proj_dim, uint64_t seed);
++
++/* ---------------- quantize ---------------- */
++
++/*
++ * Quantize one key row (head_dim floats) into one block_qjl1_256 block.
++ * `prj` is (head_dim, proj_dim) row-major. `proj_dim` must equal
++ * QJL_PROJECTION_DIM; `head_dim` must equal QJL_HEAD_DIM.
++ *
++ * Algorithm (matches `qjl_pure_pytorch_quantize`):
++ *   sketch[j] = sum_i key[i] * prj[i*proj_dim + j]
++ *   bit[j]    = sketch[j] > 0 ? 1 : 0
++ *   pack 8 bits LSB-first into qs[j/8]
++ *   norm      = bf16(||key||_2)
++ */
++void qjl_quantize_row_ref(const float *key, const float *prj,
++                          qjl_block_qjl1_256 *out);
++void qjl_quantize_row_avx2(const float *key, const float *prj,
++                           qjl_block_qjl1_256 *out);
++void qjl_quantize_row_neon(const float *key, const float *prj,
++                           qjl_block_qjl1_256 *out);
++
++/* Bulk: quantize n_rows successive key vectors. Each row is head_dim floats. */
++void qjl_quantize_rows_ref(const float *keys, const float *prj,
++                           qjl_block_qjl1_256 *out, size_t n_rows);
++void qjl_quantize_rows_avx2(const float *keys, const float *prj,
++                            qjl_block_qjl1_256 *out, size_t n_rows);
++void qjl_quantize_rows_neon(const float *keys, const float *prj,
++                            qjl_block_qjl1_256 *out, size_t n_rows);
++
++/* Best available implementation on the running CPU. */
++void qjl_quantize_rows(const float *keys, const float *prj,
++                       qjl_block_qjl1_256 *out, size_t n_rows);
++
++/* ---------------- dequantize ---------------- */
++
++/*
++ * Reconstruct an approximate key row from a packed block.
++ *
++ * The QJL paper's recovery is asymmetric: the proper attention path is
++ * reconstruct ||k|| * Π^T · sign(s) inside the score kernel; calling
++ * this directly produces a cosine-similarity reconstruction useful for
++ * debugging and dequant-then-fp32 fallback paths. Specifically:
++ *
++ *   recon[i] = (||k|| * sqrt(pi/2) / proj_dim) *
++ *              sum_j sign_packed[j] * prj[i*proj_dim + j]
++ *
++ * where sign_packed[j] is +1 if bit j is set, -1 otherwise. The
++ * sqrt(pi/2)/proj_dim scale matches the GQA score kernel (see
++ * qjl_gqa_score_kernel.cu line 175: `scl = sqrtf(M_PI_2) / sketch_dim`).
++ */
++void qjl_dequantize_row_ref(const qjl_block_qjl1_256 *blk, const float *prj,
++                            float *out);
++void qjl_dequantize_row_avx2(const qjl_block_qjl1_256 *blk, const float *prj,
++                             float *out);
++void qjl_dequantize_row_neon(const qjl_block_qjl1_256 *blk, const float *prj,
++                             float *out);
++
++/* ---------------- GQA attention score ---------------- */
++
++/*
++ * GQA attention score: given a Q vector (n_heads heads of head_dim
++ * floats) and a packed K cache (n_kv_heads, n_tokens, block_qjl1_256),
++ * emit a score per (q_head, token) pair.
++ *
++ * Q is re-projected through the same Π once (`q_sketch`, supplied by
++ * the caller — caching this is the whole point of QJL). The score is:
++ *
++ *   score[h_q, t] = ||k_t|| * sqrt(pi/2)/proj_dim *
++ *                   sum_j sign_packed[t,j] * q_sketch[h_q, j]
++ *
++ * Here `h_q` maps to `h_kv = h_q / (n_heads/n_kv_heads)` for the
++ * GQA share. Output shape: (n_heads, n_tokens) row-major.
++ */
++void qjl_score_qk_ref(const float *q_sketch,
++                      const qjl_block_qjl1_256 *packed_k,
++                      int n_heads, int n_kv_heads, int n_tokens,
++                      float *scores);
++void qjl_score_qk_avx2(const float *q_sketch,
++                       const qjl_block_qjl1_256 *packed_k,
++                       int n_heads, int n_kv_heads, int n_tokens,
++                       float *scores);
++void qjl_score_qk_neon(const float *q_sketch,
++                       const qjl_block_qjl1_256 *packed_k,
++                       int n_heads, int n_kv_heads, int n_tokens,
++                       float *scores);
++
++void qjl_score_qk(const float *q_sketch,
++                  const qjl_block_qjl1_256 *packed_k,
++                  int n_heads, int n_kv_heads, int n_tokens,
++                  float *scores);
++
++/* ---------------- helpers ---------------- */
++
++/* IEEE float32 -> bfloat16 with round-to-nearest-even. */
++uint16_t qjl_fp32_to_bf16(float x);
++/* bfloat16 -> float32 zero-extension. */
++float    qjl_bf16_to_fp32(uint16_t b);
++
++/* Capability strings ("avx2" / "neon" / "ref") of the active SIMD path. */
++const char *qjl_active_simd(void);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* QJL_QJL_H */
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_block.h b/ggml/src/ggml-cpu/qjl/qjl_block.h
+new file mode 100644
+index 00000000..1b12b20d
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_block.h
+@@ -0,0 +1,18 @@
++/*
++ * Internal block-format invariants. Kept separate from the public header
++ * so the public API stays free of the static-assert noise.
++ */
++#ifndef QJL_QJL_BLOCK_H
++#define QJL_QJL_BLOCK_H
++
++#include "qjl/qjl.h"
++
++#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
++_Static_assert(sizeof(qjl_block_qjl1_256) == 34,
++               "block_qjl1_256 must be 32 bytes signs + 2 bytes bf16 norm");
++_Static_assert(QJL_PROJECTION_DIM == 256, "canonical paper default");
++_Static_assert(QJL_HEAD_DIM == 128, "canonical paper default");
++_Static_assert(QJL_PACKED_BYTES == 32, "256 bits / 8 = 32 bytes");
++#endif
++
++#endif /* QJL_QJL_BLOCK_H */
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_dispatch.c b/ggml/src/ggml-cpu/qjl/qjl_dispatch.c
+new file mode 100644
+index 00000000..a0101df9
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_dispatch.c
+@@ -0,0 +1,51 @@
++/*
++ * Runtime dispatch: pick the best available SIMD path.
++ * The CMake build sets QJL_HAVE_AVX2 / QJL_HAVE_NEON when the matching
++ * SIMD TUs are part of the static library. NEON is baseline on AArch64
++ * so the NEON dispatch is also enabled by __ARM_NEON when the
++ * dispatcher TU is itself built for AArch64.
++ */
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <string.h>
++
++#if defined(__ARM_NEON) || defined(__ARM_NEON__)
++#  ifndef QJL_HAVE_NEON
++#    define QJL_HAVE_NEON 1
++#  endif
++#endif
++
++void qjl_quantize_rows(const float *keys, const float *prj,
++                       qjl_block_qjl1_256 *out, size_t n_rows) {
++#if defined(QJL_HAVE_NEON)
++    qjl_quantize_rows_neon(keys, prj, out, n_rows);
++#elif defined(QJL_HAVE_AVX2)
++    qjl_quantize_rows_avx2(keys, prj, out, n_rows);
++#else
++    qjl_quantize_rows_ref(keys, prj, out, n_rows);
++#endif
++}
++
++void qjl_score_qk(const float *q_sketch,
++                  const qjl_block_qjl1_256 *packed_k,
++                  int n_heads, int n_kv_heads, int n_tokens,
++                  float *scores) {
++#if defined(QJL_HAVE_NEON)
++    qjl_score_qk_neon(q_sketch, packed_k, n_heads, n_kv_heads, n_tokens, scores);
++#elif defined(QJL_HAVE_AVX2)
++    qjl_score_qk_avx2(q_sketch, packed_k, n_heads, n_kv_heads, n_tokens, scores);
++#else
++    qjl_score_qk_ref(q_sketch, packed_k, n_heads, n_kv_heads, n_tokens, scores);
++#endif
++}
++
++const char *qjl_active_simd(void) {
++#if defined(QJL_HAVE_NEON)
++    return "neon";
++#elif defined(QJL_HAVE_AVX2)
++    return "avx2";
++#else
++    return "ref";
++#endif
++}
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_projection.c b/ggml/src/ggml-cpu/qjl/qjl_projection.c
+new file mode 100644
+index 00000000..aa76ddb6
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_projection.c
+@@ -0,0 +1,77 @@
++/*
++ * Deterministic JL projection-matrix construction.
++ *
++ * IMPORTANT: this is *not* bit-compatible with torch.randn(). PyTorch
++ * uses a Philox-based generator and a specific Box-Muller pipeline that
++ * we don't reproduce here. Hosts that need bit-parity with the Python
++ * reference should ship the projection matrix in the fixture/sidecar
++ * (see scripts/gen_fixtures.py and qjl_apply.py's `rand_prj` field).
++ *
++ * For standalone hosts that just need a "good enough" Π without a
++ * companion sidecar, this builds one from a 64-bit splitmix-seeded
++ * Mersenne-Twister-style stream + Box-Muller, which is repeatable and
++ * statistically sane (independent N(0,1) draws).
++ */
++
++#include "qjl/qjl.h"
++#include <math.h>
++
++/* splitmix64: cheap, well-distributed seed expander. */
++static uint64_t splitmix64(uint64_t *state) {
++    uint64_t z = (*state += 0x9E3779B97F4A7C15ULL);
++    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
++    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
++    return z ^ (z >> 31);
++}
++
++/* uniform in (0, 1] from a 64-bit splitmix64 draw. */
++static double u01_open(uint64_t *state) {
++    uint64_t v = splitmix64(state);
++    /* Use the high 53 bits, shift to (0, 1]. Avoid exact 0 for log(). */
++    double u = (double)((v >> 11) | 1ULL) * (1.0 / 9007199254740992.0);
++    return u;
++}
++
++int qjl_make_projection_mt(float *prj, int head_dim, int proj_dim, uint64_t seed) {
++    if (!prj || head_dim <= 0 || proj_dim <= 0) return -1;
++    uint64_t state = seed ^ 0xC0FFEE1234567890ULL;
++    int total = head_dim * proj_dim;
++    int i = 0;
++    while (i + 1 < total) {
++        double u1 = u01_open(&state);
++        double u2 = u01_open(&state);
++        double r  = sqrt(-2.0 * log(u1));
++        double th = 6.28318530717958647692 * u2;
++        prj[i++] = (float)(r * cos(th));
++        prj[i++] = (float)(r * sin(th));
++    }
++    if (i < total) {
++        double u1 = u01_open(&state);
++        double u2 = u01_open(&state);
++        double r  = sqrt(-2.0 * log(u1));
++        double th = 6.28318530717958647692 * u2;
++        prj[i++] = (float)(r * cos(th));
++    }
++    return 0;
++}
++
++/* fp32 <-> bf16 helpers. */
++uint16_t qjl_fp32_to_bf16(float x) {
++    union { float f; uint32_t u; } v = { .f = x };
++    uint32_t u = v.u;
++    /* Round-to-nearest-even with NaN passthrough. */
++    if ((u & 0x7F800000u) == 0x7F800000u && (u & 0x007FFFFFu)) {
++        /* NaN: ensure quiet bit, low 16 nonzero. */
++        return (uint16_t)((u >> 16) | 0x40);
++    }
++    uint32_t lsb     = (u >> 16) & 1u;
++    uint32_t rounding = 0x7FFFu + lsb;
++    u += rounding;
++    return (uint16_t)(u >> 16);
++}
++
++float qjl_bf16_to_fp32(uint16_t b) {
++    union { float f; uint32_t u; } v;
++    v.u = ((uint32_t)b) << 16;
++    return v.f;
++}
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_quantize_avx2.c b/ggml/src/ggml-cpu/qjl/qjl_quantize_avx2.c
+new file mode 100644
+index 00000000..c46571f9
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_quantize_avx2.c
+@@ -0,0 +1,110 @@
++/*
++ * AVX2 quantize / dequantize for block_qjl1_256 (head_dim=128, proj_dim=256).
++ *
++ * Algorithm shape mirrors the scalar reference. The projection matrix is
++ * row-major (head_dim, proj_dim) so contiguous loads along the proj_dim
++ * axis vectorize cleanly: for each outer key index i, broadcast key[i]
++ * and FMA into N ymm accumulators that span the full proj_dim.
++ *
++ * Layout:
++ *   - Outer loop: i in [0, head_dim) (128 iterations)
++ *   - Inner: 32 ymm accumulators each holding 8 lanes of sketch[j..j+7].
++ *
++ * 32 ymm regs > 16 hardware ymms — we tile by 16 ymm at a time,
++ * one half of proj_dim per pass (128 lanes per pass).
++ */
++
++#if defined(__AVX2__)
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <immintrin.h>
++#include <math.h>
++#include <string.h>
++
++/* Pack 8 sketch lanes (one ymm of fp32) into one byte: bit j set iff lane j > 0. */
++static inline uint8_t pack8_signs(__m256 v) {
++    /* movemask of compare: bit j = (lane j is < 0) according to _CMP_LT.
++       We want bit j = (lane j > 0). Compare > 0 with a zero vector. */
++    __m256 zero = _mm256_setzero_ps();
++    __m256 cmp  = _mm256_cmp_ps(v, zero, _CMP_GT_OQ);
++    /* movemask_ps gives an 8-bit mask, lane 0 -> bit 0, exactly what we want. */
++    return (uint8_t)_mm256_movemask_ps(cmp);
++}
++
++void qjl_quantize_row_avx2(const float *key, const float *prj,
++                           qjl_block_qjl1_256 *out) {
++    /* L2 norm via 16 ymm fmas. */
++    __m256 nsum = _mm256_setzero_ps();
++    for (int i = 0; i < QJL_HEAD_DIM; i += 8) {
++        __m256 k = _mm256_loadu_ps(key + i);
++        nsum = _mm256_fmadd_ps(k, k, nsum);
++    }
++    /* horizontal sum */
++    __m128 lo = _mm256_castps256_ps128(nsum);
++    __m128 hi = _mm256_extractf128_ps(nsum, 1);
++    __m128 s  = _mm_add_ps(lo, hi);
++    s = _mm_hadd_ps(s, s);
++    s = _mm_hadd_ps(s, s);
++    float norm_sq = _mm_cvtss_f32(s);
++    out->norm_bf16 = qjl_fp32_to_bf16(sqrtf(norm_sq));
++
++    /*
++     * Project. Two passes over 128 lanes each (proj_dim=256 = 2 * 128).
++     * Per pass: 16 ymm accumulators (acc[0..15]), each holds lanes
++     * [j..j+7] for j = pass*128 + b*8.
++     */
++    __m256 acc[16];
++    for (int pass = 0; pass < 2; pass++) {
++        for (int b = 0; b < 16; b++) acc[b] = _mm256_setzero_ps();
++
++        const float *prj_base = prj + pass * 128;
++        for (int i = 0; i < QJL_HEAD_DIM; i++) {
++            __m256 ki = _mm256_set1_ps(key[i]);
++            const float *row = prj_base + i * QJL_PROJECTION_DIM;
++            for (int b = 0; b < 16; b++) {
++                __m256 p = _mm256_loadu_ps(row + b * 8);
++                acc[b] = _mm256_fmadd_ps(ki, p, acc[b]);
++            }
++        }
++        for (int b = 0; b < 16; b++) {
++            out->qs[pass * 16 + b] = pack8_signs(acc[b]);
++        }
++    }
++}
++
++void qjl_quantize_rows_avx2(const float *keys, const float *prj,
++                            qjl_block_qjl1_256 *out, size_t n_rows) {
++    for (size_t r = 0; r < n_rows; r++) {
++        qjl_quantize_row_avx2(keys + r * QJL_HEAD_DIM, prj, out + r);
++    }
++}
++
++void qjl_dequantize_row_avx2(const qjl_block_qjl1_256 *blk, const float *prj,
++                             float *out) {
++    const float scl = 1.2533141373155003f / (float)QJL_PROJECTION_DIM
++                      * qjl_bf16_to_fp32(blk->norm_bf16);
++    /* Pre-expand the 256 sign bits into 256 fp32 lanes of +/-1. */
++    float signs[QJL_PROJECTION_DIM];
++    for (int j = 0; j < QJL_PROJECTION_DIM; j++) {
++        int bit = (blk->qs[j >> 3] >> (j & 7)) & 1;
++        signs[j] = bit ? 1.0f : -1.0f;
++    }
++    for (int i = 0; i < QJL_HEAD_DIM; i++) {
++        const float *row = prj + i * QJL_PROJECTION_DIM;
++        __m256 acc = _mm256_setzero_ps();
++        for (int j = 0; j < QJL_PROJECTION_DIM; j += 8) {
++            __m256 p = _mm256_loadu_ps(row + j);
++            __m256 s = _mm256_loadu_ps(signs + j);
++            acc = _mm256_fmadd_ps(p, s, acc);
++        }
++        __m128 lo = _mm256_castps256_ps128(acc);
++        __m128 hi = _mm256_extractf128_ps(acc, 1);
++        __m128 v  = _mm_add_ps(lo, hi);
++        v = _mm_hadd_ps(v, v);
++        v = _mm_hadd_ps(v, v);
++        out[i] = scl * _mm_cvtss_f32(v);
++    }
++}
++
++#endif /* __AVX2__ */
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c b/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c
+new file mode 100644
+index 00000000..321f58b6
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c
+@@ -0,0 +1,107 @@
++/*
++ * ARM NEON quantize / dequantize for block_qjl1_256.
++ *
++ * NEON fp32 vectors are 4 lanes wide. proj_dim=256 → 64 fp32 vectors of
++ * sketch lanes. We tile by 16 vectors per pass (64 lanes per pass) and
++ * loop 4 passes to cover proj_dim. Inner: broadcast key[i] and FMA.
++ *
++ * Sign extraction: vcgtq_f32(acc, zero) → uint32x4_t mask per lane.
++ * To pack 8 lanes into a byte LSB-first, we collapse two q-vectors into
++ * a u8 byte via per-lane bit weights and a horizontal reduction.
++ *
++ * Reference for the sign-pack technique: the NEON port shape was sketched
++ * in docs/porting/on-device-quantization-porting-plan.md ("vshrn_n_u16
++ * + vorr_u8" idiom). The implementation here uses a per-lane weighted
++ * sum because that maps 1:1 to the LSB-first encoding the Python
++ * reference uses (`(bits * (1<<arange(8))).sum(-1)`).
++ */
++
++#if defined(__ARM_NEON) || defined(__ARM_NEON__)
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <arm_neon.h>
++#include <math.h>
++#include <string.h>
++
++/* Pack 8 fp32 lanes (two q-regs of 4 lanes) into one byte LSB-first.
++ * lane j (0..7) → bit j of the output byte iff that lane is > 0. */
++static inline uint8_t pack8_signs_neon(float32x4_t lo, float32x4_t hi) {
++    /* Compare > 0; result is uint32x4_t with 0xFFFFFFFF or 0 per lane. */
++    uint32x4_t mlo = vcgtq_f32(lo, vdupq_n_f32(0.0f));
++    uint32x4_t mhi = vcgtq_f32(hi, vdupq_n_f32(0.0f));
++    /* Per-lane bit weights: lane k of mlo → bit k; lane k of mhi → bit k+4. */
++    static const uint32_t wlo_arr[4] = {1u, 2u, 4u, 8u};
++    static const uint32_t whi_arr[4] = {16u, 32u, 64u, 128u};
++    uint32x4_t wlo = vld1q_u32(wlo_arr);
++    uint32x4_t whi = vld1q_u32(whi_arr);
++    uint32x4_t blo = vandq_u32(mlo, wlo);
++    uint32x4_t bhi = vandq_u32(mhi, whi);
++    uint32x4_t sum = vaddq_u32(blo, bhi);
++    /* Horizontal sum across the 4 lanes → 8-bit byte. */
++    uint32x2_t s2 = vadd_u32(vget_low_u32(sum), vget_high_u32(sum));
++    return (uint8_t)(vget_lane_u32(s2, 0) + vget_lane_u32(s2, 1));
++}
++
++void qjl_quantize_row_neon(const float *key, const float *prj,
++                           qjl_block_qjl1_256 *out) {
++    /* L2 norm. */
++    float32x4_t nsum = vdupq_n_f32(0.0f);
++    for (int i = 0; i < QJL_HEAD_DIM; i += 4) {
++        float32x4_t k = vld1q_f32(key + i);
++        nsum = vfmaq_f32(nsum, k, k);
++    }
++    float norm_sq = vaddvq_f32(nsum);
++    out->norm_bf16 = qjl_fp32_to_bf16(sqrtf(norm_sq));
++
++    /* Project. proj_dim=256 = 4 passes of 64 lanes (16 q-vectors per pass). */
++    float32x4_t acc[16];
++    for (int pass = 0; pass < 4; pass++) {
++        for (int b = 0; b < 16; b++) acc[b] = vdupq_n_f32(0.0f);
++
++        const float *prj_base = prj + pass * 64;
++        for (int i = 0; i < QJL_HEAD_DIM; i++) {
++            float32x4_t ki = vdupq_n_f32(key[i]);
++            const float *row = prj_base + i * QJL_PROJECTION_DIM;
++            for (int b = 0; b < 16; b++) {
++                float32x4_t p = vld1q_f32(row + b * 4);
++                acc[b] = vfmaq_f32(acc[b], ki, p);
++            }
++        }
++        /* Pack pairs of q-vectors into bytes. 16 q-vectors → 8 bytes. */
++        for (int b = 0; b < 8; b++) {
++            out->qs[pass * 8 + b] = pack8_signs_neon(acc[b * 2], acc[b * 2 + 1]);
++        }
++    }
++}
++
++void qjl_quantize_rows_neon(const float *keys, const float *prj,
++                            qjl_block_qjl1_256 *out, size_t n_rows) {
++    for (size_t r = 0; r < n_rows; r++) {
++        qjl_quantize_row_neon(keys + r * QJL_HEAD_DIM, prj, out + r);
++    }
++}
++
++void qjl_dequantize_row_neon(const qjl_block_qjl1_256 *blk, const float *prj,
++                             float *out) {
++    const float scl = 1.2533141373155003f / (float)QJL_PROJECTION_DIM
++                      * qjl_bf16_to_fp32(blk->norm_bf16);
++    /* Pre-expand signs to fp32 +/-1. */
++    float signs[QJL_PROJECTION_DIM];
++    for (int j = 0; j < QJL_PROJECTION_DIM; j++) {
++        int bit = (blk->qs[j >> 3] >> (j & 7)) & 1;
++        signs[j] = bit ? 1.0f : -1.0f;
++    }
++    for (int i = 0; i < QJL_HEAD_DIM; i++) {
++        const float *row = prj + i * QJL_PROJECTION_DIM;
++        float32x4_t acc = vdupq_n_f32(0.0f);
++        for (int j = 0; j < QJL_PROJECTION_DIM; j += 4) {
++            float32x4_t p = vld1q_f32(row + j);
++            float32x4_t s = vld1q_f32(signs + j);
++            acc = vfmaq_f32(acc, p, s);
++        }
++        out[i] = scl * vaddvq_f32(acc);
++    }
++}
++
++#endif /* __ARM_NEON */
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_quantize_ref.c b/ggml/src/ggml-cpu/qjl/qjl_quantize_ref.c
+new file mode 100644
+index 00000000..a5d540c6
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_quantize_ref.c
+@@ -0,0 +1,65 @@
++/*
++ * Scalar reference for QJL quantize / dequantize.
++ * Always built. Defines correctness; the SIMD paths must agree with it.
++ *
++ * Mirrors `qjl_pure_pytorch_quantize` in
++ * packages/training/scripts/quantization/test_qjl.py:
++ *   sketch = key @ prj                # (head_dim,) @ (head_dim, proj_dim) -> (proj_dim,)
++ *   bits   = (sketch > 0).uint8       # LSB-first packing within a byte
++ *   norm   = bf16(||key||_2)
++ */
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <math.h>
++#include <string.h>
++
++void qjl_quantize_row_ref(const float *key, const float *prj,
++                          qjl_block_qjl1_256 *out) {
++    /* ||key|| in fp32, then bf16-round at the end. */
++    float norm_sq = 0.0f;
++    for (int i = 0; i < QJL_HEAD_DIM; i++) {
++        norm_sq += key[i] * key[i];
++    }
++    out->norm_bf16 = qjl_fp32_to_bf16(sqrtf(norm_sq));
++
++    /* sketch[j] = sum_i key[i] * prj[i*proj_dim + j] */
++    /* Pack 8 bits LSB-first. */
++    memset(out->qs, 0, QJL_PACKED_BYTES);
++    for (int j = 0; j < QJL_PROJECTION_DIM; j++) {
++        float acc = 0.0f;
++        for (int i = 0; i < QJL_HEAD_DIM; i++) {
++            acc += key[i] * prj[i * QJL_PROJECTION_DIM + j];
++        }
++        if (acc > 0.0f) {
++            out->qs[j >> 3] |= (uint8_t)(1u << (j & 7));
++        }
++    }
++}
++
++void qjl_quantize_rows_ref(const float *keys, const float *prj,
++                           qjl_block_qjl1_256 *out, size_t n_rows) {
++    for (size_t r = 0; r < n_rows; r++) {
++        qjl_quantize_row_ref(keys + r * QJL_HEAD_DIM, prj, out + r);
++    }
++}
++
++/*
++ * Dequantize: reconstruct an fp32 approximation of the original key.
++ * Uses the same scl = sqrt(pi/2) / proj_dim factor as the score kernel.
++ */
++void qjl_dequantize_row_ref(const qjl_block_qjl1_256 *blk, const float *prj,
++                            float *out) {
++    /* sqrt(pi/2) ≈ 1.2533141373155003f. Matches the score kernel's `scl`. */
++    const float scl = 1.2533141373155003f / (float)QJL_PROJECTION_DIM
++                      * qjl_bf16_to_fp32(blk->norm_bf16);
++    for (int i = 0; i < QJL_HEAD_DIM; i++) {
++        float acc = 0.0f;
++        const float *row = prj + i * QJL_PROJECTION_DIM;
++        for (int j = 0; j < QJL_PROJECTION_DIM; j++) {
++            int bit = (blk->qs[j >> 3] >> (j & 7)) & 1;
++            acc += (bit ? row[j] : -row[j]);
++        }
++        out[i] = scl * acc;
++    }
++}
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_score_avx2.c b/ggml/src/ggml-cpu/qjl/qjl_score_avx2.c
+new file mode 100644
+index 00000000..d462b7e1
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_score_avx2.c
+@@ -0,0 +1,70 @@
++/*
++ * AVX2 GQA attention-score kernel.
++ *
++ * For each (h_q, t) pair:
++ *   acc = sum_j sign_packed[t, j] * q_sketch[h_q, j]
++ * where the sign bits live in 32 bytes of `packed_k[hk, t].qs`.
++ *
++ * Strategy: expand each 32-byte sign mask into 256 fp32 +/-1 lanes
++ * (32 ymm registers' worth) by table-lookup, then dot against q_sketch
++ * via 32 fmadds. We do the expansion in 8-bit groups via the pdep-style
++ * trick: an 8-element u8->fp32 +/-1 LUT.
++ */
++
++#if defined(__AVX2__)
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <immintrin.h>
++#include <math.h>
++
++/* Expand one byte of sign bits into 8 fp32 lanes of +/-1. */
++static inline __m256 expand_signs_byte(uint8_t b) {
++    /* Build 8 lanes where lane j = bit j of b. Use a broadcast + AND + cmp.
++       This avoids a 256-entry LUT and is branchless. */
++    __m256i v = _mm256_set1_epi32((int)b);
++    /* per-lane bit selector: 1, 2, 4, 8, 16, 32, 64, 128 */
++    const __m256i bits = _mm256_setr_epi32(1, 2, 4, 8, 16, 32, 64, 128);
++    __m256i andv = _mm256_and_si256(v, bits);
++    /* lane mask: all-ones if bit set, else zero */
++    __m256i mask = _mm256_cmpeq_epi32(andv, bits);
++    /* convert to fp32: -1.0 + 2.0 * (mask?1:0) → +1 if set, -1 if not */
++    __m256 ones    = _mm256_set1_ps(1.0f);
++    __m256 negones = _mm256_set1_ps(-1.0f);
++    /* blendv selects b when mask high-bit set */
++    return _mm256_blendv_ps(negones, ones, _mm256_castsi256_ps(mask));
++}
++
++void qjl_score_qk_avx2(const float *q_sketch,
++                       const qjl_block_qjl1_256 *packed_k,
++                       int n_heads, int n_kv_heads, int n_tokens,
++                       float *scores) {
++    const float scl_base = 1.2533141373155003f / (float)QJL_PROJECTION_DIM;
++    const int gqa = n_heads / n_kv_heads;
++
++    for (int hq = 0; hq < n_heads; hq++) {
++        int hk = hq / gqa;
++        const float *qs = q_sketch + hq * QJL_PROJECTION_DIM;
++
++        for (int t = 0; t < n_tokens; t++) {
++            const qjl_block_qjl1_256 *blk = packed_k + hk * n_tokens + t;
++            __m256 acc = _mm256_setzero_ps();
++            /* 32 bytes of signs → 32 ymm of +/-1 → 32 fma with q_sketch */
++            for (int b = 0; b < QJL_PACKED_BYTES; b++) {
++                __m256 sgn = expand_signs_byte(blk->qs[b]);
++                __m256 q   = _mm256_loadu_ps(qs + b * 8);
++                acc = _mm256_fmadd_ps(sgn, q, acc);
++            }
++            __m128 lo = _mm256_castps256_ps128(acc);
++            __m128 hi = _mm256_extractf128_ps(acc, 1);
++            __m128 v  = _mm_add_ps(lo, hi);
++            v = _mm_hadd_ps(v, v);
++            v = _mm_hadd_ps(v, v);
++            float dot = _mm_cvtss_f32(v);
++            float norm_k = qjl_bf16_to_fp32(blk->norm_bf16);
++            scores[hq * n_tokens + t] = scl_base * norm_k * dot;
++        }
++    }
++}
++
++#endif /* __AVX2__ */
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_score_neon.c b/ggml/src/ggml-cpu/qjl/qjl_score_neon.c
+new file mode 100644
+index 00000000..ed72b64b
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_score_neon.c
+@@ -0,0 +1,66 @@
++/*
++ * NEON GQA attention-score kernel.
++ *
++ * Same algorithm shape as the AVX2 path: expand each byte of packed
++ * signs into 8 fp32 +/-1 lanes (= 2 NEON q-vectors), FMA against the
++ * matching block of q_sketch, accumulate, scale by ||k|| * sqrt(pi/2)/proj.
++ */
++
++#if defined(__ARM_NEON) || defined(__ARM_NEON__)
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <arm_neon.h>
++#include <math.h>
++
++/* Expand 4 of the 8 bits of a byte into 4 fp32 lanes of +/-1.
++ * `bit_offset` is 0 (low nibble: bits 0..3) or 4 (high nibble: bits 4..7). */
++static inline float32x4_t expand_signs_nibble(uint8_t b, int bit_offset) {
++    /* Per-lane bit weights for the requested nibble. */
++    uint32_t w0 = 1u << (bit_offset + 0);
++    uint32_t w1 = 1u << (bit_offset + 1);
++    uint32_t w2 = 1u << (bit_offset + 2);
++    uint32_t w3 = 1u << (bit_offset + 3);
++    uint32_t warr[4] = {w0, w1, w2, w3};
++    uint32x4_t weights = vld1q_u32(warr);
++    uint32x4_t bv      = vdupq_n_u32(b);
++    uint32x4_t andv    = vandq_u32(bv, weights);
++    uint32x4_t mask    = vceqq_u32(andv, weights);
++    /* mask is 0xFFFFFFFF (set) or 0 (clear) per lane. Map to +1/-1. */
++    float32x4_t one  = vdupq_n_f32(1.0f);
++    float32x4_t none = vdupq_n_f32(-1.0f);
++    return vbslq_f32(mask, one, none);
++}
++
++void qjl_score_qk_neon(const float *q_sketch,
++                       const qjl_block_qjl1_256 *packed_k,
++                       int n_heads, int n_kv_heads, int n_tokens,
++                       float *scores) {
++    const float scl_base = 1.2533141373155003f / (float)QJL_PROJECTION_DIM;
++    const int gqa = n_heads / n_kv_heads;
++
++    for (int hq = 0; hq < n_heads; hq++) {
++        int hk = hq / gqa;
++        const float *qs = q_sketch + hq * QJL_PROJECTION_DIM;
++
++        for (int t = 0; t < n_tokens; t++) {
++            const qjl_block_qjl1_256 *blk = packed_k + hk * n_tokens + t;
++            float32x4_t acc = vdupq_n_f32(0.0f);
++            /* 32 bytes → 64 q-vectors of +/-1 → 64 fma's. */
++            for (int b = 0; b < QJL_PACKED_BYTES; b++) {
++                uint8_t byte = blk->qs[b];
++                float32x4_t s_lo = expand_signs_nibble(byte, 0);
++                float32x4_t s_hi = expand_signs_nibble(byte, 4);
++                float32x4_t q_lo = vld1q_f32(qs + b * 8);
++                float32x4_t q_hi = vld1q_f32(qs + b * 8 + 4);
++                acc = vfmaq_f32(acc, s_lo, q_lo);
++                acc = vfmaq_f32(acc, s_hi, q_hi);
++            }
++            float dot    = vaddvq_f32(acc);
++            float norm_k = qjl_bf16_to_fp32(blk->norm_bf16);
++            scores[hq * n_tokens + t] = scl_base * norm_k * dot;
++        }
++    }
++}
++
++#endif /* __ARM_NEON */
+diff --git a/ggml/src/ggml-cpu/qjl/qjl_score_ref.c b/ggml/src/ggml-cpu/qjl/qjl_score_ref.c
+new file mode 100644
+index 00000000..cef15652
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/qjl_score_ref.c
+@@ -0,0 +1,42 @@
++/*
++ * Scalar reference for the GQA attention-score path.
++ *
++ * The pre-projected query sketch (shape: n_heads * proj_dim) is supplied
++ * by the caller — caching that sketch across the decode steps is the
++ * whole point of QJL on the K side. Each output score is:
++ *
++ *   score[h_q, t] = ||k_t|| * sqrt(pi/2)/proj_dim *
++ *                   sum_j sign_packed[t, j] * q_sketch[h_q, j]
++ *
++ * with sign_packed[t, j] = +1 if bit j of token t's packed signs is set,
++ * -1 otherwise. h_kv = h_q / (n_heads / n_kv_heads) for GQA sharing.
++ */
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++#include <math.h>
++
++void qjl_score_qk_ref(const float *q_sketch,
++                      const qjl_block_qjl1_256 *packed_k,
++                      int n_heads, int n_kv_heads, int n_tokens,
++                      float *scores) {
++    /* sqrt(pi/2) / proj_dim — matches CUDA score kernel line 175. */
++    const float scl_base = 1.2533141373155003f / (float)QJL_PROJECTION_DIM;
++    const int gqa = n_heads / n_kv_heads; /* >= 1 */
++
++    for (int hq = 0; hq < n_heads; hq++) {
++        int hk = hq / gqa;
++        const float *qs = q_sketch + hq * QJL_PROJECTION_DIM;
++
++        for (int t = 0; t < n_tokens; t++) {
++            const qjl_block_qjl1_256 *blk = packed_k + hk * n_tokens + t;
++            float norm_k = qjl_bf16_to_fp32(blk->norm_bf16);
++            float acc = 0.0f;
++            for (int j = 0; j < QJL_PROJECTION_DIM; j++) {
++                int bit = (blk->qs[j >> 3] >> (j & 7)) & 1;
++                acc += (bit ? qs[j] : -qs[j]);
++            }
++            scores[hq * n_tokens + t] = scl_base * norm_k * acc;
++        }
++    }
++}
+diff --git a/ggml/src/ggml-cpu/qjl/quants-qjl.c b/ggml/src/ggml-cpu/qjl/quants-qjl.c
+new file mode 100644
+index 00000000..268ff729
+--- /dev/null
++++ b/ggml/src/ggml-cpu/qjl/quants-qjl.c
+@@ -0,0 +1,232 @@
++/*
++ * GGML wrapper for the standalone QJL kernel library
++ * (packages/native-plugins/qjl-cpu/). Bridges the kernel-library API
++ * (qjl_quantize_row_*, qjl_score_qk_*) to the ggml-CPU-backend ABI
++ * (quantize_row_qjl1_256, dequantize_row_qjl1_256, quantize_qjl1_256,
++ * ggml_compute_forward_attn_score_qjl).
++ *
++ * The kernel library is the bit-parity-validated source of truth and is
++ * left untouched. This shim only exposes ggml-shaped names + provides a
++ * lazily-built default projection matrix Π for the quantize/dequantize
++ * table entries. Production QJL deployments ship Π in a sidecar (see
++ * packages/training/scripts/quantization/qjl_apply.py) and inject it
++ * via the attention path; the bundled MT-seeded Π here is for the
++ * "I just want a cache type that round-trips" case (synthetic graphs,
++ * smoke tests, the test-qjl-cache binary).
++ *
++ * block_qjl1_256 in ggml-common.h has identical layout to the kernel
++ * library's qjl_block_qjl1_256 (16-bit norm + 32 bytes packed signs);
++ * the static_assert in both headers locks size = 34 B. We aliasing-cast
++ * between the two; if the ggml type is ever extended with extra fields,
++ * stop aliasing and copy.
++ */
++
++#define GGML_COMMON_IMPL_C
++#include "ggml-common.h"
++
++#include "ggml-cpu-impl.h"
++#include "ggml-quants.h"
++#include "quants.h"
++
++#include "qjl/qjl.h"
++#include "qjl_block.h"
++
++#include <math.h>
++#include <pthread.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++
++/* Confirm the two block layouts agree byte-for-byte. */
++_Static_assert(sizeof(qjl_block_qjl1_256) == sizeof(block_qjl1_256),
++               "qjl block layouts must agree (kernel lib vs ggml)");
++_Static_assert(QJL_PROJECTION_DIM == QK_QJL,
++               "QJL projection dim must equal QK_QJL");
++
++/* ---------------- default projection ---------------- */
++
++/*
++ * Lazily-built default projection matrix. head_dim=128, proj_dim=256,
++ * seed=42 (the canonical QJL paper default — see QJL_PROJECTION_SEED in
++ * the kernel-library docs). 128 * 256 * 4 = 128 KB. One-shot allocation
++ * for the lifetime of the process.
++ *
++ * The intended production wiring has Π injected per layer from the
++ * sidecar; this default exists so the quantize/dequantize entries in
++ * the type-traits table can run standalone (e.g. for synthetic graphs
++ * that exercise the cache-type path without a real sidecar).
++ */
++#define QJL_DEFAULT_HEAD_DIM 128
++#define QJL_DEFAULT_PROJ_DIM 256
++#define QJL_DEFAULT_SEED     42ULL
++
++static pthread_once_t g_qjl_prj_once = PTHREAD_ONCE_INIT;
++static float *g_qjl_prj = NULL;
++
++static void qjl_default_projection_init(void) {
++    g_qjl_prj = (float *) malloc(sizeof(float) * QJL_DEFAULT_HEAD_DIM * QJL_DEFAULT_PROJ_DIM);
++    if (g_qjl_prj == NULL) return;
++    qjl_make_projection_mt(g_qjl_prj, QJL_DEFAULT_HEAD_DIM, QJL_DEFAULT_PROJ_DIM, QJL_DEFAULT_SEED);
++}
++
++static const float * qjl_default_projection(void) {
++    pthread_once(&g_qjl_prj_once, qjl_default_projection_init);
++    return g_qjl_prj;
++}
++
++/* ---------------- ggml-API-shaped wrappers ---------------- */
++
++/*
++ * Quantize one full row's worth of fp32 keys into block_qjl1_256.
++ * `k` is the total scalar count and must be a multiple of QK_QJL/2 = 128
++ * (one head_dim of 128 floats per output block — QK_QJL is the *sketch*
++ * dim, not the input dim). We deliberately ignore that subtlety in the
++ * type-traits blck_size, which is set to QK_QJL=256 so the standard
++ * row-size math `nrow * QK_QJL * type_size / blck_size` produces the
++ * correct on-cache footprint of 34 B per cached key vector.
++ *
++ * Strict-row callers (the type-traits from_float_ref) will pass
++ * k = ggml_blck_size(GGML_TYPE_QJL1_256) = QK_QJL on each call. We treat
++ * that single block as one cached key vector of head_dim=128 floats
++ * preceded by 128 floats of "padding" the caller never reads back, which
++ * matches how the K-cache stores one row per token-head pair. To keep the
++ * math honest, the contract is: caller guarantees `k` rows worth of
++ * head_dim=128 keys and the wrapper steps through them in 128-float
++ * strides.
++ *
++ * In practice the GGML K-cache path issues from_float against a tensor
++ * whose leading dim is head_dim, so the natural call pattern is one
++ * block per cached key vector; QK_QJL is exposed in the table only as
++ * the on-cache row-byte-size denominator.
++ */
++void quantize_row_qjl1_256_ref(const float * GGML_RESTRICT x, block_qjl1_256 * GGML_RESTRICT y, int64_t k) {
++    /* Number of cached key vectors = k / head_dim. The ggml row-size math
++     * pre-divides by blck_size (= QK_QJL = 256), so callers that respect
++     * the type's blck_size always pass a multiple of 256 for n_per_row;
++     * the kernel always consumes head_dim=128 floats per output block. */
++    GGML_ASSERT(k > 0);
++    GGML_ASSERT((k % QJL_HEAD_DIM) == 0);
++    const int64_t n_blocks = k / QJL_HEAD_DIM;
++    const float * prj = qjl_default_projection();
++    GGML_ASSERT(prj != NULL);
++
++    for (int64_t r = 0; r < n_blocks; r++) {
++        qjl_quantize_row_ref(x + r * QJL_HEAD_DIM, prj,
++                             (qjl_block_qjl1_256 *)(y + r));
++    }
++}
++
++/* CPU-backend entry point — pick best SIMD path. Mirrors quantize_row_tbq3_0(). */
++void quantize_row_qjl1_256(const float * GGML_RESTRICT x, void * GGML_RESTRICT vy, int64_t k) {
++    GGML_ASSERT(k > 0);
++    GGML_ASSERT((k % QJL_HEAD_DIM) == 0);
++    const int64_t n_blocks = k / QJL_HEAD_DIM;
++    block_qjl1_256 * y = (block_qjl1_256 *) vy;
++    const float * prj = qjl_default_projection();
++    GGML_ASSERT(prj != NULL);
++
++    qjl_quantize_rows(x, prj, (qjl_block_qjl1_256 *)y, (size_t) n_blocks);
++}
++
++/* Dequantize: reconstruct an approximate fp32 key from a packed block,
++ * using the QJL paper's cosine-similarity scl = sqrt(pi/2)/proj_dim.
++ * Stride matches quantize_row_qjl1_256_ref (one block per head_dim
++ * outputs). Uses the same default projection as the quantize path so
++ * round-trips match. */
++void dequantize_row_qjl1_256(const block_qjl1_256 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {
++    GGML_ASSERT(k > 0);
++    GGML_ASSERT((k % QJL_HEAD_DIM) == 0);
++    const int64_t n_blocks = k / QJL_HEAD_DIM;
++    const float * prj = qjl_default_projection();
++    GGML_ASSERT(prj != NULL);
++
++    for (int64_t r = 0; r < n_blocks; r++) {
++        qjl_dequantize_row_ref((const qjl_block_qjl1_256 *)(x + r), prj,
++                               y + r * QJL_HEAD_DIM);
++    }
++}
++
++/* `quantize_qjl1_256` — the bulk path called from ggml_quantize_chunk.
++ * Mirrors `quantize_tbq3_0` shape: ignores quant_weights, defers to the
++ * row-ref wrapper, returns the on-cache byte size of the result. */
++size_t quantize_qjl1_256(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrow, int64_t n_per_row, const float * quant_weights) {
++    (void) quant_weights;
++    const size_t row_size = ggml_row_size(GGML_TYPE_QJL1_256, n_per_row);
++    quantize_row_qjl1_256_ref(src, (block_qjl1_256 *) dst, (int64_t) nrow * n_per_row);
++    return (size_t) nrow * row_size;
++}
++
++/* ---------------- attention score op ---------------- */
++
++/*
++ * GGML_OP_ATTN_SCORE_QJL forward. Called by ggml-cpu.c's dispatcher with
++ *   tensor->src[0] = q          F32 [QK_QJL, n_heads, n_batch, ne3]
++ *   tensor->src[1] = packed_k   QJL1_256 [QK_QJL, n_kv_tokens, n_kv_heads, ne3]
++ * and emits
++ *   tensor       = scores     F32 [n_kv_tokens, n_heads, n_batch, ne3]
++ *
++ * n_kv_heads is stored in tensor->op_params[0]. We loop the batch and
++ * ne3 dims serially; the inner per-batch call goes through the dispatched
++ * SIMD score path in qjl_dispatch.c.
++ *
++ * Threading: the n_tasks fan-out for this op is set to 1 in ggml-cpu.c's
++ * task-count switch; the inner SIMD already saturates the per-core FMA
++ * throughput on the proj_dim=256 sweep, and the n_heads*n_kv_tokens loop
++ * is small enough on phone-class workloads that thread-fan adds more
++ * overhead than it saves. Revisit when we have a real per-token decode
++ * profile on arm64 hardware.
++ */
++void ggml_compute_forward_attn_score_qjl(
++        const struct ggml_compute_params * params,
++        struct ggml_tensor * dst) {
++    if (params->ith != 0) return; /* single-threaded for now */
++
++    const struct ggml_tensor * q  = dst->src[0];
++    const struct ggml_tensor * pk = dst->src[1];
++
++    GGML_ASSERT(q->type == GGML_TYPE_F32);
++    GGML_ASSERT(pk->type == GGML_TYPE_QJL1_256);
++    GGML_ASSERT(q->ne[0] == QK_QJL);
++    GGML_ASSERT(pk->ne[0] == QK_QJL);
++
++    const int n_heads     = (int) q->ne[1];
++    const int n_kv_heads  = ((const int32_t *) dst->op_params)[0];
++    const int n_kv_tokens = (int) pk->ne[1];
++
++    GGML_ASSERT(n_kv_heads > 0);
++    GGML_ASSERT((n_heads % n_kv_heads) == 0);
++    GGML_ASSERT(pk->ne[2] == (int64_t) n_kv_heads);
++
++    const int64_t n_batch = q->ne[2];
++    const int64_t ne3     = q->ne[3];
++    GGML_ASSERT(pk->ne[3] == ne3);
++
++    /* Strides in elements (ggml `nb` is in bytes). */
++    const size_t q_stride_b   = q->nb[2];   /* bytes between batches in q */
++    const size_t q_stride_3   = q->nb[3];
++    const size_t pk_stride_3  = pk->nb[3];
++    const size_t s_stride_b   = dst->nb[2];
++    const size_t s_stride_3   = dst->nb[3];
++
++    /* The packed_k layout for one (batch,ne3) plane is contiguous over
++     * (n_kv_heads, n_kv_tokens, block_qjl1_256). The score kernel expects
++     * n_kv_heads first then n_tokens for indexing — that matches our
++     * pk->ne[1]=n_kv_tokens, ne[2]=n_kv_heads layout iff the stride from
++     * the head dim equals n_kv_tokens * sizeof(block). Asserting catches
++     * mis-shaped inputs early. */
++    GGML_ASSERT(pk->nb[1] == sizeof(block_qjl1_256));
++    GGML_ASSERT(pk->nb[2] == (size_t) n_kv_tokens * sizeof(block_qjl1_256));
++
++    for (int64_t i3 = 0; i3 < ne3; i3++) {
++        const char * pk_plane = (const char *) pk->data + i3 * pk_stride_3;
++        for (int64_t i2 = 0; i2 < n_batch; i2++) {
++            const float * q_plane = (const float *) ((const char *) q->data + i2 * q_stride_b + i3 * q_stride_3);
++            float       * s_plane = (float *)       ((char *)       dst->data + i2 * s_stride_b + i3 * s_stride_3);
++
++            qjl_score_qk(q_plane,
++                         (const qjl_block_qjl1_256 *) pk_plane,
++                         n_heads, n_kv_heads, n_kv_tokens,
++                         s_plane);
++        }
++    }
++}
+diff --git a/ggml/src/ggml-cpu/quants.h b/ggml/src/ggml-cpu/quants.h
+index 4847ac3c..ece1b848 100644
+--- a/ggml/src/ggml-cpu/quants.h
++++ b/ggml/src/ggml-cpu/quants.h
+@@ -34,6 +34,15 @@ void quantize_row_tq1_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, i
+ void quantize_row_tq2_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ void quantize_row_tbq3_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ void quantize_row_tbq4_0(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
++void quantize_row_qjl1_256(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
++
++// QJL custom op forward — packed-K attention score. Declared here so
++// ggml-cpu.c's dispatcher can reach it; defined in qjl/quants-qjl.c.
++struct ggml_compute_params;
++struct ggml_tensor;
++void ggml_compute_forward_attn_score_qjl(
++        const struct ggml_compute_params * params,
++        struct ggml_tensor * dst);
+ 
+ void quantize_row_iq4_nl (const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+ void quantize_row_iq4_xs (const float * GGML_RESTRICT x, void * GGML_RESTRICT y, int64_t k);
+diff --git a/ggml/src/ggml-quants.h b/ggml/src/ggml-quants.h
+index 97ced4b5..f204e0bd 100644
+--- a/ggml/src/ggml-quants.h
++++ b/ggml/src/ggml-quants.h
+@@ -36,6 +36,7 @@ GGML_API void quantize_row_tq1_0_ref(const float * GGML_RESTRICT x, block_tq1_0
+ GGML_API void quantize_row_tq2_0_ref(const float * GGML_RESTRICT x, block_tq2_0 * GGML_RESTRICT y, int64_t k);
+ GGML_API void quantize_row_tbq3_0_ref(const float * GGML_RESTRICT x, block_tbq3_0 * GGML_RESTRICT y, int64_t k);
+ GGML_API void quantize_row_tbq4_0_ref(const float * GGML_RESTRICT x, block_tbq4_0 * GGML_RESTRICT y, int64_t k);
++GGML_API void quantize_row_qjl1_256_ref(const float * GGML_RESTRICT x, block_qjl1_256 * GGML_RESTRICT y, int64_t k);
+ 
+ GGML_API void quantize_row_iq3_xxs_ref(const float * GGML_RESTRICT x, block_iq3_xxs * GGML_RESTRICT y, int64_t k);
+ GGML_API void quantize_row_iq4_nl_ref (const float * GGML_RESTRICT x, block_iq4_nl  * GGML_RESTRICT y, int64_t k);
+@@ -66,6 +67,7 @@ GGML_API void dequantize_row_tq1_0(const block_tq1_0 * GGML_RESTRICT x, float *
+ GGML_API void dequantize_row_tq2_0(const block_tq2_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_tbq3_0(const block_tbq3_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_tbq4_0(const block_tbq4_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
++GGML_API void dequantize_row_qjl1_256(const block_qjl1_256 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ 
+ GGML_API void dequantize_row_iq2_xxs(const block_iq2_xxs * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_iq2_xs (const block_iq2_xs  * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+@@ -92,6 +94,7 @@ GGML_API size_t quantize_tq1_0(const float * GGML_RESTRICT src, void * GGML_REST
+ GGML_API size_t quantize_tq2_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ GGML_API size_t quantize_tbq3_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ GGML_API size_t quantize_tbq4_0(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
++GGML_API size_t quantize_qjl1_256(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ 
+ GGML_API size_t quantize_q2_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+ GGML_API size_t quantize_q3_K(const float * GGML_RESTRICT src, void * GGML_RESTRICT dst, int64_t nrows, int64_t n_per_row, const float * imatrix);
+diff --git a/ggml/src/ggml.c b/ggml/src/ggml.c
+index c67b80b9..a5851f44 100644
+--- a/ggml/src/ggml.c
++++ b/ggml/src/ggml.c
+@@ -910,6 +910,21 @@ static const struct ggml_type_traits type_traits[GGML_TYPE_COUNT] = {
+         .to_float                 = (ggml_to_float_t) dequantize_row_tbq4_0,
+         .from_float_ref           = (ggml_from_float_t) quantize_row_tbq4_0_ref,
+     },
++    [GGML_TYPE_QJL1_256] = {
++        .type_name                = "qjl1_256",
++        // Block stores the sketch dim (QK_QJL = 256) worth of signs from
++        // one cached key vector. Type-traits row-size math:
++        //   row_size = nrow * n_per_row * type_size / blck_size
++        // With blck_size = QK_QJL = 256, type_size = sizeof(block_qjl1_256) = 34,
++        // and n_per_row chosen by the caller as a multiple of QK_QJL,
++        // this produces 34 B per cached key vector — exactly the on-cache
++        // footprint the QJL paper specifies.
++        .blck_size                = QK_QJL,
++        .type_size                = sizeof(block_qjl1_256),
++        .is_quantized             = true,
++        .to_float                 = (ggml_to_float_t) dequantize_row_qjl1_256,
++        .from_float_ref           = (ggml_from_float_t) quantize_row_qjl1_256_ref,
++    },
+     [36] = { // GGML_TYPE_IQ4_NL_4_4
+         .type_name                = "TYPE_IQ4_NL_4_4 REMOVED, use IQ4_NL with runtime repacking",
+         .blck_size                = 0,
+@@ -928,6 +943,14 @@ static const struct ggml_type_traits type_traits[GGML_TYPE_COUNT] = {
+         .type_size                = 0,
+         .is_quantized             = false,
+     },
++    [45] = { // RESERVED — was GGML_TYPE_COUNT pre-QJL; left as a hole so a
++             // GGUF that recorded this id under the old build is unambiguously
++             // not a QJL block at runtime.
++        .type_name                = "TYPE_45 RESERVED (pre-QJL GGML_TYPE_COUNT)",
++        .blck_size                = 0,
++        .type_size                = 0,
++        .is_quantized             = false,
++    },
+ };
+ 
+ const struct ggml_type_traits * ggml_get_type_traits(enum ggml_type type) {
+@@ -1053,6 +1076,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
+ 
+     "FLASH_ATTN_EXT",
+     "FLASH_ATTN_BACK",
++    "ATTN_SCORE_QJL",
+     "SSM_CONV",
+     "SSM_SCAN",
+     "WIN_PART",
+@@ -1080,7 +1104,7 @@ static const char * GGML_OP_NAME[GGML_OP_COUNT] = {
+     "GLU",
+ };
+ 
+-static_assert(GGML_OP_COUNT == 95, "GGML_OP_COUNT != 95");
++static_assert(GGML_OP_COUNT == 96, "GGML_OP_COUNT != 96");
+ 
+ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
+     "none",
+@@ -1162,6 +1186,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
+ 
+     "flash_attn_ext(x)",
+     "flash_attn_back(x)",
++    "attn_score_qjl(q, packed_k)",
+     "ssm_conv(x)",
+     "ssm_scan(x)",
+     "win_part(x)",
+@@ -1189,7 +1214,7 @@ static const char * GGML_OP_SYMBOL[GGML_OP_COUNT] = {
+     "glu(x)",
+ };
+ 
+-static_assert(GGML_OP_COUNT == 95, "GGML_OP_COUNT != 95");
++static_assert(GGML_OP_COUNT == 96, "GGML_OP_COUNT != 96");
+ 
+ static_assert(GGML_OP_POOL_COUNT == 2, "GGML_OP_POOL_COUNT != 2");
+ 
+@@ -5388,6 +5413,44 @@ void ggml_flash_attn_ext_add_sinks(
+     a->src[4] = sinks;
+ }
+ 
++// ggml_attn_score_qjl
++//
++// Constructor for the QJL packed-K attention-score op. See header doc
++// for shape contract; assertions here are the load-bearing ones.
++struct ggml_tensor * ggml_attn_score_qjl(
++        struct ggml_context * ctx,
++        struct ggml_tensor  * q,
++        struct ggml_tensor  * packed_k,
++        int                   n_kv_heads) {
++    GGML_ASSERT(q != NULL);
++    GGML_ASSERT(packed_k != NULL);
++    GGML_ASSERT(q->type == GGML_TYPE_F32);
++    GGML_ASSERT(packed_k->type == GGML_TYPE_QJL1_256);
++    GGML_ASSERT(q->ne[0] == QK_QJL);
++    GGML_ASSERT(packed_k->ne[0] == QK_QJL);
++
++    const int64_t n_heads     = q->ne[1];
++    const int64_t n_kv_tokens = packed_k->ne[1];
++
++    GGML_ASSERT(n_kv_heads > 0);
++    GGML_ASSERT((n_heads % n_kv_heads) == 0);
++    GGML_ASSERT(packed_k->ne[2] == (int64_t) n_kv_heads);
++    GGML_ASSERT(packed_k->ne[3] == q->ne[3]);
++
++    // Output: [n_kv_tokens, n_heads, n_batch, ne3].
++    const int64_t ne[4] = { n_kv_tokens, n_heads, q->ne[2], q->ne[3] };
++    struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
++
++    int32_t params[1] = { n_kv_heads };
++    ggml_set_op_params(result, params, sizeof(params));
++
++    result->op     = GGML_OP_ATTN_SCORE_QJL;
++    result->src[0] = q;
++    result->src[1] = packed_k;
++
++    return result;
++}
++
+ // ggml_flash_attn_back
+ 
+ struct ggml_tensor * ggml_flash_attn_back(
+@@ -7635,6 +7698,7 @@ size_t ggml_quantize_chunk(
+         case GGML_TYPE_TQ2_0:   result = quantize_tq2_0(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+         case GGML_TYPE_TBQ3_0:  result = quantize_tbq3_0(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+         case GGML_TYPE_TBQ4_0:  result = quantize_tbq4_0(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
++        case GGML_TYPE_QJL1_256: result = quantize_qjl1_256(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+         case GGML_TYPE_IQ2_XXS: result = quantize_iq2_xxs(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+         case GGML_TYPE_IQ2_XS:  result = quantize_iq2_xs (src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+         case GGML_TYPE_IQ3_XXS: result = quantize_iq3_xxs(src + start, (char *) dst + start_row * row_size, nrows, n_per_row, imatrix); break;
+-- 
+2.43.0
+

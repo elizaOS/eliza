@@ -1,0 +1,293 @@
+/**
+ * Shared view status surfaces — the loading skeleton, the recoverable
+ * plain-language recovery card, and the platform-restricted card.
+ *
+ * These were originally private to `DynamicViewLoader`, but EVERY way of
+ * dynamically loading a view (the remote-bundle `DynamicViewLoader` AND the
+ * `RetainedLazyComponent`-based overlay/app loaders) must surface the SAME
+ * recoverable card on failure instead of a blank/white screen. Extracting them
+ * here lets each loader reuse the identical UI (issue: harden view load errors)
+ * rather than inventing a second error surface.
+ */
+
+import { AlertTriangle, ArrowLeft, Ban, RotateCw } from "lucide-react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import { shellHistory } from "../../surface-realm-channel";
+import { PageLoadingState } from "../composites/page-panel/content-state";
+import { Alert } from "../ui/alert.tsx";
+import { Badge } from "../ui/badge.tsx";
+import { Button } from "../ui/button.tsx";
+
+/**
+ * Navigate back to the view launcher (`/views`). Hoisted so the error/crash
+ * recovery surfaces can offer a "Back to views" escape hatch without depending
+ * on the view itself having wired the `exitToApps` prop.
+ */
+export function navigateToViews() {
+  if (typeof window !== "undefined") {
+    shellHistory.pushState(null, "", "/views");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
+
+export function ViewStatusFrame({
+  tone,
+  icon,
+  title,
+  children,
+  actions,
+  diagnosticId,
+}: {
+  tone: "loading" | "error" | "restricted" | "unavailable";
+  icon: ReactNode;
+  title: ReactNode;
+  children?: ReactNode;
+  actions?: ReactNode;
+  diagnosticId?: string;
+}) {
+  return (
+    <div
+      className="flex flex-1 min-h-0 min-w-0 items-center justify-center p-4 sm:p-6"
+      data-view-status={tone}
+      data-view-id={diagnosticId}
+    >
+      <Alert
+        variant={
+          tone === "error"
+            ? "destructive"
+            : tone === "restricted"
+              ? "sidebar"
+              : "default"
+        }
+        role={tone === "error" ? "alert" : "status"}
+        className="flex w-full max-w-sm flex-col gap-3 p-4"
+      >
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+          <Badge
+            variant="visualAnchor"
+            tone={
+              tone === "error"
+                ? "danger"
+                : tone === "restricted"
+                  ? "muted"
+                  : "accent"
+            }
+            className="grid size-10 shrink-0 place-items-center"
+          >
+            {icon}
+          </Badge>
+          <div className="min-w-0 break-words text-left">
+            <div className="text-sm font-semibold">{title}</div>
+            {children ? <div className="mt-1 text-xs">{children}</div> : null}
+          </div>
+        </div>
+        {actions ? (
+          <div className="flex flex-wrap gap-2 sm:pl-[3.25rem]">{actions}</div>
+        ) : null}
+      </Alert>
+    </div>
+  );
+}
+
+export function ViewLoadingSkeleton() {
+  const { t } = useTranslation();
+  return (
+    <PageLoadingState
+      heading={t("dynamicviewloader.loading", {
+        defaultValue: "Loading view…",
+      })}
+      className="min-h-[12rem] flex-1"
+    />
+  );
+}
+
+export function ViewRecoveryActions({
+  onRetry,
+  onBack,
+  retrying = false,
+}: {
+  onRetry?: () => void;
+  onBack?: () => void;
+  retrying?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <>
+      {onRetry ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="tiny"
+          className="h-auto min-h-8 max-w-full gap-1 whitespace-normal"
+          onClick={onRetry}
+          disabled={retrying}
+          aria-busy={retrying}
+        >
+          <RotateCw className="size-3.5" aria-hidden="true" />
+          {retrying
+            ? t("dynamicviewloader.retrying", { defaultValue: "Checking…" })
+            : t("dynamicviewloader.retry", { defaultValue: "Retry" })}
+        </Button>
+      ) : null}
+      {onBack ? (
+        <Button
+          type="button"
+          variant="ghostMuted"
+          size="tiny"
+          className="h-auto min-h-8 max-w-full gap-1 whitespace-normal"
+          onClick={onBack}
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          {t("dynamicviewloader.back", { defaultValue: "Back to views" })}
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
+export function ViewErrorState({
+  viewId,
+  onRetry,
+  onBack,
+}: {
+  viewId: string;
+  error?: Error | null;
+  onRetry?: () => void;
+  onBack?: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ViewStatusFrame
+      tone="error"
+      diagnosticId={viewId}
+      icon={<AlertTriangle className="size-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.error.title", {
+        defaultValue: "This view couldn’t open",
+      })}
+      actions={
+        onRetry || onBack ? (
+          <ViewRecoveryActions onRetry={onRetry} onBack={onBack} />
+        ) : undefined
+      }
+    >
+      <span>
+        {t("dynamicviewloader.error.body", {
+          defaultValue:
+            "Try again. If it still doesn’t open, return to your apps.",
+        })}
+      </span>
+    </ViewStatusFrame>
+  );
+}
+
+export function ViewRestrictedState({ viewId }: { viewId: string }) {
+  const { t } = useTranslation();
+  return (
+    <ViewStatusFrame
+      tone="restricted"
+      diagnosticId={viewId}
+      icon={<Ban className="size-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.restricted.title", {
+        defaultValue: "This view isn’t included here",
+      })}
+    >
+      <span>
+        {t("dynamicviewloader.restricted.body", {
+          defaultValue:
+            "Open it from the desktop or web app, or install a mobile build that includes it.",
+        })}
+      </span>
+    </ViewStatusFrame>
+  );
+}
+
+export function ViewUnavailableState({
+  viewId,
+  onRetry,
+  error,
+  onBack = navigateToViews,
+}: {
+  viewId: string;
+  onRetry?: () => void | Promise<void>;
+  error?: Error | null;
+  onBack?: () => void;
+}) {
+  const { t } = useTranslation();
+  const [retryState, setRetryState] = useState<
+    "idle" | "pending" | "done" | "error"
+  >("idle");
+  const attempt = useRef(0);
+  const pending = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A different app invalidates the previous recovery attempt.
+  useEffect(() => {
+    setRetryState("idle");
+    pending.current = false;
+    return () => {
+      attempt.current += 1;
+    };
+  }, [viewId]);
+  const retry = async () => {
+    if (!onRetry || pending.current) return;
+    pending.current = true;
+    const currentAttempt = ++attempt.current;
+    setRetryState("pending");
+    try {
+      await onRetry();
+      if (attempt.current === currentAttempt) setRetryState("done");
+    } catch {
+      // error-policy:J4 Keep recovery available and announce refresh failure.
+      if (attempt.current === currentAttempt) setRetryState("error");
+    } finally {
+      if (attempt.current === currentAttempt) pending.current = false;
+    }
+  };
+  return (
+    <ViewStatusFrame
+      tone="unavailable"
+      diagnosticId={viewId}
+      icon={<Ban className="size-5" aria-hidden="true" />}
+      title={t("dynamicviewloader.unavailable.title", {
+        defaultValue: "View unavailable",
+      })}
+      actions={
+        onRetry ? (
+          <ViewRecoveryActions
+            onRetry={retry}
+            onBack={onBack}
+            retrying={retryState === "pending"}
+          />
+        ) : undefined
+      }
+    >
+      <span>
+        {t("dynamicviewloader.unavailable.body", {
+          defaultValue:
+            "This app is unavailable here. Install or enable it, then try again.",
+        })}
+      </span>
+      <span className="mt-1 block">
+        {t("dynamicviewloader.unavailable.appLabel", {
+          viewId,
+          defaultValue: "App: {{viewId}}",
+        })}
+      </span>
+      {retryState !== "idle" ? (
+        <span className="mt-2 block">
+          {retryState === "pending"
+            ? t("dynamicviewloader.checkingAvailability", {
+                defaultValue: "Checking app availability…",
+              })
+            : error || retryState === "error"
+              ? t("dynamicviewloader.availabilityFailed", {
+                  defaultValue: "Couldn’t check app availability. Try again.",
+                })
+              : t("dynamicviewloader.stillUnavailable", {
+                  defaultValue:
+                    "This app is still unavailable. Install or enable it, then retry.",
+                })}
+        </span>
+      ) : null}
+    </ViewStatusFrame>
+  );
+}

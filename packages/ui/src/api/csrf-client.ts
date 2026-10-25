@@ -1,0 +1,98 @@
+import { getHostRequestTransport } from "./host-transport";
+
+/**
+ * Authenticated fetch helper for dashboard API requests.
+ *
+ * Layers two auth modes onto a single call:
+ *   - Cookie + CSRF (browser session): sends the `eliza_session` cookie via
+ *     `credentials: "include"` and mirrors the readable `eliza_csrf` cookie
+ *     into the `x-eliza-csrf` header on state-changing requests.
+ *   - Bearer (machine token / self-hosted bootstrap): if `getBootConfig()`
+ *     exposes an apiToken, attaches `Authorization: Bearer ...`.
+ *
+ * Both modes can coexist for control-plane requests. Dedicated-agent origins
+ * are bearer-only: parent-domain browser cookies and their CSRF mirror are
+ * omitted at the client before the Worker enforces the same boundary.
+ */
+
+import { CSRF_HEADER_NAME, LAST_ACTIVITY_HEADER_NAME } from "@elizaos/auth";
+import { getElizaApiToken } from "@elizaos/host/protocol";
+import { getBootConfig } from "../config/boot-config-store";
+import { hydrateAndroidLocalAgentTokenForUrl } from "../first-run/local-agent-token";
+import { resolveApiUrl } from "../utils/asset-url.js";
+import { isDedicatedCloudAgentBase } from "../utils/cloud-agent-base";
+import { readCsrfTokenForUrl } from "./auth/csrf-cookie";
+import { lastActivityHeadersForUrl } from "./auth/user-activity";
+import { defaultFetchTimeoutMs } from "./request-timeout";
+import { type AgentRequestContext, fetchAgentTransport } from "./transport";
+
+export { readCsrfTokenFromCookie } from "./auth/csrf-cookie";
+
+const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
+export async function fetchWithCsrf(
+  url: string,
+  init: RequestInit = {},
+  context: AgentRequestContext = {},
+): Promise<Response> {
+  init.signal?.throwIfAborted();
+  // Resolve relative API paths against the configured API base. On Capacitor
+  // remote mode the page origin is the bundle's asset server, which answers
+  // ANY path with index.html and HTTP 200 — a relative "/api/..." fetch
+  // "succeeds" and then explodes at JSON parse. No-op when no base is set
+  // (plain same-origin web). Absolute and protocol-relative URLs pass through
+  // untouched — resolveApiUrl prefixes blindly and would corrupt them.
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    url = resolveApiUrl(url);
+  }
+  const method = (init.method ?? "GET").toUpperCase();
+  const headers = new Headers(init.headers);
+  const isDedicatedAgentRequest = isDedicatedCloudAgentBase(url);
+  if (!isDedicatedAgentRequest && STATE_CHANGING_METHODS.has(method)) {
+    const csrfToken = readCsrfTokenForUrl(url);
+    if (csrfToken) {
+      headers.set(CSRF_HEADER_NAME, csrfToken);
+    }
+  }
+  if (!isDedicatedAgentRequest && !headers.has(LAST_ACTIVITY_HEADER_NAME)) {
+    // Pass the configured API base like ElizaClient does: without it the
+    // helper can only match the page origin, so on setups where the agent
+    // API lives on another origin (Capacitor/desktop remote mode) these
+    // requests never carry the activity header and the agent's idle
+    // logoff does not slide on real user activity through this client.
+    for (const [name, value] of Object.entries(
+      lastActivityHeadersForUrl(url, getBootConfig().apiBase),
+    ))
+      headers.set(name, value);
+  }
+  if (!headers.has("Authorization")) {
+    await hydrateAndroidLocalAgentTokenForUrl(url);
+    init.signal?.throwIfAborted();
+    const apiToken =
+      getBootConfig().apiToken?.trim() || getElizaApiToken()?.trim();
+    if (apiToken) {
+      headers.set("Authorization", `Bearer ${apiToken}`);
+    }
+  }
+  const requestInit: RequestInit = {
+    ...init,
+    credentials: isDedicatedAgentRequest ? "omit" : "include",
+    headers,
+  };
+  return requestViaAgentTransport(url, requestInit, context);
+}
+/**
+ * Route a caller-authenticated request through the canonical platform
+ * transport selector without adding cookies, CSRF, or boot-token headers.
+ */
+export async function requestViaAgentTransport(
+  url: string,
+  init: RequestInit = {},
+  context: AgentRequestContext = {},
+): Promise<Response> {
+  const transport =
+    (await getHostRequestTransport(url, "csrf", init)) ?? fetchAgentTransport;
+  return transport.request(url, init, {
+    timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
+    ...(context.responseType ? { responseType: context.responseType } : {}),
+  });
+}

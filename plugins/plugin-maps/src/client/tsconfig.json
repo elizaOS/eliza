@@ -1,0 +1,14 @@
+{
+  "//": "Self-contained settings for the device client, which hosts consume outside the monorepo (for example from a copied source tree), so it does not extend the workspace root.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["./**/*.ts"]
+}

@@ -1,0 +1,73 @@
+/**
+ * Package-level vitest config: aliases local workspace dependencies to source
+ * so tests resolve without pre-built dist artifacts, and excludes live/opt-in
+ * suites (funded-wallet transfer tests, guarded post-merge-only suites) from
+ * the default run.
+ */
+import { createRequire } from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const uiSource = path.resolve(rootDir, "../../packages/ui/src/index.ts");
+
+export default defineConfig({
+  // The package tsconfig omits `jsx` (the server tree has none); force the
+  // automatic runtime so the merged UI-suite `.tsx` files transform correctly.
+  esbuild: { jsx: "automatic" },
+  resolve: {
+    // Use source for the single public UI entry and share one React instance.
+    alias: [
+      {
+        find: /^react$/,
+        replacement: path.dirname(require.resolve("react/package.json")),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: require.resolve("react/jsx-runtime"),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: path.dirname(require.resolve("react-dom/package.json")),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: require.resolve("react-dom/client"),
+      },
+      { find: /^@elizaos\/ui$/, replacement: uiSource },
+      // plugin-health publishes no matching subpath export; redirect to source.
+      {
+        find: /^@elizaos\/plugin-health\/screen-time\/mobile-signal-setup$/,
+        replacement: path.resolve(
+          rootDir,
+          "../plugin-health/src/screen-time/mobile-signal-setup.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.resolve(rootDir, "../../packages/core/src/index.ts"),
+      },
+    ],
+  },
+  test: {
+    environment: "node",
+    globals: true,
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "src/**/tasks/**",
+      // #9310 §E: the guarded live suites (rpc-providers opt-in gate,
+      // birdeye keyless self-skip, EVM JSON-extraction live-LLM self-skip via
+      // ELIZA_LIVE_JSON_TEST/ELIZA_LIVE_TEST) are invocable only in the
+      // post-merge lane, where run-all-tests.ts sets ELIZA_LIVE_TEST=1 and
+      // prints a named skip accounting. The unguarded transfer.live file
+      // (needs a funded wallet) stays excluded in every lane.
+      ...(process.env.VITEST_LANE === "post-merge"
+        ? ["src/chains/evm/__tests__/integration/transfer.live.test.ts"]
+        : ["src/**/*.live.test.ts", "src/chains/evm/tests/**"]),
+    ],
+  },
+});

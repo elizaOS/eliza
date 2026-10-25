@@ -1,0 +1,278 @@
+[
+  {
+    "id": "finance.monthly_spending_summary",
+    "name": "Monthly spending summary",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Show me a summary of how much I spent in the last 30 days, broken down by category.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_DASHBOARD",
+        "kwargs": {
+          "subaction": "dashboard",
+          "windowDays": 30
+        }
+      }
+    ],
+    "required_outputs": ["category", "30 days"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read\u2011only dashboard of spending for the most recent month."
+  },
+  {
+    "id": "finance.subscription_fitness_audit",
+    "name": "Audit fitness app subscription",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Audit my fitness\u2011tracking subscription for the past year and tell me the cost.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "kwargs": {
+          "subaction": "audit",
+          "queryWindowDays": 365
+        }
+      }
+    ],
+    "required_outputs": ["fitness"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Subscription audit covering a full year."
+  },
+  {
+    "id": "finance.cancel_netflix",
+    "name": "Cancel Netflix subscription",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Please cancel my Netflix subscription (sub_000). Yes, I confirm.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "kwargs": {
+          "subaction": "cancel",
+          "serviceName": "Netflix",
+          "serviceSlug": "netflix",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["Netflix"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, I confirm \u2014 go ahead and cancel.",
+      "applies_when": "agent asks for explicit confirmation before canceling"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Direct cancellation with explicit user confirmation."
+  },
+  {
+    "id": "finance.recurring_charges_last_180",
+    "name": "Recurring charges last 180 days",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "List any recurring charges I have incurred over the past six months.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_RECURRING_CHARGES",
+        "kwargs": {
+          "subaction": "recurring_charges",
+          "windowDays": 180
+        }
+      }
+    ],
+    "required_outputs": ["recurring"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Pulls recurring charge data for a half\u2011year period."
+  },
+  {
+    "id": "finance.spending_summary_q2_2026",
+    "name": "Spending summary Q2 2026",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Give me a spending summary for Q2 2026 (April\u2011June).",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SPENDING_SUMMARY",
+        "kwargs": {
+          "subaction": "spending_summary",
+          "windowDays": 90
+        }
+      }
+    ],
+    "required_outputs": ["Q2", "2026"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Quarter\u2011level spending aggregation."
+  },
+  {
+    "id": "finance.cancel_spotify_subscription",
+    "name": "Cancel Spotify subscription",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Cancel my Spotify subscription (sub_001). Yes, I'm sure.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "kwargs": {
+          "subaction": "cancel",
+          "serviceName": "Spotify",
+          "serviceSlug": "spotify",
+          "confirmed": true
+        }
+      }
+    ],
+    "required_outputs": ["Spotify"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, I confirm \u2014 cancel it.",
+      "applies_when": "agent asks for explicit confirmation before canceling"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Cancellation of a music streaming service with user\u2011provided confirmation."
+  },
+  {
+    "id": "finance.check_subscription_status_amazon",
+    "name": "Check Amazon Prime subscription status",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Can you tell me the current status of my Amazon Prime subscription?",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "serviceName": "Amazon Prime",
+          "serviceSlug": "amazon-prime"
+        }
+      }
+    ],
+    "required_outputs": ["Amazon"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Retrieves status for a specific subscription."
+  },
+  {
+    "id": "finance.monthly_spending_breakdown_work",
+    "name": "Work calendar monthly spending",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me a breakdown of how much I spent on work\u2011related items in the last 30 days.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_DASHBOARD",
+        "kwargs": {
+          "subaction": "dashboard",
+          "windowDays": 30
+        }
+      }
+    ],
+    "required_outputs": ["work"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Uses the generic dashboard; the agent must filter for work\u2011related categories in its response."
+  },
+  {
+    "id": "finance.audit_unused_subscriptions",
+    "name": "Audit possibly unused subscriptions",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Audit my subscriptions for any that I haven't used in the past year.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "kwargs": {
+          "subaction": "audit",
+          "queryWindowDays": 365
+        }
+      }
+    ],
+    "required_outputs": ["unused"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Full\u2011year audit to surface dormant services."
+  },
+  {
+    "id": "finance.spending_summary_by_category_last_year",
+    "name": "Year\u2011long spending summary by category",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Provide a spending summary for the last 365 days, broken out by category.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SPENDING_SUMMARY",
+        "kwargs": {
+          "subaction": "spending_summary",
+          "windowDays": 365
+        }
+      }
+    ],
+    "required_outputs": ["category", "365 days"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Comprehensive yearly aggregation."
+  },
+  {
+    "id": "finance.subscription_status_apple",
+    "name": "Apple Music subscription status",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "What is the current status of my Apple Music subscription?",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "kwargs": {
+          "subaction": "status",
+          "serviceName": "Apple Music",
+          "serviceSlug": "apple-music"
+        }
+      }
+    ],
+    "required_outputs": ["Apple"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple status query for a music service."
+  },
+  {
+    "id": "finance.list_monthly_income",
+    "name": "Monthly income summary",
+    "domain": "finance",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Give me a summary of my income for the past 30 days.",
+    "ground_truth_actions": [
+      {
+        "name": "MONEY_DASHBOARD",
+        "kwargs": {
+          "subaction": "dashboard",
+          "windowDays": 30
+        }
+      }
+    ],
+    "required_outputs": ["income"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Dashboard view focused on incoming funds."
+  }
+]

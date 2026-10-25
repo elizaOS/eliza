@@ -1,0 +1,326 @@
+// Coordinates cloud service google search behavior behind route handlers.
+import { assertModelOutputComplete } from "@elizaos/core";
+import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
+import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
+import { logger } from "../utils/logger";
+import {
+  type GenerativeOperationContext,
+  retainGenerativeTask,
+  runMeteredProviderOperation,
+} from "./generative-operation";
+import { buildSearchResults } from "./google-search-results";
+import { usageService } from "./usage";
+
+export interface HostedSearchOptions {
+  query: string;
+  maxResults?: number;
+  model?: string;
+  googleApiKey?: string;
+  source?: string;
+  topic?: "general" | "finance";
+  timeRange?: "day" | "week" | "month" | "year" | "d" | "w" | "m" | "y";
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface HostedSearchOperationContext extends GenerativeOperationContext {
+  requestSource?: "action" | "api" | "mcp" | "a2a";
+}
+
+export interface HostedSearchResultItem {
+  title: string;
+  url: string;
+  content: string;
+  score: number;
+}
+
+export interface HostedSearchUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface HostedSearchResult {
+  answer: string;
+  model: string;
+  provider: "google";
+  query: string;
+  responseTime: number;
+  results: HostedSearchResultItem[];
+  searchQueries: string[];
+  usage: HostedSearchUsage;
+  cost: number;
+}
+
+export interface GoogleSearchResponse {
+  candidates?: Array<{
+    finishReason?: string;
+    content?: {
+      parts?: Array<{
+        text?: string;
+      }>;
+    };
+    groundingMetadata?: {
+      groundingChunks?: Array<{
+        web?: {
+          uri?: string;
+          title?: string;
+        };
+      }>;
+      groundingSupports?: Array<{
+        segment?: {
+          text?: string;
+        };
+        groundingChunkIndices?: number[];
+        confidenceScores?: number[];
+      }>;
+      webSearchQueries?: string[];
+    };
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+    totalTokenCount?: number;
+  };
+  error?: {
+    message?: string;
+  };
+}
+
+export { buildSearchResults } from "./google-search-results";
+
+const DEFAULT_SEARCH_MODEL = "google/gemini-2.5-flash";
+const GOOGLE_GROUNDED_PROMPT_BASE_COST = 0.035;
+const GOOGLE_GROUNDED_PROMPT_COST =
+  Math.round(GOOGLE_GROUNDED_PROMPT_BASE_COST * PLATFORM_MARKUP_MULTIPLIER * 1_000_000) / 1_000_000;
+
+function resolveGoogleSearchApiKey(override?: string): string | null {
+  const candidates = [
+    override,
+    process.env.GOOGLE_API_KEY,
+    process.env.GEMINI_API_KEY,
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+function normalizeTimeRange(
+  range: HostedSearchOptions["timeRange"],
+): "day" | "week" | "month" | "year" | null {
+  if (!range) return null;
+  if (range === "d") return "day";
+  if (range === "w") return "week";
+  if (range === "m") return "month";
+  if (range === "y") return "year";
+  return range;
+}
+
+function buildSearchPrompt(options: HostedSearchOptions): string {
+  const hints: string[] = [];
+
+  if (options.source?.trim()) {
+    hints.push(
+      `Prefer sources from ${options.source.trim()} and use site:${options.source.trim()} when useful.`,
+    );
+  }
+
+  if (options.topic === "finance") {
+    hints.push("Focus on finance, crypto, and market-relevant context.");
+  }
+
+  const normalizedRange = normalizeTimeRange(options.timeRange);
+  if (normalizedRange) {
+    hints.push(`Prefer coverage from the last ${normalizedRange}.`);
+  }
+
+  if (options.startDate && options.endDate) {
+    hints.push(`Prefer sources published between ${options.startDate} and ${options.endDate}.`);
+  } else if (options.startDate) {
+    hints.push(`Prefer sources published on or after ${options.startDate}.`);
+  } else if (options.endDate) {
+    hints.push(`Prefer sources published on or before ${options.endDate}.`);
+  }
+
+  const promptLines = [
+    "Search the web using Google Search grounding and answer the request with factual, source-backed information.",
+    `User query: ${options.query.trim()}`,
+    hints.length > 0 ? `Search guidance: ${hints.join(" ")}` : null,
+    `Return a concise answer and ground it in current web sources. Limit the answer to what can be supported by search results.`,
+  ];
+
+  return promptLines.filter(Boolean).join("\n\n");
+}
+
+function extractAnswer(response: GoogleSearchResponse): string {
+  return (
+    response.candidates?.[0]?.content?.parts
+      ?.map((part) => part.text?.trim())
+      .filter((value): value is string => Boolean(value))
+      .join("\n\n") ?? ""
+  ).trim();
+}
+
+function resolveExplicitMaxResults(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new Error("maxResults must be a positive safe integer when provided");
+  }
+  return value;
+}
+
+function buildSearchQueries(response: GoogleSearchResponse): string[] {
+  const queries = response.candidates?.[0]?.groundingMetadata?.webSearchQueries ?? [];
+  return [...new Set(queries.map((query) => query.trim()).filter(Boolean))];
+}
+
+function buildUsage(response: GoogleSearchResponse): HostedSearchUsage {
+  const inputTokens = response.usageMetadata?.promptTokenCount ?? 0;
+  const outputTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+  const totalTokens = response.usageMetadata?.totalTokenCount ?? inputTokens + outputTokens;
+  return { inputTokens, outputTokens, totalTokens };
+}
+
+export async function executeHostedGoogleSearch(
+  options: HostedSearchOptions,
+  context: HostedSearchOperationContext,
+): Promise<HostedSearchResult> {
+  const apiKey = resolveGoogleSearchApiKey(options.googleApiKey);
+  if (!apiKey) {
+    throw new Error(
+      "GOOGLE_API_KEY, GEMINI_API_KEY, or GOOGLE_GENERATIVE_AI_API_KEY is not configured",
+    );
+  }
+
+  const query = options.query?.trim();
+  if (!query) {
+    throw new Error("Search query is required");
+  }
+
+  const model = options.model?.trim() || DEFAULT_SEARCH_MODEL;
+  const normalizedModel = normalizeModelName(model);
+  const maxResults = resolveExplicitMaxResults(options.maxResults);
+  const prompt = buildSearchPrompt({ ...options, query, model });
+  const routeStart = Date.now();
+  const requestSource = context.requestSource ?? "api";
+  const estimatedCost =
+    (await estimateRequestCost(normalizedModel, [{ role: "user", content: prompt }])) +
+    GOOGLE_GROUNDED_PROMPT_COST;
+  const operation = {
+    provider: "google",
+    billingSource: "gateway" as const,
+    model: normalizedModel,
+    operation: "hosted_google_search",
+    estimatedCost,
+    metadata: { requestSource },
+  };
+
+  try {
+    const result = await runMeteredProviderOperation(context, operation, async () => {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+          normalizedModel,
+        )}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                {
+                  text: "Answer only with grounded web information. Do not invent unsupported facts.",
+                },
+              ],
+            },
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }],
+            generationConfig: { temperature: 0.2 },
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+      const body = (await response.json()) as GoogleSearchResponse;
+      if (!response.ok) {
+        throw new Error(
+          body.error?.message || `Google Search request failed with ${response.status}`,
+        );
+      }
+      assertModelOutputComplete({
+        finishReason: body.candidates?.[0]?.finishReason,
+        provider: "google-search",
+        model: normalizedModel,
+      });
+      const answer = extractAnswer(body);
+      if (!answer) throw new Error("Google Search returned no grounded answer");
+      const usage = buildUsage(body);
+      const results = buildSearchResults(body, maxResults);
+      const searchQueries = buildSearchQueries(body);
+      const tokenCost = await calculateCost(
+        normalizedModel,
+        "google",
+        usage.inputTokens,
+        usage.outputTokens,
+      );
+      const totalCost = tokenCost.totalCost + GOOGLE_GROUNDED_PROMPT_COST;
+      return {
+        actualCost: totalCost,
+        value: {
+          tokenCost,
+          result: {
+            answer,
+            model: normalizedModel,
+            provider: "google" as const,
+            query,
+            responseTime: Date.now() - routeStart,
+            results,
+            searchQueries,
+            usage,
+            cost: totalCost,
+          },
+        },
+      };
+    });
+
+    await retainGenerativeTask(
+      context,
+      operation,
+      usageService.create({
+        organization_id: context.organizationId,
+        user_id: context.userId,
+        api_key_id: context.apiKeyId,
+        type: "search",
+        model: normalizedModel,
+        provider: "google",
+        input_tokens: result.result.usage.inputTokens,
+        output_tokens: result.result.usage.outputTokens,
+        input_cost: String(result.tokenCost.inputCost + GOOGLE_GROUNDED_PROMPT_COST),
+        output_cost: String(result.tokenCost.outputCost),
+        is_successful: true,
+        metadata: {
+          grounded_search_fee: GOOGLE_GROUNDED_PROMPT_COST,
+          request_source: requestSource,
+          search_queries: result.result.searchQueries,
+          results_count: result.result.results.length,
+          source: options.source ?? null,
+          topic: options.topic ?? null,
+        },
+      }),
+    );
+    return result.result;
+  } catch (error) {
+    logger.error("[Hosted Google Search] Request failed", {
+      organizationId: context.organizationId,
+      requestId: context.requestId,
+      error: error instanceof Error ? error.message : String(error),
+      queryLength: query.length,
+      requestSource,
+    });
+    throw error;
+  }
+}

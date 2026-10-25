@@ -1,0 +1,196 @@
+/**
+ * Owns the dynamic settings-section registry shared by built-ins, hosts, and
+ * plugins so the Settings view can render declared sections in one order.
+ */
+
+import type { ViewKind } from "@elizaos/core";
+import type { LucideIcon } from "lucide-react";
+import type { ComponentType, LazyExoticComponent } from "react";
+import { getUiRegistryStore } from "../../registry-host.js";
+import type {
+  SettingsRuntimeCapabilities,
+  SettingsRuntimeCapability,
+} from "./settings-runtime-capabilities";
+import type { SettingsSectionGroup } from "./settings-section-meta";
+/**
+ * Pluggable settings-section registry.
+ *
+ * Built-in sections (`settings-sections.ts`) and host apps / plugins both
+ * contribute through {@link registerSettingsSection}; the Settings view renders
+ * whatever {@link listSettingsSections} returns. The store comes from the
+ * shared UI registry host, so sibling registries use the same injected storage
+ * source instead of maintaining per-registry global slots.
+ *
+ * This is what makes settings modular: an app adds a section with one
+ * `registerSettingsSection(...)` call at boot, no edits to the view.
+ */
+export type SettingsSectionTone =
+  | "ok"
+  | "warn"
+  | "muted"
+  | "accent"
+  | "neutral";
+/** Curated, token-safe medallion tints for the section icons. No blue. */
+export type SettingsSectionHue = "accent" | "amber" | "rose" | "slate";
+export type SettingsSectionProminence = "primary" | "secondary";
+export interface SettingsSectionDef {
+  /** Stable id — URL hash + agent-surface address. */
+  id: string;
+  /**
+   * Extra friendly tokens (beyond {@link id}) a user can type to reach this
+   * section via `/settings <token>`. Owner-declared so a plugin-registered
+   * section carries its own aliases instead of needing a central host edit.
+   * The `id` itself is always a token.
+   */
+  aliases?: readonly string[];
+  /** i18n key for the nav label. */
+  label: string;
+  /** English fallback for {@link label}. */
+  defaultLabel: string;
+  icon: LucideIcon;
+  tone: SettingsSectionTone;
+  hue: SettingsSectionHue;
+  /** i18n key for the section header (defaults to {@link label}). */
+  titleKey: string;
+  /** English fallback for {@link titleKey}. */
+  defaultTitle: string;
+  /**
+   * Top-level group. The three built-in groups are {@link SettingsSectionGroup}
+   * (`agent | system | security`); a host may also use a custom group id (e.g.
+   * `"cloud"`) registered via the extra-group registry so the Settings view can
+   * render it. Kept as a widened string so dynamic groups don't require editing
+   * the pinned meta list.
+   */
+  group: SettingsSectionGroup | (string & {});
+  /** Sort priority within a group (lower first). Built-ins use list order. */
+  order?: number;
+  /**
+   * Information-architecture weight. Compact hubs keep secondary destinations
+   * available behind progressive disclosure instead of flattening every
+   * developer and specialist control into the everyday list.
+   */
+  prominence?: SettingsSectionProminence;
+  /** Padding override for the section body panel. */
+  bodyClassName?: string;
+
+  /**
+   * Hide on the cloud mobile build (no host machine). For host/self-host
+   * concepts that are meaningless to a cloud user — e.g. the host
+   * remote-password security section. Evaluated against isAndroidCloudBuild().
+   */
+  hideOnCloud?: boolean;
+  /** Show only in the standard Android Cloud/Play build. */
+  androidCloudOnly?: boolean;
+  /**
+   * Hide while the active runtime is managed by Eliza Cloud. Use this for
+   * implementation controls that Cloud owns and a consumer cannot change.
+   */
+  hideOnManagedCloud?: boolean;
+  /**
+   * Show only while the active runtime target is a managed Eliza Cloud agent.
+   * This is independent from role/view-kind authorization: local and VPS
+   * runtimes must not expose management controls they cannot fulfill.
+   */
+  cloudOnly?: boolean;
+  /**
+   * Host features this section needs in order to function. Requirements are
+   * resolved by the canonical Settings controller, so plugins and built-ins do
+   * not infer a platform from viewport size or user-agent strings.
+   */
+  requires?: readonly SettingsRuntimeCapability[];
+  /** Four-tier visibility category; absent values default to release. */
+  viewKind?: ViewKind;
+  /**
+   * The section body. Accepts a plain component or a `React.lazy` wrapper so
+   * sections can be code-split off the eager boot graph (#11351); the Settings
+   * view renders it behind a `<Suspense>` boundary either way.
+   */
+  Component: ComponentType | LazyExoticComponent<ComponentType>;
+}
+/** Shared navigation policy for destinations that should stay one disclosure away. */
+export function settingsSectionIsSecondary(
+  section: Pick<SettingsSectionDef, "prominence" | "viewKind">,
+): boolean {
+  return (
+    section.prominence === "secondary" ||
+    section.viewKind === "developer" ||
+    section.viewKind === "preview"
+  );
+}
+/** Partition one registry-driven group without duplicating prominence policy. */
+export function partitionSettingsSections<
+  T extends Pick<SettingsSectionDef, "prominence" | "viewKind">,
+>(
+  sections: readonly T[],
+): {
+  primary: T[];
+  secondary: T[];
+} {
+  const primary: T[] = [];
+  const secondary: T[] = [];
+  for (const section of sections) {
+    (settingsSectionIsSecondary(section) ? secondary : primary).push(section);
+  }
+  return { primary, secondary };
+}
+interface SettingsSectionRegistryStore {
+  entries: Map<string, SettingsSectionDef>;
+  seq: number;
+}
+const SETTINGS_SECTION_REGISTRY_STORE = "settings-sections";
+const registryListeners = new Set<() => void>();
+function getStore(): SettingsSectionRegistryStore {
+  return getUiRegistryStore(SETTINGS_SECTION_REGISTRY_STORE, () => ({
+    entries: new Map<string, SettingsSectionDef>(),
+    seq: 0,
+  }));
+}
+/**
+ * Register (or replace) a settings section. Later registration with the same id
+ * wins, so a host app can override a built-in section by re-registering its id.
+ */
+export function registerSettingsSection(section: SettingsSectionDef): void {
+  const store = getStore();
+  const order = section.order ?? store.seq;
+  store.seq += 1;
+  store.entries.set(section.id, { ...section, order });
+  for (const listener of registryListeners) listener();
+}
+/** Monotonic snapshot used by React consumers of the dynamic registry. */
+export function getSettingsSectionRegistryVersion(): number {
+  return getStore().seq;
+}
+/** Re-render subscribers after a host or lazy domain registers a section. */
+export function subscribeSettingsSections(listener: () => void): () => void {
+  registryListeners.add(listener);
+  return () => registryListeners.delete(listener);
+}
+/** All registered sections, sorted by `order` then registration sequence. */
+export function listSettingsSections(): SettingsSectionDef[] {
+  return [...getStore().entries.values()].sort(
+    (a, b) => (a.order ?? 0) - (b.order ?? 0),
+  );
+}
+export function getSettingsSection(id: string): SettingsSectionDef | undefined {
+  return getStore().entries.get(id);
+}
+/**
+ * Every section the Settings view should render — built-ins plus any added by a
+ * host app / plugin through {@link registerSettingsSection}. Alias of
+ * {@link listSettingsSections}; exported from this light module so the eager
+ * boot barrels (`index.ts` / `browser.ts`) can re-export it without pulling in
+ * the heavy `settings-sections.ts` component graph (#10724).
+ */
+export function getAllSettingsSections(): SettingsSectionDef[] {
+  return listSettingsSections();
+}
+/** Pure capability gate shared by hub visibility and deep-link resolution. */
+export function settingsSectionIsAvailable(
+  section: SettingsSectionDef,
+  capabilities: SettingsRuntimeCapabilities,
+): boolean {
+  return (
+    section.requires?.every((capability) => capabilities.has(capability)) ??
+    true
+  );
+}

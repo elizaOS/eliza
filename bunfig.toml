@@ -1,0 +1,23 @@
+[test]
+timeout = 60000
+# Coverage is opt-in: bun test --coverage <paths>.
+# Live receipts: bun test --timeout=120000 <paths> (without coverage).
+coveragePathIgnorePatterns = [
+  "**/dist/**",
+  "**/build/**",
+  "**/chunk-*.js",
+  "**/*.chunk.js",
+  "**/node_modules/**",
+  "**/*.min.js",
+  "**/*.bundle.js",
+  "**/coverage/**",
+  "**/.turbo/**",
+]
+
+[install]
+cache = true
+auto = "fallback"
+
+[run]
+# Keep POSIX-style package scripts portable to Windows.
+shell = "bun"

@@ -1,0 +1,1494 @@
+import {
+	isAdminRank,
+	ROLE_RANK,
+	type RoleName,
+} from "./access-control/role-primitives.js";
+import {
+	getConnectorIdentityMetadataMapping,
+	getConnectorWorldIdMetadataKeys,
+	normalizeConnectorSource,
+} from "./connectors.ts";
+import { worldMetadataValueEquals } from "./database/world-metadata-cas";
+import { createUniqueUuid } from "./entities";
+import { ElizaError } from "./errors.ts";
+import { logger } from "./logger";
+import type {
+	IDatabaseAdapter,
+	WorldMetadataCompareAndSwapParams,
+	WorldMetadataMutationResult,
+} from "./types/database";
+import type { World } from "./types/environment.js";
+import type { PrincipalService } from "./types/identity";
+import type { Memory } from "./types/memory.js";
+import {
+	MESSAGE_SOURCE_AGENT_GREETING,
+	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_CODING_AGENT,
+	MESSAGE_SOURCE_SUB_AGENT,
+} from "./types/message-source";
+import type { Metadata, UUID } from "./types/primitives";
+import type { IAgentRuntime } from "./types/runtime.js";
+import { ServiceType } from "./types/service";
+import { formatError } from "./utils/errors";
+import { stringToUuid } from "./utils/string-to-uuid.js";
+import { asRecordOrUndefined as asRecord } from "./utils/type-guards";
+import { validateUuid } from "./utils/uuid.js";
+
+export type { RoleName } from "./access-control/role-primitives.js";
+
+/**
+ * Provenance of an explicit `roles[entityId]` grant. "session" marks a grant
+ * minted at chat ingress for an authenticated machine-session (paired-device)
+ * principal: it is capped at USER by construction, kept distinct from "manual"
+ * so it never confers manual-grant private access, and its reachability is
+ * gated per turn by the HTTP session boundary (a revoked/expired session can
+ * no longer act as the granted entity).
+ */
+export type RoleGrantSource =
+	| "owner"
+	| "manual"
+	| "connector_admin"
+	| "session";
+
+/** Shared role ranking. USER and MEMBER denote the same tier; NONE is the floor. */
+export {
+	CANONICAL_ROLE_RANK,
+	hasAtLeastRole,
+	isAdminRank,
+	ROLE_RANK,
+} from "./access-control/role-primitives.js";
+export type RolesWorldMetadata = {
+	ownership?: { ownerId?: string };
+	roles?: Record<string, RoleName>;
+	roleSources?: Record<string, RoleGrantSource>;
+};
+
+export type ConnectorAdminWhitelist = Record<string, string[]>;
+
+export type RolesConfig = {
+	connectorAdmins?: ConnectorAdminWhitelist;
+};
+
+export type RoleCheckResult = {
+	entityId: UUID;
+	role: RoleName;
+	isOwner: boolean;
+	isAdmin: boolean;
+	canManageRoles: boolean;
+};
+
+export interface ServerOwnershipState {
+	servers: {
+		[serverId: string]: World;
+	};
+}
+
+const CONNECTOR_ADMINS_SETTING_KEY = "ELIZA_ROLES_CONNECTOR_ADMINS_JSON";
+const CANONICAL_OWNER_SETTING_KEY = "ELIZA_ADMIN_ENTITY_ID";
+const OWNER_CONTACTS_SETTING_KEY = "ELIZA_OWNER_CONTACTS_JSON";
+const CONNECTOR_STABLE_ID_FIELDS = ["userId", "id"] as const;
+type ConnectorStableIdField = (typeof CONNECTOR_STABLE_ID_FIELDS)[number];
+type ConnectorAdminMatch = {
+	connector: string;
+	matchedValue: string;
+	matchedField: ConnectorStableIdField;
+};
+
+type ResolveEntityRoleOptions = {
+	liveEntityMetadata?: Record<string, unknown> | null;
+	liveEntityId?: string;
+};
+
+type OwnerContactEntry = {
+	entityId?: string;
+};
+
+function asStringArray(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	return value
+		.filter((entry): entry is string => typeof entry === "string")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+}
+
+function normalizeConnectorAdminWhitelist(
+	whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
+): ConnectorAdminWhitelist {
+	if (!whitelist || typeof whitelist !== "object") return {};
+
+	return Object.fromEntries(
+		Object.entries(whitelist)
+			.map(([connector, values]) => [connector, asStringArray(values)])
+			.filter(([, values]) => values.length > 0),
+	);
+}
+
+function normalizeRoleGrantSource(
+	raw: string | undefined | null,
+): RoleGrantSource | null {
+	if (
+		raw === "owner" ||
+		raw === "manual" ||
+		raw === "connector_admin" ||
+		raw === "session"
+	) {
+		return raw;
+	}
+	return null;
+}
+
+function getRuntimeSettingString(
+	runtime: Pick<IAgentRuntime, "getSetting">,
+	key: string,
+): string | undefined {
+	if (typeof runtime.getSetting !== "function") {
+		return undefined;
+	}
+
+	const value = runtime.getSetting(key);
+	if (typeof value !== "string") {
+		return undefined;
+	}
+
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOwnerContactEntityIds(raw: string | undefined): string[] {
+	if (!raw) {
+		return [];
+	}
+
+	try {
+		const parsed = JSON.parse(raw) as Record<string, OwnerContactEntry>;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return [];
+		}
+
+		return Object.values(parsed)
+			.map((entry) =>
+				entry && typeof entry.entityId === "string"
+					? entry.entityId.trim()
+					: "",
+			)
+			.filter((entityId) => entityId.length > 0);
+	} catch (error) {
+		// error-policy:J2 owner contacts participate in authorization; preserve
+		// the invalid setting rather than treating it as no configured owners.
+		throw new ElizaError("Failed to parse configured owner contacts", {
+			code: "OWNER_CONTACTS_INVALID",
+			cause: error,
+		});
+	}
+}
+
+function getMemoryMetadata(
+	message: Memory,
+): Record<string, unknown> | undefined {
+	return asRecord((message as Memory & { metadata?: unknown }).metadata);
+}
+
+function getMessageSource(message: Memory): string | undefined {
+	return typeof message.content.source === "string"
+		? message.content.source
+		: undefined;
+}
+
+const LOCAL_UNRESOLVED_ROLE_SOURCES = new Set([
+	MESSAGE_SOURCE_CLIENT_CHAT,
+	MESSAGE_SOURCE_SUB_AGENT,
+	MESSAGE_SOURCE_CODING_AGENT,
+	MESSAGE_SOURCE_AGENT_GREETING,
+	"api",
+	"benchmark",
+	"dashboard",
+	"deep-link",
+	"event",
+	"ios-local",
+	"local-voice",
+	"owner_app",
+	"test",
+]);
+
+/**
+ * Role floor used when a real sender exists but no world role can be resolved.
+ * Connector messages must not outrank a fully resolved stranger, so unknown
+ * non-local sources fall to GUEST. Local, owner-app, and harness traffic keeps
+ * USER so no-world control surfaces keep their historical behavior.
+ */
+export function getUnresolvedSenderRoleFloor(message: Memory): RoleName {
+	const source = getMessageSource(message)?.trim().toLowerCase();
+	if (!source || LOCAL_UNRESOLVED_ROLE_SOURCES.has(source)) {
+		return "USER";
+	}
+	return "GUEST";
+}
+
+function hasConnectorStableIdentity(
+	metadata: Record<string, unknown> | null | undefined,
+): boolean {
+	if (!metadata) {
+		return false;
+	}
+
+	for (const rawConnector of Object.values(metadata)) {
+		const connector = asRecord(rawConnector);
+		if (!connector) {
+			continue;
+		}
+
+		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
+			const value = connector[field];
+			if (typeof value === "string" && value.trim().length > 0) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+function getConnectorMetadataFromMemory(
+	message: Memory,
+): Record<string, unknown> | undefined {
+	const memoryMetadata = getMemoryMetadata(message);
+	const source = getMessageSource(message);
+	if (!source) {
+		return undefined;
+	}
+
+	const sourceMetadata = asRecord(memoryMetadata?.[source]);
+	if (sourceMetadata) {
+		const nestedMetadata = { [source]: sourceMetadata };
+		if (hasConnectorStableIdentity(nestedMetadata)) {
+			return nestedMetadata;
+		}
+	}
+
+	// Resolve flat identity fields through the connector-owned projection when nested source
+	// metadata is absent.
+	const mapping = getConnectorIdentityMetadataMapping(source);
+	if (!mapping) {
+		return undefined;
+	}
+
+	const userId = memoryMetadata?.[mapping.userIdField];
+	if (typeof userId !== "string" || userId.trim().length === 0) {
+		return undefined;
+	}
+
+	const canonicalSource = normalizeConnectorSource(source) || source;
+	const displayName =
+		mapping.nameField && typeof memoryMetadata?.[mapping.nameField] === "string"
+			? (memoryMetadata[mapping.nameField] as string)
+			: undefined;
+
+	return {
+		[canonicalSource]: {
+			userId,
+			id: userId,
+			...(displayName ? { name: displayName, username: displayName } : {}),
+		},
+	};
+}
+
+async function getEntityMetadata(
+	runtime: IAgentRuntime,
+	entityId: string,
+): Promise<Record<string, unknown> | undefined> {
+	if (typeof runtime.getEntityById !== "function") {
+		return undefined;
+	}
+
+	try {
+		const entity = await runtime.getEntityById(entityId as UUID);
+		return asRecord(entity?.metadata);
+	} catch (error) {
+		// error-policy:J2 Entity metadata participates in authorization decisions;
+		// preserve lookup failure rather than treating the entity as metadata-free.
+		runtime.reportError("Roles.getEntityMetadata", error, { entityId });
+		logger.warn(
+			`[roles] Failed to look up entity ${entityId}: ${formatError(error)}`,
+		);
+		throw new ElizaError("Failed to load entity metadata for role resolution", {
+			code: "ROLE_ENTITY_LOOKUP_FAILED",
+			cause: error,
+			context: { entityId },
+		});
+	}
+}
+
+export async function findWorldsForOwner(
+	runtime: IAgentRuntime,
+	entityId: string,
+): Promise<World[] | null> {
+	if (!entityId) {
+		logger.error(
+			{ src: "core:roles", agentId: runtime.agentId },
+			"User ID is required to find server",
+		);
+		return null;
+	}
+
+	const worlds = await runtime.getAllWorlds();
+
+	if (!worlds || worlds.length === 0) {
+		logger.debug(
+			{ src: "core:roles", agentId: runtime.agentId },
+			"No worlds found for agent",
+		);
+		return null;
+	}
+
+	const ownerWorlds: World[] = [];
+	for (const world of worlds) {
+		const worldMetadata = world.metadata;
+		const worldMetadataOwnership = worldMetadata?.ownership;
+		if (worldMetadataOwnership && worldMetadataOwnership.ownerId === entityId) {
+			ownerWorlds.push(world);
+		}
+	}
+
+	return ownerWorlds.length ? ownerWorlds : null;
+}
+
+export function getConfiguredOwnerEntityIds(
+	runtime: Pick<IAgentRuntime, "getSetting">,
+): string[] {
+	const configuredAdminEntityId = getRuntimeSettingString(
+		runtime,
+		CANONICAL_OWNER_SETTING_KEY,
+	);
+	const ownerContactsRaw = getRuntimeSettingString(
+		runtime,
+		OWNER_CONTACTS_SETTING_KEY,
+	);
+	const ownerContactEntityIds = parseOwnerContactEntityIds(ownerContactsRaw);
+	const deduped = new Set<string>();
+
+	if (configuredAdminEntityId) {
+		deduped.add(configuredAdminEntityId);
+	}
+
+	for (const entityId of ownerContactEntityIds) {
+		deduped.add(entityId);
+	}
+
+	return [...deduped];
+}
+
+export function hasConfiguredCanonicalOwner(runtime: IAgentRuntime): boolean {
+	return getConfiguredOwnerEntityIds(runtime).length > 0;
+}
+
+export function resolveCanonicalOwnerId(
+	runtime: Pick<IAgentRuntime, "getSetting">,
+	metadata?: RolesWorldMetadata,
+): string | null {
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		return configuredOwnerIds[0] ?? null;
+	}
+
+	// Reject provider identifiers before UUID-backed entity or relationship queries.
+	return validateUuid(metadata?.ownership?.ownerId);
+}
+
+/**
+ * Deterministic owner-entity id for an agent that has no configured canonical
+ * owner. Seeded from the agent ID — never the character name, which is
+ * user-editable and differs between surfaces that read it (`character.name`,
+ * `agents.defaults.name`, a hard-coded "Eliza") — so every owner-scoped surface
+ * lands on one `subject_id`. Prefer {@link resolveOwnerEntityIdOrDefault}
+ * whenever a runtime is available; call this directly only when the caller has
+ * already established that no canonical owner is configured.
+ */
+export function deterministicOwnerEntityId(agentId: string): UUID {
+	return stringToUuid(`${agentId}-admin-entity`);
+}
+
+/**
+ * The single owner-entity derivation shared by the client-chat write path, the
+ * personal-assistant routes, LifeOps reads and the scheduler, the
+ * outbound owner target, and connector ownership metadata: the configured
+ * canonical owner (`ELIZA_ADMIN_ENTITY_ID` / owner contacts) when it is a
+ * UUID, otherwise {@link deterministicOwnerEntityId}. Surfaces that derive the
+ * owner any other way fork the owner `subject_id`, making rows written on one
+ * surface invisible to the others.
+ */
+export function resolveOwnerEntityIdOrDefault(
+	runtime: Pick<IAgentRuntime, "agentId" | "getSetting">,
+): UUID {
+	const configuredOwnerId = validateUuid(resolveCanonicalOwnerId(runtime));
+	return configuredOwnerId ?? deterministicOwnerEntityId(runtime.agentId);
+}
+
+function resolveOwnershipCandidateIds(
+	runtime: IAgentRuntime,
+	metadata?: RolesWorldMetadata,
+): string[] {
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		return configuredOwnerIds;
+	}
+
+	const ownerId = resolveCanonicalOwnerId(runtime, metadata);
+	return ownerId ? [ownerId] : [];
+}
+
+function connectorIdentityMatches(
+	left: Record<string, unknown> | null | undefined,
+	right: Record<string, unknown> | null | undefined,
+): boolean {
+	if (!left || !right) return false;
+
+	for (const [connector, leftRaw] of Object.entries(left)) {
+		const leftConnector = asRecord(leftRaw);
+		const rightConnector = asRecord(right[connector]);
+		if (!leftConnector || !rightConnector) {
+			continue;
+		}
+		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
+			const leftValue = leftConnector[field];
+			const rightValue = rightConnector[field];
+			if (
+				typeof leftValue === "string" &&
+				leftValue.length > 0 &&
+				leftValue === rightValue
+			) {
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+async function getConfirmedLinkedEntityIds(
+	runtime: IAgentRuntime,
+	entityId: string,
+): Promise<string[]> {
+	if (typeof runtime.getRelationships !== "function") return [];
+
+	try {
+		const relationships = await runtime.getRelationships({
+			entityIds: [entityId as UUID],
+			tags: ["identity_link"],
+		});
+		const linkedIds = new Set<string>();
+		for (const relationship of relationships) {
+			const metadata = asRecord(relationship.metadata);
+			if (metadata?.status !== "confirmed") continue;
+			if (relationship.sourceEntityId === entityId) {
+				linkedIds.add(relationship.targetEntityId);
+			}
+			if (relationship.targetEntityId === entityId) {
+				linkedIds.add(relationship.sourceEntityId);
+			}
+		}
+		return [...linkedIds];
+	} catch (error) {
+		// error-policy:J2 identity links authorize access; a failed read must not become an empty
+		// result.
+		throw new ElizaError("Failed to load confirmed identity links", {
+			code: "IDENTITY_LINK_QUERY_FAILED",
+			cause: error,
+			context: { entityId },
+		});
+	}
+}
+
+async function resolveIdentityOwnerBinding(
+	runtime: IAgentRuntime,
+	entityId: UUID,
+	ownerIds: readonly UUID[],
+): Promise<boolean | null> {
+	if (typeof runtime.getService !== "function") return null;
+	const service = runtime.getService<PrincipalService>(ServiceType.PRINCIPAL);
+	if (!service) return null;
+
+	try {
+		const canonical = await service.resolveCanonicalPrincipal(
+			runtime.agentId,
+			entityId,
+		);
+		// The canonical read must echo exactly the request it resolved; a
+		// misrouted response for another agent or actor must not authorize.
+		if (
+			canonical.agentId !== runtime.agentId ||
+			canonical.requestedPrincipalId !== entityId ||
+			!Number.isSafeInteger(canonical.generation) ||
+			canonical.generation < 0
+		) {
+			return false;
+		}
+		const evaluation = await service.evaluateOwnerBinding({
+			agentId: runtime.agentId,
+			actorPrincipalId: entityId,
+			candidateOwnerPrincipalIds: ownerIds,
+			purpose: "role_resolution",
+		});
+		// Both reads must observe the same identity-graph generation; a merge
+		// or split between the two awaits invalidates the binding decision.
+		return (
+			evaluation.decision === "bound" &&
+			evaluation.actorCanonicalPrincipalId === canonical.canonicalPrincipalId &&
+			ownerIds.includes(evaluation.ownerPrincipalId) &&
+			validateUuid(evaluation.actorCanonicalPrincipalId) !== null &&
+			validateUuid(evaluation.claimId) !== null &&
+			typeof evaluation.ownerBindingId === "string" &&
+			evaluation.ownerBindingId.length > 0 &&
+			Number.isSafeInteger(evaluation.generation) &&
+			evaluation.generation === canonical.generation
+		);
+	} catch (error) {
+		// error-policy:J4 authority read failure is reported and degrades to a
+		// fail-closed non-owner decision instead of falling back to weaker paths.
+		runtime.reportError("Roles.evaluateOwnerBinding", error, { entityId });
+		return false;
+	}
+}
+
+async function resolveOwnershipRole(
+	runtime: IAgentRuntime,
+	metadata: RolesWorldMetadata | undefined,
+	entityId: string,
+	options?: ResolveEntityRoleOptions,
+): Promise<RoleName | null> {
+	const ownerIds = resolveOwnershipCandidateIds(runtime, metadata);
+	if (ownerIds.length === 0) {
+		return null;
+	}
+
+	const liveEntityMetadata = options?.liveEntityMetadata;
+	const senderMetadata = hasConnectorStableIdentity(liveEntityMetadata)
+		? liveEntityMetadata
+		: await getEntityMetadata(runtime, entityId);
+
+	for (const ownerId of ownerIds) {
+		if (ownerId === entityId) {
+			return "OWNER";
+		}
+	}
+
+	const verifiedBinding = await resolveIdentityOwnerBinding(
+		runtime,
+		entityId as UUID,
+		ownerIds as UUID[],
+	);
+	if (verifiedBinding !== null) return verifiedBinding ? "OWNER" : null;
+
+	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
+	if (ownerIds.some((ownerId) => linkedIds.includes(ownerId))) return "OWNER";
+
+	for (const ownerId of ownerIds) {
+		const ownerMetadata = await getEntityMetadata(runtime, ownerId);
+		if (!ownerMetadata) {
+			continue;
+		}
+
+		if (connectorIdentityMatches(senderMetadata, ownerMetadata)) {
+			return "OWNER";
+		}
+	}
+
+	return null;
+}
+
+function resolveWorldIdFromMessageMetadata(
+	runtime: IAgentRuntime,
+	message: Memory,
+): UUID | null {
+	const source = getMessageSource(message);
+	if (!source) {
+		return null;
+	}
+	const metadata = getMemoryMetadata(message);
+
+	// Resolve the first nonempty world-ID field declared by the connector owner.
+	const worldIdKeys = getConnectorWorldIdMetadataKeys(source);
+	for (const key of worldIdKeys) {
+		const value = metadata?.[key];
+		if (typeof value === "string" && value.trim().length > 0) {
+			return createUniqueUuid(runtime, value) as UUID;
+		}
+	}
+
+	return null;
+}
+
+export function setConnectorAdminWhitelist(
+	runtime: IAgentRuntime,
+	whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
+): void {
+	if (typeof runtime.setSetting !== "function") {
+		return;
+	}
+
+	const normalized = normalizeConnectorAdminWhitelist(whitelist);
+	if (Object.keys(normalized).length === 0) {
+		runtime.setSetting(CONNECTOR_ADMINS_SETTING_KEY, null);
+		return;
+	}
+
+	runtime.setSetting(CONNECTOR_ADMINS_SETTING_KEY, JSON.stringify(normalized));
+}
+
+export function getConnectorAdminWhitelist(
+	runtime: IAgentRuntime,
+): ConnectorAdminWhitelist {
+	const raw = getRuntimeSettingString(runtime, CONNECTOR_ADMINS_SETTING_KEY);
+	if (!raw) {
+		return {};
+	}
+
+	try {
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
+		return normalizeConnectorAdminWhitelist(parsed);
+	} catch (error) {
+		// error-policy:J2 connector-admin settings participate in authorization;
+		// malformed persisted data must not become an empty whitelist.
+		throw new ElizaError("Failed to parse connector administrator whitelist", {
+			code: "CONNECTOR_ADMINS_INVALID",
+			cause: error,
+			context: { setting: CONNECTOR_ADMINS_SETTING_KEY },
+		});
+	}
+}
+
+export function matchEntityToConnectorAdminWhitelist(
+	entityMetadata: Record<string, unknown> | null | undefined,
+	whitelist: ConnectorAdminWhitelist | Record<string, unknown> | undefined,
+): ConnectorAdminMatch | null {
+	if (!entityMetadata || typeof entityMetadata !== "object") return null;
+
+	const normalizedWhitelist = normalizeConnectorAdminWhitelist(whitelist);
+	for (const [connector, platformIds] of Object.entries(normalizedWhitelist)) {
+		const connectorMeta = asRecord(entityMetadata[connector]);
+		if (!connectorMeta) {
+			continue;
+		}
+
+		for (const field of CONNECTOR_STABLE_ID_FIELDS) {
+			const value = connectorMeta[field];
+			if (typeof value === "string" && platformIds.includes(value)) {
+				return { connector, matchedValue: value, matchedField: field };
+			}
+		}
+	}
+
+	return null;
+}
+
+export function normalizeRole(raw: string | undefined | null): RoleName {
+	const upper = (raw ?? "").toUpperCase();
+	if (upper === "OWNER" || upper === "ADMIN" || upper === "USER") return upper;
+	// MEMBER is the USER-tier alias (CANONICAL_ROLE_RANK.MEMBER ===.USER). Folding
+	// it to GUEST here (rank 2 → 1) silently demoted a stored "MEMBER" world role
+	// below a `minRole: USER` gate that the context-gate path (normalizeGateRole
+	// folds USER→MEMBER) would grant — the asymmetry. Resolve MEMBER
+	// to its canonical USER tier so both paths agree.
+	if (upper === "MEMBER") return "USER";
+	return "GUEST";
+}
+
+export function getEntityRole(
+	metadata: RolesWorldMetadata | undefined,
+	entityId: string,
+): RoleName {
+	if (!metadata?.roles) return "GUEST";
+	return normalizeRole(metadata.roles[entityId]);
+}
+
+function getStoredRoleSource(
+	metadata: RolesWorldMetadata | undefined,
+	entityId: string,
+): RoleGrantSource | null {
+	return normalizeRoleGrantSource(metadata?.roleSources?.[entityId]);
+}
+
+async function resolveStoredRoleSource(
+	runtime: IAgentRuntime,
+	metadata: RolesWorldMetadata | undefined,
+	entityId: string,
+	options?: ResolveEntityRoleOptions,
+): Promise<RoleGrantSource | null> {
+	const storedSource = getStoredRoleSource(metadata, entityId);
+	if (storedSource) {
+		return storedSource;
+	}
+
+	const storedRole = getEntityRole(metadata, entityId);
+	if (storedRole === "GUEST") {
+		return null;
+	}
+	if (storedRole === "OWNER") {
+		return "owner";
+	}
+
+	const entityMetadata =
+		options?.liveEntityId === entityId
+			? (options.liveEntityMetadata ?? undefined)
+			: undefined;
+	const matchedWhitelist = matchEntityToConnectorAdminWhitelist(
+		entityMetadata ?? (await getEntityMetadata(runtime, entityId)),
+		getConnectorAdminWhitelist(runtime),
+	);
+
+	if (storedRole === "ADMIN" && matchedWhitelist) {
+		return "connector_admin";
+	}
+
+	return "manual";
+}
+
+async function resolveExplicitGrantedRole(
+	runtime: IAgentRuntime,
+	metadata: RolesWorldMetadata | undefined,
+	entityId: string,
+	options?: ResolveEntityRoleOptions,
+): Promise<{
+	role: RoleName;
+	source: "manual" | "linked_manual";
+} | null> {
+	const directRole = getEntityRole(metadata, entityId);
+	const directSource = await resolveStoredRoleSource(
+		runtime,
+		metadata,
+		entityId,
+		options,
+	);
+	if (directRole !== "GUEST" && directSource === "manual") {
+		return { role: directRole, source: "manual" };
+	}
+
+	const principalService =
+		typeof runtime.getService === "function"
+			? runtime.getService<PrincipalService>(ServiceType.PRINCIPAL)
+			: null;
+	if (principalService) return null;
+
+	const linkedIds = await getConfirmedLinkedEntityIds(runtime, entityId);
+	let bestRole: RoleName | null = null;
+	for (const linkedEntityId of linkedIds) {
+		const linkedRole = getEntityRole(metadata, linkedEntityId);
+		if (linkedRole === "GUEST") continue;
+		const linkedSource = await resolveStoredRoleSource(
+			runtime,
+			metadata,
+			linkedEntityId,
+		);
+		if (linkedSource !== "manual") continue;
+		if (!bestRole || ROLE_RANK[linkedRole] > ROLE_RANK[bestRole])
+			bestRole = linkedRole;
+	}
+	return bestRole ? { role: bestRole, source: "linked_manual" } : null;
+}
+
+export function getLiveEntityMetadataFromMessage(
+	message: Memory,
+): Record<string, unknown> | undefined {
+	// Only trust connector identity stamped into the Memory itself.
+	// content.metadata can come from untrusted chat clients, so it must not
+	// participate in role resolution.
+	return getConnectorMetadataFromMemory(message);
+}
+
+export async function resolveEntityRole(
+	runtime: IAgentRuntime,
+	_world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>,
+	metadata: RolesWorldMetadata | undefined,
+	entityId: string,
+	options?: ResolveEntityRoleOptions,
+): Promise<RoleName> {
+	const explicitRole = getEntityRole(metadata, entityId);
+	const explicitSource = await resolveStoredRoleSource(
+		runtime,
+		metadata,
+		entityId,
+		options,
+	);
+	const ownershipRole = await resolveOwnershipRole(
+		runtime,
+		metadata,
+		entityId,
+		options,
+	);
+
+	if (ownershipRole === "OWNER") {
+		return "OWNER";
+	}
+
+	const whitelist = getConnectorAdminWhitelist(runtime);
+	const liveMatched = matchEntityToConnectorAdminWhitelist(
+		options?.liveEntityMetadata ?? undefined,
+		whitelist,
+	);
+
+	if (explicitRole !== "GUEST") {
+		if (explicitRole === "OWNER") {
+			// Only manually granted OWNER roles confer ownership. Connector-written or sourceless
+			// grants fold to GUEST.
+			return explicitSource === "manual" ? "OWNER" : "GUEST";
+		}
+
+		if (explicitSource === "connector_admin") {
+			if (Object.keys(whitelist).length === 0) {
+				return "GUEST";
+			}
+
+			if (liveMatched) {
+				return "ADMIN";
+			}
+
+			const entityMetadata = await getEntityMetadata(runtime, entityId);
+			const matched = matchEntityToConnectorAdminWhitelist(
+				entityMetadata,
+				whitelist,
+			);
+			if (matched) {
+				return "ADMIN";
+			}
+
+			return "GUEST";
+		}
+
+		return explicitRole;
+	}
+
+	if (Object.keys(whitelist).length === 0) {
+		return explicitRole;
+	}
+
+	if (liveMatched) {
+		return "ADMIN";
+	}
+
+	const entityMetadata = await getEntityMetadata(runtime, entityId);
+	const matched = matchEntityToConnectorAdminWhitelist(
+		entityMetadata,
+		whitelist,
+	);
+	if (!matched) {
+		return explicitRole;
+	}
+
+	return "ADMIN";
+}
+
+export async function checkSenderPrivateAccess(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<{
+	entityId: UUID;
+	role: RoleName;
+	isOwner: boolean;
+	isAdmin: boolean;
+	canManageRoles: boolean;
+	hasPrivateAccess: boolean;
+	accessRole: RoleName | null;
+	accessSource: "owner" | "manual" | "linked_manual" | null;
+} | null> {
+	const resolved = await resolveWorldForMessage(runtime, message);
+	if (!resolved) return null;
+
+	const { world, metadata } = resolved;
+	const entityId = message.entityId as UUID;
+	const options = {
+		liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+		liveEntityId: entityId,
+	};
+	const role = await resolveEntityRole(
+		runtime,
+		world,
+		metadata,
+		entityId,
+		options,
+	);
+	const ownershipRole = await resolveOwnershipRole(
+		runtime,
+		metadata,
+		entityId,
+		options,
+	);
+
+	if (ownershipRole === "OWNER") {
+		return {
+			entityId,
+			role,
+			isOwner: true,
+			isAdmin: true,
+			canManageRoles: true,
+			hasPrivateAccess: true,
+			accessRole: "OWNER",
+			accessSource: "owner",
+		};
+	}
+
+	const explicitAccess = await resolveExplicitGrantedRole(
+		runtime,
+		metadata,
+		entityId,
+		options,
+	);
+
+	return {
+		entityId,
+		role,
+		isOwner: false,
+		isAdmin: isAdminRank(role),
+		canManageRoles: isAdminRank(role),
+		hasPrivateAccess: explicitAccess !== null,
+		accessRole: explicitAccess?.role ?? null,
+		accessSource: explicitAccess?.source ?? null,
+	};
+}
+
+export function canModifyRole(
+	actorRole: RoleName,
+	targetCurrentRole: RoleName,
+	newRole: RoleName,
+): boolean {
+	if (targetCurrentRole === newRole) return false;
+	const actorRank = ROLE_RANK[actorRole];
+	const targetRank = ROLE_RANK[targetCurrentRole];
+	if (actorRole === "OWNER") return true;
+	if (actorRole === "ADMIN") {
+		if (targetRank >= actorRank) return false;
+		if (newRole === "OWNER") return false;
+		return true;
+	}
+	return false;
+}
+
+export async function resolveWorldById(
+	runtime: IAgentRuntime,
+	worldId: UUID,
+): Promise<{
+	world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>;
+	metadata: RolesWorldMetadata;
+} | null> {
+	const world = await runtime.getWorld(worldId);
+	if (!world) return null;
+	const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
+	return { world, metadata };
+}
+
+export async function resolveWorldForMessage(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<{
+	world: Awaited<ReturnType<IAgentRuntime["getWorld"]>>;
+	metadata: RolesWorldMetadata;
+} | null> {
+	const room = await runtime.getRoom(message.roomId);
+	const worldId =
+		room?.worldId ?? resolveWorldIdFromMessageMetadata(runtime, message);
+	if (!worldId) return null;
+	const world = await runtime.getWorld(worldId);
+	if (!world) return null;
+	const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
+	return { world, metadata };
+}
+
+export async function resolveCanonicalOwnerIdForMessage(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<string | null> {
+	const configuredOwnerIds = getConfiguredOwnerEntityIds(runtime);
+	if (configuredOwnerIds.length > 0) {
+		// A connector-specific owner principal is the canonical owner for its
+		// current destination when it was configured directly or the principal
+		// authority verifies its owner binding. Keeping the live principal here
+		// lets the delivery-audience census prove the actual two-party DM rather
+		// than comparing a Discord principal to a Telegram-shaped owner UUID.
+		if (configuredOwnerIds.includes(message.entityId)) {
+			return message.entityId;
+		}
+		const verifiedBinding = await resolveIdentityOwnerBinding(
+			runtime,
+			message.entityId,
+			configuredOwnerIds as UUID[],
+		);
+		if (verifiedBinding === true) {
+			return message.entityId;
+		}
+		return configuredOwnerIds[0] ?? null;
+	}
+
+	const resolved = await resolveWorldForMessage(runtime, message);
+	const recordedOwnerId = resolveCanonicalOwnerId(runtime, resolved?.metadata);
+
+	// The owner-exclusive disclosure gate compares this id to the message actor
+	// with strict equality. A connector can persist the owner under a DIFFERENT
+	// canonical UUID than the one it stamps on the owner's own messages: e.g.
+	// plugin-discord records `ownership.ownerId` as the synthetic
+	// `deterministicOwnerEntityId(agentId)` fallback while the owner's inbound
+	// message carries `createUniqueUuid(runtime, <snowflake>)`. Both denote the
+	// same human, but a naive equality check reads them as different principals
+	// and denies every owner-private surface with `owner_mismatch`, even in a
+	// 2-person owner DM/guild whose census is exactly {owner, agent}.
+	//
+	// The role system already reconciles these via connector-stable-identity and
+	// confirmed identity links (resolveOwnershipRole). Reuse that verdict: when
+	// the message actor IS the owner but under a different entity UUID than the
+	// world recorded, return the ACTOR's id so the strict-equality gate matches
+	// the genuine owner. Non-owners never satisfy resolveOwnershipRole, so they
+	// stay denied. Idempotent and connector-agnostic — no Discord-only branch.
+	const actorEntityId = message.entityId;
+	if (
+		actorEntityId &&
+		recordedOwnerId &&
+		recordedOwnerId !== actorEntityId &&
+		resolved?.world
+	) {
+		const actorOwnershipRole = await resolveOwnershipRole(
+			runtime,
+			resolved.metadata,
+			actorEntityId,
+			{
+				liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+				liveEntityId: actorEntityId,
+			},
+		);
+		if (actorOwnershipRole === "OWNER") {
+			return actorEntityId;
+		}
+	}
+
+	return recordedOwnerId;
+}
+
+export async function checkSenderRole(
+	runtime: IAgentRuntime,
+	message: Memory,
+): Promise<RoleCheckResult | null> {
+	const resolved = await resolveWorldForMessage(runtime, message);
+	if (!resolved) return null;
+	const { world, metadata } = resolved;
+	const entityId = message.entityId as UUID;
+	const role = await resolveEntityRole(runtime, world, metadata, entityId, {
+		liveEntityMetadata: getLiveEntityMetadataFromMessage(message),
+		liveEntityId: entityId,
+	});
+	return {
+		entityId,
+		role,
+		isOwner: role === "OWNER",
+		isAdmin: isAdminRank(role),
+		canManageRoles: isAdminRank(role),
+	};
+}
+
+type AccessContext = {
+	runtime: IAgentRuntime & { agentId: string };
+	message: Memory & { entityId: string };
+};
+
+function getAccessContext(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+): AccessContext | null {
+	if (
+		!runtime ||
+		typeof runtime.agentId !== "string" ||
+		runtime.agentId.length === 0 ||
+		!message ||
+		typeof message.entityId !== "string" ||
+		message.entityId.length === 0
+	) {
+		return null;
+	}
+
+	return { runtime, message };
+}
+
+export function isAgentSelf(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+): boolean {
+	const context = getAccessContext(runtime, message);
+	if (!context) {
+		return false;
+	}
+	return context.message.entityId === context.runtime.agentId;
+}
+
+/**
+ * Injectable role-resolution seam for {@link hasRoleAccess}.
+ * Lets callers (e.g. plugin-manager/security.ts wrappers, and tests) substitute
+ * the sender-role check / canonical-owner resolution without monkey-patching the
+ * module.
+ */
+export type RoleAccessDeps = {
+	checkSenderRole?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+	) => Promise<RoleCheckResult | null>;
+	resolveCanonicalOwnerIdForMessage?: (
+		runtime: IAgentRuntime,
+		message: Memory,
+	) => Promise<string | null | undefined>;
+};
+
+async function isCanonicalOwner(
+	runtime: IAgentRuntime,
+	message: Memory,
+	resolveFn: NonNullable<
+		RoleAccessDeps["resolveCanonicalOwnerIdForMessage"]
+	> = resolveCanonicalOwnerIdForMessage,
+): Promise<boolean> {
+	try {
+		const ownerId = await resolveFn(runtime, message);
+		return typeof ownerId === "string" && ownerId === message.entityId;
+	} catch (error) {
+		// error-policy:J1 authorization fails closed while reporting the owner
+		// resolution failure to the agent and operators.
+		runtime.reportError("RoleAccess.resolveCanonicalOwner", error, {
+			entityId: message.entityId,
+			roomId: message.roomId,
+		});
+		return false;
+	}
+}
+
+/**
+ * Check whether the sender has at least the given role in the elizaOS
+ * role hierarchy (OWNER > ADMIN > USER > GUEST).
+ *
+ * A caller must supply the runtime and an explicit sender, including trusted
+ * local administration. Missing context never confers a role. When a real
+ * sender's world role cannot be resolved, use the same source-aware floor as
+ * Stage 1 context filtering.
+ */
+export async function hasRoleAccess(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+	requiredRole: RoleName,
+	deps: RoleAccessDeps = {},
+): Promise<boolean> {
+	const context = getAccessContext(runtime, message);
+	if (!context) return false;
+	if (requiredRole === "GUEST") return true;
+
+	if (isAgentSelf(context.runtime, context.message)) {
+		return true;
+	}
+
+	if (
+		await isCanonicalOwner(
+			context.runtime,
+			context.message,
+			deps.resolveCanonicalOwnerIdForMessage,
+		)
+	) {
+		return true;
+	}
+
+	const checkRoleFn = deps.checkSenderRole ?? checkSenderRole;
+	try {
+		const result = await checkRoleFn(context.runtime, context.message);
+		if (!result) {
+			const senderRank =
+				ROLE_RANK[getUnresolvedSenderRoleFloor(context.message)];
+			const requiredRank = ROLE_RANK[requiredRole] ?? 0;
+			return senderRank >= requiredRank;
+		}
+
+		const senderRank = ROLE_RANK[result.role] ?? 0;
+		const requiredRank = ROLE_RANK[requiredRole] ?? 0;
+		return senderRank >= requiredRank;
+	} catch (error) {
+		// error-policy:J1 authorization fails closed while reporting the role
+		// resolution failure to the agent and operators.
+		context.runtime.reportError("RoleAccess.checkSenderRole", error, {
+			entityId: context.message.entityId,
+			roomId: context.message.roomId,
+			requiredRole,
+		});
+		return false;
+	}
+}
+
+/**
+ * Records the owner role and its source on world metadata. Mutates metadata
+ * and returns whether anything changed, allowing callers to persist only changes.
+ */
+export function recordOwnerGrant(
+	metadata: RolesWorldMetadata,
+	ownerId: string,
+): boolean {
+	metadata.roles ??= {};
+	metadata.roleSources ??= {};
+	let changed = false;
+	if (metadata.roles[ownerId] !== "OWNER") {
+		metadata.roles[ownerId] = "OWNER";
+		changed = true;
+	}
+	if (metadata.roleSources[ownerId] !== "owner") {
+		metadata.roleSources[ownerId] = "owner";
+		changed = true;
+	}
+	return changed;
+}
+
+/**
+ * Record an explicit, auditable role grant on a world's metadata: pairs
+ * `roles[entityId] = role` with `roleSources[entityId] = source` (GUEST clears the
+ * source, matching {@link setEntityRole}). Use when you hold the metadata but not
+ * a Memory — {@link setEntityRole} needs a message and {@link recordOwnerGrant}
+ * only records the canonical OWNER. Pure + idempotent: mutates `metadata` in place
+ * and returns `true` iff it changed something.
+ */
+export function recordRoleGrant(
+	metadata: RolesWorldMetadata,
+	entityId: string,
+	role: RoleName,
+	source: RoleGrantSource = "manual",
+): boolean {
+	metadata.roles ??= {};
+	metadata.roleSources ??= {};
+	let changed = false;
+	if (metadata.roles[entityId] !== role) {
+		metadata.roles[entityId] = role;
+		changed = true;
+	}
+	if (role === "GUEST") {
+		if (metadata.roleSources[entityId] !== undefined) {
+			delete metadata.roleSources[entityId];
+			changed = true;
+		}
+	} else if (metadata.roleSources[entityId] !== source) {
+		metadata.roleSources[entityId] = source;
+		changed = true;
+	}
+	return changed;
+}
+
+export async function setEntityRole(
+	runtime: IAgentRuntime,
+	message: Memory,
+	targetEntityId: string,
+	newRole: RoleName,
+	source: RoleGrantSource = "manual",
+): Promise<Record<string, RoleName>> {
+	const resolved = await resolveWorldForMessage(runtime, message);
+	if (!resolved) throw new Error("Cannot resolve world for role assignment");
+	const { world, metadata } = resolved;
+	if (!metadata.roles) metadata.roles = {};
+	metadata.roleSources ??= {};
+	metadata.roles[targetEntityId] = newRole;
+	if (newRole === "GUEST") {
+		delete metadata.roleSources[targetEntityId];
+	} else {
+		metadata.roleSources[targetEntityId] = source;
+	}
+	(world as { metadata: RolesWorldMetadata }).metadata = metadata;
+	await runtime.updateWorld(
+		world as Parameters<IAgentRuntime["updateWorld"]>[0],
+	);
+	return { ...metadata.roles };
+}
+
+/**
+ * Typed outcome of one atomic role-write attempt. `conflict` means a
+ * concurrent metadata write landed between the caller's authorized read and
+ * the compare-and-swap; the caller must re-resolve and re-authorize before
+ * retrying — never retry with the original snapshot.
+ */
+export type EntityRoleCasResult =
+	| {
+			status: "committed";
+			roles: Record<string, RoleName>;
+	  }
+	| { status: "conflict" }
+	| { status: "world_not_found" }
+	| { status: "unauthorized" };
+
+/** Bounded retries before a persistently contended role write gives up. */
+export const ROLE_WRITE_CAS_MAX_ATTEMPTS = 3;
+
+function requireWorldMetadataCasCapability(
+	adapter: IAgentRuntime["adapter"],
+): asserts adapter is IAgentRuntime["adapter"] & {
+	compareAndSwapWorldMetadata: (
+		params: WorldMetadataCompareAndSwapParams,
+	) => Promise<WorldMetadataMutationResult>;
+} {
+	if (
+		typeof (
+			adapter as Partial<IDatabaseAdapter> & {
+				compareAndSwapWorldMetadata?: unknown;
+			}
+		).compareAndSwapWorldMetadata === "function"
+	) {
+		return;
+	}
+	// Fail closed: authorization writes never fall back to the blind
+	// whole-world overwrite, which can resurrect revoked authority.
+	throw new ElizaError(
+		"Database adapter must implement compareAndSwapWorldMetadata for atomic role writes",
+		{
+			code: "WORLD_METADATA_CAS_CAPABILITY_REQUIRED",
+			context: {
+				adapter: adapter?.constructor?.name ?? "unknown",
+				migrationGuide:
+					"Implement IDatabaseAdapter.compareAndSwapWorldMetadata on every adapter that persists worlds; role writes fail closed until then.",
+			},
+			severity: "fatal",
+		},
+	);
+}
+
+/**
+ * Atomically set one entity's world role under compare-and-swap.
+ *
+ * Unlike {@link setEntityRole} (a blind read-merge-write of whole-world
+ * metadata), this resolves the world fresh on EVERY attempt, re-invokes the
+ * caller's `authorize` predicate against that fresh state, applies the grant
+ * via {@link recordRoleGrant}, and commits through
+ * `adapter.compareAndSwapWorldMetadata`, which compares the exact prior
+ * metadata snapshot in the same transaction that writes the replacement and
+ * inserts the durable `role_audit` log row. A concurrent writer therefore
+ * turns into a typed `conflict` the caller can retry after re-authorizing,
+ * instead of being silently overwritten (the revoked-ADMIN resurrection
+ * hazard named in and the review).
+ *
+ * The `authorize` predicate is re-evaluated on every attempt against the
+ * freshly resolved world — never trust an authorization verdict computed
+ * against an earlier snapshot. The audit row uses the originating
+ * `message.roomId` — a real room the request came from — and is committed in
+ * the same adapter transaction as the metadata replacement, so a committed
+ * authority change is never separable from its audit record.
+ */
+export async function setEntityRoleCas(
+	runtime: IAgentRuntime,
+	message: Memory,
+	targetEntityId: string,
+	newRole: RoleName,
+	options: {
+		source?: RoleGrantSource;
+		/**
+		 * Resolve this explicit world instead of the message room's world.
+		 * The trust ROLE handler resolves the configured `WORLD_ID` setting,
+		 * which may differ from the room the message arrived in — its CAS
+		 * must write that world, not the room's.
+		 */
+		worldId?: UUID;
+		/** Max CAS attempts before reporting conflict exhaustion. */
+		maxAttempts?: number;
+		/**
+		 * Per-attempt authorization against the FRESH world state. Re-checked
+		 * before every CAS write, so a concurrent revocation of the requester
+		 * cannot be outrun by a retry. Deny surfaces as
+		 * {@link EntityRoleCasOutcome} `unauthorized` — never a write.
+		 */
+		authorize?: (
+			fresh: Awaited<ReturnType<typeof resolveWorldForMessage>>,
+		) => boolean | Promise<boolean>;
+		/** Additional authority metadata committed in the same audited CAS. */
+		mutateMetadata?: (replacement: RolesWorldMetadata) => void;
+	} = {},
+): Promise<EntityRoleCasResult> {
+	const source = options.source ?? "manual";
+	const maxAttempts = options.maxAttempts ?? ROLE_WRITE_CAS_MAX_ATTEMPTS;
+	if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
+		// Fail closed: a zero/negative/fractional bound would turn the
+		// documented bounded-retry contract into "never attempt" or an
+		// unbounded loop.
+		throw new ElizaError("Role write CAS maxAttempts must be an integer >= 1", {
+			code: "INVALID_ROLE_CAS_MAX_ATTEMPTS",
+			context: { maxAttempts },
+		});
+	}
+	requireWorldMetadataCasCapability(runtime.adapter);
+	// Fail closed on malformed target ids BEFORE any attempt: an audit row
+	// must never carry a null targetEntityId silently smuggled through the
+	// `as UUID` casts on caller-supplied action params.
+	const targetUuid = validateUuid(targetEntityId);
+	if (!targetUuid) {
+		throw new ElizaError("Role write target is not a valid entity UUID", {
+			code: "INVALID_ROLE_TARGET_ENTITY_ID",
+			context: { targetEntityId },
+		});
+	}
+
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		// Re-resolve per attempt: every retry re-reads the world and re-runs
+		// the caller's authorization against CURRENT state, never the
+		// original possibly-stale read.
+		const resolved = options.worldId
+			? await resolveWorldById(runtime, options.worldId)
+			: await resolveWorldForMessage(runtime, message);
+		if (!resolved?.world) return { status: "world_not_found" };
+		const { world } = resolved;
+		// Authorization and compare-and-swap use the same detached metadata snapshot; live adapter
+		// objects may mutate during awaits.
+		const resolvedWorld = structuredClone(world);
+		const expectedSnapshot = (resolvedWorld.metadata ??
+			{}) as RolesWorldMetadata;
+		const authorizeView: typeof resolved = {
+			world: resolvedWorld,
+			metadata: expectedSnapshot,
+		};
+
+		if (options.authorize && !(await options.authorize(authorizeView))) {
+			return { status: "unauthorized" };
+		}
+
+		const previousRole = normalizeRole(
+			expectedSnapshot.roles?.[targetEntityId],
+		);
+		const replacement: RolesWorldMetadata = structuredClone(expectedSnapshot);
+		recordRoleGrant(replacement, targetEntityId, newRole, source);
+		options.mutateMetadata?.(replacement);
+		// The requested state is already committed. Writing it again would only
+		// append an audit row and bump the world revision — live 2026-09-06: 6,184
+		// no-op connector-admin re-grants grew one world's metadata to 1.5 MB and
+		// its revision to 7,050, racing every first request after boot.
+		if (worldMetadataValueEquals(expectedSnapshot, replacement)) {
+			return { status: "committed", roles: { ...(replacement.roles ?? {}) } };
+		}
+
+		const result = await runtime.adapter.compareAndSwapWorldMetadata({
+			worldId: world.id,
+			expectedMetadata: expectedSnapshot as unknown as Metadata,
+			replacementMetadata: replacement as unknown as Metadata,
+			audit: {
+				actorEntityId: message.entityId,
+				targetEntityId: targetUuid,
+				previousRole,
+				newRole,
+				source,
+				roomId: message.roomId,
+			},
+		});
+		if (result.status === "updated") {
+			return { status: "committed", roles: { ...replacement.roles } };
+		}
+		if (result.status === "not_found") return { status: "world_not_found" };
+		// conflict: loop to re-read, re-authorize, and re-apply
+	}
+	// Persistently contended: surface conflict exhaustion to the caller; the
+	// batch caller reports it as an explicit skipped failure, never a silent
+	// success or overwrite.
+	return { status: "conflict" };
+}
+
+export type SecurityDeps = RoleAccessDeps;
+
+export function hasOwnerAccess(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+	deps: SecurityDeps = {},
+): Promise<boolean> {
+	return hasRoleAccess(runtime, message, "OWNER", deps);
+}
+
+export function hasAdminAccess(
+	runtime: IAgentRuntime | undefined,
+	message: Memory | undefined,
+	deps: SecurityDeps = {},
+): Promise<boolean> {
+	return hasRoleAccess(runtime, message, "ADMIN", deps);
+}

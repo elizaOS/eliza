@@ -1,0 +1,8 @@
+{
+  "revision": "4aeb64ba80e179af87b4b7b16d067c88ef95a526",
+  "source": "https://chromium.googlesource.com/chromium/src",
+  "sha256": {
+    "components/android_autofill/browser/java/src/org/chromium/components/autofill/FormData.java": "d40a9ea65b45550d36e298e751df7a56d968637f2861fbb9bfccdf177fd7aca9",
+    "components/android_autofill/browser/form_data_android_bridge_impl.cc": "abf731611d77fee4a7191913814498d66da0b885ab787531e812c53d08a29d55"
+  }
+}

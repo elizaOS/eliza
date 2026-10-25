@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 1,
+  "manifestUrl": "https://android.googlesource.com/platform/manifest",
+  "manifestRevision": "android-17.0.0_r1",
+  "manifestTagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+  "manifestCommit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f",
+  "resolvedManifest": {
+    "path": "android/pixel11pro-resolved-manifest.json",
+    "sha256": "01bac1fa7a01e0555e759b41b4ce5160376b630cf7ea5933db9c81e73c5bc9ca"
+  },
+  "device": {
+    "targetId": "pixel11pro-grizzly",
+    "codename": "grizzly",
+    "marketingName": "Pixel 11 Pro",
+    "buildId": "CD1A.260905.001.B1",
+    "releaseConfig": "cp2a",
+    "vendorApiLevel": "202604",
+    "productBrand": "elizaOS",
+    "productName": "eliza_grizzly_phone",
+    "expectedFingerprintPrefix": "elizaOS/eliza_grizzly_phone/grizzly:"
+  },
+  "avbVerification": [
+    {
+      "image": "vbmeta.img",
+      "keyPath": "external/avb/test/data/testkey_rsa4096.pem",
+      "keySha256": "6a224754880a57ab9cbd308267cd157d94cf05a1c8cb851aec4090e045d24121",
+      "authorization": "public-aosp-userdebug-test-key"
+    }
+  ],
+  "externalProjects": [
+    {
+      "path": "vendor/adevtool",
+      "url": "https://github.com/GrapheneOS/adevtool.git",
+      "ref": "refs/heads/17",
+      "commit": "144f004cc484d7e7234cdd167cee48e5f240288f",
+      "sparsePaths": [
+        "assets",
+        "bin",
+        "carrier-settings",
+        "config",
+        "gservices-flags",
+        "scripts",
+        "src",
+        "vendor-specs/google_devices/grizzly.yml",
+        "package.json",
+        "yarn.lock",
+        "tsconfig.json",
+        ".eslintrc"
+      ]
+    },
+    {
+      "path": "vendor/state",
+      "url": "https://github.com/GrapheneOS/vendor_state.git",
+      "ref": "refs/heads/17",
+      "commit": "afd6a0c9f6ca13d395f00e98227a0866cc14de07",
+      "sparsePaths": ["grizzly.json"]
+    },
+    {
+      "path": "tools/arsclib",
+      "url": "https://github.com/GrapheneOS/platform_tools_arsclib.git",
+      "ref": "refs/heads/17",
+      "commit": "a67388430c8319f4c7066626e340b5c4d7f27882"
+    }
+  ],
+  "sourceOverlays": [
+    {
+      "path": "frameworks/base/tools/aapt2/Android.bp",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/Android.bp",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "95bc042ba4e10e2a0ad803c1ab96374e5c085c2e4ba318316c06b751e52c2e3b",
+      "sha256": "ecf7e90381479335fdfb9a96a1616fbbe5b66972b1f7c1beaa9fcdaa3b223a39"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/BriefPackageInfo.proto",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/BriefPackageInfo.proto",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": null,
+      "sha256": "a7695326ebfc0799888e2b785a1e31518ea1bb85cc89591e66c83879cc3880e7"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/Configuration.proto",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/Configuration.proto",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "a51fca4be60094c8e895f6b49188d07af64ae4fc4c65134a07e5edd6830a067b",
+      "sha256": "9161de5a4711e574e8e38457938ab3b10ba5445874106a0bf1b22dcd739f51ed"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/cmd/Dump.cpp",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/cmd/Dump.cpp",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "67965516d553bc2966fee3692e7e9212f33cfcebff79ae073efd605fb8e01fc7",
+      "sha256": "1a0414d6af278aaf138d98c53d7fee10a185a480241d037e5748eb0465055518"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/cmd/Convert.cpp",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/cmd/Convert.cpp",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "11a19bcd5ae30dc3e459d893b400f9ae34c868bbcdfb7212549e60ec285b22cf",
+      "sha256": "df70b3a1420e5d0e4e8407714cee5cbee14f91c7f6dc6f41f5b08910a88858ad"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/cmd/Convert.h",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/cmd/Convert.h",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "d782589b86a08cfd19bd5ca1e4cb5da50fa2bbfa56e52cb2a9d67e3d4c9c35ef",
+      "sha256": "e0abe22f1ba50702c963a395b961fcc5db16674b0022ca37419cda305b97cfeb"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/cmd/Dump.h",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/cmd/Dump.h",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "5dd42182c4972e58a2b4bb647bb650f777625dbeed516d5c266ec8a24d98a344",
+      "sha256": "8271bc53c7421846582a76ea3c5c84b7e7f1d69b6bfc7dfd58b8a7a3f14ba971"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/format/proto/ProtoSerialize.h",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/format/proto/ProtoSerialize.h",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "7bc19c0fcc8dc50ca95b6a2fbeb18f5fe2f5f7e00e06ac04b7f11af1ba31f73c",
+      "sha256": "67b1441fc748881c6fc059a22e1a6ffacb1858d6a4cf64432f494e2d6c971b97"
+    },
+    {
+      "path": "frameworks/base/tools/aapt2/format/proto/ProtoSerialize.cpp",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_frameworks_base/b2be3bb5f88bc5833dd4f9a11b3c295259ae733f/tools/aapt2/format/proto/ProtoSerialize.cpp",
+      "sourceCommit": "b2be3bb5f88bc5833dd4f9a11b3c295259ae733f",
+      "baseSha256": "7c00e64e926d0f745ec8c101a6afcf571a3a8d6d59fd4d9979d8cdedfeedca79",
+      "sha256": "b348a29437cbe7974c7fd10dc22227c903d3866c9f4184ce5c6a87f5692cdf46"
+    },
+    {
+      "path": "tools/apksig/Android.bp",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_tools_apksig/ba4d984e1a360d427307d669d2f789212130e9e8/Android.bp",
+      "sourceCommit": "ba4d984e1a360d427307d669d2f789212130e9e8",
+      "baseSha256": "22f86ab11f2470d9e34861f7273dd92c0ba4e9b914710a71c22dc374ebbac2fb",
+      "sha256": "bd0d99efcab646fb4a39cab3da0b1c15c251169161010a9e8aac1b2d6f59b0c4"
+    },
+    {
+      "path": "tools/apksig/src/apksigner/java/com/android/apksigner/ApkSignerTool.java",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_tools_apksig/ba4d984e1a360d427307d669d2f789212130e9e8/src/apksigner/java/com/android/apksigner/ApkSignerTool.java",
+      "sourceCommit": "ba4d984e1a360d427307d669d2f789212130e9e8",
+      "baseSha256": "52e5771bc9768b38d3988c50ee34cde1e404fe692113ec5f0629af157968d68d",
+      "sha256": "8604499845681d82c69e25ed516127c8bb03ce2a7525e1cb5b1293bdf5aea7c7"
+    },
+    {
+      "path": "tools/apksig/src/main/java/com/android/apksig/internal/apk/Flags.java",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_tools_apksig/ba4d984e1a360d427307d669d2f789212130e9e8/src/main/java/com/android/apksig/internal/apk/Flags.java",
+      "sourceCommit": "ba4d984e1a360d427307d669d2f789212130e9e8",
+      "baseSha256": null,
+      "sha256": "b043cd0fb7a5d90d3561810583ed83796b17766795b88594cc545537d079ed62"
+    },
+    {
+      "path": "tools/apksig/src/main/java/com/android/apksig/internal/apk/v2/V2SchemeVerifier.java",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_tools_apksig/ba4d984e1a360d427307d669d2f789212130e9e8/src/main/java/com/android/apksig/internal/apk/v2/V2SchemeVerifier.java",
+      "sourceCommit": "ba4d984e1a360d427307d669d2f789212130e9e8",
+      "baseSha256": "c33606383a44f77189144acbefc777f53b42d48901f5c3cfae36b9ff91bc5799",
+      "sha256": "47db6b28f3de18b0dd9040cf4ab79f6e3c5c0e2843ca72072ecf3401073be590"
+    },
+    {
+      "path": "tools/apksig/src/main/java/com/android/apksig/internal/apk/v3/V3SchemeVerifier.java",
+      "url": "https://raw.githubusercontent.com/GrapheneOS/platform_tools_apksig/ba4d984e1a360d427307d669d2f789212130e9e8/src/main/java/com/android/apksig/internal/apk/v3/V3SchemeVerifier.java",
+      "sourceCommit": "ba4d984e1a360d427307d669d2f789212130e9e8",
+      "baseSha256": "ebbbe67189e0083c1403e766e0fc7d74682464e4c6e25859ff40d520d9c96173",
+      "sha256": "e3ce759333761b382379bbbda8a5df45e768372bd7661ab2fd3f7232dc2f71eb"
+    }
+  ],
+  "requiredSourceFiles": [
+    "vendor/adevtool/config/device/grizzly.yml",
+    "vendor/adevtool/config/device/common/gen11pixel.yml",
+    "vendor/adevtool/config/mk/google_devices/device/grizzly/BoardConfig-base.mk",
+    "vendor/adevtool/config/mk/google_devices/device/grizzly/device.mk",
+    "vendor/adevtool/vendor-specs/google_devices/grizzly.yml",
+    "vendor/state/grizzly.json"
+  ],
+  "referenceFactoryImage": {
+    "filename": "grizzly-cd1a.260905.001.b1-factory-4ce23ec8.zip",
+    "url": "https://dl.google.com/dl/android/aosp/grizzly-cd1a.260905.001.b1-factory-4ce23ec8.zip",
+    "sizeBytes": 15362345907,
+    "sha256": "4ce23ec89002abdff0d9b7f3fb32d9efe5741355f4280ee573217dcf426211d3",
+    "buildId": "CD1A.260905.001.B1"
+  },
+  "rollbackFactoryImage": {
+    "filename": "grizzly-cd1a.260905.001.b1-factory-4ce23ec8.zip",
+    "url": "https://dl.google.com/dl/android/aosp/grizzly-cd1a.260905.001.b1-factory-4ce23ec8.zip",
+    "sizeBytes": 15362345907,
+    "sha256": "4ce23ec89002abdff0d9b7f3fb32d9efe5741355f4280ee573217dcf426211d3",
+    "buildId": "CD1A.260905.001.B1"
+  },
+  "generatedVendor": {
+    "command": ["adevtool", "generate-all", "-d", "grizzly", "--buildId", "CD1A.260905.001.B1", "--doNotReplaceCarrierSettings"],
+    "referenceSpec": {
+      "path": "android/vendor-specs/grizzly-cd1a.260905.001.b1.yml",
+      "sizeBytes": 485417,
+      "sha256": "2e076fe81c2925c04c553c0936a0a67c3d1982007fd8083b21272f2075f6527f",
+      "baseSha256": "7b63ad0a109d50d83fc4c313fbbfd839a94a9bac31dfa7bdff9fe565b5b0de93"
+    },
+    "requiredFiles": [
+      "vendor/google_devices/grizzly/Android.mk",
+      "vendor/google_devices/grizzly/AndroidProducts.mk",
+      "vendor/google_devices/grizzly/BoardConfig.mk",
+      "vendor/google_devices/grizzly/grizzly.mk",
+      "vendor/google_devices/grizzly/firmware/android-info.txt",
+      "vendor/google_devices/grizzly/proprietary/Android.bp",
+      "vendor/google_devices/grizzly/stock-kernel/Image.lz4",
+      "vendor/google_devices/grizzly/stock-kernel/dtbo.img",
+      "vendor/google_devices/grizzly/stock-kernel/init.insmod.grizzly.cfg",
+      "vendor/google_devices/grizzly/stock-kernel/init.insmod.spacecraft.cfg",
+      "vendor/google_devices/grizzly/stock-kernel/modules.load",
+      "vendor/google_devices/grizzly/stock-kernel/system_dlkm.modules.blocklist",
+      "vendor/google_devices/grizzly/stock-kernel/system_dlkm.modules.load",
+      "vendor/google_devices/grizzly/stock-kernel/vendor_dlkm.modules.blocklist",
+      "vendor/google_devices/grizzly/stock-kernel/vendor_dlkm.modules.load",
+      "vendor/google_devices/grizzly/stock-kernel/vendor_kernel_boot.modules.load"
+    ],
+    "requiredTextFiles": [
+      {
+        "path": "vendor/google_devices/grizzly/BoardConfig.mk",
+        "includes": [
+          "BOARD_SUPER_PARTITION_SIZE := 10737418240",
+          "BOARD_SUPER_PARTITION_ERROR_LIMIT := 10213130240",
+          "BOARD_SUPER_PARTITION_GROUPS := google_dynamic_partitions",
+          "BOARD_GOOGLE_DYNAMIC_PARTITIONS_SIZE := 10733223936",
+          "BOARD_GOOGLE_DYNAMIC_PARTITIONS_PARTITION_LIST := system system_dlkm system_ext product vendor vendor_dlkm"
+        ]
+      },
+      {
+        "path": "vendor/google_devices/grizzly/firmware/android-info.txt",
+        "includes": [
+          "require board=grizzly",
+          "require version-bootloader=spacecraft-17.4-16238327",
+          "require version-baseband=a900a-MP_260716-260716-M-15880348",
+          "require partition-exists=vendor_kernel_boot"
+        ]
+      },
+      {
+        "path": "vendor/google_devices/grizzly/grizzly.mk",
+        "includes": [
+          "ifneq ($(BUILD_ID),CD1A.260905.001.B1)",
+          "TARGET_KERNEL_DIR := vendor/google_devices/grizzly/stock-kernel"
+        ]
+      }
+    ],
+    "requiredArtifacts": [
+      {
+        "path": "vendor/google_devices/grizzly/BoardConfig.mk",
+        "sizeBytes": 3622,
+        "sha256": "533bf35c78f073958e82b3138eec378ae7f6f5c25545aa23de1173aa03d1545e"
+      },
+      {
+        "path": "vendor/google_devices/grizzly/stock-kernel/Image.lz4",
+        "sizeBytes": 20230712,
+        "sha256": "b456e2b874e4cc2a2fd208d4c7e4bd2fd52dc29c6727fb81052d16bc8da86ae3"
+      },
+      {
+        "path": "vendor/google_devices/grizzly/stock-kernel/dtbo.img",
+        "sizeBytes": 11415225,
+        "sha256": "684473615efc85ffd63e377fe5428a88ce9a3e96ae6e33b26da93bd8ecb516c4"
+      }
+    ]
+  }
+}

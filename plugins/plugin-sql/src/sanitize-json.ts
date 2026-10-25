@@ -1,0 +1,514 @@
+/**
+ * Shared jsonb sanitizer for SQL writes. Strips NULs and replaces lone UTF-16
+ * surrogates (PostgreSQL rejects JSON.stringify's `\u0000` and `\ud83d`
+ * escapes), breaks cycles, and fails closed on hostile nesting and metadata
+ * size before the jsonb bind. Serialization for memory content preserves
+ * complete source text only at declared text paths; unsupported NUL characters
+ * and lone surrogates are rejected there rather than silently rewritten.
+ *
+ * `utils.ts` re-exports this so the
+ * three platform builds cannot drift.
+ */
+import { ElizaError } from "@elizaos/core";
+
+/** Nesting ceiling. Honest log/memory bodies are a handful of objects deep. */
+export const MAX_SQL_JSON_SANITIZE_DEPTH = 64;
+/** Logical values copied into one jsonb bind before the write fails closed. */
+export const MAX_SQL_JSON_SANITIZE_NODES = 10_000;
+/** Maximum serialized UTF-8 bytes outside explicitly admitted source text. */
+export const MAX_SQL_JSON_SANITIZE_BYTES = 1_048_576;
+/** Maximum escaped UTF-8 bytes contributed by one generic metadata string. */
+export const MAX_SQL_JSON_SANITIZE_STRING_BYTES = MAX_SQL_JSON_SANITIZE_BYTES;
+/** Document content budget matches the supported 32 MiB upload envelope. */
+const MAX_DOCUMENT_JSON_BYTES = 32 * 1_048_576;
+/** Maximum escaped UTF-8 bytes contributed by one property key. */
+export const MAX_SQL_JSON_SANITIZE_KEY_BYTES = 65_536;
+/** Maximum decimal digits projected from one BigInt value. */
+export const MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS = 4_096;
+export const SQL_JSON_SANITIZE_UNBOUNDED = "SQL_JSON_SANITIZE_UNBOUNDED";
+
+const BIGINT_DECIMAL_LIMIT = 10n ** BigInt(MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS);
+const NUL = String.fromCharCode(0);
+
+function failUnbounded(context: Record<string, unknown>, cause?: unknown): never {
+  throw new ElizaError("sql json sanitize exceeded its safe structural budget", {
+    code: SQL_JSON_SANITIZE_UNBOUNDED,
+    context,
+    cause,
+    severity: "fatal",
+  });
+}
+
+interface SanitizeContext {
+  seen: WeakSet<object>;
+  visits: number;
+  bytes: number;
+  rejectNul?: boolean;
+  maxBytes?: number;
+  documentText?: boolean;
+}
+
+// These states follow container edges, not arbitrary property names or depths.
+type SourceTextPath = "memory-content" | "attachments" | "attachment" | "source-text";
+
+/**
+ * Strict writes reject text jsonb cannot store with a typed error instead of
+ * PostgreSQL's raw "unsupported Unicode escape sequence" / "invalid input
+ * syntax for type json". A lone surrogate is half of a UTF-16 pair, typically
+ * a truncated emoji, and has no UTF-8 encoding.
+ */
+function rejectUnsupportedJsonText(value: string, context: SanitizeContext): void {
+  if (!context.rejectNul) return;
+  if (value.includes(NUL)) throwUnsupportedJsonNul();
+  if (!value.isWellFormed()) throwUnsupportedJsonSurrogate();
+}
+
+/** Lenient writes drop NUL and replace lone surrogates with U+FFFD. */
+function normalizeUnsupportedJsonText(value: string): string {
+  const withoutNul = value.includes(NUL) ? value.replaceAll(NUL, "") : value;
+  return withoutNul.isWellFormed() ? withoutNul : withoutNul.toWellFormed();
+}
+
+function throwUnsupportedJsonNul(): never {
+  throw new ElizaError(
+    "JSON contains NUL, which PostgreSQL jsonb cannot preserve; remove it explicitly before retrying the unchanged write",
+    { code: "SQL_JSON_UNSUPPORTED_NUL", severity: "fatal" }
+  );
+}
+
+function throwUnsupportedJsonSurrogate(): never {
+  throw new ElizaError(
+    "JSON contains a lone UTF-16 surrogate, which PostgreSQL jsonb cannot store; repair the text before retrying the write",
+    { code: "SQL_JSON_UNSUPPORTED_SURROGATE", severity: "fatal" }
+  );
+}
+
+const UNSUPPORTED_JSON_TEXT_CODES = new Set([
+  "SQL_JSON_UNSUPPORTED_NUL",
+  "SQL_JSON_UNSUPPORTED_SURROGATE",
+]);
+
+/**
+ * True for the typed jsonb text rejections produced by the strict sanitizer
+ * and {@link assertJsonbStorable}. Storage-fault wrappers (the `DB_*` J2
+ * rethrows) rethrow these unchanged: an inadmissible caller payload is input
+ * validation, not a storage fault, so its actionable code must survive.
+ */
+export function isUnsupportedJsonTextError(error: unknown): boolean {
+  return error instanceof ElizaError && UNSUPPORTED_JSON_TEXT_CODES.has(error.code);
+}
+
+/**
+ * Text-only admissibility check for entity-graph writes that intentionally
+ * keep drizzle's default object serialization (agent settings, entity/room/
+ * world/task/relationship metadata, component data, cache values): it scans
+ * the exact `JSON.stringify` output the bind will carry and rejects NUL and
+ * lone UTF-16 surrogates with the same typed errors as the strict sanitizer —
+ * before the bind, so the failure is typed and the caller's content stays out
+ * of the drizzle "Failed query" diagnostic. No structural byte, node, or
+ * depth budget is applied: those writes have never had one, and silently
+ * adding one would be a capability change, not a repair.
+ */
+export function assertJsonbStorable(value: unknown): void {
+  if (value === undefined || typeof value === "function" || typeof value === "symbol") return;
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) return;
+  // In JSON.stringify output every backslash opens a real escape sequence
+  // (literal backslashes are doubled), so scanning escapes is exact: NUL can
+  // only appear as the `\u0000` escape, and a lone surrogate only as a
+  // `\ud800`–`\udfff` escape; paired surrogates serialize as raw astral text.
+  for (let index = 0; index < serialized.length; index += 1) {
+    if (serialized.charCodeAt(index) !== 0x5c) continue;
+    const marker = serialized.charCodeAt(index + 1);
+    if (marker !== 0x75) {
+      // Two-character escape such as `\"` or `\n`: skip it whole.
+      index += 1;
+      continue;
+    }
+    const hex = serialized.slice(index + 2, index + 6);
+    if (hex === "0000") throwUnsupportedJsonNul();
+    const codeUnit = Number.parseInt(hex, 16);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdfff) throwUnsupportedJsonSurrogate();
+    index += 5;
+  }
+}
+
+function chargeBytes(context: SanitizeContext, bytes: number, reason: string): void {
+  if (!Number.isSafeInteger(bytes) || bytes < 0) {
+    failUnbounded({ reason, bytes: "invalid" });
+  }
+  context.bytes += bytes;
+  const maxBytes = context.maxBytes ?? MAX_SQL_JSON_SANITIZE_BYTES;
+  if (context.bytes > maxBytes) {
+    failUnbounded({
+      reason: "serialized-bytes",
+      bytes: context.bytes,
+      max: maxBytes,
+      source: reason,
+    });
+  }
+}
+
+/**
+ * Count the exact UTF-8 bytes JSON.stringify emits inside a quoted string.
+ * This scans without allocating an encoded copy and stops at the scalar bound.
+ */
+function measureJsonStringBytes(value: string, max: number, reason: string): number {
+  if (value.length > max) {
+    failUnbounded({ reason, codeUnits: value.length, max });
+  }
+
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit === 0) continue;
+
+    if (codeUnit === 0x22 || codeUnit === 0x5c) {
+      bytes += 2;
+    } else if (codeUnit <= 0x1f) {
+      bytes +=
+        codeUnit === 0x08 ||
+        codeUnit === 0x09 ||
+        codeUnit === 0x0a ||
+        codeUnit === 0x0c ||
+        codeUnit === 0x0d
+          ? 2
+          : 6;
+    } else if (codeUnit <= 0x7f) {
+      bytes += 1;
+    } else if (codeUnit <= 0x7ff) {
+      bytes += 2;
+    } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        // Well-formed JSON.stringify escapes a lone surrogate as `\ud800`.
+        bytes += 6;
+      }
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      bytes += 6;
+    } else {
+      bytes += 3;
+    }
+
+    if (bytes > max) {
+      failUnbounded({ reason, bytes, max });
+    }
+  }
+  return bytes + 2;
+}
+
+function reflectOrFail<T>(operation: () => T, reason: string): T {
+  try {
+    return operation();
+  } catch (cause) {
+    // error-policy:J2 reflection failures are wrapped at the exact operation;
+    // never inspect an attacker-thrown value with instanceof or property Gets.
+    failUnbounded({ reason }, cause);
+  }
+}
+
+/**
+ * Prepare a value for `JSON.stringify` + `$1::jsonb`. Circular references
+ * become `null`. Depth past {@link MAX_SQL_JSON_SANITIZE_DEPTH} fails closed.
+ */
+export function sanitizeJsonObject(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet<object>()
+): unknown {
+  return sanitizeJsonValue(value, { seen, visits: 0, bytes: 0 }, 0);
+}
+
+/** Serialize memory JSON without silently removing unsupported NUL characters. */
+export function serializeJsonb(
+  value: unknown,
+  options: { documentText?: boolean; memoryContent?: boolean } = {}
+): string | undefined {
+  return serializeJsonbWithBudget(value, MAX_SQL_JSON_SANITIZE_BYTES, options);
+}
+
+/** Preserve complete document content within the supported upload envelope. */
+export function serializeDocumentJsonb(value: unknown): string | undefined {
+  return serializeJsonbWithBudget(value, MAX_DOCUMENT_JSON_BYTES);
+}
+
+function serializeJsonbWithBudget(
+  value: unknown,
+  maxBytes: number,
+  options: { documentText?: boolean; memoryContent?: boolean } = {}
+): string | undefined {
+  // Decode legacy JSON for structural validation; keep its original numeric
+  // tokens so arbitrary-precision jsonb numbers never round through JS Number.
+  let decoded = value;
+  if (typeof value === "string") {
+    // Check before JSON.parse allocates a second tree. The code-unit guard
+    // bounds the UTF-8 measurement allocation as well as the decoded input.
+    if (value.length > maxBytes) {
+      failUnbounded({
+        reason: "encoded-json-bytes",
+        codeUnits: value.length,
+        max: maxBytes,
+      });
+    }
+    const bytes = new TextEncoder().encode(value).byteLength;
+    if (bytes > maxBytes) {
+      failUnbounded({ reason: "encoded-json-bytes", bytes, max: maxBytes });
+    }
+    try {
+      decoded = JSON.parse(value);
+    } catch {
+      // error-policy:J3 malformed legacy JSON is rejected without retaining
+      // parser diagnostics, which can quote credential-bearing input text.
+      throw new ElizaError("sql json input is not valid JSON", {
+        code: "SQL_JSON_INVALID",
+        severity: "fatal",
+      });
+    }
+    sanitizeJsonValue(
+      decoded,
+      {
+        seen: new WeakSet(),
+        visits: 0,
+        bytes: 0,
+        rejectNul: true,
+        maxBytes,
+        documentText: options.documentText,
+      },
+      0
+    );
+    return value;
+  }
+  return JSON.stringify(
+    sanitizeJsonValue(
+      decoded,
+      {
+        seen: new WeakSet(),
+        visits: 0,
+        bytes: 0,
+        rejectNul: true,
+        maxBytes,
+        documentText: options.documentText,
+      },
+      0,
+      options.memoryContent ? "memory-content" : undefined
+    )
+  );
+}
+
+function sanitizeJsonValue(
+  value: unknown,
+  context: SanitizeContext,
+  depth: number,
+  sourcePath?: SourceTextPath
+): unknown {
+  if (depth > MAX_SQL_JSON_SANITIZE_DEPTH) {
+    failUnbounded({ depth, max: MAX_SQL_JSON_SANITIZE_DEPTH });
+  }
+
+  context.visits += 1;
+  if (context.visits > MAX_SQL_JSON_SANITIZE_NODES) {
+    failUnbounded({
+      visits: context.visits,
+      max: MAX_SQL_JSON_SANITIZE_NODES,
+    });
+  }
+
+  if (value === null || value === undefined) {
+    chargeBytes(context, 4, value === null ? "null" : "undefined");
+    return value;
+  }
+
+  if (typeof value === "string") {
+    rejectUnsupportedJsonText(value, context);
+    // Known source scalars remain complete; visits, depth, keys, accessors and
+    // NUL validation still apply. Only their bytes bypass the metadata budget.
+    if (sourcePath === "source-text") return value;
+    // Strips NUL characters: PostgreSQL/PGlite jsonb rejects the `\u0000`
+    // escape JSON.stringify emits for them. Nothing else needs rewriting here —
+    // the value is serialized with JSON.stringify, which already escapes
+    // backslashes and control characters correctly; re-escaping them here
+    // would corrupt already-escaped strings (e.g. "C:\Users") on a
+    // write/read round-trip.
+    chargeBytes(
+      context,
+      measureJsonStringBytes(
+        value,
+        context.maxBytes ?? MAX_SQL_JSON_SANITIZE_STRING_BYTES,
+        "string-bytes"
+      ),
+      "string"
+    );
+    return normalizeUnsupportedJsonText(value);
+  }
+
+  if (typeof value === "bigint") {
+    if (value >= BIGINT_DECIMAL_LIMIT || value <= -BIGINT_DECIMAL_LIMIT) {
+      failUnbounded({
+        reason: "bigint-digits",
+        max: MAX_SQL_JSON_SANITIZE_BIGINT_DIGITS,
+      });
+    }
+    const projected = value.toString();
+    chargeBytes(
+      context,
+      measureJsonStringBytes(projected, MAX_SQL_JSON_SANITIZE_STRING_BYTES, "bigint-bytes"),
+      "bigint"
+    );
+    return projected;
+  }
+
+  if (typeof value === "number") {
+    chargeBytes(context, Number.isFinite(value) ? String(value).length : 4, "number");
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "boolean") {
+    chargeBytes(context, value ? 4 : 5, "boolean");
+    return value;
+  }
+
+  if (typeof value === "object") {
+    if (context.seen.has(value)) {
+      chargeBytes(context, 4, "cycle");
+      return null;
+    }
+    context.seen.add(value);
+
+    try {
+      let dateTimestamp: number | undefined;
+      try {
+        // Native Date brand checking is constant-work. `instanceof Date` would
+        // walk an arbitrarily deep caller-controlled prototype chain per node.
+        dateTimestamp = Date.prototype.getTime.call(value);
+      } catch {
+        // error-policy:J3 an incompatible native receiver is simply not a Date;
+        // no caller code or Proxy getPrototypeOf trap is invoked by this probe.
+        dateTimestamp = undefined;
+      }
+      if (dateTimestamp !== undefined) {
+        if (!Number.isFinite(dateTimestamp)) {
+          chargeBytes(context, 4, "invalid-date");
+          return null;
+        }
+        const iso = Date.prototype.toISOString.call(value);
+        chargeBytes(
+          context,
+          measureJsonStringBytes(iso, MAX_SQL_JSON_SANITIZE_STRING_BYTES, "date-bytes"),
+          "date"
+        );
+        return iso;
+      }
+
+      if (reflectOrFail(() => Array.isArray(value), "array-check")) {
+        const lengthDescriptor = reflectOrFail(
+          () => Object.getOwnPropertyDescriptor(value, "length"),
+          "array-length-descriptor"
+        );
+        const length = lengthDescriptor?.value;
+        if (
+          !Number.isSafeInteger(length) ||
+          length < 0 ||
+          length > MAX_SQL_JSON_SANITIZE_NODES - context.visits
+        ) {
+          failUnbounded({
+            reason: "array-length",
+            length: typeof length === "number" ? length : "invalid",
+            max: MAX_SQL_JSON_SANITIZE_NODES,
+          });
+        }
+        const result: unknown[] = [];
+        chargeBytes(context, 2 + Math.max(0, length - 1), "array-syntax");
+        for (let index = 0; index < length; index += 1) {
+          const descriptor = reflectOrFail(
+            () => Object.getOwnPropertyDescriptor(value, String(index)),
+            "array-item-descriptor"
+          );
+          if (descriptor && ("get" in descriptor || "set" in descriptor)) {
+            failUnbounded({ reason: "array-accessor", index });
+          }
+          result.push(
+            sanitizeJsonValue(
+              descriptor?.value,
+              context,
+              depth + 1,
+              sourcePath === "attachments" ? "attachment" : undefined
+            )
+          );
+        }
+        return result;
+      }
+
+      const keys = reflectOrFail(() => Reflect.ownKeys(value), "object-keys");
+      if (keys.length > MAX_SQL_JSON_SANITIZE_NODES - context.visits) {
+        failUnbounded({
+          reason: "object-keys",
+          keys: keys.length,
+          max: MAX_SQL_JSON_SANITIZE_NODES,
+        });
+      }
+      const result = Object.create(null) as Record<string, unknown>;
+      chargeBytes(context, 2, "object-syntax");
+      let serializedProperties = 0;
+      for (const key of keys) {
+        if (typeof key !== "string") continue;
+        const descriptor = reflectOrFail(
+          () => Object.getOwnPropertyDescriptor(value, key),
+          "object-property-descriptor"
+        );
+        if (!descriptor?.enumerable) continue;
+        rejectUnsupportedJsonText(key, context);
+        if ("get" in descriptor || "set" in descriptor) {
+          failUnbounded({ reason: "object-accessor" });
+        }
+        chargeBytes(
+          context,
+          measureJsonStringBytes(key, MAX_SQL_JSON_SANITIZE_KEY_BYTES, "key-bytes") +
+            1 +
+            (serializedProperties > 0 ? 1 : 0),
+          "object-property-syntax"
+        );
+        serializedProperties += 1;
+        const sanitizedKey = normalizeUnsupportedJsonText(key);
+        // Exempt only declared source paths: document.text, memory content.text,
+        // and memory content.attachments[array index].text. A nested metadata
+        // property called text or an object posing as the attachments array
+        // remains subject to the generic scalar and aggregate byte limits.
+        const sourceText =
+          key === "text" &&
+          ((context.documentText && depth === 0) ||
+            sourcePath === "memory-content" ||
+            sourcePath === "attachment");
+        const nextPath: SourceTextPath | undefined = sourceText
+          ? "source-text"
+          : sourcePath === "memory-content" && key === "attachments"
+            ? "attachments"
+            : undefined;
+        const sanitizedValue = sanitizeJsonValue(descriptor.value, context, depth + 1, nextPath);
+        if (sanitizedKey === "toJSON" && typeof sanitizedValue === "function") {
+          failUnbounded({ reason: "custom-toJSON" });
+        }
+        if (Object.hasOwn(result, sanitizedKey)) {
+          failUnbounded({ reason: "key-collision" });
+        }
+        Object.defineProperty(result, sanitizedKey, {
+          value: sanitizedValue,
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      }
+      return result;
+    } finally {
+      // Only an ancestor is a cycle. A shared object in two sibling fields
+      // must be serialized twice, just as JSON.stringify did before sanitizing.
+      context.seen.delete(value);
+    }
+  }
+
+  // JSON.stringify omits these values in objects and writes null in arrays.
+  // Charging four bytes is conservative without changing their legacy shape.
+  chargeBytes(context, 4, typeof value);
+  return value;
+}

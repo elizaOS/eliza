@@ -1,0 +1,29 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"customConditions": [],
+		"noEmit": false,
+		"declaration": true,
+		"declarationMap": true,
+		"emitDeclarationOnly": true,
+		"outDir": "dist",
+		"rootDir": ".",
+		"ignoreDeprecations": "6.0",
+		"paths": {
+			"@elizaos/plugin-browser/*": ["../plugin-browser/dist/*"]
+		},
+		"types": ["node", "bun-types"]
+	},
+	"include": ["**/*.ts"],
+	"exclude": [
+		"**/__tests__/**",
+		"**/*.test.ts",
+		"**/*.spec.ts",
+		"test/**",
+		"dist",
+		"node_modules",
+		"build.ts",
+		"vitest.config.ts",
+		"vitest.real-runtime.config.ts"
+	]
+}

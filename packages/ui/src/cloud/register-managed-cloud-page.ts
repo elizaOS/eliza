@@ -1,0 +1,41 @@
+/**
+ * Registers the unified Cloud management route family as one lazy page in the
+ * Eliza app shell. `/cloud` is the single account-management route family for
+ * any authenticated Cloud user, independent of which agent runtime is active;
+ * the web router separately redirects retired `/dashboard/*` bookmarks into
+ * it. The page owns a nested React Router route family, so its surface manifest
+ * grants navigation while leaving storage and wallpaper authority
+ * default-denied.
+ */
+
+import { registerAppShellPage } from "../app-shell-registry";
+
+let managedCloudPageRegistered = false;
+
+export function registerManagedCloudAppShellPage(): void {
+  if (managedCloudPageRegistered) return;
+  managedCloudPageRegistered = true;
+  registerAppShellPage({
+    id: "cloud",
+    pluginId: "@elizaos/ui",
+    label: "Cloud",
+    icon: "Cloud",
+    path: "/cloud",
+    pathPatterns: ["/cloud/*"],
+    viewKind: "release",
+    surface: {
+      capabilities: ["navigate"],
+      layout: {
+        kind: "immersive",
+        topology: "ambient",
+        width: "full",
+        scroll: "view",
+        gutter: "none",
+      },
+    },
+    loader: () =>
+      import("./shell/ManagedCloudPage").then((module) => ({
+        default: module.default,
+      })),
+  });
+}

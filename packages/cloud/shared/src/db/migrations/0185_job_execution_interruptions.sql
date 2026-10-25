@@ -1,0 +1,21 @@
+-- A worker restart is an infrastructure event, not a job failure, so it must
+-- not spend the job's `attempts` budget. This column is where recovery counts
+-- restarts instead. It lives on the row rather than in the job payload because
+-- an offloaded payload cannot be read back by the recovery transaction, which
+-- left exactly the large jobs most likely to kill a worker unbounded (#17258).
+--
+-- `integer NOT NULL DEFAULT 0` is metadata-only on PG11+, so this is safe on a
+-- hot table. NOT NULL rather than nullable because the code that predates this
+-- column writes rows without it and must land on 0. No CHECK constraint: ADD
+-- CONSTRAINT full-scans under ACCESS EXCLUSIVE, and non-negativity is
+-- structural — the only writer is `+ 1`.
+--
+-- Nothing outside this file ships with the migration, not even the Drizzle
+-- schema entry. `deploy-eliza-provisioning-worker.yml` restarts the daemon on
+-- the same paths as `cloud-cf-deploy.yml` but WITHOUT `needs: migrate-db`, and
+-- Drizzle enumerates columns in every generated SELECT — so a schema entry
+-- landing here would make every typed read of `jobs` fail with 42703 against a
+-- database this migration has not reached yet. The column enters the schema
+-- with its reader, once this has deployed everywhere.
+ALTER TABLE "jobs"
+  ADD COLUMN IF NOT EXISTS "execution_interruptions" integer DEFAULT 0 NOT NULL;

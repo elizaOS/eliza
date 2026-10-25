@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "kind": "orchestrator_lifecycle_transport_canary",
+  "prompt": "Start a delegated task now for this concrete assignment: inspect the current workspace's login-timeout implementation, identify the relevant files, and return a change plan. Call the TASKS task-management action exactly once for this turn. After its capture-only result, make no further tool calls, do not retry the action, and return a terminal plain-language report; the current workspace is the target."
+}

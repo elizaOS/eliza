@@ -1,0 +1,56 @@
+{
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
+      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
+      "@elizaos/cloud-routing/*": ["../../packages/cloud/routing/src/*"],
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
+      "@elizaos/plugin-anthropic/*": ["../plugin-anthropic/*"],
+      "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@elizaos/plugin-coding-tools/*": ["../plugin-coding-tools/src/*"],
+      "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/src/*"],
+      "@elizaos/plugin-discord/*": ["../plugin-discord/*"],
+      "@elizaos/plugin-google-workspace/*": [
+        "../plugin-google-workspace/src/*"
+      ],
+      "@elizaos/plugin-meetings/*": ["../plugin-meetings/src/*"],
+      "@elizaos/plugin-agent-orchestrator/ui/*": [
+        "../plugin-agent-orchestrator/src/ui/*"
+      ],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
+      "@elizaos/capacitor-calendar/*": [
+        "../../plugins/plugin-native-calendar/src/*"
+      ],
+      "@elizaos/plugin-native-inference/*": [
+        "../plugin-native-inference/src/*"
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
+}

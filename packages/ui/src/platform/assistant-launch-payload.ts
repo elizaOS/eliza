@@ -1,0 +1,115 @@
+import {
+  ASSISTANT_LAUNCH_PARAM_KEYS,
+  ASSISTANT_LAUNCH_SOURCES,
+  ASSISTANT_LAUNCH_TEXT_KEYS,
+  type AssistantLaunchPayload,
+} from "@elizaos/contracts";
+
+export interface AssistantLaunchPayloadClaimOptions {
+  allowedRoutes?: readonly string[];
+}
+
+export interface AssistantLaunchPayloadSendOptions {
+  metadata: Record<string, unknown>;
+}
+
+export interface AssistantLaunchPayloadConsumeOptions
+  extends AssistantLaunchPayloadClaimOptions {
+  onSendFailure?: (payload: AssistantLaunchPayload, error: unknown) => void;
+  sendText: (
+    text: string,
+    options: AssistantLaunchPayloadSendOptions,
+  ) => Promise<unknown> | unknown;
+}
+
+const claimedAssistantLaunchIds = new Set<string>();
+
+function trimParam(params: URLSearchParams, key: string): string {
+  return params.get(key)?.trim() ?? "";
+}
+
+function readLaunchText(params: URLSearchParams): string {
+  for (const key of ASSISTANT_LAUNCH_TEXT_KEYS) {
+    const value = trimParam(params, key);
+    if (value) return value;
+  }
+  return "";
+}
+
+export function readAssistantLaunchPayloadFromHash(
+  hash: string,
+): AssistantLaunchPayload | null {
+  const normalizedHash = hash.startsWith("#") ? hash.slice(1) : hash;
+  const [routePart, query = ""] = normalizedHash.split("?");
+  if (!query) return null;
+
+  const params = new URLSearchParams(query);
+  const source = trimParam(params, "source");
+  if (!ASSISTANT_LAUNCH_SOURCES.has(source)) return null;
+
+  const text = readLaunchText(params);
+  if (!text) return null;
+
+  const action = trimParam(params, "action") || null;
+  const launchId =
+    trimParam(params, "assistant.launchId") ||
+    `${source}:${action ?? ""}:${text}`;
+
+  return {
+    action,
+    launchId,
+    route: routePart.replace(/^\/+|\/+$/g, ""),
+    source,
+    text,
+  };
+}
+
+export function buildAssistantLaunchMetadata(
+  payload: AssistantLaunchPayload,
+): Record<string, unknown> {
+  return {
+    assistantLaunch: true,
+    assistantLaunchAction: payload.action,
+    assistantLaunchId: payload.launchId,
+    assistantLaunchRoute: payload.route,
+    assistantLaunchSource: payload.source,
+  };
+}
+
+export function claimAssistantLaunchPayloadFromHash(
+  hash: string,
+  options: AssistantLaunchPayloadClaimOptions = {},
+): AssistantLaunchPayload | null {
+  const payload = readAssistantLaunchPayloadFromHash(hash);
+  if (!payload) return null;
+
+  if (options.allowedRoutes && !options.allowedRoutes.includes(payload.route)) {
+    return null;
+  }
+
+  if (claimedAssistantLaunchIds.has(payload.launchId)) return null;
+  claimedAssistantLaunchIds.add(payload.launchId);
+  clearAssistantLaunchPayloadFromHash();
+  return payload;
+}
+
+export function clearAssistantLaunchPayloadFromHash(): void {
+  if (typeof window === "undefined") return;
+
+  const [routePart, query = ""] = window.location.hash.split("?");
+  if (!query) return;
+
+  const params = new URLSearchParams(query);
+  for (const key of ASSISTANT_LAUNCH_PARAM_KEYS) {
+    params.delete(key);
+  }
+
+  const nextHash = params.toString() ? `${routePart}?${params}` : routePart;
+  if (nextHash === window.location.hash) return;
+
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.href.split("#")[0]}${nextHash}`,
+  );
+}

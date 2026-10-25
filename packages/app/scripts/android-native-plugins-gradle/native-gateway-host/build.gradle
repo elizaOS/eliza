@@ -1,0 +1,27 @@
+apply plugin: 'com.android.application'
+
+def productionService = new File(rootDir, '../../platforms/android/app/src/main/java/ai/elizaos/app/GatewayConnectionService.java')
+def generatedService = layout.buildDirectory.dir('generated/production-service')
+def stageService = tasks.register('stageProductionGatewayService', Copy) {
+    from productionService
+    into generatedService
+}
+
+android {
+    namespace 'ai.elizaos.app'
+    compileSdk rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId 'ai.eliza.testing.gatewayhost'
+        minSdk 26
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName '1'
+    }
+    sourceSets.main.java.srcDir(generatedService)
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+}
+tasks.named('preBuild').configure { dependsOn stageService }
+dependencies { implementation 'androidx.core:core:1.12.0' }

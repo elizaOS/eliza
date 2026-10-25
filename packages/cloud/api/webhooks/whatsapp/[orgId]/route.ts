@@ -1,0 +1,437 @@
+/**
+ * Organization-Level WhatsApp Webhook Handler
+ *
+ * Receives incoming messages from WhatsApp Cloud API for a specific
+ * organization's WhatsApp Business account. Each organization has
+ * their own webhook URL with their orgId.
+ *
+ * GET  /api/webhooks/whatsapp/[orgId]  -- Meta verification handshake
+ * POST /api/webhooks/whatsapp/[orgId]  -- Incoming messages
+ */
+
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { agentGatewayRouterService } from "@elizaos/cloud-shared/lib/services/agent-gateway-router";
+import { messageRouterService } from "@elizaos/cloud-shared/lib/services/message-router";
+import { phoneErrorDiagnostic } from "@elizaos/cloud-shared/lib/services/phone-error-diagnostics";
+import { whatsappAutomationService } from "@elizaos/cloud-shared/lib/services/whatsapp-automation";
+import {
+  releaseProcessingClaim,
+  tryClaimForProcessing,
+} from "@elizaos/cloud-shared/lib/utils/idempotency";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import { createPerfTrace } from "@elizaos/cloud-shared/lib/utils/perf-trace";
+import {
+  extractWhatsAppMessages,
+  isValidWhatsAppId,
+  markWhatsAppMessageAsRead,
+  parseWhatsAppWebhookPayload,
+  startWhatsAppTypingIndicator,
+  type WhatsAppIncomingMessage,
+  type WhatsAppWebhookPayload,
+} from "@elizaos/cloud-shared/lib/utils/whatsapp-api";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { ZodError } from "zod";
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function handleWhatsAppWebhook(c: AppContext): Promise<Response> {
+  const orgId = c.req.param("orgId") ?? "";
+  if (!orgId) return c.json({ error: "Organization ID is required" }, 400);
+  if (!uuidPattern.test(orgId))
+    return c.json({ error: "Invalid organization ID" }, 400);
+
+  try {
+    const rawBody = await c.req.text();
+
+    const isProduction = c.env.NODE_ENV === "production";
+    const skipVerification =
+      c.env.SKIP_WEBHOOK_VERIFICATION === "true" && !isProduction;
+
+    if (c.env.SKIP_WEBHOOK_VERIFICATION === "true" && isProduction) {
+      logger.error(
+        "[WhatsAppWebhook] SKIP_WEBHOOK_VERIFICATION ignored in production",
+        { orgId },
+      );
+    }
+
+    if (skipVerification) {
+      logger.warn(
+        "[WhatsAppWebhook] Signature verification disabled (non-production)",
+        { orgId },
+      );
+    } else {
+      const signatureHeader = c.req.header("x-hub-signature-256") || "";
+      const isValid = await whatsappAutomationService.verifyWebhookSignature(
+        orgId,
+        signatureHeader,
+        rawBody,
+      );
+      if (!isValid) {
+        logger.warn("[WhatsAppWebhook] Invalid signature", { orgId });
+        return c.json({ error: "Invalid signature" }, 401);
+      }
+    }
+
+    let payload: WhatsAppWebhookPayload;
+    try {
+      const rawPayload = JSON.parse(rawBody);
+      payload = parseWhatsAppWebhookPayload(rawPayload);
+    } catch (parseError) {
+      // error-policy:J3 malformed provider input becomes a bounded 400 response.
+      if (parseError instanceof SyntaxError) {
+        logger.warn("[WhatsAppWebhook] Invalid JSON payload", { orgId });
+        return c.json({ error: "Invalid JSON" }, 400);
+      }
+      if (parseError instanceof ZodError) {
+        logger.warn("[WhatsAppWebhook] Invalid payload schema", {
+          orgId,
+          issueCount: parseError.issues.length,
+        });
+        return c.json({ error: "Invalid payload" }, 400);
+      }
+      throw parseError;
+    }
+
+    // Extract messages from the webhook payload
+    const messages = extractWhatsAppMessages(payload);
+
+    logger.info("[WhatsAppWebhook] Received webhook", {
+      orgId,
+      messageCount: messages.length,
+    });
+
+    // Process each message
+    for (const msg of messages) {
+      const idempotencyKey = `whatsapp:org:${orgId}:${msg.messageId}`;
+
+      // Preserve the provider contract owned by #22359. This storage migration
+      // does not redefine WhatsApp delivery/replay semantics.
+      const claimed = await tryClaimForProcessing(
+        idempotencyKey,
+        "whatsapp-org",
+      );
+      if (!claimed) {
+        logger.info("[WhatsAppWebhook] Skipping duplicate", { orgId });
+        continue;
+      }
+
+      try {
+        await handleIncomingMessage(orgId, msg, (promise) =>
+          c.executionCtx.waitUntil(promise),
+        );
+      } catch (error) {
+        // error-policy:J4 isolate ordinary message failures and release their claim.
+        logger.error("[WhatsAppWebhook] Failed to process message", {
+          orgId,
+          ...phoneErrorDiagnostic(error),
+        });
+        await releaseProcessingClaim(idempotencyKey);
+      }
+    }
+
+    return c.json({ success: true });
+  } catch (error) {
+    // error-policy:J1 route boundary for the webhooks/ dir — the outermost handler
+    // catch translates an unexpected exception into an explicit 500 (structured
+    // failure), never a fabricated 200/ack. Parse/validation failures degrade to
+    // 400 above; per-message failures remain isolated and release their claim.
+    logger.error("[WhatsAppWebhook] Error processing webhook", {
+      orgId,
+      ...phoneErrorDiagnostic(error),
+    });
+    return c.json({ error: "Internal server error" }, 500);
+  }
+}
+
+async function handleWhatsAppVerification(c: AppContext): Promise<Response> {
+  const orgId = c.req.param("orgId") ?? "";
+  if (!orgId) return c.json({ error: "Organization ID is required" }, 400);
+  if (!uuidPattern.test(orgId))
+    return c.json({ error: "Verification failed" }, 403);
+
+  const mode = c.req.query("hub.mode");
+  const verifyToken = c.req.query("hub.verify_token");
+  const challenge = c.req.query("hub.challenge");
+
+  const result = await whatsappAutomationService.verifyWebhookSubscription(
+    orgId,
+    mode ?? null,
+    verifyToken ?? null,
+    challenge ?? null,
+  );
+
+  if (result) {
+    logger.info("[WhatsAppWebhook] Verification handshake successful", {
+      orgId,
+    });
+    return c.body(result, 200, { "Content-Type": "text/plain" });
+  }
+
+  logger.warn("[WhatsAppWebhook] Verification handshake failed", { orgId });
+  return c.json({ error: "Verification failed" }, 403);
+}
+
+// ============================================================================
+// Message Handling
+// ============================================================================
+
+const WHATSAPP_MEDIA_LABELS: Record<
+  NonNullable<WhatsAppIncomingMessage["mediaType"]>,
+  string
+> = {
+  image: "a photo",
+  video: "a video",
+  audio: "a voice note",
+  document: "a document",
+  sticker: "a sticker",
+};
+
+/** The note that tells the agent which media the user sent. */
+function whatsAppMediaNote(msg: WhatsAppIncomingMessage): string {
+  const kind = msg.mediaType ? WHATSAPP_MEDIA_LABELS[msg.mediaType] : "a file";
+  const name = msg.mediaFilename ? ` ("${msg.mediaFilename}")` : "";
+  return `[The user sent ${kind}${name} on WhatsApp. This connector cannot open WhatsApp media yet.]`;
+}
+
+async function handleIncomingMessage(
+  orgId: string,
+  msg: WhatsAppIncomingMessage,
+  defer: (promise: Promise<unknown>) => void,
+): Promise<void> {
+  // A photo, video, voice note, document or sticker is a real message: keep
+  // its caption and tell the agent what was sent, instead of dropping the
+  // turn so the user gets no reply. This route does not download media.
+  const mediaNote = msg.mediaType ? whatsAppMediaNote(msg) : undefined;
+  const text = [msg.text?.trim(), mediaNote].filter(Boolean).join("\n");
+  if (!text) {
+    logger.info("[WhatsAppWebhook] Skipping non-text message", {
+      orgId,
+    });
+    return;
+  }
+
+  // Validate WhatsApp ID format before use
+  if (!isValidWhatsAppId(msg.from)) {
+    logger.warn("[WhatsAppWebhook] Invalid WhatsApp ID format", {
+      orgId,
+    });
+    return;
+  }
+
+  const perfTrace = createPerfTrace("whatsapp-org-webhook");
+
+  perfTrace.mark("get-credentials");
+  const [accessToken, phoneNumberId, businessPhone] = await Promise.all([
+    whatsappAutomationService.getAccessToken(orgId),
+    whatsappAutomationService.getPhoneNumberId(orgId),
+    whatsappAutomationService.getBusinessPhone(orgId),
+  ]);
+
+  // Mark message as read for better UX (sends blue checkmarks).
+  // Uses retry with backoff since the first outbound fetch can fail on cold connections.
+  if (accessToken && phoneNumberId) {
+    const markRead = async (retries = 2) => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+          await markWhatsAppMessageAsRead(
+            accessToken,
+            phoneNumberId,
+            msg.messageId,
+          );
+          return;
+        } catch (err) {
+          // error-policy:J4 read-receipt delivery is best-effort after bounded retries.
+          if (attempt < retries) {
+            await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+          } else {
+            logger.warn(
+              "[WhatsAppWebhook] Failed to mark as read after retries",
+              {
+                orgId,
+                ...phoneErrorDiagnostic(err),
+              },
+            );
+          }
+        }
+      }
+    };
+    void markRead();
+  }
+
+  const stopTyping =
+    accessToken && phoneNumberId
+      ? startWhatsAppTypingIndicator(accessToken, phoneNumberId, msg.messageId)
+      : () => {};
+
+  try {
+    logger.info("[WhatsAppWebhook] Processing incoming message", {
+      orgId,
+      hasText: !!text,
+    });
+
+    const recipient = businessPhone || msg.phoneNumberId;
+
+    perfTrace.mark("route-message");
+
+    const messageContext = {
+      from: msg.from,
+      to: recipient,
+      body: text,
+      provider: "whatsapp" as const,
+      providerMessageId: msg.messageId,
+      messageType: "whatsapp" as const,
+      metadata: {
+        ...(msg.profileName !== undefined
+          ? { profileName: msg.profileName }
+          : {}),
+        timestamp: msg.timestamp,
+        phoneNumberId: msg.phoneNumberId,
+      },
+    };
+
+    const routeResult = await agentGatewayRouterService.routeWhatsAppMessage({
+      organizationId: orgId,
+      from: msg.from,
+      to: recipient,
+      body: text,
+      providerMessageId: msg.messageId,
+      metadata: {
+        ...(msg.profileName !== undefined
+          ? { profileName: msg.profileName }
+          : {}),
+        timestamp: msg.timestamp,
+        phoneNumberId: msg.phoneNumberId,
+      },
+      senderName: msg.profileName,
+    });
+
+    if (
+      !routeResult.handled ||
+      !routeResult.agentId ||
+      !routeResult.organizationId ||
+      !routeResult.userId
+    ) {
+      const phoneRouteResult =
+        await messageRouterService.routeIncomingMessage(messageContext);
+      if (
+        !phoneRouteResult.success ||
+        !phoneRouteResult.agentId ||
+        !phoneRouteResult.organizationId ||
+        !phoneRouteResult.userId
+      ) {
+        logger.info(
+          "[WhatsAppWebhook] Message received (agent routing not configured)",
+          {
+            orgId,
+            provider: "whatsapp",
+          },
+        );
+        return;
+      }
+
+      perfTrace.mark("process-with-agent");
+      const agentResponse = await messageRouterService.processWithAgent(
+        phoneRouteResult.agentId,
+        phoneRouteResult.organizationId,
+        messageContext,
+      );
+
+      if (agentResponse) {
+        perfTrace.mark("send-response");
+        const sent = await messageRouterService.sendMessage({
+          to: msg.from,
+          from: recipient,
+          body: agentResponse.text,
+          provider: "whatsapp",
+          mediaUrls: agentResponse.mediaUrls,
+          organizationId: phoneRouteResult.organizationId,
+          agentId: phoneRouteResult.agentId,
+          agentOrganizationId: phoneRouteResult.organizationId,
+          agentUserId: phoneRouteResult.userId,
+          defer,
+        });
+
+        if (sent.status === "delivered") {
+          logger.info("[WhatsAppWebhook] Agent response sent", {
+            orgId,
+          });
+        } else {
+          logger.error(
+            "[WhatsAppWebhook] Agent response delivery did not complete",
+            {
+              orgId,
+              deliveryStatus: sent.status,
+              deliveryCode: sent.code,
+              retryable: sent.retryable,
+              providerStatus: sent.providerStatus,
+            },
+          );
+        }
+      }
+      return;
+    }
+
+    perfTrace.mark("process-with-agent");
+    const replyText = routeResult.replyText?.trim();
+    if (!replyText) {
+      logger.info(
+        "[WhatsAppWebhook] Shared gateway handled message without reply",
+        {
+          orgId,
+          agentId: routeResult.agentId,
+        },
+      );
+      return;
+    }
+
+    const sent = await messageRouterService.sendMessage({
+      to: msg.from,
+      from: recipient,
+      body: replyText,
+      provider: "whatsapp",
+      mediaUrls: undefined,
+      organizationId: routeResult.organizationId,
+      agentId: routeResult.agentId,
+      agentOrganizationId: routeResult.organizationId,
+      agentUserId: routeResult.userId,
+      defer,
+    });
+
+    if (sent.status === "delivered") {
+      logger.info("[WhatsAppWebhook] Agent response sent", {
+        orgId,
+      });
+    } else {
+      logger.error(
+        "[WhatsAppWebhook] Agent response delivery did not complete",
+        {
+          orgId,
+          deliveryStatus: sent.status,
+          deliveryCode: sent.code,
+          retryable: sent.retryable,
+          providerStatus: sent.providerStatus,
+        },
+      );
+    }
+  } finally {
+    stopTyping();
+    perfTrace.end();
+  }
+}
+
+const app = new Hono<AppEnv>();
+app.get("/", rateLimit(RateLimitPresets.STANDARD), (c) =>
+  handleWhatsAppVerification(c),
+);
+app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleWhatsAppWebhook(c),
+);
+export default app;

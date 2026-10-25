@@ -1,0 +1,19 @@
+# Railway deploy config for the free-cloud Kokoro TTS service.
+#
+# Consumed by the cloud-api /api/v1/voice/tts route via the KOKORO_TTS_URL env
+# var; serves POST /api/tts { text, voice, speed } -> WAV. No secrets required —
+# the free voice path is unauthenticated at the service boundary (cloud-api owns
+# auth/billing upstream) and the model weights ship in the image.
+#
+# healthcheckTimeout is generous: the first request after a cold deploy loads the
+# Kokoro voice pack into memory, so early /health probes can be slow.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -1,0 +1,84 @@
+/**
+ * Secret ballot — single resource.
+ *
+ * GET /api/v1/ballots/:id            Authed creator view (full row including tally).
+ * GET /api/v1/ballots/:id?public=1   Redacted public view (no token-hash metadata).
+ */
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { secretBallotsRepository } from "@elizaos/cloud-shared/db/repositories/secret-ballots";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  createSecretBallotsService,
+  redactSecretBallotForPublic,
+} from "@elizaos/cloud-shared/lib/services/secret-ballots";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { parseBallotIdParam } from "../ballot-id";
+
+const app = new Hono<AppEnv>();
+app.use("*", rateLimit(RateLimitPresets.STANDARD));
+
+app.get("/", async (c) => {
+  try {
+    const parsedId = parseBallotIdParam(c.req.param("id"));
+    if (!parsedId.ok) {
+      return c.json({ success: false, error: parsedId.error }, 400);
+    }
+    const { id } = parsedId;
+    // Only the exact token `1` selects the unauthenticated, redacted ballot
+    // DTO. Missing or empty selects the authenticated creator view; any
+    // other token is leftover identity after payment-request public
+    // (#20954) and must fail before authentication or lookup.
+    const requestedPublicValues = c.req.queries("public") ?? [];
+    const requestedPublic = requestedPublicValues[0];
+    if (
+      requestedPublicValues.length > 1 ||
+      (requestedPublic !== undefined &&
+        requestedPublic !== "" &&
+        requestedPublic !== "1")
+    ) {
+      return c.json(
+        {
+          success: false,
+          error: "invalid_public",
+          message:
+            'public must be specified at most once as "1" for the redacted ballot view.',
+        },
+        400,
+      );
+    }
+    const isPublic = requestedPublic === "1";
+    const service = createSecretBallotsService({
+      repository: secretBallotsRepository,
+    });
+
+    if (isPublic) {
+      const row = await secretBallotsRepository.getBallot(id);
+      if (!row) {
+        return c.json({ success: false, error: "Ballot not found" }, 404);
+      }
+      return c.json({
+        success: true,
+        ballot: redactSecretBallotForPublic(row),
+      });
+    }
+
+    const user = await requireUserOrApiKeyWithOrg(c);
+    const row = await service.get(id, user.organization_id);
+    if (!row) {
+      return c.json({ success: false, error: "Ballot not found" }, 404);
+    }
+    return c.json({ success: true, ballot: row });
+  } catch (error) {
+    logger.error("[SecretBallots API] Failed to get ballot", { error });
+    return failureResponse(c, error);
+  }
+});
+
+export default app;

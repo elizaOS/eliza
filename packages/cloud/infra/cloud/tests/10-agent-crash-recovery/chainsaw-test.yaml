@@ -1,0 +1,183 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: agent-crash-recovery
+spec:
+  description: Kill the running agent-server container and pod, then assert Kubernetes recovers health and messaging through the Service
+  steps:
+    - name: Create Server CR
+      try:
+        - apply:
+            file: server-cr.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server srv-recover -n eliza-agents --ignore-not-found
+
+    - name: Wake via KEDA
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              for attempt in 1 2 3; do
+                RESULT=$(kubectl run cs-recover-wake-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                  --image=redis:7-alpine --quiet -- \
+                  redis-cli -h redis LPUSH "keda:srv-recover:activity" "wake" 2>&1)
+                echo "$RESULT" | grep -qE "^\(integer\)|^[0-9]" && exit 0
+                echo "KEDA wake attempt $attempt failed: $RESULT"
+                sleep 3
+              done
+              echo "FAIL: KEDA wake LPUSH failed after 3 attempts"
+              exit 1
+
+    - name: Wait for initial pod ready
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              for i in $(seq 1 60); do
+                POD=$(kubectl get pods -n eliza-agents -l "eliza.ai/server=srv-recover" --no-headers 2>/dev/null || true)
+                if echo "$POD" | grep -q "1/1.*Running"; then
+                  echo "Initial pod is ready"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: initial pod not ready within 300s"
+              kubectl get pods -n eliza-agents -l "eliza.ai/server=srv-recover" --no-headers 2>/dev/null || true
+              kubectl logs -n eliza-agents -l "eliza.ai/server=srv-recover" --tail=40 2>/dev/null || true
+              exit 1
+
+    - name: Crash container, delete pod, and assert recovered health
+      try:
+        - script:
+            timeout: 540s
+            content: |
+              set -u
+              SELECTOR="eliza.ai/server=srv-recover"
+              SECRET=$(kubectl get secret eliza-agent-secrets -n eliza-agents -o jsonpath='{.data.AGENT_SERVER_SHARED_SECRET}' | base64 -d)
+              AUTH="-H X-Server-Token:$SECRET"
+              BASE="http://localhost:3012"
+              LOG_PATH="/tmp/srv-recover-port-forward.log"
+              PF=""
+
+              stop_port_forward() {
+                if [ -n "${PF:-}" ]; then
+                  kill "$PF" 2>/dev/null || true
+                  PF=""
+                fi
+              }
+
+              start_port_forward() {
+                stop_port_forward
+                rm -f "$LOG_PATH"
+                kubectl port-forward -n eliza-agents svc/srv-recover 3012:3000 > "$LOG_PATH" 2>&1 &
+                PF=$!
+              }
+
+              assert_service_ready() {
+                LABEL="$1"
+                for i in $(seq 1 30); do
+                  curl -sf "$BASE/health" > /dev/null 2>&1 && break
+                  sleep 2
+                done
+                curl -sf "$BASE/health" | grep -q '"alive":true' || {
+                  echo "FAIL: $LABEL health did not answer"
+                  cat "$LOG_PATH" 2>/dev/null || true
+                  exit 1
+                }
+                curl -sf "$BASE/ready" | grep -q '"ready":true' || {
+                  echo "FAIL: $LABEL ready did not answer"
+                  cat "$LOG_PATH" 2>/dev/null || true
+                  exit 1
+                }
+              }
+
+              trap stop_port_forward EXIT
+
+              POD_BEFORE=$(kubectl get pod -n eliza-agents -l "$SELECTOR" -o jsonpath='{.items[0].metadata.name}')
+              UID_BEFORE=$(kubectl get pod "$POD_BEFORE" -n eliza-agents -o jsonpath='{.metadata.uid}')
+              RESTARTS_BEFORE=$(kubectl get pod "$POD_BEFORE" -n eliza-agents -o jsonpath='{.status.containerStatuses[0].restartCount}')
+              RESTARTS_BEFORE=${RESTARTS_BEFORE:-0}
+              [ -n "$POD_BEFORE" ] || { echo "FAIL: no initial pod found"; exit 1; }
+              [ -n "$UID_BEFORE" ] || { echo "FAIL: no initial pod uid found"; exit 1; }
+              echo "Initial pod: $POD_BEFORE ($UID_BEFORE), restarts=$RESTARTS_BEFORE"
+
+              start_port_forward
+              assert_service_ready "baseline"
+
+              echo "Injecting container crash in $POD_BEFORE with SIGKILL"
+              kubectl exec -n eliza-agents "$POD_BEFORE" -c agent-server -- sh -c 'kill -9 1' > /tmp/srv-recover-container-kill.log 2>&1 || true
+              stop_port_forward
+
+              RESTARTS_AFTER=""
+              for i in $(seq 1 90); do
+                ROW=$(kubectl get pod "$POD_BEFORE" -n eliza-agents \
+                  -o jsonpath='{.metadata.uid}{" "}{.status.phase}{" "}{.status.containerStatuses[0].ready}{" "}{.status.containerStatuses[0].restartCount}' 2>/dev/null || true)
+                UID_CURRENT=$(printf "%s" "$ROW" | awk '{print $1}')
+                PHASE_CURRENT=$(printf "%s" "$ROW" | awk '{print $2}')
+                READY_CURRENT=$(printf "%s" "$ROW" | awk '{print $3}')
+                RESTARTS_CURRENT=$(printf "%s" "$ROW" | awk '{print $4}')
+                RESTARTS_CURRENT=${RESTARTS_CURRENT:-0}
+                if [ "$UID_CURRENT" = "$UID_BEFORE" ] && [ "$PHASE_CURRENT" = "Running" ] && [ "$READY_CURRENT" = "true" ] && [ "$RESTARTS_CURRENT" -gt "$RESTARTS_BEFORE" ]; then
+                  RESTARTS_AFTER="$RESTARTS_CURRENT"
+                  break
+                fi
+                sleep 3
+              done
+              [ -n "$RESTARTS_AFTER" ] || {
+                echo "FAIL: same-pod container restart not observed after SIGKILL"
+                cat /tmp/srv-recover-container-kill.log 2>/dev/null || true
+                kubectl get pod "$POD_BEFORE" -n eliza-agents -o yaml 2>/dev/null || true
+                exit 1
+              }
+              echo "Container crash recovered in same pod: restartCount $RESTARTS_BEFORE -> $RESTARTS_AFTER"
+
+              start_port_forward
+              assert_service_ready "container-restarted"
+              stop_port_forward
+
+              echo "Injecting pod loss by deleting pod $POD_BEFORE"
+              kubectl delete pod "$POD_BEFORE" -n eliza-agents --wait=false
+
+              POD_AFTER=""
+              UID_AFTER=""
+              for i in $(seq 1 90); do
+                ROWS=$(kubectl get pods -n eliza-agents -l "$SELECTOR" \
+                  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.uid}{" "}{.status.phase}{" "}{.status.containerStatuses[0].ready}{"\n"}{end}' 2>/dev/null || true)
+                MATCH=$(printf "%s\n" "$ROWS" | awk -v before="$UID_BEFORE" '$2 != before && $3 == "Running" && $4 == "true" { print $1 " " $2; exit }')
+                if [ -n "$MATCH" ]; then
+                  POD_AFTER=$(printf "%s" "$MATCH" | awk '{print $1}')
+                  UID_AFTER=$(printf "%s" "$MATCH" | awk '{print $2}')
+                  break
+                fi
+                sleep 3
+              done
+              [ -n "$POD_AFTER" ] || {
+                echo "FAIL: replacement ready pod not observed"
+                kubectl get pods -n eliza-agents -l "$SELECTOR" -o wide || true
+                kubectl describe pod -n eliza-agents -l "$SELECTOR" || true
+                exit 1
+              }
+              echo "Recovered pod: $POD_AFTER ($UID_AFTER)"
+
+              start_port_forward
+              assert_service_ready "replacement-pod"
+
+              HTTP=$(curl -s -o /tmp/cs-recover-agent-create -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                -H "Content-Type: application/json" -d '{"agentId":"recovered-a1","characterRef":"Eliza"}')
+              [ "$HTTP" = "201" ] || {
+                echo "FAIL: create agent after recovery status=$HTTP"
+                cat /tmp/cs-recover-agent-create || true
+                exit 1
+              }
+
+              curl -sf -X POST $AUTH "$BASE/agents/recovered-a1/message" \
+                -H "Content-Type: application/json" -d '{"userId":"recovery-user","text":"hello after pod recovery"}' \
+                | grep -q '"response"' || { echo "FAIL: recovered agent did not answer message"; exit 1; }
+
+              echo "PASS: container crash and pod loss recovered: $POD_BEFORE/$UID_BEFORE restartCount=$RESTARTS_AFTER -> $POD_AFTER/$UID_AFTER"
+      catch:
+        - script:
+            content: |
+              kubectl get pods -n eliza-agents -l "eliza.ai/server=srv-recover" -o wide 2>/dev/null || true
+              kubectl logs -n eliza-agents -l "eliza.ai/server=srv-recover" --tail=80 2>/dev/null || true

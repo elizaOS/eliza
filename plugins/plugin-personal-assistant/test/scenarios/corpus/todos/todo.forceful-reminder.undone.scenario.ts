@@ -1,0 +1,50 @@
+/** Scenario fixture for todo forceful reminder undone; runs through scenario-runner with deterministic services unless the scenario name marks an external-service gate. */
+import { scenario } from "@elizaos/testing";
+
+export default scenario({
+  lane: "live-only",
+  id: "todo.forceful-reminder.undone",
+  title: "Undone overdue todo prompts forceful reminder on greeting",
+  domain: "todos",
+  tags: ["lifeops", "todos", "smoke", "retry-after-failure"],
+  isolation: "per-scenario",
+  requires: {
+    plugins: [],
+  },
+  rooms: [
+    {
+      id: "main",
+      source: "telegram",
+      title: "LifeOps Todos Forceful Reminder Undone",
+    },
+  ],
+  seed: [
+    {
+      type: "todo",
+      name: "Take vitamins",
+      dueIso: "{{now-1h}}",
+      isUrgent: true,
+    },
+  ],
+  turns: [
+    {
+      kind: "message",
+      name: "greeting-prompts-reminder",
+      text: "hey",
+      responseIncludesAny: [
+        "vitamins",
+        "take vitamins",
+        "overdue",
+        "still need",
+      ],
+    },
+  ],
+  finalChecks: [
+    {
+      type: "memoryExists",
+      content: {
+        text: { $contains: "vitamins" },
+      },
+    },
+  ],
+});

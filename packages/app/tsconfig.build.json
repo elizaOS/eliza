@@ -1,0 +1,49 @@
+{
+  "extends": "./tsconfig.host.json",
+  "compilerOptions": {
+    "customConditions": [],
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "resolveJsonModule": true,
+    "rootDir": "../../",
+    "rewriteRelativeImportExtensions": true,
+    "stripInternal": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "paths": {
+      "@elizaos/app": ["./src/index.ts"],
+      "@elizaos/agent/*": ["../agent/dist/packages/agent/src/*"],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/dist/*"
+      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/core/protocol": ["../core/dist/protocol"]
+    }
+  },
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx"
+  ],
+  "include": [
+    "src/connectors",
+    "src/security",
+    "src/entry.ts",
+    "src/platform",
+    "src/runtime",
+    "src/utils",
+    "src/cli",
+    "src/browser.ts",
+    "src/styles",
+    "src/boot-profile.ts",
+    "src/api",
+    "src/index.ts",
+    "src/entry-cloud-api-key.ts",
+    "src/services",
+    "src/auth.ts",
+    "src/dev-tools.ts"
+  ]
+}

@@ -1,0 +1,44 @@
+// Handles v1 cloud API v1 coding containers promotions route traffic with route-local auth expectations.
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  buildCodingPromotionResponse,
+  PromoteVfsToCloudContainerRequestSchema,
+  type PromoteVfsToCloudContainerResponse,
+} from "@elizaos/cloud-shared/lib/services/coding-containers";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+
+const app = new Hono<AppEnv>();
+
+app.post("/", async (c) => {
+  try {
+    await requireUserOrApiKeyWithOrg(c);
+    const body = (await c.req.json().catch(() => null)) as unknown;
+    const parsed = PromoteVfsToCloudContainerRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "Invalid promotion request",
+        },
+        400,
+      );
+    }
+
+    const response: PromoteVfsToCloudContainerResponse = {
+      success: true,
+      data: buildCodingPromotionResponse(parsed.data),
+      message:
+        "VFS promotion accepted. Include promotionId or source when requesting a coding container.",
+    };
+    return c.json(response, 202);
+  } catch (error) {
+    logger.error("[CodingContainers API] promotion error:", error);
+    return failureResponse(c, error);
+  }
+});
+
+export default app;

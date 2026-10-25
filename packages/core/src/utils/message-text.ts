@@ -1,0 +1,137 @@
+import type { Memory } from "../types/memory";
+
+/**
+ * Extracts the user's actual request text from a message `Memory`. Unwraps the
+ * document-augmentation `<user_request>` envelope, strips a trailing
+ * `[language instruction:...]` suffix. Prefers a
+ * connector's `currentMessageText` over the rendered `text`, and offers a
+ * lowercased, whitespace-collapsed variant for matching.
+ */
+
+const DOCUMENT_AUGMENTATION_PREFIX =
+	"Answer the user request using the contextual documents";
+// Both patterns avoid an unbounded whitespace quantifier adjacent to another
+// unbounded body, which triggered catastrophic backtracking (ReDoS-class,
+// super-linear match time) on long whitespace runs such as pasted logs. The
+// wrapper trims its capture explicitly; the suffix relies on the caller's
+// trailing `.trim()` to drop the newlines the former leading `\n*` matched.
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/i;
+const LANGUAGE_INSTRUCTION_SUFFIX = /\[language instruction:[^\]]*\]\s*$/i;
+
+export function extractUserText(raw: string): string {
+	let text = raw;
+	if (text.trimStart().startsWith(DOCUMENT_AUGMENTATION_PREFIX)) {
+		const match = text.match(USER_REQUEST_WRAPPER);
+		const captured = match?.[1]?.trim();
+		if (captured) {
+			text = captured;
+		}
+	}
+	return text.replace(LANGUAGE_INSTRUCTION_SUFFIX, "").trim();
+}
+
+export function getUserMessageText(
+	message: Pick<Memory, "content"> | null | undefined,
+): string {
+	const content = message?.content;
+	const contentObject =
+		content && typeof content === "object"
+			? (content as { currentMessageText?: unknown; text?: unknown })
+			: null;
+	const raw =
+		typeof content === "string"
+			? content
+			: typeof contentObject?.currentMessageText === "string"
+				? contentObject.currentMessageText
+				: typeof contentObject?.text === "string"
+					? contentObject.text
+					: "";
+	return extractUserText(raw);
+}
+
+export function normalizeUserMessageText(
+	message: Pick<Memory, "content"> | null | undefined,
+): string {
+	return getUserMessageText(message).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Returns true when a message's rendered `content.text` carries the document
+ * augmentation envelope (the `Answer the user request using the contextual
+ * documents...` preamble wrapping the real text in `<user_request>` tags).
+ *
+ * The envelope is a model-facing wrapper: it is added right before the LLM
+ * prompt is assembled so retrieved document context reaches the model. It must
+ * never be persisted or echoed back to a client, or it renders as raw XML in
+ * the user's own chat bubble and re-enters context on later turns as history.
+ */
+export function hasDocumentAugmentationEnvelope(text: unknown): boolean {
+	if (typeof text !== "string") return false;
+	return text.trimStart().startsWith(DOCUMENT_AUGMENTATION_PREFIX);
+}
+
+/**
+ * Produces a persist-safe copy of an inbound user `Memory` whose `content.text`
+ * has been stripped of document and language augmentation. These are added
+ * transiently for the current turn's LLM prompt; the stored memory (and its
+ * embedding) must hold the clean user text so the UI echo, message history, and
+ * subsequent-turn context all see what the user actually typed.
+ *
+ * Returns the original reference unchanged when there is no envelope to strip,
+ * so callers on the hot path pay nothing for the common (unaugmented) case and
+ * the live in-flight message keeps its wrap for the current LLM call.
+ */
+export function stripAugmentationForPersistence<
+	T extends Pick<Memory, "content">,
+>(message: T): T {
+	let content = message?.content;
+	if (!content || typeof content !== "object") return message;
+	// A view client identifies this request's delivery shell, not durable evidence.
+	if (
+		content.metadata &&
+		typeof content.metadata === "object" &&
+		!Array.isArray(content.metadata) &&
+		"viewClientId" in content.metadata
+	) {
+		const { viewClientId: _viewClientId, ...metadata } = content.metadata;
+		const { metadata: _metadata, ...durableContent } = content;
+		content = {
+			...durableContent,
+			...(Object.keys(metadata).length ? { metadata } : {}),
+		};
+		message = { ...message, content };
+	}
+	const rendered = (content as { text?: unknown }).text;
+	if (
+		typeof rendered !== "string" ||
+		(!hasDocumentAugmentationEnvelope(rendered) &&
+			!LANGUAGE_INSTRUCTION_SUFFIX.test(rendered))
+	)
+		return message;
+	const clean = extractUserText(rendered);
+	if (clean === rendered) return message;
+	return {
+		...message,
+		content: {
+			...(content as Record<string, unknown>),
+			text: clean,
+		},
+	} as T;
+}
+
+/**
+ * Recovers the user's request from a message text that document
+ * augmentation wrapped in its instruction preamble. Augmentation (in the
+ * agent's API chat path) rewrites `content.text` into a preamble plus
+ * `<contextual_documents>` and a trailing `<user_request>` block; relevance
+ * and detection gates that run afterwards must score the request, not the
+ * wrapper (live 2026-09-06: the wrapper's own words matched a recall keyword
+ * on every API turn). Text without the wrapper is returned unchanged.
+ */
+
+const USER_REQUEST_BLOCK = /<user_request>\n?([\s\S]*?)\n?<\/user_request>\s*$/;
+
+export function userRequestFromAugmentedText(text: string): string {
+	const match = USER_REQUEST_BLOCK.exec(text);
+	return match ? match[1].trim() : text;
+}

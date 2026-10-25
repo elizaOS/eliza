@@ -1,0 +1,671 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1773704438932,
+      "tag": "0000_black_klaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1742748000000,
+      "tag": "0001_multi_wallet",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1742834400000,
+      "tag": "0002_allowed_chains",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1774581555934,
+      "tag": "0003_safe_black_queen",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1774582260000,
+      "tag": "0004_secret_vault",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1774591291000,
+      "tag": "0005_proxy_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1774648500000,
+      "tag": "0006_tenant_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1774648855000,
+      "tag": "0007_webhook_configs_auto_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1775066931000,
+      "tag": "0008_auth_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1775090735000,
+      "tag": "0009_auth_kv_store",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775092487000,
+      "tag": "0010_per_tenant_cors",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1775093899000,
+      "tag": "0011_refresh_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1775094500000,
+      "tag": "0012_tenant_join_modes",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1775095100000,
+      "tag": "0013_standalone_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1775095700000,
+      "tag": "0014_erc8004_registrations",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1775096300000,
+      "tag": "0015_reputation_policy_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1775096900000,
+      "tag": "0016_tenant_email_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1775097500000,
+      "tag": "0017_user_wallet_chain",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1775098100000,
+      "tag": "0018_tenant_owner_address_widen",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1775098700000,
+      "tag": "0019_harden_erc8004_policy_schemas",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1777026834865,
+      "tag": "0020_proxy_audit_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1777018500000,
+      "tag": "0021_oauth_account_token_encryption",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1779671100000,
+      "tag": "0022_vault_venue_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1779671700000,
+      "tag": "0023_trade_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1779672300000,
+      "tag": "0024_audit_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780119600000,
+      "tag": "0025_approval_queue_principals",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780120200000,
+      "tag": "0026_agent_policies",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1780120800000,
+      "tag": "0027_user_identity_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1780121400000,
+      "tag": "0028_tenant_oidc_providers",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1780122000000,
+      "tag": "0029_tenant_sso_domains",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1780122600000,
+      "tag": "0030_tenant_saml_sso_configs",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1780123200000,
+      "tag": "0031_saml_request_replay_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1780123800000,
+      "tag": "0032_user_wallet_identity_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780124400000,
+      "tag": "0033_agent_signers",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780125000000,
+      "tag": "0034_agent_key_quorums",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1780125600000,
+      "tag": "0036_condition_sets",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1780126200000,
+      "tag": "0037_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1780126800000,
+      "tag": "0038_contract_allowlist_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1780127400000,
+      "tag": "0040_tenant_gas_sponsorship_config",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1780128000000,
+      "tag": "0041_sponsored_gas_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1780128600000,
+      "tag": "0042_webhook_config_tenant_url_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1780129200000,
+      "tag": "0043_webhook_delivery_config_snapshot",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1780129800000,
+      "tag": "0044_webhook_delivery_processing_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1780130400000,
+      "tag": "0045_wallet_action_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1780131000000,
+      "tag": "0046_pr79_union_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1780131600000,
+      "tag": "0047_pr79_security_invariants",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1780132200000,
+      "tag": "0048_harden_tenant_join_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1780132500000,
+      "tag": "0049_develop_ci_schema_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1780132800000,
+      "tag": "0067_digital_asset_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1780133400000,
+      "tag": "0068_app_client_embedded_wallets",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1780134000000,
+      "tag": "0069_agent_signer_policy_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1780134600000,
+      "tag": "0070_bitcoin_wallet_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1780135200000,
+      "tag": "0071_app_client_native_allowlists",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1780135800000,
+      "tag": "0072_vault_signing_freezes_and_evm_nonces",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1780136400000,
+      "tag": "0074_evm_wallet_nonce_inflight",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1780137000000,
+      "tag": "0075_monero_chain_family",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1780137600000,
+      "tag": "0076_audit_checkpoints",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1780137900000,
+      "tag": "0077_proxy_approvals",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1780138200000,
+      "tag": "0078_execution_authorization_nonces",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1784050800000,
+      "tag": "0079_workspace_provider_authority",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1784054400000,
+      "tag": "0080_provider_action_bindings",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1784140800000,
+      "tag": "0081_exact_approval_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1784227200000,
+      "tag": "0082_execution_authorization_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1784313600000,
+      "tag": "0083_provider_approval_quorum",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1784399999000,
+      "tag": "0084_provider_action_reservation_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1784486400000,
+      "tag": "0085_generic_http_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1784572800000,
+      "tag": "0086_audit_retention_archives",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1784659200000,
+      "tag": "0087_external_custody_execution_binding",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1784745600000,
+      "tag": "0088_provider_agent_budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1784832000000,
+      "tag": "0089_rfc3161_checkpoint_proofs",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1784918400000,
+      "tag": "0090_provider_action_approval_evidence_write_once",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1785004800000,
+      "tag": "0091_external_custody_outcome_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1785091200000,
+      "tag": "0092_provider_budget_tenant_reservation_handles",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1785177600000,
+      "tag": "0093_upstream_credential_leases",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1785264000000,
+      "tag": "0094_operator_transfer_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1787020069000,
+      "tag": "0095_approval_queue_agent_pagination",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1787020070000,
+      "tag": "0096_slack_provider_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1787020071000,
+      "tag": "0097_google_provider_profile",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1787020072000,
+      "tag": "0098_google_credential_lifecycles",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1787020073000,
+      "tag": "0099_google_disconnect_lifecycle_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1787031495000,
+      "tag": "0100_sigv4_injection",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1787106472000,
+      "tag": "0101_operator_transfer_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1787106473000,
+      "tag": "0102_google_consequential_write_risk",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1787107600000,
+      "tag": "0103_google_refresh_reconnect_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1787107601000,
+      "tag": "0104_x_refresh_rotation_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1787107602000,
+      "tag": "0105_x_connect_exchange_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1787111200000,
+      "tag": "0106_x_disconnect_recovery_bounds",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1787111201000,
+      "tag": "0107_x_disconnect_route_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1787111202000,
+      "tag": "0108_evm_nonce_tenant_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1787165200000,
+      "tag": "0109_agent_policy_builder_perps_reconcile",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1787168800000,
+      "tag": "0110_agent_delete_lease_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1787168801000,
+      "tag": "0111_tenant_rls_policy_install",
+      "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1787203600000,
+      "tag": "0112_rls_activation_release_gates",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1787220000000,
+      "tag": "0113_personal_tenant_account_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1787529855000,
+      "tag": "0114_passkey_rp_provenance",
+      "breakpoints": true
+    }
+  ]
+}

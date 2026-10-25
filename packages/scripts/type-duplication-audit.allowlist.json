@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "comment": "Reviewed type duplicates kept separate. Use name for a same-name cluster, pairKey for an exact report pair, or memberKey for a literal-set cluster. Every entry requires a reason.",
+  "entries": [
+    {
+      "name": "ScheduledTask",
+      "reason": "Frozen contract-type copies mandated by the LifeOps/health architecture rule: plugin-health and plugin-personal-assistant contribute ScheduledTask via local contract-types and must NOT import plugin-scheduling internals. Consolidating would violate that boundary. #10201."
+    },
+    {
+      "name": "AgentListItemDto",
+      "reason": "Cloud API DTO shapes are maintained in packages/cloud/shared, packages/cloud/sdk, and packages/ui. Consolidation requires a shared generation or dependency contract, not a manual merge. #10201."
+    }
+  ]
+}

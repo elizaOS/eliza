@@ -1,0 +1,42 @@
+html,
+body,
+#storybook-root,
+#storybook-docs {
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body.sb-show-main,
+body.sb-main-padded {
+  background: var(--bg);
+  color: var(--text);
+}
+
+#storybook-root {
+  display: flex;
+}
+
+.storybook-theme-surface {
+  width: 100%;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#storybook-root > .storybook-theme-surface {
+  min-height: 100dvh;
+}
+
+body.sb-show-main[data-theme],
+body.sb-main-padded[data-theme],
+body[data-theme] .sbdocs-wrapper,
+body[data-theme] .sbdocs-content,
+body[data-theme] .docs-story {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body[data-theme] .docs-story {
+  border-color: var(--border);
+}

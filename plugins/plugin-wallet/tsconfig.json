@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "target": "ES2022",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "strictNullChecks": true,
+    "noUncheckedIndexedAccess": false,
+    "noImplicitOverride": false,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/plugin-elizacloud": ["../plugin-elizacloud/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"]
+    },
+    "types": ["node", "bun"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/ui/**",
+    "src/ui.ts",
+    "src/register.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts",
+    "build.ts"
+  ]
+}

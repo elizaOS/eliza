@@ -1,0 +1,73 @@
+{
+  "catalogId": "mediation-logistics",
+  "title": "Pack I2 - Mediation logistics scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14788",
+    "packId": "I2",
+    "persona": "neutral logistics",
+    "targetCount": 8,
+    "notes": [
+      "Planned ledger for factual summaries and neutral logistics in disagreements.",
+      "The assistant must never adjudicate who is right."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "i2.mediation.factual_summary_only",
+      "pack": "I2",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "i2-neutral-schedule-options",
+      "pack": "I2",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored"
+    },
+    {
+      "id": "i2.mediation.no_adjudication",
+      "pack": "I2",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "i2-consent-before-group-message",
+      "pack": "I2",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "authored"
+    },
+    {
+      "id": "i2.mediation.extract_action_items",
+      "pack": "I2",
+      "tier": "T2",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "i2-private-fact-firebreak",
+      "pack": "I2",
+      "tier": "T4",
+      "surface": "scenario-runner",
+      "status": "authored"
+    },
+    {
+      "id": "i2.mediation.followup_without_pressure",
+      "pack": "I2",
+      "tier": "T3",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "i2-conflicting-claims-label-uncertain",
+      "pack": "I2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored"
+    }
+  ]
+}

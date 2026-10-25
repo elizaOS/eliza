@@ -1,0 +1,33 @@
+diff --git a/package.json b/package.json
+index 5b706051d126d61fd5c8a8d8deaa138bb13fbd81..b1d86fe6e84a20234ed4b332fe4c95ce23133abe 100644
+--- a/package.json
++++ b/package.json
+@@ -54,7 +54,27 @@
+     "./nist.js": "./nist.js",
+     "./secp256k1.js": "./secp256k1.js",
+     "./utils.js": "./utils.js",
+-    "./webcrypto.js": "./webcrypto.js"
++    "./webcrypto.js": "./webcrypto.js",
++    "./abstract/bls": "./abstract/bls.js",
++    "./abstract/curve": "./abstract/curve.js",
++    "./abstract/edwards": "./abstract/edwards.js",
++    "./abstract/fft": "./abstract/fft.js",
++    "./abstract/hash-to-curve": "./abstract/hash-to-curve.js",
++    "./abstract/modular": "./abstract/modular.js",
++    "./abstract/montgomery": "./abstract/montgomery.js",
++    "./abstract/oprf": "./abstract/oprf.js",
++    "./abstract/poseidon": "./abstract/poseidon.js",
++    "./abstract/tower": "./abstract/tower.js",
++    "./abstract/weierstrass": "./abstract/weierstrass.js",
++    "./bls12-381": "./bls12-381.js",
++    "./bn254": "./bn254.js",
++    "./ed448": "./ed448.js",
++    "./ed25519": "./ed25519.js",
++    "./misc": "./misc.js",
++    "./nist": "./nist.js",
++    "./secp256k1": "./secp256k1.js",
++    "./utils": "./utils.js",
++    "./webcrypto": "./webcrypto.js"
+   },
+   "engines": {
+     "node": ">= 20.19.0"

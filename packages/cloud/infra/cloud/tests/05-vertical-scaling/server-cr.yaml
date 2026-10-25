@@ -1,0 +1,19 @@
+apiVersion: eliza.ai/v1alpha1
+kind: Server
+metadata:
+  name: srv-vert
+  namespace: eliza-agents
+spec:
+  capacity: 5
+  tier: shared
+  project: cloud
+  image: localhost:5001/agent-server:dev
+  maxReplicas: 1
+  secretRef: eliza-agent-secrets
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"

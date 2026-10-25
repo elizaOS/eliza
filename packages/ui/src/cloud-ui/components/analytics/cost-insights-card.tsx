@@ -1,0 +1,90 @@
+/**
+ * Cloud analytics card summarizing cost trend, progress, and alerts.
+ */
+import { Badge } from "../../../components/ui/badge";
+import { Card } from "../../../components/ui/card";
+import { Progress } from "../../../components/ui/progress";
+import { CostAlerts, type CostAlertsTrending } from "./cost-alerts";
+
+interface CostInsightsCardProps {
+  costTrending: CostAlertsTrending;
+  creditBalance: number;
+}
+
+const currencyFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+export function CostInsightsCard({
+  costTrending,
+  creditBalance,
+}: CostInsightsCardProps) {
+  const projectedSpendPercent = costTrending.monthlyBurnPercentClamped;
+
+  const runwayLabel =
+    costTrending.daysUntilBalanceZero === null
+      ? "Stable"
+      : costTrending.daysUntilBalanceZero < 1
+        ? "< 1 day"
+        : `${costTrending.daysUntilBalanceZero}d`;
+
+  return (
+    <Card variant="brand" surface="card">
+      <div className="flex flex-col gap-2 p-6 pb-4">
+        <div className="flex items-center gap-3">
+          <h3 className="text-base font-semibold text-txt">Cost outlook</h3>
+          <Badge variant="outline" tone="muted">
+            {costTrending.burnChangePercent > 0 ? "+" : ""}
+            {costTrending.burnChangePercent.toFixed(1)}%
+          </Badge>
+        </div>
+      </div>
+      <div className="flex flex-col gap-5 p-6 pt-2">
+        <div className="grid gap-4">
+          <div className="grid gap-2 rounded-sm border border-border bg-bg-muted p-4">
+            <p className="text-xs uppercase tracking-wide text-muted">
+              Daily burn
+            </p>
+            <p className="text-2xl font-semibold text-txt">
+              {currencyFormatter.format(costTrending.currentDailyBurn)}
+            </p>
+          </div>
+
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted">
+              <span>Monthly projection</span>
+              <span>
+                {currencyFormatter.format(costTrending.projectedMonthlyBurn)}
+              </span>
+            </div>
+            <Progress value={projectedSpendPercent} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-sm border border-border bg-bg-muted p-3">
+              <p className="text-xs uppercase tracking-wide text-muted">
+                Runway
+              </p>
+              <p className="text-lg font-semibold text-txt">{runwayLabel}</p>
+            </div>
+            <div className="rounded-sm border border-border bg-bg-muted p-3">
+              <p className="text-xs uppercase tracking-wide text-muted">
+                Balance
+              </p>
+              <p className="text-lg font-semibold text-txt">
+                {currencyFormatter.format(creditBalance)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <CostAlerts costTrending={costTrending} creditBalance={creditBalance} />
+      </div>
+    </Card>
+  );
+}
+
+export type { CostInsightsCardProps };

@@ -1,0 +1,494 @@
+/**
+ * Built-in view declarations for the core first-party shell pages.
+ *
+ * These views are part of the main shell bundle — no `bundlePath` and no
+ * `bundleUrl` are needed. They are registered in the view registry so
+ * GET /api/views returns them, the agent can discover and navigate to them
+ * by name, and they appear in the view manager.
+ */
+
+import type { ViewDeclaration } from "@elizaos/core";
+
+export const BUILTIN_VIEWS: ViewDeclaration[] = [
+  {
+    id: "wallet",
+    fallbackFor: "@elizaos/plugin-wallet",
+    viewKind: "system",
+    label: "Wallet",
+    description:
+      "Wallet holdings screen. Display inspection is available without enabling transaction execution.",
+    icon: "Wallet",
+    path: "/wallet",
+    order: 40,
+    tags: ["wallet", "portfolio", "holdings"],
+    responseContext: { primaryContext: "wallet" },
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "projects",
+    viewKind: "system",
+    label: "Projects",
+    description:
+      "Coding tasks and generated apps, with task progress and results",
+    icon: "Folder",
+    path: "/apps/tasks",
+    order: 41,
+    tags: ["projects", "coding", "tasks"],
+    responseContext: { primaryContext: "code" },
+    relatedActions: ["TASKS"],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "camera",
+    viewKind: "preview",
+    label: "Camera",
+    description:
+      "Live camera preview with photo capture and front/back switching",
+    icon: "Camera",
+    heroImagePath: "assets/view-heroes/camera.png",
+    path: "/camera",
+    order: 3,
+    tags: ["camera", "photo", "capture", "video", "vision"],
+    responseContext: { primaryContext: "media" },
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["android"],
+    nativeOs: true,
+  },
+  {
+    id: "device-control",
+    viewKind: "system",
+    label: "Device controls",
+    description:
+      "Hidden native device controls available to the agent on the Android shell",
+    icon: "Flashlight",
+    order: 4,
+    tags: ["device", "flashlight", "torch", "hardware"],
+    responseContext: { primaryContext: "system" },
+    capabilities: [
+      {
+        id: "set-flashlight",
+        description: "Turn the phone flashlight on or off.",
+        params: {
+          enabled: {
+            type: "boolean",
+            description:
+              "True to turn the flashlight on; false to turn it off.",
+            required: true,
+          },
+        },
+      },
+    ],
+    visibleInManager: false,
+    desktopTabEnabled: false,
+    platforms: ["android"],
+    nativeOs: true,
+  },
+  {
+    id: "chat",
+    viewKind: "system",
+    label: "Home",
+    description:
+      "Home screen with the app launcher and conversations with your agent",
+    icon: "MessageSquare",
+    heroImagePath: "assets/view-heroes/chat.png",
+    path: "/chat",
+    order: 1,
+    tags: ["home", "launcher", "conversation", "agent"],
+    responseContext: { primaryContext: "general" },
+    anticipatoryIntent:
+      "Offer to pick up the most recent thread or surface anything the user left unfinished, and ask what they want to work on next.",
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
+    id: "browser",
+    viewKind: "system",
+    label: "Browser",
+    description: "Isolated native browser tabs for web pages and research",
+    icon: "Globe",
+    path: "/browser",
+    order: 2,
+    tags: ["browser", "web", "internet", "research", "tabs"],
+    responseContext: { primaryContext: "browser" },
+    relatedActions: ["BROWSER"],
+    capabilities: [
+      {
+        id: "browser-command",
+        description:
+          "Control the requesting client's native browser using typed commands and snapshot-bound element references.",
+      },
+    ],
+    visibleInManager: false,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+    surface: { isolation: "native-webview", background: "opaque" },
+  },
+  {
+    id: "character",
+    viewKind: "system",
+    label: "Character",
+    description: "Agent identity, personality, style, and knowledge documents",
+    icon: "UserRound",
+    heroImagePath: "assets/view-heroes/character.png",
+    path: "/character",
+    order: 50,
+    tags: ["identity", "personality", "character"],
+    responseContext: { primaryContext: "character" },
+    // CHARACTER/PERSONALITY are the semantic twins of the editor's field
+    // writes; the scoped actions below add view-targeted fill/click verbs.
+    relatedActions: ["CHARACTER", "PERSONALITY"],
+    anticipatoryIntent:
+      "Offer to refine the agent's identity, personality, or style from the current character state, and point out the highest-leverage next edit.",
+    // The scoped actions below expand into mutating `agent-fill`/`agent-click`
+    // interactions, which the route/dispatch gate denies unless the view opts
+    // into agent control via the `agent-surface` grant (read-only introspection
+    // stays open without it). This is the only built-in view driving the agent
+    // surface, so it is the only one that declares the grant.
+    surface: { capabilities: ["agent-surface"] },
+    // Named actions the agent can invoke ONLY while the Character view is the
+    // foreground view (#14155, deferred step 8 of #13591/#14123). Each targets
+    // a `useAgentElement` id in the Character editor (`CharacterEditor` /
+    // `CharacterEditorPanels`) and expands into the same `agent-fill`/
+    // `agent-click` interact sequence the element-level protocol drives — no
+    // parallel DOM path. Only ids that are ALWAYS mounted are targeted: the
+    // editor renders all three panels (personality/style/examples) up front and
+    // toggles visibility with CSS (`hidden`/`display:none`), so `identity-bio`,
+    // `style-add-input-all`/`style-add-all`, `example-add-conversation`, and
+    // `post-example-add` are registered regardless of the active tab. Row-level
+    // ids (`style-rule-remove-<section>-<index>`, `example-message-<c>-<m>`) are
+    // index-dependent and only mounted when that row exists, so they are NOT
+    // declared here — a blind declaration against them would target an unmounted
+    // element and fail loudly (`VIEW_SCOPED_ACTION_ELEMENT_MISSING`).
+    scopedActions: [
+      {
+        name: "VIEW_CHARACTER_FILL_BIO",
+        description:
+          "Set the agent's bio / about-me text on the Character view's Personality section. Autosaves.",
+        similes: [
+          "set bio",
+          "edit bio",
+          "update about me",
+          "write the agent's bio",
+          "rewrite the character bio",
+        ],
+        parameters: ["bio"],
+        steps: [
+          { kind: "agent-fill", target: "identity-bio", value: "{{bio}}" },
+        ],
+      },
+      {
+        name: "VIEW_CHARACTER_ADD_STYLE_RULE",
+        description:
+          "Add a style rule to the agent's writing style on the Character view's Style section. Autosaves.",
+        similes: [
+          "add style rule",
+          "add a writing style rule",
+          "add style guideline",
+          "append a style rule",
+        ],
+        parameters: ["rule"],
+        steps: [
+          {
+            kind: "agent-fill",
+            target: "style-add-input-all",
+            value: "{{rule}}",
+          },
+          { kind: "agent-click", target: "style-add-all" },
+        ],
+      },
+      {
+        name: "VIEW_CHARACTER_ADD_MESSAGE_EXAMPLE",
+        description:
+          "Add a new chat-example conversation on the Character view's Examples section, ready for turns to be filled in. Autosaves.",
+        similes: [
+          "add message example",
+          "add a chat example",
+          "add conversation example",
+          "create a new example conversation",
+        ],
+        steps: [{ kind: "agent-click", target: "example-add-conversation" }],
+      },
+    ],
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "documents",
+    viewKind: "system",
+    label: "Knowledge",
+    description:
+      "The multimedia knowledge hub — documents, images, audio, video, and transcripts, filtered by media type and scope, with a unified reader",
+    icon: "FileText",
+    heroImagePath: "assets/view-heroes/character.png",
+    path: "/character/documents",
+    order: 51,
+    tags: [
+      "documents",
+      "knowledge",
+      "files",
+      "uploads",
+      "retrieval",
+      "transcripts",
+      "audio",
+      "video",
+      "images",
+      "media",
+      "attachments",
+    ],
+    responseContext: { primaryContext: "documents" },
+    // OWNER_DOCUMENTS is the personal-assistant signature/portal umbrella;
+    // DOCUMENT (core documents feature) is the CRUD twin of the view's
+    // upload/delete controls (#14369 guard mapping).
+    relatedActions: ["OWNER_DOCUMENTS", "DOCUMENT"],
+    surface: { capabilities: ["agent-surface"] },
+    anticipatoryIntent:
+      "Offer to triage the newest ingested attachments/documents — summarize, tag, or file them — grounded in the recent-attachment counts.",
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "automations",
+    viewKind: "system",
+    label: "Automations",
+    description: "Scheduled tasks and recurring workflows",
+    icon: "Clock3",
+    heroImagePath: "assets/view-heroes/automations.png",
+    path: "/automations",
+    order: 55,
+    tags: ["automation", "tasks", "scheduling"],
+    responseContext: { primaryContext: "automation" },
+    // SCHEDULED_TASKS is the umbrella over the one scheduler (workflows are
+    // ScheduledTask records); TRIGGER pairs the trigger editor (#14369).
+    relatedActions: ["SCHEDULED_TASKS", "TRIGGER"],
+    anticipatoryIntent:
+      "Offer to create a new scheduled workflow or check on existing automations — flag any recently failed runs — grounded in the live task list.",
+    visibleInManager: true,
+  },
+  {
+    id: "cloud-apps",
+    viewKind: "release",
+    label: "Cloud Apps",
+    description: "Manage, deploy, and monetize apps published on Eliza Cloud",
+    icon: "Grid3x3",
+    heroImagePath: "assets/view-heroes/plugins-page.png",
+    path: "/cloud-apps",
+    order: 58,
+    tags: ["cloud", "apps", "applications", "deploy", "monetize"],
+    responseContext: {
+      primaryContext: "connectors",
+      secondaryContexts: ["admin"],
+    },
+    // The renderer registers the native studio in-process under this same id
+    // and path. Keeping it in the server registry makes VIEWS/show resolve the
+    // Projects Apps-segment navigation row instead of claiming an action that
+    // cannot open it.
+    visibleInManager: false,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
+    id: "plugins-page",
+    viewKind: "system",
+    label: "Plugins",
+    description: "Manage installed plugins, configure credentials",
+    icon: "Puzzle",
+    heroImagePath: "assets/view-heroes/plugins-page.png",
+    path: "/apps/plugins",
+    order: 60,
+    tags: [
+      "plugins",
+      "plugin-browser",
+      "plugin browser",
+      "plugin-manager",
+      "plugin manager",
+      "configuration",
+      "extensions",
+    ],
+    responseContext: {
+      primaryContext: "connectors",
+      secondaryContexts: ["settings"],
+    },
+    // PLUGIN is the install/enable/configure twin of the plugin browser's
+    // controls (#14369 guard mapping); RUNTIME stays per #13589.
+    relatedActions: ["RUNTIME", "PLUGIN"],
+    anticipatoryIntent:
+      "Offer to install, configure, or troubleshoot a plugin — surface the smallest setup gap — grounded in installed-plugin and health state.",
+    visibleInManager: true,
+  },
+  {
+    id: "trajectories",
+    viewKind: "developer",
+    label: "Trajectories",
+    description: "Agent trajectory logs and training data",
+    icon: "GitBranch",
+    heroImagePath: "assets/view-heroes/trajectories.png",
+    path: "/apps/trajectories",
+    order: 70,
+    tags: ["training", "logs", "trajectories"],
+    responseContext: { primaryContext: "agent_internal" },
+    visibleInManager: true,
+  },
+  {
+    // Folded into the Knowledge hub (#13594): transcript records read in the hub
+    // under its Transcripts media-format facet + word-synced reader. This entry
+    // stays only as the chrome-minimal LIVE-meeting affordance (#11856) — a
+    // deep-link surface, not a separate manager view or launcher tile.
+    id: "transcripts",
+    viewKind: "system",
+    label: "Live meeting",
+    description:
+      "Join a live meeting and capture its transcript; recorded transcripts read in the Knowledge hub",
+    icon: "AudioLines",
+    heroImagePath: "assets/view-heroes/transcripts.png",
+    path: "/apps/transcripts",
+    order: 71,
+    tags: ["transcript", "voice", "recording", "audio", "meeting"],
+    responseContext: { primaryContext: "documents" },
+    anticipatoryIntent:
+      "Offer to summarize or extract action items from the most recent voice transcripts, grounded in the recent-transcript count.",
+    visibleInManager: false,
+  },
+  {
+    id: "memories",
+    viewKind: "system",
+    label: "Memories",
+    description: "Agent memory viewer and management",
+    icon: "Brain",
+    heroImagePath: "assets/view-heroes/memories.png",
+    path: "/apps/memories",
+    order: 72,
+    tags: ["memory", "knowledge"],
+    responseContext: { primaryContext: "memory" },
+    // MEMORY (op:create|search|update|delete) is the chat twin of the viewer's
+    // browse/prune controls (#14366 closed it; #14369 pins the affinity).
+    relatedActions: ["MEMORY"],
+    anticipatoryIntent:
+      "Offer to search, review, or prune the agent's stored memories, and point to what's worth revisiting.",
+    visibleInManager: true,
+  },
+  {
+    id: "files",
+    viewKind: "system",
+    label: "Files",
+    description: "Stored files and attachments",
+    icon: "FolderOpen",
+    path: "/apps/files",
+    order: 73,
+    tags: ["files", "attachments", "uploads"],
+    responseContext: { primaryContext: "documents" },
+    visibleInManager: false,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "stream",
+    viewKind: "system",
+    label: "Stream",
+    description: "Live activity and media stream",
+    icon: "Radio",
+    path: "/stream",
+    order: 74,
+    tags: ["stream", "live", "activity"],
+    responseContext: {
+      primaryContext: "media",
+      secondaryContexts: ["system"],
+    },
+    visibleInManager: false,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "database",
+    viewKind: "developer",
+    label: "Database",
+    description: "Raw database viewer and query interface",
+    icon: "Database",
+    heroImagePath: "assets/view-heroes/database.png",
+    path: "/apps/database",
+    order: 80,
+    tags: ["database", "data", "debug"],
+    responseContext: { primaryContext: "system" },
+    visibleInManager: true,
+  },
+  {
+    id: "logs",
+    viewKind: "developer",
+    label: "Logs",
+    description: "Runtime logs and agent debug output",
+    icon: "FileText",
+    heroImagePath: "assets/view-heroes/logs.png",
+    path: "/apps/logs",
+    order: 81,
+    tags: ["logs", "debug", "runtime"],
+    responseContext: { primaryContext: "system" },
+    visibleInManager: true,
+  },
+  {
+    id: "vault",
+    viewKind: "system",
+    label: "Vault",
+    description:
+      "Owner-only encrypted credentials, connected accounts, saved logins, and secret routing",
+    icon: "KeyRound",
+    heroImagePath: "assets/view-heroes/settings.png",
+    path: "/vault",
+    order: 89,
+    tags: [
+      "vault",
+      "secrets",
+      "credentials",
+      "keys",
+      "connected accounts",
+      "password manager",
+    ],
+    responseContext: { primaryContext: "secrets" },
+    relatedActions: ["SECRETS"],
+    anticipatoryIntent:
+      "Offer to inventory or safely configure the exact credential the user needs without exposing secret values, and distinguish local Vault entries from Eliza Cloud organization credentials.",
+    roleGate: { minRole: "OWNER" },
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+  {
+    id: "settings",
+    viewKind: "system",
+    label: "Settings",
+    description: "Configuration, plugins, credentials, and preferences",
+    icon: "Settings",
+    heroImagePath: "assets/view-heroes/settings.png",
+    path: "/settings",
+    order: 90,
+    tags: ["configuration", "preferences", "plugins"],
+    responseContext: { primaryContext: "system" },
+    // SETTINGS is the consolidated section write action (#14364); RUNTIME
+    // stays for the runtime/status affinity the #13589 stub migration pinned.
+    relatedActions: ["RUNTIME", "SETTINGS"],
+    anticipatoryIntent:
+      "Offer to set up the model/provider, voice, or connectors — recommend the smallest concrete configuration step from current settings state.",
+    visibleInManager: true,
+    desktopTabEnabled: true,
+  },
+  {
+    id: "background",
+    viewKind: "preview",
+    label: "Background",
+    description:
+      "Set the app background — pick a shader color, upload an image, or generate one",
+    icon: "Image",
+    heroImagePath: "assets/view-heroes/background.png",
+    path: "/background",
+    order: 92,
+    tags: ["background", "wallpaper", "color", "theme", "appearance", "image"],
+    responseContext: { primaryContext: "system" },
+    // BACKGROUND is the one-write-two-triggers exemplar: the view controls and
+    // the action drive the same store (#14369 pins the affinity).
+    relatedActions: ["BACKGROUND"],
+    anticipatoryIntent:
+      "Offer to set the app background — pick a shader color, generate an image, or use an upload.",
+    visibleInManager: true,
+    desktopTabEnabled: true,
+    platforms: ["web", "desktop", "ios", "android"],
+  },
+];

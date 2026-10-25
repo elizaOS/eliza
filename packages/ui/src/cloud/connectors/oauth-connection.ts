@@ -1,0 +1,177 @@
+/**
+ * Shared data layer for OAuth-redirect cloud connectors (Google, Microsoft).
+ *
+ * Handles listing connections (`GET /api/v1/oauth/connections?platform=`),
+ * initiating the OAuth redirect (`POST /api/v1/oauth/<platform>/initiate`), and
+ * revoking a connection (`DELETE /api/v1/oauth/connections/:id`).
+ * Token/credential connectors (Telegram, Twilio, WhatsApp, Blooio) use a
+ * different connect flow and are intentionally not covered here.
+ */
+
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "../../bridge/toast";
+import { isSafeNavigationUrl } from "../../utils/navigation-url";
+import {
+  ApiError,
+  api,
+  apiErrorMessage as errorBodyMessage,
+} from "../lib/api-client";
+
+/**
+ * A single OAuth connection row returned by
+ * `GET /api/v1/oauth/connections?platform=<platform>`.
+ */
+export interface OAuthConnection {
+  id: string;
+  platform: string;
+  email?: string;
+  displayName?: string;
+  scopes?: string[];
+  status: string;
+}
+
+/**
+ * Per-provider configuration for the shared OAuth connection logic. Only the
+ * pieces that genuinely vary between providers (platform key, initiate path,
+ * and user-facing labels) live here; the fetch / initiate / disconnect flow is
+ * identical and owned by {@link useOAuthConnections}.
+ */
+export interface OAuthProviderConfig {
+  /** Platform query value, e.g. "google" / "microsoft". */
+  platform: string;
+  /** Human label used in toast messages, e.g. "Google" / "Microsoft". */
+  label: string;
+}
+
+interface UseOAuthConnectionsResult {
+  connections: OAuthConnection[];
+  activeConnections: OAuthConnection[];
+  isLoading: boolean;
+  isError: boolean;
+  errorMessage: string | null;
+  isConnecting: boolean;
+  disconnectingId: string | null;
+  connect: () => Promise<void>;
+  disconnect: (connectionId: string) => Promise<void>;
+  refetch: () => Promise<void>;
+}
+
+export function useOAuthConnections(
+  config: OAuthProviderConfig,
+): UseOAuthConnectionsResult {
+  const { platform, label } = config;
+  const [connections, setConnections] = useState<OAuthConnection[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
+
+  const fetchConnections = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoading(true);
+      try {
+        const data = await api<{ connections?: OAuthConnection[] }>(
+          `/api/v1/oauth/connections?platform=${platform}`,
+          { signal },
+        );
+        if (!signal?.aborted) {
+          setConnections(data.connections ?? []);
+          setErrorMessage(null);
+        }
+      } catch (error) {
+        if (!signal?.aborted) {
+          const message = errorBodyMessage(
+            error,
+            `Failed to fetch ${label} connections`,
+          );
+          // error-policy:J4 the provider list failed to load, so consumers get
+          // an explicit error state rather than a fabricated empty account list.
+          // The section aggregates probe failures, so this background request
+          // deliberately does not emit a provider-by-provider toast.
+          setErrorMessage(message);
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [platform, label],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchConnections(controller.signal);
+    return () => controller.abort();
+  }, [fetchConnections]);
+
+  const connect = useCallback(async () => {
+    if (isConnecting) return;
+    setIsConnecting(true);
+    try {
+      const data = await api<{ authUrl?: string; error?: string }>(
+        `/api/v1/oauth/${platform}/initiate`,
+        {
+          method: "POST",
+          json: { redirectUrl: "/cloud/connectors" },
+        },
+      );
+      if (data.authUrl) {
+        if (!isSafeNavigationUrl(data.authUrl)) {
+          // The authorization URL is a wire value assigned to the top window —
+          // only absolute http(s) may navigate; anything else is an error.
+          toast.error(`Received an invalid ${label} authorization URL`);
+          setIsConnecting(false);
+          return;
+        }
+        window.location.href = data.authUrl;
+        return;
+      }
+      toast.error(data.error || `Failed to initiate ${label} OAuth`);
+      setIsConnecting(false);
+    } catch (error) {
+      toast.error(
+        error instanceof ApiError
+          ? errorBodyMessage(error, `Failed to initiate ${label} OAuth`)
+          : "Network error. Please check your connection.",
+      );
+      setIsConnecting(false);
+    }
+  }, [isConnecting, platform, label]);
+
+  const disconnect = useCallback(
+    async (connectionId: string) => {
+      if (disconnectingId) return;
+      setDisconnectingId(connectionId);
+      try {
+        await api(`/api/v1/oauth/connections/${connectionId}`, {
+          method: "DELETE",
+        });
+        toast.success(`${label} account disconnected`);
+        await fetchConnections();
+      } catch (error) {
+        toast.error(errorBodyMessage(error, "Failed to disconnect"));
+      } finally {
+        setDisconnectingId(null);
+      }
+    },
+    [disconnectingId, label, fetchConnections],
+  );
+
+  const activeConnections = connections.filter((c) => c.status === "active");
+
+  return {
+    connections,
+    activeConnections,
+    isLoading,
+    isError: errorMessage !== null,
+    errorMessage,
+    isConnecting,
+    disconnectingId,
+    connect,
+    disconnect,
+    refetch: fetchConnections,
+  };
+}

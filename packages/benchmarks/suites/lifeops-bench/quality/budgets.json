@@ -1,0 +1,24 @@
+{
+  "_comment": "Committed regression budgets for the LifeOps quality benchmarks (#10723), mirroring recall-bench/budgets.json. The gates compare MEASURED scores against these and fail when a floor/ceiling is crossed; when a run beats a budget with headroom the gate prints it, prompting a ratchet. Both lanes are keyless + deterministic: triage drives the REAL plugin-inbox classifier parse/validate/fail-closed path with a committed fixed-quality mock model; timeliness replays the REAL plugin-personal-assistant scheduled-task tick over two committed DST windows. baseline.json holds the recorded reference run behind these numbers.",
+  "triage": {
+    "_comment": "Floors sit between the recorded baseline (baseline.json) and the score one additional misclassification would produce, so a single new wrong/dropped row through the parse/validate path trips the gate. minAccuracy is one item under baseline (49/56 → floor above 48/56); minMacroF1 catches cross-class drift a per-class floor can miss.",
+    "minAccuracy": 0.86,
+    "minMacroF1": 0.85,
+    "perClass": {
+      "ignore": { "minPrecision": 0.95, "minRecall": 0.79 },
+      "info": { "minPrecision": 0.66, "minRecall": 0.85 },
+      "notify": { "minPrecision": 0.85, "minRecall": 0.75 },
+      "needs_reply": { "minPrecision": 0.85, "minRecall": 0.88 },
+      "urgent": { "minPrecision": 0.95, "minRecall": 0.85 }
+    }
+  },
+  "timeliness": {
+    "_comment": "Counts are exact contract values (a missed, duplicated, early, or occurrence-mislabeled fire is a bug, not a tolerance). Deviation ceilings: a 5-minute tick cadence bounds honest lateness at <300000ms; the mean ceiling has ~40% headroom over the recorded baseline mean.",
+    "missedFireCount": 0,
+    "duplicateFireCount": 0,
+    "earlyFireCount": 0,
+    "occurrenceMismatchCount": 0,
+    "maxDeviationMs": 300000,
+    "meanDeviationMs": 200000
+  }
+}

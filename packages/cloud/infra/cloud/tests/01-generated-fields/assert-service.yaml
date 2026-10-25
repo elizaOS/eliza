@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: srv-gen
+  namespace: eliza-agents
+  labels:
+    eliza.ai/managed-by: server-operator
+    eliza.ai/server: srv-gen
+    eliza.ai/tier: shared
+    eliza.ai/project: cloud
+spec:
+  clusterIP: None
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+      name: http
+  selector:
+    eliza.ai/server: srv-gen

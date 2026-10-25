@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "graphVersion": "2026-09-24.1",
+  "evidenceTtlHours": 168,
+  "reusePolicy": "current-run-only",
+  "environment": {
+    "bun": "1.4.2",
+    "node": "24.15.0",
+    "runnerPolicy": "develop-full-v1",
+    "runnerImageIdentity": "not-bound"
+  },
+  "globalInputs": [
+    ".github/develop-surface-graph.json",
+    ".github/develop-effects.json",
+    ".github/workflows/develop-full.yml",
+    ".github/workflows/develop-reconcile.yml",
+    ".github/actions/setup-bun-workspace/**",
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+    "biome.json",
+    "turbo.json",
+    "tsconfig.json",
+    "tsconfig.base.json",
+    "packages/scripts/develop-effect-ledger.ts",
+    "packages/scripts/develop-impact-evidence.ts"
+  ],
+  "surfaces": [
+    {
+      "id": "canonical",
+      "workflow": ".github/workflows/ci.yml",
+      "workspacePatterns": [
+        "packages/core",
+        "packages/agent",
+        "packages/auth",
+        "packages/testing/synthetic-world",
+        "plugins/**",
+        "packages/app",
+        "packages/ui",
+        "packages/testing/scenario-runner",
+        "packages/testing",
+        "plugins/plugin-computeruse",
+        "packages/**"
+      ],
+      "inputs": [
+        "packages/scripts/**",
+        ".gitleaks.toml",
+        ".gitleaksignore",
+        "*.md",
+        "**/*.md",
+        "packages/scripts/audit-*.ts",
+        "packages/testing/scenario-runner/test/**",
+        "packages/scripts/run-all-tests.ts",
+        "vitest*.ts",
+        "vitest*.mts"
+      ]
+    },
+    {
+      "id": "cloud",
+      "workflow": ".github/workflows/cloud-tests.yml",
+      "workspacePatterns": ["packages/cloud/**", "plugins/plugin-elizacloud"],
+      "inputs": ["packages/scripts/cloud/**"],
+      "dependsOn": ["canonical"]
+    },
+    {
+      "id": "ui-core",
+      "workflow": ".github/workflows/ui-e2e-gate.yml",
+      "workspacePatterns": ["packages/app", "packages/core", "packages/ui"],
+      "inputs": [
+        "packages/ui/src/**",
+        "packages/ui/test/**",
+        "packages/ui/src/testing/**"
+      ],
+      "dependsOn": ["canonical"]
+    }
+  ]
+}

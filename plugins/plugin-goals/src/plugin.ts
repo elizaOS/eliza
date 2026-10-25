@@ -1,0 +1,71 @@
+/**
+ * @elizaos/plugin-goals — life direction plugin.
+ *
+ * Decomposed out of @elizaos/plugin-personal-assistant. Owns owner-set long-horizon
+ * goals plus the goals list view and the goal tables (`app_goals`). Routines,
+ * reminders, alarms, and daily check-in handlers still run through
+ * @elizaos/plugin-personal-assistant during the migration and are referenced
+ * by TODO(migrate) comments in their scaffold files.
+ */
+
+import type { Plugin } from "@elizaos/core";
+
+import { ownerGoalsAction } from "./actions/goals.ts";
+import * as dbSchema from "./db/index.ts";
+import { GoalsCheckinService } from "./services/checkin.ts";
+import { GoalsMigrationService } from "./services/migration.ts";
+
+const GOALS_PLUGIN_NAME = "@elizaos/plugin-goals";
+
+export const goalsPlugin: Plugin = {
+  name: GOALS_PLUGIN_NAME,
+  description:
+    "Life direction: owner-set long-horizon goals with per-goal check-ins on the scheduling spine, the goal tables, and the goals list view. Routines, reminders, and alarms are still host-adapted by @elizaos/plugin-personal-assistant during migration.",
+  dependencies: ["@elizaos/plugin-sql", "@elizaos/plugin-scheduling"],
+  // Only OWNER_GOALS has been fully migrated into this standalone package.
+  // Routines/reminders/alarms remain host-adapted PA actions for now; do not
+  // register their scaffold handlers here.
+  actions: [ownerGoalsAction],
+  services: [GoalsCheckinService, GoalsMigrationService],
+  schema: dbSchema,
+  views: [
+    // The shipped view is GUI-only. `modalities` is a plain literal here
+    // (plugin.ts is not in the view bundle), so no brand-new `@elizaos/core`
+    // runtime export reaches the bundle build.
+    {
+      id: "goals",
+      label: "Goals",
+      description: "The owner's long-horizon goals list.",
+      icon: "Target",
+      path: "/goals",
+      responseContext: {
+        primaryContext: "goals",
+        secondaryContexts: ["productivity"],
+      },
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
+      componentExport: "GoalsView",
+      tags: ["goals", "routines", "reminders", "self-care", "owner"],
+      relatedActions: [
+        "OWNER_GOALS",
+        "OWNER_ALARMS",
+        "OWNER_REMINDERS",
+        "OWNER_ROUTINES",
+      ],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
+  async dispose(runtime) {
+    const svc = runtime.getService<GoalsCheckinService>(
+      GoalsCheckinService.serviceType,
+    );
+    await svc?.stop();
+  },
+};
+
+export default goalsPlugin;

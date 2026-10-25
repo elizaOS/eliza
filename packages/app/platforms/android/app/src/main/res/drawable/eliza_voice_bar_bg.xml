@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Rounded dark pill for the assistant voice bar (ElizaVoiceInteractionSession). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#1C1C1E" />
+    <corners android:radius="28dp" />
+    <stroke
+        android:width="1dp"
+        android:color="#33FF5800" />
+</shape>

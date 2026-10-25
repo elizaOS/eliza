@@ -1,0 +1,1772 @@
+/**
+ * `XService` — the core runtime service (`serviceType = "x"`) that bridges the
+ * agent to X/Twitter. On start it materializes a `TwitterClientInstance` per
+ * account (each owning a `ClientBase` and the autonomous post/interaction/timeline/
+ * discovery sub-clients) and registers the X message connector (DMs) and post
+ * connector (public feed) with the runtime.
+ *
+ * `TwitterClientInstance` orchestrates the per-account lifecycle: it constructs the
+ * sub-clients, starts the ones enabled by config in `startAutonomousClients()`, and
+ * tears them down on stop. Connector handlers (`resolveTargets`, `fetchMessages`,
+ * `sendHandler`, `postHandler`, `fetchFeed`, `searchPosts`, …) delegate to the
+ * per-account `TwitterMessageService`/`TwitterPostService`. All methods accept an
+ * `accountId` and route through `getSetting` for config.
+ */
+import {
+  ChannelType,
+  type Content,
+  createUniqueUuid,
+  ElizaError,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type MessageConnectorQueryContext,
+  type MessageConnectorTarget,
+  type MessageConnectorUserContext,
+  parseBooleanFromText,
+  Service,
+  type TargetInfo,
+  type UUID,
+} from "@elizaos/core";
+import { ClientBase, type TwitterProfile } from "../base";
+import {
+  normalizeXAccountId,
+  resolveDefaultXAccountId,
+  resolveRequestedXAccountId,
+  resolveTwitterAccountConfig,
+} from "../client/accounts.js";
+import type { AuthenticatedTwitterSession } from "../client/auth.js";
+import { SearchMode, type Tweet } from "../client/index.js";
+import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
+import { isGroupDmEvent, TwitterDirectMessageClient } from "../direct-messages";
+import { TwitterDiscoveryClient } from "../discovery";
+import { validateTwitterConfig } from "../environment";
+import { TwitterInteractionClient } from "../interactions";
+import { TwitterPostClient } from "../post";
+import { TwitterTimelineClient } from "../timeline";
+import type { ITwitterClient, TwitterClientState } from "../types";
+import {
+  fetchMediaData,
+  splitTweetContent,
+  splitXDirectMessageContent,
+} from "../utils";
+import { normalizeXReceiptId } from "../utils/provider-receipt";
+import { getSetting } from "../utils/settings";
+import { getEpochMs } from "../utils/time";
+import { TwitterPostService } from "./PostService";
+
+const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
+const X_CONNECTOR_CAPABILITIES = [
+  "send_message",
+  "fetch_messages",
+  "resolve_targets",
+  "user_context",
+];
+
+const X_USER_ID_PATTERN = /^\d+$/;
+const X_MAX_POST_LENGTH = 280;
+
+export type XAccountCapability =
+  | "x.read"
+  | "x.write"
+  | "x.dm.read"
+  | "x.dm.write";
+
+export interface XAccountCapabilityStatus {
+  accountId: string;
+  configured: boolean;
+  connected: boolean;
+  reason: "connected" | "disconnected" | "config_missing" | "needs_reauth";
+  identity: Record<string, unknown> | null;
+  grantedCapabilities: XAccountCapability[];
+  grantedScopes: string[];
+  authMode: "env" | "oauth" | "broker";
+}
+
+type XMessageConnectorRegistration = Parameters<
+  IAgentRuntime["registerMessageConnector"]
+>[0] & {
+  // Kept explicit while plugin-only typechecks may resolve a previously built
+  // core declaration that predates this typed dispatcher contract.
+  accountRouting?: "connector";
+  fetchMessages?: (
+    context: MessageConnectorQueryContext,
+    params?: {
+      target?: TargetInfo;
+      limit?: number;
+      before?: string;
+      after?: string;
+    },
+  ) => Promise<Memory[]>;
+  contentShaping?: {
+    systemPromptFragment?: string;
+    constraints?: Record<string, unknown>;
+  };
+};
+
+interface PostConnectorQueryContext {
+  runtime: IAgentRuntime;
+  roomId?: UUID;
+  source?: string;
+  accountId?: string;
+  target?: TargetInfo;
+  metadata?: Record<string, unknown>;
+}
+
+interface PostConnectorRegistration {
+  source: string;
+  accountRouting?: "connector";
+  label?: string;
+  description?: string;
+  capabilities?: string[];
+  contexts?: string[];
+  metadata?: Record<string, unknown>;
+  postHandler: (
+    runtime: IAgentRuntime,
+    content: Content,
+    context?: PostConnectorQueryContext,
+  ) => Promise<Memory | Memory[]>;
+  fetchFeed?: (
+    context: PostConnectorQueryContext,
+    params?: {
+      feed?: string;
+      target?: TargetInfo;
+      userId?: string;
+      limit?: number;
+      cursor?: string;
+    },
+  ) => Promise<Memory[]>;
+  searchPosts?: (
+    context: PostConnectorQueryContext,
+    params: { query: string; limit?: number; cursor?: string },
+  ) => Promise<Memory[]>;
+  contentShaping?: {
+    systemPromptFragment?: string;
+    constraints?: Record<string, unknown>;
+  };
+}
+
+type RuntimeWithPostConnector = IAgentRuntime & {
+  registerPostConnector?: (registration: PostConnectorRegistration) => void;
+};
+
+function normalizeXConnectorQuery(value: string): string {
+  return value.trim().replace(/^@/, "").toLowerCase();
+}
+
+function explicitConnectorLimit(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ElizaError("X connector limit must be a positive integer", {
+      code: "X_CONNECTOR_LIMIT_INVALID",
+      context: { value },
+    });
+  }
+  return value;
+}
+
+/** The other user of a one-to-one conversation id ("<id>-<id>") that the account is in. */
+function dmConversationCounterpart(
+  conversationId: string | undefined,
+  ownUserId: string | undefined,
+): string | null {
+  const pair = conversationId?.match(/^(\d+)-(\d+)$/);
+  if (!pair || !ownUserId) return null;
+  const participants = new Set(pair.slice(1));
+  if (participants.size !== 2 || !participants.has(ownUserId)) return null;
+  return [...participants].find((id) => id !== ownUserId) ?? null;
+}
+
+/** Resolve only authenticated one-to-one conversations, never group membership. */
+function dmCounterpartId(message: {
+  senderId: string;
+  ownUserId?: string;
+  conversationId?: string;
+}): string | null {
+  const counterpart = dmConversationCounterpart(
+    message.conversationId,
+    message.ownUserId,
+  );
+  return counterpart &&
+    (message.senderId === counterpart || message.senderId === message.ownUserId)
+    ? counterpart
+    : null;
+}
+
+function readContentString(
+  content: Content,
+  keys: string[],
+): string | undefined {
+  const record = content as Content & Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function readAccountIdFromRecord(record: unknown): string | undefined {
+  if (!record || typeof record !== "object") return undefined;
+  const source = record as Record<string, unknown>;
+  const direct = source.accountId;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const metadata =
+    source.metadata && typeof source.metadata === "object"
+      ? (source.metadata as Record<string, unknown>)
+      : undefined;
+  const fromMetadata = metadata?.accountId;
+  return typeof fromMetadata === "string" && fromMetadata.trim()
+    ? fromMetadata.trim()
+    : undefined;
+}
+
+function capabilitiesForXAuthState(state: TwitterClientState): {
+  capabilities: XAccountCapability[];
+  scopes: string[];
+} {
+  const mode = state.TWITTER_AUTH_MODE ?? "env";
+  if (mode === "env") {
+    return {
+      capabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
+      scopes: [
+        "tweet.read",
+        "tweet.write",
+        "users.read",
+        "dm.read",
+        "dm.write",
+      ],
+    };
+  }
+
+  const scopes = (state.TWITTER_SCOPES ?? "")
+    .split(/\s+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+  const scopeSet = new Set(scopes);
+  const capabilities: XAccountCapability[] = [];
+  if (scopeSet.has("tweet.read")) capabilities.push("x.read");
+  if (scopeSet.has("tweet.write")) capabilities.push("x.write");
+  if (scopeSet.has("dm.read")) capabilities.push("x.dm.read");
+  if (scopeSet.has("dm.write")) capabilities.push("x.dm.write");
+  return { capabilities, scopes };
+}
+
+/**
+ * A manager that orchestrates all specialized Twitter logic:
+ * - client: base operations (login, timeline caching, etc.)
+ * - post: autonomous posting logic
+ * - interaction: handling mentions, replies, and autonomous targeting
+ * - timeline: processing timeline for actions (likes, retweets, replies)
+ * - discovery: autonomous content discovery and engagement
+ */
+export class TwitterClientInstance implements ITwitterClient {
+  client: ClientBase;
+  post?: TwitterPostClient;
+  interaction?: TwitterInteractionClient;
+  timeline?: TwitterTimelineClient;
+  discovery?: TwitterDiscoveryClient;
+  directMessages?: TwitterDirectMessageClient;
+  readonly accountId: string;
+
+  constructor(runtime: IAgentRuntime, state: TwitterClientState) {
+    this.accountId = resolveRequestedXAccountId(
+      runtime,
+      state,
+      state.accountId,
+    );
+    // Pass twitterConfig to the base client
+    this.client = new ClientBase(runtime, state);
+
+    // Posting logic
+    const postEnabled = parseBooleanFromText(
+      getSetting(runtime, "TWITTER_ENABLE_POST"),
+    );
+    logger.debug(
+      `TWITTER_ENABLE_POST setting value: ${JSON.stringify(postEnabled)}, type: ${typeof postEnabled}`,
+    );
+
+    if (postEnabled) {
+      logger.info("Twitter posting is ENABLED - creating post client");
+      this.post = new TwitterPostClient(this.client, runtime, state);
+    } else {
+      logger.info(
+        "Twitter posting is DISABLED - set TWITTER_ENABLE_POST=true to enable automatic posting",
+      );
+    }
+
+    // Mentions and interactions
+    const repliesEnabled =
+      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+
+    if (repliesEnabled) {
+      logger.info("Twitter replies/interactions are ENABLED");
+      this.interaction = new TwitterInteractionClient(
+        this.client,
+        runtime,
+        state,
+      );
+    } else {
+      logger.info("Twitter replies/interactions are DISABLED");
+    }
+
+    const directMessagesEnabled = parseBooleanFromText(
+      state.TWITTER_ENABLE_DMS ??
+        getSetting(runtime, "TWITTER_ENABLE_DMS") ??
+        process.env.TWITTER_ENABLE_DMS ??
+        "true",
+    );
+    if (directMessagesEnabled) {
+      logger.info("Twitter direct-message replies are ENABLED");
+      this.directMessages = new TwitterDirectMessageClient(
+        this.client,
+        runtime,
+        state,
+      );
+    } else {
+      logger.info("Twitter direct-message replies are DISABLED");
+    }
+
+    // Timeline actions (likes, retweets, replies)
+    const actionsEnabled =
+      (getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
+        process.env.TWITTER_ENABLE_ACTIONS) === "true";
+
+    if (actionsEnabled) {
+      logger.info("Twitter timeline actions are ENABLED");
+      this.timeline = new TwitterTimelineClient(this.client, runtime, state);
+    } else {
+      logger.info("Twitter timeline actions are DISABLED");
+    }
+
+    // Discovery service for autonomous content discovery
+    const discoveryEnabled =
+      (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+        process.env.TWITTER_ENABLE_DISCOVERY) === "true" ||
+      (actionsEnabled &&
+        (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+          process.env.TWITTER_ENABLE_DISCOVERY) !== "false");
+
+    if (discoveryEnabled) {
+      logger.info("Twitter discovery service is ENABLED");
+      try {
+        this.discovery = new TwitterDiscoveryClient(
+          this.client,
+          runtime,
+          state,
+        );
+      } catch (error) {
+        if (
+          !(
+            error instanceof ElizaError &&
+            error.code === "X_DISCOVERY_NO_TOPICS"
+          )
+        ) {
+          throw error;
+        }
+        // error-policy:J7 discovery stays off and the misconfiguration is
+        // surfaced to the agent and owner; posting, replies and DMs still run.
+        runtime.reportError("XDiscoveryClient.start", error);
+      }
+    } else {
+      logger.info(
+        "Twitter discovery service is DISABLED - set TWITTER_ENABLE_DISCOVERY=true to enable",
+      );
+    }
+  }
+}
+
+/**
+ * Whether `conversationId` belongs to a stored X group DM room of this
+ * account. The DM poller stores each conversation's room under
+ * `x-dm:<accountId>:<conversationId>`; a group room's channelId is the group
+ * conversation id, which looks like a user id.
+ */
+async function isStoredXGroupDmRoom(
+  runtime: IAgentRuntime,
+  accountId: string,
+  conversationId: string,
+): Promise<boolean> {
+  if (!/^\d+$/.test(conversationId)) return false;
+  const room = await runtime.getRoom(
+    createUniqueUuid(runtime, `x-dm:${accountId}:${conversationId}`),
+  );
+  return room?.type === ChannelType.GROUP;
+}
+
+export class XService extends Service {
+  static serviceType = "x";
+
+  // Add the required abstract property
+  capabilityDescription = "The agent is able to send and receive messages on X";
+
+  public twitterClient?: TwitterClientInstance;
+  private defaultAccountId = "default";
+  private accountClients = new Map<string, TwitterClientInstance>();
+  private accountClientStarts = new Map<
+    string,
+    Promise<TwitterClientInstance>
+  >();
+
+  static async start(runtime: IAgentRuntime): Promise<XService> {
+    const service = new XService();
+    service.runtime = runtime;
+
+    try {
+      const authMode = (
+        getSetting(runtime, "TWITTER_AUTH_MODE") || "env"
+      ).toLowerCase();
+      if (authMode === "env") {
+        await materializeEnvAccountIfMissing(runtime);
+      }
+
+      const defaultState = await resolveTwitterAccountConfig(runtime);
+      const validatedDefaultState = {
+        ...defaultState,
+        ...(await validateTwitterConfig(runtime, defaultState)),
+      };
+      service.defaultAccountId = resolveDefaultXAccountId(
+        runtime,
+        defaultState,
+      );
+      logger.log("✅ Twitter configuration validated successfully");
+
+      service.twitterClient = await service.getTwitterClientForAccount(
+        service.defaultAccountId,
+        { startAutonomousClients: true, state: validatedDefaultState },
+      );
+
+      logger.log("✅ Twitter service started successfully");
+    } catch (error) {
+      logger.error(
+        `🚨 Failed to start Twitter service: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
+
+    return service;
+  }
+
+  private resolveAccountId(...sources: unknown[]): string {
+    for (const source of sources) {
+      const accountId = readAccountIdFromRecord(source);
+      if (accountId) return normalizeXAccountId(accountId);
+      if (typeof source === "string" && source.trim()) {
+        return normalizeXAccountId(source);
+      }
+    }
+    return normalizeXAccountId(this.defaultAccountId);
+  }
+
+  private async getTwitterClientForAccount(
+    accountIdInput?: unknown,
+    options: {
+      startAutonomousClients?: boolean;
+      state?: TwitterClientState;
+    } = {},
+  ): Promise<TwitterClientInstance> {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error("X service runtime is not initialized.");
+    }
+
+    const state = await resolveTwitterAccountConfig(runtime, {
+      accountId: accountIdInput,
+      state: options.state,
+    });
+    const accountId = resolveRequestedXAccountId(
+      runtime,
+      state,
+      accountIdInput ?? state.accountId,
+    );
+
+    const cached = this.accountClients.get(accountId);
+    if (cached) {
+      return cached;
+    }
+
+    const starting = this.accountClientStarts.get(accountId);
+    if (starting) {
+      return starting;
+    }
+
+    const startPromise = (async () => {
+      const validatedState = {
+        ...state,
+        ...(await validateTwitterConfig(runtime, state)),
+      };
+      const instance = new TwitterClientInstance(runtime, validatedState);
+      await instance.client.init();
+
+      if (options.startAutonomousClients) {
+        await this.startAutonomousClients(instance);
+      }
+
+      this.accountClients.set(accountId, instance);
+      if (accountId === this.defaultAccountId) {
+        this.twitterClient = instance;
+      }
+      return instance;
+    })();
+
+    this.accountClientStarts.set(accountId, startPromise);
+    try {
+      return await startPromise;
+    } finally {
+      this.accountClientStarts.delete(accountId);
+    }
+  }
+
+  async getAccountStatus(
+    accountIdInput: string = this.defaultAccountId,
+  ): Promise<XAccountCapabilityStatus> {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error("X service runtime is not initialized.");
+    }
+
+    const state = await resolveTwitterAccountConfig(runtime, {
+      accountId: accountIdInput,
+    });
+    const accountId = resolveRequestedXAccountId(
+      runtime,
+      state,
+      accountIdInput,
+    );
+    const authMode = state.TWITTER_AUTH_MODE ?? "env";
+    const missing =
+      authMode === "broker"
+        ? []
+        : authMode === "env"
+          ? [
+              ["TWITTER_API_KEY", state.TWITTER_API_KEY],
+              ["TWITTER_API_SECRET_KEY", state.TWITTER_API_SECRET_KEY],
+              ["TWITTER_ACCESS_TOKEN", state.TWITTER_ACCESS_TOKEN],
+              [
+                "TWITTER_ACCESS_TOKEN_SECRET",
+                state.TWITTER_ACCESS_TOKEN_SECRET,
+              ],
+            ].filter(([, value]) => typeof value !== "string" || !value.trim())
+          : [
+              ["TWITTER_CLIENT_ID", state.TWITTER_CLIENT_ID],
+              ["TWITTER_REDIRECT_URI", state.TWITTER_REDIRECT_URI],
+            ].filter(([, value]) => typeof value !== "string" || !value.trim());
+
+    if (missing.length > 0) {
+      return {
+        accountId,
+        configured: false,
+        connected: false,
+        reason: "config_missing",
+        identity: null,
+        grantedCapabilities: [],
+        grantedScopes: [],
+        authMode,
+      };
+    }
+
+    const loadedClient =
+      this.accountClients.get(accountId) ??
+      (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
+    const { capabilities, scopes } = capabilitiesForXAuthState(state);
+    let profile: TwitterProfile | null = null;
+    if (loadedClient) {
+      try {
+        profile = await loadedClient.client.getAuthenticatedProfile();
+      } catch (error) {
+        // error-policy:J4 account status translates an authentication refresh
+        // failure into the explicit needs-reauth state rather than stale identity.
+        if (
+          !(error instanceof ElizaError) ||
+          !["X_AUTH_REJECTED", "X_AUTH_NOT_INITIALIZED"].includes(error.code)
+        ) {
+          throw error;
+        }
+        logger.warn(
+          { accountId },
+          "[XService] Authenticated profile refresh failed",
+        );
+        return {
+          accountId,
+          configured: true,
+          connected: false,
+          reason: "needs_reauth",
+          identity: null,
+          grantedCapabilities: [],
+          grantedScopes: [],
+          authMode,
+        };
+      }
+    }
+    return {
+      accountId,
+      configured: true,
+      connected: true,
+      reason: "connected",
+      identity: profile
+        ? {
+            userId: profile.id,
+            username: profile.username,
+            name: profile.screenName,
+          }
+        : null,
+      grantedCapabilities: capabilities,
+      grantedScopes: scopes,
+      authMode,
+    };
+  }
+
+  /**
+   * Returns the authenticated X profile (username, screen name, bio, nicknames)
+   * for an already-loaded account, or `null` if the account's client has not
+   * been initialized yet. Used by the `TWITTER_IDENTITY` provider to make the
+   * agent aware of its own X identity.
+   */
+  getActiveProfile(
+    accountIdInput: string = this.defaultAccountId,
+  ): TwitterProfile | null {
+    const accountId = this.resolveAccountId(accountIdInput);
+    const loadedClient =
+      this.accountClients.get(accountId) ??
+      (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
+    return loadedClient?.client.profile ?? null;
+  }
+
+  async refreshActiveProfile(
+    accountIdInput: string = this.defaultAccountId,
+  ): Promise<TwitterProfile | null> {
+    const accountId = this.resolveAccountId(accountIdInput);
+    const loadedClient =
+      this.accountClients.get(accountId) ??
+      (this.twitterClient?.accountId === accountId ? this.twitterClient : null);
+    return loadedClient ? loadedClient.client.getAuthenticatedProfile() : null;
+  }
+
+  private async startAutonomousClients(
+    instance: TwitterClientInstance,
+  ): Promise<void> {
+    if (instance.post) {
+      logger.log(
+        `📮 Starting Twitter post client for accountId=${instance.accountId}...`,
+      );
+      await instance.post.start();
+    }
+
+    if (instance.interaction) {
+      logger.log(
+        `💬 Starting Twitter interaction client for accountId=${instance.accountId}...`,
+      );
+      await instance.interaction.start();
+    }
+
+    if (instance.directMessages) {
+      logger.log(
+        `✉️ Starting Twitter direct-message client for accountId=${instance.accountId}...`,
+      );
+      await instance.directMessages.start();
+    }
+
+    if (instance.timeline) {
+      logger.log(
+        `📊 Starting Twitter timeline client for accountId=${instance.accountId}...`,
+      );
+      await instance.timeline.start();
+    }
+
+    if (instance.discovery) {
+      logger.log(
+        `🔍 Starting Twitter discovery client for accountId=${instance.accountId}...`,
+      );
+      await instance.discovery.start();
+    }
+  }
+
+  static registerSendHandlers(
+    runtime: IAgentRuntime,
+    serviceInstance: XService,
+  ): void {
+    if (!serviceInstance) {
+      return;
+    }
+
+    serviceInstance.registerPostConnector(runtime);
+
+    const sendHandler = serviceInstance.handleSendMessage.bind(serviceInstance);
+    if (typeof runtime.registerMessageConnector === "function") {
+      const registration: XMessageConnectorRegistration = {
+        source: "x",
+        accountRouting: "connector",
+        label: "X DMs",
+        description:
+          "X/Twitter direct-message connector. Public tweets remain under X post actions.",
+        capabilities: [...X_CONNECTOR_CAPABILITIES],
+        supportedTargetKinds: ["user", "contact"],
+        contexts: [...X_CONNECTOR_CONTEXTS],
+        metadata: {
+          service: XService.serviceType,
+        },
+        resolveTargets:
+          serviceInstance.resolveConnectorTargets.bind(serviceInstance),
+        listRecentTargets:
+          serviceInstance.listRecentConnectorTargets.bind(serviceInstance),
+        getUserContext:
+          serviceInstance.getConnectorUserContext.bind(serviceInstance),
+        fetchMessages:
+          serviceInstance.fetchConnectorMessages.bind(serviceInstance),
+        contentShaping: {
+          systemPromptFragment:
+            "For X direct messages, keep the reply concise and conversational. Do not add hashtags unless the user asked for them.",
+          constraints: {
+            supportsMarkdown: false,
+            channelType: ChannelType.DM,
+          },
+        },
+        sendHandler,
+      };
+      runtime.registerMessageConnector(registration);
+      runtime.logger.info(
+        { src: "plugin:x", agentId: runtime.agentId },
+        "Registered X DM connector",
+      );
+      return;
+    }
+
+    runtime.registerSendHandler("x", sendHandler);
+  }
+
+  private registerPostConnector(runtime: IAgentRuntime): void {
+    const withPostConnector = runtime as RuntimeWithPostConnector;
+    if (typeof withPostConnector.registerPostConnector !== "function") {
+      return;
+    }
+
+    withPostConnector.registerPostConnector({
+      source: "x",
+      accountRouting: "connector",
+      label: "X",
+      description:
+        "X/Twitter public feed connector for publishing tweets, reading the home/user feed, and searching recent public posts.",
+      capabilities: ["post", "fetch_feed", "search_posts"],
+      contexts: ["social", "social_posting", "connectors"],
+      metadata: {
+        service: XService.serviceType,
+      },
+      postHandler: this.handleSendPost.bind(this),
+      fetchFeed: this.fetchConnectorFeed.bind(this),
+      searchPosts: this.searchConnectorPosts.bind(this),
+      contentShaping: {
+        systemPromptFragment:
+          "For X posts, preserve the user's complete requested wording. Long content is delivered as an ordered thread; avoid adding thread-style numbering unless asked.",
+        constraints: {
+          supportsMarkdown: false,
+          supportsThreads: true,
+          channelType: ChannelType.FEED,
+        },
+      },
+    });
+
+    runtime.logger.info(
+      { src: "plugin:x", agentId: runtime.agentId },
+      "Registered X post connector",
+    );
+  }
+
+  async handleSendMessage(
+    runtime: IAgentRuntime,
+    target: TargetInfo,
+    content: Content,
+  ): Promise<void> {
+    const text = typeof content.text === "string" ? content.text : "";
+    if (!text.trim()) {
+      throw new Error("X DM connector requires non-empty text content.");
+    }
+
+    const metadata = (target as { metadata?: unknown }).metadata;
+    const metadataRecord =
+      metadata && typeof metadata === "object"
+        ? (metadata as Record<string, unknown>)
+        : undefined;
+    const accountId = this.resolveAccountId(target.accountId);
+    await this.withDmSession(accountId, async (base, session) => {
+      const candidate =
+        (typeof metadataRecord?.xUserId === "string"
+          ? metadataRecord.xUserId
+          : undefined) ??
+        (typeof metadataRecord?.twitterUserId === "string"
+          ? metadataRecord.twitterUserId
+          : undefined) ??
+        (typeof metadataRecord?.xUsername === "string"
+          ? metadataRecord.xUsername
+          : undefined) ??
+        (typeof metadataRecord?.twitterUsername === "string"
+          ? metadataRecord.twitterUsername
+          : undefined) ??
+        (typeof target.entityId === "string" ? target.entityId : undefined) ??
+        target.channelId ??
+        target.threadId;
+      // A stored DM room's channelId is the conversation id, not a user.
+      const conversationRecipient = candidate?.match(/^\d+-\d+$/)
+        ? dmConversationCounterpart(candidate, session.profile.userId)
+        : undefined;
+      if (conversationRecipient === null) {
+        throw new ElizaError(
+          "X DM conversation does not belong to this account",
+          { code: "X_DM_CONVERSATION_NOT_OWNED", context: { accountId } },
+        );
+      }
+      // A stored group DM room's channelId is the group conversation id, a
+      // single number that is not a user: send into the conversation.
+      if (
+        conversationRecipient === undefined &&
+        candidate !== undefined &&
+        candidate === target.channelId &&
+        (await isStoredXGroupDmRoom(runtime, accountId, candidate))
+      ) {
+        await this.sendXDirectMessage(
+          base,
+          session,
+          { conversationId: candidate },
+          text,
+        );
+        return;
+      }
+      const recipient =
+        conversationRecipient ??
+        (await this.resolveDmRecipient(candidate, base));
+      if (!recipient) {
+        throw new Error(
+          "X DM connector requires a resolvable recipient user id.",
+        );
+      }
+      await this.sendXDirectMessage(
+        base,
+        session,
+        { participantId: recipient },
+        text,
+      );
+    });
+  }
+
+  async sendDirectMessageForAccount(
+    accountId: string | undefined,
+    params: { participantId: string; text: string },
+  ): Promise<{
+    ok: true;
+    status: number;
+    messageId: string | null;
+    messageIds: string[];
+  }> {
+    const text = params.text;
+    if (!text.trim()) {
+      throw new Error("X DM connector requires non-empty text content.");
+    }
+
+    const sent = await this.withDmSession(accountId, async (base, session) => {
+      const recipient = await this.resolveDmRecipient(
+        params.participantId,
+        base,
+      );
+      if (!recipient) {
+        throw new Error(
+          "X DM connector requires a resolvable recipient user id.",
+        );
+      }
+      return this.sendXDirectMessage(
+        base,
+        session,
+        { participantId: recipient },
+        text,
+      );
+    });
+    return {
+      ok: true,
+      status: 201,
+      messageId: sent.messageId,
+      messageIds: sent.messageIds,
+    };
+  }
+
+  async fetchDirectMessagesForAccount(
+    accountId: string | undefined,
+    params: { participantId?: string; limit?: number } = {},
+  ): Promise<Memory[]> {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error("X service runtime is not initialized.");
+    }
+
+    const target = params.participantId
+      ? ({
+          source: "x",
+          accountId,
+          channelId: params.participantId,
+          entityId: params.participantId,
+          metadata: { accountId, xUserId: params.participantId },
+        } as TargetInfo)
+      : undefined;
+    return this.fetchConnectorMessages(
+      {
+        runtime,
+        source: "x",
+        ...(accountId ? { accountId } : {}),
+        target,
+      } as MessageConnectorQueryContext,
+      {
+        target,
+        limit: params.limit,
+      },
+    );
+  }
+
+  async handleSendPost(
+    runtime: IAgentRuntime,
+    content: Content,
+    context?: PostConnectorQueryContext,
+  ): Promise<Memory[]> {
+    const text = typeof content.text === "string" ? content.text : "";
+    if (!text.trim()) {
+      throw new Error("X post connector requires non-empty text content.");
+    }
+    const accountId = this.resolveAccountId(
+      context?.accountId,
+      context?.target,
+      context?.metadata,
+    );
+    const base = (await this.getTwitterClientForAccount(accountId)).client;
+    return base.withAuthenticatedSession(async ({ profile }) => {
+      const replyToTweetId = readContentString(content, [
+        "replyToTweetId",
+        "replyTo",
+        "inReplyToTweetId",
+      ]);
+      const quotedPostId = readContentString(content, ["quotedPostId"]);
+      const postService = new TwitterPostService(base);
+      const roomId = createUniqueUuid(
+        runtime,
+        `x:${accountId}:feed:${profile.id}`,
+      );
+      const media = content.attachments?.length
+        ? (
+            await fetchMediaData(
+              content.attachments,
+              runtime.fetch ?? undefined,
+            )
+          ).map(({ data, mediaType }) => ({ data, type: mediaType }))
+        : [];
+      const chunks = splitTweetContent(text, X_MAX_POST_LENGTH);
+      const memories: Memory[] = [];
+      let inReplyTo = replyToTweetId;
+      for (let index = 0; index < chunks.length; index += 1) {
+        const chunk = chunks[index];
+        if (chunk === undefined) continue;
+        const post = await postService.createPost(
+          {
+            agentId: runtime.agentId,
+            roomId,
+            text: chunk,
+            ...(inReplyTo ? { inReplyTo } : {}),
+            ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
+            ...(index === 0 && media.length > 0 ? { media } : {}),
+          },
+          profile,
+        );
+        memories.push(
+          this.buildXPostMemory(runtime, {
+            id: post.id,
+            userId: post.userId,
+            username: post.username,
+            text: post.text,
+            createdAt: post.timestamp,
+            inReplyTo: post.inReplyTo,
+            roomId: post.roomId,
+            metadata: post.metadata,
+            metrics: post.metrics,
+            accountId,
+            ownUserId: profile.id,
+          }),
+        );
+        inReplyTo = post.id;
+      }
+      return memories;
+    });
+  }
+
+  async createPostForAccount(
+    accountId: string,
+    params: { text: string; replyToTweetId?: string },
+  ): Promise<Memory> {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error("X service runtime is not initialized.");
+    }
+    const memories = await this.handleSendPost(
+      runtime,
+      {
+        text: params.text,
+        ...(params.replyToTweetId
+          ? { replyToTweetId: params.replyToTweetId }
+          : {}),
+        metadata: { accountId },
+      } as Content,
+      {
+        runtime,
+        source: "x",
+        metadata: { accountId },
+        target: { source: "x", accountId } as TargetInfo,
+      },
+    );
+    const first = memories[0];
+    if (!first) {
+      throw new ElizaError("X post delivery returned no receipts", {
+        code: "X_POST_RECEIPT_MISSING",
+      });
+    }
+    return first;
+  }
+
+  async fetchFeedForAccount(
+    accountId: string,
+    params: {
+      feedType?: string;
+      userId?: string;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ): Promise<Memory[]> {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error("X service runtime is not initialized.");
+    }
+    return this.fetchConnectorFeed(
+      {
+        runtime,
+        source: "x",
+        metadata: { accountId },
+        target: { source: "x", accountId } as TargetInfo,
+      },
+      {
+        feed: params.feedType,
+        userId: params.userId,
+        limit: params.limit,
+        cursor: params.cursor,
+      },
+    );
+  }
+
+  async searchPostsForAccount(
+    accountId: string,
+    params: { query: string; limit?: number; cursor?: string },
+  ): Promise<Memory[]> {
+    const runtime = this.runtime;
+    if (!runtime) {
+      throw new Error("X service runtime is not initialized.");
+    }
+    return this.searchConnectorPosts(
+      {
+        runtime,
+        source: "x",
+        metadata: { accountId },
+        target: { source: "x", accountId } as TargetInfo,
+      },
+      params,
+    );
+  }
+
+  async sendDirectMessageToConversationForAccount(
+    accountId: string,
+    params: { conversationId: string; text: string },
+  ): Promise<{ ok: true; status: number; messageId: string | null }> {
+    const result = await this.withDmSession(accountId, (base, session) => {
+      this.assertDmSessionCurrent(base, session);
+      return session.client.v2.sendDmInConversation(params.conversationId, {
+        text: params.text,
+      });
+    });
+    return {
+      ok: true,
+      status: 201,
+      messageId: normalizeXReceiptId(result.dm_event_id) ?? null,
+    };
+  }
+
+  async createDirectMessageGroupForAccount(
+    _accountId: string,
+    _params: { participantIds: string[]; text: string },
+  ): Promise<{
+    ok: true;
+    status: number;
+    conversationId: string | null;
+    messageId: string | null;
+  }> {
+    throw new Error("X group DM creation is not exposed by plugin-x yet.");
+  }
+
+  async fetchConnectorFeed(
+    context: PostConnectorQueryContext,
+    params: {
+      feed?: string;
+      target?: TargetInfo;
+      userId?: string;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ): Promise<Memory[]> {
+    const runtime = context.runtime ?? this.runtime;
+    const accountId = this.resolveAccountId(
+      context.accountId,
+      context.target,
+      context.metadata,
+      params.target,
+    );
+    const base = (await this.getTwitterClientForAccount(accountId)).client;
+
+    const limit = explicitConnectorLimit(params.limit);
+    const postService = new TwitterPostService(base);
+    const targetUserId =
+      params.userId ??
+      (typeof params.target?.entityId === "string"
+        ? params.target.entityId
+        : undefined) ??
+      (typeof context.target?.entityId === "string"
+        ? context.target.entityId
+        : undefined);
+
+    return base.withAuthenticatedSession(async ({ profile }) => {
+      const posts =
+        params.feed === "mentions"
+          ? await postService.getMentions(runtime.agentId, {
+              limit,
+              before: params.cursor,
+            })
+          : await postService.getPosts({
+              agentId: runtime.agentId,
+              ...(targetUserId ? { userId: targetUserId } : {}),
+              limit,
+              before: params.cursor,
+            });
+
+      return posts.map((post) =>
+        this.buildXPostMemory(runtime, {
+          id: post.id,
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          createdAt: post.timestamp,
+          inReplyTo: post.inReplyTo,
+          roomId: post.roomId,
+          metadata: post.metadata,
+          metrics: post.metrics,
+          accountId,
+          ownUserId: profile.id,
+          conversationId:
+            typeof post.metadata?.conversationId === "string"
+              ? post.metadata.conversationId
+              : post.id,
+        }),
+      );
+    });
+  }
+
+  async searchConnectorPosts(
+    context: PostConnectorQueryContext,
+    params: { query: string; limit?: number; cursor?: string },
+  ): Promise<Memory[]> {
+    const query = params.query?.trim();
+    if (!query) {
+      throw new Error("X searchPosts connector requires a query.");
+    }
+
+    const runtime = context.runtime ?? this.runtime;
+    const accountId = this.resolveAccountId(
+      context.accountId,
+      context.target,
+      context.metadata,
+    );
+    const base = (await this.getTwitterClientForAccount(accountId)).client;
+    const limit = explicitConnectorLimit(params.limit);
+    return base.withAuthenticatedSession(async ({ profile }) => {
+      const tweets: Tweet[] = [];
+      const seenCursors = new Set<string>();
+      let cursor = params.cursor;
+      while (limit === undefined || tweets.length < limit) {
+        const result = await base.fetchSearchTweets(
+          query,
+          limit === undefined ? 100 : Math.min(100, limit - tweets.length),
+          SearchMode.Latest,
+          cursor,
+        );
+        tweets.push(...result.tweets);
+        if (limit !== undefined && tweets.length >= limit) break;
+        const next = result.next;
+        if (!next) break;
+        if (seenCursors.has(next)) {
+          throw new ElizaError("X search pagination repeated a cursor", {
+            code: "X_SEARCH_PAGINATION_STALLED",
+            context: { cursor: next },
+            severity: "fatal",
+          });
+        }
+        seenCursors.add(next);
+        cursor = next;
+      }
+      return tweets.flatMap((tweet) => {
+        // Normalize once per row: a present-but-unusable timestamp fails the
+        // row closed instead of surfacing a healthy-looking memory with an
+        // undefined or "now" creation time (#18965).
+        const createdAt = getEpochMs(tweet.timestamp);
+        if (createdAt === undefined) {
+          logger.debug(
+            `X searchPosts: skipping tweet ${tweet.id ?? "unknown"} with unusable timestamp`,
+          );
+          return [];
+        }
+        return [
+          this.buildXPostMemory(runtime, {
+            id: tweet.id ?? "unknown",
+            userId: tweet.userId ?? "unknown",
+            username: tweet.username ?? undefined,
+            text: tweet.text ?? "",
+            createdAt,
+            inReplyTo: tweet.inReplyToStatusId,
+            conversationId: tweet.conversationId ?? tweet.id,
+            metrics: {
+              likes: tweet.likes,
+              reposts: tweet.retweets,
+              replies: tweet.replies,
+              quotes: tweet.quotes,
+            },
+            accountId,
+            ownUserId: profile.id,
+          }),
+        ];
+      });
+    });
+  }
+
+  async fetchConnectorMessages(
+    context: MessageConnectorQueryContext,
+    params: {
+      target?: TargetInfo;
+      limit?: number;
+      before?: string;
+      after?: string;
+    } = {},
+  ): Promise<Memory[]> {
+    const runtime = context.runtime ?? this.runtime;
+    const target = params.target ?? context.target;
+    const accountId = this.resolveAccountId(target, context.target, context);
+    const targetUserId =
+      (typeof target?.entityId === "string" ? target.entityId : undefined) ??
+      target?.channelId ??
+      target?.threadId;
+    const limit = explicitConnectorLimit(params.limit);
+    // A DM fetch failure (expired token, rate limit) propagates: callers
+    // translate it at their boundary, and an empty list would read as an
+    // empty inbox.
+    const messages = await this.listRecentDirectMessages(accountId);
+
+    // A stored room targets the provider conversation id, while a resolved
+    // user target names the authenticated one-to-one counterpart. Accept both
+    // forms so group rooms and the account's own replies remain readable.
+    const matches = messages
+      .filter(
+        (message) =>
+          !targetUserId ||
+          message.conversationId === targetUserId ||
+          dmCounterpartId(message) === targetUserId,
+      )
+      .map((message) =>
+        this.buildXDirectMessageMemory(
+          runtime,
+          message,
+          target ?? undefined,
+          accountId,
+        ),
+      );
+    return limit === undefined ? matches : matches.slice(0, limit);
+  }
+
+  async resolveConnectorTargets(
+    query: string,
+    _context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorTarget[]> {
+    const normalizedQuery = normalizeXConnectorQuery(query);
+    const accountId = this.resolveAccountId(_context.target, _context);
+    if (!normalizedQuery) {
+      return this.listRecentConnectorTargets(_context);
+    }
+
+    if (X_USER_ID_PATTERN.test(normalizedQuery)) {
+      return [this.buildUserTarget(normalizedQuery, undefined, 1, accountId)];
+    }
+
+    const base = (await this.getTwitterClientForAccount(accountId)).client;
+
+    try {
+      const profile = await base.fetchProfile(normalizedQuery);
+      return [
+        this.buildUserTarget(profile.id, profile.username, 0.95, accountId),
+      ];
+    } catch (error) {
+      logger.debug(
+        {
+          src: "plugin:x",
+          query,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "X connector profile resolution failed",
+      );
+      return [];
+    }
+  }
+
+  async listRecentConnectorTargets(
+    _context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorTarget[]> {
+    const accountId = this.resolveAccountId(_context.target, _context);
+    // Propagates like fetchConnectorMessages: an empty list would read as no
+    // recent DM partners.
+    const messages = await this.listRecentDirectMessages(accountId);
+    const usernames = new Map<string, string>();
+    for (const message of messages) {
+      if (message.senderId && message.senderUsername)
+        usernames.set(message.senderId, message.senderUsername);
+    }
+    const seen = new Set<string>();
+    const targets: MessageConnectorTarget[] = [];
+    for (const message of messages) {
+      const partnerId = dmCounterpartId(message);
+      if (!partnerId || seen.has(partnerId)) {
+        continue;
+      }
+      seen.add(partnerId);
+      targets.push(
+        this.buildUserTarget(
+          partnerId,
+          usernames.get(partnerId),
+          0.8,
+          accountId,
+        ),
+      );
+    }
+    return targets;
+  }
+
+  async getConnectorUserContext(
+    entityId: string,
+    _context: MessageConnectorQueryContext,
+  ): Promise<MessageConnectorUserContext | null> {
+    const accountId = this.resolveAccountId(_context.target, _context);
+    const base = (await this.getTwitterClientForAccount(accountId)).client;
+
+    try {
+      if (X_USER_ID_PATTERN.test(entityId)) {
+        const username =
+          await base.twitterClient.getScreenNameByUserId(entityId);
+        return {
+          entityId,
+          label: `@${username}`,
+          aliases: [username, entityId],
+          handles: { x: username },
+          metadata: { xUserId: entityId, accountId },
+        };
+      }
+
+      const username = normalizeXConnectorQuery(entityId);
+      const profile = await base.fetchProfile(username);
+      return {
+        entityId,
+        label: `@${profile.username}`,
+        aliases: [profile.username, profile.screenName, profile.id].filter(
+          Boolean,
+        ),
+        handles: { x: profile.username },
+        metadata: { xUserId: profile.id, bio: profile.bio, accountId },
+      };
+    } catch {
+      // error-policy:J4 an unresolved handle (unknown user) yields no context;
+      // fetchProfile throwing IS the "not found" answer for this lookup.
+      return null;
+    }
+  }
+
+  private buildUserTarget(
+    userId: string,
+    username: string | undefined,
+    score: number,
+    accountId: string = this.defaultAccountId,
+  ): MessageConnectorTarget {
+    return {
+      target: {
+        source: "x",
+        entityId: userId,
+        accountId,
+      } as TargetInfo,
+      label: username ? `@${username}` : `X user ${userId}`,
+      kind: "user",
+      description: "X/Twitter direct-message recipient",
+      score,
+      contexts: [...X_CONNECTOR_CONTEXTS],
+      metadata: {
+        accountId,
+        xUserId: userId,
+        ...(username ? { xUsername: username } : {}),
+      },
+    };
+  }
+
+  private async sendXDirectMessage(
+    base: ClientBase,
+    session: AuthenticatedTwitterSession,
+    to: { participantId: string } | { conversationId: string },
+    text: string,
+  ): Promise<{ messageId: string | null; messageIds: string[] }> {
+    const messageIds: string[] = [];
+    for (const chunk of splitXDirectMessageContent(text)) {
+      this.assertDmSessionCurrent(base, session);
+      const result =
+        "conversationId" in to
+          ? await session.client.v2.sendDmInConversation(to.conversationId, {
+              text: chunk,
+            })
+          : await session.client.v2.sendDmToParticipant(to.participantId, {
+              text: chunk,
+            });
+      const messageId = normalizeXReceiptId(result.dm_event_id);
+      if (messageId) messageIds.push(messageId);
+    }
+    return { messageId: messageIds[0] ?? null, messageIds };
+  }
+
+  private async withDmSession<T>(
+    accountId: string | undefined,
+    operation: (
+      base: ClientBase,
+      session: AuthenticatedTwitterSession,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const base = (await this.getTwitterClientForAccount(accountId)).client;
+    return base.twitterClient.withAuthenticatedSession((session) =>
+      operation(base, session),
+    );
+  }
+
+  private assertDmSessionCurrent(
+    base: ClientBase,
+    session: AuthenticatedTwitterSession,
+  ): void {
+    if (!base.twitterClient.isAuthenticatedSessionCurrent(session)) {
+      throw new ElizaError("X credentials rotated before direct-message send", {
+        code: "X_AUTH_SESSION_ROTATED",
+      });
+    }
+  }
+
+  private async resolveDmRecipient(
+    value: string | undefined,
+    base?: ClientBase,
+  ): Promise<string | null> {
+    if (!value) {
+      return null;
+    }
+
+    const normalized = normalizeXConnectorQuery(value);
+    if (!normalized) {
+      return null;
+    }
+
+    if (X_USER_ID_PATTERN.test(normalized)) {
+      return normalized;
+    }
+
+    if (!base) {
+      return null;
+    }
+
+    const profile = await base.fetchProfile(normalized);
+    return profile.id;
+  }
+
+  private async listRecentDirectMessages(
+    accountId: string,
+    limit?: number,
+  ): Promise<
+    Array<{
+      id: string;
+      conversationId: string;
+      senderId: string;
+      ownUserId: string;
+      senderUsername: string | null;
+      text: string;
+      createdAt: string | null;
+      isInbound: boolean;
+      participantIds: string[];
+    }>
+  > {
+    return this.withDmSession(accountId, async (base, session) => {
+      const ownUserId = session.profile.userId;
+      if (!ownUserId) {
+        throw new ElizaError(
+          "X direct-message history requires an authenticated profile identifier",
+          { code: "X_ME_FETCH_FAILED" },
+        );
+      }
+      const iterator = await session.client.v2.listDmEvents({
+        max_results: limit === undefined ? 50 : Math.min(limit, 50),
+        "dm_event.fields": [
+          "id",
+          "created_at",
+          "dm_conversation_id",
+          "sender_id",
+          "text",
+          "event_type",
+          "participant_ids",
+        ],
+        "user.fields": ["id", "username"],
+        expansions: ["sender_id"],
+        event_types: ["MessageCreate"],
+      });
+
+      const usernameMap = new Map<string, string>();
+      for (const user of iterator.includes?.users ?? []) {
+        if (user.id && user.username) {
+          usernameMap.set(user.id, user.username);
+        }
+      }
+
+      const messages: Array<{
+        id: string;
+        conversationId: string;
+        senderId: string;
+        ownUserId: string;
+        senderUsername: string | null;
+        text: string;
+        createdAt: string | null;
+        isInbound: boolean;
+        participantIds: string[];
+      }> = [];
+      for await (const event of iterator) {
+        if (event.event_type && event.event_type !== "MessageCreate") {
+          continue;
+        }
+        messages.push({
+          id: event.id ?? "",
+          conversationId: event.dm_conversation_id ?? event.id ?? "",
+          senderId: event.sender_id ?? "",
+          ownUserId,
+          senderUsername: event.sender_id
+            ? (usernameMap.get(event.sender_id) ?? null)
+            : null,
+          text: event.text ?? "",
+          createdAt: event.created_at ?? null,
+          isInbound: event.sender_id ? event.sender_id !== ownUserId : true,
+          participantIds: Array.isArray(event.participant_ids)
+            ? event.participant_ids
+            : [],
+        });
+        if (limit !== undefined && messages.length >= limit) {
+          break;
+        }
+      }
+      this.assertDmSessionCurrent(base, session);
+      return messages;
+    });
+  }
+
+  /**
+   * `createdAt` must be an already-validated epoch-milliseconds value: each
+   * caller normalizes its raw timestamp exactly once at the row boundary and
+   * skips rows that fail, so this builder can never emit a healthy-looking
+   * memory with an undefined or unit-drifted timestamp (#18965).
+   */
+  private buildXPostMemory(
+    runtime: IAgentRuntime,
+    post: {
+      id: string;
+      userId?: string;
+      username?: string;
+      text: string;
+      createdAt: number;
+      inReplyTo?: string;
+      roomId?: UUID;
+      metrics?: unknown;
+      metadata?: Record<string, unknown>;
+      accountId?: string;
+      ownUserId?: string;
+      conversationId?: string;
+    },
+  ): Memory {
+    const accountId = normalizeXAccountId(
+      post.accountId ?? this.defaultAccountId,
+    );
+    const authorId = post.userId || "unknown";
+    const createdAt = post.createdAt;
+    const isOwn = Boolean(post.ownUserId && authorId === post.ownUserId);
+    // Ids and authors use the same keys as the live mention and timeline paths
+    // (createUniqueUuid of the X user id and post id), so a fetched post is the
+    // stored one and its author is the known entity.
+    const entityId = isOwn
+      ? runtime.agentId
+      : createUniqueUuid(runtime, authorId);
+    const roomId =
+      post.roomId ??
+      createUniqueUuid(
+        runtime,
+        `x:${accountId}:feed:${post.conversationId ?? authorId}`,
+      );
+    const url = post.username
+      ? `https://x.com/${post.username}/status/${post.id}`
+      : `https://x.com/i/web/status/${post.id}`;
+
+    return {
+      id: createUniqueUuid(runtime, post.id),
+      agentId: runtime.agentId,
+      entityId,
+      roomId,
+      createdAt,
+      content: {
+        text: post.text,
+        source: "x",
+        url,
+        channelType: ChannelType.FEED,
+        ...(post.inReplyTo
+          ? { inReplyTo: createUniqueUuid(runtime, post.inReplyTo) }
+          : {}),
+      },
+      metadata: {
+        type: "message",
+        source: "x",
+        accountId,
+        provider: "x",
+        timestamp: createdAt,
+        fromBot: isOwn,
+        messageIdFull: post.id,
+        chatType: ChannelType.FEED,
+        sender: {
+          id: authorId,
+          username: post.username,
+        },
+        x: {
+          accountId,
+          tweetId: post.id,
+          userId: authorId,
+          username: post.username,
+          inReplyTo: post.inReplyTo,
+          metrics: post.metrics,
+          ...(post.metadata ?? {}),
+        },
+      } satisfies Memory["metadata"],
+    };
+  }
+
+  private buildXDirectMessageMemory(
+    runtime: IAgentRuntime,
+    message: {
+      id: string;
+      conversationId?: string;
+      senderId: string;
+      ownUserId: string;
+      senderUsername: string | null;
+      text: string;
+      createdAt: string | null;
+      isInbound?: boolean;
+      participantIds?: string[];
+    },
+    target?: TargetInfo,
+    accountId: string = this.defaultAccountId,
+  ): Memory {
+    const normalizedAccountId = normalizeXAccountId(accountId);
+    const senderId = message.senderId || "unknown";
+    const createdAt = message.createdAt
+      ? Date.parse(message.createdAt)
+      : Date.now();
+    const counterpartId = dmCounterpartId(message);
+    const channelType = isGroupDmEvent({
+      dm_conversation_id: message.conversationId,
+      participant_ids: message.participantIds,
+    })
+      ? ChannelType.GROUP
+      : ChannelType.DM;
+    const roomId =
+      target?.roomId ??
+      createUniqueUuid(
+        runtime,
+        // Same room, memory and author keys as the live DM poller.
+        message.conversationId
+          ? `x-dm:${normalizedAccountId}:${message.conversationId}`
+          : counterpartId
+            ? `x:${normalizedAccountId}:dm:${counterpartId}`
+            : `x:${normalizedAccountId}:dm-conversation:${message.id}`,
+      );
+    // `senderId` is an X user id, never the agent's UUID; the account's own
+    // DMs are the ones listRecentDirectMessages marked as not inbound.
+    const fromAccount = message.isInbound === false;
+    const entityId = fromAccount
+      ? runtime.agentId
+      : createUniqueUuid(runtime, senderId);
+
+    return {
+      id: createUniqueUuid(runtime, `x-dm:${message.id}`),
+      agentId: runtime.agentId,
+      entityId,
+      roomId,
+      createdAt,
+      content: {
+        text: message.text,
+        source: "x",
+        channelType,
+      },
+      metadata: {
+        type: "message",
+        source: "x",
+        accountId: normalizedAccountId,
+        provider: "x",
+        timestamp: createdAt,
+        fromBot: fromAccount,
+        messageIdFull: message.id,
+        chatType: channelType,
+        sender: {
+          id: senderId,
+          username: message.senderUsername ?? undefined,
+        },
+        x: {
+          accountId: normalizedAccountId,
+          dmEventId: message.id,
+          conversationId: message.conversationId,
+          senderId,
+          senderUsername: message.senderUsername,
+          isInbound: message.isInbound ?? true,
+          participantIds: message.participantIds ?? [],
+        },
+      } satisfies Memory["metadata"],
+    };
+  }
+
+  async stop(): Promise<void> {
+    for (const client of this.accountClients.values()) {
+      if (client.post) {
+        await client.post.stop();
+      }
+
+      if (client.interaction) {
+        await client.interaction.stop();
+      }
+
+      if (client.timeline) {
+        await client.timeline.stop();
+      }
+
+      if (client.discovery) {
+        await client.discovery.stop();
+      }
+
+      if (client.directMessages) {
+        await client.directMessages.stop();
+      }
+    }
+
+    logger.log("X service stopped");
+  }
+}

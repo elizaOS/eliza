@@ -1,0 +1,16 @@
+[Unit]
+Description=elizaOS privileged installer Unix socket
+
+[Socket]
+ListenStream=/run/elizaos-installer/service.sock
+SocketMode=0660
+SocketUser=root
+SocketGroup=elizaos-installer
+RemoveOnStop=yes
+Accept=no
+FileDescriptorName=installer
+Backlog=8
+MaxConnections=8
+
+[Install]
+WantedBy=sockets.target

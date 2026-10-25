@@ -1,0 +1,72 @@
+{
+  "_comment": "Recorded reference run for the LifeOps quality benchmarks (#10723). TRIAGE: the committed fixed-quality mock model (triage/fixtures.ts, 7 deliberate errors over the 56-item corpus) driven through the REAL plugin-inbox classifier parse/validate path — fully deterministic, so the gate asserts an EXACT match against this block; editing the corpus or fixtures requires re-recording it in the same change (run `bun run bench:triage`, copy results/triage-results.json). TIMELINESS: the REAL plugin-personal-assistant scheduled-task tick replayed over two 4-day 2026 DST windows at a 5-minute cadence (2×1153 ticks); the gate enforces budgets.json (counts exactly zero, deviation ceilings) rather than exact equality because cron-next-fire walks Intl tzdata. The unit lane cross-checks this file against budgets.json so the recorded reference always satisfies the committed floors.",
+  "triage": {
+    "corpusSize": 56,
+    "correct": 49,
+    "accuracy": 0.875,
+    "macroF1": 0.875545002618308,
+    "perClass": {
+      "ignore": {
+        "precision": 1.0,
+        "recall": 0.8333333333333334,
+        "f1": 0.9090909090909091,
+        "goldCount": 12,
+        "predictedCount": 10
+      },
+      "info": {
+        "precision": 0.6923076923076923,
+        "recall": 0.9,
+        "f1": 0.7826086956521738,
+        "goldCount": 10,
+        "predictedCount": 13
+      },
+      "notify": {
+        "precision": 0.8888888888888888,
+        "recall": 0.8,
+        "f1": 0.8421052631578948,
+        "goldCount": 10,
+        "predictedCount": 9
+      },
+      "needs_reply": {
+        "precision": 0.8666666666666667,
+        "recall": 0.9285714285714286,
+        "f1": 0.896551724137931,
+        "goldCount": 14,
+        "predictedCount": 15
+      },
+      "urgent": {
+        "precision": 1.0,
+        "recall": 0.9,
+        "f1": 0.9473684210526316,
+        "goldCount": 10,
+        "predictedCount": 9
+      }
+    }
+  },
+  "timeliness": {
+    "windows": {
+      "spring-forward": {
+        "tickCount": 1153,
+        "expectedFires": 159,
+        "actualFires": 159,
+        "missedFireCount": 0,
+        "duplicateFireCount": 0,
+        "earlyFireCount": 0,
+        "occurrenceMismatchCount": 0,
+        "maxDeviationMs": 180000,
+        "meanDeviationMs": 140377.35849056602
+      },
+      "fall-back": {
+        "tickCount": 1153,
+        "expectedFires": 160,
+        "actualFires": 160,
+        "missedFireCount": 0,
+        "duplicateFireCount": 0,
+        "earlyFireCount": 0,
+        "occurrenceMismatchCount": 0,
+        "maxDeviationMs": 180000,
+        "meanDeviationMs": 139125
+      }
+    }
+  }
+}

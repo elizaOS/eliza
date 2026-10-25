@@ -1,0 +1,98 @@
+name: VoiceCodeBench Real ASR
+
+# Manual, credential-backed benchmark lane for issue #13387. Raw public audio
+# stays in RUNNER_TEMP; only score, provenance, provider log, and failure-review
+# artifacts are retained. A 300-row successful run is the publishable lane.
+
+on:
+  workflow_dispatch:
+    inputs:
+      row_count:
+        description: "Pinned test rows to run (300 is publishable)"
+        required: true
+        default: 300
+        type: number
+      concurrency:
+        description: "Concurrent ElevenLabs requests (1-8)"
+        required: true
+        default: 4
+        type: number
+
+concurrency:
+  group: voice-code-bench-real-asr
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  elevenlabs-scribe-v2:
+    name: ElevenLabs Scribe v2 / pinned VoiceCodeBench
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          show-progress: false
+
+      - name: Validate live-run inputs
+        env:
+          ROW_COUNT: ${{ inputs.row_count }}
+          REQUEST_CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ELEVENLABS_API_KEY:-}" ]; then
+            echo "::error::ELEVENLABS_API_KEY is required for real ASR evidence"
+            exit 1
+          fi
+          if ! [[ "$ROW_COUNT" =~ ^[0-9]+$ ]] || (( ROW_COUNT < 1 || ROW_COUNT > 300 )); then
+            echo "::error::row_count must be between 1 and 300"
+            exit 1
+          fi
+          if ! [[ "$REQUEST_CONCURRENCY" =~ ^[0-9]+$ ]] || (( REQUEST_CONCURRENCY < 1 || REQUEST_CONCURRENCY > 8 )); then
+            echo "::error::concurrency must be between 1 and 8"
+            exit 1
+          fi
+
+      - name: Run real ASR benchmark
+        env:
+          ROW_COUNT: ${{ inputs.row_count }}
+          REQUEST_CONCURRENCY: ${{ inputs.concurrency }}
+        run: |
+          set -euo pipefail
+          cache_dir="$RUNNER_TEMP/voice-code-bench-cache"
+          output_dir="$RUNNER_TEMP/voice-code-bench-evidence"
+          python3 packages/training/scripts/asr/voice_code_bench_run.py \
+            --cache-dir "$cache_dir" \
+            --output-dir "$output_dir" \
+            --model scribe_v2 \
+            --limit "$ROW_COUNT" \
+            --concurrency "$REQUEST_CONCURRENCY"
+
+      - name: Write benchmark summary
+        if: always()
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/voice-code-bench-evidence"
+          report="$(find "$output_dir" -name report.json -type f -print -quit 2>/dev/null || true)"
+          if [ -z "$report" ]; then
+            echo "No score report was produced; inspect the backend artifact." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## VoiceCodeBench real-ASR result"
+            echo
+            jq -r '"- Publishable: \(.publishable)\n- Rows: \(.row_count)\n- Provider errors: \(.provider_error_count)\n- CTEM: \(.metrics.ctem)\n- TSR: \(.metrics.tsr)\n- WER: \(.metrics.wer)\n- CER: \(.metrics.cer)\n- Dataset revision: `\(.hashes.dataset_revision)`\n- Backend log: `\(.hashes.backend_log_sha256)`"' "$report"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reproducible benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: voice-code-bench-elevenlabs-scribe-v2-${{ github.run_id }}
+          path: ${{ runner.temp }}/voice-code-bench-evidence
+          if-no-files-found: warn
+          retention-days: 30

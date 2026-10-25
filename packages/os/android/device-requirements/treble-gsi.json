@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-10-02",
+  "description": "Generic Treble/GSI readiness gates for elizaOS on a third-party Android device, evaluated by scripts/android/device-qualify.ts from read-only adb/fastboot observations. Product thresholds (RAM, storage, display, cameras, radios, codecs) belong in a product requirements file passed with --requirements. A pass is observation evidence only: it is not a GSI boot, hardware-target admission (android/hardware-targets.json) or user acceptance.",
+  "requirements": [
+    {
+      "id": "treble",
+      "level": "required",
+      "check": "treble",
+      "rationale": "A GSI-style system image needs a Treble vendor interface."
+    },
+    {
+      "id": "vendor-api-level",
+      "level": "required",
+      "check": "vendorApiLevel",
+      "min": 33,
+      "rationale": "Android 13 or newer vendor interface. Confirm against the framework compatibility matrix of the pinned AOSP release before relying on it."
+    },
+    {
+      "id": "kernel-floor",
+      "level": "required",
+      "check": "kernelVersion",
+      "min": "5.10",
+      "rationale": "Oldest GKI branch (android12-5.10) still in current framework support windows."
+    },
+    {
+      "id": "kernel-preferred",
+      "level": "preferred",
+      "check": "kernelVersion",
+      "min": "5.15",
+      "rationale": "Keeps an upgrade path as 5.10 leaves the support window."
+    },
+    {
+      "id": "abi",
+      "level": "required",
+      "check": "abi",
+      "equals": "arm64-v8a",
+      "rationale": "elizaOS device images and native agent payloads target ARM64."
+    },
+    {
+      "id": "dynamic-partitions",
+      "level": "required",
+      "check": "dynamicPartitions",
+      "rationale": "GSI flashing writes logical partitions through fastbootd."
+    },
+    {
+      "id": "ab-updates",
+      "level": "preferred",
+      "check": "abUpdates",
+      "rationale": "Seamless OTA with rollback."
+    },
+    {
+      "id": "selinux-enforcing",
+      "level": "required",
+      "check": "selinuxEnforcing",
+      "rationale": "Release builds must run enforcing."
+    }
+  ],
+  "fastbootRequirements": [
+    {
+      "id": "unlockable",
+      "level": "required",
+      "check": "fastbootUnlockable",
+      "rationale": "Installing a GSI requires an unlockable bootloader."
+    },
+    {
+      "id": "avb-custom-key",
+      "level": "preferred",
+      "check": "fastbootAvbCustomKey",
+      "rationale": "Relock with the release verified-boot key (android/signing). Without it the device stays unlocked unless the ODM fuses a key."
+    }
+  ]
+}

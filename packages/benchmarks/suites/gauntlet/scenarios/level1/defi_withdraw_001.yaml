@@ -1,0 +1,24 @@
+id: defi_withdraw_001
+level: 1
+name: Lending Withdraw
+description: 'Level 1 protocol interaction: Lending Withdraw'
+category: defi
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+tasks:
+- id: task_defi_withdraw_001
+  type: trade
+  parameters:
+    action: withdraw
+    protocol: solend
+    amount: 10
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

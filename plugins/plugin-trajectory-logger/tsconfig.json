@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "types": ["node", "bun", "vite/client"],
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
+      "@elizaos/app": ["../../packages/app/src/index.ts"],
+      "@elizaos/app/*": ["../../packages/app/src/*"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/plugin-workflow/*": ["../plugin-workflow/dist/*"],
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
+      ],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+      "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
+      "@elizaos/plugin-local-inference/*": [
+        "../../plugins/plugin-local-inference/src/*"
+      ],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+}

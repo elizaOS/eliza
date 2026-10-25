@@ -1,0 +1,280 @@
+{
+  "uuid": "a1b2c3d4-0001-4000-8000-000000000000",
+  "lastMigration": 32,
+  "name": "elizaos Control Plane — static reads",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 4569,
+  "hostname": "",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "a1b2c3d4-0001-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Admin warm-pool state snapshot",
+      "method": "get",
+      "endpoint": "api/v1/admin/warm-pool",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0001-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"image\": \"elizaos/agent:latest\",\n    \"enabled\": true,\n    \"minSize\": 2,\n    \"maxSize\": 10,\n    \"currentSize\": 4,\n    \"rolloutState\": \"idle\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0002-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Admin warm-pool rollout status",
+      "method": "get",
+      "endpoint": "api/v1/admin/warm-pool/rollout-status",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0002-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"status\": \"idle\",\n    \"targetImage\": \"elizaos/agent:latest\",\n    \"completedSandboxes\": 0,\n    \"totalSandboxes\": 0\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0003-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Admin docker-nodes list (designer mock; not exposed by the real control plane today)",
+      "method": "get",
+      "endpoint": "api/v1/admin/docker-nodes",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0003-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"nodes\": [\n      {\"id\": \"node-fsn1-01\", \"region\": \"fsn1\", \"status\": \"healthy\", \"last_seen\": \"2026-05-17T00:00:00.000Z\"},\n      {\"id\": \"node-nbg1-01\", \"region\": \"nbg1\", \"status\": \"healthy\", \"last_seen\": \"2026-05-17T00:00:00.000Z\"},\n      {\"id\": \"node-hel1-01\", \"region\": \"hel1\", \"status\": \"healthy\", \"last_seen\": \"2026-05-17T00:00:00.000Z\"}\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0004-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Admin docker-node health-check (real impl is POST; stubbed here as POST to match)",
+      "method": "post",
+      "endpoint": "api/v1/admin/docker-nodes/:id/health-check",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0004-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"nodeId\": \"{{urlParam 'id'}}\",\n    \"healthy\": true,\n    \"checks\": { \"docker\": \"ok\", \"disk\": \"ok\", \"memory\": \"ok\" },\n    \"timestamp\": \"2026-05-17T00:00:00.000Z\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0005-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Cron: deployment-monitor tick",
+      "method": "get",
+      "endpoint": "api/v1/cron/deployment-monitor",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0005-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"count\": 42,\n    \"timestamp\": \"2026-05-17T00:00:00.000Z\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0006-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Cron: agent-hot-pool tick",
+      "method": "get",
+      "endpoint": "api/v1/cron/agent-hot-pool",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0006-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"count\": 42,\n    \"image\": \"elizaos/agent:latest\",\n    \"target\": 4,\n    \"added\": 0,\n    \"warmPoolSize\": 4,\n    \"timestamp\": \"2026-05-17T00:00:00.000Z\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0007-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Cron: node-autoscale tick",
+      "method": "get",
+      "endpoint": "api/v1/cron/node-autoscale",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0007-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"count\": 42,\n    \"action\": \"noop\",\n    \"timestamp\": \"2026-05-17T00:00:00.000Z\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "a1b2c3d4-0008-4000-8000-000000000001",
+      "type": "http",
+      "documentation": "Compat: fetch agent character by id",
+      "method": "get",
+      "endpoint": "api/compat/agents/:id",
+      "responses": [
+        {
+          "uuid": "a1b2c3d4-0008-4000-8000-000000000002",
+          "body": "{\n  \"success\": true,\n  \"data\": {\n    \"id\": \"{{urlParam 'id'}}\",\n    \"name\": \"Mock Agent\",\n    \"bio\": [\"A mock agent character returned by the control-plane mock.\"],\n    \"system\": \"You are a mock agent.\",\n    \"plugins\": []\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "ok",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "enabled": true,
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "a1b2c3d4-0001-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0002-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0003-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0004-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0005-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0006-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0007-4000-8000-000000000001" },
+    { "type": "route", "uuid": "a1b2c3d4-0008-4000-8000-000000000001" }
+  ],
+  "data": [],
+  "callbacks": []
+}

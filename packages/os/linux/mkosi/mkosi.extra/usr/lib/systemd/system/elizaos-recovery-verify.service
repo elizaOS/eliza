@@ -1,0 +1,16 @@
+[Unit]
+Description=Verify the elizaOS recovery service boundary
+DefaultDependencies=no
+ConditionKernelCommandLine=elizaos.recovery=1
+After=basic.target
+Before=rescue.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/elizaos-recovery-verify
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=rescue.target

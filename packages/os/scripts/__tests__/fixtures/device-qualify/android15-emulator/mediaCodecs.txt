@@ -1,0 +1,80 @@
+<MediaCodecs>
+    <Decoders>
+        <MediaCodec name="c2.android.mp3.decoder" type="audio/mpeg">
+        </MediaCodec>
+        <MediaCodec name="c2.android.amrnb.decoder" type="audio/3gpp">
+        </MediaCodec>
+        <MediaCodec name="c2.android.amrwb.decoder" type="audio/amr-wb">
+        </MediaCodec>
+        <MediaCodec name="c2.android.aac.decoder" type="audio/mp4a-latm">
+        </MediaCodec>
+        <MediaCodec name="c2.android.g711.alaw.decoder" type="audio/g711-alaw">
+        </MediaCodec>
+        <MediaCodec name="c2.android.g711.mlaw.decoder" type="audio/g711-mlaw">
+        </MediaCodec>
+        <MediaCodec name="c2.android.vorbis.decoder" type="audio/vorbis">
+        </MediaCodec>
+        <MediaCodec name="c2.android.opus.decoder" type="audio/opus">
+        </MediaCodec>
+        <MediaCodec name="c2.android.raw.decoder" type="audio/raw">
+        </MediaCodec>
+        <MediaCodec name="c2.android.flac.decoder" type="audio/flac">
+        </MediaCodec>
+        <MediaCodec name="c2.android.gsm.decoder" type="audio/gsm" domain="telephony">
+        </MediaCodec>
+        <MediaCodec name="c2.android.mpeg4.decoder" type="video/mp4v-es">
+        </MediaCodec>
+        <MediaCodec name="c2.android.h263.decoder" type="video/3gpp">
+        </MediaCodec>
+        <MediaCodec name="c2.android.avc.decoder" type="video/avc" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.hevc.decoder" type="video/hevc" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.vp8.decoder" type="video/x-vnd.on2.vp8" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.vp9.decoder" type="video/x-vnd.on2.vp9" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.av1-dav1d.decoder" type="video/av01" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.av1.decoder" type="video/av01" variant="slow-cpu,!slow-cpu" rank="1024">
+        </MediaCodec>
+        <MediaCodec name="c2.android.mpeg2.decoder" type="video/mpeg2" domain="tv">
+        </MediaCodec>
+    </Decoders>
+    <Encoders>
+        <MediaCodec name="c2.android.aac.encoder" type="audio/mp4a-latm">
+        </MediaCodec>
+        <MediaCodec name="c2.android.amrnb.encoder" type="audio/3gpp">
+        </MediaCodec>
+        <MediaCodec name="c2.android.amrwb.encoder" type="audio/amr-wb">
+        </MediaCodec>
+        <MediaCodec name="c2.android.flac.encoder" type="audio/flac">
+        </MediaCodec>
+        <MediaCodec name="c2.android.opus.encoder" type="audio/opus">
+        </MediaCodec>
+        <MediaCodec name="c2.android.h263.encoder" type="video/3gpp">
+        </MediaCodec>
+        <MediaCodec name="c2.android.mpeg4.encoder" type="video/mp4v-es">
+        </MediaCodec>
+        <MediaCodec name="c2.android.avc.encoder" type="video/avc" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.vp8.encoder" type="video/x-vnd.on2.vp8" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.hevc.encoder" type="video/hevc" variant="!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.vp9.encoder" type="video/x-vnd.on2.vp9" variant="!slow-cpu">
+        </MediaCodec>
+        <MediaCodec name="c2.android.av1.encoder" type="video/av01" enabled="false" minsdk="34" variant="slow-cpu,!slow-cpu">
+        </MediaCodec>
+    </Encoders>
+</MediaCodecs>
+    <MediaCodec name="OMX.foo.bar" type="something/interesting" />
+    <MediaCodec name="OMX.foo.bar" >
+    </MediaCodec>
+<MediaCodecs>
+    <MediaCodec name="OMX.android.goldfish.h264.decoder" type="video/avc" >
+    </MediaCodec>
+    <MediaCodec name="OMX.android.goldfish.vp8.decoder" type="video/x-vnd.on2.vp8" >
+    </MediaCodec>
+    <MediaCodec name="OMX.android.goldfish.vp9.decoder" type="video/x-vnd.on2.vp9" >
+    </MediaCodec>

@@ -1,0 +1,5 @@
+# Per-run process logs streamed by the stack fixture
+.logs/
+# Playwright output
+test-results/
+playwright-report/

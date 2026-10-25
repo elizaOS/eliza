@@ -1,0 +1,15 @@
+// Device qualification for the shipped mobile voice: Paradee-8M TTS and
+// Phonon-2 ASR on libelizainference, through the :paradee-voice
+// library only (no ONNX, no platform recognizer, no network, no agent).
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+rootProject.name = 'paradee-voice-qualify'
+def androidRoot = new File(settingsDir, '../../../platforms/android')
+include ':paradee-voice'
+project(':paradee-voice').projectDir = new File(androidRoot, 'paradee-voice')
+include ':app'

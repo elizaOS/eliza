@@ -1,0 +1,28 @@
+# @elizaos/plugin-openai
+
+OpenAI model-provider plugin for elizaOS: text generation, embeddings, image
+generation/description, audio transcription, text-to-speech, and deep research via the
+OpenAI Responses API.
+
+Register the plugin and configure `OPENAI_API_KEY`, or the credentials and base URL for
+the chosen compatible provider. Dispatch through runtime.useModel. Keep provider
+credentials server-side. Strict wire-schema adaptation preserves the original schema for
+application-side validation; usage records identify the actual serving provider/model.
+
+Text calls pass non-empty stop sequences, frequency/presence penalties, and seeds
+to the SDK. Zero values are preserved. Empty stop lists are omitted. Omitted
+settings use provider defaults; the provider and model determine support. Stop
+text uses the existing Unicode cleanup.
+
+## Development
+
+Install dependencies with `bun install` at the repository root. Run from that root:
+
+```bash
+bun run --cwd plugins/plugin-openai build  # build
+bun run --cwd plugins/plugin-openai test   # tests
+```
+
+The root also exports stateless direct media adapters for explicit own-key host
+configuration. `./direct-media` provides the same adapters without initializing
+model registration. Callers supply credentials and cancellation.

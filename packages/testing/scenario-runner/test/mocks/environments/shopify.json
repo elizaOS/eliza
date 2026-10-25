@@ -1,0 +1,320 @@
+{
+  "uuid": "00000000-0000-4000-8000-000shopify0000",
+  "lastMigration": 33,
+  "name": "Shopify Admin API",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3015,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET products",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/products.json",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-000shopify0000",
+          "body": "{\"products\":[{\"id\":1234567890,\"title\":\"Mock Widget\",\"body_html\":\"<p>A great mock product.</p>\",\"vendor\":\"Mock Vendor\",\"product_type\":\"Widget\",\"handle\":\"mock-widget\",\"status\":\"active\",\"variants\":[{\"id\":9876543210,\"product_id\":1234567890,\"title\":\"Default Title\",\"price\":\"19.99\",\"sku\":\"MOCK-001\",\"inventory_quantity\":100,\"inventory_item_id\":7000000001}],\"images\":[],\"tags\":\"mock,test\",\"created_at\":\"2026-01-01T00:00:00-05:00\",\"updated_at\":\"2026-01-01T00:00:00-05:00\"},{\"id\":1234567891,\"title\":\"Mock Gadget\",\"body_html\":\"<p>Another mock product.</p>\",\"vendor\":\"Mock Vendor\",\"product_type\":\"Gadget\",\"handle\":\"mock-gadget\",\"status\":\"active\",\"variants\":[{\"id\":9876543211,\"product_id\":1234567891,\"title\":\"Default Title\",\"price\":\"39.99\",\"sku\":\"MOCK-002\",\"inventory_quantity\":50,\"inventory_item_id\":7000000002}],\"images\":[],\"tags\":\"mock,test\",\"created_at\":\"2026-01-02T00:00:00-05:00\",\"updated_at\":\"2026-01-02T00:00:00-05:00\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "POST create product",
+      "method": "post",
+      "endpoint": "admin/api/2024-10/products.json",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-000shopify0000",
+          "body": "{\"product\":{\"id\":{{faker 'string.numeric' length=10}},\"title\":\"{{body 'title'}}\",\"body_html\":\"\",\"vendor\":\"Mock Vendor\",\"product_type\":\"\",\"handle\":\"new-mock-product\",\"status\":\"draft\",\"variants\":[{\"id\":{{faker 'string.numeric' length=10}},\"title\":\"Default Title\",\"price\":\"0.00\",\"sku\":\"\",\"inventory_quantity\":0}],\"images\":[],\"tags\":\"\",\"created_at\":\"{{now 'iso'}}\",\"updated_at\":\"{{now 'iso'}}\"}}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "Created",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000005-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET single product",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/products/:id.json",
+      "responses": [
+        {
+          "uuid": "00000006-0000-4000-8000-000shopify0000",
+          "body": "{\"product\":{\"id\":{{urlParam 'id'}},\"title\":\"Mock Widget\",\"body_html\":\"<p>A great mock product.</p>\",\"vendor\":\"Mock Vendor\",\"product_type\":\"Widget\",\"handle\":\"mock-widget\",\"status\":\"active\",\"variants\":[{\"id\":9876543210,\"product_id\":{{urlParam 'id'}},\"title\":\"Default Title\",\"price\":\"19.99\",\"sku\":\"MOCK-001\",\"inventory_quantity\":100,\"inventory_item_id\":7000000001}],\"images\":[],\"tags\":\"mock,test\",\"created_at\":\"2026-01-01T00:00:00-05:00\",\"updated_at\":\"2026-01-01T00:00:00-05:00\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000007-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET orders",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/orders.json",
+      "responses": [
+        {
+          "uuid": "00000008-0000-4000-8000-000shopify0000",
+          "body": "{\"orders\":[{\"id\":5000000001,\"order_number\":1001,\"email\":\"customer@example.test\",\"created_at\":\"2026-04-01T10:00:00-05:00\",\"updated_at\":\"2026-04-01T10:05:00-05:00\",\"total_price\":\"59.98\",\"subtotal_price\":\"59.98\",\"total_tax\":\"0.00\",\"currency\":\"USD\",\"financial_status\":\"paid\",\"fulfillment_status\":null,\"line_items\":[{\"id\":1,\"title\":\"Mock Widget\",\"quantity\":2,\"price\":\"19.99\",\"sku\":\"MOCK-001\"},{\"id\":2,\"title\":\"Mock Gadget\",\"quantity\":1,\"price\":\"39.99\",\"sku\":\"MOCK-002\"}],\"customer\":{\"id\":9000000001,\"email\":\"customer@example.test\",\"first_name\":\"Test\",\"last_name\":\"Customer\"}}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000009-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET single order",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/orders/:id.json",
+      "responses": [
+        {
+          "uuid": "0000000a-0000-4000-8000-000shopify0000",
+          "body": "{\"order\":{\"id\":{{urlParam 'id'}},\"order_number\":1001,\"email\":\"customer@example.test\",\"created_at\":\"2026-04-01T10:00:00-05:00\",\"updated_at\":\"2026-04-01T10:05:00-05:00\",\"total_price\":\"59.98\",\"subtotal_price\":\"59.98\",\"total_tax\":\"0.00\",\"currency\":\"USD\",\"financial_status\":\"paid\",\"fulfillment_status\":null,\"line_items\":[{\"id\":1,\"title\":\"Mock Widget\",\"quantity\":2,\"price\":\"19.99\",\"sku\":\"MOCK-001\"}],\"customer\":{\"id\":9000000001,\"email\":\"customer@example.test\",\"first_name\":\"Test\",\"last_name\":\"Customer\"}}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "0000000b-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET customers",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/customers.json",
+      "responses": [
+        {
+          "uuid": "0000000c-0000-4000-8000-000shopify0000",
+          "body": "{\"customers\":[{\"id\":9000000001,\"email\":\"customer@example.test\",\"first_name\":\"Test\",\"last_name\":\"Customer\",\"phone\":null,\"verified_email\":true,\"tax_exempt\":false,\"tags\":\"\",\"currency\":\"USD\",\"orders_count\":1,\"total_spent\":\"59.98\",\"state\":\"enabled\",\"created_at\":\"2026-01-15T00:00:00-05:00\",\"updated_at\":\"2026-04-01T10:05:00-05:00\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "0000000d-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET single customer",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/customers/:id.json",
+      "responses": [
+        {
+          "uuid": "0000000e-0000-4000-8000-000shopify0000",
+          "body": "{\"customer\":{\"id\":{{urlParam 'id'}},\"email\":\"customer@example.test\",\"first_name\":\"Test\",\"last_name\":\"Customer\",\"phone\":null,\"verified_email\":true,\"tax_exempt\":false,\"tags\":\"\",\"currency\":\"USD\",\"orders_count\":1,\"total_spent\":\"59.98\",\"state\":\"enabled\",\"created_at\":\"2026-01-15T00:00:00-05:00\",\"updated_at\":\"2026-04-01T10:05:00-05:00\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "0000000f-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET inventory levels",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/inventory_levels.json",
+      "responses": [
+        {
+          "uuid": "00000010-0000-4000-8000-000shopify0000",
+          "body": "{\"inventory_levels\":[{\"inventory_item_id\":7000000001,\"location_id\":8000000001,\"available\":100,\"updated_at\":\"2026-04-01T10:00:00-05:00\"},{\"inventory_item_id\":7000000002,\"location_id\":8000000001,\"available\":50,\"updated_at\":\"2026-04-01T10:00:00-05:00\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000011-0000-4000-8000-000shopify0000",
+      "type": "http",
+      "documentation": "GET shop info",
+      "method": "get",
+      "endpoint": "admin/api/2024-10/shop.json",
+      "responses": [
+        {
+          "uuid": "00000012-0000-4000-8000-000shopify0000",
+          "body": "{\"shop\":{\"id\":12345678,\"name\":\"Mock Store\",\"email\":\"owner@mock-store.test\",\"domain\":\"mock-store.myshopify.com\",\"province\":\"California\",\"country\":\"US\",\"address1\":\"123 Mock Street\",\"city\":\"Mock City\",\"zip\":\"90210\",\"currency\":\"USD\",\"phone\":\"555-0100\",\"created_at\":\"2020-01-01T00:00:00-05:00\",\"updated_at\":\"2026-01-01T00:00:00-05:00\",\"iana_timezone\":\"America/Los_Angeles\",\"money_format\":\"${{amount}}\",\"plan_display_name\":\"Basic\",\"has_discounts\":false,\"has_gift_cards\":false}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "00000001-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "00000003-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "00000005-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "00000007-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "00000009-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "0000000b-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "0000000d-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "0000000f-0000-4000-8000-000shopify0000" },
+    { "type": "route", "uuid": "00000011-0000-4000-8000-000shopify0000" }
+  ],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

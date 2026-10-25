@@ -1,0 +1,48 @@
+{
+  "schema": "eliza.action-calling.corpus.v1",
+  "dataset": "hermes-fc-v1",
+  "license": "Apache-2.0",
+  "sourceRepository": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1",
+  "sourceRevision": "dae3e1d28cfbcf4b915c04ea1e072030529b4bda",
+  "converterRepository": "https://github.com/elizaOS/eliza",
+  "converterRevision": "d8f47c24997bf8383e616b3eb5397c33cde0609d",
+  "modification": "Five source files normalized and transformed into native planner-record JSONL with the historical converter; complete original converted bytes retained.",
+  "sourceFiles": [
+    {
+      "path": "func-calling-singleturn.json",
+      "bytes": 17793686,
+      "sha256": "fb2df9fe3f295dfd65b223c2dbf04d6b90006357d737f8f8927749f0bea09527",
+      "url": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1/resolve/dae3e1d28cfbcf4b915c04ea1e072030529b4bda/func-calling-singleturn.json"
+    },
+    {
+      "path": "func-calling.json",
+      "bytes": 20554130,
+      "sha256": "769478035a886678d525d057ea66e3fd1e247f43e35c8d6d7cc866e080b6742b",
+      "url": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1/resolve/dae3e1d28cfbcf4b915c04ea1e072030529b4bda/func-calling.json"
+    },
+    {
+      "path": "glaive-function-calling-5k.json",
+      "bytes": 20416419,
+      "sha256": "b98eb3f160359f27ad15018e974ce6db444f566eb5be4aa9e4aa690b34d50832",
+      "url": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1/resolve/dae3e1d28cfbcf4b915c04ea1e072030529b4bda/glaive-function-calling-5k.json"
+    },
+    {
+      "path": "json-mode-agentic.json",
+      "bytes": 5019263,
+      "sha256": "7343a1ce0b3c1e894978fc15bb79c695a925f835c91a81786bf59e7379eb5da2",
+      "url": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1/resolve/dae3e1d28cfbcf4b915c04ea1e072030529b4bda/json-mode-agentic.json"
+    },
+    {
+      "path": "json-mode-singleturn.json",
+      "bytes": 2953007,
+      "sha256": "c07b20b7e88afc9cde0cf8c92e50ad150861ba2e35f4c82eb85999aba7182f4a",
+      "url": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1/resolve/dae3e1d28cfbcf4b915c04ea1e072030529b4bda/json-mode-singleturn.json"
+    }
+  ],
+  "archiveUrl": "https://github.com/elizaOS/benchmarks/releases/download/action-calling-corpus-v1/hermes-fc-v1.jsonl.gz",
+  "archiveBytes": 14156785,
+  "archiveSha256": "285511a9e9b8f8acfd8f0a370f8fbfa1a8609b4850cec14d4b234c28f053832c",
+  "recordBytes": 82614497,
+  "recordSha256": "78dd3bc0b8cc98e0637231ae96dee7a63dbe1b5ae3e1b4fd7d862733ff5e162b",
+  "recordCount": 11578
+}

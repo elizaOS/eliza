@@ -1,0 +1,40 @@
+{
+  "name": "@elizaos/cloud-test-mocks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hetzner": "./src/hetzner/index.ts",
+    "./control-plane": "./src/control-plane/index.ts",
+    "./steward": "./src/steward.ts",
+    "./provider-contract": "./src/provider-contract/index.ts",
+    "./stripe": "./src/stripe.ts"
+  },
+  "bin": {
+    "hetzner-mock": "./bin/hetzner-mock.ts",
+    "control-plane-mock": "./bin/control-plane-mock.ts"
+  },
+  "scripts": {
+    "start:hetzner": "bun run ./bin/hetzner-mock.ts",
+    "start:control-plane": "bun run ./bin/control-plane-mock.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check package.json src test bin",
+    "format": "bunx @biomejs/biome format --write package.json src test bin",
+    "format:check": "bunx @biomejs/biome format package.json src test bin",
+    "test": "bun test test"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
+    "hono": "4.13.8",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "bun-types": "1.4.2",
+    "vite": "^8.3.0"
+  }
+}

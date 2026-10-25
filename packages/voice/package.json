@@ -1,0 +1,61 @@
+{
+  "name": "@elizaos/voice",
+  "version": "2.0.3-beta.7",
+  "description": "Portable voice turn analysis, acoustic processing and speech metrics.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./turn": {
+      "eliza-source": "./src/turn.ts",
+      "types": "./dist/turn.d.ts",
+      "import": "./dist/turn.js",
+      "default": "./dist/turn.js"
+    },
+    "./browser-capture": {
+      "eliza-source": "./src/browser-capture/index.ts",
+      "types": "./dist/browser-capture/index.d.ts",
+      "import": "./dist/browser-capture/index.js",
+      "default": "./dist/browser-capture/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/voice",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint:check": "bunx @biomejs/biome check src test package.json",
+    "lint": "bunx @biomejs/biome check --write src test package.json",
+    "prepublishOnly": "bun run build",
+    "test:browser:consumer": "node test/consumer.mjs"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "buildOnInstall": {},
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
+  "sideEffects": false
+}

@@ -1,0 +1,51 @@
+/** Vitest config for the coding-tools package: resolves `@elizaos/*` to workspace source. */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(pluginRoot, "../..");
+
+export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@elizaos\/cloud-routing$/,
+        replacement: path.join(repoRoot, "packages/cloud/routing/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/core/src/$1"),
+      },
+    ],
+    conditions: ["node"],
+  },
+  ssr: {
+    resolve: {
+      conditions: ["node"],
+    },
+  },
+  test: {
+    environment: "node",
+    setupFiles: ["./vitest.setup.ts"],
+    // Capability tests intentionally replace process-wide PATH values. Keep
+    // files serial so those fixtures cannot race shell-action execution in a
+    // sibling file inside the same Vitest worker process.
+    fileParallelism: false,
+    include: ["__tests__/**/*.test.ts", "src/**/*.test.ts"],
+    // *.real.test.ts files run only in the dedicated real/live lane
+    // (packages/scripts/vitest/real.config.ts), never in the default suite.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/*.real.test.ts"],
+    testTimeout: 15_000,
+    pool: "forks",
+    server: {
+      deps: {
+        inline: ["@elizaos/core"],
+      },
+    },
+  },
+});

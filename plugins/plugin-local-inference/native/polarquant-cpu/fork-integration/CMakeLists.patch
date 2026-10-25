@@ -1,0 +1,15 @@
+--- a/ggml/src/ggml-cpu/CMakeLists.txt
++++ b/ggml/src/ggml-cpu/CMakeLists.txt
+@@ -<find the existing list of quants-*.c files> @@
+     quants.c
+     quants-tbq.c
++    quants-polar.c
+@@ -<near the per-arch SIMD options for quants-tbq.c> @@
++# PolarQuant: scalar/AVX2/NEON live in quants-polar.c.  AVX2 needs
++# -mavx2 and -mfma even when the rest of ggml is configured for a
++# baseline ISA, because the NEON fallback path on AArch64 also lives
++# in this TU (gated by __ARM_NEON).
++if(GGML_AVX2)
++    set_source_files_properties(quants-polar.c PROPERTIES
++        COMPILE_OPTIONS "-mavx2;-mfma")
++endif()

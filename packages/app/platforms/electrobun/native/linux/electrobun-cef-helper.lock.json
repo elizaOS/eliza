@@ -1,0 +1,14 @@
+{
+	"electrobunVersion": "1.18.1",
+	"sourceCommit": "4eba723c85b97559e1d9e13439d9a92ede0832e8",
+	"sourceUrl": "https://raw.githubusercontent.com/blackboardsh/electrobun/4eba723c85b97559e1d9e13439d9a92ede0832e8/package/src/native/linux/cef_process_helper_linux.cpp",
+	"sourceSha256": "62b142cdfb20763a45778a81708cf008689aecb8fd0c9bc8dc8fe7b8c2d4795d",
+	"patchedSourceSha256": "e5215aec9d147e90df96150c34de67c6cd0491daf31083dfd85309a9228f0efd",
+	"patchSha256": "c890b1d8a14110ede9229cb6479c6218f56cda935a65600664ce39d061389eee",
+	"sdkUrl": "https://cef-builds.spotifycdn.com/cef_binary_147.0.10%2Bgd58e84d%2Bchromium-147.0.7727.118_linux64_minimal.tar.bz2",
+	"sdkSha256": "087ccfa1f0438429e20d91293b15cae08ee9e7b4988cc018d47568dd59dad1ef",
+	"sdkSourcesSha256": "b048f40ccb52a7cf7cefd2a282215c957f281663b4569888537c7d8bbcb59585",
+	"sdkCefSha256": "b7074d9fc487b77af08ec03f3b8858755e748578fb14125690a39e8c249466b4",
+	"packagedCefSha256": "5f72fd935d77dad7c21c70ce88528fcfceeb3fdc023b2e1f14585201176cd651",
+	"originalHelperSha256": "464e5d815393ad5f02f63edbb76018efc0060f78aacea008cc797373ff70055c"
+}

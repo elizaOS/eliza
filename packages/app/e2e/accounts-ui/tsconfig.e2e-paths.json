@@ -1,0 +1,21 @@
+{
+  "//": [
+    "Source resolution for the accounts UI browser fixture API server.",
+    "The real account pool, credentials, and shared runtime dependencies must",
+    "resolve to this checkout during a clean install with no dist artifacts."
+  ],
+  "compilerOptions": {
+    "baseUrl": "../../../..",
+    "paths": {
+      "@elizaos/auth/accounts": ["./packages/auth/src/accounts/index.ts"],
+      "@elizaos/core": ["./packages/core/src/index.ts"],
+      "@elizaos/cloud-routing": ["./packages/cloud/routing/src/index.ts"],
+      "@elizaos/cloud-routing/*": ["./packages/cloud/routing/src/*"],
+      "@elizaos/auth/vault": ["./packages/auth/src/vault/index.ts"],
+      "@elizaos/auth/vault/*": ["./packages/auth/src/vault/*"],
+      "@elizaos/auth/auth": ["./packages/auth/src/auth/index.ts"],
+      "@elizaos/auth/auth/*": ["./packages/auth/src/auth/*"],
+      "@elizaos/core/protocol": ["./packages/core/src/protocol"]
+    }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "slug": "app-tour",
+  "granularity": "walkthrough",
+  "title": "Whole-app tour across five views",
+  "steps": [
+    { "action": "goto", "value": "/", "label": "open-app" },
+    {
+      "action": "waitFor",
+      "selector": "[data-testid=\"chat-view\"]",
+      "label": "await-chat",
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"nav-documents\"]",
+      "label": "open-documents"
+    },
+    {
+      "action": "assertText",
+      "selector": "[data-testid=\"documents-view\"]",
+      "value": "Documents",
+      "label": "documents-visible",
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"nav-database\"]",
+      "label": "open-database"
+    },
+    {
+      "action": "assertText",
+      "selector": "[data-testid=\"database-view\"]",
+      "value": "Database",
+      "label": "database-visible",
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"nav-files\"]",
+      "label": "open-files"
+    },
+    {
+      "action": "assertText",
+      "selector": "[data-testid=\"files-view\"]",
+      "value": "Files",
+      "label": "files-visible",
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"nav-settings\"]",
+      "label": "open-settings"
+    },
+    {
+      "action": "assertText",
+      "selector": "[data-testid=\"settings-view\"]",
+      "value": "Settings",
+      "label": "settings-visible",
+      "ariaAfter": true,
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"nav-chat\"]",
+      "label": "back-to-chat",
+      "screenshotAfter": true
+    }
+  ]
+}

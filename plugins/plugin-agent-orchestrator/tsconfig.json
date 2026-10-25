@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "declaration": false,
+    "resolveJsonModule": true,
+    "noImplicitAny": true,
+    "allowJs": false,
+    "checkJs": false,
+    "noEmitOnError": false,
+    "moduleDetection": "force",
+    "allowArbitraryExtensions": true,
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    },
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noImplicitReturns": false,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "jsx": "react-jsx",
+    "rootDir": "../.."
+  },
+  "include": ["**/*.ts"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "vendor",
+    "test/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.e2e.test.ts",
+    "**/*.test.tsx",
+    "build.ts",
+    "ui/**",
+    "src/ui/**"
+  ]
+}

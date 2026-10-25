@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "declarationMap": false,
+    "emitDeclarationOnly": false,
+    "ignoreDeprecations": "6.0",
+    "paths": {
+    },
+    "incremental": false,
+    "composite": false
+  },
+  "include": [
+    "index.ts",
+    "utils/config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "__tests__",
+    "**/*.test.ts",
+    "build.ts",
+    "vitest.real-runtime.config.ts"
+  ]
+}

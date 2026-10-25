@@ -1,0 +1,698 @@
+/**
+ * Logins tab — saved-logins list (in-house + 1Password + Bitwarden) with
+ * the in-house "Add login" form. Per-source rows; external rows are
+ * read-only links back to the password manager.
+ */
+
+import { Bot, ExternalLink, Loader2, Plus, Trash2 } from "lucide-react";
+import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { useAgentElement } from "../../../agent-surface/useAgentElement";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../../api/client";
+import { openBrowserWebsite } from "../../../bridge/system-browser";
+import { loadPasswordProviderSettings } from "../../../platform/password-provider-settings";
+import { useTranslation } from "../../../state/TranslationContext.hooks";
+import { confirmDesktopAction } from "../../../utils/desktop-dialogs";
+import { Alert } from "../../ui/alert";
+import { Badge, type BadgeProps } from "../../ui/badge";
+import { Button } from "../../ui/button";
+import { Card } from "../../ui/card";
+import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
+import type {
+  SavedLogin,
+  SavedLoginSource,
+  SavedLoginsListFailure,
+} from "./types";
+
+const SOURCE_LABEL: Record<SavedLoginSource, string> = {
+  "in-house": "Local",
+  "1password": "1Password",
+  bitwarden: "Bitwarden",
+};
+
+const SOURCE_PILL_VARIANT = {
+  "in-house": "metaAccent",
+  "1password": "statusInfo",
+  bitwarden: "statusWarning",
+} satisfies Record<SavedLoginSource, NonNullable<BadgeProps["variant"]>>;
+
+function relativeAge(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return "—";
+  const elapsed = Date.now() - ms;
+  if (elapsed < 60_000) return "just now";
+  const minutes = Math.floor(elapsed / 60_000);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
+
+export function LoginsTab() {
+  const { t } = useTranslation();
+  const sourceLabel = useCallback(
+    (source: SavedLoginSource): string =>
+      source === "in-house"
+        ? t("logins.source.local", { defaultValue: "Local" })
+        : SOURCE_LABEL[source],
+    [t],
+  );
+  const [logins, setLogins] = useState<SavedLogin[] | null>(null);
+  const [failures, setFailures] = useState<SavedLoginsListFailure[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addDomain, setAddDomain] = useState("");
+  const [addUsername, setAddUsername] = useState("");
+  const [addPassword, setAddPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [filter, setFilter] = useState("");
+  // Per-domain "agent may autofill without prompting" map, backed by
+  // `creds.<domain>.:autoallow` in the vault — the only authorization the
+  // browser autofill-login subaction accepts.
+  const [autoallowMap, setAutoallowMap] = useState<Record<string, boolean>>({});
+
+  const { ref: addLoginRef, agentProps: addLoginAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "logins-add-toggle",
+      role: "button",
+      label: "Add login",
+      group: "logins",
+      description: "Show the form to add a saved login",
+    });
+  const { ref: addDomainRef, agentProps: addDomainAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-add-domain",
+      role: "text-input",
+      label: "Login domain",
+      group: "logins-add",
+      getValue: () => addDomain,
+      onFill: (v) => setAddDomain(v),
+    });
+  const { ref: addUsernameRef, agentProps: addUsernameAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-add-username",
+      role: "text-input",
+      label: "Login username or email",
+      group: "logins-add",
+      getValue: () => addUsername,
+      onFill: (v) => setAddUsername(v),
+    });
+  const { ref: addPasswordRef, agentProps: addPasswordAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-add-password",
+      role: "text-input",
+      label: "Login password",
+      group: "logins-add",
+      getValue: () => addPassword,
+      onFill: (v) => setAddPassword(v),
+    });
+  const { ref: addCancelRef, agentProps: addCancelAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "logins-add-cancel",
+      role: "button",
+      label: "Cancel adding login",
+      group: "logins-add",
+      onActivate: () => setShowAdd(false),
+    });
+  const { ref: addSaveRef, agentProps: addSaveAgentProps } =
+    useAgentElement<HTMLButtonElement>({
+      id: "logins-add-save",
+      role: "button",
+      label: "Save login",
+      group: "logins-add",
+    });
+  const { ref: filterRef, agentProps: filterAgentProps } =
+    useAgentElement<HTMLInputElement>({
+      id: "logins-filter",
+      role: "text-input",
+      label: "Filter saved logins",
+      group: "logins",
+      getValue: () => filter,
+      onFill: (v) => setFilter(v),
+    });
+
+  const loadAutoallowFor = useCallback(
+    async (domains: ReadonlyArray<string>) => {
+      const next: Record<string, boolean> = {};
+      // One fetch per unique domain. A failed read defaults to false (never
+      // autoallow on a missing read) rather than blocking the rest of the UI.
+      const unique = Array.from(new Set(domains.filter(Boolean)));
+      const responses = await Promise.all(
+        unique.map(async (d): Promise<readonly [string, boolean]> => {
+          const res = await client.rawRequest(
+            `/api/secrets/logins/${encodeURIComponent(d)}/autoallow`,
+            undefined,
+            { allowNonOk: true },
+          );
+          if (!res.ok) return [d, false] as const;
+          const json = (await res.json()) as {
+            ok?: boolean;
+            allowed?: boolean;
+          };
+          return [d, json?.allowed === true] as const;
+        }),
+      );
+      for (const [d, allowed] of responses) next[d] = allowed;
+      setAutoallowMap(next);
+    },
+    [],
+  );
+
+  const load = useCallback(async () => {
+    setError(null);
+    setLogins(null);
+    try {
+      const json = await client.fetch<{
+        logins: SavedLogin[];
+        failures?: SavedLoginsListFailure[];
+      }>("/api/secrets/logins");
+      setLogins(json.logins);
+      setFailures(json.failures ?? []);
+      const domains = json.logins
+        .map((l) => l.domain)
+        .filter((d): d is string => typeof d === "string" && d.length > 0);
+      // A failed autoallow fetch must not blank the logins list; toggles
+      // default to "off" until the next refresh.
+      try {
+        await loadAutoallowFor(domains);
+      } catch {
+        setAutoallowMap({});
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : t("logins.error.loadFailed", { defaultValue: "load failed" }),
+      );
+      setLogins([]);
+      setFailures([]);
+    }
+  }, [loadAutoallowFor, t]);
+
+  const onToggleAutoallow = useCallback(
+    async (domain: string, next: boolean) => {
+      // Optimistic update; reverted on error.
+      setAutoallowMap((prev) => ({ ...prev, [domain]: next }));
+      const res = await client.rawRequest(
+        `/api/secrets/logins/${encodeURIComponent(domain)}/autoallow`,
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ allowed: next }),
+        },
+        { allowNonOk: true },
+      );
+      if (!res.ok) {
+        setError(`HTTP ${res.status} (autoallow update failed)`);
+        setAutoallowMap((prev) => ({ ...prev, [domain]: !next }));
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const onAdd = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!addDomain.trim() || !addUsername || !addPassword) return;
+      setSubmitting(true);
+      setError(null);
+      const res = await client.rawRequest(
+        "/api/secrets/logins",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            domain: addDomain.trim(),
+            username: addUsername,
+            password: addPassword,
+          }),
+        },
+        { allowNonOk: true },
+      );
+      setSubmitting(false);
+      if (!res.ok) {
+        setError(`HTTP ${res.status}`);
+        return;
+      }
+      setAddDomain("");
+      setAddUsername("");
+      setAddPassword("");
+      setShowAdd(false);
+      await load();
+    },
+    [addDomain, addUsername, addPassword, load],
+  );
+
+  const onDelete = useCallback(
+    async (login: SavedLogin) => {
+      if (login.source !== "in-house") return;
+      const ok = await confirmDesktopAction({
+        title: t("common.delete"),
+        type: "warning",
+        message: t("logins.confirmDelete", {
+          domain: login.domain ?? "—",
+          username: login.username,
+          defaultValue: "Delete saved login for {{domain}} ({{username}})?",
+        }),
+      });
+      if (!ok) return;
+      setError(null);
+      const colon = login.identifier.indexOf(":");
+      const domainPart = colon > 0 ? login.identifier.slice(0, colon) : "";
+      const userPart = colon > 0 ? login.identifier.slice(colon + 1) : "";
+      const path = `/api/secrets/logins/${encodeURIComponent(domainPart)}/${encodeURIComponent(userPart)}`;
+      const res = await client.rawRequest(
+        path,
+        { method: "DELETE" },
+        { allowNonOk: true },
+      );
+      if (!res.ok) {
+        setError(`HTTP ${res.status}`);
+        return;
+      }
+      await load();
+    },
+    [load, t],
+  );
+
+  const filtered = (logins ?? []).filter((l) => {
+    if (filter.trim().length === 0) return true;
+    const needle = filter.trim().toLowerCase();
+    return (
+      l.title.toLowerCase().includes(needle) ||
+      l.username.toLowerCase().includes(needle) ||
+      (l.domain ?? "").toLowerCase().includes(needle)
+    );
+  });
+
+  return (
+    <section data-testid="saved-logins-panel" className="w-full space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-[min(100%,30rem)] flex-1 space-y-1">
+          <h2 className="text-sm font-semibold text-txt">
+            {t("logins.title", { defaultValue: "Saved logins" })}
+          </h2>
+          <p className="text-xs text-muted">
+            {t("logins.description", {
+              defaultValue:
+                "Browser autofill from local vault, 1Password, and Bitwarden.",
+            })}
+          </p>
+        </div>
+        <Button
+          ref={addLoginRef}
+          {...addLoginAgentProps}
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setShowAdd((v) => !v)}
+        >
+          <Plus className="size-3.5" aria-hidden />
+          {t("logins.addLogin", { defaultValue: "Add login" })}
+        </Button>
+      </div>
+
+      {error && (
+        <Alert
+          aria-live="polite"
+          variant="destructive"
+          className="px-3 py-1.5 text-xs"
+        >
+          {error}
+        </Alert>
+      )}
+
+      {failures.length > 0 && (
+        <div
+          aria-live="polite"
+          data-testid="saved-logins-failures"
+          className="space-y-1"
+        >
+          {failures.map((f) => (
+            <Alert key={f.source} variant="warningCompact">
+              {t("logins.sourceLoadFailed", {
+                source: sourceLabel(f.source),
+                message: f.message,
+                defaultValue: "{{source}} failed to load: {{message}}",
+              })}
+            </Alert>
+          ))}
+        </div>
+      )}
+
+      {showAdd && (
+        <Card
+          asChild
+          variant="vaultForm"
+          stack="compact"
+          data-testid="saved-logins-add-form"
+        >
+          <form onSubmit={onAdd}>
+            <p className="text-2xs text-muted">
+              {t("logins.addForm.help", {
+                defaultValue:
+                  "Saved to local (encrypted) vault. To add to 1Password or Bitwarden, use that app directly.",
+              })}
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <Label className="text-2xs text-muted">
+                  {t("logins.addForm.domain", { defaultValue: "Domain" })}
+                </Label>
+                <Input
+                  ref={addDomainRef}
+                  {...addDomainAgentProps}
+                  density="compact"
+                  value={addDomain}
+                  onChange={(e) => setAddDomain(e.target.value)}
+                  placeholder="github.com"
+                  autoComplete="off"
+                  required
+                />
+              </div>
+              <div>
+                <Label className="text-2xs text-muted">
+                  {t("logins.addForm.username", {
+                    defaultValue: "Username / email",
+                  })}
+                </Label>
+                <Input
+                  ref={addUsernameRef}
+                  {...addUsernameAgentProps}
+                  density="compact"
+                  value={addUsername}
+                  onChange={(e) => setAddUsername(e.target.value)}
+                  placeholder="alice@example.com"
+                  autoComplete="off"
+                  required
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-2xs text-muted">
+                {t("logins.addForm.password", { defaultValue: "Password" })}
+              </Label>
+              <Input
+                ref={addPasswordRef}
+                {...addPasswordAgentProps}
+                type="password"
+                density="compact"
+                value={addPassword}
+                onChange={(e) => setAddPassword(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                ref={addCancelRef}
+                {...addCancelAgentProps}
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdd(false)}
+                disabled={submitting}
+              >
+                {t("logins.cancel", { defaultValue: "Cancel" })}
+              </Button>
+              <Button
+                ref={addSaveRef}
+                {...addSaveAgentProps}
+                type="submit"
+                variant="default"
+                size="sm"
+                disabled={
+                  submitting ||
+                  !addDomain.trim() ||
+                  !addUsername ||
+                  !addPassword
+                }
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                    {t("logins.saving", { defaultValue: "Saving…" })}
+                  </>
+                ) : (
+                  t("logins.save", { defaultValue: "Save" })
+                )}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      {logins !== null && logins.length > 0 && (
+        <Input
+          ref={filterRef}
+          {...filterAgentProps}
+          density="compact"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t("logins.filterPlaceholder", {
+            defaultValue: "Filter by title, user, or domain",
+          })}
+          autoComplete="off"
+          data-testid="saved-logins-filter"
+        />
+      )}
+
+      {logins === null ? (
+        <div className="flex items-center gap-2 px-1 py-3 text-xs text-muted">
+          <Loader2 className="size-3.5 animate-spin" aria-hidden />{" "}
+          {t("logins.loading", { defaultValue: "Loading…" })}
+        </div>
+      ) : logins.length === 0 ? (
+        <div
+          data-testid="saved-logins-empty"
+          className="flex min-h-40 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
+        >
+          <p className="max-w-md">
+            {t("logins.empty", {
+              defaultValue:
+                "No saved logins. Add one, or sign in to 1Password / Bitwarden on Overview.",
+            })}
+          </p>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div
+          data-testid="saved-logins-no-match"
+          className="flex min-h-32 w-full items-center text-xs text-muted sm:justify-center sm:text-center"
+        >
+          <p className="max-w-md">
+            {t("logins.noMatch", {
+              filter,
+              defaultValue: 'No logins match "{{filter}}".',
+            })}
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-line-subtle bg-bg-card">
+          <ul
+            data-testid="saved-logins-list"
+            className="divide-y divide-line-subtle"
+          >
+            {filtered.map((login) => (
+              <li
+                key={`${login.source}:${login.identifier}`}
+                className="flex items-center gap-2 p-3 sm:px-4"
+              >
+                <Badge
+                  variant={SOURCE_PILL_VARIANT[login.source]}
+                  size="micro"
+                  className="shrink-0"
+                >
+                  {sourceLabel(login.source)}
+                </Badge>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs font-medium text-txt">
+                    {login.title}
+                    {login.domain && login.domain !== login.title ? (
+                      <span className="ml-1.5 text-muted">
+                        ({login.domain})
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="truncate text-2xs text-muted">
+                    {login.username || "—"} · {relativeAge(login.updatedAt)}
+                  </p>
+                </div>
+                {login.domain ? (
+                  <AgentAutoallowToggle
+                    domain={login.domain}
+                    allowed={autoallowMap[login.domain] === true}
+                    onChange={(next) =>
+                      void onToggleAutoallow(login.domain ?? "", next)
+                    }
+                  />
+                ) : null}
+                {login.source === "in-house" ? (
+                  <DeleteLoginButton
+                    identifier={login.identifier}
+                    target={login.domain ?? login.username}
+                    onDelete={() => void onDelete(login)}
+                  />
+                ) : (
+                  <ExternalRowAction login={login} />
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AgentAutoallowToggle({
+  domain,
+  allowed,
+  onChange,
+}: {
+  domain: string;
+  allowed: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `logins-autoallow-${domain}`,
+    role: "toggle",
+    label: `Agent autofill for ${domain}`,
+    group: "logins",
+    description: "Allow the agent to autofill this domain without prompting",
+    status: allowed ? "active" : "inactive",
+    onActivate: () => onChange(!allowed),
+  });
+  const label = allowed
+    ? t("logins.autoallow.enabled", {
+        domain,
+        defaultValue:
+          "Agent autofill enabled for {{domain}}. Click to disable.",
+      })
+    : t("logins.autoallow.disabled", {
+        domain,
+        defaultValue:
+          "Allow the agent to autofill {{domain}} without prompting.",
+      });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="selection"
+      size="tiny"
+      data-state={allowed ? "on" : "off"}
+      className="shrink-0"
+      aria-label={label}
+      title={label}
+      onClick={() => onChange(!allowed)}
+      data-testid={`agent-autoallow-toggle-${domain}`}
+      data-allowed={allowed ? "1" : "0"}
+    >
+      <Bot className="size-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function DeleteLoginButton({
+  identifier,
+  target,
+  onDelete,
+}: {
+  identifier: string;
+  target: string;
+  onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `logins-delete-${identifier}`,
+    role: "button",
+    label: `Delete saved login for ${target}`,
+    group: "logins",
+    onActivate: onDelete,
+  });
+  return (
+    <Button
+      ref={ref}
+      {...agentProps}
+      variant="destructive"
+      size="icon-sm"
+      className="shrink-0"
+      aria-label={t("logins.deleteLabel", {
+        target,
+        defaultValue: "Delete saved login for {{target}}",
+      })}
+      onClick={onDelete}
+    >
+      <Trash2 className="size-3.5" aria-hidden />
+    </Button>
+  );
+}
+
+function ExternalRowAction({ login }: { login: SavedLogin }) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function openVault() {
+    setBusy(true);
+    setError(null);
+    try {
+      const settings = await loadPasswordProviderSettings();
+      const provider = login.source === "1password" ? "1password" : "bitwarden";
+      await openBrowserWebsite(settings.webVaults[provider]);
+    } catch {
+      // error-policy:J4 Never substitute a US vault after a configured destination fails.
+      setError(
+        "Could not open your provider. Check Passwords → Account & server settings in Browser.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  const viewLabel = t("logins.viewIn", {
+    source: SOURCE_LABEL[login.source],
+    defaultValue: "View in {{source}}",
+  });
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `logins-view-external-${login.source}-${login.identifier}`,
+    role: "button",
+    label: viewLabel,
+    group: "logins",
+    description: `Open the ${SOURCE_LABEL[login.source]} web vault on this device`,
+    onActivate: () => void openVault(),
+  });
+  return (
+    <div className="max-w-56 space-y-1">
+      <Button
+        ref={ref}
+        {...agentProps}
+        variant="outlineMuted"
+        size="sm"
+        className="h-7 text-2xs"
+        disabled={busy}
+        onClick={() => void openVault()}
+        aria-label={viewLabel}
+        title={viewLabel}
+      >
+        <ExternalLink className="size-3" aria-hidden />
+        {t("logins.view", { defaultValue: "View" })}
+      </Button>
+      {error && (
+        <p role="alert" className="text-2xs text-danger">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

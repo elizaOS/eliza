@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "types": ["node", "vite/client"],
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@elizaos/cloud-sdk/*": ["../../packages/cloud/sdk/src/*"],
+      "@elizaos/plugin-health/*": ["./src/*"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"]
+}

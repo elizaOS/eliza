@@ -1,0 +1,157 @@
+{
+  "name": "@elizaos/plugin-mcp",
+  "version": "2.0.3-beta.7",
+  "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-mcp.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./protocol-utils/action-naming": {
+      "eliza-source": "./src/protocol-utils/action-naming.ts",
+      "types": "./dist/protocol-utils/action-naming.d.ts",
+      "import": "./dist/protocol-utils/action-naming.js",
+      "default": "./dist/protocol-utils/action-naming.js"
+    },
+    "./protocol-utils": {
+      "eliza-source": "./src/protocol-utils/index.ts",
+      "types": "./dist/protocol-utils/index.d.ts",
+      "import": "./dist/protocol-utils/index.js",
+      "default": "./dist/protocol-utils/index.js"
+    },
+    "./protocol-utils/json": {
+      "eliza-source": "./src/protocol-utils/json.ts",
+      "types": "./dist/protocol-utils/json.d.ts",
+      "import": "./dist/protocol-utils/json.js",
+      "default": "./dist/protocol-utils/json.js"
+    },
+    "./protocol-utils/model-provider": {
+      "eliza-source": "./src/protocol-utils/model-provider.ts",
+      "types": "./dist/protocol-utils/model-provider.d.ts",
+      "import": "./dist/protocol-utils/model-provider.js",
+      "default": "./dist/protocol-utils/model-provider.js"
+    },
+    "./protocol-utils/prompts": {
+      "eliza-source": "./src/protocol-utils/prompts.ts",
+      "types": "./dist/protocol-utils/prompts.d.ts",
+      "import": "./dist/protocol-utils/prompts.js",
+      "default": "./dist/protocol-utils/prompts.js"
+    },
+    "./protocol-utils/protocol": {
+      "eliza-source": "./src/protocol-utils/protocol.ts",
+      "types": "./dist/protocol-utils/protocol.d.ts",
+      "import": "./dist/protocol-utils/protocol.js",
+      "default": "./dist/protocol-utils/protocol.js"
+    },
+    "./protocol-utils/provider-projection": {
+      "eliza-source": "./src/protocol-utils/provider-projection.ts",
+      "types": "./dist/protocol-utils/provider-projection.d.ts",
+      "import": "./dist/protocol-utils/provider-projection.js",
+      "default": "./dist/protocol-utils/provider-projection.js"
+    },
+    "./protocol-utils/resource-selection": {
+      "eliza-source": "./src/protocol-utils/resource-selection.ts",
+      "types": "./dist/protocol-utils/resource-selection.d.ts",
+      "import": "./dist/protocol-utils/resource-selection.js",
+      "default": "./dist/protocol-utils/resource-selection.js"
+    },
+    "./protocol-utils/schema-budget": {
+      "eliza-source": "./src/protocol-utils/schema-budget.ts",
+      "types": "./dist/protocol-utils/schema-budget.d.ts",
+      "import": "./dist/protocol-utils/schema-budget.js",
+      "default": "./dist/protocol-utils/schema-budget.js"
+    },
+    "./protocol-utils/schema-converter": {
+      "eliza-source": "./src/protocol-utils/schema-converter.ts",
+      "types": "./dist/protocol-utils/schema-converter.d.ts",
+      "import": "./dist/protocol-utils/schema-converter.js",
+      "default": "./dist/protocol-utils/schema-converter.js"
+    },
+    "./protocol-utils/tool-schema-compatibility": {
+      "eliza-source": "./src/protocol-utils/tool-schema-compatibility.ts",
+      "types": "./dist/protocol-utils/tool-schema-compatibility.d.ts",
+      "import": "./dist/protocol-utils/tool-schema-compatibility.js",
+      "default": "./dist/protocol-utils/tool-schema-compatibility.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "dist"
+  ],
+  "keywords": [],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "ajv": "^8.17.1",
+    "json5": "^2.2.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@elizaos/testing": "workspace:*",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "PATH": {
+        "type": "string",
+        "description": "System PATH inherited from the host environment and forwarded to child processes when launching an MCP server through stdio transport.",
+        "required": false,
+        "sensitive": false
+      },
+      "mcp": {
+        "type": "string",
+        "description": "Serialized (e.g., JSON) configuration that defines MCP settings and server definitions; read at runtime to establish MCP server connections.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js ESM package root"
+    }
+  }
+}

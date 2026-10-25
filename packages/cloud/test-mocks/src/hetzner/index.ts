@@ -1,0 +1,63 @@
+/** Public entry that starts the Hetzner Cloud mock server and re-exports its store and app builders. */
+import { startFetchServer } from "../fetch-server";
+import { buildHetznerMockApp } from "./server";
+import type { HetznerStore } from "./store";
+
+export type { HetznerMockAppOptions } from "./server";
+export { buildHetznerMockApp } from "./server";
+export { HetznerStore } from "./store";
+export * from "./types";
+
+export interface StartHetznerMockOptions {
+  /** Listen port. 0 (default) auto-assigns a free port. */
+  port?: number;
+  /** Listen hostname. Defaults to `127.0.0.1`. */
+  hostname?: string;
+  /** Action lifecycle duration in ms. Default 2000. */
+  actionMs?: number;
+}
+
+export interface RunningHetznerMock {
+  /** Stop the underlying mock HTTP server. */
+  stop(): Promise<void>;
+  /** Base URL including `/v1` prefix — drop-in for `HCLOUD_API_BASE_URL`. */
+  url: string;
+  /** The bound port. */
+  port: number;
+  /** Shared store handle for assertions in tests. */
+  store: HetznerStore;
+}
+
+/**
+ * Start the Hetzner mock as a real HTTP server bound to a port.
+ * Mounts the Hono app under `/v1` so it matches the real Hetzner API path layout.
+ */
+export async function startHetznerMock(
+  options: StartHetznerMockOptions = {},
+): Promise<RunningHetznerMock> {
+  const { app, store } = buildHetznerMockApp({ actionMs: options.actionMs });
+  // Wrap under /v1 so `HCLOUD_API_BASE_URL=<url>` works directly.
+  const root = new Hono();
+  root.route("/v1", app);
+
+  const server = await startFetchServer(root.fetch, {
+    port: options.port ?? 0,
+    hostname: options.hostname ?? "127.0.0.1",
+  });
+  const port = server.port;
+  if (typeof port !== "number") {
+    throw new Error("Hetzner mock server did not bind to a numeric port");
+  }
+
+  return {
+    stop: async () => {
+      await server.stop();
+    },
+    url: `http://${server.hostname}:${port}/v1`,
+    port,
+    store,
+  };
+}
+
+// local import to keep top of file tidy
+import { Hono } from "hono";

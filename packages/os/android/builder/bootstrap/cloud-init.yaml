@@ -1,0 +1,207 @@
+#cloud-config
+# Portable Ubuntu 24.04 LTS bootstrap for an AOSP builder (GCE, Hetzner, any
+# x86_64 host). See ../README.md.
+#
+# - AOSP build prerequisites from source.android.com "Set up for AOSP
+#   development" (git-core is replaced by its successor package `git`).
+# - repo launcher verified against the pinned AOSP signing-key fingerprint.
+# - nofile limits, a 64 GiB swap file, a `builder` user and the data disk at
+#   /aosp.
+#
+# Data disk selection (first match wins):
+#   1. AOSP_DATA_DEVICE in /etc/aosp-builder.env (write it before first boot)
+#   2. /dev/disk/by-id/google-aosp (the GCE device-name used by builder.sh)
+#   3. none: /aosp stays on the root filesystem (e.g. a Hetzner RAID root)
+# A device is formatted only when blkid finds no filesystem and no partition
+# table on it. Existing data is never reformatted.
+#
+# This file holds no secrets and must never be given any.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - git
+  - gnupg
+  - flex
+  - bison
+  - build-essential
+  - zip
+  - curl
+  - zlib1g-dev
+  - libc6-dev-i386
+  - x11proto-core-dev
+  - libx11-dev
+  - lib32z1-dev
+  - libgl1-mesa-dev
+  - libxml2-utils
+  - xsltproc
+  - unzip
+  - fontconfig
+  - git-lfs
+  - python3
+  - python-is-python3
+  - jq
+  - rsync
+  - ccache
+  - zstd
+  - apparmor-utils
+
+users:
+  - default
+  - name: builder
+    gecos: AOSP builder
+    shell: /bin/bash
+    lock_passwd: true
+
+swap:
+  filename: /swapfile
+  size: 64G
+  maxsize: 64G
+
+write_files:
+  - path: /etc/security/limits.d/90-aosp-builder.conf
+    permissions: "0644"
+    content: |
+      # AOSP builds open many files at once.
+      builder soft nofile 65536
+      builder hard nofile 1048576
+      root    soft nofile 65536
+      root    hard nofile 1048576
+
+  - path: /etc/systemd/system.conf.d/90-aosp-builder.conf
+    permissions: "0644"
+    content: |
+      [Manager]
+      DefaultLimitNOFILE=65536:1048576
+
+  - path: /etc/sysctl.d/90-aosp-builder.conf
+    permissions: "0644"
+    content: |
+      vm.swappiness = 10
+      fs.inotify.max_user_watches = 1048576
+      fs.file-max = 4194304
+
+  # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor,
+  # which the AOSP build's nsjail sandbox needs. This profile grants userns
+  # only to the prebuilt nsjail inside /aosp instead of disabling the
+  # restriction system-wide. Unverified on a real build; see README.
+  - path: /etc/apparmor.d/aosp-nsjail
+    permissions: "0644"
+    content: |
+      abi <abi/4.0>,
+      include <tunables/global>
+
+      profile aosp-nsjail /aosp/**/prebuilts/build-tools/linux-x86/bin/nsjail flags=(unconfined) {
+        userns,
+        include if exists <local/aosp-nsjail>
+      }
+
+  - path: /usr/local/sbin/aosp-builder-disk-setup
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Mount the AOSP data disk at /aosp. Never reformats existing data.
+      set -euo pipefail
+      log() { printf 'aosp-builder-disk-setup: %s\n' "$*"; }
+      AOSP_DATA_DEVICE=""
+      if [[ -f /etc/aosp-builder.env ]]; then
+        # shellcheck disable=SC1091
+        source /etc/aosp-builder.env
+      fi
+      dev="${AOSP_DATA_DEVICE:-}"
+      if [[ -z "$dev" && -e /dev/disk/by-id/google-aosp ]]; then
+        dev=/dev/disk/by-id/google-aosp
+      fi
+      install -d -m 0755 /aosp
+      if [[ -n "$dev" ]]; then
+        [[ -b "$dev" ]] || { log "$dev is not a block device"; exit 1; }
+        if ! blkid "$dev" >/dev/null 2>&1; then
+          log "formatting blank device $dev as ext4 (label aosp)"
+          mkfs.ext4 -F -L aosp -m 0 -E lazy_itable_init=1,discard "$dev"
+        fi
+        fstype="$(blkid -s TYPE -o value "$dev" || true)"
+        uuid="$(blkid -s UUID -o value "$dev" || true)"
+        if [[ -z "$uuid" || -z "$fstype" ]]; then
+          log "$dev holds a partition table or unknown data; refusing to touch it"
+          exit 1
+        fi
+        if ! grep -q "UUID=$uuid" /etc/fstab; then
+          printf 'UUID=%s /aosp %s defaults,noatime,nofail 0 2\n' "$uuid" "$fstype" >>/etc/fstab
+        fi
+        mountpoint -q /aosp || mount /aosp
+      else
+        log "no dedicated data device; /aosp is on the root filesystem"
+      fi
+      chown builder:builder /aosp
+
+  - path: /usr/local/sbin/aosp-builder-install-repo
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Install the repo launcher only if its detached signature verifies
+      # against the AOSP repo signing key, pinned by full fingerprint
+      # (source.android.com/docs/setup/start, "Install Repo").
+      set -euo pipefail
+      FPR=8BB9AD793E8E6153AF0F9A4416530D5E920F5C65
+      URL=https://storage.googleapis.com/git-repo-downloads/repo
+      work="$(mktemp -d)"
+      trap 'rm -rf "$work"' EXIT
+      export GNUPGHOME="$work/gnupg"
+      install -d -m 0700 "$GNUPGHOME"
+      curl -fsSL -o "$work/repo" "$URL"
+      curl -fsSL -o "$work/repo.asc" "$URL.asc"
+      gpg --batch --keyserver hkps://keyserver.ubuntu.com --recv-keys "$FPR"
+      got="$(gpg --batch --with-colons --fingerprint "$FPR" | awk -F: '$1=="fpr"{print $10; exit}')"
+      if [[ "$got" != "$FPR" ]]; then
+        echo "repo signing key fingerprint mismatch: '$got'" >&2
+        exit 1
+      fi
+      # The keyring holds only the pinned key, so a signature by any other
+      # key fails verification.
+      status="$(gpg --batch --status-fd 1 --verify "$work/repo.asc" "$work/repo" 2>/dev/null)"
+      if ! grep -q "^\[GNUPG:\] VALIDSIG .* $FPR\$" <<<"$status"; then
+        echo "repo launcher signature did not verify against $FPR" >&2
+        exit 1
+      fi
+      install -m 0755 "$work/repo" /usr/local/bin/repo
+      sha256sum /usr/local/bin/repo
+      echo "repo launcher installed and verified"
+
+  - path: /usr/local/sbin/aosp-builder-preflight
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      # Mirror of the repository builder preflight (assertBuilderCapacity in
+      # packages/os/scripts/android/build-grizzly-bundle.ts of elizaOS/eliza):
+      # Linux x86_64, >= 32 physical cores, >= 128 GiB RAM, >= 1500 GB total
+      # and >= 600 GiB free on the build filesystem.
+      set -euo pipefail
+      path="${1:-/aosp}"
+      ok=1
+      arch="$(uname -m)"
+      cores="$(lscpu -p=CORE,SOCKET | grep -v '^#' | sort -u | wc -l)"
+      mem="$(awk '/^MemTotal:/{print $2 * 1024}' /proc/meminfo)"
+      total="$(df -B1 --output=size "$path" | tail -1 | tr -d ' ')"
+      free="$(df -B1 --output=avail "$path" | tail -1 | tr -d ' ')"
+      echo "arch=$arch physical_cores=$cores mem_bytes=$mem fs_total_bytes=$total fs_free_bytes=$free path=$path"
+      [[ "$arch" == x86_64 ]] || { echo "FAIL: need x86_64"; ok=0; }
+      (( cores >= 32 )) || { echo "FAIL: need >= 32 physical cores"; ok=0; }
+      (( mem >= 128 * 1024 ** 3 )) || { echo "FAIL: need >= 128 GiB RAM"; ok=0; }
+      (( total >= 1500000000000 )) || { echo "FAIL: need >= 1500 GB total"; ok=0; }
+      (( free >= 600 * 1024 ** 3 )) || { echo "FAIL: need >= 600 GiB free"; ok=0; }
+      if (( ok )); then echo "PASS: host meets the builder preflight"; else exit 1; fi
+
+runcmd:
+  - [systemctl, daemon-reexec]
+  - [sysctl, --system]
+  - [/usr/local/sbin/aosp-builder-disk-setup]
+  - [apparmor_parser, -r, /etc/apparmor.d/aosp-nsjail]
+  - [/usr/local/sbin/aosp-builder-install-repo]
+  - [sudo, -u, builder, git, config, --global, user.name, AOSP Builder]
+  - [sudo, -u, builder, git, config, --global, user.email, builder@localhost]
+  - [sudo, -u, builder, git, config, --global, color.ui, "false"]
+  - [sudo, -u, builder, git, lfs, install]
+  - [sh, -c, "/usr/local/sbin/aosp-builder-preflight /aosp | tee /var/log/aosp-builder-preflight.log || true"]
+
+final_message: "aosp-builder bootstrap finished after $UPTIME s; see /var/log/aosp-builder-preflight.log"

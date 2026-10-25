@@ -1,0 +1,1787 @@
+/**
+ * Renders a declarative `UiSpec` (the plugin-config UI-spec engine's element
+ * tree) into React. Walks the spec's element graph from its root, resolves
+ * bound props / state paths / visibility conditions against a live state store,
+ * runs field validators, and fires `UiAction`s back through the `onAction`
+ * callback. Action metadata keeps password-sourced values out of durable
+ * history without withholding them from direct handlers, while malformed
+ * bindings render an explicit unavailable state. Link hrefs are sanitized
+ * (`sanitizeLinkHref`) and only supported component types render; the spec is
+ * data, not code. Contrast with `ConfigRenderer`, which drives a JSON-Schema
+ * config form rather than a spec tree.
+ */
+
+import type {
+  AuthState,
+  CondExpr,
+  UiAction,
+  UiElement,
+  UiRenderContext,
+  UiSpec,
+} from "@elizaos/host/protocol";
+import { getByPath, setByPath } from "@elizaos/host/protocol";
+import { X } from "lucide-react";
+import type React from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
+
+import { useAppSelector } from "../../state/app-store";
+import { resolveAppAssetUrl } from "../../utils/asset-url";
+import { confirmDesktopAction } from "../../utils/desktop-dialogs";
+import { Badge } from "../ui/badge";
+import { Banner } from "../ui/banner";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
+import { Checkbox } from "../ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { Input } from "../ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Progress } from "../ui/progress";
+import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Separator } from "../ui/separator";
+import { Skeleton } from "../ui/skeleton";
+import { Switch } from "../ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../ui/table";
+import { Textarea } from "../ui/textarea";
+import { ConfigFieldErrors } from "./config-control-primitives";
+import {
+  evaluateUiVisibility,
+  runValidation,
+  type SupportedUiComponentType,
+  sanitizeLinkHref,
+} from "./ui-renderer.helpers";
+export interface UiActionDispatchMetadata {
+  /** Resolved params safe to persist in chat or another durable history. */
+  historySafeParams: Record<string, unknown>;
+}
+type UiRendererActionHandler = (
+  action: string,
+  params?: Record<string, unknown>,
+  metadata?: UiActionDispatchMetadata,
+) => void;
+type UiRendererContext = Omit<UiRenderContext, "onAction"> & {
+  onAction?: UiRendererActionHandler;
+  clearActionError: () => void;
+  reportActionError: (error: Error) => void;
+};
+const UiContext = createContext<UiRendererContext | null>(null);
+function useUiCtx(): UiRendererContext {
+  const ctx = useContext(UiContext);
+  if (!ctx) throw new Error("UiRenderer context missing");
+  return ctx;
+}
+// ── Dynamic value resolution ────────────────────────────────────────
+function resolveProp(value: unknown, ctx: UiRendererContext): unknown {
+  if (value == null) return value;
+  // $data.path string prefix (simpler syntax for AI)
+  if (typeof value === "string" && value.startsWith("$data.")) {
+    const path = value.slice(6); // strip "$data."
+    if (path.startsWith("$item/") && ctx.repeatItem) {
+      return ctx.repeatItem[path.slice(6)];
+    }
+    return getByPath(ctx.state, path);
+  }
+  // $path reference
+  if (
+    typeof value === "object" &&
+    "$path" in (value as Record<string, unknown>)
+  ) {
+    const path = (
+      value as {
+        $path: unknown;
+      }
+    ).$path;
+    if (typeof path !== "string") {
+      throw new TypeError("UiSpec $path binding must be a string");
+    }
+    if (path.startsWith("$item/") && ctx.repeatItem) {
+      return ctx.repeatItem[path.slice(6)];
+    }
+    return getByPath(ctx.state, path);
+  }
+  // $cond expression
+  if (
+    typeof value === "object" &&
+    "$cond" in (value as Record<string, unknown>)
+  ) {
+    const expr = value as CondExpr;
+    const cond = expr.$cond;
+    let result = false;
+    if (cond.eq) {
+      const [a, b] = cond.eq.map((v) => resolveProp(v, ctx));
+      result = a === b;
+    } else if (cond.neq) {
+      const [a, b] = cond.neq.map((v) => resolveProp(v, ctx));
+      result = a !== b;
+    } else if (cond.gt) {
+      const [a, b] = cond.gt.map((v) => resolveProp(v, ctx));
+      result = Number(a) > Number(b);
+    } else if (cond.lt) {
+      const [a, b] = cond.lt.map((v) => resolveProp(v, ctx));
+      result = Number(a) < Number(b);
+    } else if (cond.truthy) {
+      result = !!resolveProp(cond.truthy, ctx);
+    } else if (cond.falsy) {
+      result = !resolveProp(cond.falsy, ctx);
+    } else if (cond.path) {
+      result = !!getByPath(ctx.state, cond.path);
+    }
+    return result ? resolveProp(expr.$then, ctx) : resolveProp(expr.$else, ctx);
+  }
+  return value;
+}
+function resolveProps(
+  props: Record<string, unknown>,
+  ctx: UiRendererContext,
+): Record<string, unknown> {
+  const resolved: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    resolved[k] = resolveProp(v, ctx);
+  }
+  return resolved;
+}
+type ActionParamsResolution =
+  | {
+      ok: true;
+      params: Record<string, unknown> | undefined;
+      metadata?: UiActionDispatchMetadata;
+    }
+  | {
+      ok: false;
+      error: Error;
+    };
+function pathTouchesSensitiveState(
+  path: string,
+  sensitivePaths: ReadonlySet<string>,
+): boolean {
+  for (const sensitivePath of sensitivePaths) {
+    if (
+      path === sensitivePath ||
+      path.startsWith(`${sensitivePath}.`) ||
+      sensitivePath.startsWith(`${path}.`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+function referencesSensitiveState(
+  value: unknown,
+  sensitivePaths: ReadonlySet<string>,
+  seen = new Set<object>(),
+): boolean {
+  if (typeof value === "string") {
+    return (
+      value.startsWith("$data.") &&
+      pathTouchesSensitiveState(value.slice(6), sensitivePaths)
+    );
+  }
+  if (value === null || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    return value.some((entry) =>
+      referencesSensitiveState(entry, sensitivePaths, seen),
+    );
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.$path === "string" &&
+    pathTouchesSensitiveState(record.$path, sensitivePaths)
+  ) {
+    return true;
+  }
+  const conditionalPath = (
+    record.$cond as
+      | {
+          path?: unknown;
+        }
+      | undefined
+  )?.path;
+  if (
+    typeof conditionalPath === "string" &&
+    pathTouchesSensitiveState(conditionalPath, sensitivePaths)
+  ) {
+    return true;
+  }
+  return Object.values(record).some((entry) =>
+    referencesSensitiveState(entry, sensitivePaths, seen),
+  );
+}
+// Generic-action serialization writes resolved params into durable chat
+// history, so a field is excluded from that payload only if the spec declares
+// it secret. UiSpecs are plugin- and model-authored, and `type: "password"`
+// alone is a rendering choice a non-input element (a Textarea holding a seed
+// phrase, a text Input labelled "Private key") can silently miss. An explicit
+// `secret`/`sensitive` prop is therefore honored as well, so an author who
+// cannot use a password input still has a declarative way to stay out of
+// history. Anything a secret-bearing field feeds is redacted by whole key.
+function sensitiveStatePaths(ctx: UiRendererContext): ReadonlySet<string> {
+  const paths = new Set<string>();
+  for (const element of Object.values(ctx.spec.elements)) {
+    const props = element.props ?? {};
+    const statePath = props.statePath;
+    if (typeof statePath !== "string") continue;
+    if (
+      props.type === "password" ||
+      props.secret === true ||
+      props.sensitive === true
+    ) {
+      paths.add(statePath);
+    }
+  }
+  return paths;
+}
+function resolveActionParams(
+  params: Record<string, unknown> | undefined,
+  ctx: UiRendererContext,
+): ActionParamsResolution {
+  if (!params) return { ok: true, params: undefined };
+  try {
+    const resolvedParams = resolveProps(params, ctx);
+    const sensitivePaths = sensitiveStatePaths(ctx);
+    const historySafeParams: Record<string, unknown> = {};
+    let redacted = false;
+    for (const [key, value] of Object.entries(params)) {
+      if (referencesSensitiveState(value, sensitivePaths)) {
+        redacted = true;
+      } else {
+        historySafeParams[key] = resolvedParams[key];
+      }
+    }
+    return {
+      ok: true,
+      params: resolvedParams,
+      metadata: redacted ? { historySafeParams } : undefined,
+    };
+  } catch (error) {
+    // error-policy:J3 malformed dynamic bindings reject the action instead of
+    // dispatching a partially resolved payload or escaping the click handler.
+    return {
+      ok: false,
+      error:
+        error instanceof Error
+          ? error
+          : new TypeError("UiSpec action parameters are invalid"),
+    };
+  }
+}
+// ── State helpers ───────────────────────────────────────────────────
+function useStatePath(statePath: string | undefined, ctx: UiRendererContext) {
+  const value = statePath ? getByPath(ctx.state, statePath) : undefined;
+  const setValue = useCallback(
+    (v: unknown) => {
+      if (statePath) ctx.setState(statePath, v);
+    },
+    [statePath, ctx],
+  );
+  return [value, setValue] as const;
+}
+// ── Fire event action ───────────────────────────────────────────────
+function fireEvent(action: UiAction | undefined, ctx: UiRendererContext) {
+  if (!action) return;
+  const execute = () => {
+    ctx.clearActionError();
+    const resolution = resolveActionParams(action.params, ctx);
+    if (!resolution.ok) {
+      if (action.onError && ctx.onAction) {
+        ctx.onAction(action.onError.action, action.onError.params);
+      } else {
+        ctx.reportActionError(resolution.error);
+      }
+      return;
+    }
+    const { params } = resolution;
+    if (action.action === "setState" && params) {
+      const p = params as {
+        path: string;
+        value: unknown;
+      };
+      ctx.setState(p.path, p.value);
+      if (action.onSuccess && ctx.onAction) {
+        ctx.onAction(action.onSuccess.action, action.onSuccess.params);
+      }
+    } else if (ctx.onAction) {
+      try {
+        if (resolution.metadata) {
+          ctx.onAction(action.action, params, resolution.metadata);
+        } else {
+          ctx.onAction(action.action, params);
+        }
+        if (action.onSuccess)
+          ctx.onAction(action.onSuccess.action, action.onSuccess.params);
+      } catch (error) {
+        // error-policy:J4 action callback failures become an explicit renderer
+        // error unless the spec declares its own error action.
+        if (action.onError && ctx.onAction) {
+          ctx.onAction(action.onError.action, action.onError.params);
+        } else {
+          ctx.reportActionError(
+            error instanceof Error
+              ? error
+              : new Error("UiSpec action execution failed"),
+          );
+        }
+      }
+    }
+  };
+  void (async () => {
+    if (action.confirm) {
+      const ok = await confirmDesktopAction({
+        title: action.confirm.title,
+        message: action.confirm.message ?? "",
+        confirmLabel: "Confirm",
+        cancelLabel: "Cancel",
+        type: "question",
+      });
+      if (!ok) return;
+    }
+    execute();
+  })();
+}
+// ── Gap / size maps ─────────────────────────────────────────────────
+const GAP: Record<string, string> = {
+  none: "gap-0",
+  xs: "gap-0.5",
+  sm: "gap-1.5",
+  md: "gap-3",
+  lg: "gap-5",
+  xl: "gap-8",
+};
+const ALIGN: Record<string, string> = {
+  start: "items-start",
+  center: "items-center",
+  end: "items-end",
+  stretch: "items-stretch",
+};
+const JUSTIFY: Record<string, string> = {
+  start: "justify-start",
+  center: "justify-center",
+  end: "justify-end",
+  between: "justify-between",
+  around: "justify-around",
+};
+// ══════════════════════════════════════════════════════════════════════
+// COMPONENT REGISTRY
+// ══════════════════════════════════════════════════════════════════════
+type ComponentFn = (
+  props: Record<string, unknown>,
+  children: React.ReactNode,
+  ctx: UiRendererContext,
+  el: UiElement,
+) => React.ReactNode;
+// ── Layout ──────────────────────────────────────────────────────────
+const StackComponent: ComponentFn = (props, children) => {
+  const dir = props.direction === "horizontal" ? "flex-row" : "flex-col";
+  const gap = GAP[String(props.gap ?? "md")] ?? "gap-3";
+  const align = ALIGN[String(props.align ?? "stretch")] ?? "";
+  const justify = JUSTIFY[String(props.justify ?? "start")] ?? "";
+  return (
+    <div className={`flex ${dir} ${gap} ${align} ${justify}`}>{children}</div>
+  );
+};
+const GridComponent: ComponentFn = (props, children) => {
+  const cols = Number(props.columns ?? 2);
+  const gap = GAP[String(props.gap ?? "md")] ?? "gap-3";
+  return (
+    <div
+      className={`grid ${gap}`}
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+    >
+      {children}
+    </div>
+  );
+};
+const CardComponent: ComponentFn = (props, children) => {
+  const maxW = props.maxWidth === "full" ? "max-w-full" : "";
+  return (
+    <Card variant="outlinedPadded" className={maxW}>
+      {props.title ? (
+        <div className="font-bold text-sm mb-0.5">{String(props.title)}</div>
+      ) : null}
+      {props.description ? (
+        <div className="text-xs text-muted mb-3">
+          {String(props.description)}
+        </div>
+      ) : null}
+      {children}
+    </Card>
+  );
+};
+const SeparatorComponent: ComponentFn = (props) => {
+  const isVert = props.orientation === "vertical";
+  return (
+    <Separator
+      orientation={isVert ? "vertical" : "horizontal"}
+      className={isVert ? "self-stretch" : "my-2"}
+    />
+  );
+};
+// ── Typography ──────────────────────────────────────────────────────
+const HeadingComponent: ComponentFn = (props) => {
+  const text = String(props.text ?? "");
+  const level = String(props.level ?? "h2");
+  const cls =
+    level === "h1"
+      ? "text-xl font-bold"
+      : level === "h3"
+        ? "text-sm font-bold"
+        : "text-base font-bold";
+  return <div className={cls}>{text}</div>;
+};
+const TextComponent: ComponentFn = (props) => {
+  const text = String(props.text ?? "");
+  const variant = String(props.variant ?? "body");
+  const cls: Record<string, string> = {
+    body: "text-sm",
+    caption: "text-xs text-muted",
+    muted: "text-sm text-muted",
+    lead: "text-sm font-medium",
+    code: "text-xs font-mono bg-[var(--bg-hover)] px-1.5 py-0.5 border border-border",
+  };
+  return <div className={cls[variant] ?? "text-sm"}>{text}</div>;
+};
+// ── Form ────────────────────────────────────────────────────────────
+const InputComponent: ComponentFn = (props, _children, ctx, el) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const sp = props.statePath as string | undefined;
+  const errors = sp ? ctx.fieldErrors?.[sp] : undefined;
+  const validateOn = el.validation?.validateOn ?? "blur";
+  const handleChange = (v: string) => {
+    setValue(v);
+    if (validateOn === "change" && sp && ctx.validateField)
+      ctx.validateField(sp);
+  };
+  const handleBlur = () => {
+    if (validateOn === "blur" && sp && ctx.validateField) ctx.validateField(sp);
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      {props.label ? (
+        <span className="text-xs font-semibold">{String(props.label)}</span>
+      ) : null}
+      <Input
+        variant="config"
+        density="compact"
+        hasError={!!errors?.length}
+        type={String(props.type ?? "text")}
+        name={String(props.name ?? "")}
+        placeholder={String(props.placeholder ?? "")}
+        value={String(value ?? "")}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={handleBlur}
+      />
+      <ConfigFieldErrors errors={errors} />
+    </div>
+  );
+};
+const TextareaComponent: ComponentFn = (props, _children, ctx, el) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const sp = props.statePath as string | undefined;
+  const errors = sp ? ctx.fieldErrors?.[sp] : undefined;
+  const validateOn = el.validation?.validateOn ?? "blur";
+  const handleChange = (v: string) => {
+    setValue(v);
+    if (validateOn === "change" && sp && ctx.validateField)
+      ctx.validateField(sp);
+  };
+  const handleBlur = () => {
+    if (validateOn === "blur" && sp && ctx.validateField) ctx.validateField(sp);
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      {props.label ? (
+        <span className="text-xs font-semibold">{String(props.label)}</span>
+      ) : null}
+      <Textarea
+        variant="config"
+        density="compact"
+        hasError={!!errors?.length}
+        name={String(props.name ?? "")}
+        placeholder={String(props.placeholder ?? "")}
+        rows={Number(props.rows ?? 3)}
+        value={String(value ?? "")}
+        onChange={(e) => handleChange(e.target.value)}
+        onBlur={handleBlur}
+      />
+      <ConfigFieldErrors errors={errors} />
+    </div>
+  );
+};
+const SelectComponent: ComponentFn = (props, _children, ctx, el) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const options =
+    (props.options as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
+  const sp = props.statePath as string | undefined;
+  const errors = sp ? ctx.fieldErrors?.[sp] : undefined;
+  const validateOn = el.validation?.validateOn ?? "blur";
+  const handleChange = (v: string) => {
+    setValue(v);
+    if (validateOn === "change" && sp && ctx.validateField)
+      ctx.validateField(sp);
+  };
+  const handleBlur = () => {
+    if (validateOn === "blur" && sp && ctx.validateField) ctx.validateField(sp);
+  };
+  return (
+    <div className="flex flex-col gap-1">
+      {props.label ? (
+        <span className="text-xs font-semibold">{String(props.label)}</span>
+      ) : null}
+      <Select
+        value={String(value ?? "") || "__none__"}
+        onValueChange={(v: string) => {
+          handleChange(v === "__none__" ? "" : v);
+          handleBlur();
+        }}
+      >
+        <SelectTrigger
+          aria-label={props.label ? String(props.label) : "Select an option"}
+          variant="config"
+          density="compact"
+          hasError={!!errors?.length}
+        >
+          <SelectValue
+            placeholder={
+              props.placeholder ? String(props.placeholder) : undefined
+            }
+          />
+        </SelectTrigger>
+        <SelectContent>
+          {props.placeholder ? (
+            <SelectItem value="__none__">
+              {String(props.placeholder)}
+            </SelectItem>
+          ) : null}
+          {options
+            .filter((o) => o.value !== "")
+            .map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+        </SelectContent>
+      </Select>
+      <ConfigFieldErrors errors={errors} />
+    </div>
+  );
+};
+const CheckboxComponent: ComponentFn = (props, _children, ctx) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  return (
+    <div className="flex items-center gap-2 text-xs cursor-pointer">
+      <Checkbox
+        aria-label={String(props.label ?? "Option")}
+        checked={!!value}
+        onCheckedChange={(checked: boolean | "indeterminate") =>
+          setValue(!!checked)
+        }
+      />
+      <span className="font-semibold">{String(props.label ?? "")}</span>
+    </div>
+  );
+};
+const RadioComponent: ComponentFn = (props, _children, ctx) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const options =
+    (props.options as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
+  return (
+    <RadioGroup
+      value={String(value ?? "")}
+      onValueChange={setValue}
+      className="flex flex-col gap-1"
+    >
+      {props.label ? (
+        <span className="text-xs font-semibold mb-0.5">
+          {String(props.label)}
+        </span>
+      ) : null}
+      {options.map((o) => (
+        <span
+          key={o.value}
+          className="flex items-center gap-2 text-xs cursor-pointer"
+        >
+          <RadioGroupItem value={o.value} aria-label={o.label} />
+          <span>{o.label}</span>
+        </span>
+      ))}
+    </RadioGroup>
+  );
+};
+const SwitchComponent: ComponentFn = (props, _children, ctx) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const checked = !!value;
+  return (
+    <span className="flex items-center gap-2 cursor-pointer">
+      <Switch
+        aria-label={String(props.label ?? "Toggle option")}
+        checked={checked}
+        onCheckedChange={(next) => setValue(next)}
+      />
+      <span className="text-xs font-semibold">{String(props.label ?? "")}</span>
+    </span>
+  );
+};
+const SliderComponent: ComponentFn = (props, _children, ctx) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  return (
+    <div className="flex flex-col gap-1">
+      {props.label ? (
+        <div className="flex justify-between text-xs">
+          <span className="font-semibold">{String(props.label)}</span>
+          <span className="text-muted">{String(value ?? props.min ?? 0)}</span>
+        </div>
+      ) : null}
+      <Input
+        variant="nativeRange"
+        type="range"
+        min={Number(props.min ?? 0)}
+        max={Number(props.max ?? 100)}
+        step={Number(props.step ?? 1)}
+        value={Number(value ?? props.min ?? 0)}
+        onChange={(e) => setValue(Number(e.target.value))}
+        style={{ accentColor: "var(--accent)" }}
+      />
+    </div>
+  );
+};
+const ToggleComponent: ComponentFn = (props, _children, ctx, el) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const pressed = !!value;
+  return (
+    <Button
+      type="button"
+      variant="selection"
+      size="compact"
+      data-state={pressed ? "on" : "off"}
+      onClick={() => {
+        setValue(!pressed);
+        fireEvent(el.on?.press, ctx);
+      }}
+    >
+      {String(props.label ?? "Toggle")}
+    </Button>
+  );
+};
+const ToggleGroupComponent: ComponentFn = (props, _children, ctx) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const items =
+    (props.items as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
+  const isMultiple = props.type === "multiple";
+  const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
+  const toggle = (v: string) => {
+    if (isMultiple) {
+      const next = new Set(selected);
+      if (next.has(v)) next.delete(v);
+      else next.add(v);
+      setValue([...next]);
+    } else {
+      setValue(v);
+    }
+  };
+  return (
+    <div className="flex gap-1">
+      {items.map((item) => {
+        const active = isMultiple
+          ? selected.has(item.value)
+          : value === item.value;
+        return (
+          <Button
+            key={item.value}
+            type="button"
+            variant="selection"
+            size="tinyWide"
+            data-state={active ? "on" : "off"}
+            onClick={() => toggle(item.value)}
+          >
+            {item.label}
+          </Button>
+        );
+      })}
+    </div>
+  );
+};
+const ButtonGroupComponent: ComponentFn = (props, _children, ctx) => {
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const buttons =
+    (props.buttons as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
+  return (
+    <div className="flex gap-1">
+      {buttons.map((btn) => {
+        const active = value === btn.value;
+        return (
+          <Button
+            key={btn.value}
+            type="button"
+            variant="selection"
+            size="compact"
+            data-state={active ? "on" : "off"}
+            onClick={() => setValue(btn.value)}
+          >
+            {btn.label}
+          </Button>
+        );
+      })}
+    </div>
+  );
+};
+// ── Data Display ────────────────────────────────────────────────────
+const TableComponent: ComponentFn = (props) => {
+  const columns = (props.columns as string[]) ?? [];
+  const rows = (props.rows as string[][]) ?? [];
+  return (
+    <div className="overflow-x-auto">
+      {props.caption ? (
+        <div className="text-xs font-semibold mb-1.5">
+          {String(props.caption)}
+        </div>
+      ) : null}
+      <Table density="compact">
+        <TableHeader>
+          <TableRow>
+            {columns.map((col) => (
+              <TableHead
+                key={col}
+                className="text-left px-2.5 py-1.5 font-semibold text-muted"
+              >
+                {col}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.join("|")} className="">
+              {row.map((cell) => (
+                <TableCell key={cell} className="px-2.5 py-1.5">
+                  {cell}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
+const CarouselComponent: ComponentFn = (props) => {
+  const t = useAppSelector((s) => s.t);
+  const items =
+    (props.items as Array<{
+      title: string;
+      description: string;
+    }>) ?? [];
+  const [current, setCurrent] = useState(0);
+  return (
+    <div className="relative">
+      <div className="min-h-[60px]">
+        <Card variant="insetPadded">
+          {items[current] && (
+            <div>
+              <div className="text-xs font-bold">{items[current].title}</div>
+              <div className="text-xs text-muted mt-0.5">
+                {items[current].description}
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+      <div className="flex justify-center gap-2 mt-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="tiny"
+          aria-label="Previous item"
+          onClick={() => setCurrent((p) => Math.max(0, p - 1))}
+          disabled={current === 0}
+        >
+          {t("ui-renderer.Larr")}
+        </Button>
+        <span className="text-2xs text-muted self-center">
+          {current + 1} / {items.length}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="tiny"
+          aria-label="Next item"
+          onClick={() => setCurrent((p) => Math.min(items.length - 1, p + 1))}
+          disabled={current === items.length - 1}
+        >
+          {t("ui-renderer.Rarr")}
+        </Button>
+      </div>
+    </div>
+  );
+};
+const BadgeComponent: ComponentFn = (props) => {
+  const variant = String(props.variant ?? "default");
+  const tone: NonNullable<React.ComponentProps<typeof Badge>["tone"]> =
+    variant === "success"
+      ? "success"
+      : variant === "warning"
+        ? "warning"
+        : variant === "error"
+          ? "danger"
+          : variant === "info"
+            ? "accent"
+            : "muted";
+  return (
+    <Badge variant="outline" size="microBold" tone={tone} asChild>
+      <span>{String(props.text ?? "")}</span>
+    </Badge>
+  );
+};
+const AvatarComponent: ComponentFn = (props) => {
+  const name = String(props.name ?? "?");
+  const size =
+    props.size === "lg"
+      ? "w-10 h-10 text-sm"
+      : props.size === "sm"
+        ? "w-6 h-6 text-2xs"
+        : "w-8 h-8 text-xs";
+  const initials = name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  return (
+    <div
+      className={`${size} rounded-full bg-accent text-accent-fg flex items-center justify-center font-bold shrink-0`}
+    >
+      {initials}
+    </div>
+  );
+};
+const ImageComponent: ComponentFn = (props) => {
+  const src = props.src as string | undefined;
+  const resolvedSrc = src ? resolveAppAssetUrl(src) : undefined;
+  const alt = String(props.alt ?? "");
+  const w = props.width ? `${props.width}px` : "auto";
+  const h = props.height ? `${props.height}px` : "auto";
+  return resolvedSrc ? (
+    <img
+      src={resolvedSrc}
+      alt={alt}
+      style={{ width: w, height: h }}
+      className="object-cover border border-border"
+    />
+  ) : (
+    <div
+      className="bg-[var(--bg-hover)] border border-border flex items-center justify-center text-xs text-muted"
+      style={{ width: w, height: h }}
+    >
+      {alt || "Image"}
+    </div>
+  );
+};
+// ── Feedback ────────────────────────────────────────────────────────
+const AlertComponent: ComponentFn = (props) => {
+  const type = String(props.type ?? "info");
+  const borderCls: Record<string, string> = {
+    info: "border-accent",
+    success: "border-ok",
+    warning: "border-[var(--warn,#f39c12)]",
+    error: "border-destructive",
+  };
+  const textCls: Record<string, string> = {
+    info: "text-accent",
+    success: "text-ok",
+    warning: "text-[var(--warn,#f39c12)]",
+    error: "text-destructive",
+  };
+  return (
+    <div
+      className={`border-l-[3px] ${borderCls[type] ?? ""} bg-[var(--bg-hover)] px-3 py-2`}
+    >
+      {props.title ? (
+        <div className={`text-xs font-bold ${textCls[type] ?? ""}`}>
+          {String(props.title)}
+        </div>
+      ) : null}
+      {props.message ? (
+        <div className="text-xs text-txt mt-0.5">{String(props.message)}</div>
+      ) : null}
+    </div>
+  );
+};
+const ProgressComponent: ComponentFn = (props) => {
+  const value = Number(props.value ?? 0);
+  const max = Number(props.max ?? 100);
+  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  return (
+    <div className="flex flex-col gap-1">
+      {props.label ? (
+        <div className="flex justify-between text-xs">
+          <span className="font-semibold">{String(props.label)}</span>
+          <span className="text-muted">{Math.round(pct)}%</span>
+        </div>
+      ) : null}
+      <Progress value={pct} />
+    </div>
+  );
+};
+const RatingComponent: ComponentFn = (props) => {
+  const value = Number(props.value ?? 0);
+  const max = Number(props.max ?? 5);
+  return (
+    <div className="flex flex-col gap-1">
+      {props.label ? (
+        <div className="text-xs font-semibold">{String(props.label)}</div>
+      ) : null}
+      <div className="flex gap-0.5">
+        {Array.from({ length: max }, (_, i) => i + 1).map((starValue) => (
+          <span
+            key={starValue}
+            className={`text-sm ${starValue <= value ? "text-[var(--warn,#f39c12)]" : "text-muted opacity-30"}`}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+const SkeletonComponent: ComponentFn = (props) => {
+  const w = props.width ? String(props.width) : "100%";
+  const h = props.height ? String(props.height) : "20px";
+  const roundedSm = props["rounded-sm"] ? "rounded-sm" : "";
+  return (
+    <div
+      className={`bg-[var(--bg-hover)] animate-pulse ${roundedSm}`}
+      style={{ width: w, height: h }}
+    />
+  );
+};
+const SpinnerComponent: ComponentFn = (props) => {
+  const size =
+    props.size === "lg"
+      ? "w-8 h-8"
+      : props.size === "sm"
+        ? "w-4 h-4"
+        : "w-6 h-6";
+  return (
+    <div className="flex items-center gap-2">
+      <div
+        className={`${size} border-2 border-border border-t-accent rounded-full animate-spin`}
+      />
+      {props.label ? (
+        <span className="text-xs text-muted">{String(props.label)}</span>
+      ) : null}
+    </div>
+  );
+};
+// ── Navigation ──────────────────────────────────────────────────────
+const ButtonComponent: ComponentFn = (props, _children, ctx, el) => {
+  const variant = String(props.variant ?? "primary");
+  return (
+    <Button
+      type="button"
+      variant={
+        variant === "danger"
+          ? "destructive"
+          : variant === "ghost"
+            ? "ghost"
+            : variant === "secondary"
+              ? "outline"
+              : "default"
+      }
+      size="compact"
+      disabled={!!props.disabled}
+      onClick={() => fireEvent(el.on?.press, ctx)}
+    >
+      {String(props.label ?? "Button")}
+    </Button>
+  );
+};
+const LinkComponent: ComponentFn = (props, _children, ctx, el) => {
+  const safeHref = sanitizeLinkHref(props.href);
+  return (
+    <a
+      href={safeHref}
+      className="text-xs text-accent underline hover:opacity-80"
+      target={props.external ? "_blank" : undefined}
+      rel={props.external ? "noopener noreferrer" : undefined}
+      onClick={(e) => {
+        if (el.on?.press) {
+          e.preventDefault();
+          fireEvent(el.on.press, ctx);
+        }
+      }}
+    >
+      {String(props.label ?? props.href ?? "Link")}
+    </a>
+  );
+};
+const DropdownMenuComponent: ComponentFn = (props, _children, ctx) => {
+  const items =
+    (props.items as Array<{
+      label: string;
+      value: string;
+    }>) ?? [];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="outline" size="compact">
+          {String(props.label ?? "Menu")} ▾
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        {items.map((item) => (
+          <DropdownMenuItem
+            key={item.value}
+            onSelect={() =>
+              ctx.onAction?.("menuSelect", {
+                value: item.value,
+                label: item.label,
+              })
+            }
+          >
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+const TabsComponent: ComponentFn = (props, _children, ctx) => {
+  const tabs =
+    (props.tabs as Array<{
+      label: string;
+      value: string;
+      content: string;
+    }>) ?? [];
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const active = String(value ?? props.defaultValue ?? tabs[0]?.value ?? "");
+  const activeTab = tabs.find((t) => t.value === active);
+  return (
+    <div>
+      <div className="flex">
+        {tabs.map((tab) => (
+          <Button
+            key={tab.value}
+            type="button"
+            variant="selection"
+            size="compact"
+            role="tab"
+            aria-selected={tab.value === active}
+            data-state={tab.value === active ? "on" : "off"}
+            onClick={() => setValue(tab.value)}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+      {activeTab && <div className="py-3 text-xs">{activeTab.content}</div>}
+    </div>
+  );
+};
+const PaginationComponent: ComponentFn = (props, _children, ctx) => {
+  const total = Number(props.totalPages ?? 1);
+  const [value, setValue] = useStatePath(
+    props.statePath as string | undefined,
+    ctx,
+  );
+  const current = Number(value ?? 1);
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        type="button"
+        variant="outline"
+        size="tiny"
+        aria-label="Previous page"
+        disabled={current <= 1}
+        onClick={() => setValue(current - 1)}
+      >
+        ←
+      </Button>
+      {Array.from({ length: total }, (_, i) => i + 1).map((page) => (
+        <Button
+          key={page}
+          type="button"
+          variant="selection"
+          size="tiny"
+          aria-label={`Page ${page}`}
+          aria-current={page === current ? "page" : undefined}
+          data-state={page === current ? "on" : "off"}
+          onClick={() => setValue(page)}
+        >
+          {page}
+        </Button>
+      ))}
+      <Button
+        type="button"
+        variant="outline"
+        size="tiny"
+        aria-label="Next page"
+        disabled={current >= total}
+        onClick={() => setValue(current + 1)}
+      >
+        →
+      </Button>
+    </div>
+  );
+};
+// ── Metric / KPI ────────────────────────────────────────────────────
+const MetricComponent: ComponentFn = (props) => {
+  const trend = props.trend as string | undefined;
+  const trendColor =
+    trend === "up"
+      ? "text-status-success"
+      : trend === "down"
+        ? "text-status-danger"
+        : "text-muted";
+  return (
+    <Card variant="outlinedPadded" stack="compact">
+      <div className="text-2xs text-muted uppercase tracking-wider font-medium">
+        {String(props.label ?? "")}
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-xl font-semibold text-[var(--txt)]">
+          {props.value != null ? String(props.value) : "—"}
+        </span>
+        {props.unit != null && (
+          <span className="text-xs text-muted">{String(props.unit)}</span>
+        )}
+      </div>
+      {props.change != null && (
+        <div className={`text-xs-tight font-medium ${trendColor}`}>
+          {String(props.change)}
+        </div>
+      )}
+    </Card>
+  );
+};
+// ── Visualization ───────────────────────────────────────────────────
+const BarGraphComponent: ComponentFn = (props) => {
+  const data =
+    (props.data as Array<{
+      label: string;
+      value: number;
+    }>) ?? [];
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  return (
+    <div>
+      {props.title ? (
+        <div className="text-xs font-bold mb-2">{String(props.title)}</div>
+      ) : null}
+      <div className="flex items-end gap-2 h-[100px]">
+        {data.map((d) => (
+          <div
+            key={d.label}
+            className="flex-1 flex flex-col items-center gap-0.5"
+          >
+            <div className="text-3xs text-muted">{d.value}</div>
+            <div
+              className="w-full bg-accent transition-all duration-300 min-h-[2px]"
+              style={{ height: `${(d.value / maxVal) * 80}px` }}
+            />
+            <div className="text-3xs text-muted truncate max-w-full">
+              {d.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+const LineGraphComponent: ComponentFn = (props) => {
+  const data =
+    (props.data as Array<{
+      label: string;
+      value: number;
+    }>) ?? [];
+  const maxVal = Math.max(...data.map((d) => d.value), 1);
+  const h = 80;
+  const w = 100;
+  const points = data.map((d, i) => ({
+    x: (i / Math.max(data.length - 1, 1)) * w,
+    y: h - (d.value / maxVal) * h,
+  }));
+  const pathD = points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+    .join(" ");
+  return (
+    <div>
+      {props.title ? (
+        <div className="text-xs font-bold mb-2">{String(props.title)}</div>
+      ) : null}
+      <svg
+        viewBox={`0 0 ${w} ${h + 20}`}
+        className="w-full h-[100px]"
+        preserveAspectRatio="none"
+      >
+        <title>{String(props.title ?? "Line graph")}</title>
+        <path
+          d={pathD}
+          fill="none"
+          stroke="var(--accent)"
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+        />
+        {points.map((p) => (
+          <circle
+            key={`${p.x}:${p.y}`}
+            cx={p.x}
+            cy={p.y}
+            r="3"
+            fill="var(--accent)"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        {data.map((d, i) => (
+          <text
+            key={`${d.label}:${d.value}`}
+            x={points[i].x}
+            y={h + 14}
+            textAnchor="middle"
+            fontSize="8"
+            fill="var(--muted)"
+          >
+            {d.label}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+};
+// ── Interaction ─────────────────────────────────────────────────────
+const TooltipComponent: ComponentFn = (props) => {
+  const [show, setShow] = useState(false);
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="content"
+      className="relative"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onFocus={() => setShow(true)}
+      onBlur={() => setShow(false)}
+      onClick={() => setShow((prev) => !prev)}
+    >
+      <span className="text-xs text-accent underline cursor-help">
+        {String(props.text ?? "Hover")}
+      </span>
+      {show && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 text-2xs bg-txt text-card whitespace-nowrap z-10">
+          {String(props.content ?? "")}
+        </div>
+      )}
+    </Button>
+  );
+};
+const PopoverComponent: ComponentFn = (props) => {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="link" size="content">
+          {String(props.trigger ?? "Click")}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start">
+        <div>
+          <div className="text-xs">{String(props.content ?? "")}</div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+const CollapsibleComponent: ComponentFn = (props, children) => {
+  const [open, setOpen] = useState(!!props.defaultOpen);
+  return (
+    <div className="border border-border">
+      <Button
+        type="button"
+        variant="ghost"
+        aria-expanded={open}
+        size="touch"
+        align="start"
+        className="w-full"
+        onClick={() => setOpen(!open)}
+      >
+        <span
+          className="text-2xs transition-transform"
+          style={{ transform: open ? "rotate(90deg)" : "none" }}
+        >
+          &#9654;
+        </span>
+        {String(props.title ?? "Collapsible")}
+      </Button>
+      {open && <div className="px-3 pb-3">{children}</div>}
+    </div>
+  );
+};
+const AccordionComponent: ComponentFn = (props) => {
+  const items =
+    (props.items as Array<{
+      title: string;
+      content: string;
+    }>) ?? [];
+  const isSingle = props.type === "single";
+  const [openSet, setOpenSet] = useState<Set<number>>(new Set());
+  const toggle = (idx: number) => {
+    setOpenSet((prev) => {
+      const next = isSingle ? new Set<number>() : new Set(prev);
+      if (prev.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+  return (
+    <div className="border border-border divide-y divide-border">
+      {items.map((item, i) => (
+        <div key={`${item.title}:${item.content}`}>
+          <Button
+            type="button"
+            variant="ghost"
+            aria-expanded={openSet.has(i)}
+            size="touch"
+            align="start"
+            className="w-full"
+            onClick={() => toggle(i)}
+          >
+            <span
+              className="text-2xs transition-transform"
+              style={{ transform: openSet.has(i) ? "rotate(90deg)" : "none" }}
+            >
+              &#9654;
+            </span>
+            {item.title}
+          </Button>
+          {openSet.has(i) && (
+            <div className="px-3 pb-3 text-xs">{item.content}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+const DialogComponent: ComponentFn = (props, children, ctx) => {
+  const openPath = props.openPath as string | undefined;
+  const isOpen = openPath ? !!getByPath(ctx.state, openPath) : false;
+  if (!isOpen) return null;
+  const close = () => {
+    if (openPath) ctx.setState(openPath, false);
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) close();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          close();
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <Card variant="outlinedPadded" className="w-full max-w-md">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            {props.title ? (
+              <div className="font-bold text-sm">{String(props.title)}</div>
+            ) : null}
+            {props.description ? (
+              <div className="text-xs text-muted mt-0.5">
+                {String(props.description)}
+              </div>
+            ) : null}
+          </div>
+          <Button
+            type="button"
+            variant="ghostMuted"
+            size="icon-sm"
+            aria-label="Close dialog"
+            onClick={close}
+          >
+            <X aria-hidden="true" />
+          </Button>
+        </div>
+        {children}
+      </Card>
+    </div>
+  );
+};
+const DrawerComponent: ComponentFn = (props, children, ctx) => {
+  const openPath = props.openPath as string | undefined;
+  const isOpen = openPath ? !!getByPath(ctx.state, openPath) : false;
+  if (!isOpen) return null;
+  const close = () => {
+    if (openPath) ctx.setState(openPath, false);
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) close();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" || e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          close();
+        }
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="max-h-[80vh] w-full overflow-y-auto animate-[slide-up_200ms_ease]">
+        <Card variant="flatPadded">
+          <Button
+            variant="ghost"
+            size="sm"
+            shape="circle"
+            aria-label="Close drawer"
+            onClick={close}
+            className="group mx-auto mb-3 w-32"
+          >
+            <span
+              className="h-1 w-10 rounded-full bg-border transition-all group-hover:w-14 group-hover:bg-accent/70"
+              aria-hidden
+            />
+          </Button>
+          {props.title ? (
+            <div className="font-bold text-sm">{String(props.title)}</div>
+          ) : null}
+          {props.description ? (
+            <div className="text-xs text-muted mt-0.5 mb-3">
+              {String(props.description)}
+            </div>
+          ) : null}
+          {children}
+        </Card>
+      </div>
+    </div>
+  );
+};
+// ── Component map ───────────────────────────────────────────────────
+const COMPONENTS: Record<SupportedUiComponentType, ComponentFn> = {
+  // Layout
+  Stack: StackComponent,
+  Grid: GridComponent,
+  Card: CardComponent,
+  Separator: SeparatorComponent,
+  // Typography
+  Heading: HeadingComponent,
+  Text: TextComponent,
+  // Form
+  Input: InputComponent,
+  Textarea: TextareaComponent,
+  Select: SelectComponent,
+  Checkbox: CheckboxComponent,
+  Radio: RadioComponent,
+  Switch: SwitchComponent,
+  Slider: SliderComponent,
+  Toggle: ToggleComponent,
+  ToggleGroup: ToggleGroupComponent,
+  ButtonGroup: ButtonGroupComponent,
+  // Data
+  Table: TableComponent,
+  Carousel: CarouselComponent,
+  Badge: BadgeComponent,
+  Avatar: AvatarComponent,
+  Image: ImageComponent,
+  // Feedback
+  Alert: AlertComponent,
+  Progress: ProgressComponent,
+  Rating: RatingComponent,
+  Skeleton: SkeletonComponent,
+  Spinner: SpinnerComponent,
+  // Navigation
+  Button: ButtonComponent,
+  Link: LinkComponent,
+  DropdownMenu: DropdownMenuComponent,
+  Tabs: TabsComponent,
+  Pagination: PaginationComponent,
+  // Metric
+  Metric: MetricComponent,
+  // Visualization
+  BarGraph: BarGraphComponent,
+  LineGraph: LineGraphComponent,
+  // Interaction
+  Tooltip: TooltipComponent,
+  Popover: PopoverComponent,
+  Collapsible: CollapsibleComponent,
+  Accordion: AccordionComponent,
+  Dialog: DialogComponent,
+  Drawer: DrawerComponent,
+};
+// ══════════════════════════════════════════════════════════════════════
+// ELEMENT RENDERER
+// ══════════════════════════════════════════════════════════════════════
+// Renders a single item of a `repeat` element. The per-item context is
+// memoized on the item identity so that re-rendering the parent (e.g. on an
+// unrelated state change) does not produce a fresh context value and force every
+// repeated child subtree to re-render.
+function RepeatItemRenderer({
+  ctx,
+  item,
+  el,
+  component,
+  resolvedProps,
+}: {
+  ctx: UiRendererContext;
+  item: Record<string, unknown>;
+  el: UiElement;
+  component: ComponentFn;
+  resolvedProps: Record<string, unknown>;
+}) {
+  const itemCtx = useMemo<UiRendererContext>(
+    () => ({ ...ctx, repeatItem: item }),
+    [ctx, item],
+  );
+  const childNodes = useMemo(
+    () =>
+      el.children.map((childId) => (
+        <UiContext.Provider key={childId} value={itemCtx}>
+          <ElementRenderer elementId={childId} />
+        </UiContext.Provider>
+      )),
+    [el.children, itemCtx],
+  );
+  return <>{component(resolvedProps, childNodes, itemCtx, el)}</>;
+}
+function ElementRenderer({ elementId }: { elementId: string }) {
+  const t = useAppSelector((s) => s.t);
+  const ctx = useUiCtx();
+  const el = ctx.spec.elements[elementId];
+  if (!el) return null;
+  // Visibility check
+  if (el.visible && !evaluateUiVisibility(el.visible, ctx.state, ctx.auth)) {
+    return null;
+  }
+  const component = COMPONENTS[el.type as SupportedUiComponentType];
+  if (!component) {
+    return (
+      <Banner variant="error">
+        {t("ui-renderer.UnknownComponent")} {el.type}
+      </Banner>
+    );
+  }
+  // Model-emitted specs routinely omit `props`/`children` on an element;
+  // Object.entries(undefined) / undefined.map() would throw and (without the
+  // ErrorBoundary around MessageUiSpecBlock) crash the whole app. Default them.
+  const resolvedProps = resolveProps(el.props ?? {}, ctx);
+  // Handle repeat / list rendering
+  if (el.repeat) {
+    const listData = getByPath(ctx.state, el.repeat.path) as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (!Array.isArray(listData)) return null;
+    const repeatKey = el.repeat.key;
+    return (
+      <>
+        {listData.map((item, index) => {
+          const itemKey = String(repeatKey != null ? item[repeatKey] : index);
+          return (
+            <RepeatItemRenderer
+              key={itemKey}
+              ctx={ctx}
+              item={item}
+              el={el}
+              component={component}
+              resolvedProps={resolvedProps}
+            />
+          );
+        })}
+      </>
+    );
+  }
+  // Normal rendering: resolve children (default missing children to []).
+  const childNodes = (el.children ?? []).map((childId) => (
+    <ElementRenderer key={childId} elementId={childId} />
+  ));
+  return <>{component(resolvedProps, childNodes, ctx, el)}</>;
+}
+// ══════════════════════════════════════════════════════════════════════
+// ROOT RENDERER
+// ══════════════════════════════════════════════════════════════════════
+export interface UiRendererProps {
+  spec: UiSpec;
+  onAction?: UiRendererActionHandler;
+  loading?: boolean;
+  auth?: AuthState;
+  validators?: Record<
+    string,
+    (
+      value: unknown,
+      args?: Record<string, unknown>,
+    ) => boolean | Promise<boolean>
+  >;
+}
+export function UiRenderer({
+  spec,
+  onAction,
+  loading,
+  auth,
+  validators,
+}: UiRendererProps) {
+  const [state, setStateRaw] = useState<Record<string, unknown>>(() => ({
+    ...spec.state,
+  }));
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
+  const [actionError, setActionError] = useState<string | null>(null);
+  const clearActionError = useCallback(() => setActionError(null), []);
+  const reportActionError = useCallback((error: Error) => {
+    setActionError(
+      error instanceof TypeError
+        ? "This action is unavailable because its dynamic parameters are invalid."
+        : "This action could not be completed.",
+    );
+  }, []);
+  const setState = useCallback((path: string, value: unknown) => {
+    setStateRaw((prev) => {
+      const next = { ...prev };
+      setByPath(next, path, value);
+      return next;
+    });
+  }, []);
+  const validateField = useCallback(
+    (statePath: string) => {
+      // Find the element that has this statePath
+      for (const el of Object.values(spec.elements)) {
+        if (el.props.statePath === statePath && el.validation) {
+          const value = getByPath(state, statePath);
+          const errors = runValidation(el.validation.checks, value, validators);
+          setFieldErrors((prev) => ({ ...prev, [statePath]: errors }));
+          return;
+        }
+      }
+    },
+    [spec.elements, state, validators],
+  );
+  const ctx = useMemo<UiRendererContext>(
+    () => ({
+      spec,
+      state,
+      setState,
+      onAction,
+      auth,
+      loading,
+      validators,
+      fieldErrors,
+      validateField,
+      clearActionError,
+      reportActionError,
+    }),
+    [
+      spec,
+      state,
+      setState,
+      onAction,
+      auth,
+      loading,
+      validators,
+      fieldErrors,
+      validateField,
+      clearActionError,
+      reportActionError,
+    ],
+  );
+  if (loading && Object.keys(spec.elements).length === 0) {
+    return (
+      <div className="min-h-24">
+        <Card
+          variant="outlinedPadded"
+          role="status"
+          aria-label="Loading interface"
+          flow="column"
+          gap="default"
+          className="animate-pulse"
+        >
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
+          <Skeleton className="h-3 w-5/6" />
+        </Card>
+      </div>
+    );
+  }
+  return (
+    <UiContext.Provider value={ctx}>
+      <ElementRenderer elementId={spec.root} />
+      {actionError && (
+        <Banner
+          variant="error"
+          role="alert"
+          aria-label="Interactive action unavailable"
+          className="mt-2"
+        >
+          {actionError}
+        </Banner>
+      )}
+    </UiContext.Provider>
+  );
+}

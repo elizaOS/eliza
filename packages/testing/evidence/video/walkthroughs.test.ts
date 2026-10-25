@@ -1,0 +1,85 @@
+/** Runs shipped walkthroughs through real Chromium and ffmpeg into verified bundles; tool availability gates execution. */
+
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import { join } from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
+import { createBundle, verifyBundle } from "../bundle.ts";
+import { videoToolsAvailable } from "./normalize.ts";
+import { hasChromium } from "./test-browser.ts";
+import {
+  loadAllWalkthroughDefs,
+  loadWalkthroughDef,
+  runAndIngestWalkthrough,
+  WALKTHROUGHS_DIR,
+} from "./walkthroughs.ts";
+
+const dir = mkdtempSync(join(os.tmpdir(), "evidence-walkthroughs-"));
+afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+const tools = await videoToolsAvailable();
+
+const canRun = tools.available && hasChromium;
+
+function newBundle(runId: string) {
+  return createBundle({
+    rootDir: join(dir, "runs"),
+    provenance: {
+      commit: "0".repeat(40),
+      branch: "test",
+      runner: "local",
+      tier: "cpu",
+      envFingerprint: {
+        node: process.version,
+        platform: "test",
+        arch: "test",
+        tier: "cpu",
+      },
+    },
+    runId,
+    linkMode: "copy",
+  });
+}
+
+describe("shipped definitions load", () => {
+  it("loads all shipped definitions", () => {
+    const all = loadAllWalkthroughDefs();
+    expect(all.length).toBeGreaterThanOrEqual(3);
+    expect(all.map((entry) => entry.def.slug).sort()).toContain("send-button");
+  });
+});
+
+describe.skipIf(!canRun)(
+  "runAndIngestWalkthrough (fixture + chromium + ffmpeg)",
+  () => {
+    it.each([
+      ["send-message", "feature"],
+      ["send-button", "element"],
+    ])(
+      "runs and ingests %s as a %s walkthrough",
+      async (slug, granularity) => {
+        const def = loadWalkthroughDef(join(WALKTHROUGHS_DIR, `${slug}.json`));
+        const bundle = newBundle(`wt-${slug}`);
+        const out = mkdtempSync(join(dir, "out-"));
+        const result = await runAndIngestWalkthrough(def, bundle, {
+          out,
+          driver: { stepPauseMs: 100 },
+        });
+        expect(result.slug).toBe(slug);
+        expect(result.ingest.video.path).toBe(
+          `video/${granularity}s/${slug}.mp4`,
+        );
+        expect(result.ingest.normalize.status).toBe("transcoded");
+        expect(result.ingest.keyframeCount).toBeGreaterThanOrEqual(2);
+        expect(result.screenshots.length).toBeGreaterThanOrEqual(1);
+
+        const finalized = await bundle.finalize();
+        // video + its analysis + keyframes + their analyses + screenshots + aria + steps.
+        expect(finalized.manifest.artifacts.length).toBeGreaterThan(6);
+        const report = await verifyBundle(bundle.dir);
+        expect(report.ok).toBe(true);
+      },
+      120_000,
+    );
+  },
+);

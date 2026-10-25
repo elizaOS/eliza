@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "platform": "android-aosp",
+  "status": "requires_device_evidence",
+  "target": {
+    "minimumApi": "system image capable of ROLE_ASSISTANT and privileged permission grants",
+    "imageType": "AOSP/system validation image",
+    "requiredBuildFlavor": "android-system or sideload-only system APK",
+    "privilegedPermissions": [
+      "READ_FRAME_BUFFER",
+      "INJECT_EVENTS",
+      "REAL_GET_TASKS"
+    ]
+  },
+  "evidence": {
+    "imageName": null,
+    "androidVersion": null,
+    "apiLevel": null,
+    "buildId": null,
+    "validatedAt": null,
+    "validator": null,
+    "artifacts": []
+  },
+  "checks": [
+    {
+      "id": "assistantRole",
+      "method": "ROLE_ASSISTANT resolution",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "Eliza is installed as or granted the assistant role",
+        "role manager resolves Eliza for assistant requests",
+        "consumer/Play build remains free of ROLE_ASSISTANT requirements"
+      ]
+    },
+    {
+      "id": "assistVoiceCommand",
+      "method": "ACTION_ASSIST/VOICE_COMMAND",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "android.intent.action.ASSIST reaches Eliza runtime",
+        "android.intent.action.VOICE_COMMAND reaches Eliza runtime",
+        "payload source metadata is preserved"
+      ]
+    },
+    {
+      "id": "privilegedCapture",
+      "method": "SurfaceControl.captureDisplay",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "READ_FRAME_BUFFER is granted only to the system build",
+        "capture returns a non-empty frame",
+        "frame visually matches the current display"
+      ]
+    },
+    {
+      "id": "privilegedInput",
+      "method": "InputManager.injectInputEvent",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "INJECT_EVENTS is granted only to the system build",
+        "tap injection returns success",
+        "swipe injection returns success",
+        "unsupported text/key actions are rejected with explicit errors"
+      ]
+    },
+    {
+      "id": "processEnumeration",
+      "method": "IActivityManager.getRunningAppProcesses",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "REAL_GET_TASKS is granted only to the system build",
+        "running processes are enumerated",
+        "foreground process is identifiable"
+      ]
+    },
+    {
+      "id": "serviceFlavorSeparation",
+      "method": "build flavor inspection",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "ElizaAccessibilityService is present only where expected",
+        "ElizaNotificationListenerService is present only where expected",
+        "system-only Java/Kotlin sources are excluded from android-cloud"
+      ]
+    },
+    {
+      "id": "consumerBuildStripping",
+      "method": "consumer artifact inspection",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "android-cloud strips privileged services",
+        "android-cloud strips accessibility-service XML resource",
+        "android-cloud has no privileged permission declarations"
+      ]
+    },
+    {
+      "id": "lifeOpsPersistence",
+      "method": "assistant-to-runtime handoff",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "AOSP assistant requests enter the app/runtime planner",
+        "reminders/check-ins/follow-ups persist as ScheduledTask records",
+        "privileged capture/input does not create native-only task state"
+      ]
+    }
+  ]
+}

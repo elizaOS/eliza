@@ -1,0 +1,465 @@
+/** Configures the workspace aliases shared Vitest lane used by workspace package tests. */
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import {
+  getInstalledPackageEntry,
+  resolveModuleEntry,
+} from "@elizaos/repository-tools";
+
+/** Vite rollup alias shape; structural type avoids duplicate vite versions in Bun's typings. */
+export type ModuleAlias = {
+  find: string | RegExp;
+  replacement: string;
+};
+
+type FallbackAliasOptions = {
+  fallbackReplacement?: string;
+};
+
+type ElizaAliasOptions = {
+  includeElizaAlias?: boolean;
+};
+
+export type AgentSourceAliasOptions = FallbackAliasOptions & ElizaAliasOptions;
+
+export type AppCoreSourceAliasOptions = FallbackAliasOptions & {
+  bridgeReplacement?: string;
+  stubRootSpecifier?: boolean;
+};
+
+export type InstalledPackageAliasOptions = {
+  entryKind?: "node";
+  fallbackPath?: string;
+};
+
+type WorkspacePackageManifest = {
+  exports?: Record<string, unknown>;
+};
+
+export function getElizaWorkspaceRoot(repoRoot: string): string {
+  return repoRoot;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * vite/rollup `resolve.alias` replacements must be POSIX, forward-slash paths.
+ * `path.join` yields backslash paths on Windows (e.g. `C:\src\local-inference`),
+ * which vite fails to resolve — surfacing as "Cannot find package
+ * '@elizaos/<pkg>/<subpath>'". Normalize at the point each replacement is built.
+ * No-op on POSIX (paths have no backslashes), so Linux/macOS behavior is identical.
+ */
+function toPosix(targetPath: string): string {
+  return targetPath.split("\\").join("/");
+}
+
+function readWorkspacePackageManifest(
+  packageRoot: string,
+): WorkspacePackageManifest | null {
+  const packageJsonPath = path.join(packageRoot, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return null;
+  }
+
+  return JSON.parse(
+    readFileSync(packageJsonPath, "utf8"),
+  ) as WorkspacePackageManifest;
+}
+
+function resolveExportTarget(exportTarget: unknown): string | undefined {
+  if (typeof exportTarget === "string") {
+    return exportTarget;
+  }
+
+  if (!exportTarget || typeof exportTarget !== "object") {
+    return undefined;
+  }
+
+  const record = exportTarget as Record<string, unknown>;
+  const sourceTarget = resolveExportTarget(record["eliza-source"]);
+  if (sourceTarget) return sourceTarget;
+  for (const key of ["bun", "import", "default", "types"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string") {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function resolveWorkspaceSourceExportTarget(
+  packageRoot: string,
+  exportTarget: string,
+): string | undefined {
+  const normalizedTarget = exportTarget.replace(/^\.\//, "");
+  if (!normalizedTarget.startsWith("dist/")) return undefined;
+
+  const sourceRelativePath = normalizedTarget
+    .slice("dist/".length)
+    .replace(/\.(?:cjs|mjs|js)$/, "");
+  const sourceCandidate = resolveModuleEntry(
+    path.join(packageRoot, "src", sourceRelativePath),
+  );
+  return existsSync(sourceCandidate) ? sourceCandidate : undefined;
+}
+
+function getWorkspacePackageExportAliases(
+  packageName: string,
+  packageRoot: string,
+): ModuleAlias[] {
+  const manifest = readWorkspacePackageManifest(packageRoot);
+  const exportsMap = manifest?.exports;
+  if (!exportsMap) {
+    return [];
+  }
+
+  return Object.entries(exportsMap).flatMap(([subpath, exportTarget]) => {
+    if (
+      subpath === "." ||
+      subpath === "./package.json" ||
+      subpath.includes("*")
+    ) {
+      return [];
+    }
+
+    const target = resolveExportTarget(exportTarget);
+    if (!target) {
+      return [];
+    }
+
+    const replacement =
+      resolveWorkspaceSourceExportTarget(packageRoot, target) ??
+      path.join(packageRoot, target);
+    if (!existsSync(replacement)) {
+      return [];
+    }
+
+    return [
+      {
+        find: new RegExp(
+          `^@elizaos/${escapeRegExp(packageName)}/${escapeRegExp(
+            subpath.slice(2),
+          )}$`,
+        ),
+        replacement: toPosix(replacement),
+      },
+    ];
+  });
+}
+
+function getPackageSourceAliases(
+  packageName: string,
+  _sourceRoot: string,
+  {
+    includeElizaAlias = false,
+    rootReplacement,
+  }: {
+    includeElizaAlias?: boolean;
+    rootReplacement: string;
+  },
+): ModuleAlias[] {
+  const normalizedRoot = toPosix(rootReplacement);
+  return [
+    ...(includeElizaAlias
+      ? [
+          {
+            find: `@elizaai/${packageName}`,
+            replacement: normalizedRoot,
+          },
+        ]
+      : []),
+    {
+      find: `@elizaos/${packageName}`,
+      replacement: normalizedRoot,
+    },
+  ];
+}
+
+export function getOptionalResolvedAliases(
+  aliases: ReadonlyArray<{
+    find: ModuleAlias["find"];
+    replacement?: string | null;
+  }>,
+): ModuleAlias[] {
+  return aliases.flatMap(({ find, replacement }) =>
+    replacement && existsSync(replacement) ? [{ find, replacement }] : [],
+  );
+}
+
+export function getOptionalInstalledPackageAliases(
+  repoRoot: string,
+  aliases: ReadonlyArray<{
+    find: ModuleAlias["find"];
+    packageName: string;
+    options?: InstalledPackageAliasOptions;
+  }>,
+): ModuleAlias[] {
+  return aliases.flatMap(({ find, packageName, options }) => {
+    const installedEntry = getInstalledPackageEntry(
+      packageName,
+      repoRoot,
+      options?.entryKind,
+    );
+
+    if (installedEntry) {
+      return [{ find, replacement: toPosix(installedEntry) }];
+    }
+
+    return options?.fallbackPath
+      ? [
+          {
+            find,
+            replacement: toPosix(resolveModuleEntry(options.fallbackPath)),
+          },
+        ]
+      : [];
+  });
+}
+
+export function getElizaCoreRolesEntry(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+  const elizaCoreRolesSource = path.join(
+    elizaWorkspaceRoot,
+    "packages",
+    "typescript",
+    "src",
+    "roles.ts",
+  );
+
+  return existsSync(elizaCoreRolesSource)
+    ? elizaCoreRolesSource
+    : path.join(
+        elizaWorkspaceRoot,
+        "packages",
+        "app",
+        "scripts",
+        "lib",
+        "elizaos-core-roles-shim.js",
+      );
+}
+
+export function getAppCoreBridgeStubPath(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+  return path.join(
+    elizaWorkspaceRoot,
+    "packages",
+    "app",
+    "test",
+    "stubs",
+    "app-bridge.ts",
+  );
+}
+
+export function getAppCorePluginFallbackPath(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+  return path.join(
+    elizaWorkspaceRoot,
+    "packages",
+    "app",
+    "test",
+    "stubs",
+    "plugin-fallback-module.mjs",
+  );
+}
+
+export function getAppCoreModuleFallbackPath(repoRoot: string): string {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+  return path.join(
+    elizaWorkspaceRoot,
+    "packages",
+    "app",
+    "test",
+    "stubs",
+    "module-fallback.mjs",
+  );
+}
+
+export function getOptionalPluginSdkAliases(repoRoot: string): ModuleAlias[] {
+  const pluginSdkEntry = path.join(repoRoot, "src", "plugin-sdk", "index.ts");
+
+  return existsSync(pluginSdkEntry)
+    ? [{ find: "eliza/plugin-sdk", replacement: pluginSdkEntry }]
+    : [];
+}
+
+export function getAgentSourceAliases(
+  sourceRoot: string | undefined,
+  options: AgentSourceAliasOptions = {},
+): ModuleAlias[] {
+  if (sourceRoot) {
+    return [
+      {
+        find: /^@elizaos\/agent\/(.+)$/,
+        // Leave the target extensionless so Vite can resolve both source
+        // files and public directory entries such as services/knowledge-graph.
+        replacement: toPosix(path.join(sourceRoot, "$1")),
+      },
+      ...getPackageSourceAliases("agent", sourceRoot, {
+        includeElizaAlias: options.includeElizaAlias,
+        rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
+      }),
+    ];
+  }
+
+  return options.fallbackReplacement
+    ? [
+        {
+          find: /^@elizaos\/agent$/,
+          replacement: options.fallbackReplacement,
+        },
+      ]
+    : [];
+}
+
+export function getAppCoreSourceAliases(
+  sourceRoot: string | undefined,
+  options: AppCoreSourceAliasOptions = {},
+): ModuleAlias[] {
+  if (sourceRoot) {
+    const bridgeReplacement = options.bridgeReplacement;
+
+    return [
+      ...(bridgeReplacement
+        ? [
+            ...(options.stubRootSpecifier
+              ? [
+                  {
+                    find: /^@elizaos\/app$/,
+                    replacement: bridgeReplacement,
+                  },
+                ]
+              : []),
+          ]
+        : []),
+      ...(!options.stubRootSpecifier
+        ? [
+            {
+              find: /^@elizaos\/app\/(.+)$/,
+              replacement: toPosix(path.join(sourceRoot, "$1")),
+            },
+            {
+              find: "@elizaos/app",
+              replacement: toPosix(
+                resolveModuleEntry(path.join(sourceRoot, "index")),
+              ),
+            },
+          ]
+        : []),
+    ];
+  }
+
+  return options.fallbackReplacement
+    ? [
+        {
+          find: /^@elizaos\/app$/,
+          replacement: options.fallbackReplacement,
+        },
+      ]
+    : [];
+}
+
+export function getUiSourceAliases(
+  sourceRoot: string | undefined,
+): ModuleAlias[] {
+  if (!sourceRoot) {
+    return [];
+  }
+
+  const packageRoot = path.dirname(sourceRoot);
+
+  return [
+    {
+      find: /^@elizaos\/ui\/api$/,
+      replacement: toPosix(path.join(sourceRoot, "api", "index.ts")),
+    },
+    {
+      find: /^@elizaos\/ui\/(.+)$/,
+      replacement: toPosix(path.join(sourceRoot, "$1")),
+    },
+    ...getWorkspacePackageExportAliases("ui", packageRoot),
+    ...getPackageSourceAliases("ui", sourceRoot, {
+      includeElizaAlias: true,
+      rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
+    }),
+  ];
+}
+
+export function getWorkspaceAppAliases(
+  repoRoot: string,
+  appNames: string[],
+): ModuleAlias[] {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+  return appNames.flatMap((appName) => {
+    const candidates = [
+      path.join(elizaWorkspaceRoot, "apps", appName),
+      path.join(elizaWorkspaceRoot, "plugins", appName),
+    ];
+
+    for (const appRoot of candidates) {
+      const appSourceRoot = path.join(appRoot, "src");
+      const appEntry = path.join(appSourceRoot, "index.ts");
+
+      if (!existsSync(appEntry)) {
+        continue;
+      }
+
+      return [
+        ...getWorkspacePackageExportAliases(appName, appRoot),
+        ...getPackageSourceAliases(appName, appSourceRoot, {
+          rootReplacement: appEntry,
+        }),
+      ];
+    }
+
+    return [];
+  });
+}
+
+export function getWorkspacePluginAliases(
+  repoRoot: string,
+  pluginNames: string[],
+): ModuleAlias[] {
+  const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+  return pluginNames.flatMap((pluginName) => {
+    const pluginRoot = path.join(elizaWorkspaceRoot, "plugins", pluginName);
+    const candidates = [
+      {
+        packageRoot: pluginRoot,
+        sourceRoot: path.join(pluginRoot, "src"),
+      },
+      {
+        packageRoot: pluginRoot,
+        sourceRoot: pluginRoot,
+      },
+      {
+        packageRoot: path.join(pluginRoot, "typescript"),
+        sourceRoot: path.join(pluginRoot, "typescript", "src"),
+      },
+    ];
+
+    for (const { packageRoot, sourceRoot } of candidates) {
+      const pluginEntry = path.join(sourceRoot, "index.ts");
+      if (!existsSync(pluginEntry)) {
+        continue;
+      }
+
+      return [
+        ...getWorkspacePackageExportAliases(pluginName, packageRoot),
+        {
+          // Root-barrel aliases cannot resolve a package subpath by appending
+          // it to index.ts. Preserve exact export overrides, then use source.
+          find: new RegExp(`^@elizaos/${escapeRegExp(pluginName)}/(.+)$`),
+          replacement: toPosix(path.join(sourceRoot, "$1")),
+        },
+        ...getPackageSourceAliases(pluginName, sourceRoot, {
+          rootReplacement: pluginEntry,
+        }),
+      ];
+    }
+
+    return [];
+  });
+}

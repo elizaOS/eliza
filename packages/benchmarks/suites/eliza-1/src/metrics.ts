@@ -1,0 +1,265 @@
+/**
+ * Scoring + rollup for the eliza-1 bench.
+ *
+ * One generation = one `CaseMetric`. The runner builds it by combining the
+ * mode's `ModeResult` (timing + raw output) with the task-specific ground-truth
+ * check (parse / schema / label).
+ *
+ * The rollup helpers convert a list of case metrics into per (task, mode)
+ * `ModeSummary` entries with p50/p95 latency, mean tok/s, and the three rates.
+ */
+import type {
+  CaseMetric,
+  JsonValue,
+  ModeName,
+  ModeResult,
+  ModeSummary,
+  TaskName,
+} from "./types.ts";
+
+/** Parse the complete response; do not repair prose into a valid JSON answer. */
+export function tryParseJson(raw: string): JsonValue | null {
+  try {
+    return JSON.parse(raw) as JsonValue;
+  } catch {
+    return null;
+  }
+}
+
+/** True when `value` is a plain object (not array, not null). */
+export function isPlainObject(
+  value: unknown,
+): value is Record<string, JsonValue> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { constructor?: unknown }).constructor !== Date
+  );
+}
+
+/**
+ * Check a parsed value against the should-respond schema. The envelope must
+ * be `{ shouldRespond: "RESPOND" | "IGNORE" | "STOP" }`.
+ */
+export function checkShouldRespondSchema(value: JsonValue): boolean {
+  if (!isPlainObject(value) || Object.keys(value).length !== 1) return false;
+  const v = value.shouldRespond;
+  return v === "RESPOND" || v === "IGNORE" || v === "STOP";
+}
+
+/**
+ * Check a parsed value against the planner schema:
+ * `{ action: string, parameters: object }`. Extra fields are tolerated.
+ */
+export function checkPlannerSchema(value: JsonValue): boolean {
+  if (!isPlainObject(value)) return false;
+  if (typeof value.action !== "string") return false;
+  if (!isPlainObject(value.parameters)) return false;
+  return true;
+}
+
+/**
+ * Sentinel for "any non-empty string of the same type" in fixture
+ * `expected_params`. Use it for free-text reply bodies where the LLM
+ * never produces a byte-identical string but the call shape is what
+ * we're actually testing.
+ */
+export const ANY_VALUE_SENTINEL = "<<any>>";
+
+/** Check that all keys in `expected` exist on `parameters` and match by deep-equal. */
+export function checkParamsMatch(
+  parameters: JsonValue,
+  expected: Record<string, JsonValue>,
+): boolean {
+  if (!isPlainObject(parameters)) return false;
+  for (const [key, want] of Object.entries(expected)) {
+    const have = parameters[key];
+    // Free-text wildcard: only require the field to be a non-empty string.
+    // Lets fixtures focus on call-shape match for actions whose payload is
+    // LLM-authored prose (REPLY.text, CREATE_REMINDER.text, …).
+    if (want === ANY_VALUE_SENTINEL) {
+      if (typeof have !== "string" || have.length === 0) return false;
+      continue;
+    }
+    if (!deepEqual(have, want)) return false;
+  }
+  return true;
+}
+
+export function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return a === b;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (!deepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (
+        !deepEqual(
+          (a as Record<string, unknown>)[key],
+          (b as Record<string, unknown>)[key],
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Compute skip_ratio from a skeleton: sum of literal span lengths / total output bytes.
+ * Returns undefined if skeleton is not available or not computable.
+ */
+export function computeSkipRatio(
+  skeleton: unknown,
+  rawOutput: string,
+): number | undefined {
+  if (!skeleton || typeof skeleton !== "object") return undefined;
+  const skel = skeleton as { spans?: Array<{ value?: string }> };
+  if (!Array.isArray(skel.spans)) return undefined;
+
+  let literalBytes = 0;
+  for (const span of skel.spans) {
+    if (
+      span &&
+      typeof span === "object" &&
+      span.value &&
+      typeof span.value === "string"
+    ) {
+      literalBytes += span.value.length;
+    }
+  }
+
+  const totalBytes = rawOutput.length;
+  if (totalBytes === 0) return undefined;
+  return literalBytes / totalBytes;
+}
+
+/** Build a `CaseMetric` from a `ModeResult` and a (parse, schema, label) decision. */
+export function buildMetric(args: {
+  taskId: TaskName;
+  modeId: ModeName;
+  caseId: string;
+  result: ModeResult;
+  parse_success: boolean;
+  schema_valid: boolean;
+  label_match: boolean | null;
+  expected_label?: string;
+}): CaseMetric {
+  const total = args.result.totalLatencyMs;
+  const reported = args.result.tokensGenerated;
+  const tokens =
+    typeof reported === "number" &&
+    Number.isSafeInteger(reported) &&
+    reported >= 0
+      ? reported
+      : null;
+  const tps = tokens !== null && total > 0 ? (tokens / total) * 1000 : null;
+  const skipRatio = computeSkipRatio(
+    args.result._skeleton,
+    args.result.rawOutput,
+  );
+  return {
+    taskId: args.taskId,
+    modeId: args.modeId,
+    caseId: args.caseId,
+    parse_success: args.parse_success,
+    schema_valid: args.schema_valid,
+    label_match: args.label_match,
+    expected_label: args.expected_label,
+    first_token_latency_ms: args.result.firstTokenLatencyMs,
+    total_latency_ms: total,
+    tokens_generated: tokens,
+    tokens_per_second: tps,
+    skip_ratio: skipRatio,
+    raw_output: args.result.rawOutput,
+    warnings: args.result.warnings,
+    error: args.result.error,
+  };
+}
+
+/**
+ * Percentile helper. Returns null when the input is empty. `p` is between 0
+ * and 100 inclusive. Uses linear interpolation between the two nearest ranks.
+ */
+export function percentile(values: number[], p: number): number | null {
+  if (values.length === 0) return null;
+  if (p <= 0) return Math.min(...values);
+  if (p >= 100) return Math.max(...values);
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = (p / 100) * (sorted.length - 1);
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return sorted[lo];
+  const frac = rank - lo;
+  return sorted[lo] * (1 - frac) + sorted[hi] * frac;
+}
+
+/** Group case metrics by (taskId, modeId) and roll them up. */
+export function summarize(cases: CaseMetric[]): ModeSummary[] {
+  const groups = new Map<string, CaseMetric[]>();
+  for (const c of cases) {
+    const key = `${c.taskId}__${c.modeId}`;
+    const existing = groups.get(key);
+    if (existing) existing.push(c);
+    else groups.set(key, [c]);
+  }
+  const out: ModeSummary[] = [];
+  for (const [key, list] of groups) {
+    const [taskId, modeId] = key.split("__") as [TaskName, ModeName];
+    const total = list.length;
+    const parseOk = list.filter((c) => c.parse_success).length;
+    const schemaOk = list.filter((c) => c.schema_valid).length;
+    const labelOk = list.filter((c) => c.label_match === true).length;
+    const totalLatencies = list.map((c) => c.total_latency_ms);
+    const ftlList = list
+      .map((c) => c.first_token_latency_ms)
+      .filter((v): v is number => typeof v === "number");
+    const tokenRates = list
+      .map((c) => c.tokens_per_second)
+      .filter((v): v is number => v !== null);
+    const skipRatios = list
+      .map((c) => c.skip_ratio)
+      .filter((v): v is number => typeof v === "number");
+    const meanSkipRatio =
+      skipRatios.length > 0
+        ? skipRatios.reduce((a, b) => a + b, 0) / skipRatios.length
+        : undefined;
+    out.push({
+      taskId,
+      modeId,
+      cases: total,
+      parse_success_rate: total === 0 ? 0 : parseOk / total,
+      schema_valid_rate: total === 0 ? 0 : schemaOk / total,
+      label_match_rate: total === 0 ? 0 : labelOk / total,
+      first_token_latency_p50_ms: percentile(ftlList, 50),
+      first_token_latency_p95_ms: percentile(ftlList, 95),
+      total_latency_p50_ms: percentile(totalLatencies, 50) ?? 0,
+      total_latency_p95_ms: percentile(totalLatencies, 95) ?? 0,
+      mean_tokens_per_second: tokenRates.length
+        ? tokenRates.reduce((a, b) => a + b, 0) / tokenRates.length
+        : null,
+      token_usage_observed_cases: list.filter(
+        (c) => c.tokens_generated !== null,
+      ).length,
+      mean_skip_ratio: meanSkipRatio,
+    });
+  }
+  out.sort((a, b) =>
+    a.taskId === b.taskId
+      ? a.modeId.localeCompare(b.modeId)
+      : a.taskId.localeCompare(b.taskId),
+  );
+  return out;
+}

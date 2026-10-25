@@ -1,0 +1,10 @@
+/**
+ * Registers the plugin's HTTP routes with app's lazy route loader, importing
+ * the plugin only when a computer-use route is first hit.
+ */
+import { registerAppRoutePluginLoader } from "@elizaos/host/protocol";
+
+registerAppRoutePluginLoader("@elizaos/plugin-computeruse", async () => {
+  const { computerUsePlugin } = await import("./index.js");
+  return computerUsePlugin;
+});

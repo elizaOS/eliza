@@ -1,0 +1,251 @@
+/**
+ * FocusSpatialView — the Focus / blocker surface authored once with the spatial
+ * vocabulary, so it renders correctly wherever it is displayed:
+ *
+ *   - GUI today through `<SpatialSurface>` (DOM).
+ *   - Future adapters can reuse the same snapshot contract behind the retained modality types.
+ *
+ * It is purely presentational (a snapshot + an action callback in, primitives
+ * out) and imports only the cross-modality primitives, so it is safe to render
+ * without pulling browser-only runtime imports into the presentational layer.
+ */
+
+import {
+  SpatialButton as Button,
+  SpatialCard as Card,
+  SpatialDivider as Divider,
+  SpatialHStack as HStack,
+  SpatialList as List,
+  SpatialText as Text,
+  SpatialVStack as VStack,
+} from "@elizaos/ui";
+import type { ReactNode } from "react";
+
+/** Which screen of the website-blocking state machine to draw. */
+export type FocusPhase =
+  | "loading"
+  | "error"
+  | "unavailable"
+  | "permission"
+  | "active"
+  | "empty";
+
+export type FocusRequestState =
+  | { phase: "idle" | "pending" }
+  | { phase: "error" | "complete"; message: string };
+
+export interface FocusSnapshot {
+  /** Assistant request progress and complete reply, independent of block status. */
+  request?: FocusRequestState;
+  /** Current state-machine phase. */
+  phase: FocusPhase;
+  /** Error message (phase: "error"). */
+  error?: string | null;
+  /** Platform string (phase: "unavailable"). */
+  platform?: string;
+  /** Why blocking is unavailable / what permission is needed. */
+  reason?: string | null;
+  /** Elevation method to surface in the permission phase, if known. */
+  elevationPromptMethod?: string | null;
+  /** Active session start time (already formatted for display). */
+  startedAt?: string;
+  /** Active session end time (already formatted), or null for no end time. */
+  endsAt?: string | null;
+  /** Match mode of the active block. */
+  matchMode?: string;
+  /** Hosts blocked in the active session. */
+  blockedWebsites?: string[];
+  /** Whether the active block can be released early (gates the Release button). */
+  canUnblockEarly?: boolean;
+  /** Whether releasing needs elevation (drives the can't-release note). */
+  requiresElevation?: boolean;
+  /** Whether a release request is in flight (disables the button). */
+  releasing?: boolean;
+}
+
+export interface FocusSpatialViewProps {
+  snapshot: FocusSnapshot;
+  /** Dispatch by agent id: `retry`, `start` (chat handoff), `release` (end block). */
+  onAction?: (action: string) => void;
+}
+
+export function FocusSpatialView({
+  snapshot,
+  onAction,
+}: FocusSpatialViewProps) {
+  const dispatch = (action: string) => () => onAction?.(action);
+  const requestReply =
+    snapshot.request?.phase === "error" ||
+    snapshot.request?.phase === "complete" ? (
+      <Text tone={snapshot.request.phase === "error" ? "danger" : "default"}>
+        {snapshot.request.message}
+      </Text>
+    ) : null;
+  return (
+    <Card gap={1} padding={1} grow={1} shrink={0}>
+      <FocusBody
+        snapshot={snapshot}
+        dispatch={dispatch}
+        requestReply={requestReply}
+      />
+      {snapshot.phase !== "empty" ? requestReply : null}
+    </Card>
+  );
+}
+
+function FocusBody({
+  snapshot,
+  dispatch,
+  requestReply,
+}: {
+  snapshot: FocusSnapshot;
+  dispatch: (action: string) => () => void;
+  requestReply: ReactNode;
+}) {
+  switch (snapshot.phase) {
+    case "loading":
+      return (
+        <Text tone="muted" style="caption">
+          Loading
+        </Text>
+      );
+    case "error":
+      return (
+        <>
+          <Text tone="danger" style="caption">
+            {snapshot.error || "Could not load website blocking status."}
+          </Text>
+          <HStack gap={1}>
+            <Button agent="retry" onPress={dispatch("retry")}>
+              Retry
+            </Button>
+          </HStack>
+        </>
+      );
+    case "unavailable":
+      return (
+        <>
+          <Text bold>Focus unavailable</Text>
+          <Text tone="muted" style="caption">
+            {snapshot.platform ?? "unknown"}
+          </Text>
+          {snapshot.reason ? (
+            <Text tone="muted" style="caption">
+              {snapshot.reason}
+            </Text>
+          ) : null}
+        </>
+      );
+    case "permission":
+      return (
+        <>
+          <Text bold tone="warning">
+            Permission
+          </Text>
+          <Text tone="muted" style="caption">
+            {snapshot.elevationPromptMethod
+              ? snapshot.elevationPromptMethod
+              : "Manual approval required"}
+          </Text>
+          {snapshot.reason ? (
+            <Text tone="muted" style="caption">
+              {snapshot.reason}
+            </Text>
+          ) : null}
+        </>
+      );
+    case "active":
+      return <FocusActiveBody snapshot={snapshot} dispatch={dispatch} />;
+    default:
+      return (
+        <VStack grow={1} justify="center" align="center" gap={1} padding={2}>
+          <Text bold align="center">
+            No focus session active
+          </Text>
+          <Text tone="muted" style="caption" align="center">
+            Start a session to temporarily block distracting websites. Eliza
+            keeps them unavailable until the session ends.
+          </Text>
+          <HStack gap={1}>
+            <Button
+              agent="start"
+              disabled={snapshot.request?.phase === "pending"}
+              onPress={dispatch("start")}
+            >
+              {snapshot.request?.phase === "pending"
+                ? "Asking Eliza…"
+                : "Start focus"}
+            </Button>
+          </HStack>
+          {requestReply}
+        </VStack>
+      );
+  }
+}
+
+function FocusActiveBody({
+  snapshot,
+  dispatch,
+}: {
+  snapshot: FocusSnapshot;
+  dispatch: (action: string) => () => void;
+}) {
+  const sites = snapshot.blockedWebsites ?? [];
+  const canRelease = snapshot.canUnblockEarly === true;
+  return (
+    <>
+      <Text bold>Focus active</Text>
+      {canRelease ? (
+        <HStack gap={1}>
+          <Button
+            variant="outline"
+            tone="danger"
+            disabled={snapshot.releasing === true}
+            agent="release"
+            onPress={dispatch("release")}
+          >
+            {snapshot.releasing ? "Releasing" : "Release"}
+          </Button>
+        </HStack>
+      ) : null}
+
+      <VStack gap={0}>
+        <Text tone="muted" style="caption">
+          Started {snapshot.startedAt ?? "unknown"}
+        </Text>
+        <Text tone="muted" style="caption">
+          {snapshot.endsAt ? `Ends ${snapshot.endsAt}` : "No end time"}
+        </Text>
+        <Text tone="muted" style="caption">
+          {snapshot.matchMode ?? "exact"} matching
+        </Text>
+      </VStack>
+
+      <Divider label={`${sites.length} blocked`} />
+      {sites.length === 0 ? (
+        <Text tone="muted" style="caption">
+          None
+        </Text>
+      ) : (
+        <List gap={0}>
+          {sites.map((site) => (
+            <HStack key={site} gap={1} align="center">
+              <Text tone="muted" wrap={false}>
+                •
+              </Text>
+              <Text grow={1} wrap={false}>
+                {site}
+              </Text>
+            </HStack>
+          ))}
+        </List>
+      )}
+
+      {!canRelease && snapshot.requiresElevation ? (
+        <Text tone="muted" style="caption">
+          Admin approval required to release.
+        </Text>
+      ) : null}
+    </>
+  );
+}

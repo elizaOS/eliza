@@ -1,0 +1,12 @@
+plugins { id 'com.android.application' }
+android {
+ namespace 'example.mirrorfixture'
+ compileSdk 36
+ defaultConfig { minSdk 28; targetSdk 35 }
+ flavorDimensions 'selection'
+ productFlavors {
+  selected { dimension 'selection'; applicationId 'example.notificationmirror.selected' }
+  excluded { dimension 'selection'; applicationId 'example.notificationmirror.excluded' }
+ }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}

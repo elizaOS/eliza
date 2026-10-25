@@ -1,0 +1,67 @@
+/**
+ * Steward session glue for the app-hosted cloud surfaces.
+ *
+ * Thin adapter over the canonical client in
+ * `@elizaos/plugin-elizacloud/steward-session-client` — the single source of truth for the
+ * storage-key names, request/response/error shapes, and read/write/clear
+ * helpers shared with the cloud-api route handlers. We re-export the
+ * browser-safe surface the cloud domain modules need
+ * so they import from one place inside `@elizaos/ui/cloud` instead of reaching
+ * into `@elizaos/plugin-elizacloud/steward-session-client` directly.
+ *
+ * Cookie-sync / nonce-exchange endpoint *selection* deliberately stays in the
+ * app shell (it depends on the active connection's base URL), so it is not
+ * re-exported here.
+ */
+import {
+  type ClearOpts,
+  clearStewardSession as clearCanonicalStewardSession,
+  clearStoredStewardToken,
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  STEWARD_AUTHED_COOKIE,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TENANT_ID,
+  STEWARD_TOKEN_KEY,
+  StewardSessionError,
+  type StewardSessionErrorCode,
+  writeStoredStewardToken,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import {
+  readStoredToken,
+  tokenIsExpired,
+} from "../shell/StewardProviderShared";
+import { decodeJwtPayload } from "./jwt";
+import { invalidateStewardServerCookieSyncMarker } from "./steward-session-cookie-sync-marker";
+
+export type { ClearOpts, StewardSessionErrorCode };
+export {
+  clearStoredStewardToken,
+  hasStewardAuthedCookie,
+  readStoredStewardToken,
+  STEWARD_AUTHED_COOKIE,
+  STEWARD_SESSION_ENDPOINT,
+  STEWARD_TENANT_ID,
+  STEWARD_TOKEN_KEY,
+  StewardSessionError,
+  writeStoredStewardToken,
+};
+/** Clear configured server cookies after retiring any explicit-sync proof. */
+export function clearStewardSession(opts: ClearOpts = {}): void {
+  invalidateStewardServerCookieSyncMarker();
+  clearCanonicalStewardSession(opts);
+}
+
+/**
+ * Whether a stored Steward token is worth holding the console auth gate for.
+ * Raw presence is not enough: expired, malformed, and identity-less tokens read
+ * as signed-out in `useSessionAuth`, so holding on them would replace the
+ * intended login redirect with an uncloseable busy state.
+ */
+export function hasHydratableStewardToken(): boolean {
+  const token = readStoredToken();
+  if (!token || tokenIsExpired(token)) return false;
+  const claims = decodeJwtPayload(token);
+  const id = claims?.userId ?? claims?.sub;
+  return typeof id === "string" && id.trim().length > 0;
+}

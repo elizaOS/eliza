@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "inlineSources": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "ignoreDeprecations": "6.0",
+    "noEmit": false,  },
+  "include": [
+    "**/*.ts"
+  ],
+  "exclude": [
+    "build.ts",
+    "vitest*.config.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "vitest.real-runtime.config.ts",
+    "dist",
+    "node_modules"
+  ]
+}

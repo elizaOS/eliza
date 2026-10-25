@@ -1,0 +1,148 @@
+/**
+ * Headless notification wiring for the app shell. Mounted once in App.tsx, it
+ * boots the notification store (hydrate + live WS stream). Native platforms
+ * may raise their OS notification, while the persistent Home notification
+ * center is the only in-app surface. This module also answers the
+ * surface-agnostic OPEN_NOTIFICATION_CENTER_EVENT (desktop menu/tray
+ * "Notifications", the `<scheme>://notifications` deep link) by navigating to
+ * Home.
+ */
+
+import { useEffect } from "react";
+import { client } from "../../api/client";
+import { initLocalNotificationTapRouting } from "../../bridge/native-notifications";
+import { APP_RESUME_EVENT, OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
+import { logger } from "../../logger.ts";
+import { useAppSelector } from "../../state/app-store";
+import { peekNotificationCenterOpenRequest } from "../../state/notifications/notification-center-open-request";
+import { initNotifications } from "../../state/notifications/notification-store";
+import {
+  initPushRegistration,
+  refreshPushRegistrationAuthority,
+} from "../../state/notifications/push-registration";
+import { goHome } from "../../state/shell-surface-store";
+
+const LOCAL_NOTIFICATION_TAP_RETRY_DELAYS_MS = [250, 1_000] as const;
+
+/**
+ * Boots data ingress independently of the paintable app shell. Startup, auth,
+ * and first-run gates can keep AppContent on a full-screen surface while the
+ * packaged desktop is already backgrounded; native notifications must not lose
+ * their WebSocket subscription during that interval.
+ */
+export function NotificationsDataBoot(): null {
+  useEffect(() => {
+    initNotifications();
+    // Capacitor retains a notification action only until the first listener is
+    // attached. This boot lives above AppContent's startup/auth early returns,
+    // so install the listener here: a tap that launches into LoginView must be
+    // retained by the canonical navigator instead of waiting for the signed-in
+    // shell (which may never mount during this process lifetime).
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryIndex = 0;
+
+    const registerTapRouting = async (): Promise<void> => {
+      try {
+        await initLocalNotificationTapRouting();
+      } catch (error: unknown) {
+        // error-policy:J1 native notification tap registration is a transport
+        // boundary; retry briefly while this app-lifetime owner remains mounted.
+        if (cancelled) return;
+        const retryDelay = LOCAL_NOTIFICATION_TAP_RETRY_DELAYS_MS[retryIndex];
+        if (retryDelay === undefined) {
+          logger.error(
+            { src: "local-notification-tap", error },
+            "[local-notification-tap] exhausted native tap routing retries",
+          );
+          return;
+        }
+        retryIndex += 1;
+        logger.warn(
+          { src: "local-notification-tap", error, retryDelay },
+          "[local-notification-tap] retrying native tap routing",
+        );
+        retryTimer = setTimeout(() => {
+          void registerTapRouting();
+        }, retryDelay);
+      }
+    };
+
+    void registerTapRouting();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
+  }, []);
+  return null;
+}
+
+export function NotificationsShellBoot(): null {
+  const setTab = useAppSelector((s) => s.setTab);
+
+  useEffect(() => {
+    // Native-only, gated on granted permission, guarded against double-register.
+    // The token POST is what makes the server's APNs/FCM stack a live pipeline.
+    const registerPush = () => {
+      // Pairing can publish token-sync while this shell is behind its auth
+      // gate. Reconcile missed authority changes before reusing the startup
+      // guard; the initializer still rechecks a later permission grant.
+      void refreshPushRegistrationAuthority()
+        .then(() => initPushRegistration())
+        .catch((error: unknown) => {
+          // error-policy:J1 push registration is an OS/provider transport boundary;
+          // a missing distributor Firebase configuration must not crash the shell.
+          logger.error(
+            { src: "push-registration", error },
+            "[push-registration] native registration unavailable",
+          );
+        });
+    };
+    registerPush();
+    // Returning from OS settings may grant permission after the permission
+    // request has already finished. The existing initializer rechecks the grant
+    // without prompting and keeps successful registration idempotent.
+    document.addEventListener(APP_RESUME_EVENT, registerPush);
+    const refreshAuthority = () => {
+      void refreshPushRegistrationAuthority().catch((error: unknown) => {
+        // error-policy:J1 the shell transport boundary reports failed revoke or
+        // re-registration without turning an authority switch into a UI crash.
+        logger.error(
+          { src: "push-registration", error },
+          "[push-registration] failed to rotate device push authority",
+        );
+      });
+    };
+    // setBaseUrl also publishes identical-base restore/reconnect events.
+    // The full profile/base/token authority key decides whether to retire;
+    // forcing retirement here can disable an independent native connection
+    // while the app is backgrounded and cannot start its replacement.
+    const onBaseAuthorityChange = () => refreshAuthority();
+    const onTokenAuthorityChange = () => refreshAuthority();
+    const unsubscribeBase = client.onBaseUrlChange(onBaseAuthorityChange);
+    window.addEventListener("steward-token-sync", onTokenAuthorityChange);
+    return () => {
+      document.removeEventListener(APP_RESUME_EVENT, registerPush);
+      unsubscribeBase();
+      window.removeEventListener("steward-token-sync", onTokenAuthorityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onOpen = () => {
+      goHome();
+      setTab("chat");
+    };
+    window.addEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+    // A fallback AppDelegate URL can be replayed by getLaunchUrl() after the
+    // root mounts but before this effect commits. The dispatcher retained that
+    // request, so complete its navigation instead of waiting for another tap.
+    if (peekNotificationCenterOpenRequest() !== null) {
+      onOpen();
+    }
+    return () =>
+      window.removeEventListener(OPEN_NOTIFICATION_CENTER_EVENT, onOpen);
+  }, [setTab]);
+
+  return null;
+}

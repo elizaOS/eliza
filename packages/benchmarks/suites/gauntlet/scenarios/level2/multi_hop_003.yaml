@@ -1,0 +1,20 @@
+id: multi_hop_003
+level: 2
+name: Multi-hop Route Optimization 3
+description: Find the cheapest route for swap 3/5
+category: optimization
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_3
+  type: swap
+  parameters:
+    action: find_best_route
+    hops: 3
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

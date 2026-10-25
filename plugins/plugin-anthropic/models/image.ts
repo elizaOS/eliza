@@ -1,0 +1,125 @@
+/**
+ * `IMAGE_DESCRIPTION` handler: sends an image URL to the configured small model
+ * and parses the `Title:` / `Description:` response into an
+ * `ImageDescriptionResult`. Uses the shared client factory, retry wrapper, and
+ * usage-event emitter; the small-model default comes from `getSmallModel`.
+ */
+import type { IAgentRuntime, ImageDescriptionParams, ImageDescriptionResult } from "@elizaos/core";
+import { assertModelOutputComplete, logger, ModelType } from "@elizaos/core";
+import { generateText } from "ai";
+import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
+import { getSmallModel } from "../utils/config";
+import { emitModelUsageEvent } from "../utils/events";
+import { executeWithRetry, formatModelError, sanitizeUrlForLogs } from "../utils/retry";
+import { resolveAnthropicMaxOutputTokens } from "./text";
+
+const DEFAULT_IMAGE_DESCRIPTION_PROMPT =
+  "Analyze this image and respond with:\nTitle: <short title>\nDescription: <detailed description>";
+
+// A title line counts only at the start of the reply, where the prompt asks
+// for it. An unanchored search lets a mid-description mention of "title:"
+// (a poster, sign, or book in the image) hijack the title and cut that text
+// out of the description; the OpenAI image parser anchors for this reason.
+const LEADING_TITLE_RE = /^\s*title[:\s]+(.+?)(?:\n|$)/i;
+
+function parseTitle(content: string): string {
+  const titleMatch = content.match(LEADING_TITLE_RE);
+  if (titleMatch?.[1]) {
+    return titleMatch[1].trim();
+  }
+
+  const firstLine = content
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+  return firstLine ?? "Image Analysis";
+}
+
+function parseDescription(content: string): string {
+  const withoutTitle = content.replace(LEADING_TITLE_RE, "").trim();
+  const withoutDescriptionLabel = withoutTitle.replace(/^description[:\s]+/i, "").trim();
+  return withoutDescriptionLabel.length > 0 ? withoutDescriptionLabel : content.trim();
+}
+
+export async function handleImageDescription(
+  runtime: IAgentRuntime,
+  params: ImageDescriptionParams | string
+): Promise<ImageDescriptionResult> {
+  const anthropic = createAnthropicClientWithTopPSupport(runtime);
+  const modelName = getSmallModel(runtime);
+  const imageUrl = typeof params === "string" ? params : params.imageUrl;
+  const promptText =
+    typeof params === "string"
+      ? DEFAULT_IMAGE_DESCRIPTION_PROMPT
+      : (params.prompt ?? DEFAULT_IMAGE_DESCRIPTION_PROMPT);
+  const operationName = `${ModelType.IMAGE_DESCRIPTION} request using ${modelName}`;
+  // The caller's cancellation ends the provider request and is never retried.
+  const signal = typeof params === "string" ? undefined : params.signal;
+
+  if (!imageUrl || imageUrl.trim().length === 0) {
+    throw new Error("[Anthropic] IMAGE_DESCRIPTION requires a valid image URL.");
+  }
+
+  logger.log(`[Anthropic] Using ${ModelType.IMAGE_DESCRIPTION} model: ${modelName}`);
+
+  const maxOutputTokens = resolveAnthropicMaxOutputTokens(runtime, modelName);
+
+  try {
+    const response = await executeWithRetry(
+      operationName,
+      () =>
+        generateText({
+          model: anthropic(modelName),
+          messages: [
+            {
+              role: "user" as const,
+              content: [
+                { type: "text" as const, text: promptText },
+                { type: "image" as const, image: imageUrl },
+              ],
+            },
+          ],
+          maxOutputTokens,
+          ...(signal ? { abortSignal: signal } : {}),
+        }),
+      undefined,
+      signal
+    );
+
+    const usage = response.usage
+      ? emitModelUsageEvent(
+          runtime,
+          ModelType.IMAGE_DESCRIPTION,
+          promptText,
+          response.usage,
+          modelName
+        )
+      : undefined;
+
+    // Billed tokens are reported before an incomplete output is rejected,
+    // and the rejection carries the usage and the output cap as evidence.
+    // The text path in this plugin and the Eliza Cloud image handler use
+    // the same order; asserting first dropped the billed usage entirely.
+    assertModelOutputComplete({
+      finishReason: response.finishReason,
+      provider: "anthropic",
+      model: modelName,
+      maxTokens: maxOutputTokens,
+      usage,
+    });
+
+    return {
+      title: parseTitle(response.text),
+      description: parseDescription(response.text),
+    };
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — formatModelError wraps the
+    // provider error with `cause`; never fabricate a { title, description }.
+    logger.error(
+      `[Anthropic] IMAGE_DESCRIPTION failed for ${modelName} ` +
+        `(${sanitizeUrlForLogs(imageUrl)}): ${error instanceof Error ? error.message : String(error)}`
+    );
+    throw formatModelError(operationName, error);
+  }
+}

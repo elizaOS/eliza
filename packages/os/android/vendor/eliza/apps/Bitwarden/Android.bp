@@ -1,0 +1,11 @@
+// Preserves Bitwarden's upstream signature, sandbox and user-controlled vault setup.
+android_app_import {
+    name: "ElizaBitwarden",
+    apk: "Bitwarden.apk",
+    presigned: true,
+    preprocessed: true,
+    product_specific: true,
+    dex_preopt: {
+        enabled: false,
+    },
+}

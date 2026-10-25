@@ -1,0 +1,27 @@
+**/.next
+**/.next-build-*
+**/.turbo
+**/*.tsbuildinfo
+.git
+.claude
+eliza-e2e
+upstreams
+docs
+# Runtime plugin closure is resolved from workspace manifests inside each image.
+packages/steward
+packages/native
+packages/homepage
+packages/docs
+**/*.gguf
+**/*.onnx
+**/*.bin
+**/*.wasm
+**/*.so
+**/*.dylib
+**/llama.cpp
+**/android
+**/ios
+**/coverage
+
+# Workspace allowlists above must not re-include host dependency links.
+**/node_modules

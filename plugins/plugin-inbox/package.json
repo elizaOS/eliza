@@ -1,0 +1,72 @@
+{
+  "name": "@elizaos/plugin-inbox",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "description": "Unified cross-channel inbox triage with unresolved-item tracking, snooze, archive, and follow-up watcher. Drives the inbox-zero workflow across email/Discord/Telegram/WhatsApp/X/Slack and other non-SMS channels.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "vite build --config vite.config.views.ts",
+    "build:types": "tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-google-workspace": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "lucide-react": "^1.0.0",
+    "@elizaos/contracts": "workspace:*"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-sql": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.3"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Inbox",
+      "category": "productivity"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "assets",
+    "dist"
+  ]
+}

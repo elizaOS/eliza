@@ -1,0 +1,255 @@
+{
+  "name": "@elizaos/plugin-openai",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-openai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./direct-media": {
+      "eliza-source": "./direct-media.ts",
+      "types": "./dist/direct-media.d.ts",
+      "import": "./dist/direct-media.js",
+      "default": "./dist/direct-media.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "dist",
+    "rust",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "workspaceSource": {
+        ".": "./index.ts"
+      },
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description"
+      ]
+    },
+    "scripts": {
+      "coreBuild": true
+    }
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.9",
+    "ai": "^6.0.30",
+    "js-tiktoken": "^1.0.21",
+    "gpt-tokenizer": "^4.0.0",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@elizaos/core": "workspace:*",
+    "@types/bun": "1.4.2",
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^25.0.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "uuid": "^14.0.0",
+    "vitest": "^5.0.3",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "tsup": "^8.5.1"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*",
+    "zod": "^4.6.5"
+  },
+  "scripts": {
+    "build:ts": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
+    "build": "bun run build.ts",
+    "test:integration": "bun run test && bun run test:real-runtime"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "OPENAI_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to the OpenAI API.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for all OpenAI API requests.",
+        "required": false,
+        "default": "https://api.openai.com/v1",
+        "sensitive": false
+      },
+      "EVOLINK_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to EvoLink's OpenAI-compatible API.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENROUTER_API_KEY": {
+        "type": "string",
+        "description": "Server-side OpenRouter credential used only with an explicit OPENROUTER_FALLBACK_MODEL after Cerebras rate limiting.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENROUTER_FALLBACK_MODEL": {
+        "type": "string",
+        "description": "Explicit equivalent OpenRouter text model for Cerebras HTTP 429 recovery, for example qwen/qwen3.8-27b.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENROUTER_BASE_URL": {
+        "type": "string",
+        "description": "OpenRouter-compatible endpoint for the explicit text fallback.",
+        "required": false,
+        "default": "https://openrouter.ai/api/v1",
+        "sensitive": false
+      },
+      "EVOLINK_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for EvoLink's OpenAI-compatible API.",
+        "required": false,
+        "default": "https://direct.evolink.ai/v1",
+        "sensitive": false
+      },
+      "EVOLINK_MODEL": {
+        "type": "string",
+        "description": "Identifier of the EvoLink chat model to use when EVOLINK_API_KEY enables this plugin.",
+        "required": false,
+        "default": "gpt-5.2",
+        "sensitive": false
+      },
+      "OPENAI_SMALL_MODEL": {
+        "type": "string",
+        "description": "Identifier of the small language model to be used (overrides SMALL_MODEL).",
+        "required": false,
+        "sensitive": false
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the small language model if OPENAI_SMALL_MODEL is not set.",
+        "required": false,
+        "default": "gpt-5.4-mini",
+        "sensitive": false
+      },
+      "OPENAI_LARGE_MODEL": {
+        "type": "string",
+        "description": "Identifier of the large language model to be used (overrides LARGE_MODEL).",
+        "required": false,
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the large language model if OPENAI_LARGE_MODEL is not set.",
+        "required": false,
+        "default": "gpt-5",
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model to use for generating text embeddings.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_URL": {
+        "type": "string",
+        "description": "Custom base URL for the OpenAI embeddings endpoint.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENAI_EMBEDDING_API_KEY": {
+        "type": "string",
+        "description": "Custom API key for the OpenAI embeddings endpoint.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions for the returned embedding vectors.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "OPENAI_IMAGE_DESCRIPTION_API_KEY": {
+        "type": "string",
+        "description": "Optional API key for image-description requests. Falls back to the general OpenAI API key when unset.",
+        "required": false,
+        "sensitive": true
+      },
+      "OPENAI_IMAGE_DESCRIPTION_BASE_URL": {
+        "type": "string",
+        "description": "Optional OpenAI-compatible base URL for image-description requests. Useful when text models use a non-vision-compatible endpoint.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENAI_IMAGE_DESCRIPTION_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for describing images.",
+        "required": false,
+        "default": "gpt-5-mini",
+        "sensitive": false
+      },
+      "OPENAI_TTS_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for text-to-speech generation.",
+        "required": false,
+        "default": "gpt-5-mini-tts",
+        "sensitive": false
+      },
+      "OPENAI_TTS_VOICE": {
+        "type": "string",
+        "description": "Voice profile to use for text-to-speech output.",
+        "required": false,
+        "default": "nova",
+        "sensitive": false
+      },
+      "OPENAI_TTS_INSTRUCTIONS": {
+        "type": "string",
+        "description": "Optional instructions to control the style or behavior of the text-to-speech request.",
+        "required": false,
+        "sensitive": false
+      },
+      "OPENAI_EXPERIMENTAL_TELEMETRY": {
+        "type": "boolean",
+        "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "engines": {
+    "node": ">=24"
+  }
+}

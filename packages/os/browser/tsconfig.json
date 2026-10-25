@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM"],
+    "allowJs": true,
+    "checkJs": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": false,
+    "types": ["node"],
+    "customConditions": ["eliza-source"]
+  },
+  "include": [
+    "src/protocol.mjs",
+    "scripts/native-host.mjs",
+    "protection/policy.mjs",
+    "protection/domain-lookalike.mjs",
+    "protection/reputation.mjs",
+    "protection/build.mjs",
+    "protection/extension.mjs"
+  ]
+}

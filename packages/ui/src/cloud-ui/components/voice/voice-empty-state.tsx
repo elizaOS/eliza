@@ -1,0 +1,31 @@
+/**
+ * Empty state for voice studio using the shared EmptyState component.
+ */
+"use client";
+
+import { Mic } from "lucide-react";
+import { Button } from "../../../components/ui/button";
+import { EmptyState } from "../../../components/ui/empty-state";
+
+interface VoiceEmptyStateProps {
+  onCreateClick: () => void;
+}
+
+export function VoiceEmptyState({ onCreateClick }: VoiceEmptyStateProps) {
+  return (
+    <EmptyState
+      icon={<Mic className="size-7 text-muted" />}
+      title="Create a Voice Clone"
+      action={
+        <Button onClick={onCreateClick} size="lg">
+          <Mic className="mr-2  size-5" />
+          Get Started
+        </Button>
+      }
+    >
+      <p className="text-xs text-muted-foreground">
+        Instant: 50 credits • Professional: 200 credits
+      </p>
+    </EmptyState>
+  );
+}

@@ -1,0 +1,413 @@
+/**
+ * Node/Bun entry point for `@elizaos/plugin-sql`: registers either a
+ * `PgDatabaseAdapter` (when `postgresUrl` is set, with per-RLS-server-id
+ * connection-pool reuse) or a `PgliteDatabaseAdapter` (per-agent PGlite
+ * singleton), both drawn from the process-global singleton cache under
+ * `Symbol.for("elizaos.plugin-sql.global-singletons")`. Also re-exports the
+ * Drizzle query helpers, RLS management functions, and the PGlite
+ * live-query and close accessors used by hosts.
+ */
+import type { IDatabaseAdapter, Plugin, UUID } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
+
+import {
+  createAdapterReadinessError,
+  describeAdapterReadinessError,
+  isMissingDatabaseAdapterError,
+} from "./adapter-readiness";
+
+export {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
+
+import { PgDatabaseAdapter } from "./pg/adapter";
+import { PostgresConnectionManager } from "./pg/manager";
+import { PgliteDatabaseAdapter } from "./pglite/adapter";
+import { ensurePrivateDir, type LiveNamespace, PGliteClientManager } from "./pglite/manager";
+import {
+  type ClosePgliteSingletonResult,
+  dropActivePgliteManager,
+  getOrCreatePgliteManagerForAgent,
+  type PgliteManagerCache,
+  type PgliteSingletonCache,
+} from "./pglite/manager-cache";
+import { schema } from "./schema";
+import { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+import { SqlMembershipService } from "./services/sql-membership";
+import { SqlPrincipalService } from "./services/sql-principal";
+import { stringToUuid } from "./utils/string-to-uuid";
+import { resolvePgliteDir } from "./utils.ts";
+
+export type {
+  AppendConnectorAccountAuditEventParams,
+  ConnectorAccountAuditEventRecord,
+  ConnectorAccountAuditOutcome,
+  ConnectorAccountCredentialRefRecord,
+  ConnectorAccountJsonObject,
+  ConnectorAccountRecord,
+  ConsumeOAuthFlowStateParams,
+  CreateOAuthFlowStateParams,
+  DeleteConnectorAccountParams,
+  GetConnectorAccountCredentialRefParams,
+  GetConnectorAccountParams,
+  ListConnectorAccountCredentialRefsParams,
+  ListConnectorAccountsParams,
+  OAuthFlowRecord,
+  SetConnectorAccountCredentialRefParams,
+  UpsertConnectorAccountParams,
+} from "@elizaos/core";
+export * from "./connector-credential-store";
+export * from "./pglite/errors";
+export type { LiveNamespace } from "./pglite/manager";
+export type {
+  ClosePgliteSingletonResult,
+  PgliteSingletonCache,
+  PgliteSingletonManager,
+} from "./pglite/manager-cache";
+export { schema } from "./schema";
+export { agentTable } from "./schema/agent";
+export { approvalDispatchControlTable } from "./schema/approvalDispatchControl";
+export { approvalRequestTable } from "./schema/approvalRequests";
+export type { AuthAuditOutcome } from "./schema/authAuditEvent";
+export { authAuditEventTable } from "./schema/authAuditEvent";
+export { authBootstrapJtiSeenTable } from "./schema/authBootstrapJti";
+export type { AuthIdentityKind } from "./schema/authIdentity";
+export {
+  authIdentityCreatedAtDefault,
+  authIdentityTable,
+} from "./schema/authIdentity";
+export { authOwnerBindingTable } from "./schema/authOwnerBinding";
+export { authOwnerLoginTokenTable } from "./schema/authOwnerLoginToken";
+export type { AuthSessionKind } from "./schema/authSession";
+export { authSessionTable } from "./schema/authSession";
+export { cacheTable } from "./schema/cache";
+export { channelTable } from "./schema/channel";
+export { channelParticipantsTable } from "./schema/channelParticipant";
+export { componentTable } from "./schema/component";
+export {
+  connectorAccountAuditEventsTable,
+  connectorAccountCredentialsTable,
+  connectorAccountsTable,
+  oauthFlowsTable,
+} from "./schema/connectorAccounts";
+export { embeddingTable } from "./schema/embedding";
+export { entityTable } from "./schema/entity";
+export {
+  entityIdentityTable,
+  entityMergeCandidateTable,
+  factCandidateTable,
+} from "./schema/entityIdentity";
+export {
+  identityAuthorityStateTable,
+  identityCanonicalRedirectTable,
+  identityClaimTable,
+  identityMergeConfirmationTable,
+  identityMergeJournalTable,
+  identityPersonLinkAttestationTable,
+} from "./schema/identityAuthority";
+export { logTable } from "./schema/log";
+export { longTermMemories } from "./schema/longTermMemories";
+export {
+  membershipAuthorityJournalTable,
+  membershipAuthorityScopeTable,
+  membershipAuthorityTable,
+} from "./schema/membershipAuthority";
+export { memoryTable } from "./schema/memory";
+export { memoryAccessLogs } from "./schema/memoryAccessLogs";
+export { messageTable } from "./schema/message";
+export { messageServerTable } from "./schema/messageServer";
+export { messageServerAgentsTable } from "./schema/messageServerAgent";
+export { pairingAllowlistTable } from "./schema/pairingAllowlist";
+export { pairingRequestTable } from "./schema/pairingRequest";
+export { participantTable } from "./schema/participant";
+export { relationshipTable } from "./schema/relationship";
+export { roomTable } from "./schema/room";
+export { serverTable } from "./schema/server";
+export { sessionSummaries } from "./schema/sessionSummaries";
+export { taskTable } from "./schema/tasks";
+export { worldTable } from "./schema/world";
+export { worldRoleAuditTable } from "./schema/worldRoleAudit";
+export type { DrizzleDatabase } from "./types";
+
+const GLOBAL_SINGLETONS = Symbol.for("elizaos.plugin-sql.global-singletons");
+
+interface GlobalSingletons extends PgliteManagerCache<PGliteClientManager> {
+  postgresConnectionManagers?: Map<string, PostgresConnectionManager>;
+}
+
+interface RuntimeWithAdapterRegistrar {
+  registerDatabaseAdapter: (adapter: IDatabaseAdapter) => void;
+}
+
+const globalSymbols = globalThis as typeof globalThis & Record<symbol, GlobalSingletons>;
+if (!globalSymbols[GLOBAL_SINGLETONS]) {
+  globalSymbols[GLOBAL_SINGLETONS] = {};
+}
+const globalSingletons = globalSymbols[GLOBAL_SINGLETONS];
+
+function shouldReusePostgresManager(
+  manager: PostgresConnectionManager | undefined
+): manager is PostgresConnectionManager {
+  if (!manager) {
+    return false;
+  }
+
+  return !manager.isShuttingDown();
+}
+
+export function createDatabaseAdapter(
+  config: {
+    dataDir?: string;
+    postgresUrl?: string;
+  },
+  agentId: UUID
+): IDatabaseAdapter {
+  if (config.postgresUrl) {
+    const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
+    let rlsServerId: string | undefined;
+    let managerKey = "default";
+
+    if (dataIsolationEnabled) {
+      const rlsServerIdString = process.env.ELIZA_SERVER_ID;
+      if (!rlsServerIdString) {
+        throw new Error(
+          "[Data Isolation] ENABLE_DATA_ISOLATION=true requires ELIZA_SERVER_ID environment variable"
+        );
+      }
+      rlsServerId = stringToUuid(rlsServerIdString);
+      managerKey = rlsServerId;
+      logger.debug(
+        {
+          src: "plugin:sql",
+          rlsServerId: rlsServerId.slice(0, 8),
+          serverIdString: rlsServerIdString,
+        },
+        "Using connection pool for RLS server"
+      );
+    }
+
+    if (!globalSingletons.postgresConnectionManagers) {
+      globalSingletons.postgresConnectionManagers = new Map();
+    }
+
+    let manager = globalSingletons.postgresConnectionManagers.get(managerKey);
+    if (!shouldReusePostgresManager(manager)) {
+      logger.debug(
+        { src: "plugin:sql", managerKey: managerKey.slice(0, 8) },
+        "Creating new connection pool"
+      );
+      manager = new PostgresConnectionManager(config.postgresUrl, rlsServerId);
+      globalSingletons.postgresConnectionManagers.set(managerKey, manager);
+    }
+
+    return new PgDatabaseAdapter(agentId, manager);
+  }
+
+  const dataDir = resolvePgliteDir(config.dataDir);
+
+  // `:memory:` is PGlite's in-memory sentinel, not a real path. On Windows the
+  // reserved `:` makes mkdirSync throw (on POSIX it silently creates a junk
+  // `:memory:` directory), so skip directory creation for it and for URLs.
+  if (dataDir && !dataDir.includes("://") && dataDir !== ":memory:") {
+    ensurePrivateDir(dataDir);
+  }
+
+  const manager = getOrCreatePgliteManagerForAgent(globalSingletons, dataDir, agentId, () => {
+    return new PGliteClientManager({ dataDir });
+  });
+  return new PgliteDatabaseAdapter(agentId, manager);
+}
+
+export const plugin: Plugin = {
+  name: "@elizaos/plugin-sql",
+  description: "A plugin for SQL database access with dynamic schema migrations",
+  priority: 0,
+  schema: schema,
+  services: [AdvancedMemoryStorageService, SqlPrincipalService, SqlMembershipService],
+  init: async (_config, runtime: IAgentRuntime) => {
+    const runtimeWithAdapter = runtime as IAgentRuntime & RuntimeWithAdapterRegistrar;
+    runtime.logger.info(
+      { src: "plugin:sql", agentId: runtime.agentId },
+      "plugin-sql (node) init starting"
+    );
+
+    const adapterRegistered = await runtime
+      .isReady()
+      .then(() => true)
+      .catch((error: unknown) => {
+        const message = describeAdapterReadinessError(error);
+        if (isMissingDatabaseAdapterError(error)) {
+          runtime.logger.info(
+            { src: "plugin:sql", agentId: runtime.agentId },
+            "No pre-registered database adapter detected; registering adapter"
+          );
+          return false;
+        }
+        runtime.logger.error(
+          { src: "plugin:sql", agentId: runtime.agentId, error: message },
+          "Database adapter readiness check failed"
+        );
+        throw createAdapterReadinessError(error, {
+          agentId: runtime.agentId,
+          entrypoint: "node",
+        });
+      });
+    if (adapterRegistered) {
+      runtime.logger.info(
+        { src: "plugin:sql", agentId: runtime.agentId },
+        "Database adapter already registered, skipping creation"
+      );
+      return;
+    }
+
+    const postgresUrl = runtime.getSetting("POSTGRES_URL");
+    const dataDir = runtime.getSetting("PGLITE_DATA_DIR");
+
+    const dbAdapter = createDatabaseAdapter(
+      {
+        dataDir: typeof dataDir === "string" ? dataDir : undefined,
+        postgresUrl: typeof postgresUrl === "string" ? postgresUrl : undefined,
+      },
+      runtime.agentId
+    );
+
+    runtimeWithAdapter.registerDatabaseAdapter(dbAdapter);
+    await dbAdapter.initialize();
+    runtime.logger.info(
+      { src: "plugin:sql", agentId: runtime.agentId },
+      "Database adapter created and registered"
+    );
+  },
+  async dispose(runtime) {
+    await runtime
+      .getService<AdvancedMemoryStorageService>(AdvancedMemoryStorageService.serviceType)
+      ?.stop();
+  },
+};
+
+export default plugin;
+
+export { DatabaseMigrationService } from "./migration-service";
+export {
+  applyRLSToNewTables,
+  assignAgentToServer,
+  getOrCreateRlsServer,
+  installRLSFunctions,
+  setServerContext,
+  uninstallRLS,
+} from "./rls";
+export { AdvancedMemoryStorageService } from "./services/advanced-memory-storage";
+export { SqlMembershipService } from "./services/sql-membership";
+export {
+  computeIdentityRequestDigest,
+  SqlPrincipalService,
+} from "./services/sql-principal";
+
+/**
+ * Access the PGlite live query namespace from the global singleton.
+ * Returns null when the PGlite adapter is not in use or extensions are disabled.
+ * Use for reactive dashboard queries via pg.live.query() / incrementalQuery() / changes().
+ */
+export function getPgliteLiveNamespace(): LiveNamespace | null {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) return null;
+  return manager.liveQuery();
+}
+
+/**
+ * Close and drop the process-global PGlite singleton manager.
+ *
+ * Awaits the manager's `close()` bounded by `timeoutMs` (default 1000ms), then
+ * removes it from the singleton cache so the next `createDatabaseAdapter()`
+ * builds a fresh manager. Used by hosts recovering from a corrupt PGlite data
+ * directory. Returns whether a manager was closed and whether close() timed out.
+ */
+export async function closePgliteSingleton(options?: {
+  timeoutMs?: number;
+}): Promise<ClosePgliteSingletonResult> {
+  const manager = globalSingletons.pgLiteClientManager;
+  if (!manager) {
+    return { closed: false, timedOut: false, error: null };
+  }
+
+  let timedOut = false;
+  let error: Error | null = null;
+  const timeoutMs = options?.timeoutMs ?? 1_000;
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    await Promise.race([
+      Promise.resolve(manager.close()),
+      new Promise<void>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          resolve();
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    error = err instanceof Error ? err : new Error(String(err));
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+
+  dropActivePgliteManager(globalSingletons, manager);
+  return { closed: true, timedOut, error };
+}
+
+/**
+ * Public handle onto the process-global PGlite singleton cache. Lets a host
+ * pre-seed or inspect the active manager (e.g. a browser bundle that
+ * pre-initializes PGlite with custom asset loading) without hand-copying the
+ * private `Symbol.for("elizaos.plugin-sql.global-singletons")`.
+ */
+export function getPgliteSingletonCache(): PgliteSingletonCache {
+  return globalSingletons;
+}
+
+export * from "./database-utils/carve-out-migration";
+export * from "./database-utils/raw-sql";
+export * from "./database-utils/sql-compat";
+export { PgDatabaseAdapter } from "./pg/adapter";
+export { PostgresConnectionManager } from "./pg/manager";
+export { PgliteDatabaseAdapter } from "./pglite/adapter";
+export { PGliteClientManager } from "./pglite/manager";
+export {
+  calculateDiff,
+  hasDiffChanges,
+  type SchemaDiff,
+} from "./runtime-migrator/drizzle-adapters/diff-calculator";
+export {
+  createEmptySnapshot,
+  generateSnapshot,
+  hasChanges,
+  hashSnapshot,
+} from "./runtime-migrator/drizzle-adapters/snapshot-generator";
+export {
+  generateMigrationSQL,
+  generateRenameColumnSQL,
+  generateRenameTableSQL,
+} from "./runtime-migrator/drizzle-adapters/sql-generator";
+export { RuntimeMigrator } from "./runtime-migrator/runtime-migrator";
+export { JournalStorage } from "./runtime-migrator/storage/journal-storage";
+export { MigrationTracker } from "./runtime-migrator/storage/migration-tracker";
+export { SnapshotStorage } from "./runtime-migrator/storage/snapshot-storage";
+export * from "./runtime-migrator/types";
+export { clientDeviceTable } from "./schema/clientDevices";
+export { computeIdentityPersonLinkRequestDigest } from "./services/sql-principal";

@@ -1,0 +1,296 @@
+/** Configures the integration shared Vitest lane used by workspace package tests. */
+import { existsSync } from "node:fs";
+import path from "node:path";
+import {
+  getAppCoreSourceRoot,
+  getAutonomousSourceRoot,
+  getElizaCoreEntry,
+  getUiSourceRoot,
+} from "@elizaos/repository-tools";
+import { repoRoot } from "./repo-root";
+import { buildWorkspaceSourceAliases } from "./source-aliases";
+import {
+  getAgentSourceAliases,
+  getAppCoreSourceAliases,
+  getElizaWorkspaceRoot,
+  getOptionalInstalledPackageAliases,
+  getOptionalPluginSdkAliases,
+  getUiSourceAliases,
+  getWorkspaceAppAliases,
+  type ModuleAlias,
+} from "./workspace-aliases";
+
+const elizaCoreEntry = getElizaCoreEntry(repoRoot);
+const elizaWorkspaceRoot = getElizaWorkspaceRoot(repoRoot);
+// plugin-discord is not part of build:core, so its `/user-account-scraper`
+// subpath export has no dist and dies with "Cannot find package" when the PA
+// plugin graph boots (discord-service.ts imports it). Its exports map carries
+// an `eliza-source` condition pointing at the TS source; vite's SSR resolver
+// does not honor that condition, so pin the subpath to the source file the
+// same way the core subpaths are pinned above.
+const discordScraperSource = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-discord",
+  "user-account-scraper",
+  "index.ts",
+);
+const discordSubpathAliases: ModuleAlias[] = existsSync(discordScraperSource)
+  ? [
+      {
+        find: /^@elizaos\/plugin-discord\/user-account-scraper$/,
+        replacement: discordScraperSource,
+      },
+    ]
+  : [];
+// Same story for plugin-app-control's `/actions/settings` subpath: its build
+// (tsup with index + worker entries only) never emits dist/actions/*.js, so
+// the agent's settings-actions.ts import only resolves under the
+// `eliza-source` exports condition vite's SSR resolver ignores. Pin it to the
+// TS source so the PA plugin graph can boot in this lane.
+const appControlSettingsSource = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-app-control",
+  "src",
+  "actions",
+  "settings.ts",
+);
+const appControlSubpathAliases: ModuleAlias[] = existsSync(
+  appControlSettingsSource,
+)
+  ? [
+      {
+        find: /^@elizaos\/plugin-app-control\/actions\/settings$/,
+        replacement: appControlSettingsSource,
+      },
+    ]
+  : [];
+// plugin-app-manager was extracted from @elizaos/agent in #14459 but is not a
+// dependency of plugin-personal-assistant, so this lane's
+// `--filter='@elizaos/plugin-personal-assistant...'` build never emits its
+// dist. The agent source (which this lane aliases to src) imports it by its
+// bare `.` entry — resolvable only under the `eliza-source` exports condition
+// vite's SSR resolver ignores — so the whole PA plugin graph fails to boot.
+// Pin the package to its TS source, matching the discord/app-control pins.
+const appManagerSource = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-app-manager",
+  "src",
+  "index.ts",
+);
+const appManagerAliases: ModuleAlias[] = existsSync(appManagerSource)
+  ? [
+      {
+        find: /^@elizaos\/plugin-app-manager$/,
+        replacement: appManagerSource,
+      },
+    ]
+  : [];
+// Core is source-aliased in this lane and re-exports the cloud-routing package.
+// Clean CI checkouts do not build that package first, so resolving its default
+// dist export would abort collection before any integration test can run.
+const cloudRoutingSource = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "cloud",
+  "routing",
+  "src",
+  "index.ts",
+);
+// The agent barrel keeps Cloud route handlers lazy, but Vite still resolves
+// the literal dynamic import during transform. Point it at the Node source
+// entry (and its SDK dependency at source) so an unused lazy route cannot make
+// an unrelated integration suite depend on prebuilt plugin artifacts.
+const cloudSdkSource = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "cloud",
+  "sdk",
+  "src",
+  "index.ts",
+);
+// Include/exclude globs are cwd-relative, but the eliza workspace sits at
+// `eliza/` in the nested eliza layout and at the repo root in a flat eliza
+// checkout (#11047). Derive the prefix instead of hardcoding `eliza/` so the
+// lane finds its test files in both layouts (a hardcoded prefix made every
+// plugins/*/test/**/*.integration.test.ts glob dead in flat checkouts).
+const relativeElizaRoot = path
+  .relative(process.cwd(), elizaWorkspaceRoot)
+  .split(path.sep)
+  .join("/");
+const elizaGlob = (pattern: string): string =>
+  relativeElizaRoot === "" ? pattern : `${relativeElizaRoot}/${pattern}`;
+const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
+const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
+const workspaceUiSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "ui",
+  "src",
+);
+const uiSourceRoot = existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
+  ? workspaceUiSourceRoot
+  : getUiSourceRoot(repoRoot);
+const integrationResolveAlias: ModuleAlias[] = [
+  ...getOptionalPluginSdkAliases(repoRoot),
+  ...discordSubpathAliases,
+  ...appControlSubpathAliases,
+  ...appManagerAliases,
+  {
+    find: /^@elizaos\/cloud-routing$/,
+    replacement: cloudRoutingSource,
+  },
+  {
+    find: /^@elizaos\/cloud-sdk$/,
+    replacement: cloudSdkSource,
+  },
+  {
+    // The generic source alias maps subpaths to sibling `.ts` files; `kms` is
+    // an index directory, so preserve the package's explicit export shape.
+    find: /^@elizaos\/security\/kms$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages",
+      "security",
+      "src",
+      "kms",
+      "index.ts",
+    ),
+  },
+  ...(elizaCoreEntry
+    ? [
+        {
+          find: /^@elizaos\/core$/,
+          replacement: elizaCoreEntry,
+        },
+      ]
+    : []),
+  ...getAgentSourceAliases(autonomousSourceRoot),
+  ...getAppCoreSourceAliases(appCoreSourceRoot),
+  ...getUiSourceAliases(uiSourceRoot),
+  ...getWorkspaceAppAliases(repoRoot, [
+    "app-companion",
+    "plugin-personal-assistant",
+    "app-task-coordinator",
+    "plugin-workflow",
+  ]),
+  // Vite's SSR resolver does not consistently select custom export
+  // conditions, so source-alias the remaining workspace leaves after the
+  // specialized entry points above. This keeps clean CI independent of dist.
+  ...buildWorkspaceSourceAliases(elizaWorkspaceRoot),
+  ...getOptionalInstalledPackageAliases(repoRoot, [
+    {
+      find: "@elizaos/plugin-sql",
+      packageName: "@elizaos/plugin-sql",
+      options: {
+        entryKind: "node",
+        fallbackPath: path.join(
+          elizaWorkspaceRoot,
+          "plugins",
+          "plugin-sql",
+          "src",
+          "index.node",
+        ),
+      },
+    },
+  ]),
+];
+
+const integrationConfig = {
+  resolve: {
+    // Prefer the workspace TypeScript branches in resolver paths that honor
+    // custom export conditions. The explicit and comprehensive aliases above
+    // cover Vite SSR paths that do not apply this condition consistently.
+    conditions: ["eliza-source"],
+    alias: integrationResolveAlias,
+  },
+  test: {
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    globalSetup: [
+      path.join(elizaWorkspaceRoot, "packages/app/test/e2e-global-setup.ts"),
+    ],
+    // Integration files frequently replace globals and module-level mocks.
+    // Shared module state causes cross-file bleed, which is more expensive to
+    // debug than the small cost of per-file isolation.
+    isolate: true,
+    fileParallelism: false,
+    pool: "forks",
+    maxWorkers: 1,
+    // Match the unit test worker heap to avoid late jsdom OOM crashes during
+    // serial runs, where one fork accumulates dozens of suites.
+    execArgv: ["--max-old-space-size=4096"],
+    sequence: {
+      concurrent: false,
+      shuffle: false,
+    },
+    include: [
+      elizaGlob("packages/agent/test/**/*.integration.test.ts"),
+      elizaGlob("apps/*/test/**/*.integration.test.ts"),
+      elizaGlob("packages/app/test/**/*.integration.test.ts"),
+      // Plugin-level integration tests (16 *.integration.test.ts files in
+      // app-lifeops/test/) were dead in CI — neither the plugin's own
+      // vitest.config.ts (which excludes the integration suffix from the
+      // unit lane) nor this integration config picked them up. Include
+      // them now so the existing coverage runs.
+      elizaGlob(
+        "plugins/plugin-personal-assistant/test/**/*.integration.test.ts",
+      ),
+      elizaGlob("plugins/*/test/**/*.integration.test.ts"),
+      // Src-level plugin integration tests were dead the same way: the
+      // scheduler suite at plugin-personal-assistant/src/lifeops/
+      // scheduled-task/scheduler.integration.test.ts (10 real-DB tests of the
+      // production processDueScheduledTasks wiring) matched neither the
+      // plugin's unit lane (integration suffix excluded) nor the test/**
+      // globs above — vitest reported "No test files found" even when the
+      // file was passed explicitly. Include src/** so the suite runs.
+      elizaGlob(
+        "plugins/plugin-personal-assistant/src/**/*.integration.test.ts",
+      ),
+      elizaGlob("plugins/*/src/**/*.integration.test.ts"),
+      // packages/agent/src/** was dead in the same way as the two cases
+      // above, and its test/** sibling on line 332 only looks covered: the
+      // agent package's own lanes exclude the `.integration.test.` suffix
+      // (vitest.config.ts and scripts/run-vitest-batches.ts), so this config
+      // is the only lane that can run those files (#17778). Both agent roots
+      // are listed so a new suite is picked up by pattern rather than by an
+      // author remembering to add it somewhere.
+      elizaGlob("packages/agent/src/**/*.integration.test.ts"),
+    ],
+    setupFiles: [path.join(elizaWorkspaceRoot, "packages/app/test/setup.ts")],
+    exclude: [
+      "dist/**",
+      "**/node_modules/**",
+      "**/*-live.test.ts",
+      "**/*-live.test.tsx",
+      "**/*.live.test.ts",
+      "**/*.live.test.tsx",
+      "**/*-live.e2e.test.ts",
+      "**/*-live.e2e.test.tsx",
+      "**/*.live.e2e.test.ts",
+      "**/*.live.e2e.test.tsx",
+      "**/*.real.e2e.test.ts",
+      "**/*.real.e2e.test.tsx",
+      // --- server/runtime route tests must live in the live/real lane ---
+      elizaGlob("packages/app/src/api/**/*.test.{ts,tsx}"),
+      elizaGlob("packages/app/src/services/**/*.test.{ts,tsx}"),
+      elizaGlob("apps/*/src/**/*routes.test.{ts,tsx}"),
+      elizaGlob("apps/*/src/services/**/*.test.{ts,tsx}"),
+    ],
+    server: {
+      deps: {
+        inline: [
+          "@elizaos/core",
+          "@elizaos/agent",
+          /^@elizaos\/app-/,
+          /^@elizaos\/plugin-/,
+          "zod",
+        ],
+      },
+    },
+  },
+} satisfies import("vitest/config").ViteUserConfig;
+
+export default integrationConfig;

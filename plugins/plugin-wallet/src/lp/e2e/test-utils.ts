@@ -1,0 +1,164 @@
+/**
+ * Shared setup/assertion helpers for the LP manager's `TestSuite` scenarios
+ * (`scenarios.ts`, `real-token-tests.ts`): builds a world/user/room against a
+ * live `IAgentRuntime` and sends a message through the real agent pipeline,
+ * waiting for its response.
+ */
+import { strict as assert } from "node:assert";
+import {
+  asUUID,
+  ChannelType,
+  type Content,
+  createUniqueUuid,
+  type Entity,
+  EventType,
+  type IAgentRuntime,
+  type Memory,
+  type Room,
+  type Setting,
+  type World,
+} from "@elizaos/core";
+import { v4 as uuid } from "uuid";
+
+const E2E_TEST_SERVER_ID = "e2e-test-server";
+
+function testSetting(name: string, value: string | boolean | null): Setting {
+  return {
+    name,
+    description: `E2E ${name}`,
+    usageDescription: `E2E ${name}`,
+    required: false,
+    value,
+    dependsOn: [],
+  };
+}
+
+/**
+ * Sets up a standard scenario environment for an E2E test.
+ *
+ * This function creates a world, a user, and a room, providing an
+ * isolated environment for each test case.
+ *
+ * @param runtime The live IAgentRuntime instance provided by the TestRunner.
+ * @returns A promise that resolves to an object containing the created world, user, and room.
+ */
+export async function setupScenario(
+  runtime: IAgentRuntime,
+): Promise<{ user: Entity; room: Room; world: World }> {
+  assert(runtime.agentId, "Runtime must have an agentId to run a scenario");
+
+  // Set up mock environment for DEX plugins
+  process.env.RPC_URL =
+    process.env.RPC_URL || "https://api.mainnet-beta.solana.com";
+  process.env.SOLANA_PUBLIC_KEY =
+    process.env.SOLANA_PUBLIC_KEY || "11111111111111111111111111111111";
+  process.env.SOLANA_PRIVATE_KEY =
+    process.env.SOLANA_PRIVATE_KEY || "mockPrivateKeyForTesting";
+  // 1. Create a test user entity first, so we can assign ownership
+  const user: Entity = {
+    id: asUUID(uuid()),
+    names: ["Test User"],
+    agentId: runtime.agentId,
+    metadata: { type: "user" },
+  };
+  await runtime.createEntity(user);
+  assert(user.id, "Created user must have an id");
+
+  // 2. Create a World and assign the user as the owner.
+  // This is critical for providers that check for ownership.
+  const world: World = {
+    id: asUUID(uuid()),
+    agentId: runtime.agentId,
+    name: "E2E Test World",
+    metadata: {
+      ownership: {
+        ownerId: user.id,
+      },
+      settings: {
+        lp_manager: {
+          onboarding_enabled: testSetting("onboarding_enabled", true),
+          auto_rebalance_enabled: testSetting("auto_rebalance_enabled", true),
+          default_slippage_bps: testSetting("default_slippage_bps", "50"),
+        },
+      },
+    },
+  };
+  await runtime.ensureWorldExists(world);
+
+  // 3. Create a test room associated with the world
+  const room: Room = {
+    id: asUUID(uuid()),
+    name: "Test DM Room",
+    type: ChannelType.DM,
+    source: "e2e-test",
+    worldId: world.id,
+    serverId: E2E_TEST_SERVER_ID,
+  };
+  await runtime.createRoom(room);
+
+  // 4. Ensure both the agent and the user are participants in the room
+  await runtime.ensureParticipantInRoom(runtime.agentId, room.id);
+  await runtime.ensureParticipantInRoom(user.id, room.id);
+
+  // Register mock services for testing
+  // The real DEX plugins are not properly registering their services currently
+  const { registerMockDexServices } = await import(
+    "../services/__tests__/MockLpService.ts"
+  );
+  await registerMockDexServices(runtime);
+
+  // Wait for services to be registered
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  return { user, room, world };
+}
+
+/**
+ * Simulates a user sending a message and waits for the agent's response.
+ *
+ * This function abstracts the event-driven nature of the message handler
+ * into a simple async function, making tests easier to write and read.
+ *
+ * @param runtime The live IAgentRuntime instance.
+ * @param room The room where the message is sent.
+ * @param user The user entity sending the message.
+ * @param text The content of the message.
+ * @returns A promise that resolves with the agent's response content.
+ */
+export function sendMessageAndWaitForResponse(
+  runtime: IAgentRuntime,
+  room: Room,
+  user: Entity,
+  text: string,
+): Promise<Content> {
+  return new Promise((resolve) => {
+    assert(runtime.agentId, "Runtime must have an agentId to send a message");
+    assert(user.id, "User must have an id to send a message");
+
+    // Construct the message object, simulating an incoming message from a user
+    const message: Memory = {
+      id: createUniqueUuid(runtime, `${user.id}-${Date.now()}`),
+      agentId: runtime.agentId,
+      entityId: user.id,
+      roomId: room.id,
+      content: {
+        text,
+      },
+      createdAt: Date.now(),
+    };
+
+    // The callback function that the message handler will invoke with the agent's final response.
+    // We use this callback to resolve our promise.
+    const callback = async (responseContent: Content): Promise<Memory[]> => {
+      resolve(responseContent);
+      return [];
+    };
+
+    // Emit the event to trigger the agent's message processing logic.
+    runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
+      runtime,
+      message,
+      callback,
+    });
+  });
+}

@@ -1,0 +1,26 @@
+#version 450
+
+// Scalar mul_mm baseline (#9584/#9715) — one output element per invocation,
+// each reading A and B straight from global memory across the full K loop.
+// This mirrors the cooperative-matrix-free path the Mali Vulkan backend falls
+// back to (Mali-G715 reports `matrix cores: none`), and is the reference the
+// tiled variant must match and beat. C[M,N] = A[M,K] * B[K,N], row-major f32.
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(std430, binding = 0) readonly buffer ABuf { float A[]; };
+layout(std430, binding = 1) readonly buffer BBuf { float B[]; };
+layout(std430, binding = 2) writeonly buffer CBuf { float C[]; };
+
+layout(push_constant) uniform Push { uint M, N, K; } p;
+
+void main() {
+    uint col = gl_GlobalInvocationID.x; // N
+    uint row = gl_GlobalInvocationID.y; // M
+    if (row >= p.M || col >= p.N) return;
+    float acc = 0.0;
+    for (uint k = 0; k < p.K; ++k) {
+        acc += A[row * p.K + k] * B[k * p.N + col];
+    }
+    C[row * p.N + col] = acc;
+}

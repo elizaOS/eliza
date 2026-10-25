@@ -1,0 +1,699 @@
+[
+  {
+    "id": "messages.send_whatsapp_birthday_to_contact",
+    "name": "Send WhatsApp birthday greeting",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Send a quick WhatsApp message to contact_00002 wishing them a happy birthday.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "contact",
+          "target": "contact_00002",
+          "message": "Happy birthday! \ud83c\udf89"
+        }
+      }
+    ],
+    "required_outputs": ["birthday"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple outbound WhatsApp message to a seeded contact."
+  },
+  {
+    "id": "messages.read_telegram_group_since_yesterday",
+    "name": "Read Telegram group messages since yesterday",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Show me what was said in the family Telegram group (conv_0004) since yesterday.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "telegram",
+          "roomId": "conv_0004",
+          "range": "dates",
+          "from": "2026-05-09T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["family"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel with explicit date range for a Telegram group."
+  },
+  {
+    "id": "messages.reply_slack_channel_task_update",
+    "name": "Reply in Slack channel about task update",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Post in the project Slack channel (conv_0006) that I\u2019ll finish the draft after lunch.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "slack",
+          "targetKind": "group",
+          "roomId": "conv_0006",
+          "message": "I\u2019ll finish the draft after lunch."
+        }
+      }
+    ],
+    "required_outputs": ["draft"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send to a Slack channel, verifying targetKind handling."
+  },
+  {
+    "id": "messages.summarize_unread_signal_contact",
+    "name": "Summarize unread Signal messages from a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Give me a summary of the unread messages from contact_00010 on Signal.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "signal",
+          "contact": "contact_00010",
+          "limit": 10
+        }
+      }
+    ],
+    "required_outputs": ["Signal"],
+    "first_question_fallback": {
+      "canned_answer": "Sure, I\u2019ll pull the last 10 messages.",
+      "applies_when": "agent asks how many messages to fetch"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on Signal, testing limit parameter."
+  },
+  {
+    "id": "messages.send_whatsapp_group_dinner",
+    "name": "Send dinner invitation to WhatsApp group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Message the weekend plans group (conv_0007) on WhatsApp: 'Dinner at 7pm? Let me know.'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "group",
+          "roomId": "conv_0007",
+          "message": "Dinner at 7pm? Let me know."
+        }
+      }
+    ],
+    "required_outputs": ["Dinner"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on WhatsApp, testing group target handling."
+  },
+  {
+    "id": "messages.read_imessage_conversation_recent",
+    "name": "Read recent iMessage conversation",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Show me the last 20 messages from the iMessage chat (conv_0008).",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "imessage",
+          "roomId": "conv_0008",
+          "limit": 20
+        }
+      }
+    ],
+    "required_outputs": ["iMessage"],
+    "first_question_fallback": {
+      "canned_answer": "20 messages works for me.",
+      "applies_when": "agent asks how many messages to retrieve"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-channel on iMessage with limit parameter."
+  },
+  {
+    "id": "messages.send_telegram_to_contact_with_emoji",
+    "name": "Send Telegram message with emoji",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Ping contact_00012 on Telegram saying 'On my way \ud83d\ude97'.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "telegram",
+          "targetKind": "contact",
+          "target": "contact_00012",
+          "message": "On my way \ud83d\ude97"
+        }
+      }
+    ],
+    "required_outputs": ["\ud83d\ude97"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Outbound Telegram message with emoji to a seeded contact."
+  },
+  {
+    "id": "messages.read_with_contact_imessage",
+    "name": "Read recent iMessage with a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Show me the last 30 iMessage exchanges with contact_00015.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "imessage",
+          "contact": "contact_00015",
+          "limit": 30
+        }
+      }
+    ],
+    "required_outputs": ["iMessage"],
+    "first_question_fallback": {
+      "canned_answer": "30 messages is fine.",
+      "applies_when": "agent asks how many messages to fetch"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on iMessage with a specific limit."
+  },
+  {
+    "id": "messages.send_whatsapp_to_contact_confirm",
+    "name": "Confirm before sending WhatsApp message",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Message contact_00020 on WhatsApp: 'Can you review the draft?'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "contact",
+          "target": "contact_00020",
+          "message": "Can you review the draft?"
+        }
+      }
+    ],
+    "required_outputs": ["draft"],
+    "first_question_fallback": {
+      "canned_answer": "Sure, I\u2019ll send it now.",
+      "applies_when": "agent asks for confirmation before sending"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Tests confirmation handling for a destructive (send) action."
+  },
+  {
+    "id": "messages.read_telegram_group_today",
+    "name": "Read today\u2019s Telegram group chat",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "What did the kids\u2019 Telegram group (conv_0009) discuss today?",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "telegram",
+          "roomId": "conv_0009",
+          "range": "dates",
+          "from": "2026-05-10T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["kids"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Date\u2011range read for a Telegram group, focusing on today."
+  },
+  {
+    "id": "messages.send_imessage_to_contact",
+    "name": "Send iMessage to a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Message contact_00025 on iMessage: 'Running a bit late, see you soon.'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "contact",
+          "target": "contact_00025",
+          "message": "Running a bit late, see you soon."
+        }
+      }
+    ],
+    "required_outputs": ["late"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Outbound iMessage to a specific contact."
+  },
+  {
+    "id": "messages.read_slack_thread_since_morning",
+    "name": "Read Slack thread since morning",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Pull the messages from the #dev channel (conv_0010) since 8\u202fam today.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "slack",
+          "roomId": "conv_0010",
+          "range": "dates",
+          "from": "2026-05-10T08:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["#dev"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Slack channel read with explicit morning start time."
+  },
+  {
+    "id": "messages.send_whatsapp_group_poll",
+    "name": "Send poll to WhatsApp group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Ask the project WhatsApp group (conv_0011) which date works for the demo: 'Mon or Tue?'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "group",
+          "roomId": "conv_0011",
+          "message": "Which date works for the demo? Mon or Tue?"
+        }
+      }
+    ],
+    "required_outputs": ["demo"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on WhatsApp for a quick poll."
+  },
+  {
+    "id": "messages.read_imessage_group_recent",
+    "name": "Read recent iMessage group chat",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Show the last 15 messages from the family iMessage group (conv_0012).",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "imessage",
+          "roomId": "conv_0012",
+          "limit": 15
+        }
+      }
+    ],
+    "required_outputs": ["family"],
+    "first_question_fallback": {
+      "canned_answer": "15 messages will be enough.",
+      "applies_when": "agent asks how many messages to fetch"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-channel on iMessage group with limit."
+  },
+  {
+    "id": "messages.send_signal_to_contact",
+    "name": "Send Signal message to a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Drop a quick Signal note to contact_00030: 'Yo, lunch tomorrow?'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "signal",
+          "targetKind": "contact",
+          "target": "contact_00030",
+          "message": "Yo, lunch tomorrow?"
+        }
+      }
+    ],
+    "required_outputs": ["lunch"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple Signal send to a seeded contact."
+  },
+  {
+    "id": "messages.read_whatsapp_contact_recent",
+    "name": "Read recent WhatsApp messages from a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Give me the latest 12 messages from contact_00035 on WhatsApp.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "whatsapp",
+          "contact": "contact_00035",
+          "limit": 12
+        }
+      }
+    ],
+    "required_outputs": ["WhatsApp"],
+    "first_question_fallback": {
+      "canned_answer": "Sure, I\u2019ll pull the last 12 messages.",
+      "applies_when": "agent asks how many messages to retrieve"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on WhatsApp with explicit limit."
+  },
+  {
+    "id": "messages.send_telegram_group_announcement",
+    "name": "Send announcement to Telegram group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Post in the soccer team Telegram group (conv_0013): 'Practice at 6pm tomorrow.'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "telegram",
+          "targetKind": "group",
+          "roomId": "conv_0013",
+          "message": "Practice at 6pm tomorrow."
+        }
+      }
+    ],
+    "required_outputs": ["6pm"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on Telegram for a scheduled event."
+  },
+  {
+    "id": "messages.read_slack_direct_recent",
+    "name": "Read recent Slack direct messages",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Show the last 8 direct messages I exchanged with contact_00040 on Slack.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "slack",
+          "contact": "contact_00040",
+          "limit": 8
+        }
+      }
+    ],
+    "required_outputs": ["Slack"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on Slack with a small limit."
+  },
+  {
+    "id": "messages.send_imessage_group_meeting",
+    "name": "Send iMessage group meeting reminder",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Tell the project iMessage group (conv_0014) that the meeting starts at 3pm.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "group",
+          "roomId": "conv_0014",
+          "message": "Meeting starts at 3pm."
+        }
+      }
+    ],
+    "required_outputs": ["3pm"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on iMessage for a meeting reminder."
+  },
+  {
+    "id": "messages.read_whatsapp_group_since_week_start",
+    "name": "Read WhatsApp group since week start",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "What has the wellness WhatsApp group (conv_0015) talked about since Monday?",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "whatsapp",
+          "roomId": "conv_0015",
+          "range": "dates",
+          "from": "2026-05-04T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["wellness"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Date\u2011range read for a WhatsApp group spanning the week."
+  },
+  {
+    "id": "messages.send_signal_group_brainstorm",
+    "name": "Send Signal group brainstorm prompt",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Post in the brainstorming Signal group (conv_0016): 'Ideas for the Q3 launch?'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "signal",
+          "targetKind": "group",
+          "roomId": "conv_0016",
+          "message": "Ideas for the Q3 launch?"
+        }
+      }
+    ],
+    "required_outputs": ["Q3"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on Signal to solicit ideas."
+  },
+  {
+    "id": "messages.read_imessage_contact_since_yesterday",
+    "name": "Read iMessage contact since yesterday",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Show me what contact_00045 sent me on iMessage since yesterday.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "imessage",
+          "contact": "contact_00045",
+          "range": "dates",
+          "from": "2026-05-09T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["iMessage"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-with-contact on iMessage with date range."
+  },
+  {
+    "id": "messages.read_signal_group_since_morning",
+    "name": "Read Signal group messages since morning",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "What has the book club Signal group (conv_0017) discussed since 9am today?",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "signal",
+          "roomId": "conv_0017",
+          "range": "dates",
+          "from": "2026-05-10T09:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": ["book club"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Signal group read with morning start time."
+  },
+  {
+    "id": "messages.send_imessage_group_followup",
+    "name": "Send follow\u2011up to iMessage group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Follow up in the weekend plans iMessage group (conv_0018): 'Anyone up for hiking Saturday?'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "group",
+          "roomId": "conv_0018",
+          "message": "Anyone up for hiking Saturday?"
+        }
+      }
+    ],
+    "required_outputs": ["hiking"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on iMessage for a weekend activity."
+  },
+  {
+    "id": "messages.read_whatsapp_group_recent",
+    "name": "Read recent WhatsApp group chat",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Show the last 25 messages from the meditation WhatsApp group (conv_0019).",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "whatsapp",
+          "roomId": "conv_0019",
+          "limit": 25
+        }
+      }
+    ],
+    "required_outputs": ["meditation"],
+    "first_question_fallback": {
+      "canned_answer": "25 messages is fine.",
+      "applies_when": "agent asks how many messages to fetch"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "WhatsApp group read with limit."
+  },
+  {
+    "id": "messages.send_telegram_contact_brief",
+    "name": "Send brief Telegram message to a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Ping contact_00055 on Telegram: 'FYI, the report is ready.'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "telegram",
+          "targetKind": "contact",
+          "target": "contact_00055",
+          "message": "FYI, the report is ready."
+        }
+      }
+    ],
+    "required_outputs": ["report"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple Telegram send to a seeded contact."
+  },
+  {
+    "id": "messages.read_signal_contact_recent",
+    "name": "Read recent Signal messages from a contact",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Show me the latest 6 messages from contact_00060 on Signal.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "signal",
+          "contact": "contact_00060",
+          "limit": 6
+        }
+      }
+    ],
+    "required_outputs": ["Signal"],
+    "first_question_fallback": {
+      "canned_answer": "6 messages works.",
+      "applies_when": "agent asks how many messages to retrieve"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on Signal with a small limit."
+  }
+]

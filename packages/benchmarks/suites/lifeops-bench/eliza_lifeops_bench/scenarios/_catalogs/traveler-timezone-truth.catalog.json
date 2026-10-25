@@ -1,0 +1,231 @@
+{
+  "catalogId": "traveler-timezone-truth",
+  "title": "Frequent traveler timezone truth LifeOpsBench pack",
+  "source": {
+    "issue": "https://github.com/elizaOS/eliza/issues/12279",
+    "persona": "elena_road",
+    "notes": [
+      "Executable scenarios live in scenarios/traveler_timezone.py and scenarios/live/traveler_timezone.py.",
+      "The Scenario dataclass has no tier field in this checkout, so tier is represented by description markers and this catalog metadata.",
+      "Registered in the LifeOpsBench static and live scenario registries in this PR."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "traveler.explicit_absolute_instant_call_reminder",
+      "title": "Fixed instant call reminder survives timezone changes",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T1]",
+      "tags": ["traveler-timezone", "absolute-instant"],
+      "persona": "elena_road",
+      "coverage": "Explicit UTC call reminder stays tied to a fixed instant regardless of later travel.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "traveler.local_wall_clock_wake_reminder",
+      "title": "Local wall-clock wake reminder follows current city",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T1]",
+      "tags": ["traveler-timezone", "local-wall-clock"],
+      "persona": "elena_road",
+      "coverage": "Daily 7am wake reminder follows the traveler's active local timezone instead of collapsing to one UTC instant.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "traveler.ambiguous_9am_tuesday_no_zone",
+      "title": "Ambiguous '9am Tuesday' reminder must clarify timezone before creating",
+      "mode": "static",
+      "domain": "reminders",
+      "tierTag": "[T2]",
+      "tags": ["traveler-timezone", "clarification"],
+      "persona": "elena_road",
+      "coverage": "Ambiguous timezone reminder must ask which zone before creating the reminder.",
+      "baselineCanary": false,
+      "adversarialTrap": "Silent timezone assumption"
+    },
+    {
+      "id": "traveler.reanchor_on_travel_owner_fact",
+      "title": "Capture Singapore stay as timezone owner fact, not a task",
+      "mode": "static",
+      "domain": "travel",
+      "tierTag": "[T2]",
+      "tags": ["traveler-timezone", "owner-fact"],
+      "persona": "elena_road",
+      "coverage": "Travel window is saved as context for future morning anchors rather than turned into a reminder.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "traveler.pretrip_lighter_task_load",
+      "title": "Pre-trip lighter load preference is a policy",
+      "mode": "static",
+      "domain": "calendar",
+      "tierTag": "[T3]",
+      "tags": ["traveler-timezone", "pretrip-load"],
+      "persona": "elena_road",
+      "coverage": "Pre-trip load-lightening is recorded as a scheduling preference rather than a one-off task.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "traveler.flag_meeting_in_biological_night",
+      "title": "Flag meeting that lands in biological night",
+      "mode": "static",
+      "domain": "calendar",
+      "tierTag": "[T4]",
+      "tags": ["traveler-timezone", "biological-night"],
+      "persona": "elena_road",
+      "coverage": "Meeting creation must surface that 6pm Singapore resolves to 3am San Francisco body time.",
+      "baselineCanary": false,
+      "adversarialTrap": "Biological-night blind spot"
+    },
+    {
+      "id": "traveler.messy_multiday_itinerary_capture",
+      "title": "Capture a messy SFO-NRT-SIN-SFO itinerary",
+      "mode": "static",
+      "domain": "travel",
+      "tierTag": "[T1]",
+      "tags": ["traveler-timezone", "itinerary"],
+      "persona": "elena_road",
+      "coverage": "Messy multi-city travel dump is captured as itinerary context for later timezone behavior.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "traveler.timezone_history_log",
+      "title": "Record and recall timezone history for the month",
+      "mode": "static",
+      "domain": "travel",
+      "tierTag": "[T2]",
+      "tags": ["traveler-timezone", "timezone-history"],
+      "persona": "elena_road",
+      "coverage": "Timezone history is logged as owner context for later recall and scheduling interpretation.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.tz_change_reanchor_reminder",
+      "title": "Re-anchor local reminder after travel timezone changes",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T3]",
+      "tags": ["traveler-timezone", "reanchor"],
+      "persona": "elena_road",
+      "coverage": "Mid-conversation city change re-anchors local-wall-clock reminder while preserving a fixed UTC reminder.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.jetlag_preshift_plan_safety",
+      "title": "Build a safe jet-lag pre-shift plan",
+      "mode": "live",
+      "domain": "travel",
+      "tierTag": "[T4]",
+      "tags": ["traveler-timezone", "wellness-boundary"],
+      "persona": "elena_road",
+      "coverage": "Jet-lag plan gives timed light and sleep-shift guidance while avoiding medication dosage or medical advice.",
+      "baselineCanary": false,
+      "adversarialTrap": "Medical-advice overreach"
+    },
+    {
+      "id": "live.traveler.flight_delay_disruption_recovery",
+      "title": "Recover the day plan after an airline delay",
+      "mode": "live",
+      "domain": "travel",
+      "tierTag": "[T3]",
+      "tags": ["traveler-timezone", "disruption-recovery"],
+      "persona": "elena_road",
+      "coverage": "Airline delay message forces active replanning of dinner, prep time, and hotel check-in.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.wrong_timezone_silent_assumption_trap",
+      "title": "Adversarial: must not silently guess absolute-vs-local semantic",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T4]",
+      "tags": ["traveler-timezone", "clarification", "adversarial"],
+      "persona": "elena_road",
+      "coverage": "Reminder request explicitly lacks a usable timezone anchor and must not be created before clarification.",
+      "baselineCanary": false,
+      "adversarialTrap": "Silent timezone assumption"
+    },
+    {
+      "id": "live.traveler.cross_tz_meeting_conflict_flag",
+      "title": "Flag a meeting conflict across stated timezones",
+      "mode": "live",
+      "domain": "calendar",
+      "tierTag": "[T2]",
+      "tags": ["traveler-timezone", "calendar-conflict"],
+      "persona": "elena_road",
+      "coverage": "Two meetings stated in different local zones conflict only after conversion to a shared reference time.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.multileg_reanchor_three_zones_one_week",
+      "title": "Re-anchor daily items across three trip legs",
+      "mode": "live",
+      "domain": "reminders",
+      "tierTag": "[T3]",
+      "tags": ["traveler-timezone", "multi-leg"],
+      "persona": "elena_road",
+      "coverage": "Week-long three-zone trip keeps daily local items per city while preserving fixed-instant commitments.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.what_time_is_it_for_everyone",
+      "title": "Ground current time across caller cities",
+      "mode": "live",
+      "domain": "travel",
+      "tierTag": "[T2]",
+      "tags": ["traveler-timezone", "time-grounding"],
+      "persona": "elena_road",
+      "coverage": "Current local times are grounded for San Francisco, Berlin, and Seoul using benchmark now_iso.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.vip_message_inflight_queue",
+      "title": "Queue VIP message while in flight and surface on landing",
+      "mode": "live",
+      "domain": "travel",
+      "tierTag": "[T4]",
+      "tags": ["traveler-timezone", "vip-queue"],
+      "persona": "elena_road",
+      "coverage": "Urgent VIP message arriving in flight is queued and surfaced after landing instead of lost or prematurely handled.",
+      "baselineCanary": false,
+      "adversarialTrap": "Lost VIP message during unreachable window"
+    },
+    {
+      "id": "live.traveler.posttrip_renormalize_home_timezone",
+      "title": "Return home without stale destination timezone assumptions",
+      "mode": "live",
+      "domain": "calendar",
+      "tierTag": "[T3]",
+      "tags": ["traveler-timezone", "posttrip-renormalize"],
+      "persona": "elena_road",
+      "coverage": "Post-trip morning planning returns to America/Los_Angeles rather than stale Singapore time.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    },
+    {
+      "id": "live.traveler.pretrip_lighter_load_live_negotiation",
+      "title": "Negotiate a lighter pre-trip schedule",
+      "mode": "live",
+      "domain": "calendar",
+      "tierTag": "[T3]",
+      "tags": ["traveler-timezone", "pretrip-load"],
+      "persona": "elena_road",
+      "coverage": "Assistant identifies candidate pre-trip deferrals, negotiates approval, and preserves high-priority commitments.",
+      "baselineCanary": false,
+      "adversarialTrap": null
+    }
+  ]
+}

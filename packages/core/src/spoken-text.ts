@@ -1,0 +1,218 @@
+/**
+ * Reduces a model's written-form output to speakable prose for TTS.
+ * `sanitizeSpeechText` NFKC-normalizes the input, then strips thinking /
+ * analysis / tool tags, code fences and inline code, markdown links, raw HTML,
+ * and URLs, removes parenthetical and bracketed stage directions, normalizes
+ * punctuation and unusual glyphs, and collapses whitespace.
+ *
+ * Stage-direction stripping peels one innermost `()` / `[]` / `{}` / `**`
+ * layer per pass. Honest asides nest a handful of delimiters; each miss
+ * rescan is O(remaining), so an uncapped `((((…hello…))))` bomb hangs TTS.
+ * {@link MAX_NON_SPEECH_STRIP_PASSES} bounds the compatibility peel. If it
+ * exhausts that budget, a linear interval scan removes every remaining
+ * balanced direction rather than exposing text from the outer layers. Lines
+ * with more star markers than that budget can represent are removed between
+ * their outer markers before peeling, preventing emphasis nesting from
+ * exposing alternating layers without rescans.
+ */
+
+import { REASONING_TAG_NAMES } from "./utils/reasoning-tags";
+
+const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
+	"|",
+);
+const NON_SPEECH_BLOCK = new RegExp(
+	`<(${NON_SPEECH_TAGS})(?=[\\s/>])[^>]*>[\\s\\S]*?(?:<\\/\\1>|$)`,
+	"gi",
+);
+const INCOMPLETE_NON_SPEECH_TAG = new RegExp(
+	`<(?:${NON_SPEECH_TAGS})(?=[\\s/>]|$)[^>]*$`,
+	"gi",
+);
+
+function collapseWhitespace(input: string): string {
+	return input.replace(/\s+/g, " ").trim();
+}
+
+function stripUrls(input: string): string {
+	return input.replace(/\bhttps?:\/\/\S+/gi, " ");
+}
+
+function stripThinkingAndMarkup(input: string): string {
+	let text = input;
+	text = text.replace(NON_SPEECH_BLOCK, " ");
+	text = text.replace(INCOMPLETE_NON_SPEECH_TAG, " ");
+	text = text.replace(/```[\s\S]*?```/g, " ");
+	// An unterminated fence swallows to end-of-input; TTS must never speak code.
+	text = text.replace(/```[\s\S]*$/, " ");
+	text = text.replace(/`([^`]+)`/g, "$1");
+	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+	text = text.replace(/<(?:\/?[A-Za-z]|!)[^<>\n]*>/g, " ");
+	text = stripUrls(text);
+	return text;
+}
+
+const STAR_DIRECTION_PATTERN = /\*{1,2}[^*\n]+\*{1,2}/g;
+
+const BALANCED_DIRECTION_PATTERNS = [
+	/\([^()]*\)/g,
+	/\[[^[\]]*\]/g,
+	/\{[^{}]*\}/g,
+];
+
+/** Honest stage directions nest a handful of delimiters. Each peel rescan is
+ * O(remaining); uncapped nested `((((…))))` hangs TTS. */
+export const MAX_NON_SPEECH_STRIP_PASSES = 8 as const;
+
+const DIRECTION_OPENERS = new Map([
+	["(", ")"],
+	["[", "]"],
+	["{", "}"],
+] as const);
+
+const DIRECTION_CLOSERS = new Map([
+	[")", "("],
+	["]", "["],
+	["}", "{"],
+] as const);
+
+/** Removes balanced bracket regions in linear time. Independent delimiter stacks support crossed bracket types without exposing nested stage directions as speech. */
+function stripResidualBalancedDirections(input: string): string {
+	const removals = new Int32Array(input.length + 1);
+	const openerStacks = new Map<string, number[]>(
+		[...DIRECTION_OPENERS.keys()].map((opener) => [opener, []]),
+	);
+
+	for (let index = 0; index < input.length; index += 1) {
+		const char = input[index] ?? "";
+		if (DIRECTION_OPENERS.has(char as "(" | "[" | "{")) {
+			openerStacks.get(char)?.push(index);
+			continue;
+		}
+		const opener = DIRECTION_CLOSERS.get(char as ")" | "]" | "}");
+		if (!opener) continue;
+		const start = openerStacks.get(opener)?.pop();
+		if (start === undefined) continue;
+		removals[start] = (removals[start] ?? 0) + 1;
+		removals[index + 1] = (removals[index + 1] ?? 0) - 1;
+	}
+
+	const parts: string[] = [];
+	let activeIntervals = 0;
+	let visibleStart = 0;
+	for (let index = 0; index < input.length; index += 1) {
+		const previous = activeIntervals;
+		activeIntervals += removals[index] ?? 0;
+		if (previous === 0 && activeIntervals > 0) {
+			if (visibleStart < index) parts.push(input.slice(visibleStart, index));
+			parts.push(" ");
+		} else if (previous > 0 && activeIntervals === 0) {
+			visibleStart = index;
+		}
+	}
+	if (activeIntervals === 0 && visibleStart < input.length) {
+		parts.push(input.slice(visibleStart));
+	}
+	return parts.join("");
+}
+
+/** Fail-closes lines whose emphasis markers exceed the peel budget. */
+function stripExcessiveStarDirections(input: string): string {
+	return input
+		.split("\n")
+		.map((line) => {
+			let markerCount = 0;
+			let first = -1;
+			let last = -1;
+			for (let index = 0; index < line.length; ) {
+				if (line[index] !== "*") {
+					index += 1;
+					continue;
+				}
+				if (first < 0) first = index;
+				const runStart = index;
+				while (line[index] === "*") index += 1;
+				markerCount += Math.ceil((index - runStart) / 2);
+				last = index - 1;
+			}
+			return markerCount > MAX_NON_SPEECH_STRIP_PASSES * 2 && last > first
+				? `${line.slice(0, first)} ${line.slice(last + 1)}`
+				: line;
+		})
+		.join("\n");
+}
+
+function stripNonSpeechDirections(input: string): string {
+	let text = stripExcessiveStarDirections(input);
+	let stabilized = false;
+	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
+		const previous = text;
+		text = text.replace(STAR_DIRECTION_PATTERN, " ");
+		for (const pattern of BALANCED_DIRECTION_PATTERNS) {
+			text = text.replace(pattern, " ");
+		}
+		if (text === previous) {
+			stabilized = true;
+			break;
+		}
+	}
+	if (!stabilized) {
+		text = stripResidualBalancedDirections(text);
+	}
+	return text.replace(/[*()[\]{}]+/g, " ");
+}
+
+function sanitizeSpeechPunctuation(input: string): string {
+	let text = input;
+	text = text.replace(/[•·■▪◦]/g, " ");
+	text = text.replace(/[“”]/g, '"');
+	text = text.replace(/[‘’]/g, "'");
+	text = text.replace(/[…]/g, "...");
+	text = text.replace(/[–—]/g, ", ");
+	// Collapse repeated punctuation BEFORE the spacing rules separate the
+	// repeats ("Wait!!!" must speak as "Wait!", not "Wait! ! !"). Twin of
+	// The browser and Node hosts now share this implementation.
+	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
+	// A mark inside a number (`3.14`, `1,299`, `10:30`) is part of one spoken
+	// token: spacing it makes TTS read "3. 14" as a sentence break and two
+	// numbers, so the spacing rules skip it. A comma whose digit group runs to
+	// the end of the text stays unspaced too: a streamed `$1,2` may still become
+	// `$1,299`, and spacing it would commit `$1,` as already spoken.
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([,;:，；：])\s{0,32}/g,
+		"$1 ",
+	);
+	text = text.replace(
+		/(?!(?<=\d)(?:[.:]\d|,\d{3}(?!\d)|,\d{1,3}$))\s{0,32}([.!?。！？])\s{0,32}/g,
+		"$1 ",
+	);
+	// U+2116 (numero sign) is speech-semantic, not punctuation: keep it so a
+	// later language-aware stage can read "№4" instead of a stripped "4".
+	text = text.replace(/[^\p{L}\p{N}\s.,!?'"%/$:+，。！？；：\u2116-]/gu, " ");
+	text = text.replace(/([,.!?，。！？])\1+/g, "$1");
+	text = text.replace(/^[,;:.!?，。！？；：]+/g, " ");
+	return text;
+}
+
+/**
+ * NFKC folds the numero sign (`№`, U+2116) to Latin `No`, erasing a
+ * speech-semantic distinction before the TTS/language layer can interpret it.
+ * Keep each `№<number>` token verbatim and normalize only the surrounding text,
+ * so downstream voice handling still sees the original sign while literal Latin
+ * text such as a user-typed `No4` is left alone.
+ */
+const NUMERO_TOKEN_PATTERN = /(\u2116\s*\p{N}+)/u;
+
+function normalizeCompatibilityPreservingNumero(input: string): string {
+	return input
+		.split(NUMERO_TOKEN_PATTERN)
+		.map((part, index) => (index % 2 === 1 ? part : part.normalize("NFKC")))
+		.join("");
+}
+
+export function sanitizeSpeechText(input: string): string {
+	const normalized = normalizeCompatibilityPreservingNumero(input);
+	const stripped = stripThinkingAndMarkup(normalized);
+	const withoutDirections = stripNonSpeechDirections(stripped);
+	return collapseWhitespace(sanitizeSpeechPunctuation(withoutDirections));
+}

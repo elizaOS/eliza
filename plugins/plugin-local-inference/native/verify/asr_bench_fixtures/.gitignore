@@ -1,0 +1,3 @@
+!**/*.wav
+# The *.wav re-include must not admit macOS resource-fork sidecars (._*.wav).
+**/._*

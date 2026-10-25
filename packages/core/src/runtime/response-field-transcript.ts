@@ -1,0 +1,215 @@
+/**
+ * Parses colon-delimited response fields without losing multiline values. Only a known field
+ * at the beginning of a line ends the preceding value; blank lines remain content. Detection
+ * prevents raw control fields from reaching delivered prose.
+ */
+
+/**
+ * Canonical field names the response-handler emits. Kept in sync with the
+ * builtin field evaluators (see./builtin-field-evaluators.ts). Used to anchor
+ * segmentation: only these names delimit a new field, so a `value:` that
+ * happens to appear inside prose (e.g. "the ratio is 3:1") does not split a
+ * field.
+ */
+export const RESPONSE_HANDLER_FIELD_NAMES = [
+	"shouldRespond",
+	"contexts",
+	"intents",
+	"candidateActionNames",
+	"replyText",
+	"replyEffectStatus",
+	"facts",
+	"relationships",
+	"addressedTo",
+	"topics",
+	"emotion",
+] as const;
+
+export type ResponseHandlerFieldName =
+	(typeof RESPONSE_HANDLER_FIELD_NAMES)[number];
+
+const FIELD_NAME_SET = new Set<string>(RESPONSE_HANDLER_FIELD_NAMES);
+
+/**
+ * Anchored regex that matches a line which STARTS a known field:
+ * `^<knownField>:`. Case-sensitive on the field name (the model emits the
+ * canonical camelCase); a leading whitespace tolerance covers the odd
+ * bullet/indent. Capture group 1 = field name, group 2 = inline value (rest of
+ * the line after the colon).
+ */
+const FIELD_LINE = new RegExp(
+	`^\\s{0,3}(${RESPONSE_HANDLER_FIELD_NAMES.join("|")})\\s*:\\s?(.*)$`,
+);
+
+/**
+ * A fenced-code-block delimiter line (``` or ~~~, optionally indented). Field
+ * lines inside a fence are QUOTED content — e.g. a reply diagnosing a leaked
+ * transcript the user pasted — never envelope structure.
+ */
+const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,})/;
+
+/**
+ * A fence opener written inline after a field name (`replyText: ```bash`).
+ * A backtick run whose info string holds another backtick is an inline code
+ * span (`replyText: ```npm i``` first`), not a fence.
+ */
+const INLINE_FENCE_OPEN = /^\s{0,3}(?:`{3,}[^`]*|~{3,}.*)$/;
+
+/**
+ * Cheap skeleton detector for the fail-closed send-boundary guard. Returns true
+ * when `text` IS a raw field transcript that must NOT be shipped to a user
+ * channel — as opposed to a composed reply that merely QUOTES one.
+ * Intentionally cheap: line scan + regex, no full parse.
+ *
+ * Structural rule: a genuine text-mode envelope echo IS the message — its
+ * first substantive line (outside code fences) is a known field line, and a
+ * hallmark field (`shouldRespond:` / `replyText:`) appears at the top level.
+ * A reply that opens with prose (e.g. a diagnosis of a transcript the user
+ * pasted, which legitimately quotes `replyText:` lines) or whose field lines
+ * sit inside a code fence is CONTENT, not a leak — flagging it would make the
+ * send boundary silently replace the whole answer with the quoted replyText
+ * value, destroying the diagnosis.
+ */
+export function looksLikeRawFieldTranscript(text: unknown): boolean {
+	if (typeof text !== "string" || text.length === 0) return false;
+	let inFence = false;
+	let leadsWithFieldLine = false;
+	for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
+		if (FENCE_LINE.test(line)) {
+			inFence = !inFence;
+			continue;
+		}
+		if (inFence || line.trim().length === 0) continue;
+		const match = FIELD_LINE.exec(line);
+		if (!leadsWithFieldLine) {
+			// The first substantive unfenced line decides authorship: prose means
+			// the model composed a reply (which may quote a transcript); a known
+			// field line means the output is the envelope skeleton itself.
+			if (!match) return false;
+			leadsWithFieldLine = true;
+		}
+		if (match && (match[1] === "shouldRespond" || match[1] === "replyText")) {
+			return true;
+		}
+	}
+	return false;
+}
+
+export interface ParsedFieldTranscript {
+	/** Map of field name → raw multi-line value string (trimmed of edge whitespace). */
+	fields: Partial<Record<ResponseHandlerFieldName, string>>;
+	/** Number of distinct known fields found (used to gauge confidence). */
+	fieldCount: number;
+}
+
+/**
+ * Parse a keyed field transcript into a map of field name → value string.
+ *
+ * Segmentation rule: scan line by line. A line matching `^<knownField>:` opens
+ * a new field; its value is the inline remainder plus every subsequent line up
+ * to (but not including) the next `^<knownField>:` line. Blank lines inside a
+ * value are preserved (then trimmed at the value edges). This is what lets a
+ * multi-line `replyText` with an embedded blank line survive intact.
+ *
+ * Fence rule: field lines inside a fenced code block (``` / ~~~) are QUOTED
+ * content, never boundaries — a replyText value that quotes an envelope inside
+ * a fence (the agent diagnosing a leaked transcript) keeps the whole fenced
+ * block instead of being split at the quoted `contexts:`/`replyText:` lines.
+ *
+ * Returns null when no known field line is found (the text is not a transcript
+ * — let the caller fall through to its plain-text handling).
+ */
+export function parseFieldTranscript(
+	raw: string | null | undefined,
+): ParsedFieldTranscript | null {
+	if (typeof raw !== "string") return null;
+	const text = raw.replace(/\r\n/g, "\n");
+	const lines = text.split("\n");
+
+	const fields: Partial<Record<ResponseHandlerFieldName, string>> = {};
+	let currentField: ResponseHandlerFieldName | null = null;
+	let buffer: string[] = [];
+	let foundAny = false;
+
+	const flush = () => {
+		if (currentField !== null) {
+			// Only set the first occurrence of a field (first-wins, matches the
+			// registry de-dup contract). Trim edge whitespace / blank lines but
+			// keep embedded blanks.
+			if (fields[currentField] === undefined) {
+				fields[currentField] = buffer
+					.join("\n")
+					.replace(/^\n+|\n+$/g, "")
+					.trim();
+			}
+		}
+		buffer = [];
+	};
+
+	let inFence = false;
+	for (const line of lines) {
+		if (FENCE_LINE.test(line)) {
+			// Fence delimiters toggle quoted mode and belong to the current value.
+			inFence = !inFence;
+			if (currentField !== null) buffer.push(line);
+			continue;
+		}
+		const match = inFence ? null : FIELD_LINE.exec(line);
+		if (match && FIELD_NAME_SET.has(match[1])) {
+			// New field boundary — close the previous field first.
+			flush();
+			currentField = match[1] as ResponseHandlerFieldName;
+			foundAny = true;
+			const inline = match[2];
+			buffer = inline && inline.length > 0 ? [inline] : [];
+			// The value opened a fence on the field line itself, so the next
+			// fence line closes it rather than opening quoted mode.
+			if (INLINE_FENCE_OPEN.test(inline)) inFence = true;
+		} else if (currentField !== null) {
+			// Continuation line of the current field value (including blank lines
+			// and any fenced quoted content).
+			buffer.push(line);
+		}
+		// Lines before the first field marker are preamble; ignore them.
+	}
+	flush();
+
+	if (!foundAny) return null;
+	const fieldCount = Object.keys(fields).length;
+	return { fields, fieldCount };
+}
+
+/**
+ * Extract just the `replyText` value from a raw field transcript, if present.
+ * Convenience wrapper used by the fail-closed send-boundary guard: given a
+ * leaked transcript, recover the intended user-facing reply. Returns null when
+ * the text is not a transcript or has no non-empty replyText.
+ */
+export function extractReplyTextFromTranscript(
+	raw: string | null | undefined,
+): string | null {
+	const parsed = parseFieldTranscript(raw);
+	if (!parsed) return null;
+	const reply = parsed.fields.replyText;
+	if (typeof reply !== "string") return null;
+	const trimmed = reply.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Comma-splitter for list-shaped field values in a transcript (`contexts`,
+ * `topics`, `candidateActionNames`, `intents`, `addressedTo`, `facts`). The
+ * JSON path carries real arrays; the text transcript carries a comma- or
+ * newline-separated string. `none`/`n/a`/empty collapse to [].
+ */
+export function splitTranscriptList(value: string | undefined): string[] {
+	if (typeof value !== "string") return [];
+	const trimmed = value.trim();
+	if (!trimmed) return [];
+	const lowered = trimmed.toLowerCase();
+	if (lowered === "none" || lowered === "n/a" || lowered === "[]") return [];
+	return trimmed
+		.split(/[\n,]/)
+		.map((item) => item.trim())
+		.filter(Boolean);
+}

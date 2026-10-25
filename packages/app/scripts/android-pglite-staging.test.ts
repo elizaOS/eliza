@@ -1,0 +1,91 @@
+/** Exercises staged Android database payloads through their real runtime consumers. */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { gunzipSync, gzipSync } from "node:zlib";
+import { stageAndroidPgliteAssets } from "./lib/stage-android-agent.ts";
+
+test("staged trigram archive loads and executes the SQL extension", async () => {
+  const repo = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../..",
+  );
+  const requireSql = createRequire(
+    path.join(repo, "plugins/plugin-sql/package.json"),
+  );
+  const pgliteEntry = requireSql.resolve("@electric-sql/pglite");
+  const { PGlite } = await import(pathToFileURL(pgliteEntry).href);
+  const root = await fs.mkdtemp(
+    path.join(os.tmpdir(), "android-pglite-stage-"),
+  );
+  let db;
+  try {
+    const source = path.join(root, "dist-mobile");
+    const main = path.join(root, "android/app/src/main");
+    const staged = path.join(main, "assets/agent");
+    await fs.mkdir(source, { recursive: true });
+    await fs.mkdir(staged, { recursive: true });
+    await fs.copyFile(
+      path.join(path.dirname(pgliteEntry), "pg_trgm.tar.gz"),
+      path.join(source, "pg_trgm.tar.gz"),
+    );
+    // Exercise migration from a prior stage's compressed asset as well.
+    await fs.copyFile(
+      path.join(source, "pg_trgm.tar.gz"),
+      path.join(staged, "pg_trgm.tar.gz"),
+    );
+    const resultStage = stageAndroidPgliteAssets({
+      distMobileDir: source,
+      assetsAgentDir: staged,
+      androidMainDir: main,
+    });
+    const tar = await fs.readFile(path.join(staged, "pg_trgm.tar"));
+    assert.deepEqual(
+      tar,
+      gunzipSync(await fs.readFile(path.join(source, "pg_trgm.tar.gz"))),
+    );
+    await assert.rejects(fs.stat(path.join(staged, "pg_trgm.tar.gz")), {
+      code: "ENOENT",
+    });
+    assert.equal(resultStage.stagedFiles[0].path, "assets/agent/pg_trgm.tar");
+    assert.equal(resultStage.stagedFiles[0].size_bytes, tar.length);
+    assert.equal(
+      resultStage.stagedFiles[0].sha256,
+      createHash("sha256").update(tar).digest("hex"),
+    );
+    assert.equal(
+      stageAndroidPgliteAssets({
+        distMobileDir: source,
+        assetsAgentDir: staged,
+        androidMainDir: main,
+      }).stagedCount,
+      0,
+    );
+    // Match ElizaAgentService: gzip the packaged tar into the runtime directory.
+    const extracted = path.join(root, "pg_trgm.tar.gz");
+    await fs.writeFile(extracted, gzipSync(tar));
+    db = new PGlite({
+      extensions: {
+        pg_trgm: {
+          name: "pg_trgm",
+          setup: async () => ({
+            bundlePath: pathToFileURL(extracted),
+          }),
+        },
+      },
+    });
+    await db.exec("CREATE EXTENSION pg_trgm");
+    const result = await db.query(
+      "SELECT similarity('packaging', 'package') AS score",
+    );
+    assert.ok(result.rows[0].score > 0 && result.rows[0].score < 1);
+  } finally {
+    if (db) await db.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

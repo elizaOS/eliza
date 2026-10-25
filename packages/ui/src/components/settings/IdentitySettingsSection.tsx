@@ -1,0 +1,437 @@
+/**
+ * Settings → "Basics" section (the `identity` section id). Owns the agent's
+ * voice pick — TTS provider, model, and voice preset with in-panel test
+ * playback. When Eliza Cloud is connected (or the voice proxy is available) the
+ * ElevenLabs voice groups are offered; otherwise it falls back to the edge/
+ * premade voices. The agent's name and personality (system prompt) live in the
+ * Character view, not here.
+ */
+
+import {
+  EDGE_BACKUP_VOICES,
+  hasConfiguredApiKey,
+  PREMADE_VOICES,
+  sanitizeApiKey,
+} from "@elizaos/host/protocol";
+import { Volume2, VolumeX } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { client } from "../../api/client";
+import type { VoiceConfig } from "../../api/client-types-config";
+import { dispatchWindowEvent, VOICE_CONFIG_UPDATED_EVENT } from "../../events";
+import { useAppSelectorShallow } from "../../state/app-store";
+import {
+  DEFAULT_ELEVEN_FAST_MODEL,
+  EDGE_VOICE_GROUPS,
+  ELEVENLABS_VOICE_GROUPS,
+} from "../character/character-voice-config";
+import { Alert, AlertDescription } from "../ui/alert";
+import { SaveFooter } from "../ui/save-footer";
+import { SettingsActionButton, SettingsSelectRow } from "./settings-agent-rows";
+import { useSettingsSave } from "./settings-control-primitives.hooks";
+import { SettingsGroup, SettingsStack } from "./settings-layout";
+
+function resolveEditableVoiceSelectionKey(config: VoiceConfig | null): string {
+  const elevenLabsVoiceId =
+    typeof config?.elevenlabs?.voiceId === "string"
+      ? config.elevenlabs.voiceId.trim()
+      : "";
+  const edgeVoiceId =
+    typeof config?.edge?.voice === "string" ? config.edge.voice.trim() : "";
+  const provider =
+    config?.provider ??
+    (edgeVoiceId && !elevenLabsVoiceId ? "edge" : "elevenlabs");
+  return `${provider}:${provider === "edge" ? edgeVoiceId : elevenLabsVoiceId}`;
+}
+function resolveVisibleVoicePresetId(
+  config: VoiceConfig,
+  useElevenLabs: boolean,
+): string | null {
+  if (useElevenLabs) {
+    const elevenLabsVoiceId =
+      typeof config.elevenlabs?.voiceId === "string"
+        ? config.elevenlabs.voiceId.trim()
+        : "";
+    if (!elevenLabsVoiceId) return null;
+    return (
+      PREMADE_VOICES.find((preset) => preset.voiceId === elevenLabsVoiceId)
+        ?.id ?? null
+    );
+  }
+  const edgeVoiceId =
+    typeof config.edge?.voice === "string" ? config.edge.voice.trim() : "";
+  if (!edgeVoiceId) return null;
+  return (
+    EDGE_BACKUP_VOICES.find((preset) => preset.voiceId === edgeVoiceId)?.id ??
+    null
+  );
+}
+function normalizeVoiceConfigForSave(args: {
+  voiceConfig: VoiceConfig;
+  useElevenLabs: boolean;
+}): VoiceConfig {
+  const provider =
+    args.voiceConfig.provider ?? (args.useElevenLabs ? "eliza-cloud" : "edge");
+  if (provider === "edge") {
+    return {
+      ...args.voiceConfig,
+      provider: "edge",
+      edge: args.voiceConfig.edge ?? {},
+    };
+  }
+  if (provider === "eliza-cloud") {
+    return {
+      ...args.voiceConfig,
+      provider: "eliza-cloud",
+      mode: undefined,
+    };
+  }
+  if (provider === "local-inference" || provider === "robot-voice") {
+    return {
+      ...args.voiceConfig,
+      provider,
+      mode: undefined,
+    };
+  }
+  const hasElevenLabsApiKey = hasConfiguredApiKey(
+    args.voiceConfig.elevenlabs?.apiKey,
+  );
+  const defaultVoiceMode =
+    typeof args.voiceConfig.mode === "string"
+      ? args.voiceConfig.mode
+      : args.useElevenLabs && !hasElevenLabsApiKey
+        ? "cloud"
+        : "own-key";
+  const normalized = {
+    ...(args.voiceConfig.elevenlabs ?? {}),
+    modelId: args.voiceConfig.elevenlabs?.modelId ?? DEFAULT_ELEVEN_FAST_MODEL,
+  };
+  const sanitizedKey = sanitizeApiKey(normalized.apiKey);
+  if (sanitizedKey) normalized.apiKey = sanitizedKey;
+  else delete normalized.apiKey;
+  return {
+    ...args.voiceConfig,
+    provider: "elevenlabs",
+    mode: defaultVoiceMode,
+    elevenlabs: normalized,
+  };
+}
+function applyVoiceSelectionToStoredConfig(
+  stored: VoiceConfig,
+  selected: VoiceConfig,
+): VoiceConfig {
+  if (selected.provider === "edge") {
+    return {
+      ...stored,
+      provider: "edge",
+      edge: {
+        ...(stored.edge ?? {}),
+        ...(selected.edge?.voice ? { voice: selected.edge.voice } : {}),
+      },
+    };
+  }
+  return {
+    ...stored,
+    provider: selected.provider ?? stored.provider,
+    elevenlabs: {
+      ...(stored.elevenlabs ?? {}),
+      ...(selected.elevenlabs?.voiceId
+        ? { voiceId: selected.elevenlabs.voiceId }
+        : {}),
+    },
+  };
+}
+/**
+ * Canonical voice-preset editor. The legacy `identity` route wraps this in its
+ * own SettingsStack, while the everyday Voice destination injects the same
+ * content into its existing stack so the control has one implementation.
+ */
+export function VoicePresetSettingsContent() {
+  const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } =
+    useAppSelectorShallow((s) => ({
+      t: s.t,
+      elizaCloudConnected: s.elizaCloudConnected,
+      elizaCloudVoiceProxyAvailable: s.elizaCloudVoiceProxyAvailable,
+    }));
+  const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
+  const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
+  const [savedVoiceConfig, setSavedVoiceConfig] = useState<VoiceConfig>({});
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceTesting, setVoiceTesting] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setVoiceLoading(true);
+      try {
+        const config = await client.getConfig();
+        const messages = (config.messages ?? {}) as Record<string, unknown>;
+        const tts = (messages.tts as VoiceConfig | undefined) ?? {};
+        if (!cancelled) {
+          setVoiceConfig(tts);
+          setSavedVoiceConfig(tts);
+        }
+      } catch {
+        if (!cancelled) {
+          setVoiceConfig({});
+          setSavedVoiceConfig({});
+        }
+      } finally {
+        if (!cancelled) {
+          setVoiceLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (!audioRef.current) return;
+      const audio = audioRef.current;
+      audioRef.current = null;
+      audio.pause();
+      audio.currentTime = 0;
+    };
+  }, []);
+  const stopVoicePreview = useCallback(() => {
+    if (!audioRef.current) return;
+    const audio = audioRef.current;
+    audioRef.current = null;
+    audio.pause();
+    audio.currentTime = 0;
+    setVoiceTesting(false);
+  }, []);
+  const visibleVoicePresetId = useMemo(
+    () => resolveVisibleVoicePresetId(voiceConfig, useElevenLabs),
+    [useElevenLabs, voiceConfig],
+  );
+  const activeVoicePreset = useMemo(() => {
+    const presets = useElevenLabs ? PREMADE_VOICES : EDGE_BACKUP_VOICES;
+    return presets.find((preset) => preset.id === visibleVoicePresetId) ?? null;
+  }, [useElevenLabs, visibleVoicePresetId]);
+  const voiceGroups = useMemo(() => {
+    if (useElevenLabs) {
+      return ELEVENLABS_VOICE_GROUPS.map((group) => ({
+        label: t(group.labelKey, { defaultValue: group.defaultLabel }),
+        items: group.items.map((item) => {
+          const preset = PREMADE_VOICES.find((entry) => entry.id === item.id);
+          return {
+            id: item.id,
+            text: preset?.nameKey
+              ? t(preset.nameKey, { defaultValue: preset.name })
+              : (preset?.name ?? item.text),
+            hint: preset?.hintKey
+              ? t(preset.hintKey, { defaultValue: preset.hint })
+              : preset?.hint,
+          };
+        }),
+      }));
+    }
+    return EDGE_VOICE_GROUPS.map((group) => ({
+      label: t(group.labelKey, { defaultValue: group.defaultLabel }),
+      items: group.items.map((item) => {
+        const preset = EDGE_BACKUP_VOICES.find((entry) => entry.id === item.id);
+        return {
+          id: item.id,
+          text: preset?.nameKey
+            ? t(preset.nameKey, { defaultValue: preset.name })
+            : (preset?.name ?? item.text),
+          hint: preset?.hintKey
+            ? t(preset.hintKey, { defaultValue: preset.hint })
+            : preset?.hint,
+        };
+      }),
+    }));
+  }, [t, useElevenLabs]);
+  const voiceDirty =
+    resolveEditableVoiceSelectionKey(voiceConfig) !==
+    resolveEditableVoiceSelectionKey(savedVoiceConfig);
+  const dirty = voiceDirty;
+  const handleVoiceSelect = useCallback(
+    (presetId: string) => {
+      stopVoicePreview();
+      setPreviewError(null);
+      if (useElevenLabs) {
+        const preset = PREMADE_VOICES.find((entry) => entry.id === presetId);
+        if (!preset) return;
+        setVoiceConfig((prev) => {
+          const existing =
+            typeof prev.elevenlabs === "object" ? prev.elevenlabs : {};
+          return {
+            ...prev,
+            provider: "elevenlabs",
+            elevenlabs: {
+              ...existing,
+              voiceId: preset.voiceId,
+            },
+          };
+        });
+        return;
+      }
+      const preset = EDGE_BACKUP_VOICES.find((entry) => entry.id === presetId);
+      if (!preset) return;
+      setVoiceConfig((prev) => {
+        const existingEdge = typeof prev.edge === "object" ? prev.edge : {};
+        return {
+          ...prev,
+          provider: "edge",
+          edge: {
+            ...existingEdge,
+            voice: preset.voiceId,
+          },
+        };
+      });
+    },
+    [stopVoicePreview, useElevenLabs],
+  );
+  const handlePreviewVoice = useCallback(() => {
+    if (!activeVoicePreset?.previewUrl) return;
+    stopVoicePreview();
+    setPreviewError(null);
+    setVoiceTesting(true);
+    const audio = new Audio(activeVoicePreset.previewUrl);
+    audioRef.current = audio;
+    audio.onended = () => {
+      if (audioRef.current !== audio) return;
+      audioRef.current = null;
+      setVoiceTesting(false);
+    };
+    const failPreview = () => {
+      if (audioRef.current !== audio) return;
+      audioRef.current = null;
+      setVoiceTesting(false);
+      setPreviewError(
+        t("settings.identity.previewFailed", {
+          defaultValue:
+            "Couldn't play this voice preview. Check your connection and try again.",
+        }),
+      );
+    };
+    audio.onerror = failPreview;
+    audio.play().catch(() => {
+      // error-policy:J4 Playback rejection stays visible and retryable in Voice Settings.
+      failPreview();
+    });
+  }, [activeVoicePreset, stopVoicePreview, t]);
+  const performSave = useCallback(async () => {
+    if (!voiceDirty) return;
+    let config: Awaited<ReturnType<typeof client.getConfig>>;
+    try {
+      config = await client.getConfig();
+    } catch (error) {
+      // The in-memory selection is only the voice the operator just picked.
+      // Writing that over a failed read drops fields this panel never loaded,
+      // including an ElevenLabs key already stored on the server.
+      throw new Error(
+        "Voice settings could not be read, so the save was skipped and the existing key was left unchanged.",
+        { cause: error },
+      );
+    }
+    const messages = (config.messages ?? {}) as Record<string, unknown>;
+    const storedVoiceConfig =
+      messages.tts && typeof messages.tts === "object"
+        ? (messages.tts as VoiceConfig)
+        : {};
+    const normalizedVoiceConfig = normalizeVoiceConfigForSave({
+      // This editor owns only the provider/voice selection. Rebase that
+      // selection onto the fresh server config so a failed initial read or a
+      // concurrent settings change cannot erase hidden TTS fields.
+      voiceConfig: applyVoiceSelectionToStoredConfig(
+        storedVoiceConfig,
+        voiceConfig,
+      ),
+      useElevenLabs,
+    });
+    await client.updateConfig({
+      messages: {
+        ...messages,
+        tts: normalizedVoiceConfig,
+      },
+    });
+    dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
+    setSavedVoiceConfig(normalizedVoiceConfig);
+  }, [useElevenLabs, voiceConfig, voiceDirty]);
+  const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
+    onSave: performSave,
+    errorFallback: t("settings.identity.saveFailed", {
+      defaultValue: "Failed to save identity settings.",
+    }),
+  });
+  return (
+    <>
+      <SettingsGroup
+        title={t("settings.identity.groupTitle", {
+          defaultValue: "Voice selection",
+        })}
+      >
+        <SettingsSelectRow
+          agentId="identity-voice"
+          label={t("common.voice", { defaultValue: "Voice" })}
+          placeholder={t("charactereditor.SelectAVoice", {
+            defaultValue: "Select a voice",
+          })}
+          value={visibleVoicePresetId ?? ""}
+          groups={voiceGroups.map((group) => ({
+            label: group.label,
+            items: group.items.map((item) => ({
+              value: item.id,
+              label: item.text,
+              hint: item.hint,
+            })),
+          }))}
+          onValueChange={handleVoiceSelect}
+          trailing={
+            <SettingsActionButton
+              agentId="identity-voice-preview"
+              agentLabel={
+                voiceTesting
+                  ? t("settings.identity.stopVoicePreview", {
+                      defaultValue: "Stop voice preview",
+                    })
+                  : t("settings.identity.previewVoice", {
+                      defaultValue: "Preview voice",
+                    })
+              }
+              type="button"
+              variant={voiceTesting ? "destructive" : "ghost"}
+              size="icon"
+              className="size-11 shrink-0"
+              onClick={voiceTesting ? stopVoicePreview : handlePreviewVoice}
+              disabled={!activeVoicePreset?.previewUrl || voiceLoading}
+            >
+              {voiceTesting ? (
+                <VolumeX className="size-4" />
+              ) : (
+                <Volume2 className="size-4" />
+              )}
+            </SettingsActionButton>
+          }
+        />
+      </SettingsGroup>
+
+      {previewError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{previewError}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      <SaveFooter
+        dirty={dirty}
+        saving={saving}
+        saveError={saveError}
+        saveSuccess={saveSuccess}
+        onSave={() => void handleSave()}
+      />
+    </>
+  );
+}
+/** Legacy `#identity`/`basics` compatibility surface. */
+export function IdentitySettingsSection() {
+  return (
+    <SettingsStack>
+      <VoicePresetSettingsContent />
+    </SettingsStack>
+  );
+}

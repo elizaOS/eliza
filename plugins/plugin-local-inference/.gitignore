@@ -1,0 +1,6 @@
+
+# Voice Workbench / corpus generated outputs (#8785) — never commit
+voice-corpus-output/
+voice-workbench-output/
+# #10726 voice bench lane reports (sttquant:real / noise:real / speakeriso:real)
+voice-bench-output/

@@ -1,0 +1,142 @@
+/**
+ * Packaged desktop storage seeding for regression tests that need a returning
+ * install profile. The bridge is intentionally narrow: desktop test packaging
+ * injects a marker global, and only then does this module expose narrow helpers
+ * that write exact first-run keys through the shell storage privilege channel.
+ */
+import {
+  getStorageValue,
+  removeStorageValue,
+  setStorageValue,
+  shellLocalStorage,
+} from "@elizaos/ui";
+
+const DESKTOP_TEST_BRIDGE_MARKER = "__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__";
+const PACKAGED_SHELL_STORAGE_TEST_GLOBAL =
+  "__ELIZA_PACKAGED_SHELL_STORAGE_TEST__";
+
+export interface ReturningInstallSeedResult {
+  ok: true;
+  firstRunComplete: string | null;
+  setupStep: string | null;
+  uiShellMode: string | null;
+  activeServer: string | null;
+}
+
+export interface ResettableStateSeedResult {
+  ok: true;
+  firstRunComplete: string | null;
+  activeServer: string | null;
+}
+
+export interface PackagedShellStorageTestBridge {
+  clearProtectedTestState(): Promise<void>;
+  readReturningInstallState(): Promise<ReturningInstallSeedResult>;
+  seedResettableState(): Promise<ResettableStateSeedResult>;
+  seedReturningInstallState(
+    apiBase: string,
+    chatOverlayHotkey?: string,
+  ): Promise<ReturningInstallSeedResult>;
+}
+
+export async function readReturningInstallStateForPackagedTests(
+  win = window,
+): Promise<ReturningInstallSeedResult> {
+  return {
+    ok: true,
+    firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
+    setupStep: win.localStorage.getItem("eliza:setup:step"),
+    uiShellMode: win.localStorage.getItem("eliza:ui-shell-mode"),
+    // active-server is protected on desktop and intentionally removed from
+    // raw localStorage after migration. Exercise the authoritative OS-backed
+    // storage channel instead of mistaking plaintext absence for data loss.
+    activeServer: (await getStorageValue("elizaos:active-server")) ?? null,
+  };
+}
+
+declare global {
+  interface Window {
+    __ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__?: boolean;
+    __ELIZA_PACKAGED_SHELL_STORAGE_TEST__?: PackagedShellStorageTestBridge;
+  }
+}
+
+function labelForApiBase(apiBase: string): string {
+  try {
+    return new URL(apiBase).host || apiBase;
+  } catch {
+    return apiBase;
+  }
+}
+
+export async function seedReturningInstallStateForPackagedTests(
+  apiBase: string,
+  chatOverlayHotkey?: string,
+  win = window,
+): Promise<ReturningInstallSeedResult> {
+  shellLocalStorage.removeItem("elizaos:first-run:force-fresh");
+  shellLocalStorage.setItem("eliza:first-run-complete", "1");
+  shellLocalStorage.setItem("eliza:setup:step", "activate");
+  shellLocalStorage.setItem("eliza:ui-shell-mode", "native");
+  if (chatOverlayHotkey) {
+    shellLocalStorage.setItem(
+      "eliza:chatOverlayHotkey",
+      JSON.stringify({ accelerator: chatOverlayHotkey, enabled: true }),
+    );
+  }
+  await setStorageValue(
+    "elizaos:active-server",
+    JSON.stringify({
+      id: `remote:${apiBase}`,
+      kind: "remote",
+      label: labelForApiBase(apiBase),
+      apiBase,
+    }),
+  );
+  return readReturningInstallStateForPackagedTests(win);
+}
+
+export async function seedResettableStateForPackagedTests(
+  win = window,
+): Promise<ResettableStateSeedResult> {
+  shellLocalStorage.setItem("eliza:first-run-complete", "1");
+  await setStorageValue(
+    "elizaos:active-server",
+    JSON.stringify({
+      id: "local:embedded",
+      kind: "local",
+      label: "This device",
+    }),
+  );
+  return {
+    ok: true,
+    firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
+    activeServer: (await getStorageValue("elizaos:active-server")) ?? null,
+  };
+}
+
+export function installPackagedShellStorageTestBridge(win = window): boolean {
+  if (Reflect.get(win, DESKTOP_TEST_BRIDGE_MARKER) !== true) {
+    return false;
+  }
+
+  const bridge: PackagedShellStorageTestBridge = {
+    clearProtectedTestState: () => removeStorageValue("elizaos:active-server"),
+    readReturningInstallState: () =>
+      readReturningInstallStateForPackagedTests(win),
+    seedResettableState: () => seedResettableStateForPackagedTests(win),
+    seedReturningInstallState: (apiBase, chatOverlayHotkey) =>
+      seedReturningInstallStateForPackagedTests(
+        apiBase,
+        chatOverlayHotkey,
+        win,
+      ),
+  };
+  Object.defineProperty(win, PACKAGED_SHELL_STORAGE_TEST_GLOBAL, {
+    configurable: true,
+    enumerable: false,
+    value: bridge,
+    writable: false,
+  });
+  return true;
+}

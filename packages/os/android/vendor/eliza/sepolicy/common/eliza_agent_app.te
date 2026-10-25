@@ -1,0 +1,6 @@
+userdebug_or_eng(`
+  allow platform_app_36 app_data_file:file { execute execute_no_trans };
+  # Runtime identity atomically publishes an app-owned, fsynced candidate
+  # with linkat. Preserve no-overwrite publication rather than bypassing it.
+  allow platform_app_36 app_data_file:file link;
+')

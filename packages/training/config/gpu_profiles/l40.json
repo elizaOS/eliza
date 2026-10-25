@@ -1,0 +1,15 @@
+{
+  "name": "L40 GPU (48GB)",
+  "description": "NVIDIA L40 - Optimized for production training with larger models",
+  "model": "google/gemma-4-E4B",
+  "vllm_gpu_memory": 0.5,
+  "batch_size": 8,
+  "max_token_length": 8192,
+  "group_size": 4,
+  "total_steps": 5000,
+  "steps_per_eval": 250,
+  "gradient_accumulation_steps": 4,
+  "learning_rate": 1e-5,
+  "warmup_steps": 100,
+  "notes": "L40 has 48GB VRAM. Uses Gemma 4 E4B for quality. Increase batch_size to 16 for faster training if stable."
+}

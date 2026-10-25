@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["ES2021.String"],
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "rootDir": ".",
+    "outDir": "./dist",
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "sourceMap": true,
+    "declarationMap": true,
+    "composite": false,
+    "types": ["node", "bun"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": [
+    "./__tests__/**",
+    "./**/*.test.ts",
+    "./dist/**",
+    "./build.ts",
+    "vitest.config.ts"
+  ]
+}

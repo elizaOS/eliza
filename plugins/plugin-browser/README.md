@@ -1,0 +1,154 @@
+# @elizaos/plugin-browser
+
+Adds browser automation through registered native Chromium profiles, the desktop
+workspace, and configured hosted endpoints. Enable `features.browser` in host
+configuration. The MV3 companion in `packages/os/browser` controls
+the same visible profile through an authenticated native messaging host on Linux
+and the supported Chromium Desktop Android build. It supports background tabs and
+complete DOM snapshots; selectors expire after effects and require fresh readback.
+Android Custom Tabs are addressable by their exact tab IDs while open, including
+when backgrounded. Creating a new background tab requires a regular Chromium
+window: open Chromium from the launcher once. Without one, the command returns
+`UNAVAILABLE` before the effect and does not launch a window or retry elsewhere.
+The Android app holds a certificate-verified Custom Tabs service binding while
+its agent foreground service runs. Chunk acknowledgements bound Binder traffic
+without shortening page context. Deployment still requires a verified extension
+and a Chromium build provisioned for its native host; unpacked debug installation
+is development evidence, not release provisioning.
+
+`NativeSocketBrowserTarget.execute(command, { signal })` requires the peer's
+`cancel` capability. An abort sends a request-ID fence and rejects with an unknown
+outcome after dispatch; it never retries on another profile. Older peers reject
+cancellable requests before dispatch. Callers still reconcile any uncertain effect.
+
+Trusted hosts can call `NativeSocketBrowserTarget.waitForProfile(profileId, { timeoutMs, signal })`
+before binding a task after restart. It waits at most 10 seconds by default
+(30 seconds maximum), rejects a different registered profile immediately, and
+stops on cancellation or transport shutdown. It sends no commands and never
+retries dispatched work. Hosts must recheck task/account authority after waiting.
+
+For an advisory-enabled peer, trusted hosts can call
+`NativeSocketBrowserTarget.setProtectionOwner(opaqueOwnerOrNull)` after profile
+registration and every account transition. `onProfileRegistered(listener)` notifies
+the host after each registration, including a current connection when subscribed.
+The receipt's `isCurrent()` must be checked again after asynchronous account reads;
+a disconnect, replacement, unsubscribe or stop invalidates it. Registration itself
+is not account authentication. This is not a model browser action.
+Disconnect retires the extension's account context; reconnection does not restore
+it automatically. The receipt counts updated/unavailable tabs. It grants no task
+permission and does not override blacklist rules. Missing capability rejects.
+
+`NativeTaskActuator` composes the core task journal with this transport. The host
+supplies task lookup, reviewed page policy, durable binding revisions, protected
+value resolution, outcome verification and redacted evidence storage. It checks
+ownership and dispatched-operation identity, binds a main-frame observation,
+consumes each target once, and requires a fresh readback before reporting a
+verified outcome. It does not interpret bill policy or manufacture a success
+from a click receipt. Ordinary fills cannot be used as a protected OTP path.
+
+For unknown operations, an optional trusted `reconcile` callback interprets a
+fresh snapshot against durable host provenance. The actuator creates a new native
+binding with an empty action-target allowlist, checks task identity and revision
+at every await boundary, and never caches the readback as an action observation.
+Only an explicit later Resume can establish a fresh ordinary binding. A snapshot
+is evidence to interpret, not proof that an effect succeeded.
+
+Native profiles are preferred before hosted browsers. Signed remote device grants
+bind browser commands to one exact profile; older agent grants do not grant browser
+access. A dispatched command is never replayed against a different session.
+Android accessibility is a foreground-only fallback when the native profile is
+unavailable before dispatch. Desktop workspace autofill requires prior per-domain
+vault authorization and does not silently fill remote device profiles.
+
+## Development
+
+Install dependencies with `bun install` at the repository root. Run from that root:
+
+```bash
+bun run --cwd plugins/plugin-browser build
+bun run --cwd plugins/plugin-browser test
+```
+
+## Remote controllers
+
+App, CLI and cloud hosts import `@elizaos/plugin-browser/remote-controller` to
+compose owner-authorized remote profiles and encrypted runtime storage. That
+entrypoint is server-only and is deliberately absent from the default/mobile
+barrels. Renderers use only `remote-control/cloud-client` and
+`remote-control/cloud-endpoints`; those leaves do not import controller crypto.
+The shared wire contracts remain in core. Run `bun run --cwd
+plugins/plugin-browser test:remote-control` for authority and real encrypted SQL
+storage regressions.
+
+
+Trusted hosts can use `NativeSocketBrowserTarget.guideTask` after negotiating
+`task-guide` and `task-bind`. Supply the exact task context, increasing per-binding
+guidance revision and a current main-frame snapshot selector. The extension admits
+request IDs once and removes annotations on cancellation/rebind/disconnect.
+Peers with `task-guide-label` also accept `detail`, `tone`, offer `answers`,
+`kind: "pause"` and a binding `assistantName`; older peers reject them before
+dispatch. `onTaskGuideAnswer` delivers one tap per current offer as
+`{tabId, stepId, revision, answerId}`. It never carries the value. Answers to a
+replaced offer are dropped. `NativeTaskActuator` passes these fields, returns the
+guide revision and adds `pauseGuidance`. Installed browser UI is not qualified here.
+
+`NativeTaskActuator.showGuidance` requires an active task and a target from its
+current observation. `quiesce` removes that owner's guide and waits for a removal
+receipt, including after task revocation. Hosts using the interactive-task runtime
+must await `settle` after control/account changes before acknowledging cleanup.
+Failed removal stays tracked for retry; it never repeats a website action.
+The actuator requires acknowledged feedback cleanup before and after effects.
+It passes the proposal expiry through `execute`'s `taskExpiresAt` option so the
+native preview cannot outlive action authority. Missing feedback capability stops
+dispatch; a pointer/tap receipt never substitutes for outcome verification.
+Scoped effects also require the peer's `task-action-feedback` capability; older
+task-binding browsers fail before dispatch rather than skipping the preview.
+
+A trusted value resolver can return `{ kind: "verification-code", text }` for a
+protected OTP fill. The task transport requires the `task-protected-fill` peer
+capability and introduces the marker through trusted execute options; raw command
+markers are stripped. Native policy additionally requires an exact `fill-code`
+target and an input with `autocomplete="one-time-code"`. Ordinary text fills,
+password fields and Verify/submit clicks remain denied. The value still travels
+only on the authenticated native channel and is excluded from DOM snapshots;
+host evidence/screenshot pipelines must also preserve secret redaction. This
+primitive does not resolve codes, grant account access, or qualify a live provider.
+
+A proposal can set `expectedSelector` to the one reviewed binding target it is
+for. The actuator refuses it before dispatch unless the binding holds that
+selector for the action, and the browser (`task-expected-target`) accepts no
+other node. For 30 seconds after a task fill or click (or until the next one), the browser
+stops any form submit or move to another document that the person's own input
+did not start (a link click still opens its link). It also records, without
+being able to stop them, a same-document address change (`history.pushState`)
+and a fetch, XMLHttpRequest or beacon to the page's own site, such as a code
+field that verifies itself with `fetch()`. A snapshot then reports
+`effectViolation` (`submit`, `navigation` or `request`); the actuator records
+such an action as an unknown outcome, and the bill workflow pauses on any later
+snapshot that carries it. A request still in flight when the actuator reads its
+after-action snapshot appears only in a later snapshot, and anything the page
+does after the 30 seconds is not watched. `showGuidance` accepts
+`keepClearRefs` (controls the label must not cover, peer capability
+`task-guide-keep-clear`) and returns `placement` and `dismissed`.
+
+`NativeSocketBrowserTarget.currentPage()` is a trusted host read of the page the
+person sees in the connected profile. It sends one `list` command and returns the
+single active HTTPS tab as `{ tabId, origin, title }`: the origin without path,
+query or fragment, and the complete title from `currentPageTitle()`, with control
+characters and whitespace normalized. This preserves the authorized source
+context without truncation or heuristic replacement. The title is written by
+the website, so hosts pass it to a model as quoted data, never as instructions.
+It returns `null` when no single active HTTPS page is known: no active web tab,
+more than one browser window (the extension's `list` reply counts windows before
+it drops non-web tabs, so a window showing only a new-tab or settings page
+counts), an extension that does not report `windowCount`, or a non-HTTPS page.
+Which window has focus is not read, so with one window the active tab is taken
+as the page she sees. Incognito windows are counted only when the extension is
+allowed in incognito; otherwise she may be looking at one that is not counted.
+The result is conversation context only. It binds no task and permits no action.
+
+Android hosts set `ELIZA_BROWSER_ANDROID_APPLICATION` to their application ID
+when starting the native target. It connects and reconnects only to that app's
+`<applicationId>.browser.native` abstract socket. The default remains
+`ai.elizaos.app`; malformed or oversized IDs fail before connecting. This selects
+the host relay and does not replace its same-UID or Chromium certificate checks.

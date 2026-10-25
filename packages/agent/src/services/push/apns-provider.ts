@@ -1,0 +1,275 @@
+/**
+ * ApnsProvider — Apple Push Notification service (HTTP/2) sender.
+ *
+ * Auth is a JWT provider token (Apple's token-based auth): an ES256 JWT signed
+ * with the team's .p8 EC private key, header `{ alg:"ES256", kid: <keyId> }`,
+ * claims `{ iss: <teamId>, iat: <now> }`. The token is reused until it nears
+ * Apple's 1-hour cap, then re-minted.
+ *
+ * Delivery POSTs to `https://api.push.apple.com/3/device/<token>` (or the
+ * sandbox host) over HTTP/2 with headers `apns-topic`, `apns-push-type:"alert"`,
+ * and `authorization: bearer <jwt>`. The payload is the standard APNs alert
+ * shape `{ aps: { alert: { title, body }, sound:"default" }, ...customData }`.
+ *
+ * VERIFIABILITY: the JWT minting (`mintToken`) and request shaping are pure and
+ * unit-tested with a throwaway P-256 key. The request deadline is exercised
+ * against a local HTTP/2 server that answers, stalls, or fails. Actual delivery
+ * hits Apple's servers and is NOT exercised in tests — it requires a real APNs
+ * auth key, a real bundle id, and a real device token.
+ */
+
+import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { connect, constants as http2Constants } from "node:http2";
+import {
+  type PushMessage,
+  type PushProvider,
+  PushUnregisteredError,
+} from "./push-types.ts";
+
+const PROD_HOST = "https://api.push.apple.com";
+const SANDBOX_HOST = "https://api.sandbox.push.apple.com";
+/** Re-mint the provider token before Apple's 60-minute cap (use 50 min). */
+const TOKEN_TTL_MS = 50 * 60 * 1000;
+/**
+ * Deadline for one APNs HTTP/2 request, in milliseconds. Matches the FCM
+ * transport's `DEFAULT_FCM_FETCH_TIMEOUT_MS`. APNs can hold a stream open with
+ * no response and no error, so a request needs its own deadline.
+ */
+export const DEFAULT_APNS_REQUEST_TIMEOUT_MS = 10_000;
+
+interface ApnsConfig {
+  /** PEM/p8 EC private key contents. */
+  key: string;
+  /** APNs auth key id (the `kid` header). */
+  keyId: string;
+  /** Apple developer team id (the `iss` claim). */
+  teamId: string;
+  /** App bundle id (the `apns-topic` header). */
+  topic: string;
+  /** Whether to target the production host. */
+  production: boolean;
+}
+
+/** base64url with no padding, per JWT. */
+function base64url(input: Buffer | string): string {
+  return (typeof input === "string" ? Buffer.from(input) : input)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+/**
+ * Read APNs config from the environment, or null if not fully configured.
+ * Exported for the gating check / tests.
+ */
+export function readApnsConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): ApnsConfig | null {
+  const inline = env.ELIZA_APNS_KEY?.trim();
+  const keyPath = env.ELIZA_APNS_KEY_PATH?.trim();
+  const keyId = env.ELIZA_APNS_KEY_ID?.trim();
+  const teamId = env.ELIZA_APNS_TEAM_ID?.trim();
+  const topic = env.ELIZA_APNS_TOPIC?.trim();
+  if (!keyId || !teamId || !topic) return null;
+
+  let key = inline;
+  if (!key && keyPath) {
+    key = readFileSync(keyPath, "utf8").trim();
+  }
+  if (!key) return null;
+
+  return {
+    key,
+    keyId,
+    teamId,
+    topic,
+    production: env.ELIZA_APNS_PRODUCTION === "1",
+  };
+}
+
+export class ApnsProvider implements PushProvider {
+  readonly name = "apns";
+  private readonly config: ApnsConfig | null;
+  private privateKey: KeyObject | null = null;
+  private cachedToken: { jwt: string; mintedAt: number } | null = null;
+
+  constructor(env: NodeJS.ProcessEnv = process.env) {
+    this.config = readApnsConfig(env);
+  }
+
+  isConfigured(): boolean {
+    return this.config !== null;
+  }
+
+  private requireConfig(): ApnsConfig {
+    if (!this.config) {
+      throw new Error("[ApnsProvider] APNs is not configured");
+    }
+    return this.config;
+  }
+
+  private getPrivateKey(): KeyObject {
+    if (!this.privateKey) {
+      this.privateKey = createPrivateKey(this.requireConfig().key);
+    }
+    return this.privateKey;
+  }
+
+  /**
+   * Mint (or reuse) the ES256 provider token. Public + cache-bypassing so the
+   * unit test can assert header/claims deterministically.
+   */
+  mintToken(now: number = Date.now()): string {
+    const cached = this.cachedToken;
+    if (cached && now - cached.mintedAt < TOKEN_TTL_MS) {
+      return cached.jwt;
+    }
+    const { keyId, teamId } = this.requireConfig();
+    const header = { alg: "ES256", kid: keyId };
+    const claims = { iss: teamId, iat: Math.floor(now / 1000) };
+    const signingInput = `${base64url(JSON.stringify(header))}.${base64url(
+      JSON.stringify(claims),
+    )}`;
+    // ES256 requires a JOSE (P1363) signature, not DER — Node emits that with
+    // `dsaEncoding: "ieee-p1363"`.
+    const signature = createSign("SHA256")
+      .update(signingInput)
+      .sign({ key: this.getPrivateKey(), dsaEncoding: "ieee-p1363" });
+    const jwt = `${signingInput}.${base64url(signature)}`;
+    this.cachedToken = { jwt, mintedAt: now };
+    return jwt;
+  }
+
+  /** Build the JSON payload body for one message. */
+  buildPayload(message: PushMessage): string {
+    const alert: { title: string; body?: string } = { title: message.title };
+    if (message.body) alert.body = message.body;
+    const payload: Record<string, unknown> = {
+      aps: { alert, sound: "default" },
+      ...(message.data ?? {}),
+    };
+    return JSON.stringify(payload);
+  }
+
+  async send(token: string, message: PushMessage): Promise<void> {
+    const config = this.requireConfig();
+    const host = config.production ? PROD_HOST : SANDBOX_HOST;
+    const jwt = this.mintToken();
+    const body = this.buildPayload(message);
+
+    const { status, reason } = await this.postHttp2(host, token, jwt, body);
+    if (status === 200) return;
+
+    // Only 410 / Unregistered proves that APNs no longer accepts this token.
+    // BadDeviceToken can also mean that a valid token was sent to the wrong
+    // APNs environment, so that response must not delete the registration.
+    if (status === 410 || reason === "Unregistered") {
+      throw new PushUnregisteredError(
+        token,
+        `[ApnsProvider] token rejected (status=${status} reason=${reason ?? "n/a"})`,
+      );
+    }
+    throw new Error(
+      `[ApnsProvider] APNs request failed (status=${status} reason=${reason ?? "n/a"})`,
+    );
+  }
+
+  /**
+   * POST over HTTP/2 and resolve the status + APNs `reason` (if any).
+   *
+   * APNs can leave a stream open with no `end` and no `error`. The caller
+   * (`NotificationPushService`) sends to one device token at a time, so one
+   * silent stream stops every later device in that round. `timeoutMs` bounds
+   * the stream and cancels it when the deadline passes. The three exit paths
+   * (`end`, `error`, timeout) race, and only the first one settles the promise.
+   */
+  private postHttp2(
+    host: string,
+    token: string,
+    jwt: string,
+    body: string,
+    timeoutMs: number = DEFAULT_APNS_REQUEST_TIMEOUT_MS,
+  ): Promise<{ status: number; reason?: string }> {
+    const config = this.requireConfig();
+    return new Promise((resolve, reject) => {
+      const client = connect(host);
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
+
+      /** Run one exit path only; drop the deadline when the request is done. */
+      const settleOnce = (settle: () => void): void => {
+        if (settled) return;
+        settled = true;
+        if (timer !== undefined) clearTimeout(timer);
+        settle();
+      };
+
+      client.on("error", (error) => {
+        client.close();
+        settleOnce(() => reject(error));
+      });
+      const req = client.request({
+        [http2Constants.HTTP2_HEADER_METHOD]: "POST",
+        [http2Constants.HTTP2_HEADER_PATH]: `/3/device/${token}`,
+        "apns-topic": config.topic,
+        "apns-push-type": "alert",
+        authorization: `bearer ${jwt}`,
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(body),
+      });
+      let status = 0;
+      const chunks: Buffer[] = [];
+      req.on("response", (headers) => {
+        status = Number(headers[http2Constants.HTTP2_HEADER_STATUS] ?? 0);
+      });
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        client.close();
+        let reason: string | undefined;
+        if (chunks.length > 0) {
+          reason = parseApnsReason(Buffer.concat(chunks).toString("utf8"));
+        }
+        settleOnce(() => resolve({ status, reason }));
+      });
+      req.on("error", (error) => {
+        client.close();
+        settleOnce(() => reject(error));
+      });
+
+      timer = setTimeout(() => {
+        // Cancel the stream first so APNs drops the send, then tear the session
+        // down so no half-open connection stays in the pool.
+        req.close(http2Constants.NGHTTP2_CANCEL);
+        client.destroy();
+        settleOnce(() =>
+          reject(
+            new Error(
+              `[ApnsProvider] APNs request timed out after ${timeoutMs} ms`,
+            ),
+          ),
+        );
+      }, timeoutMs);
+
+      req.end(body);
+    });
+  }
+}
+
+/** Extract the APNs error `reason` from a JSON error body, if present. */
+function parseApnsReason(raw: string): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      typeof (parsed as { reason?: unknown }).reason === "string"
+    ) {
+      return (parsed as { reason: string }).reason;
+    }
+  } catch {
+    // Non-JSON body (e.g. an empty 200) carries no reason.
+  }
+  return undefined;
+}

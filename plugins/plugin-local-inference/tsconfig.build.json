@@ -1,0 +1,16 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"declarationDir": "./dist",
+		"rootDir": "./src",
+		"paths": {
+			"@elizaos/plugin-local-inference/*": ["./src/*"],
+			"@elizaos/plugin-native-inference/*": [
+				"../plugin-native-inference/dist/*"
+			],
+			"@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"],
+			"@elizaos/core/protocol": ["../../packages/core/dist/protocol"]
+		},
+		"outDir": "./dist"
+	}
+}

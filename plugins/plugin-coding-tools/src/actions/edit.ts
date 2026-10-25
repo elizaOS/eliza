@@ -1,0 +1,267 @@
+/**
+ * FILE `edit` handler: applies a find/replace edit to an existing file after
+ * validating the path and confirming (via FileStateService) it was not modified
+ * externally since the last read. Flags secrets in the new content before writing.
+ */
+import * as fs from "node:fs/promises";
+
+import {
+  type ActionResult,
+  logger as coreLogger,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
+
+import {
+  fileEffectReceipt,
+  fileMutationResult,
+} from "../lib/file-effect-receipt.js";
+import {
+  failureToActionResult,
+  readBoolParam,
+  readStringParam,
+} from "../lib/format.js";
+import { resolveInputPath } from "../lib/path-utils.js";
+import { detectSecrets } from "../lib/secrets.js";
+import type { FileStateService } from "../services/file-state-service.js";
+import type { SandboxService } from "../services/sandbox-service.js";
+import {
+  CODING_TOOLS_LOG_PREFIX,
+  FILE_STATE_SERVICE,
+  SANDBOX_SERVICE,
+} from "../types.js";
+
+function countOccurrences(haystack: string, needle: string): number {
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let idx = 0;
+  while (idx < haystack.length) {
+    const foundAt = haystack.indexOf(needle, idx);
+    if (foundAt === -1) break;
+    count += 1;
+    idx = foundAt + needle.length;
+  }
+  return count;
+}
+
+function lineNumberOf(haystack: string, byteIndex: number): number {
+  if (byteIndex <= 0) return 1;
+  let line = 1;
+  for (let i = 0; i < byteIndex && i < haystack.length; i += 1) {
+    if (haystack.charCodeAt(i) === 10) line += 1;
+  }
+  return line;
+}
+
+function lineSpan(text: string): number {
+  return text.length === 0 ? 0 : text.split("\n").length;
+}
+
+export async function editFileHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state: State | undefined,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  const conversationId =
+    message.roomId !== undefined && message.roomId !== null
+      ? String(message.roomId)
+      : undefined;
+  if (!conversationId) {
+    return failureToActionResult({
+      reason: "missing_param",
+      message: "no roomId",
+    });
+  }
+
+  const filePath = readStringParam(options, "file_path");
+  const oldStr = readStringParam(options, "old_string");
+  const newStr = readStringParam(options, "new_string");
+  const replaceAll = readBoolParam(options, "replace_all") ?? false;
+  const allowLiteralEscapes =
+    readBoolParam(options, "allow_literal_escapes") ?? false;
+  if (!filePath || oldStr === undefined || newStr === undefined) {
+    return failureToActionResult({
+      reason: "missing_param",
+      message: "file_path, old_string, and new_string are required",
+    });
+  }
+  const inputPath = resolveInputPath(runtime, conversationId, filePath);
+  if (!inputPath.ok) return failureToActionResult(inputPath.failure);
+  if (oldStr === newStr) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message: "old_string and new_string are identical; nothing to do",
+    });
+  }
+  // Real multiline source can legitimately contain string or regex escapes.
+  // Do not confuse those source bytes with an entirely double-escaped edit.
+  if (
+    !allowLiteralEscapes &&
+    !newStr.includes("\n") &&
+    !newStr.includes("\r") &&
+    (newStr.includes("\\n") || newStr.includes("\\r"))
+  ) {
+    return failureToActionResult({
+      reason: "invalid_param",
+      message:
+        "new_string contains a literal \\n or \\r sequence. Send an actual newline for a multiline edit, or set allow_literal_escapes=true when the backslash escape is intentionally part of the source.",
+    });
+  }
+
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
+    typeof SandboxService
+  > | null;
+  if (!sandbox) {
+    return failureToActionResult({
+      reason: "internal",
+      message: "coding-tools sandbox service unavailable",
+    });
+  }
+
+  const validated = await sandbox.validatePath(conversationId, inputPath.value);
+  if (validated.ok === false) {
+    const reason =
+      validated.reason === "blocked" ? "path_blocked" : "invalid_param";
+    return failureToActionResult({ reason, message: validated.message });
+  }
+
+  const resolved = validated.resolved;
+  const failAtPath = (
+    failure: Parameters<typeof failureToActionResult>[0],
+  ): ActionResult => failureToActionResult(failure, { path: resolved });
+  const fileState = runtime.getService(FILE_STATE_SERVICE) as InstanceType<
+    typeof FileStateService
+  > | null;
+  if (!fileState) {
+    return failAtPath({
+      reason: "internal",
+      message: "coding-tools file-state service unavailable",
+    });
+  }
+
+  const gate = await fileState.assertWritable(conversationId, resolved);
+  if (gate.ok === false) {
+    const reason =
+      gate.reason === "stale_read" ? "stale_read" : "invalid_param";
+    return failAtPath({ reason, message: gate.message });
+  }
+
+  let original: string;
+  try {
+    original = await fs.readFile(resolved, "utf8");
+  } catch (err) {
+    // error-policy:J1 action boundary; a read failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
+    const msg = err instanceof Error ? err.message : String(err);
+    return failAtPath({
+      reason: "io_error",
+      message: `read failed: ${msg}`,
+    });
+  }
+
+  const occurrences = countOccurrences(original, oldStr);
+  if (occurrences === 0) {
+    return failAtPath({
+      reason: "no_match",
+      message: `old_string not found in ${resolved}`,
+    });
+  }
+  if (!replaceAll && occurrences > 1) {
+    return failAtPath({
+      reason: "invalid_param",
+      message: `ambiguous: ${occurrences} matches; pass replace_all=true or extend old_string`,
+    });
+  }
+
+  const firstIndex = original.indexOf(oldStr);
+  const firstLine = lineNumberOf(original, firstIndex);
+
+  const updated = replaceAll
+    ? original.split(oldStr).join(newStr)
+    : `${original.slice(0, firstIndex)}${newStr}${original.slice(firstIndex + oldStr.length)}`;
+  const replacements = replaceAll ? occurrences : 1;
+  const addedLines = lineSpan(newStr) * replacements;
+  const removedLines = lineSpan(oldStr) * replacements;
+
+  const secrets = detectSecrets(newStr);
+  if (secrets.length > 0) {
+    const names = secrets.map((s) => s.name).join(", ");
+    return failAtPath({
+      reason: "invalid_param",
+      message: `refusing to introduce content matching secret patterns: ${names}`,
+    });
+  }
+
+  try {
+    await fs.writeFile(resolved, updated, "utf8");
+  } catch (err) {
+    // error-policy:J1 action boundary; a write failure becomes a success:false
+    // ActionResult carrying the real message, surfaced to the model.
+    const msg = err instanceof Error ? err.message : String(err);
+    return failAtPath({
+      reason: "io_error",
+      message: `write failed: ${msg}`,
+    });
+  }
+
+  let receipt: Awaited<ReturnType<typeof fileEffectReceipt>>;
+  try {
+    receipt = await fileEffectReceipt({
+      path: resolved,
+      content: updated,
+      operation: "edit",
+    });
+  } catch (error) {
+    // error-policy:J1 post-write verification boundary; the mutation may have
+    // happened, but no applied receipt or success callback is fabricated.
+    return {
+      ...failAtPath({
+        reason: "io_error",
+        message: `write completed but verification failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_WRITE_UNVERIFIED",
+        retryable: false,
+      },
+    };
+  }
+
+  try {
+    await fileState.recordWrite(conversationId, resolved);
+  } catch (error) {
+    // error-policy:J1 bookkeeping failed after commit; preserve the actual
+    // mutation proof and do not deliver an unqualified success confirmation.
+    return {
+      ...failAtPath({
+        reason: "internal",
+        message: `write committed but file-state tracking failed: ${error instanceof Error ? error.message : String(error)}`,
+      }),
+      effectReceipts: [receipt],
+      failureProvenance: {
+        kind: "persistence_error",
+        boundary: "persistence",
+        code: "FILE_STATE_TRACKING_FAILED",
+        retryable: false,
+      },
+    };
+  }
+  coreLogger.debug(
+    `${CODING_TOOLS_LOG_PREFIX} EDIT ${resolved} replacements=${replacements} firstLine=${firstLine}`,
+  );
+
+  const text = `Replaced ${replacements} occurrence${replacements === 1 ? "" : "s"} in ${resolved} (first at line ${firstLine})`;
+  return fileMutationResult({
+    runtime,
+    receipt,
+    text,
+    content: updated,
+    data: { path: resolved, replacements, firstLine, addedLines, removedLines },
+    callback,
+  });
+}

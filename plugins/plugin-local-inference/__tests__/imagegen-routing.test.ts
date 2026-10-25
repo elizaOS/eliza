@@ -1,0 +1,98 @@
+/**
+ * WS3 tier → default image-gen model routing tests.
+ *
+ * Each tier in the catalog has exactly one default image-gen GGUF. The
+ * map lives in two places (intentional, see provider.ts comment for
+ * why):
+ *
+ *   1. `services/imagegen/backend-selector.ts#TIER_TO_DEFAULT_IMAGE_MODEL`
+ *   2. `src/services/manifest/catalog/eliza-1-bundle-extras.json#imagegen.perTier`
+ *
+ * This test asserts they agree, plus that every tier lands on the SD 1.5
+ * default until a legacy-free split-diffusion encoder is available.
+ */
+
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
+import {
+	TIER_TO_DEFAULT_IMAGE_MODEL,
+	resolveDefaultImageGenModel,
+} from "../src/services/imagegen/backend-selector";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const EXTRAS_PATH = resolve(
+	__dirname,
+	"../src/services/manifest/catalog/eliza-1-bundle-extras.json",
+);
+
+interface ExtrasShape {
+	imagegen?: {
+		perTier?: Record<string, {
+			default?: {
+				id?: string;
+				file?: string;
+				splitDiffusionModel?: boolean;
+				companionAssets?: { role?: string; file?: string }[];
+			};
+		}>;
+	};
+}
+
+describe("WS3 routing — tier → default image-gen model", () => {
+	it("all tiers default to sd-1.5 Q5_0", () => {
+		for (const tier of [
+			"eliza-1-2b",
+			"eliza-1-4b",
+			"eliza-1-9b",
+			"eliza-1-27b",
+			"eliza-1-27b-256k",
+		]) {
+			const entry = TIER_TO_DEFAULT_IMAGE_MODEL[tier];
+			expect(entry?.modelId).toBe("imagegen-sd-1_5-q5_0");
+			expect(entry?.file).toBe("imagegen/sd-1.5-Q5_0.gguf");
+		}
+	});
+
+	it("resolveDefaultImageGenModel(tier) returns the default", () => {
+		expect(resolveDefaultImageGenModel("eliza-1-2b")?.modelId).toBe(
+			"imagegen-sd-1_5-q5_0",
+		);
+		expect(resolveDefaultImageGenModel("eliza-1-9b")?.modelId).toBe(
+			"imagegen-sd-1_5-q5_0",
+		);
+	});
+
+	it("resolveDefaultImageGenModel(modelId) round-trips", () => {
+		expect(resolveDefaultImageGenModel("imagegen-sd-1_5-q5_0")?.modelId).toBe(
+			"imagegen-sd-1_5-q5_0",
+		);
+	});
+
+	it("resolveDefaultImageGenModel returns null on unknown input", () => {
+		expect(resolveDefaultImageGenModel("eliza-1-unknown")).toBeNull();
+		expect(resolveDefaultImageGenModel("imagegen-not-real")).toBeNull();
+	});
+
+	it("agrees with ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier", () => {
+		const extras = JSON.parse(readFileSync(EXTRAS_PATH, "utf8")) as ExtrasShape;
+		const perTier = extras.imagegen?.perTier ?? {};
+		for (const [tier, entry] of Object.entries(TIER_TO_DEFAULT_IMAGE_MODEL)) {
+			const planned = perTier[tier]?.default;
+			expect(planned?.id).toBe(entry.modelId);
+			expect(planned?.file).toBe(entry.file);
+			expect(planned?.splitDiffusionModel).toBe(entry.splitDiffusionModel);
+			const companionFiles = new Set(
+				(planned?.companionAssets ?? []).map((asset) => asset.file),
+			);
+			if (entry.vae) expect(companionFiles.has(entry.vae)).toBe(true);
+			if (entry.llm) expect(companionFiles.has(entry.llm)).toBe(true);
+		}
+		// And every tier in the extras file is represented in the
+		// in-code map (no drift the other way).
+		for (const tier of Object.keys(perTier)) {
+			expect(TIER_TO_DEFAULT_IMAGE_MODEL[tier]).toBeTruthy();
+		}
+	});
+});

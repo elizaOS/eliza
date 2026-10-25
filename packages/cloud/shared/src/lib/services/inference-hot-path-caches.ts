@@ -1,0 +1,45 @@
+/**
+ * Flag for the Tier-3 in-isolate DECISION caches on the inference hot path
+ * (#9899): the org rate-limit lease (`middleware/rate-limit.ts`), the
+ * `shouldBlockUser` memo (`content-moderation.ts`), and the per-model catalog
+ * memo (`model-catalog.ts`).
+ *
+ * Deliberately a SEPARATE flag from `INFERENCE_DEFERRED_ADMISSION`: these
+ * caches are orthogonal to billing admission (they trade bounded read
+ * staleness for round-trips on any config), so coupling their rollback to the
+ * billing flag would be wrong in both directions. Default OFF — flag off is
+ * byte-identical to today's behavior, so "rollback = flip the flag" covers
+ * every behavior change this tier ships.
+ */
+
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { logger } from "../utils/logger";
+import { isInferenceStrongRevocationEnabled } from "./inference-credential-revocation";
+
+type EnvLike = Record<string, unknown>;
+let warnedUnsafeAuthCacheConfiguration = false;
+
+export function isHotPathCachesEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
+  const flag = env.INFERENCE_HOT_PATH_CACHES;
+  return typeof flag === "string" && flag.trim() === "true";
+}
+
+/**
+ * Positive authorization caches require a strongly consistent revocation
+ * boundary. Keep them independently disabled while the less-sensitive
+ * pricing, catalog, and rate-limit caches are rolled out.
+ */
+export function isInferenceAuthCacheEnabled(env: EnvLike = getCloudAwareEnv()): boolean {
+  const flag = env.INFERENCE_AUTH_CACHE_ENABLED;
+  const requested = typeof flag === "string" && flag.trim() === "true";
+  const strongRevocation = isInferenceStrongRevocationEnabled(env);
+  if (requested && !strongRevocation && !warnedUnsafeAuthCacheConfiguration) {
+    warnedUnsafeAuthCacheConfiguration = true;
+    logger.error("[InferenceAuth] positive cache requested without strong revocation", {
+      authCacheEnabled: true,
+      strongRevocationEnabled: false,
+      effectiveAuthCacheEnabled: false,
+    });
+  }
+  return requested && strongRevocation;
+}

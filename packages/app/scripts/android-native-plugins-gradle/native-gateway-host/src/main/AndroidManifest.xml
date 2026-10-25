@@ -1,0 +1,10 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application android:label="Gateway lifecycle test" android:testOnly="true" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name="ai.elizaos.app.MainActivity" android:exported="true" />
+        <!-- Exported only in this disposable fixture to exercise OS rejection from adb. -->
+        <service android:name="ai.elizaos.app.GatewayConnectionService" android:exported="true" android:foregroundServiceType="dataSync" />
+    </application>
+</manifest>

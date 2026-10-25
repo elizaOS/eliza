@@ -1,0 +1,291 @@
+/**
+ * GET/POST /api/v1/mcps
+ * CRUD endpoints for user-created MCP servers. Listings are free: paid
+ * listings are retired (#22961) and a price answers 410.
+ */
+
+import { isIP } from "node:net";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { organizationCreditsToLegacyMcpPoints } from "@elizaos/cloud-shared/billing";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { isForbiddenIpAddress } from "@elizaos/cloud-shared/lib/security/outbound-url";
+import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
+
+const createMcpSchema = z
+  .object({
+    name: z.string().min(1).max(100),
+    slug: z
+      .string()
+      .min(1)
+      .max(50)
+      .regex(/^[a-z0-9-]+$/),
+    description: z.string().min(1).max(1000),
+    category: z
+      .enum([
+        "utilities",
+        "finance",
+        "data",
+        "communication",
+        "productivity",
+        "ai",
+        "search",
+        "platform",
+        "other",
+      ])
+      .optional(),
+    endpointType: z.enum(["container", "external"]).optional(),
+    containerId: z.string().uuid().optional(),
+    externalEndpoint: z.string().url().optional(),
+    endpointPath: z.string().max(100).optional(),
+    transportType: z.enum(["streamable-http", "stdio"]).optional(),
+    tools: z
+      .array(
+        z.object({
+          name: z.string().min(1).max(50),
+          description: z.string().min(1).max(500),
+          inputSchema: z.record(z.string(), z.unknown()).optional(),
+          cost: z.string().max(20).optional(),
+        }),
+      )
+      .max(50)
+      .optional(),
+    pricingType: z.enum(["free", "credits", "x402"]).optional(),
+    /** Canonical USD-denominated organization cloud-credit price. */
+    priceUsd: z.number().min(0).max(10).optional(),
+    /** @deprecated Legacy MCP pricing points (100 points = $1). */
+    creditsPerRequest: z.number().min(0).max(1000).optional(),
+    x402PriceUsd: z.number().min(0).max(100).optional(),
+    x402Enabled: z.boolean().optional(),
+    creatorSharePercentage: z.number().min(0).max(100).optional(),
+    documentationUrl: z.string().url().optional(),
+    sourceCodeUrl: z.string().url().optional(),
+    supportEmail: z.string().email().optional(),
+    tags: z.array(z.string().max(30)).max(10).optional(),
+    icon: z.string().max(30).optional(),
+    color: z.string().max(10).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.priceUsd !== undefined &&
+      value.creditsPerRequest !== undefined &&
+      Math.abs(
+        organizationCreditsToLegacyMcpPoints(value.priceUsd) -
+          value.creditsPerRequest,
+      ) > 1e-9
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["creditsPerRequest"],
+        message:
+          "creditsPerRequest must equal priceUsd converted onto the stored legacy point grid when both are supplied",
+      });
+    }
+  });
+
+const listMcpsSchema = z.object({
+  category: z.string().max(30).optional(),
+  search: z.string().max(100).optional(),
+  status: z
+    .enum(["draft", "pending_review", "live", "suspended", "deprecated"])
+    .optional(),
+  scope: z.enum(["own", "public", "all"]).optional().default("own"),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(50),
+  offset: z.coerce.number().int().min(0).optional().default(0),
+});
+
+const app = new Hono<AppEnv>();
+
+app.post("/", async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+
+    const decodedBody = await decodeRequestJson(c.req);
+    if (!decodedBody.ok) {
+      return c.json({ error: "Invalid JSON body" }, 400);
+    }
+    const validation = createMcpSchema.safeParse(decodedBody.value);
+
+    if (!validation.success) {
+      return c.json(
+        {
+          error: "Invalid request body",
+          details: validation.error.issues.map((i) => ({
+            field: i.path.join("."),
+            message: i.message,
+          })),
+        },
+        400,
+      );
+    }
+
+    const data = validation.data;
+
+    if (data.endpointType === "container" && !data.containerId) {
+      return c.json(
+        { error: "containerId is required for container MCPs" },
+        400,
+      );
+    }
+    if (data.endpointType === "external" && !data.externalEndpoint) {
+      return c.json(
+        { error: "externalEndpoint is required for external MCPs" },
+        400,
+      );
+    }
+    if (data.endpointType === "external" && data.externalEndpoint) {
+      // SSRF guard at registration is synchronous only: require https and
+      // reject private/loopback IP-literal targets. We do NOT resolve DNS here
+      // (a momentarily-unresolvable host must not block registration, and the
+      // Worker runtime is not a reliable place for outbound DNS). Full
+      // DNS-based SSRF enforcement runs at proxy/fetch time in
+      // mcp/proxy/[mcpId] via assertSafeOutboundUrl.
+      let parsedEndpoint: URL;
+      try {
+        parsedEndpoint = new URL(data.externalEndpoint);
+      } catch {
+        return c.json({ error: "Invalid external endpoint URL" }, 400);
+      }
+      if (parsedEndpoint.protocol !== "https:") {
+        return c.json({ error: "External endpoint must use https" }, 400);
+      }
+      const endpointHost = parsedEndpoint.hostname
+        .replace(/^\[/, "")
+        .replace(/\]$/, "");
+      if (isIP(endpointHost) && isForbiddenIpAddress(endpointHost)) {
+        return c.json(
+          { error: "External endpoint must not target a private address" },
+          400,
+        );
+      }
+    }
+
+    const mcp = await userMcpsService.create({
+      ...data,
+      organizationId: user.organization_id,
+      userId: user.id,
+    });
+
+    logger.info("[API] Created user MCP", {
+      id: mcp.id,
+      name: mcp.name,
+      userId: user.id,
+    });
+
+    return c.json({ mcp: userMcpsService.toApiMcp(mcp) }, 201);
+  } catch (error) {
+    // MCP create path currently 500s in the cloud-api e2e because the user_mcps table
+    // exists — migration 0147 applies — but the worker INSERT fails against
+    // PGlite with a "Broken pipe" connection error). Log the real cause so the
+    // next run / prod (Railway) hit is debuggable instead of an opaque 500.
+    logger.error("[API] Failed to create user MCP", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return failureResponse(c, error);
+  }
+});
+
+app.get("/", async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+
+    const params = Object.fromEntries(new URL(c.req.url).searchParams);
+    const validation = listMcpsSchema.safeParse(params);
+
+    if (!validation.success) {
+      return c.json(
+        {
+          error: "Invalid query parameters",
+          details: validation.error.issues.map((i) => ({
+            field: i.path.join("."),
+            message: i.message,
+          })),
+        },
+        400,
+      );
+    }
+
+    const { category, search, status, scope, limit, offset } = validation.data;
+
+    // Public (foreign) MCPs are redacted — no raw external_endpoint (metered-proxy
+    // bypass) and no created_by_user_id (cross-org user identity). The caller's
+    // OWN MCPs are returned in full. (#10918)
+    type ListedMcp = ReturnType<typeof userMcpsService.toApiMcp>;
+    let mcps: ListedMcp[];
+
+    if (scope === "public") {
+      const publicMcps = await userMcpsService.listPublic({
+        category,
+        search,
+        limit,
+        offset,
+      });
+      mcps = publicMcps.map((m) =>
+        userMcpsService.toApiMcp(
+          userMcpsService.toVisibleMcpForOrganization(m, user.organization_id),
+        ),
+      );
+    } else if (scope === "own") {
+      const ownMcps = await userMcpsService.listByOrganization(
+        user.organization_id,
+        {
+          status,
+          limit,
+          offset,
+        },
+      );
+      mcps = ownMcps.map((m) => userMcpsService.toApiMcp(m));
+    } else {
+      const ownCount = await userMcpsService.countByOrganization(
+        user.organization_id,
+        { status },
+      );
+      const ownPageStart = Math.min(offset, ownCount);
+      const ownPageLimit = Math.min(limit, ownCount - ownPageStart);
+      const ownMcps =
+        ownPageLimit > 0
+          ? await userMcpsService.listByOrganization(user.organization_id, {
+              status,
+              limit: ownPageLimit,
+              offset: ownPageStart,
+            })
+          : [];
+      const publicLimit = limit - ownMcps.length;
+      const publicOffset = Math.max(offset - ownCount, 0);
+      const publicMcps =
+        publicLimit > 0
+          ? await userMcpsService.listPublic({
+              category,
+              search,
+              limit: publicLimit,
+              offset: publicOffset,
+              excludeOrganizationId: user.organization_id,
+            })
+          : [];
+
+      mcps = [
+        ...ownMcps.map((m) => userMcpsService.toApiMcp(m)),
+        ...publicMcps.map((m) =>
+          userMcpsService.toApiMcp(userMcpsService.toPublicMcp(m)),
+        ),
+      ];
+    }
+
+    return c.json({
+      mcps,
+      total: mcps.length,
+      scope,
+      filters: { category, search, status },
+      pagination: { limit, offset },
+    });
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
+
+export default app;

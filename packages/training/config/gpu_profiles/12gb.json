@@ -1,0 +1,10 @@
+{
+  "name": "12GB GPU (RTX 3060/4070)",
+  "description": "Optimized for 12GB VRAM - uses Gemma 4 E2B with minimal vLLM memory",
+  "model": "google/gemma-4-E2B",
+  "vllm_gpu_memory": 0.25,
+  "batch_size": 1,
+  "max_token_length": 2048,
+  "group_size": 4,
+  "notes": "Training uses ~6GB, vLLM uses ~1.5GB, leaving headroom for activations"
+}

@@ -1,0 +1,468 @@
+/**
+ * Fitbit connector contract tests replay recorded Web API resources through the
+ * actual normalizer to pin real field-name mappings without network access.
+ */
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { syncHealthConnectorData } from "../src/health-bridge/health-connectors.js";
+import type { StoredHealthConnectorToken } from "../src/health-bridge/health-oauth.js";
+
+const recorded = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../src/health-bridge/__fixtures__/fitbit.recorded.json",
+    ),
+    "utf8",
+  ),
+) as {
+  profile: Record<string, unknown>;
+  activity: Record<string, unknown>;
+  sleep: Record<string, unknown>;
+  heart: Record<string, unknown>;
+  weight: Record<string, unknown>;
+};
+
+const token: StoredHealthConnectorToken = {
+  provider: "fitbit",
+  agentId: "agent-fitbit",
+  side: "owner",
+  mode: "local",
+  clientId: "test-client",
+  clientSecret: "test-secret",
+  redirectUri: "http://127.0.0.1/redirect",
+  accessToken: "test-access-token",
+  refreshToken: "test-refresh-token",
+  tokenType: "Bearer",
+  grantedScopes: ["profile", "activity", "heartrate", "sleep", "weight"],
+  expiresAt: null,
+  identity: {},
+  createdAt: "2026-05-01T00:00:00.000Z",
+  updatedAt: "2026-05-01T00:00:00.000Z",
+};
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+beforeEach(() => {
+  vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+    const url = String(input);
+    // Order matters: the more specific paths must match before /profile.
+    if (url.includes("/activities/heart/")) {
+      return jsonResponse(recorded.heart);
+    }
+    if (url.includes("/activities/date/")) {
+      return jsonResponse(recorded.activity);
+    }
+    if (url.includes("/sleep/date/")) {
+      return jsonResponse(recorded.sleep);
+    }
+    if (url.includes("/body/log/weight/")) {
+      return jsonResponse(recorded.weight);
+    }
+    if (url.includes("/profile.json")) {
+      return jsonResponse(recorded.profile);
+    }
+    throw new Error(`unexpected Fitbit fetch: ${url}`);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("Fitbit connector — recorded real API contract", () => {
+  it.each([
+    { label: "negative", seconds: -1800 },
+    { label: "zero", seconds: 0 },
+  ])("drops a $label-duration sleep stage", async ({ seconds }) => {
+    const malformedSleep = structuredClone(recorded.sleep);
+    const sleep = malformedSleep.sleep as Array<Record<string, unknown>>;
+    const levels = sleep[0]?.levels as Record<string, unknown>;
+    const data = levels?.data as Array<Record<string, unknown>>;
+    data[0] = { ...data[0], seconds };
+
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/sleep/date/")) return jsonResponse(malformedSleep);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/"))
+        return jsonResponse(recorded.activity);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    expect(payload.sleepEpisodes[0]?.stageSamples).toHaveLength(3);
+    expect(
+      payload.sleepEpisodes[0]?.stageSamples.every(
+        (sample) => Date.parse(sample.endAt) > Date.parse(sample.startAt),
+      ),
+    ).toBe(true);
+  });
+
+  it("dates a weight log by its Fitbit date, not the UTC day of loggedAt", async () => {
+    // 00:30 on May 1 in Europe/London (BST) is 23:30 UTC on April 30.
+    const lateWeight = {
+      weight: [
+        {
+          ...(recorded.weight.weight as Array<Record<string, unknown>>)[0],
+          time: "00:30:00",
+        },
+      ],
+    };
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/"))
+        return jsonResponse(recorded.activity);
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/body/log/weight/")) return jsonResponse(lateWeight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const weight = payload.samples.find((s) => s.metric === "weight_kg");
+    expect(weight?.startAt).toBe("2026-04-30T23:30:00.000Z");
+    expect(weight?.localDate).toBe("2026-05-01");
+  });
+
+  it("still syncs when the profile has no timezone", async () => {
+    const profile = structuredClone(recorded.profile);
+    const user = profile.user as Record<string, unknown>;
+    delete user.timezone;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/"))
+        return jsonResponse(recorded.activity);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const ep = payload.sleepEpisodes[0];
+    expect(ep?.timezone).toBeNull();
+    expect(ep?.startAt).toBe(
+      new Date(Date.parse("2026-04-30T22:48:00.000")).toISOString(),
+    );
+  });
+
+  it("normalizes the real Fitbit per-date shapes into a contract-shaped payload", async () => {
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      // Single day -> each resource fetched once.
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    // identity falls back to profile.user (the GET /profile.json `user` wrapper).
+    expect(payload.identity).not.toBeNull();
+    expect(payload.identity?.encodedId).toBe("GGNJL9");
+    expect(payload.identity?.fullName).toBe("Ada Lovelace");
+    expect(payload.cursor).toBeNull();
+    // Fitbit syncFitbit emits no workouts.
+    expect(payload.workouts).toEqual([]);
+
+    const dayAt = "2026-05-01T12:00:00.000Z";
+
+    // raw->normalized sample transforms (would catch normalizer drift):
+    // summary.steps -> steps.
+    const steps = payload.samples.find((s) => s.metric === "steps");
+    expect(steps?.value).toBe(11842);
+    expect(steps?.unit).toBe("count");
+    expect(steps?.startAt).toBe(dayAt);
+    expect(steps?.sourceExternalId).toBe("2026-05-01:fitbit:steps");
+
+    // fairlyActiveMinutes (28) + veryActiveMinutes (41) -> active_minutes (69).
+    const activeMinutes = payload.samples.find(
+      (s) => s.metric === "active_minutes",
+    );
+    expect(activeMinutes?.value).toBe(69);
+    expect(activeMinutes?.unit).toBe("min");
+
+    // summary.caloriesOut -> calories.
+    const calories = payload.samples.find((s) => s.metric === "calories");
+    expect(calories?.value).toBe(2415);
+    expect(calories?.unit).toBe("kcal");
+
+    // distance_meters: take ONLY the canonical activity:"total" row (the day
+    // total) and convert km to meters. tracker/veryActive/...
+    // are per-activity breakdowns OF that total, so summing them double/triple-
+    // counts. The fixture's multi-entry shape discriminates: a correct total-only
+    // read is 8520 m; a summing regression (8.52 + 8.52 + 4.1 km) would be 21140 m.
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBe(8.52 * 1000);
+    expect(distance?.unit).toBe("m");
+
+    // activities-heart[0].value.restingHeartRate -> resting_heart_rate.
+    const resting = payload.samples.find(
+      (s) => s.metric === "resting_heart_rate",
+    );
+    expect(resting?.value).toBe(54);
+    expect(resting?.unit).toBe("bpm");
+
+    // summary.totalMinutesAsleep 456 min -> sleep_hours 7.6 h (min/60).
+    const sleepHours = payload.samples.find((s) => s.metric === "sleep_hours");
+    expect(sleepHours?.value).toBe(456 / 60);
+    expect(sleepHours?.unit).toBe("h");
+
+    // body.log.weight[0].weight kg -> weight_kg; logId -> sourceExternalId.
+    const weight = payload.samples.find((s) => s.metric === "weight_kg");
+    expect(weight?.value).toBe(61.2);
+    expect(weight?.unit).toBe("kg");
+    expect(weight?.sourceExternalId).toBe("38291077001");
+    // date + time is a profile-zone wall time (07:15 BST).
+    expect(weight?.startAt).toBe("2026-05-01T06:15:00.000Z");
+    // providerUnit is the per-log unit label.
+    expect(weight?.metadata.providerUnit).toBe("kg");
+
+    // One recorded sleep log -> one normalized sleep episode.
+    expect(payload.sleepEpisodes).toHaveLength(1);
+    const ep = payload.sleepEpisodes[0];
+    if (!ep) throw new Error("missing sleep episode");
+
+    // logId (number) -> sourceExternalId (string).
+    expect(ep.sourceExternalId).toBe("38291002001");
+    expect(typeof ep.sourceExternalId).toBe("string");
+    expect(ep.provider).toBe("fitbit");
+    expect(ep.agentId).toBe("agent-fitbit");
+    expect(ep.grantId).toBe("grant-fitbit");
+    // startTime/endTime arrive ZONELESS on the Fitbit wire
+    // ("2026-04-30T22:48:00.000") as wall times in profile.user.timezone
+    // (Europe/London, BST = UTC+1), independent of the host zone.
+    expect(ep.startAt).toBe("2026-04-30T21:48:00.000Z");
+    expect(ep.endAt).toBe("2026-05-01T05:54:00.000Z");
+    expect(ep.timezone).toBe("Europe/London");
+    // localDate is the iterated date.
+    expect(ep.localDate).toBe("2026-05-01");
+    // isMainSleep verbatim; type -> sleepType.
+    expect(ep.isMainSleep).toBe(true);
+    expect(ep.sleepType).toBe("stages");
+    // duration 29160000 ms -> durationSeconds 29160 (ms/1000, truncated).
+    expect(ep.durationSeconds).toBe(29160);
+    // timeInBed 486 min -> timeInBedSeconds 29160 (min*60).
+    expect(ep.timeInBedSeconds).toBe(486 * 60);
+    // efficiency verbatim; sleepScore falls back to efficiency.
+    expect(ep.efficiency).toBe(94);
+    expect(ep.sleepScore).toBe(94);
+    // minutesToFallAsleep 9 min -> latencySeconds 540; minutesAwake 30 -> awakeSeconds 1800.
+    expect(ep.latencySeconds).toBe(9 * 60);
+    expect(ep.awakeSeconds).toBe(30 * 60);
+    // Fitbit summary does not carry per-stage totals here -> null.
+    expect(ep.lightSleepSeconds).toBeNull();
+    expect(ep.deepSleepSeconds).toBeNull();
+    expect(ep.remSleepSeconds).toBeNull();
+    expect(ep.readinessScore).toBeNull();
+    expect(ep.metadata.rawDateOfSleep).toBe("2026-05-01");
+
+    // levels.data[] -> stageSamples with mapped stages + computed endAt.
+    expect(ep.stageSamples).toHaveLength(4);
+    const first = ep.stageSamples[0];
+    if (!first) throw new Error("missing stage sample");
+    expect(first.stage).toBe("light");
+    expect(first.providerCode).toBe("light");
+    // levels.data[].dateTime is likewise a profile-zone wall time.
+    const firstStageStart = "2026-04-30T21:48:00.000Z";
+    expect(first.startAt).toBe(firstStageStart);
+    // endAt = startAt + seconds (1800s).
+    expect(first.endAt).toBe(
+      new Date(Date.parse(firstStageStart) + 1800 * 1000).toISOString(),
+    );
+    // "wake" level maps to the "awake" canonical stage.
+    const wakeStage = ep.stageSamples.find((s) => s.providerCode === "wake");
+    expect(wakeStage?.stage).toBe("awake");
+
+    // Every sample carries the required contract fields.
+    for (const s of payload.samples) {
+      expect(typeof s.id).toBe("string");
+      expect(s.provider).toBe("fitbit");
+      expect(typeof s.value).toBe("number");
+      expect(Number.isFinite(s.value)).toBe(true);
+      expect(typeof s.startAt).toBe("string");
+      expect(s.localDate).toBe(s.startAt.slice(0, 10));
+    }
+  });
+
+  it("ignores extra Fitbit distance breakdown rows when the total row is present", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/")) {
+        return jsonResponse({
+          summary: {
+            distances: [
+              { activity: "total", distance: 8.52 },
+              { activity: "tracker", distance: 8.52 },
+              { activity: "veryActive", distance: 4.1 },
+              { activity: "loggedActivities", distance: 2.0 },
+            ],
+          },
+        });
+      }
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
+    expect(distance?.unit).toBe("m");
+  });
+
+  it("falls back to the largest single Fitbit distance row when no total row is present", async () => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/"))
+        return jsonResponse(recorded.heart);
+      if (url.includes("/activities/date/")) {
+        return jsonResponse({
+          summary: {
+            distances: [
+              { activity: "tracker", distance: 8.52 },
+              { activity: "veryActive", distance: 4.1 },
+            ],
+          },
+        });
+      }
+      if (url.includes("/sleep/date/")) return jsonResponse(recorded.sleep);
+      if (url.includes("/body/log/weight/"))
+        return jsonResponse(recorded.weight);
+      if (url.includes("/profile.json")) return jsonResponse(recorded.profile);
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBeCloseTo(8.52 * 1000, 5);
+    expect(distance?.unit).toBe("m");
+  });
+});
+
+// A United States (en_US) Fitbit account still gets metric values on the wire.
+// Fitbit selects the unit system from the Accept-Language request header, and
+// the connector sends none. profile.user.distanceUnit / weightUnit only show
+// what the owner sees in the Fitbit app, so they must not change stored values.
+const imperialRecorded = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      "../src/health-bridge/__fixtures__/fitbit.imperial.recorded.json",
+    ),
+    "utf8",
+  ),
+) as {
+  profile: Record<string, unknown>;
+  activity: Record<string, unknown>;
+  sleep: Record<string, unknown>;
+  heart: Record<string, unknown>;
+  weight: Record<string, unknown>;
+};
+
+describe("Fitbit connector — en_US profile with a metric response", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/activities/heart/")) {
+        return jsonResponse(imperialRecorded.heart);
+      }
+      if (url.includes("/activities/date/")) {
+        return jsonResponse(imperialRecorded.activity);
+      }
+      if (url.includes("/sleep/date/")) {
+        return jsonResponse(imperialRecorded.sleep);
+      }
+      if (url.includes("/body/log/weight/")) {
+        return jsonResponse(imperialRecorded.weight);
+      }
+      if (url.includes("/profile.json")) {
+        return jsonResponse(imperialRecorded.profile);
+      }
+      throw new Error(`unexpected Fitbit fetch: ${url}`);
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stores km as meters and kg unchanged when the profile unit is en_US", async () => {
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-fitbit",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+    });
+
+    // distances[total].distance = 8.05 km -> 8050 m. A miles conversion from
+    // the profile unit would store 8.05 * 1609.344 = 12955.2 m.
+    const distance = payload.samples.find(
+      (s) => s.metric === "distance_meters",
+    );
+    expect(distance?.value).toBeCloseTo(8050, 6);
+    expect(distance?.unit).toBe("m");
+
+    // weight[0].weight = 68.04 kg. A pounds conversion from the profile unit
+    // would store 68.04 * 0.45359237 = 30.86 kg.
+    const weight = payload.samples.find((s) => s.metric === "weight_kg");
+    expect(weight?.value).toBe(68.04);
+    expect(weight?.unit).toBe("kg");
+    expect(weight?.metadata.providerUnit).toBe("kg");
+  });
+});

@@ -1,0 +1,341 @@
+/**
+ * Test stub for @elizaos/agent: mutable agent-backup state, so PA tests run without pulling in the full agent
+ * package.
+ */
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+export { checkRateLimit } from "../../../../packages/agent/src/api/rate-limiter.ts";
+// The LifeOps route dispatcher rate-limits state-changing routes; re-export the
+// real limiter (self-contained, in-memory) so route e2e tests run the genuine
+// dispatch path instead of a bypass.
+export { AUTONOMY_NOTIFICATION_DELIVERY } from "../../../../packages/agent/src/runtime/agent-event-service.ts";
+
+export class DatabaseSync {}
+
+export interface LocalAgentBackupStubMetadata {
+  fileName: string;
+  path: string;
+  createdAt: string;
+  agentId: string;
+  stateSha256: string;
+  sizeBytes: number;
+}
+
+interface AgentBackupStubState {
+  localBackups: LocalAgentBackupStubMetadata[];
+  createdBackup?: LocalAgentBackupStubMetadata;
+  createCalls: number;
+  lastCreateAgentId?: string;
+}
+
+const AGENT_BACKUP_STUB_STATE = Symbol.for(
+  "eliza.lifeops.test.agentBackupStubState",
+);
+
+function getAgentBackupStubState(): AgentBackupStubState {
+  const globalWithState = globalThis as typeof globalThis & {
+    [AGENT_BACKUP_STUB_STATE]?: AgentBackupStubState;
+  };
+  globalWithState[AGENT_BACKUP_STUB_STATE] ??= {
+    localBackups: [],
+    createCalls: 0,
+  };
+  return globalWithState[AGENT_BACKUP_STUB_STATE];
+}
+
+export function resetAgentBackupStubState(): void {
+  const state = getAgentBackupStubState();
+  state.localBackups = [];
+  state.createdBackup = undefined;
+  state.createCalls = 0;
+  state.lastCreateAgentId = undefined;
+}
+
+export function setAgentBackupStubState(
+  patch: Partial<AgentBackupStubState>,
+): void {
+  const state = getAgentBackupStubState();
+  if (patch.localBackups) {
+    state.localBackups = patch.localBackups;
+  }
+  if (patch.createdBackup) {
+    state.createdBackup = patch.createdBackup;
+  }
+}
+
+export function getAgentBackupStubStateSnapshot(): AgentBackupStubState {
+  const state = getAgentBackupStubState();
+  return {
+    localBackups: [...state.localBackups],
+    ...(state.createdBackup ? { createdBackup: state.createdBackup } : {}),
+    createCalls: state.createCalls,
+    ...(state.lastCreateAgentId
+      ? { lastCreateAgentId: state.lastCreateAgentId }
+      : {}),
+  };
+}
+
+export async function listLocalAgentBackups(
+  agentId?: string,
+): Promise<LocalAgentBackupStubMetadata[]> {
+  const state = getAgentBackupStubState();
+  return state.localBackups.filter(
+    (backup) => !agentId || backup.agentId === agentId,
+  );
+}
+
+export async function createLocalAgentBackup(runtime?: {
+  agentId?: string;
+}): Promise<LocalAgentBackupStubMetadata> {
+  const state = getAgentBackupStubState();
+  state.createCalls += 1;
+  state.lastCreateAgentId = runtime?.agentId;
+  const backup =
+    state.createdBackup ??
+    ({
+      fileName: "2026-06-29T120000Z.agent-backup.json",
+      path: "/tmp/2026-06-29T120000Z.agent-backup.json",
+      createdAt: "2026-06-29T12:00:00.000Z",
+      agentId: runtime?.agentId ?? "agent-1",
+      stateSha256: "abc123",
+      sizeBytes: 4096,
+    } satisfies LocalAgentBackupStubMetadata);
+  state.localBackups = [backup, ...state.localBackups];
+  return backup;
+}
+
+// Integration telemetry is self-contained (only the core logger), so the test
+// lane runs the real span: route tests then exercise the genuine
+// success/failure bookkeeping instead of a shape-drifted fake.
+export { createIntegrationTelemetrySpan } from "@elizaos/core";
+
+export function extractConversationMetadataFromRoom(): Record<string, unknown> {
+  return {};
+}
+
+export function isPageScopedConversationMetadata(): boolean {
+  return false;
+}
+
+export function registerEscalationChannel(): void {}
+
+export interface AgentEventServiceStubEvent {
+  runId: string;
+  stream: string;
+  agentId?: string;
+  data: Record<string, unknown>;
+}
+
+interface AgentEventServiceStubState {
+  enabled: boolean;
+  events: AgentEventServiceStubEvent[];
+}
+
+const AGENT_EVENT_SERVICE_STUB_STATE = Symbol.for(
+  "eliza.lifeops.test.agentEventServiceStubState",
+);
+
+function getAgentEventServiceStubState(): AgentEventServiceStubState {
+  const globalWithState = globalThis as typeof globalThis & {
+    [AGENT_EVENT_SERVICE_STUB_STATE]?: AgentEventServiceStubState;
+  };
+  globalWithState[AGENT_EVENT_SERVICE_STUB_STATE] ??= {
+    enabled: false,
+    events: [],
+  };
+  return globalWithState[AGENT_EVENT_SERVICE_STUB_STATE];
+}
+
+/** Enable the capturing event-bus stand-in; disabled (null service) by default. */
+export function enableAgentEventServiceStub(): void {
+  getAgentEventServiceStubState().enabled = true;
+}
+
+export function resetAgentEventServiceStub(): void {
+  const state = getAgentEventServiceStubState();
+  state.enabled = false;
+  state.events = [];
+}
+
+export function getAgentEventServiceStubEvents(): AgentEventServiceStubEvent[] {
+  return [...getAgentEventServiceStubState().events];
+}
+
+export function getAgentEventService(runtime?: {
+  getService?: (serviceType: string) => unknown;
+}): {
+  emit: (event: AgentEventServiceStubEvent) => void;
+} | null {
+  const runtimeService = runtime?.getService?.("agent_event");
+  if (
+    runtimeService &&
+    typeof runtimeService === "object" &&
+    "emit" in runtimeService &&
+    typeof runtimeService.emit === "function"
+  ) {
+    return runtimeService as {
+      emit: (event: AgentEventServiceStubEvent) => void;
+    };
+  }
+  const state = getAgentEventServiceStubState();
+  if (!state.enabled) return null;
+  return {
+    emit: (event) => {
+      state.events.push(event);
+    },
+  };
+}
+
+export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
+
+export function resolveOwnerEntityId(runtime?: {
+  agentId?: string;
+  getSetting?: (key: string) => unknown;
+}): string {
+  const configured = runtime?.getSetting?.("ELIZA_ADMIN_ENTITY_ID");
+  if (typeof configured === "string" && configured.trim().length > 0) {
+    return configured.trim();
+  }
+  return runtime?.agentId ?? "owner-1";
+}
+
+export function resolveStateDir(): string {
+  return path.join(os.tmpdir(), "eliza-lifeops-test-state");
+}
+
+export function resolveOAuthDir(): string {
+  return path.join(os.tmpdir(), "eliza-lifeops-test-oauth");
+}
+
+export function resolveDefaultAgentWorkspaceDir(): string {
+  return path.join(os.tmpdir(), "eliza-lifeops-test-workspace");
+}
+
+export function loadElizaConfig(): Record<string, unknown> {
+  return {};
+}
+
+export function loadEffectiveElizaConfig(): Record<string, unknown> {
+  return loadElizaConfig();
+}
+
+function readTestElizaConfig(): Record<string, unknown> {
+  const configPath = process.env.ELIZA_CONFIG_PATH?.trim();
+  if (!configPath) return {};
+  try {
+    return JSON.parse(fs.readFileSync(configPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return {};
+  }
+}
+
+export function loadOwnerContactsConfig(): Record<
+  string,
+  { entityId?: string; channelId?: string; roomId?: string }
+> {
+  const config = readTestElizaConfig();
+  const agents = config.agents as
+    | { defaults?: { ownerContacts?: Record<string, unknown> } }
+    | undefined;
+  return (agents?.defaults?.ownerContacts ?? {}) as Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >;
+}
+
+export async function loadOwnerContactRoutingHints(
+  _runtime: unknown,
+  ownerContacts: Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >,
+): Promise<Record<string, unknown>> {
+  return Object.fromEntries(
+    Object.entries(ownerContacts).map(([source, contact]) => [
+      source,
+      {
+        source,
+        entityId: contact.entityId ?? null,
+        channelId: contact.channelId ?? null,
+        roomId: contact.roomId ?? null,
+        preferredCommunicationChannel: null,
+        platformIdentities: [],
+        lastResponseAt: null,
+        lastResponseChannel: null,
+        resolvedFrom: "config",
+      },
+    ]),
+  );
+}
+
+export function resolveOwnerContactWithFallback(args: {
+  ownerContacts: Record<
+    string,
+    { entityId?: string; channelId?: string; roomId?: string }
+  >;
+  source: string | null | undefined;
+  ownerEntityId: string | null | undefined;
+}): {
+  source: string;
+  contact: { entityId?: string; channelId?: string; roomId?: string };
+  resolvedFrom: "config" | "owner_entity";
+} | null {
+  const source = typeof args.source === "string" ? args.source.trim() : "";
+  const candidates =
+    source === "telegram"
+      ? ["telegram", "telegram-account", "telegramAccount"]
+      : source === "telegram-account"
+        ? ["telegram-account", "telegramAccount", "telegram"]
+        : source
+          ? [source]
+          : [];
+  for (const candidate of candidates) {
+    const contact = args.ownerContacts[candidate];
+    if (contact) {
+      return {
+        source:
+          candidate === "telegramAccount" ? "telegram-account" : candidate,
+        contact,
+        resolvedFrom: "config",
+      };
+    }
+  }
+  if (source === "discord" && args.ownerEntityId) {
+    return {
+      source,
+      contact: { entityId: args.ownerEntityId },
+      resolvedFrom: "owner_entity",
+    };
+  }
+  return null;
+}
+
+export function saveElizaConfig(): void {}
+
+export function createElizaPlugin(plugin: unknown): unknown {
+  return plugin;
+}
+
+export async function startApiServer(): Promise<{
+  close: () => Promise<void>;
+}> {
+  return { close: async () => undefined };
+}
+
+export async function handleConnectorAccountRoutes(args: {
+  pathname: string;
+  error: (res: unknown, message: string, status?: number) => void;
+  res: unknown;
+}): Promise<boolean> {
+  if (args.pathname.endsWith("/oauth/callback")) {
+    args.error(args.res, "Missing OAuth state", 400);
+    return true;
+  }
+  return false;
+}

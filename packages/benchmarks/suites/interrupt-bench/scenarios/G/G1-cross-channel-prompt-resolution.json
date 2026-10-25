@@ -1,0 +1,68 @@
+{
+  "id": "G1-cross-channel-prompt-resolution",
+  "category": "G",
+  "interruptionType": "addition",
+  "weight": 3,
+  "description": "Agent earlier asked the user a yes/no question on dm-alice. User instead answers in a different room (group-team). Agent must resolve the pending prompt by the user's identity, not by channel, and update the right thread.",
+  "setup": {
+    "agentId": "agent-test",
+    "rooms": [
+      { "id": "dm-alice", "kind": "dm", "owner": "alice" },
+      { "id": "group-team", "kind": "group", "members": ["alice", "carol"] }
+    ],
+    "users": [
+      { "id": "alice", "role": "OWNER" },
+      { "id": "carol", "role": "USER" }
+    ],
+    "openThreads": [
+      {
+        "id": "thread-deploy-001",
+        "owner": "alice",
+        "status": "waiting",
+        "instruction": "deploy site once approved",
+        "roomId": "dm-alice",
+        "pendingPromptId": "prompt-deploy-approval-1"
+      }
+    ],
+    "scheduledTasks": [],
+    "memory": [],
+    "pendingPrompts": [
+      {
+        "id": "prompt-deploy-approval-1",
+        "askedIn": "dm-alice",
+        "askedAt": -60000,
+        "question": "ready to deploy? yes/no"
+      }
+    ]
+  },
+  "script": [
+    {
+      "t": 0,
+      "channel": "group-team",
+      "sender": "alice",
+      "text": "yes go ahead and deploy"
+    }
+  ],
+  "quiesceAfterMs": 3000,
+  "expectedFinalState": {
+    "threads": [{ "id": "thread-deploy-001", "status": "active" }],
+    "scheduledTasks": [],
+    "repliesByChannel": {
+      "group-team": { "count": { "min": 0, "max": 1 } },
+      "dm-alice": { "count": { "min": 0, "max": 1 } }
+    },
+    "pendingPrompts": {
+      "prompt-deploy-approval-1": { "resolved": true }
+    }
+  },
+  "expectedTrace": {
+    "stage1Calls": { "min": 1, "max": 1 },
+    "plannerCalls": { "min": 0, "max": 1 },
+    "boundaryViolations": 0,
+    "intent": "RESPOND"
+  },
+  "responseRubric": {
+    "judgePrompt": "Did the agent recognize Alice's 'yes' in group-team as the answer to the pending deploy approval (originally asked in dm-alice), resolve the prompt, and resume the thread?",
+    "passRequiredForBonus": true
+  }
+}

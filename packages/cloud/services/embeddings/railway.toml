@@ -1,0 +1,22 @@
+# Railway deploy config for the self-hosted embeddings sidecar.
+#
+# Consumed by the cloud Worker via the LOCAL_EMBEDDINGS_BASE_URL env var
+# (packages/cloud/shared/src/lib/providers/language-model.ts); serves
+# POST /v1/embeddings (OpenAI-compatible, BAAI/bge-small-en-v1.5, 384 dims).
+# No secrets required — cloud-api owns auth/billing upstream; set API_KEY on
+# this service (and LOCAL_EMBEDDINGS_API_KEY on the Worker) only to gate the
+# public URL.
+#
+# healthcheckTimeout is generous because a cold container downloads the model
+# from the HuggingFace hub into /data before /health reports ready; attach a
+# volume at /data to skip the re-download on restarts.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 600
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

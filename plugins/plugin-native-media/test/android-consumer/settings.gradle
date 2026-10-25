@@ -1,0 +1,7 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+rootProject.name = 'owned-media-consumer'
+include ':media', ':host', ':capacitor-android'
+project(':media').projectDir = file('../../android')
+def capacitor = System.getenv('CAPACITOR_ANDROID_DIR')
+if (!capacitor) throw new GradleException('Set CAPACITOR_ANDROID_DIR to the real Capacitor Android module')
+project(':capacitor-android').projectDir = file(capacitor)

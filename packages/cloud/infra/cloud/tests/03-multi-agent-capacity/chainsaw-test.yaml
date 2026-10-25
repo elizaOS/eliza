@@ -1,0 +1,130 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: multi-agent-capacity
+spec:
+  description: Multi-agent management and capacity enforcement (503 at cap, 409 on duplicate)
+  steps:
+    - name: Create Server CR (capacity=3)
+      try:
+        - apply:
+            file: server-cr.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server srv-cap -n eliza-agents --ignore-not-found
+
+    - name: Wake via KEDA
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              for attempt in 1 2 3; do
+                RESULT=$(kubectl run cs-wake-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                  --image=redis:7-alpine --quiet -- \
+                  redis-cli -h redis LPUSH "keda:srv-cap:activity" "wake" 2>&1)
+                echo "$RESULT" | grep -qE "^\(integer\)|^[0-9]" && exit 0
+                echo "KEDA wake attempt $attempt failed: $RESULT"
+                sleep 3
+              done
+              echo "FAIL: KEDA wake LPUSH failed after 3 attempts"
+              exit 1
+
+    - name: Wait for pod ready
+      try:
+        - script:
+            timeout: 300s
+            content: |
+              for i in $(seq 1 60); do
+                POD=$(kubectl get pods -n eliza-agents -l "eliza.ai/server=srv-cap" --no-headers 2>/dev/null || true)
+                if echo "$POD" | grep -q "1/1.*Running"; then
+                  echo "Pod is ready"
+                  exit 0
+                fi
+                sleep 5
+              done
+              echo "FAIL: Pod not ready within 300s"
+              exit 1
+
+    - name: Capacity tests
+      try:
+        - script:
+            timeout: 120s
+            content: |
+              SECRET=$(kubectl get secret eliza-agent-secrets -n eliza-agents -o jsonpath='{.data.AGENT_SERVER_SHARED_SECRET}' | base64 -d)
+              AUTH="-H X-Server-Token:$SECRET"
+
+              kubectl port-forward -n eliza-agents svc/srv-cap 3011:3000 > /dev/null 2>&1 &
+              PF=$!
+              trap "kill $PF 2>/dev/null" EXIT
+              BASE="http://localhost:3011"
+              for i in $(seq 1 10); do
+                curl -sf "$BASE/health" > /dev/null 2>&1 && break
+                sleep 2
+              done
+              curl -sf "$BASE/health" > /dev/null 2>&1 || { echo "FAIL: port-forward not ready after 20s"; exit 1; }
+              FAIL=0
+
+              # shared tier may auto-start "eliza" agent async — don't assume timing
+              # Fill to capacity dynamically (capacity=3)
+              CREATED_IDS=""
+              for i in 1 2 3; do
+                HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                  -H "Content-Type: application/json" -d "{\"agentId\":\"cap-$i\",\"characterRef\":\"Eliza\"}")
+                if [ "$HTTP" = "201" ]; then
+                  CREATED_IDS="$CREATED_IDS cap-$i"
+                elif [ "$HTTP" = "503" ]; then
+                  echo "Hit capacity at cap-$i (eliza auto-start filled a slot)"
+                  break
+                else
+                  echo "FAIL: create cap-$i=$HTTP"; FAIL=1
+                fi
+              done
+
+              # Verify at capacity (exactly 3)
+              COUNT=$(curl -sf $AUTH "$BASE/status" | grep -o '"agentCount":[0-9]*' | grep -o '[0-9]*')
+              [ "$COUNT" = "3" ] || { echo "FAIL: agentCount=$COUNT, expected 3"; FAIL=1; }
+
+              # Over capacity → 503
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                -H "Content-Type: application/json" -d '{"agentId":"overflow","characterRef":"Eliza"}')
+              [ "$HTTP" = "503" ] || { echo "FAIL: over capacity=$HTTP, expected 503"; FAIL=1; }
+
+              # At capacity, even duplicate → 503 (capacity checked before duplicate)
+              FIRST=$(echo $CREATED_IDS | awk '{print $1}')
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                -H "Content-Type: application/json" -d "{\"agentId\":\"$FIRST\",\"characterRef\":\"Eliza\"}")
+              [ "$HTTP" = "503" ] || { echo "FAIL: dup at capacity=$HTTP, expected 503"; FAIL=1; }
+
+              # Free a slot
+              curl -sf -X DELETE $AUTH "$BASE/agents/$FIRST" | grep -q '"deleted":true' || { echo "FAIL: delete $FIRST"; FAIL=1; }
+              COUNT=$(curl -sf $AUTH "$BASE/status" | grep -o '"agentCount":[0-9]*' | grep -o '[0-9]*')
+              [ "$COUNT" = "2" ] || { echo "FAIL: agentCount=$COUNT after delete, expected 2"; FAIL=1; }
+
+              # Below capacity, duplicate of existing agent → 409
+              SECOND=$(echo $CREATED_IDS | awk '{print $2}')
+              if [ -n "$SECOND" ]; then
+                HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                  -H "Content-Type: application/json" -d "{\"agentId\":\"$SECOND\",\"characterRef\":\"Eliza\"}")
+                [ "$HTTP" = "409" ] || { echo "FAIL: dup below capacity=$HTTP, expected 409"; FAIL=1; }
+              fi
+
+              # Can create new agent in freed slot
+              HTTP=$(curl -s -o /dev/null -w "%{http_code}" -X POST $AUTH "$BASE/agents" \
+                -H "Content-Type: application/json" -d '{"agentId":"cap-new","characterRef":"Eliza"}')
+              [ "$HTTP" = "201" ] || { echo "FAIL: create cap-new=$HTTP"; FAIL=1; }
+
+              # Back at capacity
+              COUNT=$(curl -sf $AUTH "$BASE/status" | grep -o '"agentCount":[0-9]*' | grep -o '[0-9]*')
+              [ "$COUNT" = "3" ] || { echo "FAIL: agentCount=$COUNT after re-create, expected 3"; FAIL=1; }
+
+              # Agents respond independently
+              if [ -n "$SECOND" ]; then
+                curl -sf -X POST $AUTH "$BASE/agents/$SECOND/message" \
+                  -H "Content-Type: application/json" -d '{"userId":"u","text":"hi"}' \
+                  | grep -q '"response"' || { echo "FAIL: $SECOND message"; FAIL=1; }
+              fi
+              curl -sf -X POST $AUTH "$BASE/agents/cap-new/message" \
+                -H "Content-Type: application/json" -d '{"userId":"u","text":"hi"}' \
+                | grep -q '"response"' || { echo "FAIL: cap-new message"; FAIL=1; }
+
+              exit $FAIL

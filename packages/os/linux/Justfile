@@ -1,0 +1,29 @@
+# elizaOS Linux canonical Debian image recipes.
+
+default:
+    @just --list
+
+setup:
+    @command -v docker >/dev/null 2>&1 || { echo "Install Docker first." >&2; exit 1; }
+    @docker info >/dev/null 2>&1 || { echo "Docker is not running or unavailable." >&2; exit 1; }
+    @echo "Docker OK"
+
+
+build:
+    make build ARCH="${ELIZAOS_ARCH:-amd64}" PROFILE="${ELIZAOS_PROFILE:-gui}"
+
+config:
+    make lint
+
+static-smoke:
+    make lint
+
+lint:
+    make lint
+
+
+test:
+    make lint
+
+clean:
+    node ../../scripts/rm-path-recursive.ts out

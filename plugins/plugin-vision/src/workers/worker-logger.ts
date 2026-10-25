@@ -1,0 +1,71 @@
+/**
+ * Worker-safe logger that forwards worker-thread log messages to the main thread.
+ */
+
+import { parentPort } from "node:worker_threads";
+
+export const logger = {
+  info: (message: string, ...args: unknown[]) => {
+    const logMessage = {
+      type: "log",
+      level: "info",
+      message,
+      args,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (parentPort) {
+      parentPort.postMessage(logMessage);
+    } else {
+      console.log(`[INFO] ${message}`, ...args);
+    }
+  },
+
+  warn: (message: string, ...args: unknown[]) => {
+    const logMessage = {
+      type: "log",
+      level: "warn",
+      message,
+      args,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (parentPort) {
+      parentPort.postMessage(logMessage);
+    } else {
+      console.warn(`[WARN] ${message}`, ...args);
+    }
+  },
+
+  error: (message: string, ...args: unknown[]) => {
+    const logMessage = {
+      type: "log",
+      level: "error",
+      message,
+      args,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (parentPort) {
+      parentPort.postMessage(logMessage);
+    } else {
+      console.error(`[ERROR] ${message}`, ...args);
+    }
+  },
+
+  debug: (message: string, ...args: unknown[]) => {
+    const logMessage = {
+      type: "log",
+      level: "debug",
+      message,
+      args,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (parentPort) {
+      parentPort.postMessage(logMessage);
+    } else {
+      console.debug(`[DEBUG] ${message}`, ...args);
+    }
+  },
+};

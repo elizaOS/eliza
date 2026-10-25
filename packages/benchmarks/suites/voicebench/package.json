@@ -1,0 +1,23 @@
+{
+  "name": "@elizaos/voicebench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end voice latency benchmark (STT, LLM, TTS stages) against the elizaOS TypeScript runtime.",
+  "scripts": {
+    "bench": "./run.sh",
+    "bench:groq": "VOICEBENCH_PROFILE=groq ./run.sh",
+    "bench:elevenlabs": "VOICEBENCH_PROFILE=elevenlabs ./run.sh"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-elevenlabs": "beta",
+    "@elizaos/plugin-groq": "beta",
+    "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

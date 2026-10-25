@@ -1,0 +1,30 @@
+/**
+ * A compact label+value stat card for dense dashboard rows.
+ */
+import { cn } from "../../../utils/cn";
+
+interface MiniStatCardProps {
+  label: string;
+  value: string;
+  color?: string;
+  className?: string;
+}
+
+export function MiniStatCard({
+  label,
+  value,
+  color = "text-txt-strong",
+  className,
+}: MiniStatCardProps) {
+  return (
+    <div
+      className={cn(
+        "rounded-sm border border-border bg-bg-elevated p-3",
+        className,
+      )}
+    >
+      <p className="text-2xs text-muted-strong">{label}</p>
+      <p className={cn("text-lg font-semibold mt-0.5", color)}>{value}</p>
+    </div>
+  );
+}

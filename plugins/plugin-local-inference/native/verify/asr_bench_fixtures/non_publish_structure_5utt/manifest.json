@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "corpusId": "asr-bench-non-publish-structure-5utt",
+  "tier": "0_8b",
+  "utterances": 5,
+  "provenance": "deterministic_non_speech_fixture",
+  "realRecorded": false,
+  "publishGateEligible": false,
+  "purpose": "Corpus-shape fixture only. These WAV files are deterministic tones, not speech recordings, and must not be used as ASR WER publish evidence.",
+  "requiredPublishReplacement": "Record at least five microphone or field speech WAV files with matching .txt transcripts, then run asr_bench.ts with --wav-dir <dir> --real-recorded.",
+  "files": [
+    {
+      "id": "utt-01",
+      "reference": "turn on the kitchen lights",
+      "wav": "utt-01.wav",
+      "txt": "utt-01.txt",
+      "sampleRateHz": 16000,
+      "fixture": "deterministic_non_speech_tone"
+    },
+    {
+      "id": "utt-02",
+      "reference": "set a reminder for tomorrow morning",
+      "wav": "utt-02.wav",
+      "txt": "utt-02.txt",
+      "sampleRateHz": 16000,
+      "fixture": "deterministic_non_speech_tone"
+    },
+    {
+      "id": "utt-03",
+      "reference": "what time is it in tokyo",
+      "wav": "utt-03.wav",
+      "txt": "utt-03.txt",
+      "sampleRateHz": 16000,
+      "fixture": "deterministic_non_speech_tone"
+    },
+    {
+      "id": "utt-04",
+      "reference": "open the front door",
+      "wav": "utt-04.wav",
+      "txt": "utt-04.txt",
+      "sampleRateHz": 16000,
+      "fixture": "deterministic_non_speech_tone"
+    },
+    {
+      "id": "utt-05",
+      "reference": "thanks that is all for now",
+      "wav": "utt-05.wav",
+      "txt": "utt-05.txt",
+      "sampleRateHz": 16000,
+      "fixture": "deterministic_non_speech_tone"
+    }
+  ]
+}

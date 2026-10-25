@@ -1,0 +1,776 @@
+/**
+ * Settings → Vault section.
+ *
+ *  - `SecretsManagerSection` — the inline launcher row in Settings;
+ *    clicking dispatches the global open event for the modal.
+ *  - `VaultModal` — the modal itself. App root mounts it lazily on the
+ *    first global open dispatch (launcher, ⌘⌥⌃V chord, menu accelerator)
+ *    via `SecretsManagerModalMount` in `App.tsx`, keeping this module off
+ *    the eager boot graph (#11351).
+ *
+ * The modal is a tabbed Vault interface (Overview / Secrets / Logins /
+ * Routing). `VaultWorkspace` reuses the same controller and tab bodies for the
+ * first-class `/vault` page. Data is fetched once per activation and shared
+ * across tabs; there is no second credential-management implementation.
+ */
+
+import { KeyRound, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAgentElement } from "../../agent-surface/useAgentElement";
+// All requests go through the shared client (never bare `fetch`) so they hit
+// the configured apiBase and carry the injected auth token — a bare relative
+// fetch targets the page origin unauthenticated, which breaks remote/token-
+// authed runtimes (e.g. the Android local agent).
+import { client } from "../../api/client";
+import {
+  dispatchSecretsManagerOpen,
+  useSecretsManagerModalState,
+  VAULT_TABS,
+  type VaultTab,
+} from "../../hooks/useSecretsManagerModal";
+import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
+import { Badge } from "../ui/badge";
+import { Banner } from "../ui/banner";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Separator } from "../ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
+import { SettingsActionButton } from "./settings-agent-rows";
+import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
+import { LoginsTab } from "./vault-tabs/LoginsTab";
+import { OverviewTab } from "./vault-tabs/OverviewTab";
+import { RoutingTab } from "./vault-tabs/RoutingTab";
+import { SecretsTab } from "./vault-tabs/SecretsTab";
+import type {
+  AgentSummary,
+  BackendStatus,
+  ConnectorSecretFinding,
+  InstallableBackendId,
+  InstalledApp,
+  InstallMethod,
+  ManagerPreferences,
+  RoutingConfig,
+  VaultEntryMeta,
+  VaultProtectionStatus,
+  VaultTabNavigate,
+} from "./vault-tabs/types";
+
+const HASH_PREFIX = "vault";
+
+const VAULT_SECTION_TABS = [
+  { id: "overview", label: "Overview", testId: "vault-tab-overview" },
+  { id: "secrets", label: "Secrets", testId: "vault-tab-secrets" },
+  { id: "logins", label: "Logins", testId: "vault-tab-logins" },
+  { id: "routing", label: "Routing", testId: "vault-tab-routing" },
+] as const;
+
+function VaultTabTrigger({
+  id,
+  label,
+  testId,
+  activeTab,
+  onSelect,
+}: {
+  id: VaultTab;
+  label: string;
+  testId: string;
+  activeTab: VaultTab;
+  onSelect: (tab: VaultTab) => void;
+}): React.JSX.Element {
+  const isActive = activeTab === id;
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `vault-tab-${id}`,
+    role: "tab",
+    label: `${label} Vault section`,
+    group: "vault-tabs",
+    status: isActive ? "active" : "inactive",
+    onActivate: () => onSelect(id),
+  });
+
+  return (
+    <TabsTrigger
+      ref={ref}
+      {...agentProps}
+      value={id}
+      data-state={isActive ? "active" : "inactive"}
+      data-testid={testId}
+      className="h-9 shrink-0 bg-transparent px-3 py-1.5 text-xs text-txt-strong hover:bg-accent-subtle data-[state=active]:bg-accent-subtle data-[state=active]:text-txt-strong pointer-coarse:min-h-touch pointer-coarse:min-w-touch max-[420px]:px-2 max-[360px]:px-1"
+    >
+      {label}
+    </TabsTrigger>
+  );
+}
+
+function readHashTab(): VaultTab | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!hash.startsWith(`${HASH_PREFIX}/`)) return null;
+  const candidate = hash.slice(HASH_PREFIX.length + 1) as VaultTab;
+  return VAULT_TABS.includes(candidate) ? candidate : null;
+}
+
+function writeHashTab(tab: VaultTab): void {
+  if (typeof window === "undefined") return;
+  const next = `#${HASH_PREFIX}/${tab}`;
+  if (window.location.hash === next) return;
+  // Replace, not push, so closing the modal doesn't litter the back stack.
+  history.replaceState(null, "", next);
+}
+
+function clearHash(): void {
+  if (typeof window === "undefined") return;
+  if (!window.location.hash.startsWith(`#${HASH_PREFIX}`)) return;
+  history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search,
+  );
+}
+
+// ── Public components ──────────────────────────────────────────────
+
+export function SecretsManagerSection() {
+  const [primary, setPrimary] = useState<BackendStatus | null>(null);
+  const [enabledCount, setEnabledCount] = useState<number>(1);
+  const { isOpen } = useSecretsManagerModalState();
+
+  const refreshSummary = useCallback(async () => {
+    try {
+      const [bJson, pJson] = await Promise.all([
+        client.fetch<{ backends: BackendStatus[] }>(
+          "/api/secrets/manager/backends",
+        ),
+        client.fetch<{ preferences: ManagerPreferences }>(
+          "/api/secrets/manager/preferences",
+        ),
+      ]);
+      const primaryId = pJson.preferences.enabled[0] ?? "in-house";
+      setPrimary(bJson.backends.find((b) => b.id === primaryId) ?? null);
+      setEnabledCount(pJson.preferences.enabled.length);
+    } catch {
+      // error-policy:J4 the compact settings row retains its last known summary;
+      // the full vault surface exposes request failures when the user opens it.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSummary();
+  }, [refreshSummary]);
+
+  useEffect(() => {
+    if (!isOpen) void refreshSummary();
+  }, [isOpen, refreshSummary]);
+
+  return (
+    <SettingsStack>
+      <SettingsGroup title="Vault">
+        <SettingsRow
+          icon={KeyRound}
+          label={
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0">
+                {primary?.label ?? "Local (encrypted)"}
+              </span>
+              {primary ? (
+                <Badge variant="outline" size="microBold" tone="accent">
+                  Primary
+                </Badge>
+              ) : null}
+              {enabledCount > 1 ? (
+                <Badge variant="outline" size="micro" tone="muted">
+                  +{enabledCount - 1} more
+                </Badge>
+              ) : null}
+            </span>
+          }
+          control={
+            <SettingsActionButton
+              agentId="secrets-manage"
+              agentLabel="Open the vault"
+              agentDescription="Open the full vault manager modal"
+              agentGroup="secrets"
+              variant="outline"
+              size="sm"
+              className="h-9 shrink-0 rounded-md"
+              onClick={() => dispatchSecretsManagerOpen()}
+            >
+              Manage…
+            </SettingsActionButton>
+          }
+        />
+      </SettingsGroup>
+    </SettingsStack>
+  );
+}
+
+// ── Vault modal shell ──────────────────────────────────────────────
+
+export interface VaultModalProps {
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+  /**
+   * Optional tab to land on when opening. Owner is responsible for
+   * resetting via `onConsumeInitial` after the modal opens so the
+   * next open uses the user's most recent tab again.
+   */
+  initialTab?: VaultTab | null;
+  initialFocusKey?: string | null;
+  initialFocusProfileId?: string | null;
+  onConsumeInitial?: () => void;
+}
+
+export function VaultModal({
+  open,
+  onOpenChange,
+  initialTab = null,
+  initialFocusKey = null,
+  initialFocusProfileId = null,
+  onConsumeInitial,
+}: VaultModalProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden sm:max-w-4xl">
+        <VaultWorkspace
+          open={open}
+          onOpenChange={onOpenChange}
+          initialTab={initialTab}
+          initialFocusKey={initialFocusKey}
+          initialFocusProfileId={initialFocusProfileId}
+          onConsumeInitial={onConsumeInitial}
+          presentation="dialog"
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export interface VaultWorkspaceProps extends VaultModalProps {
+  /** Dialog chrome, legacy self-owned page chrome, or canonical framed-page chrome. */
+  presentation?: "dialog" | "page" | "framed-page";
+}
+
+export function VaultWorkspace({
+  open,
+  onOpenChange,
+  initialTab = null,
+  initialFocusKey = null,
+  initialFocusProfileId = null,
+  onConsumeInitial,
+  presentation = "page",
+}: VaultWorkspaceProps) {
+  // The hash present when the modal opened, restored on close so the
+  // SettingsView deep-link anchor (e.g. `#secrets`) survives.
+  const priorHashRef = useRef<string>("");
+
+  // Tab state. Resolved in this order: (1) initial dispatch detail,
+  // (2) hash, (3) "overview". Subsequent tab changes update the hash so
+  // the URL is shareable / restorable.
+  const [activeTab, setActiveTab] = useState<VaultTab>(
+    () => initialTab ?? readHashTab() ?? "overview",
+  );
+
+  // Cross-tab focus (key + optional profile id). The receiving tab
+  // applies this and calls `clearFocusState()` to prevent re-application
+  // on every parent re-render.
+  const [focusKey, setFocusKey] = useState<string | null>(initialFocusKey);
+  const [focusProfileId, setFocusProfileId] = useState<string | null>(
+    initialFocusProfileId,
+  );
+  const clearFocusState = useCallback(() => {
+    setFocusKey(null);
+    setFocusProfileId(null);
+  }, []);
+
+  // When the parent forwards a new initial tab / focus (modal re-opened
+  // via dispatch with new payload), sync local state and signal the
+  // owner to clear so we don't re-apply on every re-render.
+  useEffect(() => {
+    if (!open) return;
+    if (initialTab) setActiveTab(initialTab);
+    if (initialFocusKey !== null) setFocusKey(initialFocusKey);
+    if (initialFocusProfileId !== null)
+      setFocusProfileId(initialFocusProfileId);
+    if (initialTab || initialFocusKey || initialFocusProfileId) {
+      onConsumeInitial?.();
+    }
+  }, [
+    open,
+    initialTab,
+    initialFocusKey,
+    initialFocusProfileId,
+    onConsumeInitial,
+  ]);
+
+  // Capture the prior hash on open so close can restore it.
+  useEffect(() => {
+    if (!open) return;
+    if (typeof window === "undefined") return;
+    const current = window.location.hash;
+    // Don't overwrite if the open was triggered BY a `#vault/<tab>` paste —
+    // that hash is ours, not the prior settings hash.
+    if (!current.startsWith(`#${HASH_PREFIX}`)) {
+      priorHashRef.current = current;
+    }
+  }, [open]);
+
+  // Sync hash on tab change while open.
+  useEffect(() => {
+    if (!open) return;
+    writeHashTab(activeTab);
+  }, [open, activeTab]);
+
+  // On close, restore prior hash (or strip the vault hash if none).
+  useEffect(() => {
+    if (open) return;
+    if (typeof window === "undefined") return;
+    if (!window.location.hash.startsWith(`#${HASH_PREFIX}`)) return;
+    if (priorHashRef.current) {
+      history.replaceState(null, "", priorHashRef.current);
+    } else {
+      clearHash();
+    }
+  }, [open]);
+
+  // Listen for external hash changes (e.g. user pasted a URL).
+  useEffect(() => {
+    if (!open) return;
+    const onHashChange = () => {
+      const next = readHashTab();
+      if (next && next !== activeTab) setActiveTab(next);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, [open, activeTab]);
+
+  // ── Data ───────────────────────────────────────────────────────
+  const [backends, setBackends] = useState<BackendStatus[] | null>(null);
+  const [preferences, setPreferences] = useState<ManagerPreferences | null>(
+    null,
+  );
+  const [installMethods, setInstallMethods] = useState<Record<
+    InstallableBackendId,
+    InstallMethod[]
+  > | null>(null);
+  const [entries, setEntries] = useState<VaultEntryMeta[] | null>(null);
+  const [securityFindings, setSecurityFindings] = useState<
+    ConnectorSecretFinding[]
+  >([]);
+  const [routingConfig, setRoutingConfig] = useState<RoutingConfig | null>(
+    null,
+  );
+  const [protection, setProtection] = useState<VaultProtectionStatus | null>(
+    null,
+  );
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [apps, setApps] = useState<InstalledApp[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [
+        backendsRes,
+        prefsRes,
+        methodsRes,
+        entriesRes,
+        routingRes,
+        protectionRes,
+        agentsRes,
+        appsRes,
+      ] = await Promise.all([
+        client.rawRequest("/api/secrets/manager/backends", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/manager/preferences", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/manager/install/methods", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/inventory", undefined, {
+          allowNonOk: true,
+        }),
+        client.rawRequest("/api/secrets/routing", undefined, {
+          allowNonOk: true,
+        }),
+        client
+          .rawRequest("/api/secrets/manager/protection", undefined, {
+            allowNonOk: true,
+          })
+          .catch(() => null),
+        // error-policy:J4 best-effort enrichment — these endpoints may not
+        // exist in headless/test shells; the Routing tab renders without them
+        // (documented at the consumers below).
+        client
+          .rawRequest("/api/agents", undefined, { allowNonOk: true })
+          .catch(() => null),
+        client
+          .rawRequest("/api/apps", undefined, { allowNonOk: true })
+          .catch(() => null),
+      ]);
+      if (!backendsRes.ok)
+        throw new Error(`backends: HTTP ${backendsRes.status}`);
+      if (!prefsRes.ok) throw new Error(`preferences: HTTP ${prefsRes.status}`);
+      if (!methodsRes.ok)
+        throw new Error(`install/methods: HTTP ${methodsRes.status}`);
+      if (!entriesRes.ok)
+        throw new Error(`inventory: HTTP ${entriesRes.status}`);
+      if (!routingRes.ok) throw new Error(`routing: HTTP ${routingRes.status}`);
+      const backendsJson = (await backendsRes.json()) as {
+        backends: BackendStatus[];
+      };
+      const prefsJson = (await prefsRes.json()) as {
+        preferences: ManagerPreferences;
+      };
+      const methodsJson = (await methodsRes.json()) as {
+        methods: Record<InstallableBackendId, InstallMethod[]>;
+      };
+      const entriesJson = (await entriesRes.json()) as {
+        entries: VaultEntryMeta[];
+        securityFindings?: ConnectorSecretFinding[];
+      };
+      const routingJson = (await routingRes.json()) as {
+        config: RoutingConfig;
+      };
+      if (protectionRes?.ok) {
+        const protectionJson = (await protectionRes.json()) as {
+          protection?: VaultProtectionStatus;
+        };
+        setProtection(protectionJson.protection ?? null);
+      } else {
+        setProtection(null);
+      }
+      setBackends(backendsJson.backends);
+      setPreferences(prefsJson.preferences);
+      setInstallMethods(methodsJson.methods);
+      setEntries(entriesJson.entries);
+      setSecurityFindings(entriesJson.securityFindings ?? []);
+      setRoutingConfig(routingJson.config);
+      // Best-effort agent/app fetches — endpoints may not exist in headless
+      // / test environments. The Routing tab still works without them.
+      if (agentsRes?.ok) {
+        const aJson = (await agentsRes.json()) as { agents?: AgentSummary[] };
+        setAgents(aJson.agents ?? []);
+      } else {
+        setAgents([]);
+      }
+      if (appsRes?.ok) {
+        const aJson = (await appsRes.json()) as { apps?: InstalledApp[] };
+        setApps(aJson.apps ?? []);
+      } else {
+        setApps([]);
+      }
+    } catch (err) {
+      // error-policy:J1 boundary translation — a failed bulk load surfaces in
+      // a single banner; tabs that don't depend on the failed endpoint still
+      // render usable empty states from their own state.
+      setError(err instanceof Error ? err.message : "load failed");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) void load();
+  }, [open, load]);
+
+  // Refresh inventory + routing after any tab mutation. Cheaper than a
+  // full re-load but always gives sibling tabs the latest data.
+  const refreshInventory = useCallback(async () => {
+    const [entriesRes, routingRes] = await Promise.all([
+      client.rawRequest("/api/secrets/inventory", undefined, {
+        allowNonOk: true,
+      }),
+      client.rawRequest("/api/secrets/routing", undefined, {
+        allowNonOk: true,
+      }),
+    ]);
+    if (entriesRes.ok) {
+      const json = (await entriesRes.json()) as {
+        entries: VaultEntryMeta[];
+        securityFindings?: ConnectorSecretFinding[];
+      };
+      setEntries(json.entries);
+      setSecurityFindings(json.securityFindings ?? []);
+    }
+    if (routingRes.ok) {
+      const json = (await routingRes.json()) as { config: RoutingConfig };
+      setRoutingConfig(json.config);
+    }
+  }, []);
+
+  // Clear the "Saved" label after 2.5s.
+  useEffect(() => {
+    if (savedAt === null) return;
+    const id = setTimeout(() => setSavedAt(null), 2500);
+    return () => clearTimeout(id);
+  }, [savedAt]);
+
+  const save = useCallback(async () => {
+    if (!preferences) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await client.rawRequest(
+        "/api/secrets/manager/preferences",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ preferences }),
+        },
+        { allowNonOk: true },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = (await res.json()) as { preferences: ManagerPreferences };
+      setPreferences(json.preferences);
+      setSavedAt(Date.now());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "save failed");
+    } finally {
+      setSaving(false);
+    }
+  }, [preferences]);
+
+  const onSignout = useCallback(
+    async (backendId: InstallableBackendId) => {
+      const res = await client.rawRequest(
+        "/api/secrets/manager/signout",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ backendId }),
+        },
+        { allowNonOk: true },
+      );
+      if (!res.ok) {
+        setError(`sign-out HTTP ${res.status}`);
+        return;
+      }
+      await load();
+    },
+    [load],
+  );
+
+  // Cross-tab navigation handed to each tab via props.
+  const navigate = useMemo<VaultTabNavigate>(
+    () => (target) => {
+      setActiveTab(target.tab);
+      setFocusKey(target.focusKey ?? null);
+      setFocusProfileId(target.focusProfileId ?? null);
+    },
+    [],
+  );
+
+  const onTabChange = useCallback((next: string) => {
+    if (VAULT_TABS.includes(next as VaultTab)) {
+      setActiveTab(next as VaultTab);
+    }
+  }, []);
+
+  const isReady = !loading && backends && preferences && installMethods;
+
+  return (
+    <>
+      {presentation === "framed-page" ? null : presentation === "dialog" ? (
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2">
+              <KeyRound className="size-4 text-muted" aria-hidden />
+              Vault
+            </span>
+            <Badge variant="outline" size="micro" tone="muted">
+              {getShortcutLabel()}
+            </Badge>
+          </DialogTitle>
+        </DialogHeader>
+      ) : (
+        <div className="shrink-0">
+          <header className="flex items-start justify-between gap-4 pb-4">
+            <div className="min-w-0">
+              <h1 className="flex items-center gap-2 text-lg font-semibold text-txt">
+                <KeyRound className="size-5 text-accent" aria-hidden />
+                Vault
+              </h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted">
+                Encrypted credentials and references available to this agent.
+                Organization credential pools remain managed in Eliza Cloud.
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              size="micro"
+              tone="muted"
+              className="hidden shrink-0 sm:inline-flex"
+            >
+              {getShortcutLabel()}
+            </Badge>
+          </header>
+          <Separator tone="subtle45" />
+        </div>
+      )}
+
+      <div
+        data-chat-occlusion-policy={
+          presentation !== "dialog" ? "hide" : undefined
+        }
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-2"
+      >
+        {!isReady || !backends || !preferences || !installMethods ? (
+          !loading && error ? (
+            <Banner
+              variant="error"
+              aria-live="polite"
+              data-testid="vault-modal-error"
+              action={
+                <SettingsActionButton
+                  agentId="vault-load-retry"
+                  agentLabel="Retry loading the vault"
+                  agentGroup="secrets"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={() => void load()}
+                >
+                  Retry
+                </SettingsActionButton>
+              }
+            >
+              {error}
+            </Banner>
+          ) : (
+            <div className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
+              <Loader2 className="size-4 animate-spin" aria-hidden /> Loading…
+            </div>
+          )
+        ) : (
+          <>
+            {error && (
+              <Banner
+                variant="error"
+                aria-live="polite"
+                data-testid="vault-modal-error"
+              >
+                {error}
+              </Banner>
+            )}
+
+            <Tabs
+              value={activeTab}
+              onValueChange={onTabChange}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <TabsList
+                aria-label="Vault sections"
+                data-testid="section-nav-vault"
+                className="h-auto max-w-full self-start justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0"
+              >
+                {VAULT_SECTION_TABS.map((tab) => (
+                  <VaultTabTrigger
+                    key={tab.id}
+                    {...tab}
+                    activeTab={activeTab}
+                    onSelect={onTabChange}
+                  />
+                ))}
+              </TabsList>
+
+              <div className="eliza-chat-scroll mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+                <TabsContent
+                  value="overview"
+                  className="mt-0"
+                  data-testid="vault-tab-overview-content"
+                >
+                  <OverviewTab
+                    backends={backends}
+                    preferences={preferences}
+                    protection={protection}
+                    installMethods={installMethods}
+                    saving={saving}
+                    savedAt={savedAt}
+                    onPreferencesChange={setPreferences}
+                    onSave={() => void save()}
+                    onReload={() => void load()}
+                    onInstallComplete={() => void load()}
+                    onSigninComplete={() => void load()}
+                    onSignout={(id) => void onSignout(id)}
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="secrets"
+                  className="mt-0"
+                  data-testid="vault-tab-secrets-content"
+                >
+                  <SecretsTab
+                    entries={entries ?? []}
+                    securityFindings={securityFindings}
+                    onChanged={() => void refreshInventory()}
+                    navigate={navigate}
+                    focusKey={activeTab === "secrets" ? focusKey : null}
+                    focusProfileId={
+                      activeTab === "secrets" ? focusProfileId : null
+                    }
+                    onFocusApplied={clearFocusState}
+                  />
+                </TabsContent>
+
+                <TabsContent
+                  value="logins"
+                  className="mt-0"
+                  data-testid="vault-tab-logins-content"
+                >
+                  <LoginsTab />
+                </TabsContent>
+
+                <TabsContent
+                  value="routing"
+                  className="mt-0"
+                  data-testid="vault-tab-routing-content"
+                >
+                  <RoutingTab
+                    config={routingConfig ?? { rules: [] }}
+                    agents={agents}
+                    apps={apps}
+                    entries={entries ?? []}
+                    onConfigChange={setRoutingConfig}
+                    navigate={navigate}
+                    focusKey={activeTab === "routing" ? focusKey : null}
+                    onFocusApplied={clearFocusState}
+                  />
+                </TabsContent>
+              </div>
+            </Tabs>
+          </>
+        )}
+      </div>
+
+      {presentation === "dialog" ? (
+        <DialogFooter className="flex shrink-0 flex-row items-center justify-end gap-3 pt-3">
+          <div className="flex shrink-0 items-center gap-2">
+            <SettingsActionButton
+              agentId="secrets-close"
+              agentLabel="Close the vault"
+              agentGroup="secrets"
+              variant="ghost"
+              size="sm"
+              className="h-9"
+              onClick={() => onOpenChange(false)}
+              disabled={saving}
+            >
+              Close
+            </SettingsActionButton>
+          </div>
+        </DialogFooter>
+      ) : null}
+    </>
+  );
+}

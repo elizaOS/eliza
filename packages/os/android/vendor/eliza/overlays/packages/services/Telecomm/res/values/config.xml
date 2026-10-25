@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Telecom combines these classes with framework config_defaultDialer. -->
+    <string name="incall_default_class" translatable="false">ai.elizaos.app.ElizaInCallService</string>
+    <string name="dialer_default_class" translatable="false">ai.elizaos.app.ElizaDialActivity</string>
+</resources>

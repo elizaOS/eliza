@@ -1,0 +1,75 @@
+/**
+ * Loads a Solana connection plus signer or public key from runtime settings
+ * for the Meteora DEX adapters. Private keys are accepted as base58 or
+ * base64; TEE-derived keys are not wired up here (no DeriveKeyProvider) —
+ * the wallet always comes from the configured private/public key settings.
+ */
+import type { IAgentRuntime } from "@elizaos/core";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
+
+const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
+
+export interface WalletResult {
+  signer?: Keypair;
+  address?: PublicKey;
+  connection: Connection;
+}
+
+/**
+ * Gets either a keypair or public key based on TEE mode and runtime settings
+ * @param runtime The agent runtime
+ * @param requirePrivateKey Whether to return a full keypair (true) or just public key (false)
+ * @returns KeypairResult containing either keypair or public key
+ */
+export async function loadWallet(
+  runtime: IAgentRuntime,
+  requirePrivateKey: boolean = true
+): Promise<WalletResult> {
+  const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
+  const connection = new Connection(rpcUrl, "confirmed");
+
+  // TEE-derived keys are not wired up here yet (no DeriveKeyProvider); the
+  // wallet is always loaded from the configured private/public key settings.
+  if (requirePrivateKey) {
+    const privateKeyString =
+      getRuntimeStringSetting(runtime, "SOLANA_PRIVATE_KEY") ??
+      getRuntimeStringSetting(runtime, "WALLET_PRIVATE_KEY");
+
+    if (!privateKeyString) {
+      throw new Error("Private key not found in settings");
+    }
+
+    try {
+      // First try base58
+      const secretKey = bs58.decode(privateKeyString);
+      return { signer: Keypair.fromSecretKey(secretKey), connection };
+    } catch (e) {
+      console.log("Error decoding base58 private key:", e);
+      try {
+        // Then try base64
+        console.log("Try decoding base64 instead");
+        const secretKey = Uint8Array.from(Buffer.from(privateKeyString, "base64"));
+        return { signer: Keypair.fromSecretKey(secretKey), connection };
+      } catch (e2) {
+        console.error("Error decoding private key: ", e2);
+        throw new Error("Invalid private key format");
+      }
+    }
+  } else {
+    const publicKeyString =
+      getRuntimeStringSetting(runtime, "SOLANA_PUBLIC_KEY") ??
+      getRuntimeStringSetting(runtime, "WALLET_PUBLIC_KEY");
+
+    if (!publicKeyString) {
+      throw new Error("Public key not found in settings");
+    }
+
+    return { address: new PublicKey(publicKeyString), connection };
+  }
+}
+
+function getRuntimeStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}

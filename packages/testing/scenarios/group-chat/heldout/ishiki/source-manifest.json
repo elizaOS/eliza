@@ -1,0 +1,165 @@
+{
+  "dataset": "ishiki-labs/multi-party-dialogue",
+  "revision": "356c30b9dc74cbfa115ab7b9a89991d92ce0a315",
+  "license": "Apache-2.0",
+  "sourceFiles": [
+    {
+      "domain": "ami",
+      "sha256": "bc770473c45277223445b8ca05f751c9a4b6c53195e37356c46ba5ff9f839c93"
+    },
+    {
+      "domain": "friends",
+      "sha256": "21df2d2d6f4126a43153ac054f731b742295d1b7d2bd700aa890303f6fae2c50"
+    },
+    {
+      "domain": "spgi",
+      "sha256": "862cdaa26aadbf3535352f31191ea9266dd7523b84f313affb24e34c28740e6b"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "groupchat.ishiki.ami.speak.001",
+      "decisionPointId": "TS3005b_seq2409_turn19_targetC",
+      "domain": "ami",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.ami.speak.002",
+      "decisionPointId": "IS1003d_seq1291_turn1_targetC",
+      "domain": "ami",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.ami.speak.003",
+      "decisionPointId": "IS1006d_inferred523_turn2_targetA",
+      "domain": "ami",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.ami.speak.004",
+      "decisionPointId": "ES2002c_inferred182_turn2_targetD",
+      "domain": "ami",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.ami.silent.001",
+      "decisionPointId": "ES2009c_seq277_turn9_targetC",
+      "domain": "ami",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.ami.silent.002",
+      "decisionPointId": "IS1001c_seq1031_turn10_targetD",
+      "domain": "ami",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.ami.silent.003",
+      "decisionPointId": "ES2009d_seq377_turn12_targetD",
+      "domain": "ami",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.ami.silent.004",
+      "decisionPointId": "IS1003d_seq1375_turn3_targetA",
+      "domain": "ami",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.friends.speak.001",
+      "decisionPointId": "train_5turns_5073_turn2_targetjoey",
+      "domain": "friends",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.friends.speak.002",
+      "decisionPointId": "train_5turns_5739_turn1_targetrachel",
+      "domain": "friends",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.friends.speak.003",
+      "decisionPointId": "test_5turns_845_turn1_targetross",
+      "domain": "friends",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.friends.speak.004",
+      "decisionPointId": "train_8turns_8039_turn2_targetjoey",
+      "domain": "friends",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.friends.silent.001",
+      "decisionPointId": "train_5turns_3675_turn2_targetchandler",
+      "domain": "friends",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.friends.silent.002",
+      "decisionPointId": "train_5turns_12048_turn3_targetrachel",
+      "domain": "friends",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.friends.silent.003",
+      "decisionPointId": "train_8turns_6931_turn1_targetchandler",
+      "domain": "friends",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.friends.silent.004",
+      "decisionPointId": "train_5turns_9986_turn3_targetross",
+      "domain": "friends",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.speak.001",
+      "decisionPointId": "39669_t8_target36426",
+      "domain": "spgi",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.speak.002",
+      "decisionPointId": "7692_t7_target268",
+      "domain": "spgi",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.speak.003",
+      "decisionPointId": "21524_t3_target-1",
+      "domain": "spgi",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.speak.004",
+      "decisionPointId": "46378_t3_target41003",
+      "domain": "spgi",
+      "label": "speak"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.silent.001",
+      "decisionPointId": "6546_t3_target24858",
+      "domain": "spgi",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.silent.002",
+      "decisionPointId": "26780_t13_target23303",
+      "domain": "spgi",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.silent.003",
+      "decisionPointId": "34423_t3_target23159",
+      "domain": "spgi",
+      "label": "silent"
+    },
+    {
+      "id": "groupchat.ishiki.spgi.silent.004",
+      "decisionPointId": "33458_t7_target10720",
+      "domain": "spgi",
+      "label": "silent"
+    }
+  ]
+}

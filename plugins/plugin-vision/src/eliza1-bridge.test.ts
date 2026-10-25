@@ -1,0 +1,257 @@
+/**
+ * Bridge tests for routing scene descriptions through the eliza-1 image model slot.
+ */
+
+import type { IAgentRuntime } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
+import { VisionService } from "./service";
+
+function createRuntime(opts: {
+  imageDescriptionResult?: unknown;
+  throwError?: Error;
+}) {
+  const trajectoryLogger = {
+    isEnabled: () => true,
+    startTrajectory: vi.fn(() => "traj"),
+    startStep: vi.fn(() => "step"),
+    endTrajectory: vi.fn(),
+    flushWriteQueue: vi.fn(),
+    logLlmCall: vi.fn(),
+  };
+  const useModel = vi.fn(async (_t: string, _args: unknown) => {
+    if (opts.throwError) throw opts.throwError;
+    return opts.imageDescriptionResult;
+  });
+  const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
+    agentId: "agent-vision",
+    character: {},
+    getSetting: vi.fn(() => undefined),
+    getService: vi.fn((name: string) =>
+      name === "trajectories" ? trajectoryLogger : null,
+    ),
+    getServicesByType: vi.fn(() => []),
+    useModel,
+  });
+  return { runtime, trajectoryLogger, useModel };
+}
+
+describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
+  it("routes scene description through runtime IMAGE_DESCRIPTION (eliza-1 owns the slot)", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "Eliza-1 sees a desk." },
+    });
+    const service = new VisionService(runtime);
+
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    const result = await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+
+    expect(result).toBe("Eliza-1 sees a desk.");
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(useModel).toHaveBeenCalledWith(
+      "IMAGE_DESCRIPTION",
+      expect.objectContaining({
+        imageUrl: expect.stringMatching(/^data:image\/jpeg;base64,/),
+        prompt: expect.any(String),
+      }),
+    );
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as Record<string, unknown>;
+    expect(prompt.detectedText).toBeUndefined();
+  });
+
+  it("adds current OCR text to the scene description prompt", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "The settings panel is open." },
+    });
+    const service = new VisionService(runtime);
+    Object.defineProperty(service, "lastEnhancedScene", {
+      configurable: true,
+      value: {
+        timestamp: Date.now(),
+        description: "",
+        objects: [],
+        people: [],
+        sceneChanged: true,
+        changePercentage: 0,
+        screenAnalysis: {
+          fullScreenOCR: "Save\nSave\n  Project   settings\n\nDeploy now",
+          activeTile: {
+            timestamp: Date.now(),
+            text: "Deploy now",
+          },
+        },
+      },
+    });
+
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    const result = await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+
+    expect(result).toBe("The settings panel is open.");
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
+    expect(prompt.detectedText).toBe("Save\nProject settings\nDeploy now");
+  });
+
+  // OCR normalization may remove blank or duplicate lines, but the model must
+  // receive every remaining line instead of a silent prefix of the screen.
+  function sceneWithOcr(service: VisionService, fullScreenOCR: string): void {
+    Object.defineProperty(service, "lastEnhancedScene", {
+      configurable: true,
+      value: {
+        timestamp: Date.now(),
+        description: "",
+        objects: [],
+        people: [],
+        sceneChanged: true,
+        changePercentage: 0,
+        screenAnalysis: {
+          fullScreenOCR,
+          activeTile: { timestamp: Date.now(), text: "" },
+        },
+      },
+    });
+  }
+
+  it("preserves every normalized OCR line in the model prompt", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "A long list." },
+    });
+    const service = new VisionService(runtime);
+    const fullScreenOCR = Array.from({ length: 60 }, (_, i) => `row ${i}`).join(
+      "\n",
+    );
+    // Model-facing OCR must remain complete rather than imposing a line cap.
+    sceneWithOcr(service, fullScreenOCR);
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
+    expect(prompt.detectedText).toBe(fullScreenOCR);
+    expect(prompt.detectedText?.split("\n")).toHaveLength(60);
+  });
+
+  it("preserves the complete normalized OCR text beyond legacy prompt caps", async () => {
+    const { runtime, useModel } = createRuntime({
+      imageDescriptionResult: { description: "A wall of text." },
+    });
+    const service = new VisionService(runtime);
+    const fullScreenOCR = [0, 1, 2]
+      .map((i) => `${i} ${"x".repeat(1000)}`)
+      .join("\n");
+    // Three distinct ~1000-char lines prove the retired 2000-character cap is
+    // not reintroduced on the model-facing path.
+    sceneWithOcr(service, fullScreenOCR);
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
+    expect(prompt.detectedText).toBe(fullScreenOCR);
+    expect(prompt.detectedText).toHaveLength(3008);
+  });
+
+  it("falls through to detected-objects synthesis when IMAGE_DESCRIPTION returns the unhelpful sentinel", async () => {
+    const { runtime } = createRuntime({
+      imageDescriptionResult: { description: "I'm unable to analyze images" },
+    });
+    const service = new VisionService(runtime);
+
+    // Seed a previous scene description so the synthesis branch has something to work with.
+    Object.defineProperty(service, "lastSceneDescription", {
+      configurable: true,
+      value: {
+        timestamp: Date.now(),
+        description: "",
+        objects: [
+          {
+            id: "o1",
+            type: "monitor",
+            confidence: 0.9,
+            boundingBox: { x: 0, y: 0, width: 10, height: 10 },
+          },
+        ],
+        people: [],
+        sceneChanged: true,
+        changePercentage: 0,
+      },
+    });
+
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    const result = await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+
+    expect(result).toContain("monitor");
+  });
+
+  it("falls through to detected-objects synthesis when IMAGE_DESCRIPTION throws", async () => {
+    const { runtime } = createRuntime({
+      throwError: new Error("no IMAGE_DESCRIPTION handler registered"),
+    });
+    const service = new VisionService(runtime);
+
+    Object.defineProperty(service, "lastSceneDescription", {
+      configurable: true,
+      value: {
+        timestamp: Date.now(),
+        description: "",
+        objects: [],
+        people: [],
+        sceneChanged: false,
+        changePercentage: 0,
+      },
+    });
+
+    const describeFn = Reflect.get(service, "describeSceneWithVLM") as (
+      imageUrl: string,
+    ) => Promise<string>;
+    const result = await describeFn.call(
+      service,
+      `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
+    );
+
+    expect(result).toBe("Scene appears to be empty or static");
+  });
+});

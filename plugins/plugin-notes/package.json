@@ -1,0 +1,86 @@
+{
+  "name": "@elizaos/plugin-notes",
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Cloud Notes view with durable agent-driven CRUD.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./register": {
+      "eliza-source": "./src/register.ts",
+      "types": "./dist/register.d.ts",
+      "import": "./dist/register.js",
+      "default": "./dist/register.js"
+    },
+    "./client": {
+      "eliza-source": "./src/client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client/*": {
+      "eliza-source": "./src/client/*.ts",
+      "types": "./dist/client/*.d.ts",
+      "import": "./dist/client/*.js",
+      "default": "./dist/client/*.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "bun run test:client && vitest run --config vitest.config.ts",
+    "preview:notes": "bunx --bun vite --config vite.config.preview.ts",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "vite build --config vite.config.views.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "test:client": "node --test --experimental-transform-types test/*.test.mjs"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0",
+    "react": "^19.3.0",
+    "@elizaos/contracts": "workspace:*"
+  },
+  "peerDependencies": {
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.3",
+    "@elizaos/testing": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "appRegister": {
+      "export": "registerNotesApp",
+      "subpath": "register"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false
+}

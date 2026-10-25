@@ -1,0 +1,118 @@
+/**
+ * Lists attachment objects under a prefix.
+ *
+ * Routes:
+ *   GET /api/v1/apis/storage/list with X-Storage-Prefix and
+ *       X-Storage-Recursive headers
+ *       → { items: [{ key, size, contentType, modifiedAt }] }
+ *
+ * Auth: requireUserOrApiKeyWithOrg.
+ * Pricing: one durable server-priced receipt per idempotent list request.
+ *
+ * Native R2 enumeration discovers and adopts legacy tenant-prefixed objects;
+ * the catalog remains authoritative for immutable generations and tombstones.
+ */
+
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { storageOperationPriceUsd } from "@elizaos/cloud-shared/lib/constants/pricing";
+import {
+  executeNativeStorageList,
+  NativeStorageReadError,
+} from "@elizaos/cloud-shared/lib/services/storage/native-storage-read";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import { z } from "zod";
+import { requirePaidRouteStanding } from "@/api-app/lib/paid-route-standing";
+
+const MAX_LIST_RESULTS = 1000;
+
+const listQuerySchema = z.object({
+  prefix: z.string().max(1024).optional().default(""),
+  recursive: z
+    .enum(["true", "false"])
+    .optional()
+    .default("true")
+    .transform((v) => v === "true"),
+});
+
+const app = new Hono<AppEnv>();
+
+app.get("/", async (c) => {
+  try {
+    const { user } = await requirePaidRouteStanding(c, {
+      route: "storage.list",
+    });
+    const { organization_id } = user;
+
+    const bucket = c.env.BLOB;
+    if (!bucket?.list) {
+      return c.json(
+        {
+          error:
+            "Attachment storage proxy not available — server misconfigured",
+        },
+        503,
+      );
+    }
+
+    if (c.req.query("prefix") !== undefined) {
+      return c.json(
+        {
+          error: "List prefixes are not accepted in URLs; use X-Storage-Prefix",
+        },
+        400,
+      );
+    }
+    const parsed = listQuerySchema.safeParse({
+      prefix: c.req.header("X-Storage-Prefix") ?? "",
+      recursive: c.req.header("X-Storage-Recursive") ?? "true",
+    });
+    if (!parsed.success) {
+      return c.json(
+        { error: "Invalid list query", details: parsed.error.issues },
+        400,
+      );
+    }
+    const { prefix, recursive } = parsed.data;
+
+    const trimmedPrefix = prefix.replace(/^\/+|\/+$/g, "");
+    const priceUsd = storageOperationPriceUsd("list");
+    const result = await executeNativeStorageList({
+      bucket,
+      organizationId: organization_id,
+      userId: user.id,
+      rawIdempotencyKey: c.req.header("Idempotency-Key") ?? "",
+      priceUsd,
+      prefix: trimmedPrefix,
+      recursive,
+      limit: MAX_LIST_RESULTS,
+    });
+    c.header("X-Storage-Receipt-Id", result.operation.id);
+    return c.json(result.body);
+  } catch (error) {
+    // error-policy:J1 transport boundary maps typed read failures to HTTP status.
+    if (error instanceof NativeStorageReadError) {
+      if (error.code === "INSUFFICIENT_CREDITS") {
+        return c.json(
+          {
+            error: "Insufficient credits",
+            topUpUrl: "https://cloud.eliza.app/cloud/billing",
+          },
+          402,
+        );
+      }
+      const status =
+        error.code === "IDEMPOTENCY_REQUIRED" ||
+        error.code === "IDEMPOTENCY_INVALID"
+          ? 400
+          : error.code === "IDEMPOTENCY_MISMATCH"
+            ? 409
+            : 503;
+      return c.json({ error: error.message, code: error.code }, status);
+    }
+    // error-policy:J1 route boundary — every catch in v1/apis/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty).
+    return failureResponse(c, error);
+  }
+});
+
+export default app;

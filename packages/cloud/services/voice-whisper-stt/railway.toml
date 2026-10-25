@@ -1,0 +1,19 @@
+# Railway deploy config for the free-cloud Whisper STT service.
+#
+# Consumed by the cloud-api /api/v1/voice/stt route via the WHISPER_STT_URL env
+# var; serves POST /v1/audio/transcriptions (OpenAI-compatible) -> { text }. No
+# secrets required — cloud-api owns auth/billing upstream and the Docker image
+# contains the model required by the route.
+#
+# healthcheckTimeout is generous because cold containers must unpack the model
+# layer and initialize the API before Railway probes the serving socket.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

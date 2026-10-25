@@ -1,0 +1,1236 @@
+/**
+ * DockerSSHClient — Reusable SSH client wrapper for Docker node operations.
+ *
+ * Provides connection pooling, command execution with timeouts, and proper
+ * cleanup.  Designed for orchestrating Docker containers on remote Hetzner
+ * VPS nodes via SSH.
+ *
+ * ## SSH Key Loading (cloud-deployable)
+ *
+ * The client supports two mechanisms for loading SSH private keys, checked
+ * in order of precedence:
+ *
+ * 1. **Environment variable (recommended for serverless/Workers):**
+ *    `AGENT_SSH_KEY` — base64-encoded private key material.
+ *    Set via `wrangler secret put` or your secrets manager.
+ *    Generate with: `base64 -w0 < ~/.ssh/id_ed25519`
+ *
+ * 2. **Filesystem path (traditional servers):**
+ *    `AGENT_SSH_KEY_PATH` — path to the PEM file on disk.
+ *    Defaults to `~/.ssh/id_ed25519` if neither env var is set.
+ *
+ * Reference: eliza-cloud/backend/services/container-orchestrator.ts (executeSSH)
+ */
+
+import { ElizaError } from "@elizaos/core";
+import * as crypto from "crypto";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import type { ClientChannel, Client as SSHClientType } from "ssh2";
+import { containersEnv } from "../config/containers-env";
+import { logger } from "../utils/logger";
+
+/**
+ * Lazily load the `ssh2` `Client` constructor. The import is deferred to
+ * connect-time (rather than module-eval) so importing this file for its PURE
+ * logic — host-key verification, key resolution, fingerprint normalization —
+ * does not require the native `ssh2` dependency to be loadable. Only an actual
+ * SSH connection pulls it in.
+ */
+async function loadSSHClientCtor(): Promise<new () => SSHClientType> {
+  const mod = await import("ssh2");
+  return mod.Client;
+}
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+const DEFAULT_SSH_PORT = 22;
+const DEFAULT_SSH_USERNAME = containersEnv.sshUser();
+
+/**
+ * Default path to the SSH private key for authenticating to Docker nodes.
+ * Used when no base64 key is provided via env. Defaults to ~/.ssh/id_ed25519
+ * if neither CONTAINERS_SSH_KEY_PATH nor the legacy AGENT_SSH_KEY_PATH is set.
+ *
+ * The base64-encoded key is read at call-time inside resolvePrivateKey() so
+ * that tests can manipulate process.env between calls.
+ */
+const DEFAULT_SSH_KEY_PATH =
+  containersEnv.sshKeyPath() ?? path.join(os.homedir(), ".ssh", "id_ed25519");
+
+/** TCP / handshake timeout for new connections (ms). */
+const CONNECTION_TIMEOUT_MS = 10_000;
+
+/** Default timeout for a single command execution (ms). */
+const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
+
+/**
+ * A cancelled stdin command gets a short grace period to observe the SSH
+ * channel's authoritative `close` event. If the peer never closes the
+ * channel, the whole dedicated SSH session is destroyed before the promise
+ * settles so the remote command cannot keep consuming buffered secret bytes.
+ */
+const ABORTABLE_STDIN_CLOSE_GRACE_MS = 1_000;
+
+/** Remote output is drained and discarded, with a hard bound against flooding. */
+const ABORTABLE_STDIN_MAX_OUTPUT_BYTES = 64 * 1024;
+
+function createDockerSshAbortError(hostname: string): Error {
+  const error = new Error(`[docker-ssh] stdin command aborted on ${hostname}`);
+  error.name = "AbortError";
+  return error;
+}
+
+function getDockerSshAbortReason(signal: AbortSignal, hostname: string): unknown {
+  // Abort reasons are part of the caller's cancellation contract. Preserve the
+  // exact value (including non-Error values) when the runtime exposes one, and
+  // synthesize a redacted AbortError only for older/incomplete implementations.
+  try {
+    const reason = signal.reason;
+    if (reason !== undefined) return reason;
+  } catch {
+    // error-policy:J3 an incomplete AbortSignal becomes an explicit redacted AbortError.
+  }
+  return createDockerSshAbortError(hostname);
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface DockerSSHConfig {
+  hostname: string;
+  port?: number;
+  username?: string;
+  privateKeyPath?: string;
+  /** Raw private key buffer — takes precedence over privateKeyPath when provided. */
+  privateKey?: Buffer;
+  /** Expected host key fingerprint (SHA256 base64). If set, connections to hosts with mismatched keys are rejected. */
+  hostKeyFingerprint?: string;
+  /**
+   * Trust-On-First-Use hook. Fired exactly once, after the first successful
+   * connect on a client whose `hostKeyFingerprint` was NULL on entry, with the
+   * SHA256 base64 fingerprint (no `SHA256:` prefix) of the accepted host key.
+   * The caller persists it to `docker_nodes` so later connects verify against a
+   * pin. Not fired when a pin already existed, and not fired on a mismatch
+   * (which is always refused). Failures inside the callback are logged and do
+   * not fail the connection — the key was already accepted.
+   */
+  onHostKeyDiscovered?: (hostname: string, fingerprint: string) => Promise<void>;
+}
+
+/**
+ * How a failed `DockerSSHClient.exec` should be interpreted by a readiness
+ * probe.
+ *
+ *   - `"transport"` — the SSH channel itself failed: we could NOT connect,
+ *     could NOT open the exec channel, the stream errored, or the command
+ *     timed out before the remote shell reported an exit code. This proves
+ *     NOTHING about the container; the probe never reached a verdict. A probe
+ *     that only ever sees transport failures must NOT conclude "not ready" —
+ *     it must retry (and, when the budget is exhausted, surface the failure as
+ *     retryable so the job re-runs instead of wedging a healthy container).
+ *   - `"remote"` — the SSH channel worked and the remote shell RAN the command
+ *     and returned a non-zero exit code (the `[docker-ssh] Command exited with
+ *     code N` shape). For a health/host probe this is the authoritative
+ *     "container reached, container said not-ready (yet)" signal.
+ *
+ * Pure string-shape match on the messages `DockerSSHClient.exec` rejects with;
+ * unit-tested in isolation so the classification can't silently drift from the
+ * error strings it depends on.
+ */
+export type DockerSshProbeErrorKind = "transport" | "remote";
+
+export function classifyDockerSshProbeError(err: unknown): DockerSshProbeErrorKind {
+  const message = err instanceof Error ? err.message : String(err);
+  // A non-zero exit code means the remote shell RAN — the channel worked, the
+  // container was reached, and the probe command decided not-ready. Everything
+  // else `exec` can throw (connection error, exec error, stream error, or a
+  // timeout that fired before any exit code) is a transport failure that says
+  // nothing about the container.
+  if (message.includes("Command exited with code ")) return "remote";
+  return "transport";
+}
+
+// ---------------------------------------------------------------------------
+// DockerSSHClient
+// ---------------------------------------------------------------------------
+
+export class DockerSSHClient {
+  private readonly hostname: string;
+  private readonly port: number;
+  private readonly username: string;
+  private readonly privateKeyPath: string;
+  private readonly hostKeyFingerprint: string | undefined;
+  private readonly onHostKeyDiscovered:
+    | ((hostname: string, fingerprint: string) => Promise<void>)
+    | undefined;
+
+  /**
+   * Fingerprint (SHA256 base64, no prefix) captured by `hostVerifier` during
+   * the most recent handshake. Populated on every connect (pinned or TOFU) so
+   * the manager can persist a TOFU-discovered key after `docker info` confirms
+   * the node is real.
+   */
+  private verifiedFingerprint: string | undefined;
+
+  private client: SSHClientType | null = null;
+  private connected = false;
+
+  // ---- Static connection pool ------------------------------------------
+
+  private static pool = new Map<string, DockerSSHClient>();
+  private lastActivityMs = 0;
+
+  /** Idle timeout — pooled connections unused for this long are auto-closed. */
+  private static readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+  /** Max number of concurrent SSH connections in pool to prevent unbounded growth. */
+  private static readonly MAX_POOL_SIZE = 50;
+
+  private static warnDisconnectFailure(poolKey: string, err: unknown): void {
+    // error-policy:J6 best-effort teardown; pool eviction continues, but SSH cleanup failure must remain observable.
+    logger.warn(
+      `[docker-ssh] error disconnecting pooled client ${poolKey}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  /**
+   * Get (or create) a pooled client for the given hostname.
+   * Uses default SSH port / user / key unless the pool entry was created
+   * with different settings earlier.
+   *
+   * Pool key includes hostname + port + username to avoid collisions when
+   * two nodes share a hostname but use different SSH ports or users.
+   *
+   * When hostKeyFingerprint is provided, the pooled client will reject
+   * connections if the remote key doesn't match. When omitted, connections
+   * fail closed; Docker nodes must carry a pinned host key in docker_nodes.
+   */
+  static getClient(
+    hostname: string,
+    port?: number,
+    hostKeyFingerprint?: string,
+    username?: string,
+    onHostKeyDiscovered?: (hostname: string, fingerprint: string) => Promise<void>,
+  ): DockerSSHClient {
+    const effectivePort = port ?? DEFAULT_SSH_PORT;
+    const effectiveUser = username ?? DEFAULT_SSH_USERNAME;
+    const poolKey = `${hostname}:${effectivePort}:${effectiveUser}`;
+    let client = DockerSSHClient.pool.get(poolKey);
+    if (client) {
+      // Evict stale connections (handles serverless cold-start reconnections)
+      if (
+        client.connected &&
+        Date.now() - client.lastActivityMs > DockerSSHClient.IDLE_TIMEOUT_MS
+      ) {
+        logger.info(`[docker-ssh] Evicting idle connection for ${poolKey}`);
+        client.disconnect().catch((err) => {
+          DockerSSHClient.warnDisconnectFailure(poolKey, err);
+        });
+        DockerSSHClient.pool.delete(poolKey);
+        client = undefined;
+      }
+      // Evict if fingerprint requirements changed, including pin removal.
+      if (
+        client &&
+        normalizeSshFingerprint(client.pinnedFingerprint ?? "") !==
+          normalizeSshFingerprint(hostKeyFingerprint ?? "")
+      ) {
+        logger.info(`[docker-ssh] Evicting pooled connection for ${poolKey} — fingerprint changed`);
+        client.disconnect().catch((err) => {
+          DockerSSHClient.warnDisconnectFailure(poolKey, err);
+        });
+        DockerSSHClient.pool.delete(poolKey);
+        client = undefined;
+      }
+    }
+    if (!client) {
+      if (DockerSSHClient.pool.size >= DockerSSHClient.MAX_POOL_SIZE) {
+        let oldestKey = "";
+        let oldestTime = Infinity;
+        for (const [k, v] of DockerSSHClient.pool.entries()) {
+          if (v.lastActivityMs < oldestTime) {
+            oldestTime = v.lastActivityMs;
+            oldestKey = k;
+          }
+        }
+        if (oldestKey) {
+          logger.warn(
+            `[docker-ssh] Pool max size (${DockerSSHClient.MAX_POOL_SIZE}) reached, evicting oldest connection: ${oldestKey}`,
+          );
+          DockerSSHClient.pool
+            .get(oldestKey)
+            ?.disconnect()
+            .catch((err) => {
+              DockerSSHClient.warnDisconnectFailure(oldestKey, err);
+            });
+          DockerSSHClient.pool.delete(oldestKey);
+        }
+      }
+
+      client = new DockerSSHClient({
+        hostname,
+        port: effectivePort,
+        username: effectiveUser,
+        hostKeyFingerprint,
+        onHostKeyDiscovered,
+      });
+      client.lastActivityMs = Date.now();
+      DockerSSHClient.pool.set(poolKey, client);
+    }
+    return client;
+  }
+
+  /**
+   * Create an unpooled client for one cancellation-sensitive operation.
+   * Destroying this session can never interrupt another caller's command.
+   */
+  static createDedicated(
+    hostname: string,
+    port?: number,
+    hostKeyFingerprint?: string,
+    username?: string,
+  ): DockerSSHClient {
+    return new DockerSSHClient({
+      hostname,
+      port: port ?? DEFAULT_SSH_PORT,
+      username: username ?? DEFAULT_SSH_USERNAME,
+      hostKeyFingerprint,
+    });
+  }
+
+  /** Disconnect and remove every pooled client. */
+  static async disconnectAll(): Promise<void> {
+    const promises: Promise<void>[] = [];
+    for (const client of DockerSSHClient.pool.values()) {
+      promises.push(
+        client.disconnect().catch((err) => {
+          logger.warn(
+            `[docker-ssh] error disconnecting pooled client ${client.hostname}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }),
+      );
+    }
+    await Promise.all(promises);
+    DockerSSHClient.pool.clear();
+  }
+
+  // ---- Constructor -----------------------------------------------------
+
+  private readonly privateKey: Buffer;
+
+  constructor(config: DockerSSHConfig) {
+    this.hostname = config.hostname;
+    this.port = config.port ?? DEFAULT_SSH_PORT;
+    this.username = config.username ?? DEFAULT_SSH_USERNAME;
+    this.privateKeyPath = config.privateKeyPath ?? DEFAULT_SSH_KEY_PATH;
+    this.hostKeyFingerprint = config.hostKeyFingerprint;
+    this.onHostKeyDiscovered = config.onHostKeyDiscovered;
+
+    this.privateKey = config.privateKey ?? DockerSSHClient.resolvePrivateKey(this.privateKeyPath);
+  }
+
+  // ---- Private key resolution ------------------------------------------
+
+  /**
+   * Resolve the SSH private key from available sources.
+   *
+   * Priority:
+   * 1. AGENT_SSH_KEY env var (base64-encoded) — works on serverless/Workers
+   * 2. Filesystem path (AGENT_SSH_KEY_PATH or default ~/.ssh/id_ed25519)
+   *
+   * Never logs or includes the key material in error messages.
+   */
+  private static resolvePrivateKey(keyPath: string): Buffer {
+    // 1. Try env var first (serverless-friendly).
+    // Read at call-time (not module-level) so runtime env changes are respected.
+    const sshKeyEnv = containersEnv.sshKey();
+    if (sshKeyEnv) {
+      try {
+        const decoded = Buffer.from(sshKeyEnv, "base64");
+        if (decoded.length === 0) {
+          throw new Error("Decoded key is empty");
+        }
+        logger.info("[docker-ssh] SSH key loaded from CONTAINERS_SSH_KEY env var");
+        return decoded;
+      } catch (err) {
+        throw new Error(
+          `[docker-ssh] Failed to decode CONTAINERS_SSH_KEY env var (expected base64): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // 2. Fall back to filesystem
+    try {
+      const key = fs.readFileSync(keyPath);
+      logger.info("[docker-ssh] SSH key loaded from filesystem");
+      return key;
+    } catch (err) {
+      // Redact the full path in production — only show the basename.
+      // The inner error (e.g. ENOENT) may also contain the full path,
+      // so we replace it with the redacted form.
+      const safePath = keyPath.split("/").pop() ?? "unknown";
+      const innerMsg = err instanceof Error ? err.message : String(err);
+      const safeInnerMsg = keyPath ? innerMsg.replaceAll(keyPath, `.../${safePath}`) : innerMsg;
+      throw new Error(
+        `[docker-ssh] Failed to load SSH key (file: .../${safePath}). ` +
+          `Set CONTAINERS_SSH_KEY env var (base64) for serverless deployments. ` +
+          `(${safeInnerMsg})`,
+      );
+    }
+  }
+
+  // ---- Public API ------------------------------------------------------
+
+  /**
+   * Establish the SSH connection.  Resolves once the `ready` event fires.
+   * If the client is already connected this is a no-op.
+   */
+  async connect(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) {
+      throw getDockerSshAbortReason(signal, this.hostname);
+    }
+    if (this.connected && this.client) {
+      return;
+    }
+
+    const SSHClientCtor = await loadSSHClientCtor();
+
+    if (signal?.aborted) {
+      throw getDockerSshAbortReason(signal, this.hostname);
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      const conn = new SSHClientCtor();
+
+      let settled = false;
+
+      const cleanupPendingConnection = () => {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", onAbort);
+      };
+
+      const failPendingConnection = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanupPendingConnection();
+        try {
+          conn.destroy();
+        } catch {
+          // error-policy:J6 rejection still fences this failed connection instance.
+        }
+        this.connected = false;
+        if (this.client === conn) this.client = null;
+        reject(error);
+      };
+
+      const onAbort = () => {
+        if (!signal) return;
+        failPendingConnection(getDockerSshAbortReason(signal, this.hostname));
+      };
+
+      const timeout = setTimeout(() => {
+        failPendingConnection(
+          new Error(
+            `[docker-ssh] Connection to ${this.hostname}:${this.port} timed out after ${CONNECTION_TIMEOUT_MS}ms`,
+          ),
+        );
+      }, CONNECTION_TIMEOUT_MS);
+
+      signal?.addEventListener("abort", onAbort, { once: true });
+      if (signal?.aborted) {
+        onAbort();
+        return;
+      }
+
+      conn.on("ready", () => {
+        if (settled) {
+          try {
+            conn.destroy();
+          } catch {
+            // error-policy:J6 the late connection is already fenced from callers.
+          }
+          return;
+        }
+        settled = true;
+        cleanupPendingConnection();
+        this.client = conn;
+        this.connected = true;
+        logger.info(`[docker-ssh] Connected to ${this.hostname}:${this.port}`);
+
+        // TOFU capture: if the pin was NULL on entry, hostVerifier accepted the
+        // presented key and stored it in `verifiedFingerprint`. Hand it to the
+        // caller so it can persist it to docker_nodes as the node's pin. Fire
+        // it after `ready` (not inside the sync verifier) so the async persist
+        // never blocks the handshake, and swallow callback errors — the key was
+        // already accepted, so a failed persist must not fail the connection.
+        if (!this.hostKeyFingerprint && this.onHostKeyDiscovered && this.verifiedFingerprint) {
+          const fingerprint = this.verifiedFingerprint;
+          void this.onHostKeyDiscovered(this.hostname, fingerprint).catch((err) => {
+            logger.warn(
+              `[docker-ssh] TOFU host-key persist callback failed for ${this.hostname}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
+        resolve();
+      });
+
+      conn.on("error", (err) => {
+        failPendingConnection(
+          new Error(`[docker-ssh] Connection error for ${this.hostname}: ${err.message}`),
+        );
+      });
+
+      conn.on("close", () => {
+        this.connected = false;
+        this.client = null;
+        failPendingConnection(
+          new Error(`[docker-ssh] Connection closed before ready for ${this.hostname}`),
+        );
+      });
+
+      conn.connect({
+        host: this.hostname,
+        port: this.port,
+        username: this.username,
+        privateKey: this.privateKey,
+        readyTimeout: CONNECTION_TIMEOUT_MS,
+        hostVerifier: (key: Buffer) => this.verifyHostKey(key),
+      });
+    });
+  }
+
+  /**
+   * Decide whether to accept the host key `ssh2` presents during the handshake.
+   *
+   * Three cases:
+   *  1. A pin EXISTS and matches → accept.
+   *  2. A pin EXISTS and does NOT match → REFUSE. A mismatch is a possible MITM
+   *     (or an unexpected host re-key); it is never treated as first-use, and
+   *     TOFU never weakens this — the flag only governs the NULL-pin case.
+   *  3. No pin (NULL):
+   *       - TOFU enabled  → accept, stash the fingerprint for the post-`ready`
+   *         callback to persist (this is the outage fix — every staging node
+   *         ships NULL, so fail-closed here bricks the whole fleet).
+   *       - TOFU disabled → REFUSE (strict fail-closed for unpinned hosts).
+   *
+   * `verifiedFingerprint` is always set to the presented key on accept so the
+   * caller can persist a freshly-discovered pin.
+   */
+  private verifyHostKey(key: Buffer): boolean {
+    const fingerprint = crypto.createHash("sha256").update(key).digest("base64");
+
+    if (this.hostKeyFingerprint) {
+      if (
+        normalizeSshFingerprint(fingerprint) !== normalizeSshFingerprint(this.hostKeyFingerprint)
+      ) {
+        logger.error(
+          `[docker-ssh] HOST KEY MISMATCH for ${this.hostname}! Expected SHA256:${this.hostKeyFingerprint}, got SHA256:${fingerprint}. Refusing (possible MITM).`,
+        );
+        return false;
+      }
+      this.verifiedFingerprint = normalizeSshFingerprint(fingerprint);
+      return true;
+    }
+
+    // No pin. Trust-On-First-Use (see containersEnv.sshTofuPinEnabled docs).
+    if (!containersEnv.sshTofuPinEnabled()) {
+      logger.error(
+        `[docker-ssh] Refusing unpinned host key for ${this.hostname}: SHA256:${fingerprint}. ` +
+          `TOFU pinning is disabled (CONTAINERS_SSH_TOFU_PIN=false); register host_key_fingerprint before SSH.`,
+      );
+      return false;
+    }
+
+    this.verifiedFingerprint = normalizeSshFingerprint(fingerprint);
+    logger.warn(
+      `[docker-ssh] TOFU: accepting unpinned host key for ${this.hostname} on first use and pinning SHA256:${this.verifiedFingerprint}. ` +
+        `Later connects verify against this pin; a change will be refused.`,
+    );
+    return true;
+  }
+
+  /**
+   * The host-key fingerprint (SHA256 base64, no prefix) established for the most
+   * recent successful handshake — the pinned value when one exists, otherwise
+   * the TOFU-captured one. `undefined` before the first connect. Used by the
+   * node manager to persist a TOFU pin after `docker info` confirms the node.
+   */
+  getVerifiedHostKeyFingerprint(): string | undefined {
+    return this.verifiedFingerprint ?? this.hostKeyFingerprint;
+  }
+
+  /**
+   * Execute a shell command over the SSH connection.
+   *
+   * @param command  – Shell command string.
+   * @param timeoutMs – Per-command timeout (defaults to 60 s).
+   * @returns Combined stdout + stderr output.
+   */
+  async exec(command: string, timeoutMs?: number): Promise<string> {
+    // Auto-connect if needed
+    if (!this.connected || !this.client) {
+      await this.connect();
+    }
+    this.lastActivityMs = Date.now();
+
+    const effectiveTimeout = timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    const client = this.client!;
+
+    return new Promise<string>((resolve, reject) => {
+      let output = "";
+      let settled = false;
+      // Stream ref captured by the timeout closure so it can signal the
+      // remote process to terminate (prevents leaked server-side processes).
+      let stream: ClientChannel | undefined;
+
+      // Redact command in error messages to avoid leaking secrets
+      // (e.g. env vars passed via `docker run -e`). Show only the first
+      // token (the binary name) for operator diagnostics.
+      const cmdFirstToken = command.split(/\s+/)[0] ?? "unknown";
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          // Close the SSH channel to signal the remote process (SIGHUP)
+          // and prevent orphaned server-side processes after timeout.
+          try {
+            stream?.close();
+          } catch {
+            /* best-effort */
+          }
+          reject(
+            new Error(
+              `[docker-ssh] Command timed out after ${effectiveTimeout}ms on ${this.hostname}: ${cmdFirstToken} [redacted]`,
+            ),
+          );
+        }
+      }, effectiveTimeout);
+
+      client.exec(command, (err, s) => {
+        stream = s;
+
+        if (err) {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            reject(new Error(`[docker-ssh] exec error on ${this.hostname}: ${err.message}`));
+          }
+          return;
+        }
+
+        stream.on("data", (data: Buffer) => {
+          output += data.toString();
+        });
+
+        stream.stderr.on("data", (data: Buffer) => {
+          const text = data.toString();
+          output += output && !output.endsWith("\n") ? `\n[stderr] ${text}` : `[stderr] ${text}`;
+        });
+
+        stream.on("close", (code: number) => {
+          clearTimeout(timer);
+          if (settled) return;
+          settled = true;
+
+          if (code !== 0) {
+            reject(
+              new Error(
+                `[docker-ssh] Command exited with code ${code} on ${this.hostname}: ${output.trim()}`,
+              ),
+            );
+          } else {
+            resolve(output);
+          }
+        });
+
+        stream.on("error", (streamErr: Error) => {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            reject(
+              new Error(`[docker-ssh] stream error on ${this.hostname}: ${streamErr.message}`),
+            );
+          }
+        });
+      });
+    });
+  }
+
+  /**
+   * Execute a command and stream bytes to its stdin.
+   *
+   * This is used for provisioning workspace files onto Docker nodes without
+   * putting file contents in shell arguments, command logs, or environment
+   * variables.
+   */
+  async execStdin(command: string, input: Buffer | string, timeoutMs?: number): Promise<string> {
+    if (!this.connected || !this.client) {
+      await this.connect();
+    }
+    this.lastActivityMs = Date.now();
+
+    const effectiveTimeout = timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    const client = this.client!;
+    const inputBuffer = Buffer.isBuffer(input) ? input : Buffer.from(input);
+
+    return new Promise<string>((resolve, reject) => {
+      let output = "";
+      let settled = false;
+      let stream: ClientChannel | undefined;
+      const cmdFirstToken = command.split(/\s+/)[0] ?? "unknown";
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            stream?.close();
+          } catch {
+            /* best-effort */
+          }
+          reject(
+            new Error(
+              `[docker-ssh] Command timed out after ${effectiveTimeout}ms on ${this.hostname}: ${cmdFirstToken} [redacted]`,
+            ),
+          );
+        }
+      }, effectiveTimeout);
+
+      client.exec(command, (err, s) => {
+        stream = s;
+
+        if (err) {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            reject(new Error(`[docker-ssh] exec error on ${this.hostname}: ${err.message}`));
+          }
+          return;
+        }
+
+        stream.on("data", (data: Buffer) => {
+          output += data.toString();
+        });
+
+        stream.stderr.on("data", (data: Buffer) => {
+          const text = data.toString();
+          output += output && !output.endsWith("\n") ? `\n[stderr] ${text}` : `[stderr] ${text}`;
+        });
+
+        stream.on("close", (code: number) => {
+          clearTimeout(timer);
+          if (settled) return;
+          settled = true;
+
+          if (code !== 0) {
+            reject(
+              new Error(
+                `[docker-ssh] Command exited with code ${code} on ${this.hostname}: ${output.trim()}`,
+              ),
+            );
+          } else {
+            resolve(output);
+          }
+        });
+
+        stream.on("error", (streamErr: Error) => {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            reject(
+              new Error(`[docker-ssh] stream error on ${this.hostname}: ${streamErr.message}`),
+            );
+          }
+        });
+
+        stream.end(inputBuffer);
+      });
+    });
+  }
+
+  /**
+   * Execute a secret-bearing command with byte-native stdin and mandatory
+   * cancellation.
+   *
+   * Unlike the legacy `execStdin`, cancellation and timeout do not reject
+   * while the SSH channel may still be reading. The method first closes and
+   * destroys the channel, waits for the peer-confirmed `close` event, and
+   * destroys the entire SSH session if that event does not arrive within a
+   * bounded grace period. Callers may therefore zeroize `input` as soon as the
+   * returned promise settles.
+   *
+   * Use a dedicated `DockerSSHClient` for this operation: the fail-closed
+   * fallback deliberately destroys the SSH session and would interrupt other
+   * commands sharing a pooled client.
+   *
+   * Passing an expected receipt keeps stdin open as a liveness channel for
+   * framed restore workers. Success then requires exactly that lowercase
+   * SHA-256 on stdout, no stderr, and exit zero. Remote bytes are compared
+   * without retaining or converting potentially reflected plaintext.
+   */
+  async execStdinAbortable(
+    command: string,
+    input: Buffer,
+    signal: AbortSignal,
+    timeoutMs?: number,
+    expectedReceiptSha256?: string,
+  ): Promise<void> {
+    if (
+      expectedReceiptSha256 !== undefined &&
+      (expectedReceiptSha256.length !== 64 || !/^[0-9a-f]{64}$/.test(expectedReceiptSha256))
+    ) {
+      throw new ElizaError("Invalid expected SSH restore receipt", {
+        code: "DOCKER_SSH_RECEIPT_INVALID",
+      });
+    }
+    if (signal.aborted) {
+      throw getDockerSshAbortReason(signal, this.hostname);
+    }
+    if (!this.connected || !this.client) {
+      await this.connect(signal);
+    }
+    if (signal.aborted) {
+      throw getDockerSshAbortReason(signal, this.hostname);
+    }
+
+    this.lastActivityMs = Date.now();
+    const effectiveTimeout = timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    const client = this.client!;
+
+    return new Promise<void>((resolve, reject) => {
+      let outputBytes = 0;
+      let receiptBytes = 0;
+      let settled = false;
+      let terminalError: unknown;
+      let hasTerminalError = false;
+      let stream: ClientChannel | undefined;
+      let closeGraceTimer: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = () => {
+        clearTimeout(commandTimer);
+        if (closeGraceTimer) clearTimeout(closeGraceTimer);
+        signal.removeEventListener("abort", onAbort);
+      };
+
+      const finish = (error?: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (error !== undefined) reject(error);
+        else resolve();
+      };
+
+      const destroyDedicatedSession = () => {
+        try {
+          client.destroy();
+        } catch {
+          // error-policy:J6 the local channel was already destroyed before session teardown.
+        }
+        if (this.client === client) {
+          this.client = null;
+          this.connected = false;
+        }
+      };
+
+      const stopChannel = () => {
+        try {
+          stream?.close();
+        } catch {
+          // error-policy:J6 destroy below remains the authoritative channel teardown.
+        }
+        try {
+          stream?.destroy();
+        } catch {
+          // error-policy:J6 the grace timer destroys the dedicated session if close never arrives.
+        }
+      };
+
+      const cancel = (error: unknown) => {
+        if (settled || hasTerminalError) return;
+        terminalError = error;
+        hasTerminalError = true;
+        clearTimeout(commandTimer);
+
+        if (!stream) {
+          // No channel means stdin was never handed to ssh2. Destroy the
+          // pending session so a late exec callback cannot revive the effect.
+          destroyDedicatedSession();
+          finish(error);
+          return;
+        }
+
+        closeGraceTimer = setTimeout(() => {
+          // `Client.destroy()` synchronously destroys the underlying socket.
+          // Only then may the caller zeroize its stdin buffer.
+          destroyDedicatedSession();
+          finish(error);
+        }, ABORTABLE_STDIN_CLOSE_GRACE_MS);
+        // Install the grace timer before closing: ssh2 (and test doubles) may
+        // emit `close` synchronously from `close()`/`destroy()`. The close
+        // handler then clears this timer instead of leaving a late callback
+        // that would destroy an already-quiescent dedicated session.
+        stopChannel();
+      };
+
+      const onAbort = () => {
+        cancel(getDockerSshAbortReason(signal, this.hostname));
+      };
+
+      const commandTimer = setTimeout(() => {
+        cancel(
+          new Error(
+            `[docker-ssh] stdin command timed out after ${effectiveTimeout}ms on ${this.hostname}`,
+          ),
+        );
+      }, effectiveTimeout);
+
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+
+      client.exec(command, (err, openedStream) => {
+        if (settled) {
+          try {
+            openedStream?.destroy();
+          } catch {
+            // error-policy:J6 the parent SSH session was already fenced before this late callback.
+          }
+          return;
+        }
+        if (err) {
+          finish(new Error(`[docker-ssh] stdin exec channel failed on ${this.hostname}`));
+          return;
+        }
+
+        stream = openedStream;
+
+        const observeBoundedOutput = (data: Buffer, stderr: boolean) => {
+          try {
+            if (hasTerminalError || settled) return;
+            if (expectedReceiptSha256 !== undefined) {
+              let invalid = stderr && data.byteLength > 0;
+              for (const byte of data) {
+                if (
+                  stderr ||
+                  receiptBytes >= 64 ||
+                  byte !== expectedReceiptSha256.charCodeAt(receiptBytes)
+                ) {
+                  invalid = true;
+                  break;
+                }
+                receiptBytes += 1;
+              }
+              if (invalid) {
+                cancel(
+                  new ElizaError("SSH restore receipt was not proven", {
+                    code: "DOCKER_SSH_RECEIPT_UNPROVEN",
+                  }),
+                );
+              }
+              return;
+            }
+            outputBytes += data.byteLength;
+            if (outputBytes > ABORTABLE_STDIN_MAX_OUTPUT_BYTES) {
+              cancel(
+                new Error(
+                  `[docker-ssh] stdin command output exceeded ${ABORTABLE_STDIN_MAX_OUTPUT_BYTES} bytes on ${this.hostname}`,
+                ),
+              );
+            }
+          } finally {
+            // A hostile remote command can reflect secret stdin. Discarding
+            // the chunk is not enough: ssh2 handed us mutable bytes that would
+            // otherwise remain readable until the Buffer storage is reused.
+            data.fill(0);
+          }
+        };
+
+        stream.on("data", (data: Buffer) => {
+          observeBoundedOutput(data, false);
+        });
+        stream.stderr.on("data", (data: Buffer) => {
+          observeBoundedOutput(data, true);
+        });
+        stream.on("close", (code: number) => {
+          if (hasTerminalError) {
+            finish(terminalError);
+            return;
+          }
+          if (code !== 0) {
+            // Output is intentionally discarded: a compromised remote command
+            // must not reflect secret stdin into immutable strings or errors.
+            finish(
+              new Error(`[docker-ssh] stdin command exited with code ${code} on ${this.hostname}`),
+            );
+          } else if (expectedReceiptSha256 !== undefined && receiptBytes !== 64) {
+            finish(
+              new ElizaError("SSH restore receipt was not proven", {
+                code: "DOCKER_SSH_RECEIPT_UNPROVEN",
+              }),
+            );
+          } else {
+            finish();
+          }
+        });
+        stream.on("error", () => {
+          if (hasTerminalError) return;
+          cancel(new Error(`[docker-ssh] stdin channel failed on ${this.hostname}`));
+        });
+
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        try {
+          if (expectedReceiptSha256 === undefined) stream.end(input);
+          else stream.write(input);
+        } catch {
+          // error-policy:J1 translate a synchronous SSH writable failure after teardown starts.
+          cancel(new Error(`[docker-ssh] stdin write failed on ${this.hostname}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Hand one private request to a remote one-shot worker whose stdin EOF means
+   * cancellation, and return its bounded stdout response. Stdin stays open
+   * until the remote process exits; stderr is discarded (never reflected).
+   * Timeout or abort closes the channel, which cancels the remote worker.
+   */
+  async execStdinForResponse(
+    command: string,
+    input: Buffer,
+    signal: AbortSignal,
+    timeoutMs: number,
+    maxOutputBytes: number,
+  ): Promise<string> {
+    signal.throwIfAborted();
+    if (!this.connected || !this.client) {
+      await this.connect(signal);
+    }
+    signal.throwIfAborted();
+    this.lastActivityMs = Date.now();
+    const client = this.client!;
+    return new Promise<string>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      let outputBytes = 0;
+      let settled = false;
+      let stream: ClientChannel | undefined;
+      const finish = (error: unknown, output?: string) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal.removeEventListener("abort", onAbort);
+        if (error !== undefined) reject(error);
+        else resolve(output ?? "");
+      };
+      const cancel = (error: unknown) => {
+        try {
+          stream?.close();
+          stream?.destroy();
+        } catch {
+          // error-policy:J6 session teardown below is authoritative.
+        }
+        try {
+          client.destroy();
+        } catch {
+          // error-policy:J6 the session may already be closed.
+        }
+        if (this.client === client) {
+          this.client = null;
+          this.connected = false;
+        }
+        finish(error);
+      };
+      const onAbort = () => cancel(getDockerSshAbortReason(signal, this.hostname));
+      const timer = setTimeout(
+        () =>
+          cancel(
+            new Error(
+              `[docker-ssh] stdin command timed out after ${timeoutMs}ms on ${this.hostname}`,
+            ),
+          ),
+        timeoutMs,
+      );
+      signal.addEventListener("abort", onAbort, { once: true });
+      client.exec(command, (err, openedStream) => {
+        if (settled) {
+          try {
+            openedStream?.destroy();
+          } catch {
+            // error-policy:J6 late channel after cancellation.
+          }
+          return;
+        }
+        if (err) {
+          finish(new Error(`[docker-ssh] stdin exec channel failed on ${this.hostname}`));
+          return;
+        }
+        stream = openedStream;
+        stream.on("data", (data: Buffer) => {
+          outputBytes += data.byteLength;
+          if (outputBytes > maxOutputBytes) {
+            cancel(
+              new Error(
+                `[docker-ssh] stdin command output exceeded ${maxOutputBytes} bytes on ${this.hostname}`,
+              ),
+            );
+            return;
+          }
+          chunks.push(Buffer.from(data));
+        });
+        stream.stderr.on("data", (data: Buffer) => {
+          data.fill(0);
+        });
+        stream.on("close", (code: number) => {
+          if (code !== 0) {
+            finish(
+              new Error(`[docker-ssh] stdin command exited with code ${code} on ${this.hostname}`),
+            );
+            return;
+          }
+          finish(undefined, Buffer.concat(chunks).toString("utf8"));
+        });
+        stream.on("error", () => {
+          cancel(new Error(`[docker-ssh] stdin channel failed on ${this.hostname}`));
+        });
+        try {
+          stream.write(input);
+        } catch {
+          // error-policy:J1 translate a synchronous SSH writable failure.
+          cancel(new Error(`[docker-ssh] stdin write failed on ${this.hostname}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Open a streaming exec channel — used for long-running commands like
+   * `docker logs --follow` where the caller wants every chunk as it
+   * arrives. The handlers run on each stdout / stderr write; resolve()
+   * fires once the remote process exits (or the AbortSignal fires).
+   *
+   * The channel is forcibly closed when the AbortSignal aborts so the
+   * remote process receives SIGHUP — important for `docker logs -f`
+   * which otherwise lingers indefinitely.
+   */
+  async execStream(
+    command: string,
+    handlers: {
+      onStdout?: (chunk: string) => void;
+      onStderr?: (chunk: string) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<{ exitCode: number | null }> {
+    if (!this.connected || !this.client) {
+      await this.connect();
+    }
+    this.lastActivityMs = Date.now();
+    const client = this.client!;
+
+    return new Promise<{ exitCode: number | null }>((resolve, reject) => {
+      let stream: ClientChannel | undefined;
+      let settled = false;
+
+      const cleanup = () => {
+        try {
+          stream?.close();
+        } catch {
+          /* best-effort */
+        }
+      };
+
+      if (handlers.signal) {
+        if (handlers.signal.aborted) {
+          settled = true;
+          cleanup();
+          resolve({ exitCode: null });
+          return;
+        }
+        handlers.signal.addEventListener(
+          "abort",
+          () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve({ exitCode: null });
+          },
+          { once: true },
+        );
+      }
+
+      client.exec(command, (err, s) => {
+        if (err) {
+          if (!settled) {
+            settled = true;
+            reject(new Error(`[docker-ssh] execStream error on ${this.hostname}: ${err.message}`));
+          }
+          return;
+        }
+        stream = s;
+
+        s.on("data", (data: Buffer) => {
+          this.lastActivityMs = Date.now();
+          handlers.onStdout?.(data.toString());
+        });
+        s.stderr.on("data", (data: Buffer) => {
+          this.lastActivityMs = Date.now();
+          handlers.onStderr?.(data.toString());
+        });
+        s.on("close", (code: number) => {
+          if (settled) return;
+          settled = true;
+          resolve({ exitCode: typeof code === "number" ? code : null });
+        });
+        s.on("error", (streamErr: Error) => {
+          if (settled) return;
+          settled = true;
+          reject(
+            new Error(
+              `[docker-ssh] execStream channel error on ${this.hostname}: ${streamErr.message}`,
+            ),
+          );
+        });
+      });
+    });
+  }
+
+  /**
+   * Gracefully close the SSH connection.
+   */
+  async disconnect(): Promise<void> {
+    if (this.client) {
+      try {
+        this.client.end();
+      } catch {
+        // swallow – best-effort
+      }
+      this.client = null;
+      this.connected = false;
+      logger.info(`[docker-ssh] Disconnected from ${this.hostname}`);
+    }
+  }
+
+  /** Whether the underlying SSH session is open. */
+  get isConnected(): boolean {
+    return this.connected;
+  }
+
+  /** The pinned host key fingerprint (if configured). */
+  get pinnedFingerprint(): string | undefined {
+    return this.hostKeyFingerprint;
+  }
+}
+
+export function normalizeSshFingerprint(fingerprint: string): string {
+  return fingerprint
+    .trim()
+    .replace(/^SHA256:/i, "")
+    .replace(/=+$/g, "");
+}

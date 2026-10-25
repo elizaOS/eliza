@@ -1,0 +1,24 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "customConditions": [],
+    "rootDir": "./src",
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "ignoreDeprecations": "6.0",
+    "paths": {},
+    "outDir": "./dist"
+  },
+  "include": ["src"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "python",
+    "rust",
+    "build.ts",
+    "vitest.config.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "src/components/**"
+  ]
+}

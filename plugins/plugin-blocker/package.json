@@ -1,0 +1,84 @@
+{
+  "name": "@elizaos/plugin-blocker",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "description": "Focus / distraction control: website blocking via SelfControl hosts file + macOS app blocking. Schedules, allow-lists, override approval. Exposes the BLOCK action, websiteBlockerProvider + appBlockerProvider, a WebsiteBlockerService, drizzle pgSchema('app_blocker'), and a Focus overlay view.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "build": "bun run build:js && bun run build:views && bun run build:types",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:views": "vite build --config vite.config.views.ts",
+    "build:types": "bunx tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "eliza-source": "./src/plugin.ts",
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "eliza-source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "default": "./dist/*.js"
+    }
+  },
+  "dependencies": {
+    "@capacitor/core": "8.4.0",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "lucide-react": "^1.0.0",
+    "tldts": "7.4.15"
+  },
+  "peerDependencies": {
+    "@elizaos/plugin-sql": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Focus",
+      "category": "system",
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "assets",
+    "dist"
+  ],
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "esbuild": "^0.28.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.0.0",
+    "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3",
+    "vite": "^8.3.0"
+  }
+}

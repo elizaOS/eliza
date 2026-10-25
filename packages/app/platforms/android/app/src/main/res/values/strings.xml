@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Eliza</string>
+    <string name="title_activity_main">Eliza</string>
+    <string name="package_name">ai.elizaos.app</string>
+    <string name="custom_url_scheme">elizaos</string>
+    <!-- Digital-assistant voice bar (ElizaVoiceInteractionSession). -->
+    <string name="assistant_session_prompt">Ask Eliza</string>
+    <!-- Voice-input keyboard (ElizaVoiceInputMethodService). -->
+    <string name="eliza_ime_label">Eliza Voice</string>
+    <string name="eliza_ime_subtype_voice">Eliza Voice Input</string>
+    <string name="eliza_ime_prompt">Tap the mic to speak</string>
+    <string name="eliza_ime_listening">Listening… tap to stop</string>
+    <string name="eliza_ime_transcribing">Transcribing…</string>
+    <string name="eliza_ime_no_speech">No speech detected — tap to try again</string>
+    <string name="eliza_ime_hint">Voice input by Eliza</string>
+    <string name="eliza_ime_switch_back">Switch back to your keyboard</string>
+    <string name="eliza_ime_engine_off">Eliza isn\'t running — tap to open the app</string>
+    <string name="eliza_ime_model_not_ready">Voice model not ready — tap to open Eliza</string>
+    <string name="eliza_ime_permission_needed">Microphone access needed — tap to open Eliza</string>
+    <string name="eliza_ime_error_mic">Couldn\'t access the microphone — tap to retry</string>
+    <string name="eliza_ime_error_transcribe">Transcription failed — tap to retry</string>
+</resources>

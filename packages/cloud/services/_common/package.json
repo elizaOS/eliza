@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/cloud-services-common",
+  "version": "1.0.0",
+  "description": "Shared utilities for cloud-services packages (structured logger, k8s service-account helpers).",
+  "type": "module",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./logger": "./src/logger.ts",
+    "./blooio-environment": "./src/blooio-environment.ts",
+    "./node": "./src/node.ts",
+    "./transport": "./src/transport.ts",
+    "./testing": "./src/testing.ts",
+    "./telegram": "./src/telegram.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests src",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.17",
+    "bun-types": "1.4.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3"
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "name": "@elizaos/plugin-anthropic",
+  "version": "2.0.3-beta.7",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-anthropic.git"
+  },
+  "exports": {
+    ".": {
+      "eliza-source": "./index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./direct-media": {
+      "eliza-source": "./direct-media.ts",
+      "types": "./dist/direct-media.d.ts",
+      "import": "./dist/direct-media.js",
+      "default": "./dist/direct-media.js"
+    }
+  },
+  "files": [
+    "registry-entry.json",
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use"
+      ]
+    },
+    "scripts": {
+      "coreBuild": true
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.9",
+    "ai": "^6.0.23",
+    "@elizaos/contracts": "workspace:*",
+    "@elizaos/host": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.0.3",
+    "bun-types": "1.4.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3",
+    "@elizaos/testing": "workspace:*",
+    "tsup": "^8.5.1"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bunx vitest run --config vitest.config.ts",
+    "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
+    "test:integration": "bun run test && bun run test:real-runtime",
+    "test:watch": "bunx vitest --config vitest.config.ts",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ANTHROPIC_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to Anthropic services",
+        "required": true,
+        "sensitive": true
+      },
+      "ANTHROPIC_SMALL_MODEL": {
+        "type": "string",
+        "description": "Override the default Anthropic small model identifier used by the plugin",
+        "required": false,
+        "default": "claude-haiku-4-5-20251001",
+        "sensitive": false
+      },
+      "ANTHROPIC_LARGE_MODEL": {
+        "type": "string",
+        "description": "Override the default Anthropic large model identifier used by the plugin",
+        "required": false,
+        "default": "claude-opus-4-8",
+        "sensitive": false
+      },
+      "ANTHROPIC_EXPERIMENTAL_TELEMETRY": {
+        "type": "boolean",
+        "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js runtime provider"
+    }
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  }
+}

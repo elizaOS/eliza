@@ -1,0 +1,20 @@
+apply plugin: 'com.android.library'
+// The vault custody primitives live in plugin-native-secure-store. Hosts include that module
+// under the upstream Capacitor project name, or name another with this property.
+def secureStoreProject = rootProject.findProperty('elizaPasswordsSecureStoreProject') ?: ':elizaos-capacitor-secure-store'
+android {
+ namespace 'ai.eliza.plugins.passwords'
+ compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+ // BiometricPrompt, AutofillService web schemes and save IntentSenders require API 28+;
+ // device-credential BiometricPrompt fallback requires API 29.
+ defaultConfig { minSdk 29; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+repositories { google(); mavenCentral() }
+dependencies {
+ implementation project(':capacitor-android')
+ implementation 'androidx.appcompat:appcompat:1.7.1'
+ api project(secureStoreProject)
+ androidTestImplementation 'androidx.test:runner:1.6.2'
+ androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}

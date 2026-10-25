@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "workflowContracts": {
+    "release": {
+      "files": [".github/workflows/release-electrobun.yml"],
+      "scheduledSuites": [
+        "regression-matrix-release",
+        "e2e-heavy",
+        "desktop-packaged-macos",
+        "desktop-packaged-windows"
+      ]
+    }
+  },
+  "suites": {
+    "e2e-heavy": {
+      "tier": "heavy",
+      "command": "bun run test:e2e:heavy"
+    },
+    "desktop-packaged-macos": {
+      "tier": "heavy",
+      "command": "bun run --cwd packages/app test:desktop:packaged"
+    },
+    "desktop-packaged-windows": {
+      "tier": "heavy",
+      "command": "bun run --cwd packages/app test:desktop:packaged:windows"
+    },
+    "regression-matrix-release": {
+      "tier": "required",
+      "command": "node packages/app/scripts/validate-regression-matrix.ts --workflow release"
+    }
+  },
+  "surfaces": [
+    {
+      "name": "packages-agent",
+      "globs": ["packages/agent/**"],
+      "workflowSuites": {
+        "release": ["e2e-heavy"]
+      }
+    },
+    {
+      "name": "electrobun",
+      "globs": [
+        "packages/app/platforms/electrobun/**",
+        "packages/app/playwright.electrobun.packaged.config.ts",
+        "packages/app/test/electrobun-packaged/**"
+      ],
+      "workflowSuites": {
+        "release": ["desktop-packaged-macos", "desktop-packaged-windows"]
+      }
+    },
+    {
+      "name": "workflow-and-release-contracts",
+      "globs": [
+        ".github/workflows/**",
+        "packages/app/scripts/release-check.ts",
+        "packages/app/scripts/release-check.test.ts",
+        "packages/app/scripts/electrobun-release-workflow-drift.test.ts",
+        "packages/app/scripts/electrobun-test-workflow-drift.test.ts",
+        "packages/app/scripts/validate-regression-matrix.ts",
+        "package.json",
+        "packages/app/vitest.config.ts",
+        "packages/scripts/vitest/default.config.ts",
+        "packages/scripts/vitest/unit.config.ts",
+        "packages/scripts/vitest/e2e.config.ts",
+        "packages/scripts/vitest/*.ts"
+      ],
+      "workflowSuites": {
+        "release": ["regression-matrix-release"]
+      }
+    },
+    {
+      "name": "e2e-test-harness",
+      "globs": [
+        "packages/app/test/**",
+        "plugins/app-*/test/**",
+        "packages/scripts/vitest/integration.config.ts",
+        "packages/scripts/vitest/e2e.config.ts"
+      ],
+      "workflowSuites": {
+        "release": ["e2e-heavy"]
+      }
+    }
+  ],
+  "exceptions": {
+    "heavyOnlyE2E": [
+      {
+        "path": "packages/app/test/app/memory-relationships.real.e2e.test.ts",
+        "suite": "e2e-heavy",
+        "tier": "heavy",
+        "rationale": "requires the browser QA harness and stays out of the default live API/runtime lane"
+      },
+      {
+        "path": "packages/app/test/app/qa-checklist.real.e2e.test.ts",
+        "suite": "e2e-heavy",
+        "tier": "heavy",
+        "rationale": "validates the browser QA checklist and belongs in the heavy nightly or release gate"
+      }
+    ]
+  },
+  "guards": {
+    "packageScriptDisallowlist": {
+      "test:e2e": ["apps-e2e.e2e.test.ts"]
+    }
+  }
+}

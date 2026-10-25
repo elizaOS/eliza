@@ -1,0 +1,73 @@
+{
+  "catalogId": "kg-live-capture",
+  "title": "Pack H2 - Live memory, fact, and relationship capture scenario catalog",
+  "source": {
+    "parentIssue": "#14747",
+    "foundationIssue": "#14786",
+    "packId": "H2",
+    "persona": "knowledge graph live capture",
+    "targetCount": 8,
+    "notes": [
+      "Planned ledger for on-the-fly memory/fact/relationship capture into runtime primitives.",
+      "Every authored scenario must assert persisted primitives, not chat paraphrases."
+    ]
+  },
+  "scenarios": [
+    {
+      "id": "h2.kg_capture.new_contact_fact",
+      "pack": "H2",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "h2-relationship-update-live",
+      "pack": "H2",
+      "tier": "T2",
+      "surface": "scenario-runner",
+      "status": "authored"
+    },
+    {
+      "id": "h2.kg_capture.preference_with_source",
+      "pack": "H2",
+      "tier": "T1",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "h2-conflicting-fact-resolution",
+      "pack": "H2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored"
+    },
+    {
+      "id": "h2.kg_capture.no_private_leak_to_third_party",
+      "pack": "H2",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "h2-identity-merge-uses-engine",
+      "pack": "H2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored"
+    },
+    {
+      "id": "h2.kg_capture.forwarded_context_as_data",
+      "pack": "H2",
+      "tier": "T4",
+      "surface": "lifeops-bench",
+      "status": "authored"
+    },
+    {
+      "id": "h2-audit-trail-survives-restart",
+      "pack": "H2",
+      "tier": "T3",
+      "surface": "scenario-runner",
+      "status": "authored"
+    }
+  ]
+}

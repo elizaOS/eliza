@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <!-- Code reference: https://bootsnipp.com/snippets/m13mN -->
+    <div class="container" style="margin-top: 8%;">
+      <div class="col-md-6 col-md-offset-3">     
+        <div class="row">
+          <div id="thankyou" class="text-center">
+            <h1>Thank you for shopping with us!</h1>
+          </div>
+          <div id="stats" class="text-center">
+            <h3 align="mturk_code">Your code: </h3>
+            <p><pre>{{ mturk_code }}</pre> (Paste it in your MTurk interface.)</p>
+            <div style="display:none">
+              <h2 align="left">Purchased</h2>
+              <hr class="solid">
+              <h4 id="asin">asin<pre>{{ asin }}</pre></p>
+              <h4 id="options">options<pre>{{ options | tojson }}</pre></h4>
+              <h4 id="purchased_attrs">attrs<pre>{{ purchased_attrs }}</pre></h4>
+              <h4 id="purchased-category">category<pre>{{ category }}</pre></h4>
+              <h4 id="purchased-query">query<pre>{{ query }}</pre></h4>
+              <h4 id="purchased-pc">product category<pre>{{ product_category }}</pre></h4>
+              <h2 align="left">Target</h2>
+              <hr class="solid">
+              <h4 id="goal-asin">asin<pre>{{ goal.asin }}</pre></p>
+              <h4 id="goal-options">options<pre>{{ goal.goal_options }}</pre></h4>
+              <h4 id="goal-attrs">attrs<pre>{{ goal.attributes }}</pre></h4>
+              <h4 id="goal-price">price upper<pre>{{ goal.price_upper }}</pre></h4>
+              <h4 id="goal-instruction-text">instuction text<pre>{{ goal.instruction_text }}</pre></h4>
+              <h4 id="goal-category">category<pre>{{ goal.category }}</pre></h4>
+              <h4 id="goal-pc">product category<pre>{{ goal.product_category }}</pre></h4>
+              <h4 id="goal-query">query<pre>{{ goal.query }}</pre></h4>
+              <h4>Goal <div id="goal"><pre>{{ goal | pprint }}</pre></div></h4>
+              <h2 align="left">Reward</h2>
+            </div>
+            <hr class="solid">
+      			<h3   id="reward">Your score (min 0.0, max 1.0)<pre>{{ reward }}</pre></h3>
+            <h4 hidden>Reward Details <div id="reward_info"><pre>{{ reward_info | pprint }}</pre></div></h4>
+          </div>
+        </div>            
+      </div>
+    </div>
+  </body>
+</html>

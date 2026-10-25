@@ -1,0 +1,328 @@
+/**
+ * Default pack: `habit-starters` — 8 habits, **offered** at first-run
+ * customize, not auto-seeded.
+ *
+ * Habits:
+ *   1. brush teeth — twice daily
+ *   2. shower — 3×/week
+ *   3. invisalign — lunchtime weekday
+ *   4. drink water — interval
+ *   5. stretch — interval + multi-gate
+ *   6. vitamins — with-meal trigger
+ *   7. workout — afternoon
+ *   8. shave — weekly
+ *
+ * `defaultEnabled: false` — first-run customize asks; defaults path skips.
+ *
+ * Every owner-facing poke here (except high-priority `workout`, which the
+ * judge's safety rail bypasses anyway) carries a trailing `model_moment_check`
+ * gate: the structural gates decide WHETHER today/this window qualifies, the
+ * model judge decides whether NOW is a good moment to interrupt (#14677).
+ */
+
+import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinitions,
+  type ReminderTaskDefinition,
+} from "./task-definitions.js";
+
+export const HABIT_STARTERS_PACK_KEY = "habit-starters";
+
+export const HABIT_STARTER_KEYS = {
+  brushTeeth: "brush_teeth",
+  shower: "shower",
+  invisalign: "invisalign",
+  drinkWater: "drink_water",
+  stretch: "stretch",
+  vitamins: "vitamins",
+  workout: "workout",
+  shave: "shave",
+} as const;
+
+const recordIdFor = (key: string) => `default-pack:habit-starters:${key}`;
+
+/** Brush teeth — twice daily, morning + night windows. */
+const brushTeethDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a short brush-teeth reminder. Acknowledge the time-of-day (morning vs night) without restating it as a fact.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "during_window", windowKey: "morning_or_night" },
+  priority: "medium",
+  shouldFire: { gates: [{ kind: "model_moment_check" }] },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.brushTeeth),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.brushTeeth,
+    cadence: "daily_twice",
+    legacyCategory: "hygiene",
+  },
+};
+
+/** Shower — 3×/week (Mon/Wed/Fri morning). */
+const showerDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a short shower reminder for the user's scheduled shower day. No medical framing; matter-of-fact.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "during_window", windowKey: "morning" },
+  priority: "low",
+  shouldFire: {
+    gates: [
+      { kind: "weekday_only", params: { weekdays: [1, 3, 5] } },
+      { kind: "model_moment_check" },
+    ],
+  },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.shower),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.shower,
+    cadence: "weekly_three_times",
+    legacyCategory: "hygiene",
+  },
+};
+
+/** Invisalign — weekday after lunch. */
+const invisalignDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a short Invisalign tray-check reminder after lunch on a weekday. Tone: routine, not nagging.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "during_window", windowKey: "afternoon" },
+  priority: "medium",
+  shouldFire: {
+    gates: [
+      { kind: "weekday_only", params: { weekdays: [1, 2, 3, 4, 5] } },
+      { kind: "model_moment_check" },
+    ],
+  },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.invisalign),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.invisalign,
+    cadence: "weekday_lunch",
+    legacyCategory: "health",
+  },
+};
+
+/** Drink water — interval, morning/afternoon/evening windows, max 4/day. */
+const drinkWaterDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a short hydration reminder. Vary phrasing across the day. No alarm; light touch.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "interval", everyMinutes: 120 },
+  priority: "low",
+  shouldFire: {
+    gates: [
+      {
+        kind: "during_window",
+        params: { windows: ["morning", "afternoon", "evening"] },
+      },
+      { kind: "model_moment_check" },
+    ],
+  },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.drinkWater),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.drinkWater,
+    cadence: "interval_120m",
+    maxOccurrencesPerDay: 4,
+    legacyCategory: "health",
+  },
+};
+
+/**
+ * Stretch — interval + multi-gate composition (per IMPL §3.4):
+ *   `first_deny`: [weekend_skip, stretch.walk_out_reset, model_moment_check]
+ *
+ * `first_deny` short-circuits on the first denying gate, so the model call is
+ * only paid when the structural gates already allowed. The
+ * `stretch.walk_out_reset` gate is registered by the scheduled-task runner's
+ * gate-registry. The former `late_evening_skip` gate encoded a timing
+ * JUDGMENT ("too late in the evening"); that call belongs to the moment
+ * judge, which sees the local time plus the owner's presence and rhythm.
+ */
+const stretchDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a soft stretch nudge for the user. One sentence; no sets, no counts. Pure invitation.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "interval", everyMinutes: 360 },
+  priority: "low",
+  shouldFire: {
+    compose: "first_deny",
+    gates: [
+      { kind: "weekend_skip" },
+      { kind: "stretch.walk_out_reset" },
+      { kind: "model_moment_check" },
+    ],
+  },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.stretch),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.stretch,
+    cadence: "interval_360m",
+    maxOccurrencesPerDay: 2,
+    legacyCategory: "health",
+    activityGate: "active_on_computer",
+  },
+};
+
+/** Vitamins — with-meal trigger (morning + evening windows). */
+const vitaminsDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a short vitamins reminder near a meal window. No medical framing.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "during_window", windowKey: "morning_or_evening" },
+  priority: "medium",
+  shouldFire: { gates: [{ kind: "model_moment_check" }] },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.vitamins),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.vitamins,
+    cadence: "with_meals",
+    legacyCategory: "nutrition",
+  },
+};
+
+/** Workout — afternoon. Pipeline child for blocker-release can be added via BlockerRegistry. */
+const workoutDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a workout reminder for the afternoon. Direct, not pleading; one short sentence. Recent reminder outcomes are in context — let them shape tone (e.g. softer after a skip streak) without restating the streak as a fact.",
+  contextRequest: {
+    includeOwnerFacts: ["preferredName"],
+    includeRecentTaskStates: {
+      kind: "reminder",
+      lookbackHours: 24 * 7,
+    },
+  },
+  trigger: { kind: "during_window", windowKey: "afternoon" },
+  priority: "high",
+  shouldFire: { gates: [] },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.workout),
+  pipeline: {
+    // BlockerRegistry contributions can register a "release on completion"
+    // child here without requiring a schema change.
+    onComplete: [],
+  },
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.workout,
+    cadence: "daily_afternoon",
+    legacyCategory: "fitness",
+    workoutBlockerPlaceholder: true,
+  },
+};
+
+/** Shave — weekly (Tue/Fri morning). */
+const shaveDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
+  promptInstructions:
+    "Send a short shave reminder on a scheduled morning. Tone: routine.",
+  contextRequest: { includeOwnerFacts: ["preferredName"] },
+  trigger: { kind: "during_window", windowKey: "morning" },
+  priority: "low",
+  shouldFire: {
+    gates: [
+      { kind: "weekday_only", params: { weekdays: [2, 5] } },
+      { kind: "model_moment_check" },
+    ],
+  },
+  respectsGlobalPause: true,
+  source: "default_pack",
+  createdBy: HABIT_STARTERS_PACK_KEY,
+  ownerVisible: true,
+  idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.shave),
+  metadata: {
+    packKey: HABIT_STARTERS_PACK_KEY,
+    recordKey: HABIT_STARTER_KEYS.shave,
+    cadence: "weekly_twice",
+    legacyCategory: "hygiene",
+  },
+};
+
+export const HABIT_STARTER_RECORDS = compileTaskDefinitions([
+  brushTeethDefinition,
+  showerDefinition,
+  invisalignDefinition,
+  drinkWaterDefinition,
+  stretchDefinition,
+  vitaminsDefinition,
+  workoutDefinition,
+  shaveDefinition,
+]);
+
+export const habitStartersPack: DefaultPack = {
+  key: HABIT_STARTERS_PACK_KEY,
+  label: "Habit starters",
+  description:
+    "Eight starter habits offered at first-run customize: brush teeth, shower, invisalign, drink water, stretch, vitamins, workout, shave. Not auto-seeded — the user picks which to enable.",
+  defaultEnabled: false,
+  requiredCapabilities: [],
+  records: [...HABIT_STARTER_RECORDS],
+  uiHints: {
+    summaryOnDayOne:
+      "Eight habit options offered at customize; nothing seeded automatically.",
+    expectedFireCountPerDay: 0,
+  },
+};
+
+/**
+ * Generates the seeding offer message at runtime from the pack metadata —
+ * removes the previous hardcoded SEEDING_MESSAGE in
+ * `proactive-worker.ts:581-585` (per IMPL §3.4 owned-files-modified note).
+ */
+export function buildSeedingOfferMessage(): string {
+  const titleByKey: Record<string, string> = {
+    [HABIT_STARTER_KEYS.brushTeeth]: "brush teeth",
+    [HABIT_STARTER_KEYS.shower]: "shower",
+    [HABIT_STARTER_KEYS.invisalign]: "invisalign",
+    [HABIT_STARTER_KEYS.drinkWater]: "drink water",
+    [HABIT_STARTER_KEYS.stretch]: "stretch breaks",
+    [HABIT_STARTER_KEYS.vitamins]: "vitamins",
+    [HABIT_STARTER_KEYS.workout]: "workout",
+    [HABIT_STARTER_KEYS.shave]: "shave",
+  };
+  const labels = HABIT_STARTER_RECORDS.map((record) => {
+    const recordKey = (record.metadata?.recordKey as string | undefined) ?? "";
+    return titleByKey[recordKey] ?? recordKey;
+  }).filter(Boolean);
+  const list = labels.join(", ");
+  return [
+    "I notice you haven't set up any routines yet.",
+    "Want me to set up some foundational habits?",
+    `I can add: ${list} reminders.`,
+    "Say 'set up my routines' or pick and choose.",
+  ].join(" ");
+}

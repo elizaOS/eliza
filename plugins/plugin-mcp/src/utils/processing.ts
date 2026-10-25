@@ -1,0 +1,339 @@
+/**
+ * Post-call processing for MCP results: retains tool text, image/audio
+ * attachments and resource contents, then drives
+ * the model to synthesize a user-facing reply, persists the exchange as memory,
+ * and invokes the callback. Also sends the initial acknowledgement.
+ */
+import { isDeepStrictEqual } from "node:util";
+import {
+  type Content,
+  ContentType,
+  createUniqueUuid,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
+  ModelType,
+  type State,
+} from "@elizaos/core";
+import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { resourceAnalysisTemplate, toolReasoningTemplate } from "../protocol-utils/prompts.js";
+import type { McpProviderData, McpResourceContent } from "../types";
+import { createMcpMemory } from "./mcp";
+
+function getMimeTypeToContentType(mimeType: string | undefined): ContentType | undefined {
+  if (!mimeType) return undefined;
+  const normalizedMimeType = mimeType.toLowerCase();
+  if (normalizedMimeType.startsWith("image/")) return ContentType.IMAGE;
+  if (normalizedMimeType.startsWith("video/")) return ContentType.VIDEO;
+  if (normalizedMimeType.startsWith("audio/")) return ContentType.AUDIO;
+  if (normalizedMimeType.includes("pdf") || normalizedMimeType.includes("document"))
+    return ContentType.DOCUMENT;
+  return undefined;
+}
+function resourceAttachment(
+  resource: McpResourceContent,
+  runtime: IAgentRuntime,
+  source: string,
+  messageEntityId: string,
+  index: number
+): Media {
+  const mimeType = resource.mimeType ?? "application/octet-stream";
+  return {
+    id: createUniqueUuid(
+      runtime,
+      `${messageEntityId}:${source}:${index}:${resource.uri}:${resource.blob}`
+    ),
+    url: `data:${mimeType};base64,${resource.blob}`,
+    mimeType,
+    contentType: getMimeTypeToContentType(mimeType),
+    title: resource.uri,
+    source: resource.uri,
+    description: `MCP resource from ${source}`,
+  };
+}
+
+interface ResourceResult {
+  readonly contents: readonly McpResourceContent[];
+}
+export function processResourceResult(
+  result: ResourceResult,
+  uri: string,
+  runtime: IAgentRuntime,
+  serverName: string,
+  messageEntityId: string
+): {
+  resourceContent: string;
+  resourceMeta: string;
+  attachments: Media[];
+} {
+  let resourceContent = "";
+  let resourceMeta = "";
+  const attachments: Media[] = [];
+  for (const content of result.contents) {
+    if (content.text) {
+      resourceContent += `${resourceContent ? "\n" : ""}${content.text}`;
+    } else if (typeof content.blob === "string") {
+      attachments.push(
+        resourceAttachment(content, runtime, serverName, messageEntityId, attachments.length)
+      );
+      resourceContent += `${resourceContent ? "\n" : ""}[Binary data${content.mimeType ? ` - ${content.mimeType}` : ""}]`;
+    }
+    resourceMeta += `Resource: ${content.uri ?? uri}\n`;
+    if (content.mimeType) {
+      resourceMeta += `Type: ${content.mimeType}\n`;
+    }
+  }
+  return { resourceContent, resourceMeta, attachments };
+}
+export function processToolResult(
+  result: Pick<CallToolResult, "content" | "structuredContent" | "isError">,
+  serverName: string,
+  toolName: string,
+  runtime: IAgentRuntime,
+  messageEntityId: string
+): {
+  toolOutput: string;
+  hasAttachments: boolean;
+  attachments: Media[];
+  isError: boolean;
+} {
+  let toolOutput = "";
+  let hasAttachments = false;
+  const attachments: Media[] = [];
+  // Distinguishes each media block within one tool result so its `Media.id` is
+  // unique even when several attachments share identical bytes.
+  let mediaIndex = 0;
+  for (const content of result.content) {
+    if (content.type === "text" && content.text) {
+      toolOutput += `${toolOutput ? "\n" : ""}${content.text}`;
+    } else if (content.type === "resource_link") {
+      toolOutput += `\n\nResource link:\n${JSON.stringify(content)}`;
+    } else if (
+      (content.type === "image" || content.type === "audio") &&
+      content.data &&
+      content.mimeType
+    ) {
+      hasAttachments = true;
+      const mediaKind = content.type === "audio" ? "audio" : "image";
+      // Seed the deterministic UUID with values that vary per media attachment (the
+      // base64 bytes plus a positional index) rather than the constant
+      // `messageEntityId`. A constant seed gave every image in a batch — and
+      // every tool call by the same user — the same `Media.id`, which the UI
+      // treats as a unique handle for React keys and download filenames
+      // (packages/ui/src/components/chat/MessageAttachments.tsx).
+      const attachmentSeed = `${messageEntityId}:${serverName}/${toolName}:${mediaIndex}:${content.data}`;
+      mediaIndex += 1;
+      attachments.push({
+        contentType: getMimeTypeToContentType(content.mimeType),
+        url: `data:${content.mimeType};base64,${content.data}`,
+        id: createUniqueUuid(runtime, attachmentSeed),
+        title: `Generated ${mediaKind}`,
+        source: `${serverName}/${toolName}`,
+        description: `Tool-generated ${mediaKind}`,
+        text: `Generated ${mediaKind}`,
+      });
+    } else if (content.type === "resource" && content.resource) {
+      const resource = content.resource;
+      if ("text" in resource && resource.text) {
+        toolOutput += `\n\nResource (${resource.uri}):\n${resource.text}`;
+      } else if ("blob" in resource && typeof resource.blob === "string") {
+        attachments.push(
+          resourceAttachment(
+            resource,
+            runtime,
+            `${serverName}/${toolName}`,
+            messageEntityId,
+            mediaIndex++
+          )
+        );
+        hasAttachments = true;
+        toolOutput += `\n\nResource (${resource.uri}): [Binary data]`;
+      }
+    }
+  }
+  if (result.structuredContent !== undefined) {
+    const serialized = JSON.stringify(result.structuredContent);
+    const hasTextCopy = result.content.some((content) => {
+      if (content.type !== "text") return false;
+      try {
+        return isDeepStrictEqual(JSON.parse(content.text), result.structuredContent);
+      } catch {
+        // error-policy:J3 text blocks need not be JSON; keep their text and add the result.
+        return false;
+      }
+    });
+    if (!hasTextCopy) {
+      toolOutput += `${toolOutput ? "\n\n" : ""}Structured result:\n${serialized}`;
+    }
+  }
+  return { toolOutput, hasAttachments, attachments, isError: result.isError === true };
+}
+export async function handleResourceAnalysis(
+  runtime: IAgentRuntime,
+  message: Memory,
+  uri: string,
+  serverName: string,
+  resourceContent: string,
+  resourceMeta: string,
+  attachments: readonly Media[],
+  callback?: HandlerCallback
+): Promise<void> {
+  await createMcpMemory(
+    runtime,
+    message,
+    "resource",
+    serverName,
+    resourceContent,
+    {
+      uri,
+      isResourceAccess: true,
+    },
+    attachments
+  );
+  const analysisPrompt = createAnalysisPrompt(
+    uri,
+    message.content.text ?? "",
+    resourceContent,
+    resourceMeta
+  );
+  const analyzedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt: analysisPrompt,
+  })) as string;
+  if (callback) {
+    await callback({
+      text: analyzedResponse,
+      attachments: attachments.length ? [...attachments] : undefined,
+      actions: ["READ_MCP_RESOURCE"],
+    });
+  }
+}
+interface McpProviderArg {
+  readonly values: {
+    readonly mcp: McpProviderData;
+  };
+  readonly data: {
+    readonly mcp: McpProviderData;
+  };
+  readonly text: string;
+}
+export async function handleToolResponse(
+  runtime: IAgentRuntime,
+  message: Memory,
+  serverName: string,
+  toolName: string,
+  toolArgs: Readonly<Record<string, unknown>>,
+  toolOutput: string,
+  hasAttachments: boolean,
+  attachments: readonly Media[],
+  state: State,
+  mcpProvider: McpProviderArg,
+  callback?: HandlerCallback,
+  isError = false
+): Promise<Memory> {
+  await createMcpMemory(
+    runtime,
+    message,
+    "tool",
+    serverName,
+    toolOutput,
+    {
+      toolName,
+      arguments: toolArgs,
+      isToolCall: true,
+    },
+    attachments
+  );
+  const reasoningPrompt = createReasoningPrompt(
+    state,
+    mcpProvider,
+    toolName,
+    serverName,
+    message.content.text ?? "",
+    toolOutput,
+    hasAttachments,
+    isError
+  );
+  const reasonedResponse = (await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt: reasoningPrompt,
+  })) as string;
+  const agentId = message.agentId ?? runtime.agentId;
+  const replyMemory: Memory = {
+    entityId: agentId,
+    roomId: message.roomId,
+    worldId: message.worldId,
+    content: {
+      text: reasonedResponse,
+      actions: ["CALL_MCP_TOOL"],
+      attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
+    },
+  };
+  await runtime.createMemory(replyMemory, "messages");
+  if (callback) {
+    await callback({
+      text: reasonedResponse,
+      actions: ["CALL_MCP_TOOL"],
+      attachments: hasAttachments && attachments.length > 0 ? [...attachments] : undefined,
+    });
+  }
+  return replyMemory;
+}
+export async function sendInitialResponse(callback?: HandlerCallback): Promise<void> {
+  if (callback) {
+    const responseContent: Content = {
+      text: "I'll retrieve that information for you. Let me access the resource...",
+      actions: ["READ_MCP_RESOURCE"],
+    };
+    await callback(responseContent);
+  }
+}
+function createAnalysisPrompt(
+  uri: string,
+  userMessage: string,
+  resourceContent: string,
+  resourceMeta: string
+): string {
+  const enhancedState: State = {
+    data: {},
+    text: "",
+    values: {
+      uri,
+      userMessage,
+      resourceContent,
+      resourceMeta,
+    },
+  };
+  return composePromptFromState({
+    state: enhancedState,
+    template: resourceAnalysisTemplate,
+  });
+}
+function createReasoningPrompt(
+  state: State,
+  mcpProvider: McpProviderArg,
+  toolName: string,
+  serverName: string,
+  userMessage: string,
+  toolOutput: string,
+  hasAttachments: boolean,
+  toolErrored: boolean
+): string {
+  const enhancedState: State = {
+    ...state,
+    values: {
+      ...state.values,
+      mcpProvider,
+      toolName,
+      serverName,
+      userMessage,
+      toolOutput,
+      hasAttachments,
+      toolErrored,
+    },
+  };
+  return composePromptFromState({
+    state: enhancedState,
+    template: toolReasoningTemplate,
+  });
+}

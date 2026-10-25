@@ -1,0 +1,597 @@
+/** Host service access, state persistence, configuration and media helpers. */
+import crypto from "node:crypto";
+import fs from "node:fs";
+import type http from "node:http";
+import path from "node:path";
+import {
+  type AgentRuntime,
+  CHAT_UPLOAD_MIME_TYPES,
+  type ChannelType,
+  type ChatImageAttachment,
+  type Content,
+  ContentType,
+  createMessageMemory,
+  decodeUrlPathComponent,
+  ElizaError,
+  logger,
+  MAX_CHAT_UPLOAD_ATTACHMENTS as MAX_CHAT_IMAGES,
+  MAX_CHAT_IMAGE_BASE64_BYTES as MAX_IMAGE_DATA_BYTES,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH as MAX_IMAGE_NAME_LENGTH,
+  MAX_CHAT_MEDIA_BASE64_BYTES as MAX_MEDIA_DATA_BYTES,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  type Media,
+  resolveStateDir,
+  toWellFormedUnicode,
+  type UUID,
+  validateUuid,
+} from "@elizaos/core";
+import { sendJsonError } from "@elizaos/host";
+import {
+  type ElizaConfig,
+  normalizeFirstRunProviderId,
+  resolveDeploymentTargetInConfig,
+  resolveServiceRoutingInConfig,
+  resolveStylePresetByAvatarIndex,
+  resolveStylePresetById,
+} from "@elizaos/host/protocol";
+import {
+  type AgentEventServiceLike,
+  getAgentEventService,
+} from "../runtime/agent-event-service.ts";
+import {
+  type CoreManagerLike,
+  isCoreManagerLike,
+  isPluginManagerLike,
+  type PluginManagerLike,
+} from "../services/plugin-manager-types.ts";
+import { writeFileAtomically } from "../utils/atomic-file.ts";
+import { persistImageThumbnail, persistMediaBytes } from "./media-store.ts";
+import type {
+  ChatAttachmentWithData,
+  ConversationMeta,
+} from "./server-types.ts";
+
+// ---------------------------------------------------------------------------
+// Service accessors
+// ---------------------------------------------------------------------------
+export function getAgentEventSvc(
+  runtime: AgentRuntime | null,
+): AgentEventServiceLike | null {
+  return getAgentEventService(runtime);
+}
+export function requirePluginManager(
+  runtime: AgentRuntime | null,
+): PluginManagerLike {
+  const service = runtime?.getService("plugin_manager");
+  if (!isPluginManagerLike(service)) {
+    throw new Error("Plugin manager service not found");
+  }
+  return service;
+}
+export function requireCoreManager(
+  runtime: AgentRuntime | null,
+): CoreManagerLike {
+  const service = runtime?.getService("core_manager");
+  if (!isCoreManagerLike(service)) {
+    throw new Error("Core manager service not found");
+  }
+  return service;
+}
+// ---------------------------------------------------------------------------
+// UUID validation
+// ---------------------------------------------------------------------------
+export function isUuidLike(value: string): value is UUID {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+// ---------------------------------------------------------------------------
+// Deleted conversations state management
+// ---------------------------------------------------------------------------
+const OG_FILENAME = ".og";
+const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
+export const MAX_DELETED_CONVERSATION_IDS = 5000;
+export interface DeletedConversationsStateFile {
+  version: 1;
+  updatedAt: string;
+  ids: string[];
+}
+export function readDeletedConversationIdsFromState(): Set<string> {
+  const filePath = path.join(resolveStateDir(), DELETED_CONVERSATIONS_FILENAME);
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !("version" in parsed) ||
+      parsed.version !== 1 ||
+      !("ids" in parsed) ||
+      !Array.isArray(parsed.ids) ||
+      !parsed.ids.every(
+        (id: unknown) => typeof id === "string" && id.trim().length > 0,
+      )
+    ) {
+      throw new TypeError("Invalid deleted conversation state");
+    }
+    return new Set(parsed.ids.map((id: string) => id.trim()));
+  } catch (error) {
+    // error-policy:J4 Only a missing file is an empty deletion history.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Set();
+    throw new ElizaError("Failed to read deleted conversation tombstones", {
+      code: "DELETED_CONVERSATION_STATE_READ_FAILED",
+      cause: error,
+      context: { filePath },
+    });
+  }
+}
+export function persistDeletedConversationIdsToState(ids: Set<string>): void {
+  const dir = resolveStateDir();
+  const normalized = Array.from(ids)
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0)
+    .slice(-MAX_DELETED_CONVERSATION_IDS);
+  const filePath = path.join(dir, DELETED_CONVERSATIONS_FILENAME);
+  const payload: DeletedConversationsStateFile = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    ids: normalized,
+  };
+  try {
+    writeFileAtomically(filePath, `${JSON.stringify(payload, null, 2)}\n`);
+  } catch (error) {
+    // error-policy:J2 A failed tombstone commit must remain retryable.
+    throw new ElizaError("Failed to persist deleted conversation tombstones", {
+      code: "DELETED_CONVERSATION_STATE_WRITE_FAILED",
+      cause: error,
+      context: { filePath },
+    });
+  }
+}
+// ---------------------------------------------------------------------------
+// OG code state management
+// ---------------------------------------------------------------------------
+export function readOGCodeFromState(): string | null {
+  const filePath = path.join(resolveStateDir(), OG_FILENAME);
+  if (!fs.existsSync(filePath)) return null;
+  return fs.readFileSync(filePath, "utf-8").trim();
+}
+export function initializeOGCodeInState(): void {
+  const dir = resolveStateDir();
+  const filePath = path.join(dir, OG_FILENAME);
+  if (fs.existsSync(filePath)) return;
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+  fs.writeFileSync(filePath, crypto.randomUUID(), {
+    encoding: "utf-8",
+    mode: 0o600,
+  });
+}
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// First-run & config helpers
+// ---------------------------------------------------------------------------
+export function hasPersistedFirstRunState(config: ElizaConfig): boolean {
+  if (config.meta?.firstRunComplete === true) {
+    return true;
+  }
+  const deploymentTarget = resolveDeploymentTargetInConfig(
+    config as Record<string, unknown>,
+  );
+  const llmText = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  )?.llmText;
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
+  const remoteApiBase =
+    llmText?.remoteApiBase?.trim() ?? deploymentTarget.remoteApiBase?.trim();
+  const hasCompleteCanonicalRouting =
+    (llmText?.transport === "direct" &&
+      Boolean(backend && backend !== "elizacloud")) ||
+    (llmText?.transport === "remote" && Boolean(remoteApiBase)) ||
+    (llmText?.transport === "cloud-proxy" &&
+      backend === "elizacloud" &&
+      Boolean(llmText.smallModel?.trim() && llmText.largeModel?.trim())) ||
+    (deploymentTarget.runtime === "remote" &&
+      Boolean(deploymentTarget.remoteApiBase?.trim()));
+  if (hasCompleteCanonicalRouting) {
+    return true;
+  }
+  const agents = config.agents;
+  if (!agents) {
+    return false;
+  }
+  if (Array.isArray(agents.list) && agents.list.length > 0) {
+    return true;
+  }
+  return Boolean(
+    agents.defaults?.workspace?.trim() ||
+      agents.defaults?.adminEntityId?.trim(),
+  );
+}
+/** Resolve the app owner's display name from config, or fall back to "User". */
+export function resolveAppUserName(config: ElizaConfig): string {
+  const ownerName = config.ui?.ownerName;
+  const normalized = toWellFormedUnicode(ownerName?.trim() ?? "") || undefined;
+  return normalized || "User";
+}
+export function patchTouchesProviderSelection(
+  patch: Record<string, unknown>,
+): boolean {
+  if (
+    Object.hasOwn(patch, "cloud") ||
+    Object.hasOwn(patch, "env") ||
+    Object.hasOwn(patch, "models")
+  ) {
+    return true;
+  }
+  const agents =
+    patch.agents &&
+    typeof patch.agents === "object" &&
+    !Array.isArray(patch.agents)
+      ? (patch.agents as Record<string, unknown>)
+      : null;
+  const defaults =
+    agents?.defaults &&
+    typeof agents.defaults === "object" &&
+    !Array.isArray(agents.defaults)
+      ? (agents.defaults as Record<string, unknown>)
+      : null;
+  if (!defaults) {
+    return false;
+  }
+  return (
+    Object.hasOwn(defaults, "subscriptionProvider") ||
+    Object.hasOwn(defaults, "model")
+  );
+}
+// ---------------------------------------------------------------------------
+// Conversation greeting
+// ---------------------------------------------------------------------------
+/**
+ * Preset id to persist when a stream avatar selection is mirrored into
+ * eliza.json.
+ *
+ * avatarIndex is a VRM art-asset index that several personas can share (Eliza
+ * and Chen both render asset 1), so the index alone cannot identify a persona.
+ * When the config already names a preset consistent with the selected avatar,
+ * keep it — deriving a fresh presetId from the index would silently swap the
+ * user's persona to whichever preset wins the index lookup.
+ */
+export function resolveMirroredAvatarPresetId(
+  currentPresetId: string | null | undefined,
+  avatarIndex: number,
+  language?: unknown,
+): string | undefined {
+  const current = resolveStylePresetById(currentPresetId, language);
+  if (current?.avatarIndex === avatarIndex) {
+    return current.id;
+  }
+  return resolveStylePresetByAvatarIndex(avatarIndex, language)?.id;
+}
+// ---------------------------------------------------------------------------
+// Package root resolution (for reading bundled plugins.json)
+// ---------------------------------------------------------------------------
+export function findOwnPackageRoot(startDir: string): string {
+  // Mobile bundles are single-file — there is no workspace tree to walk.
+  // Return startDir immediately to avoid crossing the fs-shim sandbox boundary.
+  if (process.env.ELIZA_MOBILE_PLATFORM) {
+    return startDir;
+  }
+  const KNOWN_NAMES = new Set(["eliza", "eliza", "elizaos"]);
+  let dir = startDir;
+  for (let i = 0; i < 10; i++) {
+    const pkgPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as Record<
+          string,
+          unknown
+        >;
+        const pkgName =
+          typeof pkg.name === "string" ? pkg.name.toLowerCase() : "";
+        if (KNOWN_NAMES.has(pkgName)) return dir;
+        // Also match if plugins.json exists at this level (resilient to renames)
+        if (fs.existsSync(path.join(dir, "plugins.json"))) return dir;
+      } catch (error) {
+        // error-policy:J3 a malformed candidate is invalid package metadata;
+        // continue searching ancestors for the actual package root.
+        logger.debug(
+          `[server-helpers] Ignoring invalid package metadata at ${pkgPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return startDir;
+}
+// ---------------------------------------------------------------------------
+// Error helpers
+// ---------------------------------------------------------------------------
+export function getErrorMessage(
+  err: unknown,
+  fallback = "generation failed",
+): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return fallback;
+}
+function error(res: http.ServerResponse, message: string, status = 400): void {
+  sendJsonError(res, message, status);
+}
+export function decodePathComponent(
+  raw: string,
+  res: http.ServerResponse,
+  fieldName: string,
+): string | null {
+  const decoded = decodeUrlPathComponent(raw);
+  if (!decoded.ok) {
+    error(res, `Invalid ${fieldName}: malformed URL encoding`, 400);
+    return null;
+  }
+  return decoded.value;
+}
+// ---------------------------------------------------------------------------
+// Chat image validation
+// ---------------------------------------------------------------------------
+// Caps + allowlist live in @elizaos/core (imported above,
+// aliased to the historical local names) so the UI composer enforces the exact
+// same numbers pre-send and the two sides cannot drift.
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+/**
+ * True when a syntactically-valid base64 string decodes to zero bytes. `BASE64_RE`
+ * accepts degenerate payloads like `"="`, `"=="`, or a single stray char `"A"`
+ * (each < 2 base64 chars of real data) that are non-empty strings yet carry no
+ * bytes. Persisting one would write an empty file into the content-addressed
+ * store and land a zero-byte attachment the agent can never read, so the upload
+ * is rejected up front as a corrupt payload (never fabricated into a valid one).
+ */
+function base64DecodesToZeroBytes(data: string): boolean {
+  // A base64 quantum is 4 chars → 3 bytes; the last group may be `xx==` (1 byte)
+  // or `xxx=` (2 bytes). Any run shorter than 2 non-padding chars yields nothing.
+  const withoutPadding = data.replace(/=+$/, "");
+  return withoutPadding.length < 2;
+}
+
+// Re-exported for chat-routes and for parity tests against the client side.
+
+const ALLOWED_CHAT_MEDIA_MIME_TYPES = new Set<string>(CHAT_UPLOAD_MIME_TYPES);
+export const IMAGE_ONLY_CHAT_FALLBACK_PROMPT =
+  "Please review the attached file.";
+/** Map an upload MIME type to its canonical attachment content type. */
+function contentTypeForUploadMime(mimeType: string): ContentType {
+  const mime = mimeType.toLowerCase();
+  if (mime.startsWith("image/")) return ContentType.IMAGE;
+  if (mime.startsWith("audio/")) return ContentType.AUDIO;
+  if (mime.startsWith("video/")) return ContentType.VIDEO;
+  return ContentType.DOCUMENT;
+}
+/**
+ * Validate uploaded chat attachments (images, audio, video, PDFs, text docs).
+ * Returns an error message string, or null if valid. Exported for unit tests.
+ */
+export function validateChatImages(images: unknown): string | null {
+  if (!Array.isArray(images) || images.length === 0) return null;
+  if (images.length > MAX_CHAT_IMAGES)
+    return `Too many attachments (max ${MAX_CHAT_IMAGES})`;
+  for (const img of images) {
+    if (!img || typeof img !== "object")
+      return "Each attachment must be an object";
+    const { data, mimeType, name } = img as Record<string, unknown>;
+    if (typeof data !== "string" || !data)
+      return "Each attachment must have a non-empty data string";
+    if (data.startsWith("data:"))
+      return "Attachment data must be raw base64, not a data URL";
+    if (typeof mimeType !== "string" || !mimeType)
+      return "Each attachment must have a mimeType string";
+    if (!ALLOWED_CHAT_MEDIA_MIME_TYPES.has(mimeType.toLowerCase()))
+      return `Unsupported attachment type: ${mimeType}`;
+    const isImage = mimeType.toLowerCase().startsWith("image/");
+    const maxBytes = isImage ? MAX_IMAGE_DATA_BYTES : MAX_MEDIA_DATA_BYTES;
+    if (data.length > maxBytes)
+      return `Attachment too large (max ${maxBytes / 1048576} MB)`;
+    if (!BASE64_RE.test(data))
+      return "Attachment data contains invalid base64 characters";
+    if (base64DecodesToZeroBytes(data))
+      return "Attachment data decodes to zero bytes";
+    if (typeof name !== "string" || !name)
+      return "Each attachment must have a name string";
+    if (name.length > MAX_IMAGE_NAME_LENGTH)
+      return `Attachment name too long (max ${MAX_IMAGE_NAME_LENGTH} characters)`;
+    const thumbnail = (img as Record<string, unknown>).thumbnail;
+    if (thumbnail !== undefined) {
+      if (!thumbnail || typeof thumbnail !== "object")
+        return "Attachment thumbnail must be an object";
+      const { data: tData, mimeType: tMime } = thumbnail as Record<
+        string,
+        unknown
+      >;
+      if (typeof tData !== "string" || !tData || tData.startsWith("data:"))
+        return "Thumbnail data must be raw base64";
+      if (tData.length > MAX_IMAGE_DATA_BYTES)
+        return `Thumbnail too large (max ${MAX_IMAGE_DATA_BYTES / 1048576} MB)`;
+      if (!BASE64_RE.test(tData))
+        return "Thumbnail data contains invalid base64 characters";
+      if (
+        typeof tMime !== "string" ||
+        !tMime.toLowerCase().startsWith("image/")
+      )
+        return "Thumbnail mimeType must be an image type";
+    }
+  }
+  return null;
+}
+export function normalizeIncomingChatPrompt(
+  text: string | null | undefined,
+  images: ChatImageAttachment[] | null | undefined,
+): string | null {
+  // Whitespace decides whether input is empty; authored bytes remain evidence.
+  if (typeof text === "string" && text.trim().length > 0) {
+    return text;
+  }
+  return Array.isArray(images) && images.length > 0
+    ? IMAGE_ONLY_CHAT_FALLBACK_PROMPT
+    : null;
+}
+// ---------------------------------------------------------------------------
+// Chat attachments
+// ---------------------------------------------------------------------------
+export async function buildChatAttachments(
+  images: ChatImageAttachment[] | undefined,
+): Promise<{
+  attachments: ChatAttachmentWithData[] | undefined;
+  compactAttachments: Media[] | undefined;
+}> {
+  if (!images?.length)
+    return { attachments: undefined, compactAttachments: undefined };
+  const attachments: ChatAttachmentWithData[] = await Promise.all(
+    images.map(async (img, i) => {
+      // Persist the uploaded bytes to the content-addressed media store so the
+      // attachment carries a durable served URL (renderable from chat history),
+      // not a throwaway `attachment:img-N` placeholder. `_data` is retained for
+      // the in-memory vision/description pass so it needs no re-fetch.
+      const bytes = Buffer.from(img.data, "base64");
+      let url = `attachment:img-${i}`;
+      let checksum: string | undefined;
+      let thumbnailUrl: string | undefined;
+      try {
+        const persisted = persistMediaBytes(bytes, img.mimeType);
+        url = persisted.url;
+        checksum = persisted.hash;
+        if (img.thumbnail?.data) {
+          // Client already produced a thumbnail (browser/webview canvas) — persist it.
+          thumbnailUrl = persistMediaBytes(
+            Buffer.from(img.thumbnail.data, "base64"),
+            img.thumbnail.mimeType || "image/jpeg",
+          ).url;
+        } else if (img.mimeType.toLowerCase().startsWith("image/")) {
+          // No client thumbnail (non-webview client) — pre-compute one server-side.
+          thumbnailUrl =
+            (await persistImageThumbnail(bytes, img.mimeType)) ?? undefined;
+        }
+      } catch (err) {
+        logger.warn(
+          `[buildChatAttachments] failed to persist uploaded attachment: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      return {
+        id: checksum ?? url,
+        url,
+        title: img.name,
+        source: MESSAGE_SOURCE_CLIENT_CHAT,
+        contentType: contentTypeForUploadMime(img.mimeType),
+        mimeType: img.mimeType,
+        filename: img.name,
+        size: bytes.length,
+        ...(checksum ? { checksum } : {}),
+        ...(thumbnailUrl ? { thumbnailUrl } : {}),
+        _data: img.data,
+        _mimeType: img.mimeType,
+      };
+    }),
+  );
+  const compactAttachments: Media[] = attachments.map(
+    ({ _data: _d, _mimeType: _m, ...rest }) => rest,
+  );
+  return { attachments, compactAttachments };
+}
+type MessageMemory = ReturnType<typeof createMessageMemory>;
+/**
+ * Constructs the in-memory user message (with image data for action handlers)
+ * and the persistence-safe counterpart (image data stripped).
+ */
+export async function buildUserMessages(params: {
+  images: ChatImageAttachment[] | undefined;
+  prompt: string;
+  userId: UUID;
+  agentId: UUID;
+  roomId: UUID;
+  channelType: ChannelType;
+  messageSource?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<{
+  userMessage: MessageMemory;
+  messageToStore: MessageMemory;
+}> {
+  const {
+    images,
+    prompt,
+    userId,
+    agentId,
+    roomId,
+    channelType,
+    messageSource,
+    metadata,
+  } = params;
+  const source = messageSource?.trim() || MESSAGE_SOURCE_CLIENT_CHAT;
+  const { attachments, compactAttachments } =
+    await buildChatAttachments(images);
+  const id = crypto.randomUUID() as UUID;
+  // Lift the client's reply target onto the canonical core reply field. The
+  // dashboard reply affordance sends `metadata.replyToMessageId`;
+  // `content.inReplyTo` is what the REPLY_CONTEXT provider and the GET
+  // /messages round-trip read, so a reply persisted here survives a reload and
+  // reaches the model with its surrounding context. Validated as a UUID so a
+  // forged value can't smuggle arbitrary strings into the prompt pipeline.
+  const inReplyTo = validateUuid(metadata?.replyToMessageId);
+  const userMessage = createMessageMemory({
+    id,
+    entityId: userId,
+    agentId,
+    roomId,
+    content: {
+      text: prompt,
+      source,
+      channelType,
+      ...(inReplyTo ? { inReplyTo } : {}),
+      ...(attachments?.length ? { attachments } : {}),
+      ...(metadata ? { metadata } : {}),
+    } as Content & {
+      text: string;
+    },
+  });
+  const messageToStore = compactAttachments?.length
+    ? createMessageMemory({
+        id,
+        entityId: userId,
+        agentId,
+        roomId,
+        content: {
+          text: prompt,
+          source,
+          channelType,
+          ...(inReplyTo ? { inReplyTo } : {}),
+          attachments: compactAttachments,
+          ...(metadata ? { metadata } : {}),
+        } as Content & {
+          text: string;
+        },
+      })
+    : userMessage;
+  return { userMessage, messageToStore };
+}
+// ---------------------------------------------------------------------------
+// Conversation room title persistence
+// ---------------------------------------------------------------------------
+type ConversationRoomTitleRef = Pick<
+  ConversationMeta,
+  "id" | "title" | "roomId"
+>;
+export async function persistConversationRoomTitle(
+  runtime: Pick<AgentRuntime, "getRoom" | "adapter"> | null | undefined,
+  conversation: ConversationRoomTitleRef,
+): Promise<boolean> {
+  if (!runtime) return false;
+  const room = await runtime.getRoom(conversation.roomId);
+  if (!room) return false;
+  if (room.name === conversation.title) return false;
+  const adapter = runtime.adapter as {
+    updateRoom?: (nextRoom: typeof room) => Promise<void>;
+  };
+  if (typeof adapter.updateRoom !== "function") return false;
+  await adapter.updateRoom({ ...room, name: conversation.title });
+  return true;
+}

@@ -1,0 +1,11 @@
+{
+  "baseline": "baseline_f16_kv",
+  "minimumExecutedVariants": 2,
+  "minimumSamplesPerVariant": 3,
+  "backends": {
+    "cpu": { "turbo4_polar_kv": 0.45 },
+    "cuda": { "turbo4_polar_kv": 0.6 },
+    "metal": { "stock_no_fa": 0.6 },
+    "rocm": { "turbo4_polar_kv": 0.55 }
+  }
+}

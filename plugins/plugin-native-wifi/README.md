@@ -1,0 +1,21 @@
+# @elizaos/plugin-native-wifi
+
+Android-only overlay app that lets an Eliza agent scan, inspect, and connect to nearby
+Wi-Fi networks.
+
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
+
+Scanning requires Android location permission and the native mobile shell.
+
+## Development
+
+Install dependencies with `bun install` at the repository root. Run from that root:
+
+```bash
+bun run --cwd plugins/plugin-native-wifi build  # build
+```
+
+Android 10+ connection success means an Internet network suggestion was accepted,
+not that association completed. Do not create a second local-only peer request or
+retain network callbacks. Connection security comes from Android security type
+or a matching scan result; unavailable security rejects rather than reporting open.

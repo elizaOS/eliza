@@ -1,0 +1,55 @@
+/**
+ * Relationships plugin registration adds graph CRUD, planner context, a
+ * legacy-schema safety audit, and the dashboard viewer over the runtime-owned
+ * knowledge graph service.
+ */
+import type { Plugin } from "@elizaos/core";
+
+import { entityAction } from "./actions/entity.js";
+import { entityGraphProvider } from "./providers/entity-graph.js";
+import { LegacyRelationshipsSchemaAuditService } from "./services/legacy-schema-audit.js";
+
+export const relationshipsPlugin: Plugin = {
+  name: "@elizaos/plugin-relationships",
+  description:
+    "Relationships viewer + extras over the runtime knowledge graph. Provides the KNOWLEDGE_GRAPH action (create/read/list/log_interaction/set_relationship), the ENTITY_GRAPH planner-context provider, and the /relationships viewer. Identity claims and merges are deterministic authority operations, not agent actions. The graph stores are owned by this package and registered by the host as KnowledgeGraphService; contact orchestration stays in @elizaos/plugin-personal-assistant.",
+  dependencies: ["@elizaos/plugin-sql"],
+  databaseBackends: ["postgres", "pglite", "sqlite"],
+  actions: [entityAction],
+  providers: [entityGraphProvider],
+  services: [LegacyRelationshipsSchemaAuditService],
+  views: [
+    {
+      id: "relationships",
+      // Developer-gated: the graph renders empty in the MVP (#14479), so it is
+      // hidden from a fresh user's launcher AND view manager until Developer Mode
+      // is on — kept and reachable, not deleted. `developer` here keeps the
+      // manager grid in step with the launcher's own developer-gating of this id
+      // (launcher-curation LAUNCHER_DEVELOPER_ORDER), which previously diverged
+      // because the declaration claimed `system`.
+      viewKind: "developer",
+      label: "Relationships",
+      description:
+        "Entity and relationship knowledge-graph viewer: people, organizations, identities, and the typed edges between them.",
+      icon: "Users",
+      path: "/relationships",
+      responseContext: {
+        primaryContext: "social",
+        secondaryContexts: ["memory"],
+      },
+      modalities: ["gui"],
+      bundlePath: "dist/views/bundle.js",
+      // First-party instrumented view (data-agent-id controls): grant the
+      // agent-surface capability so the view broker admits agent-driven
+      // fills/clicks (#13452 manifest gate).
+      surface: { capabilities: ["agent-surface"] },
+      componentExport: "RelationshipsView",
+      tags: ["relationships", "entities", "people", "contacts", "graph"],
+      relatedActions: ["ENTITY"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
+};
+
+export default relationshipsPlugin;

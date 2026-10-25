@@ -1,0 +1,444 @@
+/**
+ * Lazy Steward runtime — the heavy `@elizaos/auth` / `@elizaos/ui` chunk.
+ *
+ * Loaded only by {@link StewardAuthProvider} when a token is present or the
+ * route needs auth, so the wallet/Steward stack never lands on the first-paint
+ * critical path (and never in the native bundle — the whole shell is
+ * web-build-only).
+ *
+ * AuthTokenSync keeps the JWT → server-cookie sync and the refresh-ahead loop
+ * (honoring `exp`) running while a cloud surface is mounted.
+ */
+
+import { LoginClient } from "@elizaos/auth";
+import {
+  dispatchStewardSessionChange,
+  replaceStoredStewardTokenIfCurrent,
+} from "@elizaos/plugin-elizacloud/steward-session-client";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { LoginProvider } from "../../login/provider";
+import { useAuth as useStewardAuth } from "../../login/useAuth";
+import { scrubPersistedAgentProfileTokens } from "../../state/agent-profiles";
+import { scrubPersistedActiveServerToken } from "../../state/persistence";
+import { reportRendererDiagnostic } from "../../utils/renderer-diagnostics";
+import {
+  consumeStewardServerCookieSynced,
+  invalidateStewardServerCookieSyncMarker,
+} from "../lib/steward-session-cookie-sync-marker";
+import {
+  clearServerStewardSessionCookies,
+  clearStaleStewardSession,
+  configuredRefreshEndpoint,
+  configuredSessionEndpoint,
+  isPlaceholderValue,
+  LocalStewardAuthContext,
+  type LocalStewardAuthValue,
+  readStoredToken,
+  tokenIsExpired,
+  tokenSecsRemaining,
+} from "./StewardProviderShared";
+import {
+  loopbackCliToken,
+  useLoopbackCliSession,
+} from "./use-loopback-cli-session";
+
+const REFRESH_CHECK_INTERVAL_MS = 60_000;
+const REFRESH_AHEAD_SECS = 120;
+
+type StewardResponseBody = { code?: string; token?: string };
+
+async function parseStewardResponseBody(
+  response: Response,
+): Promise<StewardResponseBody | undefined> {
+  try {
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new TypeError("Steward response body must be an object");
+    }
+    const record = body as Record<string, unknown>;
+    return {
+      ...(typeof record.code === "string" ? { code: record.code } : {}),
+      ...(typeof record.token === "string" ? { token: record.token } : {}),
+    };
+  } catch (error) {
+    // error-policy:J3 untrusted response bodies remain explicitly invalid;
+    // callers continue using the HTTP status but never mistake parse failure
+    // for a valid empty payload.
+    reportRendererDiagnostic({
+      scope: "steward.invalid-response-body",
+      error,
+      severity: "warning",
+      context: { status: response.status, url: response.url },
+    });
+    return undefined;
+  }
+}
+
+// The Steward SDK UI (<StewardLogin> on the app-auth sign-in page, wallet,
+// dashboards) otherwise renders with the SDK's default gold accent
+// (DEFAULT_THEME.primaryColor = #D4A054). Override just the accent colors to
+// Eliza's brand orange so the sign-in matches the rest of the product (the main
+// /login page + the app shell use the --accent brand orange). The SDK's dark surface/text defaults
+// already match our surfaces, so no other fields need theming. Passed as the
+// provider `theme` (Partial<TenantTheme>) → mapped to the scoped `.stwd-*` vars.
+const ELIZA_STEWARD_THEME: ComponentProps<typeof LoginProvider>["theme"] = {
+  primaryColor: "var(--accent)",
+  accentColor: "var(--accent)",
+};
+
+function AuthTokenSync({ children }: { children: ReactNode }) {
+  const auth = useStewardAuth();
+  const cliSession = useLoopbackCliSession();
+  const cliCredential = loopbackCliToken();
+  const cliUser = cliSession.token === cliCredential ? cliSession.user : null;
+  const { isAuthenticated, user } = auth;
+  const lastSyncedToken = useRef<string | null>(null);
+  const wasAuthenticated = useRef(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional re-run trigger
+  useEffect(() => {
+    const syncToken = () => {
+      const token = readStoredToken();
+      if (!token) {
+        if (wasAuthenticated.current && lastSyncedToken.current) {
+          lastSyncedToken.current = null;
+          wasAuthenticated.current = false;
+          clearServerStewardSessionCookies();
+        }
+        return;
+      }
+
+      if (tokenIsExpired(token)) return;
+      const sessionEndpoint = configuredSessionEndpoint();
+      if (consumeStewardServerCookieSynced(token, sessionEndpoint)) {
+        // An explicit sync already established this exact token at the exact
+        // endpoint this passive mirror would use. Seed local authority without
+        // repeating that POST. The module-private marker cannot be forged
+        // through DOM event detail and any token/endpoint mismatch invalidates
+        // it before the passive request proceeds.
+        lastSyncedToken.current = token;
+        wasAuthenticated.current = true;
+        return;
+      }
+      if (token === lastSyncedToken.current) return;
+
+      lastSyncedToken.current = token;
+      wasAuthenticated.current = true;
+
+      // A pending Telegram account claim is deliberately NOT attached to this
+      // passive mirror. The claim merges the DM-created account, so it must
+      // fire only when /get-started attaches the continuation after rendering
+      // its identity preview and receiving explicit confirmation. Login,
+      // nonce exchange, and SSO establish authentication only.
+      fetch(sessionEndpoint, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            dispatchStewardSessionChange("present");
+            window.dispatchEvent(
+              new CustomEvent("steward-token-sync", {
+                detail: { token, userId: user?.id },
+              }),
+            );
+            return;
+          }
+
+          const body = await parseStewardResponseBody(res);
+          if (body?.code === "server_secret_missing") {
+            reportRendererDiagnostic({
+              scope: "steward.server-secret-missing",
+              error: new Error("Steward server secret is not configured"),
+              severity: "warning",
+            });
+            return;
+          }
+          if (res.status !== 401) {
+            reportRendererDiagnostic({
+              scope: "steward.session-token-rejected",
+              error: new Error("Server did not accept the stored token"),
+              severity: "warning",
+              context: { status: res.status, code: body?.code },
+            });
+            return;
+          }
+          if (body?.code === "session_ended") {
+            // The user explicitly logged out (possibly on the PAIRED origin —
+            // the cross-host SSO logout marker outranks this origin's surviving
+            // token). Unlike a bare 401 this code is only ever emitted on
+            // purpose, so it bypasses the stale-proxy guard below: clear the
+            // stored session instead of retrying it for the rest of its
+            // lifetime. This is what propagates a sign-out across the host
+            // pair without a shared cookie.
+            reportRendererDiagnostic({
+              scope: "steward.session-ended",
+              error: new Error("Session was ended by an explicit logout"),
+              severity: "warning",
+            });
+            lastSyncedToken.current = null;
+            wasAuthenticated.current = false;
+            await clearStaleStewardSession();
+            return;
+          }
+          // Same stale-proxy guard as the refresh path: a still-valid token that
+          // gets a 401 from the session-sync endpoint is far more likely a
+          // misproxied control plane than a real revocation. Only clear once the
+          // token is actually expired, so a stale staging proxy can't loop us.
+          const current = readStoredToken();
+          if (current && !tokenIsExpired(current)) {
+            // Reset the dedupe marker so the next sync trigger (visibility,
+            // storage, re-render) retries the cookie POST for this same token
+            // once the endpoint recovers — otherwise the session would ride
+            // out its lifetime with no HttpOnly cookie ever established.
+            lastSyncedToken.current = null;
+            reportRendererDiagnostic({
+              scope: "steward.session-sync-stale-proxy",
+              error: new Error(
+                "Session sync returned 401 for a still-valid stored token",
+              ),
+              severity: "warning",
+            });
+            return;
+          }
+          reportRendererDiagnostic({
+            scope: "steward.session-token-cleared",
+            error: new Error("Stored token was rejected by the server"),
+            severity: "warning",
+          });
+          lastSyncedToken.current = null;
+          wasAuthenticated.current = false;
+          await clearStaleStewardSession();
+        })
+        .catch((error) => {
+          reportRendererDiagnostic({
+            scope: "steward.session-cookie-sync",
+            error,
+            severity: "warning",
+          });
+        });
+    };
+
+    // Single-flight: never run two refreshes at once. The refresh-token rotation
+    // is not concurrency-safe, so overlapping refreshes (the timer plus a 401
+    // nudge, say) would race and one would invalidate the other's refresh token.
+    let refreshInFlight: Promise<void> | null = null;
+
+    const checkAndRefresh = async (force = false): Promise<void> => {
+      const token = readStoredToken();
+      if (!token) return;
+      // A localhost CLI key is verified by Cloud, never refreshed as a JWT.
+      if (loopbackCliToken() === token) return;
+      if (!force) {
+        const secs = tokenSecsRemaining(token);
+        if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
+      }
+      if (refreshInFlight) return refreshInFlight;
+
+      refreshInFlight = (async () => {
+        try {
+          const res = await fetch(configuredRefreshEndpoint(), {
+            method: "POST",
+            credentials: "include",
+          });
+          if (res.ok) {
+            const body = await parseStewardResponseBody(res);
+            if (body?.token) {
+              // Compare-and-swap against the token this refresh started from:
+              // a response that lands after an explicit sign-out (or an
+              // account switch) must not resurrect the ended session.
+              const replaced = await replaceStoredStewardTokenIfCurrent(
+                token,
+                body.token,
+              );
+              if (!replaced) return;
+              lastSyncedToken.current = body.token;
+              wasAuthenticated.current = true;
+            }
+            try {
+              window.dispatchEvent(new CustomEvent("steward-token-sync"));
+            } catch (error) {
+              // error-policy:J7 token persistence remains authoritative when
+              // an optional renderer notification cannot be delivered.
+              reportRendererDiagnostic({
+                scope: "steward.token-sync-event",
+                error,
+                severity: "warning",
+              });
+            }
+            return;
+          }
+          if (res.status === 401) {
+            // A refresh 401 normally means the session was revoked → clear so it
+            // self-heals. But a STALE co-hosted proxy (staging's FRONTEND_ALIAS
+            // pointing at the wrong control plane) 401s a still-VALID session,
+            // and wiping it here kicks the user back to /login on every refresh
+            // tick — the sign-in loop. So only clear when the stored token is
+            // actually expired (keeping it is useless then); a still-valid token
+            // rides until real expiry and any genuine revocation self-heals then.
+            const stored = readStoredToken();
+            if (!stored || tokenIsExpired(stored)) {
+              if (wasAuthenticated.current && lastSyncedToken.current) {
+                lastSyncedToken.current = null;
+                wasAuthenticated.current = false;
+              }
+              await clearStaleStewardSession();
+            } else {
+              reportRendererDiagnostic({
+                scope: "steward.refresh-stale-proxy",
+                error: new Error(
+                  "Refresh returned 401 for a still-valid stored token",
+                ),
+                severity: "warning",
+              });
+            }
+          }
+        } catch (error) {
+          // error-policy:J4 a transient refresh failure leaves the still-valid
+          // session visible while surfacing the degraded refresh path.
+          reportRendererDiagnostic({
+            scope: "steward.auto-refresh",
+            error,
+            severity: "warning",
+          });
+        }
+      })().finally(() => {
+        refreshInFlight = null;
+      });
+
+      return refreshInFlight;
+    };
+
+    syncToken();
+    void checkAndRefresh();
+
+    const refreshInterval = setInterval(() => {
+      void checkAndRefresh();
+    }, REFRESH_CHECK_INTERVAL_MS);
+
+    const handler = () => syncToken();
+    window.addEventListener("storage", handler);
+
+    const visibilityHandler = () => {
+      if (document.visibilityState === "visible") {
+        syncToken();
+        void checkAndRefresh();
+      }
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
+
+    const onlineHandler = () => {
+      void checkAndRefresh();
+    };
+    window.addEventListener("online", onlineHandler);
+
+    // A 401 from any authed API call (dispatched by api-client) means the server
+    // rejected our session — force a refresh-or-clear so a revoked/expired token
+    // self-heals instead of leaving the UI "authed" until the next interaction.
+    const unauthorizedHandler = () => {
+      void checkAndRefresh(true);
+    };
+    window.addEventListener("steward-unauthorized", unauthorizedHandler);
+
+    return () => {
+      clearInterval(refreshInterval);
+      window.removeEventListener("storage", handler);
+      document.removeEventListener("visibilitychange", visibilityHandler);
+      window.removeEventListener("online", onlineHandler);
+      window.removeEventListener("steward-unauthorized", unauthorizedHandler);
+    };
+  }, [isAuthenticated, user]);
+
+  // Map the SDK context to the local context shape explicitly. The structural
+  // pass-through is fragile across @elizaos/auth resolutions; verifyEmailCallback
+  // must narrow the MFA-required union before exposing tokens.
+  const localAuth = useMemo<LocalStewardAuthValue>(
+    () => ({
+      isAuthenticated: cliCredential ? cliUser !== null : auth.isAuthenticated,
+      isLoading: cliCredential ? cliSession.loading : auth.isLoading,
+      user: cliCredential
+        ? cliUser
+        : auth.user
+          ? {
+              id: auth.user.id,
+              email: auth.user.email ?? undefined,
+              walletAddress: auth.user.walletAddress,
+            }
+          : null,
+      session: cliCredential ? null : auth.session,
+      signOut: () => {
+        if (loopbackCliToken()) return clearStaleStewardSession();
+        // Retire explicit-sync proof before the SDK begins its own fallible
+        // sign-out work. A same-token login after any partial teardown must
+        // establish the local server cookie again.
+        invalidateStewardServerCookieSyncMarker();
+        // Drop the at-rest JWT from the persisted active server before the SDK
+        // sign-out — leaving it in localStorage is an at-rest token leak. Keeps
+        // the backend selection (kind/apiBase) so re-auth lands on the same one.
+        // The same JWT is also copied into the per-agent profile records, so
+        // scrub those too — otherwise the token survives at rest there.
+        scrubPersistedActiveServerToken();
+        scrubPersistedAgentProfileTokens();
+        return auth.signOut();
+      },
+      getToken: () =>
+        cliCredential ? (cliUser ? cliCredential : null) : auth.getToken(),
+      verifyEmailCallback: async (token: string, email: string) => {
+        const result = await auth.verifyEmailCallback(token, email);
+        if ("mfaRequired" in result) {
+          throw new Error("MFA required — not yet supported in this client.");
+        }
+        return { token: result.token, refreshToken: result.refreshToken };
+      },
+    }),
+    [auth, cliSession.loading, cliCredential, cliUser],
+  );
+
+  return (
+    <LocalStewardAuthContext.Provider value={localAuth}>
+      {children}
+    </LocalStewardAuthContext.Provider>
+  );
+}
+
+export default function StewardAuthRuntimeProvider({
+  apiUrl,
+  children,
+  tenantId,
+}: {
+  apiUrl: string;
+  children: ReactNode;
+  tenantId?: string;
+}) {
+  const client = useMemo(
+    () =>
+      new LoginClient({
+        baseUrl: apiUrl,
+        ...(tenantId && !isPlaceholderValue(tenantId) ? { tenantId } : {}),
+      }),
+    [apiUrl, tenantId],
+  );
+  const authConfig = useMemo(() => ({ baseUrl: apiUrl }), [apiUrl]);
+
+  return (
+    <LoginProvider
+      client={client}
+      agentId="eliza-cloud"
+      theme={ELIZA_STEWARD_THEME}
+      auth={authConfig}
+      tenantId={
+        tenantId && !isPlaceholderValue(tenantId) ? tenantId : undefined
+      }
+    >
+      <AuthTokenSync>{children}</AuthTokenSync>
+    </LoginProvider>
+  );
+}

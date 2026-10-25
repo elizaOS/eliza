@@ -1,0 +1,22 @@
+⚠️ LOW BALANCE ALERT
+
+Action required for {{organizationName}}
+
+Your account balance is running low. To avoid service interruption, please add funds to your account soon.
+
+CURRENT BALANCE: ${{currentBalance}} remaining
+
+WHAT HAPPENS WHEN BALANCE RUNS OUT?
+• AI agent requests will be rejected
+• API calls will return "insufficient funds" errors
+• Your containers will continue running (read-only mode)
+
+→ Add Funds Now: {{billingUrl}}
+
+💡 PRO TIP:
+Set up automatic top-ups to ensure uninterrupted service. You can configure this in your billing settings.
+
+---
+© {{currentYear}} Eliza Cloud. All rights reserved.
+
+You received this alert because your account balance fell below ${{threshold}}.

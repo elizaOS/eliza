@@ -1,0 +1,5 @@
+{
+  "pid": 64308,
+  "command": ["bun", "run", "build:unlocked"],
+  "createdAt": "2026-06-19T18:32:57.532Z"
+}

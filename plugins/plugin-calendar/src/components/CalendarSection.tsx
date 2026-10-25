@@ -1,0 +1,1509 @@
+/**
+ * Renders the owner's calendar as selectable day, week, and month grids.
+ *
+ * Day/week views render an hour-by-hour grid and position events by their
+ * actual start/end time. Month view renders a 5-6 row day grid. Events get
+ * deterministic category colours derived from their calendar/account id so
+ * the same feed keeps the same colour across renders.
+ *
+ * Shell concerns (selection state, chat launching, and the primed-event
+ * lookup cache) are injected as props so route and embedded consumers share
+ * the same event editor and calendar mutation boundary.
+ */
+
+import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  SegmentedControl,
+  Spinner,
+  useAgentElement,
+  useAppSelector,
+  useViewEvent,
+  VIEW_EVENTS,
+} from "@elizaos/ui";
+
+import { CalendarClock, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  type CalendarViewMode,
+  useCalendarWeek,
+} from "../hooks/useCalendarWeek.js";
+import { calendarEventOccursOn } from "./calendar/event-days.js";
+import { EventEditorDrawer } from "./EventEditorDrawer.js";
+
+const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const DAY_START_HOUR = 6;
+const DAY_END_HOUR = 23;
+const HOUR_HEIGHT_PX = 48;
+
+function formatTimeOfDay(iso: string): string {
+  const parsed = Date.parse(iso);
+  if (!Number.isFinite(parsed)) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: TIME_ZONE,
+  }).format(new Date(parsed));
+}
+
+function formatWeekdayShort(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    timeZone: TIME_ZONE,
+  }).format(date);
+}
+
+function formatDayNumber(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(date);
+}
+
+function formatMonthHeader(start: Date, end: Date): string {
+  const startMonth = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(start);
+  const endMonth = new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(end);
+  return startMonth === endMonth ? startMonth : `${startMonth} – ${endMonth}`;
+}
+
+function formatMonthTitle(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    year: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(date);
+}
+
+function formatAgendaDayLabel(date: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    timeZone: TIME_ZONE,
+  }).format(date);
+}
+
+function toLocalDayKey(date: Date): string {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = fmt.formatToParts(date);
+  const y = parts.find((p) => p.type === "year")?.value ?? "0000";
+  const m = parts.find((p) => p.type === "month")?.value ?? "00";
+  const d = parts.find((p) => p.type === "day")?.value ?? "00";
+  return `${y}-${m}-${d}`;
+}
+
+function buildDays(start: Date, count: number): Date[] {
+  const days: Date[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
+function groupEventsByDay(
+  events: LifeOpsCalendarEvent[],
+  days: Date[],
+): Map<string, LifeOpsCalendarEvent[]> {
+  const map = new Map<string, LifeOpsCalendarEvent[]>();
+  for (const day of days) {
+    const key = toLocalDayKey(day);
+    map.set(
+      key,
+      events.filter((event) => calendarEventOccursOn(event, key, TIME_ZONE)),
+    );
+  }
+  return map;
+}
+
+// Design-compliant event palette. No blue anywhere: the brand orange accent is
+// reserved for selected/today (driven by the `accent` theme token elsewhere in
+// this file), and event categories are differentiated by neutral grayscale
+// shades plus a few non-blue warm hues. Each entry is a set of inline-style
+// values rather than Tailwind classes: the view bundle is built separately from
+// the host's Tailwind pass, so arbitrary opacity-modified utility classes never
+// make it into the compiled CSS. Inline `color-mix` over fixed seeds renders
+// identically everywhere the bundle mounts. Text stays near-white so both warm
+// and neutral event fills remain readable on the app's dark calendar surface.
+interface EventPaletteEntry {
+  readonly seed: string;
+}
+
+const EVENT_PALETTE: readonly EventPaletteEntry[] = [
+  // Neutral grayscale ramp (light → mid).
+  { seed: "#d4d4d8" },
+  { seed: "#a1a1aa" },
+  { seed: "#71717a" },
+  // Warm, non-blue hues for additional differentiation.
+  { seed: "#f5a623" }, // amber
+  { seed: "#e8743b" }, // burnt orange
+  { seed: "#d65a5a" }, // warm red
+] as const;
+
+interface EventColor {
+  /** Filled block background (day/week event blocks, selected month chip). */
+  readonly bg: string;
+  /** Tinted pill background (all-day pills, month chips, agenda hover). */
+  readonly softBg: string;
+  /** Filled block border. */
+  readonly border: string;
+  /** Text on a filled block. */
+  readonly text: string;
+  /** Text on a tinted pill. */
+  readonly softText: string;
+  /** Category dot. */
+  readonly dot: string;
+}
+
+function eventColorFor(entry: EventPaletteEntry): EventColor {
+  const ink = `color-mix(in srgb, ${entry.seed} 12%, #f8f8f8)`;
+  return {
+    bg: `color-mix(in srgb, ${entry.seed} 38%, var(--background, #eef8ff))`,
+    softBg: `color-mix(in srgb, ${entry.seed} 18%, transparent)`,
+    border: `color-mix(in srgb, ${entry.seed} 55%, transparent)`,
+    text: ink,
+    softText: ink,
+    dot: entry.seed,
+  };
+}
+
+function hashString(input: string): number {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash * 31 + input.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function paletteFor(event: LifeOpsCalendarEvent): EventColor {
+  // Prefer calendar-level seeds so gcal-style "one colour per calendar"
+  // holds when those are distinct. Fall back to event.id for variety when
+  // every event shares the same calendar.
+  const seed = [event.calendarId, event.accountEmail, event.id]
+    .filter(Boolean)
+    .join("|");
+  return eventColorFor(EVENT_PALETTE[hashString(seed) % EVENT_PALETTE.length]);
+}
+
+/**
+ * The single quiet proactive line under the title: the next upcoming event in
+ * the loaded feed. Returns null when nothing is upcoming so the line renders
+ * nothing rather than a placeholder. `events` is already sorted ascending by
+ * `startAt` (the feed hook sorts it), so the first event ending in the future
+ * is the soonest one still relevant.
+ */
+function nextUpcomingLine(events: LifeOpsCalendarEvent[]): string | null {
+  const nowMs = Date.now();
+  for (const event of events) {
+    const endMs = Date.parse(event.endAt);
+    if (Number.isFinite(endMs) && endMs <= nowMs) continue;
+    const title = event.title.trim();
+    if (!title) continue;
+    if (event.isAllDay) return `Next: ${title}, all day.`;
+    const time = formatTimeOfDay(event.startAt);
+    return time ? `Next: ${title} at ${time}.` : `Next: ${title}.`;
+  }
+  return null;
+}
+
+function sortAgendaEvents(
+  events: LifeOpsCalendarEvent[],
+): LifeOpsCalendarEvent[] {
+  return [...events].sort((left, right) => {
+    if (left.isAllDay !== right.isAllDay) {
+      return left.isAllDay ? -1 : 1;
+    }
+    return left.startAt.localeCompare(right.startAt);
+  });
+}
+
+function formatAgendaEventMeta(event: LifeOpsCalendarEvent): string {
+  const timeLabel = event.isAllDay
+    ? "All day"
+    : [formatTimeOfDay(event.startAt), formatTimeOfDay(event.endAt)]
+        .filter(Boolean)
+        .join(" - ");
+  const originLabel =
+    typeof event.calendarSummary === "string" && event.calendarSummary.trim()
+      ? event.calendarSummary.trim()
+      : null;
+  const details = [timeLabel, event.location || null, originLabel].filter(
+    (value): value is string => Boolean(value),
+  );
+  return details.join(", ");
+}
+
+function CalendarStatusIcon({
+  loading = false,
+  label,
+}: {
+  loading?: boolean;
+  label: string;
+}) {
+  return (
+    <div
+      className="flex flex-col items-center justify-center gap-2 py-12 text-sm text-muted"
+      role="status"
+      aria-label={label}
+      title={label}
+    >
+      {loading ? (
+        <Spinner size={16} />
+      ) : (
+        <CalendarClock className="size-5 opacity-70" aria-hidden />
+      )}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+interface EventPosition {
+  topPct: number;
+  heightPct: number;
+  leftPct: number;
+  widthPct: number;
+}
+
+interface PositionedEvent {
+  event: LifeOpsCalendarEvent;
+  position: EventPosition;
+}
+
+/** The visible grid window (06:00-23:00 local) of the column's own day. */
+function dayGridWindow(day: Date): { start: Date; end: Date } {
+  const start = new Date(day);
+  start.setHours(DAY_START_HOUR, 0, 0, 0);
+  const end = new Date(day);
+  end.setHours(DAY_END_HOUR, 0, 0, 0);
+  return { start, end };
+}
+
+function eventWindowMs(
+  event: LifeOpsCalendarEvent,
+  day: Date,
+): {
+  start: number;
+  end: number;
+} | null {
+  const start = new Date(event.startAt);
+  const end = new Date(event.endAt);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return null;
+  }
+  // Clamp to the column's day, not the event's start day: an event that runs
+  // past midnight also appears in the next day's column.
+  const { start: dayStart, end: dayEnd } = dayGridWindow(day);
+  const clampedStart = Math.max(start.getTime(), dayStart.getTime());
+  const clampedEnd = Math.min(end.getTime(), dayEnd.getTime());
+  if (clampedEnd <= clampedStart) return null;
+  return {
+    start: clampedStart,
+    end: clampedEnd,
+  };
+}
+
+/**
+ * Pack concurrent events into lanes, Google-Calendar style.
+ * Two events collide iff their time ranges overlap. Each event is given
+ * the lowest lane index not used by any event it collides with; the column
+ * width is then divided by the max concurrent lane count within each
+ * cluster of connected events.
+ */
+export function layoutDayEvents(
+  events: LifeOpsCalendarEvent[],
+  day: Date,
+): PositionedEvent[] {
+  const windows = events
+    .map((event) => {
+      const window = eventWindowMs(event, day);
+      return window ? { event, ...window } : null;
+    })
+    .filter(
+      (
+        entry,
+      ): entry is { event: LifeOpsCalendarEvent; start: number; end: number } =>
+        entry !== null,
+    )
+    .sort((a, b) => a.start - b.start);
+
+  if (windows.length === 0) return [];
+
+  const { start: dayStart, end: dayEnd } = dayGridWindow(day);
+  const totalMs = dayEnd.getTime() - dayStart.getTime();
+
+  // First pass: assign lanes greedily.
+  const lanes: Array<number> = []; // lane index -> end time (ms)
+  const assignments: Array<{
+    event: LifeOpsCalendarEvent;
+    start: number;
+    end: number;
+    lane: number;
+  }> = [];
+  for (const entry of windows) {
+    let lane = lanes.findIndex((laneEnd) => laneEnd <= entry.start);
+    if (lane === -1) {
+      lane = lanes.length;
+      lanes.push(entry.end);
+    } else {
+      lanes[lane] = entry.end;
+    }
+    assignments.push({
+      event: entry.event,
+      start: entry.start,
+      end: entry.end,
+      lane,
+    });
+  }
+
+  // Second pass: for each assignment, compute the local concurrency (max
+  // lane count of any event that overlaps it, transitively). This is the
+  // column-width divisor for that event.
+  const totalLanes = new Map<LifeOpsCalendarEvent, number>();
+  for (const assignment of assignments) {
+    const concurrent = assignments.filter(
+      (other) => other.start < assignment.end && other.end > assignment.start,
+    );
+    const maxLane = concurrent.reduce(
+      (max, entry) => Math.max(max, entry.lane + 1),
+      1,
+    );
+    totalLanes.set(assignment.event, maxLane);
+  }
+
+  return assignments.map((assignment) => {
+    const cols = totalLanes.get(assignment.event) ?? 1;
+    const topPct = ((assignment.start - dayStart.getTime()) / totalMs) * 100;
+    const heightPct = Math.max(
+      ((assignment.end - assignment.start) / totalMs) * 100,
+      2.5,
+    );
+    const widthPct = 100 / cols;
+    return {
+      event: assignment.event,
+      position: {
+        topPct,
+        heightPct,
+        leftPct: assignment.lane * widthPct,
+        widthPct,
+      },
+    };
+  });
+}
+
+function isSameDayKey(a: Date, b: Date): boolean {
+  return toLocalDayKey(a) === toLocalDayKey(b);
+}
+
+// ---------------------------------------------------------------------------
+// Hour-grid day/week view
+// ---------------------------------------------------------------------------
+
+const RAIL_WIDTH_REM = 3.25;
+const HEADER_ROW_HEIGHT_REM = 2.25;
+
+function DayColumnHeader({ day, isFirst }: { day: Date; isFirst: boolean }) {
+  const isToday = isSameDayKey(day, new Date());
+  return (
+    <div
+      className={`flex items-center justify-center gap-1.5 ${isFirst ? "" : "border-l border-border"} px-2 text-[11px] font-medium ${
+        isToday ? "bg-accent/8" : ""
+      }`}
+      style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }}
+    >
+      <span className={isToday ? "text-accent" : "text-muted"}>
+        {formatWeekdayShort(day)}
+      </span>
+      <span
+        className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1 tabular-nums ${
+          isToday ? "bg-accent text-accent-fg" : "text-txt"
+        }`}
+      >
+        {formatDayNumber(day)}
+      </span>
+    </div>
+  );
+}
+
+function AllDayBandCell({
+  day,
+  events,
+  isFirst,
+  selectedEventId,
+  onSelectEvent,
+}: {
+  day: Date;
+  events: LifeOpsCalendarEvent[];
+  isFirst: boolean;
+  selectedEventId: string | null;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+}) {
+  return (
+    <fieldset
+      className={`m-0 min-w-0 space-y-0.5 border-0 p-1 ${isFirst ? "" : "border-l border-border"}`}
+      aria-label={`All-day events for ${day.toISOString()}`}
+    >
+      {events.map((event) => {
+        const color = paletteFor(event);
+        const selected = event.id === selectedEventId;
+        return (
+          <Button
+            variant="selection"
+            size="micro"
+            align="start"
+            data-state={selected ? "on" : "off"}
+            data-agent-id={`calendar-event-${event.id}`}
+            data-agent-role="button"
+            data-agent-label={event.title}
+            key={event.id}
+            type="button"
+            onClick={() => onSelectEvent(event)}
+            onContextMenu={(mouseEvent) => {
+              mouseEvent.preventDefault();
+              onSelectEvent(event);
+            }}
+            className="block w-full truncate"
+            visualStyle={{
+              background: selected ? color.bg : color.softBg,
+              color: selected ? color.text : color.softText,
+            }}
+            aria-pressed={selected}
+          >
+            {event.title}
+          </Button>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+function TimedEventButton({
+  event,
+  position,
+  isSelected,
+  onSelectEvent,
+}: {
+  event: LifeOpsCalendarEvent;
+  position: EventPosition;
+  isSelected: boolean;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+}) {
+  const color = paletteFor(event);
+  const eventControl = useAgentElement<HTMLButtonElement>({
+    id: `calendar-event-${event.id}`,
+    role: "list-item",
+    label: event.title,
+    group: "lifeops-calendar-events",
+    status: isSelected ? "active" : "inactive",
+    description: `Open the event ${event.title}`,
+    onActivate: () => onSelectEvent(event),
+  });
+
+  return (
+    <Button
+      ref={eventControl.ref}
+      variant="selection"
+      size="content"
+      data-state={isSelected ? "on" : "off"}
+      type="button"
+      onClick={() => onSelectEvent(event)}
+      onContextMenu={(mouseEvent) => {
+        mouseEvent.preventDefault();
+        onSelectEvent(event);
+      }}
+      aria-pressed={isSelected}
+      className="group absolute flex-col items-start justify-start gap-0 overflow-hidden text-left"
+      layoutStyle={{
+        top: `calc(${position.topPct}% + 0.1rem)`,
+        height: `calc(${position.heightPct}% - 0.2rem)`,
+        left: `calc(${position.leftPct}% + 0.125rem)`,
+        width: `calc(${position.widthPct}% - 0.25rem)`,
+        minHeight: "1.5rem",
+      }}
+      visualStyle={{
+        background: color.bg,
+        borderColor: color.border,
+        color: color.text,
+      }}
+      {...eventControl.agentProps}
+    >
+      <div className="w-full min-w-0 truncate text-[11px] font-semibold leading-tight">
+        {event.title}
+      </div>
+      <div className="mt-0.5 w-full min-w-0 truncate text-[10px] leading-tight opacity-90">
+        <span>{formatTimeOfDay(event.startAt)}</span>
+        {event.location ? (
+          <>
+            <span className="mx-1 inline-block size-1 rounded-full bg-current opacity-60" />
+            <span>{event.location}</span>
+          </>
+        ) : null}
+      </div>
+    </Button>
+  );
+}
+
+function DayColumnGrid({
+  day,
+  events,
+  nowInColumn,
+  selectedEventId,
+  onSelectEvent,
+  isFirst,
+  gridHeight,
+}: {
+  day: Date;
+  events: LifeOpsCalendarEvent[];
+  nowInColumn: boolean;
+  selectedEventId: string | null;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+  isFirst: boolean;
+  gridHeight: number;
+}) {
+  const totalHours = DAY_END_HOUR - DAY_START_HOUR;
+  const isToday = isSameDayKey(day, new Date());
+  const dayTime = day.getTime();
+  const positioned = useMemo(
+    () => layoutDayEvents(events, new Date(dayTime)),
+    [events, dayTime],
+  );
+
+  const nowTopPx = useMemo(() => {
+    if (!nowInColumn) return null;
+    const now = new Date();
+    const startOfWindow = new Date(now);
+    startOfWindow.setHours(DAY_START_HOUR, 0, 0, 0);
+    const endOfWindow = new Date(now);
+    endOfWindow.setHours(DAY_END_HOUR, 0, 0, 0);
+    if (
+      now.getTime() < startOfWindow.getTime() ||
+      now.getTime() > endOfWindow.getTime()
+    ) {
+      return null;
+    }
+    const ratio =
+      (now.getTime() - startOfWindow.getTime()) /
+      (endOfWindow.getTime() - startOfWindow.getTime());
+    return ratio * gridHeight;
+  }, [gridHeight, nowInColumn]);
+
+  return (
+    <div
+      className={`relative ${isFirst ? "" : "border-l border-border"} ${isToday ? "bg-accent/5" : ""}`}
+      style={{ height: `${gridHeight}px` }}
+    >
+      {/* hour lines */}
+      {Array.from({ length: totalHours }, (_, i) => DAY_START_HOUR + i).map(
+        (hour) => (
+          <div
+            key={hour}
+            className="pointer-events-none absolute inset-x-0 border-t border-border"
+            style={{ top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX}px` }}
+          />
+        ),
+      )}
+
+      {/* now indicator */}
+      {nowTopPx !== null ? (
+        <div
+          className="pointer-events-none absolute inset-x-0 z-20"
+          style={{ top: `${nowTopPx}px` }}
+          aria-hidden
+        >
+          <div className="flex items-center">
+            <span
+              className="size-2 rounded-full"
+              style={{
+                background: "var(--accent, #ff8a24)",
+                boxShadow:
+                  "0 0 0 2px color-mix(in srgb, var(--accent, #ff8a24) 30%, transparent)",
+              }}
+            />
+            <span
+              className="h-px flex-1"
+              style={{
+                background:
+                  "color-mix(in srgb, var(--accent, #ff8a24) 80%, transparent)",
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {/* events */}
+      {positioned.map(({ event, position }) => {
+        const isSelected = event.id === selectedEventId;
+        return (
+          <TimedEventButton
+            key={event.id}
+            event={event}
+            position={position}
+            isSelected={isSelected}
+            onSelectEvent={onSelectEvent}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+function TimeGrid({
+  days,
+  eventsByDay,
+  selectedEventId,
+  onSelectEvent,
+}: {
+  days: Date[];
+  eventsByDay: Map<string, LifeOpsCalendarEvent[]>;
+  selectedEventId: string | null;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+}) {
+  const now = new Date();
+  const totalHours = DAY_END_HOUR - DAY_START_HOUR;
+  const gridHeight = totalHours * HOUR_HEIGHT_PX;
+
+  const hasAnyAllDay = useMemo(
+    () =>
+      days.some((day) =>
+        (eventsByDay.get(toLocalDayKey(day)) ?? []).some((e) => e.isAllDay),
+      ),
+    [days, eventsByDay],
+  );
+
+  const hours = useMemo(() => {
+    const out: Array<{ hour: number; label: string }> = [];
+    for (let hour = DAY_START_HOUR; hour < DAY_END_HOUR; hour++) {
+      out.push({
+        hour,
+        label: new Intl.DateTimeFormat(undefined, { hour: "numeric" }).format(
+          new Date(2024, 0, 1, hour, 0),
+        ),
+      });
+    }
+    return out;
+  }, []);
+
+  // Grid layout: first column is the hour rail. Each day is an equal-width
+  // column after it. Rows stay aligned because every day header cell + every
+  // all-day cell share a row whose height is driven by the tallest cell.
+  const gridTemplateColumns = `${RAIL_WIDTH_REM}rem repeat(${days.length}, minmax(0, 1fr))`;
+
+  return (
+    <div className="overflow-hidden" data-testid="calendar-time-grid">
+      {/* Header row: empty cell above rail, then weekday + date per column */}
+      <div
+        className="grid border-b border-border"
+        style={{ gridTemplateColumns }}
+      >
+        <div aria-hidden style={{ height: `${HEADER_ROW_HEIGHT_REM}rem` }} />
+        {days.map((day, index) => (
+          <DayColumnHeader
+            key={toLocalDayKey(day)}
+            day={day}
+            isFirst={index === 0}
+          />
+        ))}
+      </div>
+
+      {/* All-day band: stays aligned row-wise with the header */}
+      {hasAnyAllDay ? (
+        <div
+          className="grid border-b border-border bg-bg-muted/15"
+          style={{ gridTemplateColumns }}
+        >
+          <div
+            aria-hidden
+            className="flex items-center justify-end px-2 text-[10px] font-medium text-muted"
+          >
+            all-day
+          </div>
+          {days.map((day, index) => (
+            <AllDayBandCell
+              key={toLocalDayKey(day)}
+              day={day}
+              isFirst={index === 0}
+              events={(eventsByDay.get(toLocalDayKey(day)) ?? []).filter(
+                (e) => e.isAllDay,
+              )}
+              selectedEventId={selectedEventId}
+              onSelectEvent={onSelectEvent}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {/* Hour rail + day columns — all share one row so lines align */}
+      <div className="grid" style={{ gridTemplateColumns }}>
+        <div className="relative" style={{ height: `${gridHeight}px` }}>
+          {hours.map(({ hour, label }) => (
+            <div
+              key={hour}
+              className="absolute right-2 text-[10px] font-medium text-muted"
+              style={{
+                top: `${(hour - DAY_START_HOUR) * HOUR_HEIGHT_PX - 6}px`,
+              }}
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+        {days.map((day, index) => {
+          const key = toLocalDayKey(day);
+          const dayEvents = (eventsByDay.get(key) ?? []).filter(
+            (e) => !e.isAllDay,
+          );
+          return (
+            <DayColumnGrid
+              key={key}
+              day={day}
+              events={dayEvents}
+              nowInColumn={isSameDayKey(day, now)}
+              selectedEventId={selectedEventId}
+              onSelectEvent={onSelectEvent}
+              isFirst={index === 0}
+              gridHeight={gridHeight}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Month grid
+// ---------------------------------------------------------------------------
+
+function startOfMonthGrid(date: Date): Date {
+  const firstOfMonth = new Date(date);
+  firstOfMonth.setDate(1);
+  firstOfMonth.setHours(0, 0, 0, 0);
+  const weekday = firstOfMonth.getDay();
+  const start = new Date(firstOfMonth);
+  start.setDate(firstOfMonth.getDate() - weekday);
+  return start;
+}
+
+function MonthGrid({
+  baseDate,
+  eventsByDay,
+  selectedEventId,
+  onSelectEvent,
+  onSelectDay,
+  selectedDay,
+}: {
+  baseDate: Date;
+  eventsByDay: Map<string, LifeOpsCalendarEvent[]>;
+  selectedEventId: string | null;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+  onSelectDay: (day: Date) => void;
+  selectedDay: Date | null;
+}) {
+  const start = startOfMonthGrid(baseDate);
+  const days = buildDays(start, 42);
+  const month = baseDate.getMonth();
+  const today = new Date();
+  const weekdayLabels = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        return formatWeekdayShort(d);
+      }),
+    [start],
+  );
+
+  return (
+    <div className="overflow-hidden" data-testid="calendar-month-grid">
+      <div
+        className="grid border-b border-border text-[10px] font-medium text-muted"
+        style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+      >
+        {weekdayLabels.map((label) => (
+          <div key={label} className="px-2 py-1.5 text-center">
+            {label}
+          </div>
+        ))}
+      </div>
+      <div
+        className="grid gap-px bg-border"
+        style={{ gridTemplateColumns: "repeat(7, minmax(0, 1fr))" }}
+      >
+        {days.map((day) => {
+          const key = toLocalDayKey(day);
+          const dayEvents = eventsByDay.get(key) ?? [];
+          const inMonth = day.getMonth() === month;
+          const isToday = isSameDayKey(day, today);
+          return (
+            <div
+              key={key}
+              className={`flex min-h-24 min-w-0 flex-col gap-1 bg-bg p-1 text-left md:p-1.5 ${
+                inMonth ? "" : "opacity-55"
+              }`}
+            >
+              <MonthDayButton
+                day={day}
+                today={isToday}
+                selected={
+                  selectedDay !== null && isSameDayKey(day, selectedDay)
+                }
+                onSelectDay={onSelectDay}
+              />
+              <div className="flex flex-col gap-0.5">
+                {dayEvents.slice(0, 3).map((event) => {
+                  const color = paletteFor(event);
+                  const isSelected = event.id === selectedEventId;
+                  return (
+                    <Button
+                      variant="selection"
+                      size="micro"
+                      align="start"
+                      data-state={isSelected ? "on" : "off"}
+                      key={event.id}
+                      type="button"
+                      onClick={() => onSelectEvent(event)}
+                      onContextMenu={(mouseEvent) => {
+                        mouseEvent.preventDefault();
+                        onSelectEvent(event);
+                      }}
+                      className="min-w-0"
+                      visualStyle={{
+                        background: isSelected ? color.bg : color.softBg,
+                        color: isSelected ? color.text : color.softText,
+                      }}
+                    >
+                      {!event.isAllDay ? (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full"
+                          style={{ background: color.dot }}
+                          aria-hidden
+                        />
+                      ) : null}
+                      <span className="min-w-0 flex-1 truncate">
+                        {event.title}
+                      </span>
+                    </Button>
+                  );
+                })}
+                {dayEvents.length > 3 ? (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="mutedLink" type="button" align="start">
+                        +{dayEvents.length - 3} more
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-64 p-0"
+                      data-testid="lifeops-calendar-day-overflow"
+                    >
+                      <div className="px-3 py-2 text-[11px] font-medium text-muted">
+                        {formatAgendaDayLabel(day)}
+                      </div>
+                      <div className="max-h-72 overflow-y-auto py-1">
+                        {dayEvents.map((event) => {
+                          const overflowColor = paletteFor(event);
+                          return (
+                            <Button
+                              variant="ghostMuted"
+                              size="eventRow"
+                              align="start"
+                              key={`overflow-${event.id}`}
+                              type="button"
+                              onClick={() => onSelectEvent(event)}
+                            >
+                              <span
+                                aria-hidden
+                                className="mt-1 size-2 shrink-0 rounded-full"
+                                style={{ background: overflowColor.dot }}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-xs font-medium text-txt">
+                                  {event.title}
+                                </span>
+                                <span className="mt-0.5 block text-[10px] text-muted">
+                                  {event.isAllDay
+                                    ? "All day"
+                                    : formatTimeOfDay(event.startAt)}
+                                </span>
+                              </span>
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MonthDayButton({
+  day,
+  today,
+  selected,
+  onSelectDay,
+}: {
+  day: Date;
+  today: boolean;
+  selected: boolean;
+  onSelectDay: (day: Date) => void;
+}) {
+  const label = formatAgendaDayLabel(day);
+  const selectDay = () => onSelectDay(day);
+  const control = useAgentElement<HTMLButtonElement>({
+    id: `calendar-day-${toLocalDayKey(day)}`,
+    role: "button",
+    label,
+    group: "calendar-days",
+    onActivate: selectDay,
+  });
+  return (
+    <Button
+      ref={control.ref}
+      variant={today ? "accentDarkHover" : "selection"}
+      size="touch"
+      type="button"
+      className="w-11 min-w-0 max-w-full self-start px-1"
+      aria-label={label}
+      aria-current={today ? "date" : undefined}
+      aria-pressed={selected}
+      data-state={selected ? "on" : "off"}
+      onClick={selectDay}
+      {...control.agentProps}
+    >
+      {formatDayNumber(day)}
+    </Button>
+  );
+}
+
+function AgendaEventButton({
+  event,
+  isSelected,
+  onSelectEvent,
+}: {
+  event: LifeOpsCalendarEvent;
+  isSelected: boolean;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+}) {
+  const color = paletteFor(event);
+  const { ref, agentProps } = useAgentElement<HTMLButtonElement>({
+    id: `calendar-event-${event.id}`,
+    role: "list-item",
+    label: event.title,
+    group: "lifeops-calendar-events",
+    status: isSelected ? "active" : "inactive",
+    description: `Open the event ${event.title}`,
+  });
+  return (
+    <Button
+      variant="selection"
+      size="eventRow"
+      data-state={isSelected ? "on" : "off"}
+      ref={ref}
+      type="button"
+      onClick={() => onSelectEvent(event)}
+      onContextMenu={(mouseEvent) => {
+        mouseEvent.preventDefault();
+        onSelectEvent(event);
+      }}
+      aria-pressed={isSelected}
+      {...agentProps}
+    >
+      <span
+        aria-hidden
+        className="mt-1 size-2.5 shrink-0 rounded-full"
+        style={{ background: color.dot }}
+      />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold text-txt">
+          {event.title}
+        </span>
+        <span className="mt-1 block text-xs text-muted">
+          {formatAgendaEventMeta(event)}
+        </span>
+      </span>
+    </Button>
+  );
+}
+
+function AgendaView({
+  days,
+  eventsByDay,
+  selectedEventId,
+  onSelectEvent,
+  emptyLabel,
+}: {
+  days: Date[];
+  eventsByDay: Map<string, LifeOpsCalendarEvent[]>;
+  selectedEventId: string | null;
+  onSelectEvent: (event: LifeOpsCalendarEvent) => void;
+  emptyLabel: string;
+}) {
+  const sections = useMemo(
+    () =>
+      days
+        .map((day) => {
+          const key = toLocalDayKey(day);
+          return {
+            key,
+            day,
+            events: sortAgendaEvents(eventsByDay.get(key) ?? []),
+          };
+        })
+        .filter((section) => section.events.length > 0),
+    [days, eventsByDay],
+  );
+
+  if (sections.length === 0) {
+    return <CalendarStatusIcon label={emptyLabel} />;
+  }
+
+  return (
+    <div className="space-y-5">
+      {sections.map((section) => (
+        <div key={section.key} className="pt-3">
+          <div className="px-2 pb-1 text-xs font-semibold text-muted">
+            {formatAgendaDayLabel(section.day)}
+          </div>
+          <div>
+            {section.events.map((event) => (
+              <AgendaEventButton
+                key={event.id}
+                event={event}
+                isSelected={event.id === selectedEventId}
+                onSelectEvent={onSelectEvent}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main section
+// ---------------------------------------------------------------------------
+
+export interface CalendarSectionProps {
+  /** Currently-selected event id, owned by the host shell. */
+  selectedEventId: string | null;
+  /** Notify the host shell that the selected event id changed. */
+  onSelectEvent: (eventId: string | null) => void;
+  /** Launch a chat about the given event when the embedding host owns that flow. */
+  onChatAboutEvent?: (event: LifeOpsCalendarEvent) => void;
+  /**
+   * Resolve an event that was primed by the host shell (e.g. a deep link or
+   * widget row) but is outside the currently-loaded feed window.
+   */
+  getPrimedEvent: (id: string) => LifeOpsCalendarEvent | null;
+}
+
+export function CalendarSection({
+  selectedEventId,
+  onSelectEvent,
+  onChatAboutEvent,
+  getPrimedEvent,
+}: CalendarSectionProps) {
+  const t = useAppSelector((s) => s.t);
+  const uiAccentId = useAppSelector((s) => s.uiAccentId);
+  const calendar = useCalendarWeek();
+  useViewEvent(VIEW_EVENTS.VIEW_REFRESH, () => {
+    void calendar.refresh();
+  }, [calendar.refresh]);
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+  const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(
+    null,
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDefaultDate, setCreateDefaultDate] = useState<Date>(new Date());
+
+  const proactiveLine = useMemo(
+    () => nextUpcomingLine(calendar.events),
+    [calendar.events],
+  );
+
+  const days = useMemo(() => {
+    switch (calendar.viewMode) {
+      case "day":
+        return buildDays(calendar.windowStart, 1);
+      case "month":
+        return buildDays(calendar.windowStart, 42);
+      default:
+        return buildDays(calendar.windowStart, 7);
+    }
+  }, [calendar.viewMode, calendar.windowStart]);
+
+  const eventsByDay = useMemo(
+    () => groupEventsByDay(calendar.events, days),
+    [calendar.events, days],
+  );
+
+  const handleSelectEvent = useCallback(
+    (event: LifeOpsCalendarEvent) => {
+      onSelectEvent(event.id);
+      setDrawerEvent(event);
+    },
+    [onSelectEvent],
+  );
+
+  const handleCloseEditor = useCallback(() => {
+    setDrawerEvent(null);
+    onSelectEvent(null);
+  }, [onSelectEvent]);
+
+  // When an external caller (widget row, deep link) selects an event, the
+  // grid's local `drawerEvent` state is still null. Look up the id first in
+  // the currently-loaded calendar feed, then fall back to the widget prime
+  // cache so the drawer can open with the right event even if it's outside
+  // the current week view.
+  useEffect(() => {
+    if (!selectedEventId) {
+      if (drawerEvent !== null) setDrawerEvent(null);
+      return;
+    }
+    if (drawerEvent?.id === selectedEventId) return;
+    const fromFeed = calendar.events.find(
+      (event) => event.id === selectedEventId,
+    );
+    if (fromFeed) {
+      setDrawerEvent(fromFeed);
+      return;
+    }
+    const primed = getPrimedEvent(selectedEventId);
+    if (primed) {
+      setDrawerEvent(primed);
+    }
+  }, [selectedEventId, calendar.events, drawerEvent, getPrimedEvent]);
+
+  const rangeLabel = useMemo(
+    () =>
+      calendar.viewMode === "month"
+        ? formatMonthTitle(calendar.baseDate)
+        : formatMonthHeader(calendar.windowStart, calendar.windowEnd),
+    [
+      calendar.baseDate,
+      calendar.viewMode,
+      calendar.windowStart,
+      calendar.windowEnd,
+    ],
+  );
+
+  const VIEW_ITEMS: Array<{ value: CalendarViewMode; label: string }> = [
+    { value: "day", label: t("lifeopsCalendar.day", { defaultValue: "Day" }) },
+    {
+      value: "week",
+      label: t("lifeopsCalendar.week", { defaultValue: "Week" }),
+    },
+    {
+      value: "month",
+      label: t("lifeopsCalendar.month", { defaultValue: "Month" }),
+    },
+  ];
+
+  const prevNav = useAgentElement<HTMLButtonElement>({
+    id: "calendar-prev",
+    role: "button",
+    label: t("lifeopsCalendar.previous", { defaultValue: "Previous" }),
+    group: "lifeops-calendar",
+    description: "Go to the previous calendar range",
+  });
+  const todayNav = useAgentElement<HTMLButtonElement>({
+    id: "calendar-today",
+    role: "button",
+    label: t("lifeopsCalendar.today", { defaultValue: "Today" }),
+    group: "lifeops-calendar",
+    description: "Jump the calendar to today",
+  });
+  const nextNav = useAgentElement<HTMLButtonElement>({
+    id: "calendar-next",
+    role: "button",
+    label: t("lifeopsCalendar.next", { defaultValue: "Next" }),
+    group: "lifeops-calendar",
+    description: "Go to the next calendar range",
+  });
+  const newEvent = useAgentElement<HTMLButtonElement>({
+    id: "calendar-new-event",
+    role: "button",
+    label: t("lifeopsCalendar.newEvent", { defaultValue: "New event" }),
+    group: "lifeops-calendar",
+    description: "Create a new calendar event",
+  });
+  const viewMode = useAgentElement<HTMLDivElement>({
+    id: "calendar-view-mode",
+    role: "select",
+    label: t("lifeopsCalendar.viewModeAria", { defaultValue: "Calendar view" }),
+    group: "lifeops-calendar",
+    status: calendar.viewMode,
+    description: "Switch between day, week, and month calendar views",
+    options: VIEW_ITEMS.map((item) => item.value),
+    getValue: () => calendar.viewMode,
+    onFill: (value: string) => {
+      const match = VIEW_ITEMS.find((item) => item.value === value);
+      if (match) calendar.setViewMode(match.value);
+    },
+  });
+
+  return (
+    <>
+      <section
+        className="flex min-h-full flex-col gap-4"
+        style={
+          uiAccentId === "default"
+            ? ({
+                "--accent": "var(--eliza-brand-orange, #ff5800)",
+                "--accent-rgb": "255, 88, 0",
+                "--accent-foreground": "#111111",
+                "--accent-hover":
+                  "color-mix(in srgb, var(--accent) 88%, white)",
+                "--accent-muted":
+                  "color-mix(in srgb, var(--accent) 75%, #111111)",
+                "--accent-subtle":
+                  "color-mix(in srgb, var(--accent) 14%, transparent)",
+                "--ring": "var(--accent)",
+                "--border-hover": "var(--accent)",
+                "--primary": "var(--accent)",
+              } as CSSProperties)
+            : undefined
+        }
+        data-testid="lifeops-calendar-section"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="flex overflow-hidden">
+              <Button
+                variant="ghostMuted"
+                size="icon-sm"
+                ref={prevNav.ref}
+                type="button"
+                aria-label={t("lifeopsCalendar.previous", {
+                  defaultValue: "Previous",
+                })}
+                onClick={calendar.goPrevious}
+                {...prevNav.agentProps}
+              >
+                <ChevronLeft className="size-4" aria-hidden />
+              </Button>
+              <Button
+                variant="ghostMuted"
+                size="touch"
+                ref={todayNav.ref}
+                type="button"
+                onClick={calendar.goToToday}
+                {...todayNav.agentProps}
+              >
+                {t("lifeopsCalendar.today", { defaultValue: "Today" })}
+              </Button>
+              <Button
+                variant="ghostMuted"
+                size="icon-sm"
+                ref={nextNav.ref}
+                type="button"
+                aria-label={t("lifeopsCalendar.next", {
+                  defaultValue: "Next",
+                })}
+                onClick={calendar.goNext}
+                {...nextNav.agentProps}
+              >
+                <ChevronRight className="size-4" aria-hidden />
+              </Button>
+            </div>
+            <h2 className="min-w-0 text-sm font-semibold text-txt sm:text-base">
+              {rangeLabel}
+            </h2>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <SegmentedControl<CalendarViewMode>
+              aria-label={t("lifeopsCalendar.viewModeAria", {
+                defaultValue: "Calendar view",
+              })}
+              value={calendar.viewMode}
+              onValueChange={calendar.setViewMode}
+              items={VIEW_ITEMS}
+              className="border-0 bg-transparent p-0.5"
+              buttonClassName="min-h-8 px-3 py-1 text-xs"
+              {...viewMode.agentProps}
+            />
+            <Button
+              ref={newEvent.ref}
+              size="dense"
+              variant="accentDarkHover"
+              className="shrink-0"
+              onClick={() => {
+                setCreateDefaultDate(new Date(calendar.windowStart));
+                setCreateOpen(true);
+              }}
+              data-testid="lifeops-calendar-new-event"
+              {...newEvent.agentProps}
+            >
+              <Plus className="size-3.5" aria-hidden />
+              {t("lifeopsCalendar.newEvent", { defaultValue: "New" })}
+            </Button>
+          </div>
+        </div>
+
+        {proactiveLine ? (
+          <p
+            className="-mt-1 text-[13px] text-muted"
+            data-testid="lifeops-calendar-proactive"
+          >
+            {proactiveLine}
+          </p>
+        ) : null}
+
+        {calendar.error ? (
+          <div
+            className="p-1 text-xs"
+            style={{
+              color: "color-mix(in srgb, var(--danger, #e5484d) 70%, white)",
+            }}
+          >
+            {calendar.error}
+          </div>
+        ) : null}
+        {calendar.status === "empty" ? (
+          <p role="status" className="text-sm text-muted">
+            {t("lifeopsCalendar.noEvents", {
+              defaultValue: "No events in this range",
+            })}
+          </p>
+        ) : null}
+        {calendar.status === "partial" ? (
+          <p role="status" className="text-sm text-muted">
+            {t("lifeopsCalendar.partialFeed", {
+              defaultValue:
+                "Some calendar sources are unavailable. Events may be incomplete.",
+            })}
+          </p>
+        ) : null}
+        {calendar.status === "error" ||
+        calendar.status === "unavailable" ||
+        calendar.status === "partial" ? (
+          <Button
+            type="button"
+            variant="surface"
+            size="touch"
+            className="self-start"
+            disabled={calendar.refreshing}
+            onClick={() => void calendar.refresh()}
+          >
+            {t("common.retry", { defaultValue: "Retry" })}
+          </Button>
+        ) : null}
+
+        {calendar.status === "loading" ? (
+          <CalendarStatusIcon
+            loading
+            label={t("lifeopsCalendar.loading", {
+              defaultValue: "Loading",
+            })}
+          />
+        ) : calendar.status === "unavailable" ? (
+          <CalendarStatusIcon
+            label={t("lifeopsCalendar.unavailable", {
+              defaultValue: "Calendar unavailable",
+            })}
+          />
+        ) : calendar.status === "error" && calendar.events.length === 0 ? (
+          <CalendarStatusIcon
+            label={t("lifeopsCalendar.loadFailed", {
+              defaultValue: "Calendar could not load",
+            })}
+          />
+        ) : calendar.viewMode === "month" ? (
+          <MonthGrid
+            baseDate={calendar.baseDate}
+            eventsByDay={eventsByDay}
+            selectedEventId={selectedEventId}
+            onSelectEvent={handleSelectEvent}
+            onSelectDay={setSelectedDay}
+            selectedDay={selectedDay}
+          />
+        ) : (
+          <div className="min-w-0 overflow-x-auto">
+            <div className={days.length > 1 ? "min-w-3xl" : "min-w-0"}>
+              <TimeGrid
+                days={days}
+                eventsByDay={eventsByDay}
+                selectedEventId={selectedEventId}
+                onSelectEvent={handleSelectEvent}
+              />
+            </div>
+          </div>
+        )}
+        {calendar.viewMode === "month" &&
+        selectedDay &&
+        days.some((day) => isSameDayKey(day, selectedDay)) ? (
+          <section aria-label={formatAgendaDayLabel(selectedDay)}>
+            <AgendaView
+              days={[selectedDay]}
+              eventsByDay={eventsByDay}
+              selectedEventId={selectedEventId}
+              onSelectEvent={handleSelectEvent}
+              emptyLabel={t("lifeopsCalendar.empty", { defaultValue: "Clear" })}
+            />
+          </section>
+        ) : null}
+      </section>
+
+      <EventEditorDrawer
+        open={drawerEvent !== null}
+        mode="edit"
+        event={drawerEvent}
+        onChat={onChatAboutEvent}
+        onClose={handleCloseEditor}
+        onSaved={(updatedEvent) => {
+          void calendar.refresh();
+          setDrawerEvent(updatedEvent);
+        }}
+        onDeleted={() => {
+          void calendar.refresh();
+          setDrawerEvent(null);
+          onSelectEvent(null);
+        }}
+      />
+
+      <EventEditorDrawer
+        open={createOpen}
+        mode="create"
+        event={null}
+        createDefaults={{ date: createDefaultDate, side: "owner" }}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(createdEvent) => {
+          void calendar.refresh();
+          setCreateOpen(false);
+          onSelectEvent(createdEvent.id);
+        }}
+      />
+    </>
+  );
+}

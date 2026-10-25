@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "paths": {
+      "@elizaos/auth/auth/*": ["../../packages/auth/src/auth/*"],
+      "@elizaos/plugin-agent-orchestrator": ["./src/index.ts"],
+      "@elizaos/testing": ["../../packages/testing/src/index.ts"],
+      "@elizaos/core/protocol": ["../../packages/core/src/protocol"]
+    }
+  },
+  "include": [
+    "src/__tests__/task-agent-live.live.test.ts",
+    "test/live/task-agent-live-smoke.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

@@ -1,0 +1,31 @@
+{
+  "slug": "send-button",
+  "granularity": "element",
+  "title": "Send-button micro-interaction (hover + press)",
+  "steps": [
+    { "action": "goto", "value": "/", "label": "open-chat" },
+    {
+      "action": "waitFor",
+      "selector": "[data-testid=\"chat-composer-action\"]",
+      "label": "await-send"
+    },
+    {
+      "action": "fill",
+      "selector": "[data-testid=\"chat-composer-textarea\"]",
+      "value": "hello",
+      "label": "type-message"
+    },
+    {
+      "action": "hover",
+      "selector": "[data-testid=\"chat-composer-action\"]",
+      "label": "hover-send",
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"chat-composer-action\"]",
+      "label": "press-send",
+      "screenshotAfter": true
+    }
+  ]
+}

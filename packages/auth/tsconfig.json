@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node", "vitest"],
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/core/protocol": ["../core/src/protocol"]
+    }
+  },
+  "include": [
+    "src/auth/**/*",
+    "src/vault/**/*",
+    "src/kms/**/*",
+    "src/index.ts",
+    "test/*.ts",
+    "src/accounts/**/*",
+    "src/providers/**/*"
+  ]
+}

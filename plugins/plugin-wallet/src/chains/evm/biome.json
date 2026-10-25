@@ -1,0 +1,60 @@
+{
+	"root": false,
+	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+	"files": {
+		"includes": [
+			"__tests__/**",
+			"actions/**",
+			"providers/**",
+			"templates/**",
+			"types/**",
+			"generated/**",
+			"contracts/**",
+			"build.ts",
+			"constants.ts",
+			"index.ts",
+			"rpc-providers.ts",
+			"service.ts",
+			"package.json",
+			"tsconfig.json",
+			"tsconfig.build.json"
+		]
+	},
+	"assist": {
+		"actions": {
+			"source": {
+				"organizeImports": "on"
+			}
+		}
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"preset": "recommended",
+			"correctness": {
+				"noUnusedVariables": "error"
+			},
+			"a11y": {
+				"useButtonType": "off"
+			},
+			"style": {},
+			"complexity": {
+				"noCommaOperator": "off",
+				"useLiteralKeys": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true,
+		"indentWidth": 2,
+		"indentStyle": "space",
+		"lineWidth": 100
+	},
+	"javascript": {
+		"formatter": {
+			"quoteStyle": "double",
+			"trailingCommas": "es5",
+			"semicolons": "always"
+		}
+	}
+}

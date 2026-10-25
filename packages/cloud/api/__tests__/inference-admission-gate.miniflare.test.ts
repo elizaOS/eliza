@@ -1,0 +1,1035 @@
+/**
+ * Runs the production admission class inside Miniflare to prove Cloudflare's
+ * real Durable Object storage and request serialization preserve spend holds.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
+import { Miniflare } from "miniflare";
+
+const ADMISSION_RUNTIME_BOUNDARY_FILTERS = {
+  dbClient:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]db[\\/]client\.ts$/,
+  cloudBindings:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]runtime[\\/]cloud-bindings\.ts$/,
+  admissionRecovery:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]services[\\/]inference-admission-recovery\.ts$/,
+  logger:
+    /(?:^|[\\/])packages[\\/]cloud[\\/]shared[\\/]src[\\/]lib[\\/]utils[\\/]logger\.ts$/,
+} as const;
+
+const ADMISSION_RUNTIME_BOUNDARY_PATHS = [
+  {
+    name: "database client",
+    filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.dbClient,
+    relative: "packages/cloud/shared/src/db/client.ts",
+  },
+  {
+    name: "cloud bindings",
+    filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.cloudBindings,
+    relative: "packages/cloud/shared/src/lib/runtime/cloud-bindings.ts",
+  },
+  {
+    name: "admission recovery",
+    filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.admissionRecovery,
+    relative:
+      "packages/cloud/shared/src/lib/services/inference-admission-recovery.ts",
+  },
+  {
+    name: "logger",
+    filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.logger,
+    relative: "packages/cloud/shared/src/lib/utils/logger.ts",
+  },
+] as const;
+
+for (const { name, filter, relative } of ADMISSION_RUNTIME_BOUNDARY_PATHS) {
+  test(`build filter matches the ${name} on POSIX and Windows only`, () => {
+    expect(filter.test(`/work/eliza/${relative}`)).toBe(true);
+    expect(
+      filter.test(`D:\\work\\eliza\\${relative.replaceAll("/", "\\")}`),
+    ).toBe(true);
+    expect(filter.test(`/work/eliza-fork/${relative}.backup`)).toBe(false);
+    expect(
+      filter.test(
+        `/work/eliza/${relative.replace("/shared/", "/shared-sibling/")}`,
+      ),
+    ).toBe(false);
+  });
+}
+
+describe("Miniflare Durable Object integration", () => {
+  let miniflare: Miniflare;
+
+  beforeAll(async () => {
+    const build = await Bun.build({
+      entrypoints: [
+        fileURLToPath(
+          new URL(
+            "../test/fixtures/inference-admission-gate-worker.ts",
+            import.meta.url,
+          ),
+        ),
+      ],
+      format: "esm",
+      target: "browser",
+      conditions: ["worker", "browser"],
+      plugins: [
+        {
+          name: "admission-runtime-boundaries",
+          setup(build) {
+            build.onLoad(
+              { filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.dbClient },
+              () => ({
+                loader: "ts",
+                contents: `
+              export async function runWithDbCacheAsync<T>(operation: () => Promise<T>): Promise<T> {
+                return await operation();
+              }
+            `,
+              }),
+            );
+            build.onLoad(
+              {
+                filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.cloudBindings,
+              },
+              () => ({
+                loader: "ts",
+                contents: `
+                export async function runWithCloudBindingsAsync<T>(
+                  _bindings: Record<string, unknown>,
+                  operation: () => Promise<T>,
+                ): Promise<T> {
+                  return await operation();
+                }
+              `,
+              }),
+            );
+            build.onLoad(
+              {
+                filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.admissionRecovery,
+              },
+              () => ({
+                loader: "ts",
+                contents: `
+                export async function recoverExpiredInferenceAdmissionLease(): Promise<never> {
+                  throw new Error("alarm recovery is outside this serialization test");
+                }
+              `,
+              }),
+            );
+            build.onLoad(
+              { filter: ADMISSION_RUNTIME_BOUNDARY_FILTERS.logger },
+              () => ({
+                loader: "ts",
+                contents: `
+                export const logger = {
+                  debug() {},
+                  info() {},
+                  warn() {},
+                  error() {},
+                };
+              `,
+              }),
+            );
+          },
+        },
+      ],
+    });
+    if (!build.success) {
+      throw new AggregateError(
+        build.logs,
+        "Failed to bundle admission test Worker",
+      );
+    }
+    const output = build.outputs[0];
+    if (!output)
+      throw new Error("Admission test Worker bundle was not emitted");
+
+    miniflare = new Miniflare({
+      // Match the deployed API Worker so synchronous SQLite KV is exercised
+      // under the exact production compatibility contract.
+      compatibilityDate: "2026-04-01",
+      compatibilityFlags: ["nodejs_compat"],
+      modules: true,
+      script: await output.text(),
+      durableObjects: {
+        INFERENCE_ADMISSION_GATES: {
+          className: "TestInferenceAdmissionGate",
+          useSQLite: true,
+        },
+      },
+      kvNamespaces: ["TEST_AUTH_CACHE"],
+    });
+  });
+
+  afterAll(async () => {
+    await miniflare?.dispose();
+  });
+
+  async function post(
+    path: string,
+    body: Record<string, unknown>,
+    gateName = "org-miniflare",
+  ): Promise<{
+    readonly status: number;
+    readonly handlerMs: string | null;
+    text(): Promise<string>;
+  }> {
+    const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-test-organization-id": "org-miniflare",
+        "x-test-gate-name": gateName,
+      },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: response.status,
+      handlerMs: response.headers.get("x-eliza-gate-handler-ms"),
+      text: async () => await response.text(),
+    };
+  }
+
+  test("internal handler timing crosses a real Durable Object binding without changing quota", async () => {
+    const gate = "rate-limit:v2:handler-timing";
+    const policy = {
+      endpointType: "completions",
+      windowMs: 60000,
+      maxRequests: 1,
+    };
+    const warm = await post("/rate-limit-warm", {}, gate);
+    const allowed = await post("/rate-limit", policy, gate);
+    const denied = await post("/rate-limit", policy, gate);
+    expect(allowed.status).toBe(200);
+    expect(denied.status).toBe(429);
+    expect(JSON.parse(await denied.text()).allowed).toBe(false);
+    for (const response of [warm, allowed, denied]) {
+      expect(response.handlerMs).not.toBeNull();
+      expect(Number.isFinite(Number(response.handlerMs))).toBe(true);
+      expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  // Match the cloud test lane's budget because Miniflare startup can be delayed
+  // when this integration test runs alongside the rest of the batched suite.
+  test("real Durable Object serialization prevents concurrent overspend", async () => {
+    expect(
+      (
+        await post("/hydrate", {
+          balanceUsd: 10,
+          balanceAt: Date.now(),
+          balanceRevision: "1",
+        })
+      ).status,
+    ).toBe(200);
+
+    const [first, second] = await Promise.all([
+      post("/lease", {
+        organizationId: "org-miniflare",
+        requestId: "request-a",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 7,
+        recovery: {
+          version: 1,
+          kind: "organization",
+          organizationId: "org-miniflare",
+          userId: "00000000-0000-0000-0000-000000000002",
+          requestId: "request-a",
+          model: "test-model",
+          provider: "test-provider",
+          billingSource: "test",
+          description: "Miniflare admission test",
+          accounting: { kind: "direct_debit" },
+        },
+      }),
+      post("/lease", {
+        organizationId: "org-miniflare",
+        requestId: "request-b",
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 7,
+        recovery: {
+          version: 1,
+          kind: "organization",
+          organizationId: "org-miniflare",
+          userId: "00000000-0000-0000-0000-000000000002",
+          requestId: "request-b",
+          model: "test-model",
+          provider: "test-provider",
+          billingSource: "test",
+          description: "Miniflare admission test",
+          accounting: { kind: "direct_debit" },
+        },
+      }),
+    ]);
+
+    if (first.status === 400 || second.status === 400) {
+      throw new Error(
+        `Unexpected gate validation response: ${first.status} ${await first.text()} / ${second.status} ${await second.text()}`,
+      );
+    }
+    expect([first.status, second.status].sort()).toEqual([200, 402]);
+  }, 120_000);
+
+  test("credential checks bypass a blocked billing queue on the same object", async () => {
+    expect((await post("/test-block-billing-queue", {})).status).toBe(202);
+    const credentialCheck = await Promise.race([
+      post("/credential/check", {
+        organizationId: "org-miniflare",
+        kind: "api_key",
+        credentialId: "00000000-0000-0000-0000-000000000104",
+        userId: "00000000-0000-0000-0000-000000000204",
+      }),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("credential check waited behind billing")),
+          500,
+        );
+      }),
+    ]);
+    expect(credentialCheck.status).toBe(200);
+    expect((await post("/test-release-billing-queue", {})).status).toBe(204);
+  });
+
+  test("the revocation queue preserves read-write ordering", async () => {
+    const response = await post("/test-revocation-queue-order", {});
+    expect(response.status).toBe(200);
+    expect(JSON.parse(await response.text())).toEqual({
+      order: ["first:start", "first:end", "second"],
+    });
+  });
+
+  test("independent callers observe API-key revocation immediately", async () => {
+    const credential = {
+      organizationId: "org-miniflare",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000101",
+      userId: "00000000-0000-0000-0000-000000000201",
+    };
+    const staleCache = await miniflare.getKVNamespace("TEST_AUTH_CACHE");
+    const staleCacheKey = "inference-auth:test-stale-positive";
+    const stalePositive = JSON.stringify({
+      kind: "authorized",
+      apiKeyId: credential.credentialId,
+      userId: credential.userId,
+      organizationId: credential.organizationId,
+    });
+    await staleCache.put(staleCacheKey, stalePositive);
+    expect((await post("/credential/check", credential)).status).toBe(200);
+    expect(
+      (
+        await post("/credential/revoke", {
+          organizationId: credential.organizationId,
+          kind: credential.kind,
+          credentialId: credential.credentialId,
+        })
+      ).status,
+    ).toBe(200);
+
+    // This second dispatch models another Worker location retaining a stale
+    // positive KV entry. Deliberately leave the real workerd KV value untouched
+    // to model delayed delete visibility: the shared DO remains authoritative.
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      stalePositive,
+    );
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      stalePositive,
+    );
+  });
+
+  test("authorized lease checks revocation and balance in one Durable Object request", async () => {
+    const organizationId = "org-miniflare-authorized-lease";
+    const credential = {
+      organizationId,
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000106",
+      userId: "00000000-0000-0000-0000-000000000206",
+    };
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 1, balanceRevision: "1" },
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    const leaseBody = (requestId: string) => ({
+      organizationId,
+      requestId,
+      balanceUsd: 1,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      credential,
+      recovery: {
+        version: 1,
+        kind: "organization",
+        organizationId,
+        userId: credential.userId,
+        requestId,
+        model: "test-model",
+        provider: "test-provider",
+        billingSource: "test",
+        description: "authorized Miniflare admission test",
+        accounting: { kind: "direct_debit" },
+      },
+    });
+    expect(
+      (
+        await post(
+          "/lease-authorized",
+          leaseBody("authorized-before-revocation"),
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/credential/revoke",
+          {
+            organizationId,
+            kind: credential.kind,
+            credentialId: credential.credentialId,
+          },
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    const denied = await post(
+      "/lease-authorized",
+      leaseBody("authorized-after-revocation"),
+      organizationId,
+    );
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(await denied.text())).toEqual({
+      allowed: false,
+      reason: "credential_revoked",
+    });
+  });
+
+  test("session cutoff revokes old tokens without rejecting a later login", async () => {
+    const base = {
+      organizationId: "org-miniflare",
+      kind: "steward_session",
+      userId: "00000000-0000-0000-0000-000000000202",
+      stewardUserId: "steward-user-202",
+    };
+    expect(
+      (
+        await post("/session/revoke-through", {
+          organizationId: base.organizationId,
+          userId: base.userId,
+          issuedAt: 100,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (await post("/credential/check", { ...base, issuedAt: 100 })).status,
+    ).toBe(403);
+    expect(
+      (await post("/credential/check", { ...base, issuedAt: 101 })).status,
+    ).toBe(200);
+  });
+
+  test("revoked session bindings reject new tokens using a stale user mapping", async () => {
+    const credential = {
+      organizationId: "org-miniflare-session-binding",
+      kind: "steward_session",
+      userId: "00000000-0000-0000-0000-000000000205",
+      stewardUserId: "steward-user-unlinked",
+      issuedAt: 201,
+    };
+    expect((await post("/credential/check", credential)).status).toBe(200);
+    expect(
+      (
+        await post("/session/set-binding-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          stewardUserId: credential.stewardUserId,
+          active: false,
+        })
+      ).status,
+    ).toBe(200);
+    const denied = await post("/credential/check", {
+      ...credential,
+      issuedAt: credential.issuedAt + 1,
+    });
+    expect(denied.status).toBe(403);
+    expect(JSON.parse(await denied.text())).toEqual({
+      allowed: false,
+      reason: "session_binding_revoked",
+    });
+    await post("/session/set-binding-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      stewardUserId: credential.stewardUserId,
+      active: true,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
+
+  test("subject and organization suspension are reversible durable fences", async () => {
+    const credential = {
+      organizationId: "org-miniflare",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000102",
+      userId: "00000000-0000-0000-0000-000000000203",
+    };
+    expect(
+      (
+        await post("/subject/set-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          active: false,
+          reason: "account",
+        })
+      ).status,
+    ).toBe(200);
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    await post("/subject/set-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      active: true,
+      reason: "account",
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+
+    await post("/organization/set-active", {
+      organizationId: credential.organizationId,
+      active: false,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    await post("/organization/set-active", {
+      organizationId: credential.organizationId,
+      active: true,
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
+
+  test("a per-key rate_limit caps one key under the plan tier without limiting others", async () => {
+    const gate = "rate-limit:v2:api-key-cap";
+    const tier = {
+      windowMs: 60_000,
+      maxRequests: 10,
+      windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+    };
+    const capped = { id: "key-capped", maxRequests: 2 };
+    const decide = async (endpointType: string, apiKey?: typeof capped) => {
+      const response = await post(
+        "/rate-limit",
+        { ...tier, endpointType, ...(apiKey && { apiKey }) },
+        gate,
+      );
+      return {
+        status: response.status,
+        body: JSON.parse(await response.text()) as {
+          allowed: boolean;
+          remaining: number;
+        },
+      };
+    };
+
+    // The key cap counts across endpoints and is reported as the binding limit.
+    expect(await decide("completions", capped)).toMatchObject({
+      status: 200,
+      body: { allowed: true, remaining: 1 },
+    });
+    expect((await decide("embeddings", capped)).status).toBe(200);
+    expect(await decide("completions", capped)).toMatchObject({
+      status: 429,
+      body: { allowed: false, remaining: 0 },
+    });
+    // Another key, and a key-less caller, still get the rest of the tier.
+    expect(
+      (await decide("completions", { id: "key-other", maxRequests: 2 })).status,
+    ).toBe(200);
+    expect(await decide("completions")).toMatchObject({
+      status: 200,
+      body: { allowed: true },
+    });
+    // An invalid cap is rejected rather than ignored.
+    expect(
+      (
+        await post(
+          "/rate-limit",
+          {
+            ...tier,
+            endpointType: "completions",
+            apiKey: { id: "k", maxRequests: 0 },
+          },
+          gate,
+        )
+      ).status,
+    ).toBe(400);
+  });
+
+  test("a separate rate-limit identity answers without duplicating a window across cutover", async () => {
+    const windowMs = 1_000;
+    const legacyWindowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
+    const policy = {
+      endpointType: "completions",
+      windowMs,
+      maxRequests: 1,
+      windowStartedAt: legacyWindowStartedAt,
+    };
+    expect((await post("/rate-limit", policy)).status).toBe(200);
+    expect((await post("/test-block-ledger", {})).status).toBe(202);
+
+    const blockedLegacy = post("/rate-limit", policy);
+    const legacyAnsweredEarly = await Promise.race([
+      blockedLegacy.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    expect(legacyAnsweredEarly).toBe(false);
+
+    const cutoverDelay = Math.max(
+      0,
+      legacyWindowStartedAt + windowMs - Date.now() + 10,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, cutoverDelay));
+    const isolated = await Promise.race([
+      post(
+        "/rate-limit",
+        {
+          ...policy,
+          windowStartedAt: legacyWindowStartedAt + windowMs,
+        },
+        "rate-limit:v2:org-miniflare",
+      ),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error("isolated rate limit waited behind ledger")),
+          500,
+        );
+      }),
+    ]);
+    expect(isolated.status).toBe(200);
+    expect((await blockedLegacy).status).toBe(429);
+  }, 120_000);
+
+  test("the cutover coordinator chooses the next exact fixed-window boundary", async () => {
+    const response = await post(
+      "/rate-limit-v2-cutover",
+      { windowMs: 60_000 },
+      "rate-limit:v2:cutover",
+    );
+    expect(response.status).toBe(200);
+    const body = JSON.parse(await response.text()) as { cutoverAt: number };
+    expect(body.cutoverAt % 60_000).toBe(0);
+    expect(body.cutoverAt).toBeGreaterThan(Date.now());
+    expect(body.cutoverAt - Date.now()).toBeLessThanOrEqual(60_000);
+  }, 120_000);
+
+  test("the active v2 rate-limit identity answers while the obsolete cutover coordinator is blocked", async () => {
+    expect(
+      (await post("/test-block-ledger", {}, "rate-limit:v2:cutover")).status,
+    ).toBe(202);
+
+    const blockedCutover = post(
+      "/rate-limit-v2-cutover",
+      { windowMs: 60_000 },
+      "rate-limit:v2:cutover",
+    );
+    const cutoverAnsweredEarly = await Promise.race([
+      blockedCutover.then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 300)),
+    ]);
+    expect(cutoverAnsweredEarly).toBe(false);
+
+    const isolated = await Promise.race([
+      post(
+        "/rate-limit",
+        {
+          endpointType: "completions",
+          windowMs: 60_000,
+          maxRequests: 1,
+          windowStartedAt: Math.floor(Date.now() / 60_000) * 60_000,
+        },
+        "rate-limit:v2:org-miniflare-cutover-blocked",
+      ),
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () =>
+            reject(
+              new Error("v2 rate limit waited behind cutover coordinator"),
+            ),
+          500,
+        );
+      }),
+    ]);
+    expect(isolated.status).toBe(200);
+    expect((await blockedCutover).status).toBe(200);
+  }, 120_000);
+
+  test("synchronous SQLite KV continues the exact async-KV quota window", async () => {
+    const gateName = "rate-limit:v2:org-miniflare-sync-kv-compat";
+    const windowMs = 60_000;
+    const windowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
+    expect(
+      (
+        await post(
+          "/test-seed-legacy-rate-limits",
+          {
+            completions: {
+              windowStartedAt,
+              windowMs,
+              maxRequests: 1,
+              count: 1,
+            },
+          },
+          gateName,
+        )
+      ).status,
+    ).toBe(204);
+
+    const denied = await post(
+      "/rate-limit",
+      {
+        endpointType: "completions",
+        windowMs,
+        maxRequests: 1,
+        windowStartedAt,
+      },
+      gateName,
+    );
+    expect(denied.status).toBe(429);
+
+    const persisted = await post("/test-read-legacy-rate-limits", {}, gateName);
+    expect(JSON.parse(await persisted.text())).toEqual({
+      completions: {
+        windowStartedAt,
+        windowMs,
+        maxRequests: 1,
+        count: 2,
+      },
+    });
+  }, 120_000);
+
+  test("clearing one subject denial cannot clear an independent denial", async () => {
+    const credential = {
+      organizationId: "org-miniflare-independent-fences",
+      kind: "api_key",
+      credentialId: "00000000-0000-0000-0000-000000000103",
+      userId: "00000000-0000-0000-0000-000000000204",
+    };
+    for (const reason of ["account", "moderation"]) {
+      expect(
+        (
+          await post("/subject/set-active", {
+            organizationId: credential.organizationId,
+            userId: credential.userId,
+            active: false,
+            reason,
+          })
+        ).status,
+      ).toBe(200);
+    }
+
+    expect((await post("/credential/check", credential)).status).toBe(403);
+    expect(
+      (
+        await post("/subject/set-active", {
+          organizationId: credential.organizationId,
+          userId: credential.userId,
+          active: true,
+          reason: "moderation",
+        })
+      ).status,
+    ).toBe(200);
+    const stillDenied = await post("/credential/check", credential);
+    expect(stillDenied.status).toBe(403);
+    expect(JSON.parse(await stillDenied.text())).toEqual({
+      allowed: false,
+      reason: "subject_account_disabled",
+    });
+
+    await post("/subject/set-active", {
+      organizationId: credential.organizationId,
+      userId: credential.userId,
+      active: true,
+      reason: "account",
+    });
+    expect((await post("/credential/check", credential)).status).toBe(200);
+  });
+
+  test("subscriber funding capacity is a fenced view of the same balance revision", async () => {
+    const gate = "org-funding-view";
+    const lease = (
+      requestId: string,
+      estimatedCostUsd: number,
+      snapshot: { balanceUsd: number; balanceRevision: string },
+      options: {
+        balanceView?: "funding";
+        accounting?: "subscription_funding" | "direct_debit";
+      } = { balanceView: "funding", accounting: "subscription_funding" },
+    ) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          ...snapshot,
+          ...(options.balanceView && { balanceView: options.balanceView }),
+          estimatedCostUsd,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare subscriber funding test",
+            accounting: { kind: options.accounting ?? "subscription_funding" },
+          },
+        },
+        gate,
+      );
+
+    // Purchased credit alone is $1 at revision 5.
+    expect(
+      (await post("/hydrate", { balanceUsd: 1, balanceRevision: "5" }, gate))
+        .status,
+    ).toBe(200);
+
+    // A funding lease must carry the funding view, and only it may.
+    expect(
+      (
+        await lease(
+          "funding-no-view",
+          1,
+          { balanceUsd: 10, balanceRevision: "5" },
+          { accounting: "subscription_funding" },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await lease(
+          "credit-with-view",
+          1,
+          { balanceUsd: 10, balanceRevision: "5" },
+          { balanceView: "funding", accounting: "direct_debit" },
+        )
+      ).status,
+    ).toBe(400);
+
+    // Same revision: $10 of credit plus allowance supersedes the credit view.
+    expect(
+      (await lease("funding-a", 7, { balanceUsd: 10, balanceRevision: "5" }))
+        .status,
+    ).toBe(200);
+    // A late credit-only observation of that revision cannot shrink or grow
+    // the funding ceiling.
+    expect(
+      (await post("/hydrate", { balanceUsd: 1, balanceRevision: "5" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (await lease("funding-b", 2, { balanceUsd: 10, balanceRevision: "5" }))
+        .status,
+    ).toBe(200);
+    // $7 + $2 are held against $10: another $2 would overspend.
+    const exhausted = await lease("funding-c", 2, {
+      balanceUsd: 10,
+      balanceRevision: "5",
+    });
+    expect(exhausted.status).toBe(402);
+    expect(JSON.parse(await exhausted.text()).availableUsd).toBeCloseTo(1, 6);
+
+    // A newer credit-only revision is adopted conservatively; the next
+    // subscriber admission restores capacity at that revision.
+    expect(
+      (await post("/hydrate", { balanceUsd: 0, balanceRevision: "6" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (await lease("funding-d", 0.5, { balanceUsd: 0, balanceRevision: "5" }))
+        .status,
+    ).toBe(402);
+    expect(
+      (await lease("funding-e", 0.5, { balanceUsd: 10, balanceRevision: "6" }))
+        .status,
+    ).toBe(200);
+  }, 120_000);
+
+  test("snapshot admissions under a superseded policy generation fail closed at lease and dispatch", async () => {
+    const gate = "org-policy-generation";
+    const lease = (requestId: string, policyGeneration: string) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "4",
+          estimatedCostUsd: 1,
+          policyGeneration,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare policy generation test",
+            accounting: { kind: "direct_debit" },
+          },
+        },
+        gate,
+      );
+    const staleCode = async (response: {
+      status: number;
+      text(): Promise<string>;
+    }) => {
+      expect(response.status).toBe(409);
+      return JSON.parse(await response.text()).code;
+    };
+
+    // A snapshot publication carries the authoritative generation.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "5" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await staleCode(await lease("policy-old", "4"))).toBe(
+      "inference_admission_policy_stale",
+    );
+    expect((await lease("policy-current", "5")).status).toBe(200);
+    // A newer authoritative admission advances the fence for everyone else.
+    expect((await lease("policy-newer", "6")).status).toBe(200);
+    expect(await staleCode(await lease("policy-was-current", "5"))).toBe(
+      "inference_admission_policy_stale",
+    );
+    // An out-of-order older publication cannot roll the fence back.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "3" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(await staleCode(await lease("policy-rollback", "5"))).toBe(
+      "inference_admission_policy_stale",
+    );
+
+    // A lease taken at generation 6 cannot dispatch once 7 is published.
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "7" },
+          gate,
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      await staleCode(
+        await post(
+          "/dispatch",
+          {
+            requestId: "policy-newer",
+            preProviderCancellationToken: "policy-newer-token",
+          },
+          gate,
+        ),
+      ),
+    ).toBe("inference_admission_policy_stale");
+    // The undispatched lease still releases through the normal zero path.
+    expect(
+      (await post("/release", { requestId: "policy-newer" }, gate)).status,
+    ).toBe(200);
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "4", policyGeneration: "x" },
+          gate,
+        )
+      ).status,
+    ).toBe(400);
+  }, 120_000);
+
+  test("subscriber funding leases pin a well-formed affiliate payout contract", async () => {
+    const gate = "org-funding-affiliate";
+    const userId = "00000000-0000-0000-0000-000000000002";
+    const attribution = {
+      affiliateCodeId: "00000000-0000-4000-8000-0000000000a1",
+      affiliateUserId: "00000000-0000-4000-8000-0000000000a2",
+      affiliateCode: "PARTNER",
+      markupPercent: 0.2,
+    };
+    const lease = (requestId: string, affiliate: unknown) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "3",
+          balanceView: "funding",
+          estimatedCostUsd: 1.2,
+          recovery: {
+            version: 1,
+            kind: "organization",
+            organizationId: "org-miniflare",
+            userId,
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare subscriber affiliate test",
+            accounting: { kind: "subscription_funding", affiliate },
+          },
+        },
+        gate,
+      );
+    expect(
+      (await post("/hydrate", { balanceUsd: 10, balanceRevision: "3" }, gate))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await lease("funding-affiliate-ok", {
+          attribution,
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-ok",
+        })
+      ).status,
+    ).toBe(200);
+    // A self-referral, a missing payout identity, or an extra field is not a
+    // recoverable payout contract and never reaches the alarm.
+    expect(
+      (
+        await lease("funding-affiliate-self", {
+          attribution: { ...attribution, affiliateUserId: userId },
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-self",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await lease("funding-affiliate-nosource", { attribution })).status,
+    ).toBe(400);
+    expect(
+      (
+        await lease("funding-affiliate-extra", {
+          attribution,
+          payoutSourceId: "ai_billing:affiliate:funding-affiliate-extra",
+          amount: 1,
+        })
+      ).status,
+    ).toBe(400);
+  }, 120_000);
+});

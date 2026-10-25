@@ -1,0 +1,29 @@
+[Unit]
+Description=elizaOS privileged installer service
+Requires=elizaos-installer.socket
+After=systemd-logind.service
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/elizaos-installer-service
+User=root
+Group=root
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=no
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+UMask=0077
+ReadWritePaths=/run/elizaos-installer /var/lib/elizaos-installer
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,69 @@
+name: Apps staging access report
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_cloud_commit:
+        description: Exact staging commit to inspect
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  admission:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require exact canonical staging source
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_cloud_commit }}
+          CHECKED_OUT_COMMIT: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REF" == "refs/heads/staging" ]]
+          [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_COMMIT" == "$CHECKED_OUT_COMMIT" ]]
+
+  report:
+    needs: admission
+    if: needs.admission.result == 'success' && github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    concurrency:
+      group: apps-staging-access-report
+      cancel-in-progress: false
+    steps:
+      - name: Checkout exact workflow source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Setup existing runtime dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: 1.4.2
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+      - name: Build required linked runtime
+        run: bun run build:core
+      - name: Verify closed report boundaries on this source
+        env:
+          NODE_ENV: test
+        run: bun test packages/cloud/scripts/admin/apps-staging-access-report.test.ts
+      # This is a GET inventory report. It does not connect to the guest, install keys, or change provider state.
+      # Admission binds canonical source, not independent human review of that source.
+      - name: Classify configured apps host and deploy key
+        env:
+          NODE_ENV: production
+          HCLOUD_API_BASE_URL: ""
+          HCLOUD_APPS_TOKEN: ${{ secrets.HCLOUD_APPS_TOKEN }}
+          ELIZA_APPS_WORKER_HOST: ${{ secrets.ELIZA_APPS_WORKER_HOST }}
+          ELIZA_APPS_WORKER_SSH_KEY: ${{ secrets.ELIZA_APPS_WORKER_SSH_KEY }}
+        run: timeout --kill-after=5s 120s bun run packages/cloud/scripts/admin/apps-staging-access-report.ts

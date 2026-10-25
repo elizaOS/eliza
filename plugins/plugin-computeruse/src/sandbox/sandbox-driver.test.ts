@@ -1,0 +1,785 @@
+/**
+ * Tests for the sandbox subsystem:
+ *
+ *   - `SandboxDriver` proxies every Driver op through `SandboxBackend.invoke`
+ *     using the right tagged envelope.
+ *   - `DockerBackend` runs `docker run` + `docker cp` + `docker exec` against
+ *     the injected fakes and round-trips one op through the helper stdio.
+ *   - `createSandboxDriver` selects the right backend by name.
+ *   - `getCurrentDriver` consults the service config and returns either null
+ *     (yolo) or a SandboxDriver (sandbox), and is loud about misconfig.
+ *   - `resolveModeFromEnv` defaults to yolo for unknown values.
+ *
+ * No actual `child_process.spawn` happens — tests inject `spawnExec` and
+ * `runShell` fakes.
+ */
+
+import { EventEmitter } from "node:events";
+import { describe, expect, it } from "vitest";
+import { DockerBackend } from "./docker-backend.js";
+import {
+  createSandboxDriver,
+  getCurrentDriver,
+  resolveModeFromEnv,
+} from "./index.js";
+import { SandboxDriver } from "./sandbox-driver.js";
+import {
+  type SandboxBackend,
+  SandboxBackendUnavailableError,
+  type SandboxOp,
+} from "./types.js";
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+interface RecordingBackend extends SandboxBackend {
+  readonly ops: SandboxOp[];
+  startCount: number;
+  stopCount: number;
+}
+
+function makeRecordingBackend(
+  invokeImpl: (op: SandboxOp) => unknown = () => undefined,
+): RecordingBackend {
+  const ops: SandboxOp[] = [];
+  return {
+    name: "recording",
+    ops,
+    startCount: 0,
+    stopCount: 0,
+    async start() {
+      this.startCount++;
+    },
+    async stop() {
+      this.stopCount++;
+    },
+    async invoke<TResult>(op: SandboxOp): Promise<TResult> {
+      ops.push(op);
+      return invokeImpl(op) as TResult;
+    },
+  } as RecordingBackend;
+}
+
+// Minimal child-process-shaped fake for `spawnExec`. We only need stdout +
+// stdin + stderr; the backend reads `.stdout.on('data', ...)` and writes
+// to `.stdin.write(...)`.
+class FakeChildProcess extends EventEmitter {
+  stdin = {
+    written: [] as string[],
+    write(chunk: string) {
+      this.written.push(chunk);
+      return true;
+    },
+    end() {},
+  };
+  stdout = new EventEmitter();
+  stderr = new EventEmitter();
+
+  emitStdout(line: string) {
+    this.stdout.emit("data", line);
+  }
+}
+
+// ── SandboxDriver — routing ────────────────────────────────────────────────
+
+describe("SandboxDriver", () => {
+  it("dispatches every Driver op through the backend with the right kind", async () => {
+    const backend = makeRecordingBackend((op) => {
+      if (op.kind === "screenshot") {
+        return { base64Png: Buffer.from("hi").toString("base64") };
+      }
+      if (op.kind === "list_windows") return { windows: [] };
+      if (op.kind === "list_processes") return { processes: [] };
+      if (op.kind === "run_command") {
+        return {
+          success: true,
+          output: "",
+          exitCode: 0,
+          exit_code: 0,
+        };
+      }
+      if (op.kind === "read_file") {
+        return { success: true, path: "/x", content: "" };
+      }
+      if (op.kind === "write_file") {
+        return { success: true, path: "/x" };
+      }
+      return undefined;
+    });
+    const driver = new SandboxDriver(backend);
+
+    await driver.mouseMove(1, 2);
+    await driver.mouseClick(3, 4);
+    await driver.mouseDoubleClick(5, 6);
+    await driver.mouseRightClick(7, 8);
+    await driver.mouseDrag(1, 1, 9, 9);
+    await driver.mouseScroll(0, 0, "down", 3);
+    await driver.keyboardType("hello");
+    await driver.keyboardKeyPress("Return");
+    await driver.keyboardHotkey("ctrl+c");
+    const png = await driver.screenshot();
+    const wins = await driver.listWindows();
+    await driver.focusWindow("w1");
+    const procs = await driver.listProcesses();
+    const term = await driver.runCommand("echo hi", { timeoutSeconds: 5 });
+    const r = await driver.readFile("/etc/hostname");
+    const w = await driver.writeFile("/tmp/x", "y");
+    await driver.dispose();
+
+    expect(backend.startCount).toBe(1); // started lazily, exactly once
+    expect(backend.stopCount).toBe(1);
+    expect(backend.ops.map((o) => o.kind)).toEqual([
+      "mouse_move",
+      "mouse_click",
+      "mouse_double_click",
+      "mouse_right_click",
+      "mouse_drag",
+      "mouse_scroll",
+      "keyboard_type",
+      "keyboard_key_press",
+      "keyboard_hotkey",
+      "screenshot",
+      "list_windows",
+      "focus_window",
+      "list_processes",
+      "run_command",
+      "read_file",
+      "write_file",
+    ]);
+    expect(png).toBeInstanceOf(Buffer);
+    expect(png.toString()).toBe("hi");
+    expect(wins).toEqual([]);
+    expect(procs).toEqual([]);
+    expect(term.success).toBe(true);
+    expect(r.success).toBe(true);
+    expect(w.success).toBe(true);
+  });
+
+  it("name reflects the wrapped backend", () => {
+    const driver = new SandboxDriver(makeRecordingBackend());
+    expect(driver.name).toBe("sandbox:recording");
+  });
+
+  it("does not stop a backend that was never started", async () => {
+    const backend = makeRecordingBackend();
+    const driver = new SandboxDriver(backend);
+    await driver.dispose();
+    expect(backend.startCount).toBe(0);
+    expect(backend.stopCount).toBe(0);
+  });
+});
+
+// ── SandboxDriver — lazy-boot idempotency + lifecycle races (#26516) ───────
+//
+// The driver documents its lazy boot as "Idempotent" and lets callers fire ops
+// without pre-starting. These cases pin the concurrency contract: one boot for
+// N racing first ops, no backend left running when dispose() races an in-flight
+// boot, a retry after a failed boot, and dispose-before-any-op as a no-op.
+
+/**
+ * Backend whose `start()` awaits a real (timer-backed) boot before flipping
+ * itself to running — mirrors `docker run` taking seconds. Tracks how many
+ * starts/stops were called and how many backends are currently "running" so a
+ * boot that completes after dispose() shows up as a leak.
+ */
+function makeDelayedBackend(options: {
+  bootMs?: number;
+  failStartOnce?: boolean;
+}): SandboxBackend & {
+  startCount: number;
+  stopCount: number;
+  running: number;
+} {
+  let failNext = options.failStartOnce ?? false;
+  const bootMs = options.bootMs ?? 20;
+  return {
+    name: "delayed",
+    startCount: 0,
+    stopCount: 0,
+    running: 0,
+    async start() {
+      this.startCount++;
+      await new Promise((r) => setTimeout(r, bootMs));
+      if (failNext) {
+        failNext = false;
+        throw new Error("boot failed");
+      }
+      this.running++;
+    },
+    async stop() {
+      this.stopCount++;
+      if (this.running > 0) this.running--;
+    },
+    async invoke<TResult>(op: SandboxOp): Promise<TResult> {
+      if (op.kind === "screenshot") {
+        return { base64Png: "" } as TResult;
+      }
+      return undefined as TResult;
+    },
+  };
+}
+
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
+
+describe("SandboxDriver lazy-boot idempotency (#26516)", () => {
+  it("boots exactly once when three first ops race the initial boot", async () => {
+    const backend = makeDelayedBackend({ bootMs: 20 });
+    const driver = new SandboxDriver(backend);
+
+    await Promise.all([
+      driver.mouseMove(1, 1),
+      driver.screenshot(),
+      driver.keyboardType("hi"),
+    ]);
+
+    // Before the fix each op observed started=false and called start() → 3.
+    expect(backend.startCount).toBe(1);
+    expect(backend.running).toBe(1);
+  });
+
+  it("tears the backend down when dispose() races an in-flight boot (no leak)", async () => {
+    const backend = makeDelayedBackend({ bootMs: 50 });
+    const driver = new SandboxDriver(backend);
+
+    const op = driver.mouseMove(1, 1); // triggers the 50ms boot
+    await new Promise((r) => setTimeout(r, 10)); // dispose mid-boot
+    await driver.dispose();
+    await op;
+    await new Promise((r) => setTimeout(r, 60)); // let the boot settle
+
+    // Before the fix dispose() returned early (started still false) and the
+    // in-flight boot left a backend running forever.
+    expect(backend.startCount).toBe(1);
+    expect(backend.stopCount).toBe(1);
+    expect(backend.running).toBe(0);
+  });
+
+  it("retries the boot on a later op after the first start() fails", async () => {
+    const backend = makeDelayedBackend({ bootMs: 5, failStartOnce: true });
+    const driver = new SandboxDriver(backend);
+
+    await expect(driver.mouseMove(1, 1)).rejects.toThrow("boot failed");
+    expect(backend.startCount).toBe(1);
+    expect(backend.running).toBe(0);
+
+    // The memo was cleared, so the next op starts a fresh boot that succeeds.
+    await driver.screenshot();
+    expect(backend.startCount).toBe(2);
+    expect(backend.running).toBe(1);
+  });
+
+  it("dispose() before any op never touches the backend", async () => {
+    const backend = makeDelayedBackend({ bootMs: 5 });
+    const driver = new SandboxDriver(backend);
+
+    await driver.dispose();
+
+    expect(backend.startCount).toBe(0);
+    expect(backend.stopCount).toBe(0);
+    expect(backend.running).toBe(0);
+  });
+
+  it("shares concurrent disposal and stops the backend exactly once", async () => {
+    const backend = makeDelayedBackend({ bootMs: 0 });
+    const driver = new SandboxDriver(backend);
+    await driver.screenshot();
+
+    await Promise.all([driver.dispose(), driver.dispose(), driver.dispose()]);
+
+    expect(backend.stopCount).toBe(1);
+    expect(backend.running).toBe(0);
+  });
+
+  it("waits for disposal before an arriving operation starts a fresh backend", async () => {
+    const stopEntered = deferred();
+    const releaseStop = deferred();
+    let running = false;
+    let startCount = 0;
+    let stopCount = 0;
+    const backend: SandboxBackend = {
+      name: "barrier",
+      async start() {
+        startCount++;
+        running = true;
+      },
+      async stop() {
+        stopCount++;
+        stopEntered.resolve();
+        await releaseStop.promise;
+        running = false;
+      },
+      async invoke<TResult>(): Promise<TResult> {
+        if (!running) throw new Error("invoked while stopped");
+        return { base64Png: "" } as TResult;
+      },
+    };
+    const driver = new SandboxDriver(backend);
+    await driver.screenshot();
+
+    const disposal = driver.dispose();
+    await stopEntered.promise;
+    const arrivingOperation = driver.mouseMove(2, 3);
+    await Promise.resolve();
+    expect(startCount).toBe(1);
+
+    releaseStop.resolve();
+    await disposal;
+    await arrivingOperation;
+    expect(startCount).toBe(2);
+    expect(stopCount).toBe(1);
+    expect(running).toBe(true);
+  });
+
+  it("drains an active operation before stopping its backend", async () => {
+    const invokeEntered = deferred();
+    const releaseInvoke = deferred();
+    let running = false;
+    let stopCount = 0;
+    const backend: SandboxBackend = {
+      name: "leased",
+      async start() {
+        running = true;
+      },
+      async stop() {
+        stopCount++;
+        running = false;
+      },
+      async invoke<TResult>(): Promise<TResult> {
+        if (!running) throw new Error("invoked while stopped");
+        invokeEntered.resolve();
+        await releaseInvoke.promise;
+        if (!running) throw new Error("stopped during invoke");
+        return undefined as TResult;
+      },
+    };
+    const driver = new SandboxDriver(backend);
+
+    const operation = driver.mouseMove(4, 5);
+    await invokeEntered.promise;
+    const disposal = driver.dispose();
+    await Promise.resolve();
+    expect(stopCount).toBe(0);
+
+    releaseInvoke.resolve();
+    await operation;
+    await disposal;
+    expect(stopCount).toBe(1);
+    expect(running).toBe(false);
+  });
+});
+
+// ── DockerBackend — start + invoke + stop with fake spawn ───────────────
+
+describe("DockerBackend", () => {
+  it("runs docker run + cp + exec on start, round-trips a JSON op, and rm on stop", async () => {
+    const shellCalls: { binary: string; args: string[] }[] = [];
+    const runShell = async (binary: string, args: string[]) => {
+      shellCalls.push({ binary, args });
+      if (args[0] === "run") {
+        return { stdout: "container-abc\n", stderr: "", code: 0 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+
+    let spawnCount = 0;
+    const child = new FakeChildProcess();
+    const spawnExec = (_binary: string, _args: string[]) => {
+      spawnCount++;
+      return child as unknown as ReturnType<typeof spawnExecSentinel>;
+    };
+
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      env: { DISPLAY: ":99" },
+      runShell,
+      spawnExec,
+    });
+
+    await backend.start();
+    expect(spawnCount).toBe(1);
+    const startCommands = shellCalls.map((c) => c.args[0]);
+    expect(startCommands).toContain("run");
+    expect(startCommands).toContain("cp");
+
+    const runArgs = shellCalls.find((c) => c.args[0] === "run")?.args;
+    expect(runArgs).toBeDefined();
+    expect(runArgs).toContain("cua/linux:latest");
+    expect(runArgs).toContain("-e");
+    expect(runArgs).toContain("DISPLAY=:99");
+
+    const cpArgs = shellCalls.find((c) => c.args[0] === "cp")?.args;
+    expect(cpArgs).toBeDefined();
+    expect(cpArgs[2]).toBe("container-abc:/tmp/computeruse-sandbox-helper.py");
+
+    const invokePromise = backend.invoke<{ base64Png: string }>({
+      kind: "screenshot",
+    });
+    const written = child.stdin.written.join("");
+    expect(written).toContain('"kind":"screenshot"');
+    child.emitStdout(
+      `${JSON.stringify({ ok: true, result: { base64Png: "AAA=" } })}\n`,
+    );
+    const result = await invokePromise;
+    expect(result.base64Png).toBe("AAA=");
+
+    await backend.stop();
+    expect(shellCalls.some((c) => c.args[0] === "rm")).toBe(true);
+  });
+
+  it("rejects pending invokes with SandboxInvocationError when helper exits", async () => {
+    const runShell = async (_binary: string, args: string[]) => {
+      if (args[0] === "run") {
+        return { stdout: "container-abc\n", stderr: "", code: 0 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+    const child = new FakeChildProcess();
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell,
+      spawnExec: () => child as unknown as ReturnType<typeof spawnExecSentinel>,
+    });
+    await backend.start();
+    const pending = backend.invoke({ kind: "mouse_move", x: 1, y: 2 });
+    child.emit("close", 137);
+    await expect(pending).rejects.toThrow(/Helper exited/);
+  });
+
+  it("throws SandboxBackendUnavailableError if docker run fails", async () => {
+    const runShell = async () => ({
+      stdout: "",
+      stderr: "Cannot connect to the Docker daemon",
+      code: 1,
+    });
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell,
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await expect(backend.start()).rejects.toBeInstanceOf(
+      SandboxBackendUnavailableError,
+    );
+  });
+
+  it("concurrent start() calls spawn exactly one container (#26516)", async () => {
+    let runCount = 0;
+    const runShell = async (_binary: string, args: string[]) => {
+      if (args[0] === "run") {
+        runCount++;
+        // Mirror `docker run` taking time to resolve, widening the race
+        // window that used to spawn (and leak) N containers.
+        await new Promise((r) => setTimeout(r, 20));
+        return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+      }
+      return { stdout: "", stderr: "", code: 0 };
+    };
+    const child = new FakeChildProcess();
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell,
+      spawnExec: () => child as unknown as ReturnType<typeof spawnExecSentinel>,
+    });
+
+    await Promise.all([backend.start(), backend.start(), backend.start()]);
+
+    // Before the fix each concurrent start observed containerId=null and ran
+    // `docker run`, leaking two of the three containers.
+    expect(runCount).toBe(1);
+
+    await backend.stop();
+  });
+
+  it("stop during docker run waits for boot and removes the resulting container", async () => {
+    const runEntered = deferred();
+    const releaseRun = deferred();
+    const removed: string[] = [];
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runEntered.resolve();
+          await releaseRun.promise;
+          return { stdout: "container-racing\n", stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") removed.push(args[2] ?? "");
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+
+    const start = backend.start();
+    await runEntered.promise;
+    const stop = backend.stop();
+    releaseRun.resolve();
+    await start;
+    await stop;
+
+    expect(removed).toEqual(["container-racing"]);
+  });
+
+  it("shares concurrent stop calls and removes the container once", async () => {
+    let removeCount = 0;
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          return { stdout: "container-once\n", stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") removeCount++;
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await backend.start();
+
+    await Promise.all([backend.stop(), backend.stop(), backend.stop()]);
+
+    expect(removeCount).toBe(1);
+  });
+
+  it("start during stop waits for removal before creating a fresh container", async () => {
+    const removeEntered = deferred();
+    const releaseRemove = deferred();
+    let runCount = 0;
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runCount++;
+          return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") {
+          removeEntered.resolve();
+          await releaseRemove.promise;
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await backend.start();
+
+    const stop = backend.stop();
+    await removeEntered.promise;
+    const restart = backend.start();
+    await Promise.resolve();
+    expect(runCount).toBe(1);
+    releaseRemove.resolve();
+    await stop;
+    await restart;
+    expect(runCount).toBe(2);
+    await backend.stop();
+  });
+
+  it("removes a created container when helper copy fails, then permits retry", async () => {
+    let runCount = 0;
+    let copyCount = 0;
+    const removed: string[] = [];
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runCount++;
+          return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+        }
+        if (args[0] === "cp") {
+          copyCount++;
+          if (copyCount === 1) {
+            return { stdout: "", stderr: "copy failed", code: 1 };
+          }
+        }
+        if (args[0] === "rm") removed.push(args[2] ?? "");
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+
+    await expect(backend.start()).rejects.toThrow("docker cp helper failed");
+    expect(removed).toEqual(["container-1"]);
+    await backend.start();
+    expect(runCount).toBe(2);
+    await backend.stop();
+  });
+
+  it("retains container identity when removal fails and requires cleanup retry", async () => {
+    let runCount = 0;
+    let removeCount = 0;
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async (_binary, args) => {
+        if (args[0] === "run") {
+          runCount++;
+          return { stdout: `container-${runCount}\n`, stderr: "", code: 0 };
+        }
+        if (args[0] === "rm") {
+          removeCount++;
+          if (removeCount === 1) {
+            return { stdout: "", stderr: "daemon unavailable", code: 1 };
+          }
+        }
+        return { stdout: "", stderr: "", code: 0 };
+      },
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await backend.start();
+
+    await expect(backend.stop()).rejects.toThrow("docker rm failed");
+    await expect(backend.start()).rejects.toThrow(
+      "retained without a live helper",
+    );
+    expect(runCount).toBe(1);
+    await backend.stop();
+    await backend.start();
+    expect(runCount).toBe(2);
+    await backend.stop();
+  });
+
+  it("invoke before start throws SandboxInvocationError", async () => {
+    const backend = new DockerBackend({
+      image: "cua/linux:latest",
+      runShell: async () => ({ stdout: "", stderr: "", code: 0 }),
+      spawnExec: () =>
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
+    });
+    await expect(
+      backend.invoke({ kind: "mouse_move", x: 0, y: 0 }),
+    ).rejects.toThrow(/not started/);
+  });
+});
+
+// `spawnExec` returns a `ChildProcessWithoutNullStreams` in production. The
+// test fakes only the surface the backend reads/writes; this sentinel keeps
+// TypeScript happy without importing node-internal types here.
+declare function spawnExecSentinel(): import("node:child_process").ChildProcessWithoutNullStreams;
+
+// ── createSandboxDriver — backend selection ────────────────────────────────
+
+describe("createSandboxDriver", () => {
+  it("selects the docker backend when backend='docker'", () => {
+    const driver = createSandboxDriver({
+      backend: "docker",
+      image: "cua/linux:latest",
+      dockerOverrides: {
+        runShell: async () => ({ stdout: "", stderr: "", code: 0 }),
+        spawnExec: () =>
+          new FakeChildProcess() as unknown as ReturnType<
+            typeof spawnExecSentinel
+          >,
+      },
+    });
+    expect(driver).toBeInstanceOf(SandboxDriver);
+    expect(driver.name).toBe("sandbox:docker");
+  });
+
+  it("uses backendOverride when provided (test-only)", () => {
+    const backend = makeRecordingBackend();
+    const driver = createSandboxDriver({
+      backend: "docker",
+      image: "ignored",
+      backendOverride: backend,
+    });
+    expect(driver.name).toBe("sandbox:recording");
+  });
+
+  it("throws for an unknown backend name", () => {
+    expect(() =>
+      createSandboxDriver({
+        backend: "bogus" as unknown as "docker",
+        image: "cua/linux:latest",
+      }),
+    ).toThrowError(SandboxBackendUnavailableError);
+  });
+});
+
+// ── getCurrentDriver — mode selection seam ─────────────────────────────────
+
+interface FakeService {
+  getConfig(): {
+    mode: "yolo" | "sandbox";
+    sandbox?: { backend: "docker"; image: string };
+  };
+}
+
+function fakeRuntime(service: FakeService | null): {
+  getService: <T>(_t: string) => T | null;
+} {
+  return {
+    getService: <T>(_t: string) => service as T | null,
+  };
+}
+
+describe("getCurrentDriver", () => {
+  it("returns null when mode='yolo' (legacy host path)", () => {
+    const runtime = fakeRuntime({
+      getConfig: () => ({ mode: "yolo" }),
+    });
+    expect(
+      getCurrentDriver(
+        runtime as unknown as Parameters<typeof getCurrentDriver>[0],
+      ),
+    ).toBeNull();
+  });
+
+  it("returns null when no ComputerUseService is registered", () => {
+    expect(
+      getCurrentDriver(
+        fakeRuntime(null) as unknown as Parameters<typeof getCurrentDriver>[0],
+      ),
+    ).toBeNull();
+  });
+
+  it("throws SandboxBackendUnavailableError if mode='sandbox' but no sandbox config", () => {
+    const runtime = fakeRuntime({
+      getConfig: () => ({ mode: "sandbox" }),
+    });
+    expect(() =>
+      getCurrentDriver(
+        runtime as unknown as Parameters<typeof getCurrentDriver>[0],
+      ),
+    ).toThrowError(SandboxBackendUnavailableError);
+  });
+});
+
+// ── resolveModeFromEnv ─────────────────────────────────────────────────────
+
+describe("resolveModeFromEnv", () => {
+  it("defaults to yolo when undefined", () => {
+    expect(resolveModeFromEnv(undefined)).toBe("yolo");
+  });
+  it("defaults to yolo for empty string", () => {
+    expect(resolveModeFromEnv("")).toBe("yolo");
+  });
+  it("defaults to yolo for unknown values", () => {
+    expect(resolveModeFromEnv("garbage")).toBe("yolo");
+  });
+  it("returns sandbox when 'sandbox'", () => {
+    expect(resolveModeFromEnv("sandbox")).toBe("sandbox");
+  });
+});

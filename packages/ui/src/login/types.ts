@@ -1,0 +1,611 @@
+/** Defines the React login context and host presentation contracts. */
+import type {
+  AgentBalance,
+  AgentIdentity,
+  ChainFamily,
+  LoginClient,
+  LoginProviders as LoginProvidersState,
+  LoginTenantMembership,
+  PolicyResult,
+  PolicyRule,
+  PolicyType,
+  TxRecord,
+  TxStatus,
+  UserAccountsResult,
+  UserAccountUnlinkResult,
+  UserLinkedAccount,
+} from "@elizaos/auth";
+
+// ─── Tenant Configuration Types ───
+
+export type PolicyExposure = "visible" | "hidden" | "enforced";
+
+export type PolicyExposureConfig = Partial<Record<PolicyType, PolicyExposure>>;
+
+export interface CustomizableField {
+  path: string;
+  label: string;
+  description: string;
+  type: "currency" | "number" | "toggle" | "address-list" | "chain-select";
+  default: unknown;
+  min?: unknown;
+  max?: unknown;
+}
+
+export interface PolicyTemplate {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  policies: PolicyRule[];
+  customizableFields: CustomizableField[];
+}
+
+export interface SecretRoutePreset {
+  id: string;
+  name: string;
+  hostPattern: string;
+  pathPattern: string;
+  injectAs: "header" | "query" | "bearer";
+  injectKey: string;
+  injectFormat: string;
+  provisioning: "platform" | "user";
+  platformSecretId?: string;
+}
+
+export interface ApprovalNotificationChannel {
+  type: "webhook" | "email" | "in-app";
+  config: Record<string, string>;
+}
+
+export interface ApproverConfig {
+  mode: "owner" | "tenant-admin" | "list";
+  allowedApprovers?: string[];
+}
+
+export interface ApprovalConfig {
+  notificationChannels: ApprovalNotificationChannel[];
+  autoExpireSeconds: number;
+  approvers: ApproverConfig;
+  approvalWebhookUrl?: string;
+  webhookCallbackEnabled: boolean;
+}
+
+export interface TenantTheme {
+  primaryColor: string;
+  accentColor: string;
+  backgroundColor: string;
+  surfaceColor: string;
+  textColor: string;
+  mutedColor: string;
+  successColor: string;
+  errorColor: string;
+  warningColor: string;
+  borderRadius: number;
+  fontFamily?: string;
+  colorScheme: "light" | "dark" | "system";
+  logoUrl?: string;
+  faviconUrl?: string;
+}
+
+export interface TenantFeatureFlags {
+  showFundingQR: boolean;
+  showTransactionHistory: boolean;
+  showSpendDashboard: boolean;
+  showPolicyControls: boolean;
+  showApprovalQueue: boolean;
+  showSecretManager: boolean;
+  enableSolana: boolean;
+  showChainSelector: boolean;
+  allowAddressExport: boolean;
+}
+
+export interface TenantControlPlaneConfig {
+  tenantId: string;
+  displayName: string;
+  exposedPolicies: PolicyExposureConfig;
+  policyTemplates: PolicyTemplate[];
+  secretRoutePresets: SecretRoutePreset[];
+  approvalConfig: ApprovalConfig;
+  theme?: TenantTheme;
+  features: TenantFeatureFlags;
+}
+
+// ─── Component Data Types ───
+
+export interface AgentDashboardResponse {
+  agent: AgentIdentity;
+  balances: {
+    evm?: {
+      native: string;
+      nativeFormatted: string;
+      chainId: number;
+      symbol: string;
+    };
+    solana?: {
+      native: string;
+      nativeFormatted: string;
+      chainId: number;
+      symbol: string;
+    };
+  };
+  spend: {
+    today: string;
+    thisWeek: string;
+    thisMonth: string;
+    todayFormatted: string;
+    thisWeekFormatted: string;
+    thisMonthFormatted: string;
+  };
+  policies: PolicyRule[];
+  pendingApprovals: number;
+  recentTransactions: TxRecord[];
+}
+
+export interface ApprovalQueueEntry {
+  id: string;
+  agentId: string;
+  txId: string;
+  status: "pending" | "approved" | "rejected";
+  to: string;
+  value: string;
+  chainId: number;
+  policyResults: PolicyResult[];
+  createdAt: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+// ─── Provider Types ───
+
+export interface LoginProviderProps {
+  client: LoginClient;
+  agentId: string;
+  features?: Partial<TenantFeatureFlags>;
+  theme?: Partial<TenantTheme>;
+  pollInterval?: number;
+  children: React.ReactNode;
+}
+
+export interface LoginContextValue {
+  client: LoginClient;
+  agentId: string;
+  features: TenantFeatureFlags;
+  theme: TenantTheme;
+  tenantConfig: TenantControlPlaneConfig | null;
+  isLoading: boolean;
+  pollInterval: number;
+}
+
+export interface LoginLinkedAccountsProps {
+  showPrimaryLoginMethods?: boolean;
+  showLinkedAccounts?: boolean;
+  showPhoneLinking?: boolean;
+  showWalletLinking?: boolean;
+  showOAuthLinking?: boolean;
+  showSocialLinking?: boolean;
+  oauthProviders?: string[];
+  oauthRedirectUri?: string;
+  onOAuthLinkRequest?: (
+    provider: string,
+    challenge: {
+      state: string;
+      redirectUri: string;
+      expiresIn: number;
+    },
+  ) => Promise<{
+    code: string;
+    redirectUri?: string;
+    state?: string;
+    codeVerifier?: string;
+  } | null>;
+  ethereumWallet?: {
+    address: string;
+    signMessage: (message: string) => Promise<string>;
+  };
+  solanaWallet?: {
+    publicKey: string;
+    /**
+     * Sign the exact challenge message and return the encoded signature string
+     * expected by the elizaOS API.
+     */
+    signMessage: (message: string) => Promise<string>;
+  };
+  onTelegramLinkRequest?: (
+    challengeId: string,
+  ) => Promise<Record<string, unknown> | null>;
+  onFarcasterLinkRequest?: (nonce: string) => Promise<{
+    message: string;
+    signature: string;
+    custodyAddress?: string;
+    address?: string;
+    fid?: string | number;
+    username?: string;
+    displayName?: string;
+    pfpUrl?: string;
+    pfp?: string;
+  } | null>;
+  allowUnlink?: boolean;
+  className?: string;
+  onLoaded?: (result: UserAccountsResult) => void;
+  onLink?: (account: UserLinkedAccount) => void;
+  onUnlink?: (
+    account: UserLinkedAccount,
+    result: UserAccountUnlinkResult,
+  ) => void;
+  onError?: (error: Error) => void;
+}
+
+// Re-export SDK types consumers will need
+export type {
+  AgentBalance,
+  AgentIdentity,
+  ChainFamily,
+  LoginClient,
+  PolicyResult,
+  PolicyRule,
+  PolicyType,
+  TxRecord,
+  TxStatus,
+};
+
+// ─── Multi-Tenant Types ───
+
+export type { LoginTenantMembership } from "@elizaos/auth";
+
+// ─── Auth Types ───
+
+export type {
+  LoginGuestState,
+  LoginProviders as LoginProvidersState,
+  LoginSession,
+  LoginUser,
+  SessionStorage,
+  UserAccountsResult,
+  UserAccountUnlinkResult,
+  UserLinkedAccount,
+} from "@elizaos/auth";
+
+export interface LoginAuthConfig {
+  baseUrl: string;
+  storage?: import("@elizaos/auth").SessionStorage;
+  tenantId?: string;
+  /**
+   * Optional same-origin auth proxy prefix (e.g. "/api/auth") that keeps the
+   * long-lived refresh token in an HttpOnly cookie instead of JS-readable
+   * storage. Forwarded to the SDK — see `LoginAuthConfig.authProxyUrl`.
+   */
+  authProxyUrl?: string;
+}
+
+export interface LoginAuthContextValue {
+  isAuthenticated: boolean;
+  isLoading: boolean;
+  user: import("@elizaos/auth").LoginUser | null;
+  session: import("@elizaos/auth").LoginSession | null;
+  /** Available auth providers (auto-fetched on mount) */
+  providers: LoginProvidersState | null;
+  /** Whether providers are still loading */
+  isProvidersLoading: boolean;
+  /** Current guest lifecycle state, including 30-day expiry messaging. */
+  guestState: import("@elizaos/auth").LoginGuestState;
+  signOut: () => void | Promise<void>;
+  /** Create a bounded guest account session. */
+  signInAsGuest: (
+    options?: import("@elizaos/auth").LoginGuestSignInOptions,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  /** Upgrade the current guest with a verified email magic-link token. */
+  upgradeGuestWithEmail: (
+    input: import("@elizaos/auth").LoginGuestUpgradeEmailInput,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Delete the current guest account server-side and clear local session state. */
+  deleteGuest: () => Promise<import("@elizaos/auth").LoginGuestDeleteResult>;
+  getToken: () => string | null;
+  /** Sign in with a passkey (WebAuthn). Browser-only. */
+  signInWithPasskey: (
+    email: string,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /**
+   * Register an additional passkey for the current email on this device /
+   * relying party. Use after a successful magic-link or OAuth sign-in to
+   * upgrade the user to one-tap passkey login on this domain. Browser-only.
+   */
+  addPasskey: (
+    email: string,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Send a magic link email. */
+  signInWithEmail: (
+    email: string,
+    captchaToken?: string,
+  ) => Promise<import("@elizaos/auth").LoginEmailResult>;
+  /** Send an SMS one-time passcode. */
+  sendSmsOtp: (
+    phone: string,
+    captchaToken?: string,
+  ) => Promise<import("@elizaos/auth").LoginSmsOtpResult>;
+  /** Verify an SMS one-time passcode. */
+  verifySmsOtp: (
+    phone: string,
+    code: string,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Send a WhatsApp one-time passcode through the configured provider adapter. */
+  sendWhatsAppOtp: (
+    phone: string,
+    captchaToken?: string,
+  ) => Promise<import("@elizaos/auth").LoginWhatsAppOtpResult>;
+  /** Verify a WhatsApp one-time passcode. */
+  verifyWhatsAppOtp: (
+    phone: string,
+    code: string,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Verify a magic link callback token. */
+  verifyEmailCallback: (
+    token: string,
+    email: string,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Sign in with an Ethereum wallet via SIWE. */
+  signInWithSIWE: (
+    address: string,
+    signMessage: (msg: string) => Promise<string>,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /**
+   * Sign in with a Solana wallet via SIWS (Sign-In With Solana).
+   * Optional: present only when the underlying SDK supports it. When undefined,
+   * Solana wallet sign-in is disabled at runtime.
+   */
+  signInWithSolana?: (
+    publicKey: string,
+    signMessage: (msg: Uint8Array) => Promise<Uint8Array>,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Sign in with an OAuth provider (Google, Discord, etc.) */
+  signInWithOAuth: (
+    provider: string,
+    config?: { redirectUri?: string; tenantId?: string },
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Verify a Telegram Login Widget payload and create a elizaOS session. */
+  signInWithTelegram: (
+    payload: import("@elizaos/auth").LoginTelegramLoginPayload,
+    config?: import("@elizaos/auth").LoginTelegramLoginConfig,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  /** Verify a Farcaster SIWF payload and create a elizaOS session. */
+  signInWithFarcaster: (
+    payload: import("@elizaos/auth").LoginFarcasterLoginPayload,
+    config?: import("@elizaos/auth").LoginFarcasterLoginConfig,
+  ) => Promise<
+    | import("@elizaos/auth").LoginAuthResult
+    | import("@elizaos/auth").LoginMfaRequiredResult
+  >;
+  getIdentityToken: () => Promise<
+    import("@elizaos/auth").LoginIdentityTokenResult
+  >;
+  getTotpStatus: () => Promise<import("@elizaos/auth").LoginTotpStatus>;
+  enrollTotp: () => Promise<import("@elizaos/auth").LoginTotpEnrollResult>;
+  verifyTotp: (
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginTotpVerifyResult>;
+  completeTotpMfa: (
+    challengeId: string,
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  completeRecoveryCodeMfa: (
+    challengeId: string,
+    recoveryCode: string,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  stepUpWithTotp: (
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  stepUpWithRecoveryCode: (
+    recoveryCode: string,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  getRecoveryCodeStatus: () => Promise<
+    import("@elizaos/auth").LoginRecoveryCodeStatus
+  >;
+  regenerateRecoveryCodes: (
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginRecoveryCodesResult>;
+  unenrollTotp: (code: string) => Promise<{ ok: boolean }>;
+  getSmsMfaStatus: () => Promise<import("@elizaos/auth").LoginSmsMfaStatus>;
+  enrollSmsMfa: (
+    phone: string,
+  ) => Promise<import("@elizaos/auth").LoginSmsMfaEnrollResult>;
+  verifySmsMfa: (
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginSmsMfaVerifyResult>;
+  sendSmsMfaCode: () => Promise<
+    import("@elizaos/auth").LoginSmsMfaEnrollResult
+  >;
+  completeSmsMfa: (
+    challengeId: string,
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  stepUpWithSms: (
+    code: string,
+  ) => Promise<import("@elizaos/auth").LoginAuthResult>;
+  completePasskeyMfa: () => Promise<import("@elizaos/auth").LoginAuthResult>;
+  unenrollSmsMfa: (code: string) => Promise<{ ok: boolean }>;
+  // ─── Multi-Tenant ───
+  /** Currently active tenant ID from session */
+  activeTenantId: string | null;
+  /** Cached list of user's tenant memberships (null = not fetched yet) */
+  tenants: LoginTenantMembership[] | null;
+  /** Whether tenant list is currently being fetched */
+  isTenantsLoading: boolean;
+  /** Fetch or refresh the user's tenant memberships */
+  listTenants: () => Promise<LoginTenantMembership[]>;
+  /** Switch the active tenant context. Returns true on success. */
+  switchTenant: (tenantId: string) => Promise<boolean>;
+  /** Join a tenant (if open join mode). Returns the new membership. */
+  joinTenant: (tenantId: string) => Promise<LoginTenantMembership>;
+  /** Leave a tenant. Cannot leave personal tenant. */
+  leaveTenant: (tenantId: string) => Promise<void>;
+}
+
+// ─── Auth Component Props ───
+
+export interface LoginFormProps {
+  onSuccess?: (
+    result:
+      | { token: string; user: import("@elizaos/auth").LoginUser }
+      | import("@elizaos/auth").LoginMfaRequiredResult,
+  ) => void;
+  onError?: (error: Error) => void;
+  showPasskey?: boolean;
+  showEmail?: boolean;
+  showSms?: boolean;
+  showWhatsApp?: boolean;
+  /**
+   * Hosted/default guest lifecycle controls.
+   *
+   * When enabled, signed-out users can start a bounded guest session, and
+   * signed-in guests see expiry, email-token upgrade, and delete controls.
+   */
+  showGuest?: boolean;
+  guestSignInLabel?: string;
+  guestUpgradeLabel?: string;
+  guestDeleteLabel?: string;
+  guestEmailPlaceholder?: string;
+  guestTokenPlaceholder?: string;
+  onGuestDeleted?: (
+    result: import("@elizaos/auth").LoginGuestDeleteResult,
+  ) => void;
+  /**
+   * First-class wallet sign-in (SIWE / SIWS).
+   *
+   * - `true`  - render both EVM and Solana wallet panels (subject to provider feature-detect).
+   * - `false` (default) - hide both.
+   * - `{ evm: true }` - only EVM.
+   * - `{ solana: true }` - only Solana.
+   *
+   * Backend feature flags from `GET /v1/auth/providers` (`siwe`, `siws`) act
+   * as a hard gate: if the backend reports `siwe: false`, the EVM button is
+   * hidden regardless of this prop.
+   *
+   * Requires the consumer to wrap the app in the matching wallet provider
+   * (see `EVMWalletProvider` and `SolanaWalletProvider` from `@elizaos/ui`).
+   */
+  showWallets?: boolean | { evm?: boolean; solana?: boolean };
+  showGoogle?: boolean;
+  showDiscord?: boolean;
+  showGithub?: boolean;
+  showTwitter?: boolean;
+  /**
+   * Show Telegram login when the API reports Telegram is enabled.
+   * Provide `getTelegramLoginPayload` from Telegram's official login widget
+   * callback; the component exchanges that signed payload with elizaOS.
+   */
+  showTelegram?: boolean;
+  getTelegramLoginPayload?: () =>
+    | import("@elizaos/auth").LoginTelegramLoginPayload
+    | Promise<import("@elizaos/auth").LoginTelegramLoginPayload>;
+  /**
+   * Show Farcaster login when the API reports Farcaster is enabled.
+   * Provide `getFarcasterLoginPayload` from a SIWF-capable client flow.
+   */
+  showFarcaster?: boolean;
+  getFarcasterLoginPayload?: () =>
+    | import("@elizaos/auth").LoginFarcasterLoginPayload
+    | Promise<import("@elizaos/auth").LoginFarcasterLoginPayload>;
+  /** "card" adds bg/border/padding wrapper; "inline" renders with no container styling */
+  variant?: "card" | "inline";
+  /** Custom logo element rendered at top of the login widget */
+  logo?: React.ReactNode;
+  /** Title text (e.g. "sign in", "welcome back"). */
+  title?: string;
+  /** Subtitle text below the title */
+  subtitle?: string;
+  /** Called when an OAuth provider button is clicked (for custom handling) */
+  onProviderClick?: (provider: string) => void;
+  /** Tenant ID to authenticate against (passed through to sign-in methods) */
+  tenantId?: string;
+  className?: string;
+}
+
+export interface LoginAuthGuardProps {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+  loadingFallback?: React.ReactNode;
+}
+
+export interface LoginUserButtonProps {
+  className?: string;
+  onSignOut?: () => void;
+  showWallet?: boolean;
+  avatarSize?: number;
+  /** Show an inline tenant switcher in the dropdown (default: false) */
+  showTenantSwitcher?: boolean;
+}
+
+export interface LoginEmailCallbackProps {
+  onSuccess?: (
+    result:
+      | { token: string; user: import("@elizaos/auth").LoginUser }
+      | import("@elizaos/auth").LoginMfaRequiredResult,
+  ) => void;
+  onError?: (error: Error) => void;
+  redirectTo?: string;
+}
+
+export interface LoginOAuthCallbackProps {
+  onSuccess?: (
+    result:
+      | { token: string; user: import("@elizaos/auth").LoginUser }
+      | { code: string; state: string },
+  ) => void;
+  onError?: (error: Error) => void;
+  redirectTo?: string;
+  provider?: string;
+}
+
+export interface LoginMfaChallengeProps {
+  challenge: import("@elizaos/auth").LoginMfaRequiredResult["mfa"];
+  onSuccess?: (result: import("@elizaos/auth").LoginAuthResult) => void;
+  onError?: (error: Error) => void;
+  allowRecoveryCode?: boolean;
+  className?: string;
+}
+
+export interface LoginMfaSettingsProps {
+  onRecoveryCodes?: (codes: string[]) => void;
+  onError?: (error: Error) => void;
+  className?: string;
+}
+
+// ─── Tenant Picker Props ───
+
+export interface LoginTenantPickerProps {
+  /** Callback after a tenant switch completes */
+  onSwitch?: (tenantId: string) => void;
+  /** Display variant: "dropdown" (compact, click to expand) or "list" (always visible) */
+  variant?: "dropdown" | "list";
+  className?: string;
+}

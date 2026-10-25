@@ -1,0 +1,54 @@
+/**
+ * Shared helper for the trust capability that decides whether a message sender
+ * should be treated as trusted-admin context: true when they match the
+ * configured OWNER_ENTITY_ID or when they hold ADMIN/OWNER role in the resolved
+ * world. Consumed by the securityStatus provider to bypass adversarial-input
+ * gating for admins.
+ */
+import {
+  ChannelType,
+  createUniqueUuid,
+  type IAgentRuntime,
+  type Memory,
+  Role,
+  type State,
+  type UUID,
+} from "@elizaos/core";
+
+export async function resolveAdminContext(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state?: State,
+): Promise<boolean> {
+  const ownerEntityId = runtime.getSetting("OWNER_ENTITY_ID");
+  if (ownerEntityId && message.entityId === ownerEntityId) {
+    return true;
+  }
+
+  const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
+  if (!room) {
+    return false;
+  }
+
+  if (room.type !== ChannelType.GROUP) {
+    return false;
+  }
+
+  const configuredWorldId = runtime.getSetting("WORLD_ID");
+  const worldId =
+    (typeof room.worldId === "string" && room.worldId) ||
+    (typeof configuredWorldId === "string" && configuredWorldId) ||
+    (room.messageServerId
+      ? createUniqueUuid(runtime, room.messageServerId)
+      : undefined);
+
+  if (!worldId) {
+    return false;
+  }
+
+  const world = await runtime.getWorld(worldId as UUID);
+  const roles =
+    (world?.metadata?.roles as Record<string, string> | undefined) ?? {};
+  const role = roles[message.entityId];
+  return role === Role.ADMIN || role === Role.OWNER;
+}

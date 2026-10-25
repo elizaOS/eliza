@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <link rel="stylesheet" href="{{url_for('static', filename='style.css')}}">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.0.3/css/font-awesome.css	">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.bundle.min.js"></script>
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <div class="container py-5">
+      <div class="row top-buffer">
+        <div class="col-sm-6">
+          <div id="instruction-text" class="text-center">
+            <h4>Instruction:<br>{{ instruction_text }}</h4>
+          </div>
+        </div>
+      </div>
+      <div class="row top-buffer">
+        <form method="post" action="{{url_for('index', session_id=session_id)}}">
+          <button type="submit" class="btn btn-success">Back to Search</button>
+        </form>
+      </div>
+      <div class="row top-buffer">
+        <form method="post" action="{{url_for('item_page', session_id=session_id, asin=asin, keywords=keywords, page=page, options=options)}}">
+          <button type="submit" class="btn btn-primary">&lt; Prev</button>
+        </form>
+      </div>
+      <div class="row top-buffer">
+        <div class="col-md-12">
+          <div class="row top-buffer">
+            <div class="col-sm-6" name="description">
+              <div class="card card-body">
+                <p class="product-info">{{product_info.Description}}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

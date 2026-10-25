@@ -1,0 +1,617 @@
+// Coordinates cloud service engine behavior behind route handlers.
+import { createHash } from "node:crypto";
+import { ApiError } from "../../api/errors";
+import {
+  requireAuth,
+  requireAuthOrApiKey,
+  requireAuthOrApiKeyWithOrg,
+  requireAuthWithOrg,
+} from "../../auth";
+import { cache } from "../../cache/client";
+import { withRateLimit } from "../../middleware/rate-limit";
+import { logger } from "../../utils/logger";
+import { reserveAllowanceEligibleCredits } from "../allowance-first-credits";
+import { InsufficientCreditsError } from "../credits";
+import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
+import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
+import {
+  type InferenceCredentialCheck,
+  InferenceCredentialRevocationUnavailableError,
+  InferenceCredentialRevokedError,
+  inferenceCredentialRevocationReason,
+} from "../inference-credential-revocation";
+import {
+  admitOrganizationInference,
+  InferenceAdmissionUnavailableError,
+} from "../organization-inference-admission";
+import { usageService } from "../usage";
+import { PricingNotFoundError } from "./pricing";
+import type {
+  AuthLevel,
+  HandlerResult,
+  ProxyRequestBody,
+  ServiceConfig,
+  ServiceHandler,
+} from "./types";
+
+type CachedProxyResponse = {
+  body: string;
+  status: number;
+  headers: Record<string, string>;
+  cachedAt: number;
+  ttl?: number;
+};
+
+interface ProxyResolvedAuth {
+  auth: {
+    user: { id: string; organization_id: string };
+    apiKey?: { id: string };
+  };
+  requestId: string;
+}
+
+/**
+ * Carries the route boundary's single caller-standing decision into the proxy
+ * engine. Worker requests use the combined snapshot and durable admission;
+ * local compatibility callers remain explicitly pre-resolved and therefore
+ * never trigger a second authentication read inside the engine.
+ */
+export type ProxyCombinedAdmission =
+  | (ProxyResolvedAuth & {
+      mode: "combined";
+      admissionSnapshot: InferenceAdmissionSnapshot;
+      executionCtx: { waitUntil(promise: Promise<unknown>): void };
+      credential?: InferenceCredentialCheck;
+      credentialForAdmission?: () => InferenceCredentialCheck | undefined;
+    })
+  | (ProxyResolvedAuth & {
+      mode: "compatibility";
+    });
+
+interface ProxySettlement {
+  settle(actualCostUsd: number): Promise<unknown>;
+  settleUnknown(): Promise<unknown>;
+  markProviderDispatched?(): Promise<void>;
+}
+
+function retainProxySettlement(
+  settlement: Promise<unknown>,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  context: { serviceId: string; operation: string },
+): Promise<void> {
+  const observed = settlement.then(
+    () => undefined,
+    (error) => {
+      // error-policy:J7 provider settlement is a detached accounting update;
+      // the response boundary has already committed and the durable admission
+      // lease remains the recovery authority.
+      logger.error("[Proxy Engine] Deferred settlement failed", {
+        ...context,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    },
+  );
+  if (executionCtx) executionCtx.waitUntil(observed);
+  return observed;
+}
+
+async function getAuthForLevel(request: Request, level: AuthLevel) {
+  switch (level) {
+    case "session":
+      return { user: await requireAuth(request) };
+    case "sessionWithOrg":
+      return { user: await requireAuthWithOrg(request) };
+    case "apiKey":
+      return await requireAuthOrApiKey(request);
+    case "apiKeyWithOrg":
+      return await requireAuthOrApiKeyWithOrg(request);
+  }
+
+  const exhaustiveCheck: never = level;
+  throw new Error(`Unsupported auth level: ${exhaustiveCheck}`);
+}
+
+function buildCacheKey(
+  serviceId: string,
+  orgId: string,
+  body: ProxyRequestBody,
+  searchParams: URLSearchParams,
+): string {
+  const contentHash = createHash("sha256")
+    .update(JSON.stringify(body) + searchParams.toString())
+    .digest("hex")
+    .substring(0, 16);
+
+  return `svc:${serviceId}:${orgId}:${contentHash}`;
+}
+
+function getRequestedMaxAge(request: Request): number {
+  const cacheControl = request.headers.get("cache-control");
+  const maxAgeMatch = cacheControl?.match(/max-age=(\d+)/);
+  return maxAgeMatch ? Number.parseInt(maxAgeMatch[1], 10) : 0;
+}
+
+function getMethodFromBody(body: ProxyRequestBody): string {
+  if (Array.isArray(body)) {
+    return "_batch";
+  }
+
+  return body && typeof body === "object" && "method" in body ? String(body.method) : "_default";
+}
+
+function isCacheableResponseContentType(response: Response): boolean {
+  const contentType = response.headers.get("content-type")?.toLowerCase();
+  if (!contentType || contentType.includes("text/event-stream")) {
+    return false;
+  }
+
+  return (
+    contentType.startsWith("text/") ||
+    contentType.includes("json") ||
+    contentType.includes("xml") ||
+    contentType.includes("javascript") ||
+    contentType.includes("x-www-form-urlencoded")
+  );
+}
+
+function withCacheHeaders(
+  headersInit: HeadersInit,
+  cacheStatus: "HIT" | "MISS",
+  maxAge: number,
+  age?: number,
+): Headers {
+  const headers = new Headers(headersInit);
+  headers.set("Cache-Control", `private, max-age=${Math.max(0, maxAge)}`);
+  headers.set("X-Cache", cacheStatus);
+
+  if (age !== undefined) {
+    headers.set("X-Cache-Age", String(age));
+  } else {
+    headers.delete("X-Cache-Age");
+  }
+
+  return headers;
+}
+
+function wrapResponseWithHeaders(response: Response, headers: Headers): Response {
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/**
+ * Decide how much to bill for a handler result.
+ *
+ * - 2xx success (`response.ok`): bill the handler's reported `actualCost`, or
+ *   the full reserved `cost` when the handler didn't report one.
+ * - 5xx: the caller received no service (upstream-down after retries, circuit
+ *   open, etc.), so refund the reservation — bill only an explicit partial
+ *   `actualCost` if the handler set one (the real upstream charge), otherwise
+ *   0. This mirrors the thrown-error path, which reconciles to 0. We only
+ *   charge the caller when we actually got charged upstream; abuse is contained
+ *   by rate limiting + the circuit breaker, never by over-billing failed
+ *   requests.
+ * - everything else (3xx redirects, 4xx client errors): billed at the reserved
+ *   `cost` unless the handler reported a different `actualCost`, preserving
+ *   prior behavior.
+ */
+export function resolveBillableCost(
+  result: Pick<HandlerResult, "actualCost"> & { response: Pick<Response, "ok" | "status"> },
+  reservedCost: number,
+): number {
+  if (result.response.ok) {
+    return result.actualCost ?? reservedCost;
+  }
+  if (result.response.status >= 500) {
+    return result.actualCost ?? 0;
+  }
+  return result.actualCost ?? reservedCost;
+}
+
+function isClientErrorMessage(message: string): boolean {
+  const lowered = message.toLowerCase();
+  return (
+    lowered.includes("validation") ||
+    lowered.includes("invalid") ||
+    lowered.includes("unsupported") ||
+    lowered.includes("not supported")
+  );
+}
+
+export function createHandler(
+  config: ServiceConfig,
+  work: ServiceHandler,
+  combinedAdmission?: ProxyCombinedAdmission,
+): (request: Request) => Promise<Response> {
+  const handler = async (request: Request): Promise<Response> => {
+    const startTime = Date.now();
+    const searchParams = new URL(request.url).searchParams;
+
+    try {
+      const auth = combinedAdmission?.auth ?? (await getAuthForLevel(request, config.auth));
+      const { user } = auth;
+      const apiKey = "apiKey" in auth ? auth.apiKey : undefined;
+      const organizationId = user.organization_id;
+
+      if (!organizationId) {
+        return Response.json(
+          { error: "Organization membership required for billing" },
+          { status: 403 },
+        );
+      }
+
+      let body: ProxyRequestBody = null;
+      if (request.method === "POST") {
+        try {
+          body = await request.json();
+        } catch {
+          // error-policy:J3 malformed request body -> explicit 400 invalid, never a fake-valid default
+          return Response.json({ error: "Invalid JSON" }, { status: 400 });
+        }
+      }
+
+      const method = getMethodFromBody(body);
+      const cost = await config.getCost(body, searchParams);
+
+      let settlement: ProxySettlement;
+      if (combinedAdmission?.mode === "combined") {
+        settlement = await admitOrganizationInference({
+          context: {
+            organizationId,
+            userId: user.id,
+            apiKeyId: apiKey?.id ?? null,
+            model: config.id,
+            provider: config.id,
+            billingSource: "gateway",
+            requestId: combinedAdmission.requestId,
+            description: config.name,
+          },
+          apiKeyId: apiKey?.id ?? null,
+          estimatedInputTokens: 0,
+          estimatedOutputTokens: 0,
+          flatCost: {
+            totalCost: cost,
+            baseTotalCost: cost,
+            platformMarkup: 0,
+          },
+          executionCtx: combinedAdmission.executionCtx,
+          admissionSnapshot: combinedAdmission.admissionSnapshot,
+          ...(() => {
+            const credential = combinedAdmission.credentialForAdmission
+              ? combinedAdmission.credentialForAdmission()
+              : combinedAdmission.credential;
+            return credential ? { credential } : {};
+          })(),
+          atomicProviderBoundary: true,
+        });
+      } else {
+        const reservation = await reserveAllowanceEligibleCredits("search", {
+          organizationId,
+          userId: user.id,
+          amount: cost,
+          description: config.name,
+          operationKey: { prefix: "search:", identity: crypto.randomUUID() },
+        });
+        settlement = {
+          settle: (actualCostUsd) => reservation.reconcile(actualCostUsd),
+          settleUnknown: () => reservation.reconcile(cost),
+        };
+      }
+
+      const settle = async (actualCostUsd: number, operation: string) => {
+        const pending = settlement.settle(actualCostUsd);
+        if (combinedAdmission?.mode === "combined") {
+          void retainProxySettlement(pending, combinedAdmission.executionCtx, {
+            serviceId: config.id,
+            operation,
+          });
+          return;
+        }
+        await pending;
+      };
+
+      const cacheCandidate =
+        config.cache && body && !Array.isArray(body)
+          ? {
+              clientMaxAge: getRequestedMaxAge(request),
+              method,
+            }
+          : null;
+
+      const cacheKey =
+        cacheCandidate &&
+        cacheCandidate.clientMaxAge > 0 &&
+        (config.cache?.isMethodCacheable
+          ? config.cache.isMethodCacheable(cacheCandidate.method)
+          : true)
+          ? buildCacheKey(config.id, organizationId, body, searchParams)
+          : null;
+
+      if (cacheKey && cacheCandidate) {
+        try {
+          const cachedResponse = await cache.get<CachedProxyResponse>(cacheKey);
+
+          if (cachedResponse) {
+            const age = Math.floor((Date.now() - cachedResponse.cachedAt) / 1000);
+            const storedMaxAge = cachedResponse.ttl ?? config.cache!.maxTTL;
+            const effectiveMaxAge = Math.min(cacheCandidate.clientMaxAge, storedMaxAge);
+
+            if (age <= effectiveMaxAge) {
+              const hitMultiplier = config.cache?.hitCostMultiplier ?? 0.5;
+              const cachedCost = cost * hitMultiplier;
+              const remainingMaxAge = Math.max(effectiveMaxAge - age, 0);
+
+              await settle(cachedCost, "cache_hit");
+
+              const response = new Response(cachedResponse.body, {
+                status: cachedResponse.status,
+                headers: withCacheHeaders(cachedResponse.headers, "HIT", remainingMaxAge, age),
+              });
+
+              void (async () => {
+                try {
+                  await usageService.create({
+                    organization_id: organizationId,
+                    user_id: user.id,
+                    api_key_id: apiKey?.id,
+                    type: config.id,
+                    provider: config.id,
+                    input_tokens: 0,
+                    output_tokens: 0,
+                    input_cost: String(cachedCost),
+                    output_cost: "0",
+                    markup: "0",
+                    duration_ms: Date.now() - startTime,
+                    is_successful: response.ok,
+                    metadata: {
+                      cached: true,
+                      cache_age: age,
+                      method,
+                    },
+                  });
+                } catch (error) {
+                  // error-policy:J7 usage metering is fire-and-forget telemetry; the credit
+                  // reconcile already committed, so a failed usage write must not fail the served hit
+                  logger.error("[Proxy Engine] Usage tracking failed (cache hit)", { error });
+                }
+              })();
+
+              return response;
+            }
+          }
+        } catch (error) {
+          // error-policy:J7 cache is a best-effort accelerator; a read failure degrades to a
+          // cache miss (the real upstream work below still runs and bills), never a fabricated hit
+          logger.warn("[Proxy Engine] Cache read failed", { error });
+        }
+      }
+
+      let result: HandlerResult;
+      let providerDispatchStarted = false;
+      try {
+        // The durable dispatch marker is the last awaited operation before the
+        // provider boundary. Auth, standing, pricing, balance, and the lease
+        // all come from the caller's one combined admission projection.
+        await settlement.markProviderDispatched?.();
+        providerDispatchStarted = true;
+        result = await work({ body, auth, searchParams });
+      } catch (error) {
+        // error-policy:J2 only accepted provider work settles unknown. A late
+        // atomic admission denial still owns its cancellation capability and
+        // releases the pre-provider lease with zero usage.
+        const pending =
+          combinedAdmission?.mode === "combined" && providerDispatchStarted
+            ? settlement.settleUnknown()
+            : settlement.settle(0);
+        if (combinedAdmission?.mode === "combined") {
+          void retainProxySettlement(pending, combinedAdmission.executionCtx, {
+            serviceId: config.id,
+            operation: providerDispatchStarted
+              ? "provider_error"
+              : "provider_dispatch_admission_failed",
+          });
+        } else {
+          await pending;
+        }
+        throw error;
+      }
+
+      // Only bill for actual work performed. A synthesized server-side error
+      // (5xx — upstream-down after retries, circuit open, etc.) means the
+      // caller got no service, so it refunds the reservation just like the
+      // thrown-error path above. See resolveBillableCost.
+      const actualCost = resolveBillableCost(result, cost);
+      await settle(actualCost, "provider_result");
+
+      if (cacheKey && cacheCandidate && config.cache) {
+        const ttl = Math.min(cacheCandidate.clientMaxAge, config.cache.maxTTL);
+
+        if (result.response.ok && isCacheableResponseContentType(result.response)) {
+          const clonedResponse = result.response.clone();
+          const responseBody = await clonedResponse.text();
+          const maxSize = config.cache.maxResponseSize ?? 65536;
+
+          if (responseBody.length <= maxSize) {
+            const responseHeaders = withCacheHeaders(result.response.headers, "MISS", ttl);
+            const headersObj: Record<string, string> = {};
+            responseHeaders.forEach((value, key) => {
+              headersObj[key] = value;
+            });
+
+            await cache.set(
+              cacheKey,
+              {
+                body: responseBody,
+                status: result.response.status,
+                headers: headersObj,
+                cachedAt: Date.now(),
+                ttl,
+              },
+              ttl,
+            );
+
+            result.response = new Response(responseBody, {
+              status: result.response.status,
+              statusText: result.response.statusText,
+              headers: responseHeaders,
+            });
+          } else {
+            result.response = wrapResponseWithHeaders(
+              result.response,
+              withCacheHeaders(result.response.headers, "MISS", ttl),
+            );
+          }
+        } else {
+          result.response = wrapResponseWithHeaders(
+            result.response,
+            withCacheHeaders(result.response.headers, "MISS", ttl),
+          );
+        }
+      }
+
+      void (async () => {
+        try {
+          await usageService.create({
+            organization_id: organizationId,
+            user_id: user.id,
+            api_key_id: apiKey?.id,
+            type: config.id,
+            provider: config.id,
+            input_tokens: 0,
+            output_tokens: 0,
+            input_cost: String(actualCost),
+            output_cost: "0",
+            markup: "0",
+            duration_ms: Date.now() - startTime,
+            is_successful: result.response.ok,
+            error_message: result.response.ok ? undefined : `HTTP ${result.response.status}`,
+            metadata: {
+              cached: false,
+              method,
+              ...(result.usageMetadata ?? {}),
+            },
+          });
+        } catch (error) {
+          // error-policy:J7 usage metering is fire-and-forget telemetry; a failed write must not
+          // fail the already-served response (the credit reconcile above already committed)
+          logger.error("[Proxy Engine] Usage tracking failed", { error });
+        }
+      })();
+
+      return result.response;
+    } catch (error) {
+      // error-policy:J1 outermost route boundary: translate thrown errors into structured HTTP
+      // failures (402/4xx/5xx). Every branch surfaces the failure; none fabricates a 2xx success.
+      if (error instanceof InsufficientCreditsError) {
+        return Response.json(
+          {
+            error: "Insufficient credits",
+            required: error.required,
+            available: error.available,
+          },
+          { status: 402 },
+        );
+      }
+
+      if (error instanceof ApiError) {
+        const headers = new Headers();
+        const retryAfterSeconds = error.details?.retryAfterSeconds;
+        if (typeof retryAfterSeconds === "number" && retryAfterSeconds > 0) {
+          headers.set("Retry-After", String(Math.ceil(retryAfterSeconds)));
+        }
+        return Response.json(error.toJSON(), { status: error.status, headers });
+      }
+
+      if (error instanceof InferenceCredentialRevokedError) {
+        const reason = inferenceCredentialRevocationReason(error.reason);
+        const status =
+          error.reason === "credential_revoked" ||
+          error.reason === "session_revoked" ||
+          error.reason === "session_binding_revoked"
+            ? 401
+            : 403;
+        logger.warn("[Proxy Engine] Strong credential admission denied", {
+          serviceId: config.id,
+          requestId: combinedAdmission?.requestId,
+          reason,
+          status,
+        });
+        return Response.json(
+          {
+            success: false,
+            error: status === 401 ? "Authentication required" : "Access denied",
+            code: status === 401 ? "authentication_required" : "access_denied",
+            details: { reason },
+          },
+          { status },
+        );
+      }
+
+      if (
+        error instanceof InferenceAdmissionUnavailableError ||
+        error instanceof InferenceBalanceCacheWarmingError ||
+        error instanceof InferenceCredentialRevocationUnavailableError
+      ) {
+        logger.warn("[Proxy Engine] Combined admission unavailable", {
+          serviceId: config.id,
+          requestId: combinedAdmission?.requestId,
+          error: error.name,
+        });
+        return Response.json(
+          {
+            success: false,
+            error: "Provider admission is unavailable; retry shortly",
+            code: "service_unavailable",
+            details: { retryable: true, retryAfterSeconds: 1 },
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+
+      if (error instanceof PricingNotFoundError) {
+        logger.error("[Proxy Engine] Pricing configuration error", {
+          serviceId: error.serviceId,
+          method: error.method,
+        });
+        return Response.json({ error: "Service temporarily unavailable" }, { status: 500 });
+      }
+
+      if (error instanceof Error) {
+        if (isClientErrorMessage(error.message)) {
+          return Response.json({ error: error.message }, { status: 400 });
+        }
+
+        if (error.name === "TimeoutError" || error.message.toLowerCase().includes("timeout")) {
+          return Response.json({ error: "Upstream service timeout" }, { status: 504 });
+        }
+      }
+
+      logger.error("[Proxy Engine] Handler error", { error });
+      return Response.json({ error: "Upstream service error" }, { status: 502 });
+    }
+  };
+
+  if (config.rateLimit && combinedAdmission?.mode !== "combined") {
+    return withRateLimit(handler, config.rateLimit);
+  }
+
+  return handler;
+}
+
+export async function executeWithBody(
+  config: ServiceConfig,
+  work: ServiceHandler,
+  request: Request,
+  body: ProxyRequestBody,
+  combinedAdmission?: ProxyCombinedAdmission,
+): Promise<Response> {
+  const handler = createHandler(config, work, combinedAdmission);
+  const mockRequest = new Request(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify(body),
+  });
+  return handler(mockRequest);
+}

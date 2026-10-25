@@ -1,0 +1,61 @@
+{
+	"imagegen": {
+		"perTier": {
+			"eliza-1-2b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 1615967904,
+					"license": "CreativeML Open RAIL-M",
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1"
+				},
+				"optional": []
+			},
+			"eliza-1-4b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 1615967904,
+					"license": "CreativeML Open RAIL-M",
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1"
+				},
+				"optional": []
+			},
+			"eliza-1-9b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 1615967904,
+					"license": "CreativeML Open RAIL-M",
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1"
+				},
+				"optional": []
+			},
+			"eliza-1-27b": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 1615967904,
+					"license": "CreativeML Open RAIL-M",
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1"
+				},
+				"optional": []
+			},
+			"eliza-1-27b-256k": {
+				"default": {
+					"id": "imagegen-sd-1_5-q5_0",
+					"file": "imagegen/sd-1.5-Q5_0.gguf",
+					"estimatedSizeBytes": 1615967904,
+					"license": "CreativeML Open RAIL-M",
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1"
+				},
+				"optional": []
+			}
+		}
+	}
+}

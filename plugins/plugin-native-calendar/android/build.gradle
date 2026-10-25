@@ -1,0 +1,13 @@
+apply plugin: 'com.android.library'
+android {
+ namespace 'ai.eliza.plugins.calendar'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig { minSdk 26; targetSdk rootProject.ext.targetSdkVersion; testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies {
+ androidTestImplementation 'androidx.test:runner:1.6.2'
+ androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+ implementation project(':capacitor-android')
+ implementation 'androidx.appcompat:appcompat:1.7.1'
+}

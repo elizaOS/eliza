@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "platform": "android-consumer",
+  "status": "requires_device_evidence",
+  "target": {
+    "minimumApi": "24 for Accessibility gesture dispatch; 29 for MediaProjection foreground service",
+    "minimumAndroid": "Android 10 for full capture validation; Android 7+ for basic bridge validation",
+    "requiredBuildFlavor": "android-cloud or Play-compatible consumer APK",
+    "distribution": "Google Android / Pixel / Play-compatible build; no privileged system permissions"
+  },
+  "evidence": {
+    "deviceModel": null,
+    "androidVersion": null,
+    "apiLevel": null,
+    "buildId": null,
+    "validatedAt": null,
+    "validator": null,
+    "artifacts": []
+  },
+  "checks": [
+    {
+      "id": "permissionsSetup",
+      "method": "manual-device-setup",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "CAMERA runtime permission is granted",
+        "Eliza AccessibilityService is enabled and visible in dumpsys accessibility",
+        "Usage Access is enabled for Eliza",
+        "consumer build does not request privileged assistant/system permissions"
+      ]
+    },
+    {
+      "id": "accessibilityTree",
+      "method": "getAccessibilityTree",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "foreground app has a populated accessibility tree",
+        "nodes include id, role, label, bbox, and actions",
+        "role values are Android class names"
+      ]
+    },
+    {
+      "id": "gestureDispatch",
+      "method": "dispatchGesture",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "tap returns ok:true and is visibly applied",
+        "swipe returns ok:true and scrolls the target content",
+        "coordinates are screen-pixel coordinates"
+      ]
+    },
+    {
+      "id": "globalActions",
+      "method": "performGlobalAction",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "back action is visually confirmed",
+        "home action is visually confirmed",
+        "recents action is visually confirmed",
+        "notifications action is visually confirmed"
+      ]
+    },
+    {
+      "id": "mediaProjectionCapture",
+      "method": "startMediaProjection/captureFrame/stopMediaProjection",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "system consent dialog appears and is accepted",
+        "captureFrame returns ok:true with non-empty jpegBase64",
+        "decoded JPEG matches the current screen",
+        "stopMediaProjection returns stopped:true"
+      ]
+    },
+    {
+      "id": "usageStatsEnumeration",
+      "method": "enumerateApps",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "Usage Access grant is honored",
+        "enumerateApps returns packageName, label, lastUsedMs, totalForegroundMs, and isForeground",
+        "frontmost app is marked isForeground:true"
+      ]
+    },
+    {
+      "id": "cameraCapture",
+      "method": "startCamera/captureFrameCamera/stopCamera",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "startCamera returns at least one camera",
+        "captureFrameCamera returns non-empty jpegBase64",
+        "stopCamera succeeds"
+      ]
+    },
+    {
+      "id": "memoryPressureDispatch",
+      "method": "onTrimMemory/dispatchMemoryPressure",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "TRIM_MEMORY_RUNNING_LOW or CRITICAL is triggered",
+        "bridge dispatches a pressure sample",
+        "MemoryArbiter pressure state transitions to low or critical"
+      ]
+    },
+    {
+      "id": "appActionsShortcuts",
+      "method": "Assistant/App Actions/static shortcuts",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "launcher activity registers @xml/shortcuts",
+        "OPEN_APP_FEATURE, CREATE_MESSAGE, and GET_THING are present",
+        "Assistant preview triggers chat, voice, daily brief, new task, and tasks routes",
+        "deep links are source-tagged and brand-rewritten"
+      ]
+    },
+    {
+      "id": "lifeOpsScheduledTaskHandoff",
+      "method": "assistant-to-runtime handoff",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "reminder/check-in/follow-up request enters the app/runtime planner",
+        "LifeOps creates or updates a ScheduledTask record",
+        "no native-only reminder table or notification-only schedule is created"
+      ]
+    }
+  ]
+}

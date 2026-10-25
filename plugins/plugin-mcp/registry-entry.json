@@ -1,0 +1,44 @@
+{
+  "id": "mcp",
+  "name": "Mcp",
+  "description": "ElizaOS plugin allowing agents to connect to MCP servers",
+  "npmName": "@elizaos/plugin-mcp",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["mcp"],
+  "config": {
+    "mcp": {
+      "type": "json",
+      "required": false,
+      "sensitive": false,
+      "label": "Mcp",
+      "help": "Serialized (e.g., JSON) configuration that defines MCP settings and server definitions; read at runtime to establish MCP server connections.",
+      "advanced": false
+    },
+    "PATH": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Path",
+      "help": "System PATH inherited from the host environment and forwarded to child processes when launching an MCP server through stdio transport.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Puzzle",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-mcp#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-mcp",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#mcp-model-context-protocol"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

@@ -1,0 +1,460 @@
+package ai.eliza.plugins.system
+
+import android.Manifest
+import android.app.role.RoleManager
+import android.content.Context
+import android.content.Intent
+import android.hardware.camera2.CameraAccessException
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.result.ActivityResult
+import com.getcapacitor.JSArray
+import com.getcapacitor.JSObject
+import com.getcapacitor.Plugin
+import com.getcapacitor.PluginCall
+import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
+import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
+
+@CapacitorPlugin(
+    name = "ElizaSystem",
+    permissions = [Permission(alias = "camera", strings = [Manifest.permission.CAMERA])]
+)
+class SystemPlugin : Plugin() {
+    // Device reads are delegated to a pure, Context-backed reader so they can be
+    // exercised by an instrumented androidTest without a Capacitor Bridge / WebView
+    // (issue #9967). This plugin stays a thin Capacitor binding: read via the
+    // reader, then marshal the result into the unchanged JS wire shape.
+    private val reader by lazy { SystemDeviceReader(context) }
+
+    @PluginMethod
+    fun getStatus(call: PluginCall) {
+        call.resolve(statusToJs(reader.readStatus()))
+    }
+
+    @PluginMethod
+    fun requestRole(call: PluginCall) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("Android role requests require Android 10 or newer")
+            return
+        }
+
+        val roleName = call.getString("role")?.trim()
+        val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
+        if (roleName.isNullOrEmpty() || androidRole == null) {
+            call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
+            return
+        }
+
+        val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+        if (!roleManager.isRoleAvailable(androidRole)) {
+            call.reject("$androidRole is not available on this device")
+            return
+        }
+
+        if (roleManager.isRoleHeld(androidRole)) {
+            call.resolve(roleRequestResult(roleName, true, 0))
+            return
+        }
+
+        startActivityForResult(
+            call,
+            roleManager.createRequestRoleIntent(androidRole),
+            "handleRoleRequestResult"
+        )
+    }
+
+    @ActivityCallback
+    private fun handleRoleRequestResult(call: PluginCall, result: ActivityResult) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            call.reject("Android role requests require Android 10 or newer")
+            return
+        }
+
+        val roleName = call.getString("role")?.trim()
+        val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
+        if (roleName.isNullOrEmpty() || androidRole == null) {
+            call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
+            return
+        }
+
+        val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
+        call.resolve(roleRequestResult(roleName, roleManager.isRoleHeld(androidRole), result.resultCode))
+    }
+
+    private fun roleRequestResult(roleName: String, held: Boolean, resultCode: Int): JSObject {
+        val result = JSObject()
+        result.put("role", roleName)
+        result.put("held", held)
+        result.put("resultCode", resultCode)
+        return result
+    }
+
+    @PluginMethod
+    fun openSettings(call: PluginCall) {
+        // Clear screens above an existing settings target instead of merely
+        // resuming whichever page was last visible in its Android task.
+        val intent = Intent(Settings.ACTION_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        context.startActivity(intent)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun openNetworkSettings(call: PluginCall) {
+        val intent = Intent(Settings.ACTION_WIFI_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        context.startActivity(intent)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun openWriteSettings(call: PluginCall) {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}"))
+        } else {
+            Intent(Settings.ACTION_SETTINGS)
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        context.startActivity(intent)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun openDisplaySettings(call: PluginCall) {
+        val intent = Intent(Settings.ACTION_DISPLAY_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        context.startActivity(intent)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun openSoundSettings(call: PluginCall) {
+        val intent = Intent(Settings.ACTION_SOUND_SETTINGS)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        context.startActivity(intent)
+        call.resolve()
+    }
+
+    @PluginMethod
+    fun getDeviceSettings(call: PluginCall) {
+        call.resolve(deviceSettingsToJs(reader.readDeviceSettings()))
+    }
+
+    @PluginMethod
+    fun setScreenBrightness(call: PluginCall) {
+        val brightness = call.getDouble("brightness")
+        if (brightness == null || brightness.isNaN()) {
+            call.reject("brightness must be a number between 0 and 1")
+            return
+        }
+        val clamped = brightness.coerceIn(0.0, 1.0)
+        if (!reader.canWriteSettings()) {
+            call.reject("WRITE_SETTINGS permission is required to change system brightness")
+            return
+        }
+        try {
+            Settings.System.putInt(
+                context.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+            )
+            Settings.System.putInt(
+                context.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                (clamped * 255.0).toInt().coerceIn(0, 255)
+            )
+            call.resolve(deviceSettingsToJs(reader.readDeviceSettings()))
+        } catch (error: RuntimeException) {
+            call.reject("Failed to set screen brightness", error)
+        }
+    }
+
+    @PluginMethod
+    fun setVolume(call: PluginCall) {
+        val streamName = call.getString("stream")?.trim()
+        val stream = SystemDeviceReader.VOLUME_STREAM_MAP[streamName]
+        if (streamName.isNullOrEmpty() || stream == null) {
+            call.reject("stream must be one of ${SystemDeviceReader.VOLUME_STREAM_MAP.keys.joinToString(", ")}")
+            return
+        }
+        val volume = call.getInt("volume")
+        if (volume == null) {
+            call.reject("volume is required")
+            return
+        }
+        val showUi = call.getBoolean("showUi") ?: false
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val max = audio.getStreamMaxVolume(stream)
+        val clamped = volume.coerceIn(0, max)
+        val flags = if (showUi) AudioManager.FLAG_SHOW_UI else 0
+        try {
+            audio.setStreamVolume(stream, clamped, flags)
+            call.resolve(volumeToJs(reader.readVolume(streamName, stream, audio)))
+        } catch (error: RuntimeException) {
+            call.reject("Failed to set $streamName volume", error)
+        }
+    }
+
+    @PluginMethod
+    fun setFlashlight(call: PluginCall) {
+        // Validate the wire value before triggering an Android permission prompt.
+        // JSONObject's boolean getter also accepts strings; this API requires a boolean.
+        if (call.data.opt("enabled") !is Boolean) {
+            call.reject("enabled must be a boolean")
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            call.reject("Flashlight control requires Android 6 or newer")
+            return
+        }
+        if (getPermissionState("camera") != com.getcapacitor.PermissionState.GRANTED) {
+            requestPermissionForAlias("camera", call, "handleFlashlightPermissionResult")
+            return
+        }
+        setFlashlightInternal(call)
+    }
+
+    @PermissionCallback
+    private fun handleFlashlightPermissionResult(call: PluginCall) {
+        if (getPermissionState("camera") != com.getcapacitor.PermissionState.GRANTED) {
+            call.reject("Camera permission is required to control the flashlight")
+            return
+        }
+        setFlashlightInternal(call)
+    }
+
+    private fun setFlashlightInternal(call: PluginCall) {
+        val enabled = call.getBoolean("enabled")
+        if (enabled == null) {
+            call.reject("enabled must be a boolean")
+            return
+        }
+
+        try {
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val flashlightCameraId = cameraManager.cameraIdList
+                .map { cameraId -> cameraId to cameraManager.getCameraCharacteristics(cameraId) }
+                .filter { (_, characteristics) ->
+                    characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                }
+                .sortedBy { (_, characteristics) ->
+                    if (characteristics.get(CameraCharacteristics.LENS_FACING) ==
+                        CameraCharacteristics.LENS_FACING_BACK
+                    ) 0 else 1
+                }
+                .firstOrNull()
+                ?.first
+            if (flashlightCameraId == null) {
+                call.reject("This device does not have an available flashlight")
+                return
+            }
+
+            cameraManager.setTorchMode(flashlightCameraId, enabled)
+            call.resolve(JSObject().apply {
+                put("available", true)
+                put("enabled", enabled)
+            })
+        } catch (error: CameraAccessException) {
+            call.reject("Flashlight is temporarily unavailable", error)
+        } catch (error: SecurityException) {
+            call.reject("Camera permission is required to control the flashlight", error)
+        }
+    }
+
+    private var launcherWatch: AutoCloseable? = null
+
+    /** Installs, removals, enable/disable and profile pause/unlock happen outside the host. The
+     * renderer is told that something changed and re-reads the list itself. */
+    override fun load() {
+        super.load()
+        launcherWatch = SystemLauncherApps.watch(context) { packageName, reason ->
+            val change = JSObject()
+            change.put("reason", reason)
+            packageName?.let { change.put("packageName", it) }
+            notifyListeners("launcherAppsChanged", change)
+        }
+    }
+
+    override fun handleOnDestroy() {
+        launcherWatch?.close()
+        launcherWatch = null
+        super.handleOnDestroy()
+    }
+
+    /** One entry per launcher activity and Android user, other than the host. The current
+     * user's entries come first, sorted by label; icons are opt-in PNG data URLs. */
+    @PluginMethod
+    fun listLauncherApps(call: PluginCall) {
+        val icons = call.getBoolean("icons", false) == true
+        val apps = JSArray()
+        for (app in SystemLauncherApps.list(context)) {
+            val item = JSObject()
+            item.put("packageName", app.packageName)
+            item.put("activityName", app.activityName)
+            item.put("label", app.label)
+            app.user?.let { item.put("user", it) }
+            app.profile?.let { item.put("profile", it) }
+            if (app.user != null) item.put("locked", app.locked)
+            if (icons) iconDataUrl(SystemLauncherApps.iconPng(context.packageManager, app, LAUNCHER_ICON_PX))?.let { item.put("icon", it) }
+            apps.put(item)
+        }
+        val result = JSObject()
+        result.put("apps", apps)
+        call.resolve(result)
+    }
+
+    /** Launches one listed app from an explicit host call; the host owns the user-intent check.
+     * With `activityName` (and `user` for another profile) the exact listed entry is re-resolved
+     * now; a stale entry is refused with a stable code instead of opening something else. */
+    @PluginMethod
+    fun launchApp(call: PluginCall) {
+        val activityName = call.getString("activityName")
+        if (activityName == null) {
+            if (call.getString("user") != null) {
+                call.reject("Choose an installed app")
+                return
+            }
+            val intent = try {
+                SystemLauncherApps.launchIntent(context, call.getString("packageName"))
+            } catch (error: IllegalArgumentException) {
+                call.reject("Choose an installed app")
+                return
+            }
+            if (intent == null) {
+                call.reject("App is unavailable", SystemLauncherApps.NOT_INSTALLED)
+                return
+            }
+            startHandoff(call, intent)
+            return
+        }
+        val target = try {
+            SystemLauncherApps.resolve(context, call.getString("packageName"), activityName, call.getString("user"))
+        } catch (error: IllegalArgumentException) {
+            call.reject("Choose an installed app")
+            return
+        } catch (refusal: SystemLauncherApps.Refusal) {
+            call.reject(refusal.message, refusal.code)
+            return
+        }
+        val user = target.user
+        if (user == null) {
+            startHandoff(call, SystemLauncherApps.launchIntent(target.component))
+            return
+        }
+        try {
+            context.getSystemService(android.content.pm.LauncherApps::class.java)
+                .startMainActivity(target.component, user, null, null)
+            call.resolve()
+        } catch (error: RuntimeException) {
+            // Removed between resolve and start, or refused by Android.
+            call.reject("App could not be opened", error)
+        }
+    }
+
+    /** Resolves, without launching, the handler for a default role (currently "dial"). */
+    @PluginMethod
+    fun resolveDefaultApp(call: PluginCall) {
+        val role = call.getString("role")
+        val handler = try {
+            SystemLauncherApps.resolveDefault(context, role)
+        } catch (error: IllegalArgumentException) {
+            call.reject("role must be dial")
+            return
+        }
+        val result = JSObject()
+        result.put("role", role)
+        result.put("available", handler.available)
+        handler.packageName?.let {
+            result.put("packageName", it)
+            result.put("label", handler.label)
+            iconDataUrl(it)?.let { icon -> result.put("icon", icon) }
+        }
+        call.resolve(result)
+    }
+
+    /** Opens the role's handler with no data (an empty dial pad for "dial"). */
+    @PluginMethod
+    fun openDefaultApp(call: PluginCall) {
+        val role = call.getString("role")
+        val intent = try {
+            SystemLauncherApps.defaultLaunchIntent(context, role)
+        } catch (error: IllegalArgumentException) {
+            call.reject("role must be dial")
+            return
+        }
+        if (intent == null) {
+            call.reject("No app on this device handles $role")
+            return
+        }
+        startHandoff(call, intent)
+    }
+
+    private fun startHandoff(call: PluginCall, intent: Intent) {
+        try {
+            // Launchers start other apps in their own tasks, like the settings hand-offs above.
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            call.resolve()
+        } catch (error: android.content.ActivityNotFoundException) {
+            call.reject("App could not be opened", error)
+        } catch (error: SecurityException) {
+            call.reject("App could not be opened", error)
+        }
+    }
+
+    private fun iconDataUrl(packageName: String): String? =
+        iconDataUrl(SystemLauncherApps.iconPng(context.packageManager, packageName, LAUNCHER_ICON_PX))
+
+    private fun iconDataUrl(png: ByteArray?): String? {
+        if (png == null) return null
+        return "data:image/png;base64," + android.util.Base64.encodeToString(png, android.util.Base64.NO_WRAP)
+    }
+
+    private fun statusToJs(status: SystemDeviceReader.SystemStatus): JSObject {
+        val result = JSObject()
+        result.put("packageName", status.packageName)
+        val roles = JSArray()
+        for (role in status.roles) {
+            val item = JSObject()
+            item.put("role", role.role)
+            item.put("androidRole", role.androidRole)
+            item.put("available", role.available)
+            item.put("held", role.held)
+            item.put("holders", JSArray(role.holders))
+            roles.put(item)
+        }
+        result.put("roles", roles)
+        return result
+    }
+
+    private fun deviceSettingsToJs(settings: SystemDeviceReader.DeviceSettings): JSObject {
+        val result = JSObject()
+        result.put("brightness", settings.brightness)
+        result.put("brightnessMode", settings.brightnessMode)
+        result.put("canWriteSettings", settings.canWriteSettings)
+        val volumes = JSArray()
+        for (volume in settings.volumes) {
+            volumes.put(volumeToJs(volume))
+        }
+        result.put("volumes", volumes)
+        return result
+    }
+
+    private fun volumeToJs(volume: SystemDeviceReader.VolumeStatus): JSObject {
+        val result = JSObject()
+        result.put("stream", volume.stream)
+        result.put("current", volume.current)
+        result.put("max", volume.max)
+        return result
+    }
+
+    private companion object {
+        const val LAUNCHER_ICON_PX = 96
+    }
+}

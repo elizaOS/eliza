@@ -1,0 +1,35 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "customConditions": [],
+    "rootDir": ".",
+    "outDir": "dist/node",
+    "sourceMap": true,
+    "inlineSources": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "ignoreDeprecations": "6.0",
+    "paths": {}
+  },
+  "include": ["**/*.ts"],
+  "exclude": [
+    "build.ts",
+    "dist",
+    "node_modules",
+    "vendor",
+    "vendor/**",
+    "scripts/**",
+    "src/test-utils/**",
+    "test/**",
+    "vitest.config.ts",
+    "vite.config.views.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "ui/**",
+    "src/ui/**"
+  ]
+}

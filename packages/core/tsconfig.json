@@ -1,0 +1,23 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"lib": ["ES2024", "DOM", "DOM.Iterable"],
+		"rootDir": "../../",
+		"sourceMap": false,
+		"inlineSourceMap": false,
+		"types": ["node"],
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"paths": {},
+		"incremental": false
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": [
+		"vitest.config.ts",
+		"node_modules",
+		"dist",
+		"src/**/*.bench.ts",
+		"src/**/*.test.ts"
+	]
+}

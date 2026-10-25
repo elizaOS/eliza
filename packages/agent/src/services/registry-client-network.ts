@@ -1,0 +1,256 @@
+/**
+ * Network-fetch layer for the plugin/app marketplace registry. Loads the
+ * registry from the cloud over HTTP, preferring the richer generated registry
+ * over the flat index registry, and normalizes each entry into a
+ * `RegistryPluginInfo` map (including app metadata). Both fetches race under a
+ * single short timeout and are gated by a cloud-reachability probe; any network
+ * absence, 404, or timeout is treated as an expected fallback
+ * (`RegistryNetworkFallbackError`) so the caller can fall back to a local
+ * snapshot. Every attempt runs inside a marketplace telemetry span, and callers
+ * supply the local-workspace / node-module overlay hooks that merge on-disk
+ * plugins into the result.
+ */
+
+import {
+  createIntegrationTelemetrySpan,
+  decodeRuntimeRegistry,
+} from "@elizaos/core";
+
+import { isCloudReachable } from "@elizaos/plugin-elizacloud/cloud-config/is-cloud-reachable";
+import type { RegistryPluginInfo } from "./registry-client-types.ts";
+
+const REGISTRY_FETCH_TIMEOUT_MS = 2_500;
+
+export class RegistryNetworkFallbackError extends Error {
+  readonly expectedLocalFallback = true;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "RegistryNetworkFallbackError";
+  }
+}
+
+export function isExpectedRegistryNetworkFallback(
+  error: unknown,
+): error is RegistryNetworkFallbackError {
+  return (
+    error instanceof RegistryNetworkFallbackError ||
+    (error instanceof Error &&
+      (error.name === "AbortError" ||
+        error.name === "TimeoutError" ||
+        error.message.toLowerCase().includes("timeout") ||
+        error.message.toLowerCase().includes("timed out"))) ||
+    (typeof error === "object" &&
+      error !== null &&
+      "expectedLocalFallback" in error &&
+      (error as { expectedLocalFallback?: unknown }).expectedLocalFallback ===
+        true)
+  );
+}
+
+function isExpectedRegistryUnavailable(resp: Response): boolean {
+  return resp.status === 404 || resp.status === 410;
+}
+
+function createRegistryFetchInit(): RequestInit {
+  return {
+    redirect: "error",
+    signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS),
+  };
+}
+
+interface FetchFromNetworkParams {
+  generatedRegistryUrl: string;
+  indexRegistryUrl: string;
+  applyLocalWorkspaceApps: (
+    plugins: Map<string, RegistryPluginInfo>,
+  ) => Promise<void>;
+  applyNodeModulePlugins: (
+    plugins: Map<string, RegistryPluginInfo>,
+  ) => Promise<void>;
+  sanitizeSandbox: (value?: string) => string;
+}
+
+/**
+ * Fetch + parse the generated registry. Returns the parsed plugin map on a
+ * 200, or `null` when the endpoint is absent (404) or the request fails — in
+ * which case the caller falls through to the index registry.
+ */
+async function fetchGeneratedRegistry(
+  params: FetchFromNetworkParams,
+): Promise<Map<string, RegistryPluginInfo> | null> {
+  const {
+    generatedRegistryUrl,
+    applyLocalWorkspaceApps,
+    applyNodeModulePlugins,
+    sanitizeSandbox,
+  } = params;
+
+  const generatedSpan = createIntegrationTelemetrySpan({
+    boundary: "marketplace",
+    operation: "fetch_generated_registry",
+    timeoutMs: REGISTRY_FETCH_TIMEOUT_MS,
+  });
+  try {
+    const resp = await fetch(generatedRegistryUrl, createRegistryFetchInit());
+    if (resp.ok) {
+      const normalized = decodeRuntimeRegistry(await resp.json(), {
+        sanitizeSandbox,
+      });
+      const plugins = new Map<string, RegistryPluginInfo>();
+      for (const [name, entry] of normalized) {
+        const info: RegistryPluginInfo = {
+          ...entry,
+          npm: {
+            package: entry.npm.package,
+            v0Version: entry.npm.v0Version,
+            v1Version: entry.npm.v1Version,
+            v2Version: entry.npm.v2Version,
+          },
+        };
+        if (entry.kind === "app" || entry.app) {
+          info.kind = "app";
+        }
+        if (entry.app) {
+          info.appMeta = {
+            displayName: entry.app.displayName ?? name,
+            category: entry.app.category ?? "other",
+            launchType: entry.app.launchType ?? "url",
+            launchUrl: entry.app.launchUrl ?? null,
+            icon: entry.app.icon ?? null,
+            heroImage: entry.app.heroImage ?? null,
+            capabilities: entry.app.capabilities ?? [],
+            minPlayers: entry.app.minPlayers ?? null,
+            maxPlayers: entry.app.maxPlayers ?? null,
+            runtimePlugin: entry.app.runtimePlugin,
+            bridgeExport: entry.app.bridgeExport,
+            uiExtension: entry.app.uiExtension,
+            viewer: entry.app.viewer,
+            session: entry.app.session,
+            viewKind: entry.app.viewKind,
+            visibleInAppStore: entry.app.visibleInAppStore,
+            mainTab: entry.app.mainTab,
+            catalogSection: entry.app.catalogSection,
+            featured: entry.app.featured,
+            defaultHidden: entry.app.defaultHidden,
+            scope: entry.app.scope,
+          };
+        }
+
+        plugins.set(name, info);
+      }
+      await applyLocalWorkspaceApps(plugins);
+      await applyNodeModulePlugins(plugins);
+      generatedSpan.success({ statusCode: resp.status });
+      return plugins;
+    }
+    if (!isExpectedRegistryUnavailable(resp)) {
+      generatedSpan.failure({
+        statusCode: resp.status,
+        errorKind: "http_error",
+      });
+    }
+    return null;
+  } catch (err) {
+    generatedSpan.failure({ error: err });
+    // caller logs fallback warnings
+    return null;
+  }
+}
+
+/**
+ * Fetch + parse the index registry. Throws `RegistryNetworkFallbackError` (or
+ * the raw network error) when it cannot be loaded, signalling the caller to
+ * use the local snapshot.
+ */
+async function fetchIndexRegistry(
+  params: FetchFromNetworkParams,
+): Promise<Map<string, RegistryPluginInfo>> {
+  const { indexRegistryUrl, applyLocalWorkspaceApps, applyNodeModulePlugins } =
+    params;
+
+  const indexSpan = createIntegrationTelemetrySpan({
+    boundary: "marketplace",
+    operation: "fetch_index_registry",
+    timeoutMs: REGISTRY_FETCH_TIMEOUT_MS,
+  });
+  let resp: Response;
+  try {
+    resp = await fetch(indexRegistryUrl, createRegistryFetchInit());
+  } catch (err) {
+    indexSpan.failure({ error: err });
+    throw err;
+  }
+  if (!resp.ok) {
+    if (!isExpectedRegistryUnavailable(resp)) {
+      indexSpan.failure({ statusCode: resp.status, errorKind: "http_error" });
+    }
+    throw new RegistryNetworkFallbackError(
+      `index.json: ${resp.status} ${resp.statusText}`,
+    );
+  }
+  const data = (await resp.json()) as Record<string, string>;
+  const plugins = new Map<string, RegistryPluginInfo>();
+  for (const [name, gitRef] of Object.entries(data)) {
+    const repo = gitRef.replace(/^github:/, "");
+    const isBuiltIn = name.startsWith("@elizaos/");
+    plugins.set(name, {
+      name,
+      gitRepo: repo,
+      gitUrl: `https://github.com/${repo}.git`,
+      directory: null,
+      description: "",
+      homepage: null,
+      topics: [],
+      stars: 0,
+      language: "TypeScript",
+      npm: { package: name, v0Version: null, v1Version: null, v2Version: null },
+      git: { v0Branch: null, v1Branch: null, v2Branch: "next" },
+      supports: { v0: false, v1: false, v2: false },
+      origin: isBuiltIn ? "builtin" : "third-party",
+      source: isBuiltIn ? "builtin" : "third-party",
+      support: isBuiltIn ? "first-party" : "community",
+      builtIn: isBuiltIn,
+      firstParty: isBuiltIn,
+      thirdParty: !isBuiltIn,
+    });
+  }
+  await applyLocalWorkspaceApps(plugins);
+  await applyNodeModulePlugins(plugins);
+  indexSpan.success({ statusCode: resp.status });
+  return plugins;
+}
+
+/**
+ * Resolve the plugin registry from the network, preferring the generated
+ * registry over the index registry.
+ *
+ * Both network attempts are issued concurrently so a doomed-offline boot
+ * waits out a single ~2.5s timeout instead of two sequential ones. The
+ * generated result still wins whenever it loads; the index result is only
+ * consulted (and its failure only surfaced) when the generated registry is
+ * absent. When the cloud is already known to be unreachable for this boot we
+ * skip both fetches entirely and go straight to the local-snapshot fallback.
+ */
+export async function fetchFromNetwork(
+  params: FetchFromNetworkParams,
+): Promise<Map<string, RegistryPluginInfo>> {
+  if (!(await isCloudReachable())) {
+    throw new RegistryNetworkFallbackError(
+      "cloud unreachable at boot — using local registry snapshot",
+    );
+  }
+
+  const generatedResult = fetchGeneratedRegistry(params);
+  const indexResult = fetchIndexRegistry(params);
+  // error-policy:J5 prevent an unhandled rejection if the generated registry
+  // wins and we never await the index attempt; its failure is only relevant as
+  // the fallback when the generated registry is absent and indexResult is awaited.
+  indexResult.catch(() => {});
+
+  const generated = await generatedResult;
+  if (generated) {
+    return generated;
+  }
+  return indexResult;
+}

@@ -1,0 +1,40 @@
+{
+  "slug": "send-message",
+  "granularity": "feature",
+  "title": "Send a chat message round-trip",
+  "steps": [
+    { "action": "goto", "value": "/", "label": "open-chat" },
+    {
+      "action": "waitFor",
+      "selector": "[data-testid=\"chat-composer-textarea\"]",
+      "label": "await-composer"
+    },
+    {
+      "action": "assertText",
+      "selector": "[data-testid=\"chat-content\"]",
+      "value": "How can I help you",
+      "label": "greeting-present"
+    },
+    {
+      "action": "fill",
+      "selector": "[data-testid=\"chat-composer-textarea\"]",
+      "value": "What is the weather today?",
+      "label": "type-question",
+      "screenshotAfter": true
+    },
+    {
+      "action": "click",
+      "selector": "[data-testid=\"chat-composer-action\"]",
+      "label": "send",
+      "ariaAfter": true
+    },
+    { "action": "waitFor", "value": "900", "label": "await-reply" },
+    {
+      "action": "assertText",
+      "selector": "[data-testid=\"chat-content\"]",
+      "value": "I received: What is the weather today?",
+      "label": "reply-received",
+      "screenshotAfter": true
+    }
+  ]
+}

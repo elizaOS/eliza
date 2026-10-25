@@ -1,0 +1,38 @@
+/**
+ * Vitest config for plugin-mcp: aliases @elizaos/* to workspace source so tests
+ * run against live package code, discovers the root and colocated test suites,
+ * and runs them in a Node environment.
+ */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+  resolve: {
+    alias: [
+      {
+        find: /^@elizaos\/core\/errors$/,
+        replacement: path.resolve(rootDir, "../../packages/core/src/errors.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/name-tokens$/,
+        replacement: path.resolve(rootDir, "../../packages/core/src/name-tokens.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/security\/mcp-server-config$/,
+        replacement: path.resolve(rootDir, "../../packages/core/src/security/mcp-server-config.ts"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.resolve(rootDir, "../../packages/core/src/index.ts"),
+      },
+    ],
+  },
+  test: {
+    include: ["__tests__/**/*.test.ts", "src/**/__tests__/**/*.test.ts"],
+    globals: true,
+    environment: "node",
+  },
+});

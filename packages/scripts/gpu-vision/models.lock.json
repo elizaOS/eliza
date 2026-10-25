@@ -1,0 +1,34 @@
+{
+  "Qwen/Qwen3-VL-4B-Instruct-GGUF@1cd86afb9a95c410a6038ab3b40d8b578c892266/Qwen3VL-4B-Instruct-Q4_K_M.gguf": {
+    "sha256": "66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a",
+    "bytes": 2497281664,
+    "repo": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+    "revision": "1cd86afb9a95c410a6038ab3b40d8b578c892266",
+    "file": "Qwen3VL-4B-Instruct-Q4_K_M.gguf",
+    "url": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/1cd86afb9a95c410a6038ab3b40d8b578c892266/Qwen3VL-4B-Instruct-Q4_K_M.gguf"
+  },
+  "Qwen/Qwen3-VL-4B-Instruct-GGUF@1cd86afb9a95c410a6038ab3b40d8b578c892266/mmproj-Qwen3VL-4B-Instruct-F16.gguf": {
+    "sha256": "256f3a43bd4205ffef48d6b92715e1e70b5b0e9aef06522584967513a9985331",
+    "bytes": 836180256,
+    "repo": "Qwen/Qwen3-VL-4B-Instruct-GGUF",
+    "revision": "1cd86afb9a95c410a6038ab3b40d8b578c892266",
+    "file": "mmproj-Qwen3VL-4B-Instruct-F16.gguf",
+    "url": "https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/1cd86afb9a95c410a6038ab3b40d8b578c892266/mmproj-Qwen3VL-4B-Instruct-F16.gguf"
+  },
+  "sahilchachra/Unlimited-OCR-GGUF@0dc781d8a23f52963918ebd5b2d1b9fe61504661/Unlimited-OCR-Q4_K_M.gguf": {
+    "sha256": "c8461bded976eac709a33f6b26e1414efcd2124a203f2ee93ee984a4c9e9265b",
+    "bytes": 1950326784,
+    "repo": "sahilchachra/Unlimited-OCR-GGUF",
+    "revision": "0dc781d8a23f52963918ebd5b2d1b9fe61504661",
+    "file": "Unlimited-OCR-Q4_K_M.gguf",
+    "url": "https://huggingface.co/sahilchachra/Unlimited-OCR-GGUF/resolve/0dc781d8a23f52963918ebd5b2d1b9fe61504661/Unlimited-OCR-Q4_K_M.gguf"
+  },
+  "sahilchachra/Unlimited-OCR-GGUF@0dc781d8a23f52963918ebd5b2d1b9fe61504661/mmproj-Unlimited-OCR-F16.gguf": {
+    "sha256": "4f28c295e1fcf67a97488e356f2b4372da4702b77fdfad0fa138b5821325743c",
+    "bytes": 811876448,
+    "repo": "sahilchachra/Unlimited-OCR-GGUF",
+    "revision": "0dc781d8a23f52963918ebd5b2d1b9fe61504661",
+    "file": "mmproj-Unlimited-OCR-F16.gguf",
+    "url": "https://huggingface.co/sahilchachra/Unlimited-OCR-GGUF/resolve/0dc781d8a23f52963918ebd5b2d1b9fe61504661/mmproj-Unlimited-OCR-F16.gguf"
+  }
+}

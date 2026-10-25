@@ -1,0 +1,1618 @@
+[
+  {
+    "id": "mobile-voice",
+    "version": "1.2.0",
+    "publishedToHfAt": "2026-10-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/paradee/paradee-8m-v1_0.gguf",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/misaki-en-us.lex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phontab",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phonindex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phondata",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/intonations",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/en_dict",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/lang/gmw/en",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/lang/gmw/en-US",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/asr/phonon-2-fv5.gguf",
+        "quant": "fv5-pair16-v1",
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": false
+    },
+    "changelogEntry": "1.2.0 - Qwen3-ASR-0.6B is removed as a speech-recognition option: the text GGUF and mmproj rows are gone and ELIZA_ASR_BACKEND=qwen3 no longer stages them. Phonon-2 (Parakeet-TDT 0.6B, five-value) is the only local ASR: asr/phonon-2-fv5.gguf on libelizainference's parakeet backend (batch + streaming). A device that staged asr/ with the Qwen3-ASR pair re-stages it with Phonon-2. Phonon-2 weights are CC-BY-4.0: ship the attribution and NOTICE. The GGUF is unpublished; build it with packages/app/scripts/voice/build-phonon2-gguf.ts, which converts the pinned FermionResearch/Phonon-2 revision and checks every sha256. Paradee-8M stays the TTS; the Paradee, misaki and eSpeak NG rows are unchanged from 1.1.0.",
+    "minBundleVersion": "0.0.0",
+    "files": [
+      {
+        "id": "paradee-8m-v1.0",
+        "role": "tts",
+        "path": "tts/paradee/paradee-8m-v1_0.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/paradee-8m-v1_0.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
+        "bytes": 32072768,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/paradee/pins.json (gguf output of convert_paradee_pt_to_gguf.py)",
+        "source": {
+          "repo": "sahilmahendrakar/Paradee-8M-v1.0",
+          "revision": "c7f83f86c04e84d0ae94cbe1aad7618e0544f80a",
+          "files": [
+            {
+              "path": "pytorch/text_side.pt",
+              "sha256": "0995bee746043e4f06f72be68fb8634530b95d6467b4a141759e721122648062",
+              "bytes": 16998347
+            },
+            {
+              "path": "pytorch/decoder.pt",
+              "sha256": "f231b9765ffdddd30df798530af0c557c06cb9cf029a475b8bfdca7b051b9d6c",
+              "bytes": 15564135
+            },
+            {
+              "path": "config.json",
+              "sha256": "f24046974a3a8c747affefb45c7c504263a99d5081787908b16abe8f5ac94fcd",
+              "bytes": 1774
+            },
+            {
+              "path": "tokenizer.json",
+              "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+              "bytes": 3497
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py"
+        }
+      },
+      {
+        "id": "misaki-en-us-lexicon",
+        "role": "g2p-lexicon",
+        "path": "tts/paradee/misaki-en-us.lex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/misaki-en-us.lex",
+        "url": null,
+        "revision": null,
+        "sha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
+        "bytes": 12947790,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/misaki-g2p/pins.json (output of convert_misaki_lexicon.py)",
+        "source": {
+          "repo": "github.com/hexgrad/misaki",
+          "revision": "fba1236595f2d2bf21d414ba6e57d25256afada3",
+          "files": [
+            {
+              "path": "misaki/data/us_gold.json",
+              "sha256": "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f"
+            },
+            {
+              "path": "misaki/data/us_silver.json",
+              "sha256": "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475"
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/misaki-g2p/convert_misaki_lexicon.py"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phontab",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phontab",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phontab",
+        "url": null,
+        "revision": null,
+        "sha256": "1b40690667e1e9aa1ba5e5234773c799e7e72ea751426e5150423d53c3f24fa2",
+        "bytes": 58652,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phonindex",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phonindex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phonindex",
+        "url": null,
+        "revision": null,
+        "sha256": "384e5fa6f714ba5356c58008249b78699c31c1ad044b243068d263fb806b7d73",
+        "bytes": 43316,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phondata",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phondata",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phondata",
+        "url": null,
+        "revision": null,
+        "sha256": "a0b643b155cb6b12628d9e7865b57d9fca0d35844614f2594a5e009c80c80bb4",
+        "bytes": 554740,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-intonations",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/intonations",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/intonations",
+        "url": null,
+        "revision": null,
+        "sha256": "031a105bf6bb2ebcd73a2c579ccfb42469b27266db0078af65ae298fd3588b21",
+        "bytes": 2312,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-en_dict",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/en_dict",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/en_dict",
+        "url": null,
+        "revision": null,
+        "sha256": "1053f74a34af38abb6fbd64b7838dacbc655a687c48ce1bb663d364a127b05de",
+        "bytes": 168204,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-lang-gmw-en",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/lang/gmw/en",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/lang/gmw/en",
+        "url": null,
+        "revision": null,
+        "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+        "bytes": 140,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-lang-gmw-en-US",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/lang/gmw/en-US",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/lang/gmw/en-US",
+        "url": null,
+        "revision": null,
+        "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+        "bytes": 257,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "phonon-2-fv5",
+        "role": "asr-parakeet",
+        "asrBackend": "parakeet",
+        "path": "asr/phonon-2-fv5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/asr/phonon-2-fv5.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+        "bytes": 330632256,
+        "license": "CC-BY-4.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/parakeet/pins.json (gguf output of convert_phonon2_to_gguf.py --archive, byte-reproducible)",
+        "attribution": "Phonon-2 by Fermion Research, CC-BY-4.0, derived from NVIDIA parakeet-tdt-0.6b-v3 (CC-BY-4.0). The NOTICE below must ship with the app; the GGUF also carries it as parakeet.notice.",
+        "notice": {
+          "path": "NOTICE",
+          "sha256": "00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f",
+          "bytes": 2741,
+          "ggufKey": "parakeet.notice"
+        },
+        "licenseFlags": [
+          "Training audio listed in the NOTICE includes CHiME-6 (CC-BY-SA-4.0) and SPGISpeech (Kensho terms). Flagged for review, not a build blocker."
+        ],
+        "source": {
+          "repo": "FermionResearch/Phonon-2",
+          "revision": "7e153e4054c0a10db6d47d6fff5c062d4c77c154",
+          "files": [
+            {
+              "path": "phonon-2.bps.tar.zst",
+              "sha256": "98125795b6dda72f5c6eee9ba33d19815df65dcb18b50a357bf9f73c9935309e",
+              "bytes": 163515201
+            },
+            {
+              "path": "NOTICE",
+              "sha256": "00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f",
+              "bytes": 2741
+            },
+            {
+              "path": "LICENSE-WEIGHTS-CC-BY-4.0.txt",
+              "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+              "bytes": 18657
+            }
+          ],
+          "converter": "elizaOS/llama.cpp@533d0d898ac2672e203b9b5cf08706422f154ee6 tools/parakeet/convert_phonon2_to_gguf.py",
+          "converterCommand": "python tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst --output phonon-2-fv5.gguf --verify"
+        }
+      },
+      {
+        "id": "silero-vad-v5",
+        "role": "vad",
+        "path": "vad/silero-vad-v5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "bundles/e2b/vad/silero-vad-v5.gguf",
+        "url": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/vad/silero-vad-v5.gguf",
+        "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "bytes": 620736,
+        "license": "MIT",
+        "status": "published",
+        "source": {
+          "repo": "github.com/snakers4/silero-vad",
+          "revision": "v5",
+          "converter": "elizaOS silero-vad GGUF converter"
+        }
+      }
+    ],
+    "parentVersion": "1.1.0"
+  },
+  {
+    "id": "mobile-voice",
+    "version": "1.1.0",
+    "publishedToHfAt": "2026-10-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/paradee/paradee-8m-v1_0.gguf",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/misaki-en-us.lex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phontab",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phonindex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/phondata",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/intonations",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/en_dict",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/lang/gmw/en",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/espeak-ng-data/lang/gmw/en-US",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/asr/phonon-2-fv5.gguf",
+        "quant": "fv5-pair16-v1",
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": false
+    },
+    "changelogEntry": "1.1.0 - Phonon-2 (Parakeet-TDT 0.6B, five-value) is the default mobile ASR: asr/phonon-2-fv5.gguf on libelizainference's parakeet backend (batch + streaming, elizaOS/llama.cpp tools/parakeet). The Qwen3-ASR-0.6B pair stays in the catalog and is staged instead only with ELIZA_ASR_BACKEND=qwen3. Phonon-2 weights are CC-BY-4.0: ship the attribution and NOTICE. The GGUF is unpublished and is staged by converting the pinned FermionResearch/Phonon-2 revision (sha256-checked). The Paradee GGUF is staged as tts/paradee/paradee-8m-v1_0.gguf (the name the fused library, ElizaBionicInferenceServer and paradee-voice use); the Paradee GGUF and misaki lexicon rows carry their byte-reproducible pins; the eSpeak NG 1.52.0 English data (7 files, GPL-3.0-or-later, flagged) is staged under tts/paradee/espeak-ng-data/ so misaki pronounces words outside its lexicon.",
+    "minBundleVersion": "0.0.0",
+    "files": [
+      {
+        "id": "paradee-8m-v1.0",
+        "role": "tts",
+        "path": "tts/paradee/paradee-8m-v1_0.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/paradee-8m-v1_0.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
+        "bytes": 32072768,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/paradee/pins.json (gguf output of convert_paradee_pt_to_gguf.py)",
+        "source": {
+          "repo": "sahilmahendrakar/Paradee-8M-v1.0",
+          "revision": "c7f83f86c04e84d0ae94cbe1aad7618e0544f80a",
+          "files": [
+            {
+              "path": "pytorch/text_side.pt",
+              "sha256": "0995bee746043e4f06f72be68fb8634530b95d6467b4a141759e721122648062",
+              "bytes": 16998347
+            },
+            {
+              "path": "pytorch/decoder.pt",
+              "sha256": "f231b9765ffdddd30df798530af0c557c06cb9cf029a475b8bfdca7b051b9d6c",
+              "bytes": 15564135
+            },
+            {
+              "path": "config.json",
+              "sha256": "f24046974a3a8c747affefb45c7c504263a99d5081787908b16abe8f5ac94fcd",
+              "bytes": 1774
+            },
+            {
+              "path": "tokenizer.json",
+              "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+              "bytes": 3497
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py"
+        }
+      },
+      {
+        "id": "misaki-en-us-lexicon",
+        "role": "g2p-lexicon",
+        "path": "tts/paradee/misaki-en-us.lex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/misaki-en-us.lex",
+        "url": null,
+        "revision": null,
+        "sha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
+        "bytes": 12947790,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/misaki-g2p/pins.json (output of convert_misaki_lexicon.py)",
+        "source": {
+          "repo": "github.com/hexgrad/misaki",
+          "revision": "fba1236595f2d2bf21d414ba6e57d25256afada3",
+          "files": [
+            {
+              "path": "misaki/data/us_gold.json",
+              "sha256": "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f"
+            },
+            {
+              "path": "misaki/data/us_silver.json",
+              "sha256": "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475"
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/misaki-g2p/convert_misaki_lexicon.py"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phontab",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phontab",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phontab",
+        "url": null,
+        "revision": null,
+        "sha256": "1b40690667e1e9aa1ba5e5234773c799e7e72ea751426e5150423d53c3f24fa2",
+        "bytes": 58652,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phonindex",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phonindex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phonindex",
+        "url": null,
+        "revision": null,
+        "sha256": "384e5fa6f714ba5356c58008249b78699c31c1ad044b243068d263fb806b7d73",
+        "bytes": 43316,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-phondata",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/phondata",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/phondata",
+        "url": null,
+        "revision": null,
+        "sha256": "a0b643b155cb6b12628d9e7865b57d9fca0d35844614f2594a5e009c80c80bb4",
+        "bytes": 554740,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-intonations",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/intonations",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/intonations",
+        "url": null,
+        "revision": null,
+        "sha256": "031a105bf6bb2ebcd73a2c579ccfb42469b27266db0078af65ae298fd3588b21",
+        "bytes": 2312,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-en_dict",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/en_dict",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/en_dict",
+        "url": null,
+        "revision": null,
+        "sha256": "1053f74a34af38abb6fbd64b7838dacbc655a687c48ce1bb663d364a127b05de",
+        "bytes": 168204,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-lang-gmw-en",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/lang/gmw/en",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/lang/gmw/en",
+        "url": null,
+        "revision": null,
+        "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+        "bytes": 140,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "espeak-ng-1.52.0-lang-gmw-en-US",
+        "role": "g2p-espeak-data",
+        "path": "tts/paradee/espeak-ng-data/lang/gmw/en-US",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/espeak-ng-data/lang/gmw/en-US",
+        "url": null,
+        "revision": null,
+        "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+        "bytes": 257,
+        "license": "GPL-3.0-or-later",
+        "status": "unpublished",
+        "localFrom": "eSpeak NG data compiled from the source pinned in elizaOS/llama.cpp tools/misaki-g2p/pins.json (espeak_ng.data); packages/app/scripts/stage-elizavoice-lib.ts builds it",
+        "licenseFlags": [
+          "GPL-3.0-or-later data, flagged for review (not blocking); ship eSpeak NG's COPYING with it"
+        ],
+        "source": {
+          "repo": "github.com/espeak-ng/espeak-ng",
+          "revision": "1.52.0",
+          "files": [
+            {
+              "path": "espeak-ng-1.52.0.tar.gz",
+              "sha256": "bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23",
+              "bytes": 17739803
+            }
+          ],
+          "converter": "espeak-ng's own data build (ninja espeak-ng-data/phondata espeak-ng-data/en_dict espeak-ng-data/intonations)"
+        }
+      },
+      {
+        "id": "phonon-2-fv5",
+        "role": "asr-parakeet",
+        "asrBackend": "parakeet",
+        "path": "asr/phonon-2-fv5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/asr/phonon-2-fv5.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+        "bytes": 330632256,
+        "license": "CC-BY-4.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/parakeet/pins.json (gguf output of convert_phonon2_to_gguf.py --archive, byte-reproducible)",
+        "attribution": "Phonon-2 by Fermion Research, CC-BY-4.0, derived from NVIDIA parakeet-tdt-0.6b-v3 (CC-BY-4.0). The NOTICE below must ship with the app; the GGUF also carries it as parakeet.notice.",
+        "notice": {
+          "path": "NOTICE",
+          "sha256": "00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f",
+          "bytes": 2741,
+          "ggufKey": "parakeet.notice"
+        },
+        "licenseFlags": [
+          "Training audio listed in the NOTICE includes CHiME-6 (CC-BY-SA-4.0) and SPGISpeech (Kensho terms). Flagged for review, not a build blocker."
+        ],
+        "source": {
+          "repo": "FermionResearch/Phonon-2",
+          "revision": "7e153e4054c0a10db6d47d6fff5c062d4c77c154",
+          "files": [
+            {
+              "path": "phonon-2.bps.tar.zst",
+              "sha256": "98125795b6dda72f5c6eee9ba33d19815df65dcb18b50a357bf9f73c9935309e",
+              "bytes": 163515201
+            },
+            {
+              "path": "NOTICE",
+              "sha256": "00624a5043e7ce74029317b024132ca5286116d6fbf3191d226374bc8273789f",
+              "bytes": 2741
+            },
+            {
+              "path": "LICENSE-WEIGHTS-CC-BY-4.0.txt",
+              "sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411",
+              "bytes": 18657
+            }
+          ],
+          "converter": "elizaOS/llama.cpp@533d0d898ac2672e203b9b5cf08706422f154ee6 tools/parakeet/convert_phonon2_to_gguf.py",
+          "converterCommand": "python tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst --output phonon-2-fv5.gguf --verify"
+        }
+      },
+      {
+        "id": "qwen3-asr-0.6b-q8_0",
+        "role": "asr-text",
+        "asrBackend": "qwen3",
+        "path": "asr/Qwen3-ASR-0.6B-Q8_0.gguf",
+        "hfRepo": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "hfPath": "Qwen3-ASR-0.6B-Q8_0.gguf",
+        "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/Qwen3-ASR-0.6B-Q8_0.gguf",
+        "revision": "928ab958557df9aa2ef1c93e0e83c7ad0933fae2",
+        "sha256": "bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971",
+        "bytes": 804749248,
+        "license": "Apache-2.0",
+        "status": "published",
+        "source": {
+          "repo": "Qwen/Qwen3-ASR-0.6B",
+          "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+          "converter": "ggml-org convert_hf_to_gguf.py (Q8_0)"
+        }
+      },
+      {
+        "id": "qwen3-asr-0.6b-mmproj-q8_0",
+        "role": "asr-mmproj",
+        "asrBackend": "qwen3",
+        "path": "asr/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+        "hfRepo": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "hfPath": "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+        "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+        "revision": "928ab958557df9aa2ef1c93e0e83c7ad0933fae2",
+        "sha256": "41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d",
+        "bytes": 214392480,
+        "license": "Apache-2.0",
+        "status": "published",
+        "source": {
+          "repo": "Qwen/Qwen3-ASR-0.6B",
+          "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+          "converter": "ggml-org convert_hf_to_gguf.py --mmproj (Q8_0)"
+        }
+      },
+      {
+        "id": "silero-vad-v5",
+        "role": "vad",
+        "path": "vad/silero-vad-v5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "bundles/e2b/vad/silero-vad-v5.gguf",
+        "url": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/vad/silero-vad-v5.gguf",
+        "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "bytes": 620736,
+        "license": "MIT",
+        "status": "published",
+        "source": {
+          "repo": "github.com/snakers4/silero-vad",
+          "revision": "v5",
+          "converter": "elizaOS silero-vad GGUF converter"
+        }
+      }
+    ],
+    "parentVersion": "1.0.0"
+  },
+  {
+    "id": "mobile-voice",
+    "version": "1.0.0",
+    "publishedToHfAt": "2026-10-13T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/paradee/paradee-8m-v1_0.gguf",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      },
+      {
+        "filename": "voice/paradee/misaki-en-us.lex",
+        "quant": "gguf-fp32",
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": false
+    },
+    "changelogEntry": "1.0.0 - pinned Android/AOSP voice bundle: Paradee-8M v1.0 TTS with the native misaki lexicon, Qwen3-ASR-0.6B Q8_0 + mmproj, Silero VAD v5, all on libelizainference (no ONNX). Paradee GGUF + lexicon are unpublished until the owner publishes them; gate: packages/app/scripts/voice-quality/host-wer-gate.ts.",
+    "minBundleVersion": "0.0.0",
+    "files": [
+      {
+        "id": "paradee-8m-v1.0",
+        "role": "tts",
+        "path": "tts/paradee/paradee-8m-v1_0.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/paradee-8m-v1_0.gguf",
+        "url": null,
+        "revision": null,
+        "sha256": null,
+        "bytes": null,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/paradee/pins.json (gguf output of convert_paradee_pt_to_gguf.py)",
+        "source": {
+          "repo": "sahilmahendrakar/Paradee-8M-v1.0",
+          "revision": "c7f83f86c04e84d0ae94cbe1aad7618e0544f80a",
+          "files": [
+            {
+              "path": "pytorch/text_side.pt",
+              "sha256": "0995bee746043e4f06f72be68fb8634530b95d6467b4a141759e721122648062",
+              "bytes": 16998347
+            },
+            {
+              "path": "pytorch/decoder.pt",
+              "sha256": "f231b9765ffdddd30df798530af0c557c06cb9cf029a475b8bfdca7b051b9d6c",
+              "bytes": 15564135
+            },
+            {
+              "path": "config.json",
+              "sha256": "f24046974a3a8c747affefb45c7c504263a99d5081787908b16abe8f5ac94fcd",
+              "bytes": 1774
+            },
+            {
+              "path": "tokenizer.json",
+              "sha256": "77a02c8e164413299b4b4c403b14f8e0e1c1b727db4d46a09d6327b861060a34",
+              "bytes": 3497
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py"
+        }
+      },
+      {
+        "id": "misaki-en-us-lexicon",
+        "role": "g2p-lexicon",
+        "path": "tts/paradee/misaki-en-us.lex",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "voice/paradee/misaki-en-us.lex",
+        "url": null,
+        "revision": null,
+        "sha256": null,
+        "bytes": null,
+        "license": "Apache-2.0",
+        "status": "unpublished",
+        "localFrom": "elizaOS/llama.cpp tools/misaki-g2p/pins.json (output of convert_misaki_lexicon.py)",
+        "source": {
+          "repo": "github.com/hexgrad/misaki",
+          "revision": "fba1236595f2d2bf21d414ba6e57d25256afada3",
+          "files": [
+            {
+              "path": "misaki/data/us_gold.json",
+              "sha256": "dc414872a49a28ae6c141463d502fd945f3b2fde040484fdc47d00cc4612686f"
+            },
+            {
+              "path": "misaki/data/us_silver.json",
+              "sha256": "de8f67be911bb6c659187b4a65fd966b6a30e56350e0f790d763210b053ac475"
+            }
+          ],
+          "converter": "elizaOS/llama.cpp tools/misaki-g2p/convert_misaki_lexicon.py"
+        }
+      },
+      {
+        "id": "qwen3-asr-0.6b-q8_0",
+        "role": "asr-text",
+        "path": "asr/Qwen3-ASR-0.6B-Q8_0.gguf",
+        "hfRepo": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "hfPath": "Qwen3-ASR-0.6B-Q8_0.gguf",
+        "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/Qwen3-ASR-0.6B-Q8_0.gguf",
+        "revision": "928ab958557df9aa2ef1c93e0e83c7ad0933fae2",
+        "sha256": "bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971",
+        "bytes": 804749248,
+        "license": "Apache-2.0",
+        "status": "published",
+        "source": {
+          "repo": "Qwen/Qwen3-ASR-0.6B",
+          "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+          "converter": "ggml-org convert_hf_to_gguf.py (Q8_0)"
+        }
+      },
+      {
+        "id": "qwen3-asr-0.6b-mmproj-q8_0",
+        "role": "asr-mmproj",
+        "path": "asr/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+        "hfRepo": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "hfPath": "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+        "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+        "revision": "928ab958557df9aa2ef1c93e0e83c7ad0933fae2",
+        "sha256": "41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d",
+        "bytes": 214392480,
+        "license": "Apache-2.0",
+        "status": "published",
+        "source": {
+          "repo": "Qwen/Qwen3-ASR-0.6B",
+          "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+          "converter": "ggml-org convert_hf_to_gguf.py --mmproj (Q8_0)"
+        }
+      },
+      {
+        "id": "silero-vad-v5",
+        "role": "vad",
+        "path": "vad/silero-vad-v5.gguf",
+        "hfRepo": "elizaos/eliza-1",
+        "hfPath": "bundles/e2b/vad/silero-vad-v5.gguf",
+        "url": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/vad/silero-vad-v5.gguf",
+        "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "bytes": 620736,
+        "license": "MIT",
+        "status": "published",
+        "source": {
+          "repo": "github.com/snakers4/silero-vad",
+          "revision": "v5",
+          "converter": "elizaOS silero-vad GGUF converter"
+        }
+      }
+    ]
+  },
+  {
+    "id": "wakeword",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-06-19T18:05:39Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "c544bb4c78a601a0da8372b9399dfe668fbadb1e",
+    "ggufAssets": [
+      {
+        "filename": "voice/wakeword/hey-eliza.melspec.gguf",
+        "sha256": "98bd2d5e3cc09e416626cd1a6a758cb92bb8096766d25ecf57d4c99927db682d",
+        "sizeBytes": 543584,
+        "quant": "fp16"
+      },
+      {
+        "filename": "voice/wakeword/hey-eliza.embedding.gguf",
+        "sha256": "9cfcb0d9f1939c68cc9e63f5ac9e0f09b8e8568ee1085dbb50e7391e874a1dc5",
+        "sizeBytes": 659904,
+        "quant": "fp16"
+      },
+      {
+        "filename": "voice/wakeword/hey-eliza.classifier.gguf",
+        "sha256": "4502c92664b18d598753114f09925921ddd065d72871607c3a842fa70510a350",
+        "sizeBytes": 315456,
+        "quant": "fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.3.0 - real hey-eliza head (no-mel-rescale, ~98pct TA / ~4-7pct FA held-out)",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "turn-detector-intl",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T11:15:08Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
+    "preferredBackend": "ggml",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/turn/intl/model_q8.onnx",
+        "sha256": "af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66",
+        "sizeBytes": 262031196,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn/intl/turn-detector-intl-q8.gguf",
+        "sha256": "5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79",
+        "sizeBytes": 281016768,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "f1Delta": 0.09,
+      "netImprovement": true
+    },
+    "changelogEntry": "LiveKit v0.4.1-intl fine-tuned on multilingual EOU (OASST1 12-lang prompter, prefix-augmented), APOLLO-Mini, F1=0.9308",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "turn-detector",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-15T05:17:55Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "preferredBackend": "ggml",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/turn-detector/onnx/model_q8.onnx",
+        "sha256": "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
+        "sizeBytes": 37736316,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn-detector/onnx/turn-detector-en-q8.gguf",
+        "sha256": "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
+        "sizeBytes": 41275296,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "f1Delta": 0.1411,
+      "netImprovement": true
+    },
+    "changelogEntry": "LiveKit v1.2.2-en fine-tuned on DailyDialog (prefix-augmented EOU corpus, APOLLO-Mini, F1=0.9811 vs 0.84 baseline)",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "speaker-encoder",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
+        "sha256": "ad066730b125f61a305c949f7f196d23681f387f3e3f916be7a4cd003aae6ae3",
+        "sizeBytes": 26525824,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF. GGUF published to HF.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "speaker-encoder",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/speaker-encoder/wespeaker-resnet34-lm.onnx",
+        "sha256": "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+        "sizeBytes": 26530309,
+        "quant": "onnx-fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — WeSpeaker ResNet34-LM 256-dim ONNX (deprecated; GGUF in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "diarizer",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-07-03T03:24:18Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "a89e5615ad616f7bf6c4982cd9eed2805b90370f",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0-ifgo-epoch2.gguf",
+        "sha256": "100a5dbfd480b0cd6b0e01f0a9974ba836412721dfa0e36b7c1bb5a041abfbde",
+        "sizeBytes": 5976032,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.3.0 — epoch-2 IFGO re-bake (#11377): converter_epoch=2 + lstm_gate_order=IFGO metadata; pairs with the IFGO fused reader (fail-closed guard rejects gate-order skew). New filename; 0.2.0 IOFC artifact kept on HF for older fused libs.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "diarizer",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0.gguf",
+        "sha256": "30983eba41c0a99ab7eada564739ae8be74faeb21a31da759c870b5173cbd8a5",
+        "sizeBytes": 5975424,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF. GGUF published to HF.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "diarizer",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0-int8.onnx",
+        "sha256": "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
+        "sizeBytes": 1542304,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/diarizer/pyannote-segmentation-3.0-fp32.onnx",
+        "sha256": "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
+        "sizeBytes": 5986908,
+        "quant": "onnx-fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — Pyannote-segmentation-3.0 ONNX int8 (deprecated; GGUF in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "turn-detector",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "ggufAssets": [
+      {
+        "filename": "voice/turn-detector/turn-detector-en-int8.onnx",
+        "sha256": "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
+        "sizeBytes": 65712276,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn-detector/turn-detector-intl-int8.onnx",
+        "sha256": "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
+        "sizeBytes": 396316457,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/turn-detector/turnsense-fallback-int8.onnx",
+        "sha256": "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
+        "sizeBytes": 176072860,
+        "quant": "onnx-int8"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — LiveKit turn-detector (135M + intl).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "voice-emotion",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim.gguf",
+        "quant": "gguf-fp32",
+        "expectedSizeBytes": 1200000,
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.3.0 — GGUF conversion via voice_emotion_to_gguf.py; ONNX files removed from HF.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "voice-emotion",
+    "version": "0.2.0",
+    "publishedToHfAt": "2026-05-15T07:20:39Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/emotion/wav2small-cls7-int8.onnx",
+        "sha256": "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
+        "sizeBytes": 524750,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim-int8.onnx",
+        "sha256": "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
+        "sizeBytes": 516877,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim-fp32.onnx",
+        "sha256": "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
+        "sizeBytes": 1211917,
+        "quant": "onnx-fp32"
+      },
+      {
+        "filename": "voice/voice-emotion/wav2small-msp-dim-fp32.onnx.data",
+        "sha256": "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
+        "sizeBytes": 989472,
+        "quant": "onnx-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "f1Delta": 0.0042,
+      "netImprovement": true
+    },
+    "changelogEntry": "v0.2.0 — Wav2Small cls7 head shipped (macro-F1=0.355 > 0.35 gate). ONNX files deprecated; GGUF in 0.3.0.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "kokoro",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-05-15T05:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
+    "preferredBackend": "llama-server",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/kokoro/voices/af_sam.bin",
+        "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        "sizeBytes": 522240,
+        "quant": "fp16"
+      }
+    ],
+    "missingAssets": [
+      {
+        "filename": "voice/kokoro/kokoro-v1.0-q4_k_m.gguf",
+        "quant": "q4_k_m",
+        "expectedSizeBytes": 60000000,
+        "reason": "missing-from-local-staging"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": false
+    },
+    "changelogEntry": "0.3.0 — J2: fork-side Kokoro inference path (LLM_ARCH_KOKORO graph + tools/kokoro/). Runtime selector defaults to KOKORO_BACKEND=fork → llama-server /v1/audio/speech. ONNX path retained for one release. Quality gap vs ONNX baseline documented; compute-gated follow-up for full per-tensor weight mapping.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "kokoro",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-15T11:27:44Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "e7ef6204cbede995cc1ff740ed448ce1b6fe93d2",
+    "ggufAssets": [
+      {
+        "filename": "voice/kokoro/voices/af_sam.bin",
+        "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        "sizeBytes": 522240,
+        "quant": "fp16"
+      }
+    ],
+    "evalDeltas": {
+      "mosDelta": -1.88,
+      "werDelta": 1,
+      "netImprovement": false
+    },
+    "changelogEntry": "0.2.0 — af_sam shipped per user override (I2); eval WER=1.0/UTMOS=2.32/SpkSim=0.15, gate=FAIL. OmniVoice preset remains production sam voice. compute-gated: needs ≥3h corpus for real quality.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "kokoro",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/kokoro/kokoro-v1.0-q4.onnx",
+        "sha256": "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+        "sizeBytes": 305215966,
+        "quant": "onnx-int8"
+      },
+      {
+        "filename": "voice/kokoro/voices/af_bella.bin",
+        "sha256": "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+        "sizeBytes": 522240,
+        "quant": "fp16"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — kokoro 82M voice-embedding af_bella preset (ONNX deprecated; fork GGUF path in 0.3.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "vad",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "1dc9cf5467a6539a8d8289afefac63f28ce53f9c",
+    "preferredBackend": "ffi",
+    "ggufAssets": [
+      {
+        "filename": "voice/vad/silero-vad-v5.1.2.ggml.bin",
+        "sha256": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+        "sizeBytes": 885098,
+        "quant": "gguf-fp32"
+      },
+      {
+        "filename": "bundles/2b/vad/silero-vad-v5.gguf",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "sizeBytes": 620736,
+        "quant": "gguf-fp32"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — ONNX file removed from HF; GGUF-only release.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "vad",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/vad/silero-vad-v5.gguf",
+        "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        "sizeBytes": 620736,
+        "quant": "gguf-fp32"
+      },
+      {
+        "filename": "voice/vad/silero-vad-int8.onnx",
+        "sha256": "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
+        "sizeBytes": 639383,
+        "quant": "onnx-int8"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — Silero VAD v5 GGUF (ONNX file deprecated; removed in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "wakeword",
+    "version": "0.2.0",
+    "parentVersion": "0.1.0",
+    "publishedToHfAt": "2026-05-19T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "preferredBackend": "ffi",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/wakeword/openwakeword.gguf",
+        "quant": "gguf-fp32",
+        "expectedSizeBytes": 3000000,
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "0.2.0 — ONNX files removed from HF; combined openwakeword.gguf target.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "wakeword",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "preferredBackend": "ffi",
+    "deprecatedBackends": ["onnx"],
+    "ggufAssets": [
+      {
+        "filename": "voice/wakeword/melspectrogram.onnx",
+        "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+        "sizeBytes": 1087958,
+        "quant": "onnx-fp32"
+      },
+      {
+        "filename": "voice/wakeword/embedding_model.onnx",
+        "sha256": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+        "sizeBytes": 1326578,
+        "quant": "onnx-fp32"
+      },
+      {
+        "filename": "voice/wakeword/hey-eliza-int8.onnx",
+        "sha256": "e565952901cd4203baacef7cb8700891c9bee4e6f42fc9bc0aa03b9c39a2da92",
+        "sizeBytes": 630032,
+        "quant": "onnx-int8"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — hey-eliza wake-word head ONNX (deprecated; removed in 0.2.0).",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "embedding",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-15T07:15:30Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "ggufAssets": [
+      {
+        "filename": "voice/embedding/eliza-1-embedding-q8_0.gguf",
+        "sha256": "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        "sizeBytes": 639150592,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Initial release — Eliza-1 BPE-vocab embedding tier.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "asr",
+    "version": "0.3.0",
+    "parentVersion": "0.2.0",
+    "publishedToHfAt": "2026-06-25T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "pending",
+    "ggufAssets": [],
+    "missingAssets": [
+      {
+        "filename": "voice/asr/eliza-1-gemma-asr-q4_0.gguf",
+        "quant": "q4_0",
+        "reason": "missing-from-hf-repo"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Gemma ASR cutover placeholder — pre-Gemma ASR assets retired; downloads stay disabled until Gemma ASR artifacts are published.",
+    "minBundleVersion": "1.0.0"
+  },
+  {
+    "id": "asr",
+    "version": "0.1.0",
+    "publishedToHfAt": "2026-05-14T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    "ggufAssets": [
+      {
+        "filename": "voice/asr/eliza-1-asr-q8_0.gguf",
+        "sha256": "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+        "sizeBytes": 2165034944,
+        "quant": "q8_0"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-mmproj.gguf",
+        "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        "sizeBytes": 355709344,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Retired pre-Gemma ASR release — streaming transcriber Q8_0.",
+    "minBundleVersion": "0.0.0"
+  },
+  {
+    "id": "asr",
+    "version": "0.2.0",
+    "publishedToHfAt": "2026-05-15T00:00:00Z",
+    "hfRepo": "elizaos/eliza-1",
+    "hfRevision": "50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4",
+    "ggufAssets": [
+      {
+        "filename": "voice/asr/eliza-1-asr-q3_k_m.gguf",
+        "sha256": "80c046bf44cf52699bcef0f5a10d9774a0415c127432a0d0f428e6f1634d7f12",
+        "sizeBytes": 1073237952,
+        "quant": "q3_k_m"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-q4_k_m.gguf",
+        "sha256": "de11f7110e6faddc277088262cffe8adc3228220a1cfd133c49420bb8bd3c3c5",
+        "sizeBytes": 1282435008,
+        "quant": "q4_k_m"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-q5_k_m.gguf",
+        "sha256": "dcffc861bc968202a6ca1107f3335c3dfcd89d6945ca87569596d6a9f551207a",
+        "sizeBytes": 1471801280,
+        "quant": "q5_k_m"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-q6_k.gguf",
+        "sha256": "b0f6f2d610dfcc95c4147271855d1aadf78d298d193666834912eb600c5eaf0b",
+        "sizeBytes": 1673002944,
+        "quant": "q6_k"
+      },
+      {
+        "filename": "voice/asr/eliza-1-asr-mmproj.gguf",
+        "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        "sizeBytes": 355709344,
+        "quant": "q8_0"
+      }
+    ],
+    "evalDeltas": {
+      "netImprovement": true
+    },
+    "changelogEntry": "Retired pre-Gemma ASR K-quant ladder: Q3_K_M, Q4_K_M, Q5_K_M, Q6_K. Kept only as historical release metadata; active downloads remain on the Gemma ASR placeholder until verified artifacts are hosted.",
+    "minBundleVersion": "0.0.0"
+  }
+]

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Purchase Confirmation - Eliza Cloud</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #1f2937;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 40px 20px;
+      }
+      .email-wrapper {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      .header-banner {
+        background: linear-gradient(135deg, #ff5800 0%, #ff8c42 100%);
+        padding: 40px 30px;
+        text-align: center;
+      }
+      .header-icon {
+        font-size: 48px;
+        margin-bottom: 10px;
+      }
+      .header-title {
+        color: white;
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .header-subtitle {
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 16px;
+      }
+      .content {
+        padding: 40px 30px;
+      }
+      .greeting {
+        font-size: 18px;
+        color: #1f2937;
+        margin-bottom: 20px;
+      }
+      .message {
+        font-size: 16px;
+        color: #4b5563;
+        margin-bottom: 30px;
+        line-height: 1.8;
+      }
+      .summary-box {
+        background: #f9fafb;
+        border: 2px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 30px 0;
+      }
+      .summary-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1f2937;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .detail-row:last-child {
+        border-bottom: none;
+      }
+      .detail-label {
+        font-size: 14px;
+        color: #6b7280;
+        font-weight: 500;
+      }
+      .detail-value {
+        font-size: 14px;
+        color: #1f2937;
+        font-weight: 600;
+        font-family: "Courier New", monospace;
+      }
+      .detail-value.positive {
+        color: #10b981;
+      }
+      .detail-value.large {
+        font-size: 18px;
+        color: #ff5800;
+      }
+      .balance-section {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-radius: 12px;
+        padding: 20px;
+        margin: 30px 0;
+        text-align: center;
+      }
+      .balance-label {
+        font-size: 14px;
+        color: #92400e;
+        margin-bottom: 8px;
+      }
+      .balance-amount {
+        font-size: 32px;
+        font-weight: 700;
+        color: #92400e;
+        font-family: "Courier New", monospace;
+      }
+      .cta-button {
+        display: inline-block;
+        background: #ff5800;
+        color: white;
+        text-decoration: none;
+        padding: 16px 32px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 16px;
+        margin: 30px 0;
+        transition: background 0.3s ease;
+      }
+      .cta-button:hover {
+        background: #e04f00;
+      }
+      .footer {
+        background: #f9fafb;
+        padding: 30px;
+        text-align: center;
+        border-top: 1px solid #e5e7eb;
+      }
+      .footer-text {
+        font-size: 14px;
+        color: #6b7280;
+        margin-bottom: 10px;
+      }
+      .footer-links {
+        font-size: 12px;
+        color: #9ca3af;
+      }
+      .footer-links a {
+        color: #ff5800;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-wrapper">
+      <div class="header-banner">
+        <div class="header-icon">✓</div>
+        <h1 class="header-title">Purchase Confirmed!</h1>
+        <p class="header-subtitle">Your credits have been added successfully</p>
+      </div>
+
+      <div class="content">
+        <p class="greeting">Hi {{organizationName}} team,</p>
+
+        <p class="message">
+          Your credit purchase has been processed successfully. The credits have
+          been added to your account and are ready to use immediately.
+        </p>
+
+        <div class="summary-box">
+          <h2 class="summary-title">Transaction Summary</h2>
+
+          <div class="detail-row">
+            <span class="detail-label">Purchase Amount</span>
+            <span class="detail-value large">${{purchaseAmount}}</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Credits Added</span>
+            <span class="detail-value positive">+${{creditsAdded}}</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Payment Method</span>
+            <span class="detail-value">{{paymentMethod}}</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Transaction Date</span>
+            <span class="detail-value">{{transactionDate}}</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Invoice Number</span>
+            <span class="detail-value">{{invoiceNumber}}</span>
+          </div>
+        </div>
+
+        <div class="balance-section">
+          <p class="balance-label">Your New Balance</p>
+          <p class="balance-amount">${{newBalance}}</p>
+        </div>
+
+        <p class="message">
+          Previous Balance: ${{previousBalance}}<br />
+          Credits Added: +${{creditsAdded}}<br />
+          <strong>New Balance: ${{newBalance}}</strong>
+        </p>
+
+        <div
+          style="
+            background: #f0f9ff;
+            border-left: 4px solid #ff5800;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 8px;
+          "
+        >
+          <p
+            style="margin: 0; color: #1f2937; font-size: 14px; line-height: 1.6"
+          >
+            <strong style="color: #ff5800">Invoice Number:</strong>
+            {{invoiceNumber}}<br />
+            <strong style="color: #ff5800">Transaction Date:</strong>
+            {{transactionDate}}<br />
+            <strong style="color: #ff5800">Payment Method:</strong>
+            {{paymentMethod}}
+          </p>
+        </div>
+
+        <p class="message" style="margin-top: 30px">
+          This transaction has been completed successfully. All details are
+          included above for your records. If you need assistance, please
+          contact our support team.
+        </p>
+      </div>
+
+      <div class="footer">
+        <p class="footer-text">Thank you for using Eliza Cloud!</p>
+        <p class="footer-links">
+          © {{currentYear}} Eliza Cloud. All rights reserved.<br />
+          Questions? Contact us at
+          <a
+            href="mailto:support@eliza.cloud"
+            style="color: #ff5800; text-decoration: none"
+            >support@eliza.cloud</a
+          >
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

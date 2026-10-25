@@ -1,0 +1,385 @@
+/**
+ * `WalletStatusSidebarWidget` — the chat-sidebar widget showing abbreviated
+ * EVM/Solana addresses, per-chain badges, asset count, and total USD value.
+ * Renders `null` when `walletEnabled` is false; lazily loads wallet config
+ * and balances the first time it mounts with data missing.
+ */
+import {
+  Button,
+  type ChatSidebarWidgetProps,
+  EmptyWidgetState,
+  useAppSelector,
+  WidgetSection,
+} from "@elizaos/ui";
+
+import { Check, Copy, Wallet } from "lucide-react";
+import * as React from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  type ChainKey,
+  getNativeLogoUrl,
+  resolveChainKey,
+} from "../inventory/chainConfig.ts";
+import { normalizeInventoryImageUrl } from "../inventory/media-url.ts";
+
+// The app's workspace-source build can emit classic JSX for plugin modules.
+void React;
+
+const DUST_THRESHOLD_USD = 0.01;
+const COPY_FEEDBACK_MS = 1200;
+const EVM_CHAIN_ORDER: ChainKey[] = [
+  "ethereum",
+  "base",
+  "arbitrum",
+  "optimism",
+  "polygon",
+  "bsc",
+  "avax",
+];
+const EVM_CHAIN_KEYS = new Set<ChainKey>(EVM_CHAIN_ORDER);
+const CHAIN_DISPLAY_LABELS: Record<ChainKey, string> = {
+  ethereum: "Ethereum",
+  base: "Base",
+  arbitrum: "Arbitrum",
+  optimism: "Optimism",
+  polygon: "Polygon",
+  bsc: "BNB Chain",
+  avax: "Avalanche",
+  solana: "Solana",
+};
+
+function shortenAddress(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (value.length <= 10) return value;
+  return `${value.slice(0, 6)}…${value.slice(-4)}`;
+}
+
+function parseUsd(value: string | null | undefined): number {
+  if (typeof value !== "string") return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatUsd(value: number): string {
+  if (value >= 1000) {
+    return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+  }
+  if (value >= 1) {
+    return `$${value.toFixed(2)}`;
+  }
+  return `$${value.toFixed(2)}`;
+}
+
+function hasPositiveBalance(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
+function hasMissingValuation(
+  balance: string | null | undefined,
+  valueUsd: string | null | undefined,
+  valuationError: string | null | undefined,
+): boolean {
+  if (!valuationError?.trim() || !hasPositiveBalance(balance)) return false;
+  const parsed =
+    typeof valueUsd === "string" ? Number.parseFloat(valueUsd) : Number.NaN;
+  return !Number.isFinite(parsed) || parsed <= 0;
+}
+
+function normalizeEvmChainKeys(chainNames: readonly string[]): ChainKey[] {
+  const seen = new Set<ChainKey>();
+  for (const chainName of chainNames) {
+    const chainKey = resolveChainKey(chainName);
+    if (chainKey && EVM_CHAIN_KEYS.has(chainKey)) {
+      seen.add(chainKey);
+    }
+  }
+  return EVM_CHAIN_ORDER.filter((chainKey) => seen.has(chainKey));
+}
+
+function ChainBadge({ chain }: { chain: ChainKey }) {
+  // Use the same per-chain logo URLs the wallet page uses — these are real
+  // raster logos pulled from the trustwallet/assets repo (see
+  // CHAIN_CONFIGS[*].nativeLogoUrl) and cover every chain we register,
+  // including Arbitrum / Optimism / Polygon that the SVG-only ChainIcon
+  // doesn't have paths for.
+  const [errored, setErrored] = useState(false);
+  const label = CHAIN_DISPLAY_LABELS[chain];
+  const url = errored
+    ? null
+    : (normalizeInventoryImageUrl(getNativeLogoUrl(chain)) ?? null);
+
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={label}
+        title={label}
+        width={16}
+        height={16}
+        className="inline-flex size-4 shrink-0 object-contain"
+        onError={() => setErrored(true)}
+      />
+    );
+  }
+  // Tiny initials fallback when the logo URL fails or is missing.
+  return (
+    <span
+      className="inline-flex h-4 shrink-0 items-center px-0.5 font-mono text-[0.52rem] font-semibold leading-none text-muted"
+      title={label}
+      role="img"
+      aria-label={label}
+    >
+      {label.slice(0, 3).toUpperCase()}
+    </span>
+  );
+}
+
+function ChainBadges({ chains }: { chains: readonly ChainKey[] }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-1">
+      {chains.map((chain) => (
+        <ChainBadge key={chain} chain={chain} />
+      ))}
+    </span>
+  );
+}
+
+interface CopyButtonProps {
+  value: string;
+  label: string;
+}
+
+function CopyAddressButton({ value, label }: CopyButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  async function onClick(event: React.MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      if (typeof navigator === "undefined" || !navigator.clipboard) {
+        return;
+      }
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+    } catch {
+      return;
+    }
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      type="button"
+      onClick={onClick}
+      aria-label={copied ? `${label} copied` : `Copy ${label}`}
+      title={copied ? "Copied" : "Copy"}
+      className="shrink-0"
+    >
+      {copied ? (
+        <Check className="size-3" aria-hidden />
+      ) : (
+        <Copy className="size-3" aria-hidden />
+      )}
+    </Button>
+  );
+}
+
+export function WalletStatusSidebarWidget(_props: ChatSidebarWidgetProps) {
+  const walletEnabled = useAppSelector((s) => s.walletEnabled);
+  const walletAddresses = useAppSelector((s) => s.walletAddresses);
+  const walletConfig = useAppSelector((s) => s.walletConfig);
+  const walletBalances = useAppSelector((s) => s.walletBalances);
+  const loadWalletConfig = useAppSelector((s) => s.loadWalletConfig);
+  const loadBalances = useAppSelector((s) => s.loadBalances);
+  const setTab = useAppSelector((s) => s.setTab);
+
+  useEffect(() => {
+    if (walletEnabled === false) return;
+    if (walletConfig === null) {
+      void loadWalletConfig();
+    }
+    if (walletBalances !== null) return;
+    void loadBalances();
+  }, [
+    walletEnabled,
+    walletConfig,
+    walletBalances,
+    loadWalletConfig,
+    loadBalances,
+  ]);
+
+  const evmAddress = walletAddresses?.evmAddress ?? null;
+  const solanaAddress = walletAddresses?.solanaAddress ?? null;
+  const evmShort = shortenAddress(evmAddress);
+  const solanaShort = shortenAddress(solanaAddress);
+  const evmChains = useMemo(
+    () =>
+      normalizeEvmChainKeys([
+        ...(walletConfig?.evmChains ?? []),
+        ...(walletBalances?.evm?.chains.map((chain) => chain.chain) ?? []),
+      ]),
+    [walletConfig?.evmChains, walletBalances],
+  );
+
+  const walletSummary = useMemo(() => {
+    let assetCount = 0;
+    let totalUsd = 0;
+    let valuationUnavailable = false;
+    if (walletBalances?.evm) {
+      for (const chain of walletBalances.evm.chains) {
+        const chainKey = resolveChainKey(chain.chain);
+        if (!chainKey || !EVM_CHAIN_KEYS.has(chainKey)) continue;
+        const nativeUsd = parseUsd(chain.nativeValueUsd);
+        totalUsd += nativeUsd;
+        if (
+          hasMissingValuation(
+            chain.nativeBalance,
+            chain.nativeValueUsd,
+            chain.error,
+          )
+        ) {
+          valuationUnavailable = true;
+        }
+        if (
+          nativeUsd >= DUST_THRESHOLD_USD ||
+          hasPositiveBalance(chain.nativeBalance)
+        ) {
+          assetCount += 1;
+        }
+        for (const token of chain.tokens) {
+          const tokenUsd = parseUsd(token.valueUsd);
+          totalUsd += tokenUsd;
+          if (hasMissingValuation(token.balance, token.valueUsd, chain.error)) {
+            valuationUnavailable = true;
+          }
+          if (
+            tokenUsd >= DUST_THRESHOLD_USD ||
+            hasPositiveBalance(token.balance)
+          ) {
+            assetCount += 1;
+          }
+        }
+      }
+    }
+    if (walletBalances?.solana) {
+      const nativeUsd = parseUsd(walletBalances.solana.solValueUsd);
+      totalUsd += nativeUsd;
+      if (
+        nativeUsd >= DUST_THRESHOLD_USD ||
+        hasPositiveBalance(walletBalances.solana.solBalance)
+      ) {
+        assetCount += 1;
+      }
+      for (const token of walletBalances.solana.tokens) {
+        const tokenUsd = parseUsd(token.valueUsd);
+        totalUsd += tokenUsd;
+        if (
+          tokenUsd >= DUST_THRESHOLD_USD ||
+          hasPositiveBalance(token.balance)
+        ) {
+          assetCount += 1;
+        }
+      }
+    }
+    return { assetCount, totalUsd, valuationUnavailable };
+  }, [walletBalances]);
+
+  if (walletEnabled === false) {
+    return null;
+  }
+
+  const hasAnyAddress = Boolean(evmAddress || solanaAddress);
+  const hasAnyBalanceRow = walletSummary.assetCount > 0;
+
+  return (
+    <WidgetSection
+      title="Wallet"
+      icon={<Wallet className="size-3.5" />}
+      testId="chat-widget-wallet-status"
+      onTitleClick={() => setTab("inventory")}
+    >
+      {hasAnyAddress ? (
+        <div className="flex flex-col gap-1.5 px-1 pt-0.5">
+          {evmAddress ? (
+            <div
+              className="flex items-center justify-between gap-2 text-3xs"
+              data-testid="chat-widget-wallet-row-evm-address"
+            >
+              <ChainBadges chains={evmChains} />
+              <div className="flex items-center gap-1 min-w-0">
+                <span
+                  className="truncate font-mono text-txt"
+                  title={evmAddress}
+                >
+                  {evmShort}
+                </span>
+                <CopyAddressButton value={evmAddress} label="EVM address" />
+              </div>
+            </div>
+          ) : null}
+          {solanaAddress ? (
+            <div
+              className="flex items-center justify-between gap-2 text-3xs"
+              data-testid="chat-widget-wallet-row-solana-address"
+            >
+              <ChainBadge chain="solana" />
+              <div className="flex items-center gap-1 min-w-0">
+                <span
+                  className="truncate font-mono text-txt"
+                  title={solanaAddress}
+                >
+                  {solanaShort}
+                </span>
+                <CopyAddressButton
+                  value={solanaAddress}
+                  label="Solana address"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {hasAnyBalanceRow ? (
+            <div className="mt-1 flex flex-col gap-1 pt-1">
+              <div
+                className="flex items-center justify-between text-3xs"
+                data-testid="chat-widget-wallet-row-assets"
+              >
+                <span className="truncate text-muted">Assets</span>
+                <span className="shrink-0 text-txt">
+                  {walletSummary.assetCount}
+                </span>
+              </div>
+              <div
+                className="flex items-center justify-between text-3xs"
+                data-testid="chat-widget-wallet-row-value"
+              >
+                <span className="truncate text-muted">Value</span>
+                <span className="shrink-0 text-txt">
+                  {walletSummary.valuationUnavailable ? (
+                    <span title="USD value unavailable">
+                      <span aria-hidden>—</span>
+                      <span className="sr-only">Unavailable</span>
+                    </span>
+                  ) : (
+                    formatUsd(walletSummary.totalUsd)
+                  )}
+                </span>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <EmptyWidgetState icon={<Wallet className="size-5" />} title="None" />
+      )}
+    </WidgetSection>
+  );
+}

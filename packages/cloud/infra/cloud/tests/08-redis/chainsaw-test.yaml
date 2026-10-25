@@ -1,0 +1,68 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: redis
+spec:
+  description: Verify Redis (Bitnami) and redis-rest proxy are operational
+  steps:
+    - name: Assert Redis pods running
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              READY=$(kubectl get pods -n eliza-infra -l app.kubernetes.io/name=redis --no-headers 2>/dev/null | grep -c "Running" || true)
+              [ "$READY" -ge 1 ] || { echo "FAIL: Redis not running (pods=$READY)"; exit 1; }
+
+    - name: Assert redis-rest proxy running
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              READY=$(kubectl get pods -n eliza-infra -l app=redis-rest --no-headers 2>/dev/null | grep -c "Running" || true)
+              [ "$READY" -ge 1 ] || { echo "FAIL: redis-rest not running (pods=$READY)"; exit 1; }
+
+    - name: Assert Redis PING via alias service
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              RESULT=$(kubectl run cs-redis-ping-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis PING 2>/dev/null)
+              echo "$RESULT" | grep -q "PONG" || { echo "FAIL: PING via alias returned: $RESULT"; exit 1; }
+
+    - name: Assert Redis data write/read round-trip
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              WRITE=$(kubectl run cs-redis-write-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis SET chainsaw:test "redis-ok" EX 30 2>/dev/null)
+              echo "$WRITE" | grep -q "OK" || { echo "FAIL: SET returned: $WRITE"; exit 1; }
+
+              READ=$(kubectl run cs-redis-read-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis GET chainsaw:test 2>/dev/null)
+              echo "$READ" | grep -q "redis-ok" || { echo "FAIL: GET returned: $READ"; exit 1; }
+
+    - name: Assert redis-rest HTTP connectivity
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              # Set a key via redis-rest HTTP proxy (Upstash REST API format)
+              SET_RESULT=$(kubectl run cs-redis-rest-set-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=curlimages/curl:latest --quiet -- \
+                curl -s -H "Authorization: Bearer local_dev_token" -H "Content-Type: application/json" \
+                -d '["SET","chainsaw:rest-test","rest-ok","EX","30"]' \
+                "http://redis-rest.eliza-infra.svc:8079" 2>/dev/null)
+              echo "$SET_RESULT" | grep -q "OK" || { echo "FAIL: redis-rest SET returned: $SET_RESULT"; exit 1; }
+
+              # Read it via redis-rest HTTP proxy
+              GET_RESULT=$(kubectl run cs-redis-rest-get-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=curlimages/curl:latest --quiet -- \
+                curl -s -H "Authorization: Bearer local_dev_token" -H "Content-Type: application/json" \
+                -d '["GET","chainsaw:rest-test"]' \
+                "http://redis-rest.eliza-infra.svc:8079" 2>/dev/null)
+              echo "$GET_RESULT" | grep -q "rest-ok" || { echo "FAIL: redis-rest GET returned: $GET_RESULT"; exit 1; }

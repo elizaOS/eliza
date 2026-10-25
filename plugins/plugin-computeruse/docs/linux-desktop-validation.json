@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "platform": "linux-desktop",
+  "status": "requires_device_evidence",
+  "target": {
+    "minimumDistribution": "Ubuntu 22.04 or equivalent modern desktop Linux",
+    "displayServer": "X11 required for xdotool/wmctrl path; Wayland portal capture remains a separate manual check",
+    "driver": "nutjs preferred; legacy xdotool/scrot/wmctrl fallback allowed"
+  },
+  "evidence": {
+    "machineId": null,
+    "distribution": null,
+    "kernelVersion": null,
+    "displayServer": null,
+    "buildId": null,
+    "validatedAt": null,
+    "validator": null,
+    "artifacts": []
+  },
+  "checks": [
+    {
+      "id": "capabilityProbe",
+      "method": "detectPlatformCapabilities/getCapabilities",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "platform is linux",
+        "screenshot, computerUse, windowList, browser, terminal, fileSystem, and clipboard capabilities are reported",
+        "missing optional tools produce explicit unavailable/tool messages"
+      ]
+    },
+    {
+      "id": "dependencyProbe",
+      "method": "ensure-platform-deps / commandExists",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "xdotool or nutjs driver availability is recorded",
+        "screenshot backend availability is recorded",
+        "wmctrl or xdotool window-list backend availability is recorded",
+        "wl-clipboard, xclip, or xsel clipboard backend availability is recorded"
+      ]
+    },
+    {
+      "id": "screenshotCapture",
+      "method": "captureDisplay/capturePrimaryDisplay",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "primary display capture returns non-empty PNG bytes",
+        "captured dimensions match display metadata",
+        "screenshot artifact is attached"
+      ]
+    },
+    {
+      "id": "mouseKeyboardInput",
+      "method": "ComputerUseService desktop actions",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "mouse_move succeeds",
+        "click or double_click succeeds on a harmless target",
+        "type and key actions succeed in a controlled text field",
+        "post-action screenshot is captured when configured"
+      ]
+    },
+    {
+      "id": "windowListFocus",
+      "method": "listWindows/focusWindow",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "listWindows returns visible windows with app/process metadata",
+        "focusWindow focuses a safe target window",
+        "window operation failures include dependency guidance"
+      ]
+    },
+    {
+      "id": "browserAutomation",
+      "method": "browser open/navigate/get/screenshot/close",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "browser target opens or attaches to a supported Chromium browser",
+        "navigate/get/screenshot succeed",
+        "browser cleanup closes the test tab"
+      ]
+    },
+    {
+      "id": "clipboardRoundTrip",
+      "method": "readClipboard/writeClipboard",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "configured Linux clipboard backend writes a test token",
+        "configured Linux clipboard backend reads the same test token",
+        "missing clipboard backend returns ClipboardUnavailableError"
+      ]
+    },
+    {
+      "id": "terminalSafety",
+      "method": "terminal execution safety",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "allowed harmless shell command succeeds",
+        "dangerous or blocked command is rejected",
+        "timeout behavior is recorded"
+      ]
+    },
+    {
+      "id": "approvalMode",
+      "method": "ComputerUseApprovalManager",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "smart_approve auto-approves read-only actions",
+        "destructive actions require approval",
+        "full_control/approve_all/off modes behave as configured"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "strictNullChecks": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "paths": {
+      "@elizaos/plugin-agent-orchestrator/ui": [
+        "./plugin-agent-orchestrator/dist/ui/index.d.ts"
+      ],
+      "@elizaos/plugin-agent-orchestrator/ui/*": [
+        "./plugin-agent-orchestrator/dist/ui/*"
+      ],
+      "@elizaos/app/*": ["../packages/app/dist/*"],
+      "@elizaos/agent/*": ["../packages/agent/dist/*"],
+      "@elizaos/plugin-discord/*": ["./plugin-discord/dist/*"],
+      "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
+      "@elizaos/plugin-elizacloud": ["./plugin-elizacloud/dist/index.d.ts"],
+      "@elizaos/core/protocol": ["../packages/core/dist/protocol"]
+    }
+  },
+  "include": []
+}

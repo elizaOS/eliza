@@ -1,0 +1,556 @@
+{
+  "HAT136": {
+    "flight_number": "HAT136",
+    "origin": "JFK",
+    "destination": "ATL",
+    "scheduled_departure_time_est": "19:00:00",
+    "scheduled_arrival_time_est": "21:30:00",
+    "dates": {
+      "2024-05-01": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-01T19:18:00",
+        "actual_arrival_time_est": "2024-05-01T21:29:00"
+      },
+      "2024-05-02": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-02T19:29:00",
+        "actual_arrival_time_est": "2024-05-02T22:25:00"
+      },
+      "2024-05-03": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-03T19:09:00",
+        "actual_arrival_time_est": "2024-05-03T21:32:00"
+      },
+      "2024-05-04": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-04T19:30:00",
+        "actual_arrival_time_est": "2024-05-04T22:12:00"
+      },
+      "2024-05-05": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-05T19:26:00",
+        "actual_arrival_time_est": "2024-05-05T21:36:00"
+      },
+      "2024-05-06": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-06T18:55:00",
+        "actual_arrival_time_est": "2024-05-06T21:20:00"
+      },
+      "2024-05-07": {
+        "status": "cancelled"
+      },
+      "2024-05-08": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-08T19:30:00",
+        "actual_arrival_time_est": "2024-05-08T22:08:00"
+      },
+      "2024-05-09": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-09T18:59:00",
+        "actual_arrival_time_est": "2024-05-09T21:20:00"
+      },
+      "2024-05-10": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-10T19:01:00",
+        "actual_arrival_time_est": "2024-05-10T21:25:00"
+      },
+      "2024-05-11": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-11T19:09:00",
+        "actual_arrival_time_est": "2024-05-11T21:43:00"
+      },
+      "2024-05-12": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-12T18:44:00",
+        "actual_arrival_time_est": "2024-05-12T21:36:00"
+      },
+      "2024-05-13": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-13T18:53:00",
+        "actual_arrival_time_est": "2024-05-13T21:37:00"
+      },
+      "2024-05-14": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-14T19:24:00",
+        "actual_arrival_time_est": "2024-05-14T21:58:00"
+      },
+      "2024-05-15": {
+        "status": "delayed",
+        "estimated_departure_time_est": "2024-05-15T21:57:00",
+        "estimated_arrival_time_est": "2024-05-16T00:27:00"
+      },
+      "2024-05-16": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 11,
+          "economy": 16,
+          "business": 2
+        },
+        "prices": {
+          "basic_economy": 59,
+          "economy": 189,
+          "business": 231
+        }
+      },
+      "2024-05-17": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 16,
+          "economy": 13,
+          "business": 14
+        },
+        "prices": {
+          "basic_economy": 72,
+          "economy": 112,
+          "business": 229
+        }
+      },
+      "2024-05-18": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 4,
+          "economy": 16,
+          "business": 14
+        },
+        "prices": {
+          "basic_economy": 74,
+          "economy": 116,
+          "business": 437
+        }
+      },
+      "2024-05-19": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 18,
+          "economy": 2,
+          "business": 15
+        },
+        "prices": {
+          "basic_economy": 68,
+          "economy": 183,
+          "business": 492
+        }
+      },
+      "2024-05-20": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 15,
+          "economy": 14,
+          "business": 2
+        },
+        "prices": {
+          "basic_economy": 52,
+          "economy": 152,
+          "business": 277
+        }
+      },
+      "2024-05-21": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 9,
+          "economy": 12,
+          "business": 20
+        },
+        "prices": {
+          "basic_economy": 75,
+          "economy": 110,
+          "business": 245
+        }
+      },
+      "2024-05-22": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 20,
+          "economy": 6,
+          "business": 10
+        },
+        "prices": {
+          "basic_economy": 69,
+          "economy": 122,
+          "business": 470
+        }
+      },
+      "2024-05-23": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 9,
+          "economy": 18,
+          "business": 19
+        },
+        "prices": {
+          "basic_economy": 95,
+          "economy": 183,
+          "business": 465
+        }
+      },
+      "2024-05-24": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 15,
+          "economy": 17,
+          "business": 3
+        },
+        "prices": {
+          "basic_economy": 67,
+          "economy": 156,
+          "business": 209
+        }
+      },
+      "2024-05-25": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 19,
+          "economy": 6,
+          "business": 9
+        },
+        "prices": {
+          "basic_economy": 88,
+          "economy": 167,
+          "business": 368
+        }
+      },
+      "2024-05-26": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 7,
+          "economy": 12,
+          "business": 18
+        },
+        "prices": {
+          "basic_economy": 82,
+          "economy": 154,
+          "business": 373
+        }
+      },
+      "2024-05-27": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 19,
+          "economy": 17,
+          "business": 14
+        },
+        "prices": {
+          "basic_economy": 93,
+          "economy": 172,
+          "business": 214
+        }
+      },
+      "2024-05-28": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 13,
+          "economy": 4,
+          "business": 7
+        },
+        "prices": {
+          "basic_economy": 52,
+          "economy": 162,
+          "business": 220
+        }
+      },
+      "2024-05-29": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 0,
+          "economy": 17,
+          "business": 8
+        },
+        "prices": {
+          "basic_economy": 58,
+          "economy": 131,
+          "business": 237
+        }
+      },
+      "2024-05-30": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 9,
+          "economy": 9,
+          "business": 17
+        },
+        "prices": {
+          "basic_economy": 94,
+          "economy": 123,
+          "business": 399
+        }
+      }
+    }
+  },
+  "HAT039": {
+    "flight_number": "HAT039",
+    "origin": "ATL",
+    "destination": "SEA",
+    "scheduled_departure_time_est": "22:00:00",
+    "scheduled_arrival_time_est": "03:00:00+1",
+    "dates": {
+      "2024-05-01": {
+        "status": "cancelled"
+      },
+      "2024-05-02": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-02T21:45:00",
+        "actual_arrival_time_est": "2024-05-03T02:39:00"
+      },
+      "2024-05-03": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-03T21:54:00",
+        "actual_arrival_time_est": "2024-05-04T03:17:00"
+      },
+      "2024-05-04": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-04T21:38:00",
+        "actual_arrival_time_est": "2024-05-05T02:26:00"
+      },
+      "2024-05-05": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-05T21:47:00",
+        "actual_arrival_time_est": "2024-05-06T02:18:00"
+      },
+      "2024-05-06": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-06T21:38:00",
+        "actual_arrival_time_est": "2024-05-07T03:02:00"
+      },
+      "2024-05-07": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-07T21:38:00",
+        "actual_arrival_time_est": "2024-05-08T02:30:00"
+      },
+      "2024-05-08": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-08T21:35:00",
+        "actual_arrival_time_est": "2024-05-09T03:03:00"
+      },
+      "2024-05-09": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-09T21:58:00",
+        "actual_arrival_time_est": "2024-05-10T03:24:00"
+      },
+      "2024-05-10": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-10T22:20:00",
+        "actual_arrival_time_est": "2024-05-11T03:34:00"
+      },
+      "2024-05-11": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-11T22:08:00",
+        "actual_arrival_time_est": "2024-05-12T02:51:00"
+      },
+      "2024-05-12": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-12T22:03:00",
+        "actual_arrival_time_est": "2024-05-13T03:30:00"
+      },
+      "2024-05-13": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-13T21:39:00",
+        "actual_arrival_time_est": "2024-05-14T02:18:00"
+      },
+      "2024-05-14": {
+        "status": "landed",
+        "actual_departure_time_est": "2024-05-14T22:14:00",
+        "actual_arrival_time_est": "2024-05-15T03:19:00"
+      },
+      "2024-05-15": {
+        "status": "delayed",
+        "estimated_departure_time_est": "2024-05-16T00:50:00",
+        "estimated_arrival_time_est": "2024-05-16T05:50:00"
+      },
+      "2024-05-16": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 0,
+          "economy": 5,
+          "business": 11
+        },
+        "prices": {
+          "basic_economy": 100,
+          "economy": 157,
+          "business": 437
+        }
+      },
+      "2024-05-17": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 4,
+          "economy": 1,
+          "business": 0
+        },
+        "prices": {
+          "basic_economy": 56,
+          "economy": 100,
+          "business": 418
+        }
+      },
+      "2024-05-18": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 13,
+          "economy": 19,
+          "business": 11
+        },
+        "prices": {
+          "basic_economy": 70,
+          "economy": 118,
+          "business": 239
+        }
+      },
+      "2024-05-19": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 8,
+          "economy": 18,
+          "business": 1
+        },
+        "prices": {
+          "basic_economy": 82,
+          "economy": 198,
+          "business": 219
+        }
+      },
+      "2024-05-20": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 18,
+          "economy": 10,
+          "business": 2
+        },
+        "prices": {
+          "basic_economy": 52,
+          "economy": 103,
+          "business": 283
+        }
+      },
+      "2024-05-21": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 19,
+          "economy": 0,
+          "business": 14
+        },
+        "prices": {
+          "basic_economy": 97,
+          "economy": 191,
+          "business": 425
+        }
+      },
+      "2024-05-22": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 16,
+          "economy": 7,
+          "business": 16
+        },
+        "prices": {
+          "basic_economy": 95,
+          "economy": 179,
+          "business": 274
+        }
+      },
+      "2024-05-23": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 18,
+          "economy": 6,
+          "business": 16
+        },
+        "prices": {
+          "basic_economy": 54,
+          "economy": 131,
+          "business": 493
+        }
+      },
+      "2024-05-24": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 18,
+          "economy": 7,
+          "business": 0
+        },
+        "prices": {
+          "basic_economy": 80,
+          "economy": 134,
+          "business": 357
+        }
+      },
+      "2024-05-25": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 1,
+          "economy": 15,
+          "business": 13
+        },
+        "prices": {
+          "basic_economy": 75,
+          "economy": 188,
+          "business": 389
+        }
+      },
+      "2024-05-26": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 10,
+          "economy": 20,
+          "business": 4
+        },
+        "prices": {
+          "basic_economy": 56,
+          "economy": 148,
+          "business": 415
+        }
+      },
+      "2024-05-27": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 2,
+          "economy": 19,
+          "business": 13
+        },
+        "prices": {
+          "basic_economy": 92,
+          "economy": 128,
+          "business": 499
+        }
+      },
+      "2024-05-28": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 13,
+          "economy": 8,
+          "business": 17
+        },
+        "prices": {
+          "basic_economy": 53,
+          "economy": 158,
+          "business": 204
+        }
+      },
+      "2024-05-29": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 19,
+          "economy": 18,
+          "business": 7
+        },
+        "prices": {
+          "basic_economy": 97,
+          "economy": 158,
+          "business": 451
+        }
+      },
+      "2024-05-30": {
+        "status": "available",
+        "available_seats": {
+          "basic_economy": 12,
+          "economy": 17,
+          "business": 0
+        },
+        "prices": {
+          "basic_economy": 66,
+          "economy": 194,
+          "business": 443
+        }
+      }
+    }
+  }
+}

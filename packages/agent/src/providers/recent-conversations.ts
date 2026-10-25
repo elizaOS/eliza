@@ -1,0 +1,254 @@
+/**
+ * Exposes the complete authorized cross-platform conversation history inline,
+ * with a room index for exact storage-backed reads when a permitted
+ * memory-read action exists. Current dialogue stays in RECENT_MESSAGES;
+ * relevant-conversations independently recalls matching historical evidence.
+ * No authorized body is replaced by the index, shortened or dropped under an
+ * estimated budget; a genuine model input boundary rejects explicitly.
+ * Automation/page rooms are excluded and owner-private disclosure is checked
+ * before identity expansion or history reads.
+ */
+import {
+  actionGateRejection,
+  buildCrossWorldConversationAccessContext,
+  getValidationKeywordTerms,
+  type IAgentRuntime,
+  type Media,
+  type Memory,
+  markOwnerExclusiveDisclosureUsed,
+  OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  type Provider,
+  type ProviderResult,
+  type Room,
+  recordOwnerExclusiveSuppression,
+  revalidateOwnerExclusiveDisclosure,
+  type State,
+  toWellFormedUnicode,
+  type UUID,
+} from "@elizaos/core";
+
+import { dedupeHygienicDialogueMessages } from "@elizaos/plugin-assistant";
+import {
+  extractConversationMetadataFromRoom,
+  isAutomationConversationMetadata,
+  isPageScopedConversationMetadata,
+} from "../api/conversation-metadata.ts";
+import {
+  formatRelativeTimestampPrefix,
+  formatSpeakerLabel,
+  roomSourceTag,
+} from "../shared/conversation-format.ts";
+
+function attachmentPromptSummary(attachments: readonly Media[]): string {
+  return attachments
+    .map((attachment) => {
+      const label =
+        attachment.filename ??
+        attachment.title ??
+        attachment.id ??
+        "attachment";
+      const mediaType = attachment.mimeType ?? attachment.contentType;
+      const readableContent = attachment.text ?? attachment.description;
+      return `[attachment: ${toWellFormedUnicode(label)}${mediaType ? `; ${mediaType}` : ""}${readableContent ? `; ${toWellFormedUnicode(readableContent)}` : ""}]`;
+    })
+    .join(" ");
+}
+
+export const recentConversationsProvider: Provider = {
+  name: "recent-conversations",
+  description:
+    "Complete authorized cross-platform conversation history with a room index for storage-backed recall.",
+  descriptionCompressed:
+    "authorized cross platform conversation history room index stored recall",
+  dynamic: true,
+  // Cross-room originals load for selected recall contexts; current-room
+  // dialogue remains available independently through RECENT_MESSAGES.
+  position: 5,
+  relevanceKeywords: getValidationKeywordTerms(
+    "provider.recentConversations.relevance",
+    {
+      includeAllLocales: true,
+    },
+  ),
+  contexts: ["memory", "messaging"],
+  contextGate: { anyOf: ["memory", "messaging"] },
+  cacheStable: false,
+  cacheScope: "turn",
+  // roleGate ADMIN is enforced by applyPluginRoleGating (#12087 Item 14); the
+  // declared gate is authoritative, not the handler body.
+  roleGate: { minRole: "ADMIN" },
+
+  async get(
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state: State,
+  ): Promise<ProviderResult> {
+    const entityId = message.entityId as UUID | undefined;
+    if (!entityId) {
+      return { text: "", values: {}, data: {} };
+    }
+
+    try {
+      const currentRoom = await runtime.getRoom(message.roomId);
+      const currentMeta = extractConversationMetadataFromRoom(currentRoom);
+      if (
+        isAutomationConversationMetadata(currentMeta) ||
+        isPageScopedConversationMetadata(currentMeta)
+      ) {
+        return { text: "", values: {}, data: {} };
+      }
+
+      // Every result from this provider can disclose another destination's
+      // history. Revalidate the live audience before resolving identities or
+      // reading rooms so a group/thread destination cannot probe private
+      // cross-platform context through either output or query side effects.
+      const disclosure = await revalidateOwnerExclusiveDisclosure(
+        runtime,
+        message,
+      );
+      if (
+        !disclosure.allowed ||
+        disclosure.basis !== OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS
+      ) {
+        if (!disclosure.allowed) {
+          recordOwnerExclusiveSuppression(message, disclosure.reason);
+        }
+        return { text: "", values: {}, data: {} };
+      }
+
+      const accessContext = await buildCrossWorldConversationAccessContext(
+        runtime,
+        message,
+      );
+      const recentMessagesOwnsCurrentRoom = runtime.providers?.some(
+        (provider) => provider.name?.trim().toUpperCase() === "RECENT_MESSAGES",
+      );
+      const roomIds = (accessContext.authorizedRoomIds ?? []).filter(
+        (roomId) => !recentMessagesOwnsCurrentRoom || roomId !== message.roomId,
+      );
+      if (!roomIds || roomIds.length === 0) {
+        return { text: "", values: {}, data: {} };
+      }
+
+      const recallAction = runtime.actions?.find((action) => {
+        if (action.name !== "MEMORY_SEARCH" && action.name !== "MEMORY") {
+          return false;
+        }
+        const rejection = actionGateRejection(action, {
+          message,
+          userRoles: accessContext.role ? [accessContext.role] : [],
+          // This manifest tells the response router to select memory when
+          // needed; context selection has not happened yet. Every other gate
+          // must already admit the action, and execution rechecks all gates.
+          activeContexts: ["memory"],
+        });
+        return rejection === undefined;
+      });
+      // Complete authorized bodies are always inline. A recall action adds a
+      // room index for exact reads; it never replaces the bodies.
+      const memories = await runtime.getMemoriesByRoomIds({
+        tableName: "messages",
+        roomIds,
+        accessContext,
+      });
+      // Share RECENT_MESSAGES source hygiene: only identical copies of the
+      // same source ID collapse. Distinct connector records and repeated turns
+      // keep their provenance even when their visible text is identical.
+      const byRoom = new Map<string, Memory[]>();
+      for (const memory of memories) {
+        if (
+          !(
+            Boolean(memory.content.text) ||
+            (memory.content.attachments?.length ?? 0) > 0
+          )
+        ) {
+          continue;
+        }
+        const bucket = byRoom.get(memory.roomId) ?? [];
+        bucket.push(memory);
+        byRoom.set(memory.roomId, bucket);
+      }
+      const sorted = [...byRoom.values()]
+        .flatMap((roomMemories) =>
+          dedupeHygienicDialogueMessages(
+            roomMemories.sort(
+              (left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0),
+            ),
+            runtime.agentId,
+          ),
+        )
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+      if (sorted.length === 0) {
+        return { text: "", values: {}, data: {} };
+      }
+
+      // Resolve room labels in one adapter read. Missing cosmetic labels do not
+      // remove an authorized room from the manifest or widen disclosure.
+      const roomCache = new Map<string, Room | null>();
+      for (const roomId of roomIds) roomCache.set(roomId, null);
+      const resultRoomIds = Array.from(roomCache.keys()) as UUID[];
+      try {
+        for (const room of await runtime.getRoomsByIds(resultRoomIds)) {
+          if (room.id) roomCache.set(room.id, room);
+        }
+      } catch (error) {
+        // error-policy:J4 source tags degrade to untagged while the complete
+        // eligible message set remains visible and diagnostics record failure.
+        runtime.reportError("RecentConversationsProvider.roomTags", error, {
+          roomIds: resultRoomIds,
+        });
+      }
+
+      const rooms = roomIds.map((roomId) => {
+        const room = roomCache.get(roomId) ?? null;
+        return {
+          id: roomId,
+          source: room?.source ?? null,
+          name: room?.name ?? null,
+          label: toWellFormedUnicode(roomSourceTag(room)),
+        };
+      });
+      markOwnerExclusiveDisclosureUsed(message);
+
+      const lines = ["Stored conversations (complete authorized history):"];
+      for (const memory of sorted) {
+        const room = roomCache.get(memory.roomId) ?? null;
+        const body = toWellFormedUnicode(memory.content.text ?? "");
+        const attachments = attachmentPromptSummary(
+          memory.content.attachments ?? [],
+        );
+        lines.push(
+          `${roomSourceTag(room)} ${formatRelativeTimestampPrefix(memory.createdAt)}${formatSpeakerLabel(runtime, memory)}: ${[body, attachments].filter(Boolean).join(" ")}`,
+        );
+      }
+      if (recallAction) {
+        lines.push(
+          "",
+          `Room index for exact reads with ${recallAction.name}${recallAction.name === "MEMORY" ? " action=search" : ""}, type=messages and a roomId below:`,
+          ...rooms.map((room) => `- ${room.label} roomId=${room.id}`),
+        );
+      }
+      // No `overflowText`: an estimated budget must not swap these bodies for
+      // a body-free index. A genuine model input boundary rejects explicitly.
+      return {
+        text: lines.join("\n"),
+        values: {
+          recentConversationCount: sorted.length,
+          recentConversationRoomCount: rooms.length,
+        },
+        data: { rooms },
+      };
+    } catch (error) {
+      // error-policy:J4 expose retrieval failure before a direct response can mistake it for empty history.
+      runtime.reportError("RecentConversationsProvider", error, {
+        entityId: message.entityId,
+        roomId: message.roomId,
+      });
+      return {
+        text: "Cross-room history is unavailable because retrieval failed. Do not infer that no prior discussion exists; use an authorized recall tool if available or state the gap.",
+        values: {},
+        data: { recallUnavailable: true },
+      };
+    }
+  },
+};

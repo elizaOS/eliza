@@ -1,0 +1,315 @@
+/**
+ * Runs the production evaluator through the real OpenAI-compatible handler and
+ * AI SDK against a loopback provider, then reads its persisted processor result.
+ * This proves lossless static-prefix ordering reaches the wire without enabling
+ * account-gated cache hints; the provider response is deterministic, not live AI.
+ */
+
+import { createServer } from "node:http";
+import { type Evaluator, type Memory, ModelType, type PromptSegment } from "@elizaos/core";
+
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
+import { expect, it, vi } from "vitest";
+import { EvaluatorService } from "../../plugin-assistant/src/services/evaluator.ts";
+import { handleTextSmall } from "../models/text";
+
+it.for([
+  { finishReason: "stop", malformed: false, succeeds: true, nativeSchema: false },
+  { finishReason: "stop", malformed: false, succeeds: true, nativeSchema: true },
+  {
+    finishReason: "stop",
+    malformed: false,
+    succeeds: true,
+    nativeSchema: true,
+    rejectSchema: true,
+  },
+  { finishReason: "length", malformed: false, succeeds: false },
+  { finishReason: "content_filter", malformed: false, succeeds: false },
+  { finishReason: "stop", malformed: true, succeeds: false },
+  {
+    finishReason: "stop",
+    malformed: false,
+    succeeds: false,
+    nativeSchema: true,
+    cancelRequest: true,
+  },
+])(
+  "processes only complete SDK evaluator output ($finishReason, malformed=$malformed, native=$nativeSchema, reject=$rejectSchema, cancel=$cancelRequest)",
+  async (
+    { finishReason, malformed, succeeds, nativeSchema, rejectSchema, cancelRequest },
+    { signal, onTestFinished }
+  ) => {
+    const finished = Promise.withResolvers<void>();
+    // A timed-out callback keeps running until its owned provider work settles.
+    // Drain it before the next case changes process-wide provider settings.
+    onTestFinished(() => finished.promise);
+    const requestAbort = new AbortController();
+    const providerSignal = AbortSignal.any([signal, requestAbort.signal]);
+    const bodies: Array<{
+      model: string;
+      response_format?: { type: string; json_schema?: { schema: unknown } };
+      messages: Array<{ role: string; content: string }>;
+      prompt_cache_key?: string;
+      prompt_cache_retention?: string;
+    }> = [];
+    const server = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk: Buffer) => chunks.push(chunk));
+      request.on("end", () => {
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as (typeof bodies)[number];
+        bodies.push(body);
+        if (cancelRequest) {
+          requestAbort.abort(new DOMException("Fixture cancellation", "AbortError"));
+          return;
+        }
+        if (rejectSchema && body.response_format?.type === "json_schema") {
+          response.writeHead(400, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              error: {
+                message: "response schema json_schema unsupported",
+                type: "invalid_request_error",
+                code: "unsupported_response_format",
+              },
+            })
+          );
+          return;
+        }
+        const user = body.messages.find((message) => message.role === "user")?.content;
+        const match = user && /Latest message:\n([\s\S]*?)\n\nAgent response messages:/.exec(user);
+        if (!match) {
+          response.writeHead(400);
+          response.end("missing complete context");
+          return;
+        }
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            id: "eval-wire",
+            object: "chat.completion",
+            created: 0,
+            model: body.model,
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: malformed
+                    ? "{broken-json"
+                    : JSON.stringify({ store: { text: match[1] } }),
+                },
+                finish_reason: finishReason,
+              },
+            ],
+            usage: {
+              prompt_tokens: 2000,
+              completion_tokens: 20,
+              total_tokens: 2020,
+              prompt_tokens_details: { cached_tokens: 1024 },
+            },
+          })
+        );
+      });
+    });
+    try {
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("No loopback address");
+      const originalFetch = globalThis.fetch;
+      vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
+        const url = new URL(
+          typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+        );
+        if (url.hostname !== "127.0.0.1" || url.port !== String(address.port))
+          throw new Error("Test forbids non-loopback provider calls");
+        return originalFetch(input, init);
+      });
+      vi.stubEnv("CEREBRAS_API_KEY", "test-loopback-key");
+      vi.stubEnv("CEREBRAS_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
+      vi.stubEnv("CEREBRAS_SMALL_MODEL", "qwen-3.8-27b");
+      vi.stubEnv("OPENAI_API_KEY", undefined);
+      vi.stubEnv("OPENAI_BASE_URL", undefined);
+      vi.stubEnv("ELIZA_PROVIDER", nativeSchema ? "openai" : "cerebras");
+      if (nativeSchema) {
+        vi.stubEnv("CEREBRAS_API_KEY", undefined);
+        vi.stubEnv("OPENAI_API_KEY", "loopback-test-key");
+        vi.stubEnv("OPENAI_BASE_URL", `http://127.0.0.1:${address.port}/v1`);
+        vi.stubEnv("OPENAI_SMALL_MODEL", "gpt-4o-mini");
+      }
+      const runtime = createSQLiteTestRuntime({
+        // The 140K-char message and the repeated schema are the point of this
+        // wire test; keep them above the post-turn input budget's default.
+        character: {
+          name: "EvaluatorWire",
+          bio: "test",
+          settings: { POST_TURN_EVALUATOR_MAX_PROMPT_TOKENS: "1000000" },
+        },
+
+        logLevel: "fatal",
+      });
+      runtime.evaluators.length = 0;
+      runtime.composeState = async () => ({
+        values: {},
+        data: {},
+        text: "Complete provider context remains here.",
+      });
+      runtime.registerModel(
+        ModelType.TEXT_SMALL,
+        (modelRuntime, params) =>
+          handleTextSmall(modelRuntime, { ...params, signal: providerSignal }),
+        "openai",
+        100
+      );
+      const stable = "Extract the complete latest message including its final reference.\n\n";
+      const segments = (text: string): PromptSegment[] => [
+        { content: stable, stable: true },
+        { content: text, stable: false },
+      ];
+      const schemaDescription = `${"Schema Unicode 🧭 漢字 ".repeat(10000)}FINAL-CONTRACT-TAIL`;
+      const saved: string[] = [];
+      const evaluator: Evaluator<{ text: string }> = {
+        name: "store",
+        description: "Persist the extracted message",
+        schema: {
+          type: "object",
+          properties: { text: { type: "string", description: schemaDescription } },
+          required: ["text"],
+          additionalProperties: false,
+        },
+        shouldRun: async () => true,
+        prompt: ({ message }) =>
+          segments(message.content.text ?? "")
+            .map((segment) => segment.content)
+            .join(""),
+        promptSegments: ({ message }) => segments(message.content.text ?? ""),
+        parse: (value) => value as { text: string },
+        processors: [
+          {
+            process: async ({ message, output }) => {
+              saved.push(
+                await runtime.createMemory(
+                  {
+                    ...message,
+                    id: crypto.randomUUID() as Memory["id"],
+                    content: { text: output.text },
+                  },
+                  "messages"
+                )
+              );
+              return { success: true };
+            },
+          },
+        ],
+      };
+      runtime.registerEvaluator(evaluator);
+      // Keep the complete 140K-character payload without making this wire
+      // contract depend on expensive BPE work for one enormous synthetic word.
+      const longText = "Complete Unicode 🧭 context remains unchanged.\n"
+        .repeat(4000)
+        .slice(0, 140_000);
+      expect(longText).toHaveLength(140_000);
+      for (const text of [`${longText}-FIRST-END`, "second-SECOND-END"]) {
+        const message: Memory = {
+          id: crypto.randomUUID() as Memory["id"],
+          entityId: crypto.randomUUID() as Memory["entityId"],
+          roomId: crypto.randomUUID() as Memory["roomId"],
+          content: { text },
+        };
+        const result = await new EvaluatorService(runtime).run(message);
+        if (!succeeds) {
+          expect(result.errors.length).toBeGreaterThan(0);
+          expect(result.processedEvaluators).toEqual([]);
+          expect(saved).toEqual([]);
+          expect(bodies.length).toBeGreaterThan(0);
+          if (cancelRequest) expect(bodies).toHaveLength(1);
+          return;
+        }
+        expect(result.errors).toEqual([]);
+        expect(result.processedEvaluators).toEqual(["store"]);
+        const id = saved.at(-1);
+        if (!id) throw new Error("No processor persistence receipt");
+        expect((await runtime.getMemoryById(id as NonNullable<Memory["id"]>))?.content.text).toBe(
+          text
+        );
+        const wire = bodies.at(-1);
+        const user = wire?.messages.find((item) => item.role === "user")?.content;
+        expect(user).toContain(text);
+        const mergedSchema = {
+          type: "object",
+          properties: { store: evaluator.schema },
+          required: ["store"],
+          additionalProperties: false,
+        };
+        // Native output carries the complete schema structurally; fallback
+        // includes it in the prompt while preserving the entire turn context.
+        const schemaMatch =
+          user && /## Output JSON Schema\n([\s\S]*?)\n\nEvaluate just-finished turn/.exec(user);
+        if (wire?.response_format?.type === "json_schema") {
+          expect(schemaMatch).toBeNull();
+          const schema = wire.response_format.json_schema?.schema as typeof mergedSchema;
+          expect(schema.properties.store.properties.text.description).toBe(schemaDescription);
+        } else {
+          expect(schemaMatch).toBeTruthy();
+          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
+          expect(JSON.parse(schemaMatch?.[1] ?? "null")).toEqual(mergedSchema);
+          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+            user?.indexOf("Latest message:") ?? -1
+          );
+        }
+        expect(user).not.toContain("## Output Shape");
+        if (!rejectSchema) {
+          expect(wire?.response_format?.type).toBe("json_schema");
+          expect(schemaMatch).toBeNull();
+          if (!nativeSchema) {
+            expect(wire?.response_format?.json_schema?.schema).toEqual(mergedSchema);
+          }
+        } else {
+          expect(wire?.response_format?.type).toBe("json_object");
+          expect(schemaMatch).toBeTruthy();
+          expect(schemaMatch?.[1]).toBe(JSON.stringify(mergedSchema));
+          const visibleSchema = JSON.parse(schemaMatch?.[1] ?? "null");
+          expect(visibleSchema.properties.store.properties.text.description).toBe(
+            schemaDescription
+          );
+          expect(user?.indexOf("## Output JSON Schema")).toBeLessThan(
+            user?.indexOf("Latest message:") ?? -1
+          );
+        }
+        expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
+        expect(wire?.prompt_cache_key).toBeUndefined();
+        expect(wire?.prompt_cache_retention).toBeUndefined();
+      }
+      expect(bodies).toHaveLength(rejectSchema ? 3 : 2);
+      if (rejectSchema) {
+        expect(bodies[0]?.response_format?.type).toBe("json_schema");
+        expect(bodies[1]?.response_format?.type).toBe("json_object");
+        // The fallback adds the schema text; original turn context stays complete.
+        const userOf = (body: (typeof bodies)[number] | undefined) =>
+          body?.messages.find((item) => item.role === "user")?.content ?? "";
+        const turnContext = (prompt: string) =>
+          prompt.slice(prompt.indexOf("Evaluate just-finished turn"));
+        expect(userOf(bodies[0])).not.toContain("## Output JSON Schema\n");
+        expect(userOf(bodies[1])).toContain("## Output JSON Schema\n");
+        expect(turnContext(userOf(bodies[1]))).toBe(turnContext(userOf(bodies[0])));
+        expect(bodies[1]?.messages.filter((item) => item.role !== "user")).toEqual(
+          bodies[0]?.messages.filter((item) => item.role !== "user")
+        );
+      }
+    } finally {
+      requestAbort.abort();
+      server.closeAllConnections();
+      try {
+        if (server.listening) {
+          await new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve()))
+          );
+        }
+      } finally {
+        vi.unstubAllEnvs();
+        vi.restoreAllMocks();
+        finished.resolve();
+      }
+    }
+  },
+  120_000
+);

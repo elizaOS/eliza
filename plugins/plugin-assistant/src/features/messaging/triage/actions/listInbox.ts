@@ -1,0 +1,217 @@
+/**
+ * Read-only triage action that returns unread messages across every connected
+ * platform as one recency-sorted feed with structural signals attached; the
+ * model reading the result judges urgency (#14716). Registered under the
+ * shared `MESSAGE` action name; serves cached refs from the TriageService
+ * store when present (re-ranked via `rankScored`) and otherwise triggers a
+ * live `triage()` pull, then filters to unread and trims to the requested
+ * limit. A warm cache that yields zero unread falls through to the same
+ * live pull, so the empty answer reflects the connectors rather than a
+ * stale all-read store. ADMIN-gated and side-effect free — it never drafts
+ * or mutates.
+ */
+
+import type {
+  Action,
+  ActionExample,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { rankScored } from "../triage-engine.ts";
+import { getDefaultTriageService } from "../triage-service.ts";
+import { ALL_MESSAGE_SOURCES } from "../types.ts";
+import {
+  parseListInboxParams,
+  SUPPORTED_MESSAGE_SOURCES_TEXT,
+  unlistableSourcesError,
+  validateMessageAction,
+} from "./_shared.ts";
+
+export const listInboxAction: Action = {
+  name: "MESSAGE",
+  contexts: ["messaging", "email", "connectors"],
+  roleGate: { minRole: "ADMIN" },
+  description:
+    "Read-only list of unread messages from every connected platform as one feed, newest first with sender relationship weight attached. Use when the user asks 'what's in my inbox across everything' or 'show me unread across all platforms'. Do not use as the first step for respond/reply-to-inbox or needs-answer requests; use MESSAGE so reply-worthy messages are identified before drafting.",
+  similes: ["LIST_MESSAGES", "SHOW_UNREAD_ACROSS"],
+  parameters: [
+    {
+      name: "sources",
+      description: `Optional message sources to include. One or more of: ${SUPPORTED_MESSAGE_SOURCES_TEXT}. A source with no connected inbox adapter is rejected.`,
+      required: false,
+      schema: {
+        type: "array" as const,
+        items: { type: "string" as const, enum: [...ALL_MESSAGE_SOURCES] },
+      },
+    },
+    {
+      name: "limit",
+      description: "Maximum unread messages to return.",
+      required: false,
+      schema: { type: "number" as const, minimum: 1, maximum: 100 },
+    },
+    {
+      name: "sinceMs",
+      description: "Only include messages received at or after this timestamp.",
+      required: false,
+      schema: { type: "number" as const },
+    },
+  ],
+  examples: [
+    [
+      {
+        name: "User",
+        content: { text: "Show me unread across all platforms" },
+      },
+      {
+        name: "Agent",
+        content: {
+          text: "Here's your inbox.",
+          action: "MESSAGE",
+        },
+      },
+    ],
+  ] as ActionExample[][],
+
+  validate: async (
+    _runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+  ): Promise<boolean> =>
+    validateMessageAction(message, state, ["messaging", "email", "connectors"]),
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    options?: HandlerOptions,
+    _callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    try {
+      const params = parseListInboxParams(options);
+      if ("error" in params) {
+        logger.warn(`[ListInbox] ${params.error}`);
+        return {
+          success: false,
+          text: params.error,
+          error: params.error,
+          data: { actionName: "MESSAGE" },
+        };
+      }
+      const service = getDefaultTriageService();
+      const unlistable = unlistableSourcesError(
+        runtime,
+        service,
+        params.sources,
+      );
+      if (unlistable) {
+        logger.warn(`[ListInbox] ${unlistable}`);
+        return {
+          success: false,
+          text: unlistable,
+          error: unlistable,
+          data: { actionName: "MESSAGE" },
+        };
+      }
+      const store = service.getStore();
+
+      // The adapters own account and channel scope (a Gmail message is in
+      // every label it carries, not only the one on its ref), so the cached
+      // refs answer only requests without that scope. A scoped request goes
+      // to the live pull below.
+      const scoped =
+        params.worldIds !== undefined ||
+        params.channelIds !== undefined ||
+        service
+          .listAdapters()
+          .some(
+            (adapter) =>
+              adapter.cachePolicy === "none" &&
+              (!params.sources || params.sources.includes(adapter.source)),
+          );
+      const requestedSources = params.sources;
+      let messages = scoped
+        ? []
+        : requestedSources
+          ? store
+              .listMessages(runtime.agentId)
+              .filter((m) => requestedSources.includes(m.source))
+          : store.listMessages(runtime.agentId);
+
+      messages = rankScored(messages);
+      const sinceMs = params.sinceMs;
+      if (sinceMs !== undefined) {
+        messages = messages.filter((m) => m.receivedAtMs >= sinceMs);
+      }
+      let unread = messages.filter((m) => !m.isRead);
+
+      // A scoped request, or a cold, all-read, or out-of-window cache, needs
+      // exactly one live pull
+      // before it can establish that no unread messages match the request.
+      if (unread.length === 0) {
+        messages = await service.triage(runtime, {
+          requester: message,
+          sources: params.sources,
+          worldIds: params.worldIds,
+          channelIds: params.channelIds,
+          sinceMs: params.sinceMs,
+          limit: params.limit,
+          // The limit must apply after the read filter, or a newest page of
+          // read mail reports "no unread" while older unread mail exists.
+          unreadOnly: true,
+        });
+        unread = messages.filter((m) => !m.isRead);
+      }
+
+      const limit = params.limit ?? unread.length;
+      const trimmed = unread.slice(0, limit);
+
+      logger.info(
+        `[ListInbox] returning ${trimmed.length} of ${unread.length} unread message(s)`,
+      );
+
+      // No visible callback: the bare count is tool-speak next to the
+      // evaluator's actual inbox rundown. The summary stays planner-facing
+      // in the result text with the messages in data.
+      const text =
+        unread.length === 0
+          ? "No unread messages across connected platforms."
+          : `${unread.length} unread message(s) across ${new Set(unread.map((m) => m.source)).size} platform(s); details in data.messages.`;
+
+      return {
+        success: true,
+        text,
+        data: {
+          total: unread.length,
+          returned: trimmed.length,
+          messages: trimmed.map((m) => ({
+            id: m.id,
+            source: m.source,
+            from: m.from.identifier,
+            subject: m.subject ?? null,
+            snippet: m.snippet,
+            receivedAtMs: m.receivedAtMs,
+            contactWeight: m.triageScore?.contactWeight ?? null,
+            userRepliedInThread: m.triageScore?.userRepliedInThread ?? null,
+          })),
+        },
+      };
+    } catch (error) {
+      // error-policy:J1 The action result is the model-visible boundary for
+      // connector and inbox-read failures.
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`[ListInbox] failed: ${message}`);
+      return {
+        success: false,
+        text: `Failed to list inbox: ${message}`,
+        error: message,
+        data: { actionName: "MESSAGE" },
+      };
+    }
+  },
+};

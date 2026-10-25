@@ -1,0 +1,93 @@
+/**
+ * Mobile drawer toggle for PageLayout, wired to the workspace mobile-sidebar
+ * controls so the sidebar opens as a drawer on narrow viewports.
+ */
+import { PanelLeftOpen } from "lucide-react";
+import * as React from "react";
+import type { SidebarProps } from "../../components/composites/sidebar/sidebar-types";
+import { Button } from "../../components/ui/button";
+import { cn } from "../../utils/cn";
+import { useWorkspaceMobileSidebarControls } from "./workspace-mobile-sidebar-controls.hooks.ts";
+
+interface PageLayoutMobileDrawerProps {
+  isDesktop: boolean;
+  mobileSidebarLabel?: React.ReactNode;
+  mobileSidebarOpen: boolean;
+  mobileSidebarTriggerClassName?: string;
+  onMobileSidebarOpenChange: (open: boolean) => void;
+  sidebar: React.ReactElement<SidebarProps>;
+}
+
+export function PageLayoutMobileDrawer({
+  isDesktop,
+  mobileSidebarLabel,
+  mobileSidebarOpen,
+  mobileSidebarTriggerClassName,
+  onMobileSidebarOpenChange,
+  sidebar,
+}: PageLayoutMobileDrawerProps) {
+  const controls = useWorkspaceMobileSidebarControls();
+  const sidebarId = React.useId();
+
+  const mobileSidebarElement = React.cloneElement(sidebar, {
+    className: cn("!mt-0 !h-full !w-full !min-w-0", sidebar.props.className),
+    collapsible: false,
+    variant: "mobile",
+    onMobileClose: () => onMobileSidebarOpenChange(false),
+  });
+
+  const drawerLabel =
+    sidebar.props.mobileTitle ?? mobileSidebarLabel ?? "Browse";
+
+  React.useEffect(() => {
+    if (!controls || isDesktop) return undefined;
+
+    return controls.register({
+      id: sidebarId,
+      label: drawerLabel,
+      open: mobileSidebarOpen,
+      setOpen: onMobileSidebarOpenChange,
+    });
+  }, [
+    controls,
+    drawerLabel,
+    isDesktop,
+    mobileSidebarOpen,
+    onMobileSidebarOpenChange,
+    sidebarId,
+  ]);
+
+  if (isDesktop) return null;
+
+  return (
+    <>
+      {!mobileSidebarOpen && !controls ? (
+        <div className="mb-2 flex shrink-0 md:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="pageDrawerTrigger"
+            className={cn(
+              "max-w-[min(11rem,100%)]",
+              mobileSidebarTriggerClassName,
+            )}
+            data-testid="page-layout-mobile-sidebar-trigger"
+            onClick={() => onMobileSidebarOpenChange(true)}
+          >
+            <PanelLeftOpen className="size-4 shrink-0" />
+            <span className="truncate">{drawerLabel}</span>
+          </Button>
+        </div>
+      ) : null}
+      {mobileSidebarOpen ? (
+        <section
+          className="flex min-h-0 w-full flex-1 overflow-hidden"
+          data-testid="page-layout-mobile-sidebar-drawer"
+          aria-label={typeof drawerLabel === "string" ? drawerLabel : undefined}
+        >
+          {mobileSidebarElement}
+        </section>
+      ) : null}
+    </>
+  );
+}

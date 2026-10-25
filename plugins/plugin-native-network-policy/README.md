@@ -1,0 +1,15 @@
+# @elizaos/capacitor-network-policy
+
+Capacitor plugin that surfaces Android `metered` and iOS `isExpensive`/`isConstrained`
+network-link hints to Eliza agents running on mobile. Unknown or unsupported hints
+remain null so download policy can require confirmation.
+
+See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
+
+## Development
+
+Install dependencies with `bun install` at the repository root. Run from that root:
+
+```bash
+bun run --cwd plugins/plugin-native-network-policy build  # build
+```

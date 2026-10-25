@@ -1,0 +1,29 @@
+"use client";
+
+import { ExternalLink } from "lucide-react";
+/**
+ * Button that opens/connects to a cloud agent instance (external link into the
+ * running agent).
+ */
+import { Button } from "../../../components/ui/button";
+import { useCloudT as useT } from "../../shell/CloudI18nProvider";
+import { openWebUIWithPairing } from "../lib/open-web-ui";
+
+interface Props {
+  agentId: string;
+}
+
+export function ElizaConnectButton({ agentId }: Props) {
+  const t = useT();
+  return (
+    <Button
+      variant="default"
+      size="sm"
+      className="min-h-touch"
+      onClick={() => openWebUIWithPairing(agentId)}
+    >
+      <ExternalLink className="size-3.5" />
+      {t("cloud.containers.connect.openWebUi", { defaultValue: "Open Web UI" })}
+    </Button>
+  );
+}

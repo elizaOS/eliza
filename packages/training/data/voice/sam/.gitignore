@@ -1,0 +1,13 @@
+# Same corpus — audio NOT checked in. Raw + normalized audio is
+# regenerable from upstream `lalalune/ai_voices` via
+# `packages/training/scripts/voice/build_same_manifest.py`.
+# Tracked in git: README.md, source.json, manifest.jsonl,
+# ljspeech/metadata.csv.
+audio/
+raw/
+ljspeech/wavs/
+*.wav
+*.flac
+*.mp3
+*.ogg
+*.opus

@@ -1,0 +1,51 @@
+/**
+ * Task-definition service mixin: declares the definition/occurrence service
+ * surface and the `withDefinitions` mixin that composes the definitions domain's
+ * CRUD, completion, and snooze methods onto the LifeOpsService base.
+ */
+
+import type {
+  CompleteLifeOpsOccurrenceRequest,
+  CreateLifeOpsDefinitionRequest,
+  LifeOpsDefinitionCreationResult,
+  LifeOpsDefinitionRecord,
+  LifeOpsOccurrenceView,
+  RecordLifeOpsProgressRequest,
+  RecordLifeOpsProgressResult,
+  SnoozeLifeOpsOccurrenceRequest,
+  UpdateLifeOpsDefinitionRequest,
+} from "@elizaos/contracts";
+import type { DefinitionCreationContext } from "./definition-creation-identity.js";
+
+export interface LifeOpsDefinitionService {
+  listDefinitions(): Promise<LifeOpsDefinitionRecord[]>;
+  getDefinition(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  createDefinition(
+    request: CreateLifeOpsDefinitionRequest,
+    context?: DefinitionCreationContext,
+  ): Promise<LifeOpsDefinitionCreationResult>;
+  updateDefinition(
+    definitionId: string,
+    request: UpdateLifeOpsDefinitionRequest,
+  ): Promise<LifeOpsDefinitionRecord>;
+  deleteDefinition(definitionId: string): Promise<void>;
+  completeOccurrence(
+    occurrenceId: string,
+    request: CompleteLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  recordOccurrenceProgress(
+    occurrenceId: string,
+    request: RecordLifeOpsProgressRequest,
+    now?: Date,
+  ): Promise<RecordLifeOpsProgressResult>;
+  skipOccurrence(
+    occurrenceId: string,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+  snoozeOccurrence(
+    occurrenceId: string,
+    request: SnoozeLifeOpsOccurrenceRequest,
+    now?: Date,
+  ): Promise<LifeOpsOccurrenceView>;
+}

@@ -1,0 +1,3 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><h1>Calendar consumer fixture</h1><button id="access">Request Calendar access</button><pre id="result"></pre><script>
+document.querySelector('#access').onclick=async()=>{try{document.querySelector('#result').textContent=JSON.stringify(await Capacitor.nativePromise('ConsumerCalendar','requestAccess',{}));}catch(error){document.querySelector('#result').textContent=String(error);}};
+</script></body></html>

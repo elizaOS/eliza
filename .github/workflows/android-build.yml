@@ -1,0 +1,123 @@
+name: Android Build
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  BUN_VERSION: 1.4.2
+  NODE_VERSION: 24.15.0
+jobs:
+  android_aab:
+    name: Android release AAB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Setup Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "false"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          install-native-deps: "false"
+          install-protoc: "false"
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+          setup-python: "false"
+      - name: Build mobile package dependencies
+        run: |
+          bun run build:core
+          bun run --cwd packages/ui build
+          bun run --cwd packages/auth build
+          bun run --cwd packages/agent build:mobile
+      - name: Verify mobile bundle initialization is synchronous
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="packages/agent/dist-mobile/agent-bundle.js"
+          test -s "$bundle"
+          if grep -qE 'var init_eliza\b[^=]*= __esm\(async ' "$bundle"; then
+            echo "::error::init_eliza re-emitted as async __esm"
+            exit 1
+          fi
+      - name: Build and audit canonical Android Cloud release AAB
+        shell: bash
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/app build:android:cloud 2>&1 \
+            | tee "$RUNNER_TEMP/android-cloud-release-aab-audit.log"
+      - name: Verify release AAB audit evidence
+        id: release-aab-evidence
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAB_PATH="packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab"
+          AUDIT_LOG="$RUNNER_TEMP/android-cloud-release-aab-audit.log"
+          ATTESTATION="$RUNNER_TEMP/android-cloud-release-attestation.json"
+          SHA256="$RUNNER_TEMP/android-cloud-release-aab.sha256"
+          test -s "$AAB_PATH"
+          test -s "$AUDIT_LOG"
+          node - "$AUDIT_LOG" "$ATTESTATION" "$AAB_PATH" <<'NODE'
+          const crypto = require("node:crypto");
+          const fs = require("node:fs");
+          const [logPath, outputPath, aabPath] = process.argv.slice(2);
+          const prefix = "[mobile-build] android-cloud AAB attestation ";
+          const line = fs
+            .readFileSync(logPath, "utf8")
+            .split(/\r?\n/)
+            .filter((candidate) => candidate.startsWith(prefix))
+            .at(-1);
+          if (!line) throw new Error("release AAB attestation was not emitted");
+          const attestation = JSON.parse(line.slice(prefix.length));
+          if (attestation.bundletool?.version !== "1.18.3") {
+            throw new Error("release AAB attestation has the wrong bundletool version");
+          }
+          const bytes = fs.readFileSync(aabPath);
+          const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+          if (
+            attestation.artifact?.sha256 !== digest ||
+            attestation.artifact?.sizeBytes !== bytes.byteLength
+          ) {
+            throw new Error("release AAB attestation does not match the artifact");
+          }
+          fs.writeFileSync(outputPath, `${JSON.stringify(attestation, null, 2)}\n`);
+          NODE
+          sha256sum "$AAB_PATH" | tee "$SHA256"
+          test -s "$ATTESTATION"
+          test -s "$SHA256"
+      - name: Upload verified release AAB evidence
+        if: ${{ always() && !cancelled() && steps.release-aab-evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-cloud-release-aab-audit
+          path: |
+            packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab
+            ${{ runner.temp }}/android-cloud-release-aab-audit.log
+            ${{ runner.temp }}/android-cloud-release-aab.sha256
+            ${{ runner.temp }}/android-cloud-release-attestation.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload Android failure diagnostics
+        if: ${{ always() && !cancelled() && steps.release-aab-evidence.outcome != 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: android-cloud-release-aab-failure-diagnostics
+          path: ${{ runner.temp }}/android-cloud-release-aab-audit.log
+          retention-days: 3
+          if-no-files-found: warn

@@ -1,0 +1,23 @@
+id: nft_list_001
+level: 1
+name: NFT List for Sale
+description: 'Level 1 protocol interaction: NFT List for Sale'
+category: nft
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+tasks:
+- id: task_nft_list_001
+  type: analyze
+  parameters:
+    action: list
+    marketplace: magic_eden
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

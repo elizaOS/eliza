@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "surface": "Eliza Staging Telegram DM",
+  "observedDate": "2026-08-21",
+  "identityMarker": "AUTH-GATEWAY-REUSE-20260821-0101",
+  "identityReply": "ACCOUNT REUSE READY",
+  "redaction": "Provider user, chat, message, account, organization, and trace identifiers omitted.",
+  "turns": [
+    {
+      "role": "user",
+      "content": "what is btc price rn"
+    },
+    {
+      "role": "assistant",
+      "content": "Bitcoin is currently 63,800 USD according to TradingView"
+    },
+    {
+      "role": "user",
+      "content": "[correction that the quoted price was wrong]"
+    },
+    {
+      "role": "user",
+      "content": "check the web"
+    },
+    {
+      "role": "assistant",
+      "content": "[claimed search results and an article mentioning $117k, but named no site or URL]"
+    },
+    {
+      "role": "user",
+      "content": "[asked for the missing source]"
+    },
+    {
+      "role": "assistant",
+      "content": "[admitted no source had been specified, then degraded into punctuation-only replies]"
+    }
+  ],
+  "acceptanceMeaning": {
+    "proved": ["gateway delivery", "account reuse"],
+    "didNotProve": [
+      "live tool invocation",
+      "current-data factuality",
+      "source attribution",
+      "conversational recovery"
+    ]
+  }
+}

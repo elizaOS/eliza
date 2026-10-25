@@ -1,0 +1,6 @@
+{
+  "appId": "example.passwords.host",
+  "appName": "Password consumer test",
+  "webDir": "public",
+  "loggingBehavior": "none"
+}

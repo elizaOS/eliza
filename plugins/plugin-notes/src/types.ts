@@ -1,0 +1,85 @@
+/**
+ * Shared domain contracts for the managed Cloud Notes view. The backend store,
+ * authenticated routes, capability broker, and view bundle all consume these
+ * shapes so persisted state has one owner and one schema instead of parallel
+ * browser/server models.
+ */
+
+export const NOTES_SCHEMA_VERSION = 2 as const;
+
+export const STICKY_COLORS = ["yellow", "green", "rose", "slate"] as const;
+
+export type StickyColor = (typeof STICKY_COLORS)[number];
+
+export interface StickyNote {
+  id: string;
+  title: string;
+  body: string;
+  color: StickyColor;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface NotesSnapshot {
+  notes: StickyNote[];
+  revision: number;
+}
+
+export interface NotesDocument extends NotesSnapshot {
+  schemaVersion: typeof NOTES_SCHEMA_VERSION;
+  persistedAt: string;
+}
+
+export type NotesStorePhase =
+  | "idle"
+  | "loading"
+  | "ready"
+  | "error"
+  | "stopped";
+
+export interface NotesStoreStatus {
+  phase: NotesStorePhase;
+  filePath: string;
+  revision?: number;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface CreateNoteInput {
+  title: string;
+  body: string;
+  color: StickyColor;
+}
+
+export interface UpdateNoteInput {
+  content?: string;
+  title?: string;
+  body?: string;
+  color?: StickyColor;
+  textEdit?: {
+    field: "title" | "body";
+    oldText: string;
+    newText: string;
+  };
+}
+
+/** Schema 2 stores the separator, if any, in the verbatim remainder. */
+export function reconstructNoteContent(
+  note: Pick<StickyNote, "title" | "body"> & { bodySeparator?: "" | "\n" },
+): string {
+  return note.title + (note.bodySeparator ?? "") + note.body;
+}
+
+/** Lossless model parts: remove only the codec's one framing LF, never authored whitespace. */
+export function projectNoteForModel<
+  T extends Pick<StickyNote, "title" | "body">,
+>(note: T): T & { bodySeparator: "" | "\n" } {
+  const bodySeparator = note.body.startsWith("\n") ? "\n" : "";
+  return {
+    ...note,
+    body: bodySeparator ? note.body.slice(1) : note.body,
+    bodySeparator,
+  };
+}

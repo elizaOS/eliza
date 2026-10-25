@@ -1,0 +1,45 @@
+__pycache__/
+*.pyc
+.venv/
+data/*
+# Smoke corpus: 20-row synthetic end-to-end-pipeline validator. Kept in
+# git so the e2e SFT pipeline can be smoke-tested from a fresh clone.
+!data/final-eliza1-smoke/
+!data/final-eliza1-smoke/**
+# Voice training data — carve out manifest + docs for voice corpora
+# (e.g. same). Raw + normalized audio stays ignored (regenerable from
+# upstream via scripts/voice/build_sam_manifest.py). Manifests,
+# READMEs, source.json, LJSpeech metadata.csv, and per-corpus .gitignore
+# anchors are tracked so the corpus contract is durable in git.
+!data/voice/
+!data/voice/**
+data/voice/**/audio/
+data/voice/**/raw/
+data/voice/**/ljspeech/wavs/
+data/voice/**/*.wav
+data/voice/**/*.flac
+data/voice/**/*.mp3
+data/voice/**/*.ogg
+data/voice/**/*.opus
+checkpoints/
+# Generated local benchmark and Python packaging outputs.
+benchmarks/
+build/
+dist/
+*.egg-info/
+previews/
+local-corpora/
+wandb/
+*.parquet
+.vast_instance_id
+.vast_pipeline_type
+curriculum_state.json
+.pytest-cache/
+.preflight.ok
+.cloud_instance.json
+.DS_Store
+scripts/synth/scenarios/*.jsonl
+# DFlash drafter distillation job outputs (see scripts/dflash/jobs/).
+runs/
+# Dataset allowlists must not admit macOS resource-fork sidecars.
+**/._*

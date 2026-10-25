@@ -1,0 +1,259 @@
+/** Verifies Stripe signatures and persists generic billing lookup triggers before the existing queue handoff. */
+
+import { webhookEventsRepository } from "@elizaos/cloud-shared/db/repositories/webhook-events";
+import {
+  getRequestIp,
+  moneyRateLimit,
+  RateLimitPresets,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import { enqueue } from "@elizaos/cloud-shared/lib/redis-queue";
+import { appBillingTriggerFromVerifiedEvent } from "@elizaos/cloud-shared/lib/services/app-billing-webhook-intake";
+import {
+  isStripeConfigured,
+  requireStripe,
+} from "@elizaos/cloud-shared/lib/stripe";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import type {
+  AppContext,
+  AppEnv,
+} from "@elizaos/cloud-shared/types/cloud-worker-env";
+import type { StripeEventMessage } from "@elizaos/cloud-shared/types/stripe-queue-message";
+import { Hono } from "hono";
+import type Stripe from "stripe";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
+
+const STRIPE_QUEUE_KEY = "stripe-events";
+
+/**
+ * Maximum age (seconds) the Stripe `t=` timestamp may be relative to
+ * server time. Stripe's SDK defaults to 300s; we keep the same window so
+ * audit-emitted rejections match the SDK's verification window.
+ */
+const STRIPE_WEBHOOK_TOLERANCE_SECONDS = 300;
+
+/**
+ * Best-effort extraction of the Stripe payment_intent ID from any event we
+ * care about. The consumer uses this for per-row idempotency checks; the
+ * primary dedup is the webhook_events table on event.id (Stripe evt_*).
+ */
+function extractPaymentIntentId(event: Stripe.Event): string | undefined {
+  switch (event.type) {
+    case "checkout.session.completed": {
+      const session = event.data.object as Stripe.Checkout.Session;
+      return typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : session.payment_intent?.id;
+    }
+    case "payment_intent.succeeded":
+    case "payment_intent.payment_failed": {
+      const pi = event.data.object as Stripe.PaymentIntent;
+      return pi.id;
+    }
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Quick SHA-256 of the body for the webhook_events.payload_hash column.
+ * WebCrypto-only so this works on Workers.
+ */
+async function hashPayload(body: string): Promise<string> {
+  const data = new TextEncoder().encode(body);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * POST /api/stripe/webhook
+ *
+ * Cloudflare Workers entry point — verifies the Stripe signature, dedupes
+ * by Stripe event ID via webhook_events, then enqueues to Redis and returns
+ * 200 immediately. The heavy fan-out (app credits, org credits, revenue
+ * splits, redeemable earnings, cache invalidation, Discord notifications,
+ * invoice rows) runs from /api/cron/process-stripe-queue.
+ *
+ * Idempotency:
+ *   1. webhook_events.tryCreate(event_id) catches Stripe's at-least-once
+ *      retries before enqueueing — duplicate webhooks return 200 without
+ *      sending a queue message.
+ *   2. The consumer additionally checks each downstream write
+ *      (creditsService.getTransactionByStripePaymentIntent, redeemable
+ *      earnings dedupeBySourceId) so a queue retry after a partial
+ *      failure cannot double-credit either.
+ *
+ * Rate limited: AGGRESSIVE (100 req/min per IP).
+ */
+export async function handleStripeWebhook(
+  c: AppContext,
+  enqueueEvent: typeof enqueue = enqueue,
+): Promise<Response> {
+  const body = await c.req.text();
+  const signature = c.req.header("stripe-signature");
+
+  if (!signature) {
+    return c.json({ error: "No signature provided" }, 400);
+  }
+
+  const webhookSecret = c.env.STRIPE_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    logger.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not set");
+    return c.json({ error: "Webhook configuration error" }, 500);
+  }
+
+  if (!isStripeConfigured()) {
+    logger.error("[Stripe Webhook] STRIPE_SECRET_KEY is not set");
+    return c.json({ error: "Stripe configuration error" }, 500);
+  }
+
+  const stripe = requireStripe();
+  let event: Stripe.Event;
+
+  try {
+    // constructEventAsync uses WebCrypto and works on Workers; the sync
+    // variant calls into node:crypto which is not available here.
+    // Tolerance passed explicitly so out-of-window webhooks raise here and
+    // we can emit a dedicated audit event for them.
+    const secrets = [
+      webhookSecret,
+      c.env.STRIPE_TEST_WEBHOOK_SECRET,
+      c.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+    ].filter(
+      (secret): secret is string =>
+        typeof secret === "string" && secret.length > 0,
+    );
+    let verified: Stripe.Event | null = null;
+    let lastError: unknown;
+    for (const secret of secrets) {
+      try {
+        verified = await stripe.webhooks.constructEventAsync(
+          body,
+          signature,
+          secret,
+          STRIPE_WEBHOOK_TOLERANCE_SECONDS,
+        );
+        if (secret === c.env.STRIPE_TEST_WEBHOOK_SECRET && verified.livemode) {
+          verified = null;
+          throw new Error(
+            "Test webhook credential cannot authenticate a live event",
+          );
+        }
+        break;
+      } catch (error) {
+        // error-policy:J3 Each configured endpoint secret must verify exact bytes; no unsigned fallback exists.
+        lastError = error;
+      }
+    }
+    if (!verified) throw lastError;
+    event = verified;
+  } catch (err) {
+    const reason =
+      err instanceof Error && /timestamp/i.test(err.message)
+        ? "stale_timestamp"
+        : "invalid_signature";
+    logger.error("[Stripe Webhook] Signature verification failed", { reason });
+    await getAuditDispatcher()
+      .emit({
+        actor: { type: "system", id: "stripe-webhook" },
+        action: "payment.charge",
+        result: "denied",
+        resource: { type: "webhook", id: "stripe" },
+        ip: getRequestIp(c),
+        request_id: c.get("requestId"),
+        metadata: { provider: "stripe", reason },
+      })
+      // error-policy:J7 audit write must not block the 400; a dropped security audit is logged.
+      .catch((err) =>
+        logger.error(
+          "[Stripe Webhook] audit emit for denied signature failed",
+          {
+            reason,
+            error: err instanceof Error ? err.message : String(err),
+          },
+        ),
+      );
+    return c.json({ error: "Webhook signature verification failed" }, 400);
+  }
+
+  logger.info(`[Stripe Webhook] Received event: ${event.type} (${event.id})`);
+
+  const appBilling = await appBillingTriggerFromVerifiedEvent(event, body);
+  const receiptKey = appBilling?.receiptKey ?? event.id;
+  const payloadHash = await hashPayload(body);
+  const insertResult = await webhookEventsRepository.tryCreate({
+    event_id: receiptKey,
+    ...(appBilling ? { app_billing_trigger: appBilling.trigger } : {}),
+    provider: "stripe",
+    event_type: event.type,
+    payload_hash: payloadHash,
+    source_ip: getRequestIp(c) ?? "unknown",
+    event_timestamp: event.created ? new Date(event.created * 1000) : undefined,
+  });
+
+  if (!insertResult.created) {
+    if (appBilling) {
+      const receipt =
+        await webhookEventsRepository.findByEventIdPrimary(receiptKey);
+      if (
+        receipt?.provider !== "stripe" ||
+        receipt.payload_hash !== payloadHash
+      )
+        return c.json(
+          { error: "Webhook replay changes its signed payload" },
+          409,
+        );
+    }
+    logger.debug(
+      `[Stripe Webhook] Duplicate event ${event.id} — skipping enqueue`,
+    );
+    return c.json({ received: true, duplicate: true }, 200);
+  }
+
+  const message: StripeEventMessage = {
+    kind: "stripe.event",
+    eventId: event.id,
+    eventType: event.type,
+    event,
+    paymentIntentId: extractPaymentIntentId(event),
+    receivedAt: Date.now(),
+    ...(appBilling ? { appBilling } : {}),
+  };
+
+  // App billing retains its signed trigger for PostgreSQL recovery. Legacy payments
+  // require a queue retry, so their marker is removed when enqueueing fails.
+  try {
+    await enqueueEvent(STRIPE_QUEUE_KEY, message);
+  } catch (enqueueError) {
+    // error-policy:J2 Generic triggers already have a durable PostgreSQL recovery path.
+    if (appBilling) {
+      logger.error(
+        "[Stripe Webhook] App billing queue handoff failed; durable reconciliation is pending",
+        { eventId: event.id },
+      );
+      throw enqueueError;
+    }
+    await webhookEventsRepository
+      .deleteByEventId(receiptKey, "stripe")
+      .catch((rollbackError) => {
+        logger.error(
+          "[Stripe Webhook] enqueue failed AND dedup-marker rollback failed — event may be dropped",
+          { eventId: event.id, rollbackError },
+        );
+      });
+    logger.error(
+      "[Stripe Webhook] enqueue failed — rolled back dedup marker so Stripe retries",
+      { eventId: event.id },
+    );
+    throw enqueueError;
+  }
+
+  return c.json({ received: true, queued: true }, 200);
+}
+
+const app = new Hono<AppEnv>();
+app.post("/", moneyRateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleStripeWebhook(c),
+);
+export default app;

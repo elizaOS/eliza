@@ -1,0 +1,5 @@
+#!/usr/bin/env bun
+/** Runs the scenario CLI from the testing workspace source. */
+import { runCliAndExit } from "../src/cli.ts";
+
+runCliAndExit();

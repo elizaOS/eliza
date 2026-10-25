@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.dev/schemas/gpu-config.schema.json",
+  "title": "Per-GPU llama.cpp autotune config",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "id",
+    "name",
+    "vram_gb",
+    "compute_capability",
+    "memory_bandwidth_gbs",
+    "fp8",
+    "llama_server_flags",
+    "bundle_recommendations",
+    "expected_metrics"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "id": {
+      "type": "string",
+      "enum": ["rtx-3090", "rtx-4090", "rtx-5090", "h200"]
+    },
+    "name": { "type": "string" },
+    "match_names": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "vram_gb": { "type": "number", "minimum": 1 },
+    "compute_capability": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$" },
+    "arch": {
+      "type": "string",
+      "enum": ["ampere", "ada-lovelace", "blackwell", "hopper"]
+    },
+    "memory_bandwidth_gbs": { "type": "number", "minimum": 1 },
+    "fp8": { "type": "boolean" },
+    "fp4": { "type": "boolean" },
+    "flash_attn_3": { "type": "boolean" },
+    "llama_server_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n_gpu_layers",
+        "ctx_size",
+        "batch_size",
+        "ubatch_size",
+        "n_parallel",
+        "cache_type_k",
+        "cache_type_v",
+        "flash_attn",
+        "split_mode",
+        "main_gpu"
+      ],
+      "properties": {
+        "n_gpu_layers": { "type": "integer" },
+        "ctx_size": { "type": "integer", "minimum": 1 },
+        "batch_size": { "type": "integer", "minimum": 1 },
+        "ubatch_size": { "type": "integer", "minimum": 1 },
+        "n_parallel": { "type": "integer", "minimum": 1 },
+        "cache_type_k": { "type": "string" },
+        "cache_type_v": { "type": "string" },
+        "flash_attn": { "type": "boolean" },
+        "split_mode": { "type": "string", "enum": ["none", "layer", "row"] },
+        "main_gpu": { "type": "integer", "minimum": 0 },
+        "mlock": { "type": "boolean" },
+        "no_mmap": { "type": "boolean" },
+        "no_kv_offload": { "type": "boolean" },
+        "ctx_checkpoints": { "type": "integer", "minimum": 0 },
+        "ctx_checkpoint_interval": { "type": "integer", "minimum": 1 },
+        "draft_max": { "type": "integer", "minimum": 1 },
+        "draft_min": { "type": "integer", "minimum": 1 },
+        "draft_p_min": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "bundle_recommendations": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ctx_size": { "type": "integer", "minimum": 1 },
+          "max_parallel": { "type": "integer", "minimum": 1 },
+          "batch_size": { "type": "integer", "minimum": 1 },
+          "ubatch_size": { "type": "integer", "minimum": 1 },
+          "cache_type_k": { "type": "string" },
+          "cache_type_v": { "type": "string" },
+          "no_kv_offload": { "type": "boolean" }
+        }
+      }
+    },
+    "expected_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ttfa_p50_ms", "ttfa_p95_ms", "rtf", "_provenance"],
+      "properties": {
+        "ttfa_p50_ms": { "type": "number" },
+        "ttfa_p95_ms": { "type": "number" },
+        "rtf": { "type": "number" },
+        "tokens_per_second_decode": { "type": "number" },
+        "_provenance": { "type": "string", "enum": ["measured", "extrapolated"] }
+      }
+    },
+    "known_limits": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "_provenance": { "type": "string" }
+  }
+}

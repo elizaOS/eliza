@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "customConditions": ["eliza-source"],
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "react", "vite/client"],
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "noEmit": true,
+    "paths": {
+      "@elizaos/plugin-wallet/ui": [
+        "../../plugins/plugin-wallet/src/ui/index.ts"
+      ],
+      "@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+      "@elizaos/auth/vault/*": ["../../packages/auth/src/vault/*"],
+      "@elizaos/cloud-sdk/*": ["../cloud/sdk/src/*"],
+      "@elizaos/cloud-sdk/cloud-setup-session": [
+        "../cloud/sdk/src/cloud-setup-session/index.ts"
+      ],
+      "@elizaos/cloud-sdk/cloud-setup-session/*": [
+        "../cloud/sdk/src/cloud-setup-session/*"
+      ],
+      "@elizaos/core/protocol": ["../core/src/protocol"]
+    }
+  },
+  "exclude": ["src/**/*.stories.ts", "src/**/*.stories.tsx"],
+  "include": ["src"]
+}

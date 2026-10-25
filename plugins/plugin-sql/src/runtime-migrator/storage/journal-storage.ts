@@ -1,0 +1,96 @@
+/**
+ * Persists the per-plugin Drizzle-compatible migration journal (a JSONB
+ * list of `JournalEntry` records) into the `migrations._journal` table, one
+ * row per plugin. `RuntimeMigrator` calls `updateJournal` after each applied
+ * migration to append an entry with the next index.
+ */
+import { sql } from "drizzle-orm";
+import { getRow } from "../../types";
+import type { DrizzleDB, Journal, JournalEntry } from "../types";
+
+export class JournalStorage {
+  constructor(private db: DrizzleDB) {}
+
+  async loadJournal(pluginName: string): Promise<Journal | null> {
+    const result = await this.db.execute(
+      sql`SELECT version, dialect, entries 
+          FROM migrations._journal 
+          WHERE plugin_name = ${pluginName}`
+    );
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    interface JournalRow {
+      version: string;
+      dialect: string;
+      entries: JournalEntry[];
+    }
+    const row = getRow<JournalRow>(result);
+    if (!row) {
+      throw new Error(`Journal not found for plugin: ${pluginName}`);
+    }
+    return {
+      version: row.version,
+      dialect: row.dialect,
+      entries: row.entries as JournalEntry[],
+    };
+  }
+
+  async saveJournal(pluginName: string, journal: Journal): Promise<void> {
+    await this.db.execute(
+      sql`INSERT INTO migrations._journal (plugin_name, version, dialect, entries)
+          VALUES (${pluginName}, ${journal.version}, ${journal.dialect}, ${JSON.stringify(journal.entries)}::jsonb)
+          ON CONFLICT (plugin_name) 
+          DO UPDATE SET 
+            version = EXCLUDED.version,
+            dialect = EXCLUDED.dialect,
+            entries = EXCLUDED.entries`
+    );
+  }
+
+  async addEntry(pluginName: string, entry: JournalEntry): Promise<void> {
+    let journal = await this.loadJournal(pluginName);
+
+    if (!journal) {
+      journal = {
+        version: "7", // Latest Drizzle journal version
+        dialect: "postgresql",
+        entries: [],
+      };
+    }
+
+    journal.entries.push(entry);
+
+    await this.saveJournal(pluginName, journal);
+  }
+
+  async getNextIdx(pluginName: string): Promise<number> {
+    const journal = await this.loadJournal(pluginName);
+
+    if (!journal || journal.entries.length === 0) {
+      return 0;
+    }
+
+    const lastEntry = journal.entries[journal.entries.length - 1];
+    return lastEntry.idx + 1;
+  }
+
+  async updateJournal(
+    pluginName: string,
+    idx: number,
+    tag: string,
+    breakpoints: boolean = true
+  ): Promise<void> {
+    const entry: JournalEntry = {
+      idx,
+      version: "7",
+      when: Date.now(),
+      tag,
+      breakpoints,
+    };
+
+    await this.addEntry(pluginName, entry);
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/bin/electrobun.cjs b/bin/electrobun.cjs
+index 09e3088948af39eeb338aa492ef50abb1a94d445..575ef1548d8b4c97b83b54f219cfe4fb4d457872 100755
+--- a/bin/electrobun.cjs
++++ b/bin/electrobun.cjs
+@@ -98,7 +98,7 @@ async function ensureCliBinary() {
+     await downloadFile(tarballUrl, tarballPath);
+ 
+     // Extract using system tar (available on macOS, Linux, and Windows 10+)
+-    execSync(`tar -xzf "${tarballPath}"`, { cwd: cacheDir, stdio: 'pipe' });
++    execSync(`tar -xzf electrobun-${platform}-${arch}.tar.gz`, { cwd: cacheDir, stdio: 'pipe' });
+ 
+     // Clean up tarball
+     unlinkSync(tarballPath);

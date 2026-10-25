@@ -1,0 +1,99 @@
+{
+  "name": "@elizaos/plugin-sql",
+  "version": "2.0.3-beta.7",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "eliza-source": "./src/schema.ts",
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "default": "./dist/schema.js"
+    },
+    "./package.json": "./package.json",
+    "./errors": {
+      "eliza-source": "./src/pglite/errors.ts",
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js",
+      "default": "./dist/errors.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos-plugins/plugin-sql"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "migrate": "cd src && drizzle-kit migrate",
+    "migrate:generate": "cd src && drizzle-kit generate",
+    "dev": "bun run build.ts --watch",
+    "test": "cd src && vitest run",
+    "typecheck": "tsc --noEmit -p src/tsconfig.typecheck.json",
+    "lint": "bunx @biomejs/biome check --write src build.ts",
+    "lint:check": "bunx @biomejs/biome check src build.ts",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist src/dist .turbo",
+    "format": "bunx @biomejs/biome format --write src build.ts",
+    "format:check": "bunx @biomejs/biome format src build.ts",
+    "test:postgres": "bash ../../packages/scripts/plugins/plugin-sql/run-integration-tests.sh --postgres",
+    "test:real": "cd src && vitest run --config vitest.real.config.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "2.2.0",
+    "@electric-sql/pglite": "^0.4.0",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "0.45.3",
+    "pg": "^8.23.0",
+    "uuid": "^14.0.0",
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/bun": "1.4.2",
+    "@types/node": "^25.0.3",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.8",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.3",
+    "tsup": "^8.5.1"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "gitHead": "05d4ca11d769db8c7f54a722ee24b2ce2b951543",
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "scripts": {
+      "testSerial": true,
+      "publish": {
+        "registryFallbackTag": "beta"
+      },
+      "devStack": {
+        "harnessBuild": true
+      },
+      "contentContextEvidence": {
+        "role": "sql"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

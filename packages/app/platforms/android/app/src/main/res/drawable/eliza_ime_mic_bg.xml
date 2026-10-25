@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Circular background for the Eliza voice-keyboard mic button. Neutral orange
+    at rest; brighter, filled orange while recording (state_activated), matching
+    the brand-accent rule (orange-resting → brighter-orange active, never
+    orange → black).
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_activated="true">
+        <shape android:shape="oval">
+            <solid android:color="@color/eliza_orange" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#33FF5800" />
+            <stroke
+                android:width="1.5dp"
+                android:color="@color/eliza_orange" />
+        </shape>
+    </item>
+</selector>

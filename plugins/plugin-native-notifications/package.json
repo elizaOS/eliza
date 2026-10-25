@@ -1,0 +1,41 @@
+{
+  "name": "@elizaos/capacitor-notification-mirror",
+  "version": "2.0.3-beta.7",
+  "private": true,
+  "description": "Host-configured, opt-in Android notification listener mirror for Eliza phone hosts.",
+  "type": "module",
+  "files": [
+    "android/build.gradle",
+    "android/src/main",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-native-notifications"
+  },
+  "keywords": [
+    "elizaos",
+    "android",
+    "notifications"
+  ],
+  "scripts": {
+    "test": "node --test test/native-host/policy.node.mjs test/native-host/android-compile.node.mjs",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit -p tsconfig.json && node --test test/native-host/android-compile.node.mjs",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3"
+  }
+}

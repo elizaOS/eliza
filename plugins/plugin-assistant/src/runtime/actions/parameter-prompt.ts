@@ -1,0 +1,24 @@
+/** Authored templates for actions behavior, preserving complete model context. */
+
+export const extractActionParamsTemplate = `You are filling in missing parameters for the {{actionName}} action.
+Action description: {{actionDescription}}
+
+Parameter schema:
+{{schemaLines}}
+
+Already-supplied parameters: {{existingJson}}
+
+Missing required fields you must extract: {{missingFields}}
+
+{{recentConversationBlock}}
+
+Current user message: {{currentMessageText}}
+
+Return a JSON object containing values for the MISSING fields.
+If a value is genuinely indeterminable from the conversation, return null for that field.
+Example: {"subaction": "search", "query": "github"}
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
+`;
+
+export const EXTRACT_ACTION_PARAMS_TEMPLATE = extractActionParamsTemplate;

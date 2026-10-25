@@ -1,0 +1,72 @@
+// Handles v1 cloud API v1 documents id route traffic with route-local auth expectations.
+
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
+import { memoriesRepository } from "@elizaos/cloud-shared/db/repositories/agents/memories";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { nextStyleParams } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare";
+import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { Hono } from "hono";
+import {
+  isStoredDocumentMemory,
+  resolveDocumentScope,
+  toDocumentRecord,
+} from "../_worker-documents";
+
+const ROUTE_PARAM_SPEC = [{ name: "id", splat: false }] as const;
+const app = new Hono<AppEnv>();
+
+app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    const { id } = await nextStyleParams(c, ROUTE_PARAM_SPEC).params;
+    if (!id)
+      return c.json({ success: false, error: "Document ID is required" }, 400);
+
+    const scope = await resolveDocumentScope(user, c.req.query("characterId"));
+    if (scope instanceof Response) return scope;
+
+    const memory = await memoriesRepository.findById(id);
+    if (!isStoredDocumentMemory(memory)) {
+      return c.json({ success: false, error: "Document not found" }, 404);
+    }
+    if (memory.agentId !== scope.agentId || memory.roomId !== scope.roomId) {
+      return c.json({ success: false, error: "Document not found" }, 404);
+    }
+
+    return c.json({ success: true, document: toDocumentRecord(memory) });
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
+
+app.delete("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
+  try {
+    const user = await requireUserOrApiKeyWithOrg(c);
+    const { id } = await nextStyleParams(c, ROUTE_PARAM_SPEC).params;
+    if (!id)
+      return c.json({ success: false, error: "Document ID is required" }, 400);
+
+    const scope = await resolveDocumentScope(user, c.req.query("characterId"));
+    if (scope instanceof Response) return scope;
+
+    const memory = await memoriesRepository.findById(id);
+    if (!isStoredDocumentMemory(memory)) {
+      return c.json({ success: false, error: "Document not found" }, 404);
+    }
+    if (memory.agentId !== scope.agentId || memory.roomId !== scope.roomId) {
+      return c.json({ success: false, error: "Document not found" }, 404);
+    }
+
+    await memoriesRepository.deleteDocumentFragments(id);
+    await memoriesRepository.delete(id);
+    return c.json({ success: true, message: "Document deleted successfully" });
+  } catch (error) {
+    return failureResponse(c, error);
+  }
+});
+
+export default app;

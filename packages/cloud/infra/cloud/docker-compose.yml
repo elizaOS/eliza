@@ -1,0 +1,86 @@
+# Local development services for eliza-cloud.
+#
+# Production uses Cloudflare R2 for object storage and Railway for Postgres;
+# this file exists only so contributors can run the cloud's "heavy payload"
+# object offload paths offline. The S3-compatible API is provided by self-hosted
+# Supabase Storage; the storage-api container speaks S3 at /storage/v1/s3.
+#
+# Start: docker compose up -d storage
+# Stop:  docker compose down
+# Wipe:  docker compose down -v
+#
+# ---------------------------------------------------------------------------
+# SECRETS (SOC2 CC6.1 / CC7.2)
+# ---------------------------------------------------------------------------
+# All credentials below are read from environment variables (or .env in the
+# same directory). Copy .env.example -> .env and populate. .env is gitignored
+# at the repo root (see the workspace-root .gitignore).
+#
+# Production: secrets are NOT supplied via this compose file. Production K8s
+# workloads receive secrets through external-secrets-operator (ESO) pulling
+# from the Steward credential proxy (see deploy/k8s/networkpolicies/README.md
+# and deploy/RUNBOOK-DR.md).
+#
+# Production boundary: Steward -> ESO ClusterSecretStore wiring still requires
+# the credential proxy to be reachable from the production GKE cluster. Until
+# then operators must create K8s Secrets manually from sealed-secrets manifests.
+# ---------------------------------------------------------------------------
+
+services:
+  storage_db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: storage
+      POSTGRES_USER: ${STORAGE_DB_USER:?STORAGE_DB_USER required, see .env.example}
+      POSTGRES_PASSWORD: ${STORAGE_DB_PASSWORD:?STORAGE_DB_PASSWORD required, see .env.example}
+    ports:
+      - "54322:5432"
+    volumes:
+      - storage_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STORAGE_DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  storage:
+    image: supabase/storage-api:v1.58.4
+    restart: unless-stopped
+    depends_on:
+      storage_db:
+        condition: service_healthy
+    ports:
+      - "54321:5000"
+    environment:
+      ANON_KEY: ${STORAGE_ANON_KEY:?STORAGE_ANON_KEY required, see .env.example}
+      SERVICE_KEY: ${STORAGE_SERVICE_KEY:?STORAGE_SERVICE_KEY required, see .env.example}
+      AUTH_JWT_SECRET: ${STORAGE_AUTH_JWT_SECRET:?STORAGE_AUTH_JWT_SECRET required, see .env.example}
+      AUTH_JWT_ALGORITHM: HS256
+      DATABASE_URL: postgres://${STORAGE_DB_USER}:${STORAGE_DB_PASSWORD}@storage_db:5432/storage
+      DB_INSTALL_ROLES: "true"
+      PGRST_JWT_SECRET: ${STORAGE_PGRST_JWT_SECRET:?STORAGE_PGRST_JWT_SECRET required, see .env.example}
+      POSTGREST_URL: http://storage_db:5432
+      FILE_SIZE_LIMIT: "524288000"
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: local-dev
+      REGION: local
+      GLOBAL_S3_BUCKET: local-dev-storage
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+      S3_PROTOCOL_ACCESS_KEY_ID: ${STORAGE_ACCESS_KEY_ID:?STORAGE_ACCESS_KEY_ID required, see .env.example}
+      S3_PROTOCOL_ACCESS_KEY_SECRET: ${STORAGE_SECRET_ACCESS_KEY:?STORAGE_SECRET_ACCESS_KEY required, see .env.example}
+      S3_PROTOCOL_PREFIX: /storage/v1
+      S3_PROTOCOL_NON_CANONICAL_HOST_HEADER: "true"
+      UPLOAD_FILE_SIZE_LIMIT: "524288000"
+    volumes:
+      - storage_data:/var/lib/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5000/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  storage_db_data:
+  storage_data:

@@ -1,0 +1,362 @@
+/* Design Lab chrome. Self-contained dark styling with a neutral accent so the
+   harness never borrows the app design system it previews. The device frame
+   sets a containing block (transform) that scopes each surface's fixed overlay
+   to the frame instead of the window. */
+
+:root {
+  --lab-bg: #0b0c0f;
+  --lab-panel: #131519;
+  --lab-panel-2: #171a1f;
+  --lab-line: rgba(255, 255, 255, 0.08);
+  --lab-line-strong: rgba(255, 255, 255, 0.16);
+  --lab-text: #e9ebef;
+  --lab-muted: rgba(233, 235, 239, 0.56);
+  --lab-faint: rgba(233, 235, 239, 0.36);
+  --lab-accent: #ff7a3d;
+  --lab-radius: 12px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.lab {
+  display: grid;
+  grid-template-columns: 244px 1fr 312px;
+  height: 100%;
+  color: var(--lab-text);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--lab-bg);
+}
+
+/* ---- Sidebar (surface picker) ------------------------------------------- */
+.lab-sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--lab-line);
+  padding: 18px 14px;
+  gap: 6px;
+  min-height: 0;
+}
+.lab-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.lab-brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--lab-accent);
+  box-shadow: 0 0 12px rgba(255, 122, 61, 0.6);
+}
+.lab-sidebar-hint {
+  font-size: 11px;
+  color: var(--lab-faint);
+  margin: 2px 0 14px 19px;
+}
+.lab-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+.lab-nav-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 11px 12px;
+  border-radius: var(--lab-radius);
+  border: 1px solid transparent;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.lab-nav-item:hover {
+  background: var(--lab-panel);
+}
+.lab-nav-item.is-active {
+  background: var(--lab-panel-2);
+  border-color: var(--lab-line-strong);
+}
+.lab-nav-item.is-active .lab-nav-name {
+  color: var(--lab-accent);
+}
+.lab-nav-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.lab-nav-blurb {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--lab-muted);
+}
+.lab-sidebar-foot {
+  padding-top: 14px;
+  border-top: 1px solid var(--lab-line);
+  margin-top: 8px;
+}
+.lab-sidebar-foot-label,
+.lab-group-label {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--lab-faint);
+  margin-bottom: 8px;
+}
+.lab-device-picker {
+  display: flex;
+  gap: 6px;
+}
+.lab-device {
+  flex: 1;
+  padding: 7px 6px;
+  border-radius: 9px;
+  border: 1px solid var(--lab-line);
+  background: transparent;
+  color: var(--lab-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+.lab-device.is-active {
+  background: var(--lab-panel-2);
+  border-color: var(--lab-line-strong);
+  color: var(--lab-text);
+}
+
+/* ---- Stage (device frame) ----------------------------------------------- */
+.lab-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+  padding: 28px;
+  overflow: auto;
+  background:
+    radial-gradient(
+      120% 120% at 50% 0%,
+      rgba(255, 122, 61, 0.05),
+      transparent 60%
+    ),
+    var(--lab-bg);
+}
+.lab-device-frame {
+  position: relative;
+  /* Containing block for the surface's `position: fixed` overlays. */
+  transform: translateZ(0);
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid var(--lab-line-strong);
+  box-shadow:
+    0 30px 80px -30px rgba(0, 0, 0, 0.8),
+    0 0 0 1px rgba(0, 0, 0, 0.4);
+  background: #000;
+  flex: 0 0 auto;
+}
+.lab-device-frame.is-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 14px;
+}
+.lab-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* No notch/gesture insets on the mocked device. */
+  --safe-area-top: 0px;
+  --safe-area-bottom: 0px;
+  --android-gesture-inset-bottom: 0px;
+  --eliza-mobile-nav-offset: 0px;
+}
+
+/* Fake workspace backdrop behind the chat surface. */
+.lab-fakeview {
+  position: absolute;
+  inset: 0;
+  padding: 44px 26px;
+  background: #ef5a1f;
+  color: rgba(255, 255, 255, 0.92);
+}
+.lab-fakeview h1 {
+  font-size: 27px;
+  font-weight: 650;
+  margin: 0;
+}
+.lab-fakeview p {
+  opacity: 0.72;
+  margin-top: 11px;
+  line-height: 1.6;
+  max-width: 30ch;
+  font-size: 14px;
+}
+.lab-fakeview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+}
+.lab-fakeview-chips span {
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 13px;
+}
+
+/* ---- Controls column ---------------------------------------------------- */
+.lab-controls-col {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--lab-line);
+  min-height: 0;
+}
+.lab-controls-head {
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--lab-line);
+}
+.lab-controls-title {
+  font-size: 15px;
+  font-weight: 650;
+}
+.lab-controls-sub {
+  font-size: 11.5px;
+  color: var(--lab-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.lab-controls {
+  padding: 16px 18px;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---- Control primitives ------------------------------------------------- */
+.lab-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lab-segmented {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--lab-panel);
+  border: 1px solid var(--lab-line);
+}
+.lab-seg {
+  flex: 1;
+  padding: 7px 8px;
+  border-radius: 7px;
+  border: none;
+  background: transparent;
+  color: var(--lab-muted);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.lab-seg.is-active {
+  background: var(--lab-panel-2);
+  color: var(--lab-text);
+  box-shadow: inset 0 0 0 1px var(--lab-line-strong);
+}
+.lab-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+}
+.lab-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.lab-toggle-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--lab-panel);
+  border: 1px solid var(--lab-line-strong);
+  flex: 0 0 auto;
+  transition: background 120ms ease;
+}
+.lab-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--lab-muted);
+  transition:
+    transform 140ms ease,
+    background 140ms ease;
+}
+.lab-toggle input:checked + .lab-toggle-track {
+  background: rgba(255, 122, 61, 0.28);
+  border-color: var(--lab-accent);
+}
+.lab-toggle input:checked + .lab-toggle-track::after {
+  transform: translateX(16px);
+  background: var(--lab-accent);
+}
+.lab-toggle-label {
+  color: var(--lab-text);
+}
+.lab-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lab-action {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 9px;
+  border: 1px solid var(--lab-line-strong);
+  background: var(--lab-panel);
+  color: var(--lab-text);
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease;
+}
+.lab-action:hover {
+  background: var(--lab-panel-2);
+}
+.lab-action.is-primary {
+  background: var(--lab-accent);
+  border-color: var(--lab-accent);
+  color: #1a0f08;
+  font-weight: 650;
+}
+.lab-action.is-primary:hover {
+  background: #ff8a54;
+}
+.lab-hint {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--lab-muted);
+  margin: 0;
+}

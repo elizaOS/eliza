@@ -1,0 +1,76 @@
+/**
+ * Shared prop and variant types for the sidebar composite parts (root, header,
+ * body, content, panel, rails). Kept separate so components import contracts
+ * without cross-importing each other's modules.
+ */
+import type * as React from "react";
+
+export type SidebarVariant = "default" | "game-modal" | "mobile";
+
+export interface SidebarProps extends React.HTMLAttributes<HTMLElement> {
+  testId?: string;
+  variant?: SidebarVariant;
+  collapsible?: boolean;
+  contentIdentity?: string;
+  syncId?: string;
+  collapsed?: boolean;
+  defaultCollapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
+  header?: React.ReactNode;
+  footer?: React.ReactNode;
+  collapsedContent?: React.ReactNode;
+  collapsedRailAction?: React.ReactNode;
+  collapsedRailItems?: React.ReactNode;
+  collapseButtonLeading?: React.ReactNode;
+  onMobileClose?: () => void;
+  mobileTitle?: React.ReactNode;
+  mobileMeta?: React.ReactNode;
+  mobileCloseLabel?: string;
+  showExpandedCollapseButton?: boolean;
+  collapseButtonTestId?: string;
+  expandButtonTestId?: string;
+  collapseButtonAriaLabel?: string;
+  expandButtonAriaLabel?: string;
+  bodyClassName?: string;
+  headerClassName?: string;
+  footerClassName?: string;
+  collapsedContentClassName?: string;
+  collapseButtonClassName?: string;
+  /** Desktop-only: enable drag-to-resize on the inside edge. */
+  resizable?: boolean;
+  /** Current width in pixels when resizable. Overrides the default width. */
+  width?: number;
+  /** Fired while the user drags the resize handle (at most once per frame). */
+  onWidthChange?: (width: number) => void;
+  /**
+   * Fired once when a resize drag that changed the width ends, with the final
+   * width. Persistence (localStorage etc.) belongs here, not in the per-frame
+   * onWidthChange stream.
+   */
+  onWidthCommit?: (width: number) => void;
+  /** Min width in px (default 200). Drag below this and onCollapseRequest fires. */
+  minWidth?: number;
+  /** Max width in px (default 560). */
+  maxWidth?: number;
+  /**
+   * Called when the user drags the resize handle to or past the collapse
+   * threshold (default: minWidth - 40). Caller should collapse the sidebar.
+   */
+  onCollapseRequest?: () => void;
+}
+
+export interface SidebarScrollRegionProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: SidebarVariant;
+}
+
+export interface SidebarPanelProps
+  extends React.HTMLAttributes<HTMLDivElement> {
+  variant?: SidebarVariant;
+}
+
+export interface SidebarBodyProps
+  extends React.HTMLAttributes<HTMLDivElement> {}
+
+export interface SidebarHeaderStackProps
+  extends React.HTMLAttributes<HTMLDivElement> {}

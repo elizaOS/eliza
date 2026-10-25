@@ -1,0 +1,42 @@
+/**
+ * Full-width "new item" Button with a leading plus icon — the create affordance
+ * at the top of list/panel views. Strips a leading "+ " from string children so
+ * the icon is not doubled.
+ */
+import { Plus } from "lucide-react";
+import * as React from "react";
+import { cn } from "../../utils/cn";
+import { Button, type ButtonProps } from "./button";
+
+export interface NewActionButtonProps extends Omit<ButtonProps, "variant"> {}
+
+function normalizeNewActionLabel(children: React.ReactNode): React.ReactNode {
+  return React.Children.map(children, (child) =>
+    typeof child === "string" ? child.replace(/^\+\s*/, "") : child,
+  );
+}
+
+const NewActionButton = React.forwardRef<
+  HTMLButtonElement,
+  NewActionButtonProps
+>(({ className, children, ...props }, ref) => {
+  return (
+    <Button
+      ref={ref}
+      variant="surfaceAccent"
+      size="content"
+      className={cn(
+        "min-h-touch w-full justify-start px-4 py-2.5 text-sm font-medium",
+        className,
+      )}
+      {...props}
+    >
+      <Plus className="size-4" />
+      {normalizeNewActionLabel(children)}
+    </Button>
+  );
+});
+
+NewActionButton.displayName = "NewActionButton";
+
+export { NewActionButton };

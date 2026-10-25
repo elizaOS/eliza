@@ -1,0 +1,9 @@
+// Defines cloud shared dashboard agent stats behavior for backend service consumers.
+import type { AgentStats } from "../cache/agent-state-cache";
+
+/**
+ * Dashboard display mapping of AgentStats (server actions and API reuse this alias).
+ */
+export type DashboardAgentStats = Omit<AgentStats, "agentId" | "uptime"> & {
+  deploymentStatus: AgentStats["status"];
+};

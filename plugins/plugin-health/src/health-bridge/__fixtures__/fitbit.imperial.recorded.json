@@ -1,0 +1,68 @@
+{
+  "_source": "Fitbit Web API (api.fitbit.com) documented response shapes for a US-locale (en_US) account — same endpoints as fitbit.recorded.json. Fitbit selects the unit system of a response from the Accept-Language request header: `en_US` => United States, `en_GB` => United Kingdom, none of these or not provided => Metric. The connector sends no Accept-Language header, so summary.distances[].distance is in KILOMETERS and body.log.weight[].weight is in KILOGRAMS, although profile.user.distanceUnit / weightUnit = `en_US`. See https://dev.fitbit.com/build/reference/web-api/developer-guide/application-design/#Localization and https://dev.fitbit.com/build/reference/web-api/body/get-weight-log/ (weight: 'in the unit system that corresponds to the Accept-Language header provided or if not provided in metric').",
+  "_why": "US-profile variant. Replayed through syncHealthConnectorData({token:{provider:'fitbit'}}) to assert the profile unit does NOT change the stored values: 8.05 km => 8050 m and 68.04 kg => 68.04 kg. A profile-unit conversion would store 12955.2 m and 30.86 kg.",
+  "_captured": "2026-06-24",
+  "profile": {
+    "user": {
+      "encodedId": "GGNJL9",
+      "fullName": "Grace Hopper",
+      "displayName": "Grace",
+      "gender": "FEMALE",
+      "age": 41,
+      "height": 166.9,
+      "weight": 68.04,
+      "timezone": "America/New_York",
+      "distanceUnit": "en_US",
+      "weightUnit": "en_US",
+      "memberSince": "2024-01-02"
+    }
+  },
+  "activity": {
+    "summary": {
+      "steps": 11842,
+      "caloriesOut": 2415,
+      "activityCalories": 1180,
+      "fairlyActiveMinutes": 28,
+      "veryActiveMinutes": 41,
+      "lightlyActiveMinutes": 210,
+      "sedentaryMinutes": 640,
+      "distances": [
+        { "activity": "total", "distance": 8.05 },
+        { "activity": "tracker", "distance": 8.05 },
+        { "activity": "veryActive", "distance": 3.86 }
+      ]
+    },
+    "goals": { "steps": 10000, "caloriesOut": 2300 }
+  },
+  "sleep": {
+    "summary": {
+      "totalMinutesAsleep": 456,
+      "totalSleepRecords": 1,
+      "totalTimeInBed": 486,
+      "stages": { "deep": 108, "light": 252, "rem": 96, "wake": 30 }
+    },
+    "sleep": []
+  },
+  "heart": {
+    "activities-heart": [
+      {
+        "dateTime": "2026-05-01",
+        "value": { "restingHeartRate": 54, "heartRateZones": [] }
+      }
+    ]
+  },
+  "weight": {
+    "weight": [
+      {
+        "logId": 38291077001,
+        "date": "2026-05-01",
+        "time": "07:15:00",
+        "weight": 68.04,
+        "bmi": 24.45,
+        "fat": 23.1,
+        "source": "API",
+        "weightUnit": "kg"
+      }
+    ]
+  }
+}

@@ -1,0 +1,791 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
+	"title": "Eliza-1 bundle manifest",
+	"description": "Canonical manifest for an Eliza-1 on-device fused bundle. Source of truth: packages/inference/AGENTS.md \u00a76. Schema version 1.",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"id",
+		"tier",
+		"version",
+		"publishedAt",
+		"lineage",
+		"files",
+		"kernels",
+		"evals",
+		"ramBudgetMb",
+		"defaultEligible"
+	],
+	"properties": {
+		"$schema": {
+			"type": "string",
+			"const": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
+		},
+		"id": {
+			"type": "string",
+			"minLength": 1
+		},
+		"tier": {
+			"type": "string",
+			"enum": ["2b", "4b", "9b", "27b", "27b-256k"]
+		},
+		"version": {
+			"type": "string",
+			"pattern": "^\\d+\\.\\d+\\.\\d+(?:-[A-Za-z0-9.-]+)?$"
+		},
+		"publishedAt": {
+			"type": "string",
+			"format": "date-time"
+		},
+		"lineage": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["text", "voice"],
+			"properties": {
+				"text": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"voice": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"drafter": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"asr": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"embedding": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"imagegen": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"vision": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"vad": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"wakeword": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"turn": {
+					"$ref": "#/$defs/lineageEntry"
+				},
+				"emotion": {
+					"$ref": "#/$defs/lineageEntry"
+				}
+			}
+		},
+		"files": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["text", "voice", "asr", "vision", "mtp", "cache"],
+			"properties": {
+				"text": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"voice": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"asr": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"vision": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"mtp": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"cache": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"embedding": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"imagegen": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"vad": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"wakeword": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"turn": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				},
+				"emotion": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/fileEntry"
+					}
+				}
+			}
+		},
+		"kernels": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["required", "optional", "verifiedBackends"],
+			"properties": {
+				"required": {
+					"type": "array",
+					"minItems": 1,
+					"items": {
+						"$ref": "#/$defs/kernelName"
+					}
+				},
+				"optional": {
+					"type": "array",
+					"items": {
+						"$ref": "#/$defs/kernelName"
+					}
+				},
+				"verifiedBackends": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+					"properties": {
+						"metal": {
+							"$ref": "#/$defs/backendStatus"
+						},
+						"vulkan": {
+							"$ref": "#/$defs/backendStatus"
+						},
+						"cuda": {
+							"$ref": "#/$defs/backendStatus"
+						},
+						"rocm": {
+							"$ref": "#/$defs/backendStatus"
+						},
+						"cpu": {
+							"$ref": "#/$defs/backendStatus"
+						}
+					}
+				},
+				"recipeManifest": {
+					"description": "Recipe-level kernel layout pins folded in from the quantization recipes' kernel_manifest sidecar fragments (packages/training/scripts/quantization/_kernel_manifest.py). Keyed by recipe kernel-target name (turbo3 / turbo4 / turbo3_tcq / qjl1_256 / polar_q4), NOT the manifest-level capability names in kernelName.",
+					"type": "object",
+					"minProperties": 1,
+					"additionalProperties": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"blockLayoutVersion",
+							"codebookHash",
+							"perBlockTolerance"
+						],
+						"properties": {
+							"blockLayoutVersion": {
+								"type": "string",
+								"minLength": 1
+							},
+							"codebookHash": {
+								"type": "string",
+								"minLength": 1
+							},
+							"perBlockTolerance": {
+								"type": "number",
+								"exclusiveMinimum": 0
+							}
+						}
+					}
+				},
+				"specDecode": {
+					"description": "Optional speculative-decode capability metadata (drafter-agnostic: MTP separate drafter, embedded draft head, or EAGLE3 head). Independent from required tier kernel names.",
+					"type": "object",
+					"properties": {
+						"enabled": {
+							"type": "boolean"
+						},
+						"capability": {
+							"type": "string",
+							"minLength": 1
+						},
+						"specType": {
+							"type": "string",
+							"minLength": 1
+						},
+						"model": {
+							"type": "string",
+							"minLength": 1
+						},
+						"maxDraftTokens": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				},
+				"eagle3": {
+					"description": "Back-compat alias for specDecode accepted for one release; same shape as specDecode.",
+					"type": "object",
+					"properties": {
+						"enabled": {
+							"type": "boolean"
+						},
+						"capability": {
+							"type": "string",
+							"minLength": 1
+						},
+						"specType": {
+							"type": "string",
+							"minLength": 1
+						},
+						"model": {
+							"type": "string",
+							"minLength": 1
+						},
+						"maxDraftTokens": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				}
+			}
+		},
+		"evals": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["textEval", "voiceRtf", "e2eLoopOk", "thirtyTurnOk"],
+			"properties": {
+				"textEval": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["score", "passed"],
+					"properties": {
+						"score": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"voiceRtf": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["rtf", "passed"],
+					"properties": {
+						"rtf": {
+							"type": "number",
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"e2eLoopOk": {
+					"type": "boolean"
+				},
+				"thirtyTurnOk": {
+					"type": "boolean"
+				},
+				"asrWer": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["wer", "passed"],
+					"properties": {
+						"wer": {
+							"type": "number",
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"embedMteb": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["score", "passed"],
+					"properties": {
+						"score": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"vadLatencyMs": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["median", "passed"],
+					"properties": {
+						"median": {
+							"type": "number",
+							"minimum": 0
+						},
+						"boundaryMs": {
+							"type": "number",
+							"minimum": 0
+						},
+						"endpointMs": {
+							"type": "number",
+							"minimum": 0
+						},
+						"falseBargeInRate": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"expressive": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"tagFaithfulness",
+						"mosExpressive",
+						"tagLeakage",
+						"passed"
+					],
+					"properties": {
+						"tagFaithfulness": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"mosExpressive": {
+							"type": "number",
+							"minimum": 0
+						},
+						"tagLeakage": {
+							"type": "number",
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"mtp": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["acceptanceRate", "speedup", "passed"],
+					"properties": {
+						"acceptanceRate": {
+							"type": ["number", "null"],
+							"minimum": 0,
+							"maximum": 1
+						},
+						"speedup": {
+							"type": ["number", "null"],
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"specDecode": {
+					"description": "Optional speculative-decode eval metadata (drafter-agnostic). Passing claims require measured acceptanceRate and speedup in runtime validators.",
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"acceptanceRate": {
+							"type": ["number", "null"],
+							"minimum": 0,
+							"maximum": 1
+						},
+						"speedup": {
+							"type": ["number", "null"],
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						},
+						"pass": {
+							"type": "boolean"
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				},
+				"eagle3": {
+					"description": "Back-compat alias for specDecode eval metadata accepted for one release; same shape as specDecode.",
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"acceptanceRate": {
+							"type": ["number", "null"],
+							"minimum": 0,
+							"maximum": 1
+						},
+						"speedup": {
+							"type": ["number", "null"],
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						},
+						"pass": {
+							"type": "boolean"
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				},
+				"turnDetector": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["f1", "meanLatencyMs", "passed"],
+					"properties": {
+						"f1": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"meanLatencyMs": {
+							"type": "number",
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				},
+				"emotionClassifier": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": [
+						"macroF1Meld",
+						"macroF1Iemocap",
+						"meanLatencyMs",
+						"passed"
+					],
+					"properties": {
+						"macroF1Meld": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"macroF1Iemocap": {
+							"type": "number",
+							"minimum": 0,
+							"maximum": 1
+						},
+						"meanLatencyMs": {
+							"type": "number",
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						}
+					}
+				}
+			}
+		},
+		"ramBudgetMb": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["min", "recommended"],
+			"properties": {
+				"min": {
+					"type": "integer",
+					"minimum": 1
+				},
+				"recommended": {
+					"type": "integer",
+					"minimum": 1
+				}
+			}
+		},
+		"voice": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["version", "frozen", "cache", "capabilities"],
+			"properties": {
+				"version": {
+					"type": "string",
+					"minLength": 1
+				},
+				"frozen": {
+					"const": true
+				},
+				"cache": {
+					"type": "object",
+					"additionalProperties": false,
+					"required": ["speakerPreset", "phraseCacheSeed"],
+					"properties": {
+						"speakerPreset": {
+							"type": "string",
+							"minLength": 1
+						},
+						"phraseCacheSeed": {
+							"type": "string",
+							"minLength": 1
+						}
+					}
+				},
+				"capabilities": {
+					"type": "array",
+					"items": {
+						"type": "string",
+						"enum": ["tts", "emotion-tags", "singing"]
+					}
+				}
+			}
+		},
+		"provenance": {
+			"description": "Optional. Present on `base-v1` bundles \u2014 the upstream BASE models, GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized, NOT fine-tuned. Records the release state, the not-fine-tuned flag, and the upstream source repo per shipped component. The runtime validator requires per-component coverage when releaseState === 'base-v1'.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["releaseState", "finetuned", "sourceModels"],
+			"properties": {
+				"releaseState": {
+					"type": "string",
+					"enum": [
+						"local-standin",
+						"base-v1-candidate",
+						"base-v1",
+						"finetuned-v2",
+						"upload-candidate",
+						"final"
+					]
+				},
+				"finetuned": {
+					"type": "boolean"
+				},
+				"sourceModels": {
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"text": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"voice": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"asr": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"vad": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"embedding": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"imagegen": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"vision": {
+							"$ref": "#/$defs/sourceModelEntry"
+						},
+						"drafter": {
+							"$ref": "#/$defs/sourceModelEntry"
+						}
+					}
+				}
+			}
+		},
+		"releaseChannel": {
+			"description": "Optional. Defaults to 'recommended' (the fine-tuned Eliza-1 \u2014 the device default; ships in v2). A 'base-v1'-channel manifest is the upstream-base + kernel-optimized release: every quant/kernel trick applied, but the text weights are the upstream base GGUFs (not the fine-tuned Eliza-1). A 'base-v1'-channel manifest MUST be defaultEligible: false.",
+			"type": "string",
+			"enum": ["recommended", "base-v1"]
+		},
+		"defaultEligible": {
+			"type": "boolean"
+		},
+		"schemaVersion": {
+			"description": "Manifest format version. \"2\" adds the Gemma 4 tokenizer/kv/mtp identity block; absent/\"1\" is the pre-cutover shape.",
+			"oneOf": [{ "type": "string" }, { "type": "integer" }]
+		},
+		"tokenizer": {
+			"description": "Shared Gemma 4 tokenizer identity (schemaVersion 2).",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["family", "vocabSize"],
+			"properties": {
+				"family": { "type": "string" },
+				"vocabSize": { "type": "integer", "minimum": 1 }
+			}
+		},
+		"kv": {
+			"description": "KV-cache mode the bundle ships (e.g. \"stock-q8_0\").",
+			"type": "string"
+		},
+		"mtp": {
+			"description": "Speculative-decode MTP mode. Gemma 4 tiers ship a separate drafter GGUF (mtp/drafter-<tier>.gguf).",
+			"enum": ["separate-drafter", "embedded-draft-head"]
+		}
+	},
+	"allOf": [
+		{
+			"if": {
+				"properties": {
+					"releaseChannel": {
+						"const": "base-v1"
+					}
+				},
+				"required": ["releaseChannel"]
+			},
+			"then": {
+				"properties": {
+					"defaultEligible": {
+						"const": false
+					}
+				}
+			}
+		}
+	],
+	"$defs": {
+		"sourceModelEntry": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["repo"],
+			"properties": {
+				"repo": {
+					"type": "string",
+					"minLength": 1
+				},
+				"file": {
+					"type": "string",
+					"minLength": 1
+				},
+				"convertedVia": {
+					"type": "string",
+					"minLength": 1
+				},
+				"note": {
+					"type": "string",
+					"minLength": 1
+				}
+			}
+		},
+		"lineageEntry": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["base", "license"],
+			"properties": {
+				"base": {
+					"type": "string",
+					"minLength": 1
+				},
+				"license": {
+					"type": "string",
+					"minLength": 1
+				}
+			}
+		},
+		"fileEntry": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["path", "sha256"],
+			"properties": {
+				"path": {
+					"type": "string",
+					"minLength": 1
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[a-f0-9]{64}$"
+				},
+				"ctx": {
+					"type": "integer",
+					"minimum": 131072
+				},
+				"runtimeClass": {
+					"description": "Optional runtime-class discriminator for a files.text entry. Absent defaults to 'llama-cpp' (GGUF, the default path). A '.litertlm' text artifact declares 'litert-lm' so the loader routes it to the in-process LiteRT-LM backend (Android NPU/GPU delegate) instead of the fused llama.cpp path.",
+					"type": "string",
+					"enum": ["llama-cpp", "litert-lm"]
+				}
+			}
+		},
+		"kernelName": {
+			"type": "string",
+			"enum": [
+				"turboquant_q3",
+				"turboquant_q4",
+				"qjl",
+				"polarquant",
+				"mtp",
+				"turbo3_tcq"
+			]
+		},
+		"backendStatus": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["status", "atCommit", "report"],
+			"properties": {
+				"status": {
+					"type": "string",
+					"enum": ["pass", "fail", "skipped"]
+				},
+				"atCommit": {
+					"type": "string",
+					"minLength": 1
+				},
+				"report": {
+					"type": "string",
+					"minLength": 1
+				},
+				"device": {
+					"type": "string",
+					"minLength": 1
+				},
+				"caveat": {
+					"type": "string",
+					"minLength": 1
+				}
+			}
+		}
+	}
+}

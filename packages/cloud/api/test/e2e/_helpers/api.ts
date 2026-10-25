@@ -1,0 +1,366 @@
+/**
+ * Worker-targeted e2e API client.
+ *
+ * Configuration (env):
+ *   TEST_API_BASE_URL  — defaults to TEST_BASE_URL, then http://localhost:8787
+ *                        (wrangler dev). Set this to point tests at a running
+ *                        Worker.
+ *   TEST_API_KEY       — bootstrapped by `ensureLocalTestAuth()` in preload.
+ *   CRON_SECRET        — for cron-route tests; defaults to "test-cron-secret".
+ *   TEST_REQUEST_TIMEOUT_MS — per-request timeout; defaults to 30000.
+ *
+ * The helpers throw if you call them before `ensureLocalTestAuth()` has run.
+ * The preload is `packages/cloud/api/test/e2e/preload.ts`, which seeds
+ * the DB and exports `TEST_API_KEY`.
+ */
+
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const LOCAL_WRANGLER_RECYCLE_MAX_RETRIES = 5;
+const LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS = 500;
+
+function resolveRequestTimeoutMs(): number {
+  const parsed = Number(process.env.TEST_REQUEST_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+const REQUEST_TIMEOUT_MS = resolveRequestTimeoutMs();
+
+export function getBaseUrl(): string {
+  return (
+    process.env.TEST_API_BASE_URL?.trim() ||
+    process.env.TEST_BASE_URL?.trim() ||
+    "http://localhost:8787"
+  );
+}
+
+export function url(path: string): string {
+  return `${getBaseUrl()}${path}`;
+}
+
+/**
+ * Adds what the Eliza browser client sends on a same-origin request: the
+ * Origin header plus the `x-eliza-csrf` non-simple marker the cookie-mutation
+ * guard requires (bodyless mutations like DELETE carry no JSON content-type,
+ * so the marker is what keeps them browser-equivalent).
+ *
+ * This is deliberately opt-in so CSRF tests can continue exercising missing
+ * and hostile origins/markers. Explicit caller headers win, including an
+ * intentional cross-origin Origin used by negative coverage.
+ */
+export function sameOriginBrowserHeaders(
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  const names = new Set(Object.keys(headers).map((name) => name.toLowerCase()));
+  const defaults: Record<string, string> = {};
+  if (!names.has("origin")) {
+    defaults.Origin = new URL(getBaseUrl()).origin;
+  }
+  if (!names.has("x-eliza-csrf")) {
+    defaults["x-eliza-csrf"] = "1";
+  }
+  return { ...defaults, ...headers };
+}
+
+/**
+ * True when the e2e target is a LOCAL dev Worker (which shares our `.env`, so
+ * INTERNAL_SECRET / test-only routes line up). Against a DEPLOYED target
+ * (staging/prod) the Worker's INTERNAL_SECRET is a server-side secret we can't
+ * supply, so internal-bearer-authenticated tests must skip rather than fail.
+ * The unauthenticated 401 auth-gate assertions still run everywhere.
+ */
+export function isLocalTarget(): boolean {
+  return /\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/.test(getBaseUrl());
+}
+
+function timeoutSignal(): AbortSignal {
+  return AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+}
+
+export function getApiKey(): string {
+  const key = process.env.TEST_API_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      "TEST_API_KEY is not set. Run with the e2e preload " +
+        "(packages/cloud/api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
+        "and exports the bootstrapped key.",
+    );
+  }
+  return key;
+}
+
+export function getMemberApiKey(): string {
+  const key = process.env.TEST_MEMBER_API_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      "TEST_MEMBER_API_KEY is not set. Run with the e2e preload " +
+        "(packages/cloud/api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
+        "and exports the bootstrapped member key.",
+    );
+  }
+  return key;
+}
+
+export function bearerHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${getApiKey()}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export function memberBearerHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${getMemberApiKey()}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export function getAffiliateApiKey(): string {
+  // Fall back to the regular bootstrapped key when the preload didn't seed a
+  // separate affiliate user — the affiliate group reuses the same auth path.
+  const key =
+    process.env.TEST_AFFILIATE_API_KEY?.trim() ??
+    process.env.TEST_API_KEY?.trim();
+  if (!key) {
+    throw new Error(
+      "TEST_AFFILIATE_API_KEY (or TEST_API_KEY) is not set. Run with the e2e preload " +
+        "(packages/cloud/api/test/e2e/preload.ts) so ensureLocalTestAuth() seeds the DB " +
+        "and exports the bootstrapped affiliate key.",
+    );
+  }
+  return key;
+}
+
+export function affiliateBearerHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${getAffiliateApiKey()}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export function apiKeyHeaders(): Record<string, string> {
+  return {
+    "X-API-Key": getApiKey(),
+    "Content-Type": "application/json",
+  };
+}
+
+export function cronHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${process.env.CRON_SECRET ?? "test-cron-secret"}`,
+    "Content-Type": "application/json",
+  };
+}
+
+export interface FetchOptions {
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+function isJsonMediaType(contentType: string | null): boolean {
+  const mediaType = (contentType ?? "").split(";", 1)[0]?.trim().toLowerCase();
+  const subtype = mediaType?.split("/", 2)[1];
+  return subtype === "json" || subtype?.endsWith("+json") === true;
+}
+
+const MINIFLARE_PROXY_CONNECTION_LOST =
+  /^Error: Network connection lost\.\r?\n\s+at async Object\.fetch \(file:\/\/[^\r\n]+\/node_modules\/miniflare\/dist\/src\/workers\/core\/entry\.worker\.js:\d+:\d+\)$/;
+
+/**
+ * Wrangler dev's ProxyWorker can reuse a pooled UserWorker connection at the
+ * instant KJ's 5s idle timeout closes it (cloudflare/workers-sdk#14641). The
+ * server closes that idle socket before reading the new request, so the request
+ * never reaches the Worker. Match only Miniflare's exact proxy stack on a local
+ * target, never an application failure with similar text.
+ */
+async function isLocalMiniflareProxyDrop(response: Response): Promise<boolean> {
+  if (
+    !isLocalTarget() ||
+    response.status !== 500 ||
+    !response.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("text/plain") ||
+    isJsonMediaType(response.headers.get("content-type"))
+  ) {
+    return false;
+  }
+  return MINIFLARE_PROXY_CONNECTION_LOST.test(
+    (await response.clone().text()).trim(),
+  );
+}
+
+async function isLocalWranglerRecycleResponse(
+  method: string,
+  response: Response,
+): Promise<boolean> {
+  if (
+    (method !== "GET" && method !== "HEAD") ||
+    !isLocalTarget() ||
+    (response.status !== 500 && response.status !== 503) ||
+    !response.headers
+      .get("content-type")
+      ?.toLowerCase()
+      .startsWith("text/plain") ||
+    isJsonMediaType(response.headers.get("content-type"))
+  ) {
+    return false;
+  }
+
+  const fromWorkerd =
+    response.headers.get("server")?.trim().toLowerCase() === "workerd";
+  if (method === "HEAD") return fromWorkerd;
+  // Miniflare can lose its upstream Worker connection without setting Server.
+  if (await isLocalMiniflareProxyDrop(response)) return true;
+  const body = (await response.clone().text()).trim();
+  const expectedBody =
+    response.status === 500 ? "Internal Server Error" : "Service Unavailable";
+  return fromWorkerd && body === expectedBody;
+}
+
+async function request(
+  method: string,
+  path: string,
+  opts: FetchOptions = {},
+): Promise<Response> {
+  const makeInit = (): RequestInit => {
+    const headers = new Headers(opts.headers);
+    // Wrangler's local proxy can reuse a connection the Worker just closed,
+    // returning "Network connection lost" before the route responds. Close
+    // each local connection instead of replaying potentially applied mutations.
+    // https://github.com/cloudflare/workers-sdk/issues/14641
+    if (isLocalTarget()) headers.set("Connection", "close");
+    const init: RequestInit = {
+      method,
+      signal: timeoutSignal(),
+      headers,
+    };
+    if (opts.body !== undefined) {
+      if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+      }
+      init.body =
+        typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+    }
+    return init;
+  };
+  let res = await fetch(url(path), makeInit());
+  // A mutation dropped by the ProxyWorker keep-alive race never reached the
+  // Worker, so replay it once. Any other mutation failure stays fail-closed, and
+  // a replay of an applied mutation would surface as a conflict, not a pass.
+  if (
+    method !== "GET" &&
+    method !== "HEAD" &&
+    (await isLocalMiniflareProxyDrop(res))
+  ) {
+    console.warn(
+      "[Worker e2e] Replaying a request dropped by the local ProxyWorker (workers-sdk#14641)",
+      { method, path },
+    );
+    await new Promise((resolve) =>
+      setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
+    );
+    res = await fetch(url(path), makeInit());
+  }
+  // Local wrangler dev can answer with workerd's own plain-text 500/503 while
+  // recycling the isolate. Retry only the exact local workerd signature and
+  // only for idempotent reads. Mutation methods, deployed targets, structured
+  // JSON failures, and other plain-text application failures remain fail-closed.
+  for (
+    let attempt = 0;
+    attempt < LOCAL_WRANGLER_RECYCLE_MAX_RETRIES &&
+    (await isLocalWranglerRecycleResponse(method, res));
+    attempt++
+  ) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, LOCAL_WRANGLER_RECYCLE_RETRY_DELAY_MS),
+    );
+    res = await fetch(url(path), makeInit());
+  }
+  if (res.status === 500 && !isJsonMediaType(res.headers.get("content-type"))) {
+    console.error("[Worker e2e] Non-JSON server failure", {
+      method,
+      path,
+      status: res.status,
+      server: res.headers.get("server"),
+      contentType: res.headers.get("content-type"),
+      body: await res.clone().text(),
+    });
+  }
+  recordStatus(method, path, res.status);
+  return res;
+}
+
+/**
+ * Optional per-request status recorder for contract audits: set
+ * E2E_STATUS_LOG=<file> to append one `METHOD path -> status` line per
+ * request. No-op when unset.
+ */
+function recordStatus(method: string, path: string, status: number): void {
+  const logPath = process.env.E2E_STATUS_LOG;
+  if (!logPath) return;
+  const { appendFileSync } = require("node:fs") as typeof import("node:fs");
+  appendFileSync(logPath, `${method} ${path} -> ${status}\n`);
+}
+
+export const api = {
+  get: (path: string, opts?: FetchOptions) => request("GET", path, opts),
+  post: (path: string, body?: unknown, opts?: FetchOptions) =>
+    request("POST", path, { ...opts, body }),
+  put: (path: string, body: unknown, opts?: FetchOptions) =>
+    request("PUT", path, { ...opts, body }),
+  patch: (path: string, body: unknown, opts?: FetchOptions) =>
+    request("PATCH", path, { ...opts, body }),
+  delete: (path: string, opts?: FetchOptions) => request("DELETE", path, opts),
+};
+
+/**
+ * Probe `/api/health` to confirm the target server is up. Returns true if it
+ * answers 2xx within 5 seconds. Used by tests to skip cleanly when the
+ * Worker isn't running.
+ */
+export async function isServerReachable(): Promise<boolean> {
+  try {
+    const res = await fetch(url("/api/health"), {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok && process.env.REQUIRE_E2E_SERVER !== "0") {
+      throw new Error(`GET ${url("/api/health")} returned ${res.status}`);
+    }
+    return res.ok;
+  } catch (error) {
+    if (process.env.REQUIRE_E2E_SERVER !== "0") {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Worker e2e target is not reachable at ${getBaseUrl()}: ${message}`,
+      );
+    }
+    return false;
+  }
+}
+
+/**
+ * Exchange the bootstrapped API key for a session cookie via
+ * `POST /api/test/auth/session`. The Worker must have `PLAYWRIGHT_TEST_AUTH=true`
+ * in its env for this to be enabled.
+ *
+ * Returns `Cookie` header value ready to attach to subsequent requests.
+ */
+export async function exchangeApiKeyForSession(): Promise<string> {
+  const res = await api.post("/api/test/auth/session", undefined, {
+    headers: bearerHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `POST /api/test/auth/session failed: ${res.status} ${body.slice(0, 200)}`,
+    );
+  }
+  const json = (await res.json()) as { token?: string; cookieName?: string };
+  if (!json.token) {
+    throw new Error("Test session response missing token");
+  }
+  const name = json.cookieName ?? "eliza-test-session";
+  return `${name}=${json.token}`;
+}

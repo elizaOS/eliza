@@ -1,0 +1,69 @@
+From fecab6ea4b7018c7ff7c18419e08a6a302fc0719 Mon Sep 17 00:00:00 2001
+From: qjl-port <qjl@local>
+Date: Sat, 9 May 2026 18:32:28 -0700
+Subject: [PATCH] ggml: flip block_qjl1_256 to signs-then-norm to match kernel
+ lib
+
+The kernel-library qjl_block_qjl1_256 (in
+packages/native-plugins/qjl-cpu/include/qjl/qjl.h and the vendored
+copy at ggml-cpu/qjl/include/qjl/qjl.h) is laid out as
+  uint8_t  qs[32];     // packed 1-bit signs LSB-first
+  uint16_t norm_bf16;  // bf16 L2 norm of the original key
+On-cache, the GGML block_qjl1_256 must agree byte-for-byte because
+quants-qjl.c::quantize_row_qjl1_256 casts the destination through
+qjl_block_qjl1_256 * before calling the kernel-library writer:
+  qjl_quantize_rows(x, prj, (qjl_block_qjl1_256 *)y, n_blocks);
+
+Before this commit ggml-common.h declared the block as
+  uint16_t d;
+  uint8_t signs[32];
+which has the same total size (the static_assert passes) but the
+opposite field order. The cast then violated strict-alias and the
+on-cache layout, producing scrambled signs and a garbage norm field.
+
+Verified by packages/native-plugins/qjl-cpu/test/qjl_fork_parity.c:
+0/100 -> 100/100 signs+norms bit-exact after this change.
+---
+ ggml/src/ggml-common.h | 21 +++++++++++++--------
+ 1 file changed, 13 insertions(+), 8 deletions(-)
+
+diff --git a/ggml/src/ggml-common.h b/ggml/src/ggml-common.h
+index 7f3c08e..182b10c 100644
+--- a/ggml/src/ggml-common.h
++++ b/ggml/src/ggml-common.h
+@@ -262,19 +262,24 @@ static_assert(sizeof(block_tbq4_0) == sizeof(ggml_half) + QK_TBQ/2, "wrong tbq4_
+ 
+ // QJL: 1-bit Quantized JL Transform K-cache compression. One block stores
+ // the packed signs of Π·k for one cached key vector together with the bf16
+-// L2 norm of the original key. Mirrors qjl_block_qjl1_256 from
+-// packages/native-plugins/qjl-cpu/include/qjl/qjl.h. The companion attention
+-// score path is GGML_OP_ATTN_SCORE_QJL.
++// L2 norm of the original key. Layout matches qjl_block_qjl1_256 in the
++// vendored kernel library at packages/native-plugins/qjl-cpu/include/qjl/qjl.h
++// and ggml-cpu/qjl/include/qjl/qjl.h: 32 bytes of packed signs first, then
++// the 16-bit bf16 norm. The companion attention-score path is
++// GGML_OP_ATTN_SCORE_QJL.
+ //
+ // `d` holds the raw bf16 bits as uint16_t (same on-cache footprint as
+-// ggml_bf16_t, which is itself a `struct { uint16_t bits; }` wrapper). All
+-// other ggml_common.h block defs use the plain ggml_half / uint16_t shape
+-// for the scale field, so we keep that convention here. Conversions are
+-// handled by qjl_fp32_to_bf16 / qjl_bf16_to_fp32 in the kernel library.
++// ggml_bf16_t, which is itself a `struct { uint16_t bits; }` wrapper).
++// Field order is signs-then-norm so the cast in
++// ggml-cpu/qjl/quants-qjl.c::quantize_row_qjl1_256
++//   `qjl_quantize_rows(x, prj, (qjl_block_qjl1_256 *)y, n_blocks)`
++// produces an on-cache block with bytewise-identical contents to what the
++// kernel library writes — verified by the parity test at
++// packages/native-plugins/qjl-cpu/test/qjl_fork_parity.c.
+ #define QK_QJL 256  // projection_dim_per_head (= sketch dim, NOT head_dim)
+ typedef struct {
+-    uint16_t d;                // bf16 L2 norm of the original key vector
+     uint8_t signs[QK_QJL/8];   // packed 1-bit signs of Π·k, 8 per byte LSB-first
++    uint16_t d;                // bf16 L2 norm of the original key vector
+ } block_qjl1_256;
+ static_assert(sizeof(block_qjl1_256) == 2 + QK_QJL/8, "wrong qjl1_256 block size/padding");
+ 
+-- 
+2.43.0
+

@@ -1,0 +1,122 @@
+/** Renders resumable local-model downloads from the live inference snapshot. */
+
+import type { CatalogModel, DownloadJob } from "@elizaos/contracts";
+import { useTranslation } from "../../state/TranslationContext.hooks";
+import { Button } from "../ui/button";
+import { Card } from "../ui/card";
+import { DownloadProgress } from "./DownloadProgress";
+import { displayModelName, findCatalogModel } from "./hub-utils";
+
+interface DownloadQueueProps {
+  downloads: DownloadJob[];
+  catalog: CatalogModel[];
+  onCancel: (modelId: string) => void;
+  /**
+   * Re-invoke a failed download. The partial `.part` file makes this a resume,
+   * not a restart. Optional so callers that have no start handler still render
+   * the queue (the Retry button is hidden when absent).
+   */
+  onRetry?: (modelId: string) => void;
+}
+
+/**
+ * Global view of all in-flight downloads. The SSE stream already removes
+ * completed + cancelled jobs from the snapshot, so this list only holds
+ * active/queued/failed jobs. Failures stick around until a new download
+ * for the same model supersedes them.
+ */
+export function DownloadQueue({
+  downloads,
+  catalog,
+  onCancel,
+  onRetry,
+}: DownloadQueueProps) {
+  const { t } = useTranslation();
+  if (downloads.length === 0) {
+    return (
+      <div className="rounded-sm border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+        {t("downloadqueue.empty", {
+          defaultValue: "No downloads in progress. Start one from Eliza-1.",
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-3">
+      {downloads.map((job) => {
+        const entry = findCatalogModel(job.modelId, catalog);
+        const label = entry ? displayModelName(entry) : job.modelId;
+        const isActive = job.state === "downloading" || job.state === "queued";
+        return (
+          <Card
+            asChild
+            flow="column"
+            gap="default"
+            key={job.jobId}
+            variant="outlinedPadded"
+          >
+            <li>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">{label}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {job.state === "queued" &&
+                      t("downloadqueue.queued", { defaultValue: "Queued" })}
+                    {job.state === "downloading" &&
+                      t("downloadqueue.downloading", {
+                        defaultValue: "Downloading",
+                      })}
+                    {job.state === "failed" &&
+                      t("downloadqueue.failed", { defaultValue: "Failed" })}
+                    {job.state === "completed" &&
+                      t("downloadqueue.completed", {
+                        defaultValue: "Completed",
+                      })}
+                    {job.state === "cancelled" &&
+                      t("downloadqueue.cancelled", {
+                        defaultValue: "Cancelled",
+                      })}
+                  </div>
+                </div>
+                {isActive && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onCancel(job.modelId)}
+                  >
+                    {t("downloadqueue.cancel", { defaultValue: "Cancel" })}
+                  </Button>
+                )}
+              </div>
+
+              {(job.state === "downloading" || job.state === "queued") && (
+                <DownloadProgress job={job} />
+              )}
+
+              {job.state === "failed" && (
+                <div className="flex items-start justify-between gap-3">
+                  {job.error && (
+                    <div className="min-w-0 break-words text-xs text-danger">
+                      {job.error}
+                    </div>
+                  )}
+                  {onRetry && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => onRetry(job.modelId)}
+                    >
+                      {t("downloadqueue.retry", { defaultValue: "Retry" })}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </li>
+          </Card>
+        );
+      })}
+    </ul>
+  );
+}

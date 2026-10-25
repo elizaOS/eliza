@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "sourceMap": true,
+    "inlineSources": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "noEmitOnError": false
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "**/*.spec.ts", "build.ts"]
+}

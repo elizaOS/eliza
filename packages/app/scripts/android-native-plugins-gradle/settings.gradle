@@ -1,0 +1,41 @@
+import groovy.json.JsonSlurper
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'elizaos-android-native-plugins'
+def repoRoot = rootDir.parentFile.parentFile.parentFile.parentFile
+// Resolve the app's exact installed Capacitor version, rather than picking an
+// arbitrary version from Bun's cache.
+def capacitorDir = providers.exec {
+    workingDir repoRoot
+    commandLine 'node', '--print', "require('node:path').dirname(require.resolve('@capacitor/android/package.json', { paths: ['./packages/app'] }))"
+}.standardOutput.asText.get().trim()
+include ':capacitor-android'
+project(':capacitor-android').projectDir = new File(capacitorDir, 'capacitor')
+
+new File(repoRoot, 'plugins').listFiles().sort { it.name }.each { pluginDir ->
+    if (pluginDir.name.startsWith('plugin-native-') && new File(pluginDir, 'android/build.gradle').isFile()) {
+        def manifest = new JsonSlurper().parse(new File(pluginDir, 'package.json'))
+        def projectName = manifest.name.replaceFirst('^@', '').replace('/', '-')
+        include ":${projectName}"
+        project(":${projectName}").projectDir = new File(pluginDir, 'android')
+    }
+}
+
+include ':native-block-target'
+include ':native-gateway-host'
+
+// Cold reminder projection is tested against the installed community FCM transport.
+def pushDir = providers.exec {
+    workingDir repoRoot
+    commandLine 'node', '--print', "require('node:path').dirname(require.resolve('@capacitor/push-notifications/package.json', { paths: ['./packages/app'] }))"
+}.standardOutput.asText.get().trim()
+include ':capacitor-push-notifications'
+project(':capacitor-push-notifications').projectDir = new File(pushDir, 'android')
+include ':native-reminder-push-tests'

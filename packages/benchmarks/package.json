@@ -1,0 +1,49 @@
+{
+  "name": "elizaos-benchmarks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "elizaOS benchmark suites, harness adapters, and the @elizaos/plugin-benchmarks action vocabulary plugin.",
+  "license": "MIT",
+  "elizaos": {
+    "scripts": {
+      "testLanes": [
+        "server"
+      ]
+    }
+  },
+  "scripts": {
+    "test": "bun run test:infrastructure && node --test suites/mobile-resource/metrics.test.mjs && vitest run suites/loadperf/frontend-kpi.test.mjs && bun run test:content-context && bun run test:planner-optimization",
+    "build:plugin": "bun run --cwd plugin-benchmarks build",
+    "test:plugin": "bun run --cwd plugin-benchmarks test",
+    "typecheck:plugin": "bun run --cwd plugin-benchmarks typecheck",
+    "test:py": "pytest tests orchestrator/tests harnesses --import-mode=importlib -q",
+    "lifeops-bench:manifest": "bun --conditions=eliza-source --conditions=development scripts/lifeops-bench/export-action-manifest.ts",
+    "test:content-context": "node ../scripts/run-vitest.ts run --config suites/content-context/vitest.config.ts",
+    "typecheck:content-context": "tsc --noEmit -p suites/content-context/tsconfig.json",
+    "gepa:setup": "bun suites/planner-optimization/src/gepa-setup.ts",
+    "test:gepa": "node ../scripts/run-vitest.ts run --config suites/planner-optimization/vitest.gepa.config.ts",
+    "test:planner-optimization": "node ../scripts/run-vitest.ts run --config suites/planner-optimization/vitest.config.ts",
+    "typecheck:planner-optimization": "tsc --noEmit -p suites/planner-optimization/tsconfig.json",
+    "test:infrastructure": "node --test lib/target-package.test.ts lib/kpi-reporting.test.mjs"
+  },
+  "engines": {
+    "node": "24.15.0",
+    "bun": "1.4.2"
+  },
+  "devDependencies": {
+    "@elizaos/vitest-vite": "npm:vite@7.3.5",
+    "tsx": "^4.20.0",
+    "@elizaos/testing": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "vitest": "^5.0.3",
+    "fflate": "^0.8.3",
+    "zod": "^4.6.5",
+    "@elizaos/plugin-assistant": "workspace:*"
+  },
+  "exports": {
+    "./content-context": "./suites/content-context/index.ts",
+    "./content-context/fixtures": "./suites/content-context/testing/index.ts",
+    "./planner-optimization": "./suites/planner-optimization/index.ts"
+  }
+}

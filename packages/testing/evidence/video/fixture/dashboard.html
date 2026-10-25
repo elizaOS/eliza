@@ -1,0 +1,191 @@
+<!doctype html>
+<!--
+  Self-contained deterministic fixture that reproduces the dashboard's chat +
+  multi-view shell using the real app's data-testid conventions
+  (chat-composer-textarea, chat-composer-action, chat-view, chat-message, and
+  the per-view test-ids). It is the keyless, dependency-free stand-in the
+  walkthrough definitions drive when the full app is not booted headlessly. The
+  same definitions run against the real dashboard by passing its baseUrl — the
+  selectors match, so this fixture is a faithful shim, not a separate contract.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Eliza dashboard fixture</title>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --panel: #151515;
+    --border: #262626;
+    --text: #eee;
+    --muted: #9aa;
+    --accent: #ff7a18;
+    --accent-hover: #d9660f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    height: 100vh;
+  }
+  nav {
+    width: 200px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  nav h1 { font-size: 15px; margin: 0 8px 16px; color: var(--accent); }
+  nav button {
+    background: transparent;
+    color: var(--text);
+    border: none;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  nav button:hover { background: rgba(255, 255, 255, 0.06); }
+  nav button[aria-current="true"] { background: rgba(255, 122, 24, 0.14); color: var(--accent); }
+  main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .view { display: none; flex: 1; padding: 24px; overflow: auto; }
+  .view.active { display: flex; flex-direction: column; }
+  .view h2 { margin: 0 0 12px; font-size: 18px; }
+  .view p { color: var(--muted); }
+  /* Chat view */
+  #view-chat.active { padding: 0; }
+  .chat-messages { flex: 1; overflow: auto; padding: 24px; display: flex; flex-direction: column; gap: 12px; }
+  .chat-message {
+    max-width: 70%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+  }
+  .chat-message[data-role="user"] { align-self: flex-end; background: rgba(255, 122, 24, 0.12); }
+  .chat-composer {
+    display: flex;
+    gap: 8px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--border);
+    align-items: flex-end;
+  }
+  .chat-composer textarea {
+    flex: 1;
+    resize: none;
+    min-height: 44px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font: inherit;
+  }
+  .chat-composer button {
+    background: var(--accent);
+    color: #111;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s ease, transform 0.08s ease;
+  }
+  .chat-composer button:hover { background: var(--accent-hover); }
+  .chat-composer button:active { transform: scale(0.96); }
+</style>
+</head>
+<body>
+  <nav>
+    <h1>Eliza</h1>
+    <button type="button" data-testid="nav-chat" data-view="chat" aria-current="true">Chat</button>
+    <button type="button" data-testid="nav-documents" data-view="documents">Documents</button>
+    <button type="button" data-testid="nav-database" data-view="database">Database</button>
+    <button type="button" data-testid="nav-files" data-view="files">Files</button>
+    <button type="button" data-testid="nav-settings" data-view="settings">Settings</button>
+  </nav>
+  <main>
+    <section id="view-chat" class="view active" data-testid="chat-view">
+      <div class="chat-messages" data-testid="chat-content">
+        <div class="chat-message" data-testid="chat-message" data-role="agent">
+          Welcome to Eliza. How can I help you today?
+        </div>
+      </div>
+      <div class="chat-composer">
+        <textarea
+          data-testid="chat-composer-textarea"
+          placeholder="Message Eliza…"
+          aria-label="Message input"
+        ></textarea>
+        <button type="button" data-testid="chat-composer-action" aria-label="Send message">Send</button>
+      </div>
+    </section>
+    <section id="view-documents" class="view" data-testid="documents-view">
+      <h2>Documents</h2>
+      <p>Your knowledge base documents live here.</p>
+    </section>
+    <section id="view-database" class="view" data-testid="database-view">
+      <h2>Database</h2>
+      <p>Inspect agent memories, entities, and relationships.</p>
+    </section>
+    <section id="view-files" class="view" data-testid="files-view">
+      <h2>Files</h2>
+      <p>Attachments and generated files.</p>
+    </section>
+    <section id="view-settings" class="view" data-testid="settings-view">
+      <h2>Settings</h2>
+      <p>Configure providers, models, and connectors.</p>
+    </section>
+  </main>
+  <script>
+    // View switching: nav buttons toggle the active view, mirroring the real
+    // dashboard's single-page view swap so multi-view tour walkthroughs work.
+    const nav = document.querySelector("nav");
+    nav.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-view]");
+      if (!button) return;
+      const view = button.dataset.view;
+      for (const b of nav.querySelectorAll("button[data-view]")) {
+        b.setAttribute("aria-current", String(b === button));
+      }
+      for (const section of document.querySelectorAll(".view")) {
+        section.classList.toggle("active", section.id === `view-${view}`);
+      }
+    });
+
+    // Deterministic stubbed chat round-trip: sending a message appends a user
+    // bubble then, after a fixed delay, a canned agent reply. No network, no
+    // model — the same DECISION a live send would reach, without a provider key.
+    const composer = document.querySelector(".chat-composer");
+    const textarea = composer.querySelector("textarea");
+    const sendButton = composer.querySelector('[data-testid="chat-composer-action"]');
+    const messages = document.querySelector('[data-testid="chat-content"]');
+    function append(role, text) {
+      const el = document.createElement("div");
+      el.className = "chat-message";
+      el.setAttribute("data-testid", "chat-message");
+      el.setAttribute("data-role", role);
+      el.textContent = text;
+      messages.appendChild(el);
+      messages.scrollTop = messages.scrollHeight;
+    }
+    function send() {
+      const text = textarea.value.trim();
+      if (!text) return;
+      append("user", text);
+      textarea.value = "";
+      setTimeout(() => {
+        append("agent", `Got it — I received: ${text}`);
+      }, 400);
+    }
+    sendButton.addEventListener("click", send);
+  </script>
+</body>
+</html>

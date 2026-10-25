@@ -1,0 +1,69 @@
+/**
+ * Selects the active `WalletBackend` implementation from the
+ * `ELIZA_WALLET_BACKEND` setting (`local` / `steward` / `auto`), with `auto`
+ * preferring Steward when the agent is cloud-provisioned.
+ */
+import type { IAgentRuntime } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
+import { resolveDevCloudStewardOperationalTuple } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import type { WalletBackend } from "./backend.js";
+import { StewardUnavailableError } from "./errors.js";
+import { LocalEoaBackend } from "./local-eoa-backend.js";
+import { StewardBackend } from "./steward-backend.js";
+
+export type WalletBackendMode = "local" | "steward" | "auto";
+
+function readMode(runtime: IAgentRuntime): WalletBackendMode {
+  const raw =
+    runtime.getSetting("ELIZA_WALLET_BACKEND") ??
+    process.env.ELIZA_WALLET_BACKEND ??
+    "auto";
+  if (raw === "local" || raw === "steward" || raw === "auto") {
+    return raw;
+  }
+  return "auto";
+}
+
+function preferStewardInAuto(): boolean {
+  if (process.env.ELIZA_WALLET_STEWARD_AUTO === "1") {
+    return true;
+  }
+  return readAliasedEnv("ELIZA_CLOUD_PROVISIONED") === "1";
+}
+
+/**
+ * Resolves the active wallet backend.
+ *
+ * - `local` — env keys only ({@link LocalEoaBackend}).
+ * - `steward` — Steward API signing ({@link StewardBackend}).
+ * - `auto` — Steward when cloud-provisioned or `ELIZA_WALLET_STEWARD_AUTO=1`, otherwise local.
+ */
+export async function resolveWalletBackend(
+  runtime: IAgentRuntime,
+): Promise<WalletBackend> {
+  const mode = readMode(runtime);
+  const launcherSteward = resolveDevCloudStewardOperationalTuple();
+  if (launcherSteward) {
+    if (mode === "local") return LocalEoaBackend.create(runtime);
+    if (!launcherSteward.enabled || !launcherSteward.agentToken) {
+      if (mode === "steward") {
+        throw new StewardUnavailableError(
+          "The development launcher did not authorize a complete Steward wallet tuple.",
+        );
+      }
+      return LocalEoaBackend.create(runtime);
+    }
+    return StewardBackend.create(runtime, launcherSteward);
+  }
+
+  if (mode === "steward") {
+    return StewardBackend.create(runtime);
+  }
+  if (mode === "local") {
+    return LocalEoaBackend.create(runtime);
+  }
+  if (preferStewardInAuto()) {
+    return StewardBackend.create(runtime);
+  }
+  return LocalEoaBackend.create(runtime);
+}

@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "platform": "ios",
+  "status": "requires_device_evidence",
+  "target": {
+    "minimumIos": "17.6",
+    "primaryIos": "26.1",
+    "minimumDeviceClass": "A14-or-later iPhone"
+  },
+  "evidence": {
+    "deviceModel": null,
+    "iosVersion": null,
+    "buildId": null,
+    "validatedAt": null,
+    "validator": null,
+    "artifacts": []
+  },
+  "checks": [
+    {
+      "id": "probe",
+      "method": "probe",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "platform is ios",
+        "osVersion matches the device",
+        "all six capability bits are present"
+      ]
+    },
+    {
+      "id": "replayKitForegroundStart",
+      "method": "replayKitForegroundStart",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "first-use permission prompt is shown",
+        "accepted capture returns non-empty jpegBase64 frames",
+        "frame resolution matches the device screen"
+      ]
+    },
+    {
+      "id": "broadcastExtensionHandshake",
+      "method": "broadcastExtensionHandshake",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "extension target is bundled",
+        "share-sheet broadcast picker starts a session",
+        "broadcastActive transitions to true",
+        "iOS 26 beta extension-death regression status is recorded when applicable"
+      ]
+    },
+    {
+      "id": "visionOcr",
+      "method": "visionOcr",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "known PNG with WS9 OCR SMOKE is rendered",
+        "accurate OCR returns fullText containing the source string"
+      ]
+    },
+    {
+      "id": "appIntentList",
+      "method": "appIntentList",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "fresh install returns an empty donated-intent list",
+        "list grows after donation through Shortcuts"
+      ]
+    },
+    {
+      "id": "appIntentInvokeSafari",
+      "method": "appIntentInvoke",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "com.apple.mobilesafari.open-url opens Safari to the provided URL"
+      ]
+    },
+    {
+      "id": "appIntentInvokeMessages",
+      "method": "appIntentInvoke",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "com.apple.MobileSMS.send-message opens Messages with recipient and body pre-filled"
+      ]
+    },
+    {
+      "id": "accessibilitySnapshot",
+      "method": "accessibilitySnapshot",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "top-level node role is not labeled",
+        "top-level node has children on a populated screen"
+      ]
+    },
+    {
+      "id": "foundationModelGenerate",
+      "method": "foundationModelGenerate",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "Apple Intelligence enabled returns non-empty generated text",
+        "Apple Intelligence disabled returns foundation_model_unavailable"
+      ]
+    },
+    {
+      "id": "memoryPressureProbe",
+      "method": "memoryPressureProbe",
+      "status": "requires_device_evidence",
+      "requiredEvidence": [
+        "debug memory warning is invoked",
+        "next probe returns severity >= 0.7",
+        "lastWarningAt is set"
+      ]
+    }
+  ]
+}
