@@ -24,10 +24,9 @@ export function buildMcpProviderProjection(
   servers: readonly McpKernelServer[]
 ): McpKernelProviderProjection {
   if (servers.length === 0) {
-    const mcp = nameDictionary<McpKernelProviderData[string]>();
     return {
-      values: { mcp },
-      data: { mcp },
+      values: { mcp: nameDictionary<McpKernelProviderData[string]>() },
+      data: { mcp: nameDictionary<McpKernelProviderData[string]>() },
       text: "No MCP servers are currently connected.",
     };
   }
