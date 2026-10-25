@@ -67,7 +67,15 @@ app.get("/", async (c) => {
     const rangeMs = TIME_RANGE_MS[timeRange];
     const rangeDays = Math.round(rangeMs / 86_400_000);
     const now = new Date();
-    const startDate = new Date(now.getTime() - rangeMs);
+    // Daily rows are dated at UTC midnight: start at a midnight, as the
+    // overview does, so "7d" covers 7 daily rows and both views share the
+    // same cached range.
+    const todayStart = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+    );
+    const startDate = new Date(todayStart - rangeDays * 86_400_000);
 
     switch (view) {
       case "overview":
