@@ -118,6 +118,8 @@ type ConnectorReadParams = {
   target?: TargetInfo;
   limit?: number;
   query?: string;
+  before?: string;
+  after?: string;
 };
 
 type ConnectorMutationParams = {
@@ -163,15 +165,41 @@ function normalizeConnectorLimit(limit: number | undefined): number | undefined 
   return Math.floor(limit);
 }
 
+type StoredMessageWindow = { start?: number; end?: number };
+
+/**
+ * Converts ISO before/after bounds into the inclusive createdAt window that
+ * getMemories applies (before and after themselves are exclusive).
+ */
+function storedMessageWindow(params?: { before?: string; after?: string }): StoredMessageWindow {
+  const bound = (name: "before" | "after", value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (!trimmed) return undefined;
+    const parsed = Date.parse(trimmed);
+    if (!Number.isFinite(parsed)) {
+      throw new RangeError(`Google Chat ${name} must be an ISO timestamp`);
+    }
+    return parsed;
+  };
+  const before = bound("before", params?.before);
+  const after = bound("after", params?.after);
+  return {
+    ...(after === undefined ? {} : { start: after + 1 }),
+    ...(before === undefined ? {} : { end: before - 1 }),
+  };
+}
+
 async function readStoredMessageMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
-  limit: number | undefined
+  limit: number | undefined,
+  window: StoredMessageWindow = {}
 ): Promise<Memory[]> {
   return runtime.getMemories({
     tableName: "messages",
     roomId,
     ...(limit === undefined ? {} : { limit }),
+    ...window,
     orderBy: "createdAt",
     orderDirection: "desc",
   });
@@ -180,13 +208,14 @@ async function readStoredMessageMemories(
 async function readStoredMessagesForTargets(
   runtime: IAgentRuntime,
   targets: MessageConnectorTarget[],
-  limit: number | undefined
+  limit: number | undefined,
+  window: StoredMessageWindow = {}
 ): Promise<Memory[]> {
   const roomIds = Array.from(
     new Set(targets.map((target) => target.target.roomId).filter((id): id is UUID => Boolean(id)))
   );
   const chunks = await Promise.all(
-    roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit))
+    roomIds.map((roomId) => readStoredMessageMemories(runtime, roomId, limit, window))
   );
   const sorted = chunks.flat().sort((left, right) => {
     const rightCreated =
@@ -390,26 +419,29 @@ export class GoogleChatService extends Service implements IGoogleChatService {
           ),
         fetchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params?.limit);
+          const window = storedMessageWindow(params);
           const target = params?.target ?? context.target;
           if (target?.roomId) {
-            return readStoredMessageMemories(context.runtime, target.roomId, limit);
+            return readStoredMessageMemories(context.runtime, target.roomId, limit, window);
           }
           const targets = (await service.listConnectorSpaces(accountId)).map((space) =>
             googleChatSpaceToConnectorTarget(space, 0.55, accountId)
           );
-          return readStoredMessagesForTargets(context.runtime, targets, limit);
+          return readStoredMessagesForTargets(context.runtime, targets, limit, window);
         },
         searchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params.limit);
+          const window = storedMessageWindow(params);
           const target = params.target ?? context.target;
           const messages = target?.roomId
-            ? await readStoredMessageMemories(context.runtime, target.roomId, undefined)
+            ? await readStoredMessageMemories(context.runtime, target.roomId, undefined, window)
             : await readStoredMessagesForTargets(
                 context.runtime,
                 (await service.listConnectorSpaces(accountId)).map((space) =>
                   googleChatSpaceToConnectorTarget(space, 0.55, accountId)
                 ),
-                undefined
+                undefined,
+                window
               );
           return filterMemoriesByQuery(messages, params.query, limit);
         },

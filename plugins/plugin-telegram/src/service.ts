@@ -107,7 +107,38 @@ type TelegramConnectorReadParams = {
   target?: TargetInfo;
   limit?: number;
   query?: string;
+  before?: string;
+  after?: string;
 };
+
+type StoredMessageWindow = { start?: number; end?: number };
+
+/**
+ * Converts ISO before/after bounds into the inclusive createdAt window that
+ * getMemories applies (before and after themselves are exclusive).
+ */
+function storedMessageWindow(
+  params: Pick<TelegramConnectorReadParams, "before" | "after">,
+): StoredMessageWindow {
+  const bound = (value: string | undefined) => {
+    const trimmed = value?.trim();
+    if (!trimmed) return undefined;
+    const parsed = Date.parse(trimmed);
+    if (!Number.isFinite(parsed)) {
+      throw new ElizaError(
+        "Provide an ISO timestamp for Telegram history bounds.",
+        { code: "TELEGRAM_HISTORY_QUERY_INVALID" },
+      );
+    }
+    return parsed;
+  };
+  const before = bound(params.before);
+  const after = bound(params.after);
+  return {
+    ...(after === undefined ? {} : { start: after + 1 }),
+    ...(before === undefined ? {} : { end: before - 1 }),
+  };
+}
 
 type AdditiveMessageConnectorHooks = {
   fetchMessages?: (
@@ -175,6 +206,7 @@ const TELEGRAM_MEMORY_PAGE_SIZE = 500;
 async function loadAllTelegramRoomMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
+  window: StoredMessageWindow = {},
 ): Promise<Memory[]> {
   const memories: Memory[] = [];
   const seenIds = new Set<UUID>();
@@ -184,6 +216,7 @@ async function loadAllTelegramRoomMemories(
       roomId,
       limit: TELEGRAM_MEMORY_PAGE_SIZE,
       offset,
+      ...window,
       orderBy: "createdAt",
       orderDirection: "desc",
     });
@@ -2832,6 +2865,7 @@ export class TelegramService extends Service {
     params: TelegramConnectorReadParams = {},
   ): Promise<Memory[]> {
     const limit = normalizeConnectorLimit(params.limit);
+    const window = storedMessageWindow(params);
     const target = params.target ?? context.target;
     const accountId = await this.resolveAccountIdForTarget(
       context.runtime,
@@ -2852,6 +2886,7 @@ export class TelegramService extends Service {
       const memories = await loadAllTelegramRoomMemories(
         context.runtime,
         roomId,
+        window,
       );
       const matches = memories.filter((memory) => {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
@@ -2870,7 +2905,7 @@ export class TelegramService extends Service {
     );
     const chunks = await Promise.all(
       roomIds.map((roomId) =>
-        loadAllTelegramRoomMemories(context.runtime, roomId),
+        loadAllTelegramRoomMemories(context.runtime, roomId, window),
       ),
     );
     const matches = chunks
@@ -2905,6 +2940,8 @@ export class TelegramService extends Service {
     const messages = await this.fetchConnectorMessages(context, {
       target: params.target ?? context.target,
       limit: undefined,
+      before: params.before,
+      after: params.after,
     });
     return filterMemoriesByQuery(messages, params.query, limit);
   }
