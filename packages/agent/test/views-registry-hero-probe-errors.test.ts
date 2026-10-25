@@ -78,15 +78,22 @@ describe("registerPluginViews bundle capture", () => {
   it("propagates an unreadable bundle instead of registering the view as unavailable", async () => {
     const pluginDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-bundle-"));
     createdDirs.push(pluginDir);
-    await fs.writeFile(path.join(pluginDir, "view.js"), "export const x = 1;");
-    vi.spyOn(fs, "access").mockRejectedValue(
-      Object.assign(
-        new Error(
-          `EACCES: permission denied, access '${path.join(pluginDir, "view.js")}'`,
-        ),
-        { code: "EACCES", errno: -13, syscall: "access" },
-      ),
-    );
+    const bundleFile = path.join(pluginDir, "view.js");
+    await fs.writeFile(bundleFile, "export const x = 1;");
+    // Reject only the bundle probe. Every other access (the hero probe that runs
+    // later for the same view) must reach the real filesystem, otherwise this
+    // test would pass on the hero throw without ever exercising the bundle path.
+    const realAccess = fs.access.bind(fs);
+    const accessSpy = vi.spyOn(fs, "access");
+    accessSpy.mockImplementation(async (target, mode) => {
+      if (String(target) === bundleFile) {
+        throw Object.assign(
+          new Error(`EACCES: permission denied, access '${bundleFile}'`),
+          { code: "EACCES", errno: -13, syscall: "access" },
+        );
+      }
+      return realAccess(target, mode);
+    });
     const plugin: Plugin = {
       name: "bundle-probe",
       description: "Unreadable bundle fixture",
