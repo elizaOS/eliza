@@ -4358,7 +4358,9 @@ export class SlackService extends Service implements ISlackService {
     await client.chat.update({
       channel: channelId,
       ts: messageTs,
-      text,
+      // Send uses markdownToSlackMrkdwn for the same agent content; an edit
+      // must render the same way instead of showing raw markdown syntax.
+      text: markdownToSlackMrkdwn(text),
     });
   }
 
