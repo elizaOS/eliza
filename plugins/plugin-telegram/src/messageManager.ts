@@ -2715,10 +2715,15 @@ export class MessageManager {
     messageThreadId?: number,
   ): Promise<void> {
     const formatted = convertMarkdownToTelegram(text);
+    // Route through the same migration retry as the send path: a group
+    // upgraded to a supergroup rejects the old chat id with
+    // migrate_to_chat_id, and without the mutable chat object the retry
+    // branch can never fire.
+    const chat = { id: this.currentChatId(chatId) };
     await this.sendWithRetry(
       () =>
         this.bot.telegram.editMessageText(
-          chatId,
+          chat.id,
           messageId,
           undefined,
           formatted,
@@ -2728,11 +2733,12 @@ export class MessageManager {
       // the user sees the content unformatted rather than a stale message.
       () =>
         this.bot.telegram.editMessageText(
-          chatId,
+          chat.id,
           messageId,
           undefined,
           cleanText(text),
         ),
+      chat,
     );
     logger.info(
       {
