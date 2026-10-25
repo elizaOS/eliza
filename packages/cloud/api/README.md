@@ -92,6 +92,9 @@ Client IDs, app UUIDs and canonical HTTPS return URLs must be unique, including
 against the existing `ai.elizaos.app` registration. Unknown and disabled clients
 fail closed; malformed additional configuration does not change the legacy client.
 The global mobile-auth enable switch and environment binding still apply.
+An explicitly registered client does not require the legacy primary app UUID.
+`ELIZA_MOBILE_APP_AUTH_APP_ID` remains required for `ai.elizaos.app`; omitting it
+does not register or enable that legacy client.
 
 Auth has separate configuration boundaries. A Cloud exchange callback is not
 necessarily the browser callback used by Google:
