@@ -1064,6 +1064,8 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
         under("/api/files") ||
+        // A GitHub token lets its holder act as the owner on GitHub.
+        under("/api/github") ||
         // Shell, trading, automation and computer-use permissions.
         under("/api/permissions") ||
         // Bot tokens and allowlists of the owner's connectors. The provider's
