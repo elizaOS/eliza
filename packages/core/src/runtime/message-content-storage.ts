@@ -146,15 +146,33 @@ export async function persistIncomingMessageMemory(
 					}
 				: {}),
 		};
+		const normalizeContentForComparison = (raw: unknown): unknown => {
+			if (!raw || typeof raw !== "object") return raw;
+			try {
+				return JSON.parse(JSON.stringify(raw));
+			} catch {
+				return raw;
+			}
+		};
+		const normalizedExistingContent = normalizeContentForComparison(existing.content);
 		for (const content of [memory.content, textRedacted, allRedacted]) {
-			if (isDeepStrictEqual(existing.content, content)) return id;
+			if (
+				isDeepStrictEqual(existing.content, content) ||
+				isDeepStrictEqual(normalizedExistingContent, normalizeContentForComparison(content))
+			)
+				return id;
 			const projection = buildMessageContentProjection({
 				...memory,
 				id,
 				agentId: memory.agentId ?? runtime.agentId,
 				content,
 			});
-			if (!isDeepStrictEqual(existing.content, projection.content)) continue;
+			const normalizedProjectionContent = normalizeContentForComparison(projection.content);
+			if (
+				!isDeepStrictEqual(existing.content, projection.content) &&
+				!isDeepStrictEqual(normalizedExistingContent, normalizedProjectionContent)
+			)
+				continue;
 			const expected = projection.segments;
 			const rows = await runtime.getMemoriesByIds(
 				expected.map((segment) => {
