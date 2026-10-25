@@ -253,3 +253,73 @@ it("a resumed calendar-event workflow does not run for events that ended while i
     await f.cleanup();
   }
 }, 180_000);
+
+it("a pause saved while a scheduled run is in flight stays paused", async () => {
+  const f = await createLifeOpsTestRuntime();
+  await TaskService.stop(f.runtime);
+  await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(f.runtime);
+  vi.spyOn(f.runtime, "useModel").mockRejectedValue(
+    new Error("No inference expected"),
+  );
+  try {
+    const service = new LifeOpsService(f.runtime);
+    const created = await service.createWorkflow({
+      title: "Daily task minting workflow",
+      triggerType: "schedule",
+      schedule: { kind: "interval", everyMinutes: 24 * 60, timezone: "UTC" },
+      actionPlan: {
+        steps: [
+          {
+            kind: "create_task",
+            request: {
+              title: "Minted during pause race",
+              kind: "task",
+              cadence: { kind: "unscheduled" },
+              timezone: "UTC",
+            },
+          },
+        ],
+      },
+    });
+    const workflowId = created.definition.id;
+    const minted = async () =>
+      (await service.listDefinitions()).filter(
+        (record) => record.definition.title === "Minted during pause race",
+      ).length;
+
+    // The owner pauses the workflow while the first scheduled run is in flight.
+    const claim = LifeOpsRepository.prototype.claimWorkflowRun;
+    let paused = false;
+    vi.spyOn(
+      LifeOpsRepository.prototype,
+      "claimWorkflowRun",
+    ).mockImplementation(async function (this: LifeOpsRepository, run) {
+      const claimed = await claim.call(this, run);
+      if (!paused) {
+        paused = true;
+        await new LifeOpsService(f.runtime).updateWorkflow(workflowId, {
+          status: "paused",
+        });
+      }
+      return claimed;
+    });
+
+    vi.setSystemTime(T0 + DAY_MS + 60_000);
+    await service.runDueWorkflows({ now: new Date().toISOString(), limit: 12 });
+    expect((await service.getWorkflow(workflowId)).definition.status).toBe(
+      "paused",
+    );
+    const afterFirstRun = await minted();
+
+    for (let day = 2; day <= 4; day++) {
+      vi.setSystemTime(T0 + day * DAY_MS + 60_000);
+      await service.runDueWorkflows({
+        now: new Date().toISOString(),
+        limit: 12,
+      });
+    }
+    expect(await minted()).toBe(afterFirstRun);
+  } finally {
+    await f.cleanup();
+  }
+}, 180_000);
