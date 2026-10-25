@@ -143,7 +143,7 @@ export function turnRequestFor(event: ChatEvent): TurnRequest {
     messageId: event.messageId,
     channel: event.platform === "twilio" ? "twilio" : "blooio",
     from: event.senderId,
-    to: event.channelId ?? null,
+    to: event.receivingNumber ?? event.channelId ?? null,
     text: event.text,
     transport:
       protocol && TRANSPORTS.has(protocol)

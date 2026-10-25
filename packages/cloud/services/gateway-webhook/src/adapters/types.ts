@@ -14,6 +14,8 @@ export interface ChatEvent {
   chatId: string;
   chatType?: string;
   channelId?: string;
+  /** Receiving phone number, distinct from the provider's opaque channel id. */
+  receivingNumber?: string;
   channelType?: string;
   protocol?: string;
   senderId: string;
