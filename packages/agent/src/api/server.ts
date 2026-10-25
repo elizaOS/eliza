@@ -1066,6 +1066,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         under("/api/files") ||
         // Shell, trading, automation and computer-use permissions.
         under("/api/permissions") ||
+        // Loading code into the running agent process: VFS project
+        // writes, compiles, and loads, plus on-disk directory load/unload.
+        under("/api/workbench/vfs") ||
+        pathname === "/api/plugins/load-from-directory" ||
+        pathname === "/api/plugins/unload-from-directory" ||
         // Bot tokens and allowlists of the owner's connectors. The provider's
         // OAuth callback is authenticated by its state/code, not the owner.
         (under("/api/connectors") &&
