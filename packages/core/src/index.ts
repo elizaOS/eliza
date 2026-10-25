@@ -205,6 +205,8 @@ export {
 	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
 	collectCompletionContextSources,
 	completionContextSources,
+	HISTORICAL_EFFECT_TERMINALS,
+	type HistoricalEffectTerminal,
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,

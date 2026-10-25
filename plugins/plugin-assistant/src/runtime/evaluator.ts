@@ -1,4 +1,9 @@
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import {
+  contextDiagnosticOptions,
+  describeEvaluatorContext,
+  type EvaluatorContextAttribution,
+} from "./evaluator-context-attribution.ts";
 import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
 
 /**
@@ -43,6 +48,7 @@ import {
   extractJsonObjects,
   getModelFallbackChain,
   getStreamingContext,
+  isDiscoveryActionName,
   isObjectRecord,
   MODEL_WINDOW_RESERVE_FRACTION,
   type ModelAttemptContext,
@@ -353,6 +359,17 @@ function finalizeEvaluatorOutput(
       ),
     };
   }
+  const canonicalCalendarReply = verifiedSingleCalendarReadReply(
+    output,
+    context,
+    trajectory,
+    calendarCoverage,
+  );
+  if (canonicalCalendarReply)
+    output = {
+      ...output,
+      messageToUser: redactDiagnosticText(canonicalCalendarReply),
+    };
   if (output.replyEffectStatus !== "applied") return output;
   const available = new Set(
     activeCommittedEffectReceipts(
@@ -585,6 +602,7 @@ async function runEvaluatorWithSelectedModel(
     trajectory: params.trajectory,
     redactText: redactDiagnosticText,
     decisionState,
+    captureContextAttribution: Boolean(params.recorder && params.trajectoryId),
   };
   const renderedInput = renderEvaluatorModelInput(renderArgs);
   const modelInputBudget = buildModelInputBudget({
@@ -620,7 +638,8 @@ async function runEvaluatorWithSelectedModel(
     providerOptions.eliza = {
       ...(providerOptions.eliza ?? {}),
       thinking: "off",
-      ...(evaluatorEvidenceSteps(params.trajectory).some(
+      ...(params.trajectory.codingMode === true &&
+      evaluatorEvidenceSteps(params.trajectory).some(
         ({ step }) => step.toolCall && !step.terminalOnly,
       )
         ? { preferToolReasoning: true }
@@ -664,6 +683,7 @@ async function runEvaluatorWithSelectedModel(
       modelType: String(modelType),
       provider: args.provider,
       messages: args.input.messages,
+      contextAttribution: args.input.contextAttribution,
       providerOptions: args.providerOptions,
       raw: `[evaluator input budget failure] ${args.error.message} | code: MODEL_INPUT_OVER_BUDGET`,
       output: {
@@ -836,6 +856,8 @@ async function runEvaluatorWithSelectedModel(
       modelType: String(modelType),
       provider: preparedAttempt?.provider ?? params.provider,
       messages: (preparedAttempt?.input ?? renderedInput).messages,
+      contextAttribution: (preparedAttempt?.input ?? renderedInput)
+        .contextAttribution,
       providerOptions: preparedAttempt?.providerOptions ?? providerOptions,
       failureEvidence,
       raw: `[evaluator model call failed] ${
@@ -892,6 +914,7 @@ async function runEvaluatorWithSelectedModel(
       modelType: String(modelType),
       provider: snapshot?.provider ?? params.provider,
       messages: (snapshot?.input ?? renderedInput).messages,
+      contextAttribution: (snapshot?.input ?? renderedInput).contextAttribution,
       providerOptions: snapshot?.providerOptions ?? providerOptions,
       raw,
       output,
@@ -979,6 +1002,7 @@ async function recordEvaluationStage(args: {
   modelType: string;
   provider?: string;
   messages?: ChatMessage[];
+  contextAttribution?: EvaluatorContextAttribution;
   providerOptions?: Record<string, unknown>;
   failureEvidence?: ReturnType<typeof modelOutputIncompleteEvidence>;
   raw: string | { text?: string; object?: unknown; providerMetadata?: unknown };
@@ -1025,8 +1049,17 @@ async function recordEvaluationStage(args: {
         tools: [],
         toolCalls: [],
         providerOptions: args.failureEvidence
-          ? { ...args.providerOptions, outputEvidence: args.failureEvidence }
-          : args.providerOptions,
+          ? {
+              ...contextDiagnosticOptions(
+                args.providerOptions,
+                args.contextAttribution,
+              ),
+              outputEvidence: args.failureEvidence,
+            }
+          : contextDiagnosticOptions(
+              args.providerOptions,
+              args.contextAttribution,
+            ),
         finishReason: args.failureEvidence?.finishReason,
         response: responseText,
         usage,
@@ -1165,14 +1198,17 @@ function renderEvaluatorModelInput(params: {
   template?: string;
   decisionState: EvaluatorDecisionState;
   redactText: ToolDiagnosticTextRedactor;
+  captureContextAttribution?: boolean;
 }): {
   messages: ChatMessage[];
   promptSegments: PromptSegment[];
   cacheKeySegments: PromptSegment[];
   completionSelectionApplied: boolean;
+  contextAttribution?: EvaluatorContextAttribution;
 } {
   const completion = selectCompletionContext(
     params.trajectory.modelBaseContext ?? params.context,
+    { historicalEffects: true },
   );
   const background = completion.applied
     ? { context: completion.context, applied: false, omittedSourceCount: 0 }
@@ -1207,7 +1243,7 @@ function renderEvaluatorModelInput(params: {
       id: "completion-context-selection",
       label: "completion_context",
       stable: false,
-      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue sources are shown. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, use decision=RESTORE_HISTORY, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
+      content: `${JSON.stringify({ selection: completion.selection, omittedSourceCount: completion.omittedSourceCount })}\nSelected prior dialogue and their request-bound historical outcomes are shown. Outcomes for omitted reviewed requests remain with the complete originals. All original sources remain available in this turn. The presence of omitted dialogue is not itself a missing dependency. A live-record question or missing provider body does not require omitted dialogue. If any constraint, correction, referent or requested historical evidence is missing, use decision=RESTORE_HISTORY, success=false, and no user reply or clipboard effect. The runtime restores complete original dialogue without expanding unrelated provider references for one tool-free evaluator call. Do not infer or count omitted messages; do not repeat a successful action to retrieve conversation context.`,
     });
   }
   const template = params.template ?? evaluatorTemplateForQueue(true);
@@ -1234,6 +1270,17 @@ function renderEvaluatorModelInput(params: {
   const dynamicContextSegments = renderedContext.promptSegments.filter(
     (segment) => !segment.stable,
   );
+  const contextAttribution = params.captureContextAttribution
+    ? describeEvaluatorContext({
+        original: params.trajectory.modelBaseContext ?? params.context,
+        projection: completion,
+        background,
+        deferredProviderCount: deferred.available.length,
+        segments: [...stableContextSegments, ...dynamicContextSegments],
+        instructions: `evaluator_stage:\n${instructions}`,
+        decisionState: renderEvaluatorDecisionState(params.decisionState),
+      })
+    : undefined;
   const promptSegments = normalizePromptSegments([
     ...stableContextSegments,
     { content: `evaluator_stage:\n${instructions}`, stable: true },
@@ -1269,6 +1316,7 @@ function renderEvaluatorModelInput(params: {
     messages,
     promptSegments,
     cacheKeySegments,
+    ...(contextAttribution ? { contextAttribution } : {}),
     completionSelectionApplied:
       completion.applied || background.applied || deferred.available.length > 0,
   };
@@ -1863,6 +1911,112 @@ export function validatedOutcomeCoverage(params: {
 }
 
 /** A requested operation needs a fresh, source-bound producer receipt, not another read's success. */
+/** A cited update may depend on an earlier exact target search. Keep the
+ * required read guard, but follow current result provenance rather than require
+ * the model to repeat that prerequisite's step ID in its final coverage list.
+ * Only the same unchanged target snapshot and an active applied commit qualify;
+ * unrelated/archived reads, other operations and uncertain effects do not. */
+function calendarMutationTargetReadEvidence(
+  binding: CalendarReadBinding,
+  cited: readonly string[],
+  trajectory: PlannerTrajectory,
+  evidence: ReadonlyMap<string, PlannerTrajectory["steps"][number]>,
+): readonly string[] {
+  if (binding.operation !== "search_events") return cited;
+  const ids = new Set(cited);
+  for (const id of cited) {
+    const mutation = evidence.get(id),
+      result = mutation?.result;
+    const index = mutation ? trajectory.steps.indexOf(mutation) : -1;
+    if (
+      index < 0 ||
+      !mutation?.toolCall ||
+      mutation.terminalOnly ||
+      result?.success !== true ||
+      result.error != null ||
+      result.failureProvenance ||
+      result.replyFailure ||
+      !(
+        mutation.toolCall.name === "CALENDAR_UPDATE_EVENT" ||
+        (mutation.toolCall.name === "CALENDAR" &&
+          (mutation.toolCall.params?.subaction ??
+            mutation.toolCall.params?.action) === "update_event")
+      )
+    )
+      continue;
+    const data = result.data;
+    if (
+      !isObjectRecord(data) ||
+      !isObjectRecord(data.targetEvent) ||
+      !isObjectRecord(data.event)
+    )
+      continue;
+    const target = data.targetEvent,
+      event = data.event;
+    if (
+      typeof target.id !== "string" ||
+      !target.id ||
+      event.id !== target.id ||
+      !isObjectRecord(target.metadata) ||
+      typeof target.metadata.etag !== "string" ||
+      !target.metadata.etag
+    )
+      continue;
+    const targetEtag = target.metadata.etag;
+    let applied = false;
+    try {
+      applied = activeCommittedEffectReceipts(
+        [...(trajectory.archivedSteps ?? []), ...trajectory.steps].flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).some(
+        (receipt) =>
+          result.effectReceipts?.some(
+            (own) => own.receiptId === receipt.receiptId,
+          ) &&
+          receipt.operation === "calendar.event.update" &&
+          receipt.outcome === "applied" &&
+          receipt.resource?.id === target.id,
+      );
+    } catch {
+      continue;
+    }
+    if (!applied) continue;
+    for (const [readId, read] of evidence) {
+      const readIndex = trajectory.steps.indexOf(read),
+        readData = read.result?.data;
+      if (
+        readIndex < 0 ||
+        readIndex >= index ||
+        read.result?.success !== true ||
+        read.result.error != null ||
+        read.result.failureProvenance ||
+        read.result.replyFailure ||
+        !isObjectRecord(readData) ||
+        !Array.isArray(readData.events) ||
+        !isObjectRecord(readData.replyContext) ||
+        readData.replyContext.domain !== "calendar" ||
+        readData.replyContext.scenario !== "search_results"
+      )
+        continue;
+      if (
+        readData.events.some(
+          (candidate) =>
+            isObjectRecord(candidate) &&
+            candidate.id === target.id &&
+            candidate.grantId === target.grantId &&
+            candidate.calendarId === target.calendarId &&
+            candidate.provider === target.provider &&
+            isObjectRecord(candidate.metadata) &&
+            candidate.metadata.etag === targetEtag,
+        )
+      )
+        ids.add(readId);
+    }
+  }
+  return [...ids];
+}
+
 export function calendarReadCoverage(
   output: EvaluatorOutput,
   context: ContextObject,
@@ -1922,7 +2076,13 @@ export function calendarReadCoverage(
       });
     }
     if (binding.execution !== "required") return false;
-    return coverage.evidenceStepIds.some((id) => {
+    const readEvidenceIds = calendarMutationTargetReadEvidence(
+      binding,
+      coverage.evidenceStepIds,
+      trajectory,
+      evidence,
+    );
+    return readEvidenceIds.some((id) => {
       const step = evidence.get(id);
       if (!step?.toolCall || step.terminalOnly || step.result?.success !== true)
         return false;
@@ -2033,6 +2193,76 @@ export function calendarReadCoverage(
         : [],
     ),
   };
+}
+
+/** Preserve producer-formatted dates only after the normal evaluator verified one
+ * complete next-event read and no other requested outcome/tool needs prose.
+ * Read receipts remain noop; this does not manufacture applied-effect proof. */
+function verifiedSingleCalendarReadReply(
+  output: EvaluatorOutput,
+  context: ContextObject,
+  trajectory: PlannerTrajectory,
+  coverage: ReturnType<typeof calendarReadCoverage>,
+): string | undefined {
+  if (
+    !coverage.verified ||
+    output.decision !== "FINISH" ||
+    output.success !== true ||
+    output.requestFullyCovered !== true
+  )
+    return;
+  const original = trajectory.modelBaseContext ?? context,
+    intents = evaluatorIntentSources(original, trajectory),
+    bindings = original.metadata?.calendarReadBindings;
+  if (
+    intents.length !== 1 ||
+    declaredIntentsFromContext(original).length > 1 ||
+    !Array.isArray(bindings) ||
+    bindings.length !== 1
+  )
+    return;
+  const binding = bindings[0];
+  if (
+    !isObjectRecord(binding) ||
+    binding.intentId !== intents[0].id ||
+    binding.operation !== "next_event" ||
+    binding.execution !== "required"
+  )
+    return;
+  const work = evaluatorEvidenceSteps(trajectory).filter(
+    ({ step }) =>
+      step.toolCall &&
+      !step.terminalOnly &&
+      !isDiscoveryActionName(step.toolCall.name),
+  );
+  if (work.length !== 1) return;
+  const step = work[0].step,
+    result = step.result;
+  if (
+    result?.success !== true ||
+    result.verifiedUserFacing !== true ||
+    typeof result.userFacingText !== "string"
+  )
+    return;
+  if (
+    step.toolCall?.name !== "CALENDAR_NEXT_EVENT" &&
+    !(
+      step.toolCall?.name === "CALENDAR" &&
+      (step.toolCall.params?.action ?? step.toolCall.params?.subaction) ===
+        "next_event"
+    )
+  )
+    return;
+  const data = result.data,
+    reply = isObjectRecord(data) ? data.replyContext : undefined;
+  if (
+    !isObjectRecord(reply) ||
+    reply.domain !== "calendar" ||
+    reply.scenario !== "next_event" ||
+    reply.userFacingFacts !== result.userFacingText
+  )
+    return;
+  return result.userFacingText.trim() || undefined;
 }
 
 /** Scoped failure copy from current producer facts, never unsupported evaluator prose. */

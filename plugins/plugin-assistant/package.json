@@ -64,6 +64,18 @@
       "types": "./dist/html-entities.d.ts",
       "import": "./dist/html-entities.js",
       "default": "./dist/html-entities.js"
+    },
+    "./device-calendar-contract": {
+      "eliza-source": "./src/services/device-actions/calendar-contract.ts",
+      "types": "./dist/device-calendar-contract.d.ts",
+      "import": "./dist/device-calendar-contract.js",
+      "default": "./dist/device-calendar-contract.js"
+    },
+    "./device-foreground-review": {
+      "eliza-source": "./src/services/device-actions/foreground-review-contract.ts",
+      "types": "./dist/device-foreground-review.d.ts",
+      "import": "./dist/device-foreground-review.js",
+      "default": "./dist/device-foreground-review.js"
     }
   },
   "files": [

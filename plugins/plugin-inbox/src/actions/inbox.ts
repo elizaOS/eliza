@@ -103,6 +103,7 @@ export interface InboxItem {
   readonly platform: InboxPlatform;
   readonly channel: string;
   readonly senderName: string;
+  readonly senderIdentifier?: string;
   readonly snippet: string;
   readonly receivedAt: string;
   readonly threadTopic?: string;

@@ -23,6 +23,13 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-browser", mobileCore: true },
   { plugin: "@elizaos/plugin-vision", mobileCore: true },
   { plugin: "@elizaos/plugin-scheduling", mobileCore: true },
+  { plugin: "@elizaos/plugin-personal-assistant", mobileCore: true },
+  {
+    plugin: "@elizaos/plugin-personal-assistant/reminders-plugin",
+    mobileCore: true,
+  },
+  { plugin: "@elizaos/plugin-reminders", mobileCore: true },
+  { plugin: "@elizaos/plugin-goals", mobileCore: true },
   { plugin: "@elizaos/plugin-agent-orchestrator/ui", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },
@@ -79,6 +86,9 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-scheduling", // always-loaded ScheduledTask runtime primitive (runner host + REST surface + seed registry); personal-assistant enriches it when present
   "@elizaos/plugin-knowledge", // Knowledge CRUD/search routes required by the web and desktop Knowledge surface
+  "@elizaos/plugin-goals", // canonical linked-goal table dependency
+  "@elizaos/plugin-reminders", // canonical reminder-plan storage
+  "@elizaos/plugin-personal-assistant/reminders-plugin", // canonical owner reminder contribution
 ];
 
 export const LEAN_CHAT_PLUGINS: readonly string[] = [
@@ -90,6 +100,9 @@ export const LEAN_CHAT_PLUGINS: readonly string[] = [
   "@elizaos/plugin-knowledge", // Knowledge CRUD/search routes exposed to hosted web clients
   "@elizaos/plugin-scheduling",
   "@elizaos/plugin-native-filesystem", // mobile-safe FILE target
+  "@elizaos/plugin-goals", // canonical linked-goal table dependency
+  "@elizaos/plugin-reminders", // canonical reminder-plan storage
+  "@elizaos/plugin-personal-assistant/reminders-plugin", // canonical owner reminder contribution
 ];
 
 export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [

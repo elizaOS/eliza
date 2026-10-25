@@ -403,6 +403,8 @@ export type DisclosureGate =
 	| { require: "audience_admission"; subject: DisclosureSubject };
 
 export interface Action {
+	/** Pure source-owned typed selection adapter for relevance only, never permission. */
+	selectionIdentity?: (selection: unknown) => string | undefined;
 	/** Exact owner-declared read-only operation IDs whose successful, non-replayed
 	 * noop receipts may follow their original request through history projection.
 	 * Undeclared operations and mutation outcomes remain complete inline evidence. */

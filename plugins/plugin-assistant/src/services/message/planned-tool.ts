@@ -3,6 +3,7 @@ import { projectBackgroundHistory } from "./history-discovery.ts";
 
 import type {
   Action,
+  ActionFailureProvenance,
   ActionResult,
   AgentContext,
   ContextObject,
@@ -39,6 +40,7 @@ import {
   projectActionResultForClipboard,
   projectToolDiagnosticArgs,
   promotedSubactionParent,
+  readActionFailureProvenance,
   resolveUserFacingEffectReceipts,
   selectCompletionContext,
   shouldSuppressActionResultClipboard,
@@ -487,6 +489,7 @@ export interface SubPlannerSubStep {
   success: boolean;
   callDigest: string;
   retryable: boolean;
+  failureProvenance?: ActionFailureProvenance;
   summary?: string;
   internalTranscriptText?: string;
   error?: string;
@@ -503,6 +506,7 @@ export function collectSubPlannerSubSteps(
   for (const step of subResult.trajectory.steps) {
     if (!step.toolCall?.name || !step.result) continue;
     const result = step.result;
+    const failureProvenance = readActionFailureProvenance(result);
     const errorText =
       typeof result.error === "string"
         ? result.error
@@ -520,6 +524,7 @@ export function collectSubPlannerSubSteps(
       success: result.success,
       callDigest: subPlannerCallDigest(step.toolCall),
       retryable: result.data?.retryable !== false,
+      ...(failureProvenance ? { failureProvenance } : {}),
       ...(summarySource
         ? { summary: normalizeSubStepText(summarySource) }
         : {}),

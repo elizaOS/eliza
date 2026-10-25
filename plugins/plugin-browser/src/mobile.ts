@@ -37,6 +37,9 @@ import type {
   BrowserWorkspaceCommandResult,
 } from "./workspace/browser-workspace-types.js";
 
+export * from "./contracts.js";
+export { createBrowserBridgeCompanionStatus } from "./bridge-records.js";
+export { FRAME_FILE } from "./workspace/frame-path.js";
 export { BrowserDispatchFailure } from "./dispatch-types.js";
 export { decodeNativeBrowserCommandResult } from "./native-page-reader.js";
 

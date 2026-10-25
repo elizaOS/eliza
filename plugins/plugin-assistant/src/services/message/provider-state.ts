@@ -12,6 +12,7 @@ import type {
 import {
   CONTEXT_ROUTING_METADATA_KEY,
   filterProvidersByContextGate,
+  getContextRoutingFromMessage,
   isPageScopedRoutingContext,
   parseContextRoutingMetadata,
   satisfiesRoleGate,
@@ -280,4 +281,119 @@ export function selectV5PlannerStateProviderNames(args: {
     providerNames.delete(excluded);
   }
   return [...providerNames];
+}
+
+/** A registered foreground view can disambiguate an otherwise general planner
+ * bootstrap. Explicit domains, terminal/simple contexts and action hints retain
+ * their own routing. This only chooses discoverable candidates/weights. */
+export function plannerDiscoveryContexts(
+  message: Memory,
+  selectedContexts: readonly AgentContext[] | undefined,
+): readonly AgentContext[] | undefined {
+  if (
+    !selectedContexts?.length ||
+    selectedContexts.some(
+      (context) => String(context).trim().toLowerCase() !== "general",
+    ) ||
+    !hasUiViewPlannerScope(message) ||
+    uiViewActionNames(message).size === 0
+  )
+    return selectedContexts;
+  const metadata = message.content?.metadata;
+  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
+    const device = (metadata as Record<string, unknown>).clientDevice;
+    if (device && typeof device === "object" && !Array.isArray(device)) {
+      const context = (device as Record<string, unknown>).context;
+      if (
+        context &&
+        typeof context === "object" &&
+        !Array.isArray(context) &&
+        (context as Record<string, unknown>).sensitive === true
+      )
+        return selectedContexts;
+    }
+  }
+  const routing = getContextRoutingFromMessage(message),
+    primary = routing.primaryContext;
+  if (
+    !primary ||
+    primary === "general" ||
+    primary === "simple" ||
+    isPageScopedRoutingContext(primary)
+  )
+    return selectedContexts;
+  return [...new Set([...selectedContexts, primary])];
+}
+
+/** Typed current-record identity in the model-selected outcome is a relevance
+ * hint only. Registered action tags own selection kinds; admission owns access. */
+export function plannerSelectedRecordActionHints(
+  message: Memory,
+  actions: readonly Action[],
+  intents: readonly string[] | undefined,
+): string[] {
+  if (!hasUiViewPlannerScope(message) || uiViewActionNames(message).size === 0)
+    return [];
+  const metadata = message.content?.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+    return [];
+  const device = (metadata as Record<string, unknown>).clientDevice;
+  if (!device || typeof device !== "object" || Array.isArray(device)) return [];
+  const context = (device as Record<string, unknown>).context;
+  if (!context || typeof context !== "object" || Array.isArray(context))
+    return [];
+  const current = context as Record<string, unknown>,
+    selection = current.selectedObject;
+  if (
+    current.sensitive === true ||
+    !selection ||
+    typeof selection !== "object" ||
+    Array.isArray(selection)
+  )
+    return [];
+  const selected = selection as Record<string, unknown>;
+  if (typeof selected.id !== "string" || typeof selected.kind !== "string")
+    return [];
+  const primary = getContextRoutingFromMessage(message).primaryContext;
+  if (
+    !primary ||
+    primary === "general" ||
+    primary === "simple" ||
+    current.view !== (metadata as Record<string, unknown>).uiView
+  )
+    return [];
+  return actions
+    .filter((action) => {
+      if (
+        !(action.tags ?? []).includes("selection-kind:" + selected.kind) ||
+        !(action.contexts ?? []).includes(primary)
+      )
+        return false;
+      let identity: string | undefined;
+      try {
+        identity = action.selectionIdentity
+          ? action.selectionIdentity(selection)
+          : /^[A-Za-z0-9._:-]{16,256}$/.test(selected.id as string)
+            ? (selected.id as string)
+            : undefined;
+      } catch {
+        return false;
+      }
+      if (!identity || identity !== selected.id || identity.length > 256)
+        return false;
+      const escaped = identity.replaceAll(".", "\\.");
+      const reference = new RegExp(
+        `(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`,
+        "u",
+      );
+      return (intents ?? []).some((intent) =>
+        reference.test(
+          intent.replace(
+            /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
+            " ",
+          ),
+        ),
+      );
+    })
+    .map((action) => action.name);
 }

@@ -3875,6 +3875,7 @@ export class AgentRuntime implements IAgentRuntime {
 				scope,
 				code: normalized.code,
 				message: normalized.message,
+				...(normalized.severity ? { severity: normalized.severity } : {}),
 				context: merged,
 				at: Date.now(),
 			};
@@ -3907,6 +3908,7 @@ export class AgentRuntime implements IAgentRuntime {
 						scope,
 						code: normalized.code,
 						message: normalized.message,
+						...(normalized.severity ? { severity: normalized.severity } : {}),
 						context: merged,
 						runId,
 						roomId,
@@ -3964,6 +3966,7 @@ export class AgentRuntime implements IAgentRuntime {
 					scope: entry.scope,
 					code: entry.code,
 					message: entry.message,
+					...(entry.severity ? { severity: entry.severity } : {}),
 					context: entry.context,
 					recoverable: true,
 				},

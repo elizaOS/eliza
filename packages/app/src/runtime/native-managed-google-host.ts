@@ -29,26 +29,34 @@ const unavailable = (message: string) =>
 export async function startNativeManagedGoogleHost(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ close(): Promise<void> } | undefined> {
+  const prepareCloud = isAndroidMobile(env) && enabled(env.ELIZAOS_CLOUD_USE_INFERENCE);
   const entry = env.ELIZA_NATIVE_GOOGLE_HOST_MODULE;
-  if (!entry) return;
+  if (!entry) {
+    if (prepareCloud) throw new ElizaError("Native Cloud routing module is unavailable", {code:"NATIVE_CLOUD_ROUTING_UNAVAILABLE"});
+    return;
+  }
   const root = env.ELIZA_SMTHRS_RUNTIME_DIR;
   const raw = env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  if (!raw && !prepareCloud) return;
+  const admissionFailure = (message: string) => prepareCloud
+    ? new ElizaError(message, {code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE"})
+    : unavailable(message);
   const token = env.ELIZAOS_CLOUD_API_KEY;
   const apiToken = resolveApiToken(env);
   if (
     !isAndroidMobile(env) ||
     !root ||
-    !raw ||
-    raw.length > 8192 ||
+    (raw !== undefined && raw.length > 8192) ||
     !token ||
     !apiToken ||
     // The managed Gmail and Calendar transports accept only this format; a
     // published endpoint they cannot use would break Gmail reads at plugin init.
     !/^[A-Za-z0-9_-]{64}$/.test(apiToken)
   )
-    throw unavailable("Native Google host admission is incomplete");
-  const canonicalRoot = fs.realpathSync(root);
+    throw admissionFailure("Native Google host admission is incomplete");
   const filename = path.resolve(entry);
+  try {
+  const canonicalRoot = fs.realpathSync(root);
   const relative = path.relative(canonicalRoot, filename);
   if (
     !relative ||
@@ -56,12 +64,12 @@ export async function startNativeManagedGoogleHost(
     path.isAbsolute(relative) ||
     !relative.endsWith(".mjs")
   )
-    throw unavailable(
+    throw admissionFailure(
       "Native Google host module escaped its admitted resources",
     );
   for (let current = filename; ; current = path.dirname(current)) {
     if (fs.lstatSync(current).isSymbolicLink())
-      throw unavailable("Native Google host resources contain a symlink");
+      throw admissionFailure("Native Google host resources contain a symlink");
     if (current === canonicalRoot) break;
   }
   const manifestFile = path.join(canonicalRoot, "manifest.json");
@@ -71,7 +79,7 @@ export async function startNativeManagedGoogleHost(
     manifestStat.isSymbolicLink() ||
     manifestStat.size > 1024 * 1024
   )
-    throw unavailable("Native Google host manifest is invalid");
+    throw admissionFailure("Native Google host manifest is invalid");
   const manifest = JSON.parse(fs.readFileSync(manifestFile, "utf8"));
   const stat = fs.lstatSync(filename);
   const expected = manifest.files?.[relative.split(path.sep).join("/")];
@@ -83,9 +91,26 @@ export async function startNativeManagedGoogleHost(
     createHash("sha256").update(fs.readFileSync(filename)).digest("hex") !==
       expected
   )
-    throw unavailable(
+    throw admissionFailure(
       "Native Google host module differs from its admitted manifest",
     );
+  } catch {
+    throw admissionFailure("Native runtime module admission failed");
+  }
+  let module: Record<string, unknown>;
+  try {
+    module = await import(pathToFileURL(filename).href);
+    if (prepareCloud) {
+      if (typeof module.prepareNativeCloudRuntime !== "function")
+        throw new Error("Native Cloud routing preparation is unavailable");
+      await module.prepareNativeCloudRuntime();
+      if (env.ELIZAOS_CLOUD_API_KEY !== token)
+        throw new Error("Native Cloud credential changed during preparation");
+    }
+  } catch {
+    throw admissionFailure("Native runtime preparation failed");
+  }
+  if (!raw) return;
   let binding: unknown;
   try {
     binding = JSON.parse(raw);
@@ -95,7 +120,6 @@ export async function startNativeManagedGoogleHost(
   }
   if (!binding || typeof binding !== "object" || Array.isArray(binding))
     throw unavailable("Native Google host binding is invalid");
-  const module = await import(pathToFileURL(filename).href);
   if (typeof module.startNativeGoogleAgentHost !== "function")
     throw unavailable("Native Google host module has no supported entry");
   const host = await module.startNativeGoogleAgentHost({
@@ -151,6 +175,7 @@ export async function startNativeManagedGoogleHostForBoot(
   try {
     return await startNativeManagedGoogleHost(env);
   } catch (error) {
+    if (error instanceof ElizaError && error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE") throw error;
     const code =
       error instanceof ElizaError && typeof error.code === "string"
         ? error.code

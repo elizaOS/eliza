@@ -11,7 +11,12 @@ import type {
 } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, logger } from "@elizaos/core";
 import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
-import type { LegacyRouteHandler, Route } from "@elizaos/host/protocol";
+import type {
+  LegacyRouteHandler,
+  Route,
+  RouteHandlerContext,
+  RouteHandlerResult,
+} from "@elizaos/host/protocol";
 import {
   GOOGLE_CALENDAR_WEBHOOK_PATH,
   type GoogleCalendarNotificationHeaders,
@@ -27,6 +32,8 @@ import {
   type CalendarRouteRateLimitKey,
   type CalendarRouteService,
   handleCalendarRoutes,
+  parseCalendarFeedQuery,
+  parseCalendarListQuery,
 } from "./calendar-routes.js";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
@@ -87,16 +94,18 @@ function isGoogleCalendarWebhookService(
       .handleGoogleCalendarNotification === "function"
   );
 }
-function requestBaseUrl(req: http.IncomingMessage): string {
-  const host = req.headers.host ?? "localhost";
-  const protocol = req.headers["x-forwarded-proto"];
+function requestBaseUrl(
+  headers: Record<string, string | string[] | undefined>,
+): string {
+  const host = headers.host ?? "localhost";
+  const protocol = headers["x-forwarded-proto"];
   const normalizedProtocol = Array.isArray(protocol)
     ? protocol[0]
     : (protocol ?? "http");
   return `${normalizedProtocol}://${Array.isArray(host) ? host[0] : host}`;
 }
 function parseRequestUrl(req: http.IncomingMessage): URL {
-  return new URL(req.url ?? "/", requestBaseUrl(req));
+  return new URL(req.url ?? "/", requestBaseUrl(req.headers));
 }
 function isCalendarRouteService(
   service: unknown,
@@ -356,13 +365,12 @@ async function requireCalendarOwnerMutationGateway(
     "CALENDAR_OWNER_MUTATION_GATEWAY_UNAVAILABLE",
   );
 }
-function rateLimitRequest(args: {
+function rateLimitResult(args: {
   runtime: IAgentRuntime | null;
-  res: http.ServerResponse;
   key: CalendarRateLimitKey;
   requestIdentity?: string;
-}): boolean {
-  const { runtime, res, key, requestIdentity = "runtime" } = args;
+}): RouteHandlerResult | null {
+  const { runtime, key, requestIdentity = "runtime" } = args;
   const config = CALENDAR_RATE_LIMITS[key];
   let buckets = unavailableRuntimeRateLimitBuckets;
   if (runtime) {
@@ -399,19 +407,33 @@ function rateLimitRequest(args: {
       (timestamps[0] ?? now) + config.windowMs - now,
       0,
     );
-    res.writeHead(429, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Retry-After": String(Math.ceil(retryAfterMs / 1000)),
-    });
-    res.end(JSON.stringify({ error: "Rate limit exceeded", retryAfterMs }));
     buckets.delete(bucketKey);
     buckets.set(bucketKey, timestamps);
-    return true;
+    return {
+      status: 429,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Retry-After": String(Math.ceil(retryAfterMs / 1000)),
+      },
+      body: { error: "Rate limit exceeded", retryAfterMs },
+    };
   }
   timestamps.push(now);
   buckets.delete(bucketKey);
   buckets.set(bucketKey, timestamps);
-  return false;
+  return null;
+}
+function rateLimitRequest(args: {
+  runtime: IAgentRuntime | null;
+  res: http.ServerResponse;
+  key: CalendarRateLimitKey;
+  requestIdentity?: string;
+}): boolean {
+  const limited = rateLimitResult(args);
+  if (!limited) return false;
+  args.res.writeHead(limited.status, limited.headers);
+  args.res.end(JSON.stringify(limited.body));
+  return true;
 }
 export function __calendarRouteRateLimitBucketCountForTests(
   runtime: IAgentRuntime | null,
@@ -667,11 +689,90 @@ export function calendarRouteHandler(): LegacyRouteHandler {
     }
   };
 }
+/**
+ * Serves an owner calendar read. A boundary-resolved requester must be OWNER or
+ * ADMIN; without one, only the trusted local or in-process single-owner
+ * boundary is admitted (a gateway service token is not an owner principal).
+ */
+async function readOwnerCalendar(
+  context: RouteHandlerContext,
+  read: (service: CalendarRouteService, url: URL) => Promise<unknown>,
+): Promise<RouteHandlerResult> {
+  const role = context.accessContext?.role;
+  if (
+    context.accessContext
+      ? role !== "OWNER" && role !== "ADMIN"
+      : !context.isTrustedLocal && !context.inProcess
+  ) {
+    return {
+      status: 403,
+      body: { error: "Calendar reads require OWNER or ADMIN access" },
+    };
+  }
+  const limited = rateLimitResult({
+    runtime: context.runtime,
+    key: "google_api_read",
+  });
+  if (limited) return limited;
+  const service = await resolveCalendarService(context.runtime);
+  if (!service) {
+    return {
+      status: 503,
+      body: { error: "Calendar service is not available." },
+    };
+  }
+  const url = new URL(context.path, requestBaseUrl(context.headers));
+  for (const [name, value] of Object.entries(context.query)) {
+    for (const item of [value].flat()) url.searchParams.append(name, item);
+  }
+  try {
+    return { status: 200, body: await read(service, url) };
+  } catch (error) {
+    // error-policy:J1 Typed calendar failures keep their status; unexpected
+    // errors propagate to the dispatch boundary. An empty feed is never faked.
+    if (error instanceof CalendarServiceError) {
+      return { status: error.status, body: { error: error.message } };
+    }
+    throw error;
+  }
+}
+const queryParsers = { parseConnectorMode, parseConnectorSide, parseBoolean };
 const handler = calendarRouteHandler();
 export const calendarHttpRoutes: Route[] = [
-  // Owner calendar data, preferences, and mutations are mounted by the
-  // personal-assistant host after its OWNER/ADMIN role gate. The only route
-  // this provider plugin can authenticate independently is its webhook.
+  // Owner reads are mounted here so every platform serves the agent's own
+  // calendar. Owner mutations and preferences stay with the personal-assistant
+  // host, which owns the approval and durable mutation gateway.
+  {
+    type: "GET",
+    path: "/api/lifeops/calendar/feed",
+    rawPath: true,
+    modes: ["local", "local-only", "cloud", "remote"],
+    modeReason:
+      "The calendar feed is owned by the active runtime in every supported topology",
+    routeHandler: (context) =>
+      readOwnerCalendar(context, (service, url) =>
+        service.getCalendarFeed(
+          url,
+          parseCalendarFeedQuery(url.searchParams, queryParsers),
+        ),
+      ),
+  },
+  {
+    type: "GET",
+    path: "/api/lifeops/calendar/calendars",
+    rawPath: true,
+    modes: ["local", "local-only", "cloud", "remote"],
+    modeReason:
+      "Calendar discovery is owned by the active runtime in every supported topology",
+    routeHandler: (context) =>
+      readOwnerCalendar(context, async (service, url) => ({
+        calendars: await service.listCalendars(
+          url,
+          parseCalendarListQuery(url.searchParams, queryParsers),
+        ),
+      })),
+  },
+  // The webhook is the only route authenticated by the provider, not a session.
   {
     type: "POST",
     path: "/api/lifeops/calendar/google/webhook",

@@ -881,7 +881,7 @@ export function collectPluginNames(
   if (
     personalAssistantDisabledByEnv() ||
     leanChat ||
-    storeBuild ||
+    (!onMobile && storeBuild) ||
     isCloudContainer
   ) {
     pluginsToLoad.delete("@elizaos/plugin-personal-assistant");
@@ -1018,6 +1018,10 @@ export function collectPluginNames(
   ) {
     pluginsToLoad.delete("@elizaos/plugin-agent-orchestrator/ui");
   }
+  // Full PA already owns this canonical surface. Never install a second
+  // promotion/handler set alongside it; mobile/store uses the selective owner.
+  if (pluginsToLoad.has("@elizaos/plugin-personal-assistant"))
+    pluginsToLoad.delete("@elizaos/plugin-personal-assistant/reminders-plugin");
   return pluginsToLoad;
 }
 

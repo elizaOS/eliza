@@ -112,7 +112,10 @@ export const viewsAction: Action = {
       (view) =>
         view.id.toLowerCase() === target ||
         view.label.toLowerCase() === target ||
-        (target === "home" && view.id === "chat"),
+        (target === "home" && view.id === "chat") ||
+        // Consumer shells may brand the existing Automations destination as Workflows.
+        // Resolve only an installed, role-authorized registry entry; never add a view.
+        (target === "workflows" && view.id === "automations"),
     );
     if (matches.length !== 1)
       return fail(

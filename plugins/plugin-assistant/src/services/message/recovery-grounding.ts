@@ -57,7 +57,7 @@ export async function reviewRecoveredReply(args: {
     const raw = await runWithSuppressedModelStream(() =>
       args.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
-        providerOptions: { eliza: { thinking: "on" } },
+        providerOptions: { eliza: { thinking: "off" } },
       }),
     );
     getStreamingContext()?.abortSignal?.throwIfAborted();

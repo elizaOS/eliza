@@ -1,4 +1,5 @@
 export * from "./note-dates.ts";
+export { createNotesClient, type NotesInteractResult } from "./notes-api.js";
 export * from "./notes-contract.ts";
 export * from "./notes-document-store.ts";
 export * from "./notes-query.ts";

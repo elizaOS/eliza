@@ -299,13 +299,15 @@ export const ownerRemindersAction: Action = {
       "RECURRING_REMINDER",
     ],
     description:
-      'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it.',
+      'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it. Review reads saved reminders by exact title or lists existing reminders without changing them. Update changes an existing reminder. These records are separate from the TODO checklist.',
     descriptionCompressed:
-      "owner reminders/deadlines: action=create|update|cancel|delete|complete|skip|snooze|review; cancel archives, delete removes",
+      "owner reminders/deadlines: review=read/list saved reminders; update=edit existing; create|cancel|delete|complete|skip|snooze; cancel archives, delete removes",
     actions: [...OWNER_LIFE_ACTIONS, "cancel"],
     defaultKind: "definition",
   }),
   name: "OWNER_REMINDERS",
+  routingHint:
+    "saved owner reminders/deadlines: review reads by title or lists; update edits existing. Search under tasks or calendar. TODO is a separate checklist, not this reminder store.",
   tags: [
     ...OWNER_OPERATION_TAGS,
     "resource:reminders-records",
@@ -326,9 +328,9 @@ export const ownerRemindersAction: Action = {
     "RECURRING_REMINDER",
   ],
   description:
-    'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it.',
+    'Owner reminders: create/update/cancel/delete/complete/skip/snooze/review one-off, date-only, deadline ("by the 20th"), and recurring reminders. Cancel archives the reminder and retains its history; delete permanently removes it. Review reads saved reminders by exact title or lists existing reminders without changing them. Update changes an existing reminder. These records are separate from the TODO checklist.',
   descriptionCompressed:
-    "owner reminders/deadlines: action=create|update|cancel|delete|complete|skip|snooze|review; cancel archives, delete removes",
+    "owner reminders/deadlines: review=read/list saved reminders; update=edit existing; create|cancel|delete|complete|skip|snooze; cancel archives, delete removes",
 };
 
 export const ownerAlarmsAction: Action = {

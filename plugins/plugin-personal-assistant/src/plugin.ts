@@ -20,6 +20,7 @@ import {
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
+  ServiceType,
 } from "@elizaos/core";
 import type {
   IPermissionsRegistry,
@@ -31,7 +32,7 @@ import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   type MeetingTranscriptFinalizedPayload,
 } from "@elizaos/core/protocol";
-import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import { isMobilePlatform, type HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import {
   getDefaultTriageService,
   messagingTriageActions,
@@ -75,6 +76,7 @@ import {
 import {
   calendarAction,
   calendarActionPromotionOptions,
+  registerPersonalAssistantCalendarHost,
 } from "./actions/calendar.js";
 import { registerPersonalAssistantCalendarSourcesHost } from "./actions/calendar-sources.js";
 import {
@@ -220,9 +222,8 @@ import {
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
 import {
-  createOwnerReminderDirectRoutingRule,
-  ownerReminderChoiceDirectRoutingRules,
   ownerReminderChoiceRoutingEvaluator,
+  registerOwnerReminderDirectRouting,
 } from "./lifeops/reminders/direct-routing.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 import {
@@ -474,7 +475,7 @@ async function importGoogleConnectorPluginModule(): Promise<
   Record<string, unknown>
 > {
   try {
-    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+    return (await import("@elizaos/plugin-google-workspace")) as Record<
       string,
       unknown
     >;
@@ -532,6 +533,7 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   // composed here, so PA's hasLifeOpsAccess gate reaches it through the
   // runtime-keyed host adapter — bound before the already-registered early
   // return so the substitution holds either way.
+  registerPersonalAssistantCalendarHost(runtime);
   registerPersonalAssistantCalendarSourcesHost(runtime);
   if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
     return;
@@ -557,6 +559,16 @@ export async function ensureLifeOpsCalendarPluginRegistered(
 export async function ensureLifeOpsPdfPluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
+  // Desktop PDF rendering depends on native canvas. Preserve any native host
+  // PDF adapter, but do not register the absent desktop module on mobile.
+  if (isMobilePlatform()) {
+    if (!runtime.getService(ServiceType.PDF)) {
+      runtime.logger.info(
+        "[lifeops] PDF processing is unavailable on this host; PDF operations require a native PDF service",
+      );
+    }
+    return;
+  }
   if (runtime.plugins.some((plugin) => plugin.name === pdfPlugin.name)) {
     return;
   }
@@ -930,13 +942,7 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createTrackedWorkRecapDirectRoutingRule(),
     );
-    registerDirectActionRoutingRule(
-      runtime,
-      createOwnerReminderDirectRoutingRule(),
-    );
-    for (const rule of ownerReminderChoiceDirectRoutingRules) {
-      registerDirectActionRoutingRule(runtime, rule);
-    }
+    registerOwnerReminderDirectRouting(runtime);
     registerDirectActionRoutingRule(
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),

@@ -501,10 +501,39 @@ const stubAliases = {
   ...nativeStubs,
   ...optionalPluginStubs,
   ...pluginBrowserRemoteControlSources,
+  // Keep the view-only leaf; the parent alias disables desktop subprocesses.
+  "@elizaos/plugin-agent-orchestrator/ui": path.join(
+    repoRoot,
+    "plugins/plugin-agent-orchestrator/src/ui/index.ts",
+  ),
+  // LifeOps registers the browser tables without loading a desktop browser.
+  "@elizaos/plugin-browser/schema": path.join(
+    repoRoot,
+    "plugins/plugin-browser/src/schema.ts",
+  ),
 };
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
   setup(build) {
+    // Desktop password-manager CLIs are not native password providers. Keep
+    // this lazy action unavailable on mobile without omitting desktop output.
+    build.onResolve({ filter: /^\.\/password-manager\.js$/ }, (args) => {
+      if (
+        args.importer ===
+        path.join(
+          repoRoot,
+          "plugins/plugin-personal-assistant/src/actions/credentials.ts",
+        )
+      ) {
+        return {
+          path: path.join(
+            repoRoot,
+            "plugins/plugin-personal-assistant/src/actions/password-manager.mobile.ts",
+          ),
+        };
+      }
+      return undefined;
+    });
     const aliasNames = Object.keys(stubAliases);
     const filter = new RegExp(
       "^(?:" +

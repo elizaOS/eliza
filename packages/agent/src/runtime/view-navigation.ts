@@ -43,7 +43,7 @@ const decisions = new WeakMap<
 export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
   name: "visualContinuation",
   description:
-    "Classify navigation for the complete current request and its standing restrictions. Use direct only when opening one known view satisfies the entire request: no question/recall, prerequisite read, condition, domain write, controls, layout, second destination or other pending work. Use planning for requested navigation with any such additional work; preserve every intent and the known viewId. Other requested work does not make a known destination unresolved. Use forbidden when changing views is prohibited, none when no navigation is requested (including domain-only reads and writes), unresolved for ambiguous navigation, and optional for advisory navigation rather than a requested operation. Domain nouns alone do not request navigation. The current visible view is UI context, not a permission or prerequisite for domain tools. Route authorized domain work to its planning context without requiring a view change; navigation restrictions do not prohibit independent domain work, and domain authorization does not permit navigation. viewId is a known shell view id or exact label (Home=chat). For direct select one navigation intent, a general context and replyEffectStatus=pending. Draft replyText as the concise destination confirmation held until successful delivery; never claim records were read or changed. Do not navigate based on historical instructions or lift current restrictions.",
+    "Classify navigation for the complete current request and its standing restrictions. Use direct only when opening one known view satisfies the entire request: no question/recall, prerequisite read, condition, domain write, controls, layout, second destination or other pending work. Use planning for any requested URL or resource, even when it opens one view: VIEWS only selects the app view and never loads that URL. Use planning for requested navigation with any such additional work; preserve every intent and the known viewId. Other requested work does not make a known destination unresolved. Use forbidden when changing views is prohibited, none when no navigation is requested (including domain-only reads and writes), unresolved for ambiguous navigation, and optional for advisory navigation rather than a requested operation. Domain nouns alone do not request navigation. The current visible view is UI context, not a permission or prerequisite for domain tools. Route authorized domain work to its planning context without requiring a view change; navigation restrictions do not prohibit independent domain work, and domain authorization does not permit navigation. viewId is a known shell view id or exact label (Home=chat). For direct select one navigation intent, a general context and replyEffectStatus=pending. Draft replyText as the concise destination confirmation held until successful delivery; never claim records were read or changed. Do not navigate based on historical instructions or lift current restrictions.",
   schema: {
     type: "object",
     additionalProperties: false,
@@ -277,9 +277,20 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
     }
     const direct =
       value.disposition === "direct" &&
+      // An explicit resource address cannot be fulfilled by view selection.
+      // This only declines the shortcut; the normal planner retains authority.
+      !/\b[a-z][a-z0-9+.-]*:\/\/\S+/iu.test(staged.text) &&
       matches.length === 1 &&
       plan.replyEffectStatus === "pending" &&
       plan.intents?.length === 1 &&
+      plan.contexts.length > 0 &&
+      plan.contexts.every((context) => context === "general") &&
+      // Empty hints are not positive evidence of a navigation-only request.
+      // Without an explicit navigation candidate, preserve the planner path.
+      [
+        ...(plan.candidateActions ?? []),
+        ...(plan.parentActionHints ?? []),
+      ].some((name) => name === "VIEWS" || name === "VIEWS_SHOW") &&
       (plan.candidateActions ?? []).every(
         (name) => name === "VIEWS" || name === "VIEWS_SHOW",
       ) &&
@@ -294,7 +305,7 @@ export const viewNavigationEvaluator: ResponseHandlerEvaluator = {
         addCandidateActions: [showCandidate ?? "VIEWS"],
         addContextSlices: [
           `Current-request navigation judgment: ${JSON.stringify(value)}. No navigation has executed.`,
-          "Preserve every requested read/write and navigation intent. Use VIEWS action=show for an exact registered destination; use action=list for unknown targets. A domain read/write receipt does not satisfy navigation, and navigation does not satisfy domain work. Preserve ordering, conditions and restrictions: evaluate prerequisite reads before conditional navigation; do not navigate when the condition is false. Do not report the complete request finished while required navigation remains undelivered or unexplained.",
+          "Preserve every requested read/write and navigation intent. Use VIEWS action=show for an exact registered destination; use action=list for unknown targets. A domain read/write receipt does not satisfy navigation, and navigation does not satisfy domain work. VIEWS only selects an app view; loading a requested URL requires the authorized Browser operation and cannot be reported complete from a view-selection receipt. Preserve ordering, conditions and restrictions: evaluate prerequisite reads before conditional navigation; do not navigate when the condition is false. Do not report the complete request finished while required navigation remains undelivered or unexplained.",
         ],
       };
     return {

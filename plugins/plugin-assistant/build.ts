@@ -14,6 +14,8 @@ await build({
     index: `${root}src/index.ts`,
     "actions/context-signal": `${root}src/actions/context-signal.ts`,
     "actions/context-signal-lexicon": `${root}src/actions/context-signal-lexicon.ts`,
+    "device-calendar-contract": `${root}src/services/device-actions/calendar-contract.ts`,
+    "device-foreground-review": `${root}src/services/device-actions/foreground-review-contract.ts`,
     "device-clock-review": `${root}src/services/device-actions/clock-review-executor.ts`,
     "character-persistence": `${root}src/features/advanced-capabilities/personality/character-persistence.ts`,
     "actions/generate-media": `${root}src/features/advanced-capabilities/actions/generateMedia.ts`,

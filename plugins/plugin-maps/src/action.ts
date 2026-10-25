@@ -846,6 +846,7 @@ async function execute(
 
 export const mapsAction: Action = {
   name: "MAPS",
+  egress: ["owner-device", "public-network"],
   similes: [
     "MAP",
     "PLACES",

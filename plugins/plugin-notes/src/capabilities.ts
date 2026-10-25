@@ -1,3 +1,4 @@
+import { NOTE_ID_PATTERN } from "./note-id.js";
 /**
  * Planner-visible server capabilities for the managed Cloud Notes view. Each
  * declaration maps one-to-one to `interact.ts`, which is the supported
@@ -52,7 +53,7 @@ const ID_PARAM = {
     required: true,
     minLength: 3,
     maxLength: 128,
-    pattern: "^[a-z][a-z0-9-]{2,127}$",
+    pattern: NOTE_ID_PATTERN,
   },
 } satisfies NonNullable<ViewCapability["params"]>;
 
@@ -66,6 +67,17 @@ const TITLE_PARAM: ViewCapabilityParameter = {
 };
 
 export const NOTES_CAPABILITIES: ViewCapability[] = [
+  {
+    id: "get-notes-trash",
+    description:
+      "Read recoverably deleted notes from this agent's Notes Trash.",
+  },
+  {
+    id: "restore-note",
+    description:
+      "Restore one recoverably deleted note with its original stable ID and exact content.",
+    params: { ...ID_PARAM, expectedRevision: EXPECTED_REVISION_PARAM },
+  },
   {
     id: "get-notes",
     description:
@@ -89,7 +101,18 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description:
       "Create a durable note from one user-authored content field. Preserve the user's wording; never invent a separate title or description. Dates and times remain note content unless the user also asks to schedule them.",
     params: {
-      content: { ...CONTENT_PARAM, required: true },
+      content: {
+        type: "string",
+        required: true,
+        maxLength: 20000,
+        description:
+          "Exact plain note text. It may be empty only when format carries nonblank authored checklist, transcript, summary, action or clip text; the server validates the combined record.",
+      },
+      format: {
+        type: "object",
+        description:
+          "Optional lossless rich note format: kind text/list/voice/link and JSON data. Supply only exact authored fields; never invent media or attachment data.",
+      },
       color: COLOR_PARAM,
     },
   },
@@ -98,6 +121,16 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
     description:
       "Replace a note's complete user-authored content, change its color, or both. Identify it by id, exact first-line label, or unique existing text; never synthesize a separate title.",
     params: {
+      format: {
+        type: "object",
+        description:
+          "Optional owner-UI replacement rich format; omitted preserves all authored metadata.",
+      },
+      authoredEdit: {
+        type: "object",
+        description:
+          "To append one NEW list item use field=checklist, action=append, text=exact item, with current expectedRevision; no index/expectedText/done. The item starts unchecked. Indexed field/index/expectedText edits REPLACE existing entries or done state; they never append. Supply authoredEdit alone with id OR existing-note lookup and expectedRevision; metadata/order remain unchanged.",
+      },
       expectedRevision: {
         ...EXPECTED_REVISION_PARAM,
         description:

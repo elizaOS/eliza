@@ -5,8 +5,10 @@
  * inside the trajectory / action-routing context, and emits ACTION_STARTED /
  * ACTION_COMPLETED around a normalized ActionResult.
  */
+
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
+import { ElizaError } from "../errors.ts";
 import { isSensitiveKeyName } from "../security/redact";
 import {
 	composeToolDiagnosticRedactor,
@@ -726,10 +728,43 @@ export async function executePlannedToolCall(
 			executorCtx.userRoles,
 		));
 	perfMark("aliases");
-	const validation = validateToolArgs(
-		action,
-		resolveEntityAliasRefs(entityAliases, argsForValidation),
-	);
+	const resolvedArgs = resolveEntityAliasRefs(entityAliases, argsForValidation);
+	let validation: ReturnType<typeof validateToolArgs>;
+	try {
+		validation = validateToolArgs(action, resolvedArgs);
+	} catch (error) {
+		if (
+			!(error instanceof ElizaError) ||
+			error.code !== "ACTION_DEFINITION_INVALID"
+		)
+			throw error;
+		return emitToolResult(
+			toolCall,
+			redactDiagnosticText,
+			failureResult(
+				action.name,
+				error.message,
+				{ error, retryable: false, executionStatus: "not_started" },
+				{
+					kind: "missing_capability",
+					boundary: "capability",
+					code: "ACTION_DEFINITION_INVALID",
+					retryable: false,
+				},
+			),
+			{
+				ownerCapture: runtime.ownerToolExecutionObserver
+					? {
+							runtime,
+							executionId: ownerExecutionId,
+							phase: "gate",
+							gate: "schema",
+							gateOutcome: "failed",
+						}
+					: undefined,
+			},
+		);
+	}
 	if (!validation.valid) {
 		// The planner correlates a corrected retry with this failed operation by
 		// removing only arguments the schema rejected. Keeping this structural

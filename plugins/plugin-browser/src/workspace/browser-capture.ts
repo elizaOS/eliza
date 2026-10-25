@@ -17,7 +17,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { FRAME_FILE } from "./frame-path.js";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { logger } from "@elizaos/core";
@@ -67,7 +67,7 @@ let activeCaptureLoop: Promise<void> | null = null;
 let stopSignal = false;
 
 /** Path to the temp frame file that FFmpeg reads */
-export const FRAME_FILE = join(tmpdir(), "eliza-stream-frame.jpg");
+export { FRAME_FILE } from "./frame-path.js";
 
 export interface BrowserCaptureConfig {
   url: string;

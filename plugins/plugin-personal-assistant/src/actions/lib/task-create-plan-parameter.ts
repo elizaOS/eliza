@@ -52,10 +52,24 @@ const properties = {
     items: { type: "integer" as const, minimum: 0, maximum: 6 },
   },
   timeOfDay: {
-    type: "string" as const,
-    pattern: "^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$",
+    description:
+      "Copy an explicit requested wall-clock time as HH:MM, including noon as 12:00 and midnight as 00:00. Use null only when the owner gave no clock time; unresolved requested timing requires mode=respond.",
+    anyOf: [
+      {
+        type: "string" as const,
+        pattern: "^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$",
+      },
+      { type: "null" as const },
+    ],
   },
-  timeZone: { type: "string" as const, minLength: 1 },
+  timeZone: {
+    description:
+      "Copy an explicitly requested time zone as its IANA identifier. Use null only when the owner gave no time zone; never omit an explicit zone in favor of the owner's default.",
+    anyOf: [
+      { type: "string" as const, minLength: 1 },
+      { type: "null" as const },
+    ],
+  },
   everyMinutes: { type: "number" as const, minimum: 1 },
   timesPerDay: { type: "integer" as const, minimum: 1 },
   quotaTargetCount: { type: "number" as const, minimum: 1 },
@@ -111,6 +125,8 @@ const schema = {
         "dueInDays",
         "dueWeekday",
         "dueInMinutes",
+        "timeOfDay",
+        "timeZone",
       ],
       properties: {
         ...properties,
@@ -136,7 +152,7 @@ export const TASK_CREATE_PLAN_PARAMETER: ActionParameter = {
   requiredForSubactions: ["create"],
   description: [
     "For a definition create, supply the complete semantic plan here using the current owner request and relevant conversation already in context. This avoids a second interpretation call. Use intent for the owner's full request; do not duplicate this plan in title/details. The parent umbrella may omit createPlan when necessary context is unavailable; promoted CREATE requires it. Use the existing mode=respond plan for clarification when the title or timing cannot be established, without guessing. Unknown nativeProjection remains null and follows the existing safe extraction path. This plan never grants permission to save or confirm a pending draft; the handler applies owner consent and draft rules.",
-    "Always include mode, multiStep and requestKind. For mode=create include title, description and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null for an unknown destination. For mode=create, always include dueDate, dueInDays, dueWeekday and dueInMinutes: fill the applicable selector from the owner's request and use null for the others. A relative minute/hour offset belongs in dueInMinutes. Always include description: copy an explicit requested reminder body exactly, independently of the title; use null when no separate alert body was requested. Do not silently reduce an explicit body to the title or put delivery instructions in it. Omit other unknown/inapplicable fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
+    "Always include mode, multiStep and requestKind. For mode=create include title, description and cadenceKind; for mode=respond include response. Use requestKind=unspecified only when neither alarm nor reminder is explicit. For mode=create, always include nativeProjection; use null for an unknown destination. For mode=create, always include dueDate, dueInDays, dueWeekday and dueInMinutes: fill the applicable selector from the owner's request and use null for the others. Always include timeOfDay and timeZone: preserve an explicit clock time and zone from the request; use null only when not specified. Noon is 12:00, midnight is 00:00. Never use a default clock time or zone in place of one the owner supplied. A relative minute/hour offset belongs in dueInMinutes and does not require a clock time. Always include description: copy an explicit requested reminder body exactly, independently of the title; use null when no separate alert body was requested. Do not silently reduce an explicit body to the title or put delivery instructions in it. Omit other unknown/inapplicable fields. Use the current date/time in context for date grounding; retain relative date fields when applicable.",
     taskCreatePlanGuidance(true),
   ].join("\n"),
   schema,
@@ -161,6 +177,8 @@ export function parseNativeTaskCreatePlan(
         dueInDays: record.dueInDays ?? null,
         dueWeekday: record.dueWeekday ?? null,
         dueInMinutes: record.dueInMinutes ?? null,
+        timeOfDay: record.timeOfDay ?? null,
+        timeZone: record.timeZone ?? null,
       }
     : value;
   const validated = validateSchema(schema, input, "createPlan", errors);
@@ -187,7 +205,7 @@ export function parseNativeTaskCreatePlan(
   // the owner's fallback zone or resolving relative dates.
   const raw = validated as Record<string, unknown>;
   if (
-    (raw.timeZone !== undefined && !plan.timeZone) ||
+    (raw.timeZone != null && !plan.timeZone) ||
     (raw.dueDate != null && !plan.dueDate)
   )
     return null;

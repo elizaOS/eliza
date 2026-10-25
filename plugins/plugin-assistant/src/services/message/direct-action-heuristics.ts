@@ -1401,6 +1401,11 @@ export function inferDirectCurrentRequestCandidateInference(
   if (shouldDeferCloudAppTurnToPlanner(messageText)) {
     return EMPTY_DIRECT_CANDIDATE_INFERENCE;
   }
+  // A view-only candidate cannot satisfy a URL-bearing request. Keep the full
+  // planner surface available for browser navigation or a compound URL task.
+  if (/\bhttps?:\/\//iu.test(messageText)) {
+    return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+  }
   const viewShellAction = findViewShellActionName(actions, messageText);
   if (viewShellAction) {
     // A request that names the application surface itself ("show me the

@@ -23,6 +23,7 @@ import {
   vi,
 } from "vitest";
 import { createCalendarActionRunner } from "../src/actions/calendar-handler.js";
+import { calendarPlugin } from "../src/plugin.js";
 import { __testing } from "../src/apple-calendar.js";
 import {
   ELIZA_CALENDAR_GRANT_ID,
@@ -311,6 +312,32 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       expect(reminderPlans).toEqual(remindersBefore);
     },
   );
+
+  it("serves built-in events through the calendar plugin's own feed route", async () => {
+    await service.createCalendarEventMutation(INTERNAL_URL, originalEvent);
+    const feedRoute = calendarPlugin.routes?.find(
+      (route) => route.path === "/api/lifeops/calendar/feed",
+    );
+    if (!feedRoute?.routeHandler) throw new Error("Feed route is not mounted");
+
+    const result = await feedRoute.routeHandler({
+      signal: new AbortController().signal,
+      body: undefined,
+      params: {},
+      query: { side: "owner", ...WINDOW, timeZone: "UTC" },
+      headers: { host: "127.0.0.1" },
+      method: "GET",
+      path: "/api/lifeops/calendar/feed",
+      runtime,
+      inProcess: false,
+      isTrustedLocal: true,
+    });
+
+    expect(result.status).toBe(200);
+    expect(
+      (result.body as { events: LifeOpsCalendarEvent[] }).events,
+    ).toMatchObject([{ title: originalEvent.title, provider: "eliza" }]);
+  });
 
   it("persists either explicitly chosen occurrence of a repeated local time", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {

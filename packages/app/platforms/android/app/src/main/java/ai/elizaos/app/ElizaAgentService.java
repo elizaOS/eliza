@@ -2512,6 +2512,8 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_LOCAL_AGENT_TRANSPORT","filesystem-v1");
             initializeLocalAgentTransport(this);
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);
+            // Android has no /etc/localtime for the Bun child process.
+            agentEnv.put("TZ", java.util.TimeZone.getDefault().getID());
             // Context can expose files/ via /data/data while getDataDir() uses
             // /data/user/0. Export both identity paths in the same namespace.
             agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir);
@@ -2595,7 +2597,9 @@ public class ElizaAgentService extends Service {
             // nothing. Skip the whole augmentation path when the
             // embedding handler is in the disabled state.
             if (!env.containsKey("ELIZA_DOCUMENT_AUGMENTATION_DISABLED")
-                    && !"1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED"))) {
+                    && !agentEnv.containsKey("ELIZA_DOCUMENT_AUGMENTATION_DISABLED")
+                    && !"1".equals(agentEnv.getOrDefault("ELIZA_LOCAL_EMBEDDING_ENABLED",
+                        env.get("ELIZA_LOCAL_EMBEDDING_ENABLED")))) {
                 agentEnv.put("ELIZA_DOCUMENT_AUGMENTATION_DISABLED", "1");
             }
             // Skip the auto-download of recommended GGUF models that

@@ -281,20 +281,36 @@ export {
 export * from "./runtime/sub-planner.ts";
 export * from "./runtime/trajectory-recorder";
 export * from "./services/approval/index.ts";
+export { proposeDeviceAction } from "./services/device-actions/action.ts";
+export { registerLocalCalendarUpdatePlanner } from "./services/device-actions/calendar-update-continuation.ts";
 export {
   DEVICE_VIEWS,
   DeviceActionError,
 } from "./services/device-actions/contract.ts";
 export type { DeviceReadCompletionHint } from "./services/device-actions/read-completion.ts";
 export {
+  readableReminderOperationSchema,
+  resolveReadableReminderOperation,
+} from "./services/device-actions/reminder-local-time.ts";
+export {
   bindDeviceRequestedActionPolicy,
+  currentRequestedActionOrigin,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,
   getDeviceActionTurn,
+  registerLocalCalendarCreatePlanner,
+  registerLocalCalendarTimeUpdateRouting,
+  requestLocalCalendarAgenda,
+  requestLocalCalendarAvailability,
+  requestLocalCalendarCreate,
+  requestLocalCalendarUpdate,
+  requestLocalNotesUpdate,
   setDeviceReadReplyConversation,
   withDeviceActionTurn,
 } from "./services/device-actions/service.ts";
+// Canonical device tools are shared by all app hosts; native capabilities select availability.
+export { deviceActionTools } from "./services/device-actions/tools.ts";
 export * from "./services/evaluator.ts";
 export * from "./services/evaluator-priorities.ts";
 export { getEvaluatorProgressState } from "./services/evaluator-progress.ts";
@@ -314,6 +330,7 @@ export {
   looksLikeBareLinkShare,
   normalizeActionIdentifier,
 } from "./services/message/direct-action-heuristics.ts";
+export { plannerDiscoveryInvocationScope } from "./services/message/tool-discovery.ts";
 export * from "./services/message.ts";
 export * from "./services/optimized-prompt.ts";
 export { parseOptimizedPromptTargetBinding } from "./services/optimized-prompt-provenance.ts";

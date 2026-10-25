@@ -13,14 +13,17 @@ afterEach(() => {
   for (const root of roots.splice(0))
     fs.rmSync(root, { recursive: true, force: true });
 });
-function fixture() {
+function fixture(
+  preparation = `fs.writeFileSync(new URL("./prepared", import.meta.url), "ready");`,
+) {
   const root = fs.realpathSync(
     fs.mkdtempSync(path.join(os.tmpdir(), "native-google-admission-")),
   );
   roots.push(root);
   const entry = path.join(root, "google-host.mjs");
-  const bytes =
-    Buffer.from(`export async function startNativeGoogleAgentHost(options) {
+  const bytes = Buffer.from(`import fs from "node:fs";
+  export async function prepareNativeCloudRuntime() { ${preparation} }
+  export async function startNativeGoogleAgentHost(options) {
     options.assertCurrent();
     return {port:47899,async close(){}};
   }`);
@@ -116,4 +119,72 @@ test("boot admission failures leave Google unavailable without stopping the agen
     startNativeManagedGoogleHost(badToken.env),
   ).rejects.toMatchObject({ code: "NATIVE_MANAGED_GOOGLE_HOST_UNAVAILABLE" });
   expect(badToken.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
+});
+
+test("orgless Cloud admission prepares routing without publishing Google brokers", async () => {
+  const f = fixture();
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  expect(await startNativeManagedGoogleHostForBoot(f.env)).toBeUndefined();
+  expect(fs.readFileSync(path.join(f.root, "prepared"), "utf8")).toBe("ready");
+  expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
+  expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
+});
+
+test("Cloud routing failures stop boot instead of falling back to another provider", async () => {
+  const f = fixture('throw new Error("private-provider-detail");');
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  const warnings: string[] = [];
+  await expect(
+    startNativeManagedGoogleHostForBoot(f.env, (m) => warnings.push(m)),
+  ).rejects.toMatchObject({ code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" });
+  expect(warnings).toEqual([]);
+});
+
+test.each([
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZA_API_TOKEN",
+  "ELIZA_NATIVE_GOOGLE_HOST_MODULE",
+])("Cloud admission requires %s before preparation", async (key) => {
+  const f = fixture();
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  delete f.env[key];
+  await expect(
+    startNativeManagedGoogleHostForBoot(f.env),
+  ).rejects.toMatchObject({ code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" });
+  expect(fs.existsSync(path.join(f.root, "prepared"))).toBe(false);
+});
+
+test("disabled Cloud without Google binding leaves routing untouched", async () => {
+  const f = fixture();
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "false";
+  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+  expect(await startNativeManagedGoogleHostForBoot(f.env)).toBeUndefined();
+  expect(fs.existsSync(path.join(f.root, "prepared"))).toBe(false);
+});
+
+test("Cloud preparation preserves optional Google failure isolation", async () => {
+  const f = fixture();
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON = "{malformed";
+  const warnings: string[] = [];
+  expect(
+    await startNativeManagedGoogleHostForBoot(f.env, (m) => warnings.push(m)),
+  ).toBeUndefined();
+  expect(fs.existsSync(path.join(f.root, "prepared"))).toBe(true);
+  expect(warnings).toHaveLength(1);
+  expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
+});
+
+test("bound Google still starts after Cloud preparation", async () => {
+  const f = fixture();
+  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+  const host = await startNativeManagedGoogleHostForBoot(f.env);
+  expect(fs.existsSync(path.join(f.root, "prepared"))).toBe(true);
+  expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBe(
+    "http://127.0.0.1:47899/__alpha-owner-gmail",
+  );
+  await host?.close();
 });

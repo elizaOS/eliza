@@ -13,7 +13,8 @@ def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project
 // The JNI bridge source is shared with the app module; this library builds it
 // for ai.eliza.voice.VoiceNative with the full fused inference API.
 def jniSource = new File(paradeeSource, '../../../../packages/app/platforms/android/app/src/main/elizavoice-jni')
-def paradeeAbis = ['arm64-v8a', 'x86_64']
+def paradeeAbis = project.findProperty('elizaParadeeAbis')?.toString()?.split(',', -1)?.toList() ?: ['arm64-v8a', 'x86_64']
+if (!paradeeAbis || paradeeAbis.toSet().size() != paradeeAbis.size() || paradeeAbis.any { !(it in ['arm64-v8a', 'x86_64']) }) throw new GradleException('Invalid elizaParadeeAbis')
 
 android {
     namespace 'ai.eliza.voice'
@@ -56,6 +57,7 @@ preBuild.doFirst {
     def record = new File(paradeeNative, 'build-record.json')
     if (!record.isFile()) throw new GradleException("[paradee-voice] ${record} missing; run packages/app/scripts/paradee-voice/build-native.ts")
     def approved = new groovy.json.JsonSlurper().parse(record)
+    if (!(approved.abis instanceof List) || !approved.abis.containsAll(paradeeAbis)) throw new GradleException('[paradee-voice] missing requested ABI in build-record.json')
     approved.files.each { entry ->
         if (!packageInference && entry.path.startsWith('jniLibs/')) return
         def target = new File(paradeeNative, entry.path)
