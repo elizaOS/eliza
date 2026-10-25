@@ -3946,7 +3946,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             embeddingSpaceCondition(this.embeddingSpace)
           )
         )
-        .where(eq(memoryTable.id, id))
+        .where(and(eq(memoryTable.id, id), eq(memoryTable.agentId, this.agentId)))
         .limit(1);
 
       if (result.length === 0) return null;
@@ -3981,7 +3981,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       if (memoryIds.length === 0) return [];
 
-      const conditions = [inArray(memoryTable.id, memoryIds)];
+      const conditions = [
+        inArray(memoryTable.id, memoryIds),
+        eq(memoryTable.agentId, this.agentId),
+      ];
 
       if (tableName) {
         conditions.push(eq(memoryTable.type, tableName));
@@ -4897,17 +4900,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     return this.withDatabase(async () => {
       try {
         await this.db.transaction(async (tx) => {
+          // Lock the row so its identity/type stays fixed through this write.
+          // The write is scoped to this agent's memories: a foreign id
+          // matches no row, so nothing below it can touch another agent's
+          // memory or attach an embedding to it.
+          const [existing] = await tx
+            .select({ type: memoryTable.type })
+            .from(memoryTable)
+            .where(and(eq(memoryTable.id, memory.id), eq(memoryTable.agentId, this.agentId)))
+            .for("update");
           // Update memory content if provided
           if (memory.content) {
             // The stored row owns its content policy; caller-supplied metadata
             // cannot select a different stored document policy. Memory source
             // text is preserved independently of that policy.
-            // Lock the row so its identity/type stays fixed through this write.
-            const [existing] = await tx
-              .select({ type: memoryTable.type })
-              .from(memoryTable)
-              .where(eq(memoryTable.id, memory.id))
-              .for("update");
             const contentToUpdate =
               existing?.type === "document_fragments"
                 ? serializeDocumentJsonb(memory.content)
@@ -4926,7 +4932,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                   metadata: sql`${metadataToUpdate}::jsonb`,
                 }),
               })
-              .where(eq(memoryTable.id, memory.id));
+              .where(and(eq(memoryTable.id, memory.id), eq(memoryTable.agentId, this.agentId)));
           } else if (memory.metadata) {
             // Update only metadata if content is not provided
             const metadataToUpdate = serializeJsonb(memory.metadata);
@@ -4936,11 +4942,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
               .set({
                 metadata: sql`${metadataToUpdate}::jsonb`,
               })
-              .where(eq(memoryTable.id, memory.id));
+              .where(and(eq(memoryTable.id, memory.id), eq(memoryTable.agentId, this.agentId)));
           }
 
-          // Update embedding if provided
-          if (memory.embedding && Array.isArray(memory.embedding)) {
+          // Update embedding if provided. Only when the scoped select found
+          // this agent's row: the embedding row carries no agent column, so
+          // an unguarded upsert could attach a vector to a foreign memory.
+          if (memory.embedding && Array.isArray(memory.embedding) && existing) {
             const expectedDimension = Number(this.embeddingDimension.replace(/^dim/, ""));
             if (memory.embedding.length !== expectedDimension) {
               logger.warn(
@@ -5015,6 +5023,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteMemory(memoryId: UUID): Promise<void> {
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
+        // Scope the delete to this agent's memories. The embedding row
+        // carries no agent column, so check ownership first and delete
+        // nothing when the id belongs to another agent.
+        const [owned] = await tx
+          .select({ id: memoryTable.id })
+          .from(memoryTable)
+          .where(and(eq(memoryTable.id, memoryId), eq(memoryTable.agentId, this.agentId)))
+          .limit(1);
+        if (!owned) return;
+
         // See if there are any fragments that we need to delete
         await this.deleteMemoryFragments(tx, memoryId);
 
@@ -5044,18 +5062,27 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         for (let i = 0; i < memoryIds.length; i += BATCH_SIZE) {
           const batch = memoryIds.slice(i, i + BATCH_SIZE);
 
+          // Scope the batch to this agent's memories: the embedding rows
+          // carry no agent column, so narrow to owned ids first.
+          const ownedRows = await tx
+            .select({ id: memoryTable.id })
+            .from(memoryTable)
+            .where(and(inArray(memoryTable.id, batch), eq(memoryTable.agentId, this.agentId)));
+          const ownedIds = ownedRows.map((row) => row.id as UUID);
+          if (ownedIds.length === 0) continue;
+
           // Delete any fragments for document memories in this batch
           await Promise.all(
-            batch.map(async (memoryId) => {
+            ownedIds.map(async (memoryId) => {
               await this.deleteMemoryFragments(tx, memoryId);
             })
           );
 
           // Delete embeddings for the batch
-          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, batch));
+          await tx.delete(embeddingTable).where(inArray(embeddingTable.memoryId, ownedIds));
 
           // Delete the memories themselves
-          await tx.delete(memoryTable).where(inArray(memoryTable.id, batch));
+          await tx.delete(memoryTable).where(inArray(memoryTable.id, ownedIds));
         }
       });
     });
