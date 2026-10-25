@@ -16,13 +16,7 @@ export type MobileClientSelection =
   | { ok: false; code: "invalid_client" | "server_configuration_error" };
 export const MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS = 24 * 60 * 60;
 export const MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS = 90 * 24 * 60 * 60;
-const REGISTRATION_KEYS = [
-  "clientId",
-  "appId",
-  "redirectUri",
-  "enabled",
-  "credentialTtlSeconds",
-];
+const REGISTRATION_KEYS = ["clientId", "appId", "redirectUri", "enabled", "credentialTtlSeconds"];
 export interface MobileClientReservation {
   clientId: string;
   appId: unknown;
@@ -37,16 +31,14 @@ export type MobileClientRegistryUpdatePlan =
   | { ok: true; changed: boolean; registryJson: string }
   | { ok: false; code: "invalid_client" | "server_configuration_error" };
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Validate every entry without dropping, reordering or normalizing source fields. */
 export function parseRegisteredMobileClients(
   raw: unknown,
   reserved: MobileClientReservation,
 ): MobileClientRegistryParseResult {
-  if (raw === undefined || raw === "")
-    return { ok: false, code: "invalid_client" };
+  if (raw === undefined || raw === "") return { ok: false, code: "invalid_client" };
   if (typeof raw !== "string" || raw.length > 16_384)
     return { ok: false, code: "server_configuration_error" };
   let value: unknown;
@@ -59,9 +51,7 @@ export function parseRegisteredMobileClients(
   if (!Array.isArray(value) || value.length > 32)
     return { ok: false, code: "server_configuration_error" };
   const clients = new Set([reserved.clientId]);
-  const apps = new Set([
-    typeof reserved.appId === "string" ? reserved.appId.toLowerCase() : "",
-  ]);
+  const apps = new Set([typeof reserved.appId === "string" ? reserved.appId.toLowerCase() : ""]);
   const redirects = new Set([reserved.redirectUri]);
   for (const item of value) {
     if (
@@ -80,8 +70,7 @@ export function parseRegisteredMobileClients(
       (item.credentialTtlSeconds !== undefined &&
         (typeof item.credentialTtlSeconds !== "number" ||
           !Number.isInteger(item.credentialTtlSeconds) ||
-          item.credentialTtlSeconds <
-            MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS ||
+          item.credentialTtlSeconds < MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS ||
           item.credentialTtlSeconds > MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS))
     )
       return { ok: false, code: "server_configuration_error" };

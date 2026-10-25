@@ -1,10 +1,11 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import {
   parseRegisteredMobileClients,
   planRegisteredMobileClientAppIdUpdate,
   selectRegisteredMobileClient,
 } from "./mobile-client-registry.ts";
+
 const PRIMARY = "11111111-1111-4111-8111-111111111111",
   OLD = "abcdefab-2222-4222-8222-222222222222",
   NEXT = "33333333-3333-4333-8333-333333333333",
@@ -40,20 +41,14 @@ test("full-array parse and single-appId plan preserve all other records, field v
     parsed = parseRegisteredMobileClients(raw, reserved);
   assert.equal(parsed.ok, true);
   assert.deepEqual(parsed.registrations, rows);
-  const p = planRegisteredMobileClientAppIdUpdate(
-    raw,
-    target.clientId,
-    NEXT,
-    reserved,
-  );
+  const p = planRegisteredMobileClientAppIdUpdate(raw, target.clientId, NEXT, reserved);
   assert.equal(p.ok, true);
   assert.equal(p.changed, true);
   const next = JSON.parse(p.registryJson);
   assert.deepEqual(next, [other, { ...target, appId: NEXT }, tail]);
   assert.equal(next[1].credentialTtlSeconds, target.credentialTtlSeconds);
   assert.equal(
-    selectRegisteredMobileClient(p.registryJson, target.clientId, reserved)
-      .registration.appId,
+    selectRegisteredMobileClient(p.registryJson, target.clientId, reserved).registration.appId,
     NEXT,
   );
   assert.equal(raw, JSON.stringify(rows, null, 2));
@@ -61,10 +56,11 @@ test("full-array parse and single-appId plan preserve all other records, field v
 test("already-correct UUID is an exact-byte no-op including harmless case differences", () => {
   const raw = `  ${JSON.stringify([other, target], null, 2)}\n`;
   for (const id of [OLD, OLD.toUpperCase()])
-    assert.deepEqual(
-      planRegisteredMobileClientAppIdUpdate(raw, target.clientId, id, reserved),
-      { ok: true, changed: false, registryJson: raw },
-    );
+    assert.deepEqual(planRegisteredMobileClientAppIdUpdate(raw, target.clientId, id, reserved), {
+      ok: true,
+      changed: false,
+      registryJson: raw,
+    });
 });
 test("target absence, disabled target and primary selection cannot produce replacement JSON", () => {
   for (const rows of [[], [other], [{ ...target, enabled: false }]]) {
@@ -100,18 +96,9 @@ test("replacement UUID collisions and malformed or invalid non-target source fai
     "{",
     JSON.stringify([{ ...other, credentialTtlSeconds: 1 }, target]),
     JSON.stringify([{ ...other, scopes: ["admin"] }, target]),
-    JSON.stringify([
-      other,
-      target,
-      { ...target, clientId: "org.example.duplicate" },
-    ]),
+    JSON.stringify([other, target, { ...target, clientId: "org.example.duplicate" }]),
   ]) {
-    const p = planRegisteredMobileClientAppIdUpdate(
-      raw,
-      target.clientId,
-      NEXT,
-      reserved,
-    );
+    const p = planRegisteredMobileClientAppIdUpdate(raw, target.clientId, NEXT, reserved);
     assert.equal(p.ok, false);
     assert.equal("registryJson" in p, false);
   }
