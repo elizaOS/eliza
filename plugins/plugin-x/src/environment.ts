@@ -8,7 +8,12 @@
  * Also exposes target-user matching and randomized loop-interval helpers.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger, parseBooleanFromText } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  parseBooleanFromText,
+  parseBooleanValue,
+} from "@elizaos/core";
 import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
@@ -279,12 +284,12 @@ export async function validateTwitterConfig(
               getSetting(runtime, "TWITTER_ENABLE_REPLIES") ?? "true"
             ).toLowerCase() === "true",
       ),
+      // Same parser as the reply client, so both read one value the same way.
       TWITTER_ENABLE_DMS: String(
-        (
+        parseBooleanValue(
           config.TWITTER_ENABLE_DMS ??
-          getSetting(runtime, "TWITTER_ENABLE_DMS") ??
-          "true"
-        ).toLowerCase() === "true",
+            getSetting(runtime, "TWITTER_ENABLE_DMS"),
+        ) ?? true,
       ),
       TWITTER_DM_POLICY:
         config.TWITTER_DM_POLICY ??
