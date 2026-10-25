@@ -11,7 +11,7 @@
  * success screen as the terminal/manual fallback), while Cancel abandons the
  * flow with no POST; a missing session id or a completion failure renders the
  * error panel with no POST. The router, session-auth hook, api-client, Steward
- * provider, and i18n are doubled.
+ * provider are doubled. Branding and translation use the real providers.
  */
 
 import { readFileSync } from "node:fs";
@@ -50,11 +50,6 @@ vi.mock("../../../../lib/use-session-auth", () => ({
   useSessionAuth: () => sessionAuthRef.current,
 }));
 
-vi.mock("../../../../shell/CloudI18nProvider", () => ({
-  useCloudT: () => (_key: string, opts?: { defaultValue?: string }) =>
-    opts?.defaultValue ?? _key,
-}));
-
 const apiFetchMock = vi.hoisted(() => vi.fn());
 const profileReadMock = vi.hoisted(() => vi.fn());
 vi.mock("../../../../lib/api-client", () => {
@@ -83,7 +78,13 @@ vi.mock("../../../../lib/use-document-title", () => ({
   useDocumentTitle: () => {},
 }));
 
+import {
+  type BrandingConfig,
+  DEFAULT_BRANDING,
+} from "../../../../../config/branding-base";
+import { BrandingContext } from "../../../../../config/branding-react.hooks";
 import { ApiError } from "../../../../lib/api-client";
+import { CloudI18nProvider } from "../../../../shell/CloudI18nProvider";
 import CliLoginPage from "../cli-login-page";
 
 const SESSION_ID = "bbbbbbbb-2222-4333-8444-cccccccccccc";
@@ -137,14 +138,18 @@ function restoreLocation(): void {
 }
 
 const identityClients: QueryClient[] = [];
-function render(node: ReactNode) {
+function render(node: ReactNode, branding: Partial<BrandingConfig> = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   identityClients.push(client);
   return renderComponent(node, {
     wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, ...branding }}>
+        <CloudI18nProvider initialLang="en">
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        </CloudI18nProvider>
+      </BrandingContext.Provider>
     ),
   });
 }
@@ -192,6 +197,17 @@ afterEach(() => {
 });
 
 describe("CliLoginPage", () => {
+  it("names the configured service while retaining explicit authorization and cancellation", async () => {
+    authenticate();
+    render(<CliLoginPage />, { appName: "Orbit", cloudName: "Nebula" });
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    expect(screen.getByText(/access to your Nebula organization/)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Eliza");
+    expect(document.body.textContent).not.toContain("{{cloudName}}");
+    expect(apiFetchMock).not.toHaveBeenCalled();
+    await userEvent.click(cancel);
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
   it("auto-redirects an unauthenticated visitor straight to /login (no CLI interstitial) and arms the per-session guard", async () => {
     // No window.opener (not script-closable): the page must never offer a
     // "Close Window" button nor call window.close().

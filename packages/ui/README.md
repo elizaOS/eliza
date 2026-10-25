@@ -18,6 +18,11 @@ The app owns renderer composition and native transport selection. Consumers rend
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
 
+Pass the host's `branding` to `CloudRouterShell` as well as its app provider.
+Public sign-in uses `appName`, optional `cloudName` (defaults to the app name
+followed by Cloud), and optional `logoUrl` (omitted logos show the app name).
+These presentation values do not change authentication tenants or API endpoints.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

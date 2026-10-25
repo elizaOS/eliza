@@ -40,6 +40,11 @@ import {
   useLocation,
 } from "react-router-dom";
 import { Button } from "../../components/ui/button";
+import {
+  type BrandingConfig,
+  DEFAULT_BRANDING,
+} from "../../config/branding-base";
+import { BrandingContext } from "../../config/branding-react.hooks";
 import { isAppModeHost } from "../app-mode/app-mode";
 import { queryClient } from "../lib/query-client";
 import { useSessionAuth } from "../lib/use-session-auth";
@@ -268,15 +273,19 @@ export function CloudManagementSessionGate({
  */
 function CloudProviders({
   children,
+  branding,
 }: {
   children: ReactNode;
+  branding?: Partial<BrandingConfig>;
 }): React.JSX.Element {
   return (
-    <QueryClientProvider client={queryClient}>
-      <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
-        {children}
-      </CloudI18nProvider>
-    </QueryClientProvider>
+    <BrandingContext.Provider value={{ ...DEFAULT_BRANDING, ...branding }}>
+      <QueryClientProvider client={queryClient}>
+        <CloudI18nProvider initialLang={resolveInitialCloudLang()}>
+          {children}
+        </CloudI18nProvider>
+      </QueryClientProvider>
+    </BrandingContext.Provider>
   );
 }
 /** Route groups consolidated into the normal Eliza agent-app shell. */
@@ -332,6 +341,8 @@ function CloudRouteElement({
   );
 }
 export interface CloudRouterShellProps {
+  /** Host-owned identity for public Cloud routes outside the app provider. */
+  branding?: Partial<BrandingConfig>;
   /**
    * The existing tab/view app subtree (`<App/>` plus any host runtimes the
    * shell must not know about — desktop nav/tray, etc.). Rendered unchanged
@@ -453,6 +464,7 @@ const AppModeEntryRoute = lazy(() => import("../app-mode/AppModeEntryRoute"));
  */
 export function CloudRouterShell({
   appElement,
+  branding,
   cloudManagementElement,
   marketingHomeElement,
   downloadsElement,
@@ -476,7 +488,7 @@ export function CloudRouterShell({
        * is applied per-route (CloudRouteElement) so the app catch-all and public
        * token routes never load the @stwd/* runtime.
        */}
-      <CloudProviders>
+      <CloudProviders branding={branding}>
         <PrivateCloudRegistrationCoordinator />
         <Routes>
           {/* The marketing homepage owns `/` ONLY on a marketing host. Every
