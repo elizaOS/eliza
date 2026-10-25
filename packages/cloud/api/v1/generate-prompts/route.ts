@@ -11,6 +11,7 @@ import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-erro
 import { estimateTokens } from "@elizaos/cloud-shared/lib/pricing";
 import { billUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
@@ -105,8 +106,14 @@ Random seed: ${promptSeed}`;
     await admission.markProviderDispatched?.();
     providerDispatchStarted = true;
 
+    // The provider error, if the stream fails; usage then rejects with a
+    // generic error that does not carry the provider status.
+    let providerError: unknown;
     const result = streamText({
       model: openai("gpt-4o"),
+      onError: ({ error }) => {
+        providerError = error;
+      },
       messages: [
         {
           role: "system",
@@ -152,7 +159,10 @@ Random seed: ${promptSeed}`;
         );
         await admission.settle(billing.totalCost);
       } catch (error) {
-        await admission.settleUnknown();
+        // A clear provider rejection means no inference was accepted.
+        await (isKnownUnacceptedProviderError(providerError ?? error)
+          ? admission.settle(0)
+          : admission.settleUnknown());
         // error-policy:J7 billing settlement runs post-response; a failure
         // must be loud in logs (revenue) but cannot affect the stream.
         logger.error("[generate-prompts] usage billing failed", {

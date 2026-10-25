@@ -26,6 +26,7 @@ import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import { generationsService } from "@elizaos/cloud-shared/lib/services/generations";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import {
   assertGeneratedMediaStorageHeadroom,
   discardGeneratedMediaObject,
@@ -362,16 +363,21 @@ app.post("/", async (c) => {
     // error-policy:J1 translate the route failure after reconciling the durable
     // reservation according to whether provider dispatch actually began.
     if (admission && !chargeSettled) {
-      const settlementMode = providerDispatchStarted ? "unknown" : "release";
+      // A clear provider rejection means no generation was accepted.
+      const providerRejected =
+        providerDispatchStarted && isKnownUnacceptedProviderError(error);
+      const settlementMode =
+        providerDispatchStarted && !providerRejected ? "unknown" : "release";
       logger.error("[GenerateSfx] Generation failed after admission", {
         ...settlementContext,
         providerDispatchStarted,
         settlementMode,
         error: error instanceof Error ? error.message : String(error),
       });
-      const release = providerDispatchStarted
-        ? admission.settleUnknown()
-        : admission.settle(0);
+      const release =
+        providerDispatchStarted && !providerRejected
+          ? admission.settleUnknown()
+          : admission.settle(0);
       const executionCtx = getGenerativeExecutionContext(c);
       const observed = release.catch((reconcileError) => {
         logger.error("[GenerateSfx] Failed to reconcile reservation", {
