@@ -1071,7 +1071,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Model credentials themselves: adding, editing, deleting an
+        // account, or changing the provider strategy, re-routes the
+        // owner's model traffic (prompts included) under another key.
+        under("/api/accounts") ||
+        under("/api/providers")))
   );
 }
 
