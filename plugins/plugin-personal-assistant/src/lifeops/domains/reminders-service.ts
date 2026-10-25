@@ -5102,7 +5102,21 @@ export class RemindersDomain {
           reminderBody,
           "Reminder",
         );
-      if (args.channel === "in_app") {
+      // Rendering the body can take long (a model call). Do not send when the
+      // owner paused or deleted the reminder meanwhile.
+      if (
+        args.ownerType === "occurrence" &&
+        args.plan.ownerType === "definition" &&
+        (
+          await this.ctx.repository.getDefinition(
+            this.ctx.agentId(),
+            args.plan.ownerId,
+          )
+        )?.status !== "active"
+      ) {
+        outcome = "blocked_policy";
+        deliveryMetadata.reason = "definition_inactive";
+      } else if (args.channel === "in_app") {
         connectorRef = "system:in_app";
         deliveryMetadata.message = reminderBody;
       } else {
