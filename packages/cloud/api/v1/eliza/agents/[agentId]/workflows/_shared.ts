@@ -111,6 +111,21 @@ function buildTargetUrl(
   return target;
 }
 
+/** True when the forwarded path is still this agent's /workflows route. */
+export function staysWithinWorkflowRoutes(
+  agentId: string,
+  suffix: string,
+): boolean {
+  const prefix = `/agents/${encodeURIComponent(agentId)}/workflows`;
+  const { pathname } = buildTargetUrl(
+    "http://agent-server.invalid",
+    "http://agent-server.invalid/",
+    agentId,
+    suffix,
+  );
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 /** Keeps long generation/run calls alive while bounding ordinary proxy work. */
 export function workflowProxyTimeoutMs(method: string, suffix: string): number {
   if (method.toUpperCase() !== "POST") {
@@ -306,12 +321,9 @@ export async function handleWorkflowProxyRequest(
         WORKFLOW_CORS_METHODS,
       );
     }
-    // The suffix arrives percent-decoded, and the target URL resolves dot
-    // segments, so "..%2F" would leave this agent's /workflows routes and
-    // reach other agent-server routes with the server secret.
-    if (
-      suffix.split("/").some((segment) => segment === "." || segment === "..")
-    ) {
+    // The target URL resolves dot segments (also backslash and %2e forms), so
+    // check the path the proxy will actually request, not the raw suffix.
+    if (!staysWithinWorkflowRoutes(agentId, suffix)) {
       return applyCorsHeaders(
         Response.json(
           { success: false, error: "Invalid workflow path" },

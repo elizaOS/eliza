@@ -94,6 +94,9 @@ test.each([
   ["POST", `..%2F..%2F${OTHER_AGENT}%2Fother`],
   ["POST", "x/..%2F..%2Fother"],
   ["POST", "..%2F..%2F..%2Fother"],
+  ["POST", "..%5C..%5Cother"],
+  ["POST", "%252e%252e/%252e%252e/other"],
+  ["POST", ".%252e/.%252e/other"],
 ])(
   "%s with a dot segment in the path is refused before anything is forwarded (%s)",
   async (method, suffix) => {
