@@ -78,6 +78,9 @@ function stubGoogleCalendarCreate(): void {
   }));
 }
 
+// The provider price the stub returns; a test can change it after approval.
+let quotedPrice = "299.50";
+
 function installTravelAndCalendarFetchStub() {
   let orderReadCount = 0;
   const fetchMock = vi
@@ -98,7 +101,7 @@ function installTravelAndCalendarFetchStub() {
                 offers: [
                   {
                     id: "off_test_123",
-                    total_amount: "299.50",
+                    total_amount: quotedPrice,
                     total_currency: "USD",
                     expires_at: "2026-06-01T18:00:00Z",
                     passengers: [
@@ -147,7 +150,7 @@ function installTravelAndCalendarFetchStub() {
             json: async () => ({
               data: {
                 id: "off_test_123",
-                total_amount: "299.50",
+                total_amount: quotedPrice,
                 total_currency: "USD",
                 expires_at: "2026-06-01T18:00:00Z",
                 passengers: [
@@ -198,7 +201,7 @@ function installTravelAndCalendarFetchStub() {
               data: {
                 id: "ord_test_123",
                 booking_reference: "RZPNX8",
-                total_amount: "299.50",
+                total_amount: quotedPrice,
                 total_currency: "USD",
                 slices: [
                   {
@@ -245,7 +248,7 @@ function installTravelAndCalendarFetchStub() {
               data: {
                 id: "ord_test_123",
                 booking_reference: "RZPNX8",
-                total_amount: "299.50",
+                total_amount: quotedPrice,
                 total_currency: "USD",
                 slices: [
                   {
@@ -524,6 +527,72 @@ describe("BOOK_TRAVEL approval execution", () => {
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);
     expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(true);
+  });
+
+  it("does not book when the provider price changed after approval", async () => {
+    stubGoogleCalendarCreate();
+    const fetchMock = installTravelAndCalendarFetchStub();
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+    quotedPrice = "299.50";
+    try {
+      const queued = await runBookTravelHandler(
+        runtime,
+        ownerMessage("Book the JFK to LHR flight after I approve it."),
+        {} as never,
+        {
+          parameters: {
+            origin: "JFK",
+            destination: "LHR",
+            departureDate: "2026-06-15",
+            passengers: [
+              { givenName: "Tony", familyName: "Stark", bornOn: "1980-07-24" },
+            ],
+          },
+        } as never,
+        undefined,
+      );
+      expect(String(queued?.text ?? "")).toContain("299.50 USD");
+      const [pendingRequest] = await queue.list({
+        subjectUserId: String(runtime.agentId),
+        state: "pending",
+        action: "book_travel",
+        limit: 10,
+      });
+      if (!pendingRequest) {
+        throw new Error("Expected one pending travel approval request");
+      }
+
+      // The fare goes up after the owner saw the quote.
+      quotedPrice = "899.50";
+      fetchMock.mockClear();
+      const restoreModel = installApprovalResolutionModelStub(
+        pendingRequest.id,
+        "approve the London flight",
+      );
+      let approved: ActionResult | undefined;
+      try {
+        approved = await approveRequestAction.handler?.(
+          runtime,
+          ownerMessage("yes, approve that booking"),
+          {} as never,
+          {
+            parameters: { subaction: "approve", requestId: pendingRequest.id },
+          } as never,
+          undefined,
+        );
+      } finally {
+        restoreModel();
+      }
+
+      expect(approved?.success).not.toBe(true);
+      const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
+      expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(false);
+      expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(
+        false,
+      );
+    } finally {
+      quotedPrice = "299.50";
+    }
   });
 
   it("rejects approval without executing order, payment, or calendar sync", async () => {

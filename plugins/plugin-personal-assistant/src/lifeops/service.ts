@@ -2330,6 +2330,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      /** The quote the owner approved; the booking pays no other amount. */
+      approved?: { offerId: string; totalCents: number; currency: string };
     },
   ): Promise<FlightBookingExecutionResult> {
     const result = await this.travelDomain.bookFlightItinerary(

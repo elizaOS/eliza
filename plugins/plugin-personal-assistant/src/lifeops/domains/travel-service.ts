@@ -58,6 +58,27 @@ export const TRAVEL_CAPABILITIES = {
 
 export type TravelCapabilities = typeof TRAVEL_CAPABILITIES;
 
+/** The provider quote no longer matches what the owner approved. */
+export class TravelApprovedQuoteChangedError extends Error {
+  override readonly name = "TravelApprovedQuoteChangedError";
+}
+
+function assertApprovedQuote(
+  approved: { offerId: string; totalCents: number; currency: string },
+  actual: { offerId: string; amount: string; currency: string },
+): void {
+  const actualCents = Math.round(Number(actual.amount) * 100);
+  if (
+    actual.offerId !== approved.offerId ||
+    actualCents !== approved.totalCents ||
+    actual.currency.toUpperCase() !== approved.currency.toUpperCase()
+  ) {
+    throw new TravelApprovedQuoteChangedError(
+      `The flight quote changed after approval (approved ${approved.totalCents / 100} ${approved.currency}, now ${actual.amount} ${actual.currency}); ask the owner to approve the new quote.`,
+    );
+  }
+}
+
 export class TravelPostBookingProjectionError extends Error {
   constructor(
     public readonly booking: FlightBookingExecutionResult,
@@ -386,9 +407,18 @@ export class TravelDomain {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      /** The quote the owner approved; the booking pays no other amount. */
+      approved?: { offerId: string; totalCents: number; currency: string };
     },
   ): Promise<FlightBookingExecutionResult> {
     const prepared = await this.prepareFlightBooking(args);
+    if (args.approved) {
+      assertApprovedQuote(args.approved, {
+        offerId: prepared.offer.id,
+        amount: prepared.offer.totalAmount,
+        currency: prepared.offer.totalCurrency,
+      });
+    }
     const order = await this.createFlightOrder({
       offer: prepared.offer,
       passengers: args.passengers,
@@ -402,6 +432,13 @@ export class TravelDomain {
       refreshedOrder.paymentStatus?.awaitingPayment
     ) {
       refreshedOrder = await this.getTravelOrder(order.id);
+      if (args.approved) {
+        assertApprovedQuote(args.approved, {
+          offerId: args.approved.offerId,
+          amount: refreshedOrder.totalAmount,
+          currency: refreshedOrder.totalCurrency,
+        });
+      }
       payment = await this.payTravelOrder({
         orderId: refreshedOrder.id,
         amount: refreshedOrder.totalAmount,

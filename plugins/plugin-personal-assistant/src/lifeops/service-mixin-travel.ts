@@ -55,6 +55,8 @@ export interface LifeOpsTravelServicePublic {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      /** The quote the owner approved; the booking pays no other amount. */
+      approved?: { offerId: string; totalCents: number; currency: string };
     },
   ): Promise<FlightBookingExecutionResult>;
 }

@@ -28,7 +28,10 @@ import type {
   ApprovalQueue,
   ApprovalRequest,
 } from "../lifeops/approval-queue.types.js";
-import { TravelPostBookingProjectionError } from "../lifeops/domains/travel-service.js";
+import {
+  TravelApprovedQuoteChangedError,
+  TravelPostBookingProjectionError,
+} from "../lifeops/domains/travel-service.js";
 import { requireFeatureEnabled } from "../lifeops/feature-flags.js";
 import { FeatureNotEnabledError } from "../lifeops/feature-flags.types.js";
 import { LifeOpsService } from "../lifeops/service.js";
@@ -40,6 +43,7 @@ import {
   ApprovalAmbiguousDeliveryError,
   runApprovalDispatch,
 } from "./lib/approval-execution.js";
+import { ApprovalKnownNonDeliveryError } from "./lib/messaging-helpers.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -653,16 +657,40 @@ export async function executeApprovedBookTravel(args: {
     prepared: {
       provider: "duffel",
       dispatch: async () => {
+        // The owner approved one offer at one price: book only that.
+        const approvedOfferId = payload.offerId?.trim();
+        if (
+          !approvedOfferId ||
+          typeof payload.totalCents !== "number" ||
+          payload.totalCents <= 0 ||
+          !payload.currency
+        ) {
+          throw new ApprovalKnownNonDeliveryError(
+            "TRAVEL_APPROVAL_WITHOUT_QUOTE",
+            "This booking approval has no quoted offer and price; ask for a new quote to approve.",
+          );
+        }
         let booked: Awaited<ReturnType<LifeOpsService["bookFlightItinerary"]>>;
         try {
           booked = await service.bookFlightItinerary(INTERNAL_URL, {
-            offerId: payload.offerId ?? null,
+            offerId: approvedOfferId,
             search: payload.search ?? null,
             passengers,
             calendarSync: payload.calendarSync ?? null,
             calendarGrantId,
+            approved: {
+              offerId: approvedOfferId,
+              totalCents: payload.totalCents,
+              currency: payload.currency,
+            },
           });
         } catch (error) {
+          if (error instanceof TravelApprovedQuoteChangedError) {
+            throw new ApprovalKnownNonDeliveryError(
+              "TRAVEL_QUOTE_CHANGED",
+              error.message,
+            );
+          }
           if (error instanceof TravelPostBookingProjectionError) {
             throw new ApprovalAmbiguousDeliveryError(
               error.message,
