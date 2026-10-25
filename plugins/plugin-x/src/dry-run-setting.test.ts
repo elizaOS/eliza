@@ -142,4 +142,83 @@ describe("TWITTER_DRY_RUN", () => {
       await runtime.stop();
     }
   });
+
+  it("does not post a generated tweet once posting was turned off during generation", async () => {
+    const runtime = runtimeWith({
+      TWITTER_DRY_RUN: "false",
+      TWITTER_ENABLE_POST: "1",
+      TWITTER_ENABLE_REPLIES: "false",
+      TWITTER_ENABLE_DMS: "false",
+    });
+    await runtime.initialize({ skipMigrations: true });
+    try {
+      const state = await validatedState(runtime);
+      const instance = new TwitterClientInstance(runtime, state);
+      // TWITTER_ENABLE_POST=1 already turns the post client on.
+      expect(instance.post).toBeDefined();
+
+      const posted: string[] = [];
+      let postingOn = true;
+      const v2 = {
+        tweet: async (params: { text: string }) => {
+          posted.push(params.text);
+          return { data: { id: "1850000000000000777", text: params.text } };
+        },
+      };
+      const session = {
+        client: v2,
+        revision: 1,
+        profile: {
+          userId: "bot-user",
+          username: "bot",
+          name: "Bot",
+          biography: "",
+        },
+      };
+      Object.assign(instance.client.twitterClient, {
+        auth: {
+          getV2Client: async () => ({ v2 }),
+          getAuthenticatedSession: async () => session,
+          withAuthenticatedSession: async (
+            operation: (current: typeof session) => Promise<unknown>,
+          ) => operation(session),
+          withCurrentSession: async (
+            _current: typeof session,
+            operation: () => Promise<unknown>,
+          ) => operation(),
+          isAuthenticatedSessionCurrent: () => true,
+        },
+      });
+
+      // TwitterPostClient builds this callback from the same validated state.
+      const callback = createTwitterPostCallback({
+        client: instance.client,
+        runtime,
+        state,
+        roomId: "00000000-0000-0000-0000-00000000a001" as UUID,
+        userId: "bot-user",
+        username: "bot",
+        shouldPost: () => postingOn,
+      });
+      // The post loop was stopped while the model wrote the tweet.
+      postingOn = false;
+      await callback({ text: "gm builders, shipping a small fix today" });
+      expect(posted).toEqual([]);
+
+      // Control: the same callback setup posts while posting is still on.
+      postingOn = true;
+      await createTwitterPostCallback({
+        client: instance.client,
+        runtime,
+        state,
+        roomId: "00000000-0000-0000-0000-00000000a001" as UUID,
+        userId: "bot-user",
+        username: "bot",
+        shouldPost: () => postingOn,
+      })({ text: "second tweet while posting is on" });
+      expect(posted).toEqual(["second tweet while posting is on"]);
+    } finally {
+      await runtime.stop();
+    }
+  });
 });

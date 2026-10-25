@@ -37,6 +37,7 @@ export function createTwitterPostCallback({
   userId,
   username: _username,
   onPosted,
+  shouldPost,
 }: {
   client: ClientBase;
   runtime: IAgentRuntime;
@@ -45,6 +46,8 @@ export function createTwitterPostCallback({
   userId: string;
   username: string;
   onPosted?: () => void;
+  /** Checked right before posting: generation can take long. */
+  shouldPost?: () => boolean;
 }): HandlerCallback {
   const isDryRun = parseBooleanFromText(
     state?.TWITTER_DRY_RUN ?? getSetting(runtime, "TWITTER_DRY_RUN"),
@@ -63,9 +66,21 @@ export function createTwitterPostCallback({
       }
 
       const postText = generatedText;
-      if (isDryRun) {
+      // Generation can take long: re-read dry run (the owner may have turned
+      // it on meanwhile) and ask the caller whether posting is still on.
+      if (
+        isDryRun ||
+        parseBooleanFromText(getSetting(runtime, "TWITTER_DRY_RUN"))
+      ) {
         runtime.logger.info(
           `[Twitter] [DRY RUN] Would post tweet: ${postText}`,
+        );
+        return [];
+      }
+
+      if (shouldPost && !shouldPost()) {
+        runtime.logger.info(
+          "[Twitter] Posting was turned off while the tweet was generated; not posting",
         );
         return [];
       }

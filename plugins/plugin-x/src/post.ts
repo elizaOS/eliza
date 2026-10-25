@@ -231,6 +231,7 @@ export class TwitterPostClient {
         onPosted: () => {
           posted = true;
         },
+        shouldPost: () => this.isRunning,
       });
 
       await this.runtime.emitEvent(EventType.POST_GENERATED, {
