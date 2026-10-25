@@ -815,14 +815,22 @@ function expectedActiveComputeSegment(resource: {
   metadata: Record<string, unknown>;
 }):
   | { workloadKind: "agent" | "container"; billingState: "running" | "backup" }
+  | { workloadKind: "agent" | "container"; billingState: null }
   | { errorCode: string } {
   if (!ACTIVE_COMPUTE_BILLING_STATUSES.has(resource.billingStatus)) {
     return { errorCode: "active_compute_resource_selector_mismatch" };
   }
   if (resource.resourceType === "container") {
-    return resource.status === "running"
-      ? { workloadKind: "container", billingState: "running" }
-      : { errorCode: "active_compute_resource_selector_mismatch" };
+    if (resource.status === "running") {
+      return { workloadKind: "container", billingState: "running" };
+    }
+    // The active-billing selector keeps deleting containers billable until
+    // deletion completes, so they must not fail segment matching: their rate
+    // state comes from their latest segment, resolved by the caller.
+    if (resource.status === "deleting") {
+      return { workloadKind: "container", billingState: null };
+    }
+    return { errorCode: "active_compute_resource_selector_mismatch" };
   }
   if (resource.resourceType === "agent_sandbox") {
     if (resource.status === "running") {
@@ -830,6 +838,12 @@ function expectedActiveComputeSegment(resource: {
     }
     if (resource.status === "stopped" && typeof resource.metadata.lastBackupAt === "string") {
       return { workloadKind: "agent", billingState: "backup" };
+    }
+    // Same as deleting containers: the selector keeps deletion-pending and
+    // deletion-failed agents billable, and their latest segment is the
+    // running or backup state the deletion billing authority enforces.
+    if (resource.status === "deletion_pending" || resource.status === "deletion_failed") {
+      return { workloadKind: "agent", billingState: null };
     }
     return { errorCode: "active_compute_resource_selector_mismatch" };
   }
@@ -879,7 +893,15 @@ function observeActiveComputeRate(
   }
   eligible.sort((left, right) => right.effectiveAt.getTime() - left.effectiveAt.getTime());
   const { segment, effectiveAt } = eligible[0]!;
-  if (segment.billingState !== expected.billingState) {
+  // Transitional resources carry no predetermined state: accept the latest
+  // segment's state when it is a billable one, and stay unavailable for any
+  // other state instead of inventing a price.
+  const billingState =
+    expected.billingState ??
+    (segment.billingState === "running" || segment.billingState === "backup"
+      ? segment.billingState
+      : null);
+  if (billingState === null) {
     return unavailableActiveComputeRate(observedAt, "active_compute_rate_segment_state_mismatch");
   }
 
@@ -901,7 +923,7 @@ function observeActiveComputeRate(
   const dailyExact = new Decimal(hourlyExact).mul(24).toDecimalPlaces(6, Decimal.ROUND_HALF_UP);
   const rateSegmentValue: ActiveComputeRateSegmentSnapshot = {
     workloadKind: expected.workloadKind,
-    billingState: expected.billingState,
+    billingState,
     effectiveAt: effectiveAt.toISOString(),
   };
   return {
