@@ -736,6 +736,30 @@ type DiscordAccountSettingsConfig = ResolvedDiscordAccount["config"] &
  * @property {VoiceManager} voiceManager - The manager for handling voice communication.
  */
 
+/** Discord's epoch (2015-01-01T00:00:00Z) for snowflake timestamps. */
+const DISCORD_EPOCH_MS = 1_420_070_400_000n;
+
+/**
+ * A message read bound as a snowflake. The connector contract leaves the
+ * format open; a message id passes through, and a date becomes the snowflake
+ * of that instant, so "before 2026-10-24" works like a message id boundary.
+ */
+function discordSnowflakeBound(
+	value: string | undefined,
+	name: "before" | "after",
+): string | undefined {
+	const trimmed = value?.trim();
+	if (!trimmed) return undefined;
+	if (/^\d+$/.test(trimmed)) return trimmed;
+	const ms = Date.parse(trimmed);
+	if (!Number.isFinite(ms) || BigInt(ms) < DISCORD_EPOCH_MS) {
+		throw new RangeError(
+			`Discord ${name} must be a message id or an ISO date after 2015-01-01`,
+		);
+	}
+	return ((BigInt(ms) - DISCORD_EPOCH_MS) << 22n).toString();
+}
+
 export class DiscordService extends Service implements IDiscordService {
 	// Override runtime type for messageServerId cross-core compatibility (see compat.ts)
 	declare protected runtime: ICompatRuntime;
@@ -3205,15 +3229,13 @@ export class DiscordService extends Service implements IDiscordService {
 			params,
 		);
 		const requestedLimit = normalizeRequestedConnectorLimit(params.limit);
-		let before = params.before ?? params.cursor;
-		const afterBoundary = params.after;
+		let before =
+			discordSnowflakeBound(params.before, "before") ?? params.cursor;
+		const afterBoundary = discordSnowflakeBound(params.after, "after");
 		if (before && afterBoundary) {
 			throw new RangeError(
 				"Discord message reads cannot combine before/cursor with after",
 			);
-		}
-		if (afterBoundary && !/^\d+$/.test(afterBoundary)) {
-			throw new RangeError("Discord after must be a snowflake message id");
 		}
 		const memories: Memory[] = [];
 		const seenCursors = new Set<string>();
