@@ -581,6 +581,7 @@ export const blooioAdapter: PlatformAdapter = {
       chatId: event.chat_id ?? event.sender,
       chatType: event.is_group ? "group" : "private",
       channelId: event.channel_id ?? undefined,
+      receivingNumber: event.internal_id ?? undefined,
       channelType: event.channel_type ?? undefined,
       protocol: event.protocol ?? undefined,
       senderId: event.sender,
