@@ -72,7 +72,9 @@ test("Network turns use the receiving phone while Blooio replies retain their op
     rawPayload: {},
   };
   expect(turnRequestFor(legacyEvent).to).toBe(line);
-  expect(turnRequestFor({ ...legacyEvent, channelId: undefined }).to).toBeNull();
+  expect(
+    turnRequestFor({ ...legacyEvent, channelId: undefined }).to,
+  ).toBeNull();
 });
 
 describe("blooio send timing", () => {
