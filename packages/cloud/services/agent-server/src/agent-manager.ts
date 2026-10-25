@@ -243,7 +243,7 @@ export class AgentManager {
     );
 
     for (const [agentId, entry] of this.agents) {
-      if (entry.state === "starting") continue;
+      if (entry.state === "starting" || entry.state === "stopped") continue;
       multi.set(
         `agent:${agentId}:server`,
         serverName,
@@ -438,6 +438,10 @@ export class AgentManager {
       characterRef: entry.characterRef,
       state: "stopped",
     });
+    // A stopped agent must not keep a routing key: refresh skips stopped
+    // entries but never deletes the key published while it was running, so
+    // remove it explicitly like deleteAgent does.
+    await getRedis().del(`agent:${id}:server`);
     await this.refreshRedisState();
   }
 
@@ -640,6 +644,8 @@ export class AgentManager {
           characterRef: entry.characterRef,
           state: "stopped",
         });
+        // Drained agents must not keep routing keys pointing at this server.
+        await getRedis().del(`agent:${entry.agentId}:server`);
       }
     }
   }
