@@ -964,6 +964,12 @@ export class FormService extends Service {
     session.effort.lastInteractionAt = now;
     session.effort.timeSpentMs = now - session.effort.firstInteractionAt;
 
+    // A composite answer is effort too: extend the deadline from the effort
+    // this answer recorded, as updateField() does. Without this, work on a
+    // composite field never moves the expiry and the session is deleted while
+    // the user is still answering it.
+    session.expiresAt = this.calculateTTL(session);
+
     session.updatedAt = now;
     await storageSaveSession(this.runtime, session);
 
