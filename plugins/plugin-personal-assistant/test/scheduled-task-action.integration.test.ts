@@ -24,6 +24,7 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.ts";
+import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.ts";
 import type { ScheduledTask } from "../src/lifeops/scheduled-task/index.ts";
 import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.ts";
 import {
@@ -162,6 +163,80 @@ describe("SCHEDULED_TASK action", () => {
       completed?.data as { task?: ScheduledTask } | undefined
     )?.task;
     expect(completedTask?.state.status).toBe("completed");
+  });
+
+  it("reads a time without an offset in the owner's time zone on create, update and snooze", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    await resolveOwnerFactStore(runtime).update(
+      { timezone: "America/New_York" },
+      { source: "profile_save", recordedAt: new Date().toISOString() },
+    );
+    const taskOf = (result: ActionResult | undefined) =>
+      (result?.data as { task?: ScheduledTask } | undefined)?.task;
+
+    // 09:00 in New York in January is 14:00 UTC, whatever the host zone is.
+    const created = await scheduledTaskAction.handler?.(
+      runtime,
+      autonomyMessage(runtime.agentId, "remind me at 9"),
+      undefined,
+      {
+        parameters: {
+          subaction: "create",
+          kind: "reminder",
+          promptInstructions: "call the dentist",
+          trigger: { kind: "once", atIso: "2027-01-12T09:00:00" },
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(created?.success).toBe(true);
+    expect(taskOf(created)?.trigger).toEqual({
+      kind: "once",
+      atIso: "2027-01-12T14:00:00.000Z",
+    });
+    const taskId = taskOf(created)?.taskId;
+    if (!taskId) throw new Error("create did not return a taskId");
+
+    const updated = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "move it to the next day"),
+      undefined,
+      {
+        parameters: {
+          subaction: "update",
+          taskId,
+          patch: { trigger: { kind: "once", atIso: "2027-01-13T09:00:00" } },
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(updated?.success).toBe(true);
+    expect(taskOf(updated)?.trigger).toEqual({
+      kind: "once",
+      atIso: "2027-01-13T14:00:00.000Z",
+    });
+
+    const snoozed = await scheduledTaskAction.handler?.(
+      runtime,
+      ownerMessage(runtime.agentId, "snooze it"),
+      undefined,
+      {
+        parameters: {
+          subaction: "snooze",
+          taskId,
+          untilIso: "2027-01-14T09:00:00",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(snoozed?.success).toBe(true);
+    expect(taskOf(snoozed)?.state.lastDecisionLog).toContain(
+      "2027-01-14T14:00:00.000Z",
+    );
   });
 
   it("proves mutation preconditions, replay noops, and every ledger-backed transition", async () => {

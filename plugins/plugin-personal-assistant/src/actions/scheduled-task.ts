@@ -37,7 +37,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
+import {
+  resolveScheduledAtIsoInTimeZone,
+  stableStringify,
+} from "@elizaos/core";
 import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
@@ -47,6 +50,7 @@ import {
   lifeOpsNoopEffect,
 } from "../lifeops/action-effect-result.js";
 import { messageText } from "../lifeops/google/format-helpers.js";
+import { resolveOwnerTimeZone } from "../lifeops/owner/fact-store.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   bindScheduledTaskToInboundChat,
@@ -1047,6 +1051,29 @@ function normalizeDueWindow(value: unknown): DueWindow | undefined {
     : undefined;
 }
 
+/**
+ * Read a planner timestamp that has no `Z` or UTC offset in the owner's time
+ * zone. `Date.parse` reads it in the host zone, which is UTC on a cloud host.
+ */
+async function resolveInOwnerTimeZone(
+  scope: RunnerScope,
+  iso: string,
+): Promise<string> {
+  return resolveScheduledAtIsoInTimeZone(
+    iso,
+    await resolveOwnerTimeZone(scope.runtime, new Date()),
+  );
+}
+
+async function resolveTriggerInOwnerTimeZone(
+  scope: RunnerScope,
+  trigger: ScheduledTaskTrigger,
+): Promise<ScheduledTaskTrigger> {
+  return trigger.kind === "once"
+    ? { ...trigger, atIso: await resolveInOwnerTimeZone(scope, trigger.atIso) }
+    : trigger;
+}
+
 function localDateKey(date: Date, timeZone: string): string {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -1197,7 +1224,10 @@ async function handleCreate(
       },
     };
   }
-  const trigger = normalized.trigger;
+  const trigger = await resolveTriggerInOwnerTimeZone(
+    scope,
+    normalized.trigger,
+  );
   const kind = normalizeKind(params.kind) ?? "custom";
   const noun = scheduledItemNoun(kind);
   const priority: ScheduledTaskPriorityParam = params.priority ?? "medium";
@@ -1496,7 +1526,10 @@ async function handleUpdate(
         },
       };
     }
-    patch = { ...patch, trigger: normalized.trigger };
+    patch = {
+      ...patch,
+      trigger: await resolveTriggerInOwnerTimeZone(scope, normalized.trigger),
+    };
   }
   const existingBinding = readScheduledTaskChatDeliveryBinding(
     existing.metadata,
@@ -1626,7 +1659,7 @@ async function handleSnooze(
       : undefined;
   const untilIso =
     typeof params.untilIso === "string" && params.untilIso.trim().length > 0
-      ? params.untilIso.trim()
+      ? await resolveInOwnerTimeZone(scope, params.untilIso.trim())
       : undefined;
   if (minutes === undefined && untilIso === undefined) {
     return {
