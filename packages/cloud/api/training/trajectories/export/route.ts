@@ -112,10 +112,7 @@ async function __hono_GET(request: Request) {
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to export trajectories",
+        error: "Failed to export trajectories",
       },
       { status: 500 },
     );
@@ -150,10 +147,7 @@ async function __hono_POST(request: Request) {
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to export trajectories",
+        error: "Failed to export trajectories",
       },
       { status: 500 },
     );

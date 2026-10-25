@@ -87,10 +87,7 @@ async function handlePOST(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to regenerate API key",
+        error: "Failed to regenerate API key",
       },
       { status: 500 },
     );

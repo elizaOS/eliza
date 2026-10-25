@@ -45,10 +45,7 @@ async function __hono_GET(request: Request, env: AppEnv["Bindings"]) {
     }
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to list Google calendars.",
+        error: "Failed to list Google calendars.",
       },
       { status: 500 },
     );

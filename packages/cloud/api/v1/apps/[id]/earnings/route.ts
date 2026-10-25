@@ -100,8 +100,7 @@ async function __hono_GET(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to get app earnings",
+        error: "Failed to get app earnings",
       },
       { status: 500 },
     );

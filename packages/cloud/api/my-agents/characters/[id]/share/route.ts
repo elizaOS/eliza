@@ -148,10 +148,7 @@ app.put("/", async (c) => {
     return c.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update share status",
+        error: "Failed to update share status",
       },
       500,
     );

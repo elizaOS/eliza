@@ -49,10 +49,7 @@ app.get("/", async (c) => {
       {
         success: false,
         valid: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to validate invitation",
+        error: "Failed to validate invitation",
       },
       500,
     );

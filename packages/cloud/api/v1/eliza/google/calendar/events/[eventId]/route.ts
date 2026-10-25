@@ -88,10 +88,7 @@ async function __hono_PATCH(
     }
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update Google Calendar event.",
+        error: "Failed to update Google Calendar event.",
       },
       { status: 500 },
     );
@@ -151,10 +148,7 @@ async function __hono_DELETE(
     }
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete Google Calendar event.",
+        error: "Failed to delete Google Calendar event.",
       },
       { status: 500 },
     );

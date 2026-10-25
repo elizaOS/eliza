@@ -73,10 +73,7 @@ app.get("/", async (c) => {
   } catch (error) {
     return c.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load connection status",
+        error: "Failed to load connection status",
         code: "CONNECTION_STATUS_FAILED",
       },
       500,

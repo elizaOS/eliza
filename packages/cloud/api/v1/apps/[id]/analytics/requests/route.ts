@@ -203,10 +203,7 @@ async function handleGET(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get request analytics",
+        error: "Failed to get request analytics",
       },
       { status: 500 },
     );

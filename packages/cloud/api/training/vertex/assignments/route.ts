@@ -116,10 +116,7 @@ async function __hono_GET(request: Request) {
     }
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to list tuned-model assignments",
+        error: "Failed to list tuned-model assignments",
       },
       { status: 500 },
     );

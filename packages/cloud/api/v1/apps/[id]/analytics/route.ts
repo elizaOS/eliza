@@ -97,10 +97,7 @@ app.get("/", async (c) => {
     return c.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get app analytics",
+        error: "Failed to get app analytics",
       },
       500,
     );

@@ -111,10 +111,7 @@ async function __hono_GET(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to get earnings history",
+        error: "Failed to get earnings history",
       },
       { status: 500 },
     );

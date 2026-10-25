@@ -124,8 +124,7 @@ async function __hono_GET(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to get characters",
+        error: "Failed to get characters",
       },
       { status: 500 },
     );
@@ -246,10 +245,7 @@ async function __hono_PUT(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update characters",
+        error: "Failed to update characters",
       },
       { status: 500 },
     );
