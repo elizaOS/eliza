@@ -649,13 +649,15 @@ function buildZoomSharedMeetingArtifact(input: {
       label: file.source.recording_type,
     }),
   );
-  const streamByMediaId = new Map(
-    sourceStreams.map((stream) => [stream.mediaRefId, stream]),
+  // Keyed by file, not media id: byte-identical transcript and caption files
+  // share a content-hash media id, and spans must name the file they came from.
+  const streamByFile = new Map(
+    input.files.map((file, index) => [file, sourceStreams[index]]),
   );
   const transcriptSpans: MeetingArtifactTranscriptSpan[] = [];
   const speakerLabels = new Map<string, string>();
   for (const file of transcriptSources(input.files)) {
-    const stream = streamByMediaId.get(file.media.id);
+    const stream = streamByFile.get(file);
     if (!stream) continue;
     for (const cue of parseWebVtt(file.bytes.toString("utf8"))) {
       const participant = cue.speakerLabel

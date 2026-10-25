@@ -206,6 +206,12 @@ describe("Zoom cloud import", () => {
         "Ship the release Friday.",
         "Agreed.",
       ]);
+      // Every span names the audio-transcript stream it was read from.
+      expect(
+        new Set(
+          result.artifact.transcriptSpans.map((span) => span.sourceStreamId),
+        ),
+      ).toEqual(new Set(["zoom-stream:t"]));
     }
   });
 
