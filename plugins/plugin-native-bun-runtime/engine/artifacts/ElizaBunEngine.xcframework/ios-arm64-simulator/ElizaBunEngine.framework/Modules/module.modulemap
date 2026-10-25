@@ -1,5 +1,0 @@
-framework module ElizaBunEngine {
-  umbrella header "ElizaBunEngine.h"
-  export *
-  module * { export * }
-}

@@ -1,6 +1,0 @@
-{
-  "name": "Standalone plugin npm publish",
-  "description": "Publishes a versioned standalone elizaOS plugin repository from its 1.x branch.",
-  "iconName": "package",
-  "categories": ["Deployment"]
-}

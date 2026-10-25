@@ -1,4 +1,0 @@
-allow platform_app app_data_file:file { execute execute_no_trans };
-userdebug_or_eng(`
-  allow platform_app app_data_file:file link;
-')

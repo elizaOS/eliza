@@ -1,1 +1,0 @@
-["pip install .", "xvfb-run -a pytest --continue-on-collection-errors tests"]

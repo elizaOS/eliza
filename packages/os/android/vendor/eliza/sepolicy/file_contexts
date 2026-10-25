@@ -1,2 +1,0 @@
-# ElizaOS vendor file contexts. Add entries only with a compiled policy rule
-# and booted-device denial/evidence; this file is intentionally empty today.
