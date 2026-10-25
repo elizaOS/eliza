@@ -2626,6 +2626,30 @@ export class RuntimeModelDispatch {
 			const activeTrace = this.runtime.getActiveTrace(
 				this.runtime.getCurrentRunId(),
 			);
+			// Rebind provider spans to the exact string this call persists, as
+			// the success path does. Copying composeState's providersText
+			// offsets onto a larger messages prompt produces false
+			// exact-match slices.
+			const canonicalPrompt = canonicalPromptForModelCall({
+				messages: Array.isArray(paramsRecord.messages)
+					? (paramsRecord.messages as unknown[])
+					: undefined,
+				prompt:
+					typeof paramsRecord.prompt === "string"
+						? paramsRecord.prompt
+						: userPrompt,
+			});
+			const reboundAttributions = trajCtx.providerAttributionState
+				? buildProviderAttributionsFromState({
+						state: trajCtx.providerAttributionState,
+						prompt: canonicalPrompt,
+					})
+				: undefined;
+			const providerOrder =
+				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
+			const providerAttributions =
+				reboundAttributions?.providerAttributions ??
+				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
 			trajLogger.logLlmCall({
 				stepId,
 				model: args.resolvedModelKey,
@@ -2678,8 +2702,8 @@ export class RuntimeModelDispatch {
 				roomId: trajCtx.roomId,
 				messageId: trajCtx.messageId,
 				executionTraceId: activeTrace?.id,
-				providerOrder: trajCtx.providerOrder,
-				providerAttributions: trajCtx.providerAttributions,
+				providerOrder,
+				providerAttributions,
 			});
 		} catch (trajectoryError) {
 			// error-policy:J7 Trajectory logging must never break core model flow.
