@@ -6056,7 +6056,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getWorld(id: UUID): Promise<World | null> {
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(worldTable).where(eq(worldTable.id, id));
+      const result = await this.db
+        .select()
+        .from(worldTable)
+        .where(and(eq(worldTable.id, id), eq(worldTable.agentId, this.agentId)));
       return result.length > 0 ? this.mapWorldResult(result[0]) : null;
     });
   }
@@ -8247,7 +8250,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(worldTable)
-        .where(inArray(worldTable.id, worldIds));
+        .where(and(inArray(worldTable.id, worldIds), eq(worldTable.agentId, this.agentId)));
       return result.map((world) => this.mapWorldResult(world));
     });
   }
