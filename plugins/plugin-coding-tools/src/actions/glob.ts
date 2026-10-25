@@ -90,12 +90,21 @@ export function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${regex}$`);
 }
 
+/**
+ * fs.glob resolves `.` segments against the search root (`./src/*.ts` and
+ * `src/./*.ts` mean `src/*.ts`); minimatch compares them literally, and a
+ * root-relative candidate never contains one.
+ */
+function withoutDotSegments(pattern: string): string {
+  return pattern.replace(/^(?:\.\/)+/, "").replace(/\/(?:\.\/)+/g, "/");
+}
+
 /** Runtime-independent glob matching with Node/fs.glob dot-segment semantics. */
 export function matchesGlobPattern(
   candidate: string,
   pattern: string,
 ): boolean {
-  return minimatch(candidate, pattern, {
+  return minimatch(candidate, withoutDotSegments(pattern), {
     dot: false,
     nocomment: true,
     nonegate: true,
@@ -123,7 +132,9 @@ export async function walkContainedGlob(
   // A "**" segment can match a path separator even when the pattern itself
   // contains no separator (a bare "**" matches nested paths), so it must
   // also allow the walk to descend.
-  const canMatchDescendants = /[\\/]/.test(pattern) || pattern.includes("**");
+  const relativePattern = withoutDotSegments(pattern);
+  const canMatchDescendants =
+    /[\\/]/.test(relativePattern) || relativePattern.includes("**");
 
   async function walk(dir: string): Promise<void> {
     let entries: Array<import("node:fs").Dirent>;
