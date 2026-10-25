@@ -1888,10 +1888,16 @@ function classifyArgv(
           .map((word) => word.value),
       };
     }
-    const start = rest.findIndex((word) =>
-      ["-exec", "-execdir", "-ok", "-okdir"].includes(word.value),
-    );
-    if (start >= 0) {
+    // find runs every action clause, so each -exec/-execdir/-ok/-okdir
+    // command is classified, not only the first one.
+    for (let start = 0; start < rest.length; start += 1) {
+      if (
+        !["-exec", "-execdir", "-ok", "-okdir"].includes(
+          rest[start]?.value ?? "",
+        )
+      ) {
+        continue;
+      }
       const finish = rest.findIndex(
         (word, index) => index > start && [";", "+"].includes(word.value),
       );
@@ -1904,6 +1910,8 @@ function classifyArgv(
         budget,
       );
       if (verdict.destructive) return verdict;
+      if (finish < 0) break;
+      start = finish;
     }
   }
   if (bin === "rsync") {
