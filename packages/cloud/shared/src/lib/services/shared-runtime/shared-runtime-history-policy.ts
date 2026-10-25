@@ -373,15 +373,9 @@ function selectedGrounding(
     const grounding =
       message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
-    let precedingUserQuery = "";
-    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-      if (history[cursor].role !== "user") continue;
-      precedingUserQuery = history[cursor].content;
-      break;
-    }
-    // User text and the validated tool query are trusted selection inputs;
-    // assistant prose and provider result text remain excluded.
-    const trustedWords = groundingWords(`${precedingUserQuery}\n${grounding.query}`);
+    // Match the public topic recorded by the tool, not formatting instructions
+    // in the preceding user turn. Those can recur in unrelated requests.
+    const trustedWords = groundingWords(grounding.query);
     let overlap = 0;
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
     const immediate = !history
