@@ -2756,13 +2756,22 @@ export class MessageManager {
     messageId: number,
     emoji?: string,
   ): Promise<void> {
-    await this.bot.telegram.setMessageReaction(
-      chatId,
-      messageId,
-      // Telegram only accepts a fixed set of reaction emoji (the `TelegramEmoji`
-      // union); the connector passes an arbitrary string, so cast and let
-      // Telegram reject an unsupported emoji at the API boundary.
-      emoji ? [{ type: "emoji", emoji } as ReactionType] : [],
+    // Route through the same migration retry as the send path: a group
+    // upgraded to a supergroup rejects the old chat id with
+    // migrate_to_chat_id, and a direct API call never retries there.
+    const chat = { id: this.currentChatId(chatId) };
+    await this.sendWithRetry(
+      () =>
+        this.bot.telegram.setMessageReaction(
+          chat.id,
+          messageId,
+          // Telegram only accepts a fixed set of reaction emoji (the `TelegramEmoji`
+          // union); the connector passes an arbitrary string, so cast and let
+          // Telegram reject an unsupported emoji at the API boundary.
+          emoji ? [{ type: "emoji", emoji } as ReactionType] : [],
+        ),
+      undefined,
+      chat,
     );
     logger.info(
       {
