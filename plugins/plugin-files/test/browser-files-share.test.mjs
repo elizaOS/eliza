@@ -232,3 +232,33 @@ for (const method of ["shareMany", "saveMany"]) {
     assert.deepEqual(calls.urls, []);
   });
 }
+
+test("single-file share hands the selected file to Web Share instead of downloading it", async () => {
+  const { files, calls, binary } = fixture(),
+    selection = await files.select({ id: "file" });
+  const result = await files.shareSelected({
+    selectionId: selection.selectionId,
+  });
+  assert.equal(result.status, "opened");
+  assert.equal(calls.shared.length, 1);
+  const file = calls.shared[0].files[0];
+  assert.ok(file instanceof File);
+  assert.equal(file.name, "二.bin");
+  assert.deepEqual([...new Uint8Array(await file.arrayBuffer())], [...binary]);
+  assert.deepEqual(calls.downloaded, []);
+});
+
+test("single-file share keeps the download when the browser has no Web Share", async () => {
+  const { files, calls } = fixture(),
+    selection = await files.select({ id: "file" });
+  Object.defineProperty(globalThis, "navigator", {
+    configurable: true,
+    value: {},
+  });
+  const result = await files.shareSelected({
+    selectionId: selection.selectionId,
+  });
+  assert.equal(result.status, "opened");
+  assert.deepEqual(calls.shared, []);
+  assert.deepEqual(calls.downloaded, ["二.bin"]);
+});

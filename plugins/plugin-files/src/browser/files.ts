@@ -938,11 +938,18 @@ export class BrowserFiles extends WebPlugin {
     this.viewers.set(input.selectionId, close);
     return { status: "opened", message: "Document opened." };
   }
+  /** Share the selected file through the Web Share API, as bulk sharing does.
+   * A host without the files share capability keeps the download path. */
   async shareSelected(input: { selectionId: string }) {
     const row = await this.selected(input.selectionId),
-      link = document.createElement("a");
-    const url = this.urls.get(input.selectionId);
+      url = this.urls.get(input.selectionId);
     if (!url) throw Error("Select this file again.");
+    const file = new File([row.blob], row.name, { type: row.mimeType });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return { status: "opened" };
+    }
+    const link = document.createElement("a");
     link.href = url;
     link.download = row.name;
     document.body.append(link);
