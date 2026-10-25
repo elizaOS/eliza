@@ -399,3 +399,131 @@ it("unloading a plugin's default account keeps another plugin's named account on
 	}
 	expect(delivered).toEqual(["connector-work", "connector-work"]);
 });
+
+type DefaultRouteApi = "connector" | "legacy";
+
+/** Registers the default account of a source through either API; both write
+ * the same route key. Each send records the plugin it reached. */
+function registerDefaultRoute(
+	runtime: IAgentRuntime,
+	api: DefaultRouteApi,
+	source: string,
+	sendHandler: () => Promise<void>,
+): void {
+	if (api === "connector") {
+		runtime.registerMessageConnector({ source, sendHandler });
+	} else {
+		runtime.registerSendHandler(source, sendHandler);
+	}
+}
+
+function defaultRoutePlugin(
+	name: string,
+	routes: Record<string, DefaultRouteApi>,
+	delivered: string[],
+): Plugin {
+	class DefaultRouteService extends Service {
+		static serviceType = `${name}_service`;
+		capabilityDescription = "Default route fixture";
+		static async start(runtime: IAgentRuntime): Promise<Service> {
+			return new DefaultRouteService(runtime);
+		}
+		async stop(): Promise<void> {}
+		static registerSendHandlers(runtime: IAgentRuntime): void {
+			for (const [source, api] of Object.entries(routes)) {
+				registerDefaultRoute(runtime, api, source, async () => {
+					delivered.push(name);
+				});
+			}
+		}
+	}
+	return {
+		name,
+		description: "Registers default connector routes",
+		services: [DefaultRouteService],
+	};
+}
+
+for (const [earlierApi, laterApi] of [
+	["connector", "legacy"],
+	["legacy", "connector"],
+] as const) {
+	it(`unloading a plugin's ${earlierApi} keeps the default route another plugin's later ${laterApi} registration took over`, async () => {
+		const { createInitializedRuntime } = await import("./initialized-runtime");
+		const runtime = await createInitializedRuntime({
+			character: { name: "Teardown mixed connector APIs", bio: [] },
+			logLevel: "fatal",
+		});
+		const delivered: string[] = [];
+
+		await runtime.registerPlugin(
+			defaultRoutePlugin(
+				"route-earlier",
+				{ "mixed-chat": earlierApi },
+				delivered,
+			),
+		);
+		await runtime.getServiceLoadPromise("route-earlier_service");
+		await runtime.registerPlugin(
+			defaultRoutePlugin("route-later", { "mixed-chat": laterApi }, delivered),
+		);
+		await runtime.getServiceLoadPromise("route-later_service");
+
+		await runtime.unloadPlugin("route-earlier");
+
+		// Both APIs write the source's default route key, so the later
+		// registration owns it whichever API made it.
+		expect(connectorSources(runtime).message).toEqual(["mixed-chat:"]);
+		await runtime.sendMessageToTarget(
+			{ source: "mixed-chat" },
+			{ text: "earlier unloaded" },
+		);
+		expect(delivered).toEqual(["route-later"]);
+
+		await runtime.unloadPlugin("route-later");
+
+		expect(connectorSources(runtime).message).toEqual([]);
+		await expect(
+			runtime.sendMessageToTarget(
+				{ source: "mixed-chat" },
+				{ text: "both unloaded" },
+			),
+		).rejects.toMatchObject({ code: SEND_HANDLER_NOT_FOUND });
+	});
+}
+
+it("unloading a plugin keeps a default route the host registered over it", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Teardown host connector", bio: [] },
+		logLevel: "fatal",
+	});
+	const delivered: string[] = [];
+	const routes = {
+		"host-chat": "connector",
+		"host-legacy": "legacy",
+	} as const;
+
+	await runtime.registerPlugin(
+		defaultRoutePlugin("route-plugin", routes, delivered),
+	);
+	await runtime.getServiceLoadPromise("route-plugin_service");
+	// Outside plugin context, with the other API than the plugin used.
+	registerDefaultRoute(runtime, "legacy", "host-chat", async () => {
+		delivered.push("host");
+	});
+	registerDefaultRoute(runtime, "connector", "host-legacy", async () => {
+		delivered.push("host");
+	});
+
+	await runtime.unloadPlugin("route-plugin");
+
+	expect(connectorSources(runtime).message).toEqual([
+		"host-chat:",
+		"host-legacy:",
+	]);
+	for (const source of Object.keys(routes)) {
+		await runtime.sendMessageToTarget({ source }, { text: "plugin unloaded" });
+	}
+	expect(delivered).toEqual(["host", "host"]);
+});

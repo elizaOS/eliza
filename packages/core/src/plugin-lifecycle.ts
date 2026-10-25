@@ -124,7 +124,6 @@ type RuntimePrivateState = {
 		ServiceTypeName,
 		RuntimeServiceRegistrationStatus
 	>;
-	sendHandlers: Map<string, RuntimeSendHandler>;
 	models: Map<string, RuntimeModelHandlerRecord[]>;
 	_runServiceStart?: (
 		key: ServiceTypeName,
@@ -219,7 +218,32 @@ function getCapturingOwnership(
  * The connector registry keeps the latest registration for a
  * (source, accountId) key, so the plugin that made it owns the key: an
  * earlier owner's unload must not remove a connector it no longer provides.
+ * `registerSendHandler` writes the same key as a default-account message
+ * connector, so a registration through either API takes the default key from
+ * both ownership lists. A registration outside plugin context releases the key
+ * from every plugin and records no owner.
  */
+function releaseConnectorKey(
+	runtime: RuntimeWithPluginLifecycle,
+	owner: PluginOwnership | null,
+	kind: "messageConnectors" | "postConnectors",
+	source: string,
+	accountId: string | undefined,
+): void {
+	const sameKey = (connector: { source: string; accountId?: string }) =>
+		connector.source === source && connector.accountId === accountId;
+	const defaultMessageKey = kind === "messageConnectors" && !accountId;
+	for (const other of getPluginOwnershipStore(runtime).values()) {
+		if (other === owner) continue;
+		const index = other[kind].findIndex(sameKey);
+		if (index >= 0) other[kind].splice(index, 1);
+		const sourceIndex = defaultMessageKey
+			? other.sendHandlerSources.indexOf(source)
+			: -1;
+		if (sourceIndex >= 0) other.sendHandlerSources.splice(sourceIndex, 1);
+	}
+}
+
 function claimConnector(
 	runtime: RuntimeWithPluginLifecycle,
 	kind: "messageConnectors" | "postConnectors",
@@ -232,13 +256,24 @@ function claimConnector(
 	const sameKey = (connector: { source: string; accountId?: string }) =>
 		connector.source === source && connector.accountId === accountId;
 	const ownership = getCapturingOwnership(runtime);
-	for (const other of getPluginOwnershipStore(runtime).values()) {
-		if (other === ownership) continue;
-		const index = other[kind].findIndex(sameKey);
-		if (index >= 0) other[kind].splice(index, 1);
-	}
+	releaseConnectorKey(runtime, ownership, kind, source, accountId);
 	if (!ownership || ownership[kind].some(sameKey)) return;
 	ownership[kind].push(accountId ? { source, accountId } : { source });
+}
+
+function claimSendHandlerSource(
+	runtime: RuntimeWithPluginLifecycle,
+	source: string,
+): void {
+	const ownership = getCapturingOwnership(runtime);
+	releaseConnectorKey(
+		runtime,
+		ownership,
+		"messageConnectors",
+		source,
+		undefined,
+	);
+	if (ownership) pushUniqueString(ownership.sendHandlerSources, source);
 }
 
 function pushUniqueRef<T extends object>(items: T[], item: T): void {
@@ -1094,13 +1129,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	if (originalRegisterSendHandler) {
 		privateState.registerSendHandler = ((source, handler) => {
-			const hadSourceAlready = privateState.sendHandlers.has(source);
 			originalRegisterSendHandler(source, handler);
-			if (hadSourceAlready) return;
-
-			const ownership = getCapturingOwnership(runtimeWithLifecycle);
-			if (!ownership) return;
-			pushUniqueString(ownership.sendHandlerSources, source);
+			claimSendHandlerSource(runtimeWithLifecycle, source.trim());
 		}) as typeof privateState.registerSendHandler;
 	}
 
