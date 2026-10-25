@@ -355,6 +355,9 @@ export const twilioAdapter: PlatformAdapter = {
       messageId: event.MessageSid,
       chatId: event.From,
       senderId: normalizeSenderIdentity(event.From),
+      // Like Blooio's receivingNumber: the line the message arrived on, so
+      // Network turns route per-app lines instead of sending `to: null`.
+      receivingNumber: normalizeSenderIdentity(event.To),
       senderName: event.ProfileName,
       text:
         mediaUrls.length > 0 && !text
