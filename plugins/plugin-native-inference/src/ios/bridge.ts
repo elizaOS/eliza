@@ -2452,7 +2452,13 @@ function upsertInstalledModel(model: InstalledModelEntry): void {
       `iOS local-inference model path must live under ${localInferenceRootPath()}: ${model.path}`,
     );
   }
-  const existing = readInstalledModels().filter(
+  const snapshot = readRegistrySnapshot();
+  if (!snapshot.ok) {
+    throw new Error(
+      `iOS local-inference registry is unreadable, refusing to overwrite it: ${snapshot.reason}`,
+    );
+  }
+  const existing = snapshot.models.filter(
     (entry) =>
       entry.id !== model.id &&
       entry.path !== model.path &&
@@ -2576,10 +2582,50 @@ function verifyInstalledModelFile(modelPath: string): VerifyResult {
     currentBytes,
   };
 }
-function readInstalledModels(): InstalledModelEntry[] {
-  const parsed = readJsonObjectFile(localInferenceRegistryPath());
-  const rawModels = Array.isArray(parsed.models) ? parsed.models : [];
-  const fromRegistry = rawModels
+/**
+ * The persisted registry as read from disk, or the reason those bytes
+ * cannot be trusted.
+ *
+ * `readJsonObjectFile` answers `{}` for an absent file, an unparseable file and
+ * a file whose `models` field has the wrong shape. That is fine for read-only
+ * callers that fall back to other sources. A caller that writes the registry
+ * back cannot use that answer: it would persist the damage as "no models".
+ * Only ENOENT means "there is no state yet". The entries are returned here so
+ * the snapshot that is validated is the same one that is written back.
+ */
+function readRegistrySnapshot():
+  | { ok: true; models: InstalledModelEntry[] }
+  | { ok: false; reason: string } {
+  let raw: string;
+  try {
+    raw = readFileSync(localInferenceRegistryPath(), "utf8");
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "ENOENT") return { ok: true, models: [] };
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "file does not contain a JSON object" };
+  }
+  const rawModels = (parsed as Record<string, unknown>).models;
+  // An absent field is a legitimate empty registry; a present one must be an array.
+  if (rawModels === undefined) return { ok: true, models: [] };
+  if (!Array.isArray(rawModels)) {
+    return { ok: false, reason: "models is not an array" };
+  }
+  const models = rawModels
     .map((entry): InstalledModelEntry | null => {
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
         return null;
@@ -2618,6 +2664,11 @@ function readInstalledModels(): InstalledModelEntry[] {
       };
     })
     .filter((entry): entry is InstalledModelEntry => Boolean(entry));
+  return { ok: true, models };
+}
+function readInstalledModels(): InstalledModelEntry[] {
+  const snapshot = readRegistrySnapshot();
+  const fromRegistry = snapshot.ok ? snapshot.models : [];
   const bundledModelsPath = bundledLocalInferenceModelsPath();
   const scanned = [
     ...(bundledModelsPath ? scanGgufFiles(bundledModelsPath) : []),
