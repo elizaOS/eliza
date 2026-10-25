@@ -299,6 +299,7 @@ jobs:
           packages/cloud/services/gateway-webhook/__tests__/blooio-adapter.test.ts
           packages/cloud/services/gateway-webhook/__tests__/network-takeover.test.ts
           packages/cloud/scripts/prepare-gateway-release.test.ts
+          packages/cloud/scripts/cloudflare-gateway-deployment.test.ts
 
       - name: Verify CLI account confirmation and account-switch regressions
         if: steps.affected.outputs.source == 'true'
