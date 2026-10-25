@@ -149,12 +149,14 @@ export async function getBnbUsdQuote(): Promise<BnbPriceQuote> {
     try {
       return await fetchFromCoinGecko();
     } catch (geckoError) {
-      const chainlinkMsg =
-        chainlinkError instanceof Error ? chainlinkError.message : String(chainlinkError);
-      const geckoMsg = geckoError instanceof Error ? geckoError.message : String(geckoError);
-      throw new Error(
-        `BNB price oracle unavailable. Chainlink: ${chainlinkMsg}. CoinGecko: ${geckoMsg}.`,
-      );
+      // The Chainlink error text includes the RPC URL; log the details and
+      // throw a message that is safe to show.
+      logger.error("[bnb-price-oracle] Chainlink and CoinGecko both failed", {
+        chainlink:
+          chainlinkError instanceof Error ? chainlinkError.message : String(chainlinkError),
+        coingecko: geckoError instanceof Error ? geckoError.message : String(geckoError),
+      });
+      throw new Error("BNB price oracle unavailable. Try again shortly.");
     }
   }
 }

@@ -10,6 +10,7 @@ import { ORGANIZATION_CREDIT_CHECKOUT_LIMITS } from "@elizaos/cloud-shared/billi
 import {
   ApiError,
   failureResponse,
+  isInfrastructureError,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   moneyRateLimit,
@@ -90,7 +91,10 @@ app.post("/", moneyRateLimit(RateLimitPresets.STRICT), async (c) => {
     // A rejected credential or inactive account is a typed 401/403, not a
     // client-input fault; the generic 400 below is only for payment-service
     // errors, mirroring the sibling [id]/attach-tx/confirm catches.
-    if (error instanceof ApiError) {
+    if (
+      error instanceof ApiError ||
+      (error instanceof Error && isInfrastructureError(error))
+    ) {
       return failureResponse(c, error);
     }
     logger.error("[Direct Crypto Payments API] Create payment error:", error);

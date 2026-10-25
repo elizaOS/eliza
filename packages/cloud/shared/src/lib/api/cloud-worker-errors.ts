@@ -7,6 +7,7 @@
 
 import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { BaseError } from "viem";
 import { ZodError } from "zod";
 
 export type ApiErrorCode =
@@ -126,12 +127,16 @@ export function safeUnknownErrorMessage(error: unknown): string {
  * a 4xx and leaked verbatim to the client. Detect them structurally and force a
  * generic 500.
  */
-function isInfrastructureError(error: Error): boolean {
+export function isInfrastructureError(error: Error): boolean {
   // postgres.js / pg attach a SQLSTATE string on `code` (e.g. "42703").
   const code = (error as { code?: unknown }).code;
   if (typeof code === "string" && /^[0-9A-Z]{5}$/.test(code)) return true;
+  // viem errors carry the RPC URL (often with an API key in the path) and the
+  // request body; their text must never reach a caller.
+  if (error instanceof BaseError) return true;
   const message = error.message.toLowerCase();
   return (
+    message.includes("\nurl: ") ||
     message.includes("password authentication failed") ||
     message.includes("authentication failed for user") ||
     message.startsWith("failed query:") ||
