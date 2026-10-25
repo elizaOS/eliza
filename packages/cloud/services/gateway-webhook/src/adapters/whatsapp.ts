@@ -297,6 +297,11 @@ export const whatsappAdapter: PlatformAdapter = {
             senderId: msg.from,
             senderName: contactMap.get(msg.from),
             text: msg.text.body,
+            // Receiving line, distinct from the sender: the business number
+            // the message was sent to, so Network turns carry it instead of
+            // falling back to null (the Twilio adapter gained the same field
+            // in #37588; WhatsApp was left behind).
+            receivingNumber: value.metadata.display_phone_number,
             rawPayload: data,
           };
         }
