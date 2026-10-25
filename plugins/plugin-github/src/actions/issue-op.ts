@@ -496,11 +496,19 @@ export const issueOpAction: Action = {
       options,
     );
     const prompt = `${preview} Reply yes to confirm or no to cancel.`;
+    // The pending key must identify the specific operation: without the
+    // issue number, two pending confirmations in one repo share a key and
+    // the second request is swallowed by the first one's confirmation turn.
+    // Create has no number yet, so its title distinguishes it instead.
+    const pendingKey =
+      "number" in request
+        ? `${op}:${repo}:${request.number}`
+        : `${op}:${repo}:create:${request.title}`;
     const decision = await confirmPreviewedRequest({
       runtime,
       message,
       actionName: "GITHUB_ISSUE_OP",
-      pendingKey: `${op}:${repo}`,
+      pendingKey,
       prompt,
       callback,
       request: { repo, request, selection },
