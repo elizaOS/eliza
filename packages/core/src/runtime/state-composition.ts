@@ -92,6 +92,12 @@ export class ProviderStateComposer {
 		skipCache = false,
 		refreshProviders: string[] | null = null,
 	): Promise<State> {
+		// The running trajectory owns this composition. A stored row keeps the
+		// step of the turn that wrote it, and the recorder rejects a capture
+		// against a step it already closed, so the stored step is only the
+		// attribution when no trajectory is running (a background job that
+		// reloaded the row composes under its own step).
+		const runningTrajectoryStepId = getTrajectoryContext()?.trajectoryStepId;
 		const trajectoryStepIdFromMessage =
 			typeof message.metadata === "object" &&
 			message.metadata !== null &&
@@ -99,10 +105,13 @@ export class ProviderStateComposer {
 				? (message.metadata as { trajectoryStepId?: string }).trajectoryStepId
 				: undefined;
 		const trajectoryStepId =
-			typeof trajectoryStepIdFromMessage === "string" &&
-			trajectoryStepIdFromMessage.trim() !== ""
-				? trajectoryStepIdFromMessage
-				: getTrajectoryContext()?.trajectoryStepId;
+			typeof runningTrajectoryStepId === "string" &&
+			runningTrajectoryStepId.trim() !== ""
+				? runningTrajectoryStepId
+				: typeof trajectoryStepIdFromMessage === "string" &&
+						trajectoryStepIdFromMessage.trim() !== ""
+					? trajectoryStepIdFromMessage
+					: undefined;
 
 		// Recording is observational: it must neither blank cached state nor force
 		// cached providers to execute again. Reused providers are logged as cache

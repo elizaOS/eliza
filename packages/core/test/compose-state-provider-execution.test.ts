@@ -678,6 +678,46 @@ describe("composeState provider execution", () => {
 		await adapter.close();
 	});
 
+	it("records provider captures of a stored message in the running trajectory", async () => {
+		const runtime = await createRuntime({
+			character: { name: "stored-message-trajectory" } as Character,
+		});
+		const accessed: [provider: string, stepId: string][] = [];
+		class ProviderAccessRecorder extends Service {
+			static override serviceType = "trajectories";
+			capabilityDescription = "records provider access rows";
+			static override async start(owner: IAgentRuntime) {
+				return new ProviderAccessRecorder(owner);
+			}
+			async stop() {}
+			logProviderAccess(access: { providerName: string; stepId: string }) {
+				accessed.push([access.providerName, access.stepId]);
+			}
+		}
+		await runtime.registerService(ProviderAccessRecorder);
+		runtime.registerProvider({
+			name: "STORED_CONTEXT",
+			get: async () => ({ text: "stored context" }),
+		});
+		// A row loaded from storage keeps the step of the turn that wrote it. A
+		// background run composes that row again under its own, running step, and
+		// the recorder rejects a capture against the long-closed one.
+		const stored: Memory = {
+			...makeMessage("31313131-3131-3131-3131-313131313131"),
+			metadata: { type: "message", trajectoryStepId: "closed-step" },
+		};
+
+		await runWithTrajectoryContext(
+			{
+				trajectoryId: "background-trajectory",
+				trajectoryStepId: "running-step",
+			},
+			() => runtime.composeState(stored, ["STORED_CONTEXT"], true, true),
+		);
+
+		expect(accessed).toEqual([["STORED_CONTEXT", "running-step"]]);
+	});
+
 	it("does not start provider work for an owner that was already cancelled", async () => {
 		const runtime = await createRuntime({
 			character: { name: "provider-pre-aborted-owner" } as Character,
