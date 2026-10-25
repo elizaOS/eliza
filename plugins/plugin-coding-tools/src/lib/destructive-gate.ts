@@ -564,6 +564,8 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
     // shell refuses the offending line and aborts, so only lines already
     // completed can have executed. Reserved words, assignment prefixes
     // (arrays), and function definitions keep the ordinary analyzed reading.
+    // Inside `[[ ... ]]` bash reads the `=~` operand as a regular expression,
+    // so `^(a|b)` is valid there and the line runs: fail closed instead.
     if (dialect === "posix" && char === "(" && !boundary) {
       const previous = result.tokens[result.tokens.length - 1];
       const previousWord =
@@ -574,6 +576,15 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
         !POSIX_RESERVED_WORDS.has(previousWord) &&
         !/^[\t ]*\)/.test(source.slice(index + 1))
       ) {
+        if (
+          result.tokens.some(
+            (token) => token.kind === "word" && token.value === "[[",
+          )
+        ) {
+          result.error =
+            "conditional regular expression is not statically supported";
+          break;
+        }
         let keep = result.tokens.length;
         while (keep > 0) {
           const token = result.tokens[keep - 1];

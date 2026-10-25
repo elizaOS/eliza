@@ -5034,6 +5034,29 @@ describeIfPosix("destructive-bulk scanner integration", () => {
     }
   });
 
+  it("blocks a delete after a [[ =~ ]] regex group before it deletes a real fixture", async () => {
+    const target = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-regex-group-"),
+    );
+    const quotedTarget = `'${target.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean the build output"),
+        undefined,
+        {
+          command: `[[ build =~ ^(build|dist)$ ]] && rm -rf ${quotedTarget}`,
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
   it("blocks a quote-composed executable before it deletes a real fixture", async () => {
     const target = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-quoted-command-"),
