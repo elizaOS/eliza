@@ -1037,6 +1037,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
   return (
     under("/api/memory") ||
     under("/api/memories") ||
+    // The workbench overview serves every trigger's full instructions,
+    // the same content the owner-gated trigger routes protect — so
+    // this one aggregate route is owner-only. (The VFS sub-path is
+    // gated separately and is untouched here.)
+    pathname === "/api/workbench/overview" ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
     // Whole-agent data: export/snapshot carry the memories and secrets,
