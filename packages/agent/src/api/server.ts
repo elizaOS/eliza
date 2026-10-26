@@ -1060,6 +1060,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Subscription rewiring replaces listened channels, overwrites the
+        // Discord owner contact, and registers an escalation channel.
+        under("/api/discord") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
