@@ -19,7 +19,7 @@
 export class SingleFlightMemo<V, Meta = undefined> {
 	private readonly entries = new Map<
 		string,
-		{ at: number; meta: Meta; promise: Promise<V> }
+		{ at: number; pending: boolean; meta: Meta; promise: Promise<V> }
 	>();
 
 	constructor(
@@ -27,10 +27,12 @@ export class SingleFlightMemo<V, Meta = undefined> {
 		private readonly maxEntries: number,
 	) {}
 
-	/** The live (unexpired) entry for `key`, or null. Never triggers a fetch. */
+	/** The pending or unexpired entry for `key`, or null. Never triggers a fetch. */
 	peek(key: string): { meta: Meta; promise: Promise<V> } | null {
 		const entry = this.entries.get(key);
-		if (!entry || Date.now() - entry.at >= this.ttlMs) return null;
+		if (!entry || (!entry.pending && Date.now() - entry.at >= this.ttlMs)) {
+			return null;
+		}
 		return entry;
 	}
 
@@ -40,20 +42,26 @@ export class SingleFlightMemo<V, Meta = undefined> {
 	 */
 	put(key: string, meta: Meta, promise: Promise<V>): Promise<V> {
 		// error-policy:J5 The unchanged promise is returned to every caller; this
-		// observer only evicts a rejected single-flight entry so it can be retried.
-		promise.catch(() => {
-			// Evict only if this promise is still the resident entry — a newer
-			// fetch stored after invalidation must not be dropped by an old
-			// rejection arriving late.
-			if (this.entries.get(key)?.promise === promise) {
-				this.entries.delete(key);
-			}
-		});
+		// observer marks settlement and evicts rejected entries so they can be retried.
+		const entry = { at: Date.now(), pending: true, meta, promise };
+		promise.then(
+			() => {
+				entry.pending = false;
+			},
+			() => {
+				// Evict only if this promise is still the resident entry — a newer
+				// fetch stored after invalidation must not be dropped by an old
+				// rejection arriving late.
+				if (this.entries.get(key)?.promise === promise) {
+					this.entries.delete(key);
+				}
+			},
+		);
 		if (!this.entries.has(key) && this.entries.size >= this.maxEntries) {
 			const oldest = this.entries.keys().next().value;
 			if (oldest !== undefined) this.entries.delete(oldest);
 		}
-		this.entries.set(key, { at: Date.now(), meta, promise });
+		this.entries.set(key, entry);
 		return promise;
 	}
 
