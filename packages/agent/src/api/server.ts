@@ -1060,6 +1060,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Scheduled-task lifecycle: create, edit, fire, snooze, skip,
+        // dismiss, escalate, and reopen all mutate the owner's reminders.
+        // Scoped to scheduled-tasks only: other lifeops namespaces have
+        // their own auth (including guest flows).
+        under("/api/lifeops/scheduled-tasks") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
