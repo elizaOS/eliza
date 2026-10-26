@@ -1060,6 +1060,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Discord local-connector setup: a guest session can disconnect
+        // the owner's Discord session (session file deleted) or re-trigger
+        // its authorization flow. Scoped to this prefix only.
+        under("/api/setup/discord") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
