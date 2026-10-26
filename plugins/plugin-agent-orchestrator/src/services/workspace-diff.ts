@@ -399,11 +399,21 @@ export async function captureChangeSet(
       .map((file) => toWorkdirRelative(workdir, file))
       .filter((file) => file.length > 0),
   );
+  // A workdir below the repository root (a package in a monorepo) reads Git
+  // paths relative to itself, like the tool paths. The spawn baseline keeps
+  // root-relative paths, the form the residuals gate compares with porcelain.
+  const prefix = (await git(workdir, ["rev-parse", "--show-prefix"])).replace(
+    /\n$/,
+    "",
+  );
   const dirtyAtSpawn = new Set(
-    baselineDirty.filter((file) => !agentWrittenSet.has(file)),
+    baselineDirty
+      .filter((file) => file.startsWith(prefix))
+      .map((file) => file.slice(prefix.length))
+      .filter((file) => !agentWrittenSet.has(file)),
   );
   const allTracked = parseNameStatus(
-    await git(workdir, ["diff", "--name-status", "-z", base]),
+    await git(workdir, ["diff", "--name-status", "-z", "--relative", base]),
   );
   const tracked = allTracked.filter((file) => !dirtyAtSpawn.has(file));
   const agentWritten = [...agentWrittenSet];
