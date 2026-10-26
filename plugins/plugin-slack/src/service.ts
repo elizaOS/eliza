@@ -3474,9 +3474,17 @@ export class SlackService extends Service implements ISlackService {
       target.roomId ??
       room?.id ??
       (await this.getRoomId(channelId, threadTs, accountId));
+    // The per-turn chat-context hook runs on every planned turn, and the
+    // provider strips recentMessages from the prompt anyway, so this read
+    // is diagnostics-only. Bound it: without a limit the store returns
+    // the room's entire history and the cost of a turn grows forever.
+    // The query orders newest-first and the result is reversed below,
+    // so the bound keeps the newest rows in chronological order
+    // (mirrors the Telegram whole-room cap).
     const memories = await context.runtime.getMemories({
       tableName: "messages",
       roomId,
+      limit: 15000,
       orderBy: "createdAt",
       orderDirection: "desc",
     });
