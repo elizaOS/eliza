@@ -60,6 +60,8 @@ export class AgentEventService extends Service {
 
 	/** Event listeners */
 	private eventListeners = new Set<AgentEventListener>();
+	private pendingEvents: AgentEventPayload[] = [];
+	private dispatching = false;
 
 	/** Heartbeat event listeners */
 	private heartbeatListeners = new Set<HeartbeatEventListener>();
@@ -171,7 +173,20 @@ export class AgentEventService extends Service {
 			seq: nextSeq,
 			ts: Date.now(),
 		};
+		this.pendingEvents.push(enriched);
+		if (this.dispatching) return;
+		this.dispatching = true;
+		try {
+			for (let index = 0; index < this.pendingEvents.length; index++) {
+				this.dispatchEvent(this.pendingEvents[index]);
+			}
+		} finally {
+			this.pendingEvents.length = 0;
+			this.dispatching = false;
+		}
+	}
 
+	private dispatchEvent(enriched: AgentEventPayload): void {
 		const errors: Array<{ listener: AgentEventListener; error: unknown }> = [];
 		for (const listener of this.eventListeners) {
 			try {
@@ -197,9 +212,9 @@ export class AgentEventService extends Service {
 		}
 
 		// If any listeners failed, emit an error event (but only if this isn't already an error event)
-		if (errors.length > 0 && event.stream !== "error") {
+		if (errors.length > 0 && enriched.stream !== "error") {
 			this.emit({
-				runId: event.runId,
+				runId: enriched.runId,
 				stream: "error",
 				data: {
 					type: "warning",
@@ -207,7 +222,7 @@ export class AgentEventService extends Service {
 					code: "LISTENER_ERROR",
 					recoverable: true,
 				},
-				sessionKey: event.sessionKey,
+				sessionKey: enriched.sessionKey,
 			});
 		}
 	}
