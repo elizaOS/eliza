@@ -3606,6 +3606,7 @@ export class RemindersDomain {
       const result = await channel.send({
         target,
         message: args.message,
+        idempotencyKey: `lifeops-checkin:${args.kind}:${args.reportId}`,
         metadata: {
           ...args.metadata,
           checkinKind: args.kind,

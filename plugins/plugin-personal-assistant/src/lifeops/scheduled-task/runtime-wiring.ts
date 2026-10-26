@@ -1356,7 +1356,10 @@ export function createProductionScheduledTaskDispatcher(opts: {
           };
         }
       } else {
-        result = await channel.send(payload);
+        result = await channel.send({
+          ...payload,
+          idempotencyKey: dispatchIdempotencyKey,
+        });
       }
       if (result.ok) {
         return applyDispatchPolicy({
