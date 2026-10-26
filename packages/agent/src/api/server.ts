@@ -1071,7 +1071,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // A native PCM turn runs the full on-device voice pipeline
+        // (ASR, model turn, spoken reply) on the owner's device. Exact
+        // path only: sibling /api/voice/* streaming routes carry their
+        // own compat-token auth and must not be swept into this gate.
+        pathname === "/api/voice/native-pcm-turn"))
   );
 }
 
