@@ -596,7 +596,11 @@ export class DeviceActionService {
         assertHostCurrent,
       );
       assertCurrent();
-      if (!originalReadRequestMatches(claimed.binding, original))
+      if (
+        !originalReadRequestMatches(claimed.binding, original, (text) =>
+          this.runtime.redactSecrets(text),
+        )
+      )
         throw new DeviceActionError("Original read request changed");
       return claimed.binding.reply;
     }
@@ -606,7 +610,11 @@ export class DeviceActionService {
       const saved = await this.runtime.getMemoryById(
         binding.origin.original.id,
       );
-      if (!originalReadRequestMatches(binding, saved))
+      if (
+        !originalReadRequestMatches(binding, saved, (text) =>
+          this.runtime.redactSecrets(text),
+        )
+      )
         throw new DeviceActionError("Original read request changed");
       await this.access(c, async (q, row, tx) => {
         const current = await this.boundReadCompletion(

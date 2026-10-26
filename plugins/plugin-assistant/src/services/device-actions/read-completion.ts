@@ -212,21 +212,28 @@ export function deviceReadHostContextRevision(
   if (typeof value !== "string" || value.length > 256) fail();
   return value;
 }
+/** The capture stores the request text after `redactSecrets`, so the check
+ * applies the same redaction to the live memory text. Comparing raw bytes
+ * would report an unchanged request as changed whenever it named a secret. */
 export function originalReadRequestMatches(
   binding: DeviceReadCompletion,
   message: Memory | null,
+  redact: (text: string) => string,
 ): boolean {
   const original = binding.origin.original,
     marker = message
       ? readDurableConversationChatMarker(message.content.chatIdempotency)
       : null;
+  const text = message?.content.text;
   return (
     !!message &&
     message.id === original.id &&
     message.agentId === binding.agentId &&
     message.entityId === original.entityId &&
     message.roomId === original.roomId &&
-    message.content.text === original.content.text &&
+    (typeof text === "string"
+      ? redact(text) === original.content.text
+      : text === original.content.text) &&
     message.content.source === original.content.source &&
     message.content.channelType === original.content.channelType &&
     message.content.inReplyTo === original.content.inReplyTo &&

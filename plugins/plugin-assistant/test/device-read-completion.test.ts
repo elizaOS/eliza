@@ -65,7 +65,12 @@ async function createTable(
   );
 }
 async function fixture(
-  options: { selected?: boolean; hostRevision?: string | null } = {},
+  options: {
+    selected?: boolean;
+    hostRevision?: string | null;
+    originalText?: string;
+    mask?: string;
+  } = {},
 ) {
   vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
   const pg = new PGlite();
@@ -108,7 +113,8 @@ async function fixture(
     db: drizzle(pg),
   } as unknown as IDatabaseAdapter);
   Object.assign(runtime, {
-    redactSecrets: (text: string) => text,
+    redactSecrets: (text: string) =>
+      options.mask ? text.replaceAll(options.mask, "[redacted]") : text,
     getSetting: (key: string) =>
       key === "ELIZA_HOST_CONTEXT_REVISION"
         ? "hostRevision" in options
@@ -165,7 +171,9 @@ async function fixture(
         clientMessageId: nonce,
         fingerprint: "e".repeat(64),
       },
-      text: "Read the synthetic QA note and quote its body.",
+      text:
+        options.originalText ??
+        "Read the synthetic QA note and quote its body.",
       source: "client_chat",
       channelType: "DM",
     },
@@ -570,6 +578,45 @@ it("refuses an expired binding and a changed original request without another re
       ),
     ).rejects.toThrow("Original read request changed");
     expect(f.model).not.toHaveBeenCalled();
+  } finally {
+    await f.pg.close();
+  }
+});
+it("matches an unchanged original request whose text the capture had to redact", async () => {
+  const token = "tok_live_9f2c41";
+  const f = await fixture({
+    originalText: `Read the synthetic QA note about ${token} and quote its body.`,
+    mask: token,
+  });
+  try {
+    const attempt = await f.apply(),
+      hint = await f.service.readCompletionHint(
+        f.credential,
+        f.outcome.request.id,
+        f.digest,
+        attempt,
+      );
+    // The capture stores the redacted request text; the live memory keeps it.
+    expect(
+      JSON.stringify(
+        (
+          await f.pg.query<{ device_read_completion: unknown }>(
+            "SELECT device_read_completion FROM approval_requests WHERE id=$1",
+            [f.outcome.request.id],
+          )
+        ).rows[0]?.device_read_completion,
+      ),
+    ).toContain("[redacted]");
+    const reply = await f.service.prepareReadReply(
+      f.credential,
+      hint!,
+      new AbortController().signal,
+    );
+    expect(reply).toMatchObject({
+      text: "Closed synthetic body.",
+      inReplyTo: f.original.id,
+    });
+    expect(f.model).toHaveBeenCalledTimes(1);
   } finally {
     await f.pg.close();
   }
