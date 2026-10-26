@@ -691,7 +691,9 @@ describe("promoted Notes execution", () => {
     },
   );
 
-  it.each([null, "latest", false, ["createdAt"]])(
+  // Bun spreads an array row into positional arguments, so the array payload
+  // needs one extra wrapper to reach the handler as a single value.
+  it.each([null, "latest", false, [["createdAt"]]])(
     "rejects invalid latestBy %j",
     async (latestBy) => {
       const runtime = await executorHarness();
