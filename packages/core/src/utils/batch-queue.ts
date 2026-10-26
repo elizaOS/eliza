@@ -279,7 +279,12 @@ export class BatchQueue<T> {
 			},
 			this.options.drainIntervalMs,
 		);
-		await this.taskDrain.start(runtime);
+		try {
+			await this.taskDrain.start(runtime);
+		} catch (error) {
+			this.taskDrain = null;
+			throw error;
+		}
 	}
 
 	async updateDrainInterval(runtime: IAgentRuntime, ms: number): Promise<void> {
