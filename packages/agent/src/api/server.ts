@@ -1039,6 +1039,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/memories") ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
+    // Workbench project files can hold the owner's secrets (a .env is
+    // the canonical example); reads disclose the same contents the
+    // writes mutate, so the read side is owner-only too.
+    under("/api/workbench/vfs") ||
     // Whole-agent data: export/snapshot carry the memories and secrets,
     // restore/import/reset replace or wipe them.
     under("/api/snapshot") ||
