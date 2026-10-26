@@ -111,8 +111,14 @@ export interface SearchFlightsRequest {
 export interface DuffelSegment {
   origin: string;
   destination: string;
+  /** Local time at the origin airport, without an offset. */
   departingAt: string;
+  /** Local time at the destination airport, without an offset. */
   arrivingAt: string;
+  /** IANA zone of the origin airport. */
+  originTimeZone: string | null;
+  /** IANA zone of the destination airport. */
+  destinationTimeZone: string | null;
   carrierIataCode: string;
   flightNumber: string;
   duration: string;
@@ -268,8 +274,8 @@ interface DuffelApiOffer {
     destination: { iata_code: string };
     duration: string;
     segments: Array<{
-      origin: { iata_code: string };
-      destination: { iata_code: string };
+      origin: { iata_code: string; time_zone?: string | null };
+      destination: { iata_code: string; time_zone?: string | null };
       departing_at: string;
       arriving_at: string;
       operating_carrier: { iata_code: string };
@@ -366,6 +372,8 @@ function mapOffer(raw: DuffelApiOffer): DuffelOffer {
       destination: seg.destination.iata_code,
       departingAt: seg.departing_at,
       arrivingAt: seg.arriving_at,
+      originTimeZone: seg.origin.time_zone ?? null,
+      destinationTimeZone: seg.destination.time_zone ?? null,
       carrierIataCode: seg.operating_carrier.iata_code,
       flightNumber: seg.flight_number ?? "",
       duration: seg.duration,
@@ -417,6 +425,8 @@ function mapOrder(raw: DuffelApiOrder): DuffelOrder {
         destination: segment.destination.iata_code,
         departingAt: segment.departing_at,
         arrivingAt: segment.arriving_at,
+        originTimeZone: segment.origin.time_zone ?? null,
+        destinationTimeZone: segment.destination.time_zone ?? null,
         carrierIataCode: segment.operating_carrier.iata_code,
         flightNumber: segment.flight_number ?? "",
         duration: segment.duration,
