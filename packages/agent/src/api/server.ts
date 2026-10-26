@@ -1037,6 +1037,13 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
   return (
     under("/api/memory") ||
     under("/api/memories") ||
+    // Orchestrator surfaces: workspace git ops run with the owner's
+    // credentials, issue writes go out under the owner's GitHub
+    // identity, and task routes mutate the owner's running coding
+    // work. Their GETs expose owner data too. All methods.
+    under("/api/workspace") ||
+    under("/api/issues") ||
+    under("/api/orchestrator") ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
     // Whole-agent data: export/snapshot carry the memories and secrets,
