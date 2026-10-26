@@ -20,6 +20,22 @@ let server: http.Server;
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
+    if (req.method === "GET" && req.url?.includes("/users/me/sessions")) {
+      // One sleep session around the recorded segments.
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          session: [
+            {
+              startTimeMillis: "0",
+              endTimeMillis: String((7.5 * HOUR_NS) / 1_000_000),
+              activityType: 72,
+            },
+          ],
+        }),
+      );
+      return;
+    }
     let body = "";
     req.on("data", (chunk) => (body += chunk));
     req.on("end", () => {

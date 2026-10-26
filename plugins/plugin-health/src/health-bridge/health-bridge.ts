@@ -460,6 +460,10 @@ async function healthKitDataPoints(
 
 const GOOGLE_FIT_AGGREGATE_URL =
   "https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate";
+const GOOGLE_FIT_SESSIONS_URL =
+  "https://www.googleapis.com/fitness/v1/users/me/sessions";
+/** Google Fit activity type of a sleep session. */
+const GOOGLE_FIT_SLEEP_ACTIVITY_TYPE = 72;
 
 type GoogleFitMetricKey =
   | "steps"
@@ -506,6 +510,43 @@ interface GoogleFitAggregateResponse {
       }>;
     }>;
   }>;
+}
+
+/**
+ * Sleep sessions that end in [startMs, endMs]. `sessions.list` filters by the
+ * session end time, so a night is found on the day the owner woke up.
+ */
+async function listGoogleFitSleepSessions(
+  accessToken: string,
+  startMs: number,
+  endMs: number,
+): Promise<Array<{ startMs: number; endMs: number }>> {
+  const url = new URL(rewriteGoogleUrlForMock(GOOGLE_FIT_SESSIONS_URL));
+  url.searchParams.set("startTime", new Date(startMs).toISOString());
+  url.searchParams.set("endTime", new Date(endMs).toISOString());
+  url.searchParams.set("activityType", String(GOOGLE_FIT_SLEEP_ACTIVITY_TYPE));
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) {
+    throw new HealthBridgeError(
+      `Google Fit request failed: HTTP ${response.status}`,
+      "google-fit",
+    );
+  }
+  const body = (await response.json()) as {
+    session?: Array<{ startTimeMillis?: string; endTimeMillis?: string }>;
+  };
+  const sessions: Array<{ startMs: number; endMs: number }> = [];
+  for (const session of body.session ?? []) {
+    const start = Number(session.startTimeMillis);
+    const end = Number(session.endTimeMillis);
+    if (Number.isFinite(start) && Number.isFinite(end) && end > start) {
+      sessions.push({ startMs: start, endMs: end });
+    }
+  }
+  return sessions;
 }
 
 async function callGoogleFitAggregate(
@@ -707,38 +748,45 @@ async function googleFitDailySummary(
     firstValueOnly: true,
   });
 
-  // Google Fit sleep lives in a separate dataset; fetch it with a dedicated call.
+  // Google Fit sleep lives in a separate dataset. A night belongs to the day
+  // it ends, so read the sleep sessions that end on this local day and then
+  // the stage segments of each whole session (Google's documented sleep read).
   try {
-    const sleepResponse = await callGoogleFitAggregate(accessToken, {
-      aggregateBy: [{ dataTypeName: "com.google.sleep.segment" }],
-      bucketByTime: { durationMillis: endMs - startMs },
-      startTimeMillis: startMs,
-      endTimeMillis: endMs,
-    });
-    const sleepBucket = sleepResponse.bucket?.[0];
-    if (sleepBucket) {
-      let sleepMs = 0;
-      for (const ds of sleepBucket.dataset ?? []) {
-        for (const point of ds.point ?? []) {
-          // Each segment's intVal is its sleep stage. Awake (1) and out of
-          // bed (3) segments are part of the session but are not sleep.
-          const stage = point.value?.[0]?.intVal;
-          if (stage === undefined || !GOOGLE_FIT_SLEEP_STAGES.has(stage)) {
-            continue;
-          }
-          const startNs = Number(point.startTimeNanos ?? "0");
-          const endNs = Number(point.endTimeNanos ?? "0");
-          if (
-            Number.isFinite(startNs) &&
-            Number.isFinite(endNs) &&
-            endNs > startNs
-          ) {
-            sleepMs += (endNs - startNs) / 1_000_000;
+    let sleepMs = 0;
+    for (const session of await listGoogleFitSleepSessions(
+      accessToken,
+      startMs,
+      endMs - 1,
+    )) {
+      const sleepResponse = await callGoogleFitAggregate(accessToken, {
+        aggregateBy: [{ dataTypeName: "com.google.sleep.segment" }],
+        bucketByTime: { durationMillis: session.endMs - session.startMs },
+        startTimeMillis: session.startMs,
+        endTimeMillis: session.endMs,
+      });
+      for (const sleepBucket of sleepResponse.bucket ?? []) {
+        for (const ds of sleepBucket.dataset ?? []) {
+          for (const point of ds.point ?? []) {
+            // Each segment's intVal is its sleep stage. Awake (1) and out of
+            // bed (3) segments are part of the session but are not sleep.
+            const stage = point.value?.[0]?.intVal;
+            if (stage === undefined || !GOOGLE_FIT_SLEEP_STAGES.has(stage)) {
+              continue;
+            }
+            const startNs = Number(point.startTimeNanos ?? "0");
+            const endNs = Number(point.endTimeNanos ?? "0");
+            if (
+              Number.isFinite(startNs) &&
+              Number.isFinite(endNs) &&
+              endNs > startNs
+            ) {
+              sleepMs += (endNs - startNs) / 1_000_000;
+            }
           }
         }
       }
-      summary.sleepHours = sleepMs / (1000 * 60 * 60);
     }
+    summary.sleepHours = sleepMs / (1000 * 60 * 60);
   } catch (error) {
     // error-policy:J4 optional secondary dataset degrade; the primary activity
     // summary already succeeded, so a failed sleep sub-fetch flags the day

@@ -29,6 +29,11 @@ const seenUrls: string[] = [];
 beforeAll(async () => {
   server = http.createServer((req, res) => {
     seenUrls.push(`http://${req.headers.host}${req.url}`);
+    if (req.method === "GET" && req.url?.includes("/users/me/sessions")) {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ session: [] }));
+      return;
+    }
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
@@ -91,8 +96,14 @@ describe("Google Fit heart-rate summary aggregation (#22062)", () => {
     expect(seenUrls.length).toBeGreaterThan(0);
     for (const url of seenUrls) {
       expect(url).toContain("127.0.0.1");
-      expect(url).toContain("/fitness/v1/users/me/dataset:aggregate");
+      expect(url).toContain("/fitness/v1/users/me/");
     }
+    expect(seenUrls.some((url) => url.includes("/dataset:aggregate"))).toBe(
+      true,
+    );
+    expect(seenUrls.some((url) => url.includes("/users/me/sessions"))).toBe(
+      true,
+    );
   });
 
   it("reports heartRateAvg as the summary point's average, not the mean of [avg,max,min]", async () => {
