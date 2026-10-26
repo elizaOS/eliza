@@ -43,7 +43,12 @@ export function policiesAllowRegister(
     "chains",
     "allowedChains",
   ]);
-  if (!chains.map(String).includes(String(chainId))) {
+  // Steward stores and enforces allowed chains as CAIP-2 ("eip155:56"). Accept
+  // that form, so a policy that lets Steward sign also passes this check.
+  if (
+    !chains.includes(`eip155:${chainId}`) &&
+    !chains.includes(String(chainId))
+  ) {
     return {
       allowed: false,
       reason: `chain ${chainId} is not allowed by Steward policy`,
