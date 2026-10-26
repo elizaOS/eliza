@@ -681,6 +681,7 @@ export async function fetchGmailMessages(
       gmailMessageId: externalId,
       gmailIsImportant: msg.isImportant,
       gmailLikelyReplyNeeded: msg.likelyReplyNeeded,
+      gmailIsUnread: msg.isUnread,
       threadId: msg.threadId,
       chatType: "dm",
       gmailAccountId: msg.grantId,
