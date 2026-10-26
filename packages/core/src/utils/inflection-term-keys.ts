@@ -20,6 +20,15 @@ export function inflectionTermKeys(term: string): string[] {
 		base = base.slice(0, -1);
 	}
 	keys.add(base);
+	// Sibilant and "-o" stems pluralize with "-es" (boxes, watches, dishes,
+	// heroes), so the single-"s" strip above leaves a trailing "e" ("boxe")
+	// and the real singular ("box") is never offered. Add it as an extra
+	// candidate form instead of replacing `base`: stems that end in "e"
+	// pluralize with a plain "-s" (houses, caches), and for those the stripped
+	// form above is already the singular.
+	if (lower.length >= 4 && /(?:[sxz]|ch|sh|o)es$/u.test(lower)) {
+		keys.add(lower.slice(0, -2));
+	}
 	for (const suffix of ["ing", "ed"]) {
 		if (base.length < suffix.length + 2 || !base.endsWith(suffix)) continue;
 		const stem = base.slice(0, -suffix.length);
