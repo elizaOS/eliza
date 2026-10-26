@@ -107,7 +107,7 @@ function sanitizeTrajectoryJsonValueInternal(
 		return normalizedScalar(value.toString(), state);
 	}
 	if (value instanceof Date) {
-		return normalizedScalar(value.toISOString(), state);
+		return normalizedScalar(value.toJSON(), state);
 	}
 	if (value instanceof Error) {
 		return sanitizeTrajectoryJsonValueInternal(
