@@ -33,8 +33,14 @@ import type {
   LifeOpsGoalDefinition,
   LifeOpsGoalReviewState,
 } from "@elizaos/contracts";
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
+  type IAgentRuntime,
+  logger,
+  resolveScheduledAtIsoInTimeZone,
+  Service,
+} from "@elizaos/core";
+import {
+  configuredDefaultTimeZone,
   getScheduledTaskRunner,
   OWNER_LOCAL_TZ,
   type ScheduledTask,
@@ -185,6 +191,7 @@ function ownerLocalCron(expression: string): ScheduledTaskTrigger {
  */
 export function checkinTriggersForGoal(
   goal: LifeOpsGoalDefinition,
+  ownerTimeZone?: string,
 ): GoalCheckinPlan[] {
   const cadence = goal.cadence;
   if (!cadence) return [];
@@ -198,7 +205,19 @@ export function checkinTriggersForGoal(
       }
       // Keyed by instant: moving the date needs a new task, because a once
       // task that has already fired can't be re-armed by an edit.
-      const atIso = new Date(dueAt).toISOString();
+      //
+      // A dueAt that states a wall clock without a zone (`2026-11-01T09:00`)
+      // does not name an instant. `Date.parse` would read it in the host
+      // process zone, so the same stored goal would fire at a different hour
+      // on a cloud host than on the owner's laptop. Read it in the owner's
+      // zone instead, the same rule the spine applies to the `owner_local`
+      // cron slots above, and read it as UTC when no zone is configured —
+      // the spine's documented fallback for `owner_local` triggers.
+      const zonedDueAt = resolveScheduledAtIsoInTimeZone(
+        dueAt,
+        ownerTimeZone ?? "UTC",
+      );
+      const atIso = new Date(zonedDueAt).toISOString();
       return [{ slotKey: `once:${atIso}`, trigger: { kind: "once", atIso } }];
     }
     case "daily": {
@@ -455,7 +474,10 @@ export class GoalsCheckinService extends Service implements GoalsCheckinSync {
     }
     const runner = this.runner();
     const nowIso = this.now().toISOString();
-    const plans = goal.status === "active" ? checkinTriggersForGoal(goal) : [];
+    const plans =
+      goal.status === "active"
+        ? checkinTriggersForGoal(goal, configuredDefaultTimeZone(this.rt()))
+        : [];
     const desired = plans.map((plan) =>
       buildCheckinTaskInput(goal, plan, nowIso),
     );
