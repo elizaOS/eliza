@@ -1,3 +1,4 @@
+import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_STT_MODEL,
   CloudflareSpeechError,
@@ -1500,12 +1501,10 @@ async function __hono_POST(c: AppContext) {
       // A clear provider rejection (the ElevenLabs SDK error carries the HTTP
       // status) proves nothing was transcribed.
       const rejectedStatus =
-        error && typeof error === "object" && "statusCode" in error
-          ? Number((error as { statusCode?: unknown }).statusCode)
-          : Number.NaN;
+        error instanceof ElevenLabsError ? error.statusCode : undefined;
       const rejected =
         isKnownUnacceptedProviderError(error) ||
-        (Number.isInteger(rejectedStatus) &&
+        (rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus));
       const settlement =
         providerWorkMayHaveStarted && settleUnknown && !rejected

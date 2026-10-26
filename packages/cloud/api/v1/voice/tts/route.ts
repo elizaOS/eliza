@@ -1,3 +1,4 @@
+import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_TTS_MAX_CHARACTERS,
   CloudflareSpeechError,
@@ -1040,15 +1041,12 @@ async function __hono_POST(c: AppContext) {
       // A clear rejection before any audio proves nothing was synthesized:
       // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
       const sdkStatus =
-        error && typeof error === "object" && "statusCode" in error
-          ? Number((error as { statusCode?: unknown }).statusCode)
-          : Number.NaN;
+        error instanceof ElevenLabsError ? error.statusCode : undefined;
       const rejected =
         (error instanceof CartesiaRestTtsError &&
           error.beforeAudio &&
           isKnownUnacceptedProviderStatus(error.status)) ||
-        (Number.isInteger(sdkStatus) &&
-          isKnownUnacceptedProviderStatus(sdkStatus));
+        (sdkStatus !== undefined && isKnownUnacceptedProviderStatus(sdkStatus));
       const settlement =
         providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
