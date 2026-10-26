@@ -158,6 +158,7 @@ export class InferencePriorityGate {
 	): Promise<T> {
 		await this.acquire(opts);
 		try {
+			opts.signal?.throwIfAborted();
 			return await fn();
 		} finally {
 			this.release();
