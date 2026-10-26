@@ -1035,6 +1035,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
   const under = (base: string) =>
     pathname === base || pathname.startsWith(`${base}/`);
   return (
+    // The database API exposes the agent's own database over HTTP:
+    // table listings and row reads, plus caller-supplied SQL that
+    // runs mutations whenever the request sets readOnly to false.
+    // Reads disclose the same store the writes mutate, so the whole
+    // prefix is owner-only.
+    under("/api/database") ||
     under("/api/memory") ||
     under("/api/memories") ||
     // Served by the memory handler from the same stored notes.
