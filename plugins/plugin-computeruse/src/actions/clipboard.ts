@@ -144,7 +144,7 @@ export const clipboardAction: Action = {
   contextGate: {
     anyOf: ["screen_time", "automation", "files"],
   },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "USE_CLIPBOARD",
     "CLIPBOARD_ACTION",
