@@ -1045,6 +1045,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Custom actions live in the owner's config, are live-registered
+    // into the runtime, and their http handlers can carry the owner's
+    // webhook secrets — reads disclose them, writes plant persistent
+    // actions the owner's agent later invokes.
+    under("/api/custom-actions") ||
     (write &&
       [
         "import",
