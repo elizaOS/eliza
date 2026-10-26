@@ -1060,6 +1060,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // MCP config writes can point the agent at an attacker-controlled
+        // remote server; stdio writes are terminal-gated but not role-gated.
+        under("/api/mcp") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
