@@ -817,6 +817,67 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 			return;
 		}
 
+		// Message components and modal submits previously bypassed the
+		// channel allowlist entirely: the block above exempts follow-up
+		// interactions, so a stale button in a channel the operator
+		// later removed from the list still ran a full agent turn
+		// there. Apply the message-path rule to them: guild channels
+		// pass only when allowlisted, threads defer to their parent,
+		// and DMs stay exempt (DM policy governs, as with messages).
+		// Slash commands keep their existing block above untouched.
+		if (
+			(isModalSubmit || isComponent) &&
+			interaction.inGuild() &&
+			service.allowedChannelIds &&
+			interaction.channelId
+		) {
+			let allowlistChannelId = interaction.channelId;
+			const channel =
+				interaction.channel ??
+				(service.client
+					? await service.client.channels
+							.fetch(interaction.channelId)
+							.catch(() => null)
+					: null);
+			if (channel?.isThread() && channel.parentId) {
+				allowlistChannelId = channel.parentId;
+			}
+			if (!service.isChannelAllowed(allowlistChannelId)) {
+				try {
+					if (!interaction.replied && !interaction.deferred) {
+						await interaction.reply({
+							content: "This interaction is not available in this channel.",
+							ephemeral: true,
+						});
+					}
+				} catch (responseError) {
+					service.runtime.logger.debug(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							error:
+								responseError instanceof Error
+									? responseError.message
+									: String(responseError),
+						},
+						"Could not send channel restriction response",
+					);
+				}
+				service.runtime.logger.debug(
+					{
+						src: "plugin:discord",
+						agentId: service.runtime.agentId,
+						channelId: interaction.channelId,
+						allowedChannelIds: service.allowedChannelIds,
+						isModalSubmit,
+						isComponent,
+					},
+					"[DiscordService] interactionCreate ignored (channel not allowed)",
+				);
+				return;
+			}
+		}
+
 		// Run custom validator if provided for slash commands
 		if (isSlashCommand && interaction.commandName) {
 			const command = service.slashCommands.find(
