@@ -999,14 +999,14 @@ jobs:
 
       - name: Install the selected API and Shared test closure once
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
-        run: bun install --filter './' --filter @elizaos/cloud-api --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
+        run: bun install --filter './' --filter @elizaos/cloud-api --filter @elizaos/cloud-shared --filter @elizaos/gateway-webhook --frozen-lockfile --ignore-scripts
 
       - name: Build the normal API dependency closure for Workerd
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
         env:
           NODE_OPTIONS: --max-old-space-size=8192
           RUN_TURBO_CONCURRENCY: "1"
-        run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/cloud-api... --output-logs=errors-only
+        run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/cloud-api... --filter=@elizaos/gateway-webhook... --concurrency=1 --output-logs=errors-only
 
       - name: Check the existing bounded general-search Workerd regression
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
@@ -1015,6 +1015,30 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           RUN_TURBO_CONCURRENCY: "1"
         run: bun test __tests__/shared-eliza-runtime.miniflare.test.ts --test-name-pattern "canonical general search uses real Core and portable SQLite while private scope never dispatches publicly" --timeout 120000
+
+      - name: Check the normal Shared caller realtime audit in its own process
+        if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
+        working-directory: packages/cloud/shared
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          RUN_TURBO_CONCURRENCY: "1"
+        run: bun --conditions=eliza-source test ./src/lib/services/shared-runtime/run-shared-agent-turn.realtime-audit.test.ts --timeout 30000
+
+      - name: Typecheck the seven changed owners with one compiler
+        if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          RUN_TURBO_CONCURRENCY: "1"
+        run: >-
+          node packages/scripts/run-turbo.ts run typecheck
+          --filter=@elizaos/core
+          --filter=@elizaos/plugin-assistant
+          --filter=@elizaos/plugin-coding-tools
+          --filter=@elizaos/cloud-shared
+          --filter=@elizaos/cloud-api
+          --filter=@elizaos/gateway-webhook
+          --filter=@elizaos/contracts
+          --concurrency=1 --output-logs=errors-only
 
       - name: Run the real Shared runtime with finite public cases
         if: ${{ inputs.shared_runtime_suite != 'workerd-general' }}
