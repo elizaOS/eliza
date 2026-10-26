@@ -1060,6 +1060,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Release-channel policy: a silent flip to nightly changes what
+        // the owner's next update installs. Status stays a GET read.
+        under("/api/update") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
