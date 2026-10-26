@@ -110,7 +110,33 @@ export class RuntimeCapabilityService
 	}
 
 	async availability(): Promise<CapabilityAvailability> {
-		return this.fallback.availability();
+		const environment = this.environment;
+		const names = ["fs", "pty", "git", "model", "plugin"] as const;
+		const routes = names.map(
+			(name) => this.pickStrategy(name) ?? this.fallback,
+		);
+		const providers = [...new Set(routes)];
+		const statuses = await Promise.all(
+			providers.map((provider) => provider.availability()),
+		);
+		const byProvider = new Map(
+			providers.map((provider, index) => [provider, statuses[index]]),
+		);
+		const capabilities = {} as CapabilityAvailability["capabilities"];
+		for (const [index, name] of names.entries()) {
+			const status = byProvider.get(routes[index]);
+			capabilities[name] =
+				status?.available === true && status.capabilities[name];
+		}
+		const available = Object.values(capabilities).some(Boolean);
+		return {
+			environment,
+			available,
+			capabilities,
+			...(!available && {
+				reason: statuses.find((status) => status.reason)?.reason,
+			}),
+		};
 	}
 
 	get fs(): FileCapability {
