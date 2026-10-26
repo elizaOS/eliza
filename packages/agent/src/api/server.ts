@@ -1071,7 +1071,16 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Eliza Cloud connection mutations: disconnect deletes the
+        // owner's persisted cloud API key, and login/persist writes a
+        // caller-supplied key into it. Exact paths only, not the whole
+        // /api/cloud prefix — billing, relay, and container routes are
+        // a separate surface, and the GET login-status poll stays open
+        // (it requires a session id only a gated POST can mint).
+        pathname === "/api/cloud/disconnect" ||
+        pathname === "/api/cloud/login" ||
+        pathname === "/api/cloud/login/persist"))
   );
 }
 
