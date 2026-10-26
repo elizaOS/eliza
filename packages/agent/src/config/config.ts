@@ -542,10 +542,18 @@ export function saveElizaConfig(config: ElizaConfig): void {
           typeof value === "string" && value.length > 0,
       ),
   );
+  // Exact match drops the credential itself; substring match drops values
+  // that merely embed it (connection strings, bearer headers, token URLs).
+  // Substring matching applies only to secrets of at least 8 characters,
+  // so a short host value cannot false-positive on innocent settings.
   const content = `${JSON.stringify(
     sanitized,
     (_key, value) =>
-      typeof value === "string" && externalSecrets.has(value)
+      typeof value === "string" &&
+      [...externalSecrets].some(
+        (secret) =>
+          value === secret || (secret.length >= 8 && value.includes(secret)),
+      )
         ? undefined
         : value,
     2,
