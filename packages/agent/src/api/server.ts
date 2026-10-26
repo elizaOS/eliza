@@ -1037,6 +1037,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
   return (
     under("/api/memory") ||
     under("/api/memories") ||
+    // Vision bridge queues: the GETs drain pending capture/OCR
+    // requests (and leak their ids), the POSTs resolve the owner's
+    // pending promises with caller-supplied pixels/words. All methods.
+    under("/api/vision") ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
     // Whole-agent data: export/snapshot carry the memories and secrets,
