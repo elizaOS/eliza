@@ -3360,7 +3360,14 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorMessageMutationParams,
 	): Promise<void> {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		const state = this.requireAccountState(accountId);
 		const targetMessage = await this.fetchConnectorDiscordMessage(params);
+		if (targetMessage.author.id !== state.client?.user?.id) {
+			throw new Error(
+				"Discord connector can only delete the bot's own messages.",
+			);
+		}
 		await targetMessage.delete();
 	}
 
@@ -3368,7 +3375,12 @@ export class DiscordService extends Service implements IDiscordService {
 		_runtime: IAgentRuntime,
 		params: ConnectorMessageMutationParams,
 	): Promise<void> {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		const state = this.requireAccountState(accountId);
 		const targetMessage = await this.fetchConnectorDiscordMessage(params);
+		if (targetMessage.author.id !== state.client?.user?.id) {
+			throw new Error("Discord connector can only pin the bot's own messages.");
+		}
 		if (params.pin === false) {
 			await targetMessage.unpin();
 			return;
