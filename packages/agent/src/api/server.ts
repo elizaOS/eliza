@@ -1071,7 +1071,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // iMessage connector setup: a guest session could enable or
+        // wipe the owner's iMessage connector config. Write-only, so
+        // GET /api/setup/imessage/status stays open.
+        under("/api/setup/imessage")))
   );
 }
 
