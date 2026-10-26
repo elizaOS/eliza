@@ -293,27 +293,30 @@ export class BatchQueue<T> {
 		this.disposed = true;
 		const flush =
 			opts?.flushHighPriority ?? this.options.drainHighPriorityOnStop !== false;
-		if (flush) {
-			const high = this.priorityQueue.drain(
-				(item) => this.options.getPriority(item) === "high",
-			);
-			if (high.length > 0) {
-				const flushProcessor = new BatchProcessor<T>({
-					maxParallel: 1,
-					maxRetriesAfterFailure: 0,
-					maxAttemptsCap: 1,
-					process: this.options.process,
-					onExhausted: this.options.onExhausted,
-					shouldRetry: this.options.shouldRetry,
-					retryPolicy: this.options.retryPolicy,
-				});
-				const flushOutcomes = await flushProcessor.processBatch(high);
-				this.options.onDrainBatchOutcomes?.(flushOutcomes);
+		try {
+			if (flush) {
+				const high = this.priorityQueue.drain(
+					(item) => this.options.getPriority(item) === "high",
+				);
+				if (high.length > 0) {
+					const flushProcessor = new BatchProcessor<T>({
+						maxParallel: 1,
+						maxRetriesAfterFailure: 0,
+						maxAttemptsCap: 1,
+						process: this.options.process,
+						onExhausted: this.options.onExhausted,
+						shouldRetry: this.options.shouldRetry,
+						retryPolicy: this.options.retryPolicy,
+					});
+					const flushOutcomes = await flushProcessor.processBatch(high);
+					this.options.onDrainBatchOutcomes?.(flushOutcomes);
+				}
 			}
+		} finally {
+			await this.taskDrain?.dispose(runtime);
+			this.taskDrain = null;
+			this.priorityQueue.clear();
 		}
-		await this.taskDrain?.dispose(runtime);
-		this.taskDrain = null;
-		this.priorityQueue.clear();
 	}
 
 	get size(): number {
