@@ -99,7 +99,10 @@ const WhatsAppWebhookMessageSchema = z.object({
 });
 
 const WhatsAppWebhookContactSchema = z.object({
-  profile: z.object({ name: z.string() }),
+  // Meta sends no profile object for senders without a WhatsApp profile
+  // name; requiring it rejects the whole webhook over one nameless
+  // contact (mirrors the gateway adapter fix).
+  profile: z.object({ name: z.string().optional() }).optional(),
   wa_id: z.string(),
 });
 
@@ -211,7 +214,9 @@ export function extractWhatsAppMessages(
       const contactMap = new Map<string, string>();
       if (value.contacts) {
         for (const contact of value.contacts) {
-          contactMap.set(contact.wa_id, contact.profile.name);
+          if (contact.profile?.name) {
+            contactMap.set(contact.wa_id, contact.profile.name);
+          }
         }
       }
 
