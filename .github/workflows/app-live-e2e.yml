@@ -54,7 +54,7 @@ on:
       shared_runtime_suite:
         description: "Shared QA: baseline = qualified SF/weather + math + public fact; bare-weather = bare SF + math; full adds quiet/truth controls."
         type: choice
-        options: [baseline, bare-weather, typed-weather, behavior, full, workerd-general]
+        options: [baseline, bare-weather, typed-weather, behavior, full, workerd-general, google-boundary]
         default: baseline
       run_only_requested:
         description: "Skip the default local/walkthrough/desktop lanes and run only explicitly selected opt-in lanes."
@@ -994,7 +994,7 @@ jobs:
           install-command: "true"
 
       - name: Install the selected Shared dependency closure once
-        if: ${{ inputs.shared_runtime_suite != 'workerd-general' }}
+        if: ${{ inputs.shared_runtime_suite != 'workerd-general' && inputs.shared_runtime_suite != 'google-boundary' }}
         run: bun install --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
 
       - name: Install the selected API and Shared test closure once
@@ -1007,6 +1007,25 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
           RUN_TURBO_CONCURRENCY: "1"
         run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/cloud-api... --filter=@elizaos/gateway-webhook... --concurrency=1 --output-logs=errors-only
+
+      - name: Install the selected Google boundary API and Shared closure once
+        if: ${{ inputs.shared_runtime_suite == 'google-boundary' }}
+        run: bun install --filter './' --filter @elizaos/cloud-api --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
+
+      - name: Build the normal API closure for the Google boundary check
+        if: ${{ inputs.shared_runtime_suite == 'google-boundary' }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          RUN_TURBO_CONCURRENCY: "1"
+        run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/cloud-api... --concurrency=1 --output-logs=errors-only
+
+      - name: Check the normal Shared Google boundary in its own process
+        if: ${{ inputs.shared_runtime_suite == 'google-boundary' }}
+        working-directory: packages/cloud/shared
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          RUN_TURBO_CONCURRENCY: "1"
+        run: bun --conditions=eliza-source test ./src/lib/services/shared-runtime/shared-eliza-runtime.google.test.ts --timeout 30000
 
       - name: Check the existing bounded general-search Workerd regression
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
@@ -1041,7 +1060,7 @@ jobs:
           --concurrency=1 --output-logs=errors-only
 
       - name: Run the real Shared runtime with finite public cases
-        if: ${{ inputs.shared_runtime_suite != 'workerd-general' }}
+        if: ${{ inputs.shared_runtime_suite != 'workerd-general' && inputs.shared_runtime_suite != 'google-boundary' }}
         id: qa
         working-directory: packages/cloud/shared
         env:
@@ -1061,7 +1080,7 @@ jobs:
           exit "$status"
 
       - name: Upload only sanitized public/synthetic evidence
-        if: ${{ always() && inputs.shared_runtime_suite != 'workerd-general' && steps.qa.outputs.artifact_ready == 'true' }}
+        if: ${{ always() && inputs.shared_runtime_suite != 'workerd-general' && inputs.shared_runtime_suite != 'google-boundary' && steps.qa.outputs.artifact_ready == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: shared-runtime-live-qa-${{ github.sha }}-${{ inputs.shared_runtime_suite }}
