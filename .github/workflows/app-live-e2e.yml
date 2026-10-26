@@ -999,7 +999,7 @@ jobs:
 
       - name: Install the selected API and Shared test closure once
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
-        run: bun install --filter @elizaos/cloud-api --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
+        run: bun install --filter './' --filter @elizaos/cloud-api --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
 
       - name: Check the existing bounded general-search Workerd regression
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
