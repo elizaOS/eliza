@@ -70,6 +70,14 @@ export async function readRequestBodyBuffer(
     return cached;
   }
 
+  if (req.readableEnded || req.destroyed) {
+    if (returnNullOnError) return null;
+    throw new ElizaError("Request body is no longer readable", {
+      code: "HTTP_REQUEST_BODY_UNAVAILABLE",
+      severity: "ephemeral",
+    });
+  }
+
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
