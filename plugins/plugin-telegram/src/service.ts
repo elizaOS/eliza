@@ -172,6 +172,15 @@ function filterMemoriesByQuery(
 
 const TELEGRAM_MEMORY_PAGE_SIZE = 500;
 
+// Safety bound for whole-room loads. The per-turn chat-context hook
+// runs this loader on every Telegram turn, and fetch/search without
+// a limit do the same on demand — with no cap, the cost of a turn
+// grows with the room's entire history forever. 15000 keeps whole-
+// room reads working for all but pathological histories (mirrors the
+// iMessage chat.db cap) while bounding the worst case. The loader
+// pages newest-first, so the bound keeps the newest rows.
+const MAX_TELEGRAM_ROOM_MEMORIES = 15000;
+
 async function loadAllTelegramRoomMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
@@ -199,6 +208,9 @@ async function loadAllTelegramRoomMemories(
       for (const id of ids) seenIds.add(id as UUID);
     }
     memories.push(...page);
+    if (memories.length >= MAX_TELEGRAM_ROOM_MEMORIES) {
+      return memories.slice(0, MAX_TELEGRAM_ROOM_MEMORIES);
+    }
     if (page.length < TELEGRAM_MEMORY_PAGE_SIZE) return memories;
   }
 }
