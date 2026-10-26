@@ -383,16 +383,23 @@ function isStreamAuthorized(
   res: http.ServerResponse,
   url: URL,
 ): boolean {
-  const expectedToken = getCompatApiToken();
-  if (!expectedToken) {
+  // Mirror ensureRouteAuthorized: the local approval UI is trusted-local,
+  // but a missing token must not open the stream to remote callers.
+  if (isTrustedComputerUseLocalRequest(req)) {
     return true;
   }
+
+  const expectedToken = getCompatApiToken();
 
   const headerToken = getProvidedApiToken(req);
   const providedToken = url.searchParams.get("token")?.trim();
   if (
-    (headerToken && tokenMatches(expectedToken, headerToken)) ||
-    (providedToken && tokenMatches(expectedToken, providedToken))
+    (expectedToken &&
+      headerToken &&
+      tokenMatches(expectedToken, headerToken)) ||
+    (expectedToken &&
+      providedToken &&
+      tokenMatches(expectedToken, providedToken))
   ) {
     return true;
   }
