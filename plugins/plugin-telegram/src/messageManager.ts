@@ -2447,6 +2447,37 @@ export class MessageManager {
       }
       return;
     }
+    // An approval prompt built without a requester binding carries no
+    // ownerId, and the check above passes it through to anyone who can
+    // tap it in an allowlisted chat. Fail closed for unbound prompts:
+    // only the owner may resolve them. Any failure resolving the
+    // tapper's role denies the tap rather than honoring it.
+    if (!callback.ownerId) {
+      let isOwner = false;
+      try {
+        const sender = await resolveTelegramSenderAuth(
+          ctx,
+          this.runtime,
+          this.accountId,
+        );
+        isOwner = sender.isAuthorized;
+      } catch {
+        isOwner = false;
+      }
+      if (!isOwner) {
+        try {
+          await ctx.answerCbQuery(
+            "Only the requester can resolve this approval.",
+            {
+              show_alert: true,
+            },
+          );
+        } catch {
+          // best-effort: a stale callback may already have expired
+        }
+        return;
+      }
+    }
 
     let statusText: string;
 
