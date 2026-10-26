@@ -369,6 +369,30 @@ describe("@elizaos/plugin-coding-tools — filesystem and shell integration", ()
     );
   });
 
+  it.each([
+    { action: "glob", pattern: "*.tsx", path: "app/[slug]" },
+    guidedFileParameters({ pattern: "*.tsx", path: "app/[slug]" }),
+  ])(
+    "FILE keeps a relative glob root whose directory name has glob characters",
+    async (parameters) => {
+      const slugDir = path.join(tmpDir, "app", "[slug]");
+      await fs.mkdir(slugDir, { recursive: true });
+      await fs.writeFile(path.join(slugDir, "page.tsx"), "export {};\n");
+      await fs.writeFile(path.join(tmpDir, "root.tsx"), "export {};\n");
+      try {
+        const result = await runFile(parameters);
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({
+          files: [path.join(slugDir, "page.tsx")],
+        });
+      } finally {
+        await fs.rm(path.join(tmpDir, "app"), { recursive: true, force: true });
+        await fs.rm(path.join(tmpDir, "root.tsx"), { force: true });
+      }
+    },
+  );
+
   it("FILE treats dense decoder defaults as absent for a valid read", async () => {
     const result = await runFile(
       guidedFileParameters({
