@@ -392,12 +392,25 @@ export async function fetchChatMessages(
   if (sourceRooms.length === 0) return [];
 
   const sourceRoomIds = sourceRooms.map((r) => r.id) as UUID[];
+  // Latest message the agent sent in each room. Pages are read newest first,
+  // so every agent reply newer than a kept message has been seen.
+  const latestAgentReplyByRoom = new Map<string, number>();
   const filtered = await loadInboxCandidateMemories(
     runtime,
     sourceRoomIds,
     limit,
     (memory) => {
-      if (memory.entityId === runtime.agentId) return false;
+      if (memory.entityId === runtime.agentId) {
+        const createdAt = Number(memory.createdAt);
+        if (
+          typeof memory.roomId === "string" &&
+          Number.isFinite(createdAt) &&
+          createdAt > (latestAgentReplyByRoom.get(memory.roomId) ?? 0)
+        ) {
+          latestAgentReplyByRoom.set(memory.roomId, createdAt);
+        }
+        return false;
+      }
       const src = extractMemorySource(memory);
       if (!sourceMatchesFilter(src, sourceTags)) return false;
       const createdAt = parseRequiredTimestamp(
@@ -500,11 +513,16 @@ export async function fetchChatMessages(
         return `${name}: ${extractText(m)}`;
       });
 
+    // A reply sent in the room after this message answers it.
+    const latestAgentReply = latestAgentReplyByRoom.get(roomId);
     results.push({
       id: memoryId,
       source,
       roomId,
       entityId: memory.entityId,
+      ...(latestAgentReply !== undefined && latestAgentReply > createdAt
+        ? { repliedAt: new Date(latestAgentReply).toISOString() }
+        : {}),
       senderName,
       channelName,
       channelType,
