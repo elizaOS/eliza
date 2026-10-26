@@ -461,6 +461,7 @@ export class HealthDomain {
           grantId: grant.id,
           startDate,
           endDate: instantEndDate,
+          timeZone: await resolveOwnerTimeZone(this.ctx.runtime, new Date()),
         });
         for (const sample of payload.samples) {
           await this.ctx.repository.upsertHealthMetricSample(sample);

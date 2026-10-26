@@ -55,6 +55,11 @@ interface SyncArgs {
   grantId: string;
   startDate: string;
   endDate: string;
+  /**
+   * The owner's IANA zone. Providers that return only UTC instants (Oura
+   * heart rate) need it to place a sample on the owner's day.
+   */
+  timeZone?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -802,8 +807,17 @@ async function fetchOuraCollection(args: {
 
 async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
-  const startDatetime = `${args.startDate}T00:00:00Z`;
-  const endDatetime = `${args.endDate}T23:59:59Z`;
+  // Heart-rate timestamps are UTC instants. Read the widest span any zone's
+  // local days can cover, then keep the samples on the owner's local days.
+  const heartRateTimeZone = validTimeZone(args.timeZone ?? null);
+  const startDatetime = new Date(
+    Date.parse(`${args.startDate}T00:00:00.000Z`) -
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
+  const endDatetime = new Date(
+    Date.parse(`${args.endDate}T23:59:59.999Z`) +
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
   const [
     personal,
     dailyActivity,
@@ -1006,6 +1020,17 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   for (const entry of heartRate) {
     const timestamp = normalizeIso(getText(entry, "timestamp"));
     const id = getText(entry, "id") ?? getText(entry, "timestamp") ?? "heart";
+    const localDate =
+      timestamp && heartRateTimeZone
+        ? getLocalDateKey(
+            getZonedDateParts(new Date(timestamp), heartRateTimeZone),
+          )
+        : timestamp
+          ? localDateFromIso(timestamp)
+          : null;
+    if (!localDate || localDate < args.startDate || localDate > args.endDate) {
+      continue;
+    }
     samples.push(
       ...compactSamples([
         sample({
@@ -1015,6 +1040,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           value: getNumber(entry, "bpm"),
           unit: "bpm",
           startAt: timestamp,
+          localDate,
           sourceExternalId: `${id}:heart_rate`,
           metadata: { source: getText(entry, "source") },
         }),
