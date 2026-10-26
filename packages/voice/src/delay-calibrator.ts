@@ -103,7 +103,7 @@ export class StreamingEchoDelayCalibrator {
     }
 
     this.calNear.push(nearPcm.slice());
-    this.calFar.push(farPcm);
+    this.calFar.push(farPcm.slice());
     this.calSampleCount += nearPcm.length;
     while (
       this.calSampleCount > ECHO_CAL_MAX_SAMPLES &&
