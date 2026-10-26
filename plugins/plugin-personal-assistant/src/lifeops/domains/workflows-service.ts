@@ -534,7 +534,7 @@ export class WorkflowsDomain {
         }
         runs.push(run);
         await this.deps.emitWorkflowRunNudge(nextWorkflow, run);
-        const nextDueAt =
+        let nextDueAt =
           nextWorkflow.schedule.kind === "relative_to_wake" ||
           nextWorkflow.schedule.kind === "relative_to_bedtime" ||
           nextWorkflow.schedule.kind === "during_morning" ||
@@ -549,6 +549,16 @@ export class WorkflowsDomain {
                 nowMs: Date.parse(args.now),
               })
             : this.computeWorkflowNextDueAt(nextWorkflow, dueAt);
+        if (
+          (nextWorkflow.schedule.kind === "interval" ||
+            nextWorkflow.schedule.kind === "cron") &&
+          nextDueAt &&
+          Date.parse(nextDueAt) <= nowMs
+        ) {
+          // The agent was off for more slots: count from now, so the gap
+          // runs the workflow once, not once per missed slot.
+          nextDueAt = this.computeWorkflowNextDueAt(nextWorkflow, args.now);
+        }
         schedulerState = {
           managedBy: "task_worker",
           nextDueAt,

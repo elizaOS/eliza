@@ -1,6 +1,7 @@
 /**
  * A paused scheduled workflow that is resumed days later runs at its next
- * slot after the resume, not once for every slot missed while paused.
+ * slot after the resume, not once for every slot missed while paused. An
+ * active workflow whose agent was off runs once for the gap.
  */
 import { TaskService } from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -86,6 +87,68 @@ it("a resumed workflow runs at its next slot after the resume, not for every slo
       new Date(resumedAt + DAY_MS).toISOString(),
     ]);
     expect(await mintedTasks()).toHaveLength(1);
+  } finally {
+    await f.cleanup();
+  }
+}, 180_000);
+
+it("an active workflow runs once after the agent was off for many slots, not once per missed slot", async () => {
+  const f = await createLifeOpsTestRuntime();
+  await TaskService.stop(f.runtime);
+  await LifeOpsRepository.ensureWorkflowRunIdempotencyKey(f.runtime);
+  vi.spyOn(f.runtime, "useModel").mockRejectedValue(
+    new Error("No inference expected"),
+  );
+  try {
+    const service = new LifeOpsService(f.runtime);
+    await service.createWorkflow({
+      title: "Hourly task minting workflow",
+      triggerType: "schedule",
+      schedule: { kind: "interval", everyMinutes: 60, timezone: "UTC" },
+      actionPlan: {
+        steps: [
+          {
+            kind: "create_task",
+            request: {
+              title: "Minted hourly",
+              kind: "task",
+              cadence: { kind: "unscheduled" },
+              timezone: "UTC",
+            },
+          },
+        ],
+      },
+    });
+    const mintedTasks = async () =>
+      (await service.listDefinitions()).filter(
+        (record) => record.definition.title === "Minted hourly",
+      );
+
+    // The agent is off for 9 hours: no scheduler tick runs.
+    const wokeAt = T0 + 9 * 60 * 60_000 + 5 * 60_000;
+    vi.setSystemTime(wokeAt);
+    const runs = await service.runDueWorkflows({
+      now: new Date().toISOString(),
+      limit: 12,
+    });
+    expect(runs).toHaveLength(1);
+    expect(await mintedTasks()).toHaveLength(1);
+
+    // The next run is one interval after the wake, not the next missed slot.
+    expect(
+      await service.runDueWorkflows({
+        now: new Date().toISOString(),
+        limit: 12,
+      }),
+    ).toHaveLength(0);
+    vi.setSystemTime(wokeAt + 60 * 60_000 + 60_000);
+    expect(
+      await service.runDueWorkflows({
+        now: new Date().toISOString(),
+        limit: 12,
+      }),
+    ).toHaveLength(1);
+    expect(await mintedTasks()).toHaveLength(2);
   } finally {
     await f.cleanup();
   }
