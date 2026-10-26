@@ -9,6 +9,11 @@ export const DEFAULT_MCP_MARKETPLACE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_TIMEOUT_MS = 2 * 60_000;
 const MAX_MCP_MARKETPLACE_RESPONSE_BYTES = 8 * 1024 * 1024;
 const MAX_MCP_MARKETPLACE_RESULTS = 50;
+// Mirror the discovery path's pagination bound (service.ts
+// MAX_DISCOVERY_PAGES): without it, a registry that keeps returning fresh
+// cursors for never-matching pages drives unbounded outbound fetches from a
+// single search request.
+const MAX_SEARCH_PAGES = 1000;
 
 export type McpMarketplaceErrorCode =
   | "aborted"
@@ -17,6 +22,7 @@ export type McpMarketplaceErrorCode =
   | "invalid_response"
   | "network_error"
   | "response_too_large"
+  | "pagination_limit_exceeded"
   | "timeout";
 
 export class McpMarketplaceError extends Error {
@@ -500,8 +506,15 @@ export async function searchMcpMarketplace(
     const pageLimit = normalizedQuery ? MAX_MCP_MARKETPLACE_RESULTS : requestedLimit;
     let cursor: string | undefined;
     const seenCursors = new Set<string>();
+    let pageCount = 0;
 
     do {
+      if (pageCount++ === MAX_SEARCH_PAGES) {
+        throw new McpMarketplaceError(
+          "MCP marketplace search exceeded its pagination limit",
+          "pagination_limit_exceeded"
+        );
+      }
       const page = await fetchRegistryJson(
         createSearchUrl(pageLimit, cursor),
         parseListResponse,
