@@ -1044,6 +1044,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/snapshot") ||
     pathname === "/api/restore" ||
     under("/api/backups") ||
+    // Host control, not diagnostics: screenshots, input injection,
+    // audio capture, unauthenticated CDP endpoints, and container exec.
+    under("/api/sandbox") ||
     under("/api/agent/export") ||
     (write &&
       [
