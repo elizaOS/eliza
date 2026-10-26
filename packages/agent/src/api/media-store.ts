@@ -215,6 +215,15 @@ function effectiveMediaMime(
 export const DEFAULT_MEDIA_STORE_MAX_BYTES = 2 * 1024 * 1024 * 1024; // 2 GB
 const EVICT_INTERVAL_MS = 30000;
 let lastEvictAt = 0;
+/**
+ * What the last orphan-GC sweep kept (referenced or pinned names) and when it
+ * ran. The size cap may only evict files that sweep saw as unreferenced.
+ */
+export interface MediaGcSweep {
+  at: number;
+  kept: ReadonlySet<string>;
+}
+let lastGcSweep: MediaGcSweep | null = null;
 /** Complete positive decimal: reject `1e9`, `8abc`, hex, leading zeros, fractions. */
 const CANONICAL_POSITIVE_DECIMAL = /^[1-9]\d*$/;
 /**
@@ -246,11 +255,16 @@ export interface MediaFileStat {
 /**
  * Pure eviction policy: given the current files and a byte cap, return the
  * names to delete (oldest-by-mtime first) so the store drops to 90% of the
- * cap. Returns [] when already within budget. Exported for unit tests.
+ * cap. Returns [] when already within budget. Only files the last GC sweep saw
+ * as unreferenced, and that did not change since, are candidates: knowledge
+ * originals, meeting recordings and school-calendar sources live here too and
+ * cannot be re-created. Before the first sweep nothing is evicted. Exported
+ * for unit tests.
  */
 export function selectMediaToEvict(
   files: MediaFileStat[],
   cap: number,
+  sweep: MediaGcSweep | null,
 ): string[] {
   // Private files have explicit owner/revocation lifecycles and cannot be
   // reconstructed from public attachment references after blind eviction.
@@ -258,9 +272,11 @@ export function selectMediaToEvict(
     (file) => !PRIVATE_MEDIA_FILE_NAME.test(file.name),
   );
   let total = evictable.reduce((sum, file) => sum + file.size, 0);
-  if (total <= cap) return [];
+  if (total <= cap || !sweep) return [];
   const target = Math.floor(cap * 0.9);
-  const oldestFirst = evictable.sort((a, b) => a.mtimeMs - b.mtimeMs);
+  const oldestFirst = evictable
+    .filter((file) => !sweep.kept.has(file.name) && file.mtimeMs < sweep.at)
+    .sort((a, b) => a.mtimeMs - b.mtimeMs);
   const evict: string[] = [];
   for (const file of oldestFirst) {
     if (total <= target) break;
@@ -270,13 +286,12 @@ export function selectMediaToEvict(
   return evict;
 }
 /**
- * Best-effort FIFO eviction so the local media store never grows without
- * bound. Throttled to once per {@link EVICT_INTERVAL_MS}; when the directory
- * exceeds the cap it deletes oldest-by-mtime files down to 90% of the cap.
- * Content is immutable + content-addressed, so an evicted file simply re-saves
- * if the same bytes are uploaded again. A message that references evicted media
- * renders a broken tile — the cap defaults to 2 GB so this only bites under
- * heavy use, and is tunable via `ELIZA_MEDIA_STORE_MAX_BYTES`.
+ * Best-effort FIFO eviction so unreferenced media cannot grow without bound.
+ * Throttled to once per {@link EVICT_INTERVAL_MS}; when the directory exceeds
+ * the cap it deletes the oldest unreferenced files (see
+ * {@link selectMediaToEvict}) toward 90% of the cap. Files still in use are
+ * never evicted, so referenced media alone may keep the store over the cap
+ * (`ELIZA_MEDIA_STORE_MAX_BYTES`, default 2 GB).
  */
 function maybeEvict(): void {
   const now = Date.now();
@@ -295,7 +310,7 @@ function maybeEvict(): void {
         // (concurrent GC/eviction) is expected; skip it.
       }
     }
-    const evict = selectMediaToEvict(files, maxStoreBytes());
+    const evict = selectMediaToEvict(files, maxStoreBytes(), lastGcSweep);
     let evicted = 0;
     for (const name of evict) {
       try {
@@ -373,7 +388,13 @@ export function deletePrivateMediaFile(fileName: string): boolean {
  */
 function writeMediaFileAtomic(filePath: string, bytes: Buffer): boolean {
   const existing = fs.statSync(filePath, { throwIfNoEntry: false });
-  if (existing?.isFile() && existing.size === bytes.byteLength) return false;
+  if (existing?.isFile() && existing.size === bytes.byteLength) {
+    // A dedupe hit is a new use of the file: refresh it so neither the GC grace
+    // window nor the size cap treats it as old and unreferenced.
+    const now = new Date();
+    fs.utimesSync(filePath, now, now);
+    return false;
+  }
   const pendingPath = path.join(
     path.dirname(filePath),
     `.pending-${crypto.randomUUID()}`,
@@ -468,6 +489,8 @@ export async function persistMediaStream(
     } catch (error) {
       // error-policy:J3 EEXIST is an explicit content-addressed dedup result.
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const now = new Date();
+      await fs.promises.utimes(filePath, now, now);
     }
     await fs.promises.unlink(pendingPath);
     finalized = true;
@@ -755,6 +778,7 @@ export function gcUnreferencedMedia(referenced: Set<string>): {
     const dir = mediaDir();
     const now = Date.now();
     const pinned = new Set(readBackgroundPins());
+    lastGcSweep = { at: now, kept: new Set([...referenced, ...pinned]) };
     for (const name of fs.readdirSync(dir)) {
       if (!MEDIA_FILE_NAME.test(name)) continue;
       scanned += 1;
