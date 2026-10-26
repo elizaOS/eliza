@@ -176,7 +176,7 @@ export function createTypingCallbacks(
 
 	const onIdle = stop
 		? () => {
-				void stop().catch((err) =>
+				void (async () => stop())().catch((err) =>
 					(params.onStopError ?? params.onStartError)(err),
 				);
 			}
