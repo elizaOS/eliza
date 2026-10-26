@@ -50,4 +50,11 @@ public class WorkflowSurvivorInventoryTest {
   assertThrows(IOException.class,()->WorkflowSurvivorInventory.requireClassified(null,null,null,null,0));
   assertThrows(IOException.class,()->IpcStartupRecovery.requireSoleUidProcess(0));
  }
+ @Test public void processVanishingDuringIdentityIsSkippedOnlyAfterAbsenceProof()throws Exception {
+  IOException vanished=new IOException("readlink failed: ENOENT");
+  assertNull(WorkflowSurvivorInventory.observePresent(42,()->{throw vanished;},pid->false));
+  assertSame(vanished,assertThrows(IOException.class,()->WorkflowSurvivorInventory.observePresent(42,()->{throw vanished;},pid->true)));
+  assertSame(vanished,assertThrows(IOException.class,()->WorkflowSurvivorInventory.observePresent(42,()->{throw vanished;},pid->{throw new IOException("terminal process changed");})));
+  assertEquals("identity",WorkflowSurvivorInventory.observePresent(42,()->"identity",pid->{throw new AssertionError("presence is read only after a failure");}));
+ }
 }

@@ -130,7 +130,11 @@ final class WorkflowSurvivorInventory {
   File[] entries=new File("/proc").listFiles();check(entries!=null&&entries.length>=20,"incomplete process inventory");Map<Integer,Identity> result=new TreeMap<>();
   for(File entry:entries){if(!entry.getName().matches("[0-9]+"))continue;StructStat stat;
    try{stat=Os.stat(entry.getPath());}catch(android.system.ErrnoException missing){if(missing.errno==OsConstants.ENOENT)continue;throw missing;}
-   if(stat.st_uid!=Process.myUid())continue;int pid=Integer.parseInt(entry.getName());result.put(pid,processIdentity(pid,deadline));check(result.size()<=32,"too many same-UID processes");}
+   if(stat.st_uid!=Process.myUid())continue;int pid=Integer.parseInt(entry.getName());
+   // A process that exits between listing and identity (e.g. the resident during its own stop)
+   // is skipped only after fresh absence or terminal-state proof; a live unreadable one still refuses.
+   Identity identity=observePresent(pid,()->processIdentity(pid,deadline));if(identity==null)continue;
+   result.put(pid,identity);check(result.size()<=32,"too many same-UID processes");}
   check(result.containsKey(Process.myPid()),"current process absent");return result;
  }
  private static File[] children(File directory,int[] budget)throws Exception {
