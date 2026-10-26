@@ -82,7 +82,8 @@ interface ResponsesApiOutputItem {
   result?: unknown;
   content?: Array<{
     type: string;
-    text: string;
+    text?: string;
+    refusal?: string;
     annotations?: Array<{
       url: string;
       title: string;
@@ -179,17 +180,19 @@ function convertOutputItem(item: ResponsesApiOutputItem): ResearchOutputItem | n
       return {
         type: "message",
         content:
-          item.content?.map((c) => ({
-            type: "output_text" as const,
-            text: c.text,
-            annotations:
-              c.annotations?.map((a) => ({
-                url: a.url,
-                title: a.title,
-                startIndex: a.start_index,
-                endIndex: a.end_index,
-              })) ?? [],
-          })) ?? [],
+          item.content
+            ?.filter((c) => c.type === "output_text")
+            .map((c) => ({
+              type: "output_text" as const,
+              text: c.text ?? "",
+              annotations:
+                c.annotations?.map((a) => ({
+                  url: a.url,
+                  title: a.title,
+                  startIndex: a.start_index,
+                  endIndex: a.end_index,
+                })) ?? [],
+            })) ?? [],
       } satisfies ResearchMessageOutput;
 
     default:
@@ -238,7 +241,11 @@ function extractTextAndAnnotations(response: ResponsesApiResponse): {
     for (const item of response.output) {
       if (item.type === "message" && item.content) {
         for (const content of item.content) {
-          text += content.text;
+          // A refusal item carries `refusal`, not `text`: appending it
+          // unfiltered turns it into the literal string "undefined".
+          if (content.type === "output_text") {
+            text += content.text ?? "";
+          }
           if (content.annotations) {
             for (const ann of content.annotations) {
               annotations.push({
