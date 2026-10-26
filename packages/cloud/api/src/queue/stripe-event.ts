@@ -1930,12 +1930,21 @@ async function clawbackForReversal(params: {
   if (!autoTopUpCharge && purchaseCents > 0n) {
     // A referred buyer's Checkout purchase also paid the referrers revenue
     // splits as earnings; take back the same share of those.
+    const owedSplits = checkoutOrder
+      ? (
+          await referralsService.calculateRevenueSplits(
+            checkoutOrder.initiated_by_user_id,
+            Number(purchaseCents) / 100,
+          )
+        ).splits.filter((split) => split.amount > 0)
+      : [];
     await redeemableEarningsService.reverseRevenueSplits({
       paymentIntentId,
       reversedCents,
       chargeCents: purchaseCents,
       reversalSeries,
       idempotencyKey,
+      owedRecipients: owedSplits.map((split) => split.userId),
     });
   }
   const result = await creditsService.clawbackCredits({

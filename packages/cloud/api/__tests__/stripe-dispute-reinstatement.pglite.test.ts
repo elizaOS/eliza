@@ -40,6 +40,9 @@ const {
   redeemableEarnings,
   redeemableEarningsLedger,
 } = await import("@elizaos/cloud-shared/db/schemas/redeemable-earnings");
+const { referralCodes, referralSignups } = await import(
+  "@elizaos/cloud-shared/db/schemas/referrals"
+);
 const { redeemableEarningsService } = await import(
   "@elizaos/cloud-shared/lib/services/redeemable-earnings"
 );
@@ -71,6 +74,8 @@ beforeAll(async () => {
         ledgerEntryTypeEnum,
         redeemableEarnings,
         redeemableEarningsLedger,
+        referralCodes,
+        referralSignups,
       },
       empty.id,
     ),
@@ -947,21 +952,46 @@ test("a refund waits for the pending affiliate earning before acknowledgement", 
   expect(await affiliatePayable(buyer.affiliate)).toBe(0);
 });
 
-/** A referred buyer's $10 / 500-credit Checkout pack that paid $4 + $1 revenue splits. */
-async function referredCheckout(): Promise<
-  Purchase & { appOwner: string; creator: string }
-> {
+type ReferredCheckout = Purchase & { appOwner: string; creator: string };
+
+/**
+ * A $10 / 500-credit Checkout pack by a buyer referred through an app: it owes
+ * $4 (app owner) + $1 (creator) revenue splits. `withSplits` books them, as
+ * handleCheckoutSessionCompleted does after the credit grant.
+ */
+async function referredCheckout(withSplits = true): Promise<ReferredCheckout> {
   const buyer = await purchase({ credits: "500", cents: 1000, balance: "500" });
   const appOwner = randomUUID();
   const creator = randomUUID();
-  for (const [userId, source, amount] of [
-    [appOwner, "app_owner_revenue_share", 4],
-    [creator, "creator_revenue_share", 1],
-  ] as const) {
+  for (const userId of [appOwner, creator])
     await pg().query(
       "INSERT INTO users(id,organization_id,steward_user_id,role) VALUES ($1,$2,$3,'owner')",
       [userId, buyer.org, `subject_${userId}`],
     );
+  const order = await pg().query<{ initiated_by_user_id: string }>(
+    "SELECT initiated_by_user_id FROM stripe_checkout_orders WHERE stripe_payment_intent_id=$1",
+    [buyer.paymentIntentId],
+  );
+  const code = randomUUID();
+  await pg().query(
+    "INSERT INTO referral_codes(id,user_id,code) VALUES ($1,$2,$3)",
+    [code, creator, `code-${code}`],
+  );
+  await pg().query(
+    `INSERT INTO referral_signups(referral_code_id,referrer_user_id,referred_user_id,app_owner_id,creator_id)
+     VALUES ($1,$2,$3,$4,$2)`,
+    [code, creator, order.rows[0]?.initiated_by_user_id, appOwner],
+  );
+  const referred = { ...buyer, appOwner, creator };
+  if (withSplits) await bookRevenueSplits(referred);
+  return referred;
+}
+
+async function bookRevenueSplits(buyer: ReferredCheckout): Promise<void> {
+  for (const [userId, source, amount] of [
+    [buyer.appOwner, "app_owner_revenue_share", 4],
+    [buyer.creator, "creator_revenue_share", 1],
+  ] as const) {
     // The same credit handleCheckoutSessionCompleted books for each split.
     const earned = await redeemableEarningsService.addEarnings({
       userId,
@@ -974,7 +1004,6 @@ async function referredCheckout(): Promise<
     });
     expect(earned.success).toBe(true);
   }
-  return { ...buyer, appOwner, creator };
 }
 
 async function earnedLedger(userId: string): Promise<number> {
@@ -1022,4 +1051,21 @@ test("a dispute takes back the revenue splits and a won dispute returns them", a
   ).toBe("ack");
   expect(await earnedLedger(lost.appOwner)).toBe(0);
   expect(await earnedLedger(lost.creator)).toBe(0);
+});
+
+test("a refund waits for revenue splits that are owed but not booked yet", async () => {
+  const buyer = await referredCheckout(false);
+  const charge = `ch_${randomUUID()}`;
+  expect(
+    await processStripeEvent(refundEvent(charge, 1000, buyer.paymentIntentId)),
+  ).toBe("retry");
+  expect(await balance(buyer.org)).toBe(500);
+
+  await bookRevenueSplits(buyer);
+  expect(
+    await processStripeEvent(refundEvent(charge, 1000, buyer.paymentIntentId)),
+  ).toBe("ack");
+  expect(await earnedLedger(buyer.appOwner)).toBe(0);
+  expect(await earnedLedger(buyer.creator)).toBe(0);
+  expect(await balance(buyer.org)).toBe(0);
 });

@@ -887,13 +887,25 @@ class RedeemableEarningsService {
   /**
    * Take back the share of a Checkout purchase's referral revenue splits
    * (app owner and creator) that a refund or a dispute reversed, by the same
-   * rules as the auto top-up affiliate fee above. A purchase without a
-   * referral has no split rows and reverses nothing.
+   * rules as the auto top-up affiliate fee above. `owedRecipients` are the
+   * users the purchase owes a split; a purchase without a referral owes none
+   * and reverses nothing.
    */
-  async reverseRevenueSplits(params: PaymentEarningReversal): Promise<number> {
+  async reverseRevenueSplits(
+    params: PaymentEarningReversal & { owedRecipients: readonly string[] },
+  ): Promise<number> {
     if (params.reversedCents <= 0n || params.chargeCents <= 0n) return 0;
+    const earnings = await this.findPaymentEarnings(params.paymentIntentId, REVENUE_SPLIT);
+    if (params.owedRecipients.some((userId) => !earnings.some((e) => e.userId === userId))) {
+      // The credit grant commits before the split projection. Keep the
+      // reversal in the retry lane until every owed split can be reversed.
+      throw new ElizaError("Referral revenue split earning is not yet available", {
+        code: "REVENUE_SPLIT_EARNING_PENDING",
+        context: { paymentIntentId: params.paymentIntentId },
+      });
+    }
     let reversed = 0;
-    for (const earning of await this.findPaymentEarnings(params.paymentIntentId, REVENUE_SPLIT)) {
+    for (const earning of earnings) {
       reversed += await this.reversePaymentEarning(earning, params, REVENUE_SPLIT);
     }
     return reversed;
