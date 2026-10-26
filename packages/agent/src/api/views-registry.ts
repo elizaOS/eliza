@@ -235,7 +235,10 @@ async function fileExists(absolutePath: string): Promise<boolean> {
  */
 async function assertViewAssetReadable(absolutePath: string): Promise<boolean> {
   try {
-    await fs.access(absolutePath);
+    // `R_OK`, not the `fs.access` default of `F_OK`: existence is already
+    // established by the confinement walk, so a mode-000 asset would answer
+    // "present" and be published as a hero the dashboard can never load.
+    await fs.access(absolutePath, fs.constants.R_OK);
     return true;
   } catch (error) {
     if (isMissingPathError(error)) return false;
