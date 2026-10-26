@@ -125,17 +125,27 @@ const STATE_CUE: Record<NetworkMemberState, RegExp> = {
     /\b(?:travel\w*|trip|away|out of town|vacation|holiday|abroad|fly\w*|visiting|heading|going to|off to|road|(?:in|to|at) \p{L}{3,})\b/giu,
   open: /\b(?:back|resume|unpause|un-pause|available|open|free again|ready|keep (?:them|em|'em|it) coming|send (?:me )?(?:more )?(?:intros|introductions)|start (?:sending|again)|turn (?:\w+ )?(?:back )?on|i'?m in|good to go)\b/gi,
 };
-const NEGATED =
-  /\b(?:not|never|no longer|don'?t|do not|didn'?t|isn'?t|won'?t|can'?t|ain'?t|nothing)\s+(?:\w+\s+)?$/i;
+const NEGATION_WORD =
+  /\b(?:not|never|no longer|don'?t|do not|didn'?t|isn'?t|won'?t|can'?t|ain'?t|nothing)\b/i;
+// A clause boundary ends a negation's scope: "don't send intros, pause them"
+// and "not traveling but pause my intros" both ask for a pause, while
+// "don't want to pause" refuses one. Only the clause holding the cue governs it.
+const CLAUSE_BOUNDARY = /[,.!?;]|\b(?:but|and)\b/gi;
 
-/** True when the evidence names the proposed state and that cue is not negated ("don't pause", "not busy"). */
+/** True when a negation word governs the cue: one appears in the cue's own clause before it. */
+function isNegatedInClause(prefix: string): boolean {
+  const segments = prefix.split(CLAUSE_BOUNDARY);
+  return NEGATION_WORD.test(segments[segments.length - 1] ?? "");
+}
+
+/** True when the evidence names the proposed state and that cue is not negated ("don't pause", "not busy", "don't want to pause"). */
 export function evidenceSupportsState(
   state: NetworkMemberState,
   evidence: string,
 ): boolean {
   const e = sanitize(evidence).toLowerCase().replace(/[‘’]/g, "'");
   for (const m of e.matchAll(STATE_CUE[state])) {
-    if (!NEGATED.test(e.slice(0, m.index))) return true;
+    if (!isNegatedInClause(e.slice(0, m.index))) return true;
   }
   return false;
 }
@@ -155,7 +165,16 @@ export function resolveBusyVsPaused(
 ): NetworkMemberState {
   if (state !== "paused") return state;
   const own = ownWords(memberText);
-  return BUSY_CUE.test(own) && !EXPLICIT_PAUSE.test(own) ? "busy" : state;
+  // A negated pause ("don't want to pause") is not an explicit pause ask:
+  // only a non-negated explicit-pause match blocks the busy downgrade.
+  let explicitPause = false;
+  for (const m of own.matchAll(new RegExp(EXPLICIT_PAUSE.source, "gi"))) {
+    if (!isNegatedInClause(own.slice(0, m.index))) {
+      explicitPause = true;
+      break;
+    }
+  }
+  return BUSY_CUE.test(own) && !explicitPause ? "busy" : state;
 }
 
 // Date guards (2026-10-07 live eval): the model sometimes dropped an end date the
