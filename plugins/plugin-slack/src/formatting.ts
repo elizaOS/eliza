@@ -43,10 +43,12 @@ function isAllowedSlackAngleToken(token: string): boolean {
     return false;
   }
   const inner = token.slice(1, -1);
+  // No "!" arm: <!channel>, <!here>, <!everyone>, and <!subteam^...> are
+  // mass mentions. Model text must never mint them from the bot identity,
+  // so they fall through to escaping and render literally.
   return (
     inner.startsWith("@") ||
     inner.startsWith("#") ||
-    inner.startsWith("!") ||
     inner.startsWith("mailto:") ||
     inner.startsWith("tel:") ||
     inner.startsWith("http://") ||
