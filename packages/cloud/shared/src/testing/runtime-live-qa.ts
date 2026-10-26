@@ -236,7 +236,8 @@ function projectSdkBody(text: string): unknown {
     for (const rawChoice of event.choices) {
       const choice = rawChoice as Record<string, unknown>;
       const index = typeof choice.index === "number" ? choice.index : 0;
-      const landed = choices.get(index) ?? { content: "", tools: new Map() };
+      let landed = choices.get(index);
+      if (!landed) landed = { content: "", tools: new Map() };
       const delta = (choice.delta ?? choice.message) as Record<string, unknown> | undefined;
       if (delta) {
         if (typeof delta.content === "string") landed.content += delta.content;
@@ -246,10 +247,8 @@ function projectSdkBody(text: string): unknown {
             const tool = rawTool as Record<string, unknown>;
             const fn = tool.function as Record<string, unknown> | undefined;
             const toolIndex = typeof tool.index === "number" ? tool.index : 0;
-            const joined = landed.tools.get(toolIndex) ?? {
-              name: "",
-              arguments: "",
-            };
+            let joined = landed.tools.get(toolIndex);
+            if (!joined) joined = { name: "", arguments: "" };
             if (typeof tool.id === "string") joined.id = tool.id;
             if (typeof fn?.name === "string") joined.name += fn.name;
             if (typeof fn?.arguments === "string") joined.arguments += fn.arguments;
@@ -591,13 +590,14 @@ async function run() {
   const hostNode = execFileSync("node", ["--version"], {
     encoding: "utf8",
   }).trim();
+  const bunVersion = process.versions["bun"];
   report.versions = {
-    bun: Bun.version,
+    bun: bunVersion,
     hostNode,
     bunNodeCompatibility: process.version,
     source,
   };
-  if (Bun.version !== "1.4.2" || hostNode !== "v24.15.0") fail("QA_TOOLCHAIN_VERSION_MISMATCH");
+  if (bunVersion !== "1.4.2" || hostNode !== "v24.15.0") fail("QA_TOOLCHAIN_VERSION_MISMATCH");
   process.env.ELIZA_STATE_DIR = path.join(raw, "state");
   process.env.ELIZA_TRAJECTORY_DIR = path.join(raw, "trajectories");
   process.env.ELIZA_TRAJECTORY_LOGGING = "1";
