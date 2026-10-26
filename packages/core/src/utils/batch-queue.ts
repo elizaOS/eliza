@@ -422,24 +422,13 @@ export class PriorityQueue<T> {
 		const result: T[] = [];
 		let remaining = n;
 
-		// Drain from high priority first
-		if (remaining > 0 && this.highItems.length > 0) {
-			const take = Math.min(remaining, this.highItems.length);
-			result.push(...this.highItems.splice(0, take));
+		for (const items of [this.highItems, this.normalItems, this.lowItems]) {
+			if (remaining <= 0) break;
+			const take = Math.min(remaining, items.length);
+			for (const item of items.splice(0, take)) {
+				result.push(item);
+			}
 			remaining -= take;
-		}
-
-		// Then normal priority
-		if (remaining > 0 && this.normalItems.length > 0) {
-			const take = Math.min(remaining, this.normalItems.length);
-			result.push(...this.normalItems.splice(0, take));
-			remaining -= take;
-		}
-
-		// Then low priority
-		if (remaining > 0 && this.lowItems.length > 0) {
-			const take = Math.min(remaining, this.lowItems.length);
-			result.push(...this.lowItems.splice(0, take));
 		}
 
 		return result;
