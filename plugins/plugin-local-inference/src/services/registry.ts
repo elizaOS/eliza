@@ -314,8 +314,14 @@ async function resolveRemovableElizaPath(
 	let rootRealPath: string;
 	try {
 		rootRealPath = await fs.realpath(localInferenceRoot());
-	} catch {
-		return { status: "missing" };
+	} catch (error) {
+		// Only a root that provably is not there means "nothing to delete".
+		// Any other failure (EACCES on a remounted state dir, EIO/ESTALE,
+		// EMFILE, ELOOP) leaves existence unknown, so it must reach the caller
+		// instead of reporting a removal that did not happen.
+		const code = (error as NodeJS.ErrnoException).code;
+		if (code === "ENOENT" || code === "ENOTDIR") return { status: "missing" };
+		throw error;
 	}
 
 	try {

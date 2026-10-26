@@ -1,8 +1,9 @@
 /** Covers installed-model registry removal against a real temp state dir. No model. */
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { registryPath } from "./paths";
 import {
 	listInstalledModels,
@@ -497,5 +498,52 @@ describe("local inference registry removal", () => {
 		expect(readRawRegistry().models?.map((model) => model.id)).toEqual([
 			"model-a",
 		]);
+	});
+
+	it("reports a failed removal when the model root cannot be resolved", async () => {
+		const stateDir = useTempStateDir();
+		const modelPath = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"eliza-1-2b",
+			"text",
+			"model.gguf",
+		);
+		fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+		fs.writeFileSync(modelPath, "fake-model");
+		await upsertElizaModel(installedModel("eliza-1-2b", modelPath));
+
+		// A remounted state dir makes `realpath` fail with EACCES while the
+		// registry file still reads. That is a broken read, not proof that the
+		// artifact is gone: the removal must fail and keep the row.
+		const rootPath = path.join(stateDir, "local-inference");
+		const resolveRealPath = fsp.realpath as (
+			...args: unknown[]
+		) => Promise<string>;
+		const spy = vi.spyOn(fsp, "realpath").mockImplementation(((
+			target: unknown,
+			...rest: unknown[]
+		) => {
+			if (String(target) === rootPath) {
+				const error = new Error(
+					`EACCES: permission denied, realpath '${rootPath}'`,
+				) as NodeJS.ErrnoException;
+				error.code = "EACCES";
+				return Promise.reject(error);
+			}
+			return resolveRealPath(target, ...rest);
+		}) as never);
+		try {
+			await expect(removeElizaModel("eliza-1-2b")).rejects.toMatchObject({
+				code: "EACCES",
+			});
+		} finally {
+			spy.mockRestore();
+		}
+		expect(readRawRegistry().models?.map((model) => model.id)).toEqual([
+			"eliza-1-2b",
+		]);
+		expect(fs.existsSync(modelPath)).toBe(true);
 	});
 });
