@@ -1071,7 +1071,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Deployed workflows are TSX code that runs in a worker process
+        // with the owner's tool and service access.
+        under("/api/workflow")))
   );
 }
 
