@@ -44,6 +44,13 @@ const CREDENTIAL_PATTERNS: LabelledPattern[] = [
   { pattern: /^\/\.docker\/config\.json$/i, label: "Docker credentials" },
   { pattern: /^\/\.kube\/config$/i, label: "Kubernetes config" },
   { pattern: /^\/\.netrc$/i, label: "netrc credentials" },
+  {
+    // Dotenv secret files at any depth: .env and .env.<name> (.env.local,
+    // .env.production) hold real secrets, while committed templates
+    // (.env.example, .env.sample, .env.template) do not and stay readable.
+    pattern: /\/\.env(?!\.(?:example|sample|template)\b)(?:\.[^/]+)?$/i,
+    label: "dotenv secret file",
+  },
   { pattern: /^\/\.npmrc$/i, label: "npm credentials" },
   { pattern: /^\/\.git-credentials$/i, label: "Git stored credentials" },
   { pattern: /^\/Library\/Keychains\//i, label: "macOS Keychain" },
