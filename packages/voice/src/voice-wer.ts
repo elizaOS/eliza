@@ -5,12 +5,13 @@
  * Rolling-row Levenshtein uses linear memory and O(|ref|·|hyp|) comparisons.
  * Input and comparison budgets bound untrusted transcript processing.
  */
-/** Lowercase, strip punctuation (keep letters/numbers/apostrophes), collapse WS. */
+/** Normalize Unicode, lowercase, strip punctuation, and retain word marks. */
 export function normalizeWerText(text: string): string {
   return text
+    .normalize("NFC")
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .replace(/[^\p{L}\p{M}\p{N}'\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
