@@ -1071,7 +1071,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Meeting bots join, transcribe, bill, and stop on the owner's
+        // behalf, and Zoom import spends the owner's stored token. The
+        // GETs stay open: they are share-viewer routes with per-viewer
+        // disclosure, not owner writes.
+        under("/api/meetings")))
   );
 }
 
