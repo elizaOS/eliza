@@ -1060,6 +1060,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // On-chain agent-registry writes: register, token-URI update, and
+        // profile sync sign with the owner's key and spend the owner's gas.
+        under("/api/registry") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
