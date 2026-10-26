@@ -1060,6 +1060,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Local model management: which model serves chat/embedding,
+        // routing policy, downloads, and the active model switch.
+        under("/api/local-inference") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
