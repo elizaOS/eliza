@@ -1926,6 +1926,18 @@ async function clawbackForReversal(params: {
       idempotencyKey,
     });
   }
+  const purchaseCents = chargeAmountCents ?? grantAmountMicros / 10_000n;
+  if (!autoTopUpCharge && purchaseCents > 0n) {
+    // A referred buyer's Checkout purchase also paid the referrers revenue
+    // splits as earnings; take back the same share of those.
+    await redeemableEarningsService.reverseRevenueSplits({
+      paymentIntentId,
+      reversedCents,
+      chargeCents: purchaseCents,
+      reversalSeries,
+      idempotencyKey,
+    });
+  }
   const result = await creditsService.clawbackCredits({
     organizationId: grant.organization_id,
     amount: cappedUsdReversed,
@@ -2059,11 +2071,15 @@ async function handleChargeDisputeFundsReinstated(
   }
 
   if (paymentIntentId) {
-    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee({
+    const reinstatement = {
       paymentIntentId,
       reversalSeries: clawbackKey,
       reinstatementKey: `${clawbackKey}:reinstated`,
-    });
+    };
+    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee(
+      reinstatement,
+    );
+    await redeemableEarningsService.reinstateRevenueSplits(reinstatement);
   }
 
   // Stripe returned the disputed funds, so the unrecovered shortfall is no

@@ -19,7 +19,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import Decimal from "decimal.js";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { type DbTransaction, dbRead, dbWrite } from "../../db/client";
 import { redeemableEarnings, redeemableEarningsLedger } from "../../db/schemas/redeemable-earnings";
 import { normalizeLedgerSourceId } from "../utils/ledger-source-id";
@@ -37,6 +37,52 @@ type EarningsSource =
   | "affiliate"
   | "app_owner_revenue_share"
   | "creator_revenue_share";
+
+/** A refund or dispute's cumulative reversal of one payment. */
+interface PaymentEarningReversal {
+  paymentIntentId: string;
+  reversedCents: bigint;
+  chargeCents: bigint;
+  reversalSeries: string;
+  idempotencyKey: string;
+}
+
+interface PaymentEarningReinstatement {
+  paymentIntentId: string;
+  reversalSeries: string;
+  reinstatementKey: string;
+}
+
+interface PaymentEarning {
+  userId: string;
+  amount: string;
+  source: EarningsSource;
+}
+
+/** Earnings a Stripe payment paid out, which its refund or dispute takes back. */
+interface PaymentEarningKind {
+  label: string;
+  sources: EarningsSource[];
+  sourceIdPrefix: string;
+  reversalSourceId: (idempotencyKey: string, userId: string) => string;
+  reinstatementSourceId: (reinstatementKey: string, userId: string) => string;
+}
+
+const AUTO_TOP_UP_FEE: PaymentEarningKind = {
+  label: "Auto top-up affiliate fee",
+  sources: ["affiliate"],
+  sourceIdPrefix: "affiliate_auto_topup:",
+  reversalSourceId: (key) => `affiliate_reversal:${key}`,
+  reinstatementSourceId: (key) => `affiliate_reinstated:${key}`,
+};
+
+const REVENUE_SPLIT: PaymentEarningKind = {
+  label: "Referral revenue split",
+  sources: ["app_owner_revenue_share", "creator_revenue_share"],
+  sourceIdPrefix: "revenue_split:",
+  reversalSourceId: (key, userId) => `revenue_split_reversal:${key}:${userId}`,
+  reinstatementSourceId: (key, userId) => `revenue_split_reinstated:${key}:${userId}`,
+};
 
 interface AddEarningsParams {
   userId: string;
@@ -824,25 +870,41 @@ class RedeemableEarningsService {
    * only that, as the credit side reinstates only the applied clawback
    * (#31449).
    */
-  async reverseAutoTopUpAffiliateFee(params: {
-    paymentIntentId: string;
-    reversedCents: bigint;
-    chargeCents: bigint;
-    reversalSeries: string;
-    idempotencyKey: string;
-  }): Promise<number> {
-    const { paymentIntentId, reversedCents, chargeCents, reversalSeries, idempotencyKey } = params;
-    if (reversedCents <= 0n || chargeCents <= 0n) return 0;
-    const earning = await this.findAutoTopUpAffiliateEarning(paymentIntentId);
+  async reverseAutoTopUpAffiliateFee(params: PaymentEarningReversal): Promise<number> {
+    if (params.reversedCents <= 0n || params.chargeCents <= 0n) return 0;
+    const [earning] = await this.findPaymentEarnings(params.paymentIntentId, AUTO_TOP_UP_FEE);
     if (!earning) {
       // Credit settlement can commit before the affiliate projection. Keep the
       // reversal in the retry lane until that earning can be reversed as well.
       throw new ElizaError("Auto top-up affiliate earning is not yet available", {
         code: "AFFILIATE_EARNING_PENDING",
-        context: { paymentIntentId },
+        context: { paymentIntentId: params.paymentIntentId },
       });
     }
+    return await this.reversePaymentEarning(earning, params, AUTO_TOP_UP_FEE);
+  }
 
+  /**
+   * Take back the share of a Checkout purchase's referral revenue splits
+   * (app owner and creator) that a refund or a dispute reversed, by the same
+   * rules as the auto top-up affiliate fee above. A purchase without a
+   * referral has no split rows and reverses nothing.
+   */
+  async reverseRevenueSplits(params: PaymentEarningReversal): Promise<number> {
+    if (params.reversedCents <= 0n || params.chargeCents <= 0n) return 0;
+    let reversed = 0;
+    for (const earning of await this.findPaymentEarnings(params.paymentIntentId, REVENUE_SPLIT)) {
+      reversed += await this.reversePaymentEarning(earning, params, REVENUE_SPLIT);
+    }
+    return reversed;
+  }
+
+  private async reversePaymentEarning(
+    earning: PaymentEarning,
+    params: PaymentEarningReversal,
+    kind: PaymentEarningKind,
+  ): Promise<number> {
+    const { paymentIntentId, reversedCents, chargeCents, reversalSeries, idempotencyKey } = params;
     const fee = new Decimal(earning.amount);
     const reversed = reversedCents < chargeCents ? reversedCents : chargeCents;
     const target = fee
@@ -856,9 +918,9 @@ class RedeemableEarningsService {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${earning.userId}`}))`,
       );
-      const taken = await this.affiliateFeeReversalState(
+      const taken = await this.paymentEarningReversalState(
         tx,
-        earning.userId,
+        earning,
         paymentIntentId,
         reversalSeries,
       );
@@ -867,10 +929,10 @@ class RedeemableEarningsService {
       const result = await this.reduceEarnings({
         userId: earning.userId,
         amount: delta.toNumber(),
-        source: "affiliate",
-        sourceId: `affiliate_reversal:${idempotencyKey}`,
+        source: earning.source,
+        sourceId: kind.reversalSourceId(idempotencyKey, earning.userId),
         dedupeBySourceId: true,
-        description: `Auto top-up affiliate fee reversed — ${idempotencyKey}`,
+        description: `${kind.label} reversed — ${idempotencyKey}`,
         metadata: {
           payment_intent_id: paymentIntentId,
           affiliate_reversal_series: reversalSeries,
@@ -879,7 +941,7 @@ class RedeemableEarningsService {
         transaction: tx,
       });
       if (!result.success) {
-        throw new Error(`Failed to reverse affiliate fee for ${paymentIntentId}: ${result.error}`);
+        throw new Error(`Failed to reverse ${kind.label} for ${paymentIntentId}: ${result.error}`);
       }
       return result.deduplicated ? 0 : delta.toNumber();
     });
@@ -891,20 +953,33 @@ class RedeemableEarningsService {
    * back only the recorded applied part, never the ledger target, so a fee
    * spent or paid out before the dispute is not paid a second time.
    */
-  async reinstateAutoTopUpAffiliateFee(params: {
-    paymentIntentId: string;
-    reversalSeries: string;
-    reinstatementKey: string;
-  }): Promise<number> {
-    const earning = await this.findAutoTopUpAffiliateEarning(params.paymentIntentId);
+  async reinstateAutoTopUpAffiliateFee(params: PaymentEarningReinstatement): Promise<number> {
+    const [earning] = await this.findPaymentEarnings(params.paymentIntentId, AUTO_TOP_UP_FEE);
     if (!earning) return 0;
+    return await this.reinstatePaymentEarning(earning, params, AUTO_TOP_UP_FEE);
+  }
+
+  /** A won dispute returns the revenue split shares, as for the affiliate fee. */
+  async reinstateRevenueSplits(params: PaymentEarningReinstatement): Promise<number> {
+    let reinstated = 0;
+    for (const earning of await this.findPaymentEarnings(params.paymentIntentId, REVENUE_SPLIT)) {
+      reinstated += await this.reinstatePaymentEarning(earning, params, REVENUE_SPLIT);
+    }
+    return reinstated;
+  }
+
+  private async reinstatePaymentEarning(
+    earning: PaymentEarning,
+    params: PaymentEarningReinstatement,
+    kind: PaymentEarningKind,
+  ): Promise<number> {
     return await dbWrite.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`redeemable_earnings:${earning.userId}`}))`,
       );
-      const taken = await this.affiliateFeeReversalState(
+      const taken = await this.paymentEarningReversalState(
         tx,
-        earning.userId,
+        earning,
         params.paymentIntentId,
         params.reversalSeries,
       );
@@ -916,10 +991,10 @@ class RedeemableEarningsService {
         userId: earning.userId,
         amount: taken.series.toFixed(4),
         balanceAmount: balanceAmount.toFixed(4),
-        source: "affiliate",
-        sourceId: `affiliate_reinstated:${params.reinstatementKey}`,
+        source: earning.source,
+        sourceId: kind.reinstatementSourceId(params.reinstatementKey, earning.userId),
         dedupeBySourceId: true,
-        description: `Auto top-up affiliate fee reinstated — ${params.reinstatementKey}`,
+        description: `${kind.label} reinstated — ${params.reinstatementKey}`,
         metadata: {
           payment_intent_id: params.paymentIntentId,
           affiliate_reinstated_series: params.reversalSeries,
@@ -928,29 +1003,32 @@ class RedeemableEarningsService {
       });
       if (!result.success) {
         throw new Error(
-          `Failed to reinstate affiliate fee for ${params.paymentIntentId}: ${result.error}`,
+          `Failed to reinstate ${kind.label} for ${params.paymentIntentId}: ${result.error}`,
         );
       }
       return result.deduplicated ? 0 : balanceAmount.toNumber();
     });
   }
 
-  private async findAutoTopUpAffiliateEarning(
+  private async findPaymentEarnings(
     paymentIntentId: string,
-  ): Promise<{ userId: string; amount: string } | null> {
-    const [row] = await dbWrite
-      .select({ userId: redeemableEarningsLedger.user_id, amount: redeemableEarningsLedger.amount })
+    kind: PaymentEarningKind,
+  ): Promise<PaymentEarning[]> {
+    return (await dbWrite
+      .select({
+        userId: redeemableEarningsLedger.user_id,
+        amount: redeemableEarningsLedger.amount,
+        source: redeemableEarningsLedger.earnings_source,
+      })
       .from(redeemableEarningsLedger)
       .where(
         and(
           eq(redeemableEarningsLedger.entry_type, "earning"),
-          eq(redeemableEarningsLedger.earnings_source, "affiliate"),
+          inArray(redeemableEarningsLedger.earnings_source, kind.sources),
           sql`${redeemableEarningsLedger.metadata}->>'payment_intent_id' = ${paymentIntentId}`,
-          sql`${redeemableEarningsLedger.metadata}->>'original_source_id' LIKE ${`affiliate_auto_topup:${paymentIntentId}:%`}`,
+          sql`${redeemableEarningsLedger.metadata}->>'original_source_id' LIKE ${`${kind.sourceIdPrefix}${paymentIntentId}:%`}`,
         ),
-      )
-      .limit(1);
-    return row ?? null;
+      )) as PaymentEarning[];
   }
 
   /**
@@ -959,12 +1037,13 @@ class RedeemableEarningsService {
    * reinstated counts in neither, as in the credit clawback. `seriesApplied`
    * is the part of `series` that the balances actually lost.
    */
-  private async affiliateFeeReversalState(
+  private async paymentEarningReversalState(
     db: DbTransaction,
-    userId: string,
+    earning: PaymentEarning,
     paymentIntentId: string,
     reversalSeries: string,
   ): Promise<{ series: Decimal; total: Decimal; seriesApplied: Decimal }> {
+    const { userId } = earning;
     const ledger = redeemableEarningsLedger;
     const rows = await db
       .select({
@@ -977,7 +1056,7 @@ class RedeemableEarningsService {
         and(
           eq(ledger.user_id, userId),
           eq(ledger.entry_type, "adjustment"),
-          eq(ledger.earnings_source, "affiliate"),
+          eq(ledger.earnings_source, earning.source),
           sql`${ledger.metadata}->>'payment_intent_id' = ${paymentIntentId}`,
           sql`${ledger.metadata}->>'affiliate_reversal_series' IS NOT NULL`,
           sql`NOT EXISTS (

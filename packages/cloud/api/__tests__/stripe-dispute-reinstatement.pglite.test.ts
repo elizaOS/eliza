@@ -946,3 +946,80 @@ test("a refund waits for the pending affiliate earning before acknowledgement", 
   expect(await processStripeEvent(event)).toBe("ack");
   expect(await affiliatePayable(buyer.affiliate)).toBe(0);
 });
+
+/** A referred buyer's $10 / 500-credit Checkout pack that paid $4 + $1 revenue splits. */
+async function referredCheckout(): Promise<
+  Purchase & { appOwner: string; creator: string }
+> {
+  const buyer = await purchase({ credits: "500", cents: 1000, balance: "500" });
+  const appOwner = randomUUID();
+  const creator = randomUUID();
+  for (const [userId, source, amount] of [
+    [appOwner, "app_owner_revenue_share", 4],
+    [creator, "creator_revenue_share", 1],
+  ] as const) {
+    await pg().query(
+      "INSERT INTO users(id,organization_id,steward_user_id,role) VALUES ($1,$2,$3,'owner')",
+      [userId, buyer.org, `subject_${userId}`],
+    );
+    // The same credit handleCheckoutSessionCompleted books for each split.
+    const earned = await redeemableEarningsService.addEarnings({
+      userId,
+      amount,
+      source,
+      sourceId: `revenue_split:${buyer.paymentIntentId}:${userId}`,
+      dedupeBySourceId: true,
+      description: "Revenue share",
+      metadata: { payment_intent_id: buyer.paymentIntentId },
+    });
+    expect(earned.success).toBe(true);
+  }
+  return { ...buyer, appOwner, creator };
+}
+
+async function earnedLedger(userId: string): Promise<number> {
+  const rows = await pg().query<{ total: string }>(
+    `SELECT COALESCE(SUM(amount),0)::text AS total FROM redeemable_earnings_ledger
+     WHERE user_id=$1 AND entry_type IN ('earning','adjustment')`,
+    [userId],
+  );
+  return Number(rows.rows[0]?.total);
+}
+
+test("refunds of a referred Checkout purchase take back the same share of its revenue splits", async () => {
+  const buyer = await referredCheckout();
+  const charge = `ch_${randomUUID()}`;
+  for (let delivery = 0; delivery < 2; delivery++)
+    expect(
+      await processStripeEvent(refundEvent(charge, 500, buyer.paymentIntentId)),
+    ).toBe("ack");
+  expect(await earnedLedger(buyer.appOwner)).toBe(2);
+  expect(await earnedLedger(buyer.creator)).toBe(0.5);
+
+  expect(
+    await processStripeEvent(refundEvent(charge, 1000, buyer.paymentIntentId)),
+  ).toBe("ack");
+  expect(await earnedLedger(buyer.appOwner)).toBe(0);
+  expect(await earnedLedger(buyer.creator)).toBe(0);
+});
+
+test("a dispute takes back the revenue splits and a won dispute returns them", async () => {
+  const won = await referredCheckout();
+  await disputeRoundTrip(won, `dp_${randomUUID()}`, 1000);
+  expect(await earnedLedger(won.appOwner)).toBe(4);
+  expect(await earnedLedger(won.creator)).toBe(1);
+
+  const lost = await referredCheckout();
+  expect(
+    await processStripeEvent(
+      disputeEvent(
+        "charge.dispute.funds_withdrawn",
+        `dp_${randomUUID()}`,
+        1000,
+        lost.paymentIntentId,
+      ),
+    ),
+  ).toBe("ack");
+  expect(await earnedLedger(lost.appOwner)).toBe(0);
+  expect(await earnedLedger(lost.creator)).toBe(0);
+});
