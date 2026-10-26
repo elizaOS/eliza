@@ -1042,6 +1042,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     // Whole-agent data: export/snapshot carry the memories and secrets,
     // restore/import/reset replace or wipe them.
     under("/api/snapshot") ||
+    // The Discord channel-picker reads (guilds, channels, DM
+    // recipients) are owner-dashboard data: the subscriptions write
+    // is gated, but these GETs pass paired guest sessions through
+    // with no check at any layer, so the whole prefix is owner-only.
+    under("/api/discord") ||
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
