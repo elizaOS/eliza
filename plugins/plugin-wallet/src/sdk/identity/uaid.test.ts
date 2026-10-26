@@ -8,40 +8,70 @@
  * down / the API key was rejected / we are rate limited". `resolve()` already
  * reports the same conditions through its `error` field; `search()` now rejects
  * with a typed error and keeps `[]` only for a real empty result.
+ *
+ * Every case below drives the resolver over a real loopback socket against a
+ * real `node:http` server: no `fetch` stub, no module mock. The status code,
+ * the body bytes and (for the transport case) the refused connection are
+ * produced by the network stack, so the assertions describe observed behavior.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { type AddressInfo, createServer, type ServerResponse } from "node:http";
+import { afterEach, describe, expect, it } from "vitest";
 import { UAIDRegistryError, UAIDResolver } from "./uaid.js";
 
-const BROKER = "https://registry.example.test/api/v1";
+const openServers: Array<() => Promise<void>> = [];
 
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
+afterEach(async () => {
+  await Promise.all(openServers.splice(0).map((close) => close()));
+});
+
+/** Start a real HTTP server and return the broker URL that reaches it. */
+async function serve(
+  handler: (res: ServerResponse) => void,
+): Promise<{ brokerUrl: string; requests: URL[] }> {
+  const requests: URL[] = [];
+  const server = createServer((req, res) => {
+    requests.push(new URL(req.url ?? "/", "http://127.0.0.1"));
+    handler(res);
   });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  openServers.push(
+    () => new Promise<void>((resolve) => server.close(() => resolve())),
+  );
+  return { brokerUrl: `http://127.0.0.1:${port}/api/v1`, requests };
 }
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
+/** A loopback URL that is guaranteed to refuse connections. */
+async function refusedBrokerUrl(): Promise<string> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return `http://127.0.0.1:${port}/api/v1`;
+}
+
+function reply(status: number, body: string, contentType = "application/json") {
+  return (res: ServerResponse) => {
+    res.writeHead(status, { "Content-Type": contentType });
+    res.end(body);
+  };
+}
 
 describe("UAIDResolver.search", () => {
   it("returns an empty array for a genuinely empty registry result", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { agents: [] })),
+    const { brokerUrl } = await serve(
+      reply(200, JSON.stringify({ agents: [] })),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("nobody")).resolves.toEqual([]);
   });
 
   it("rejects when the registry answers with an error status", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(503, { error: "unavailable" })),
+    const { brokerUrl } = await serve(
+      reply(503, JSON.stringify({ error: "unavailable" })),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("erc8004")).rejects.toThrow(
       /HOL registry search failed with 503/,
@@ -49,11 +79,10 @@ describe("UAIDResolver.search", () => {
   });
 
   it("reports the registry status on the typed error", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(401, { error: "bad api key" })),
+    const { brokerUrl } = await serve(
+      reply(401, JSON.stringify({ error: "bad api key" })),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     const failure = await resolver.search("erc8004").catch((error) => error);
     expect(failure).toBeInstanceOf(UAIDRegistryError);
@@ -61,35 +90,26 @@ describe("UAIDResolver.search", () => {
   });
 
   it("rejects when the registry request fails in transport", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => {
-        throw new TypeError("fetch failed");
-      }),
-    );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const brokerUrl = await refusedBrokerUrl();
+    const resolver = new UAIDResolver({ brokerUrl });
 
-    await expect(resolver.search("erc8004")).rejects.toBeInstanceOf(
-      UAIDRegistryError,
-    );
+    const failure = await resolver.search("erc8004").catch((error) => error);
+    expect(failure).toBeInstanceOf(UAIDRegistryError);
+    expect(failure).not.toBeInstanceOf(TypeError);
   });
 
   it("rejects when the registry body is not a JSON object", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("<html>oops</html>", { status: 200 })),
+    const { brokerUrl } = await serve(
+      reply(200, "<html>oops</html>", "text/html"),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("erc8004")).rejects.toThrow(/HOL registry/);
   });
 
   it("rejects when a successful body omits the agents field", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { total: 0 })),
-    );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const { brokerUrl } = await serve(reply(200, JSON.stringify({ total: 0 })));
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("erc8004")).rejects.toBeInstanceOf(
       UAIDRegistryError,
@@ -97,11 +117,10 @@ describe("UAIDResolver.search", () => {
   });
 
   it("rejects a null entry instead of throwing a raw TypeError", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { agents: [null] })),
+    const { brokerUrl } = await serve(
+      reply(200, JSON.stringify({ agents: [null] })),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     const failure = await resolver.search("erc8004").catch((error) => error);
     expect(failure).toBeInstanceOf(UAIDRegistryError);
@@ -109,11 +128,10 @@ describe("UAIDResolver.search", () => {
   });
 
   it("rejects a primitive entry instead of resolving a hollow match", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { agents: ["erc8004"] })),
+    const { brokerUrl } = await serve(
+      reply(200, JSON.stringify({ agents: ["erc8004"] })),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("erc8004")).rejects.toBeInstanceOf(
       UAIDRegistryError,
@@ -121,22 +139,21 @@ describe("UAIDResolver.search", () => {
   });
 
   it("rejects an entry without a uaid instead of resolving an empty match", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse(200, { agents: [{ protocol: "a2a" }] })),
+    const { brokerUrl } = await serve(
+      reply(200, JSON.stringify({ agents: [{ protocol: "a2a" }] })),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("a2a")).rejects.toBeInstanceOf(
       UAIDRegistryError,
     );
   });
 
-  it("still maps a well-formed entry", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        jsonResponse(200, {
+  it("still maps a well-formed entry and queries the documented endpoint", async () => {
+    const { brokerUrl, requests } = await serve(
+      reply(
+        200,
+        JSON.stringify({
           agents: [
             {
               uaid: "uaid:aid:eip155:8453;uid=7;proto=erc8004",
@@ -150,7 +167,7 @@ describe("UAIDResolver.search", () => {
         }),
       ),
     );
-    const resolver = new UAIDResolver({ brokerUrl: BROKER });
+    const resolver = new UAIDResolver({ brokerUrl });
 
     await expect(resolver.search("erc8004")).resolves.toEqual([
       {
@@ -172,5 +189,8 @@ describe("UAIDResolver.search", () => {
         registryVerified: true,
       },
     ]);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].pathname).toBe("/api/v1/agents/search");
+    expect(requests[0].searchParams.get("q")).toBe("erc8004");
   });
 });
