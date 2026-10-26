@@ -392,6 +392,11 @@ function normalizeConnectorLimit(
   return limit;
 }
 
+// Mirror the MCP marketplace search bound: without a page cap, a channel
+// or thread that keeps returning fresh cursors drives unbounded outbound
+// Slack API calls from a single read (15 messages per page).
+const MAX_SLACK_HISTORY_PAGES = 1000;
+
 function nextSlackCursor(
   response: { response_metadata?: { next_cursor?: string } },
   seen: Set<string>,
@@ -4477,6 +4482,7 @@ export class SlackService extends Service implements ISlackService {
     const seen = new Set<string>();
     let cursor = options?.cursor;
     if (cursor) seen.add(cursor);
+    let pages = 0;
     do {
       const result = await client.conversations.history({
         channel: channelId,
@@ -4490,6 +4496,7 @@ export class SlackService extends Service implements ISlackService {
       );
       if (requestedLimit !== undefined && rawMessages.length >= requestedLimit)
         break;
+      if (++pages >= MAX_SLACK_HISTORY_PAGES) break;
       cursor = nextSlackCursor(result, seen, "conversation history");
     } while (cursor);
 
@@ -4546,6 +4553,7 @@ export class SlackService extends Service implements ISlackService {
     const seen = new Set<string>();
     let cursor = options?.cursor;
     if (cursor) seen.add(cursor);
+    let pages = 0;
     do {
       const result = await client.conversations.replies({
         channel: channelId,
@@ -4560,6 +4568,7 @@ export class SlackService extends Service implements ISlackService {
       );
       if (requestedLimit !== undefined && rawMessages.length > requestedLimit)
         rawMessages.splice(0, rawMessages.length - requestedLimit);
+      if (++pages >= MAX_SLACK_HISTORY_PAGES) break;
       cursor = nextSlackCursor(result, seen, "thread replies");
     } while (cursor);
     // conversations.replies is oldest-first; return newest-first like readHistory.
