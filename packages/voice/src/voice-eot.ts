@@ -104,6 +104,14 @@ const NEVER_SENTENCE_FINAL = new Set([
   "er",
   "hmm",
   "hm",
+  // Prepositions that need an object to close a clause. The prepositions that
+  // can end a sentence ("Turn the lights on.", "Who is it for.", "What are you
+  // thinking about.", "That's what I was thinking of.", "I'd love to.") stay
+  // out of this set, so those answers keep 0.95.
+  "between",
+  "into",
+  "during",
+  "via",
 ]);
 /**
  * A decimal point needs a preceding number, unlike "that's the point". "One

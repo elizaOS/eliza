@@ -9,6 +9,12 @@ describe("scoreEndOfTurnHeuristic", () => {
       "Can you call my son because.",
       "Um.",
       "I want to buy a.",
+      // Prepositions that need an object: the recognizer's full stop must not
+      // turn the same cut-off clause into a finished turn.
+      "I'll be there between.",
+      "He turned it into.",
+      "She slept during.",
+      "I sent it via.",
     ]) {
       expect(scoreEndOfTurnHeuristic(text), text).toBeLessThan(0.5);
       expect(scoreEndOfTurnHeuristic(text)).toBe(
