@@ -72,8 +72,35 @@ export async function handlePermissionsExtraRoutes(
       error(res, 'Invalid mode. Expected "connectors-only" or "full".', 400);
       return true;
     }
+    const previousMode = state.agentAutomationMode;
+    const previousFeatures = state.config.features;
+    const previousAutomation = (
+      previousFeatures as Record<string, unknown> | undefined
+    )?.agentAutomation;
     ctx.persistAgentAutomationMode(state, parsed);
-    ctx.saveElizaConfig(state.config);
+    try {
+      ctx.saveElizaConfig(state.config);
+    } catch (err) {
+      // Same rule as PUT /api/permissions/trade-mode below: roll back so the
+      // process does not run under a mode that was never persisted, and report
+      // the failure instead of answering as saved. The helper writes into the
+      // live features object, so both the mode and its block are restored.
+      state.agentAutomationMode = previousMode;
+      if (previousFeatures === undefined) {
+        delete (state.config as { features?: unknown }).features;
+      } else {
+        const features = previousFeatures as Record<string, unknown>;
+        if (previousAutomation === undefined) {
+          delete features.agentAutomation;
+        } else {
+          features.agentAutomation = previousAutomation;
+        }
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`[api] Automation-mode config save failed: ${message}`);
+      error(res, `Failed to save agent automation mode: ${message}`, 500);
+      return true;
+    }
     json(res, {
       mode: parsed,
       options: ["connectors-only", "full"] as AgentAutomationMode[],
