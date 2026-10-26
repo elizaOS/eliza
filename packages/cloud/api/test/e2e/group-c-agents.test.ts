@@ -1385,7 +1385,7 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
     expect(Array.isArray(body.claimed)).toBe(true);
   });
 
-  test("POST with a session cookie claims an affiliate character the user chatted with", async () => {
+  test("POST with a session cookie does NOT claim an affiliate character the user merely chatted with", async () => {
     const userId = process.env.TEST_USER_ID;
     const organizationId = process.env.TEST_ORGANIZATION_ID;
     if (!userId || !organizationId) {
@@ -1411,9 +1411,10 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
       claimed?: Array<{ id?: string; name?: string }>;
     };
     expect(body.success).toBe(true);
-    expect(body.claimed?.some((c) => c.id === seeded.characterId)).toBe(true);
+    expect(body.claimed?.some((c) => c.id === seeded.characterId)).toBe(false);
 
-    // Ownership actually transferred to the claiming user + org (gated ≠ owned).
+    // Ownership stays with the anonymous creator: chatting with a public
+    // character never proves creator identity, so nothing transfers.
     const client = new Client({
       connectionString:
         process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL,
@@ -1424,8 +1425,7 @@ describeE2E("/api/my-agents/claim-affiliate-characters", () => {
         `SELECT user_id, organization_id FROM user_characters WHERE id = $1`,
         [seeded.characterId],
       );
-      expect(row.rows[0]?.user_id).toBe(userId);
-      expect(row.rows[0]?.organization_id).toBe(organizationId);
+      expect(row.rows[0]?.user_id).toBe(seeded.anonUserId);
     } finally {
       await client.end();
     }

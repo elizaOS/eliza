@@ -7,6 +7,10 @@ import {
   userCharactersRepository,
 } from "@elizaos/cloud-shared/db/repositories";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  checkElizaMutatingRequestOrigin,
+  hasElizaNonSimpleRequestMarker,
+} from "@elizaos/cloud-shared/lib/auth/browser-origin-policy";
 import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";
 import { usersService } from "@elizaos/cloud-shared/lib/services/users";
@@ -14,30 +18,27 @@ import { decodeOptionalRequestJson } from "@elizaos/cloud-shared/lib/utils/json-
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
+import { getCookie } from "hono/cookie";
 import { z } from "zod";
+
+const ANON_SESSION_COOKIE = "eliza-anon-session";
 
 /**
  * POST /api/my-agents/claim-affiliate-characters
  *
- * Claims all affiliate characters that the authenticated user has interacted with
- * (via chat rooms) but doesn't own yet.
+ * Claims the authenticated user's own affiliate characters: characters owned
+ * by the anonymous session bound to this browser. Chatting with a public
+ * character never proves its creator, so room interaction alone claims
+ * nothing; the anonymous session is honored ONLY from the HttpOnly cookie,
+ * never from the request body, following the migrate-anonymous doctrine.
+ * The cookie path is guarded like the other session mutations: exact-host
+ * Origin policy plus a non-simple-request marker.
  *
- * This handles the case where an already-authenticated user visited an affiliate link
- * and chatted with the character before visiting the My Agents page.
- *
- * Also supports claiming via session token - if the user had an anonymous session
- * before signing up, we can find and claim characters associated with that session.
- *
- * Request body (optional):
- * {
- *   sessionToken?: string  // Anonymous session token to find associated characters
- * }
+ * Request body: ignored (kept for the page-load call shape).
  */
 const app = new Hono<AppEnv>();
 
-const claimAffiliateCharactersBodySchema = z.object({
-  sessionToken: z.string().min(1).optional(),
-});
+const claimAffiliateCharactersBodySchema = z.object({});
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -49,6 +50,21 @@ function isUuid(value: string | null | undefined): value is string {
 app.post("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
+
+    // Cookie-bound mutation: same guards as migrate-anonymous.
+    const originCheck = checkElizaMutatingRequestOrigin(
+      c.req,
+      c.env.NODE_ENV === "production",
+    );
+    if (!originCheck.ok) {
+      logger.warn("[Claim Affiliate Chars] rejected cross-origin POST", {
+        detail: originCheck.reason,
+      });
+      return c.json({ error: "Forbidden", code: "forbidden_origin" }, 403);
+    }
+    if (!hasElizaNonSimpleRequestMarker(c.req)) {
+      return c.json({ error: "Forbidden", code: "csrf_marker_required" }, 403);
+    }
 
     logger.info(
       `[Claim Affiliate Chars] Starting claim process for user ${user.id}`,
@@ -81,7 +97,29 @@ app.post("/", async (c) => {
           400,
         );
       }
-      const { sessionToken } = parsedBody.data;
+      // The anonymous session is the caller's only proof of creator
+      // identity, and it is honored ONLY from the HttpOnly cookie. A
+      // session token in the request body is ignored: a leaked token must
+      // not let its holder claim another session's characters.
+      const cookieToken = getCookie(c, ANON_SESSION_COOKIE);
+      let sessionOwnerId: string | null = null;
+      let convertibleSessionId: string | null = null;
+      if (cookieToken) {
+        const session = await anonymousSessionsService.getByToken(cookieToken);
+        if (session && !session.converted_at) {
+          const sessionOwner = await usersService.getById(session.user_id);
+          if (
+            sessionOwner?.is_anonymous &&
+            sessionOwner.email?.includes("@anonymous.elizacloud.ai")
+          ) {
+            sessionOwnerId = sessionOwner.id;
+            // Defer conversion until after the claim calls below: converting
+            // first would consume the token and turn a temporary
+            // ownership-transfer failure into a permanent one.
+            convertibleSessionId = session.id;
+          }
+        }
+      }
 
       // Find affiliate characters user has interacted with via room associations
       // New architecture: entityId = userId, rooms.agentId = characterId
@@ -113,9 +151,13 @@ app.post("/", async (c) => {
             // Skip if user already owns this character
             if (char.user_id === user.id) continue;
 
-            // Check if owner is an anonymous/affiliate user
+            // Room interaction alone proves nothing about creator
+            // identity: only characters owned by the caller's own cookie
+            // session are claimable through a room.
             const owner = await usersService.getById(char.user_id);
             if (
+              sessionOwnerId !== null &&
+              char.user_id === sessionOwnerId &&
               owner &&
               (owner.is_anonymous === true ||
                 owner.email?.includes("@anonymous.elizacloud.ai"))
@@ -132,59 +174,35 @@ app.post("/", async (c) => {
         }
       }
 
-      // Session claimed through its token, if the session is still retryable
-      // and every session-backed claim in this attempt succeeds.
-      let convertibleSessionId: string | null = null;
+      // Session-owned characters, from the cookie-resolved session above.
       const sessionOwnedCharacterIds = new Set<string>();
 
-      // Also find characters via session token if provided
-      if (sessionToken) {
+      if (sessionOwnerId !== null) {
         logger.info(
-          `[Claim Affiliate Chars] Session token provided, looking up session...`,
+          `[Claim Affiliate Chars] Found affiliate session owner: ${sessionOwnerId}`,
         );
 
-        const session = await anonymousSessionsService.getByToken(sessionToken);
+        // Find characters owned by this anonymous user
+        const sessionCharacters =
+          await userCharactersRepository.listByUser(sessionOwnerId);
 
-        if (session && !session.converted_at) {
-          const sessionOwner = await usersService.getById(session.user_id);
+        for (const char of sessionCharacters) {
+          sessionOwnedCharacterIds.add(char.id);
 
+          // Only add if not already in the list and owned by the session owner
           if (
-            sessionOwner?.is_anonymous &&
-            sessionOwner.email?.includes("@anonymous.elizacloud.ai")
+            char.user_id === sessionOwnerId &&
+            !claimableCharacters.some((c) => c.characterId === char.id)
           ) {
+            claimableCharacters.push({
+              characterId: char.id,
+              characterName: char.name,
+              ownerId: sessionOwnerId,
+              roomId: "", // No room association, but we'll claim via session
+            });
             logger.info(
-              `[Claim Affiliate Chars] Found affiliate session owner: ${sessionOwner.id}`,
+              `[Claim Affiliate Chars] Added character from session: ${char.name}`,
             );
-
-            // Find characters owned by this anonymous user
-            const sessionCharacters = await userCharactersRepository.listByUser(
-              sessionOwner.id,
-            );
-
-            for (const char of sessionCharacters) {
-              sessionOwnedCharacterIds.add(char.id);
-
-              // Only add if not already in the list and owned by the session owner
-              if (
-                char.user_id === sessionOwner.id &&
-                !claimableCharacters.some((c) => c.characterId === char.id)
-              ) {
-                claimableCharacters.push({
-                  characterId: char.id,
-                  characterName: char.name,
-                  ownerId: sessionOwner.id,
-                  roomId: "", // No room association, but we'll claim via session
-                });
-                logger.info(
-                  `[Claim Affiliate Chars] Added character from session: ${char.name}`,
-                );
-              }
-            }
-
-            // Defer conversion until after the claim calls below: converting
-            // first would consume the token and turn a temporary
-            // ownership-transfer failure into a permanent one.
-            convertibleSessionId = session.id;
           }
         }
       }
