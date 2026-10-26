@@ -57,6 +57,27 @@ function transcriptScopeFromRow(row: Memory): TranscriptScope {
   }
 }
 /**
+ * Strip a join passcode from a session's meeting URL. The canonical
+ * Zoom join URL preserves ?pwd=, and the disclosure decision below
+ * governs transcripts only — so without this, a non-owner viewer
+ * served the session would receive the meeting passcode with it.
+ * The stored URL is untouched; the bot still joins with the full
+ * URL internally. Only applied to viewer copies, never the owner
+ * boundary (no access context).
+ */
+function stripMeetingPassword(session: MeetingSession): MeetingSession {
+  let parsed: URL;
+  try {
+    parsed = new URL(session.meetingUrl);
+  } catch {
+    return session;
+  }
+  if (!parsed.searchParams.has("pwd")) return session;
+  parsed.searchParams.delete("pwd");
+  return { ...session, meetingUrl: parsed.toString() };
+}
+
+/**
  * Select the session DTO for one viewer. Reads the linked transcript row and
  * applies the canonical disclosure decision; a missing row withholds the
  * reference (fail closed — a dangling id must not read as shareable).
@@ -66,10 +87,11 @@ export async function selectSessionForViewer(
   accessContext: AccessContext | undefined,
   session: MeetingSession,
 ): Promise<MeetingSession> {
-  if (!accessContext || !session.transcriptId) return session;
-  const row = await runtime.getMemoryById(session.transcriptId as UUID);
+  const forViewer = accessContext ? stripMeetingPassword(session) : session;
+  if (!accessContext || !forViewer.transcriptId) return forViewer;
+  const row = await runtime.getMemoryById(forViewer.transcriptId as UUID);
   if (!row) {
-    const { transcriptId: _transcriptId, ...withheld } = session;
+    const { transcriptId: _transcriptId, ...withheld } = forViewer;
     return withheld;
   }
   const metadata = row.metadata as Record<string, unknown> | undefined;
@@ -84,10 +106,10 @@ export async function selectSessionForViewer(
     accessContext,
     runtime.agentId as UUID,
   );
-  if (disclosure === "full") return session;
+  if (disclosure === "full") return forViewer;
   if (disclosure === "redacted") {
-    return { ...session, transcriptRedacted: true };
+    return { ...forViewer, transcriptRedacted: true };
   }
-  const { transcriptId: _transcriptId, ...withheld } = session;
+  const { transcriptId: _transcriptId, ...withheld } = forViewer;
   return withheld;
 }
