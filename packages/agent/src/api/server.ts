@@ -1044,6 +1044,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/api/snapshot") ||
     pathname === "/api/restore" ||
     under("/api/backups") ||
+    // The notification feed carries the owner's alert titles and
+    // bodies (message previews, task and workflow updates); reads
+    // disclose them just as writes would forge them, so the read
+    // side is owner-only too.
+    under("/api/notifications") ||
     under("/api/agent/export") ||
     (write &&
       [
