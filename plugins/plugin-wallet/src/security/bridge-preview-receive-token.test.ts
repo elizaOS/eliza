@@ -114,3 +114,16 @@ describe("Solana address confirmation key", () => {
     );
   });
 });
+
+describe("transfer confirmation", () => {
+  it("names the native coin when no token is given", () => {
+    const prompt = walletFinancialPreview({
+      subaction: "transfer",
+      chain: "base",
+      amount: "2",
+      recipient: "0x2222222222222222222222222222222222222222",
+    } as never);
+    expect(prompt).toContain("Transfer 2 of the native coin (not a token)");
+    expect(prompt).not.toContain("tokens");
+  });
+});

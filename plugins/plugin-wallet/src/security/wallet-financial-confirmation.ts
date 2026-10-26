@@ -255,7 +255,8 @@ export function walletFinancialPreview(
   const slippage = slippagePreviewClause(params.slippageBps);
   switch (params.subaction) {
     case "transfer":
-      return `Transfer ${params.amount ?? "?"} ${params.fromToken ?? "tokens"} to ${params.recipient ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
+      // With no fromToken the chain handlers send the native coin.
+      return `Transfer ${params.amount ?? "?"} ${params.fromToken ?? "of the native coin (not a token)"} to ${params.recipient ?? "?"} on ${chainLabel}? Reply yes to submit or no to cancel.`;
     case "swap":
       return `Swap ${params.amount ?? "?"} ${params.fromToken ?? "?"} to ${params.toToken ?? "?"} on ${chainLabel}${slippage}? Reply yes to submit or no to cancel.`;
     case "bridge": {
