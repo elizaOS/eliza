@@ -1502,6 +1502,34 @@ export class SlackService extends Service implements ISlackService {
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
+    // Slack delivers membership changes and channel metadata edits as
+    // `message` events with a system subtype, not as user-authored
+    // messages. Nothing downstream distinguishes them, so without this
+    // early return a join/leave/topic notice runs a full agent turn
+    // and posts a thread reply under the system message. Member
+    // joins/leaves are still covered by the dedicated
+    // member_joined_channel / member_left_channel handlers, and
+    // real user content (no subtype, file_share, thread_broadcast,
+    // me_message, bot_message) flows unchanged.
+    const SYSTEM_MESSAGE_SUBTYPES = new Set([
+      "channel_join",
+      "channel_leave",
+      "channel_topic",
+      "channel_name",
+      "channel_purpose",
+      "channel_archive",
+      "channel_unarchive",
+      "group_join",
+      "group_leave",
+      "group_topic",
+      "group_name",
+      "group_purpose",
+      "group_archive",
+      "group_unarchive",
+    ]);
+    if (message.subtype && SYSTEM_MESSAGE_SUBTYPES.has(message.subtype)) {
+      return;
+    }
     if (
       !isValidChannelId(message.channel) ||
       !isValidMessageTs(message.ts) ||
