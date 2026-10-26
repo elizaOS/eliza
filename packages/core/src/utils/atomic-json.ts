@@ -90,6 +90,7 @@ export async function writeJsonAtomic(
 	opts?: WriteJsonAtomicOptions,
 ): Promise<void> {
 	assertFilePath(filePath);
+	filePath = path.resolve(filePath);
 	const o = normalizeOptions(opts);
 	// Serialize before any filesystem work so top-level undefined/function/
 	// symbol (the only values JSON.stringify maps to undefined) reject with a
