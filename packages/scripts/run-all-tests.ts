@@ -1284,25 +1284,19 @@ function runScript(
       canSkipWhenOutputHasNoTests(scriptName, scripts) &&
       !hasLocalTestFiles(cwd);
 
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
     child.stdout?.on("data", (chunk) => {
       if (stream) {
         process.stdout.write(chunk);
       }
-      appendCapturedTestOutput(
-        capturedOutput,
-        chunk.toString("utf8"),
-        "stdout",
-      );
+      appendCapturedTestOutput(capturedOutput, chunk, "stdout");
     });
     child.stderr?.on("data", (chunk) => {
       if (stream) {
         process.stderr.write(chunk);
       }
-      appendCapturedTestOutput(
-        capturedOutput,
-        chunk.toString("utf8"),
-        "stderr",
-      );
+      appendCapturedTestOutput(capturedOutput, chunk, "stderr");
     });
 
     // Armed timeout: a hung child is killed and recorded as a timeout FAILURE.
