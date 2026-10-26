@@ -265,6 +265,46 @@ describe("@elizaos/plugin-coding-tools — filesystem and shell integration", ()
     expect(written).toBe("smoke ok");
   });
 
+  // Current OpenAI keys carry a project, service-account or admin prefix and
+  // use - and _ in the body. Built at run time so no key-shaped literal ships.
+  const openAiKey = (prefix: string) =>
+    `sk-${prefix}-${"Ab3_".repeat(10)}-${"Zx9".repeat(12)}`;
+
+  it.each(["proj", "svcacct", "admin"])(
+    "FILE action=write refuses an OpenAI %s key",
+    async (prefix) => {
+      const target = path.join(tmpDir, `openai-${prefix}.env`);
+      const result = await runFile({
+        action: "write",
+        file_path: target,
+        content: `OPENAI_API_KEY=${openAiKey(prefix)}\n`,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("openai_key");
+      await expect(fs.access(target)).rejects.toThrow();
+    },
+  );
+
+  it("FILE action=edit refuses to introduce an OpenAI project key", async () => {
+    const target = path.join(tmpDir, "openai-edit.env");
+    await fs.writeFile(target, "OPENAI_API_KEY=\n", "utf8");
+    expect((await runFile({ action: "read", file_path: target })).success).toBe(
+      true,
+    );
+
+    const result = await runFile({
+      action: "edit",
+      file_path: target,
+      old_string: "OPENAI_API_KEY=\n",
+      new_string: `OPENAI_API_KEY=${openAiKey("proj")}\n`,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("openai_key");
+    expect(await fs.readFile(target, "utf8")).toBe("OPENAI_API_KEY=\n");
+  });
+
   it("SHELL echo hello", async () => {
     const action = findAction("SHELL");
     const result = await action.handler?.(runtime, makeMessage(), undefined, {
