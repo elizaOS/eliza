@@ -3752,6 +3752,23 @@ export class DiscordService extends Service implements IDiscordService {
 			params.target,
 			params,
 		);
+		// A configured allowlist owns exclusions: joining must not silently
+		// expand it past a channel the operator excluded (mirrors leave,
+		// which refuses to remove a configured channel). Without a
+		// configured allowlist every channel is already allowed, so join
+		// behavior there is unchanged.
+		const configured =
+			this.getAccountState(accountId)?.allowedChannelIds ??
+			this.allowedChannelIds;
+		if (configured && !this.isChannelAllowed(channel.id, accountId)) {
+			throw new ElizaError(
+				"This Discord channel is not listed in CHANNEL_IDS. Add it to the configuration to join it.",
+				{
+					code: "DISCORD_JOIN_CONFIGURED_EXCLUSION",
+					context: { accountId, channelId: channel.id },
+				},
+			);
+		}
 		this.addAllowedChannel(channel.id, accountId);
 
 		const guild = "guild" in channel ? channel.guild : null;
