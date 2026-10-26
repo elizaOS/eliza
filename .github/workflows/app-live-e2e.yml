@@ -1001,6 +1001,13 @@ jobs:
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
         run: bun install --filter './' --filter @elizaos/cloud-api --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
 
+      - name: Build the normal API dependency closure for Workerd
+        if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          RUN_TURBO_CONCURRENCY: "1"
+        run: node packages/scripts/run-turbo.ts run build --filter=@elizaos/cloud-api... --output-logs=errors-only
+
       - name: Check the existing bounded general-search Workerd regression
         if: ${{ inputs.shared_runtime_suite == 'workerd-general' }}
         working-directory: packages/cloud/api
