@@ -1060,6 +1060,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Voice identity: binding a profile to an entity decides whose
+        // live voice turns count as the owner's. The management UI's
+        // OWNER-profile guards are bypassable through this namespace.
+        under("/v1/voice/speaker-profiles") ||
+        under("/api/voice/profiles") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
