@@ -109,6 +109,14 @@ type ReadDirectory = (
 const readDirectoryWithTypes: ReadDirectory = (directory) =>
   fs.readdir(directory, { withFileTypes: true });
 
+/** The search root itself could not be listed (missing, not a directory, unreadable). */
+class GlobRootUnreadableError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "GlobRootUnreadableError";
+  }
+}
+
 /**
  * Discover only entries physically reachable beneath `root`, without following
  * directory symlinks, then apply glob syntax to root-relative candidate names.
@@ -129,8 +137,11 @@ export async function walkContainedGlob(
     let entries: Array<import("node:fs").Dirent>;
     try {
       entries = await readDirectory(dir);
-    } catch {
-      // error-policy:J6 best-effort walk; a directory that became unreadable
+    } catch (error) {
+      // A root that cannot be listed is an error, as it is for LS and GREP;
+      // reporting it as an empty match tells the caller no file exists there.
+      if (dir === root) throw new GlobRootUnreadableError(error);
+      // error-policy:J6 best-effort walk; a subdirectory that became unreadable
       // (permissions, race) is skipped so the remaining tree is still globbed.
       return;
     }
@@ -225,6 +236,12 @@ export async function globHandler(
   try {
     candidates = await walkContainedGlob(root, pattern);
   } catch (error) {
+    if (error instanceof GlobRootUnreadableError) {
+      return failureToActionResult({
+        reason: "io_error",
+        message: `readdir failed: ${error.message}`,
+      });
+    }
     return failureToActionResult({
       reason: "invalid_param",
       message: `invalid glob pattern: ${error instanceof Error ? error.message : String(error)}`,
