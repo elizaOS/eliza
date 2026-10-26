@@ -135,9 +135,12 @@ export class PhraseAggregator {
 
   private take(): string | null {
     const trimmed = this.buffer.trim();
+    if (trimmed.length > 0 && trimmed.length < this.minEmitChars) {
+      return null;
+    }
     this.buffer = "";
     this.dotAfterDigit = false;
-    if (trimmed.length < this.minEmitChars) {
+    if (trimmed.length === 0) {
       return null;
     }
     this.emittedCount += 1;
