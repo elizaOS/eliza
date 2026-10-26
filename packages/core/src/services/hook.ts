@@ -104,6 +104,10 @@ export class HookService extends Service implements IHookService {
 
 	/** Index of hook IDs by event type for fast lookup */
 	private eventIndex = new Map<EventType, Set<string>>();
+	private eventInterceptors = new Map<
+		EventType,
+		(payload: EventPayload) => Promise<void>
+	>();
 
 	/** Counter for generating unique hook IDs */
 	private idCounter = 0;
@@ -131,6 +135,10 @@ export class HookService extends Service implements IHookService {
 	 * Stop the hook service
 	 */
 	async stop(): Promise<void> {
+		for (const [event, handler] of this.eventInterceptors) {
+			this.runtime.unregisterEvent(event, handler);
+		}
+		this.eventInterceptors.clear();
 		this.registry.clear();
 		this.eventIndex.clear();
 	}
@@ -145,9 +153,11 @@ export class HookService extends Service implements IHookService {
 		) as EventType[];
 
 		for (const eventType of hookEventTypes) {
-			this.runtime.registerEvent(eventType, async (payload: EventPayload) => {
+			const handler = async (payload: EventPayload) => {
 				await this.dispatchToHooks(eventType, payload);
-			});
+			};
+			this.eventInterceptors.set(eventType, handler);
+			this.runtime.registerEvent(eventType, handler);
 		}
 	}
 
