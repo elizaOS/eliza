@@ -1060,6 +1060,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Remote capability-router connect: wires a caller-supplied
+        // endpoint's plugins into the runtime and persists it (with token)
+        // into owner config by default.
+        under("/api/capability-router") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
