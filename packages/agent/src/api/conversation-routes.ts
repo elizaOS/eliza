@@ -200,7 +200,10 @@ import {
   persistDeletedConversationIdsToState,
   resolveAppUserName,
 } from "./server-helpers.ts";
-import { normalizeWsClientId } from "./server-helpers-auth.ts";
+import {
+  isServerTokenAuthorized,
+  normalizeWsClientId,
+} from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
 import {
   importSharedTodoCutover,
@@ -3997,6 +4000,16 @@ async function importConversation(
     "conversation id",
   );
   if (convId === null) return true;
+  // Import forges agent history and plants live reminders: owner principals
+  // only, plus the cloud gateway's server token. A gate entry would break
+  // the connector-retry import path, which authenticates by server token.
+  const isOwnerPrincipal =
+    trustedApiPrincipal.kind === "owner_session" ||
+    trustedApiPrincipal.kind === "owner_api_token";
+  if (!isOwnerPrincipal && !isServerTokenAuthorized(req)) {
+    error(res, "Forbidden", 403);
+    return true;
+  }
   const rawImport = await readJsonBody<Record<string, unknown>>(req, res);
   if (rawImport === null) return true;
   const rawMessages = rawImport.messages;
