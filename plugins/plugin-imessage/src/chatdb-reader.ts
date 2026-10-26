@@ -33,6 +33,14 @@ import type { IMessagePermissionAction } from "./types.js";
  */
 export const DEFAULT_CHAT_DB_PATH = join(homedir(), "Library", "Messages", "chat.db");
 
+// Safety bound for reads that arrive without a limit. The connector
+// search path deliberately reads a whole chat before filtering, and
+// the HTTP routes cap the same data at 500 — but nothing capped the
+// connector path, so a limit-less call materialized the entire
+// chat.db (SQLite LIMIT -1). 15,000 keeps whole-chat search working
+// for all but pathological histories while bounding the worst case.
+export const MAX_CHAT_DB_MESSAGES_READ = 15000;
+
 export const MACOS_FULL_DISK_ACCESS_SETTINGS_URL =
   "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
 
@@ -945,7 +953,7 @@ export async function openChatDb(
       const limit =
         typeof options.limit === "number" && Number.isFinite(options.limit)
           ? Math.max(1, Math.trunc(options.limit))
-          : -1;
+          : MAX_CHAT_DB_MESSAGES_READ;
 
       let rows: RawMessageRow[];
       try {
