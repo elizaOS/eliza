@@ -144,6 +144,35 @@ describe("workspace diff production paths", () => {
     expect(explicit?.diff).toContain("+untracked content");
   });
 
+  it("does not render a tracked tool path that matches the base as a new file", async () => {
+    const unchanged = "notes\t☃.txt";
+    writeFileSync(join(dir, unchanged), "kept as is\n");
+    git("add", unchanged);
+    git("commit", "-q", "-m", "notes");
+    const baseline = await captureBaselineSha(dir);
+    // Edited through a tool and then reverted, or rewritten with the same bytes.
+    writeFileSync(join(dir, "tracked.txt"), "debug line\n");
+    writeFileSync(join(dir, "tracked.txt"), "base\n");
+    writeFileSync(join(dir, unchanged), "kept as is\n");
+    writeFileSync(join(dir, "session.txt"), "created by tool\n");
+
+    const result = await captureChangeSet(dir, baseline, [
+      join(dir, "tracked.txt"),
+      join(dir, unchanged),
+      join(dir, "session.txt"),
+    ]);
+    expect(result?.fileDiffs).toEqual([
+      { path: "tracked.txt", diff: "" },
+      { path: unchanged, diff: "" },
+      {
+        path: "session.txt",
+        diff: expect.stringContaining("+created by tool"),
+      },
+    ]);
+    expect(result?.diff).not.toContain("+base");
+    expect(result?.diff).not.toContain("+kept as is");
+  });
+
   it("reads rename records without treating the original path as another status", async () => {
     const renamed = "renamed\t☃.txt";
     git("mv", "tracked.txt", renamed);

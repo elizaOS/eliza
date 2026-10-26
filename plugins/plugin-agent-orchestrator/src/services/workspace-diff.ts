@@ -344,6 +344,12 @@ async function fileDiff(
     (existsSync(absolute) && statSync(absolute).isDirectory())
   )
     return "";
+  // An empty diff for a path Git tracks means its content matches the base (an
+  // edit that was reverted, an identical rewrite); only an untracked file is new.
+  const indexed = parseNullRecords(
+    await git(workdir, ["ls-files", "-z", "--", `:(literal)${file}`]),
+  );
+  if (indexed.includes(file)) return "";
   const args = ["diff", "--no-index", "--", "/dev/null", file];
   const created = await gitResult(workdir, args);
   if (created.status === 1) return created.stdout;
