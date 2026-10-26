@@ -84,8 +84,8 @@ final class WorkflowSurvivorInventory {
    &&args[2].equals("--no-install")&&args[3].equals(bundle)
    &&(args.length==5||args[4].equals("android-bridge"));
  }
- static void stopResident(File suppliedBun,File suppliedLoader,File suppliedBundle)throws Exception {
-  long deadline=SystemClock.elapsedRealtime()+5000;
+ static void stopResident(File suppliedBun,File suppliedLoader,File suppliedBundle,long deadline)throws Exception {
+  check(SystemClock.elapsedRealtime()<deadline,"resident stop inventory deadline");
   String bun=suppliedBun.getCanonicalPath(),loader=suppliedLoader.getCanonicalPath(),bundle=suppliedBundle.getCanonicalPath();
   check(bun.equals(suppliedBun.getPath())&&loader.equals(suppliedLoader.getPath())&&bundle.equals(suppliedBundle.getPath()),"resident deployment alias");
   StructStat packaged=Os.stat(loader);String loaderHash=hash(new File(loader),deadline);
@@ -109,7 +109,7 @@ final class WorkflowSurvivorInventory {
   final Identity target=selected;final byte[] targetArgs=selectedArgs;
   if(observePresent(target.pid,()->{check(target.key().equals(processIdentity(target.pid,deadline).key())&&Arrays.equals(targetArgs,bounded(new File("/proc/"+target.pid+"/cmdline"),65536)),"resident changed before signal");return Boolean.TRUE;})==null)return;
   // The full UID/start/executable identity is rechecked immediately before signaling.
-  if(observePresent(target.pid,()->{Os.kill(target.pid,OsConstants.SIGTERM);return Boolean.TRUE;})==null)return;
+  if(observePresent(target.pid,()->{check(SystemClock.elapsedRealtime()<deadline,"resident stop inventory deadline");Os.kill(target.pid,OsConstants.SIGTERM);return Boolean.TRUE;})==null)return;
   while(SystemClock.elapsedRealtime()<deadline){
    Identity current;
    try {current=observePresent(target.pid,()->processIdentity(target.pid,deadline));}
@@ -255,8 +255,8 @@ final class WorkflowSurvivorInventory {
   for(int pid:observed.keySet())check(pid==self||verified.contains(pid),"unregistered same-UID process; preserve it");
   return verified;
  }
- static void requireClassified(File suppliedHome,File suppliedState,File suppliedBun,File suppliedLoader)throws Exception {
-  long deadline=SystemClock.elapsedRealtime()+10000;File home=suppliedHome.getCanonicalFile(),state=suppliedState.getCanonicalFile();owned(home,OsConstants.S_IFDIR,0700);check(state.equals(new File(home,".eliza/smthrs")),"unexpected workflow state scope");String bun=suppliedBun.getCanonicalPath(),loader=suppliedLoader.getCanonicalPath(),loaderHash=hash(new File(loader),deadline);Map<Integer,Identity> before=processes(deadline);Set<Integer> verified=new HashSet<>();
+ static void requireClassified(File suppliedHome,File suppliedState,File suppliedBun,File suppliedLoader,long deadline)throws Exception {
+  check(SystemClock.elapsedRealtime()<deadline,"worker inventory deadline");File home=suppliedHome.getCanonicalFile(),state=suppliedState.getCanonicalFile();owned(home,OsConstants.S_IFDIR,0700);check(state.equals(new File(home,".eliza/smthrs")),"unexpected workflow state scope");String bun=suppliedBun.getCanonicalPath(),loader=suppliedLoader.getCanonicalPath(),loaderHash=hash(new File(loader),deadline);Map<Integer,Identity> before=processes(deadline);Set<Integer> verified=new HashSet<>();
   if(before.size()>1){
    List<JSONObject> candidates=new ArrayList<>();Map<JSONObject,File> origins=new IdentityHashMap<>();
    for(File journal:journals(state)){JSONObject owner=readableCandidate(journal);if(owner!=null){candidates.add(owner);origins.put(owner,journal);}}

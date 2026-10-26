@@ -627,3 +627,5 @@ export * from "./register-routes";
 export * from "./cloud";
 
 export type { CloudProxyConfigLike } from "./lib/config-like";
+
+export { getCloudInferenceFailure } from "./utils/inference-diagnostics";

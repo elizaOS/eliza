@@ -213,6 +213,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "sms_send":
     case "clock_handoff":
     case "clock_alarm":
+    case "camera_capture_photo":
     case "create_note":
     case "create_reminder":
     case "reminder_create":

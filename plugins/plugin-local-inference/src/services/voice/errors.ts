@@ -19,6 +19,7 @@ export class VoiceStartupError extends Error {
 		| "missing-speaker-preset"
 		| "missing-bundle-root"
 		| "missing-asr-model"
+		| "unreadable-asr-dir"
 		| "missing-fused-build"
 		| "blocked-asr-provenance"
 		| "missing-turn-detector"

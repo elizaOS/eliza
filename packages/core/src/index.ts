@@ -220,6 +220,7 @@ export {
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
+export { createPreparedModelRequestGuard } from "./runtime/prepared-model-request";
 export {
 	projectDeferredProviders,
 	providerReviewSources,

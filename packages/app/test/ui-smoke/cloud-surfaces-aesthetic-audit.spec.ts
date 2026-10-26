@@ -690,6 +690,79 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
   });
 
   for (const viewport of VIEWPORTS) {
+    test(`configured account support ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      await installCloudApiStubs(page);
+      const deletionWrites: string[] = [];
+      page.on("request", (request) => {
+        if (
+          request.url().includes("/account-deletion") &&
+          request.method() !== "GET"
+        ) {
+          deletionWrites.push(request.method());
+        }
+      });
+      await page.goto("/account-deletion?requested=untrusted-audit-receipt");
+      const appName = process.env.ELIZA_AUDIT_SUPPORT_APP_NAME || "Eliza";
+      const cloudName =
+        process.env.ELIZA_AUDIT_SUPPORT_CLOUD_NAME || `${appName} Cloud`;
+      const email =
+        process.env.ELIZA_AUDIT_SUPPORT_EMAIL ?? "support@eliza.cloud";
+      await expect(page).toHaveTitle(
+        `Delete your ${appName} account | ${cloudName}`,
+      );
+      await expect(
+        page.getByText(`${cloudName} account deletion`, { exact: true }),
+      ).toBeVisible();
+      if (email) {
+        await expect(
+          page.getByRole("link", { name: email, exact: true }),
+        ).toHaveAttribute(
+          "href",
+          `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`${appName} account deletion request`)}`,
+        );
+      } else {
+        await expect(
+          page.getByText("Support contact details are unavailable.", {
+            exact: false,
+          }),
+        ).toBeVisible();
+        await expect(page.locator('a[href^="mailto:"]')).toHaveCount(0);
+      }
+      if (appName !== "Eliza")
+        await expect(page.locator("main")).not.toContainText("Eliza");
+      await expect(
+        page.getByRole("heading", {
+          name: "Account deletion completed",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      expect(deletionWrites).toEqual([]);
+      const evidenceDir = path.join(outputDir, "configured-support");
+      await mkdir(evidenceDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(evidenceDir, `${viewport.name}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+      const supportContact = email
+        ? page.getByRole("link", { name: email, exact: true })
+        : page.getByText("Support contact details are unavailable.", {
+            exact: false,
+          });
+      await supportContact.scrollIntoViewIfNeeded();
+      await expect(supportContact).toBeInViewport();
+      await page.screenshot({
+        path: path.join(evidenceDir, `${viewport.name}-support.png`),
+        animations: "disabled",
+      });
+    });
+  }
+
+  for (const viewport of VIEWPORTS) {
     test(`personal Google consent recovery and disconnect ${viewport.name}`, async ({
       page,
     }) => {

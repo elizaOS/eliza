@@ -12,7 +12,13 @@ import {
   validateNativeNotesReadReply,
 } from "@elizaos/contracts/native-notes-query";
 import type { ContextObject, IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { stableStringify, withActionGatePolicy } from "@elizaos/core";
+import {
+  conversationClientUserMemoryId,
+  getTurnActionConstraint,
+  readDurableConversationChatMarker,
+  stableStringify,
+  withActionGatePolicy,
+} from "@elizaos/core";
 import {
   executeRawSqlTx,
   sqlText,
@@ -31,6 +37,11 @@ import {
   isCalendarOperation,
   validateCalendarResult,
 } from "./calendar-contract.ts";
+import {
+  CAMERA_CAPTURE_CAPABILITY,
+  isCameraCapture,
+  validateCameraCaptureResult,
+} from "./camera-contract.ts";
 import {
   assertClockObservation,
   CLOCK_ALARMS_CAPABILITY,
@@ -127,6 +138,11 @@ interface TransactionDatabase extends TransactionalDb {
   transaction<T>(fn: (tx: TransactionalDb) => Promise<T>): Promise<T>;
 }
 interface DeviceTurn {
+  readonly isCurrent: () => boolean;
+  requestPolicy?: {
+    mode: "initial-gmail-send-v1" | "review-gmail-send-v1";
+    clientMessageId: string;
+  };
   readonly startedAt: number;
   runtime: IAgentRuntime;
   credential: DeviceCredential;
@@ -139,6 +155,91 @@ const turn = new AsyncLocalStorage<DeviceTurn>();
 export function getDeviceActionTurn(): DeviceTurn | undefined {
   const current = turn.getStore();
   return current?.active ? current : undefined;
+}
+/** Only the authenticated foreground HTTP parser may bind this command.
+ * It is deliberately not read from persisted message metadata or model output. */
+export function bindDeviceRequestedActionPolicy(
+  runtime: IAgentRuntime,
+  policy: unknown,
+  clientMessageId: unknown,
+): boolean {
+  const current = getDeviceActionTurn();
+  if (
+    !current ||
+    current.runtime !== runtime ||
+    !current.isCurrent() ||
+    current.requestPolicy ||
+    !current.credential.capabilities?.includes("gmail.request-policy.v1") ||
+    (policy !== "initial-gmail-send-v1" && policy !== "review-gmail-send-v1") ||
+    typeof clientMessageId !== "string" ||
+    !clientMessageId.trim() ||
+    clientMessageId.length > 128
+  )
+    return false;
+  current.requestPolicy = { mode: policy, clientMessageId };
+  return true;
+}
+/** Current-turn authority is checked again immediately before the durable consent claim. */
+export async function deviceGmailRequestConsent(
+  runtime: IAgentRuntime,
+  message: Memory,
+  digest?: string,
+): Promise<"legacy" | "review" | "denied"> {
+  const current = turn.getStore(),
+    policy = current?.requestPolicy;
+  if (!policy) return "legacy";
+  if (
+    !current ||
+    !current.active ||
+    current.runtime !== runtime ||
+    !current.isCurrent() ||
+    !current.replyContext ||
+    !current.replyConversation
+  )
+    return "denied";
+  const original = current.replyContext.message;
+  const marker = readDurableConversationChatMarker(
+    original.content.chatIdempotency,
+  );
+  if (
+    message.id !== original.id ||
+    message.agentId !== runtime.agentId ||
+    original.agentId !== runtime.agentId ||
+    message.entityId !== original.entityId ||
+    message.roomId !== original.roomId ||
+    message.roomId !== current.replyConversation.roomId ||
+    message.entityId !== current.credential.subjectUserId ||
+    message.content.text !== original.content.text ||
+    !message.createdAt ||
+    message.createdAt < current.startedAt ||
+    !marker ||
+    marker.clientMessageId !== policy.clientMessageId ||
+    conversationClientUserMemoryId(marker.scope, marker.clientMessageId) !==
+      message.id
+  )
+    return "denied";
+  await new DeviceActionService(runtime).viewProfile(current.credential);
+  if (
+    !current.active ||
+    !current.isCurrent() ||
+    getDeviceActionTurn() !== current
+  )
+    return "denied";
+  // Generic preferences and model-produced constraints cannot authorize a send.
+  // A trusted effect-origin producer does not exist for this transport yet.
+  const effect = digest
+    ? getTurnActionConstraint(
+        {
+          messageId: message.id ?? "",
+          roomId: message.roomId,
+          actorId: message.entityId,
+          action: "MESSAGE",
+        },
+        `gmail-send:${digest}`,
+      )
+    : undefined;
+  if (effect?.disposition === "deny") return "denied";
+  return "review";
 }
 /** Called by the owning conversation host after canonical room admission. */
 export function setDeviceReadReplyConversation(
@@ -172,12 +273,20 @@ export async function withDeviceActionTurn<T>(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
   fn: () => Promise<T>,
+  options: { isCurrent?: () => boolean } = {},
 ): Promise<T> {
   const startedAt = Date.now();
   const viewProfile = await new DeviceActionService(runtime).viewProfile(
     credential,
   );
-  const context = { runtime, credential, active: true, viewProfile, startedAt };
+  const context: DeviceTurn = {
+    runtime,
+    credential,
+    active: true,
+    viewProfile,
+    startedAt,
+    isCurrent: options.isCurrent ?? (() => true),
+  };
   try {
     return await turn.run(context, () =>
       withActionGatePolicy((action) => {
@@ -794,6 +903,8 @@ export class DeviceActionService {
         viewProfileVersion: 1 as const,
         userTextFormatVersion: 1 as const,
         capabilities: [
+          "gmail.request-policy.v1",
+          CAMERA_CAPTURE_CAPABILITY,
           "calendar.local-event.v1",
           CALENDAR_CREATE_CAPABILITY,
           CALENDAR_NEXT_CAPABILITY,
@@ -1024,6 +1135,7 @@ export class DeviceActionService {
       throw new DeviceActionError("Calendar capability unavailable");
     if (
       ![
+        "camera_capture_photo",
         "sms_send",
         "clock_handoff",
         "clock_alarm",
@@ -1060,12 +1172,25 @@ export class DeviceActionService {
         !viewProfile.views.includes(validated.view)
       )
         throw new DeviceActionError("View unavailable on this installation");
+      const turn = getDeviceActionTurn();
+      const metadata = turn?.replyContext?.message.content.metadata;
+      const directRequest =
+        turn?.runtime === this.runtime &&
+        metadata &&
+        typeof metadata === "object" &&
+        !Array.isArray(metadata) &&
+        "agentActionMode" in metadata &&
+        metadata.agentActionMode === "direct-request-v1";
+      const requestingMessage = directRequest
+        ? turn?.replyContext?.message.id
+        : undefined;
       const payload: DeviceActionPayload = {
         action: "device_action",
         version: 1,
         installationId: c.installationId,
         enrollmentId: String(row.enrollment_id),
         operation: validated,
+        ...(requestingMessage ? { requestMessageId: requestingMessage } : {}),
         ...(validated.type === "open_view" && viewProfile
           ? { viewProfileRevision: viewProfile.revision }
           : {}),
@@ -1622,6 +1747,21 @@ export class DeviceActionService {
           throw new DeviceActionError("Invalid Clock receipt");
         }
       } else if (
+        isCameraCapture(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateCameraCaptureResult(
+              value.result,
+              identifier(receipt.operationId),
+            ),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid saved photo receipt");
+        }
+      } else if (
         isMapsOperation(payload.operation) &&
         receipt.outcome === "applied"
       ) {
@@ -1855,6 +1995,21 @@ export class DeviceActionService {
             };
         } catch {
           throw new DeviceActionError("Invalid Clock receipt");
+        }
+      } else if (
+        isCameraCapture(payload.operation) &&
+        receipt.outcome === "applied"
+      ) {
+        try {
+          receipt = {
+            ...receipt,
+            result: validateCameraCaptureResult(
+              value.result,
+              identifier(receipt.operationId),
+            ),
+          };
+        } catch {
+          throw new DeviceActionError("Invalid saved photo receipt");
         }
       } else if (
         isMapsOperation(payload.operation) &&

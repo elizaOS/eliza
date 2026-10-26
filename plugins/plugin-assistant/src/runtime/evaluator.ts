@@ -1,4 +1,5 @@
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import { isDeliveredNavigationOnlyTurn } from "./nav-evaluator-eligibility";
 
 /**
  * Evaluator stage of the planner loop: renders the evaluator model input, runs
@@ -566,6 +567,16 @@ async function runEvaluatorWithSelectedModel(
     ),
   };
   const responseSchema = structuredClone(evaluatorSchema);
+  // Navigation ACKs prove navigation, not a durable record mutation. Keep the
+  // post-decode effect-receipt guard authoritative if a provider ignores this.
+  if (
+    availableReceiptIds.length === 0 &&
+    !params.hasUnresolvedToolFailure &&
+    isDeliveredNavigationOnlyTurn(params.trajectory) &&
+    responseSchema.properties?.replyEffectStatus
+  ) {
+    responseSchema.properties.replyEffectStatus.enum = ["none", "non_applied"];
+  }
   const initialBudgetOptions = budgetResolution.contextWindowTokens
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};

@@ -287,6 +287,7 @@ export {
 } from "./services/device-actions/contract.ts";
 export type { DeviceReadCompletionHint } from "./services/device-actions/read-completion.ts";
 export {
+  bindDeviceRequestedActionPolicy,
   DeviceActionService,
   type DeviceCredential,
   deviceProposalDigest,

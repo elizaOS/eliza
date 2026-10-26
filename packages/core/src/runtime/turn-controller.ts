@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 /**
  * Turn-scoped AbortController registry.
@@ -33,14 +34,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
  * on exit (success, error, or abort).
  */
 
-export class TurnAbortedError extends Error {
-	readonly code = "TURN_ABORTED";
-	readonly reason: string;
-	constructor(reason: string) {
-		super(`Turn aborted: ${reason}`);
-		this.reason = reason;
-	}
-}
+export { TurnAbortedError };
 
 interface ActiveTurn {
 	roomId: string;

@@ -1066,7 +1066,9 @@ jobs:
       FAL_KEY: ${{ secrets.FAL_KEY }}
       FISH_AUDIO_API_KEY: ${{ secrets.FISH_AUDIO_API_KEY }}
       FISH_AUDIO_REFERENCE_ID: ${{ secrets.FISH_AUDIO_REFERENCE_ID }}
+      GATEWAY_DISCORD_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_DISCORD_BOOTSTRAP_SECRET }}
       GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
+      GATEWAY_WEBHOOK_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_WEBHOOK_BOOTSTRAP_SECRET }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
       INFERENCE_AUTH_PROBE_TOKEN: ${{ secrets.INFERENCE_AUTH_PROBE_TOKEN }}
@@ -1170,7 +1172,7 @@ jobs:
 
       - name: Upload immutable staging certification
         id: upload
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ steps.identity.outputs.artifact_name }}
           path: staging-cloud-certification.json

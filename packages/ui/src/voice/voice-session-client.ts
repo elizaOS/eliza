@@ -266,6 +266,7 @@ function nowDefault(): number {
  */
 const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "quota_exhausted",
+  "insufficient_credits",
   "revoked",
 ]);
 /** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
@@ -313,6 +314,10 @@ export function createVoiceSessionClient(
   let uiContextSupported = false;
   let lastUiContext: string | undefined;
   let mic: VoiceMicCapture | null = null;
+  // Capture ownership survives only clean token rotation; audio targets a ready socket.
+  let micSocket: VoiceWebSocketLike | null = null;
+  let captureRetentionTimer: ReturnType<typeof setTimeout> | null = null;
+  let retiringMic: Promise<void> | null = null;
   let playback: VoiceSessionPlayback | null = null;
   let reconnectsUsed = 0;
   // Monotonic timestamp of the most recent server `ready`; null while not live
@@ -333,6 +338,7 @@ export function createVoiceSessionClient(
   let captureSocket: VoiceWebSocketLike | null = null;
   let captureAbort: AbortController | null = null;
   let microphoneMuted = false;
+  let playbackCompletionSupported = false;
   let playbackEnd: Extract<
     ServerControlFrame,
     {
@@ -341,9 +347,17 @@ export function createVoiceSessionClient(
   > | null = null;
   // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
   let intentionalClose = false;
+  const syncMicrophoneMute = (): void => {
+    mic?.setMuted(
+      microphoneMuted ||
+        state.phase === "speaking" ||
+        micSocket !== ws ||
+        connPhase !== "open",
+    );
+  };
   const setState = (next: VoiceSessionMachineState): void => {
     state = next;
-    mic?.setMuted(microphoneMuted || state.phase === "speaking");
+    syncMicrophoneMute();
     options.onState?.(state, toContinuousStatus(state.phase));
   };
   const mark = (name: string, traceId: string | null): void => {
@@ -396,6 +410,24 @@ export function createVoiceSessionClient(
       clearTimeout(rotationTimer);
       rotationTimer = null;
     }
+  };
+  const clearCaptureRetentionTimer = (): void => {
+    if (captureRetentionTimer !== null) clearTimeout(captureRetentionTimer);
+    captureRetentionTimer = null;
+  };
+  const retainCaptureUntil = (deadlineMs: number): void => {
+    clearCaptureRetentionTimer();
+    const heldMic = mic;
+    if (!heldMic || micSocket !== null) return;
+    const timer = setTimeout(
+      () => {
+        if (captureRetentionTimer !== timer) return;
+        captureRetentionTimer = null;
+        if (mic === heldMic && micSocket === null) void teardownMic();
+      },
+      Math.max(0, deadlineMs - epochNow()),
+    );
+    captureRetentionTimer = timer;
   };
   async function mintOnce(
     generation: number,
@@ -494,9 +526,26 @@ export function createVoiceSessionClient(
   }
   function sendUplinkAudio(bytes: Uint8Array): void {
     if (!ws || connPhase !== "open") return;
+    let currentUiContext: VoiceUiContext | undefined;
+    if (uiContextSupported && options.getUiContext) {
+      try {
+        currentUiContext = options.getUiContext();
+      } catch {
+        // A retired renderer cannot keep an apparently live mic while every
+        // packet is discarded. Do not retry through a changed owner/context.
+        mark("not_reached(voice_context_changed)", state.traceId);
+        try {
+          emitError(new Error("Voice context changed. Start voice again."));
+        } finally {
+          // UI error reporting must not retain a retired microphone.
+          void stop();
+        }
+        return;
+      }
+    }
     try {
       if (uiContextSupported && options.getUiContext) {
-        const context = parseVoiceUiContext(options.getUiContext());
+        const context = parseVoiceUiContext(currentUiContext);
         // Clear a stale view rather than dropping audio when a renderer sends
         // invalid context. Report once per change, not once per audio packet.
         const serialized = JSON.stringify(context ?? {});
@@ -583,6 +632,7 @@ export function createVoiceSessionClient(
     switch (event.t) {
       case "ready":
         uiContextSupported = event.uiContext === true;
+        playbackCompletionSupported = event.playbackCompletion === true;
         lastUiContext = undefined;
         mark("ready", event.traceId);
         // The server accepted the session: record the health timestamp the
@@ -649,7 +699,13 @@ export function createVoiceSessionClient(
             // Re-minting cannot help (quota) or would defeat the server's
             // intent (revoke). Surface the terminal cause and stop cleanly.
             mark(`not_reached(server_terminal:${event.code})`, state.traceId);
-            emitError(new Error(`voice session ended: ${event.code}`));
+            emitError(
+              new Error(
+                event.code === "insufficient_credits"
+                  ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
+                  : `voice session ended: ${event.code}`,
+              ),
+            );
             void stop();
             break;
           }
@@ -673,48 +729,69 @@ export function createVoiceSessionClient(
     generation: number,
     socket: VoiceWebSocketLike,
   ): Promise<void> {
+    if (retiringMic) await retiringMic;
+    // A ready frame may race Stop/ownership change while the prior device releases.
     if (
-      mic ||
       captureSocket === socket ||
       !isLifecycleCurrent(generation) ||
       ws !== socket
     ) {
       return;
     }
+    if (mic) {
+      clearCaptureRetentionTimer();
+      micSocket = socket;
+      setState(beginListening(state));
+      return;
+    }
     captureSocket = socket;
     captureAbort?.abort();
     const captureController = new AbortController();
     captureAbort = captureController;
+    let capturedMic: VoiceMicCapture | null = null;
+    const currentCapture = () =>
+      isLifecycleCurrent(generation) &&
+      (capturedMic
+        ? mic === capturedMic
+        : captureSocket === socket && ws === socket);
     try {
       const createdMic = await startVoiceMicCapture({
         onFrame: (bytes) => {
-          if (isLifecycleCurrent(generation) && ws === socket) {
+          if (currentCapture() && micSocket !== null && ws === micSocket) {
             sendUplinkAudio(bytes);
           }
         },
         onSuspend: () => {
-          if (isLifecycleCurrent(generation) && ws === socket) {
+          if (currentCapture()) {
             mark("mic_suspended", state.traceId);
           }
         },
         onResume: () => {
-          if (isLifecycleCurrent(generation) && ws === socket) {
+          if (currentCapture()) {
             mark("mic_resumed", state.traceId);
           }
         },
         onError: (err) => {
-          if (isLifecycleCurrent(generation) && ws === socket) emitError(err);
+          if (!currentCapture()) return;
+          try {
+            emitError(err);
+          } finally {
+            // A failed UI error callback must not retain a live microphone.
+            void stop();
+          }
         },
         getUserMedia: options.getUserMedia,
         createAudioContext: options.createMicAudioContext,
         signal: captureController.signal,
       });
+      capturedMic = createdMic;
       if (!isLifecycleCurrent(generation) || ws !== socket || mic) {
         // error-policy:J6 best-effort release of a mic whose session was superseded before it attached.
         await createdMic.stop().catch(() => {});
         return;
       }
       mic = createdMic;
+      micSocket = socket;
       // Keep the server's default half-duplex policy. Advertising continuous
       // handoff would opt this client into acoustic interruption during speech.
       // Now genuinely listening.
@@ -742,6 +819,16 @@ export function createVoiceSessionClient(
     const downlink = negotiateCodec(preferredDownlink, minted.downlink?.codecs);
     if (!uplink || !downlink) {
       throw new VoiceSessionMintError(-1, "no compatible codec offered");
+    }
+    const acceptedExpiryMs = parseExpiresAtMs(minted.expiresAt);
+    if (
+      captureRetentionTimer !== null &&
+      acceptedExpiryMs !== null &&
+      acceptedExpiryMs > epochNow()
+    ) {
+      // A newly accepted same-owner ticket now bounds this muted capture. The
+      // retired ticket's timer must not release it while the new relay opens.
+      retainCaptureUntil(acceptedExpiryMs);
     }
     connPhase = "connecting";
     uiContextSupported = false;
@@ -906,12 +993,18 @@ export function createVoiceSessionClient(
     // The transport is already gone, so publish that fact before a browser
     // driver is allowed to delay microphone teardown. Later retry attempts
     // re-arm the caller's connect watchdog from inside the loop.
+    micSocket = null;
     setState({ ...state, phase: "connecting", lastError: null });
-    // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
-    // context so an autoplay unlock survives the reconnect.
+    // Clean idle token rotation retains the owned, muted device capture. Unexpected
+    // transport loss still releases it; no audio is sent until the new ready.
+    const retainCapture =
+      reason === "token_rotation" && !budgetedInitial && mic?.active;
+    // Keep the playback context so an autoplay unlock survives reconnect.
     playbackEnd = null;
     playback?.flush();
-    await teardownMic();
+    if (!retainCapture) await teardownMic();
+    else if (rotationDeadlineMs !== null)
+      retainCaptureUntil(rotationDeadlineMs);
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     // Budget refill: a session that stayed healthy long enough since its last
     // recovery earns a fresh budget, so a long conversation tolerates
@@ -960,6 +1053,10 @@ export function createVoiceSessionClient(
       } catch (err) {
         if (!isLifecycleCurrent(generation)) return;
         if (err instanceof VoiceSessionLifecycleCancelledError) return;
+        // A failed renewal leaves the planned path: release capture before any
+        // existing bounded error-recovery retry.
+        await teardownMic();
+        if (!isLifecycleCurrent(generation)) return;
         const transient =
           (err instanceof VoiceSessionMintError && err.isTransient) ||
           err instanceof VoiceSessionConsentError;
@@ -987,14 +1084,28 @@ export function createVoiceSessionClient(
     }
   }
   async function teardownMic(): Promise<void> {
+    clearCaptureRetentionTimer();
+    micSocket = null;
     const pendingCapture = captureAbort;
     captureAbort = null;
     captureSocket = null;
     pendingCapture?.abort();
     const currentMic = mic;
     mic = null;
+    if (!currentMic) {
+      await retiringMic;
+      return;
+    }
+    // Keep a release fence after detaching ownership so a late ready cannot
+    // acquire another physical capture before the retiring one actually stops.
     // error-policy:J6 best-effort mic release after ownership is detached.
-    await currentMic?.stop().catch(() => {});
+    const release = currentMic.stop().catch(() => {});
+    retiringMic = release;
+    try {
+      await release;
+    } finally {
+      if (retiringMic === release) retiringMic = null;
+    }
   }
   async function stop(): Promise<void> {
     disposed = true;
@@ -1098,6 +1209,15 @@ export function createVoiceSessionClient(
                 state.phase === "speaking" &&
                 state.traceId === ended.traceId
               ) {
+                // Ordered before resumed audio on this same socket. Older servers
+                // retain their conservative estimate until they advertise support.
+                if (playbackCompletionSupported && ws && connPhase === "open")
+                  ws.send(
+                    encodeClientControl({
+                      t: "playback_complete",
+                      traceId: ended.traceId,
+                    }),
+                  );
                 setState(loopToListening(applyServerEvent(state, ended)));
               }
             }
@@ -1166,7 +1286,7 @@ export function createVoiceSessionClient(
     setMicrophoneMuted(muted) {
       if (disposed || microphoneMuted === muted) return;
       microphoneMuted = muted;
-      mic?.setMuted(muted || state.phase === "speaking");
+      syncMicrophoneMute();
       mark(muted ? "mic_muted" : "mic_unmuted", state.traceId);
     },
     async unlockPlayback() {

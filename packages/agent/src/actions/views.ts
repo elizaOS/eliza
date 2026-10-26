@@ -37,6 +37,7 @@ export const viewsAction: Action = {
       description:
         "Exact registered view id or label; home opens the chat/home screen. Required for show.",
       required: false,
+      requiredForSubactions: ["show"],
       schema: { type: "string" },
     },
     {
@@ -247,12 +248,8 @@ export const viewsAction: Action = {
         success: true,
         text: JSON.stringify(receipt),
         transcriptVisibility: "internal",
-        ...(completedAction
-          ? {
-              userFacingText: `Opening ${view.label}.`,
-              verifiedUserFacing: true,
-            }
-          : { modelReplyRequired: true }),
+        // Delivery receipts own the effect; the model owns conversational wording.
+        modelReplyRequired: true,
         values: {
           mode: "show",
           viewId: view.id,

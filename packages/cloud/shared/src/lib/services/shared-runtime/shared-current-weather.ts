@@ -2,6 +2,7 @@
  * No model, key or private input. Other regions retain the public search path.
  */
 import type { ActionResult } from "@elizaos/core";
+import { fetchWithoutRedirects } from "../../utils/no-redirect-fetch";
 
 export const CURRENT_WEATHER_UNAVAILABLE_REASONS = [
   "CURRENT_WEATHER_DEADLINE",
@@ -464,14 +465,19 @@ export async function runCurrentUsWeatherSearch(
     let response: Response | undefined;
     try {
       response = await controlled(
-        fetcher(url, {
-          redirect: "error",
-          signal: active,
-          headers: {
-            Accept: "application/geo+json, application/json",
-            "User-Agent": "elizaOS-public-weather/1.0 (https://elizaos.ai)",
+        // Never follow a redirect off the two allowlisted hosts. A 3xx rejects
+        // (network outcome) like the former redirect: "error", which workerd refuses.
+        fetchWithoutRedirects(
+          url,
+          {
+            signal: active,
+            headers: {
+              Accept: "application/geo+json, application/json",
+              "User-Agent": "elizaOS-public-weather/1.0 (https://elizaos.ai)",
+            },
           },
-        }),
+          fetcher,
+        ),
         active,
       );
       diagnostic.httpStatus = response.status;

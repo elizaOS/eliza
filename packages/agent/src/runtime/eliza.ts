@@ -171,7 +171,9 @@ import {
 import { BLOCKING_CORE_PLUGINS, CORE_PLUGINS } from "./core-plugins.ts";
 import { maybeInjectFault } from "./crash-injection.ts";
 import {
+  isMemoryPgliteDataDir,
   isSQLiteSelected,
+  MEMORY_PGLITE_DATA_DIR,
   resolveEffectiveDbProvider,
   SQLITE_PLUGIN,
   selectDatabasePluginNames,
@@ -2754,18 +2756,26 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     delete process.env.POSTGRES_URL;
     const configuredDataDir = db?.pglite?.dataDir?.trim();
     if (configuredDataDir) {
-      process.env.PGLITE_DATA_DIR = resolveUserPath(configuredDataDir);
+      // An in-memory setting is a PGlite URL, not a path: resolving it would
+      // create a `memory:` directory under the working directory and keep
+      // the agent's history there.
+      process.env.PGLITE_DATA_DIR = isMemoryPgliteDataDir(configuredDataDir)
+        ? MEMORY_PGLITE_DATA_DIR
+        : resolveUserPath(configuredDataDir);
       // Fall through to directory creation below instead of returning early
     }
     const envDataDir = process.env.PGLITE_DATA_DIR?.trim();
     if (!envDataDir) {
       process.env.PGLITE_DATA_DIR = resolveDefaultPgliteDataDir(config);
+    } else if (isMemoryPgliteDataDir(envDataDir)) {
+      process.env.PGLITE_DATA_DIR = MEMORY_PGLITE_DATA_DIR;
     }
     // Ensure the PGlite data directory exists before init so PGlite does
     // not silently fall back to in-memory mode on first run. Owner-only:
     // the tree holds full agent history (heals older 0755 installs too).
+    // In-memory storage has no directory and no lock file.
     const dataDir = process.env.PGLITE_DATA_DIR;
-    if (dataDir) {
+    if (dataDir && !isMemoryPgliteDataDir(dataDir)) {
       const alreadyExisted = existsSync(dataDir);
       ensurePrivateDir(dataDir);
       logger.debug(
@@ -3013,7 +3023,8 @@ export function isFatalPgliteStartupError(err: unknown): boolean {
 }
 /**
  * The PGlite data directory the runtime uses for `config`, or null when the
- * effective provider is not PGlite. Mirrors `applyDatabaseConfigToEnv`
+ * effective provider is not PGlite or PGlite runs in memory (no directory, no
+ * lock to recover, nothing to reset). Mirrors `applyDatabaseConfigToEnv`
  * precedence (`config.database.pglite.dataDir` > `PGLITE_DATA_DIR` > the
  * `<workspace>/.elizadb` default) so callers outside startup (e.g. the
  * `eliza db reset` CLI) resolve the same directory without mutating env.
@@ -3022,10 +3033,10 @@ export function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
   const provider = resolveEffectiveDbProvider(config);
   if (provider !== "pglite") return null;
   const configuredDataDir = config.database?.pglite?.dataDir?.trim();
-  if (configuredDataDir) return resolveUserPath(configuredDataDir);
   const envDataDir = process.env.PGLITE_DATA_DIR?.trim();
-  const dataDir = envDataDir || resolveDefaultPgliteDataDir(config);
-  return resolveUserPath(dataDir);
+  const dataDir =
+    configuredDataDir || envDataDir || resolveDefaultPgliteDataDir(config);
+  return isMemoryPgliteDataDir(dataDir) ? null : resolveUserPath(dataDir);
 }
 /** Call whichever init method the adapter exposes (.init or .initialize). */
 async function callAdapterInit(

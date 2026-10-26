@@ -49,6 +49,34 @@ public final class StreamContract {
             closingRelease.countDown(); join(streaming); join(closer);
             check(failure.get() == null && VoiceNative.destroyed == destroyed + 1);
         } finally { model.delete(); lexicon.delete(); }
-        System.out.println("Paradee stream lifecycle contracts passed");
+        File root = java.nio.file.Files.createTempDirectory("inference-session-").toFile();
+        File asrDir = new File(root, "asr"); check(asrDir.mkdir());
+        model = new File(root, "model.gguf"); lexicon = new File(root, "lexicon.lex");
+        check(model.createNewFile() && lexicon.createNewFile());
+        int created = VoiceNative.created, destroyed = VoiceNative.destroyed;
+        InferenceSession session = new InferenceSession(root, model, lexicon, null);
+        try {
+            check(VoiceNative.created == created);
+            session.synthesize("hello", 1);
+            session.transcribe(new float[]{0.1f});
+            check(VoiceNative.created == created + 1);
+            check(VoiceNative.ttsContext == VoiceNative.asrContext);
+            check(session.embed("hello", 1)[0] == VoiceNative.ttsContext);
+            InferenceSession.TextStream text = session.openTextStream("hello", 8);
+            check(text.next().equals("step"));
+            int closedStreams = VoiceNative.textClosed;
+            session.trimMemory();
+            check(VoiceNative.destroyed == destroyed + 1 && VoiceNative.textClosed == closedStreams + 1);
+            try { text.next(); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            session.synthesize("reload", 1);
+            check(VoiceNative.created == created + 2);
+            try { session.synthesizeStream("reentry", 1, (pcm, done) -> { session.close(); return true; }); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            check(VoiceNative.destroyed == destroyed + 1);
+            session.synthesize("still usable", 1);
+            session.close(); session.close();
+            check(VoiceNative.destroyed == destroyed + 2);
+            try { session.synthesize("closed", 1); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        } finally { session.close(); model.delete(); lexicon.delete(); asrDir.delete(); root.delete(); }
+        System.out.println("Paradee stream and shared inference lifecycle contracts passed");
     }
 }

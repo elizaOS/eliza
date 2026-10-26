@@ -107,9 +107,13 @@ export function priorDialogueContent(text: string, speaker?: string): string {
   return `${speaker}: ${text}`;
 }
 
-export function verifiedCrossRoomContent(memory: Memory): string {
-  const text = getUserMessageText(memory);
-  const attachmentText = (memory.content.attachments ?? [])
+/** One entry per attachment: label, media type and description. Authorized
+ * cross-room history also retains its existing complete attachment text. */
+function priorDialogueAttachmentSummary(
+  memory: Memory,
+  includeText = false,
+): string {
+  return (memory.content.attachments ?? [])
     .map((attachment) => {
       const label =
         attachment.filename ??
@@ -117,11 +121,22 @@ export function verifiedCrossRoomContent(memory: Memory): string {
         attachment.id ??
         "attachment";
       const mediaType = attachment.mimeType ?? attachment.contentType;
-      const readable = attachment.text ?? attachment.description;
+      const readable = includeText
+        ? (attachment.text ?? attachment.description)
+        : attachment.description;
       return `[attachment: ${label}${mediaType ? `; ${mediaType}` : ""}${readable ? `; ${readable}` : ""}]`;
     })
     .join(" ");
-  return [text, attachmentText].filter(Boolean).join(" ");
+}
+
+/** Preserve complete attachment text in the authorized cross-room projection. */
+export function verifiedCrossRoomContent(memory: Memory): string {
+  return [
+    getUserMessageText(memory),
+    priorDialogueAttachmentSummary(memory, true),
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** The unaugmented original behind a rendered dialogue segment. */
@@ -198,7 +213,11 @@ export function appendPriorDialogueEvents(
       const text =
         typeof m.content?.text === "string" ? m.content.text.trim() : "";
       if (looksLikePriorDialogueArtifact(text)) return isInterruptedReply(m);
-      return text.length > 0 || isInterruptedReply(m);
+      return (
+        text.length > 0 ||
+        (m.content?.attachments?.length ?? 0) > 0 ||
+        isInterruptedReply(m)
+      );
     })
     .sort((a, b) => {
       const aTime = Number.isFinite(a.createdAt as unknown as number)
@@ -327,7 +346,12 @@ export function appendPriorDialogueEvents(
     }
     const text =
       priorDialogueOriginalText(memory) ?? getUserMessageText(memory);
-    if (!text || looksLikePriorDialogueArtifact(text)) continue;
+    // History discovery strips this exact suffix to recover the quotable text.
+    const attachmentSummary = priorDialogueAttachmentSummary(memory);
+    // An attachment-only message (e.g. a generated image with no caption) is
+    // still part of the dialogue.
+    if (text ? looksLikePriorDialogueArtifact(text) : !attachmentSummary)
+      continue;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
@@ -354,7 +378,7 @@ export function appendPriorDialogueEvents(
         id: `history:${memory.id}`,
         label: isOwnReply ? "prior_message:agent" : "prior_message:user",
         content: priorDialogueContent(
-          text,
+          [text, attachmentSummary].filter(Boolean).join(" "),
           speakerName ?? (isOwnReply ? "assistant" : "user"),
         ),
         stable: false,
@@ -363,6 +387,7 @@ export function appendPriorDialogueEvents(
           entityId: memory.entityId,
           speakerName: speakerName ?? (isOwnReply ? "assistant" : "user"),
           ...(sourceReplyReferences ? { sourceReplyReferences } : {}),
+          ...(attachmentSummary ? { attachmentSummary } : {}),
           ...(originalText !== undefined
             ? { originalTextSha256: sourceReplyTextHash(originalText) }
             : {}),

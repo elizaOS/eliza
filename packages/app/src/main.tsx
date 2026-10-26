@@ -1865,6 +1865,7 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+        branding={APP_BRANDING}
         cloudManagementElement={<ManagedCloudPage />}
         marketingHomeElement={NetworkHomePage ? <NetworkHomePage /> : undefined}
         appElement={

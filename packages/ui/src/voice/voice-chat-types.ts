@@ -244,7 +244,7 @@ export interface QueueAssistantSpeechOptions {
 /**
  * A TTS engine failure that must be shown to the user rather than silently
  * papered over with a different voice (#12253). The configured voice engine
- * (cloud Kokoro, local-inference Kokoro, ElevenLabs, or native talkmode)
+ * (cloud Kokoro, local-inference Paradee, ElevenLabs, or native talkmode)
  * failed and the queue was stopped — no fallback voice was substituted.
  */
 export interface VoiceTtsError {

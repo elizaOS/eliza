@@ -37,6 +37,7 @@ import {
   trustedClientIp,
 } from "../services/auth-rate-limit";
 import { verifySolanaMessageSignature } from "../services/wallet-proof";
+import { buildOAuthAppErrorReturn } from "./oauth-app-error-return";
 /**
  * Serves identity login, account enrollment, MFA and session lifecycle endpoints.
  * Tenant policy gates every login method; one-time challenges and refresh tokens
@@ -3501,6 +3502,15 @@ function oauthCallbackFailure(
   c: Context,
   options: OAuthCallbackFailureOptions,
 ): Response {
+  if (options.redirectUrl && options.appState) {
+    const target = buildOAuthAppErrorReturn(
+      options.redirectUrl.toString(),
+      options.appState,
+      options.code,
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
+    );
+    if (target) return c.redirect(target, 302);
+  }
   if (!oauthCallbackPrefersHtml(c)) {
     return c.json<ApiResponse>(
       {
@@ -9649,7 +9659,7 @@ auth.post("/email/send", async (c) => {
  * Body: { email, tenantId?, captchaToken? }
  * Returns 200 { ok: true, data: { expiresAt, codeLength: 6 } }
  *
- * Native in-app email sign-in (Alpha Phone). Emails ONLY a six-digit code,
+ * Native in-app email sign-in. Emails ONLY a six-digit code,
  * rendered with the sign-in code template: the email has no link, and no link
  * token is ever published, so nothing in it can sign in a browser or consume
  * the challenge. The app redeems the code through POST /email/code/verify,
@@ -10713,6 +10723,59 @@ export function resolveOAuthPromptPassthrough(
  * Generates an OAuth authorization URL, stores the CSRF state in the challenge
  * store (keyed as `oauth:<state>`), then redirects the user to the provider.
  */
+// Read-only readiness for any registered application. Never issues a credential.
+auth.get("/oauth/google/app-readiness", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const tenantId = c.req.query("tenant_id");
+  const redirectUri = c.req.query("redirect_uri");
+  if (
+    !tenantId ||
+    tenantId.length > 100 ||
+    !redirectUri ||
+    redirectUri.length > 2048
+  ) {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+  }
+  try {
+    const target = new URL(redirectUri);
+    if (
+      target.protocol !== "https:" ||
+      target.username ||
+      target.password ||
+      target.hash ||
+      target.search
+    ) {
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+    }
+  } catch {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+  }
+  const rl = await checkAuthRateLimit(c, "app-auth-readiness", 60_000, 30);
+  if (!rl.allowed) return c.json({ ok: false, error: "Try again later" }, 429);
+  try {
+    const denied = await requireTenantLoginMethodAllowed(
+      c,
+      tenantId,
+      "oauth",
+      "google",
+    );
+    if (denied)
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 403);
+    await assertAllowedOAuthRedirectUri(redirectUri, tenantId);
+    getProviderConfig("google");
+    const errorReturn = buildOAuthAppErrorReturn(
+      redirectUri,
+      "s".repeat(43),
+      "access_denied",
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
+    );
+    if (!errorReturn) throw new Error("App error returns are not configured");
+    return c.json({ ok: true, appAuth: 1, tenantId, redirectUri });
+  } catch {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 503);
+  }
+});
+
 auth.get("/oauth/:provider/authorize", async (c) => {
   const providerName = c.req.param("provider");
   if (!isBuiltInProvider(providerName)) {

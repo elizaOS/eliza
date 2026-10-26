@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/gateway-container",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint:check": "bunx @biomejs/biome check .",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@elizaos/cloud-services-common": "workspace:*",
+    "@cloudflare/containers": "^0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260429.1",
+    "@types/node": "22.19.17",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "bun-types": "1.4.2",
+    "typescript": "^6.0.3",
+    "@biomejs/biome": "2.5.15",
+    "miniflare": "4.20260730.0"
+  }
+}

@@ -91,7 +91,7 @@
     "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/plugin-scheduling": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "lucide-react": "^1.0.0",
     "zod": "^4.6.5",
     "@elizaos/contracts": "workspace:*"
@@ -101,10 +101,10 @@
     "@electric-sql/pglite": "^0.4.0",
     "bun-types": "1.4.2",
     "googleapis": "^169.0.0",
-    "tsup": "^8.5.1",
+    "tsup": "^9.0.0",
     "react-dom": "*",
-    "vitest": "^5.0.3",
-    "vite": "^8.3.0"
+    "vitest": "^5.0.5",
+    "vite": "^8.3.3"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",

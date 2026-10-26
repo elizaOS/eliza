@@ -113,12 +113,8 @@ import { projectSharedAgentCharacter } from "./shared-agent-character";
 import { capabilityWallActionResult } from "./shared-capability-wall";
 import { buildSharedFactsContext, sharedFactsEnabled } from "./shared-facts";
 import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory-store";
-import {
-  buildSharedRecallContext,
-  embedTextsViaSidecar,
-  embedTextViaSidecar,
-  SHARED_RECALL_EMBEDDING_MODEL,
-} from "./shared-recall";
+import { buildSharedRecallContext, SHARED_RECALL_EMBEDDING_MODEL } from "./shared-recall";
+import { embedSharedRecallTexts, sharedRecallEnabled } from "./shared-recall-embeddings";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
 import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
 import {
@@ -698,15 +694,12 @@ export function sharedElizaRuntimeExecution(
  * projected identities.
  */
 function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
-  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
-  const embed =
-    sharedRecallEnabled() && embedBase
-      ? {
-          embedTexts: (texts: string[]) =>
-            embedTextsViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, texts),
-          model: SHARED_RECALL_EMBEDDING_MODEL,
-        }
-      : undefined;
+  const embed = sharedRecallEnabled()
+    ? {
+        embedTexts: embedSharedRecallTexts,
+        model: SHARED_RECALL_EMBEDDING_MODEL,
+      }
+    : undefined;
   return createSharedMemoryStore(
     {
       organizationId: agent.organization_id,
@@ -723,23 +716,12 @@ function sharedTurnMemoryStore(agent: SharedRuntimeAgent, roomId: string) {
 }
 
 /**
- * P3 rollout gate: semantic recall exists only while this is exactly "true"
- * AND the sidecar base URL is configured. Off (the default) leaves every turn
- * byte-identical to the pre-recall path.
- */
-function sharedRecallEnabled(): boolean {
-  return (
-    process.env.SHARED_RECALL_ENABLED === "true" && Boolean(process.env.LOCAL_EMBEDDINGS_BASE_URL)
-  );
-}
-
-/**
  * Compose the recall block for one turn, or undefined when recall contributes
  * nothing. Recall is an enhancement: a typed embed/search failure is warned
  * and the turn proceeds without it rather than failing a healthy reply.
  * `hadKeywordHit` is pinned false for the rollout phase — the lexical-salience
  * signal is not yet surfaced from the history store, so flag-on turns pay one
- * sidecar embed each; the short-circuit lands when that signal is plumbed.
+ * embedding request each; the short-circuit lands when that signal is plumbed.
  */
 async function sharedTurnRecallContext(
   store: SharedMemoryStore | null,
@@ -747,15 +729,13 @@ async function sharedTurnRecallContext(
   history: SharedTurnMessage[],
 ): Promise<string | undefined> {
   if (!store || !sharedRecallEnabled()) return undefined;
-  const embedBase = process.env.LOCAL_EMBEDDINGS_BASE_URL;
-  if (!embedBase) return undefined;
   try {
     const block = await buildSharedRecallContext({
       flagEnabled: true,
       hadKeywordHit: false,
       queryText,
       history,
-      embed: (text) => embedTextViaSidecar(embedBase, process.env.LOCAL_EMBEDDINGS_API_KEY, text),
+      embed: async (text) => (await embedSharedRecallTexts([text]))[0],
       storeSearch: async (vector) => {
         // This is relevance retrieval, not prompt shortening: the durable transcript
         // is already supplied in full. Ask the repository for its complete supported

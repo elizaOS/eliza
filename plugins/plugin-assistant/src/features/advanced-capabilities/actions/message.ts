@@ -57,6 +57,7 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { findEntityByName } from "../../../entities.ts";
+import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
 import {
   resolveMutedTargetFlags,
   resolveMutedWorldFlags,
@@ -3249,14 +3250,27 @@ async function handleSend(
   // A direct-to-person delivery resolved from an unvetted source (connector
   // fuzzy match / raw explicit target) must be a known recipient — present in
   // this room or relationship-backed — or explicitly confirmed by the user.
-  if (isUnvettedDirectUserCandidate(selected)) {
-    const known = await recipientIsKnownEntity(runtime, message, target);
+  const requestConsent =
+    selected.connector.source === "gmail"
+      ? await deviceGmailRequestConsent(runtime, message)
+      : "legacy";
+  if (requestConsent === "denied")
+    return opFailure(
+      "send",
+      "GMAIL_REQUEST_CHANGED",
+      "This Gmail request changed before it could be sent. Nothing was sent.",
+    );
+  if (requestConsent !== "legacy" || isUnvettedDirectUserCandidate(selected)) {
+    const known =
+      requestConsent === "legacy" &&
+      (await recipientIsKnownEntity(runtime, message, target));
     if (!known) {
       const prompt = `Send via ${selected.connector.label} to ${selected.label} (${String(target.entityId)})${target.accountId ? ` from account ${target.accountId}` : ""}?\n${isRecord(content.metadata) && typeof content.metadata.subject === "string" ? `Subject: ${content.metadata.subject}\n` : ""}${content.text ?? ""}${content.attachments?.length ? `\nAttachments: ${content.attachments.map((attachment) => `${attachment.title ?? "attachment"} (${attachment.url})`).join(", ")}` : ""}`;
       const decision = await requireSendConsent(
         runtime,
         message,
         sendConsentDigest({ target, content }),
+        { source: selected.connector.source, requestMessageId: message.id },
       );
       if (decision !== "confirmed") {
         const pending = decision === "pending";
@@ -3288,6 +3302,15 @@ async function handleSend(
   let evidenceKind: "provider" | "local-effect" = "provider";
   let receiptIds: readonly string[] | undefined;
   try {
+    if (
+      selected.connector.source === "gmail" &&
+      (await deviceGmailRequestConsent(runtime, message)) === "denied"
+    )
+      return opFailure(
+        "send",
+        "GMAIL_REQUEST_CHANGED",
+        "The Gmail request ended before sending. Nothing was sent.",
+      );
     const sendResult = await runtime.sendMessageToTarget(target, content);
     const disposition = inspectSendHandlerResult(sendResult);
     if (disposition.kind === "unknown") {

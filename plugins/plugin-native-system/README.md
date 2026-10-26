@@ -39,7 +39,10 @@ Hosts supply supported package sets, their selected browser/certificate trust
 verifier, and an Activity launch callback. The helper snapshots package policy,
 rejects unlisted app destinations and uses separate Android tasks. It never reads
 credentials, proves vault readiness or changes defaults silently. It adds no
-`ElizaSystem` bridge methods or permission grants. `DeviceSetupInstrumentedTest`
+`ElizaSystem` bridge methods or permission grants. A host that exposes it to
+JavaScript can use the `DeviceSetup`, `DeviceSetupReadiness`, `DeviceSetupTarget`
+and `DeviceSetupOutcome` types, which use the Java JSON fields and enum names.
+`DeviceSetupInstrumentedTest`
 checks independent host policy against Android observations while capturing
 navigation instead of launching screens or changing roles. Real settings/provider
 journeys and physical-device behavior require separate acceptance.

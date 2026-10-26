@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 import { blooioAdapter } from "../src/adapters/blooio";
 import type { ChatEvent, WebhookConfig } from "../src/adapters/types";
 import { logger } from "../src/logger";
+import { turnRequestFor } from "../src/network-service";
 
 function makeConfig(overrides: Partial<WebhookConfig> = {}): WebhookConfig {
   return {
@@ -18,6 +19,62 @@ const timingSpies: Array<{ mockRestore(): void }> = [];
 afterEach(() => {
   globalThis.fetch = originalFetch;
   for (const spy of timingSpies.splice(0)) spy.mockRestore();
+});
+
+test("Network turns use the receiving phone while Blooio replies retain their opaque channel", async () => {
+  const phone = "+14155550199";
+  const line = "+14155550022";
+  const channelId = "ch_019fe466-5401-7ac7-a688-100c0f6a21f2";
+  const now = Date.now();
+  const envelopes = [
+    {
+      id: "evt_network_recipient_v4",
+      type: "message.received",
+      created_at: now,
+      data: {
+        message_id: "msg_network_recipient_v4",
+        sender: phone,
+        recipient: line,
+        channel_id: channelId,
+        text: "Show my Friends profile",
+        protocol: "imessage",
+      },
+    },
+    {
+      event: "message.received",
+      message_id: "msg_network_recipient_v2",
+      external_id: phone,
+      internal_id: line,
+      channel_id: channelId,
+      text: "Show my Friends profile",
+      protocol: "imessage",
+      timestamp: now,
+    },
+  ];
+  for (const envelope of envelopes) {
+    const event = await blooioAdapter.extractEvent(JSON.stringify(envelope));
+    expect(event).not.toBeNull();
+    expect(event?.channelId).toBe(channelId);
+    expect(event?.receivingNumber).toBe(line);
+    const turn = turnRequestFor({ ...event!, gatewayReceivedAtMs: now });
+    expect(turn.from).toBe(phone);
+    expect(turn.to).toBe(line);
+    expect(turn.transport).toBe("imessage");
+  }
+  const legacyEvent: ChatEvent = {
+    platform: "blooio",
+    messageId: "legacy",
+    chatId: phone,
+    senderId: phone,
+    channelId: line,
+    text: "hello",
+    gatewayReceivedAtMs: now,
+    rawPayload: {},
+  };
+  expect(turnRequestFor(legacyEvent).to).toBe(line);
+  expect(
+    turnRequestFor({ ...legacyEvent, channelId: undefined }).to,
+  ).toBeNull();
 });
 
 describe("blooio send timing", () => {

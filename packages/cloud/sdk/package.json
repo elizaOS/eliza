@@ -27,14 +27,16 @@
     "native-host/errors.mjs",
     "native-host/subscription-review.mjs",
     "native-host/plan-change.mjs",
-    "native-host/timed-speech.mjs"
+    "native-host/timed-speech.mjs",
+    "native-host/clef-decisions.mjs",
+    "native-host/clef-decisions.d.mts"
   ],
   "sideEffects": false,
   "scripts": {
     "build": "bun run build.ts",
     "clean": "rm -rf dist",
     "prepack": "bun run build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p native-host/tsconfig.json",
     "audit:routes": "node ../scripts/sdk/audit-api-routes.ts",
     "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -167,6 +169,12 @@
       "types": "./dist/native-speech-stream.d.ts",
       "import": "./dist/native-speech-stream.js",
       "default": "./dist/native-speech-stream.js"
+    },
+    "./clef-decisions": {
+      "eliza-source": "./src/clef-decisions.ts",
+      "types": "./dist/clef-decisions.d.ts",
+      "import": "./dist/clef-decisions.js",
+      "default": "./dist/clef-decisions.js"
     },
     "./website-reputation": {
       "eliza-source": "./src/website-reputation.ts",

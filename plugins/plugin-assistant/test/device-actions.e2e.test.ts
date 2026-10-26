@@ -78,6 +78,7 @@ import {
 import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
 import {
   DeviceActionService,
+  deviceProposalDigest,
   withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
@@ -1239,7 +1240,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     {
       const capability = "clock.handoff.v1";
       const allCapabilities =
-        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1,camera.capture-photo.v1,gmail.request-policy.v1";
       const enrolled = await request(
         "/register",
         { label: "Fixture phone", workflowProtocol: 1 },
@@ -4671,6 +4672,95 @@ test("registered Calendar preserves native ownership and explicit connected sour
   } finally {
     lookup.mockRestore();
     appleCalendarTesting.setNativeCalendarBridgeForTest(undefined as never);
+    await fixture.cleanup();
+  }
+}, 120000);
+
+test("camera capture receipts bind a saved photo to one claimed operation without pixels", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "CameraCaptureReceipt",
+    withLLM: false,
+  });
+  const runtime = fixture.runtime,
+    service = new DeviceActionService(runtime);
+  const credential = {
+    subjectUserId: runtime.agentId,
+    installationId: randomUUID(),
+    deviceKey: "c".repeat(64),
+    capabilities: ["camera.capture-photo.v1"],
+  };
+  try {
+    await service.register(credential, "Camera fixture");
+    await expect(
+      service.propose(
+        { ...credential, capabilities: [] },
+        { type: "camera_capture_photo" },
+        "no-capability",
+        "Take a photo",
+      ),
+    ).rejects.toThrow("capability");
+    const proposal = await service.propose(
+      credential,
+      { type: "camera_capture_photo" },
+      "camera-one",
+      "Take a photo",
+    );
+    await service.decide(
+      credential,
+      proposal.id,
+      deviceProposalDigest(proposal),
+      true,
+    );
+    const claim = await service.claim(
+      credential,
+      proposal.id,
+      deviceProposalDigest(proposal),
+    );
+    const result = {
+      version: 1,
+      kind: "camera_capture_photo",
+      operationId: "photo-operation",
+      mediaId: "45",
+      width: 1280,
+      height: 720,
+      mime: "image/jpeg",
+    };
+    for (const invalid of [
+      { ...result, base64: "pixels" },
+      { ...result, operationId: "different-operation" },
+      { ...result, mediaId: "content://media/external/images/media/45" },
+    ])
+      await expect(
+        service.receipt(
+          credential,
+          proposal.id,
+          deviceProposalDigest(proposal),
+          claim.execution!.attemptId,
+          {
+            outcome: "applied",
+            operationId: "photo-operation",
+            result: invalid,
+          },
+        ),
+      ).rejects.toThrow("photo receipt");
+    const done = await service.receipt(
+      credential,
+      proposal.id,
+      deviceProposalDigest(proposal),
+      claim.execution!.attemptId,
+      { outcome: "applied", operationId: "photo-operation", result },
+    );
+    expect(done.state).toBe("done");
+    expect(done.execution?.providerReceipt?.result).toEqual(result);
+    const duplicate = await service.propose(
+      credential,
+      { type: "camera_capture_photo" },
+      "camera-one",
+      "Take a photo",
+    );
+    expect(duplicate.id).toBe(proposal.id);
+    expect(duplicate.state).toBe("done");
+  } finally {
     await fixture.cleanup();
   }
 }, 120000);

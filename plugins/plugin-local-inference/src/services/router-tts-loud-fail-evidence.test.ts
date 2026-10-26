@@ -1,12 +1,14 @@
 /**
- * Failure-path evidence for #12253: with the Kokoro artifacts genuinely absent
- * on disk, the whole TTS chain fails LOUD and never substitutes another voice.
+ * Failure-path evidence for #12253: with the Paradee-8M v1.1 artifacts
+ * genuinely absent on disk, the whole TTS chain fails LOUD and never
+ * substitutes another voice — not edge-tts, and not a staged Kokoro either.
  * Unlike router-tts-fail-closed.test.ts (which injects a synthetic throw), this
- * drives the REAL on-disk artifact check (`resolveKokoroEngineConfig` against an
- * empty temp dir → null) through the REAL engine selector (`selectVoiceBackend`
- * → throws) and into the REAL router + policy engine, asserting the router
- * re-throws that real error and edge-tts is never invoked. Run with
- * `--reporter verbose` to capture the transcript as issue evidence.
+ * drives the REAL on-disk artifact check (`discoverParadeeEngine` against an
+ * empty temp dir → not ok) through the REAL engine selector
+ * (`selectVoiceBackend` → throws) and into the REAL router + policy engine,
+ * asserting the router re-throws that real error and edge-tts is never
+ * invoked. Run with `--reporter verbose` to capture the transcript as issue
+ * evidence.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -27,8 +29,8 @@ import {
 	it,
 	vi,
 } from "vitest";
-import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
-import { selectVoiceBackend } from "./voice/kokoro/runtime-selection";
+import { discoverParadeeEngine } from "./voice/paradee/paradee-engine-discovery";
+import { selectVoiceBackend } from "./voice/tts-backend-selection";
 
 const prefsState = {
 	policy: {} as Record<string, string>,
@@ -67,15 +69,19 @@ type Handler = (
 	params: Record<string, unknown>,
 ) => Promise<unknown>;
 
-// A real empty models dir → the on-disk Kokoro probe finds nothing.
-const emptyModelsDir = mkdtempSync(path.join(tmpdir(), "kokoro-absent-"));
-const priorKokoroDir = process.env.ELIZA_KOKORO_MODEL_DIR;
+// A real empty state dir → the on-disk Paradee probe finds nothing.
+const emptyStateDir = mkdtempSync(path.join(tmpdir(), "paradee-absent-"));
+const priorEnv = {
+	ELIZA_PARADEE_MODEL_DIR: process.env.ELIZA_PARADEE_MODEL_DIR,
+	ELIZA_STATE_DIR: process.env.ELIZA_STATE_DIR,
+};
 
 beforeEach(() => {
 	vi.clearAllMocks();
 	prefsState.policy = {};
 	prefsState.preferredProvider = {};
-	process.env.ELIZA_KOKORO_MODEL_DIR = emptyModelsDir;
+	process.env.ELIZA_PARADEE_MODEL_DIR = emptyStateDir;
+	process.env.ELIZA_STATE_DIR = emptyStateDir;
 });
 
 afterEach(() => {
@@ -83,31 +89,40 @@ afterEach(() => {
 });
 
 afterAll(() => {
-	if (priorKokoroDir === undefined) delete process.env.ELIZA_KOKORO_MODEL_DIR;
-	else process.env.ELIZA_KOKORO_MODEL_DIR = priorKokoroDir;
-	rmSync(emptyModelsDir, { recursive: true, force: true });
+	for (const [key, value] of Object.entries(priorEnv)) {
+		if (value === undefined) delete process.env[key];
+		else process.env[key] = value;
+	}
+	rmSync(emptyStateDir, { recursive: true, force: true });
 });
 
 /** The real on-disk gate the local TTS handler consults before synthesizing. */
 function realLocalTtsHandler(): Uint8Array {
-	const layout = resolveKokoroEngineConfig();
-	const decision = selectVoiceBackend({ kokoroAvailable: layout !== null });
+	const paradee = discoverParadeeEngine();
+	const decision = selectVoiceBackend({
+		paradeeAvailable: paradee.ok,
+		paradeeUnavailableReason: paradee.ok ? undefined : paradee.reason,
+		// A staged Kokoro must not stand in for the product voice.
+		kokoroAvailable: true,
+	});
 	// Unreachable when artifacts are absent — selectVoiceBackend throws first.
 	return new Uint8Array([decision.backend.length]);
 }
 
-describe("#12253 failure-path evidence — Kokoro artifacts absent", () => {
-	it("the real on-disk probe returns null when no artifacts are staged", () => {
-		expect(resolveKokoroEngineConfig()).toBeNull();
+describe("#12253 failure-path evidence — Paradee artifacts absent", () => {
+	it("the real on-disk probe reports Paradee missing when nothing is staged", () => {
+		const found = discoverParadeeEngine();
+		expect(found.ok).toBe(false);
+		if (!found.ok) expect(found.reason).toMatch(/not staged/);
 	});
 
 	it("the real engine selector throws a loud, actionable error (no silent downgrade)", () => {
-		expect(() => selectVoiceBackend({ kokoroAvailable: false })).toThrow(
-			/Kokoro model artifacts are not present on disk/,
-		);
+		expect(() =>
+			selectVoiceBackend({ paradeeAvailable: false, kokoroAvailable: true }),
+		).toThrow(/Paradee-8M v1\.1 is the on-device TTS backend/);
 	});
 
-	it("the real router re-throws the real Kokoro error and never calls edge-tts", async () => {
+	it("the real router re-throws the real Paradee error and never calls edge-tts", async () => {
 		const errorSpy = vi.spyOn(logger, "error");
 		const edgeHandler = vi.fn(async () => new Uint8Array([9, 9, 9]));
 
@@ -149,7 +164,7 @@ describe("#12253 failure-path evidence — Kokoro artifacts absent", () => {
 		if (!router) throw new Error("router handler for TTS not installed");
 
 		await expect(router(runtime, { text: "hello" })).rejects.toThrow(
-			/Kokoro model artifacts are not present on disk/,
+			/Paradee-8M v1\.1 is the on-device TTS backend/,
 		);
 		// The whole point: no silent voice swap to another engine.
 		expect(edgeHandler).not.toHaveBeenCalled();

@@ -11,6 +11,11 @@ import {
   validateCalendarOperation,
 } from "./calendar-contract.ts";
 import {
+  CAMERA_CAPTURE_CAPABILITY,
+  type CameraCaptureOperation,
+  validateCameraCapture,
+} from "./camera-contract.ts";
+import {
   CLOCK_ALARMS_CAPABILITY,
   CLOCK_CAPABILITY,
   CLOCK_REPEAT_CAPABILITY,
@@ -75,6 +80,7 @@ export const DEVICE_VIEWS = [
   "workflows",
 ] as const;
 export type DeviceOperation =
+  | CameraCaptureOperation
   | SmsSendOperation
   | ReminderCreateOperation
   | ClockOperation
@@ -96,6 +102,8 @@ export function deviceOperationSupportedByCapabilities(
   type: string,
   capabilities?: readonly string[],
 ): boolean {
+  if (type === "camera_capture_photo")
+    return capabilities?.includes(CAMERA_CAPTURE_CAPABILITY) === true;
   if (type === "sms_send")
     return capabilities?.includes(SMS_SEND_CAPABILITY) === true;
   if (type === "calendar_create_local")
@@ -120,9 +128,13 @@ export function deviceOperationSupportedByCapabilities(
           capability === CLOCK_REPEAT_CAPABILITY,
       ) === true
     );
+  // Transport policy negotiation never widens a clock-only executor.
+  const operationCapabilities = capabilities?.filter(
+    (capability) => capability !== "gmail.request-policy.v1",
+  );
   const clockOnly =
-    capabilities?.length &&
-    capabilities.every(
+    operationCapabilities?.length &&
+    operationCapabilities.every(
       (capability) =>
         capability === CLOCK_CAPABILITY ||
         capability === CLOCK_ALARMS_CAPABILITY ||
@@ -138,6 +150,8 @@ export type DeviceActionPayload = {
   operation: DeviceOperation;
   workflow?: WorkflowDeviceBinding;
   viewProfileRevision?: string;
+  /** Exact user message that requested this action; absent on older hosts. */
+  requestMessageId?: string;
   /** Native durable alarm-store revision, supplied by the authenticated observation. */
   clockContextRevision?: number;
 };
@@ -172,6 +186,12 @@ export function exactKeys(
 export function validateDeviceOperation(value: unknown): DeviceOperation {
   const p = object(value);
   switch (p.type) {
+    case "camera_capture_photo":
+      try {
+        return validateCameraCapture(p);
+      } catch {
+        throw new DeviceActionError("Invalid camera capture operation");
+      }
     case "reminder_create":
       try {
         return validateReminderCreate(p);
@@ -309,6 +329,7 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     "operation",
     "workflow",
     "viewProfileRevision",
+    "requestMessageId",
     "clockContextRevision",
   ]);
   if (p.action !== "device_action" || p.version !== 1)
@@ -337,6 +358,9 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     installationId: identifier(p.installationId),
     enrollmentId: identifier(p.enrollmentId),
     operation,
+    ...(p.requestMessageId === undefined
+      ? {}
+      : { requestMessageId: identifier(p.requestMessageId) }),
     ...(operation.type === "clock_alarm"
       ? { clockContextRevision: Number(p.clockContextRevision) }
       : {}),

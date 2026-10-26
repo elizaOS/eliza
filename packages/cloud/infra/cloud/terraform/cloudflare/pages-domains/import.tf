@@ -29,7 +29,7 @@ locals {
   }
 
   railway_tunnel_dns_imports = {
-    for key, record in var.railway_tunnel_dns_records : key => {
+    for key, record in local.tunnel_dns_records : key => {
       zone_id   = var.eliza_app_zone_id
       record_id = lookup(var.dns_record_import_ids, "railway-tunnel/${key}", "")
     } if lookup(var.dns_record_import_ids, "railway-tunnel/${key}", "") != ""

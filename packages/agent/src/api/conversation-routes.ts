@@ -57,6 +57,8 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   type Memory,
+  type ModelAttemptAllowance,
+  type ModelAttemptLease,
   mergeEffectReceipts,
   nextInferenceTurnId,
   normalizeActionFailureProvenance,
@@ -77,6 +79,7 @@ import {
   recordRoleGrant,
   resolveAppliedUserFacingEffectReceipts,
   runWithInferenceTiming,
+  runWithStreamingContext,
   stringToUuid,
   systemNoticeText,
   TodoCutoverContractError,
@@ -284,6 +287,15 @@ export interface ConversationRouteState {
   logBuffer: LogEntry[];
   conversations: Map<string, ConversationMeta>;
   activeChatTurnCount: number;
+  /** Trusted host trial seed. Request metadata cannot create or refill this. */
+  voiceModelPolicy?: Readonly<{
+    policyId: string;
+    sessionId: string;
+    ownerId: string;
+    agentId: string;
+    conversationId: string;
+    allowance: ModelAttemptAllowance;
+  }>;
   conversationRestorePromise: Promise<void> | null;
   deletedConversationIds: Set<string>;
   broadcastWs: ((data: object) => void) | null;
@@ -3066,6 +3078,7 @@ export async function handleConversationRoutes(
     }
     // The bound identity is never copied from message metadata or model parameters.
     let authenticated = false;
+    const authenticatedRuntime = ctx.state.runtime;
     try {
       return await withDeviceActionTurn(
         ctx.state.runtime,
@@ -3073,6 +3086,13 @@ export async function handleConversationRoutes(
         async () => {
           authenticated = true;
           return handle();
+        },
+        {
+          isCurrent: () =>
+            !ctx.req.aborted &&
+            !ctx.res.destroyed &&
+            !ctx.res.writableEnded &&
+            ctx.state.runtime === authenticatedRuntime,
         },
       );
     } catch (error) {
@@ -5284,6 +5304,27 @@ async function streamConversationMessage(
   }
   const localVoiceRuntimeFence =
     fenceResolution.kind === "valid" ? fenceResolution.fence : null;
+  const policyId = readCanonicalSingleHeader(req, "X-Eliza-Voice-Model-Policy");
+  const sessionId = readCanonicalSingleHeader(req, "X-Eliza-Voice-Session-Id");
+  const voicePolicy = state.voiceModelPolicy;
+  const policyRequested = policyId !== null || sessionId !== null;
+  if (
+    policyRequested &&
+    (!voicePolicy ||
+      policyId === "invalid" ||
+      sessionId === "invalid" ||
+      policyId !== voicePolicy.policyId ||
+      sessionId !== voicePolicy.sessionId ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(policyId ?? "") ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId ?? "") ||
+      !localVoiceRuntimeFence ||
+      voicePolicy.conversationId !== convId ||
+      voicePolicy.agentId !== String(state.runtime?.agentId))
+  ) {
+    error(res, "Bounded voice model policy is not authorized", 403);
+    return true;
+  }
+  let modelAttemptLease: ModelAttemptLease | undefined;
   const conv = await getConversationWithRestore(state, convId);
   // Before runtime startup there may be no restore task or conversation map
   // yet. A 404 tells the client to create a replacement conversation, so only
@@ -5358,6 +5399,20 @@ async function streamConversationMessage(
     metadata: chatMetadata,
     clientMessageId,
   } = chatPayload;
+  if (
+    channelType === ChannelType.VOICE_DM &&
+    voicePolicy?.conversationId === convId &&
+    !policyRequested
+  ) {
+    error(res, "Bounded voice model policy is required", 403);
+    finishStreamResponse();
+    return true;
+  }
+  if (policyRequested && channelType !== ChannelType.VOICE_DM) {
+    error(res, "Bounded model policy requires voice transport", 403);
+    finishStreamResponse();
+    return true;
+  }
   logger.info(
     { traceId: trace.traceId, traceSource: trace.source },
     "[ConversationStream] accepted validated trace context",
@@ -5420,6 +5475,9 @@ async function streamConversationMessage(
       runtime,
     );
     const userId = caller.entityId;
+    if (policyRequested && voicePolicy?.ownerId !== String(userId)) {
+      return failStream("Bounded voice model owner changed");
+    }
     chatIdempotencyScope = buildConversationChatIdempotencyScope(
       runtime,
       conv.roomId,
@@ -5698,6 +5756,19 @@ async function streamConversationMessage(
         return handled;
       }
       const routedUserMessage = withViewInteractionClient(userMessage, req);
+      if (policyRequested && voicePolicy) {
+        modelAttemptLease = voicePolicy.allowance.openTurn(
+          String(routedUserMessage.id),
+          disconnectTracker.signal,
+          () => {
+            if (state.voiceModelPolicy !== voicePolicy)
+              throw new ElizaError("Bounded voice model policy retired", {
+                code: "MODEL_ATTEMPT_POLICY_CLOSED",
+              });
+            assertLocalVoiceTurnFence();
+          },
+        );
+      }
       const turnStartedAt = Date.now();
       try {
         assertConversationConnectionRuntime(
@@ -5940,15 +6011,13 @@ async function streamConversationMessage(
           })();
           return generationCompletion;
         };
-        const result = await generateChatResponse(
-          runtime,
-          routedUserMessage,
-          state.agentName,
-          {
+        const generationRoomLease = runtimeTurnLease;
+        const generate = () =>
+          generateChatResponse(runtime, routedUserMessage, state.agentName, {
             traceId: trace.traceId,
             inferenceTimer,
             abortSignal: disconnectTracker.signal,
-            roomHandlerLease: runtimeTurnLease,
+            roomHandlerLease: generationRoomLease,
             onStatus: (status) => {
               assertCurrentGenerationOwner();
               if (
@@ -6024,8 +6093,18 @@ async function streamConversationMessage(
             },
             onReplyReady: completeGeneration,
             preferredLanguage,
-          },
-        );
+          });
+        const result = modelAttemptLease
+          ? await runWithStreamingContext(
+              {
+                messageId: String(routedUserMessage.id),
+                modelAttemptTurnId: String(routedUserMessage.id),
+                modelAttemptLease,
+                abortSignal: disconnectTracker.signal,
+              },
+              generate,
+            )
+          : await generate();
         // Adapters that do not publish the early callback still use the same
         // durable completion path. The promise fences repeated callbacks.
         await completeGeneration(result);
@@ -6477,6 +6556,7 @@ async function streamConversationMessage(
     }
     throw streamError;
   } finally {
+    modelAttemptLease?.close();
     if (!reservationSettled) releaseTurnReservation();
     // The heartbeat timer and the SSE socket are owned by this request, not
     // by the HTTP error boundary that catches the rethrow above, so this is

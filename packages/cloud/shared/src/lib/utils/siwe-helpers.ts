@@ -1,20 +1,9 @@
-/**
- * SIWE (Sign-In With Ethereum) EIP-4361 helpers.
- * WHY: Centralize nonce issuance, consumption, and message/signature validation
- * so nonce and domain are enforced in one place and routes stay thin.
- *
- * Redis is taken as a parameter rather than via the module-level `cache`
- * singleton because CacheClient's lazy-opened socket gets bound to the first
- * request's I/O context on Cloudflare Workers — see
- * https://developers.cloudflare.com/workers/runtime-apis/tcp-sockets/#considerations
- * Routes build a fresh client per request via `buildRedisClient(c.env)` (same
- * pattern as `rate-limit-hono-cloudflare.ts`).
- */
+/** SIWE validation and atomic nonce consumption through the host-selected auth store. */
 
 import { getAddress, verifyMessage } from "viem";
 import { parseSiweMessage, type SiweMessage } from "viem/siwe";
+import type { AuthenticationStateStore } from "../auth/authentication-state";
 import { CacheKeys, CacheTTL } from "../cache/keys";
-import type { CompatibleRedis } from "../cache/redis-factory";
 
 export type { SiweMessage };
 
@@ -51,7 +40,7 @@ function randomNonceHex(): string {
  * server offered. Caller must have a per-request Redis client.
  */
 export async function issueNonce(
-  redis: CompatibleRedis,
+  redis: AuthenticationStateStore,
   binding: SiweNonceBinding,
 ): Promise<string> {
   const nonce = randomNonceHex();
@@ -67,7 +56,7 @@ export async function issueNonce(
  * window after a deploy.
  */
 export async function readNonceBinding(
-  redis: CompatibleRedis,
+  redis: AuthenticationStateStore,
   nonce: string,
 ): Promise<SiweNonceBinding | null> {
   const value = await redis.get<string>(CacheKeys.siwe.nonce(nonce));
@@ -98,7 +87,10 @@ function safeJsonParse(value: string): unknown {
  * Consumes the nonce from cache (single-use). Returns true if the nonce was
  * present and is now consumed; false otherwise.
  */
-export async function consumeNonce(redis: CompatibleRedis, nonce: string): Promise<boolean> {
+export async function consumeNonce(
+  redis: AuthenticationStateStore,
+  nonce: string,
+): Promise<boolean> {
   const value = await redis.getdel(CacheKeys.siwe.nonce(nonce));
   return value !== null;
 }
@@ -186,7 +178,7 @@ export async function validateSIWEMessage(
  * @throws Error if validation fails or nonce invalid/already used.
  */
 export async function validateAndConsumeSIWE(
-  redis: CompatibleRedis,
+  redis: AuthenticationStateStore,
   message: string,
   signature: `0x${string}`,
   expectedHost: string,

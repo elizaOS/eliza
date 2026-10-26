@@ -38,7 +38,12 @@ test("blacklist navigation checks locally before opening, fences old replies and
     navigation.navigate("/hit");
     await expect.poll(() => requests.has("/hit")).toBe(true);
     requests.get("/hit")?.end(JSON.stringify({ status: "blocked" }));
-    await expect.poll(() => navigation.snapshot().permitted).toBe(false);
+    // Navigation is also unpermitted while the request is pending. Wait for
+    // the server result before testing the person's explicit bypass gesture.
+    await expect
+      .poll(() => navigation.snapshot().verdict?.status)
+      .toBe("blocked");
+    expect(navigation.snapshot().permitted).toBe(false);
     const revision = navigation.snapshot().revision;
     expect(navigation.allowOnce(revision - 1)).toBe(false);
     expect(navigation.allowOnce(revision)).toBe(true);

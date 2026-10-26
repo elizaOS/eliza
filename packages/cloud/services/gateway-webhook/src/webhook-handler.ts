@@ -39,6 +39,7 @@ import {
   type HeldWebhookOutcome,
   holdWebhookForCutover,
 } from "./cutover-hold";
+import { deliveryReceiptStore } from "./delivery-receipts";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import {
@@ -337,7 +338,7 @@ async function sendReplyWithRequiredReceipt(
 
 /**
  * Direct (non-group) reply egress. A Network Twilio reply goes through the
- * Redis tombstone fence so a reopened webhook cannot send it twice; every
+ * selected receipt fence so a reopened webhook cannot send it twice; every
  * other project and platform keeps the unfenced path unchanged.
  */
 async function sendDirectReply(
@@ -361,7 +362,7 @@ async function sendDirectReply(
       : undefined;
   if (adapter.platform === "twilio" && networkScoped) {
     const outcome = await sendWithTwilioReplyFence(
-      deps.redis,
+      deliveryReceiptStore(deps.redis),
       project,
       event.messageId,
       () =>

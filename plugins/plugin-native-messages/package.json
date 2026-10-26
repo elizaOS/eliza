@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-native-messages",
   "version": "2.0.3-beta.7",
   "type": "module",
-  "description": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/plugin-native-messages/bridge.",
+  "description": "Android Messages overlay app for ElizaOS \u2014 SMS inbox and compose surface backed by @elizaos/plugin-native-messages/bridge.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -55,8 +55,8 @@
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "elizaos": {
     "app": {
@@ -83,18 +83,18 @@
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.64.5",
+    "rollup": "^4.64.9",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.3.0",
-    "jsdom": "^30.1.2",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "tsup": "^8.5.1",
-    "vite": "^8.3.0"
+    "jsdom": "^30.1.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsup": "^9.0.0",
+    "vite": "^8.3.3"
   },
   "capacitor": {
     "android": {

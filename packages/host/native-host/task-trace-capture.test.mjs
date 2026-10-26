@@ -4,12 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { validateTraceEvent } from "./research-store.mjs";
-import { openTraceQueue as openQueue } from "./trace-queue.mjs";
-
-const openTraceQueue = (options) =>
-  openQueue({ ...options, validateEvent: validateTraceEvent });
-
+import { openResearchTraceQueue } from "./research-capture-host.mjs";
 import { createTaskTraceCapture as createPilotTaskCapture } from "./task-trace-capture.mjs";
 
 test("journal capture is consent and owner scoped, pseudonymous and restart durable", async (t) => {
@@ -18,7 +13,7 @@ test("journal capture is consent and owner scoped, pseudonymous and restart dura
     pseudonymKey = randomBytes(32),
     path = join(dir, "queue");
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  let queue = openTraceQueue({ path, key });
+  let queue = openResearchTraceQueue({ path, key });
   const owner = {
       agentId: "agent-secret",
       actorId: "account-secret",
@@ -102,7 +97,7 @@ test("journal capture is consent and owner scoped, pseudonymous and restart dura
   assert.equal(uploaded[0].monotonicMs, null);
   assert.equal(uploaded[1].status, "completed");
   queue.close();
-  queue = openTraceQueue({ path, key });
+  queue = openResearchTraceQueue({ path, key });
   assert.equal((await make().collect()).captured, 0);
   current = false;
   await assert.rejects(make().collect(), /owner changed/);
@@ -117,7 +112,7 @@ test("an owner with more than a thousand journaled tasks is still captured", asy
   const { DatabaseSync } = await import("node:sqlite");
   const dir = mkdtempSync(join(tmpdir(), "pilot-journal-many-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const queue = openTraceQueue({
+  const queue = openResearchTraceQueue({
     path: join(dir, "queue"),
     key: randomBytes(32),
   });

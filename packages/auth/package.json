@@ -349,7 +349,10 @@
     "test:login": "bun test --timeout 30000 --isolate src/sdk/__tests__ src/server/__tests__ && bun run test:railpack",
     "test:native-host": "node --test native-host/*.test.mjs native-host/staging-acceptance.process-test.mjs",
     "test:postgres": "LOGIN_REQUIRE_POSTGRES_TESTS=1 bun test src/server/__tests__/postgres-login.integration.test.ts",
-    "test:integration": "bun run test:browser && bun run test:postgres"
+    "test:integration": "bun run test:browser && bun run test:postgres",
+    "cloudflare:check": "tsc --noEmit -p cloudflare/tsconfig.json",
+    "cloudflare:deploy:staging": "wrangler deploy --config cloudflare/wrangler.toml --env staging",
+    "cloudflare:deploy:production": "wrangler deploy --config cloudflare/wrangler.toml --env production"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -357,7 +360,7 @@
     "@napi-rs/keyring": "^1.1.6",
     "bs58": "^6.0.0",
     "@simplewebauthn/browser": "^14.0.0",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "postgres": "^3.4.7",
     "@upstash/redis": "^1.34.3",
     "ioredis": "^5.6.1",
@@ -370,22 +373,25 @@
     "viem": "^2.56.9",
     "@aws-sdk/client-kms": "^3.1136.0",
     "graphene-pk11": "^2.2.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.11",
     "jose": "^6.2.1",
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
     "@simplewebauthn/server": "^14.0.3",
     "resend": "^6.9.4",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@cloudflare/containers": "^0.3.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@types/bun": "1.4.2",
-    "@playwright/test": "^1.64.0"
+    "@playwright/test": "^1.64.1",
+    "@cloudflare/workers-types": "^4.20260429.1",
+    "wrangler": "^4.0.0"
   },
   "elizaos": {
     "scripts": {

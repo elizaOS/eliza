@@ -46,6 +46,7 @@ import {
   timeInferenceSpan,
   withSemanticStageFanOut,
 } from "@elizaos/core";
+import { findViewActionHandoff } from "@elizaos/core/protocol";
 import { runShouldRespondInjectionGate } from "../../features/trust/should-respond-risk-gate";
 import { parentAliasesForCandidateAction } from "../../runtime/action-retrieval.ts";
 import {
@@ -1145,6 +1146,7 @@ export async function runV5MessageRuntimeStage1(
             deviceActionForCapabilities(
               action,
               getDeviceActionTurn()?.credential.capabilities,
+              args.message.content.metadata,
             ),
           )
         : args.runtime.actions;
@@ -2049,6 +2051,16 @@ export async function runV5MessageRuntimeStage1(
           // below still rejects unrelated mutation claims. Missing prose keeps the
           // post-tool synthesis path so an internal receipt never becomes canned UI.
           const effectReceipt = structuredEffectFromToolResult(result);
+          const preparedNavigation =
+            effectReceipt?.effect === "view_navigation" &&
+            effectReceipt.status === "prepared" &&
+            findViewActionHandoff([
+              {
+                success: result.success,
+                actionName: toolCall.name,
+                values: result.data?.values,
+              },
+            ])?.navigationPrepared === true;
           // A navigation draft can correctly be marked pending before dispatch.
           // Only this confirmed navigation branch may reuse it; ordinary pending
           // work remains excluded from the planner's answer-rescue fallbacks.
@@ -2058,7 +2070,7 @@ export async function runV5MessageRuntimeStage1(
             const registeredReplyDraft = fieldRunResult?.parsed.replyText;
             if (
               !draft &&
-              effectReceipt.status === "delivered" &&
+              (effectReceipt.status === "delivered" || preparedNavigation) &&
               prePatchStageOneReplyEffectStatus === "pending" &&
               typeof registeredReplyDraft === "string"
             ) {
@@ -2089,7 +2101,8 @@ export async function runV5MessageRuntimeStage1(
           if (
             (effectReceipt?.status === "accepted" ||
               (effectReceipt?.effect === "view_navigation" &&
-                effectReceipt.status === "delivered")) &&
+                (effectReceipt.status === "delivered" ||
+                  preparedNavigation))) &&
             groundedModelReply &&
             replyNamesStructuredEffectDestination(
               groundedModelReply,

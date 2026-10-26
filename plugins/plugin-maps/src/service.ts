@@ -312,7 +312,11 @@ export class MapsService extends Service {
         code: "MAPS_INVALID_INPUT",
       });
     }
-    const place = await adapter.getPlace(providerPlaceId);
+    // A provider place id never carries surrounding whitespace, but a caller
+    // can pad one. Percent-encoding the padding into the resource name makes
+    // the provider answer 404, so the agent reports an existing place as
+    // missing. Send the id without the padding the guard already ignores.
+    const place = await adapter.getPlace(providerPlaceId.trim());
     return {
       place: place ? assertProviderPlace(place, adapter, "place detail") : null,
       provider: this.copyDescription(registration.description),

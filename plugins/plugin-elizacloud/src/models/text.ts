@@ -1,3 +1,5 @@
+import { createModelHttpTiming } from "../utils/model-http-timing";
+import { readCloudTextFailureDiagnostic } from "../utils/cloud-text-failure-diagnostic";
 /**
  * Eliza Cloud text-model handlers for Responses API calls and native
  * OpenAI-compatible chat completions. The native path preserves tool identity,
@@ -49,6 +51,7 @@ import {
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { extractResponsesOutputText } from "../utils/responses-output";
+import { recordCloudInferenceFailure } from "../utils/inference-diagnostics";
 import { createCloudApiClient } from "../utils/sdk-client";
 
 const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
@@ -610,8 +613,10 @@ export function readCloudRateLimit(
  */
 export function cloudTextRequestError(
   response: Response,
-  body: unknown
+  body: unknown,
+  requestBody: Record<string, unknown> = {}
 ): CloudTextRequestError {
+  logger.warn(readCloudTextFailureDiagnostic(response, body, requestBody), "[ELIZAOS_CLOUD] text request failed");
   const errorBody = asRecord(body).error;
   const message =
     firstString(asRecord(errorBody).message) ?? `elizaOS Cloud error ${response.status}`;
@@ -723,12 +728,26 @@ export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
   label: string,
   /** The caller's cancellation signal; it also ends a warming backoff sleep. */
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  ownedTraceId?: string,
 ): Promise<{ response: Response; bodyText: string }> {
   const state: WarmingRetryState = { attempt: 0 };
+  const timing = createModelHttpTiming(label, ownedTraceId);
   for (;;) {
-    const response = await withNativeChatLimit(doRequest, label);
-    const bodyText = await response.text();
+    const queuedAt = performance.now();
+    const observed = await withNativeChatLimit(
+      () => timing.request(doRequest, performance.now() - queuedAt),
+      label,
+    );
+    const response = observed.response;
+    let bodyText: string;
+    try {
+      bodyText = await response.text();
+      observed.bodyDone("completed");
+    } catch (error) {
+      observed.bodyDone(signal?.aborted ? "aborted" : "failed");
+      throw error;
+    }
     // Recorded before the status check so the give-up 503 keeps its gateway
     // decomposition too — a turn that burned the whole warming ladder is
     // exactly the turn whose pre-forward attribution matters.
@@ -737,12 +756,15 @@ export async function requestNativeWithWarmingRetry(
     const delayMs = nextWarmingRetryDelayMs(state, response, bodyText);
     if (delayMs === undefined) {
       if (isWarmingUnavailableResponse(response.status, bodyText)) {
-        throw new ElizaCloudGatewayWarmingExhaustedError(label, state.attempt + 1);
+        throw new ElizaCloudGatewayWarmingExhaustedError(
+          label,
+          state.attempt + 1,
+        );
       }
       return { response, bodyText };
     }
     logger.warn(
-      `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
+      `[ELIZAOS_CLOUD] cloud gateway is warming (503) on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${WARMING_RETRY_DELAYS_MS.length})`,
     );
     await sleepMs(delayMs, signal);
   }
@@ -1158,11 +1180,17 @@ function buildNativeResponseFormat(responseSchema: unknown, _modelName: string):
   return undefined;
 }
 
-function resolvePromptCacheKey(providerOptions: Record<string, unknown>): string | undefined {
+function resolvePromptCacheKey(providerOptions: Record<string, unknown>, modelName?: string): string | undefined {
   const eliza = recordAt(providerOptions, "eliza");
   const openrouter = recordAt(providerOptions, "openrouter");
   const openai = recordAt(providerOptions, "openai");
   const cerebras = recordAt(providerOptions, "cerebras");
+  // Match the direct Cerebras route's provider-scoped workflow key. Generic
+  // fallback and every other vendor keep their existing ordering and scope.
+  if (modelName === "qwen-3.8-27b") {
+    const selected = firstString(cerebras.promptCacheKey, cerebras.prompt_cache_key);
+    if (selected) return selected;
+  }
 
   return firstString(
     providerOptions.promptCacheKey,
@@ -1179,7 +1207,8 @@ function resolvePromptCacheKey(providerOptions: Record<string, unknown>): string
 }
 
 function resolveNativeProviderOptions(
-  params: GenerateTextParamsWithNativeOptions
+  params: GenerateTextParamsWithNativeOptions,
+  modelName?: string
 ): Record<string, unknown> | undefined {
   const raw = asRecord(params.providerOptions);
   if (Object.keys(raw).length === 0) {
@@ -1188,7 +1217,7 @@ function resolveNativeProviderOptions(
 
   const { agentName: _agentName, eliza: _eliza, ...rest } = raw;
   const providerOptions: Record<string, unknown> = { ...rest };
-  const promptCacheKey = resolvePromptCacheKey(raw);
+  const promptCacheKey = resolvePromptCacheKey(raw, modelName);
 
   if (promptCacheKey) {
     providerOptions.openai = {
@@ -1207,6 +1236,11 @@ function resolveNativeProviderOptions(
     };
   }
 
+  // This reviewed boolean selects the shared lossless argument transport at
+  // the gateway; all other internal eliza hints remain local.
+  if (modelName === "qwen-3.8-27b" && recordAt(raw, "eliza").preferLosslessToolArguments === true) {
+    providerOptions.eliza = { preferLosslessToolArguments: true };
+  }
   return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
 }
 
@@ -1244,8 +1278,8 @@ function buildNativeRequestBody(
   systemPrompt?: string,
   runtime?: IAgentRuntime
 ): Record<string, unknown> {
-  const providerOptions = resolveNativeProviderOptions(params);
-  const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions) : undefined;
+  const providerOptions = resolveNativeProviderOptions(params, modelName);
+  const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions, modelName) : undefined;
   const tools = normalizeNativeTools(params.tools);
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
   const responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
@@ -1622,8 +1656,12 @@ async function generateTextWithModel(
       });
     },
     "responses",
-    params.signal
-  );
+    params.signal,
+    responsesHeaders["X-Eliza-Trace-Id"]
+  ).catch((error) => {
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
+  });
   let data: ResponsesApiResponse = {};
   if (responseText) {
     try {
@@ -1638,7 +1676,9 @@ async function generateTextWithModel(
   }
 
   if (!response.ok) {
-    throw cloudTextRequestError(response, data);
+    const error = cloudTextRequestError(response, data, requestBody);
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
   }
 
 
@@ -1742,8 +1782,12 @@ export async function generateNativeChatCompletion(
       });
     },
     "chat/completions",
-    params.signal
-  );
+    params.signal,
+    headers["X-Eliza-Trace-Id"]
+  ).catch((error) => {
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
+  });
   let data: ChatCompletionsResponse = {};
   if (responseText) {
     try {
@@ -1758,7 +1802,9 @@ export async function generateNativeChatCompletion(
   }
 
   if (!response.ok) {
-    throw cloudTextRequestError(response, data);
+    const error = cloudTextRequestError(response, data, requestBody);
+    if (!params.signal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
   }
 
   const usage = convertNativeUsage(data.usage);
@@ -2165,8 +2211,11 @@ export async function streamNativeChatCompletion(
   // the error path below.
   const warmingRetryState: WarmingRetryState = { attempt: 0 };
   let response: Response;
+  const modelHttpTiming = createModelHttpTiming("chat/completions:stream", headers["X-Eliza-Trace-Id"]);
+  let bodyDone: ((outcome: "completed" | "failed" | "aborted") => void) | undefined;
   for (;;) {
     const waitStartedAt = Date.now();
+    const queuedAt = performance.now();
     await limiter.acquire();
     permitReleased = false;
     recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
@@ -2174,20 +2223,25 @@ export async function streamNativeChatCompletion(
     });
     try {
       preparedRequest.assertBeforeAttempt();
-      response = await createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
+      const observed = await modelHttpTiming.request(() => createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         ...(signal ? { signal } : {}),
-      });
+      }), performance.now() - queuedAt);
+      response = observed.response;
+      bodyDone = observed.bodyDone;
     } catch (err) {
       releasePermit();
+      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, err);
       throw err;
     }
     if (response.status !== 503) break;
     let warmingBodyText: string;
     try {
       warmingBodyText = await response.text();
+      bodyDone?.("completed");
     } finally {
+      bodyDone?.(signal?.aborted ? "aborted" : "failed");
       // The caller signal can abort while a 503 body is still streaming. The
       // permit covers that read, so release it on both success and rejection;
       // otherwise one cancelled response permanently consumes limiter
@@ -2200,12 +2254,16 @@ export async function streamNativeChatCompletion(
     }
     if (delayMs === undefined) {
       if (isWarmingUnavailableResponse(response.status, warmingBodyText)) {
-        throw new ElizaCloudGatewayWarmingExhaustedError(
+        const error = new ElizaCloudGatewayWarmingExhaustedError(
           "chat/completions:stream",
           warmingRetryState.attempt + 1
         );
+        if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+        throw error;
       }
-      throw cloudTextRequestError(response, parseJsonRecord(warmingBodyText));
+      const error = cloudTextRequestError(response, parseJsonRecord(warmingBodyText), requestBody);
+      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+      throw error;
     }
     logger.warn(
       `[ELIZAOS_CLOUD] cloud gateway is warming (503) on chat/completions:stream; retrying in ${delayMs}ms (attempt ${warmingRetryState.attempt}/${WARMING_RETRY_DELAYS_MS.length})`
@@ -2221,12 +2279,15 @@ export async function streamNativeChatCompletion(
     try {
       // A non-JSON body leaves the status-coded message.
       errorBody = parseJsonRecord(await response.text());
+      bodyDone?.("completed");
     } catch {
       // error-policy:J3 an unreadable error body still surfaces the HTTP
       // status (and the Retry-After header) through the error below.
     }
     releasePermit();
-    throw cloudTextRequestError(response, errorBody);
+    const error = cloudTextRequestError(response, errorBody, requestBody);
+    if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
+    throw error;
   }
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -2237,6 +2298,7 @@ export async function streamNativeChatCompletion(
   // (and the structured-field extractor downstream) still works.
   if (!isSse) {
     const bufferedText = await response.text();
+    bodyDone?.("completed");
     releasePermit();
     let data: ChatCompletionsResponse = {};
     if (bufferedText) {
@@ -2457,9 +2519,11 @@ export async function streamNativeChatCompletion(
       // them before the original error propagates to the stream consumer.
       failed = true;
       const failure = nativeFundingFailure(selectedFundingSlot, error);
+      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, error);
       rejectDeferreds(failure);
       throw failure;
     } finally {
+      bodyDone?.(signal?.aborted || (!completed && !failed) ? "aborted" : completed ? "completed" : "failed");
       releasePermit();
       if (!completed && !failed) {
         rejectDeferreds(streamCancellationError(signal));

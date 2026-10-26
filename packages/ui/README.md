@@ -9,9 +9,22 @@ without the React UI root. This public entry owns no credentials, media or provi
 lifecycle. Hosts must await its stop promise before reporting media retirement;
 an idle state alone does not confirm cleanup. Run `bun run --cwd packages/ui test:batch-voice-package` for
 packed external types, runtime and browser-bundle verification.
+Hosts that render their own UI can also load these leaf modules without the React
+UI root: `@elizaos/ui/text-control-editing` and `@elizaos/ui/voice/` followed by
+`draft-transcript-guard`, `microphone-capture`, `pcm-wave`,
+`progressive-speech-playback`, `recorded-transcription-controller` or
+`segmented-speech-playback`. The same packed-consumer test covers these entries.
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
+
+Pass the host's `branding` to `CloudRouterShell` as well as its app provider.
+Public sign-in uses `appName`, optional `cloudName` (defaults to the app name
+followed by Cloud), and optional `logoUrl` (omitted logos show the app name).
+Account deletion uses the same app and Cloud names and the optional host-owned
+`supportEmail`. Set it in the app branding; shared defaults provide no mailbox.
+When absent, the page explains that support contact details are unavailable.
+These presentation values do not change authentication tenants or API endpoints.
 
 ## Development
 
@@ -77,6 +90,8 @@ until the host explicitly retries refresh; late status replies cannot restart po
 string, checking the selected currency exponent. `isIsoCalendarDate` and
 `isOrderedIsoDateRange` reject normalized invalid dates and reversed inclusive
 ranges. These browser-safe helpers leave locale, labels and domain policy to hosts.
+They live in import-free `utils/value-formatting.mjs` (export
+`@elizaos/ui/value-formatting.mjs`), so hosts that stage only `.mjs` files can load them.
 
 `ConversationTurnController` owns explicit single-flight creation/send, cached room
 identity, interruption and stale-reply fencing without importing the shell. Hosts

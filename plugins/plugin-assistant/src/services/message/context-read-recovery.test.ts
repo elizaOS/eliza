@@ -4,17 +4,30 @@ import { join } from "node:path";
 /** Regression for READ_CONTEXT(files, terminal): reject the read, repair routing once, never process its draft. */
 import {
   ChannelType,
+  COMPLETION_CONTEXT_SCHEMA,
   ContextRegistry,
+  completionContextSources,
   type IAgentRuntime,
   type Memory,
+  parseCompletionContextSelection,
   ResponseHandlerFieldRegistry,
   runWithStreamingContext,
   type State,
+  selectCompletionContext,
   type UUID,
+  withRequiredCompletionSourceIdentity,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../../runtime/builtin-field-evaluators.ts";
+import {
+  createContextReadTool,
+  extractContextRead,
+  readContextRequests,
+  withAvailableContextRequests,
+} from "./context-discovery.ts";
+import { withReviewedHistorySelection } from "./history-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "./pipeline.ts";
+import { createSourceSelectionBinding } from "./source-selection-binding.ts";
 
 const message: Memory = {
   id: "00000000-0000-4000-8000-000000000001" as UUID,
@@ -139,6 +152,325 @@ function fixture(responses: unknown[]) {
 }
 
 describe("invalid context read recovery", () => {
+  it.each([false, true])(
+    "keeps context reads strict and host-nonempty with acknowledgment=%s",
+    (acknowledgment) => {
+      const schema = {
+        type: "object" as const,
+        additionalProperties: false,
+        properties: {
+          contextRequests: {
+            type: "array" as const,
+            items: { type: "string" as const, enum: ["CHOICE"] },
+          },
+        },
+        required: ["contextRequests"],
+      };
+      const tool = createContextReadTool(schema, acknowledgment);
+      expect(tool?.strict).toBe(true);
+      expect(tool?.parameters?.properties?.contextRequests).toEqual(
+        schema.properties.contextRequests,
+      );
+      expect(tool?.parameters?.additionalProperties).toBe(false);
+      const call = (references: string[]) => ({
+        text: "",
+        toolCalls: [
+          {
+            name: "READ_CONTEXT",
+            arguments: {
+              contextRequests: references,
+              ...(acknowledgment
+                ? { acknowledgment: "Reading authorized context." }
+                : {}),
+            },
+          },
+        ],
+      });
+      expect(() => extractContextRead(call([]), true)).toThrow(
+        expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_READ" }),
+      );
+      expect(
+        extractContextRead(call(["CHOICE"]), true)?.contextRequests,
+      ).toEqual(["CHOICE"]);
+      expect(() =>
+        readContextRequests(
+          { contextRequests: ["forged"] },
+          new Set(["CHOICE"]),
+        ),
+      ).toThrow(
+        expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" }),
+      );
+    },
+  );
+
+  it("projects exact authorized history identities without changing host selection or repair subsets", () => {
+    const context = {
+      id: "turn",
+      metadata: { roomId: "room", messageId: "turn" },
+      events: [1, 2].map((i) => ({
+        id: `prior-${i}`,
+        type: "segment" as const,
+        source: "prior-dialogue",
+        segment: {
+          id: `prior-${i}`,
+          label: "prior_message:user",
+          content: `Synthetic original ${i}.`,
+          stable: false,
+        },
+      })),
+    };
+    const snapshot = completionContextSources(context);
+    const schema = {
+      type: "object" as const,
+      additionalProperties: false,
+      properties: {
+        completionContext: COMPLETION_CONTEXT_SCHEMA,
+        contextRequests: {
+          type: "array" as const,
+          items: { type: "string" as const },
+        },
+      },
+      required: ["completionContext", "contextRequests"],
+    };
+    const original = structuredClone(schema);
+    const irrelevantContext = new Proxy(context, {
+      get() {
+        throw new Error("Irrelevant source access");
+      },
+    });
+    const noSelection = { type: "object" as const, properties: {} };
+    expect(
+      withRequiredCompletionSourceIdentity(noSelection, irrelevantContext),
+    ).toBe(noSelection);
+    const wrongIdentityType = {
+      ...schema,
+      properties: {
+        ...schema.properties,
+        completionContext: {
+          ...COMPLETION_CONTEXT_SCHEMA,
+          properties: {
+            ...COMPLETION_CONTEXT_SCHEMA.properties,
+            sourceSetId: { type: "number" as const },
+          },
+        },
+      },
+    };
+    expect(
+      withRequiredCompletionSourceIdentity(
+        wrongIdentityType,
+        irrelevantContext,
+      ),
+    ).toBe(wrongIdentityType);
+    for (const repair of [false, true]) {
+      for (const allowed of [
+        [snapshot.sourceSetId],
+        [snapshot.sourceSetId, "stale"],
+      ]) {
+        const restricted = {
+          ...schema,
+          properties: {
+            ...schema.properties,
+            completionContext: {
+              ...COMPLETION_CONTEXT_SCHEMA,
+              properties: {
+                ...COMPLETION_CONTEXT_SCHEMA.properties,
+                sourceSetId: { type: "string" as const, enum: allowed },
+              },
+            },
+          },
+        };
+        expect(
+          withRequiredCompletionSourceIdentity(restricted, context, repair)
+            .properties?.completionContext?.properties?.sourceSetId?.enum,
+        ).toEqual([snapshot.sourceSetId]);
+      }
+      for (const denied of [[], ["stale"]]) {
+        const restricted = {
+          ...schema,
+          properties: {
+            ...schema.properties,
+            completionContext: {
+              ...COMPLETION_CONTEXT_SCHEMA,
+              properties: {
+                ...COMPLETION_CONTEXT_SCHEMA.properties,
+                sourceSetId: { type: "string" as const, enum: denied },
+              },
+            },
+          },
+        };
+        expect(() =>
+          withRequiredCompletionSourceIdentity(restricted, context, repair),
+        ).toThrow(
+          expect.objectContaining({
+            code: "COMPLETION_CONTEXT_IDENTITY_CONFLICT",
+          }),
+        );
+      }
+    }
+    for (const repair of [undefined, [], ["h2"]]) {
+      const reviewed = withReviewedHistorySelection(schema, true, repair);
+      const projected = withRequiredCompletionSourceIdentity(
+        reviewed,
+        context,
+        repair !== undefined,
+      );
+      const selection = projected.properties?.completionContext;
+      expect(selection?.properties?.sourceSetId).toMatchObject({
+        type: "string",
+        enum: [snapshot.sourceSetId],
+      });
+      expect(selection?.properties?.sourceSetId).not.toHaveProperty("pattern");
+      for (const key of [
+        "relevantSourceIds",
+        "constraintSourceIds",
+        "referentSourceIds",
+        "pendingIntentSourceIds",
+      ]) {
+        const list = selection?.properties?.[key];
+        expect(list?.items).not.toHaveProperty("pattern");
+        expect(list?.items).toMatchObject({
+          type: "string",
+          enum: repair?.length ? repair : ["h1", "h2"],
+        });
+        if (repair?.length === 0) expect(list?.enum).toEqual([[]]);
+      }
+      expect(selection?.additionalProperties).toBe(false);
+      expect(projected.properties?.contextRequests).toEqual(
+        reviewed.properties?.contextRequests,
+      );
+      if (repair === undefined)
+        expect(
+          createSourceSelectionBinding(projected, context)?.parameters
+            .properties?.completionContext?.properties?.sourceSetId?.enum,
+        ).toEqual(["current_request"]);
+    }
+    expect(schema).toEqual(original);
+    const selection = {
+      mode: "selected",
+      sourceSetId: snapshot.sourceSetId,
+      complete: true,
+      relevantSourceIds: ["h1"],
+      constraintSourceIds: [],
+      referentSourceIds: [],
+      pendingIntentSourceIds: [],
+    };
+    expect(parseCompletionContextSelection(selection)).toEqual(selection);
+    const selected = selectCompletionContext({
+      ...context,
+      metadata: { ...context.metadata, completionContext: selection },
+    });
+    expect(selected.applied).toBe(true);
+    expect(selected.context.events).toEqual([context.events[0]]);
+    for (const invalid of [
+      { ...selection, sourceSetId: "stale" },
+      { ...selection, relevantSourceIds: ["h999"] },
+      { ...selection, relevantSourceIds: ["forged"] },
+      { ...selection, relevantSourceIds: ["h1", "h1"] },
+    ]) {
+      const originalContext = {
+        ...context,
+        metadata: { ...context.metadata, completionContext: invalid },
+      };
+      const refused = selectCompletionContext(originalContext);
+      expect(refused.applied).toBe(false);
+      expect(refused.context).toBe(originalContext);
+      expect(refused.context.events).toEqual(context.events);
+    }
+  });
+  it("offers no context read when this turn has no authorized references", async () => {
+    const { contextRequests: _requests, ...argumentsWithoutRead } =
+      decision.toolCalls[0].arguments;
+    const reply = {
+      ...decision,
+      toolCalls: [
+        { ...decision.toolCalls[0], arguments: argumentsWithoutRead },
+      ],
+    };
+    const f = fixture([reply]);
+    f.state.data = { ...f.state.data, providers: {} };
+    f.runtime.providers = [];
+    const result = await runV5MessageRuntimeStage1({
+      runtime: f.runtime,
+      state: f.state,
+      message,
+      responseId: "00000000-0000-4000-8000-000000000005" as UUID,
+      stage1DecisionOnly: true,
+    });
+    expect(result.kind).toBe("decision");
+    const tools = (
+      f.useModel.mock.calls[0] as unknown as [
+        unknown,
+        {
+          tools: Array<{
+            name: string;
+            strict: boolean;
+            parameters: {
+              properties: Record<string, unknown>;
+              required: string[];
+              additionalProperties: boolean;
+            };
+          }>;
+        },
+      ]
+    )[1].tools;
+    const handle = tools.find((tool) => tool.name === "HANDLE_RESPONSE");
+    expect(handle?.strict).toBe(true);
+    expect(handle?.parameters.additionalProperties).toBe(false);
+    expect(handle?.parameters.properties).not.toHaveProperty("contextRequests");
+    expect(handle?.parameters.required).not.toContain("contextRequests");
+    expect(tools.some((tool) => tool.name === "READ_CONTEXT")).toBe(false);
+    expect(readContextRequests({}, new Set())).toEqual([]);
+    expect(() =>
+      readContextRequests({ contextRequests: ["unadvertised"] }, new Set()),
+    ).toThrow(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" }),
+    );
+    expect(f.useModel).toHaveBeenCalledTimes(1);
+    expect(f.dispatch).toHaveBeenCalledTimes(1);
+    expect(f.action).not.toHaveBeenCalled();
+  });
+
+  it("keeps available-reference constraints and rejects names outside this turn", () => {
+    const schema = {
+      type: "object" as const,
+      additionalProperties: false,
+      properties: {
+        contextRequests: {
+          type: "array" as const,
+          items: { type: "string" as const, enum: ["CHOICE", "other"] },
+        },
+        replyText: { type: "string" as const },
+      },
+      required: ["contextRequests", "replyText"],
+    };
+    const projected = withAvailableContextRequests(schema, new Set(["CHOICE"]));
+    expect(projected).toEqual({
+      ...schema,
+      properties: {
+        ...schema.properties,
+        contextRequests: {
+          ...schema.properties.contextRequests,
+          items: { type: "string", enum: ["CHOICE"] },
+        },
+      },
+    });
+    expect(createContextReadTool(projected)).toBeDefined();
+    expect(
+      readContextRequests({ contextRequests: ["CHOICE"] }, new Set(["CHOICE"])),
+    ).toEqual(["CHOICE"]);
+    expect(() =>
+      readContextRequests({ contextRequests: ["other"] }, new Set(["CHOICE"])),
+    ).toThrow(
+      expect.objectContaining({ code: "CONTEXT_DISCOVERY_INVALID_REQUEST" }),
+    );
+    expect(schema.properties.contextRequests.items.enum).toEqual([
+      "CHOICE",
+      "other",
+    ]);
+    expect(
+      createContextReadTool(withAvailableContextRequests(schema, new Set())),
+    ).toBeUndefined();
+  });
   it.each([ChannelType.DM, ChannelType.VOICE_DM])(
     "repairs unavailable references without reading providers or running effects on %s",
     async (channelType) => {

@@ -1036,7 +1036,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       throw error;
     }
     if (result.text.trim()) timing.markProviderFirstText();
-    usage = addUsage(usage, normalizeUsage(result.usage));
+    const callUsage = normalizeUsage(result.usage);
+    usage = addUsage(usage, callUsage);
     if (result.toolCalls.length === 0) {
       return result.text;
     }
@@ -1048,7 +1049,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         arguments: call.input,
       })),
       finishReason: result.finishReason,
-      usage,
+      usage: callUsage,
       providerMetadata: { modelName: input.model },
     } as NativeTextModelResult;
   };

@@ -80,14 +80,26 @@ export const viewNavigationField: ResponseHandlerFieldEvaluator<Navigation> = {
     const completedAction =
       isObjectRecord(metadata) && metadata.viewDelivery === "completed-action";
     const currentView = isObjectRecord(metadata) ? metadata.uiView : undefined;
-    const view = listViews(runtime, { viewType: "gui" }).find(
+    const views = listViews(runtime, { viewType: "gui" }).filter((entry) =>
+      satisfiesRoleGate([senderRole], entry.roleGate),
+    );
+    const view = views.find(
       (entry) =>
         entry.id === currentView &&
-        (entry.available !== false || completedAction) &&
-        satisfiesRoleGate([senderRole], entry.roleGate),
+        (entry.available !== false || completedAction),
     );
     if (!view) return "";
-    return `Current request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale. For relative navigation such as back, resolve the prior destination from delivered navigation history relative to this snapshot; if that history is insufficient, keep the destination unresolved rather than guess.`;
+    // Stage 1 needs destinations as well as the screen already visible.
+    // A delivery marker alone cannot supply an absent hosted view; only a
+    // trusted registry-owned native counterpart provides that alternative.
+    const destinations = views
+      .filter(
+        (entry) =>
+          entry.available !== false ||
+          (completedAction && entry.nativeOs === true),
+      )
+      .map(({ id, label }) => ({ id, label }));
+    return `Registered GUI navigation destinations visible to this caller: ${JSON.stringify(destinations)}. Use an exact registered destination for the requested view. If the destination is absent or unresolved, do not substitute Home, the current screen, or another destination. Registry visibility is not permission to execute or proof of delivered navigation.\nCurrent request's renderer view (registry-resolved): ${JSON.stringify({ viewId: view.id, label: view.label })}. This is the current visible destination, not permission or proof of displayed content. Historical current-view descriptions may be stale.${completedAction ? " This renderer prepares navigation before it confirms the screen switch. Use a brief destination acknowledgment in the user's preferred wording; do not claim the destination is already visible before its confirmation." : ""} For relative navigation such as back, resolve the prior destination from delivered navigation history relative to this snapshot; if that history is insufficient, keep the destination unresolved rather than guess.`;
   },
   parse(value, { message }) {
     decisions.delete(message);

@@ -724,7 +724,11 @@ async function replyToEntry(args: {
         sourceRoomId: args.entry.sourceRoomId ?? null,
         body: args.body,
       }),
-      { affirmations: [`inbox approve ${args.entry.id}`] },
+      {
+        affirmations: [`inbox approve ${args.entry.id}`],
+        source: args.entry.source,
+        requestMessageId: args.authorization.message.id,
+      },
     );
     if (consent === "cancelled") {
       return {
@@ -784,7 +788,14 @@ async function replyToEntry(args: {
 
   let sent: Awaited<ReturnType<typeof service.sendDraft>>;
   try {
-    sent = await service.sendDraft(args.runtime, draft.draftId);
+    sent = await service.sendDraft(
+      args.runtime,
+      draft.draftId,
+      undefined,
+      args.authorization.kind === "turn"
+        ? args.authorization.message
+        : undefined,
+    );
   } catch (error) {
     await args.repo.releaseReplySend(args.entry.id, args.entry);
     throw error;

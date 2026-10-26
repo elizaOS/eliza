@@ -6,6 +6,10 @@ import {
   validateCalendarResult,
 } from "./calendar-contract.ts";
 import {
+  isCameraCapture,
+  validateCameraCaptureResult,
+} from "./camera-contract.ts";
+import {
   CLOCK_ALARMS_CAPABILITY,
   CLOCK_DAYS,
   CLOCK_REPEAT_CAPABILITY,
@@ -559,6 +563,7 @@ export const CLOCK_ALARM_GUIDANCE =
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
   description:
+    "camera_capture_photo takes one still image with the current camera and saves it in Photos. Requires camera.capture-photo.v1 and the visible Camera view. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically. " +
     "Reviewed SIM SMS requires sms.send.v1, exact canonical recipients, body and the active subscriptionId shown by the phone. Never invent a SIM ID or substitute an external compose intent. The owner reviews the exact content on the unlocked phone. submitted proves submission only; sent proves all sent callbacks; delivered requires all matching delivery reports. Unknown or partial failure must never be automatically retried. " +
     "Native Notes discovery from Home uses notes_query with query {kind: title, text: requested title} or {kind: latest, by: created|updated}, only with notes.query.v1. Candidates remain on the phone; the owner confirms exactly one note to share. Unknown chronology or ties require local owner choice; a returned owner-choice-uncertain basis does not prove latest. Never substitute backend Notes. " +
     "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local with exact fields and calendar.create.v1; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
@@ -578,6 +583,14 @@ export const proposeDeviceAction: Action = {
       // Service validation enforces exact keys and length bounds after decoding.
       schema: {
         anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type"],
+            properties: {
+              type: { type: "string", enum: ["camera_capture_photo"] },
+            },
+          },
           {
             type: "object",
             additionalProperties: false,
@@ -687,6 +700,15 @@ export const proposeDeviceAction: Action = {
     if (!context || context.runtime !== runtime)
       throw new Error("No authenticated phone is bound to this turn");
     const p = object(options?.parameters);
+    if (
+      (p.operation as { type?: unknown } | undefined)?.type === "open_view" &&
+      usesCompletedActionNavigation(_message.content.metadata)
+    ) {
+      return {
+        success: false,
+        text: "Use VIEWS with mode show to open this app view directly. No device approval was created.",
+      };
+    }
     const metadata = _message.content.metadata;
     const deviceObservation =
       metadata &&
@@ -808,7 +830,8 @@ export const proposeDeviceAction: Action = {
     }
     if (
       request.state === "done" &&
-      (isMapsOperation(payload.operation) ||
+      (isCameraCapture(payload.operation) ||
+        isMapsOperation(payload.operation) ||
         isReminderOperation(payload.operation) ||
         isReminderCreate(payload.operation) ||
         isCalendarOperation(payload.operation) ||
@@ -820,25 +843,32 @@ export const proposeDeviceAction: Action = {
       !Array.isArray(receipt) &&
       receipt.outcome === "applied"
     ) {
-      const result = isForegroundReviewOperation(payload.operation)
-        ? validateForegroundReviewResult(payload.operation, receipt.result)
-        : isNativeNotesQuery(payload.operation)
-          ? validateNotesQueryResult(payload.operation, receipt.result)
-          : isMapsOperation(payload.operation)
-            ? validateMapsResult(payload.operation, receipt.result)
-            : isReminderCreate(payload.operation)
-              ? validateReminderCreateResult(
-                  payload.operation,
-                  receipt.result,
-                  typeof receipt.operationId === "string"
-                    ? receipt.operationId
-                    : undefined,
-                )
-              : isReminderOperation(payload.operation)
-                ? validateReminderResult(payload.operation, receipt.result)
-                : isNotesOperation(payload.operation)
-                  ? validateNotesResult(payload.operation, receipt.result)
-                  : validateCalendarResult(payload.operation, receipt.result);
+      const result = isCameraCapture(payload.operation)
+        ? validateCameraCaptureResult(
+            receipt.result,
+            typeof receipt.operationId === "string"
+              ? receipt.operationId
+              : undefined,
+          )
+        : isForegroundReviewOperation(payload.operation)
+          ? validateForegroundReviewResult(payload.operation, receipt.result)
+          : isNativeNotesQuery(payload.operation)
+            ? validateNotesQueryResult(payload.operation, receipt.result)
+            : isMapsOperation(payload.operation)
+              ? validateMapsResult(payload.operation, receipt.result)
+              : isReminderCreate(payload.operation)
+                ? validateReminderCreateResult(
+                    payload.operation,
+                    receipt.result,
+                    typeof receipt.operationId === "string"
+                      ? receipt.operationId
+                      : undefined,
+                  )
+                : isReminderOperation(payload.operation)
+                  ? validateReminderResult(payload.operation, receipt.result)
+                  : isNotesOperation(payload.operation)
+                    ? validateNotesResult(payload.operation, receipt.result)
+                    : validateCalendarResult(payload.operation, receipt.result);
       return {
         success: true,
         transcriptVisibility: "internal",
@@ -916,23 +946,44 @@ export const proposeDeviceAction: Action = {
 };
 
 /** Scope the inference schema to this executor without changing the registered catalog. */
+/** Navigation is delivered by VIEWS when this turn has a renderer-bound channel.
+ * This only removes an obsolete approval path; it grants no device operation. */
+function usesCompletedActionNavigation(
+  metadata: unknown = getDeviceActionTurn()?.replyContext?.message.content
+    .metadata,
+): boolean {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+    return false;
+  const value = metadata as Record<string, unknown>;
+  return (
+    value.viewDelivery === "completed-action" &&
+    typeof value.viewClientId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.viewClientId,
+    )
+  );
+}
+
 export function deviceActionForCapabilities(
   action: Action,
   capabilities?: readonly string[],
+  messageMetadata?: unknown,
 ): Action {
   if (action.name !== "PROPOSE_DEVICE_ACTION") return action;
+  const navigation = usesCompletedActionNavigation(messageMetadata);
   return {
     ...action,
-    description: deviceOperationSupportedByCapabilities(
-      "open_view",
-      capabilities,
-    )
-      ? capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
-        ? action.description.replace(CLOCK_PROPOSAL_GUIDANCE, "")
-        : action.description.replace(CLOCK_ALARM_GUIDANCE, "")
-      : capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
-        ? `This connection supports only the Eliza-owned Clock alarm operations in this schema. ${CLOCK_ALARM_GUIDANCE}`
-        : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`,
+    description:
+      (navigation
+        ? "Open app views with VIEWS (mode show); ordinary navigation does not need a phone approval. Use this tool only for the remaining reviewed device actions. "
+        : "") +
+      (deviceOperationSupportedByCapabilities("open_view", capabilities)
+        ? capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
+          ? action.description.replace(CLOCK_PROPOSAL_GUIDANCE, "")
+          : action.description.replace(CLOCK_ALARM_GUIDANCE, "")
+        : capabilities?.includes(CLOCK_ALARMS_CAPABILITY)
+          ? `This connection supports only the Eliza-owned Clock alarm operations in this schema. ${CLOCK_ALARM_GUIDANCE}`
+          : `This connection supports only the Clock handoff operations in this schema. Current app navigation uses its registered view tools, not a native phone proposal. ${CLOCK_PROPOSAL_GUIDANCE}`),
     parameters: action.parameters?.map((parameter) => {
       if (parameter.name !== "operation") return parameter;
       const schema = structuredClone(parameter.schema);
@@ -945,6 +996,7 @@ export function deviceActionForCapabilities(
         )
           return false;
         const types = branch.properties?.type?.enum;
+        if (navigation && types?.includes("open_view")) return false;
         if (
           (types?.includes("calendar_create_local") ||
             types?.includes("calendar_read_next")) &&
@@ -963,7 +1015,8 @@ export function deviceActionForCapabilities(
           (type) =>
             typeof type === "string" &&
             (capabilities === undefined
-              ? type !== "sms_send" &&
+              ? type !== "camera_capture_photo" &&
+                type !== "sms_send" &&
                 type !== "clock_alarm" &&
                 type !== "notes_query" &&
                 !isForegroundReviewType(type)

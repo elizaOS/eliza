@@ -504,6 +504,7 @@ export class MessageTurnLifetime {
                 options.onPlanningAcknowledgment?.(text);
               }
             : undefined,
+          onResponseDecision: options?.onResponseDecision,
           keepExistingResponses:
             options?.keepExistingResponses ??
             parseBooleanFromText(
@@ -722,11 +723,13 @@ export class MessageTurnLifetime {
                 streamingContext
                   ? {
                       ...streamingContext,
+                      modelAttemptTurnId: message.id,
                       ...(abortSignal ? { abortSignal } : {}),
                     }
                   : abortSignal
                     ? {
                         messageId: responseId,
+                        modelAttemptTurnId: message.id,
                         abortSignal,
                         reportError: runtime.reportError.bind(runtime),
                       }

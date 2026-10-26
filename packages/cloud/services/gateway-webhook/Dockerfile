@@ -76,6 +76,8 @@ RUN bun build src/index.ts --outdir dist --target node --conditions eliza-source
 
 # Production stage
 FROM base AS runner
+ARG ELIZA_GATEWAY_SOURCE_SHA=unknown
+ENV ELIZA_GATEWAY_SOURCE_SHA=${ELIZA_GATEWAY_SOURCE_SHA}
 ARG SERVICE_DIR
 WORKDIR /app
 

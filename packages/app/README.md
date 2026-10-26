@@ -55,6 +55,11 @@ A new APK must be built from the changed native sources and tested on the device
 
 ## Development
 
+Set `ELIZA_PGLITE_AUTO_RESET=0` for hosts that must preserve an existing database
+on startup failure. The host then reports the original terminal PGlite error
+without resetting the database singleton or quarantining the data directory.
+Omitting this setting retains the existing automatic recovery behavior.
+
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
@@ -78,6 +83,12 @@ for native builds and physical-device tests.
 Web subscription settings select a registered product with `VITE_ELIZA_APPLICATION_SLOT`;
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
+
+Independent Android consumer profiles may use `main`, `androidTest`, `debug`,
+`release`, and their declared flavor names in `sourceSets`. Keep test trust and
+other debug-only resources in `debug`; they must not enter release artifacts.
+Run `node packages/app/scripts/mobile/android/qualify-consumer-host.mjs` from the
+repository root with the Android SDK and JDK configured to check real APK isolation.
 
 ## Disposable hosted Android fixtures
 
@@ -204,7 +215,7 @@ test-clean utterances and `speech-fixture/0.wav`; and an empty transcript for
 silence. RTF is reported. The host report goes to `test-results/voice-quality/`.
 
 ASR is Phonon-2 (`asr/phonon-2-fv5.gguf`, Parakeet-TDT 0.6B with five-value
-weights, 330,632,256 bytes, sha256 `dc552eb7…`) on the library's parakeet
+weights, 208,932,352 bytes, sha256 `c0f6ad42…`) on the library's parakeet
 backend, which also streams (`ElizaVoiceNative.nativeAsrStream*`,
 `NativeAsr.openStream`). The GGUF is not published yet, so stage it by
 converting the pinned source and pass it through `ELIZA_VOICE_BUNDLE_FROM`
@@ -249,14 +260,14 @@ They hash every pinned asset before loading native code, do not download
 assets, and have no cloud fallback.
 
 - Speech output: `ELIZA_PARADEE_ENABLED=1` and an absolute
-  `ELIZA_PARADEE_MODEL_DIR` with the pinned `paradee-8m-v1_0.gguf` and
+  `ELIZA_PARADEE_MODEL_DIR` with the pinned `paradee-8m-v1_1.gguf` and
   `misaki-en-us.lex`. Text is phonemized by the native misaki G2P.
   `GET /api/tts/paradee/status` reports readiness. `POST /api/tts/paradee`
   accepts only `{ "text": "..." }` (1–500 characters) and returns mono PCM16
   WAV at 24 kHz (voice `af_heart`, provider `libelizainference-paradee`).
 - Speech input: `ELIZA_ASR_ENABLED=1` and an absolute `ELIZA_ASR_MODEL_DIR`
-  with the pinned Qwen3-ASR-0.6B pair at `asr/eliza-1-asr.gguf` and
-  `asr/eliza-1-asr-mmproj.gguf`, plus pinned `vad/silero-vad-v5.gguf` as the
+  with the pinned Phonon-2 GGUF at `asr/phonon-2-fv5.gguf` (build it with
+  `bun packages/app/scripts/voice/build-phonon2-gguf.ts`), plus pinned `vad/silero-vad-v5.gguf` as the
   only GGUF in `vad/`. Native Silero VAD rejects non-speech before ASR; speech
   retains the complete input audio. No text model is loaded.
   `GET /api/asr/libelizainference/status` reports readiness.
@@ -418,13 +429,21 @@ identity, readiness predicates and process reuse policy.
 cleanup with the existing process-group drain. It never adopts or restarts a
 process. Hosts choose commands, environments, readiness and diagnostics; call
 `dispose` in finally. `waitForClose` remains valid after an early close event.
+With `orphanWatchdog: true` (POSIX only), a detached helper sends SIGTERM to each
+child's process group if the host dies without draining it, for example on SIGKILL.
 
 `scripts/mobile/android/build-consumer.mjs` runs an external consumer's admission and
 sync commands, assembles selected app distributions (debug, unsigned release and
 instrumentation), runs lint and product APK verification, then archives only the
 selected APKs plus verification manifest and host metadata. It never signs, installs
 or publishes a release. Hosts select environment, distribution names and archive
-identity. Missing build outputs or failed verification prevent archive publication.
+identity. `lint: false` and `androidTest: false` skip lint and the instrumentation
+APKs, and the archive's `build-checks.json` records which of the two ran. A prepare
+step may also be a synchronous function or `{ gradleTasks }`, which adds tasks to the
+same Gradle run instead of starting another one; a step has exactly one of these
+shapes. The generated `variables.gradle` exposes `rootProject.ext.consumerIdentity`
+(`appId`, `namespace`) for extra modules.
+Missing build outputs or failed verification prevent archive publication.
 Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
 and stale-artifact isolation checks.
 
@@ -447,6 +466,15 @@ letters/digits/underscores/hyphens starting with a letter. Results are recorded 
 `variants[].phases` and output in `<variant>-phase-<name>.log`. Runner extras
 cannot override test selection. Cleanup hooks may run a final fixture phase even
 after cancellation; failed or partial installs do not expose this function.
+
+Set `wake: true` to send `KEYCODE_WAKEUP` and `wm dismiss-keyguard` after the
+APKs install and before `prepareVariant`. Set `appEvidence: {directory, json,
+png}` to copy named files from an app-relative sandbox directory with `run-as`
+after the last instrumentation. Each file is saved as `<variant>-<name>` in the
+report directory, JSON must parse and PNG must have a PNG signature. Its hash is
+recorded in `variants[].appEvidence`, and `collectVariant` receives
+`context.appEvidence.{files,json}`. A missing or invalid file fails the variant.
+The free-form `evidence` field is unchanged.
 
 Consumer APK audits can import `parseXmlTree` and `manifestFacts` from
 `scripts/lib/android-manifest-facts.mjs`. These pure helpers decode aapt xmltree
@@ -495,6 +523,21 @@ instance. HOME and browser roles must remain unchanged; the runner does not
 repair unrelated role policy. SDK AVD admission is unchanged. Caller ownership
 is an explicit assertion, not inferred from a loopback address, and this lane
 proves only the selected APK scenarios, not product-image or live integrations.
+
+A third lane admits one owner-approved physical development device: omit
+`expectedAvdName` and supply `developmentDevice: {ownerApproved: true, model,
+fingerprint}` with the exact `ro.product.model` and `ro.build.fingerprint`. The
+adb serial must be the device's `ro.serialno`. The device must not be an emulator,
+must have finished booting, enforce SELinux and run owner user 0 in front. The
+runner pins the boot ID as for Cuttlefish. Because the device is not reset after
+the run, it also records font scale, screen-off timeout, airplane mode, mobile
+data, live Wi-Fi state (`cmd wifi status`) and media volume, and fails when one
+changed, as it does for HOME and the browser role. A caller that changes one must
+restore it. Scenario hooks receive the frozen pin as `context.developmentDevice` in this
+lane, so a hook cannot change the identity the runner checks. This
+lane is development-device evidence only, not release hardware, a product image
+or user acceptance: `verification.json` records `evidenceClass:
+"development-device"` and that note.
 
 `buildConsumerAndroidRuntime` accepts `targetAbi: "x86_64"` for an emulator or
 Cuttlefish bundle; the default remains `"arm64-v8a"`. The reviewed upstream stager

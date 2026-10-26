@@ -26,7 +26,11 @@ import com.getcapacitor.annotation.PermissionCallback
     name = "ElizaSystem",
     permissions = [Permission(alias = "camera", strings = [Manifest.permission.CAMERA])]
 )
-class SystemPlugin : Plugin() {
+open class SystemPlugin : Plugin() {
+    /** Host policy; defaults preserve the shared plugin's behavior. Rechecked after role UI returns. */
+    protected open fun isRoleEnabled(role: String): Boolean = true
+    protected open fun isDefaultAppEnabled(role: String?): Boolean = true
+
     // Device reads are delegated to a pure, Context-backed reader so they can be
     // exercised by an instrumented androidTest without a Capacitor Bridge / WebView
     // (issue #9967). This plugin stays a thin Capacitor binding: read via the
@@ -39,7 +43,7 @@ class SystemPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun requestRole(call: PluginCall) {
+    open fun requestRole(call: PluginCall) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             call.reject("Android role requests require Android 10 or newer")
             return
@@ -49,6 +53,11 @@ class SystemPlugin : Plugin() {
         val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
         if (roleName.isNullOrEmpty() || androidRole == null) {
             call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
+            return
+        }
+
+        if (!isRoleEnabled(roleName)) {
+            call.reject("Role unavailable in this product")
             return
         }
 
@@ -81,6 +90,11 @@ class SystemPlugin : Plugin() {
         val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
         if (roleName.isNullOrEmpty() || androidRole == null) {
             call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
+            return
+        }
+
+        if (!isRoleEnabled(roleName)) {
+            call.reject("Role unavailable in this product")
             return
         }
 
@@ -203,7 +217,7 @@ class SystemPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun setFlashlight(call: PluginCall) {
+    open fun setFlashlight(call: PluginCall) {
         // Validate the wire value before triggering an Android permission prompt.
         // JSONObject's boolean getter also accepts strings; this API requires a boolean.
         if (call.data.opt("enabled") !is Boolean) {
@@ -362,6 +376,10 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun resolveDefaultApp(call: PluginCall) {
         val role = call.getString("role")
+        if (!isDefaultAppEnabled(role)) {
+            call.reject("Default app unavailable in this product")
+            return
+        }
         val handler = try {
             SystemLauncherApps.resolveDefault(context, role)
         } catch (error: IllegalArgumentException) {
@@ -383,6 +401,10 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun openDefaultApp(call: PluginCall) {
         val role = call.getString("role")
+        if (!isDefaultAppEnabled(role)) {
+            call.reject("Default app unavailable in this product")
+            return
+        }
         val intent = try {
             SystemLauncherApps.defaultLaunchIntent(context, role)
         } catch (error: IllegalArgumentException) {
@@ -421,6 +443,7 @@ class SystemPlugin : Plugin() {
         result.put("packageName", status.packageName)
         val roles = JSArray()
         for (role in status.roles) {
+            if (!isRoleEnabled(role.role)) continue
             val item = JSObject()
             item.put("role", role.role)
             item.put("androidRole", role.androidRole)
