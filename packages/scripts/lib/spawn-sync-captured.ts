@@ -113,18 +113,39 @@ export function spawnSync(
       "error" | "pid" | "signal" | "status"
     >;
     if (typeof globalThis.Bun !== "undefined") {
-      const bunResult = globalThis.Bun.spawnSync({
-        cmd: [command, ...args],
-        cwd:
-          typeof options.cwd === "string" || options.cwd === undefined
-            ? options.cwd
-            : fileURLToPath(options.cwd),
-        env: options.env,
-        stderr: globalThis.Bun.file(stderrPath),
-        stdin: stdin >= 0 ? globalThis.Bun.file(stdinPath) : "ignore",
-        stdout: globalThis.Bun.file(stdoutPath),
-        timeout: options.timeout,
-      });
+      let bunResult: ReturnType<typeof globalThis.Bun.spawnSync>;
+      try {
+        bunResult = globalThis.Bun.spawnSync({
+          cmd: [command, ...args],
+          cwd:
+            typeof options.cwd === "string" || options.cwd === undefined
+              ? options.cwd
+              : fileURLToPath(options.cwd),
+          env: options.env,
+          stderr: globalThis.Bun.file(stderrPath),
+          stdin: stdin >= 0 ? globalThis.Bun.file(stdinPath) : "ignore",
+          stdout: globalThis.Bun.file(stdoutPath),
+          timeout: options.timeout,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          error.code !== "ENOENT"
+        ) {
+          throw error;
+        }
+        const empty = decode(Buffer.alloc(0), options.encoding);
+        return {
+          error,
+          pid: 0,
+          signal: null,
+          status: null,
+          output: [null, empty, empty],
+          stderr: empty,
+          stdout: empty,
+        };
+      }
       result = {
         error: bunResult.exitedDueToTimeout
           ? new Error(`spawnSync ${command} ETIMEDOUT`)
