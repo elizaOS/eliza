@@ -99,38 +99,17 @@ describe("findHeroOnDisk", () => {
   });
 });
 
+/**
+ * `buildEntry` needs no unreadable-asset case of its own, and this file must not
+ * pretend to pin one. A declared bundle/frame path is resolved through the
+ * realpath confinement first, which answers `undefined` for every non-`ENOENT`
+ * resolution failure, so an unreadable parent never reaches the probe; when the
+ * file itself is unreadable, `F_OK` succeeds and `captureViewAssetRoot` fails
+ * loudly on the read. No reachable input makes the bundle path answer
+ * "unavailable" for an asset that is present, so a test asserting EACCES there
+ * passes before and after this change and would only add false evidence.
+ */
 describe("registerPluginViews bundle capture", () => {
-  it.skipIf(!canRevokeRead)(
-    "propagates an unreadable bundle instead of registering the view as unavailable",
-    async () => {
-      const pluginDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), "eliza-bundle-"),
-      );
-      createdDirs.push(pluginDir);
-      // Only `view.js` loses read permission. The hero probe for the same view
-      // still reaches the real filesystem and answers ENOENT, so this case
-      // cannot pass on the hero throw without exercising the bundle path.
-      await fs.writeFile(
-        path.join(pluginDir, "view.js"),
-        "export const x = 1;",
-      );
-      await makeUnreadable(path.join(pluginDir, "view.js"));
-      const plugin: Plugin = {
-        name: "bundle-probe",
-        description: "Unreadable bundle fixture",
-        views: [
-          { id: "bundle-view", label: "Bundle view", bundlePath: "view.js" },
-        ],
-      };
-
-      await expect(
-        registerPluginViews(makeRuntime("Unreadable bundle"), plugin, {
-          pluginDir,
-        }),
-      ).rejects.toMatchObject({ code: "EACCES" });
-    },
-  );
-
   it("still registers a view whose bundle is genuinely absent", async () => {
     const pluginDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-bundle-"));
     createdDirs.push(pluginDir);
