@@ -133,6 +133,9 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
       WHERE ${containers.node_id} = ${nodeId}
         AND ${containers.status} not in ('failed','stopped','deleted')
     )`,
+    // A runtime stopped in place (#30746) keeps its container, memory ceiling
+    // and ports on the node and resumes there without admission, so it keeps
+    // its slot.
     agentCount: sql<number>`(
       SELECT count(*)::int
       FROM ${agentSandboxes}
@@ -141,10 +144,13 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
           ${agentSandboxes.deletion_allocation_counted} IS TRUE
           OR (
             ${agentSandboxes.deletion_allocation_counted} IS NULL
-            AND ${agentSandboxes.status} not in (${sql.join(
-              TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
-              sql`, `,
-            )})
+            AND (
+              ${agentSandboxes.status} not in (${sql.join(
+                TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
+                sql`, `,
+              )})
+              OR ${agentSandboxes.retained_runtime} IS NOT NULL
+            )
           )
         )
     )`,
