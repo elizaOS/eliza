@@ -22,6 +22,7 @@ import {
   ContentType,
   containsExternalEnvelopeMaterial,
   getEffectDeliveryBinding,
+  getTrajectoryContext,
   guardOutboundEnvelopeAttachments,
   guardOutboundEnvelopeText,
   isObjectRecord as isRecord,
@@ -289,6 +290,23 @@ export function wrapSingleTurnVisibleCallback(
         // still recognize a delivery whose wire text was sanitized.
         rawUnsanitizedText = response.text.trim() ? response.text : undefined;
         response = { ...response, text: guarded };
+      }
+      // Secret-swap egress: tool-call sends arrive here with real values
+      // already restored at the execution boundary, so placeholder-based
+      // redaction cannot see them. Redact known credential values from
+      // visible text; backend tool calls are unaffected.
+      const secretSession = getTrajectoryContext()?.secretSwapSession;
+      if (
+        secretSession &&
+        typeof response.text === "string" &&
+        response.text.length > 0
+      ) {
+        const redacted = secretSession.redactRestoredSecretValues(
+          response.text,
+        );
+        if (redacted !== response.text) {
+          response = { ...response, text: redacted };
+        }
       }
     }
     // Attachments are a delivery surface the text guard never sees: both

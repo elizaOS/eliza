@@ -467,6 +467,21 @@ function walkSecretSwapValue(
 	}
 }
 
+/**
+ * Secret kinds that stay readable in user-visible text: contact data the
+ * user expects to see. Every other secret kind is a credential and must
+ * never reach a room.
+ */
+const USER_REPLY_RESTORABLE_KINDS = [
+	"email",
+	"phone",
+	"ipv4",
+	"mac-address",
+	"credit-card",
+	"ssn",
+	"iban",
+];
+
 export class SecretSwapSession {
 	private readonly replyProtectedValues = new Set<string>();
 	private readonly valueToEntry = new Map<string, SecretSwapEntry>();
@@ -629,18 +644,33 @@ export class SecretSwapSession {
 				)
 			)
 				return "[redacted credential]";
-			return [
-				"email",
-				"phone",
-				"ipv4",
-				"mac-address",
-				"credit-card",
-				"ssn",
-				"iban",
-			].includes(entry.kind)
+			return USER_REPLY_RESTORABLE_KINDS.includes(entry.kind)
 				? entry.value
 				: "[redacted credential]";
 		});
+	}
+
+	/**
+	 * Redact already-restored credential values from user-visible text.
+	 * Tool-call sends arrive at the visible-delivery seam with real values
+	 * (the execution boundary restored them into the handler args), so
+	 * placeholder-based redaction cannot see them. Contact kinds follow
+	 * the same policy as {@link restoreUserReplyText} and stay readable.
+	 * No-op when the session holds no credential values.
+	 */
+	redactRestoredSecretValues(text: string): string {
+		let redacted = text;
+		for (const entry of this.entries) {
+			if (
+				USER_REPLY_RESTORABLE_KINDS.includes(entry.kind) ||
+				!entry.value ||
+				!redacted.includes(entry.value)
+			) {
+				continue;
+			}
+			redacted = redacted.split(entry.value).join("[redacted credential]");
+		}
+		return redacted;
 	}
 
 	restoreText(
