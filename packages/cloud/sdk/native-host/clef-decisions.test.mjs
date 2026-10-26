@@ -79,6 +79,8 @@ test("the offline turn check waits for trailing words and unfinished numbers", (
     "Pay my electric bill",
     "What's the weather today?",
     "I paid 50.",
+    "I won by one point.",
+    "That is the point",
   ])
     assert.equal(turnLooksComplete(done), true, done);
   for (const open of [
@@ -88,6 +90,7 @@ test("the offline turn check waits for trailing words and unfinished numbers", (
     "Send $",
     "Pay 1,",
     "The amount is 84 point",
+    "The total is twenty one point",
     "I want to...",
     "   ",
   ])

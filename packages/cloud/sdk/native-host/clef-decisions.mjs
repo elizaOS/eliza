@@ -74,9 +74,38 @@ export function combineActionMode(floor, suggestion) {
 }
 
 const TRAILING_INCOMPLETE =
-  /(?:^|\s)(?:and|or|but|so|um+|uh+|er+|like|because|the|a|an|to|of|my|your|for|with|then|point)$/i;
-/** "$", "1,", "84 point": a number the person has not finished saying. */
+  /(?:^|\s)(?:and|or|but|so|um+|uh+|er+|like|because|the|a|an|to|of|my|your|for|with|then)$/i;
+/** "$", "1,": a number the person has not finished saying. */
 const UNFINISHED_NUMBER = /(?:\$|\d,)$/;
+/** A number word or digits before a trailing "point": "84 point", "twenty one point". */
+const NUMBER_BEFORE_POINT =
+  /^(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-(?:one|two|three|four|five|six|seven|eight|nine))?|hundred|thousand|million|billion)$/i;
+
+/**
+ * "84 point" and "twenty one point" are decimals the person has not finished
+ * saying. "That is the point" and "I won by one point." are finished sentences,
+ * because no number comes before the word. This is the rule
+ * `scoreEndOfTurnHeuristic` in `packages/voice` already applies.
+ * @param {string} text
+ * @param {boolean} endsWithFullStop
+ * @returns {boolean}
+ */
+function endsOnUnfinishedDecimal(text, endsWithFullStop) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const last = (words[words.length - 1] ?? "")
+    .replace(/[',;:-]+$/u, "")
+    .toLowerCase();
+  if (last !== "point") return false;
+  const before = (words[words.length - 2] ?? "").toLowerCase();
+  if (!NUMBER_BEFORE_POINT.test(before)) return false;
+  // "One point." is a finished phrase; "twenty one point." is not.
+  return !(
+    endsWithFullStop &&
+    (before === "one" || before === "1") &&
+    !NUMBER_BEFORE_POINT.test((words[words.length - 3] ?? "").toLowerCase())
+  );
+}
 
 /**
  * Offline fallback for `turn`: a turn that trails off ("and", "um", "so"),
@@ -88,7 +117,9 @@ export function turnLooksComplete(transcript) {
   if (!raw || /(?:\.\.\.|…|-|–|—)$/u.test(raw) || UNFINISHED_NUMBER.test(raw))
     return false;
   const text = raw.replace(/[\s,;:.!?]+$/u, "");
-  return text.length > 0 && !TRAILING_INCOMPLETE.test(text);
+  if (text.length === 0) return false;
+  if (endsOnUnfinishedDecimal(text, /\.$/u.test(raw))) return false;
+  return !TRAILING_INCOMPLETE.test(text);
 }
 
 /**
