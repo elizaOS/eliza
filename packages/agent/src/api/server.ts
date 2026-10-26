@@ -1037,6 +1037,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
   return (
     under("/api/memory") ||
     under("/api/memories") ||
+    // Coding-agent sessions: spawn runs a live coding subprocess
+    // in an owner workdir, send steers it, stop kills it, and the
+    // GETs expose its live output. All methods.
+    under("/api/coding-agents") ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
     // Whole-agent data: export/snapshot carry the memories and secrets,
