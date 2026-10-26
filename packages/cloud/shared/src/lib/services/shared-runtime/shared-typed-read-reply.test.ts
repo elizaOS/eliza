@@ -131,6 +131,19 @@ describe("default-off owner-scoped typed public reads", () => {
     };
     expect(createSharedTypedReadTurn({ ...input, enabled: undefined })).toBeUndefined();
     expect(createSharedTypedReadTurn({ ...input, channelSource: "telegram" })).toBeUndefined();
+    for (const message of [
+      "What's the latest tech news today? Please include a source.",
+      "What's the current temperature in Tokyo, Japan? Please include a source.",
+      "What's the current temperature in Tokyo? Please include a source.",
+      "What's the current temperature in San Francisco, Canada? Please include a source.",
+    ])
+      expect(createSharedTypedReadTurn({ ...input, message })).toBeUndefined();
+    for (const message of [
+      exactApprovedSF,
+      "What's the current temperature in San Francisco, California? Please include a source.",
+      "What's the current temperature in San Francisco, United States? Please include a source.",
+    ])
+      expect(createSharedTypedReadTurn({ ...input, message })).toBeDefined();
     const turn = createSharedTypedReadTurn(input);
     if (!turn) throw new Error("Expected scoped synthetic public request");
     expect(turn.authorizedPublicQueries).toEqual(["current public weather in San Francisco"]);

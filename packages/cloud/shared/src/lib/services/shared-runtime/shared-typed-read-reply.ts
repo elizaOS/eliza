@@ -1,7 +1,11 @@
 /** Projects existing producer-validated public reads into the canonical evaluator's opt-in contract. */
 import { ChannelType, type MessageProcessingOptions } from "@elizaos/core";
 import { webSearchSourceEvidence } from "@elizaos/plugin-web-search/edge";
-import { CURRENT_WEATHER_LIMITS, isVerifiedCurrentNwsObservation } from "./shared-current-weather";
+import {
+  CURRENT_WEATHER_LIMITS,
+  isVerifiedCurrentNwsObservation,
+  parseExplicitUsWeatherQuery,
+} from "./shared-current-weather";
 import {
   articleMatchesNewsTopic,
   newsArticleEvidenceConflict,
@@ -33,6 +37,7 @@ import {
   resolveWorldWeatherPlace,
   resolveWorldWeatherScope,
   WORLD_WEATHER_TIME,
+  weatherLocationWithoutTemperatureUnit,
 } from "./shared-world-weather";
 
 type Resolver = NonNullable<MessageProcessingOptions["resolveTypedReadReply"]>;
@@ -537,7 +542,26 @@ export function createSharedTypedReadTurn(input: {
     return undefined;
   const turnStartedAtMs = input.turnStartedAtMs ?? Date.now();
   const parts = resolveTypedPublicReadParts(input.message, input.history, turnStartedAtMs);
-  if (!parts) return undefined;
+  if (!parts || parts.length !== 1 || parts[0].requirement.domain !== "weather") return undefined;
+  // This host currently registers only the US observation producer. Keep
+  // future news/world-origin validators dormant until their actual readers
+  // are wired. A unique public US catalog entry establishes availability,
+  // never the user's intended location; bare-city answers remain qualified.
+  const publicQuery = parts[0].requirement.query;
+  const location = weatherLocationWithoutTemperatureUnit(
+    publicQuery.slice("current public weather in ".length),
+  ).trim();
+  if (!publicQuery.startsWith("current public weather in ")) return undefined;
+  if (!parseExplicitUsWeatherQuery(`current public weather in ${location}`)) {
+    const [city, ...qualifiers] = location.split(",").map((piece) => piece.trim());
+    if (
+      qualifiers.length > 1 ||
+      (qualifiers.length === 1 &&
+        !/^(?:US|USA|United States(?: of America)?)$/iu.test(qualifiers[0])) ||
+      resolveWorldWeatherPlace(`${city}, United States`)?.countryCode !== "US"
+    )
+      return undefined;
+  }
   const scope: SharedPublicReadScope = {
     ownerScope: JSON.stringify([input.agentKey, input.roomKey, input.userEntityId]),
     turnId: input.turnId,
