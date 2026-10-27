@@ -17,6 +17,7 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { runEvaluator } from "./evaluator.ts";
+import { collectSubPlannerSubSteps } from "../services/message/planned-tool.ts";
 import {
   partitionRedundantSucceededCalls,
   runPlannerLoop,
@@ -2257,4 +2258,157 @@ describe("terminal coding model failures", () => {
       ).rejects.toBe(error);
     },
   );
+});
+
+describe("canonical nonretryable receipt repair", () => {
+  const failed: EffectReceipt = {
+    receiptId: "calendar-rejected",
+    operation: "calendar.create_event",
+    resource: receipt.resource,
+    artifacts: [],
+    idempotency: { key: "calendar-rejected", replayed: false },
+    observedAt: receipt.observedAt,
+    outcome: "failed",
+    failure: {
+      code: "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+      retryable: false,
+      acceptance: "rejected",
+    },
+  };
+  const invalid = {
+    title: "Calendar check",
+    details: {
+      attendees: [{ email: "admin@local" }, { email: "admin@local" }],
+      sourceNote: {
+        noteId: "synthetic-note",
+        agentId: "eliza",
+        contentHash: "synthetic",
+      },
+    },
+  };
+  const corrected = { title: "Calendar check", details: {} };
+  it("skips the exact rejected Calendar call and executes the corrected plan without another effect attempt", async () => {
+    let plans = 0;
+    const executed: unknown[] = [];
+    const result = await runPlannerLoop({
+      context: { id: "calendar-rejection-repair" },
+      runtime: {
+        useModel: async (type) => {
+          if (type !== "ACTION_PLANNER")
+            return "Created Calendar check after correcting the invalid guest fields.";
+          if (++plans > 4) throw Error("Unexpected extra planner call");
+          if (plans === 4)
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "reply",
+                  name: "REPLY",
+                  arguments: {
+                    text: "Created Calendar check after correcting the invalid guest fields.",
+                    eliza_turn_scope: "final",
+                  },
+                },
+              ],
+            };
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `calendar-${plans}`,
+                name: "CALENDAR_CREATE_EVENT",
+                arguments: {
+                  ...(plans < 3 ? invalid : corrected),
+                  eliza_turn_scope: "final",
+                },
+              },
+            ],
+          };
+        },
+      },
+      executeToolCall: async (call) => {
+        executed.push(call.params);
+        return JSON.stringify(call.params) === JSON.stringify(invalid)
+          ? {
+              success: false,
+              data: {
+                coachingFailure: true,
+                error: "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+                invalidParameterNames: ["details.attendees"],
+              },
+              effectReceipts: [failed],
+            }
+          : {
+              success: true,
+              text: "Created Calendar check.",
+              effectReceipts: [
+                {
+                  ...receipt,
+                  receiptId: "calendar-created",
+                  operation: "calendar.create_event",
+                },
+              ],
+            };
+      },
+      evaluate: async ({ trajectory }) =>
+        trajectory.steps.at(-1)?.result?.success
+          ? {
+              decision: "FINISH",
+              success: true,
+              thought: "The corrected event was created.",
+            }
+          : {
+              decision: "CONTINUE",
+              success: false,
+              thought: "Correct the invalid attendee arguments.",
+            },
+    });
+    expect(plans).toBe(4);
+    expect(executed).toEqual([invalid, corrected]);
+    expect(
+      result.trajectory.steps.filter(
+        (step) => step.toolCall?.name === "CALENDAR_CREATE_EVENT",
+      ),
+    ).toHaveLength(2);
+  });
+  it("retains canonical receipt and failure provenance retry policy in nested repair metadata", () => {
+    const call = {
+      id: "calendar",
+      name: "CALENDAR_CREATE_EVENT",
+      params: invalid,
+    };
+    for (const result of [
+      { success: false, effectReceipts: [failed] },
+      {
+        success: false,
+        failureProvenance: {
+          kind: "handler_error" as const,
+          boundary: "handler" as const,
+          code: "REJECTED",
+          retryable: false,
+        },
+      },
+    ]) {
+      const sub = collectSubPlannerSubSteps({
+        trajectory: { steps: [{ toolCall: call, result }] },
+      } as Parameters<typeof collectSubPlannerSubSteps>[0]);
+      expect(sub[0]?.retryable).toBe(false);
+    }
+    const partition = partitionRedundantSucceededCalls(
+      [call, { ...call, id: "corrected", params: corrected }],
+      {
+        steps: [
+          {
+            toolCall: call,
+            result: { success: false, effectReceipts: [failed] },
+          },
+        ],
+        archivedSteps: [],
+      } as PlannerTrajectory,
+    );
+    expect(partition.nonRetryable).toEqual([call]);
+    expect(partition.fresh).toEqual([
+      { ...call, id: "corrected", params: corrected },
+    ]);
+  });
 });

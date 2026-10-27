@@ -7951,6 +7951,25 @@ function isRepeatableObservation(result: PlannerToolResult): boolean {
     : result.data?.readOnlyOperation === true;
 }
 
+/** Canonical failed receipts carry retry policy even without legacy data markers. */
+export function hasNonRetryableToolFailure(result: PlannerToolResult): boolean {
+  if (
+    result.failureProvenance?.retryable === false ||
+    result.data?.retryable === false
+  )
+    return true;
+  try {
+    return normalizeEffectReceipts(result.effectReceipts).some(
+      (receipt) =>
+        receipt.outcome === "failed" && receipt.failure.retryable === false,
+    );
+  } catch {
+    // error-policy:J3 malformed receipt lookalikes cannot establish retry policy.
+    // The original result remains intact for its existing validation/failure path.
+    return false;
+  }
+}
+
 /**
  * Separate settled operations from executable calls across the complete turn.
  * Successful mutations and legacy unclassified results remain deduplicated.
@@ -7994,10 +8013,7 @@ export function partitionRedundantSucceededCalls(
         succeeded.clear();
       }
       succeeded.add(identity);
-    } else if (
-      step.result.failureProvenance?.retryable === false ||
-      step.result.data?.retryable === false
-    ) {
+    } else if (hasNonRetryableToolFailure(step.result)) {
       failedNonRetryable.add(identity);
     }
   }

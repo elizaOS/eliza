@@ -56,6 +56,7 @@ import type {
 } from "../../runtime/evaluator";
 import {
   actionResultToPlannerToolResult,
+  hasNonRetryableToolFailure,
   type PlannerLoopParams,
   type PlannerRuntime,
   type PlannerToolCall,
@@ -523,7 +524,7 @@ export function collectSubPlannerSubSteps(
       action: step.toolCall.name,
       success: result.success,
       callDigest: subPlannerCallDigest(step.toolCall),
-      retryable: result.data?.retryable !== false,
+      retryable: !hasNonRetryableToolFailure(result),
       ...(failureProvenance ? { failureProvenance } : {}),
       ...(summarySource
         ? { summary: normalizeSubStepText(summarySource) }
