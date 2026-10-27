@@ -119,7 +119,8 @@ public final class VoiceLatencyProbe {
   String thermal="unknown";float headroom=Float.NaN;
   PowerManager power=context.getSystemService(PowerManager.class);
   if(power!=null){
-   thermal=thermalName(power.getCurrentThermalStatus());
+   // Thermal status is API 29+; the library also serves minSdk 26 hosts, which report "unknown".
+   if(Build.VERSION.SDK_INT>=29)thermal=thermalName(power.getCurrentThermalStatus());
    if(Build.VERSION.SDK_INT>=30)try{headroom=power.getThermalHeadroom(0);}catch(RuntimeException unavailable){headroom=Float.NaN;}
   }
   TRIALS.environment(trial,network,thermal,headroom);
