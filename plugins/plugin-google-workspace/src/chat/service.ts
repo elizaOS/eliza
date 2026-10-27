@@ -402,14 +402,19 @@ export class GoogleChatService extends Service implements IGoogleChatService {
         searchMessages: async (context, params) => {
           const limit = normalizeConnectorLimit(params.limit);
           const target = params.target ?? context.target;
+          // Cap the scan: reading with an undefined limit returns the
+          // whole stored history, so a search for a handful of matches
+          // materializes every message before filtering. The cap keeps
+          // the newest messages (reads order newest-first); matches are
+          // still sliced to the requested limit below.
           const messages = target?.roomId
-            ? await readStoredMessageMemories(context.runtime, target.roomId, undefined)
+            ? await readStoredMessageMemories(context.runtime, target.roomId, 15000)
             : await readStoredMessagesForTargets(
                 context.runtime,
                 (await service.listConnectorSpaces(accountId)).map((space) =>
                   googleChatSpaceToConnectorTarget(space, 0.55, accountId)
                 ),
-                undefined
+                15000
               );
           return filterMemoriesByQuery(messages, params.query, limit);
         },
