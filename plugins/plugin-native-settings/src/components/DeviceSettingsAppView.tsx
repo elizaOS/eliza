@@ -11,6 +11,7 @@ import {
 } from "@elizaos/capacitor-system";
 import {
   broaderPageNotice,
+  parseRoleStatuses,
   parseSystemFacts,
   systemSwitchRows,
 } from "@elizaos/capacitor-system/settings";
@@ -75,11 +76,18 @@ function streamPercent(volume: SystemVolumeStatus): number {
   return Math.round((volume.current / volume.max) * 100);
 }
 
-function roleStatusLabel(role: AndroidRoleStatus): string {
+function roleStatusLabel(
+  role: AndroidRoleStatus,
+  packageName: string | undefined,
+): string {
   if (!role.available) return "Unavailable";
   if (role.held) return "Assigned";
-  if (role.holders.length > 0) return role.holders[0] ?? "Assigned elsewhere";
-  return "Not assigned";
+  // Holder lookups are best effort (package visibility, Android's own resolver), so an empty
+  // answer never claims that no app holds the role.
+  const other = role.holders.find(
+    (holder) => holder !== "android" && holder !== packageName,
+  );
+  return other ?? "Not assigned to this app";
 }
 
 type SavingKey =
@@ -168,7 +176,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
     [systemFacts],
   );
 
-  const roles = useMemo(() => systemStatus?.roles ?? [], [systemStatus]);
+  const roles = useMemo(() => parseRoleStatuses(systemStatus), [systemStatus]);
   const orderedVolumes = useMemo(
     () =>
       [...(deviceSettings?.volumes ?? [])].sort((a, b) =>
@@ -634,7 +642,7 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         {ROLE_LABELS[role.role]}
                       </div>
                       <div className="mt-1 line-clamp-2 text-xs text-muted">
-                        {roleStatusLabel(role)}
+                        {roleStatusLabel(role, systemStatus?.packageName)}
                       </div>
                     </div>
                     {role.held ? (

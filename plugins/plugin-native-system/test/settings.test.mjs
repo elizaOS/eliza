@@ -5,8 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  androidRoleLabel,
   broaderPageNotice,
   handoffGate,
+  parseRoleStatuses,
   parseSystemFacts,
   SYSTEM_TILE_SETTINGS_PAGES,
   switchValue,
@@ -316,4 +318,53 @@ test("switch rows show reported states and say when Android reported nothing", (
     systemSwitchRows({ wifiActive: false })[0].value,
     "Not reported by Android",
   );
+});
+
+test("roles say whether this app holds them and never claim nobody does", () => {
+  const host = { packageName: "example.host", appName: "Example" };
+  assert.deepEqual(parseRoleStatuses(null), []);
+  const rows = parseRoleStatuses({
+    roles: [
+      {
+        role: "home",
+        androidRole: "android.app.role.HOME",
+        held: true,
+        available: true,
+        holders: ["example.host"],
+      },
+      {
+        role: "assistant",
+        held: false,
+        available: true,
+        holders: ["android", 7],
+      },
+      { role: "dialer", held: false, available: false, holders: [] },
+      { role: "sms", held: "no", available: true },
+      { role: "wallet", held: true, available: true, holders: [] },
+    ],
+  });
+  assert.deepEqual(
+    rows.map((row) => [row.role, row.holders]),
+    [
+      ["home", ["example.host"]],
+      ["assistant", ["android"]],
+      ["dialer", []],
+    ],
+  );
+  assert.equal(androidRoleLabel(rows[0], host), "Example");
+  // Android's resolver or this app as the only answer is not another holder.
+  assert.equal(androidRoleLabel(rows[1], host), "Not Example");
+  assert.equal(androidRoleLabel(rows[2], host), "Not available on this device");
+  assert.equal(
+    androidRoleLabel(
+      { available: true, held: false, holders: ["other.launcher"] },
+      host,
+    ),
+    "Another app",
+  );
+  assert.equal(
+    androidRoleLabel({ available: true, held: false, holders: [] }, host),
+    "Not Example",
+  );
+  assert.equal(androidRoleLabel(undefined, host), "Unavailable");
 });

@@ -7,6 +7,8 @@
  * and is announced as a button carrying the reported state, not as a toggle.
  */
 import type {
+  AndroidRoleName,
+  AndroidRoleStatus,
   SystemFacts,
   SystemSettingsPage,
   SystemSettingsPageResult,
@@ -275,4 +277,61 @@ export function systemSwitchRows(value: unknown): SystemSwitchRow[] {
           : NOT_REPORTED,
     },
   ];
+}
+
+const ROLE_NAMES = new Set<AndroidRoleName>([
+  "home",
+  "dialer",
+  "sms",
+  "assistant",
+]);
+
+/** Role rows exactly as `getStatus()` reported them; malformed rows are dropped, never guessed. */
+export function parseRoleStatuses(status: unknown): AndroidRoleStatus[] {
+  const rows = (status as { roles?: unknown } | null | undefined)?.roles;
+  if (!Array.isArray(rows)) return [];
+  const out: AndroidRoleStatus[] = [];
+  for (const row of rows) {
+    if (
+      !row ||
+      typeof row !== "object" ||
+      !ROLE_NAMES.has((row as AndroidRoleStatus).role) ||
+      typeof (row as AndroidRoleStatus).held !== "boolean" ||
+      typeof (row as AndroidRoleStatus).available !== "boolean"
+    )
+      continue;
+    const value = row as AndroidRoleStatus;
+    out.push({
+      role: value.role,
+      androidRole:
+        typeof value.androidRole === "string" ? value.androidRole : "",
+      held: value.held,
+      available: value.available,
+      holders: Array.isArray(value.holders)
+        ? value.holders.filter(
+            (holder): holder is string => typeof holder === "string",
+          )
+        : [],
+    });
+  }
+  return out;
+}
+
+/**
+ * Truthful role wording. Android answers whether this app holds a role; holder lookups for other
+ * apps are best effort (package visibility, Android's own resolver), so an empty or unreadable
+ * holder list never claims that no app holds the role.
+ */
+export function androidRoleLabel(
+  role: Pick<AndroidRoleStatus, "available" | "held" | "holders"> | undefined,
+  host: { packageName: string; appName: string },
+): string {
+  if (!role) return "Unavailable";
+  if (!role.available) return "Not available on this device";
+  if (role.held) return host.appName;
+  return role.holders.some(
+    (holder) => holder !== "android" && holder !== host.packageName,
+  )
+    ? "Another app"
+    : `Not ${host.appName}`;
 }
