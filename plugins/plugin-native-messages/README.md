@@ -63,3 +63,26 @@ native admission proves the install is its image. Renderers use
 
 `android/src/test` holds JVM tests for the journal, cursor and provider mapping.
 Real SIMs, carrier delivery reports and role grants need device qualification.
+
+## Default SMS app (SMS role)
+
+A host that can hold the SMS role declares thin subclasses of
+`SmsDeliverReceiver` (BROADCAST_SMS), `MmsWapPushReceiver` (BROADCAST_WAP_PUSH,
+`application/vnd.wap.mms-message`), `MmsResultReceiver` (not exported),
+`RespondViaMessageService` (SEND_RESPOND_VIA_MESSAGE) and `SmsComposeActivity`
+(SENDTO `sms`/`smsto`), and `MmsFileProvider` (not exported,
+`grantUriPermissions`), named by an `SmsRoleConfiguration`.
+
+- Incoming SMS is stored in the provider before its notice. The lock screen
+  shows only "New message".
+- An MMS notification starts one download into a private file. The retrieved
+  message (`MmsPdu` parses M-Retrieve.conf) is stored with its addresses and
+  parts, then answered with M-NotifyResp.ind. A stored transaction is never
+  stored twice; a half-written message is removed.
+- Quick replies from call screens open the compose review; nothing is sent from
+  the service. The compose screen is the review: its Send press uses the same
+  journal and operation-ID rules as `TelephonyPlugin.sendSms`.
+
+`MmsPdu` encodes M-Send.req, M-NotifyResp.ind and M-Acknowledge.ind. Outgoing
+user MMS (group messages and attachments) is not offered yet. Carrier MMSC
+behaviour, APN settings and real role grants need device qualification.
