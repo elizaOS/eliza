@@ -209,7 +209,9 @@ function findActionSpans(text: string): ActionSpan[] {
       value: value as Record<string, unknown> & { action: string },
     };
     spans.push(span);
-    coveredEnd = span.end;
+    // Only a strict span advances coverage, so a display-only span can never
+    // hide the fence of a later envelope that routing must still find.
+    if (strict) coveredEnd = span.end;
   }
   return spans;
 }
