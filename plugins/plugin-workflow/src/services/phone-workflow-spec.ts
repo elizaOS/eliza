@@ -1,82 +1,36 @@
 import { createHash } from 'node:crypto';
+import {
+  PHONE_SCHEDULE_ADMISSION_WINDOW_MS,
+  type PhoneCalendarRange,
+  type PhoneDeviceTarget,
+  type PhoneStep,
+  type PhoneTimeTrigger,
+  type PhoneWorkflowSpec,
+  PhoneWorkflowSpecError,
+  type PhoneWorkflowTrigger,
+  phoneTimeTriggerCron,
+  validatePhoneWorkflowSpec,
+} from '@elizaos/contracts/phone-workflow';
 import { WorkflowApiError } from '../types/index';
 import { compilePhoneWorkflowV1 } from './phone-workflow-compiler-v1';
 import { compilePhoneWorkflowV2 } from './phone-workflow-compiler-v2';
 
-export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-3';
+export type {
+  PhoneCalendarRange,
+  PhoneDeviceTarget,
+  PhoneStep,
+  PhoneTimeTrigger,
+  PhoneWorkflowSpec,
+  PhoneWorkflowTrigger,
+};
+export { PHONE_SCHEDULE_ADMISSION_WINDOW_MS };
+/** Revision 4 offers the reviewed local-time trigger beside manual runs. */
+export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-4';
 export const PHONE_COMPILER_REVISION = 'phone-workflow-compiler-3';
 export const PHONE_SPEC_KEY = 'elizaPhoneWorkflowSpec';
 export const PHONE_COMPILER_KEY = 'elizaPhoneCompilerRevision';
-export interface PhoneDeviceTarget {
-  installationId: string;
-  enrollmentId: string;
-}
-export interface PhoneCalendarRange {
-  calendarIds: string[];
-  start: string;
-  end: string;
-  timeZone: string;
-  maximumEvents: number;
-}
-export type PhoneStep =
-  | { id: string; kind: 'Notify'; operation: 'app_notification'; source: string; title: string }
-  | { id: string; kind: 'Speak'; operation: 'read_aloud'; source: string }
-  | {
-      id: string;
-      kind: 'Read';
-      operation: 'selected_notes';
-      notes: Array<{ id: string; revision: string }>;
-    }
-  | { id: string; kind: 'Read'; operation: 'calendar_range'; range: PhoneCalendarRange }
-  | { id: string; kind: 'Write'; operation: 'save_note'; source: string; title: string }
-  | { id: string; kind: 'Read'; operation: 'supplied_text'; text: string }
-  | {
-      id: string;
-      kind: 'If';
-      operation: 'contains';
-      source: string;
-      text: string;
-      caseSensitive: boolean;
-    }
-  | {
-      id: string;
-      kind: 'Write';
-      operation: 'compose_draft';
-      source: string;
-      prefix: string;
-      suffix: string;
-    }
-  | { id: string; kind: 'Write'; operation: 'model_draft'; source: string; instruction: string };
-export interface PhoneWorkflowSpec {
-  version: 1;
-  name: string;
-  description: string;
-  trigger: { kind: 'manual' };
-  steps: PhoneStep[];
-  device?: PhoneDeviceTarget;
-}
-const fail = (message: string): never => {
-  throw new WorkflowApiError(message, 400);
-};
-function record(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value))
-    return fail('Expected typed workflow object');
-  return value as Record<string, unknown>;
-}
-function keys(value: Record<string, unknown>, allowed: string[]) {
-  if (Object.keys(value).some((k) => !allowed.includes(k)))
-    fail('Unsupported typed workflow field');
-}
-function text(value: unknown, max: number, empty = false): string {
-  if (
-    typeof value !== 'string' ||
-    value.includes('\0') ||
-    value.length > max ||
-    (!empty && !value.trim())
-  )
-    return fail('Invalid typed workflow text');
-  return value;
-}
+/** Execution input key holding a scheduled occurrence's admission record. */
+export const TYPED_SCHEDULE_INPUT = 'typedSchedule';
 export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable = false) {
   return {
     specVersion: 1,
@@ -90,13 +44,15 @@ export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable = 
     maximumSpeechCharacters: 5000,
     triggers: [
       { kind: 'manual', available: true },
-      ...['time', 'event', 'message', 'location', 'email'].map((kind) => ({
+      {
+        kind: 'time',
+        available: true,
+        label: 'At a set local time while this agent is running',
+      },
+      ...['event', 'message', 'location', 'email'].map((kind) => ({
         kind,
         available: false,
-        reason:
-          kind === 'time'
-            ? 'Reviewed civil occurrence admission is not implemented'
-            : 'Consented provider event binding is not implemented',
+        reason: 'Consented provider event binding is not implemented',
       })),
     ],
     palette: [
@@ -180,168 +136,65 @@ export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable = 
     ],
   };
 }
+/** The shared contract is the single normalizer; its refusals are owner-presentable 400s. */
 export function validatePhoneSpec(input: unknown): PhoneWorkflowSpec {
-  if (Buffer.byteLength(JSON.stringify(input) ?? '') > 65536)
-    fail('Typed workflow exceeds size limit');
-  const p = record(input);
-  keys(p, ['version', 'name', 'description', 'trigger', 'steps', 'device']);
-  if (p.version !== 1) fail('Unsupported typed workflow version');
-  const trigger = record(p.trigger);
-  keys(trigger, ['kind']);
-  if (trigger.kind !== 'manual') fail('Trigger capability unavailable');
-  const rawSteps = p.steps;
-  if (!Array.isArray(rawSteps) || !rawSteps.length || rawSteps.length > 32)
-    throw new WorkflowApiError('Typed workflow requires 1 to 32 steps', 400);
-  const seen = new Set<string>();
-  const steps: PhoneStep[] = rawSteps.map((value: unknown) => {
-    const s = record(value),
-      id = text(s.id, 80);
-    if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(id) || seen.has(id))
-      fail('Invalid or duplicate step identity');
-    let step: PhoneStep;
-    if (s.kind === 'Read' && s.operation === 'supplied_text') {
-      keys(s, ['id', 'kind', 'operation', 'text']);
-      step = { id, kind: 'Read', operation: 'supplied_text', text: text(s.text, 16000, true) };
-    } else if (s.kind === 'Read' && s.operation === 'selected_notes') {
-      keys(s, ['id', 'kind', 'operation', 'notes']);
-      if (!Array.isArray(s.notes) || !s.notes.length || s.notes.length > 16)
-        return fail('Select 1 to 16 Notes');
-      const notes = s.notes.map((raw) => {
-        const n = record(raw);
-        keys(n, ['id', 'revision']);
-        const noteId = phoneIdentifier(n.id),
-          revision = text(n.revision, 64);
-        if (!/^[a-f0-9]{64}$/.test(revision)) return fail('Invalid selected note revision');
-        return { id: noteId, revision };
-      });
-      if (new Set(notes.map((n) => n.id)).size !== notes.length)
-        return fail('Duplicate selected note');
-      step = { id, kind: 'Read', operation: 'selected_notes', notes };
-    } else if (s.kind === 'Read' && s.operation === 'calendar_range') {
-      keys(s, ['id', 'kind', 'operation', 'range']);
-      const r = record(s.range);
-      keys(r, ['calendarIds', 'start', 'end', 'timeZone', 'maximumEvents']);
-      if (!Array.isArray(r.calendarIds) || !r.calendarIds.length || r.calendarIds.length > 16)
-        return fail('Select 1 to 16 calendars');
-      const calendarIds = r.calendarIds.map(phoneIdentifier),
-        start = phoneUtc(r.start),
-        end = phoneUtc(r.end),
-        timeZone = text(r.timeZone, 100);
-      if (
-        new Set(calendarIds).size !== calendarIds.length ||
-        Date.parse(end) <= Date.parse(start) ||
-        Date.parse(end) - Date.parse(start) > 7 * 86400000
-      )
-        return fail('Invalid Calendar selection or range');
-      try {
-        new Intl.DateTimeFormat('en-US', { timeZone }).format(0);
-      } catch {
-        return fail('Invalid calendar time zone');
-      }
-      if (
-        typeof r.maximumEvents !== 'number' ||
-        !Number.isInteger(r.maximumEvents) ||
-        r.maximumEvents < 1 ||
-        r.maximumEvents > 200
-      )
-        return fail('Invalid event bound');
-      step = {
-        id,
-        kind: 'Read',
-        operation: 'calendar_range',
-        range: { calendarIds, start, end, timeZone, maximumEvents: r.maximumEvents },
-      };
-    } else {
-      const source = text(s.source, 80);
-      if (!seen.has(source)) fail('Step source must refer to an earlier step');
-      if (s.kind === 'If' && s.operation === 'contains') {
-        keys(s, ['id', 'kind', 'operation', 'source', 'text', 'caseSensitive']);
-        if (typeof s.caseSensitive !== 'boolean')
-          throw new WorkflowApiError('Predicate case sensitivity is required', 400);
-        step = {
-          id,
-          kind: 'If',
-          operation: 'contains',
-          source,
-          text: text(s.text, 1000),
-          caseSensitive: s.caseSensitive,
-        };
-      } else if (s.kind === 'Write' && s.operation === 'compose_draft') {
-        keys(s, ['id', 'kind', 'operation', 'source', 'prefix', 'suffix']);
-        step = {
-          id,
-          kind: 'Write',
-          operation: 'compose_draft',
-          source,
-          prefix: text(s.prefix, 4000, true),
-          suffix: text(s.suffix, 4000, true),
-        };
-      } else if (s.kind === 'Write' && s.operation === 'save_note') {
-        keys(s, ['id', 'kind', 'operation', 'source', 'title']);
-        step = { id, kind: 'Write', operation: 'save_note', source, title: text(s.title, 256) };
-      } else if (s.kind === 'Notify' && s.operation === 'app_notification') {
-        keys(s, ['id', 'kind', 'operation', 'source', 'title']);
-        step = {
-          id,
-          kind: 'Notify',
-          operation: 'app_notification',
-          source,
-          title: text(s.title, 200),
-        };
-      } else if (s.kind === 'Speak' && s.operation === 'read_aloud') {
-        keys(s, ['id', 'kind', 'operation', 'source']);
-        step = { id, kind: 'Speak', operation: 'read_aloud', source };
-      } else if (s.kind === 'Write' && s.operation === 'model_draft') {
-        keys(s, ['id', 'kind', 'operation', 'source', 'instruction']);
-        step = {
-          id,
-          kind: 'Write',
-          operation: 'model_draft',
-          source,
-          instruction: text(s.instruction, 4000),
-        };
-      } else return fail('Operation capability unavailable');
-    }
-    seen.add(id);
-    return step;
-  });
-  let device: PhoneDeviceTarget | undefined;
-  if (p.device !== undefined) {
-    const d = record(p.device);
-    keys(d, ['installationId', 'enrollmentId']);
-    device = {
-      installationId: phoneIdentifier(d.installationId),
-      enrollmentId: phoneIdentifier(d.enrollmentId),
-    };
+  try {
+    return validatePhoneWorkflowSpec(input);
+  } catch (error) {
+    if (error instanceof PhoneWorkflowSpecError) throw new WorkflowApiError(error.message, 400);
+    throw error;
   }
+}
+/** The reviewed local-time trigger of a stored typed definition, or undefined (manual or unreadable). */
+export function storedPhoneTimeTrigger(
+  metadata: Record<string, unknown> | undefined
+): PhoneTimeTrigger | undefined {
+  const raw = metadata?.[PHONE_SPEC_KEY];
+  if (typeof raw !== 'string') return undefined;
+  try {
+    const trigger = validatePhoneSpec(JSON.parse(raw)).trigger;
+    return trigger.kind === 'time' ? trigger : undefined;
+  } catch {
+    return undefined;
+  }
+}
+/** Durable-scheduler schedule for a reviewed local-time trigger. */
+export function phoneTriggerSchedule(trigger: PhoneTimeTrigger) {
+  return { cron: phoneTimeTriggerCron(trigger), timezone: trigger.timeZone, enabled: true };
+}
+export interface TypedScheduleAdmission {
+  scheduledAt: string;
+  trigger: PhoneTimeTrigger;
+  status: 'ready' | 'missed' | 'overlap';
+  text: string;
+}
+/**
+ * Admits one scheduled occurrence of a typed workflow. The occurrence must be an
+ * exact instant of the reviewed local schedule; one that arrives after the
+ * admission window (the agent was not running at that time) is recorded once as
+ * missed and never executed late. `computeNext` is the durable scheduler's own
+ * cron evaluator, so admission and arming agree on time zones and DST.
+ */
+export function typedScheduleAdmission(
+  trigger: PhoneTimeTrigger,
+  scheduledAt: number,
+  now: number,
+  computeNext: (cron: string, fromMs: number, timeZone: string) => number | null
+): TypedScheduleAdmission {
   if (
-    steps.some((step) =>
-      ['selected_notes', 'calendar_range', 'save_note', 'app_notification', 'read_aloud'].includes(
-        step.operation
-      )
-    ) &&
-    !device
+    !Number.isSafeInteger(scheduledAt) ||
+    computeNext(phoneTimeTriggerCron(trigger), scheduledAt - 60000, trigger.timeZone) !==
+      scheduledAt
   )
-    return fail('Enrolled workflow device selection required');
-  return {
-    ...(device ? { device } : {}),
-    version: 1,
-    name: text(p.name, 200),
-    description: text(p.description ?? '', 4000, true),
-    trigger: { kind: 'manual' },
-    steps,
-  };
-}
-function phoneIdentifier(value: unknown): string {
-  const id = text(value, 128);
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) return fail('Invalid device or source identity');
-  return id;
-}
-function phoneUtc(value: unknown): string {
-  const result = text(value, 30);
-  if (!Number.isFinite(Date.parse(result)) || new Date(result).toISOString() !== result)
-    return fail('Canonical UTC milliseconds required');
-  return result;
+    throw new WorkflowApiError('Scheduled occurrence does not match its reviewed local time', 409);
+  const base = { scheduledAt: new Date(scheduledAt).toISOString(), trigger };
+  if (now - scheduledAt > PHONE_SCHEDULE_ADMISSION_WINDOW_MS)
+    return {
+      ...base,
+      status: 'missed',
+      text: 'The scheduled time passed while the agent was not running. This occurrence did not run and will not run later.',
+    };
+  return { ...base, status: 'ready', text: '' };
 }
 export function phoneSpecDigest(spec: PhoneWorkflowSpec) {
   return createHash('sha256').update(JSON.stringify(spec)).digest('hex');
