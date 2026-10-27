@@ -11,6 +11,7 @@ export {
   type NotesPhase,
 } from "./notes-controller.js";
 export * from "./notes-document-store.ts";
+export * from "./notes-draft.ts";
 export {
   type NoteEditorDraft,
   NotesEditor,
@@ -20,6 +21,7 @@ export * from "./notes-query.ts";
 export * from "./notes-secure-store.ts";
 export { NotesSnapshotState } from "./notes-snapshot-state.js";
 export * from "./notes-store.ts";
+export * from "./notes-trash-actions.ts";
 export * from "./notes-trash-maintenance.ts";
 export * from "./notes-trash-policy.ts";
 export * from "./notes-trash-schedule.ts";

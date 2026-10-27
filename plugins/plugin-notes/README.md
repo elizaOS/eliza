@@ -45,7 +45,25 @@ or start a background service.
 
 Capacity limits apply when adding to Trash. Existing documents remain readable and
 can be restored or purged after a host lowers its limits. A full Trash refuses new
-additions; hosts must explain that the user can empty Trash to free space.
+additions with `NotesTrashFull` (`isNotesTrashFull` also recognizes a host store's
+`storage-full` refusal); hosts must explain that the user can empty Trash to free space.
+
+`createNotesTrashActions` owns the owner-initiated Trash flows over the same host ports:
+write-ahead move to Trash, restore, delete forever, empty Trash, and the separately
+confirmed permanent deletion offered after a full Trash refused a restorable copy. Each
+action re-reads authoritative storage under the host's deletion lock, never replaces a
+newer edit or the only restorable copy of a newer deletion, and resolves a typed outcome
+instead of retrying. Entries that own a recording are returned to the host's reviewed
+recording path.
+
+Unsaved device-local edits after a failed or uncertain commit are kept as a change set
+(`notesDraftChanges`) in one encrypted slot (`createNotesDraftSlot`). Applying it later
+(`applyNotesDraft`) adds drafted notes and applies an edit or removal only while that note
+is unchanged since; `notesDraftConflicts` reports notes whose newer saved edits won, and a
+later failure merges an older kept draft (`mergeNotesDrafts`) instead of replacing it.
+`capacityAwareNotesVault` keeps a host store's definite capacity refusal distinct from an
+uncertain commit. `reconcileNotesEditor` lets only a clean editor adopt a newly committed
+collection. The host owns the slot name, recovery export and presentation.
 
 
 `NotesSnapshotState` shares owner-bound, monotonic snapshot publication across the
