@@ -6,7 +6,12 @@
  * the user-facing callback, and both validation and handler degradation when
  * the bridge service is missing or `credentialKeys` is empty.
  */
+import { createSensitiveRequestDispatchRegistry } from "@elizaos/core";
 import { describe, expect, test, vi } from "vitest";
+import {
+  createCredentialTunnelService,
+  createSubAgentCredentialBridgeAdapter,
+} from "../credential-tunnel-service.ts";
 import {
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   type SubAgentCredentialBridge,
@@ -138,5 +143,70 @@ describe("DECLARE_SUB_AGENT_CREDENTIAL_SCOPE", () => {
     );
     expect(result.success).toBe(false);
     expect(result.text).toContain("not available");
+  });
+
+  test("reports the undelivered owner request instead of a bare success", async () => {
+    const dispatch = createSensitiveRequestDispatchRegistry();
+    dispatch.register({
+      target: "owner_app_inline",
+      deliver: async () => ({
+        delivered: false,
+        target: "owner_app_inline",
+        error: "owner app socket closed",
+      }),
+    });
+    const bridge = createSubAgentCredentialBridgeAdapter({
+      tunnel: createCredentialTunnelService(),
+      dispatch,
+      runtime: createRuntime({}) as never,
+    });
+
+    const result = await declareSubAgentCredentialScopeAction.handler(
+      createRuntime({
+        [SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE]: bridge,
+      }) as never,
+      message() as never,
+      undefined,
+      {
+        parameters: {
+          childSessionId: "pty-1-abc",
+          credentialKeys: ["OPENAI_API_KEY"],
+        },
+      } as never,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("owner app socket closed");
+    expect(result.data?.sensitiveRequestIds).toEqual([]);
+  });
+
+  test("keeps success when the owner request is delivered", async () => {
+    const dispatch = createSensitiveRequestDispatchRegistry();
+    dispatch.register({
+      target: "owner_app_inline",
+      deliver: async () => ({ delivered: true, target: "owner_app_inline" }),
+    });
+    const bridge = createSubAgentCredentialBridgeAdapter({
+      tunnel: createCredentialTunnelService(),
+      dispatch,
+      runtime: createRuntime({}) as never,
+    });
+
+    const result = await declareSubAgentCredentialScopeAction.handler(
+      createRuntime({
+        [SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE]: bridge,
+      }) as never,
+      message() as never,
+      undefined,
+      {
+        parameters: {
+          childSessionId: "pty-1-abc",
+          credentialKeys: ["OPENAI_API_KEY"],
+        },
+      } as never,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.sensitiveRequestIds).toHaveLength(1);
   });
 });
