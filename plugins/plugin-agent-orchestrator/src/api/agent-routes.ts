@@ -82,6 +82,29 @@ function parseOutputLines(raw: string | null): number | undefined | null {
   return parsed;
 }
 
+/**
+ * A follow-up prompt is applied only when its turn settles normally. `sendPrompt`
+ * reports a cancelled or errored turn as a result instead of throwing, so the
+ * route must read that receipt the way the orchestrator's own follow-up path
+ * does; otherwise the caller is told the input was delivered when no turn ran.
+ */
+function undeliveredReason(delivery: {
+  stopReason: string;
+  error?: string;
+  terminalFailure?: { message?: string };
+}): string | null {
+  if (delivery.error) return delivery.error;
+  if (delivery.terminalFailure?.message) return delivery.terminalFailure.message;
+  const stopReason = delivery.stopReason.toLowerCase();
+  if (
+    stopReason === "cancelled" ||
+    stopReason === "stopped" ||
+    stopReason === "error"
+  )
+    return `turn settled ${delivery.stopReason}`;
+  return null;
+}
+
 async function resolveSafeVenvPath(
   workdir: string,
   venvDirRaw: string,
@@ -781,7 +804,15 @@ export async function handleAgentRoutes(
           reason: "user_message",
           taskRoomId: followUpRoomId,
         });
-        await ctx.acpService.sendToSession(sessionId, wrapped);
+        const delivery = await ctx.acpService.sendToSession(
+          sessionId,
+          wrapped,
+        );
+        const undelivered = undeliveredReason(delivery);
+        if (undelivered) {
+          sendError(res, `Agent send did not complete: ${undelivered}`, 409);
+          return true;
+        }
         sendJson(res, { success: true });
       } else {
         sendError(

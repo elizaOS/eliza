@@ -20,24 +20,29 @@ function request(body: Record<string, unknown>): IncomingMessage {
 function response(): {
   res: ServerResponse;
   status: () => number | undefined;
+  body: () => string | undefined;
 } {
   let status: number | undefined;
+  let body: string | undefined;
   return {
     res: {
       writeHead(code: number) {
         status = code;
         return this;
       },
-      end() {
+      end(chunk?: unknown) {
+        if (typeof chunk === "string") body = chunk;
         return this;
       },
     } as unknown as ServerResponse,
     status: () => status,
+    body: () => body,
   };
 }
 
 function context(
   captured: SpawnOptions[],
+  delivery?: { stopReason: string; error?: string },
 ): Parameters<typeof handleAgentRoutes>[3] {
   return {
     runtime: {
@@ -47,6 +52,24 @@ function context(
     workspaceService: null,
     acpService: {
       listSessions: async () => [],
+      getSession: async (sessionId: string) => ({
+        sessionId,
+        id: sessionId,
+        name: "worker",
+        agentType: "kimi",
+        workdir: "/tmp/worktree",
+        status: "ready",
+      }),
+      sendToSession: async (sessionId: string) => ({
+        sessionId,
+        response: "",
+        finalText: "",
+        stopReason: delivery?.stopReason ?? "end_turn",
+        durationMs: 4,
+        exitCode: null,
+        signal: null,
+        ...(delivery?.error ? { error: delivery.error } : {}),
+      }),
       spawnSession: async (options: SpawnOptions) => {
         captured.push(options);
         return {
@@ -136,5 +159,48 @@ describe("subscription coding product entry points", () => {
     expect(captured[0]?.metadata).not.toHaveProperty(
       "subscriptionExecutionAuthorization",
     );
+  });
+
+  it("does not answer 200 when the agent turn settled as cancelled", async () => {
+    const res = response();
+
+    await handleAgentRoutes(
+      request({ input: "continue with the task" }),
+      res.res,
+      "/api/coding-agents/session-24096/send",
+      context([], { stopReason: "cancelled" }),
+    );
+
+    expect(res.status()).toBe(409);
+    expect(res.body()).not.toContain('"success":true');
+    expect(res.body()).toContain("cancelled");
+  });
+
+  it("does not answer 200 when the agent turn reported an error", async () => {
+    const res = response();
+
+    await handleAgentRoutes(
+      request({ input: "continue with the task" }),
+      res.res,
+      "/api/coding-agents/session-24096/send",
+      context([], { stopReason: "error", error: "transport closed" }),
+    );
+
+    expect(res.status()).toBe(409);
+    expect(res.body()).toContain("transport closed");
+  });
+
+  it("still answers 200 for a turn that settled normally", async () => {
+    const res = response();
+
+    await handleAgentRoutes(
+      request({ input: "continue with the task" }),
+      res.res,
+      "/api/coding-agents/session-24096/send",
+      context([], { stopReason: "end_turn" }),
+    );
+
+    expect(res.status()).toBe(200);
+    expect(res.body()).toBe(JSON.stringify({ success: true }));
   });
 });
