@@ -28,6 +28,14 @@ dates, conflicting dates or weekdays and zone abbreviations stay blank.
 fields into a provider-neutral proposal; nothing here saves. The host's own
 calendar review and Save remain the only write.
 
+`documents/source-links` validates the source link a saved item (such as a
+summary note) keeps: a selected document named by its exact bytes and, on
+Android, an `a1:` reference whose read grant the native media module retains
+while any saved or restorable item names it (unsaved links are kept three days);
+a credential-free HTTPS page the host's reading policy allows; or an exact
+recording revision. `retainedSourceReferences` lists the references saved and
+restorable items still name, for the native reference store's reconciliation.
+
 Run `bun run typecheck`, `bun run test`, `bun run lint:check`, and `bun run build`
 in this package. Consumer qualification
 must exercise IndexedDB transactions, stale selections, cancellation, restart
