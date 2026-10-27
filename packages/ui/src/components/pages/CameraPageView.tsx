@@ -8,11 +8,22 @@
  * Pinned to the home screen on AOSP (see HomeScreen `nativeOs` tiles). The view
  * itself is platform-agnostic — it degrades to a permission/error state when no
  * camera is reachable rather than dead-ending.
+ *
+ * Hosts pass `ports` to decide where an explicit capture goes (keep it in their
+ * own media store, hand it to a scan review or a question). Without ports a
+ * capture is only previewed; nothing is kept or handed off implicitly. The
+ * lock-screen secure camera stays a system surface.
  */
 import {
   Camera,
   type CameraDirection,
+  type CameraHostPorts,
+  type CameraKeepOutcome,
+  cameraAccessDenied,
+  captureOperationId,
+  keepCapture,
   type PhotoResult,
+  restartAfterResume,
 } from "@elizaos/capacitor-camera";
 import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,16 +47,19 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Only an explicit camera denial gets the settings recovery state. */
 function isPermissionDeniedError(err: unknown): boolean {
-  const message = errorMessage(err).toLowerCase();
-  return (
-    message.includes("permission") ||
-    message.includes("notallowed") ||
-    message.includes("denied")
-  );
+  return cameraAccessDenied(err) === "camera";
 }
 
-export function CameraPageView(): React.JSX.Element {
+export interface CameraPageViewProps {
+  /** Host capture/storage ports; see `CameraHostPorts`. */
+  ports?: CameraHostPorts;
+}
+
+export function CameraPageView({
+  ports,
+}: CameraPageViewProps = {}): React.JSX.Element {
   const { t } = useTranslation();
   const branding = useBranding();
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -54,6 +68,13 @@ export function CameraPageView(): React.JSX.Element {
   const [photo, setPhoto] = useState<PhotoResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One operation identity per capture, so a retried Keep resolves the same save.
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [kept, setKept] = useState<CameraKeepOutcome | null>(null);
+  const [handing, setHanding] = useState(false);
+  const statusRef = useRef<PreviewStatus>("starting");
+  const disposedRef = useRef(false);
+  statusRef.current = status;
 
   // Start the preview once on mount; release the camera on unmount. Front/back
   // switching is handled in place by `switchCamera`, so it does not restart this.
@@ -94,6 +115,7 @@ export function CameraPageView(): React.JSX.Element {
 
     return () => {
       cancelled = true;
+      disposedRef.current = true;
       // error-policy:J6 best-effort teardown on unmount; the preview is gone
       // regardless and a failed stop has no further recourse.
       void Camera.stopPreview().catch(() => {});
@@ -123,6 +145,28 @@ export function CameraPageView(): React.JSX.Element {
     }
   }, [facing]);
 
+  // A preview stopped on a denial restarts on return only after access was
+  // granted in system settings; the host's read never prompts.
+  const checkAccess = ports?.checkAccess;
+  useEffect(() => {
+    if (!checkAccess) return;
+    const resumed = () => {
+      if (document.visibilityState !== "visible") return;
+      void restartAfterResume(
+        () => ({
+          denied: statusRef.current === "denied" ? "camera" : undefined,
+          phase: statusRef.current === "denied" ? "error" : statusRef.current,
+          disposed: disposedRef.current,
+        }),
+        checkAccess,
+      ).then((restart) => {
+        if (restart) void retryStart();
+      });
+    };
+    document.addEventListener("visibilitychange", resumed);
+    return () => document.removeEventListener("visibilitychange", resumed);
+  }, [checkAccess, retryStart]);
+
   const handleSwitch = useCallback(async () => {
     if (busy || status !== "live") return;
     const next: CameraDirection = facing === "back" ? "front" : "back";
@@ -145,6 +189,8 @@ export function CameraPageView(): React.JSX.Element {
     try {
       const result = await Camera.capturePhoto({ format: "jpeg", quality: 90 });
       setPhoto(result);
+      setOperationId(captureOperationId());
+      setKept(null);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -154,7 +200,37 @@ export function CameraPageView(): React.JSX.Element {
 
   const handleRetake = useCallback(() => {
     setPhoto(null);
+    setOperationId(null);
+    setKept(null);
   }, []);
+
+  const keep = ports?.keep;
+  const handleKeep = useCallback(async () => {
+    if (!keep || !photo || !operationId || handing || kept?.status === "saved")
+      return;
+    setHanding(true);
+    try {
+      setKept(await keepCapture(keep, photo, operationId));
+    } finally {
+      setHanding(false);
+    }
+  }, [handing, keep, kept, operationId, photo]);
+
+  const handleAction = useCallback(
+    async (run: (photo: PhotoResult) => Promise<void> | void) => {
+      if (!photo || handing) return;
+      setHanding(true);
+      setError(null);
+      try {
+        await run(photo);
+      } catch (err) {
+        setError(errorMessage(err));
+      } finally {
+        setHanding(false);
+      }
+    },
+    [handing, photo],
+  );
 
   return (
     <div
@@ -242,15 +318,50 @@ export function CameraPageView(): React.JSX.Element {
             alt={t("camera.capturedAlt", { defaultValue: "Captured photo" })}
             className="h-full w-full object-contain"
           />
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 p-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
-            <Button
-              variant="secondary"
-              onClick={handleRetake}
-              data-testid="camera-retake"
-            >
-              <RotateCcw className="size-4" aria-hidden />
-              {t("camera.retake", { defaultValue: "Retake" })}
-            </Button>
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+            {kept ? (
+              <p
+                data-testid="camera-keep-status"
+                role="status"
+                className="rounded-full bg-black/70 px-3 py-1.5 text-center text-xs text-white"
+              >
+                {kept.status === "saved"
+                  ? (kept.message ??
+                    t("camera.kept", { defaultValue: "Photo kept." }))
+                  : kept.message}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleRetake}
+                disabled={handing}
+                data-testid="camera-retake"
+              >
+                <RotateCcw className="size-4" aria-hidden />
+                {t("camera.retake", { defaultValue: "Retake" })}
+              </Button>
+              {keep ? (
+                <Button
+                  onClick={handleKeep}
+                  disabled={handing || kept?.status === "saved"}
+                  data-testid="camera-keep"
+                >
+                  {keep.label}
+                </Button>
+              ) : null}
+              {ports?.actions?.map((action) => (
+                <Button
+                  key={action.id}
+                  variant="secondary"
+                  onClick={() => void handleAction(action.run)}
+                  disabled={handing}
+                  data-testid={`camera-action-${action.id}`}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

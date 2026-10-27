@@ -5,6 +5,21 @@ recording across web, iOS, and Android.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
+## Host ports
+
+[`host-ports`](src/host-ports.ts) holds the camera rules every host surface
+shares: `cameraAccessDenied` classifies only explicit denials (the bridge's
+denial codes, `NotAllowedError`/`PermissionDeniedError` or the bridge's denial
+message), and `restartAfterResume` restarts a preview stopped on a denial only
+after the camera was granted in system settings, so returning from Android's
+own dialog never asks again. `CameraHostPorts` lets a host decide where an
+explicit capture goes: a Keep storage port that receives one stable operation
+identity per capture (`keepCapture` never reports an unconfirmed save), other
+explicit hand-offs such as a scan review or a question, and a non-prompting
+access read. The shared `CameraPageView` in `@elizaos/ui` accepts these ports;
+without them a capture is only previewed. The lock-screen secure camera stays a
+system surface.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
