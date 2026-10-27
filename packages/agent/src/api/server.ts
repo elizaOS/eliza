@@ -1071,7 +1071,14 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Voice-model management writes: update downloads every
+        // published asset for a version onto the owner's machine and
+        // stages it into the runtime layout, and pin steers future
+        // auto-updates. Sibling TTS/ASR routes fail closed on
+        // loopback-or-token, but these relied on session auth alone.
+        // GET list/check stays open (metadata only).
+        under("/api/local-inference/voice-models")))
   );
 }
 
