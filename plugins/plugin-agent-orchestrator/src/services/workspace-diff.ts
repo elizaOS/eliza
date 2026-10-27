@@ -752,3 +752,21 @@ export function subtractChangeSetBaseline(
     fileDiffs,
   };
 }
+
+/**
+ * Spawn-time baseline paths the session did not write with a tool call.
+ * {@link captureChangeSet} keeps a baseline file the agent wrote, so evidence
+ * that subtracts the baseline again must leave that file in place.
+ */
+export function baselinePathsNotWritten(
+  workdir: string,
+  baselinePaths: readonly string[],
+  toolPaths: readonly string[],
+): string[] {
+  const written = new Set(
+    toolPaths
+      .map((file) => toWorkdirRelative(workdir, file))
+      .filter((file) => file.length > 0),
+  );
+  return baselinePaths.filter((file) => !written.has(file));
+}

@@ -250,6 +250,7 @@ import {
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 import {
+  baselinePathsNotWritten,
   captureChangeSet,
   subtractChangeSetBaseline,
   type WorkspaceChangeSet,
@@ -2953,9 +2954,21 @@ export class OrchestratorTaskService extends Service {
           )
         : []),
     ];
-    const changeSet = rawChangeSet
-      ? subtractChangeSetBaseline(rawChangeSet, baselinePaths)
-      : rawChangeSet;
+    // The capture keeps a baseline file the session wrote with a tool call (a
+    // user's uncommitted file it was asked to edit, or the file a new-session
+    // retry fixes after the previous attempt), so only the baseline paths this
+    // session did not write are subtracted.
+    const changeSet =
+      rawChangeSet && baselineSession && baselinePaths.length > 0
+        ? subtractChangeSetBaseline(
+            rawChangeSet,
+            baselinePathsNotWritten(
+              baselineSession.workdir,
+              baselinePaths,
+              this.acp()?.getChangedPaths(sessionId) ?? [],
+            ),
+          )
+        : rawChangeSet;
     const diffSummary =
       changeSet && changeSet.changedFiles.length > 0
         ? renderChangeSetBody(changeSet)
