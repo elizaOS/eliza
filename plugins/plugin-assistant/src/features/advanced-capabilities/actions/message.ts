@@ -4006,6 +4006,25 @@ function connectorReadRequest(
   };
 }
 
+/** Keep only memories inside the requested [from, until] date window. */
+function filterMemoriesToDateWindow(
+  memories: Memory[],
+  params: ParamRecord,
+): Memory[] {
+  const fromMs = parseDateParam(textParam(params.from));
+  const untilMs = parseDateParam(
+    textParam(params.until) ?? textParam(params.end) ?? textParam(params.to),
+  );
+  if (fromMs === undefined && untilMs === undefined) return memories;
+  return memories.filter((memory) => {
+    const createdAt = memory.createdAt ?? 0;
+    return (
+      (fromMs === undefined || createdAt >= fromMs) &&
+      (untilMs === undefined || createdAt <= untilMs)
+    );
+  });
+}
+
 async function fetchRecentMessagesFromConnector(
   connector: ConnectorWithHooks,
   context: MessageConnectorQueryContext,
@@ -4125,6 +4144,18 @@ async function handleReadChannel(
     );
   }
   const limit = recentReadLimit(range, requestedLimit);
+  // A dated read without an explicit limit must not page the whole
+  // channel: cap the connector scan, mirroring the search cap.
+  // The window filter below still applies the dates themselves.
+  const dateWindowFetchLimit =
+    range === "dates" &&
+    limit === undefined &&
+    !textParam(params.before) &&
+    !textParam(params.after) &&
+    !textParam(params.cursor)
+      ? 15000
+      : undefined;
+  const fetchLimit = limit ?? dateWindowFetchLimit;
 
   // Prefer in-process connector fetchMessages when available.
   const hookConnectors = connectors.filter(
@@ -4169,16 +4200,22 @@ async function handleReadChannel(
       let memories: Memory[] = [];
       if (resolved.target) {
         memories = (await selectedConnector.fetchMessages(context, {
-          ...connectorReadRequest(resolved.target, params, limit),
+          ...connectorReadRequest(resolved.target, params, fetchLimit),
         })) as Memory[];
+        if (range === "dates") {
+          memories = filterMemoriesToDateWindow(memories, params);
+        }
       } else {
         memories = await fetchRecentMessagesFromConnector(
           selectedConnector,
           context,
           params,
-          limit,
+          fetchLimit,
         );
         memories = memories.sort(compareMemoryByCreatedAtDesc);
+        if (range === "dates") {
+          memories = filterMemoriesToDateWindow(memories, params);
+        }
         if (limit !== undefined) memories = memories.slice(0, limit);
       }
       return opSuccess(
@@ -4209,7 +4246,7 @@ async function handleReadChannel(
             connector,
             context,
             params,
-            limit,
+            fetchLimit,
           ),
         };
       }),
@@ -4262,7 +4299,11 @@ async function handleReadChannel(
       );
     }
     memories.sort(compareMemoryByCreatedAtDesc);
-    const limited = limit === undefined ? memories : memories.slice(0, limit);
+    const windowed =
+      range === "dates"
+        ? filterMemoriesToDateWindow(memories, params)
+        : memories;
+    const limited = limit === undefined ? windowed : windowed.slice(0, limit);
     const readText = limited.length
       ? `Read ${limited.length} recent messages across ${sources.length} connectors.`
       : "No recent conversations found.";
