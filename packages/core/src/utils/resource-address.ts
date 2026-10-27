@@ -22,15 +22,19 @@ export function parseWebResourceAddress(value: string): URL | undefined {
 	// Validate DNS syntax without a site or TLD allowlist. Explicit IP/localhost
 	// addresses stay resources; the existing operation's policy owns eligibility.
 	// A bare IP/localhost address with a port is a network destination too: the
-	// port separates it from a bare word and from a version-like number.
-	// The written port is the signal, not url.port: new URL() normalizes the
-	// default HTTPS port away, so localhost:443 parses with an empty port.
+	// port separates it from a bare word. The written port is the signal, not
+	// url.port: new URL() normalizes the default HTTPS port away, so
+	// localhost:443 parses with an empty port. The host shape is tested on the
+	// address as written, not on the normalized hostname: URL parsing expands
+	// shorthand forms like 1.2 to 1.0.0.2, and those stay excluded with the
+	// version-like numbers they resemble.
 	const authority = text.split(/[/?#]/u, 1)[0] ?? "";
+	const rawHost = authority.replace(/:\d+$/u, "").toLowerCase();
 	const bareIpOrLocalhostWithPort =
 		/:\d+$/u.test(authority) &&
-		(host === "localhost" ||
-			/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host) ||
-			host.startsWith("["));
+		(rawHost === "localhost" ||
+			/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(rawHost) ||
+			rawHost.startsWith("["));
 	if (
 		!explicit &&
 		!bareIpOrLocalhostWithPort &&

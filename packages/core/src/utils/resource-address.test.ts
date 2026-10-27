@@ -29,6 +29,8 @@ it.each([
 	"person@example.com",
 	"javascript:alert(1)",
 	"1.2",
+	"1.2:5000",
+	"3.11:8080",
 	"localhost",
 	"127.0.0.1",
 ])("does not declare an eligible web address: %s", (text) =>
