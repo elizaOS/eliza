@@ -249,11 +249,19 @@ export class AutonomyService extends Service {
     const messageRoomIds = orderedRoomIds.filter(
       (roomId) => roomId !== this.autonomousRoomId,
     );
+    // Bound the render: with no limit this materializes every target
+    // room's whole history and renders it verbatim into the autonomy
+    // prompt on every evaluation. The adapter orders newest-first,
+    // so the cap keeps the newest messages, displayed oldest-first
+    // per room. The cap is global across rooms, so under the
+    // all-rooms opt-in a quiet room can render as "(no recent
+    // messages)" — the same trade-off as any all-rooms window.
     const messages =
       messageRoomIds.length > 0
         ? await this.runtime.getMemoriesByRoomIds({
             tableName: "messages",
             roomIds: messageRoomIds,
+            limit: 15000,
           })
         : [];
 
