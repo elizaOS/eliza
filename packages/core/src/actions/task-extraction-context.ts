@@ -192,3 +192,38 @@ export function readTaskExtractionContext(
 		return undefined;
 	}
 }
+
+/** Original user sources from the existing request-bound selection capability.
+ * Full/current-only bindings remain valid; cloned or changed state grants none. */
+export function readTaskExtractionUserSources(
+  state: State | undefined,
+  message: Memory | undefined,
+): readonly { id: string; text: string }[] | undefined {
+  const binding = readBinding(state, message);
+  if (!binding || !message) return undefined;
+  return completionContextSources(binding.projected).sources.flatMap(
+    ({ event }) => {
+      if (event.type !== "segment" || event.source !== "prior-dialogue")
+        return [];
+      const segment = event.segment;
+      if (
+        segment.label !== "prior_message:user" ||
+        segment.id !== event.id ||
+        segment.metadata?.roomId !== message.roomId ||
+        segment.metadata?.entityId !== message.entityId
+      )
+        return [];
+      const speaker = segment.metadata.speakerName;
+      const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
+      return [
+        {
+          id: event.id,
+          text:
+            prefix && segment.content.startsWith(prefix)
+              ? segment.content.slice(prefix.length)
+              : segment.content,
+        },
+      ];
+    },
+  );
+}
