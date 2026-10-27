@@ -77,7 +77,7 @@ function currentMessageEvents(content: Content): ContextEvent[] {
 }
 
 function renderedText(events: ContextEvent[]): string {
-  return renderContextObject({ events } as Parameters<
+  return renderContextObject({ events } as unknown as Parameters<
     typeof renderContextObject
   >[0])
     .promptSegments.map((segment) => segmentBlock(segment))
