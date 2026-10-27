@@ -1224,7 +1224,7 @@ export const visionAction: Action = {
   name: "VISION",
   contexts: [...ALL_VISION_CONTEXTS],
   contextGate: { anyOf: [...ALL_VISION_CONTEXTS] },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     "DESCRIBE_SCENE",
     "CAPTURE_IMAGE",
