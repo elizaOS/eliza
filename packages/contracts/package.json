@@ -28,6 +28,12 @@
       "import": "./dist/device-action-execution.js",
       "default": "./dist/device-action-execution.js"
     },
+    "./phone-workflow": {
+      "eliza-source": "./src/phone-workflow.ts",
+      "types": "./dist/phone-workflow.d.ts",
+      "import": "./dist/phone-workflow.js",
+      "default": "./dist/phone-workflow.js"
+    },
     "./native-notes-query": {
       "eliza-source": "./src/native-notes-query.ts",
       "types": "./dist/native-notes-query.d.ts",
