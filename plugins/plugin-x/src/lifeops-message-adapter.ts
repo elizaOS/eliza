@@ -186,9 +186,12 @@ export class XDmAdapter extends BaseMessageAdapter {
       // The listing includes the account's own sent DMs; the inbox holds only
       // messages from others, like the Discord triage adapter. Fetch the
       // service's full window before filtering, so recent replies do not push
-      // older inbound DMs out of the result.
+      // older inbound DMs out of the result. The window itself is bounded:
+      // without a scan cap a sweep with no limit would page the account's
+      // entire DM history before the in-memory slice below.
       const memories = await service.fetchDirectMessagesForAccount(accountId, {
         participantId: undefined,
+        limit: 15000,
       });
       const candidates = memories
         .filter((memory) => memory.entityId !== runtime.agentId)

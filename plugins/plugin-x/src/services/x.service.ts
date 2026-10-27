@@ -1264,8 +1264,13 @@ export class XService extends Service {
     const limit = explicitConnectorLimit(params.limit);
     // A DM fetch failure (expired token, rate limit) propagates: callers
     // translate it at their boundary, and an empty list would read as an
-    // empty inbox.
-    const messages = await this.listRecentDirectMessages(accountId);
+    // empty inbox. Bound the pagination when no conversation target
+    // filters the result: with a target, the caller filters after the
+    // fetch, so an untargeted limit must not shrink a targeted read.
+    const messages = await this.listRecentDirectMessages(
+      accountId,
+      targetUserId === undefined ? limit : undefined,
+    );
 
     // A stored room targets the provider conversation id, while a resolved
     // user target names the authenticated one-to-one counterpart. Accept both
