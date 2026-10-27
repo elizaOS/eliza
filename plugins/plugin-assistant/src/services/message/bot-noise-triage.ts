@@ -185,9 +185,17 @@ export async function runBotNoiseTriage(
 
   let historyLines: string[] = [];
   try {
+    // Bound it: without a limit this feeds the whole room into a
+    // one-word verdict prompt, on the very path whose purpose is to
+    // cheapen flooded bot traffic. The cap keeps the newest messages
+    // (reads order newest-first); the ascending sort below still
+    // yields them chronologically.
     const recent = await runtime.getMemories({
       tableName: "messages",
       roomId: message.roomId,
+      limit: 15000,
+      orderBy: "createdAt",
+      orderDirection: "desc",
     });
     historyLines = recent
       .filter((memory) => memory.id !== message.id)
