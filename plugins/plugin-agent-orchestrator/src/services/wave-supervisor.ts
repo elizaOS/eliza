@@ -1000,15 +1000,16 @@ export class WaveSupervisor extends Service {
   ): Promise<void> {
     const send = (this.runtime as RuntimeWithSendTarget).sendMessageToTarget;
     if (typeof send !== "function") return;
-    const byId = new Map(
-      tasks.flatMap((task) => [
-        [task.id, task] as const,
-        [readLaneId(task.metadata, task.id), task] as const,
-      ]),
-    );
     for (const collision of collisions) {
       if (this.warnedCollisions.has(collision.key)) continue;
-      const originTask = byId.get(collision.leftId);
+      // Every lane plan numbers its lanes lane-1, lane-2, ..., so a lane id
+      // names a task only inside its own wave attempt.
+      const originTask = tasks.find(
+        (task) =>
+          readWaveId(task.metadata) === collision.waveId &&
+          readWaveAttemptId(task.metadata) === collision.attemptId &&
+          readLaneId(task.metadata, task.id) === collision.leftId,
+      );
       if (!originTask) continue;
       const target = await service.getTaskOriginTarget(originTask.id);
       if (!target) continue;
@@ -1020,7 +1021,8 @@ export class WaveSupervisor extends Service {
             : `lane ${collision.rightId}`;
         const text = `Wave ${collision.waveId} collision warning: lane ${collision.leftId} now overlaps ${other} on ${collision.paths.join(", ")}. Re-scope or coordinate before continuing.`;
         requireConfirmedSendHandlerDelivery(
-          await send(
+          await send.call(
+            this.runtime,
             { source: target.source, roomId: target.roomId as UUID },
             { text, source: target.source },
           ),
