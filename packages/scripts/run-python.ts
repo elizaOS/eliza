@@ -24,7 +24,6 @@ let lastError;
 for (const cmd of candidates) {
   const probe = spawnSync(cmd, ["--version"], {
     stdio: "ignore",
-    shell: process.platform === "win32",
   });
   if (probe.error || probe.status !== 0) {
     lastError = probe.error;
@@ -33,7 +32,6 @@ for (const cmd of candidates) {
   const result = spawnSync(cmd, args, {
     stdio: "inherit",
     env: process.env,
-    shell: process.platform === "win32",
   });
   if (result.error) {
     console.error(result.error);
