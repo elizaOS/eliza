@@ -175,6 +175,7 @@ const TELEGRAM_MEMORY_PAGE_SIZE = 500;
 async function loadAllTelegramRoomMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
+  limit?: number,
 ): Promise<Memory[]> {
   const memories: Memory[] = [];
   const seenIds = new Set<UUID>();
@@ -199,6 +200,9 @@ async function loadAllTelegramRoomMemories(
       for (const id of ids) seenIds.add(id as UUID);
     }
     memories.push(...page);
+    if (limit !== undefined && memories.length >= limit) {
+      return memories.slice(0, limit);
+    }
     if (page.length < TELEGRAM_MEMORY_PAGE_SIZE) return memories;
   }
 }
@@ -2936,7 +2940,15 @@ export class TelegramService extends Service {
       target.roomId ??
       room?.id ??
       this.connectorRoomIdForChannel(channelId, target.threadId, accountId);
-    const memories = await loadAllTelegramRoomMemories(context.runtime, roomId);
+    // Bound it: without a cap this pages the room's entire stored
+    // history on every turn's context build, mirroring the cap #37793
+    // applied to Slack's chat context. Pages arrive newest-first, so
+    // the cap keeps the newest messages.
+    const memories = await loadAllTelegramRoomMemories(
+      context.runtime,
+      roomId,
+      15000,
+    );
     const recentMessages = memories
       .slice()
       .reverse()
