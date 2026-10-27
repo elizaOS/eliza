@@ -50,3 +50,29 @@ publishes the read, operation and Calendar endpoints. It publishes the Gmail sen
 endpoint only when `ELIZA_NATIVE_GOOGLE_GMAIL_SEND_ENABLED=1`, because that send
 path depends on a separately owned production service. Every send still requires
 the owner to review the exact prepared draft.
+
+## Phone and browser mailbox (`@elizaos/plugin-inbox/mailbox`)
+
+A browser-safe controller layer for a managed Gmail mailbox on a phone or in a
+browser. It has no Node built-ins, no React and only erasable TypeScript, and
+every host input is injected:
+
+- `ManagedGmailMailboxClient` validates every Eliza Cloud managed Gmail and
+  `inbox-v1` response. The host supplies the authenticated request, its own
+  invalid-response error and the attachment content review.
+- `InboxOperation` journals one reviewed effect per owner and grant in host
+  compare-and-exchange storage. `dispatching` is saved before the single
+  dispatch; a lost reply or an unknown outcome is resolved only by reading the
+  canonical receipt and is never dispatched again.
+- `createMailReviewController` reviews sends and provider drafts against the
+  exact composer email, archives and trashes with a reviewed Undo, checks saved
+  receipts and discards an undispatched review when change access is withdrawn.
+- `createMailDraftsController` keeps account-bound local drafts (compose,
+  reply, forward, attachments, set-aside drafts, reviewed suggestions) and
+  removes only the exact local copy after a provider-confirmed send.
+- Incremental read/modify grants, failure classification, reviewed read state,
+  attachment limits, retained-edit validation, read-ahead, inert links,
+  snippet decoding and the reviewed agent mail hand-off.
+
+Slot names (`inbox-operation:v1:*`, `inbox-drafts:v1:*`) and record layouts
+are installed-data identifiers; keep them stable.

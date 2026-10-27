@@ -42,3 +42,21 @@ separately owned production service, so it stays off unless the host sets
 `ELIZA_MANAGED_CALENDAR_DELETE_ENABLED=1`. Without it, a delete request is refused
 with `CALENDAR_MANAGED_DELETE_UNAVAILABLE` before an owner review is queued, and
 the mutation port refuses it again before any host call.
+
+## Phone and browser Calendar controllers
+
+Browser-safe, erasable-TypeScript controllers for device and browser hosts:
+
+- `@elizaos/plugin-calendar/linked-sync`: explicit local-first Google Calendar
+  sync. `CalendarSyncController` reviews the exact account, calendar and local
+  events, saves the owner's opt-in, and runs one serialized pass through the
+  shared `LinkedCalendarReconciler`; every provider request rechecks the opt-in
+  and the current context. `CalendarLinkedStore` keeps owner/source-bound
+  checkpoints in host storage (the provider idempotency namespace is
+  configurable so installed keys are never rewritten), and
+  `googleCalendarSyncPort` drives the Cloud `calendar/sync-v1` routes.
+- `@elizaos/plugin-calendar/client/availability-review`: a reviewed foreground
+  free/busy read. Only owner-chosen calendars are read at their reviewed
+  revisions, the exact result is confirmed and re-read before sharing, free,
+  cancelled and declined entries are never busy, and any stale or unknown read
+  shares nothing.
