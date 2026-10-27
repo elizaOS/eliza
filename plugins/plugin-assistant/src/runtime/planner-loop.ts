@@ -1170,7 +1170,13 @@ async function runPlannerLoopIterations(
   ): PlannerLoopResult => ({
     status: "finished",
     trajectory,
-    evaluator,
+    // Keep the original model judgment in the recorded trajectory, but expose
+    // the same failure authority to callers that already governs the reply.
+    evaluator:
+      evaluator.success === true &&
+      latestUnresolvedFailedNonTerminalToolStep(trajectory)
+        ? { ...evaluator, success: false }
+        : evaluator,
     finalMessage: userSafeFinalMessage(
       terminalMessageWithFailureAuthority(
         trajectory,

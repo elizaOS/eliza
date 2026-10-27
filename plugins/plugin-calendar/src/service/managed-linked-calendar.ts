@@ -7,6 +7,7 @@ import {
   linkedCalendarSemanticText,
 } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
+import { isLinkedCalendarSemanticEvent } from "./managed-calendar-host.js";
 import type { createManagedCalendarRead } from "./managed-calendar-read.js";
 
 type Transport = NonNullable<ReturnType<typeof createManagedCalendarRead>>;
@@ -94,29 +95,9 @@ export class ManagedLinkedCalendarProviderPort
     )
       throw Error("Invalid linked Calendar snapshot identity");
     const event = value.event;
-    if (
-      ["title", "description", "location", "startAt", "endAt"].some(
-        (key) => typeof event[key] !== "string",
-      ) ||
-      !Number.isFinite(Date.parse(String(event.startAt))) ||
-      !Number.isFinite(Date.parse(String(event.endAt))) ||
-      Date.parse(String(event.endAt)) <= Date.parse(String(event.startAt)) ||
-      typeof event.isAllDay !== "boolean" ||
-      (event.timeZone !== null && typeof event.timeZone !== "string") ||
-      !Array.isArray(event.attendees) ||
-      event.attendees.some(
-        (attendee) =>
-          !object(attendee) ||
-          typeof attendee.email !== "string" ||
-          (attendee.optional !== undefined &&
-            typeof attendee.optional !== "boolean"),
-      ) ||
-      (event.recurrence !== undefined &&
-        (!Array.isArray(event.recurrence) ||
-          event.recurrence.some((rule) => typeof rule !== "string")))
-    )
+    if (!isLinkedCalendarSemanticEvent(event))
       throw Error("Invalid linked Calendar semantic snapshot");
-    return value as unknown as LinkedCalendarProviderSnapshot;
+    return { eventId: value.eventId, etag: value.etag, event };
   }
 
   async get(record: LinkedCalendarEventRecord) {

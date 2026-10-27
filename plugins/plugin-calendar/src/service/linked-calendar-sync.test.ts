@@ -1386,6 +1386,48 @@ function managedFixture() {
 }
 
 describe("managed owner linked Calendar provider", () => {
+  it.each(["create", "update"] as const)(
+    "rejects malformed %s event fields before provider dispatch",
+    async (kind) => {
+      for (const patch of [
+        { title: undefined },
+        { startAt: "not-a-date" },
+        { endAt: baseEvent.startAt },
+        { timeZone: 12 },
+        { isAllDay: "false" },
+        { attendees: [{ email: 42 }] },
+        { attendees: [{ email: "guest@acme.com", optional: "yes" }] },
+        { recurrence: [12] },
+        { deleted: "false" },
+      ]) {
+        const f = managedFixture();
+        await expect(
+          calendarAgentWrite(
+            f.client,
+            "real-owner-grant",
+            "a".repeat(64),
+            {
+              operation: "linked-sync",
+              grantId: f.grantId,
+              calendarId: "calendar",
+              accountId: "managed-account",
+              command: {
+                kind,
+                ...(kind === "create"
+                  ? { idempotencyKey: "stable-key" }
+                  : { eventId: "managed-event", expectedEtag: '"managed-v1"' }),
+                event: { ...baseEvent, ...patch },
+              },
+            },
+            new AbortController().signal,
+            "alpha-google",
+          ),
+        ).rejects.toThrow("Invalid linked Calendar semantic event");
+        expect(f.commands.some((command) => command.kind === kind)).toBe(false);
+      }
+    },
+  );
+
   it("refuses a fresh capability protocol change before linked-sync dispatch", async () => {
     const f = managedFixture();
     f.changeCapabilityProtocol();
