@@ -122,3 +122,56 @@ check can retry; a WebView recreation receives a new native plugin lifetime.
 `node --test plugins/plugin-native-system/test/sense.test.mjs` exercises the
 shared native policy, client refusal rules, Android API compilation and renderer
 authority race. These tests do not prove installed-device microphone handoff.
+
+## App data reset
+
+`reset.DataReset` resets a host app's own data through Android's
+`ActivityManager.clearApplicationUserData()`, which is scoped to that package and
+Android user: it stops the package's processes, cancels its jobs, alarms and
+notifications, clears its private data and its UID Keystore namespace. It never
+enumerates files and never touches shared media, other apps or remote account
+data, and nothing reports a returned request as completed deletion.
+
+A host builds one `DataReset` with its installed identities and shares it:
+
+- `DataReset.builder(markerName, RecoveryActivity.class)` names the pending marker
+  (`<markerName>.pending` and `<markerName>.failures` in device-protected no-backup
+  storage) and the recovery activity. Keep both stable across releases.
+- `beforeDispatch(...)` optionally adds bounded, best-effort work that runs only
+  while a confirmed reset is pending, such as revoking this device's remote
+  sign-in. It never blocks or cancels the local reset beyond its budget.
+- `listenerRevocation(...)` replaces the default acknowledgement from the
+  same-signer image listener (`SenseListenerClient.resetForData()`). An installed
+  listener that does not durably acknowledge consent revocation keeps the marker
+  and all app data; an absent listener is safe to reset.
+
+Wire it in three places:
+
+1. `Application.attachBaseContext`: after `super`, call
+   `admitBeforeStartup(this, getProcessName())` before providers and initializers
+   run. It returns in isolated processes, the recovery process and when nothing is
+   pending; otherwise it retries the reset and stops the process. Return early
+   from `onCreate` in the recovery process.
+2. A `reset.DataResetPlugin` subclass with the host's own
+   `@CapacitorPlugin(name = ...)`. `review()` takes no arguments: a native
+   disclosure, then a fresh device-credential confirmation
+   (`ResetAuthorization`) authorize the reset, and the request is recorded before
+   any pre-dispatch work. Results are only `cancelled` or `unavailable`; a confirmed
+   reset stops the app. `src/reset.ts` (`@elizaos/capacitor-system/reset`) gives the
+   renderer `reviewDataReset`, which never reports completion.
+3. A `reset.DataResetRecoveryActivity` subclass declared unexported,
+   `excludeFromRecents`, `singleTask` with its own task affinity, and in the
+   process named by `recoveryProcessSuffix` (default `:reset_recovery`). That
+   process installs none of the host's providers. It explains that the reset has
+   not finished and offers a fresh retry, the listener's validated settings
+   activity, the dialer and Android Settings.
+
+`DataResetCopy.forProduct(name)` supplies the text; hosts may replace the
+disclosure, the progress message and a note about remote steps. Automatic
+attempts at launch are bounded (three per minute; unreadable attempt state defers
+them until the user retries), and starts Android attributes to jobs, alarms,
+broadcasts, pushes, providers or services stop without opening recovery over the
+app in front. `test/reset.test.mjs` covers authorization, bounded admission,
+background starts, interrupted dispatch and single dispatch against host-JVM
+stand-ins. Real self-clear, the listener's provider IPC and the recovery task
+returning instead of HOME require installed and device qualification.
