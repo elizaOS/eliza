@@ -38,3 +38,13 @@ from the subsequent granted-access suite.
 Permission preflight artifacts include Android grant flags before and after the
 request. Missing-dialog failures preserve the actual WebView reply and window
 hierarchy; tests remain failures and are not retried automatically.
+
+## Bounded catalog for AOSP image hosts
+
+`ai.eliza.plugins.contacts.ContactsCatalog` reads same-profile contacts in
+bounded pages (at most 200 contacts and 1 MiB, 32 numbers or emails per
+contact, 1024 characters per field) and refuses a larger record instead of
+truncating it. Reads take a CancellationSignal and time out after five seconds.
+`reviewed(id, lookup, revision)` rechecks a selected contact before the host
+hands an edit to the system Contacts editor. Hosts gate it behind their own
+image admission and foreground checks.
