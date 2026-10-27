@@ -1647,3 +1647,290 @@ test("entitlement and key responses are bounded and drop private or foreign keys
   );
   assert.equal(entitlementKeysFromResponse({}), null);
 });
+
+test("an outage retry answered by the billing snapshot switches to periodic checks; a stopped refresher never checks", async () => {
+  const timers = fakeTimers();
+  const views = [];
+  let checks = 0;
+  const refresher = new EntitlementRefresher({
+    timers,
+    retry: true,
+    onView: (view) => views.push(view),
+    check: async () => {
+      checks++;
+      return {
+        view: {
+          kind: "active",
+          planName: "Plus",
+          status: "active",
+          allowance: null,
+          expiresAt: 0,
+          refreshFailed: false,
+          source: "billing-limits",
+        },
+        entitlement: null,
+      };
+    },
+  });
+  await timers.advance(REFRESH_RETRY_MAX_MS * 4);
+  assert.equal(checks, 4);
+  assert.equal(views.at(-1).source, "billing-limits");
+  refresher.refreshNow();
+  await timers.advance(0);
+  assert.equal(checks, 5, "refreshNow checks again on return");
+  refresher.stop();
+  refresher.refreshNow();
+  assert.equal(checks, 5);
+});
+
+test("billing snapshot refresh adopts signed scheduling and discards a late result after detach", async () => {
+  const timers = fakeTimers(),
+    views = [];
+  let checks = 0,
+    release;
+  const signed = entitlementAt(
+    NOW + FALLBACK_REFRESH_MS,
+    NOW + FALLBACK_REFRESH_MS + 400000,
+  );
+  const refresher = new EntitlementRefresher({
+    timers,
+    fallbackActive: true,
+    onView: (view) => views.push(view),
+    check: async () => {
+      checks++;
+      if (checks === 1)
+        return { view: subscriptionView(signed), entitlement: signed };
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    },
+  });
+  await timers.advance(FALLBACK_REFRESH_MS);
+  assert.equal(refresher.current, signed);
+  assert.equal(timers.queue[0].at, signed.refreshAt);
+  await timers.advance(signed.refreshAt - timers.now());
+  assert.equal(checks, 2);
+  refresher.stop();
+  release({
+    view: {
+      kind: "inactive",
+      status: "canceled",
+      source: "billing-limits",
+      planName: "Plus",
+    },
+    entitlement: null,
+  });
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+  assert.equal(views.length, 1);
+  assert.equal(timers.queue.length, 0);
+});
+
+test("a signed no-subscription result that cannot confirm credit mode stops credit refresh as inactive", async () => {
+  clearEntitlementKeyCache();
+  const { jwk, sign } = await keyPair("credit-refresh-no-grace");
+  const token = await sign(
+    claims({ plan: { id: "free", name: "Free", status: "none" } }),
+  );
+  const refused = await checkEntitlement(
+    source({
+      token,
+      keys: [jwk],
+      fallback: Object.assign(Error("offline"), { status: 503 }),
+    }),
+    exp,
+    signal(),
+    () => NOW,
+  );
+  const timers = fakeTimers(),
+    views = [];
+  let checks = 0;
+  const refresher = new EntitlementRefresher({
+    timers,
+    fallbackActive: true,
+    onView: (view) => views.push(view),
+    onAuthFailure: () => assert.fail("not an authentication failure"),
+    check: async () => {
+      checks++;
+      return refused;
+    },
+  });
+  await timers.advance(FALLBACK_REFRESH_MS);
+  assert.deepEqual(views, [
+    { kind: "inactive", planName: null, status: "none", source: "entitlement" },
+  ]);
+  assert.equal(timers.queue.length, 0);
+  await timers.advance(FALLBACK_REFRESH_MS * 3);
+  assert.equal(checks, 1);
+  refresher.stop();
+});
+
+test("agent turn failures carry a structured period reset; burst and sustained stay countdowns; absent timing stays absent", () => {
+  const copy = { serviceName: "Nebula" };
+  const resetAt = new Date(NOW + 3 * 86400000).toISOString();
+  const terminalFailure = {
+    kind: "insufficient_credits",
+    message: "Synthetic",
+    transient: false,
+  };
+  for (const reply of [
+    { failureKind: "insufficient_credits", terminalFailure, resetAt },
+    {
+      failureKind: "insufficient_credits",
+      terminalFailure: { ...terminalFailure, resetAt },
+    },
+    {
+      failureKind: "insufficient_credits",
+      terminalFailure,
+      retryAfterSeconds: 3 * 86400,
+    },
+  ]) {
+    const limit = readServiceLimit(reply, NOW);
+    assert.deepEqual(limit, {
+      kind: "billing-refused",
+      retryAfterMs: null,
+      resetsAt: NOW + 3 * 86400000,
+    });
+    assert.match(
+      serviceLimitMessage(limit, NOW, copy),
+      /^Nebula declined this AI request for your account's billing\. Nebula reports your plan allowance resets .+\. Check your account in Settings\./,
+    );
+  }
+  assert.equal(
+    readServiceLimit(
+      {
+        failureKind: "insufficient_credits",
+        terminalFailure,
+        resetAt,
+        retryAfterSeconds: 10 * 86400,
+      },
+      NOW,
+    ).resetsAt,
+    NOW + 3 * 86400000,
+  );
+  assert.doesNotMatch(
+    serviceLimitMessage(
+      readServiceLimit(
+        {
+          failureKind: "insufficient_credits",
+          terminalFailure,
+          resetAt: new Date(NOW - 1000).toISOString(),
+        },
+        NOW,
+      ),
+      NOW,
+    ),
+    /resets/,
+  );
+  assert.deepEqual(
+    readServiceLimit(
+      {
+        failureKind: "insufficient_credits",
+        terminalFailure: { ...terminalFailure, code: "allowance_exhausted" },
+        retryAfterSeconds: 120,
+      },
+      NOW,
+    ),
+    { kind: "allowance-exhausted", retryAfterMs: 120000, resetsAt: null },
+  );
+  assert.deepEqual(
+    readServiceLimit(
+      {
+        failureKind: "rate_limited",
+        terminalFailure: { kind: "rate_limited" },
+        retryAfterSeconds: 5 * 86400,
+      },
+      NOW,
+    ),
+    { kind: "rate-limited", retryAfterMs: null, resetsAt: null },
+  );
+  assert.equal(
+    readServiceLimit(
+      {
+        failureKind: "insufficient_credits",
+        terminalFailure,
+        retryAfterSeconds: 1000 * 86400,
+      },
+      NOW,
+    ).resetsAt,
+    null,
+  );
+  const absent = readServiceLimit(
+    { failureKind: "insufficient_credits", terminalFailure },
+    NOW,
+  );
+  assert.deepEqual(absent, {
+    kind: "billing-refused",
+    retryAfterMs: null,
+    resetsAt: null,
+  });
+  assert.doesNotMatch(serviceLimitMessage(absent, NOW), /resets|plan/i);
+  const period = {
+    kind: "rate_limited",
+    message: "m",
+    transient: false,
+    rateLimit: {
+      kind: "rate_limited",
+      retryAfterMs: 3600000,
+      planId: "pro",
+      scope: "period",
+      resetAt: "2026-11-01T00:00:00.000Z",
+      resetAfterSeconds: 1684800,
+    },
+  };
+  const { resetAt: _omit, ...relative } = period.rateLimit;
+  assert.deepEqual(
+    readServiceLimit(
+      {
+        failureKind: "rate_limited",
+        terminalFailure: { ...period, rateLimit: relative },
+      },
+      NOW,
+    ),
+    {
+      kind: "allowance-exhausted",
+      retryAfterMs: null,
+      resetsAt: NOW + 1684800000,
+    },
+  );
+  const { resetAt: _a, resetAfterSeconds: _b, ...bare } = period.rateLimit;
+  const unknown = readServiceLimit(
+    {
+      failureKind: "rate_limited",
+      terminalFailure: { ...period, rateLimit: bare },
+    },
+    NOW,
+  );
+  assert.deepEqual(unknown, {
+    kind: "allowance-exhausted",
+    retryAfterMs: null,
+    resetsAt: null,
+  });
+  assert.equal(
+    serviceLimitMessage(unknown, NOW),
+    "Your plan's AI allowance for this period is used up. Nothing is purchased automatically. Local apps keep working.",
+  );
+  for (const scope of ["burst", "sustained"]) {
+    const burst = {
+      kind: "rate_limited",
+      message: "Provider wait",
+      transient: true,
+      rateLimit: {
+        kind: "rate_limited",
+        retryAfterMs: 2400,
+        planId: "pro",
+        scope,
+        resetAfterSeconds: 30,
+      },
+    };
+    const limit = readServiceLimit(
+      { failureKind: "rate_limited", terminalFailure: burst },
+      NOW,
+    );
+    assert.equal(limit.kind, "rate-limited", scope);
+    assert.match(
+      serviceLimitMessage(limit, NOW),
+      /rate limit was reached\. Try again in about 3 seconds\./,
+      "retryAfterMs still wins the countdown",
+    );
+  }
+});
