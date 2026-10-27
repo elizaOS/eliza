@@ -656,9 +656,14 @@ export class WaveSupervisor extends Service {
     if (!this.dependenciesSatisfied(task, tasks)) return false;
     if (this.reservations.get(taskId) === waveId) return true;
     this.releaseTerminalReservations(tasks);
+    // The cap counts lanes. A lane that is already running holds its slot, so
+    // a follow-up spawn on it (a nested sub-agent, an added agent, a rerun) is
+    // not counted against it again.
     const active = tasks.filter(
       (candidate) =>
-        readWaveId(candidate.metadata) === waveId && taskIsActive(candidate),
+        candidate.id !== taskId &&
+        readWaveId(candidate.metadata) === waveId &&
+        taskIsActive(candidate),
     ).length;
     const reserved = [...this.reservations.entries()].filter(
       ([reservedTaskId, reservedWaveId]) =>
