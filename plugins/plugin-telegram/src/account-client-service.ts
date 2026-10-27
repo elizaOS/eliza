@@ -602,9 +602,14 @@ export class TelegramAccountService extends Service {
     }
     const found: Memory[] = [];
     for (const selected of targets) {
+      // Cap the scan: fetching with an undefined limit pages to dialog
+      // exhaustion, so a search for a handful of matches costs the full
+      // history of every dialog. The cap keeps the newest messages
+      // (history fetches newest-first); matches are still sliced to the
+      // requested limit below.
       const messages = await this.fetchConnectorMessages(
         { ...context, target: selected },
-        { ...params, target: selected, limit: undefined },
+        { ...params, target: selected, limit: 15000 },
       );
       for (const message of messages) {
         if (message.content.text?.toLocaleLowerCase().includes(query))
