@@ -1448,6 +1448,13 @@ export class RemindersDomain {
       const memories = await this.ctx.runtime.getMemoriesByRoomIds({
         tableName: "messages",
         roomIds,
+        // Bound the render: with no limit this materializes the
+        // owner's whole conversation history and every line is
+        // joined into a model prompt on every reminder dispatch
+        // and workflow run. The adapter orders newest-first, so
+        // the cap keeps the newest messages, displayed
+        // oldest-first after the sort below.
+        limit: 15000,
       });
       if (!Array.isArray(memories) || memories.length === 0) {
         return [];
