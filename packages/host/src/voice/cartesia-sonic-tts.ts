@@ -727,7 +727,7 @@ export class CartesiaSonicTtsStream {
             ? error.code
             : "PROVIDER_MESSAGE_INVALID",
       });
-      this.socket.close(1011, "Invalid Cartesia provider message");
+      this.socket.close(4011, "Invalid Cartesia provider message");
       return;
     }
     if (!message) return;
