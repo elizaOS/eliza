@@ -675,7 +675,16 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
           includeSpamTrash: true,
           // Gmail rounds before: to seconds; apply the exact bound before
           // consuming the result limit, including within its final second.
-          maxResults: filters.untilMs === undefined ? filters.limit : undefined,
+          // An untilMs window with no sinceMs is unbounded below, and the
+          // caller's limit is dropped for that case, so the provider loop
+          // would page everything older than untilMs. Bound that case at
+          // 15000; a sinceMs + untilMs window stays provider-bounded.
+          maxResults:
+            filters.untilMs === undefined
+              ? filters.limit
+              : filters.sinceMs === undefined
+                ? 15000
+                : undefined,
         },
         filters.channelIds
       );
