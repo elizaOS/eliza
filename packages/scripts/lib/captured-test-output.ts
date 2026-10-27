@@ -15,8 +15,19 @@ const FAILING_TEST_FILE_PATTERN =
 // spans the entire child stream so the cap never hides which suites failed.
 export const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 
-function collectFailingTestFiles(line: string, files: Set<string>) {
+function collectFailingTestFiles(
+  line: string,
+  files: Set<string>,
+  bunFiles: Map<string, string>,
+  source: string,
+) {
   const plainLine = line.replace(ANSI_ESCAPE_PATTERN, "");
+  const bunHeader = /^(.+\.(?:test|spec)\.[cm]?[jt]sx?):\s*$/.exec(plainLine);
+  if (bunHeader) bunFiles.set(source, bunHeader[1]);
+  if (/^\(fail\)\s/.test(plainLine)) {
+    const file = bunFiles.get(source);
+    if (file) files.add(file);
+  }
   for (const match of plainLine.matchAll(FAILING_TEST_FILE_PATTERN)) {
     files.add(match[1].trim());
   }
@@ -26,6 +37,7 @@ export interface CapturedTestOutput {
   failingTestFiles: Set<string>;
   omittedChars: number;
   pendingLines: Map<string, string>;
+  bunFilesBySource: Map<string, string>;
   retained: string;
 }
 
@@ -34,6 +46,7 @@ export function createCapturedTestOutput(): CapturedTestOutput {
     failingTestFiles: new Set(),
     omittedChars: 0,
     pendingLines: new Map(),
+    bunFilesBySource: new Map(),
     retained: "",
   };
 }
@@ -48,7 +61,12 @@ export function appendCapturedTestOutput(
   const lines = combinedLines.split(/\r?\n/);
   capture.pendingLines.set(source, lines.pop() ?? "");
   for (const line of lines) {
-    collectFailingTestFiles(line, capture.failingTestFiles);
+    collectFailingTestFiles(
+      line,
+      capture.failingTestFiles,
+      capture.bunFilesBySource,
+      source,
+    );
   }
 
   const next = `${capture.retained}${value}`;
@@ -70,13 +88,19 @@ export function formatCapturedTestOutput(
   capture: CapturedTestOutput,
   label: string,
 ) {
-  for (const pendingLine of capture.pendingLines.values()) {
-    collectFailingTestFiles(pendingLine, capture.failingTestFiles);
+  for (const [source, pendingLine] of capture.pendingLines) {
+    collectFailingTestFiles(
+      pendingLine,
+      capture.failingTestFiles,
+      capture.bunFilesBySource,
+      source,
+    );
   }
 
   const retainedFiles = new Set<string>();
+  const retainedBunFiles = new Map<string, string>();
   for (const line of capture.retained.split(/\r?\n/)) {
-    collectFailingTestFiles(line, retainedFiles);
+    collectFailingTestFiles(line, retainedFiles, retainedBunFiles, "combined");
   }
   const omittedFailureCount = [...capture.failingTestFiles].filter(
     (file) => !retainedFiles.has(file),
