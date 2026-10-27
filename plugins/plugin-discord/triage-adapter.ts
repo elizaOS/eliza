@@ -243,9 +243,15 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 			let before: string | undefined;
 			// Each read asks for a full Discord history page (100 per request)
 			// even for a small limit, so agent-heavy history costs one round
-			// trip per 100 messages rather than one per `limit`.
+			// trip per 100 messages rather than one per `limit`. With
+			// neither a limit nor a time window, bound the sweep: an
+			// unbounded fetch would page every channel's full history.
 			const pageSize =
-				limit === undefined ? undefined : Math.max(limit, DISCORD_HISTORY_PAGE);
+				limit === undefined
+					? opts.sinceMs === undefined
+						? 15000
+						: undefined
+					: Math.max(limit, DISCORD_HISTORY_PAGE);
 			while (true) {
 				let memories: Memory[];
 				try {
