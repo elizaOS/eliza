@@ -9,9 +9,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.telephony.SubscriptionInfo;
-import android.text.Editable;
 import android.text.InputType;
-import android.text.TextWatcher;
 import android.view.Gravity;
 import android.widget.Button;
 import android.widget.EditText;
@@ -28,9 +26,10 @@ import java.util.UUID;
 /**
  * The default SMS app's compose screen (SENDTO sms:/smsto: and quick-reply review). It is the review:
  * the owner sees and edits the exact recipients, SIM and text, and only the Send press sends. The send
- * is journaled like every reviewed send ({@link SmsSendJournal}): one operation ID per reviewed
- * content, so a repeated press reads the record and never sends twice, and any edit starts a new
- * review. Several recipients get separate texts, not a group message.
+ * is journaled like every reviewed send ({@link SmsSendJournal}): the operation ID is bound to the
+ * exact reviewed recipients, text and SIM, so pressing Send again for the same content (also after
+ * leaving and returning) reads the record and never sends twice, and any change is a new review.
+ * Several recipients get separate texts, not a group message.
  */
 public abstract class SmsComposeActivity extends Activity {
  protected abstract SmsRoleConfiguration configuration();
@@ -39,7 +38,7 @@ public abstract class SmsComposeActivity extends Activity {
  private EditText recipients, body;
  private RadioGroup sims;
  private TextView notice;
- private String operationId;
+ private String operationId, reviewedBinding;
  private boolean sending;
 
  private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
@@ -47,6 +46,7 @@ public abstract class SmsComposeActivity extends Activity {
  @Override protected void onCreate(Bundle state) {
   super.onCreate(state);
   operationId = state == null ? null : state.getString("operationId");
+  reviewedBinding = state == null ? null : state.getString("reviewedBinding");
   LinearLayout content = new LinearLayout(this);
   content.setOrientation(LinearLayout.VERTICAL);
   content.setPadding(dp(20), dp(24), dp(20), dp(24));
@@ -73,18 +73,11 @@ public abstract class SmsComposeActivity extends Activity {
   notice = new TextView(this); notice.setPadding(0, dp(12), 0, 0); content.addView(notice);
   setContentView(scroll);
   if (state == null) prefill(getIntent());
-  TextWatcher edited = new TextWatcher() {
-   public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-   public void onTextChanged(CharSequence s, int start, int before, int count) {}
-   public void afterTextChanged(Editable s) { if (!sending) { operationId = null; } }
-  };
-  recipients.addTextChangedListener(edited); body.addTextChangedListener(edited);
-  sims.setOnCheckedChangeListener((group, id) -> { if (!sending) operationId = null; });
  }
 
  @Override protected void onResume() { super.onResume(); showSims(); }
- @Override protected void onSaveInstanceState(Bundle state) { super.onSaveInstanceState(state); state.putString("operationId", operationId); }
- @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (!sending) { prefill(intent); operationId = null; } }
+ @Override protected void onSaveInstanceState(Bundle state) { super.onSaveInstanceState(state); state.putString("operationId", operationId); state.putString("reviewedBinding", reviewedBinding); }
+ @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (!sending) prefill(intent); }
 
  private void prefill(Intent intent) {
   Uri data = intent == null ? null : intent.getData();
@@ -132,9 +125,11 @@ public abstract class SmsComposeActivity extends Activity {
   final String[] to = numbers.toArray(new String[0]);
   final String text = body.getText().toString();
   final int subscription = sims.getCheckedRadioButtonId() - 1;
-  try { SmsSendJournal.validate(operationId == null ? "pending" : operationId, to, text, subscription); }
+  try { SmsSendJournal.validate("pending", to, text, subscription); }
   catch (IllegalArgumentException invalid) { notice.setText("Enter up to five phone numbers, a message and a SIM."); return; }
-  if (operationId == null) operationId = UUID.randomUUID().toString();
+  // One operation ID per exact reviewed content: the same content never sends twice; a change is a new review.
+  String binding = SmsSendJournal.bindingText(to, text, subscription);
+  if (operationId == null || !binding.equals(reviewedBinding)) { operationId = UUID.randomUUID().toString(); reviewedBinding = binding; }
   final String id = operationId;
   sending = true; notice.setText("Sending…");
   try {
