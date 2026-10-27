@@ -256,6 +256,17 @@ establish process-death persistence. The permission watcher is removed on destro
 tabs and history (private tabs never enter a snapshot), and restores saved tabs only into an
 untouched browser. Hosts own tab views, storage and the bounds (`BrowsingLimits`).
 
+Page reading (read aloud, ask about a page) has a native and a renderer half. Android
+`BrowserPageReading` refuses sensitive addresses (`sensitiveUrl`) and holds `EXTRACT`, the
+fixed script a host runs only in an isolated world of the selected tab's main frame; it scans
+the whole document and returns `{blocked:true}` for credential prose, login fields or
+unlabelled codes, otherwise at most 5,000 characters of visible article text. `./page-reading`
+applies the same text and address rules in the renderer, probes provider support
+(`createReadingSupport`), and `pageQuestionExcerpt` returns the excerpt a native question
+review released, or `""` when the provider has no isolated world so the host's review opens
+for pasted text. A sensitive page never opens a review. Hosts own the review UI, consent,
+speech and what is sent; this heuristic is not a credential detector.
+
 `SubmittedNavigation` from `./submitted-navigation` owns submitted-address history, stale-check fencing and revision-bound explicit one-time overrides. Hosts validate/resolve addresses and supply a verdict check. Failed checks stay unavailable. The default `check-first` policy waits for a clean verdict. A host can select `policy: "blacklist"` to permit unavailable and lookalike results; a confirmed blocked result still stops navigation. Navigation waits for the host check, which should use a local cache rather than await feed downloads. Request-time enforcement must also cover redirects and subsequent navigation. It does not grant task actions. Hosts retain warning/confirmation UI, sandbox configuration and all navigation authorization. This controller cannot observe internal iframe navigation or certify loaded content.
 
 ## Android host web policy

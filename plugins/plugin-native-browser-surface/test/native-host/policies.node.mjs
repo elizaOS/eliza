@@ -24,6 +24,7 @@ const classes = [
   "BrowserCapturePolicy",
   "BrowserFieldOrigin",
   "BrowserHttpAuthOrigin",
+  "BrowserPageReading",
 ];
 const consumers = [
   "BrowserWebPolicyTest",
@@ -118,4 +119,55 @@ test("browser login bindings are admitted by the password policy only for the bo
       assert.match(result, /^\d+ assertions passed/);
       t.diagnostic(`${consumer}: ${result.trim()}`);
     });
+});
+
+// The native and renderer halves of page reading refuse the same HTTPS addresses and say the same words.
+test("native and renderer page reading agree", async (t) => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "browser-reading-"));
+  t.after(() => fs.rmSync(output, { recursive: true, force: true }));
+  const urls = [
+    "https://example.com/garden/journal",
+    "https://pass.proton.me/",
+    "https://a.vault.bitwarden.com/x",
+    "https://example.com/%70assword",
+    "https://example.com/#/vault",
+    "https://example.com/article?API+KEY=x",
+    "https://example.com/a?%61pi%5fkey=x",
+    "https://example.com/account/settings",
+    "https://example.com/tokens-of-appreciation",
+    "https://user@example.com/",
+    "https://example.com/%zz",
+    "https://example.com./reset-password",
+  ];
+  const probe = path.join(output, "ReadingProbe.java");
+  fs.writeFileSync(
+    probe,
+    `public final class ReadingProbe { public static void main(String[] urls) { System.out.println(ai.eliza.plugins.browsersurface.BrowserPageReading.UNSUPPORTED_MESSAGE); for (String url : urls) System.out.println(ai.eliza.plugins.browsersurface.BrowserPageReading.sensitiveUrl(url)); } }`,
+  );
+  execFileSync(
+    bin("javac"),
+    [
+      "-J-Xmx128m",
+      "-d",
+      output,
+      path.join(source, "BrowserPageReading.java"),
+      probe,
+    ],
+    { timeout: 60000 },
+  );
+  const [message, ...native] = execFileSync(
+    bin("java"),
+    ["-Xmx128m", "-cp", output, "ReadingProbe", ...urls],
+    { timeout: 60000, encoding: "utf8" },
+  )
+    .trim()
+    .split("\n");
+  const renderer = await import(
+    new URL("../../src/page-reading.ts", import.meta.url).href
+  );
+  assert.equal(message, renderer.READING_UNSUPPORTED_MESSAGE);
+  assert.deepEqual(
+    native.map((value) => value === "true"),
+    urls.map((url) => renderer.sensitiveReadingUrl(url)),
+  );
 });

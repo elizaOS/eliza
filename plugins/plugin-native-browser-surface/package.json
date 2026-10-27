@@ -33,6 +33,11 @@
       "eliza-source": "./src/browsing-session.ts",
       "types": "./dist/esm/browsing-session.d.ts",
       "import": "./dist/esm/browsing-session.js"
+    },
+    "./page-reading": {
+      "eliza-source": "./src/page-reading.ts",
+      "types": "./dist/esm/page-reading.d.ts",
+      "import": "./dist/esm/page-reading.js"
     }
   },
   "unpkg": "dist/plugin.js",
