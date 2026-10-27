@@ -128,7 +128,7 @@ const UNVERIFIED =
 const ASSET = "(?:tokens?|crypto|SOL|ETH|BTC|USDC|USDT)";
 // A statement of what a wallet holds, in a reply or a request.
 const HOLDING_STATEMENT = new RegExp(
-  String.raw`\b(?:(?:your|my)\s+(?:[A-Za-z][A-Za-z0-9]*\s+)?(?:wallet|holdings|portfolio)|(?:wallet|holdings|portfolio)\s+(?:(?:currently|now|still)\s+)?(?:holds|contains|has|includes)|${ASSET}\s+balance)\b`,
+  String.raw`\b(?:(?:your|my)\s+(?:[A-Za-z][A-Za-z0-9]*\s+)?(?:wallet|holdings|portfolio|balance)|(?:wallet|holdings|portfolio)\s+(?:(?:currently|now|still)\s+)?(?:holds|contains|has|includes)|${ASSET}\s+balance)\b`,
   "i",
 );
 const HOLDING_QUESTION = new RegExp(
