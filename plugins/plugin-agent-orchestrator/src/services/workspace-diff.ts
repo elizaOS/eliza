@@ -535,7 +535,17 @@ export async function capturePrGateChangeSet(
     names = await gitResult(workdir, args);
   }
   const changedFiles = parseNameStatus(requireGitSuccess(names, workdir, args));
-  const diffRaw = await git(workdir, ["diff", ...refs]);
+  // The secret scan reads `+` lines, so the user's Git config (an external
+  // diff tool, color.ui=always, textconv) and `-diff`/`binary` attributes
+  // must not change the patch format or hide a file's added lines.
+  const diffRaw = await git(workdir, [
+    "diff",
+    "--no-ext-diff",
+    "--no-color",
+    "--no-textconv",
+    "--text",
+    ...refs,
+  ]);
   return {
     changedFiles,
     diff: diffRaw,

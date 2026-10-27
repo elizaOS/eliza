@@ -186,20 +186,15 @@ describe("workspace diff production paths", () => {
     });
   });
 
-  it("rejects failed Git output even when an external diff emitted a prefix", async () => {
+  it("rejects failed Git output even when the patch emitted a prefix", async () => {
     git("branch", "review-base");
     writeFileSync(join(dir, "tracked.txt"), "after\n");
-    git("add", "tracked.txt");
+    writeFileSync(join(dir, "unreadable.txt"), "blob removed below\n");
+    git("add", "tracked.txt", "unreadable.txt");
     git("commit", "-q", "-m", "change");
-    const helper = join(dir, "failed-diff.sh");
-    writeFileSync(
-      helper,
-      "#!/bin/sh\nprintf 'partial diff output\\n'\nexit 2\n",
-      {
-        mode: 0o700,
-      },
-    );
-    git("config", "diff.external", helper);
+    // The file list needs no blob; the patch prints tracked.txt, then fails.
+    const blob = git("rev-parse", "HEAD:unreadable.txt");
+    rmSync(join(dir, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
     await expect(
       capturePrGateChangeSet(dir, "review-base"),
     ).rejects.toMatchObject({
