@@ -1096,12 +1096,14 @@ export class IMessageService extends Service implements IIMessageService {
           readTargetAccountId(target) ?? readContextAccountId(context)
         );
         const chatId = target ? await resolveIMessageChatId(context.runtime, target) : null;
-        // Search the whole chat, then keep `limit` matches (as the Slack,
-        // Discord and Google Chat connectors do): limiting the read first
-        // searched only the newest `limit` messages.
+        // Cap the scan: reading with no limit turns into LIMIT -1, so a
+        // search for a handful of matches materializes the whole chat
+        // (or the whole database, with no chat target) before filtering.
+        // The cap keeps the newest messages (the query orders newest
+        // first); matches are still sliced to the requested limit below.
         const platformMessages = await readIMessageConnectorMessages(
           service,
-          { ...(chatId ? { chatId } : {}) },
+          { ...(chatId ? { chatId } : {}), limit: 15000 },
           accountId,
           chatId
         );
