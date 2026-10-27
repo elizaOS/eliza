@@ -1,7 +1,7 @@
 /**
- * Deployed latency harness for plan admission (AlphaCompute/alphaphone#410).
- * It measures what Cloud's plan admission adds to the existing inference and
- * Maps requests of a real deployment, under five conditions:
+ * Deployed latency harness for subscription plan admission. It measures what
+ * Cloud's plan admission adds to the existing inference and Maps requests of
+ * a real deployment, under five conditions:
  *
  *   normal          an account with an admitted plan and tokens available
  *   cache-miss      the first request of each fresh key (cold auth and plan caches)
@@ -386,19 +386,39 @@ export function requestPlan(
   };
 }
 
+/** Client deadline of one measured request. */
+export const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Sends one request and classifies it. A request that gets no response (a
+ * timeout, a reset connection or a refused redirect) is recorded as status 0,
+ * `unavailable`, with the time the client waited: during an outage that wait
+ * is the measurement, and one lost request never discards the whole run.
+ */
 export async function measure(
   plan: RequestPlan,
   fetchImpl: typeof fetch = fetch,
   now: () => number = () => performance.now(),
 ): Promise<Sample> {
   const started = now();
-  const response = await fetchImpl(plan.url, {
-    ...plan.init,
-    redirect: "error",
-    signal: AbortSignal.timeout(30_000),
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(plan.url, {
+      ...plan.init,
+      redirect: "error",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    return {
+      status: 0,
+      outcome: "unavailable",
+      clientMs: Math.round((now() - started) * 1000) / 1000,
+      serverTiming: {},
+    };
+  }
   const clientMs = now() - started;
-  const body = await boundedJson(response);
+  // A body cut off after the headers still has a status; it is classified without the body.
+  const body = await boundedJson(response).catch(() => null);
   return {
     status: response.status,
     outcome: classifyResponse(

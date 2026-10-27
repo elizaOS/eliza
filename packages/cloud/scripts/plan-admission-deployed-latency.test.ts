@@ -224,3 +224,50 @@ test("a run measures each condition on the existing routes, subtracts the baseli
     /cache-miss needs 10 fresh keys/,
   );
 });
+
+test("a request that gets no response is an unavailable sample with its wait, and the run continues", async () => {
+  const config = parseDeployedLatencyConfig({
+    ...base,
+    services: ["maps"],
+    conditions: {
+      normal: { keyEnv: "BENCH_NORMAL_KEY" },
+      "billing-outage": {
+        keyEnv: "BENCH_OUTAGE_KEY",
+        apiBase: "https://api-outage.eliza.app",
+      },
+    },
+  });
+  const env = {
+    BENCH_NORMAL_KEY: "eliza_normal_secret",
+    BENCH_OUTAGE_KEY: "eliza_outage_secret",
+  };
+  let clock = 0;
+  let normalCalls = 0;
+  const fetchStub = (async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.startsWith("https://api-outage.eliza.app/")) {
+      // The client deadline passes while the outage deployment holds the request.
+      clock += 30_000;
+      throw new DOMException("The operation timed out.", "TimeoutError");
+    }
+    clock += url.endsWith("/entitlement-keys") ? 10 : 25;
+    if (url.endsWith("/api/v1/maps/geocode") && ++normalCalls === 3)
+      throw new TypeError("fetch failed");
+    return Response.json({ ok: true });
+  }) as typeof fetch;
+  const result = await runDeployedLatency(config, env, fetchStub, () => clock);
+  const outage = result.series.find(
+    (row) => row.condition === "billing-outage",
+  );
+  assert.deepEqual(outage?.outcomes, { unavailable: 5 });
+  assert.deepEqual(outage?.statuses, { "0": 5 });
+  assert.equal(outage?.mismatches, 0);
+  assert.equal(outage?.client?.p50, 30_000);
+  // A lost request where a response was expected is still counted, not dropped.
+  const normal = result.series.find((row) => row.condition === "normal");
+  assert.deepEqual(normal?.outcomes, { admitted: 4, unavailable: 1 });
+  assert.equal(normal?.mismatches, 1);
+  assert.equal(result.expectationsMet, false);
+  for (const secret of Object.values(env))
+    assert.ok(!JSON.stringify(result).includes(secret));
+});
