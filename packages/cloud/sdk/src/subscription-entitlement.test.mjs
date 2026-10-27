@@ -568,6 +568,22 @@ test("the account summary carries plan, allowance, plan end and a current rate-l
     }).limit,
     /allowance for this period is used up\. It resets /,
   );
+  // A countdown that ran out is never shown as "about 1 second": the reset
+  // still ahead says when to try again.
+  const burst = {
+    kind: "rate-limited",
+    retryAfterMs: 30_000,
+    resetsAt: NOW + 120_000,
+  };
+  assert.equal(
+    subscriptionSummary(view, {
+      lastLimit: burst,
+      lastLimitAt: NOW - 60_000,
+      now: NOW,
+      copy,
+    }).limit,
+    "The AI request rate limit was reached. Try again in about 2 minutes. Synthetic Phone did not retry your message.",
+  );
   // An unsigned snapshot plan reports its period end but no invented allowance.
   const snapshot = subscriptionSummary(
     {

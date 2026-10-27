@@ -1458,8 +1458,12 @@ export function subscriptionSummary(
         elapsed < 60_000))
       ? {
           ...limit,
+          // Only the part of the wait still ahead is shown. A countdown that
+          // has run out leaves the reset (when one is still ahead) to say when.
           retryAfterMs:
-            limit.retryAfterMs === null ? null : limit.retryAfterMs - elapsed,
+            limit.retryAfterMs === null || limit.retryAfterMs <= elapsed
+              ? null
+              : limit.retryAfterMs - elapsed,
         }
       : null;
   return {
