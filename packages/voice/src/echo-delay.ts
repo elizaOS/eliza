@@ -34,7 +34,7 @@ export interface EchoDelayOptions {
  * `near[n] ≈ g · far[n - d]`. Returns that lag plus its normalized
  * cross-correlation as a `[0, 1]` confidence.
  *
- * Normalized correlation is scale-invariant, so the playback gain `g` does not
+ * Correlation magnitude is scale-invariant, so the playback gain `g` does not
  * bias the result. A low confidence (e.g. `< 0.3`) means no detectable echo
  * (the signals are independent) — the caller should keep its previous
  * calibration rather than trust a spurious peak.
@@ -68,7 +68,7 @@ export function estimateEchoDelaySamples(
       farEnergy += b * b;
     }
     const denom = Math.sqrt(nearEnergy * farEnergy);
-    const corr = denom > 0 ? dot / denom : 0;
+    const corr = denom > 0 ? Math.abs(dot / denom) : 0;
     if (corr > bestCorr) {
       bestCorr = corr;
       bestLag = lag;
