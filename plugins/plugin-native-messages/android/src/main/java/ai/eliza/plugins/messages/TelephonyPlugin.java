@@ -52,6 +52,7 @@ import org.json.JSONObject;
  * app handoff remains, and a handoff is never reported as sent. Roles are requested only through
  * Android's own dialog and only when the host declares the components the role needs.
  */
+@androidx.annotation.RequiresApi(29) // RoleManager and SIM carrier identity; profile hosts target Android 10 and later.
 public abstract class TelephonyPlugin extends Plugin {
  public static final Pattern NUMBER = Pattern.compile("^\\+?[0-9]{2,20}$");
  public static final int MAX_RECIPIENTS = 10, MAX_BODY = 5000, MAX_SUBSCRIPTIONS = 8, MAX_TEXT = 256;
