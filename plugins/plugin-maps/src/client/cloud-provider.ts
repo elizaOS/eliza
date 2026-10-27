@@ -122,6 +122,23 @@ export function cloudMapsServiceLimit(
   };
 }
 
+/** One sentence for location controls: who receives search text and coordinates. */
+export function describeMapsDisclosure(
+  disclosure: CloudMapsDisclosure | undefined,
+): string {
+  if (!disclosure) return "";
+  const gateway =
+    disclosure.recipients.find((recipient) => recipient.role === "gateway")
+      ?.name ?? "Cloud Maps";
+  const services = disclosure.recipients
+    .filter((recipient) => recipient.role !== "gateway")
+    .map(
+      (recipient) =>
+        `${recipient.name} for ${recipient.role}, operated by ${recipient.operator}`,
+    );
+  return `Searches and route points are sent to ${gateway}${services.length ? ` and ${services.join(" and ")}` : ""}. Cloud keeps only the request type and result, not your searches or locations.`;
+}
+
 function disclosureOf(value: unknown): CloudMapsDisclosure | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as { recipients?: unknown; cloudRecords?: unknown };

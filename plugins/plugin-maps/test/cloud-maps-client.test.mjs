@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   cloudMapsFailure,
   createCloudMaps,
+  describeMapsDisclosure,
   insideCloudCoverage,
 } from "../src/client/cloud-provider.ts";
 import { MapsFailure } from "../src/client/contracts.ts";
@@ -557,6 +558,11 @@ assert.equal(
     );
     assert.equal(maps.cloudMapsCoverage().disclosure, undefined);
   }
+  assert.equal(
+    describeMapsDisclosure(disclosure),
+    "Searches and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations.",
+  );
+  assert.equal(describeMapsDisclosure(undefined), "");
   console.log(
     "PASS Cloud Maps device provider: sources and location disclosure",
   );
