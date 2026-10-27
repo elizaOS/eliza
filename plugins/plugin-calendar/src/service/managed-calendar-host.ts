@@ -110,14 +110,16 @@ export async function calendarAgentWrite(
       ? ["operation", "grantId", "calendarId"]
       : input.operation === "write-target"
         ? ["operation", "grantId", "calendarId", "eventId"]
-        : [
-            "operation",
-            "grantId",
-            "calendarId",
-            "accountId",
-            "payload",
-            "preflight",
-          ];
+        : input.operation === "linked-sync"
+          ? ["operation", "grantId", "calendarId", "accountId", "command"]
+          : [
+              "operation",
+              "grantId",
+              "calendarId",
+              "accountId",
+              "payload",
+              "preflight",
+            ];
   if (Object.keys(input).some((key) => !allowed.includes(key)))
     throw Error("Unsupported Calendar operation field");
   if (
@@ -175,6 +177,78 @@ export async function calendarAgentWrite(
       throw error;
     }
   };
+  if (input.operation === "linked-sync") {
+    if (input.accountId !== caps.accountId)
+      throw Error("Calendar account changed");
+    const command = record(input.command);
+    const fields =
+      command.kind === "get"
+        ? ["kind", "reference"]
+        : command.kind === "create"
+          ? ["kind", "idempotencyKey", "event"]
+          : command.kind === "update"
+            ? ["kind", "eventId", "expectedEtag", "event"]
+            : command.kind === "delete"
+              ? ["kind", "eventId", "expectedEtag"]
+              : [];
+    if (
+      !fields.length ||
+      Object.keys(command).some((key) => !fields.includes(key))
+    )
+      throw Error("Unsupported linked Calendar command");
+    const exact = (value: unknown): value is string =>
+      typeof value === "string" && value.length > 0;
+    let bound: CalendarSyncRequest;
+    if (command.kind === "get") {
+      const reference = record(command.reference);
+      const keys = Object.keys(reference);
+      if (
+        keys.length !== 1 ||
+        !["eventId", "idempotencyKey"].includes(keys[0]) ||
+        !exact(reference[keys[0]])
+      )
+        throw Error("Exact linked Calendar reference required");
+      return client.googleCalendarSync(
+        {
+          kind: "get",
+          selection: selected,
+          reference: reference as
+            | { eventId: string }
+            | { idempotencyKey: string },
+        },
+        signal,
+      );
+    }
+    if (command.kind === "create") {
+      if (!exact(command.idempotencyKey))
+        throw Error("Stable linked Calendar operation key required");
+      bound = {
+        kind: "create",
+        selection: selected,
+        idempotencyKey: command.idempotencyKey,
+        event: record(command.event) as LinkedCalendarSemanticEvent,
+      };
+    } else {
+      if (!exact(command.eventId) || !exact(command.expectedEtag))
+        throw Error("Exact linked Calendar revision required");
+      bound =
+        command.kind === "update"
+          ? {
+              kind: "update",
+              selection: selected,
+              eventId: command.eventId,
+              expectedEtag: command.expectedEtag,
+              event: record(command.event) as LinkedCalendarSemanticEvent,
+            }
+          : {
+              kind: "delete",
+              selection: selected,
+              eventId: command.eventId,
+              expectedEtag: command.expectedEtag,
+            };
+    }
+    return write(bound);
+  }
   const external = (id: unknown) => {
     if (
       typeof id !== "string" ||
