@@ -51,9 +51,14 @@ async function fetchOwnerChatMessages(
   // Collect every matching client_chat room id.
   const targetRoomIds = chatRooms.map((r) => r.id as UUID);
 
+  // Bound the render: with no limit this returns the owner's whole
+  // app conversation, which grows without bound and is rendered
+  // into the prompt on every admin turn. The adapter orders
+  // newest-first, so the cap keeps the newest messages.
   const memories = await runtime.getMemoriesByRoomIds({
     tableName: "messages",
     roomIds: targetRoomIds,
+    limit: 15000,
   });
 
   // Sort newest-first (getMemoriesByRoomIds default may vary)
