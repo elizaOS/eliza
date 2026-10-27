@@ -74,9 +74,16 @@ export const automationTerminalBridgeProvider: Provider = {
         return { text: "", values: {}, data: {} };
       }
 
+      // Bound it: without a limit this fetches the linked room's entire
+      // history on every turn and renders all of it into the prompt.
+      // The cap keeps the newest messages (reads order newest-first);
+      // the ascending sort below still yields them chronologically.
       const memories = await runtime.getMemories({
         roomId: sourceRoomId,
         tableName: "messages",
+        limit: 15000,
+        orderBy: "createdAt",
+        orderDirection: "desc",
       });
       const visibleMessages = memories
         .filter((entry) => entry.content.text)
