@@ -16,16 +16,16 @@ import {
   runPlannerLoop,
 } from "../../runtime/planner-loop.ts";
 import {
+  capturePlannerReplyRecovery,
+  parseReplyRecoveryHistorySelection,
+} from "./egress-policy.ts";
+import {
   loadHistoryReferences,
   projectBackgroundHistory,
   projectReviewedHistory,
   requestedHistory,
   withBackgroundHistory,
 } from "./history-discovery.ts";
-import {
-  capturePlannerReplyRecovery,
-  parseReplyRecoveryHistorySelection,
-} from "./egress-policy.ts";
 import { executeV5PlannedToolCall } from "./planned-tool.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
 
@@ -335,31 +335,23 @@ it.each([
       runJsonModel: async ({ actionType, prompt }) => {
         expect(actionType).toBe("lifeops.calendar.extract_create_event");
         prompts.push(prompt);
+        const evidence = [
+          {
+            sourceId: `current:${message.id}`,
+            quote: String(message.content.text),
+          },
+        ];
         return {
           rawResponse: "{}",
           parsed: {
             requiresInput: true,
             clarification: "What time?",
-            guestIntent: {
-              state: "none",
-              evidence: [
-                {
-                  sourceId: `current:${message.id}`,
-                  quote: message.content.text,
-                },
-              ],
-              guests: [],
-            },
+            guestIntent: { state: "none", guests: [], evidence },
             noteIntent: {
               state: "none",
-              evidence: [
-                {
-                  sourceId: `current:${message.id}`,
-                  quote: message.content.text,
-                },
-              ],
-              descriptionMode: "extracted",
               sourceNote: null,
+              descriptionMode: "extracted",
+              evidence,
             },
           },
         };

@@ -3363,6 +3363,14 @@ describe("final effective verdict retains unresolved effect authority", () => {
         expect(mapped.subPlannerEvaluation?.success).not.toBe(true);
         expect(mapped.subPlannerEvaluation?.messageToUser).not.toBe(claim);
       }
+      if (mode === "different") {
+        expect(result.evaluator).toMatchObject({
+          success: false,
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          messageToUser: result.finalMessage,
+        });
+      }
       if (verifiedSibling) {
         expect(
           result.trajectory.steps.find((step) => step.result?.userFacingText)

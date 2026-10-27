@@ -51,8 +51,8 @@ import {
   financialHoldingIsUngrounded,
   financialObservationProviders,
 } from "./financial-observations.ts";
-import { referenceRepeatedHistory } from "./history-wire.ts";
 import { projectBackgroundHistory } from "./history-discovery.ts";
+import { referenceRepeatedHistory } from "./history-wire.ts";
 import {
   type RecoveredReplyClaim,
   reviewRecoveredReply,

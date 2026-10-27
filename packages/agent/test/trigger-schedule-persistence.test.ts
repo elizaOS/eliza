@@ -183,6 +183,7 @@ it.each([
     if (changeInstructions) {
       expect(result.finalMessage).not.toBe(expectedMessage);
       expect(result.evaluator?.success).not.toBe(true);
+      expect(result.trajectory.evaluatorOutputs.at(-1)?.success).toBe(true);
     } else {
       expect(result.finalMessage).toBe(expectedMessage);
       if (corrected) expect(result.evaluator?.success).toBe(true);
