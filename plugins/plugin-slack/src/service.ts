@@ -3809,9 +3809,13 @@ export class SlackService extends Service implements ISlackService {
     }
 
     const requestedLimit = normalizeConnectorLimit(params.limit);
+    // Cap the scan: fetching with an undefined limit pages to channel
+    // exhaustion, so a search for a handful of matches costs the full
+    // channel history. The cap keeps the newest messages (fetches page
+    // newest-first); matches are still sliced to the requested limit.
     const memories = await this.fetchConnectorMessages(context, {
       ...params,
-      limit: undefined,
+      limit: 15000,
     });
     const matches = memories.filter((memory) => {
       const text = String(memory.content.text ?? "").toLowerCase();
