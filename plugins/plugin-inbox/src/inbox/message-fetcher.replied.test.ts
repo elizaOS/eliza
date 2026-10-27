@@ -1,7 +1,9 @@
 /**
- * A chat message the agent answered later in the same room is not "missed".
- * The fetcher sets repliedAt from the latest agent message in the room, and
+ * A chat message the agent answered later in the same DM is not "missed".
+ * The fetcher sets repliedAt from the latest agent message in the DM, and
  * the missed-only inbox (the proactive digest) leaves the answered one out.
+ * In a group room the agent may have answered someone else, so a message
+ * there stays missed.
  */
 
 import type { LifeOpsInboxChannel } from "@elizaos/contracts";
@@ -98,5 +100,55 @@ describe("fetchChatMessages reply state", () => {
     expect(inbox.messages.map((message) => message.id)).toEqual([
       `imessage:${OPEN}`,
     ]);
+  });
+
+  it("keeps a group message missed when the agent answered someone else", async () => {
+    const asked = Date.now() - 48 * 60 * 60 * 1000;
+    const OTHER = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
+    const room: Room = {
+      id: ANSWERED_ROOM,
+      name: "Project",
+      source: "imessage",
+      type: ChannelType.GROUP,
+      channelId: "chat-project",
+      metadata: {},
+    };
+    const memory = (
+      id: UUID,
+      entityId: UUID,
+      createdAt: number,
+      text: string,
+    ): Memory => ({
+      id,
+      agentId: AGENT,
+      entityId,
+      roomId: ANSWERED_ROOM,
+      createdAt,
+      content: { text, source: "imessage" },
+      metadata: { type: "message" },
+    });
+    // Newest first: the agent answers OTHER after SENDER asked.
+    const memories = [
+      memory(REPLY, AGENT, asked + 60_000, "Other, the deck is attached."),
+      memory(OPEN, SENDER, asked, "Can you send the contract?"),
+      memory(ANSWERED, OTHER, asked - 60_000, "Can you send the deck?"),
+    ];
+    const runtime = {
+      agentId: AGENT,
+      getRoomsForParticipant: async () => [ANSWERED_ROOM],
+      getRoomsByIds: async () => [room],
+      getMemoriesByRoomIds: async ({ offset = 0 }: { offset?: number }) =>
+        memories.slice(offset),
+      getParticipantsForRooms: async (ids: UUID[]) =>
+        ids.map((roomId) => ({ roomId, entityIds: [AGENT, SENDER, OTHER] })),
+      getWorldsByIds: async () => [],
+    } as unknown as IAgentRuntime;
+
+    const messages = await fetchChatMessages(runtime, {
+      sources: ["imessage"],
+      limit: 10,
+    });
+
+    expect(messages.find((m) => m.id === OPEN)?.repliedAt).toBeUndefined();
   });
 });

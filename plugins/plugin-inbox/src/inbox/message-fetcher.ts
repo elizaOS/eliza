@@ -513,8 +513,10 @@ export async function fetchChatMessages(
         return `${name}: ${extractText(m)}`;
       });
 
-    // A reply sent in the room after this message answers it.
-    const latestAgentReply = latestAgentReplyByRoom.get(roomId);
+    // In a DM, a reply sent after this message answers it. In a group room
+    // the agent may have answered someone else, so the message stays open.
+    const latestAgentReply =
+      chatType === "dm" ? latestAgentReplyByRoom.get(roomId) : undefined;
     results.push({
       id: memoryId,
       source,
