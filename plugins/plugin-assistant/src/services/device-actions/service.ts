@@ -3582,7 +3582,7 @@ export async function requestLocalNotesUpdate(args: {
   };
 }
 
-/** Canonical conflict action requests the already-owned app Calendar range, never a managed-store substitute. */
+/** Only an explicitly selected native Calendar uses this bridge; ordinary app availability stays with CalendarService. */
 export async function requestLocalCalendarAvailability(args: {
   runtime: IAgentRuntime;
   message: Memory;
@@ -3590,16 +3590,10 @@ export async function requestLocalCalendarAvailability(args: {
 }) {
   const active = getDeviceActionTurn();
   if (!active || active.runtime !== args.runtime) return;
-  if (
-    ![
-      CALENDAR_CAPABILITY,
-      CALENDAR_CREATE_CAPABILITY,
-      CALENDAR_NEXT_CAPABILITY,
-      CALENDAR_AGENDA_CAPABILITY,
-      CALENDAR_AVAILABILITY_CAPABILITY,
-    ].some((capability) => active.credential.capabilities?.includes(capability))
-  )
-    return;
+  const source = currentAppRecordSource(args.runtime, "calendar", args.message);
+  // A native bridge capability does not select its separate Calendar store.
+  // Declining this hook lets the canonical action inspect its runtime feed.
+  if (source === "runtime") return;
   const fail = (text: string) => ({
     success: false,
     text,
@@ -3610,6 +3604,22 @@ export async function requestLocalCalendarAvailability(args: {
     turnComplete: false,
     modelReplyRequired: true,
   });
+  if (source === "unavailable")
+    return fail(
+      "The current Calendar source cannot be verified. No calendar was read.",
+    );
+  if (
+    ![
+      CALENDAR_CAPABILITY,
+      CALENDAR_CREATE_CAPABILITY,
+      CALENDAR_NEXT_CAPABILITY,
+      CALENDAR_AGENDA_CAPABILITY,
+      CALENDAR_AVAILABILITY_CAPABILITY,
+    ].some((capability) => active.credential.capabilities?.includes(capability))
+  )
+    return fail(
+      "Current requesting-device Calendar access is unavailable. No calendar was read.",
+    );
   if (
     !active.isCurrent() ||
     !active.credential.capabilities?.includes(CALENDAR_AGENDA_CAPABILITY) ||
