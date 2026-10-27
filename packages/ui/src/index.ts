@@ -329,6 +329,13 @@ export { ChatSurface } from "./components/shell/ChatSurface.js";
 export { CloudSignInRecoveryView } from "./components/shell/CloudSignInRecoveryView.js";
 export { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay.js";
 export { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback.js";
+export {
+  type DockClearance,
+  type DockClearanceOptions,
+  installDockClearance,
+  measureDockClearance,
+  visibleDocks,
+} from "./components/shell/dock-clearance.js";
 export { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface.js";
 export { HomePill } from "./components/shell/HomePill.js";
 export {
@@ -342,6 +349,15 @@ export {
   NotificationsShellBoot,
 } from "./components/shell/notifications-boot.js";
 export { PairingView } from "./components/shell/PairingView.js";
+export {
+  DEFAULT_SURFACE_LAYOUT,
+  keyboardFreeHeight,
+  raisesSoftKeyboard,
+  type SurfaceLayout,
+  type SurfaceLayoutPolicy,
+  sameSurfaceLayout,
+  surfaceLayout,
+} from "./components/shell/responsive-layout.js";
 export { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks.js";
 export { ShellControllerProvider } from "./components/shell/ShellControllerContext.js";
 export { ShellOverlays } from "./components/shell/ShellOverlays.js";
