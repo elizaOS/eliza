@@ -1252,7 +1252,9 @@ function managedFixture() {
   let accountId = "managed-account",
     remote: LinkedCalendarProviderSnapshot | null = null;
   let lostReply = false,
-    swapAccountAfterCapabilities = false;
+    swapAccountAfterCapabilities = false,
+    changeCapabilityProtocol = false;
+  const capabilityVersions: number[] = [];
   let alterReply:
     | ((result: Record<string, unknown>) => Record<string, unknown>)
     | undefined;
@@ -1283,7 +1285,10 @@ function managedFixture() {
           swapAccountAfterCapabilities = false;
           accountId = "different-account";
         }
-        return envelope(result);
+        const version =
+          changeCapabilityProtocol && capabilityVersions.length ? 2 : 1;
+        capabilityVersions.push(version);
+        return envelope({ ...result, version });
       }
       if (
         command.selection.grantId !== "real-owner-grant" ||
@@ -1359,6 +1364,10 @@ function managedFixture() {
     transport,
     commands,
     provider: new ManagedLinkedCalendarProviderPort(transport, false),
+    capabilityVersions,
+    changeCapabilityProtocol: () => {
+      changeCapabilityProtocol = true;
+    },
     alterReply: (
       alter: (result: Record<string, unknown>) => Record<string, unknown>,
     ) => {
@@ -1377,6 +1386,23 @@ function managedFixture() {
 }
 
 describe("managed owner linked Calendar provider", () => {
+  it("refuses a fresh capability protocol change before linked-sync dispatch", async () => {
+    const f = managedFixture();
+    f.changeCapabilityProtocol();
+    await expect(
+      f.provider.create(
+        { ...record(), connectorAccountId: f.grantId },
+        baseEvent,
+      ),
+    ).rejects.toThrow();
+    expect(f.capabilityVersions).toEqual([1, 2]);
+    expect(
+      f.commands.filter((command) =>
+        ["create", "update", "delete"].includes(command.kind),
+      ),
+    ).toHaveLength(0);
+  });
+
   it.each([
     ["version", 2],
     ["calendarId", "different-calendar"],

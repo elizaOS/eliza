@@ -136,6 +136,7 @@ export async function calendarAgentWrite(
     ),
   );
   if (
+    caps.version !== 1 ||
     caps.calendarId !== input.calendarId ||
     typeof caps.accountId !== "string" ||
     caps.read !== true ||
