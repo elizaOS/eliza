@@ -381,10 +381,12 @@ export function messageHandlerFromFieldResult(
   );
   // applied classifies the reply's own completed-change claim. An empty reply
   // makes none, so the claimed change is still work the planner owes.
+  // A defined-but-empty source rendering is empty too: an empty original
+  // resolves to zero parts, so it must not rescue the applied claim.
   const replyEffectStatus =
     declaredReplyEffectStatus === "applied" &&
     !replyTextRaw.trim() &&
-    sourceReply === undefined
+    (sourceReply === undefined || !sourceReply.text.trim())
       ? "pending"
       : declaredReplyEffectStatus;
   const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
