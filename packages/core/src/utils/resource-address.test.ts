@@ -11,6 +11,8 @@ it.each([
 	"https://example.com/path",
 	"https://xn--bcher-kva.de/",
 	"localhost:8080",
+	"localhost:443",
+	"127.0.0.1:443",
 	"127.0.0.1:3000",
 	"192.168.1.10:8080/admin",
 ])("recognizes a web resource without network access: %s", (text) => {
@@ -40,4 +42,5 @@ it("preserves other explicit resources for planning, never treating them as app-
 		"http:",
 	);
 	expect(parseWebResourceAddress("[::1]:8080")?.protocol).toBe("https:");
+	expect(parseWebResourceAddress("[::1]:443")?.protocol).toBe("https:");
 });

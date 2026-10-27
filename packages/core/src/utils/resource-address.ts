@@ -23,8 +23,11 @@ export function parseWebResourceAddress(value: string): URL | undefined {
 	// addresses stay resources; the existing operation's policy owns eligibility.
 	// A bare IP/localhost address with a port is a network destination too: the
 	// port separates it from a bare word and from a version-like number.
+	// The written port is the signal, not url.port: new URL() normalizes the
+	// default HTTPS port away, so localhost:443 parses with an empty port.
+	const authority = text.split(/[/?#]/u, 1)[0] ?? "";
 	const bareIpOrLocalhostWithPort =
-		url.port !== "" &&
+		/:\d+$/u.test(authority) &&
 		(host === "localhost" ||
 			/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host) ||
 			host.startsWith("["));
