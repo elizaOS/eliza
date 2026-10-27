@@ -138,11 +138,11 @@ public final class SelectedDocuments {
     return uri;
   }
   /** A grant that a saved item's source link still names is kept with the selection's. */
-  private boolean referencedByNote(Uri uri) {
+  private boolean referencedBySavedItem(Uri uri) {
     return referenced.test(uri.toString());
   }
   private void releaseUnused(Uri uri, int flags) {
-    if (uri == null || flags == 0 || selected.containsValue(uri) || referencedByNote(uri))
+    if (uri == null || flags == 0 || selected.containsValue(uri) || referencedBySavedItem(uri))
       return;
     try {
       owner.getContentResolver().releasePersistableUriPermission(uri, flags);
@@ -156,7 +156,7 @@ public final class SelectedDocuments {
   public synchronized boolean releaseUnreferenced(Uri uri) {
     Context context = owner;
     if (uri == null || !"content".equals(uri.getScheme()) || selected.containsValue(uri)
-        || referencedByNote(uri))
+        || referencedBySavedItem(uri))
       return false;
     for (android.content.UriPermission grant :
         context.getContentResolver().getPersistedUriPermissions()) {
