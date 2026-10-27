@@ -34,7 +34,8 @@ import org.json.JSONObject;
 
 /**
  * Phone roles, SIMs and SMS/MMS for installs admitted to the AOSP telephony profile. The host
- * subclasses this with its own {@code @CapacitorPlugin} name, registers the subclass only when its
+ * subclasses this under its own Capacitor plugin name (annotation on the subclass only, so plugin
+ * discovery never lists this abstract base), registers the subclass only when its
  * {@link SmsTelephonyConfiguration#admission} holds, and declares the permission aliases
  * {@code contacts}, {@code phoneState}, {@code sms} and {@code sendSms}. Every method checks the
  * admission again, so a standalone APK, a sideloaded launcher or saved renderer state can never reach
