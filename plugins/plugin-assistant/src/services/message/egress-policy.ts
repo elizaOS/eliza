@@ -725,8 +725,11 @@ export function evaluatePlannedReplyEgress(args: {
       pendingWork: args.pendingWork,
     })
   ) {
+    // A grounded completion must not excuse a second, ungrounded claim
+    // in the same reply: fall through to the empty-state check below
+    // instead of allowing here, so every asserted kind is grounded.
     if (
-      plannedReplyHasClaimGroundingReceipt({
+      !plannedReplyHasClaimGroundingReceipt({
         kind: "completed_side_effect",
         reply,
         results: args.actionResults,
@@ -734,12 +737,11 @@ export function evaluatePlannedReplyEgress(args: {
         evaluator: args.evaluator,
       })
     ) {
-      return { verdict: "allow" };
+      return {
+        verdict: "reject",
+        kind: "completed_side_effect",
+      };
     }
-    return {
-      verdict: "reject",
-      kind: "completed_side_effect",
-    };
   }
   if (replyClaimsEmptyTrackedWorkState(reply)) {
     if (
