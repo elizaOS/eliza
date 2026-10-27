@@ -1045,6 +1045,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Character experiences: distilled episodic records learned
+    // from the owner's conversations (context, outcome, learning,
+    // source rooms/messages). The write section gates /api/character
+    // for writes, but the experience GETs were left open — the same
+    // stored-content class as the owner-gated memory reads.
+    under("/api/character/experiences") ||
     (write &&
       [
         "import",
