@@ -1,0 +1,35 @@
+# GraphHopper 10 profiles for Eliza Cloud Maps: car, foot and bike, matching
+# the default ELIZA_MAPS_ROUTER_PROFILES ({"drive":"car","walk":"foot","bicycle":"bike"}).
+# The same profile set passed the Alpha regional gateway's real-route checks.
+graphhopper:
+  datareader.file: /data/region.osm.pbf
+  graph.location: /graph-cache
+  import.osm.ignored_highways: ""
+  profiles:
+    - name: car
+      custom_model_files: [car.json]
+    - name: foot
+      custom_model_files: [foot.json]
+    - name: bike
+      custom_model_files: [bike.json]
+  profiles_ch:
+    - profile: car
+    - profile: foot
+    - profile: bike
+  graph.encoded_values: car_access,car_average_speed,foot_access,foot_average_speed,foot_priority,bike_access,bike_average_speed,bike_priority,road_class,road_class_link,road_environment,max_speed,road_access,roundabout,bike_network,hike_rating,mtb_rating
+  routing.max_visited_nodes: 1000000
+  prepare.ch.threads: 2
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      bind_host: 0.0.0.0
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: 127.0.0.1
+  # Route requests carry coordinates; keep the request log disabled.
+  request_log:
+    appenders: []
+logging:
+  level: WARN
