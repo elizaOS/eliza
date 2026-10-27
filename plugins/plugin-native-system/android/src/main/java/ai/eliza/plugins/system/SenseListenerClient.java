@@ -1,6 +1,7 @@
 package ai.eliza.plugins.system;
 
 import android.app.KeyguardManager;
+import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -12,18 +13,22 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.WeakHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /** Nonprivileged access to the same-signer image listener. No enable/resume surface exists. */
 public final class SenseListenerClient {
     public static final String SETTINGS_ACTIVITY = "ai.eliza.sense.SETTINGS_ACTIVITY";
     private static final Map<String, SenseInvocation> invocations = new HashMap<>();
+    private static final Map<Activity, Long> activityBridges = new WeakHashMap<>();
+    private final Activity activity;
     private static final AtomicLong bridgeGenerations = new AtomicLong();
     public static long nextInvocationBridge() { return bridgeGenerations.incrementAndGet(); }
     private final Context context;
     private final String packageName;
 
     public SenseListenerClient(Context context) {
+        this.activity = context instanceof Activity ? (Activity) context : null;
         Context app = context.getApplicationContext();
         this.context = app == null ? context : app;
         this.packageName = context.getPackageName() + ".sense";
@@ -78,8 +83,19 @@ public final class SenseListenerClient {
         synchronized (invocations) { return invocations.computeIfAbsent(context.getPackageName(), ignored -> new SenseInvocation()); }
     }
 
-    public void bindInvocationSession(long bridge, int generation, String bindingId, String session) { invocation().bind(bridge, generation, bindingId, session); }
-    public void releaseInvocationBridge(long bridge) { invocation().release(bridge); }
+    public void bindInvocationSession(long bridge, int generation, String bindingId, String session) {
+        SenseInvocation state = invocation();
+        synchronized (state) {
+            state.bind(bridge, generation, bindingId, session);
+            if (activity != null && state.boundTo(bridge, generation, bindingId, session)) synchronized (activityBridges) {
+                activityBridges.put(activity, bridge);
+            }
+        }
+    }
+    public void releaseInvocationBridge(long bridge) {
+        invocation().release(bridge);
+        synchronized (activityBridges) { activityBridges.entrySet().removeIf(entry -> entry.getValue() == bridge); }
+    }
 
     /** Caller package must come from Android's Activity caller API, never an extra or deep link. */
     public void recordInvocation(String callerPackage) {
@@ -89,8 +105,30 @@ public final class SenseListenerClient {
         invocation().record(context.getPackageName(), callerPackage, sameSigner, SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
     }
 
+    /** Native-only hook for a warm permission-protected Power Activity; never exposed as a JS method. */
+    public boolean recordProtectedPower() {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return false;
+        final Long bridge;
+        synchronized (activityBridges) { bridge = activityBridges.get(activity); }
+        if (bridge == null) return false;
+        try {
+            ComponentName component = activity.getComponentName();
+            ActivityInfo info = context.getPackageManager().getActivityInfo(component, 0);
+            if (!context.getPackageName().equals(component.getPackageName()) || !component.getClassName().equals(activity.getClass().getName())
+                    || !component.getClassName().equals(info.name) || !context.getPackageName().equals(info.packageName)
+                    || info.targetActivity != null || !info.exported || !info.enabled || info.applicationInfo == null
+                    || !info.applicationInfo.enabled || !"android.permission.STATUS_BAR_SERVICE".equals(info.permission)) return false;
+        } catch (PackageManager.NameNotFoundException | RuntimeException unavailable) { return false; }
+        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+        return invocation().recordProtectedPower(bridge, SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
+    }
+
+    public void discardProtectedPowerInvocation(long bridge, int generation, String bindingId, String session) {
+        invocation().discardProtectedPower(bridge, generation, bindingId, session);
+    }
+
     public Bundle takeInvocation(long bridge, int generation, String bindingId, String session, boolean foreground) {
-        if (!foreground) { Bundle unavailable=new Bundle();unavailable.putBoolean("assistant",false);unavailable.putBoolean("locked",true);return unavailable; }
+        if (!foreground) { invocation().discardProtectedPower(bridge, generation, bindingId, session); Bundle unavailable=new Bundle();unavailable.putBoolean("assistant",false);unavailable.putBoolean("locked",true);return unavailable; }
         KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
         boolean locked = keyguard == null || keyguard.isKeyguardLocked();
         String origin = invocation().take(bridge, generation, bindingId, session, SystemClock.elapsedRealtime(), locked || !foreground);

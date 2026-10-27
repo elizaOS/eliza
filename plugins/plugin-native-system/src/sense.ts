@@ -30,7 +30,7 @@ export type ListenerStatus =
       listening: boolean;
       microphoneOpen: boolean;
     };
-export type AssistantInvocation = "listener" | "assist" | null;
+export type AssistantInvocation = "listener" | "power" | "assist" | null;
 export interface SensePlugin {
   status(): Promise<ListenerStatus>;
   pause(): Promise<ListenerStatus>;
@@ -40,6 +40,12 @@ export interface SensePlugin {
     generation: number;
     bindingId: string;
     sessionKey: string | null;
+  }): Promise<void>;
+  /** Drop only the current owner's pending Power receipt when capture cannot start now. */
+  discardProtectedPowerInvocation?(options: {
+    generation: number;
+    bindingId: string;
+    sessionKey: string;
   }): Promise<void>;
   takeInvocation(options: {
     generation: number;
@@ -71,8 +77,8 @@ export function parseListenerStatus(raw: unknown): ListenerStatus {
 export function parseAssistantInvocation(raw: unknown): AssistantInvocation {
   const value = record(raw);
   return value.assistant === true
-    ? value.invocation === "listener"
-      ? "listener"
+    ? value.invocation === "listener" || value.invocation === "power"
+      ? value.invocation
       : "assist"
     : null;
 }
@@ -88,7 +94,7 @@ export function listenerStartsVoice(input: {
   voiceActive: boolean;
 }): boolean {
   return (
-    input.invocation === "listener" &&
+    (input.invocation === "listener" || input.invocation === "power") &&
     input.unlocked &&
     !input.hidden &&
     !input.dialogOpen &&
@@ -154,7 +160,12 @@ function serializeInvocation<T>(run: () => Promise<T>): Promise<T> {
 
 /** Bind before consuming. Cold-start, changed-owner and stale async results cannot open the mic. */
 export function createSenseInvocationController(
-  native: Pick<SensePlugin, "bindInvocationSession" | "takeInvocation">,
+  native: Pick<
+    SensePlugin,
+    | "bindInvocationSession"
+    | "takeInvocation"
+    | "discardProtectedPowerInvocation"
+  >,
   host: SenseInvocationHost,
 ) {
   const bindingId = crypto.randomUUID();
@@ -202,14 +213,23 @@ export function createSenseInvocationController(
         bound = key;
         initialized = true;
       }
+      if (key === null) return;
       if (
-        key === null ||
         document.hidden ||
         !host.ready() ||
         host.voiceActive() ||
         document.querySelector(SENSE_MODAL_SELECTOR)
-      )
+      ) {
+        await serializeInvocation(async () => {
+          if (current(authority))
+            await native.discardProtectedPowerInvocation?.({
+              generation,
+              bindingId,
+              sessionKey: key,
+            });
+        });
         return;
+      }
       const receipt = await serializeInvocation(async () =>
         current(authority)
           ? native.takeInvocation({ generation, bindingId, sessionKey: key })
