@@ -234,7 +234,7 @@ describe("agenda from an agent calendar feed", () => {
     expect(presentOverviewAgendaFeed({ ...base, status: "transition-required" }, f).state).toBe("review");
     const failed = presentOverviewAgendaFeed({ ...base, status: "error", error: "Calendar response belongs to another agent" }, f);
     expect(failed).toEqual({
-      title: "Calendar has not been verified",
+      title: "Calendar unavailable",
       read: "Open Calendar to retry",
       description: "Calendar response belongs to another agent. Open Calendar to retry.",
       stale: false,

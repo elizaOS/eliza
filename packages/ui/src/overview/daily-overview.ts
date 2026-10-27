@@ -796,7 +796,7 @@ export function presentOverviewAgendaFeed(
     case "error":
     case "unavailable":
       return {
-        title: unverified,
+        title: "Calendar unavailable",
         read: "Open Calendar to retry",
         description: `${error ? error.replace(/[.\s]+$/, "") : input.status === "unavailable" ? "No calendar source could be read" : `${source} could not be read`}. Open Calendar to retry.`,
         stale: false,
