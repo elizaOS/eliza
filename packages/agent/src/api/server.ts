@@ -1045,6 +1045,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Inbox reads: the merged cross-channel feed (full message text,
+    // senders, rooms) plus chats and sources. GET-only on purpose:
+    // POST /api/inbox/messages carries its own explicit USER floor
+    // in-handler and is deliberately left untouched here.
+    (method === "GET" && under("/api/inbox")) ||
     (write &&
       [
         "import",
@@ -1058,6 +1063,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
       ].some((op) => under(`/api/agent/${op}`))) ||
     // Legacy restart endpoint: exits and restarts the whole agent process.
     (write && pathname === "/api/restart") ||
+    // Inbox mute write: silences the owner's rooms or whole servers.
+    // (The POST /api/inbox/messages send path is not swept in — it
+    // carries its own USER floor in-handler.)
+    (write && pathname === "/api/inbox/chats/mute") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||
