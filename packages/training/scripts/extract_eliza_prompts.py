@@ -97,7 +97,7 @@ def extract_variables(text: str) -> list[str]:
 
 def canonical_entries() -> list[PromptEntry]:
     exporter = Path(__file__).with_name("export-owned-prompts.ts")
-    rows = json.loads(subprocess.check_output(["bun", str(exporter)], cwd=ROOT, text=True))
+    rows = json.loads(subprocess.check_output(["bun", str(exporter)], cwd=ROOT, text=True, encoding="utf-8"))
     entries: list[PromptEntry] = []
     for row in rows:
         text = row["template"]
