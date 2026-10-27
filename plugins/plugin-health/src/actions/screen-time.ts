@@ -498,6 +498,12 @@ export function createOwnerScreenTimeAction({
 }: CreateOwnerScreenTimeActionOptions): Action {
   return {
     name: "OWNER_SCREENTIME",
+    // Owner screen-time analytics are owner context, like every
+    // other owner action. Without a gate, satisfiesRoleGate passes
+    // any caller when the gate is undefined — so a guest turn could
+    // read the owner's app usage and browsing activity with no
+    // check at all.
+    roleGate: { minRole: "OWNER" },
     similes: [
       "SCREENTIME",
       "SCREEN_TIME",
