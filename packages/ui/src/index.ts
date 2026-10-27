@@ -1125,6 +1125,34 @@ export {
   setDesktopLauncherEntries,
 } from "./state/desktop-tray-launcher.js";
 export {
+  browserDocumentDraftSlot,
+  compareExchangeDraftStore,
+  DURABLE_DRAFT_TEXT_LIMIT,
+  type DurableDraft,
+  DurableDraftConflict,
+  type DurableDraftDocument,
+  DurableDraftInvalid,
+  type DurableDraftOptions,
+  type DurableDraftRawCapture,
+  type DurableDraftRawSlot,
+  type DurableDraftStore,
+  type DurableDraftStoreOptions,
+  DurableDraftTooLarge,
+  emptyDurableDraft,
+  rawSlotDraftRecovery,
+  readDurableDraft,
+  replaceDurableDraft,
+  transactionalDraftStore,
+} from "./state/durable-draft.js";
+export {
+  DEFAULT_DURABLE_DRAFT_MESSAGES,
+  DurableDraftController,
+  type DurableDraftMessages,
+  type DurableDraftRestore,
+  type DurableDraftSendOutcome,
+  type DurableDraftState,
+} from "./state/durable-draft-controller.js";
+export {
   detectExistingFirstRunConnection,
   type ExistingFirstRunProbeResult,
 } from "./state/first-run-bootstrap.js";

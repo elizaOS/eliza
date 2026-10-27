@@ -141,6 +141,18 @@
       "import": "./dist/utils/text-control-editing.js",
       "default": "./dist/utils/text-control-editing.js"
     },
+    "./durable-draft": {
+      "eliza-source": "./src/state/durable-draft.ts",
+      "types": "./dist/state/durable-draft.d.ts",
+      "import": "./dist/state/durable-draft.js",
+      "default": "./dist/state/durable-draft.js"
+    },
+    "./durable-draft-controller": {
+      "eliza-source": "./src/state/durable-draft-controller.ts",
+      "types": "./dist/state/durable-draft-controller.d.ts",
+      "import": "./dist/state/durable-draft-controller.js",
+      "default": "./dist/state/durable-draft-controller.js"
+    },
     "./voice/draft-transcript-guard": {
       "eliza-source": "./src/voice/draft-transcript-guard.ts",
       "types": "./dist/voice/draft-transcript-guard.d.ts",
