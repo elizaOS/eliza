@@ -13,3 +13,9 @@ ext.minSdkVersion = profile.sdk.min
 ext.compileSdkVersion = profile.sdk.compile
 ext.targetSdkVersion = profile.sdk.target
 allprojects { repositories { google(); mavenCentral() } }
+// Modules outside this host (shared checkouts, dependency trees) are immutable inputs:
+// their generated build files stay under this host's build directory.
+subprojects {
+ if (!projectDir.canonicalFile.toPath().startsWith(rootDir.canonicalFile.toPath()))
+  layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("modules/${project.name}"))
+}

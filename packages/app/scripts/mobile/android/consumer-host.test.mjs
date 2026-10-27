@@ -273,3 +273,275 @@ test("independent modules remain included without becoming app dependencies", (t
     );
   }
 });
+
+test("an in-place host sits beside authored sources and never replaces one", (t) => {
+  const { options, generate } = setup(t);
+  // The consumer's own Android directory: authored manifests and sources stay put.
+  const authored = path.join(options.output, "app/src/main");
+  fs.mkdirSync(path.join(authored, "java"), { recursive: true });
+  fs.copyFileSync(
+    path.join(options.consumerRoot, "main.xml"),
+    path.join(authored, "AndroidManifest.xml"),
+  );
+  fs.writeFileSync(path.join(options.output, "README.md"), "authored");
+  options.profile.manifest = {
+    root: "consumer",
+    path: "android/app/src/main/AndroidManifest.xml",
+  };
+  assert.throws(generate, /unowned Android project/);
+  options.inPlace = true;
+  const result = generate();
+  assert.ok(!result.files.some((file) => file.endsWith("AndroidManifest.xml")));
+  assert.equal(
+    fs.readFileSync(path.join(options.output, "README.md"), "utf8"),
+    "authored",
+  );
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.equal(
+    profile.manifest,
+    fs.realpathSync(path.join(authored, "AndroidManifest.xml")),
+  );
+  assert.equal(
+    profile.flavors.find(({ name }) => name === "launcher").manifest,
+    fs.realpathSync(path.join(options.consumerRoot, "home.xml")),
+  );
+  assert.match(
+    fs.readFileSync(
+      path.join(
+        options.output,
+        "eliza-consumer-host/res/values/eliza_consumer_identity.xml",
+      ),
+      "utf8",
+    ),
+    /name="app_name"/,
+  );
+  generate();
+  // A later authored build script is never adopted or replaced.
+  fs.unlinkSync(path.join(options.output, ".eliza-consumer-host.json"));
+  fs.writeFileSync(path.join(options.output, "build.gradle"), "authored");
+  assert.throws(generate, /unowned generated-file collision/);
+  assert.equal(
+    fs.readFileSync(path.join(options.output, "build.gradle"), "utf8"),
+    "authored",
+  );
+});
+
+test("release signing and version overrides are environment names only", (t) => {
+  const { options, generate } = setup(t);
+  options.profile.signing = {
+    storeFile: "HOST_KEYSTORE_PATH",
+    storePassword: "HOST_KEYSTORE_PASSWORD",
+    keyAlias: "HOST_KEY_ALIAS",
+    keyPassword: "HOST_KEY_PASSWORD",
+  };
+  options.profile.versionOverride = {
+    versionCode: "HOST_VERSION_CODE",
+    versionName: "HOST_VERSION_NAME",
+  };
+  generate();
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.deepEqual(profile.signing, options.profile.signing);
+  assert.deepEqual(profile.versionOverride, options.profile.versionOverride);
+  const gradle = fs.readFileSync(
+    path.join(options.output, "app/build.gradle"),
+    "utf8",
+  );
+  assert.match(
+    gradle,
+    /incomplete signing environment\. Missing: \$\{missing\.join/,
+  );
+  assert.match(
+    gradle,
+    /if \(hostSigning\) signingConfig signingConfigs\.release/,
+  );
+  for (const mutate of [
+    (p) => (p.signing.keyAlias = p.signing.keyPassword),
+    (p) => (p.signing.storeFile = "lower_case"),
+    (p) => delete p.signing.storePassword,
+    (p) => (p.signing.extra = "HOST_EXTRA"),
+    (p) => (p.versionOverride.versionName = "1.0"),
+  ]) {
+    const { options: next, generate: again } = setup(t);
+    next.profile.signing = structuredClone(options.profile.signing);
+    next.profile.versionOverride = structuredClone(
+      options.profile.versionOverride,
+    );
+    mutate(next.profile);
+    assert.throws(again, AndroidConsumerHostError);
+    assert.equal(fs.existsSync(next.output), false);
+  }
+  options.identity.version = "1.0 beta";
+  assert.throws(generate, /version or name/);
+});
+
+test("build types, test mocks, admission and staged assets are normalized data", (t) => {
+  const { options, generate } = setup(t);
+  const source = (relative) => ({ root: "consumer", path: relative });
+  fs.mkdirSync(path.join(options.consumerRoot, "mocks/java"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(options.consumerRoot, "mocks/main.xml"),
+    "<manifest/>",
+  );
+  fs.writeFileSync(
+    path.join(options.consumerRoot, "rules.pro"),
+    "-keep class x",
+  );
+  fs.writeFileSync(path.join(options.consumerRoot, "receipt.json"), "{}");
+  fs.writeFileSync(path.join(options.consumerRoot, "product.gradle"), "");
+  Object.assign(options.profile, {
+    releaseMinify: true,
+    kotlin: false,
+    preserveRuntimeBytes: true,
+    buildTypes: {
+      debug: { abiFilters: ["arm64-v8a", "x86_64"] },
+      release: {
+        abiFilters: ["arm64-v8a"],
+        shrinkResources: true,
+        proguardFiles: [source("rules.pro")],
+      },
+    },
+    testMocks: {
+      property: "HOST_TEST_MOCKS",
+      buildConfigField: "HOST_TEST_MOCKS",
+      debug: {
+        java: [source("mocks/java")],
+        manifest: source("mocks/main.xml"),
+      },
+    },
+    admission: [
+      {
+        name: "verifyInputs",
+        command: ["node", "check.mjs"],
+        directory: source("src"),
+      },
+      {
+        name: "verifyRoot",
+        command: ["node", "root.mjs"],
+        directory: source("."),
+      },
+    ],
+    settingsAdmission: [
+      { command: ["node", "stage.mjs"], directory: source("src") },
+    ],
+    generatedSources: [
+      { sourceSet: "main", kind: "java", path: "generated/host/java" },
+    ],
+    assetFiles: [{ source: source("receipt.json"), name: "receipt.json" }],
+    appScripts: [source("product.gradle")],
+    generationInputs: [source("receipt.json")],
+    dependencies: [
+      {
+        configuration: "implementation",
+        module: "androidx.webkit:webkit",
+        toolchainVersion: "androidxWebkitVersion",
+      },
+    ],
+  });
+  generate();
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  const real = (relative) =>
+    fs.realpathSync(path.join(options.consumerRoot, relative));
+  assert.equal(profile.kotlin, false);
+  assert.equal(profile.preserveRuntimeBytes, true);
+  assert.deepEqual(profile.buildTypes.release.proguardFiles, [
+    real("rules.pro"),
+  ]);
+  assert.deepEqual(profile.testMocks.debug, {
+    java: [real("mocks/java")],
+    res: [],
+    manifest: real("mocks/main.xml"),
+  });
+  assert.deepEqual(profile.admission, [
+    {
+      name: "verifyInputs",
+      command: ["node", "check.mjs"],
+      directory: real("src"),
+    },
+    {
+      name: "verifyRoot",
+      command: ["node", "root.mjs"],
+      directory: fs.realpathSync(options.consumerRoot),
+    },
+  ]);
+  assert.deepEqual(profile.assetFiles, [
+    { source: real("receipt.json"), name: "receipt.json" },
+  ]);
+  assert.deepEqual(profile.generationInputs, [
+    {
+      file: real("receipt.json"),
+      sha256:
+        "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    },
+  ]);
+  assert.deepEqual(profile.dependencies, [
+    {
+      configuration: "implementation",
+      coordinate: `androidx.webkit:webkit:${profile.toolchain.versions.androidxWebkitVersion}`,
+    },
+  ]);
+  const gradle = fs.readFileSync(
+    path.join(options.output, "app/build.gradle"),
+    "utf8",
+  );
+  assert.match(gradle, /keepDebugSymbols/);
+  assert.match(gradle, /apply from: script/);
+  assert.match(
+    fs.readFileSync(path.join(options.output, "settings.gradle"), "utf8"),
+    /Generated Android host is stale/,
+  );
+  for (const mutate of [
+    (p) => (p.buildTypes.release.abiFilters = ["mips"]),
+    (p) => (p.buildTypes.debug.abiFilters = []),
+    (p) => (p.buildTypes.release.minify = true),
+    (p) => {
+      p.releaseMinify = false;
+      p.buildTypes.release.proguardFiles = [];
+      delete p.buildTypes.release.shrinkResources;
+    },
+    (p) => {
+      p.releaseMinify = false;
+      delete p.buildTypes.release.proguardFiles;
+    },
+    (p) => (p.testMocks.property = "lower"),
+    (p) => (p.testMocks.debug.assets = []),
+    (p) => (p.admission[0].name = "preBuild"),
+    (p) => p.admission.push({ ...p.admission[0] }),
+    (p) => (p.admission[0].command = []),
+    (p) => (p.admission[0].command = ["node", ""]),
+    (p) => (p.settingsAdmission[0].directory = source("missing")),
+    (p) => (p.assetFiles[0].source = source(".")),
+    (p) => (p.admission[1].directory = source("./")),
+    (p) => (p.generatedSources[0].path = "outside/java"),
+    (p) => (p.generatedSources[0].kind = "manifest"),
+    (p) => p.assetFiles.push({ ...p.assetFiles[0] }),
+    (p) => (p.assetFiles[0].name = "../escape.json"),
+    (p) => (p.appScripts = [source("receipt.json")]),
+    (p) => (p.dependencies[0].toolchainVersion = "unknownVersion"),
+    (p) => (p.dependencies[0].coordinate = "androidx.webkit:webkit:1.0.0"),
+    (p) => (p.kotlin = "false"),
+  ]) {
+    const next = structuredClone(options.profile);
+    mutate(next);
+    assert.throws(
+      () =>
+        generateAndroidConsumerHost({
+          ...options,
+          output: path.join(options.consumerRoot, "other"),
+          profile: next,
+        }),
+      AndroidConsumerHostError,
+    );
+    assert.equal(
+      fs.existsSync(path.join(options.consumerRoot, "other")),
+      false,
+    );
+  }
+});
