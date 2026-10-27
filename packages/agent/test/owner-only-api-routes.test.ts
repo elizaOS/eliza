@@ -1,8 +1,8 @@
 /**
  * A paired USER session (a guest device) passes the shared API gate. Wallet
- * writes, config and character writes and the memory store are owner-only:
- * real API server, SQLite runtime, host bridge that maps the guest bearer to
- * USER.
+ * writes, config and character writes, agent event injection and the memory
+ * store are owner-only: real API server, SQLite runtime, host bridge that maps
+ * the guest bearer to USER.
  */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -115,6 +115,20 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
         { method: "POST", body: JSON.stringify({ enabled: true }) },
       ],
       [
+        "/api/agent/event",
+        {
+          method: "POST",
+          body: JSON.stringify({ stream: "system", data: {} }),
+        },
+      ],
+      [
+        `/api/agents/${runtime.agentId}/event`,
+        {
+          method: "POST",
+          body: JSON.stringify({ stream: "system", data: {} }),
+        },
+      ],
+      [
         "/api/permissions/shell",
         { method: "PUT", body: JSON.stringify({ enabled: true }) },
       ],
@@ -200,6 +214,12 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       },
     );
     expect(ownerSign.status).not.toBe(403);
+    // The owner keeps agent event ingest; the gate only rejects a guest.
+    const ownerEvent = await send(OWNER_TOKEN, "/api/agent/event", {
+      method: "POST",
+      body: JSON.stringify({ stream: "system", data: { owner: true } }),
+    });
+    expect(ownerEvent.status).toBe(200);
   } finally {
     await server?.close();
     await runtime.close();
