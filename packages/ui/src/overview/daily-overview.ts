@@ -708,6 +708,127 @@ export function selectOverviewAgenda<T>(
   };
 }
 
+/** Status of an agent calendar feed controller (the LifeOps calendar contract). */
+export type OverviewAgendaFeedStatus =
+  | "disconnected"
+  | "transition-required"
+  | "legacy-recovery"
+  | "loading"
+  | "ready"
+  | "partial"
+  | "unavailable"
+  | "error";
+
+export interface OverviewAgendaFeedPresentation {
+  /** Title when no item is shown; the item's own title otherwise. */
+  title: string;
+  /** Visible line beside the item time: the source when fresh, retry or staleness. */
+  read: string;
+  description: string;
+  stale: boolean;
+  state:
+    | "loading"
+    | "ready"
+    | "empty"
+    | "stale"
+    | "error"
+    | "not-connected"
+    | "review";
+}
+
+/**
+ * The agenda card when its source is an agent calendar feed: the agent's next
+ * event, with the feed's completeness and the snapshot time it answered for.
+ * `complete` with an item is fresh; `partial` (cached data beside a failed
+ * source) or a snapshot from an earlier day is stale and keeps the item; an
+ * unavailable or failed read offers retry. "No upcoming events" is claimed
+ * only for a complete read.
+ */
+export function presentOverviewAgendaFeed(
+  input: {
+    status: OverviewAgendaFeedStatus;
+    hasItem: boolean;
+    feedState?: "complete" | "partial" | "unavailable" | null;
+    /** Snapshot instant the agent answered for, epoch milliseconds. */
+    asOf: number | null;
+    error?: string | null;
+    now: number;
+    /** Source name, for example "Agent Calendar". */
+    source: string;
+    /** Title of a complete read with no upcoming item. */
+    emptyLabel?: string;
+  },
+  format?: OverviewFormat,
+): OverviewAgendaFeedPresentation {
+  const source = input.source.trim() || "Calendar";
+  const unverified = "Calendar has not been verified";
+  const asOf = overviewInstant(input.asOf);
+  const when = asOf ? overviewWhenLabel(asOf, input.now, format) : "";
+  const error =
+    typeof input.error === "string" ? input.error.trim().slice(0, 160) : "";
+  switch (input.status) {
+    case "loading":
+      return {
+        title: "Reading your calendar…",
+        read: "",
+        description: `Reading ${source}…`,
+        stale: false,
+        state: "loading",
+      };
+    case "disconnected":
+      return {
+        title: unverified,
+        read: "",
+        description: `Connect to view ${source}.`,
+        stale: false,
+        state: "not-connected",
+      };
+    case "transition-required":
+    case "legacy-recovery":
+      return {
+        title: unverified,
+        read: "",
+        description:
+          "Saved app calendar is retained separately; review the transition.",
+        stale: false,
+        state: "review",
+      };
+    case "error":
+    case "unavailable":
+      return {
+        title: unverified,
+        read: "Open Calendar to retry",
+        description: `${error ? error.replace(/[.\s]+$/, "") : input.status === "unavailable" ? "No calendar source could be read" : `${source} could not be read`}. Open Calendar to retry.`,
+        stale: false,
+        state: "error",
+      };
+  }
+  const partial =
+    input.status === "partial" ||
+    input.feedState === "partial" ||
+    input.feedState === "unavailable";
+  const stale = partial || overviewReadIsStale(asOf, input.now);
+  if (stale)
+    return {
+      title: input.hasItem ? "" : unverified,
+      read: input.hasItem
+        ? when
+          ? `Not updated since ${when}`
+          : "Some calendars not updated"
+        : "Open Calendar to retry",
+      description: `${partial ? "Some calendar sources could not be read" : `${source} not updated since ${when}`}${input.hasItem && when && partial ? `; showing what was read as of ${when}` : ""}. Open Calendar to retry.`,
+      stale: input.hasItem,
+      state: input.hasItem ? "stale" : "error",
+    };
+  return {
+    title: input.hasItem ? "" : input.emptyLabel || "No upcoming events",
+    read: input.hasItem ? source : "",
+    description: `${source}${when ? `. As of ${when}` : ""}`,
+    stale: false,
+    state: input.hasItem ? "ready" : "empty",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Workflow list freshness
 // ---------------------------------------------------------------------------

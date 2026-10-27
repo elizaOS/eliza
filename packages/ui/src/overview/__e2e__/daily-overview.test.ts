@@ -10,6 +10,7 @@ import {
   overviewCalendarState,
   overviewOverdueDueLabel,
   overviewReadIsStale,
+  presentOverviewAgendaFeed,
   presentOverviewAgendaNext,
   presentOverviewAgendaSource,
   presentOverviewAttention,
@@ -216,6 +217,66 @@ describe("agenda", () => {
     ).toBe("Fri, Oct 9");
     expect(overviewAttendeeInitials(["Ada Lovelace", "grace hopper", 42, ""])).toEqual(["AL", "GH"]);
     expect(overviewAttendeeInitials(["A B", "C D", "E F", "G H"])).toEqual(["AB", "CD", "+2"]);
+  });
+});
+
+describe("agenda from an agent calendar feed", () => {
+  const base = { hasItem: false, asOf: null, now, source: "Agent Calendar", emptyLabel: "No upcoming events in this window" };
+  it("loading, not connected, review and failure never claim an empty calendar", () => {
+    expect(presentOverviewAgendaFeed({ ...base, status: "loading" }, f)).toEqual({
+      title: "Reading your calendar…",
+      read: "",
+      description: "Reading Agent Calendar…",
+      stale: false,
+      state: "loading",
+    });
+    expect(presentOverviewAgendaFeed({ ...base, status: "disconnected" }, f).description).toBe("Connect to view Agent Calendar.");
+    expect(presentOverviewAgendaFeed({ ...base, status: "transition-required" }, f).state).toBe("review");
+    const failed = presentOverviewAgendaFeed({ ...base, status: "error", error: "Calendar response belongs to another agent" }, f);
+    expect(failed).toEqual({
+      title: "Calendar has not been verified",
+      read: "Open Calendar to retry",
+      description: "Calendar response belongs to another agent. Open Calendar to retry.",
+      stale: false,
+      state: "error",
+    });
+    expect(presentOverviewAgendaFeed({ ...base, status: "unavailable" }, f).description).toBe(
+      "No calendar source could be read. Open Calendar to retry.",
+    );
+    for (const status of ["loading", "disconnected", "error", "unavailable", "legacy-recovery"] as const)
+      expect(presentOverviewAgendaFeed({ ...base, status }, f).title).not.toMatch(/No upcoming/);
+  });
+  it("a complete read is fresh; an empty one says so", () => {
+    expect(presentOverviewAgendaFeed({ ...base, status: "ready", feedState: "complete", hasItem: true, asOf: at(15, 4) }, f)).toEqual({
+      title: "",
+      read: "Agent Calendar",
+      description: "Agent Calendar. As of 3:04 PM",
+      stale: false,
+      state: "ready",
+    });
+    expect(presentOverviewAgendaFeed({ ...base, status: "ready", feedState: "complete" }, f)).toMatchObject({
+      title: "No upcoming events in this window",
+      read: "",
+      state: "empty",
+    });
+  });
+  it("a partial feed or a snapshot from an earlier day is stale and keeps the item", () => {
+    const partial = presentOverviewAgendaFeed({ ...base, status: "partial", feedState: "partial", hasItem: true, asOf: at(15, 4) }, f);
+    expect(partial).toEqual({
+      title: "",
+      read: "Not updated since 3:04 PM",
+      description: "Some calendar sources could not be read; showing what was read as of 3:04 PM. Open Calendar to retry.",
+      stale: true,
+      state: "stale",
+    });
+    const yesterday = presentOverviewAgendaFeed({ ...base, status: "ready", feedState: "complete", hasItem: true, asOf: at(21, 0, 6) }, f);
+    expect([yesterday.read, yesterday.stale, yesterday.description]).toEqual([
+      "Not updated since Tue, Oct 6 9:00 PM",
+      true,
+      "Agent Calendar not updated since Tue, Oct 6 9:00 PM. Open Calendar to retry.",
+    ]);
+    const partialEmpty = presentOverviewAgendaFeed({ ...base, status: "partial", feedState: "partial" }, f);
+    expect([partialEmpty.title, partialEmpty.read, partialEmpty.state]).toEqual(["Calendar has not been verified", "Open Calendar to retry", "error"]);
   });
 });
 
