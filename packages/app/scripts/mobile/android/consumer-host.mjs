@@ -9,7 +9,7 @@ import { injectAndroidRuntimeBytePreservation } from "../../lib/android-runtime-
 const templates = fileURLToPath(new URL("./consumer-host/", import.meta.url));
 const markerName = ".eliza-consumer-host.json";
 /** Generator-owned resources (the brand string) live here, never in host resource directories. */
-export const CONSUMER_IDENTITY_RESOURCES = "eliza-consumer-host/res";
+const CONSUMER_IDENTITY_RESOURCES = "eliza-consumer-host/res";
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const inside = (root, value) =>
   value === root || value.startsWith(root + path.sep);
@@ -17,8 +17,8 @@ const namePattern = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
 const environmentName = /^[A-Z][A-Z0-9_]*$/;
 const taskName = /^[a-z][A-Za-z0-9]*$/;
 /** Plain release labels: one rule for the generated identity and its environment override. */
-export const VERSION_NAME_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
-export const ANDROID_ABIS = Object.freeze([
+const VERSION_NAME_PATTERN = /^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
+const ANDROID_ABIS = Object.freeze([
   "arm64-v8a",
   "armeabi-v7a",
   "x86",
@@ -26,7 +26,7 @@ export const ANDROID_ABIS = Object.freeze([
   "riscv64",
 ]);
 /** The release-signing inputs a profile names: environment variable names, never values. */
-export const RELEASE_SIGNING_KEYS = Object.freeze([
+const RELEASE_SIGNING_KEYS = Object.freeze([
   "storeFile",
   "storePassword",
   "keyAlias",

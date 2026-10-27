@@ -228,7 +228,7 @@ export function rewriteResidentClass(name, source, identity) {
 }
 
 /** Rewrite one helper source for a host identity. */
-export function rewriteResidentHelper(relative, source, packageName) {
+function rewriteResidentHelper(relative, source, packageName) {
   const kind = RESIDENT_HOST_HELPERS[relative];
   requireValue(kind !== undefined, `Unknown resident helper ${relative}`);
   if (kind === "verbatim") return source;
