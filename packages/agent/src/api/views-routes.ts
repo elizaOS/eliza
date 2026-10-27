@@ -706,6 +706,13 @@ export async function handleViewsRoutes(
     if ("reject" in parsedNavigateViewType) return true;
     const viewType = parsedNavigateViewType.viewType;
     const entry = getView(viewRuntime, id, { viewType });
+    // Mirror interact/elements: a caller that fails the view's own
+    // role gate must not navigate to it, even though navigation
+    // itself carries no capability.
+    if (!satisfiesRoleGate(callerRoles(ctx), entry?.roleGate)) {
+      error(res, `View "${id}" is not available to this caller`, 403);
+      return true;
+    }
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
     const viewPath =
@@ -1071,6 +1078,18 @@ export async function handleViewsRoutes(
           typeof delivered === "number" &&
           delivered > 0;
       } else {
+        // A broadcast reaches every connected client, including the
+        // owner's shell, and synthetic ids have no registry gate to
+        // fail — so untargeted delivery requires the owner. Agent
+        // navigation always carries an originating client id and is
+        // unaffected.
+        if (
+          ctx.callerAuthorization?.ok !== true ||
+          ctx.callerAuthorization.role !== "OWNER"
+        ) {
+          error(res, "Broadcast navigation requires the owner.", 403);
+          return true;
+        }
         ctx.broadcastWs?.(frame);
       }
     }
