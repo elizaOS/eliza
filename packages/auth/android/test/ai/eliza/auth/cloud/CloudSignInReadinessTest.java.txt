@@ -1,0 +1,102 @@
+package ai.eliza.auth.cloud;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+@interface PluginMethod {}
+/** Executes the exact injected readiness methods of CloudSignInPlugin with a closed clock and queued
+ * probe ports. Host JVM only; no Android, credentials, Cloud, Google or code requests. */
+public class CloudSignInReadinessTest {
+ static class System { static long now = 1_000_000; static long currentTimeMillis() { return now; } }
+ static class JSONObject {
+  final Map<String,Object> values = new HashMap<>();
+  JSONObject put(String key, Object value) { values.put(key, value); return this; }
+  Object opt(String key) { return values.get(key); }
+  String optString(String key, String fallback) { Object value = opt(key); return value instanceof String ? (String) value : fallback; }
+  JSONObject optJSONObject(String key) { return null; }
+  JSONArray optJSONArray(String key) { return null; }
+ }
+ static class JSONArray { int length() { return 0; } String optString(int index) { return ""; } }
+ static class JSObject { final Map<String,Object> values = new HashMap<>(); JSObject put(String key, Object value) { values.put(key, value); return this; } }
+ static class Uri { static String encode(String value) { return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8); } }
+ static class Response { final int status; final JSONObject data; final String location; Response(int s, JSONObject d, String l) { status = s; data = d; location = l; } }
+ static class PluginCall {
+  boolean refresh; int resolved, rejected; JSObject result; String environment = "production";
+  String getString(String key, String fallback) { return environment; }
+  Boolean getBoolean(String key, Boolean fallback) { return refresh; }
+  void resolve(JSObject value) { resolved++; result = value; }
+  void reject(String message, String code) { rejected++; }
+ }
+ static class Attempt { boolean google; String mfaType, phone; }
+ static class Queue implements Executor { final List<Runnable> tasks = new ArrayList<>(); boolean closed; public void execute(Runnable task) { if (closed) throw new RejectedExecutionException(); tasks.add(task); } void drain() { while (!tasks.isEmpty()) tasks.remove(0).run(); } }
+
+ final Object lock = new Object(); Attempt attempt; final Queue prober = new Queue();
+ final Map<String, CloudSignInReadiness.Result> readiness = new HashMap<>(), stored = new HashMap<>();
+ final Map<String, List<PluginCall>> probing = new HashMap<>();
+ CloudSignInConfig config() { return TestRegistration.PRODUCT; }
+ CloudSignInReadiness.Result storedReadiness(CloudSignInEnvironment environment) { return stored.get(environment.name); }
+ void storeReadiness(CloudSignInEnvironment environment, CloudSignInReadiness.Result result) { stored.put(environment.name, result); }
+
+ // Measurement ports.
+ boolean googleNative = true, registered = true, email = true, captcha = false; String route = "present"; int measures; boolean measureFails; CloudSignInReadiness.Result next;
+ final List<String> reads = new ArrayList<>();
+ Response get(String url) throws Exception {
+  reads.add(url);
+  if (url.contains("/mobile/config?")) return new Response(registered ? 200 : 503, new JSONObject().put("success", true).put("clientId", "ai.example.signin").put("environment", "production").put("redirectUri", "https://eliza.app/example/auth/callback").put("codeChallengeMethod", "S256"), null);
+  if (url.contains("/steward/auth/providers?")) return new Response(200, new JSONObject().put("email", email).put("sms", true).put("googleNative", googleNative), null);
+  throw new AssertionError("unexpected read " + url);
+ }
+ int probePost(CloudSignInEnvironment environment, String path) throws Exception {
+  if (!CloudEmailCode.SEND_PATH.equals(path)) throw new AssertionError(path);
+  if (route.equals("timeout")) throw new java.net.SocketTimeoutException();
+  return route.equals("absent") ? 404 : 400;
+ }
+ /* ACTUAL_MEASURE */
+ /* ACTUAL_STATUS */
+ /* ACTUAL_STATUS_OUTCOME */
+ /* ACTUAL_PROBE */
+
+ static void check(boolean value, String why) { if (!value) throw new AssertionError(why); }
+ static PluginCall call(boolean refresh) { PluginCall call = new PluginCall(); call.refresh = refresh; return call; }
+ static boolean ready(PluginCall call) { return Boolean.TRUE.equals(call.result.values.get("inApp")); }
+ /** Probe ports for status/probe that delegate to the measurement stub or a scripted result. */
+ static CloudSignInReadinessTest scripted() {
+  return new CloudSignInReadinessTest() { @Override CloudSignInReadiness.Result measure(CloudSignInEnvironment environment) throws Exception { measures++; if (measureFails) throw new Exception("Synthetic offline"); return next; } };
+ }
+ public static void main(String[] args) throws Exception {
+  CloudSignInEnvironment e = TestRegistration.PRODUCTION;
+  // measure(): each method independent; a missing registration disables code methods.
+  CloudSignInReadinessTest m = new CloudSignInReadinessTest();
+  CloudSignInReadiness.Result all = m.measure(e);
+  check(all.email && all.google && all.phone && all.until == System.now + CloudSignInReadiness.READY_TTL_MS, "all methods ready");
+  check(m.reads.get(0).equals("https://api.eliza.app/api/v1/app-auth/mobile/config?clientId=ai.example.signin&environment=production&redirectUri=https%3A%2F%2Feliza.app%2Fexample%2Fauth%2Fcallback"), "exact registration read");
+  m.googleNative = false; CloudSignInReadiness.Result noGoogle = m.measure(e); check(noGoogle.email && !noGoogle.google, "Google off keeps email");
+  m.googleNative = true; m.route = "timeout"; CloudSignInReadiness.Result slowRoute = m.measure(e); check(!slowRoute.email && slowRoute.google && slowRoute.phone, "an email route timeout keeps Google and SMS");
+  m.route = "absent"; check(!m.measure(e).email, "absent email route");
+  m.route = "present"; m.email = false; CloudSignInReadiness.Result noEmail = m.measure(e); check(!noEmail.email && noEmail.google, "email not offered");
+  m.email = true; m.registered = false; CloudSignInReadiness.Result unregistered = m.measure(e); check(!unregistered.inApp && unregistered.until == System.now + CloudSignInReadiness.NOT_READY_TTL_MS, "unregistered app");
+
+  // status/probe: fresh caches are served, an explicit retry refreshes only negative or partial answers.
+  for (boolean persisted : new boolean[]{false, true}) {
+   CloudSignInReadinessTest h = scripted(); CloudSignInReadiness.Result old = CloudSignInReadiness.Result.notReady(System.now);
+   (persisted ? h.stored : h.readiness).put(e.name, old);
+   PluginCall passive = call(false); h.status(passive);
+   check(passive.resolved == 1 && !ready(passive) && h.prober.tasks.isEmpty(), "ordinary lookup keeps a fresh negative cache");
+   PluginCall retry = call(true), joined = call(true); h.status(retry); h.status(joined);
+   check(h.prober.tasks.size() == 1 && retry.resolved == 0 && joined.resolved == 0, "an explicit retry queues exactly one probe and joins waiters");
+   h.next = new CloudSignInReadiness.Result(true, false, false, System.now + CloudSignInReadiness.NOT_READY_TTL_MS); h.prober.drain();
+   check(h.measures == 1 && retry.resolved == 1 && joined.resolved == 1 && ready(retry) && Boolean.FALSE.equals(retry.result.values.get("google")), "fresh measurement answers every waiter");
+   check(h.stored.get(e.name) == h.next && h.probing.isEmpty(), "cache persisted and in-flight released");
+  }
+  CloudSignInReadinessTest positive = scripted(); positive.readiness.put(e.name, new CloudSignInReadiness.Result(true, true, false, System.now + CloudSignInReadiness.READY_TTL_MS));
+  PluginCall hot = call(true); positive.status(hot); check(hot.resolved == 1 && positive.measures == 0, "a positive cache survives an explicit retry");
+  CloudSignInReadinessTest failed = scripted(); failed.readiness.put(e.name, CloudSignInReadiness.Result.notReady(System.now)); failed.measureFails = true;
+  PluginCall retry = call(true); failed.status(retry); failed.prober.drain();
+  check(retry.resolved == 1 && !ready(retry) && failed.measures == 1 && failed.prober.tasks.isEmpty() && failed.readiness.get(e.name).until == System.now + CloudSignInReadiness.NOT_READY_TTL_MS, "a failed measurement stays negative and never retries itself");
+  CloudSignInReadinessTest closed = scripted(); closed.readiness.put(e.name, CloudSignInReadiness.Result.notReady(System.now)); closed.prober.closed = true;
+  PluginCall refused = call(true); closed.status(refused); check(refused.resolved == 1 && !ready(refused) && closed.probing.isEmpty(), "executor refusal releases waiters fail closed");
+  CloudSignInReadinessTest invalid = scripted(); PluginCall staging = call(true); staging.environment = "staging"; invalid.status(staging);
+  check(staging.rejected == 1 && invalid.prober.tasks.isEmpty(), "a deployment the build does not admit is refused");
+  java.lang.System.out.println("PASS native readiness measure, status cache, single-flight and fail-closed admission");
+ }
+}
