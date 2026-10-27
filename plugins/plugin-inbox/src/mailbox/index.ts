@@ -5,6 +5,7 @@
  * hand-off. No Node built-ins and no React; hosts inject transport and storage.
  */
 export * from "./attachments.ts";
+export * from "./drafts-controller.ts";
 export * from "./failures.ts";
 export * from "./grants.ts";
 export * from "./links.ts";
