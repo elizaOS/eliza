@@ -2182,6 +2182,13 @@ public class ElizaAgentService extends Service {
      * additive: worst case the host stays down and TalkMode falls back to system
      * TTS exactly as before — it cannot affect agent startup.
      */
+    private File prepareVoiceBundle() throws IOException {
+        if (ai.eliza.voice.VoiceBundleAssets.isPackaged(this)) {
+            return ai.eliza.voice.VoiceBundleAssets.install(this).root;
+        }
+        return ai.eliza.voice.VoiceBundleAssets.bundleRoot(this);
+    }
+
     private synchronized void ensureBionicVoiceHost() {
         if (bionicInferenceServer != null) {
             return;
@@ -2193,10 +2200,7 @@ public class ElizaAgentService extends Service {
         try {
             // This worker runs before the live-runtime adoption check as well
             // as a fresh spawn. No model copying runs on the service main thread.
-            if (ai.eliza.voice.VoiceBundleAssets.isPackaged(this)) {
-                ai.eliza.voice.VoiceBundleAssets.install(this);
-            }
-            File bundleRoot = ai.eliza.voice.VoiceBundleAssets.bundleRoot(this);
+            File bundleRoot = prepareVoiceBundle();
             File paradeeModel = new File(bundleRoot,
                 ElizaBionicInferenceServer.PARADEE_DIR + "/" + ElizaBionicInferenceServer.PARADEE_MODEL);
             if (!paradeeModel.isFile()) return;
@@ -2805,8 +2809,8 @@ public class ElizaAgentService extends Service {
                 // an Error, not an Exception, so catch Throwable here.
                 try {
                     if (bionicInferenceServer == null) {
-                        String defaultBundleDir =
-                            ai.eliza.voice.VoiceBundleAssets.bundleRoot(this).getAbsolutePath();
+                        // A failed earlier install must not be bypassed by this fallback.
+                        String defaultBundleDir = prepareVoiceBundle().getAbsolutePath();
                         bionicInferenceServer = newBionicInferenceServer(defaultBundleDir);
                     }
                     bionicInferenceServer.start();
