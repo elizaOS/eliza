@@ -1327,8 +1327,11 @@ export class XService extends Service {
   ): Promise<MessageConnectorTarget[]> {
     const accountId = this.resolveAccountId(_context.target, _context);
     // Propagates like fetchConnectorMessages: an empty list would read as no
-    // recent DM partners.
-    const messages = await this.listRecentDirectMessages(accountId);
+    // recent DM partners. Bound the scan: without a limit the DM
+    // paginator pages the account's entire history to build this list,
+    // on untargeted reads and sends. This is the recent-targets list,
+    // so the newest 15000 listed events are the right window.
+    const messages = await this.listRecentDirectMessages(accountId, 15000);
     const usernames = new Map<string, string>();
     for (const message of messages) {
       if (message.senderId && message.senderUsername)
