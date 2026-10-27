@@ -26,6 +26,13 @@ export const visionProvider: Provider = {
   position: 99,
   contexts: ["media", "browser"],
   contextGate: { anyOf: ["media", "browser"] },
+  // Live visual perception (scene description, screen capture,
+  // tracked people/objects) is owner context, same as the
+  // computer-use scene provider. Without this gate the provider
+  // runs on plain guest turns: empty active contexts skip the
+  // context filter, and the host chokepoint only wraps providers
+  // that declare a restricting role gate.
+  roleGate: { minRole: "OWNER" },
   cacheStable: false,
   cacheScope: "turn",
   dynamic: false,
