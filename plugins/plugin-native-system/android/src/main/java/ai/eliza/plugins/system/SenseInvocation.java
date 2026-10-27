@@ -39,6 +39,10 @@ public final class SenseInvocation {
         locked = lockedAtArrival;
     }
 
+    public synchronized boolean isCurrentRenderer(long bridge, int generation) {
+        return bridge == bridgeGeneration && generation == rendererGeneration;
+    }
+
     public synchronized boolean boundTo(long bridge, int generation, String owner, String expectedSession) {
         return bridge == bridgeGeneration && generation == rendererGeneration && owner != null && owner.equals(bindingId)
                 && session != null && session.equals(expectedSession);

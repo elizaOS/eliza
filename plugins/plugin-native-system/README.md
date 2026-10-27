@@ -134,8 +134,8 @@ mint or clear an invocation belonging to a newer bridge. It is not a JavaScript 
 Intent extras. The existing bridge, renderer generation, binding id and owner/session
 lease must already exist. A new activity/WebView, cold start, owner change, reset,
 unbind or disposal clears authority; no pending gesture is promoted at first bind.
-The first cold Power entry remains surface-only: use the existing Talk action or a
-later warm Power invocation. Cold one-gesture voice is not fulfilled by this API.
+The warm API never promotes a cold invocation. Hosts may separately opt into the
+protected launch authorization below; otherwise cold entry stays surface-only.
 
 The typed controller treats a matching fresh Power receipt as one-shot, just like
 an authenticated listener receipt. If hidden, modal, not ready or already recording,
@@ -145,3 +145,31 @@ so later focus cannot revive it. That method can clear only the current lease's 
 an origin, clear another binding, reset a session or discard listener delivery.
 Actual OS caller permission enforcement, hardware dispatch and speech require
 separate native/device qualification.
+
+
+### Fresh protected launch authorization
+
+A host can authorize a first Power press separately from the warm invocation
+receipt. Its protected Activity calls native-only `beginProtectedPowerLaunch`
+exactly once on a fresh creation, with a native `PowerLaunchValidator`. No
+JavaScript method can create or refresh that grant. It is Activity-local,
+process-local and valid for five seconds from the actual launch. It is never
+saved in an Intent, saved state, or storage.
+
+The native validator pins an already admitted account and a monotonic account
+mutation epoch. `authorize(accountRef, consume)` must check that pin and match
+the renderer's canonical verified account identity under the host's existing
+authorization locks, then invoke `consume` synchronously under those locks.
+The SDK calls host policy without holding SDK locks. The guarded action checks
+the exact current bridge, renderer, binding and session, foreground focus,
+unlocked keyguard and deadline, and can succeed once. A failed attempt spends
+the grant too. The first plugin bridge attaches once; replacement, pause,
+destruction, changed renderer/session or focus loss invalidates it.
+
+Hosts must forward native window focus changes and cancel on their native
+lifecycle changes. The optional controller fields `initialRestorePending` and
+`powerAccountRef` distinguish bounded automatic restoration from interactive
+authentication. A modal, hidden page, active recording, interactive sign-in,
+failed readiness or account change discards the launch. Ordinary listener
+receipts, cold binds, public Assist and the legacy UI hint gain no new authority.
+Source tests do not prove Binder enforcement or installed-device audio.
