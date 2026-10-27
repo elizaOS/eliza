@@ -407,3 +407,104 @@ test("native client keeps package, permission, component and reset fences", () =
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test("warm Power is one-shot and blocked Power is discarded instead of deferred", async () => {
+  const { createSenseInvocationController, parseAssistantInvocation } =
+    await import("../src/sense.ts");
+  assert.equal(
+    parseAssistantInvocation({ assistant: true, invocation: "power" }),
+    "power",
+  );
+  assert.equal(
+    listenerStartsVoice({
+      invocation: "power",
+      unlocked: true,
+      hidden: false,
+      dialogOpen: false,
+      connectionOpen: false,
+      voiceActive: false,
+    }),
+    true,
+  );
+  const oldWindow = globalThis.window,
+    oldDocument = globalThis.document;
+  let hidden = false,
+    modal = false,
+    ready = true,
+    active = false,
+    pending = null,
+    started = 0,
+    discards = 0,
+    binding = null;
+  globalThis.window = new EventTarget();
+  globalThis.document = new EventTarget();
+  Object.defineProperty(document, "hidden", { get: () => hidden });
+  document.querySelector = () => (modal ? {} : null);
+  const native = {
+    bindInvocationSession: async (value) => {
+      binding = value;
+      pending = null;
+    },
+    takeInvocation: async (value) => {
+      assert.equal(value.bindingId, binding.bindingId);
+      const origin = pending;
+      pending = null;
+      return { assistant: !!origin, invocation: origin, locked: false };
+    },
+    discardProtectedPowerInvocation: async (value) => {
+      assert.equal(value.bindingId, binding.bindingId);
+      discards++;
+      if (pending === "power") pending = null;
+    },
+  };
+  const controller = createSenseInvocationController(native, {
+    authority: () => "owner/session",
+    ready: () => ready,
+    voiceActive: () => active,
+    startVoice: () => started++,
+  });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  try {
+    await settle();
+    pending = "power";
+    controller.check();
+    await settle();
+    assert.equal(started, 1);
+    controller.check();
+    await settle();
+    assert.equal(started, 1);
+    for (const blocker of ["hidden", "modal", "ready", "active"]) {
+      pending = "power";
+      hidden = blocker === "hidden";
+      modal = blocker === "modal";
+      ready = blocker !== "ready";
+      active = blocker === "active";
+      const before = discards;
+      controller.check();
+      await settle();
+      assert.ok(discards > before);
+      assert.equal(pending, null);
+      hidden = false;
+      modal = false;
+      ready = true;
+      active = false;
+      controller.check();
+      await settle();
+      assert.equal(started, 1, "clearing a blocker cannot revive Power");
+    }
+    pending = "listener";
+    modal = true;
+    controller.check();
+    await settle();
+    assert.equal(pending, "listener", "listener contract remains unchanged");
+    modal = false;
+    controller.check();
+    await settle();
+    assert.equal(started, 2);
+  } finally {
+    controller.dispose();
+    await settle();
+    globalThis.window = oldWindow;
+    globalThis.document = oldDocument;
+  }
+});

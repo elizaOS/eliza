@@ -122,3 +122,26 @@ check can retry; a WebView recreation receives a new native plugin lifetime.
 `node --test plugins/plugin-native-system/test/sense.test.mjs` exercises the
 shared native policy, client refusal rules, Android API compilation and renderer
 authority race. These tests do not prove installed-device microphone handoff.
+
+### Protected Power entry
+
+A native permission-protected host activity may call
+`SenseListenerClient.recordProtectedPower()` only for a fresh warm invocation on
+its already bound bridge. A weak Activity-to-bridge association is registered only
+after a matching bind, and the native hook verifies the actual exported, enabled,
+nonalias Activity component requires `STATUS_BAR_SERVICE`. An old Activity cannot
+mint or clear an invocation belonging to a newer bridge. It is not a JavaScript method and accepts no caller
+Intent extras. The existing bridge, renderer generation, binding id and owner/session
+lease must already exist. A new activity/WebView, cold start, owner change, reset,
+unbind or disposal clears authority; no pending gesture is promoted at first bind.
+The first cold Power entry remains surface-only: use the existing Talk action or a
+later warm Power invocation. Cold one-gesture voice is not fulfilled by this API.
+
+The typed controller treats a matching fresh Power receipt as one-shot, just like
+an authenticated listener receipt. If hidden, modal, not ready or already recording,
+it calls the optional owner-bound `discardProtectedPowerInvocation` bridge method.
+Native foreground refusal also discards only that matching pending Power receipt,
+so later focus cannot revive it. That method can clear only the current lease's pending Power origin, never create
+an origin, clear another binding, reset a session or discard listener delivery.
+Actual OS caller permission enforcement, hardware dispatch and speech require
+separate native/device qualification.

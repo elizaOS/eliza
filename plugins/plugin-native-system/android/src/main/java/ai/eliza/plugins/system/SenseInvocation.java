@@ -39,14 +39,34 @@ public final class SenseInvocation {
         locked = lockedAtArrival;
     }
 
+    public synchronized boolean boundTo(long bridge, int generation, String owner, String expectedSession) {
+        return bridge == bridgeGeneration && generation == rendererGeneration && owner != null && owner.equals(bindingId)
+                && session != null && session.equals(expectedSession);
+    }
+
+    /** Native protected-activity hook. A cold or replaced bridge cannot inherit a Power gesture. */
+    public synchronized boolean recordProtectedPower(long bridge, long now, boolean lockedAtArrival) {
+        if (bridge != bridgeGeneration || bridgeGeneration <= 0 || rendererGeneration <= 0 || bindingId == null || session == null) return false;
+        clear();
+        origin = "power"; invocationSession = session; arrivedAt = now; locked = lockedAtArrival;
+        return true;
+    }
+
+    /** Renderer may drop only its own pending Power receipt, never listener delivery or another owner. */
+    public synchronized void discardProtectedPower(long bridge, int generation, String owner, String expectedSession) {
+        if (bridge == bridgeGeneration && generation == rendererGeneration && owner != null
+                && owner.equals(bindingId) && session != null && session.equals(expectedSession)
+                && "power".equals(origin) && session.equals(invocationSession)) clear();
+    }
+
     /** Returns null after consumption. Unknown or changed ownership never returns listener. */
     public synchronized String take(long bridge, int generation, String owner, String expectedSession, long now, boolean lockedNow) {
         if (bridge != bridgeGeneration || generation != rendererGeneration) return null;
         if (owner == null || !owner.equals(bindingId)) return null;
         if (origin == null) return null;
-        String result = "listener".equals(origin) && session != null && session.equals(expectedSession)
+        String result = ("listener".equals(origin) || "power".equals(origin)) && session != null && session.equals(expectedSession)
                 && session.equals(invocationSession) && !locked && !lockedNow && now >= arrivedAt
-                && now - arrivedAt <= WINDOW_MS ? "listener" : "assist";
+                && now - arrivedAt <= WINDOW_MS ? origin : "assist";
         clear();
         return result;
     }
