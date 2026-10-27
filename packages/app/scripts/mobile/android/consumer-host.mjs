@@ -267,17 +267,33 @@ export function generateAndroidConsumerHost({
         typeof module.appDependency === "boolean",
       "Native module appDependency must be a boolean",
     );
+    requireValue(
+      module.relocateBuild === undefined ||
+        typeof module.relocateBuild === "boolean",
+      "Native module relocateBuild must be a boolean",
+    );
     moduleNames.add(module.name);
     return {
       name: module.name,
       directory: input(module.source, "directory"),
       appDependency: module.appDependency ?? true,
+      // Upstream and dependency trees are immutable inputs; consumers opt in for staged copies.
+      relocateBuild: module.relocateBuild ?? module.source.root !== "consumer",
     };
   });
   requireValue(
     Array.isArray(profile.flavors) && profile.flavors.length > 0,
     "Distribution variants must be explicit",
   );
+  // A manifest already at its source-set location in an in-place host is used where it is;
+  // any other manifest is copied into the generated app module, where lint resolves its classes.
+  const manifestFor = (reference, sourceSet) => {
+    const source = input(reference, "file");
+    const relative = `app/src/${sourceSet}/AndroidManifest.xml`;
+    const destination = path.join(output, relative);
+    if (source !== destination) add(relative, fs.readFileSync(source));
+    return destination;
+  };
   const flavors = [],
     sourceNames = new Set(["main", "androidTest", "debug", "release"]);
   for (const flavor of profile.flavors) {
@@ -288,11 +304,12 @@ export function generateAndroidConsumerHost({
       "Invalid or duplicate distribution variant",
     );
     sourceNames.add(flavor.name);
-    // Authored manifests are referenced where they are, never copied.
     flavors.push({
       name: flavor.name,
       buildConfigFields: fields(flavor.buildConfigFields),
-      manifest: flavor.manifest ? input(flavor.manifest, "file") : null,
+      manifest: flavor.manifest
+        ? manifestFor(flavor.manifest, flavor.name)
+        : null,
     });
   }
   // Android escaping follows XML decoding; quotes preserve whitespace and apostrophes.
@@ -306,7 +323,7 @@ export function generateAndroidConsumerHost({
     `${CONSUMER_IDENTITY_RESOURCES}/values/eliza_consumer_identity.xml`,
     `<resources><string name="app_name" formatted="false" translatable="false">${xmlLabel}</string></resources>\n`,
   );
-  const manifest = input(profile.manifest, "file");
+  const manifest = manifestFor(profile.manifest, "main");
   const sourceSets = {};
   for (const [name, sources] of Object.entries(profile.sourceSets ?? {})) {
     requireValue(sourceNames.has(name), "Undeclared Android source set");

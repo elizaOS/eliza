@@ -248,18 +248,36 @@ test("independent modules remain included without becoming app dependencies", (t
       source: { root: "consumer", path: "src" },
       appDependency: false,
     },
+    {
+      name: "shared",
+      source: { root: "upstream", path: "packages/app/scripts/mobile/android" },
+    },
+    {
+      name: "staged",
+      source: { root: "consumer", path: "src" },
+      relocateBuild: true,
+    },
   ];
   generate();
   const profile = JSON.parse(
     fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
   );
   assert.deepEqual(
-    profile.modules.map(({ name, appDependency }) => ({ name, appDependency })),
+    profile.modules.map(({ name, appDependency, relocateBuild }) => ({
+      name,
+      appDependency,
+      relocateBuild,
+    })),
     [
-      { name: "library", appDependency: true },
-      { name: "updater", appDependency: false },
+      { name: "library", appDependency: true, relocateBuild: false },
+      { name: "updater", appDependency: false, relocateBuild: false },
+      { name: "shared", appDependency: true, relocateBuild: true },
+      { name: "staged", appDependency: true, relocateBuild: true },
     ],
   );
+  options.profile.modules[3].relocateBuild = "yes";
+  assert.throws(generate, /relocateBuild must be a boolean/);
+  options.profile.modules.splice(2, 2);
   for (const value of [null, "false", 0, {}]) {
     options.profile.modules[1].appDependency = value;
     assert.throws(generate, /appDependency must be a boolean/);
@@ -291,7 +309,11 @@ test("an in-place host sits beside authored sources and never replaces one", (t)
   assert.throws(generate, /unowned Android project/);
   options.inPlace = true;
   const result = generate();
-  assert.ok(!result.files.some((file) => file.endsWith("AndroidManifest.xml")));
+  // The in-place main manifest is used where it is; the external launcher manifest is copied.
+  assert.deepEqual(
+    result.files.filter((file) => file.endsWith("AndroidManifest.xml")),
+    ["app/src/launcher/AndroidManifest.xml"],
+  );
   assert.equal(
     fs.readFileSync(path.join(options.output, "README.md"), "utf8"),
     "authored",
@@ -305,7 +327,10 @@ test("an in-place host sits beside authored sources and never replaces one", (t)
   );
   assert.equal(
     profile.flavors.find(({ name }) => name === "launcher").manifest,
-    fs.realpathSync(path.join(options.consumerRoot, "home.xml")),
+    path.join(
+      fs.realpathSync(options.output),
+      "app/src/launcher/AndroidManifest.xml",
+    ),
   );
   assert.match(
     fs.readFileSync(

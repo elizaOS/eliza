@@ -337,8 +337,9 @@ preserving other build outputs. Hosts keep authored manifests/resources outside
 the generated project and supply already-verified optional runtime payloads. The
 generator owns the non-translatable `app_name` brand string (written under the
 generated `eliza-consumer-host/res`); host resources must not redefine it. Other UI
-strings can use the host's localized resource directories. Manifests are referenced
-where they are, never copied.
+strings can use the host's localized resource directories. A manifest already at its
+source-set location in an in-place host is used where it is; other manifests are
+copied into the generated app module, where lint resolves the classes they name.
 
 `inPlace: true` writes the generated build files into the consumer's own authored
 Android directory, beside its standard `app/src` layout: an existing unmarked
@@ -351,7 +352,8 @@ declare, as data:
   names the release version code/name variables, validated like the identity.
 - `buildTypes`: debug/release ABI filters and BuildConfig fields, release resource
   shrinking and Proguard files (both require `releaseMinify`); `kotlin: false`
-  leaves a Java-only app without the Kotlin plugin; `preserveRuntimeBytes` keeps
+  leaves a Java-only app without the Kotlin plugin (its sources then need package
+  directories, which lint uses to resolve manifest classes); `preserveRuntimeBytes` keeps
   packaged runtime libraries unstripped, as for `runtimeDirectory`.
 - `testMocks`: debug-only Java, resource and manifest sources plus androidTest
   sources attached only when the named switch (Gradle property or environment,
@@ -367,8 +369,10 @@ declare, as data:
 - dependencies may name a `module` with a `toolchainVersion` key to take the
   reviewed toolchain version. A `path` of `.` names a declared root itself.
 
-Modules outside the generated host keep their build outputs under its
-`build/modules/<name>`, so shared checkouts and dependency trees stay unchanged.
+Modules from the upstream and dependency roots, and consumer modules marked
+`relocateBuild` (for example an authenticated staged copy), keep their build outputs
+under the generated host's `build/modules/<name>`, so shared checkouts, dependency
+trees and staged sources stay unchanged.
 
 `scripts/mobile/android/build-consumer.mjs` builds the selected distributions of a
 generated host and retains only verified artifacts. Hosts choose the Gradle project

@@ -13,9 +13,10 @@ ext.minSdkVersion = profile.sdk.min
 ext.compileSdkVersion = profile.sdk.compile
 ext.targetSdkVersion = profile.sdk.target
 allprojects { repositories { google(); mavenCentral() } }
-// Modules outside this host (shared checkouts, dependency trees) are immutable inputs:
+// Shared checkouts, dependency trees and staged copies are immutable inputs:
 // their generated build files stay under this host's build directory.
+def relocatedModules = profile.modules.findAll { it.relocateBuild }.collect { it.name } as Set
 subprojects {
- if (!projectDir.canonicalFile.toPath().startsWith(rootDir.canonicalFile.toPath()))
+ if (project.name in relocatedModules)
   layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("modules/${project.name}"))
 }
