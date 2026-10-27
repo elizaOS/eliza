@@ -431,7 +431,7 @@ export class FishAudioTtsStream {
       this.rejectOpenedOnce(
         new FishAudioTtsError("Fish WebSocket error", "websocket_error"),
       );
-      this.socket.close(1011, "Fish WebSocket error");
+      this.socket.close(4011, "Fish WebSocket error");
     });
     this.socket.addEventListener("close", (event) => {
       this.clearFirstAudioTimer();
@@ -516,7 +516,7 @@ export class FishAudioTtsStream {
             ? error.code
             : "PROVIDER_MESSAGE_INVALID",
       });
-      this.socket.close(1011, "Invalid Fish provider message");
+      this.socket.close(4011, "Invalid Fish provider message");
       return;
     }
 
@@ -531,7 +531,7 @@ export class FishAudioTtsStream {
             : "Fish provider returned an error",
         code: typeof frame.code === "string" ? frame.code : undefined,
       });
-      this.socket.close(1011, "Fish provider error");
+      this.socket.close(4011, "Fish provider error");
       return;
     }
 
@@ -556,7 +556,7 @@ export class FishAudioTtsStream {
               ? frame.code
               : "provider_finish_error",
         });
-        this.socket.close(1011, "Fish provider finish error");
+        this.socket.close(4011, "Fish provider finish error");
         return;
       }
       this.completed = true;
@@ -585,7 +585,7 @@ export class FishAudioTtsStream {
             "Fish emitted audio before the first non-empty text submission",
           code: "provider_audio_before_text",
         });
-        this.socket.close(1011, "Fish audio before text");
+        this.socket.close(4011, "Fish audio before text");
         return;
       }
       this.firstAudioEmitted = true;
@@ -646,7 +646,7 @@ export class FishAudioTtsStream {
         message: "Fish did not produce audio before the first-audio timeout",
         code: "first_audio_timeout",
       });
-      this.socket.close(1013, "Fish first-audio timeout");
+      this.socket.close(4013, "Fish first-audio timeout");
     }, this.input.firstAudioTimeoutMs);
   }
 
