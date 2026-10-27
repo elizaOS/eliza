@@ -70,7 +70,7 @@ function compareText(left: string, right: string) {
 function readJson(filePath: string) {
   const source = readFileSync(filePath, "utf8");
   try {
-    return JSON.parse(source);
+    return JSON.parse(source.replace(/^\uFEFF/, ""));
   } catch (error) {
     // error-policy:J2 identify the intended manifest that made discovery invalid
     throw new Error(`Invalid JSON in ${filePath}`, { cause: error });
