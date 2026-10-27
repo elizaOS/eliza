@@ -16,11 +16,23 @@ export function parseWebResourceAddress(value: string): URL | undefined {
 		url.password
 	)
 		return;
-	const labels = url.hostname.replace(/\.$/u, "").split(".");
+	const host = url.hostname.replace(/\.$/u, "");
+	const labels = host.split(".");
 	// A bare word is an app/search term, not an implicit network destination.
 	// Validate DNS syntax without a site or TLD allowlist. Explicit IP/localhost
 	// addresses stay resources; the existing operation's policy owns eligibility.
-	if (!explicit && (labels.length < 2 || /^\d+$/u.test(labels.at(-1) ?? "")))
+	// A bare IP/localhost address with a port is a network destination too: the
+	// port separates it from a bare word and from a version-like number.
+	const bareIpOrLocalhostWithPort =
+		url.port !== "" &&
+		(host === "localhost" ||
+			/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host) ||
+			host.startsWith("["));
+	if (
+		!explicit &&
+		!bareIpOrLocalhostWithPort &&
+		(labels.length < 2 || /^\d+$/u.test(labels.at(-1) ?? ""))
+	)
 		return;
 	if (
 		!url.hostname.startsWith("[") &&
