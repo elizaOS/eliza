@@ -1076,6 +1076,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Cloud coding containers: provisioning, promotion, and sync
+    // all run against the owner's Eliza Cloud account.
+    under("/api/cloud/coding-containers") ||
     (write &&
       [
         "import",
