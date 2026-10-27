@@ -1060,6 +1060,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // The app-facing runtime switch repoints the owner's text inference,
+        // and a local target can start a model download. Its loopback writes
+        // carry the owner's self token, so the outer request needs this gate.
+        under("/api/runtime/model-switch") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
