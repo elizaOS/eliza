@@ -1076,6 +1076,13 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Character reads: the merged character carries the full system
+    // prompt, and history carries prior system prompts too. Writes
+    // are already owner-only; reads must match, since they expose
+    // exactly what the writes protect. Exact paths only, so the
+    // public schema/random-name utilities stay open.
+    pathname === "/api/character" ||
+    pathname === "/api/character/history" ||
     (write &&
       [
         "import",
