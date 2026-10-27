@@ -62,6 +62,8 @@ public abstract class TelephonyPlugin extends Plugin {
 
  /** The host's migration-sensitive identity and capability profile. Called once from {@link #load()}. */
  protected abstract SmsTelephonyConfiguration configuration();
+ /** The answer when the profile does not admit this install or the phone is locked or in the background. */
+ protected String unavailableMessage() { return UNAVAILABLE; }
 
  private SmsTelephonyConfiguration config;
  private final ExecutorService reader = Executors.newSingleThreadExecutor();
@@ -105,7 +107,7 @@ public abstract class TelephonyPlugin extends Plugin {
  protected final boolean refused(PluginCall call) {
   if (call == null) return true;
   if (admitted() && unlockedForeground()) return false;
-  call.reject(UNAVAILABLE, "unavailable");
+  call.reject(unavailableMessage(), "unavailable");
   return true;
  }
  protected static String clip(CharSequence value) {
