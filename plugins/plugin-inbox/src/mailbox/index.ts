@@ -15,4 +15,5 @@ export * from "./preview.ts";
 export * from "./read-ahead.ts";
 export * from "./read-state.ts";
 export * from "./retained-draft.ts";
+export * from "./review-controller.ts";
 export type * from "./types.ts";
