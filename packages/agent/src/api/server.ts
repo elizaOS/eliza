@@ -1076,6 +1076,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // View event broadcast: the frame reaches every connected
+    // client and is re-emitted as agent-sourced, so a paired
+    // guest must not inject UI events — the same shape as the
+    // agent event injection gate.
+    pathname === "/api/views/events/broadcast" ||
     (write &&
       [
         "import",
