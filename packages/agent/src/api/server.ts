@@ -1071,7 +1071,13 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Browser-device writes: PUT /profile overwrites the agent's
+        // preferred browser search profile (or disables it) with no
+        // caller check — the enrollment flow requires explicit
+        // authorization for the same key. GET status/profile stays
+        // open (dashboard metadata).
+        under("/api/browser-device")))
   );
 }
 
