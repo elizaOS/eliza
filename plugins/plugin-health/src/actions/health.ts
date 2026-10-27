@@ -512,6 +512,11 @@ export function createOwnerHealthAction({
 }: CreateOwnerHealthActionOptions): Action {
   return {
     name: "OWNER_HEALTH",
+    // Owner health telemetry reads are owner context, like every
+    // other owner action. Without a gate, satisfiesRoleGate passes
+    // any caller when the gate is undefined — so a guest turn could
+    // read the owner's wearable telemetry with no check at all.
+    roleGate: { minRole: "OWNER" },
     similes: ["HEALTH", "FITNESS", "WELLNESS", ...HEALTH_SIMILES],
     description:
       "Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
