@@ -123,6 +123,32 @@ check can retry; a WebView recreation receives a new native plugin lifetime.
 shared native policy, client refusal rules, Android API compilation and renderer
 authority race. These tests do not prove installed-device microphone handoff.
 
+## System facts and settings handoffs
+
+`getSystemFacts()` returns the switch states an ordinary app can read without a
+permission it does not hold: Wi-Fi, Bluetooth, airplane mode, location, mobile
+data, Do Not Disturb (interruption filter) and adaptive brightness, plus the
+active transport and battery/power-saver state (`SystemFacts.read`). A key is
+present only when Android answered; an absent key is unknown, never off. The
+plugin changes none of these. `openSettingsPage({ page })` opens one allowlisted
+Android page (`SystemSettingsPages.PAGES`) and resolves `specific: false` when
+only a broader fallback page exists on that image, so the caller can say so.
+`openNotificationShade()` asks Android to expand its shade for a host acting as
+the launcher (`canExpandNotificationShade()`, overridable) that declares
+`EXPAND_STATUS_BAR`; outcomes are `opened` (accepted, not proof the shade is
+visible), `standalone`, `permission-missing`, `unsupported` and `not-in-front`.
+The web fallback reports no facts, opens no page and answers `unsupported`.
+
+`@elizaos/capacitor-system/settings` (`src/settings.ts`) is the shared, browser-safe
+presentation for those facts: `parseSystemFacts`, `systemSwitchRows` (row wording
+that says "Not reported by Android" instead of guessing), quick-setting tile state,
+accessible names that announce handoff tiles as buttons carrying their state,
+`broaderPageNotice` and a one-handoff-per-gesture gate. The Device Settings app
+(`plugin-native-settings`) renders these rows. `test/settings.test.mjs` runs the
+reader, page fallbacks and shade outcomes against host-JVM stand-ins; the readable
+settings and the pages an image provides still differ by Android version and vendor
+and need device qualification.
+
 ## App data reset
 
 `reset.DataReset` resets a host app's own data through Android's

@@ -29,6 +29,12 @@
       "types": "./dist/esm/reset.d.ts",
       "import": "./dist/esm/reset.js",
       "default": "./dist/esm/reset.js"
+    },
+    "./settings": {
+      "eliza-source": "./src/settings.ts",
+      "types": "./dist/esm/settings.d.ts",
+      "import": "./dist/esm/settings.js",
+      "default": "./dist/esm/settings.js"
     }
   },
   "files": [
