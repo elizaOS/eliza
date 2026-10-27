@@ -1136,7 +1136,10 @@ export class IMessageService extends Service implements IIMessageService {
           readTargetAccountId(target) ?? readContextAccountId(context)
         );
         const chatId = await resolveIMessageChatId(context.runtime, target);
-        const messages = chatId ? await service.getMessages({ chatId }) : [];
+        // Bound it: without a limit the chat.db reader returns the whole
+        // chat on every context build, mirroring the cap #37793 applied
+        // to Slack's chat context.
+        const messages = chatId ? await service.getMessages({ chatId, limit: 15000 }) : [];
         return {
           target: targetWithAccount(target, accountId),
           label: chatId ?? target.channelId ?? target.entityId ?? "iMessage target",
