@@ -179,7 +179,7 @@ function holdingClaims(
       if (!holdingContext) continue;
       // Ordinary named-asset absence is a zero claim, not a statement of unknown data.
       for (const match of clause.matchAll(
-        /\b(?:no|(?:didn't|did not|don't|do not|doesn't|does not)\s+(?:find|have|hold|own)\s+any)\s+([A-Za-z][A-Za-z0-9]*)(?=\s+(?:holdings|tokens|balance)\b|[.!]?\s*$)/gi,
+        /\b(?:no|(?:didn't|did not|don't|do not|doesn't|does not)\s+(?:find|have|hold|own)\s+any)\s+([A-Za-z][A-Za-z0-9]*)(?=\s+(?:holdings|tokens|balance)\b|\s+left\b|\s+remaining\b|\s+in\s+(?:your|my|the)\s+(?:wallet|holdings|portfolio|balance)\b|[.!]?\s*$)/gi,
       )) {
         if (
           NON_ASSET_UNITS.test(match[1]) ||
@@ -201,6 +201,30 @@ function holdingClaims(
           continue;
         if (NON_ASSET_UNITS.test(match[2])) continue;
         const claim = holding(match[2], match[1].replace(/,/g, ""));
+        if (claim)
+          claims.push({
+            ...claim,
+            personal,
+          });
+      }
+      // Symbol-before-amount balances ("Your SOL balance is 10.") state
+      // a holding the forward loop never extracts, so they escape the
+      // gate entirely. Clauses are already split on conjunctions, so the
+      // amount must end the clause; that keeps "balance is 10 days"
+      // style non-claims out.
+      for (const match of clause.matchAll(
+        /\b([A-Za-z][A-Za-z0-9]*)\s+balance\s+(?:is\s+)?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)(?=[.!?]?\s*$)/g,
+      )) {
+        const prefix = clause.slice(0, match.index);
+        if (
+          UNVERIFIED.test(prefix) ||
+          /\b(?:worth|valuation|price|valued|not|don't|doesn't|isn't|aren't)\b/i.test(
+            prefix,
+          )
+        )
+          continue;
+        if (NON_ASSET_UNITS.test(match[1])) continue;
+        const claim = holding(match[1], match[2].replace(/,/g, ""));
         if (claim)
           claims.push({
             ...claim,
