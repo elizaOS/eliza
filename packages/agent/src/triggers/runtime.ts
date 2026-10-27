@@ -283,6 +283,8 @@ interface WorkflowDispatchOptionsLike {
   triggerData?: Record<string, unknown>;
   idempotencyKey?: string;
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
 }
 
 interface WorkflowDispatchServiceLike {
@@ -448,6 +450,14 @@ async function dispatchWorkflow(
     idempotencyKey,
     ...(event?.triggerChainDepth !== undefined
       ? { triggerChainDepth: event.triggerChainDepth }
+      : {}),
+    // The occurrence this scheduler fire belongs to, so a host that runs only
+    // while powered on can record a late occurrence instead of replaying it.
+    ...(source === "scheduler" &&
+    !event &&
+    typeof trigger.nextRunAtMs === "number" &&
+    Number.isSafeInteger(trigger.nextRunAtMs)
+      ? { scheduledAtMs: trigger.nextRunAtMs }
       : {}),
   });
   return result.ok

@@ -115,6 +115,43 @@ export interface ExecuteWorkflowOptions {
   throwOnError?: boolean;
   /** Trigger hops inherited by events emitted from this execution. */
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
+}
+
+/** A scheduled occurrence reaching the runtime later than this was missed (the
+ * same window resident digests use). */
+export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
+export const MISSED_OCCURRENCES_SETTING = 'ELIZA_WORKFLOW_MISSED_OCCURRENCES';
+
+/**
+ * Hosts whose agent runs only while the device is powered on (a mobile
+ * resident) set `ELIZA_WORKFLOW_MISSED_OCCURRENCES=record`: a late scheduled
+ * occurrence is recorded once as missed and never replayed, and the next
+ * occurrence is armed as usual. Other hosts keep running a late occurrence.
+ */
+export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSetting'>): boolean {
+  const configured = runtime.getSetting(MISSED_OCCURRENCES_SETTING);
+  return (
+    (typeof configured === 'string' ? configured : process.env[MISSED_OCCURRENCES_SETTING]) ===
+    'record'
+  );
+}
+
+/** Terminal record for a scheduled occurrence that was not reached in time. */
+export function missedOccurrence(
+  scheduledAtMs: number | undefined,
+  now: number
+): Record<string, unknown> | undefined {
+  if (scheduledAtMs === undefined) return undefined;
+  if (!Number.isSafeInteger(scheduledAtMs) || scheduledAtMs > now + 1000)
+    throw new WorkflowApiError('Schedule requires its exact scheduled occurrence', 409);
+  if (now - scheduledAtMs <= SCHEDULED_OCCURRENCE_WINDOW_MS) return undefined;
+  return {
+    status: 'missed',
+    scheduledAt: new Date(scheduledAtMs).toISOString(),
+    text: 'The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.',
+  };
 }
 
 type RunListener = (event: WorkflowRunEvent) => void;
@@ -1757,6 +1794,13 @@ export class EmbeddedWorkflowService extends Service {
       requireMutable(workflow);
       if ((options.mode === 'trigger' || options.mode === 'schedule') && !workflow.active)
         throw new WorkflowApiError('Workflow is paused', 409);
+      // Resident digests keep their own source-aware admission below.
+      const missed =
+        !workflow.metadata?.[HOSTED_SPEC] &&
+        options.mode === 'trigger' &&
+        recordsMissedOccurrences(this.runtime)
+          ? missedOccurrence(options.scheduledAtMs, Date.now())
+          : undefined;
       if (workflow.metadata?.[HOSTED_SPEC]) {
         const scheduledAt = Number((options.triggerData ?? options.input)?.scheduledAtMs);
         hosted = await digestAdmission(tx, this.tenantId, workflow, Date.now(), scheduledAt);
@@ -1784,9 +1828,10 @@ export class EmbeddedWorkflowService extends Service {
         workflowVersionId: workflow.versionId,
         workflowName: workflow.name,
         mode: options.mode ?? 'manual',
-        status: hosted && hosted.status !== 'ready' ? 'finished' : 'queued',
-        finished: !!hosted && hosted.status !== 'ready',
+        status: missed || (hosted && hosted.status !== 'ready') ? 'finished' : 'queued',
+        finished: !!missed || (!!hosted && hosted.status !== 'ready'),
         ...(hosted && hosted.status !== 'ready' ? { stoppedAt: nowIso(), output: hosted } : {}),
+        ...(missed ? { stoppedAt: nowIso(), output: missed } : {}),
         startedAt: nowIso(),
         input: cloneJson(
           hosted

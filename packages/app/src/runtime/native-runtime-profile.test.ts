@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
 import {
   applyNativeCloudRuntimeProfile,
+  applyNativeRuntimeProfileEnvironment,
+  MISSED_OCCURRENCES_ENV,
   NATIVE_RUNTIME_PROFILES,
   type NativeRuntimeProfileStores,
   nativeCloudServiceRouting,
@@ -207,5 +209,26 @@ describe("applying a profile before boot", () => {
       expect(state.saved).toBeUndefined();
       expect(state.routing).toBeUndefined();
     }
+  });
+});
+
+describe("process policy at resident boot", () => {
+  test("a selected profile records missed scheduled occurrences", () => {
+    for (const selection of ["native", "cloud", ""]) {
+      const input: NodeJS.ProcessEnv = { ELIZA_RUNTIME_PROFILE: selection };
+      expect(
+        applyNativeRuntimeProfileEnvironment(input)?.missedOccurrences,
+      ).toBe("record");
+      expect(input[MISSED_OCCURRENCES_ENV]).toBe("record");
+    }
+  });
+
+  test("a host without a profile keeps its behavior and an unknown one fails closed", () => {
+    const untouched: NodeJS.ProcessEnv = {};
+    expect(applyNativeRuntimeProfileEnvironment(untouched)).toBeUndefined();
+    expect(untouched).toEqual({});
+    expect(() =>
+      applyNativeRuntimeProfileEnvironment({ ELIZA_RUNTIME_PROFILE: "hosted" }),
+    ).toThrow(/Unknown native runtime profile/);
   });
 });

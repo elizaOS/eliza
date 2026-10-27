@@ -52,6 +52,8 @@ export interface WorkflowDispatchOptions {
   idempotencyKey?: string;
   /** Trigger ancestry copied onto events emitted by this execution. */
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
 }
 
 export interface WorkflowDispatchService {
@@ -159,7 +161,8 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
           id,
           triggerData,
           idempotencyKey,
-          options.triggerChainDepth
+          options.triggerChainDepth,
+          options.scheduledAtMs
         ).finally(() => {
           inflight.delete(inflightKey);
         });
@@ -167,7 +170,14 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
         return promise;
       }
 
-      return runDispatch(service, id, triggerData, undefined, options.triggerChainDepth);
+      return runDispatch(
+        service,
+        id,
+        triggerData,
+        undefined,
+        options.triggerChainDepth,
+        options.scheduledAtMs
+      );
     },
   };
 }
@@ -177,7 +187,8 @@ async function runDispatch(
   workflowId: string,
   triggerData: Record<string, unknown>,
   idempotencyKey: string | undefined,
-  triggerChainDepth: number | undefined
+  triggerChainDepth: number | undefined,
+  scheduledAtMs: number | undefined
 ): Promise<WorkflowDispatchResult> {
   try {
     const execution = await service.executeWorkflow(workflowId, {
@@ -185,6 +196,7 @@ async function runDispatch(
       triggerData,
       idempotencyKey,
       ...(triggerChainDepth !== undefined ? { triggerChainDepth } : {}),
+      ...(scheduledAtMs !== undefined ? { scheduledAtMs } : {}),
     });
     return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
   } catch (err) {

@@ -11,6 +11,9 @@
  * - `cloud`: an explicit QA profile without local model payloads; embeddings
  *   use authenticated Eliza Cloud. Its speech is a separately disclosed host
  *   upload, so the agent's own speech routing stays local-only in both.
+ *
+ * Both run the agent on the phone, so schedules run only while it is powered
+ * on: a late scheduled occurrence is recorded once as missed, never replayed.
  */
 import type { ServiceRouteConfig } from "@elizaos/contracts";
 import { buildElizaCloudServiceRoute } from "@elizaos/host/protocol";
@@ -25,6 +28,8 @@ export interface NativeRuntimeProfile {
   readonly agentSpeech: "local-only";
   /** Whether the host packages local model inputs (BGE, ASR, TTS, VAD). */
   readonly localModels: boolean;
+  /** Late scheduled workflow occurrences are recorded, not run. */
+  readonly missedOccurrences: "record";
 }
 
 export const NATIVE_RUNTIME_PROFILES: Readonly<
@@ -36,6 +41,7 @@ export const NATIVE_RUNTIME_PROFILES: Readonly<
     embeddings: "local",
     agentSpeech: "local-only",
     localModels: true,
+    missedOccurrences: "record",
   }),
   cloud: Object.freeze({
     id: "cloud",
@@ -43,6 +49,7 @@ export const NATIVE_RUNTIME_PROFILES: Readonly<
     embeddings: "elizacloud",
     agentSpeech: "local-only",
     localModels: false,
+    missedOccurrences: "record",
   }),
 });
 
@@ -54,6 +61,22 @@ export function resolveNativeRuntimeProfile(
     return NATIVE_RUNTIME_PROFILES.native;
   if (value === "cloud") return NATIVE_RUNTIME_PROFILES.cloud;
   throw new Error("Unknown native runtime profile");
+}
+
+/** Read by the workflow service; see plugin-workflow recordsMissedOccurrences. */
+export const MISSED_OCCURRENCES_ENV = "ELIZA_WORKFLOW_MISSED_OCCURRENCES";
+
+/**
+ * Applies the profile's process-wide policy at every resident boot, signed in
+ * or not. A host that selects no profile keeps its existing behavior.
+ */
+export function applyNativeRuntimeProfileEnvironment(
+  env: NodeJS.ProcessEnv,
+): NativeRuntimeProfile | undefined {
+  if (env.ELIZA_RUNTIME_PROFILE === undefined) return undefined;
+  const profile = resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
+  env[MISSED_OCCURRENCES_ENV] = profile.missedOccurrences;
+  return profile;
 }
 
 export const LOCAL_EMBEDDING_ROUTE: ServiceRouteConfig = Object.freeze({
