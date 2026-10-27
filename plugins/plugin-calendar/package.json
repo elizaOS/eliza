@@ -25,6 +25,12 @@
       "import": "./dist/api/client-calendar.js",
       "default": "./dist/api/client-calendar.js"
     },
+    "./linked-sync": {
+      "eliza-source": "./src/linked-sync/index.ts",
+      "types": "./dist/linked-sync/index.d.ts",
+      "import": "./dist/linked-sync/index.js",
+      "default": "./dist/linked-sync/index.js"
+    },
     "./format": {
       "eliza-source": "./src/internal/format.ts",
       "types": "./src/internal/format.ts",
