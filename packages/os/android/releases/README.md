@@ -8,6 +8,10 @@ admitted Sense listener as the only privileged package (exactly
 stallion `BoardConfig.mk`, enforcing SELinux with the reviewed device policy, the hash-pinned
 generated vendor tree and VINTF manifests, role provisioning for HOME, assistant and
 Autofill, and the system Clock (`DeskClock`). Stock recovery stays reachable.
+Brand assets are configurable but pinned: a composition may record
+`brandAssets.bootAnimation.sha256`, and staging then requires exactly that stored
+`bootanimation.zip` (`--boot-animation`) and installs it on the product partition;
+without a pin the stock animation remains. Assets never change privileges.
 
 Release inputs are brand-owned public identities. A brand keeps three records:
 

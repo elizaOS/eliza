@@ -3,6 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireClockProduct } from "./aosp-clock-handlers.mjs";
+import {
+  admitBrandAssets,
+  validateBrandAssets,
+  writeBrandAssets,
+} from "./pixel10a-brand-assets.mjs";
 import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
 
 const hardwareRoot = fileURLToPath(
@@ -40,6 +45,7 @@ export function validatePixel10aProduct(value) {
     )
       throw new Error(`Invalid Pixel 10a ${name}`);
   }
+  validateBrandAssets(value.brandAssets);
   return value;
 }
 
@@ -127,6 +133,7 @@ export function composePixel10aProduct({
   sourceEvidence,
   nativeStagingEvidence,
   production = false,
+  bootAnimation = null,
 }) {
   product = validatePixel10aProduct(product);
   launcher = validateDescriptor(launcher);
@@ -155,10 +162,13 @@ export function composePixel10aProduct({
     nativeStagingEvidence,
   );
   checkListenerPolicy(output, launcher.packageName);
+  // Pinned brand assets are verified before anything is written.
+  const brandAssets = admitBrandAssets(product, { bootAnimation });
   for (const name of [
     "AndroidProducts.mk",
     `${product.productName}.mk`,
     "stallion",
+    "brand",
     "physical-product.json",
   ])
     if (fs.existsSync(path.join(output, name)))
@@ -170,9 +180,10 @@ export function composePixel10aProduct({
   });
   fs.writeFileSync(
     path.join(output, `${product.productName}.mk`),
-    `# Shared Pixel 10a/stallion hardware; retain the verified compatibility vendor path.\nUSE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/alphaphone/product.mk)\n\nPRODUCT_NAME := ${product.productName}\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := ${product.model}\nPRODUCT_BRAND := ${product.brand}\nPRODUCT_MANUFACTURER := ${product.manufacturer}\n`,
+    `# Shared Pixel 10a/stallion hardware; retain the verified compatibility vendor path.\nUSE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/alphaphone/product.mk)\n\nPRODUCT_NAME := ${product.productName}\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := ${product.model}\nPRODUCT_BRAND := ${product.brand}\nPRODUCT_MANUFACTURER := ${product.manufacturer}\n${brandAssets.makefile ?? ""}`,
     { flag: "wx" },
   );
+  writeBrandAssets(output, brandAssets);
   fs.writeFileSync(
     path.join(output, "AndroidProducts.mk"),
     `PRODUCT_MAKEFILES := $(LOCAL_DIR)/${product.productName}.mk\nCOMMON_LUNCH_CHOICES := \\\n    ${product.productName}-${product.releaseConfig}-userdebug \\\n    ${product.productName}-${product.releaseConfig}-user\n`,
@@ -197,6 +208,7 @@ export function composePixel10aProduct({
     production,
     developmentOnly: !production,
     nativeLibrariesStaged,
+    brandAssets: brandAssets.evidence,
     sourceEvidence,
     imageBuilt: false,
     imageSigned: false,

@@ -134,6 +134,7 @@ export async function stagePixel10aProduct(options) {
       sourceEvidence,
       nativeStagingEvidence,
       production: !options.development,
+      bootAnimation: options.bootAnimation ?? null,
     });
     finalizeAndroidNative({
       apk: path.join(output, "Launcher.apk"),
@@ -152,7 +153,7 @@ export async function stagePixel10aProduct(options) {
 export async function main(argv = process.argv.slice(2)) {
   if (argv.length === 1 && argv[0] === "--help") {
     console.log(
-      "Usage: node stage-pixel10a-product.ts --product PRODUCT_JSON --launcher-descriptor LAUNCHER_JSON --apk APK --aosp-root AOSP --vendor-archive FACTORY --output NEW_DIR --source-commit COMMIT --applied-app-native-patch [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--listener-apk APK --listener-descriptor JSON --voice-host JSON] [--applied-sense-patch] [--development] [--aapt TOOL] [--apksigner TOOL]",
+      "Usage: node stage-pixel10a-product.ts --product PRODUCT_JSON --launcher-descriptor LAUNCHER_JSON --apk APK --aosp-root AOSP --vendor-archive FACTORY --output NEW_DIR --source-commit COMMIT --applied-app-native-patch [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--listener-apk APK --listener-descriptor JSON --voice-host JSON] [--applied-sense-patch] [--boot-animation ZIP] [--development] [--aapt TOOL] [--apksigner TOOL]",
     );
     return;
   }
@@ -177,6 +178,7 @@ export async function main(argv = process.argv.slice(2)) {
     "--runtime-source": "runtimeSource",
     "--source-commit": "sourceCommit",
     "--bun-target": "bunTarget",
+    "--boot-animation": "bootAnimation",
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--applied-sense-patch") options.appliedSensePatch = true;
