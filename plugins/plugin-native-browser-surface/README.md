@@ -273,8 +273,33 @@ from this package with a JDK on PATH or JAVA_HOME.
 - `BrowserAutofillEligibility` requires the selected, visible, committed HTTPS document
   to match the engine address. The host owns framework commit/cancel and excludes
   ineligible views from autofill.
+- `BrowserFieldOrigin` binds a website login field only to the origin WebView reports for
+  its frame (`WebMessageListener` `sourceOrigin`), and only when it equals the committed
+  top-level HTTPS origin of an eligible tab. Cross-origin, sandboxed and cleartext frames are
+  refused with a stated reason; a binding ends with its navigation.
+- `BrowserHttpAuthOrigin` admits an HTTP sign-in prompt for fill only from an engine-reported
+  challenge. Standard WebView reports none (`STANDARD_WEBVIEW`), so its prompts stay manual.
 
-Hosts retain consent UI, OS permissions, sealed storage, navigation and downloads.
-Recheck cookie policy at every redirect; do not hand authenticated headers to
-DownloadManager, which stores and replays them. These policies do not themselves
-perform network requests or qualify a browser/device integration.
+Android helpers for the same hosts (they need AndroidX WebKit with
+`JS_INJECTION_IN_FRAME_AND_WORLD` and `WEB_MESSAGE_LISTENER`; without them the feature stays off):
+
+- `BrowserLoginFields.install(webView, host, extras)` runs its reporter (`SCRIPT`) in an
+  isolated world of every frame before the first load. Bound fields reach Android Autofill as
+  virtual children of `anchor`, a transparent view the host lays over the tab, with the
+  per-field and top-level origin extras the host's password provider reads
+  (`BrowserAutofillExtras`; for `plugin-native-passwords` pass
+  `PasswordAutofillPolicy.FIELD_ORIGIN` and `PasswordFormPolicy.TOP_ORIGIN_EXTRA`). Fill
+  values go only to the frame that reported the field. While it exists, exclude the tab
+  WebView's own autofill structure.
+- `BrowserHttpAuthAutofill.field(...)` builds the prompt's two fields; they report the bound
+  origin only while the host's binding admits the tab.
+- `BrowserDownloads` reviews every download natively, keeps a private tab's entries in memory
+  only, fetches a signed-in file itself so the tab's cookie reaches only its exact page origin
+  on each redirect hop, and stops that fetch when its entry, tab or site data is cleared.
+  `BrowserBlobCapture` copies a page-created `blob:` file through an isolated world. The host
+  passes its preference name, its "is this review still current" check and its cookie reader.
+
+Hosts retain site-permission prompts, OS permissions, sealed storage and navigation.
+Hosts that do their own downloads recheck cookie policy at every redirect and never hand
+authenticated headers to DownloadManager, which stores and replays them. The pure policies
+perform no network requests; none of this qualifies a browser, provider or device integration.
