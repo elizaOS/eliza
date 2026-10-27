@@ -434,3 +434,44 @@ test("the plugin owns every secret, compares state before burning and logs only 
   assert.match(gate, /"Authorize " \+ product/);
   assert.doesNotMatch(gate, /PluginCall|call\.getBoolean|\.write\(/);
 });
+
+test("the exact Google observer logs only the fixed classification, never provider text (plain JVM)", () => {
+  const methods = between(
+    plugin,
+    " private CloudSignInFlow.GoogleFailure observeGoogleResponse",
+    " /**\n  * Strict App Link capture",
+  );
+  assert.ok(methods.includes('response.data.opt("error")'));
+  const directory = mkdtempSync(join(tmpdir(), "eliza-cloud-google-observer-"));
+  const file = join(directory, "NativeGoogleObserverTest.java");
+  writeFileSync(
+    file,
+    `package ai.eliza.auth.cloud;
+public class NativeGoogleObserverTest {
+ static class Attempt {long startedAt=System.currentTimeMillis()-100;long expiresAt=System.currentTimeMillis()+10000;}
+ static class Data {Object ok,error;Object opt(String k){return k.equals("ok")?ok:error;}}
+ static class Response {int status;Data data=new Data();}
+ static class Log {static String value;static int i(String tag,String line){value=tag+" "+line;return 0;}}
+ CloudSignInConfig config(){return TestRegistration.PRODUCT;}
+ ${methods.replaceAll("android.util.Log.i", "Log.i").replace(/^ private /gm, " ")}
+ public static void main(String[]args){NativeGoogleObserverTest p=new NativeGoogleObserverTest();Response r=new Response();r.status=401;r.data.ok=false;r.data.error="Google identity could not be verified";
+  CloudSignInFlow.GoogleFailure f=p.observeGoogleResponse(new Attempt(),CloudSignInFlow.GoogleStage.VERIFY,r);
+  if(!"provider-refused".equals(f.code)||!Log.value.startsWith("ElizaCloudSignIn ")||!Log.value.contains("reason=google-identity-unverified")||Log.value.contains((String)r.data.error))throw new AssertionError(Log.value);
+  r.data.error="SECRET_TOKEN\\nhttps://private/?jwt=secret";p.observeGoogleResponse(new Attempt(),CloudSignInFlow.GoogleStage.VERIFY,r);
+  if(Log.value.contains("SECRET")||Log.value.contains("https")||!Log.value.contains("unclassified-provider-refusal"))throw new AssertionError(Log.value);
+  System.out.println("PASS exact native Google observer");
+ }
+}`,
+  );
+  try {
+    assert.match(
+      runJvm(
+        [...pure, ...support, file],
+        "ai.eliza.auth.cloud.NativeGoogleObserverTest",
+      ),
+      /^PASS exact native Google observer/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
