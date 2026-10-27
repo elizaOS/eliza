@@ -140,6 +140,25 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("returns the canonical deletion instant through authorized executor data and model receipt", async () => {
+    let instant = "2026-10-26T19:00:00.000Z";
+    const runtime = await executorHarness(() => new Date(instant));
+    const service = getNotesService(runtime);
+    const created = await service.createNoteWithCommit({
+      content: "Weekend packing\nBring water.",
+    });
+    instant = "2026-10-26T20:42:36.954Z";
+    const deleted = await execute(runtime, {
+      name: "NOTES_DELETE",
+      params: { noteId: created.value.id },
+    });
+    expect(deleted.success).toBe(true);
+    expect(deleted.data?.deletedAt).toBe(instant);
+    expect(deleted.promptData?.deletedAt).toBe(instant);
+    expect(service.snapshot().trash?.[0]?.deletedAt).toBe(instant);
+    expect(service.snapshot().notes).toEqual([]);
+  });
+
   it.each([
     ["NOTES_LIST", "NOTES_GET"],
     ["NOTES_LIST", "NOTES_PATCH", "NOTES_UPDATE"],
@@ -1089,6 +1108,14 @@ describe("promoted Notes execution", () => {
       params: { content: "Conversation context QA" },
     });
     expect(deleted.success).toBe(true);
+    expect(deleted.data?.deletedAt).toEqual(
+      getNotesService(runtime)
+        .snapshot()
+        .trash?.findLast((entry) => entry.note.id === deleted.data?.noteId)
+        ?.deletedAt,
+    );
+    expect(deleted.data?.deletedAt).toEqual(expect.any(String));
+    expect(deleted.promptData?.deletedAt).toEqual(deleted.data?.deletedAt);
     expect(deleted.data?.note).toEqual(updated.data?.note);
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
 

@@ -690,6 +690,9 @@ export const notesAction: Action = {
         op,
         noteId: removed.value.id,
         note: removed.value,
+        deletedAt: removed.snapshot.trash?.findLast(
+          (entry) => entry.note.id === removed.value.id,
+        )?.deletedAt,
         notesRevision: removed.snapshot.revision,
         removedCount: removed.removedIds.length,
       });
