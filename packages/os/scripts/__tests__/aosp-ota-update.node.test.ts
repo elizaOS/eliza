@@ -14,6 +14,7 @@ import {
   classifyUpdate,
   fallbackProblems,
   fallbackToOriginalSlot,
+  main,
   parseArgs,
   parseGetprop,
   readJournal,
@@ -410,8 +411,8 @@ function simulatedDevice({
                 stdout: "",
                 stderr: `${name}: ${values[name]}\nFinished. Total time: 0.001s\n`,
               };
-      } else if (args[0]?.startsWith("--set-active=")) {
-        sim.slot = args[0].slice("--set-active=".length);
+      } else if (args[0] === "set_active") {
+        sim.slot = args[1];
         result = ok();
       } else if (args[0] === "reboot") {
         boot();
@@ -788,8 +789,17 @@ test("fallback to the original slot is admitted only before the updated slot is 
   const journal = readJournal(run.options.journalFile);
   assert.equal(journal.state, "rolled-back");
   assert.equal(journal.signedUpdateApplied, false);
+  assert.match(
+    applyUpdate({
+      device,
+      ...run.options,
+      execute: true,
+      confirm: true,
+    }).problems.join("\n"),
+    /records a fallback to the original slot; start a new journal/,
+  );
   assert.ok(
-    device.calls.some((call) => call.join(" ") === "fastboot --set-active=a"),
+    device.calls.some((call) => call.join(" ") === "fastboot set_active a"),
   );
   // Journals that never reached the updated slot have nothing to fall back from.
   assert.match(
@@ -890,6 +900,24 @@ test("stock recovery verifies the locked factory archive and returns a plan it n
     }).problems.join("\n"),
     /not build CP4A/,
   );
+  // A brand wrapper's channel and source lock are the command-line defaults.
+  const channelFile = path.join(dir, "channel.json"),
+    lockFile = path.join(dir, "lock.json");
+  fs.writeFileSync(channelFile, JSON.stringify(channel));
+  fs.writeFileSync(lockFile, JSON.stringify(lock));
+  const printed = [];
+  const log = console.log;
+  console.log = (text) => printed.push(text);
+  try {
+    const result = main(["stock-archive", "--archive", archive], {
+      channel: channelFile,
+      sourceLock: lockFile,
+    });
+    assert.deepEqual(result.problems, []);
+  } finally {
+    console.log = log;
+  }
+  assert.equal(JSON.parse(printed[0]).steps.length, 8);
   // After the operator flashes it, the device must report that stock build.
   const device = simulatedDevice({
     fingerprint:

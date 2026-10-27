@@ -567,6 +567,11 @@ export function applyUpdate({
   };
   if (classification?.next === "refuse")
     problems.push(`refusing to continue: ${classification.reason}`);
+  // A fallback is the operator's decision against this update; trying it again starts a new journal.
+  if (journal?.state === "rolled-back")
+    problems.push(
+      "the journal records a fallback to the original slot; start a new journal to update again",
+    );
   if (!execute || problems.length)
     return { executed: false, plan, problems: [...new Set(problems)] };
   if (!confirm)
@@ -844,7 +849,7 @@ export function fallbackToOriginalSlot({
         journalFile,
         event(journal, "fallback-started", { bootloader }, now),
       );
-      device.fastboot([`--set-active=${journal.from.slot}`]);
+      device.fastboot(["set_active", journal.from.slot]);
       const after = observeBootloader(device);
       if (after.currentSlot !== journal.from.slot) {
         writeJournal(
@@ -1092,16 +1097,21 @@ export function parseArgs(argv) {
 
 /** CLI. A brand wrapper passes its channel and source lock as defaults. */
 export function main(argv = process.argv.slice(2), defaults = {}) {
-  const options = parseArgs(
-    argv[0] &&
-      defaults.channel &&
-      !argv.includes("--channel") &&
-      ["check", "apply", "stock-archive"].includes(argv[0])
-      ? [...argv, "--channel", defaults.channel]
-      : argv,
-  );
-  if (!options.sourceLock && defaults.sourceLock)
-    options.sourceLock = defaults.sourceLock;
+  const [command] = argv;
+  const withDefaults = [...argv];
+  if (
+    defaults.channel &&
+    !argv.includes("--channel") &&
+    ["check", "apply", "stock-archive"].includes(command)
+  )
+    withDefaults.push("--channel", defaults.channel);
+  if (
+    defaults.sourceLock &&
+    !argv.includes("--source-lock") &&
+    ["stock-archive", "verify-stock"].includes(command)
+  )
+    withDefaults.push("--source-lock", defaults.sourceLock);
+  const options = parseArgs(withDefaults);
   const channel = options.channel ? readJson(options.channel) : null;
   const device = options.serial
     ? deviceRunner({
