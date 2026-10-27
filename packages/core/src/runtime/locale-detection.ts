@@ -96,7 +96,7 @@ export function detectLocaleFromText(
 	if (typeof text !== "string") {
 		return null;
 	}
-	const trimmed = text.trim();
+	const trimmed = text.normalize("NFC").trim();
 	if (trimmed.length === 0) {
 		return null;
 	}
