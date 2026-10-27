@@ -308,3 +308,208 @@ test("archive assembly failure preserves the previous verified archive", (t) => 
     false,
   );
 });
+
+function product(t, { signed = false } = {}) {
+  const f = fixture(t);
+  Object.assign(f.options, {
+    project: "host",
+    output: "artifacts/product",
+    archive: null,
+    gradleArguments: ["-PHOST_SWITCH=0", "--offline"],
+    androidTestOutput: "instrumentation",
+    signing: { environment: ["HOST_STORE", "HOST_KEY"] },
+    mappings: true,
+  });
+  f.options.run = (command, args, opts) => {
+    f.calls.push({ command, args, opts });
+    const outputs = path.join(f.root, "host/app/build/outputs");
+    const write = (relative, value) => {
+      fs.mkdirSync(path.dirname(path.join(outputs, relative)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(outputs, relative), value);
+    };
+    if (command === "./gradlew")
+      for (const task of args) {
+        const match =
+          /^:app:assemble([A-Z][a-z]+)(Debug|Release|DebugAndroidTest)$/.exec(
+            task,
+          );
+        if (!match) continue;
+        const variant = match[1].toLowerCase();
+        if (match[2] === "Debug")
+          write(
+            `apk/${variant}/debug/app-${variant}-debug.apk`,
+            `${variant}:debug`,
+          );
+        else if (match[2] === "DebugAndroidTest")
+          write(
+            `apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,
+            `${variant}:test`,
+          );
+        else {
+          write(
+            `apk/${variant}/release/app-${variant}-release${signed ? "" : "-unsigned"}.apk`,
+            `${variant}:release`,
+          );
+          write(`mapping/${variant}Release/mapping.txt`, `${variant}:mapping`);
+        }
+      }
+    if (command === "verify")
+      fs.writeFileSync(
+        path.join(f.root, "artifacts/product/apk-manifest.json"),
+        "{}",
+      );
+  };
+  return f;
+}
+
+test("product hosts choose project, output, Gradle properties and retained test and mapping files", (t) => {
+  const f = product(t);
+  fs.mkdirSync(path.join(f.root, "artifacts/product/instrumentation"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/product/instrumentation/stale.apk"),
+    "old",
+  );
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/product/standalone-release.apk"),
+    "an older signed build",
+  );
+  const result = f.build();
+  assert.equal(result.archive, null);
+  const gradle = f.calls.find((call) => call.command === "./gradlew");
+  assert.equal(gradle.opts.cwd, path.join(f.root, "host"));
+  assert.deepEqual(gradle.args.slice(0, 3), [
+    "--no-daemon",
+    "-PHOST_SWITCH=0",
+    "--offline",
+  ]);
+  const output = path.join(f.root, "artifacts/product");
+  assert.deepEqual(fs.readdirSync(output).sort(), [
+    "apk-manifest.json",
+    "instrumentation",
+    "launcher-debug.apk",
+    "launcher-release-unsigned.apk",
+    "mapping",
+    "standalone-debug.apk",
+    "standalone-release-unsigned.apk",
+  ]);
+  assert.deepEqual(
+    fs.readdirSync(path.join(output, "instrumentation")).sort(),
+    ["launcher-androidTest.apk", "standalone-androidTest.apk"],
+  );
+  assert.equal(
+    fs.readFileSync(
+      path.join(output, "mapping/launcher-release-mapping.txt"),
+      "utf8",
+    ),
+    "launcher:mapping",
+  );
+});
+
+test("a signed release keeps its name, and requested signing never yields an unsigned release", (t) => {
+  const signed = product(t, { signed: true });
+  signed.options.environment = { HOST_STORE: "/k", HOST_KEY: "secret" };
+  signed.build();
+  assert.ok(
+    fs.existsSync(
+      path.join(signed.root, "artifacts/product/launcher-release.apk"),
+    ),
+  );
+  const unsigned = product(t);
+  unsigned.options.environment = { HOST_STORE: "/k", HOST_KEY: "secret" };
+  assert.throws(
+    unsigned.build,
+    /HOST_STORE, HOST_KEY are set but Gradle produced an unsigned/,
+  );
+  assert.equal(
+    unsigned.calls.some((call) => call.command === "verify"),
+    false,
+  );
+  // A blank value is not a signing request; the unsigned release is reported as such.
+  const blank = product(t);
+  blank.options.environment = { HOST_STORE: "/k", HOST_KEY: " " };
+  blank.build();
+  // A previous signed release output cannot be mistaken for this build's release.
+  const stale = product(t);
+  const old = path.join(
+    stale.root,
+    "host/app/build/outputs/apk/standalone/release/app-standalone-release.apk",
+  );
+  fs.mkdirSync(path.dirname(old), { recursive: true });
+  fs.writeFileSync(old, "previous signed build");
+  stale.build();
+  assert.ok(
+    fs.existsSync(
+      path.join(
+        stale.root,
+        "artifacts/product/standalone-release-unsigned.apk",
+      ),
+    ),
+  );
+  assert.equal(fs.existsSync(old), false);
+});
+
+test("sequential builds run one variant and mode at a time and discard packaging intermediates", (t) => {
+  const f = product(t);
+  f.options.sequential = true;
+  f.options.variants = ["launcher"];
+  f.options.androidTestOutput = "";
+  f.options.prepare = [{ gradleTasks: [":updater:assembleDebug"] }];
+  const intermediates = path.join(f.root, "host/app/build/intermediates");
+  fs.mkdirSync(path.join(intermediates, "merged_native_libs"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(intermediates, "javac"), { recursive: true });
+  f.build();
+  assert.deepEqual(
+    f.calls
+      .filter((call) => call.command === "./gradlew")
+      .map((call) => call.args.slice(3)),
+    [
+      [":app:assembleLauncherDebug", ":app:assembleLauncherDebugAndroidTest"],
+      [":app:assembleLauncherRelease"],
+      [":updater:assembleDebug", ":app:lint"],
+    ],
+  );
+  assert.equal(
+    fs.existsSync(path.join(intermediates, "merged_native_libs")),
+    false,
+  );
+  assert.equal(fs.existsSync(path.join(intermediates, "javac")), true);
+  assert.ok(
+    fs.existsSync(
+      path.join(f.root, "artifacts/product/launcher-androidTest.apk"),
+    ),
+  );
+  const linked = product(t);
+  linked.options.sequential = true;
+  fs.mkdirSync(path.join(linked.root, "host/app/build"), { recursive: true });
+  fs.symlinkSync(
+    os.tmpdir(),
+    path.join(linked.root, "host/app/build/intermediates"),
+  );
+  assert.throws(linked.build, /Unsafe packaging intermediate path/);
+});
+
+test("unsafe paths, Gradle arguments and signing names are refused before any command", (t) => {
+  for (const patch of [
+    { project: "../outside" },
+    { output: "/tmp/artifacts" },
+    { androidTestOutput: "../escape" },
+    { gradleArguments: ["--init-script=evil.gradle"] },
+    { gradleArguments: ["-Dorg.gradle.dependency.verification=off"] },
+    { gradleArguments: ["-PNAME=$(touch x)"] },
+    { signing: { environment: [] } },
+    { signing: { environment: ["lower"] } },
+    { mappings: "yes" },
+    { sequential: 1 },
+  ]) {
+    const f = product(t);
+    Object.assign(f.options, patch);
+    assert.throws(f.build);
+    assert.equal(f.calls.length, 0);
+  }
+});
