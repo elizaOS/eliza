@@ -101,6 +101,19 @@ test("moving to Trash is write-ahead and removes only the confirmed note", async
   });
 });
 
+test("an unconfirmed list commit keeps the write-ahead copy for maintenance", async () => {
+  const { state, collection, actions } = world();
+  state.commitOk = false;
+  const outcome = await actions.moveToTrash(collection, note("a"), 0);
+  assert.equal(outcome.status, "unconfirmed");
+  assert.equal(outcome.entry.note.id, "a");
+  assert.equal(state.trash.entries.length, 1);
+  assert.deepEqual(
+    state.saved.map((n) => n.id),
+    ["a", "b"],
+  );
+});
+
 test("a stale view or a Trash change deletes nothing", async () => {
   const first = world();
   first.state.saved[0] = note("a", { body: "newer elsewhere" });

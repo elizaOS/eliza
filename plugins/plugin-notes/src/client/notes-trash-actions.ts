@@ -65,6 +65,11 @@ export type NotesTrashMoveOutcome<
   T extends TrashTarget = TrashTarget,
 > =
   | { status: "moved"; entry: NotesTrashEntry<N, T> }
+  /**
+   * The restorable copy is saved but the list commit was not confirmed. The host's
+   * save path reports that failure; maintenance drops the row if the note stays saved.
+   */
+  | { status: "unconfirmed"; entry: NotesTrashEntry<N, T> }
   /** Trash has no room for a restorable copy. Nothing was written. */
   | { status: "full" }
   /** This view's copy or Trash changed in another view. Nothing was deleted. */
@@ -156,7 +161,7 @@ export function createNotesTrashActions<
         );
         return committed
           ? { status: "moved" as const, entry }
-          : { status: "failed" as const };
+          : { status: "unconfirmed" as const, entry };
       });
     } catch (error) {
       if (isNotesTrashFull(error)) return { status: "full" };
