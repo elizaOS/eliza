@@ -175,6 +175,7 @@ const TELEGRAM_MEMORY_PAGE_SIZE = 500;
 async function loadAllTelegramRoomMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
+  limit?: number,
 ): Promise<Memory[]> {
   const memories: Memory[] = [];
   const seenIds = new Set<UUID>();
@@ -199,6 +200,9 @@ async function loadAllTelegramRoomMemories(
       for (const id of ids) seenIds.add(id as UUID);
     }
     memories.push(...page);
+    if (limit !== undefined && memories.length >= limit) {
+      return memories.slice(0, limit);
+    }
     if (page.length < TELEGRAM_MEMORY_PAGE_SIZE) return memories;
   }
 }
@@ -2852,6 +2856,7 @@ export class TelegramService extends Service {
       const memories = await loadAllTelegramRoomMemories(
         context.runtime,
         roomId,
+        limit,
       );
       const matches = memories.filter((memory) => {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
@@ -2870,7 +2875,7 @@ export class TelegramService extends Service {
     );
     const chunks = await Promise.all(
       roomIds.map((roomId) =>
-        loadAllTelegramRoomMemories(context.runtime, roomId),
+        loadAllTelegramRoomMemories(context.runtime, roomId, limit),
       ),
     );
     const matches = chunks
@@ -2902,9 +2907,13 @@ export class TelegramService extends Service {
     params: TelegramConnectorReadParams & { query: string },
   ): Promise<Memory[]> {
     const limit = normalizeConnectorLimit(params.limit);
+    // Cap the scan: fetching with an undefined limit pages every room's
+    // entire stored history, so a search for a handful of matches costs
+    // all of it. The cap keeps the newest messages (pages arrive
+    // newest-first); matches are still sliced to the requested limit.
     const messages = await this.fetchConnectorMessages(context, {
       target: params.target ?? context.target,
-      limit: undefined,
+      limit: 15000,
     });
     return filterMemoriesByQuery(messages, params.query, limit);
   }
