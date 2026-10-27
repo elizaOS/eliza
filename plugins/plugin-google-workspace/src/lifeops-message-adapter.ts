@@ -400,6 +400,11 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
   ): Promise<MessageRef[]> {
     const service = this.requireService(runtime);
     const refs: MessageRef[] = [];
+    // With neither a limit nor a time window, bound the scan: the
+    // provider loop pages until the mailbox is exhausted, fetching
+    // metadata per message. A sinceMs window is provider-bounded by
+    // the after: query token, so it keeps today's behavior.
+    const scanCap = opts.limit ?? (opts.sinceMs === undefined ? 15000 : undefined);
     for (const accountId of requestedAccounts(opts.worldIds)) {
       // Channel, time and read filters must reach Gmail before maxResults applies,
       // or the provider's newest page can hold no match while older ones exist.
@@ -410,14 +415,14 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
               {
                 accountId,
                 query: listQuery(opts),
-                maxResults: opts.limit,
+                maxResults: scanCap,
                 includeSpamTrash: Boolean(opts.channelIds?.length),
               },
               opts.channelIds
             )
           : await service.listGmailTriageMessages({
               accountId,
-              maxResults: opts.limit,
+              maxResults: scanCap,
             });
       for (const message of messages) {
         refs.push(mapGmailMessage(String(runtime.agentId), accountId, message));
