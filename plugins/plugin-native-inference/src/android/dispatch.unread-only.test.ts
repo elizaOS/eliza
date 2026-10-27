@@ -110,3 +110,77 @@ describe("GET /api/notifications unreadOnly identity", () => {
     expect(JSON.parse(response.body)).toEqual({ error: "Invalid unreadOnly" });
   });
 });
+
+describe("GET /api/notifications limit identity", () => {
+  const recorded = () => {
+    const calls: Array<{ limit?: number } | undefined> = [];
+    const runtime = notifierRuntime((query) => {
+      calls.push(query as { limit?: number } | undefined);
+      return [];
+    });
+    return { calls, runtime };
+  };
+
+  it.each(["1e2", "-1", "abc", "10.5", "1,2", "%2010", "+5", "00"])(
+    "rejects limit=%s before list",
+    async (token) => {
+      const list = () => {
+        throw new Error("list must not run");
+      };
+      const runtime = notifierRuntime(list);
+      const response = await dispatchBufferedRequest(runtime, fallthrough, {
+        method: "GET",
+        path: `/api/notifications?limit=${token}`,
+      });
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: "Invalid limit" });
+    },
+  );
+
+  it("rejects duplicate limit values before list", async () => {
+    const list = () => {
+      throw new Error("list must not run");
+    };
+    const runtime = notifierRuntime(list);
+    const response = await dispatchBufferedRequest(runtime, fallthrough, {
+      method: "GET",
+      path: "/api/notifications?limit=10&limit=20",
+    });
+    expect(response.status).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({ error: "Invalid limit" });
+  });
+
+  it("passes a canonical page size to list and clamps the maximum", async () => {
+    const small = recorded();
+    expect(
+      (
+        await dispatchBufferedRequest(small.runtime, fallthrough, {
+          method: "GET",
+          path: "/api/notifications?limit=10",
+        })
+      ).status,
+    ).toBe(200);
+    expect(small.calls[0]?.limit).toBe(10);
+
+    const large = recorded();
+    expect(
+      (
+        await dispatchBufferedRequest(large.runtime, fallthrough, {
+          method: "GET",
+          path: "/api/notifications?limit=5000",
+        })
+      ).status,
+    ).toBe(200);
+    expect(large.calls[0]?.limit).toBe(500);
+  });
+
+  it("keeps limit=0 for a count-only inbox read", async () => {
+    const zero = recorded();
+    const response = await dispatchBufferedRequest(zero.runtime, fallthrough, {
+      method: "GET",
+      path: "/api/notifications?limit=0",
+    });
+    expect(response.status).toBe(200);
+    expect(zero.calls[0]?.limit).toBe(0);
+  });
+});

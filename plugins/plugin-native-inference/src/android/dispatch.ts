@@ -346,6 +346,33 @@ class AndroidUnreadOnlyError extends Error {
     this.name = "AndroidUnreadOnlyError";
   }
 }
+class AndroidLimitError extends Error {
+  constructor(message = "Invalid limit") {
+    super(message);
+    this.name = "AndroidLimitError";
+  }
+}
+/**
+ * Canonical decimal page size, same shape `parseUnreadOnlyQuery` uses: an
+ * unknown token is client error, not a number to guess. `Number.parseInt`
+ * reads `1e2` as 1 and `10.5` as 10, so a lenient read silently returns a
+ * shorter page with HTTP 200. Zero stays valid: the route already allowed a
+ * count-only request before this change.
+ */
+function parseLimitQuery(
+  raw: string | string[] | undefined,
+): number | undefined {
+  if (Array.isArray(raw)) {
+    throw new AndroidLimitError();
+  }
+  if (raw == null || raw === "") {
+    return undefined;
+  }
+  if (!/^(0|[1-9]\d*)$/.test(raw)) {
+    throw new AndroidLimitError();
+  }
+  return Math.min(Number.parseInt(raw, 10), 500);
+}
 function parseUnreadOnlyQuery(raw: string | string[] | undefined): boolean {
   if (Array.isArray(raw)) {
     throw new AndroidUnreadOnlyError();
@@ -433,20 +460,17 @@ async function directAndroidNotificationRoute(
     );
   }
   if (method === "GET" && pathname === "/api/notifications") {
-    const limitRaw = queryValue("limit");
-    const parsedLimit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
-    const limit =
-      typeof parsedLimit === "number" &&
-      Number.isFinite(parsedLimit) &&
-      parsedLimit >= 0
-        ? Math.min(parsedLimit, 500)
-        : undefined;
+    let limit: number | undefined;
     let unreadOnly: boolean;
     try {
+      limit = parseLimitQuery(query.limit);
       unreadOnly = parseUnreadOnlyQuery(query.unreadOnly);
       // error-policy:J1 invalid query values become an HTTP 400 response.
     } catch (unreadError) {
-      if (unreadError instanceof AndroidUnreadOnlyError) {
+      if (
+        unreadError instanceof AndroidUnreadOnlyError ||
+        unreadError instanceof AndroidLimitError
+      ) {
         return jsonResponse(400, { error: unreadError.message });
       }
       throw unreadError;
