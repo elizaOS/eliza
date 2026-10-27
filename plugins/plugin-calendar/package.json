@@ -31,6 +31,12 @@
       "import": "./dist/linked-sync/index.js",
       "default": "./dist/linked-sync/index.js"
     },
+    "./client/availability-review": {
+      "eliza-source": "./src/client/availability-review.ts",
+      "types": "./dist/client/availability-review.d.ts",
+      "import": "./dist/client/availability-review.js",
+      "default": "./dist/client/availability-review.js"
+    },
     "./format": {
       "eliza-source": "./src/internal/format.ts",
       "types": "./src/internal/format.ts",
