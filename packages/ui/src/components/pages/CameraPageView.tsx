@@ -80,6 +80,8 @@ export function CameraPageView({
   // switching is handled in place by `switchCamera`, so it does not restart this.
   useEffect(() => {
     let cancelled = false;
+    // Reset for a remount (React StrictMode runs effects twice in development).
+    disposedRef.current = false;
     const element = previewRef.current;
     if (!element) return;
 
