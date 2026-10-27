@@ -37,3 +37,29 @@ proof; add `--multipart` to verify a long Unicode message including its trailing
 newline. Reports under `test-results/android-native-sms/` identify the transport;
 loopback does not prove peer or carrier delivery. Device E2E runs both single-part
 and multipart modem loopback and uploads the reports and provider receipts.
+
+## AOSP telephony profile (reviewed sends)
+
+Product AOSP images use the reviewed core instead of `sendSms(address, body)`.
+The host subclasses `ai.eliza.plugins.messages.TelephonyPlugin` under its own
+plugin name with a `SmsTelephonyConfiguration`, and registers it only when its
+native admission proves the install is its image. Renderers use
+`createTelephonyClient` from `@elizaos/contracts/native-telephony`.
+
+- Reads: bounded thread and message pages (SMS and MMS merged, stable
+  `thread:`/`sms:`/`mms:` IDs and cursors), active SIMs, roles and default apps.
+  Reads are cancelled on background, lock, screen-off and permission change, and
+  checked again before the result is published.
+- Sends: the host's native dialog shows the exact recipients, SIM, part count
+  and text. `SmsSendJournal` records the send before the first SmsManager call.
+  The operation ID is the `sms.send.v1` idempotency key; a repeat only reads the
+  record. "sent" needs every RESULT_OK sent callback, and "delivered" needs a
+  complete provider status after a delivery report. Interrupted or restarted
+  sends read "unknown". Nothing is resent automatically, and bodies are never
+  stored.
+- Host identity: the journal slot, legacy plaintext file, retired-ID namespace,
+  callback actions, data scheme and receiver are migration-sensitive. A host
+  keeps the values it already shipped.
+
+`android/src/test` holds JVM tests for the journal, cursor and provider mapping.
+Real SIMs, carrier delivery reports and role grants need device qualification.
