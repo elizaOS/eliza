@@ -320,7 +320,7 @@ test("native client and plugin compile against the Android 36 APIs", () => {
   try {
     const stubs = {
       "Plugin.java":
-        "package com.getcapacitor; public class Plugin { protected void handleOnDestroy(){} public android.content.Context getContext(){return null;} public android.app.Activity getActivity(){return null;} }",
+        "package com.getcapacitor; public class Plugin { public void load(){} protected void handleOnPause(){} protected void handleOnDestroy(){} public android.content.Context getContext(){return null;} public android.app.Activity getActivity(){return null;} }",
       "PluginCall.java":
         "package com.getcapacitor; public class PluginCall { public void resolve(JSObject value){} public void resolve(){} public void reject(String value){} public String getString(String value){return null;} public Integer getInt(String value){return null;} }",
       "JSObject.java":
@@ -504,6 +504,105 @@ test("warm Power is one-shot and blocked Power is discarded instead of deferred"
   } finally {
     controller.dispose();
     await settle();
+    globalThis.window = oldWindow;
+    globalThis.document = oldDocument;
+  }
+});
+
+test("cold protected launch waits only for initial restore and rechecks account after claim", async () => {
+  const { createSenseInvocationController } = await import("../src/sense.ts");
+  const oldWindow = globalThis.window,
+    oldDocument = globalThis.document;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  try {
+    for (const mode of ["success", "modal", "interactive", "account-change"]) {
+      globalThis.window = new EventTarget();
+      globalThis.document = new EventTarget();
+      document.hidden = false;
+      let modal = false,
+        restoring = true,
+        ready = false,
+        authority = null,
+        account = null;
+      let claims = 0,
+        discards = 0,
+        starts = 0,
+        release;
+      document.querySelector = () => (modal ? {} : null);
+      const native = {
+        async bindInvocationSession() {},
+        async takeInvocation() {
+          return { assistant: false, locked: false };
+        },
+        async discardProtectedPowerLaunch() {
+          discards++;
+        },
+        async claimProtectedPowerLaunch(input) {
+          claims++;
+          assert.equal(input.accountRef, "verified-account");
+          if (mode === "account-change")
+            await new Promise((resolve) => {
+              release = resolve;
+            });
+          return { assistant: true, invocation: "power", locked: false };
+        },
+      };
+      const controller = createSenseInvocationController(native, {
+        authority: () => authority,
+        ready: () => ready,
+        voiceActive: () => false,
+        initialRestorePending: () => restoring,
+        powerAccountRef: () => account,
+        startVoice: () => starts++,
+      });
+      await settle();
+      assert.equal(claims, 0);
+      assert.equal(discards, 0, "initial restore is not interactive failure");
+      authority = "owner/session";
+      ready = true;
+      controller.check();
+      await settle();
+      assert.equal(
+        claims,
+        0,
+        "published session cannot claim before restoration resolves",
+      );
+      assert.equal(discards, 0);
+      if (mode === "modal") {
+        modal = true;
+        controller.check();
+        await settle();
+        modal = false;
+      }
+      if (mode === "interactive") {
+        restoring = false;
+        controller.check();
+        await settle();
+      }
+      ready = true;
+      restoring = false;
+      authority = "owner/session";
+      account = "verified-account";
+      controller.check();
+      await settle();
+      if (mode === "account-change") {
+        account = "other-account";
+        release();
+        await settle();
+      }
+      assert.equal(starts, mode === "success" ? 1 : 0);
+      assert.equal(claims, mode === "modal" || mode === "interactive" ? 0 : 1);
+      controller.check();
+      await settle();
+      assert.equal(
+        starts,
+        mode === "success" ? 1 : 0,
+        "one launch cannot replay",
+      );
+      controller.dispose();
+      await settle();
+    }
+  } finally {
     globalThis.window = oldWindow;
     globalThis.document = oldDocument;
   }

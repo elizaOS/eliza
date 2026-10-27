@@ -47,6 +47,18 @@ export interface SensePlugin {
     bindingId: string;
     sessionKey: string;
   }): Promise<void>;
+  /** Consume only a native-created protected launch grant; this method cannot mint one. */
+  claimProtectedPowerLaunch?(options: {
+    generation: number;
+    bindingId: string;
+    sessionKey: string;
+    accountRef: string;
+  }): Promise<unknown>;
+  discardProtectedPowerLaunch?(options: {
+    generation: number;
+    bindingId: string;
+    sessionKey: string | null;
+  }): Promise<void>;
   takeInvocation(options: {
     generation: number;
     bindingId: string;
@@ -110,6 +122,10 @@ export interface SenseInvocationHost {
   /** Opaque authenticated owner/agent/session tuple. Never include bearer or credential values. */
   authority(): string | null;
   ready(): boolean;
+  /** True only during automatic initial restoration, never interactive authentication. */
+  initialRestorePending?(): boolean;
+  /** Canonical noncredential verified account identity, matched against native launch admission. */
+  powerAccountRef?(): string | null;
   voiceActive(): boolean;
   startVoice(): void;
   subscribe?(changed: () => void): () => void;
@@ -165,6 +181,8 @@ export function createSenseInvocationController(
     | "bindInvocationSession"
     | "takeInvocation"
     | "discardProtectedPowerInvocation"
+    | "claimProtectedPowerLaunch"
+    | "discardProtectedPowerLaunch"
   >,
   host: SenseInvocationHost,
 ) {
@@ -178,6 +196,7 @@ export function createSenseInvocationController(
     dirty = false,
     initialized = false,
     bound: string | null = null;
+  let coldLaunchAttempted = false;
   const current = (authority: string | null) =>
     !disposed &&
     activeInvocationBinding === bindingId &&
@@ -213,6 +232,22 @@ export function createSenseInvocationController(
         bound = key;
         initialized = true;
       }
+      const initialRestore = host.initialRestorePending?.() === true;
+      const blocked =
+        document.hidden ||
+        host.voiceActive() ||
+        !!document.querySelector(SENSE_MODAL_SELECTOR);
+      if (blocked || (!initialRestore && (key === null || !host.ready()))) {
+        coldLaunchAttempted = true;
+        await serializeInvocation(async () => {
+          if (current(authority))
+            await native.discardProtectedPowerLaunch?.({
+              generation,
+              bindingId,
+              sessionKey: key,
+            });
+        });
+      }
       if (key === null) return;
       if (
         document.hidden ||
@@ -230,12 +265,33 @@ export function createSenseInvocationController(
         });
         return;
       }
-      const receipt = await serializeInvocation(async () =>
-        current(authority)
+      const accountRef = host.powerAccountRef?.() ?? null;
+      const receipt = await serializeInvocation(async () => {
+        if (!current(authority)) return undefined;
+        if (!initialRestore && !coldLaunchAttempted && host.powerAccountRef) {
+          coldLaunchAttempted = true;
+          const launch =
+            accountRef === null
+              ? undefined
+              : await native.claimProtectedPowerLaunch?.({
+                  generation,
+                  bindingId,
+                  sessionKey: key,
+                  accountRef,
+                });
+          if (parseAssistantInvocation(launch) === "power") return launch;
+        }
+        return current(authority)
           ? native.takeInvocation({ generation, bindingId, sessionKey: key })
-          : undefined,
-      );
-      if (!current(authority) || !host.ready() || host.voiceActive()) return;
+          : undefined;
+      });
+      if (
+        !current(authority) ||
+        !host.ready() ||
+        host.voiceActive() ||
+        (host.powerAccountRef && host.powerAccountRef() !== accountRef)
+      )
+        return;
       if (
         listenerStartsVoice({
           invocation: parseAssistantInvocation(receipt),
@@ -279,13 +335,18 @@ export function createSenseInvocationController(
       unsubscribe?.();
       for (const event of events) window.removeEventListener(event, changed);
       document.removeEventListener("visibilitychange", changed);
-      void serializeInvocation(() =>
-        native.bindInvocationSession({
+      void serializeInvocation(async () => {
+        await native.discardProtectedPowerLaunch?.({
+          generation,
+          bindingId,
+          sessionKey: bound,
+        });
+        await native.bindInvocationSession({
           generation,
           bindingId,
           sessionKey: null,
-        }),
-      ).catch(() => {});
+        });
+      }).catch(() => {});
     },
   };
 }

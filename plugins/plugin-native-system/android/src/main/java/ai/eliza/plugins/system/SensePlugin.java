@@ -14,6 +14,12 @@ public class SensePlugin extends Plugin {
     private final long bridgeGeneration = SenseListenerClient.nextInvocationBridge();
     private volatile boolean destroyed;
     private SenseListenerClient client() { return new SenseListenerClient(getActivity() == null ? getContext() : getActivity()); }
+    @Override public void load() {
+        super.load(); client().attachProtectedPowerBridge(bridgeGeneration);
+    }
+    @Override protected void handleOnPause() {
+        client().cancelProtectedPowerLaunch(); super.handleOnPause();
+    }
     @Override protected void handleOnDestroy() {
         destroyed = true;
         client().releaseInvocationBridge(bridgeGeneration);
@@ -49,6 +55,18 @@ public class SensePlugin extends Plugin {
         if (!destroyed) client().discardProtectedPowerInvocation(bridgeGeneration, generation == null ? 0 : generation,
                 call.getString("bindingId"), call.getString("sessionKey"));
         call.resolve();
+    }
+    @PluginMethod public void claimProtectedPowerLaunch(PluginCall call) {
+        Integer generation = call.getInt("generation");
+        Bundle result = client().claimProtectedPowerLaunch(bridgeGeneration, generation == null ? 0 : generation,
+                call.getString("bindingId"), call.getString("sessionKey"), call.getString("accountRef"),
+                !destroyed && getActivity() != null && getActivity().hasWindowFocus() && !getActivity().isFinishing() && !getActivity().isDestroyed());
+        JSObject out = new JSObject(); out.put("assistant", result.getBoolean("assistant")); out.put("invocation", result.getString("invocation")); out.put("locked", result.getBoolean("locked")); call.resolve(out);
+    }
+    @PluginMethod public void discardProtectedPowerLaunch(PluginCall call) {
+        Integer generation = call.getInt("generation");
+        client().discardProtectedPowerLaunch(bridgeGeneration, generation == null ? 0 : generation,
+                call.getString("bindingId"), call.getString("sessionKey")); call.resolve();
     }
     @PluginMethod public void takeInvocation(PluginCall call) {
         Integer generation = call.getInt("generation");

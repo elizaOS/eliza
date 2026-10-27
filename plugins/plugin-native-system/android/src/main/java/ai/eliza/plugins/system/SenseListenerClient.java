@@ -21,6 +21,41 @@ public final class SenseListenerClient {
     public static final String SETTINGS_ACTIVITY = "ai.eliza.sense.SETTINGS_ACTIVITY";
     private static final Map<String, SenseInvocation> invocations = new HashMap<>();
     private static final Map<Activity, Long> activityBridges = new WeakHashMap<>();
+    private static final Map<Activity, PowerLaunch> powerLaunches = new WeakHashMap<>();
+    /** Native host policy only. Neither this validator nor launch minting is exposed to JavaScript. */
+    public interface PowerLaunchValidator {
+        boolean isCurrent();
+        /** Validate the pinned native authority and invoke consume synchronously under host authorization locks. */
+        boolean authorize(String accountRef, java.util.function.BooleanSupplier consume);
+    }
+    private static final class PowerLaunch {
+        final long arrivedAt;
+        final PowerLaunchValidator validator;
+        long bridge;
+        int generation;
+        String bindingId, session;
+        boolean invalid, focused, reserved;
+        PowerLaunch(long now, PowerLaunchValidator validator) { this.arrivedAt = now; this.validator = validator; }
+        synchronized void attach(long next) {
+            if (next <= 0 || bridge != 0 && bridge != next) { invalid = true; reserved = false; }
+            if (bridge == 0) bridge = next;
+        }
+        synchronized void bind(long nextBridge, int nextGeneration, String nextBinding, String nextSession) {
+            if (nextBridge != bridge) { invalid = true; reserved = false; return; }
+            if (bindingId != null && (generation != nextGeneration || !bindingId.equals(nextBinding))) { invalid = true; reserved = false; }
+            if (session != null && !session.equals(nextSession)) { invalid = true; reserved = false; }
+            generation = nextGeneration; bindingId = nextBinding; session = nextSession;
+        }
+        synchronized void focus(boolean value) { if (focused && !value) { invalid = true; reserved = false; } if (value) focused = true; }
+        synchronized void cancel() { invalid = true; reserved = false; }
+        synchronized PowerLaunchValidator reserveClaim(long nextBridge, int nextGeneration, String nextBinding, String nextSession, long now) {
+            boolean accepted = !invalid && focused && bridge == nextBridge && generation == nextGeneration
+                    && bindingId != null && bindingId.equals(nextBinding) && session != null && session.equals(nextSession)
+                    && now >= arrivedAt && now - arrivedAt <= SenseInvocation.WINDOW_MS;
+            invalid = true; // An attempt is final, including failed validation or a throwing host callback.
+            reserved = accepted; return accepted ? validator : null;
+        }
+    }
     private final Activity activity;
     private static final AtomicLong bridgeGenerations = new AtomicLong();
     public static long nextInvocationBridge() { return bridgeGenerations.incrementAndGet(); }
@@ -55,6 +90,7 @@ public final class SenseListenerClient {
     /** Absent is safe to reset; an installed unacknowledged listener must stop the reset. */
     public boolean resetForData() {
         invocation().reset();
+        cancelProtectedPowerLaunch();
         try { context.getPackageManager().getApplicationInfo(packageName, 0); }
         catch (PackageManager.NameNotFoundException absent) { return true; }
         catch (RuntimeException unavailable) { return false; }
@@ -91,9 +127,13 @@ public final class SenseListenerClient {
                 activityBridges.put(activity, bridge);
             }
         }
+        PowerLaunch launch = powerLaunch();
+        if (launch != null && state.isCurrentRenderer(bridge, generation) && (session == null || state.boundTo(bridge, generation, bindingId, session))) launch.bind(bridge, generation, bindingId, session);
     }
     public void releaseInvocationBridge(long bridge) {
         invocation().release(bridge);
+        PowerLaunch launch = powerLaunch();
+        if (launch != null) launch.cancel();
         synchronized (activityBridges) { activityBridges.entrySet().removeIf(entry -> entry.getValue() == bridge); }
     }
 
@@ -105,12 +145,8 @@ public final class SenseListenerClient {
         invocation().record(context.getPackageName(), callerPackage, sameSigner, SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
     }
 
-    /** Native-only hook for a warm permission-protected Power Activity; never exposed as a JS method. */
-    public boolean recordProtectedPower() {
+    private boolean protectedPowerActivity() {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return false;
-        final Long bridge;
-        synchronized (activityBridges) { bridge = activityBridges.get(activity); }
-        if (bridge == null) return false;
         try {
             ComponentName component = activity.getComponentName();
             ActivityInfo info = context.getPackageManager().getActivityInfo(component, 0);
@@ -119,6 +155,85 @@ public final class SenseListenerClient {
                     || info.targetActivity != null || !info.exported || !info.enabled || info.applicationInfo == null
                     || !info.applicationInfo.enabled || !"android.permission.STATUS_BAR_SERVICE".equals(info.permission)) return false;
         } catch (PackageManager.NameNotFoundException | RuntimeException unavailable) { return false; }
+        return true;
+    }
+
+    private PowerLaunch powerLaunch() {
+        synchronized (powerLaunches) { return activity == null ? null : powerLaunches.get(activity); }
+    }
+
+    /** Native-only fresh protected launch authorization, distinct from an unbound invocation. */
+    public boolean beginProtectedPowerLaunch(PowerLaunchValidator validator) {
+        if (!protectedPowerActivity() || validator == null) return false;
+        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+        if (keyguard == null || keyguard.isKeyguardLocked()) return false;
+        try { if (!validator.isCurrent()) return false; }
+        catch (RuntimeException unavailable) { return false; }
+        synchronized (powerLaunches) {
+            // An Activity lifetime gets one initial launch grant. Calls cannot refresh its deadline.
+            if (powerLaunches.containsKey(activity)) return false;
+            powerLaunches.put(activity, new PowerLaunch(SystemClock.elapsedRealtime(), validator));
+        }
+        return true;
+    }
+    public void attachProtectedPowerBridge(long bridge) {
+        PowerLaunch launch = powerLaunch(); if (launch != null) launch.attach(bridge);
+    }
+    public void protectedPowerWindowFocusChanged(boolean focused) {
+        PowerLaunch launch = powerLaunch(); if (launch != null) launch.focus(focused);
+    }
+    public void cancelProtectedPowerLaunch() {
+        PowerLaunch launch = powerLaunch(); if (launch != null) launch.cancel();
+    }
+    public void discardProtectedPowerLaunch(long bridge, int generation, String bindingId, String session) {
+        PowerLaunch launch = powerLaunch();
+        if (launch != null) synchronized (launch) {
+            if (launch.bridge == bridge && launch.generation == generation && bindingId != null && bindingId.equals(launch.bindingId)
+                    && java.util.Objects.equals(session, launch.session)) launch.cancel();
+        }
+    }
+    public Bundle claimProtectedPowerLaunch(long bridge, int generation, String bindingId, String session, String accountRef, boolean foreground) {
+        Bundle out = new Bundle(); out.putBoolean("assistant", false); out.putBoolean("locked", true);
+        PowerLaunch launch = powerLaunch();
+        if (launch == null) return out;
+        KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
+        boolean locked = keyguard == null || keyguard.isKeyguardLocked();
+        SenseInvocation state = invocation();
+        if (!foreground || locked || !protectedPowerActivity() || !state.boundTo(bridge, generation, bindingId, session)) {
+            discardProtectedPowerLaunch(bridge, generation, bindingId, session); return out;
+        }
+        PowerLaunchValidator validator = launch.reserveClaim(bridge, generation, bindingId, session, SystemClock.elapsedRealtime());
+        // The grant is spent before calling product policy. Never hold SDK locks across host locks.
+        if (validator == null || accountRef == null) return out;
+        final boolean[] admitted = {false};
+        final java.util.concurrent.atomic.AtomicBoolean attempted = new java.util.concurrent.atomic.AtomicBoolean();
+        try {
+            boolean authorized = validator.authorize(accountRef, () -> {
+                if (!attempted.compareAndSet(false, true)) return false;
+                synchronized (state) {
+                    KeyguardManager currentKeyguard = context.getSystemService(KeyguardManager.class);
+                    long now = SystemClock.elapsedRealtime();
+                    synchronized (launch) {
+                        admitted[0] = launch.reserved && currentKeyguard != null && !currentKeyguard.isKeyguardLocked() && protectedPowerActivity()
+                                && activity.hasWindowFocus() && state.boundTo(bridge, generation, bindingId, session)
+                                && now >= launch.arrivedAt && now - launch.arrivedAt <= SenseInvocation.WINDOW_MS;
+                        launch.reserved = false;
+                        return admitted[0];
+                    }
+                }
+            });
+            if (!authorized || !admitted[0]) return out;
+        } catch (RuntimeException unavailable) { return out; }
+        out.putBoolean("assistant", true); out.putString("invocation", "power"); out.putBoolean("locked", false);
+        return out;
+    }
+
+    /** Native-only hook for a warm permission-protected Power Activity; never exposed as a JS method. */
+    public boolean recordProtectedPower() {
+        if (!protectedPowerActivity()) return false;
+        final Long bridge;
+        synchronized (activityBridges) { bridge = activityBridges.get(activity); }
+        if (bridge == null) return false;
         KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
         return invocation().recordProtectedPower(bridge, SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
     }
