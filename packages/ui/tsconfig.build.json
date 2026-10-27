@@ -12,15 +12,11 @@
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
-      "@elizaos/ui": [
-        "./src/index.ts"
-      ],
+      "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
@@ -52,6 +48,7 @@
     "src/voice/batch-conversation.ts",
     "src/voice/voice-session-client-core.ts",
     "src/**/*.d.ts",
-    "src/components/pages/InstalledAppsLauncher.tsx"
+    "src/components/pages/InstalledAppsLauncher.tsx",
+    "src/mobile-shell/index.ts"
   ]
 }
