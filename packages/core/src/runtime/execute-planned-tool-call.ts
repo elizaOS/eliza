@@ -779,10 +779,20 @@ export async function executePlannedToolCall(
 				validation.errors.join("; ") ||
 					`Invalid arguments for action ${action.name}`,
 				{
+					// Schema validation rejected the draft before handler dispatch.
+					// Keep the error as evidence without claiming a failed effect.
+					acceptance: "rejected",
+					executionStatus: "not_started",
 					parameterErrors: validation.errors,
 					...(invalidParameterNames.length > 0
 						? { invalidParameterNames }
 						: {}),
+				},
+				{
+					kind: "handler_error",
+					boundary: "handler",
+					code: "ACTION_ARGUMENTS_INVALID",
+					retryable: true,
 				},
 			),
 			{
