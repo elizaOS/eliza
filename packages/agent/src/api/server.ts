@@ -1076,6 +1076,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Cloud relay status: live relay session id, cloud org/user
+    // ids, remote-access URL, and the SSH tunnel command built
+    // from the owner's settings. The handler serves GET only,
+    // so an exact path entry suffices.
+    pathname === "/api/cloud/relay-status" ||
     (write &&
       [
         "import",
