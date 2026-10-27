@@ -65,6 +65,10 @@ later failure merges an older kept draft (`mergeNotesDrafts`) instead of replaci
 uncertain commit. `reconcileNotesEditor` lets only a clean editor adopt a newly committed
 collection. The host owns the slot name, recovery export and presentation.
 
+`noteShareText` serializes one selected note (text, checklist, link or voice) for copy,
+share, export and email drafts from its stored authored content only; a voice note's
+audio is never attached and a missing transcript is stated as missing.
+
 
 `NotesSnapshotState` shares owner-bound, monotonic snapshot publication across the
 React view and embedded hosts. The host supplies an opaque current authority;
