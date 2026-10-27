@@ -13,6 +13,11 @@ import java.util.List;
  * Calls run on the consumer's worker. Trim releases all native model memory;
  * the next call loads it again. Close is terminal. No model is loaded by the
  * constructor. A voice bundle can serve speech without a text model.
+ *
+ * <p>Voice activity detection ({@link #openVad}) has its own small native
+ * context and lock under the same owner: microphone capture keeps running while
+ * a synthesis stream holds the speech lock (full duplex), and output
+ * cancellation never fences input.
  */
 public final class InferenceSession implements AutoCloseable {
     private final File bundleDir;
@@ -26,6 +31,9 @@ public final class InferenceSession implements AutoCloseable {
     private volatile Thread streamingThread;
     private long context;
     private final List<TextStream> textStreams = new ArrayList<>();
+    private final Object vadLock = new Object();
+    private long vadContext; // Guarded by vadLock.
+    private final List<Vad> vads = new ArrayList<>(); // Guarded by vadLock.
 
     public InferenceSession(File bundleDir) throws IOException {
         this(bundleDir, new File(bundleDir, "tts/paradee/paradee-8m-v1_1.gguf"),
@@ -65,6 +73,89 @@ public final class InferenceSession implements AutoCloseable {
         if (asr == null) asr = new NativeAsr(bundleDir, ctx);
         if (generation.get() != admitted) throw new CancellationException();
         return asr;
+    }
+
+    /** True once {@link #close} began; a closed session never reopens. */
+    public boolean isClosed() {
+        return closed;
+    }
+
+    /** Native Silero VAD is compiled in. Loads the library; opens no context or model. */
+    public boolean vadSupported() {
+        if (closed) throw new IllegalStateException("Inference session closed");
+        return VoiceNative.nativeVadSupported() == 1;
+    }
+
+    /**
+     * Opens one Silero VAD detector (16 kHz mono, one probability per 512-sample
+     * window) from the bundle's {@code vad/} model. It never waits for the speech
+     * lock and is not fenced by {@link #cancel}. {@link #trimMemory} keeps open
+     * detectors; {@link #close} retires them, after which they throw.
+     */
+    public Vad openVad() {
+        synchronized (vadLock) {
+            if (closed) throw new IllegalStateException("Inference session closed");
+            if (VoiceNative.nativeVadSupported() != 1) throw new IllegalStateException("VAD unavailable");
+            if (vadContext == 0L) {
+                vadContext = VoiceNative.nativeContextCreate(bundleDir.getAbsolutePath());
+                if (vadContext == 0L) throw new IllegalStateException("VAD context creation failed");
+            }
+            long handle = VoiceNative.nativeVadOpen(vadContext);
+            if (handle == 0L) throw new IllegalStateException("VAD unavailable");
+            Vad vad = new Vad(handle);
+            vads.add(vad);
+            return vad;
+        }
+    }
+
+    /** Samples in one VAD window at 16 kHz (32 ms). */
+    public static final int VAD_WINDOW = 512;
+
+    /** One detector. Calls are serialized on the detector; close may come from any thread. */
+    public final class Vad implements AutoCloseable {
+        private long handle; // Guarded by this.
+        private Vad(long handle) { this.handle = handle; }
+
+        /** One speech probability per complete {@link #VAD_WINDOW}-sample window. */
+        public synchronized float[] process(float[] pcm16kMono) {
+            if (handle == 0L) throw new IllegalStateException("VAD closed");
+            if (pcm16kMono == null || pcm16kMono.length == 0 || pcm16kMono.length % VAD_WINDOW != 0) {
+                throw new IllegalArgumentException("Expected complete 512-sample windows");
+            }
+            return VoiceNative.nativeVadProcessBatch(handle, pcm16kMono);
+        }
+
+        /** Clears the recurrent state at an utterance boundary. */
+        public synchronized void reset() {
+            if (handle == 0L) throw new IllegalStateException("VAD closed");
+            VoiceNative.nativeVadReset(handle);
+        }
+
+        /** Idempotent. Waits for a window in progress. */
+        @Override
+        public void close() {
+            synchronized (this) {
+                if (handle == 0L) return;
+                VoiceNative.nativeVadClose(handle);
+                handle = 0L;
+            }
+            retire(this);
+        }
+    }
+
+    private void retire(Vad vad) {
+        synchronized (vadLock) {
+            vads.remove(vad);
+            if (closed && vads.isEmpty()) releaseVadContext();
+        }
+    }
+
+    /** Caller holds vadLock; only when no detector remains open. */
+    private void releaseVadContext() {
+        if (vadContext != 0L && vads.isEmpty()) {
+            VoiceNative.nativeContextDestroy(vadContext);
+            vadContext = 0L;
+        }
     }
 
     /** Query engine support without opening a context or loading voice weights. */
@@ -206,12 +297,18 @@ public final class InferenceSession implements AutoCloseable {
         if (currentAsr != null) currentAsr.cancel();
     }
 
-    /** Wait for active calls and streams to retire, then free the shared context. */
+    /**
+     * Wait for active calls and streams to retire, then free the shared context.
+     * Open VAD detectors stay usable; an idle VAD context is freed too.
+     */
     public void trimMemory() {
         if (streamingThread == Thread.currentThread()) throw new IllegalStateException("Cannot trim inference from PCM callback");
         cancel();
         synchronized (this) {
             release();
+        }
+        synchronized (vadLock) {
+            releaseVadContext();
         }
     }
 
@@ -230,5 +327,13 @@ public final class InferenceSession implements AutoCloseable {
         if (streamingThread == Thread.currentThread()) throw new IllegalStateException("Cannot close inference from PCM callback");
         closed = true;
         trimMemory();
+        List<Vad> open;
+        synchronized (vadLock) {
+            open = new ArrayList<>(vads);
+        }
+        for (Vad vad : open) vad.close();
+        synchronized (vadLock) {
+            releaseVadContext();
+        }
     }
 }

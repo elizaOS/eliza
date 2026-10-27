@@ -256,7 +256,9 @@ public class ElizaInferencePlugin extends Plugin {
         }
         InferenceSession session(Request request) throws IOException {
             if (request != null) request.check();
-            if (current == null) current = VoiceAssets.install(context).openInference();
+            // The process-wide owner: other native consumers (capture VAD, streamed
+            // speech) share its context lifecycle instead of loading a second copy.
+            if (current == null || current.isClosed()) current = VoiceAssets.sharedInference(context);
             if (request != null) request.begin(current);
             lastActivity = SystemClock.elapsedRealtime();
             return current;

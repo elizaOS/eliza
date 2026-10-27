@@ -59,6 +59,20 @@ public final class VoiceAssets {
 
     private VoiceAssets() {}
 
+    private static InferenceSession shared;
+
+    /**
+     * The process-wide session for the installed bundle: one lazy owner for
+     * speech output, recognition and VAD across this process's consumers.
+     * Consumers trim it ({@link InferenceSession#trimMemory}) and must not close
+     * it; a closed shared session is replaced on the next call. Installs and
+     * verifies the bundle on first use: call it on a worker thread.
+     */
+    public static synchronized InferenceSession sharedInference(Context context) throws IOException {
+        if (shared == null || shared.isClosed()) shared = install(context).openInference();
+        return shared;
+    }
+
     public static synchronized Bundle install(Context context) throws IOException {
         byte[] manifestBytes = read(context.getAssets().open(ASSET_ROOT + "/manifest.json"), 1 << 20);
         JSONObject manifest;

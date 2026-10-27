@@ -1,0 +1,192 @@
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { test } from "node:test";
+import { fileURLToPath } from "node:url";
+
+// Shared native speech pipeline (ai.eliza.voice): bounded streamed playback, audio focus, VAD
+// segmentation, capture admission/ownership, latency trials and the serial speech owner. Host-JVM
+// checks of the pure classes plus an Android 36 compile of the whole library. These are not
+// AudioTrack, AudioRecord, device audio, model or latency evidence.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const voice = path.resolve(
+  here,
+  "../../../../plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice",
+);
+const fixtures = path.join(here, "speech-pipeline");
+const java = (name) =>
+  process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
+
+function run(classes, fixture, expected) {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-pipeline-"));
+  try {
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "11",
+        "-d",
+        temp,
+        ...classes.map((name) => path.join(voice, `${name}.java`)),
+        path.join(fixtures, `${fixture}.java`),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+    const output = execFileSync(
+      java("java"),
+      ["-cp", temp, `ai.eliza.voice.${fixture}`],
+      { encoding: "utf8", timeout: 60000 },
+    );
+    assert.match(output, expected);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+}
+
+test("bounded PCM queue, streamed writer, cancellation, focus policy and chunk validation", () =>
+  run(
+    [
+      "VoiceLatencyTrials",
+      "SpeechPcmQueue",
+      "StreamingSpeechPlayback",
+      "SpeechAudioFocusPolicy",
+      "SpeechStreamValidation",
+    ],
+    "StreamingSpeechTest",
+    /^PASS streaming speech/,
+  ));
+test("serial speech owner reuses, cancels, releases and round-trips PCM", () =>
+  run(["LocalSpeechEngine"], "LocalSpeechEngineTest", /^PASS local speech/));
+test("VAD gate opens, holds and closes speech segments", () =>
+  run(["LiveVadGate"], "LiveVadGateTest", /^PASS live vad gate/));
+test("capture source keeps recognition audio unless echo cancellation is available", () =>
+  run(
+    ["LiveCaptureSource"],
+    "LiveCaptureSourceTest",
+    /^PASS live capture source/,
+  ));
+test("capture resource serializes stop with release", () =>
+  run(
+    ["LiveCaptureResource"],
+    "LiveCaptureResourceTest",
+    /^PASS live capture resource/,
+  ));
+test("capture admission fences permission, blocked start, pause and stale stop", () =>
+  run(
+    ["LiveCaptureAdmission"],
+    "LiveCaptureAdmissionTest",
+    /^PASS live capture admission/,
+  ));
+test("latency trials link one turn from last user audio to audible playback", () =>
+  run(
+    ["LiveVadGate", "VoiceLatencyTrials"],
+    "VoiceLatencyTrialsTest",
+    /^PASS voice latency trials/,
+  ));
+
+test("validated speech over the shared session: bounds, silence, streamed chunks and trim", () => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "session-speech-"));
+  try {
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        sdk,
+        "-d",
+        temp,
+        ...[
+          "ParadeeVoice",
+          "NativeAsr",
+          "InferenceSession",
+          "VoiceAssets",
+          "LocalSpeechEngine",
+          "SpeechStreamValidation",
+          "SessionSpeech",
+        ].map((name) => path.join(voice, `${name}.java`)),
+        path.join(here, "stream-contract/VoiceNative.java"),
+        path.join(fixtures, "SessionSpeechContract.java"),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+    // android.jar only satisfies the Context signature; no Android method runs.
+    const output = execFileSync(
+      java("java"),
+      [
+        "-cp",
+        `${temp}${path.delimiter}${sdk}`,
+        "ai.eliza.voice.SessionSpeechContract",
+      ],
+      { encoding: "utf8", timeout: 60000 },
+    );
+    assert.match(output, /^PASS session speech validation/);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("the shared speech library compiles against Android 36", () => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-android-"));
+  try {
+    const sources = fs
+      .readdirSync(voice)
+      .filter((name) => name.endsWith(".java"))
+      .map((name) => path.join(voice, name));
+    execFileSync(
+      java("javac"),
+      ["--release", "21", "-cp", sdk, "-d", temp, ...sources],
+      { stdio: "pipe", timeout: 120000 },
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("live capture uses the shared session's VAD and never a platform recognizer", () => {
+  const strip = (name) =>
+    fs
+      .readFileSync(path.join(voice, name), "utf8")
+      .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  const capture = strip("LiveVoiceCapture.java");
+  assert.match(capture, /InferenceSession\.Vad vad=inference\.openVad\(\);/);
+  assert.doesNotMatch(
+    capture,
+    /SpeechRecognizer|ElizaVoiceNative|nativeContextCreate/,
+  );
+  assert.match(
+    capture,
+    /if\(edge==LiveVadGate\.Edge\.SPEECH_END&&!DICTATION\.equals\(pipeline\)\)\{VoiceLatencyProbe\.TRIALS\.speechEnded\(/,
+  );
+  const output = strip("AudioTrackSpeechOutput.java");
+  assert.match(output, /setTransferMode\(AudioTrack\.MODE_STREAM\)/);
+  assert.match(output, /ENCODING_PCM_FLOAT/);
+  assert.match(output, /setAudioAttributes\(SpeechAudioFocus\.ATTRIBUTES\)/);
+  const focus = strip("SpeechAudioFocus.java");
+  assert.match(
+    focus,
+    /setUsage\(AudioAttributes\.USAGE_ASSISTANT\)\.setContentType\(AudioAttributes\.CONTENT_TYPE_SPEECH\)/,
+  );
+  assert.match(
+    focus,
+    /new AudioFocusRequest\.Builder\(AudioManager\.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK\)/,
+  );
+  const speech = strip("SessionSpeech.java");
+  assert.match(
+    speech,
+    /public void close\(\)\{if\(owned\)inference\.close\(\);else inference\.trimMemory\(\);\}/,
+  );
+  assert.doesNotMatch(speech, /\.open(?:Asr|Voice)\(/);
+});

@@ -17,6 +17,48 @@ cancellation failures. `isSpeechLoaded()` observes the actual output wrapper
 without loading anything, including after a cancelled first load. Trimming or
 closing the session clears that state.
 
+`VoiceAssets.sharedInference(context)` returns the process-wide session for the
+installed bundle (on a worker thread). Native consumers in one process share it and
+trim it; none of them closes it. `openVad()` opens a Silero VAD detector (16 kHz,
+512-sample windows) on a small VAD-only context under the same owner and lock-free
+with respect to speech: capture keeps running while a synthesis stream holds the
+session (full duplex), and `cancel()` never fences input. `trimMemory()` keeps open
+detectors and frees an idle VAD context; `close()` retires every detector.
+
+## Shared native speech pipeline
+
+These classes are the common Android speech path for every host; products supply
+only identity and bridge wiring:
+
+- `LocalSpeechEngine` serially owns one lazy backend. `SessionSpeech.shared(context)`
+  is the validated backend over the shared session: 0.1–60 s finite recognition
+  input (silence transcribes to nothing), bounded reviewed text, finite non-silent
+  24 kHz output, per-chunk stream validation with zeroing, and failures held until
+  the native stream returns. Releasing it trims the shared session.
+- `StreamingSpeechPlayback` plays streamed chunks through a bounded `SpeechPcmQueue`
+  (backpressure paces synthesis to playback; 30 s at 24 kHz is the usual bound)
+  with `AudioTrackSpeechOutput`; stop drops and zeroes unplayed audio and cancels
+  synthesis; exactly one terminal outcome is reported.
+- `SpeechAudioFocus` / `SpeechAudioFocusPolicy`: transient duckable assistant-speech
+  focus held only while speech plays, no speech over a ringing phone or call, and
+  call-mode watching that stops speech and conversation capture.
+- `LiveVoiceCapture` reads 16 kHz microphone PCM (the echo-cancelled communication
+  source for a conversation when the device has a canceller, `LiveCaptureSource`),
+  runs the shared VAD on every 32 ms window, gates segments with `LiveVadGate`
+  (pre-roll, ~512 ms hangover) and hands each segment's frames and edges to the
+  host. `LiveCaptureAdmission` and `LiveCaptureResource` fence permission callbacks,
+  blocked starts, pause and stale stops. Nothing is written to storage.
+- `VoiceLatencyTrials` / `VoiceLatencyProbe` measure a conversation turn from the
+  capture timestamp of the last speech window to the platform presentation time of
+  the first audible response sample (AudioTrack or MediaPlayer timestamps; head
+  position only as a labelled fallback), with stage marks, cold/overlap/abandon
+  outcomes, network/thermal state and the build/engine/model identity. Hosts name
+  the export document and their build with `VoiceLatencyProbe.configureHost`.
+
+`node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
+runs the host-JVM contracts and compiles the library against Android 36. They are
+not AudioTrack, AudioRecord, model, device-audio or latency evidence.
+
 The optional `ElizaInferencePlugin` Capacitor transport provides one process
 queue, idle unloading and Android memory-pressure handling. Enable it with
 `elizaInferenceCapacitor=true` and register `ElizaInferencePlugin` with the host.
