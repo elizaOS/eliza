@@ -1076,6 +1076,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Cloud billing: proxied with the owner's cloud API key, it
+    // returns the owner's credit balance, saved payment methods,
+    // transaction history, and creates Stripe checkout sessions.
+    under("/api/cloud/billing") ||
     (write &&
       [
         "import",
