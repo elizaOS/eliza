@@ -40,7 +40,7 @@ const RATE_LIMIT_GATE_TIMEOUT_MS = 5_000;
 const LEASE_GATE_MAX_ATTEMPTS = 2;
 const DISPATCH_GATE_MAX_ATTEMPTS = 3;
 const DISPATCH_GATE_TOTAL_BUDGET_MS = 4_500;
-const SETTLEMENT_FENCE_GATE_TIMEOUT_MS = 1_500;
+const SETTLEMENT_FENCE_GATE_TOTAL_BUDGET_MS = 4_500;
 const SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS = 3;
 const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
 const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
@@ -1085,7 +1085,17 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
     finiteNonNegative(knownActualCostUsd, "knownActualCostUsd"),
   );
   let lastAmbiguousError: unknown;
+  // One total readiness budget avoids canceling a queued fence before it
+  // can enter its handler, mirroring the dispatch gate: a fresh timeout
+  // per attempt re-queues at the back of the same queue and can never
+  // succeed when handler entry alone exceeds the per-attempt timeout.
+  // Fast transport failures still retry within the remaining budget.
+  const deadline = performance.now() + SETTLEMENT_FENCE_GATE_TOTAL_BUDGET_MS;
+  let attempts = 0;
   for (let attempt = 1; attempt <= SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS; attempt += 1) {
+    const remainingMs = Math.ceil(deadline - performance.now());
+    if (remainingMs <= 0) break;
+    attempts = attempt;
     let response: Response;
     try {
       response = await gateFetch(
@@ -1096,7 +1106,7 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
           estimatedCostUsd: targetEstimateUsd,
         },
         lease.gate,
-        AbortSignal.timeout(SETTLEMENT_FENCE_GATE_TIMEOUT_MS),
+        AbortSignal.timeout(remainingMs),
       );
     } catch (error) {
       // error-policy:J2 retry the idempotent fence, then rethrow with the last acknowledgement failure.
@@ -1130,7 +1140,7 @@ export async function fenceInferenceAdmissionLeaseForSettlement(
     }
   }
   throw new InferenceAdmissionGateUnavailableError(
-    `Inference admission settlement-fence acknowledgement remained ambiguous after ${SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS} attempts`,
+    `Inference admission settlement-fence acknowledgement remained ambiguous after ${attempts} attempts`,
     { cause: lastAmbiguousError },
   );
 }
