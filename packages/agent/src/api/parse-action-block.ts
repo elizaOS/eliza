@@ -158,7 +158,26 @@ interface ActionSpan {
   start: number;
   end: number;
   fenced: boolean;
+  /** Routing accepts only a span the strict envelope validator accepts. */
+  strict: boolean;
   value: Record<string, unknown> & { action: string };
+}
+
+/**
+ * True for any top-level object that names one of the known actions, even when
+ * an extra key makes it invalid for routing. Display stripping uses this so a
+ * model that adds a field cannot leak the envelope, including its reasoning,
+ * into the chat text.
+ */
+function isActionLikeEnvelope(
+  parsed: unknown,
+): parsed is Record<string, unknown> & { action: string } {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    return false;
+  const record = parsed as Record<string, unknown>;
+  return (
+    typeof record.action === "string" && VALID_ACTIONS.includes(record.action)
+  );
 }
 
 function findActionSpans(text: string): ActionSpan[] {
@@ -175,7 +194,8 @@ function findActionSpans(text: string): ActionSpan[] {
       // error-policy:J3 malformed model JSON remains ordinary display text.
       continue;
     }
-    if (!isValidActionEnvelope(value)) continue;
+    if (!isValidActionEnvelope(value) && !isActionLikeEnvelope(value)) continue;
+    const strict = isValidActionEnvelope(value);
     const prefix = text.slice(Math.max(0, start - 40), start);
     const opening = /```(?:json)?\s{0,33}$/.exec(prefix);
     const closing = /^\s{0,33}```/.exec(text.slice(end, end + 36));
@@ -185,6 +205,7 @@ function findActionSpans(text: string): ActionSpan[] {
       start: fenced ? fenceStart : start,
       end: fenced ? end + (closing?.[0].length ?? 0) : end,
       fenced,
+      strict,
       value: value as Record<string, unknown> & { action: string },
     };
     spans.push(span);
@@ -257,7 +278,9 @@ export function stripActionBlockFromDisplay(text: string): string {
 export function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
   const safeText = toWellFormedUnicode(text);
-  const spans = findActionSpans(safeText);
+  const spans = findActionSpans(safeText).filter(
+    (candidate) => candidate.strict,
+  );
   const span = spans.find((candidate) => candidate.fenced) ?? spans[0];
   if (!span) return null;
   return toCoordinationResponse(span.value);
