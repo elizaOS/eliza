@@ -59,6 +59,36 @@ describe("prompt secret scanner", () => {
     assert.deepStrictEqual(result.warnings, []);
   });
 
+  it("flags current OpenAI project, service-account and admin keys", () => {
+    // The legacy rule stops at the hyphen in `sk-proj-`, so these were ignored.
+    const result = scanContent(
+      "prompts/example.ts",
+      [
+        "const project = 'sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';",
+        "const service = 'sk-svcacct-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';",
+        "const admin = 'sk-admin-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';",
+      ].join("\n"),
+    );
+
+    assert.deepStrictEqual(result.warnings, []);
+    assert.strictEqual(result.errors.length, 3);
+    for (const error of result.errors) {
+      assert.match(error, /OpenAI project\/service-account\/admin key/);
+    }
+  });
+
+  it("does not flag unrelated hyphenated sk- words or truncated keys", () => {
+    const result = scanContent(
+      "prompts/notes.ts",
+      [
+        "sk-learn-tutorial-explanation-of-everything",
+        "sk-proj-short",
+      ].join("\n"),
+    );
+
+    assert.deepStrictEqual(result, { errors: [], warnings: [] });
+  });
+
   it("does not flag plain prompt text that merely names env vars", () => {
     const result = scanContent(
       "prompts/instructions.ts",

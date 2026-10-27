@@ -151,6 +151,16 @@ export function scanContent(filePath, content) {
       severity: "error",
     },
     {
+      // Current OpenAI keys carry a hyphenated first segment
+      // (`sk-proj-`, `sk-svcacct-`, `sk-admin-`), which the class above cannot
+      // cross: it stops at the hyphen, so those keys were never flagged. Match
+      // the shapes explicitly rather than widening the class, which would also
+      // swallow prose like `sk-learn-...`.
+      name: "OpenAI project/service-account/admin key",
+      re: /\bsk-(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}\b/,
+      severity: "error",
+    },
+    {
       name: "Anthropic-style key",
       re: /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/,
       severity: "error",
