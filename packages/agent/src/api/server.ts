@@ -1045,6 +1045,10 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Agent activity stream: assistant thoughts/plans, tool inputs
+    // and outputs, message contents, error stacks. The handler
+    // serves GET only, so an exact path entry suffices.
+    pathname === "/api/agent/events" ||
     (write &&
       [
         "import",
