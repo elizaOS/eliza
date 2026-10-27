@@ -61,6 +61,7 @@ export {
 } from "./view-ids";
 export {
   createMobileViewRegistry,
+  type MobileViewContribution,
   type MobileViewLoader,
   type MobileViewProps,
   type MobileViewRegistration,

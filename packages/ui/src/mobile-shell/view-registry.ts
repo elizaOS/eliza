@@ -35,6 +35,15 @@ export interface MobileViewRegistration {
   hidden?: boolean;
 }
 
+/** What a host adds to a product view, or a view outside the product order. */
+export interface MobileViewContribution {
+  id: MobileShellViewId;
+  /** Required for a view the product registration does not order. */
+  label?: string;
+  loader?: MobileViewLoader;
+  hidden?: boolean;
+}
+
 export type MobileViewTarget =
   | { kind: "home" }
   | { kind: "view"; view: MobileViewRegistration };
@@ -57,37 +66,56 @@ export interface MobileViewRegistry {
   iconUrl(view: MobileViewRegistration): string | undefined;
 }
 
+/**
+ * The product's ordered views with their labels and renderer keys, plus the
+ * host's contributions (lazy components, hidden views, unordered views).
+ */
 export function createMobileViewRegistry(
   product: MobileProductRegistration,
-  registrations: readonly MobileViewRegistration[],
-  options: { available?: (view: MobileViewRegistration) => boolean } = {},
+  options: {
+    views?: readonly MobileViewContribution[];
+    available?: (view: MobileViewRegistration) => boolean;
+  } = {},
 ): MobileViewRegistry {
   const byId = new Map<MobileShellViewId, MobileViewRegistration>();
   const byHostKey = new Map<string, MobileViewRegistration>();
-  for (const view of registrations) {
-    if (!isMobileShellViewId(view.id) || view.id === MOBILE_SHELL_HOME_VIEW_ID)
-      throw new TypeError(`Not an app view id: ${String(view.id)}`);
-    if (byId.has(view.id))
-      throw new TypeError(`View registered twice: ${view.id}`);
-    byId.set(view.id, view);
-    if (view.hostKey !== undefined && view.hostKey !== view.id) {
-      const known = byHostKey.get(view.hostKey);
-      const mapped = product.views.legacyIds[view.hostKey];
-      if (known || isMobileShellViewId(view.hostKey) || mapped !== view.id)
-        throw new TypeError(
-          `Host key ${view.hostKey} must be the product's legacy id of ${view.id}`,
-        );
-      byHostKey.set(view.hostKey, view);
-    }
+  for (const id of product.views.order) {
+    const hostKey = product.views.rendererKeys?.[id];
+    const view: MobileViewRegistration = {
+      id,
+      label: product.views.labels[id] ?? id,
+      ...(hostKey ? { hostKey } : {}),
+    };
+    byId.set(id, view);
+    if (hostKey) byHostKey.set(hostKey, view);
+  }
+  const contributed = new Set<MobileShellViewId>();
+  for (const { id, label, ...contribution } of options.views ?? []) {
+    if (!isMobileShellViewId(id) || id === MOBILE_SHELL_HOME_VIEW_ID)
+      throw new TypeError(`Not an app view id: ${String(id)}`);
+    if (contributed.has(id))
+      throw new TypeError(`View contributed twice: ${id}`);
+    contributed.add(id);
+    const known = byId.get(id);
+    if (!known && !label?.trim())
+      throw new TypeError(
+        `View ${id} is not in the product order and needs a label`,
+      );
+    const view = {
+      ...known,
+      id,
+      label: label ?? known?.label ?? id,
+      ...contribution,
+    };
+    byId.set(id, view);
+    if (view.hostKey) byHostKey.set(view.hostKey, view);
   }
   const owners = new Map<string, MobileShellViewId>();
   for (const [owner, ids] of Object.entries(product.views.serves ?? {}))
     for (const id of ids ?? []) owners.set(id, owner as MobileShellViewId);
   const order = [
     ...product.views.order,
-    ...registrations
-      .map((view) => view.id)
-      .filter((id) => !product.views.order.includes(id)),
+    ...[...contributed].filter((id) => !product.views.order.includes(id)),
   ];
   const isAvailable = (view: MobileViewRegistration) =>
     options.available?.(view) ?? true;

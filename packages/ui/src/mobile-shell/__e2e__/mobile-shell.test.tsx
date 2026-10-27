@@ -34,7 +34,11 @@ import {
 
 afterEach(cleanup);
 
-const chrome = { scrim: "rgba(0,0,0,.2)", shadow: "rgba(0,0,0,.1)", frame: "#ddd" };
+const chrome = {
+  scrim: "rgba(0,0,0,.2)",
+  shadow: "rgba(0,0,0,.1)",
+  frame: "#ddd",
+};
 const product = (): MobileProductRegistration => ({
   schema: "elizaos.mobile-product",
   schemaVersion: 1,
@@ -70,7 +74,11 @@ const product = (): MobileProductRegistration => ({
       accentForeground: "#ffffff",
     },
     chrome: { light: chrome, dark: { ...chrome, frame: "#161616" } },
-    aliases: { "--s2": "surface", "--serif": "fontDisplay", "--frame": "frame" },
+    aliases: {
+      "--s2": "surface",
+      "--serif": "fontDisplay",
+      "--frame": "frame",
+    },
   },
   icons: {
     baseUrl: "/icons/",
@@ -80,6 +88,13 @@ const product = (): MobileProductRegistration => ({
   backgrounds: { home: { dark: "#050505" } },
   views: {
     order: ["notes", "calendar", "automations", "settings"],
+    labels: {
+      notes: "Notes",
+      calendar: "Calendar",
+      automations: "Workflows",
+      settings: "Settings",
+    },
+    rendererKeys: { automations: "workflows" },
     legacyIds: { home: "chat", workflows: "automations", wallet: "inventory" },
     serves: { calendar: ["reminders"] },
   },
@@ -91,23 +106,21 @@ const product = (): MobileProductRegistration => ({
 });
 
 const registryFor = (available = (_id: string) => true) =>
-  createMobileViewRegistry(
-    defineMobileProductRegistration(product()),
-    [
-      { id: "notes", label: "Notes" },
-      { id: "calendar", label: "Calendar" },
-      { id: "automations", label: "Workflows", hostKey: "workflows" },
-      { id: "settings", label: "Settings", hidden: true },
-    ],
-    { available: (view) => available(view.id) },
-  );
+  createMobileViewRegistry(defineMobileProductRegistration(product()), {
+    views: [{ id: "settings", hidden: true }],
+    available: (view) => available(view.id),
+  });
 
 describe("product registration", () => {
   it("accepts a complete record and reuses the shared theme definition", () => {
     expect(validateMobileProductRegistration(product())).toEqual([]);
     const eliza = {
       ...product(),
-      theme: { ...ELIZA_DEFAULT_THEME, defaultAppearance: "dark", chrome: { light: chrome, dark: chrome } },
+      theme: {
+        ...ELIZA_DEFAULT_THEME,
+        defaultAppearance: "dark",
+        chrome: { light: chrome, dark: chrome },
+      },
     };
     expect(validateMobileProductRegistration(eliza)).toEqual([]);
     const frozen = defineMobileProductRegistration(product());
@@ -119,6 +132,8 @@ describe("product registration", () => {
     delete broken.theme.dark.accent;
     broken.theme.aliases["--bg"] = "bg";
     broken.views.legacyIds.notes = "calendar";
+    broken.views.rendererKeys = { notes: "memo" };
+    delete broken.views.labels.calendar;
     broken.views.serves = { calendar: ["notes"] };
     broken.storage.retained.again = "example.launcher.favorites.v1";
     broken.identity.appId = "not an id";
@@ -129,6 +144,8 @@ describe("product registration", () => {
         "theme.dark.accent: is required",
         "theme.aliases.--bg: must be a product property name",
         "views.legacyIds.notes: must be a non-canonical id",
+        "views.labels.calendar: is required",
+        "views.rendererKeys.notes: must be an older id of this ordered view",
         "views.serves.calendar: cannot serve notes",
         "storage: example.launcher.favorites.v1 is named twice",
       ]),
@@ -162,7 +179,9 @@ describe("product registration", () => {
     remove();
     expect(element.style.getPropertyValue("--s2")).toBe("");
     expect(resolveMobileShellAppearance(registration, null, true)).toBe("dark");
-    expect(resolveMobileShellAppearance(registration, "light", true)).toBe("light");
+    expect(resolveMobileShellAppearance(registration, "light", true)).toBe(
+      "light",
+    );
   });
 });
 
@@ -172,11 +191,16 @@ describe("view registry", () => {
     expect(registry.canonicalId("workflows")).toBe("automations");
     expect(registry.canonicalId("home")).toBe("chat");
     expect(registry.target("chat")).toEqual({ kind: "home" });
-    expect(registry.target("reminders")).toMatchObject({ kind: "view", view: { id: "calendar" } });
+    expect(registry.target("reminders")).toMatchObject({
+      kind: "view",
+      view: { id: "calendar" },
+    });
     expect(registry.target("unknown")).toBeUndefined();
     const automations = registry.find("workflows");
     expect(automations && registry.hostKey(automations)).toBe("workflows");
-    expect(automations && registry.launcherKey(automations)).toBe("example:automations");
+    expect(automations && registry.launcherKey(automations)).toBe(
+      "example:automations",
+    );
     expect(registry.fromLauncherKey("example:automations")).toBe(automations);
     expect(registry.fromLauncherKey("example:workflows")).toBeUndefined();
     expect(mobileShellViewPaths("chat")).toEqual(["/chat", "/apps/chat", "/"]);
@@ -185,33 +209,73 @@ describe("view registry", () => {
   it("offers available views in product order and refuses navigation to the rest", () => {
     let calendar = true;
     const registry = registryFor((id) => id !== "calendar" || calendar);
-    expect(registry.available().map((view) => view.id)).toEqual(["notes", "calendar", "automations"]);
+    expect(registry.available().map((view) => view.id)).toEqual([
+      "notes",
+      "calendar",
+      "automations",
+    ]);
     calendar = false;
-    expect(registry.available().map((view) => view.id)).toEqual(["notes", "automations"]);
+    expect(registry.available().map((view) => view.id)).toEqual([
+      "notes",
+      "automations",
+    ]);
     expect(registry.target("reminders")).toBeUndefined();
     expect(registry.target("settings")).toMatchObject({ kind: "view" });
     expect(() =>
-      createMobileViewRegistry(product(), [{ id: "notes", label: "Notes", hostKey: "memo" }]),
-    ).toThrow(/legacy id/);
+      createMobileViewRegistry(product(), { views: [{ id: "maps" }] }),
+    ).toThrow(/needs a label/);
+    const withMaps = createMobileViewRegistry(product(), {
+      views: [{ id: "maps", label: "Maps" }],
+    });
+    expect(withMaps.available().at(-1)).toMatchObject({
+      id: "maps",
+      label: "Maps",
+    });
   });
 });
 
 describe("navigation", () => {
   it("pushes, limits, pops and returns Home like device Back", () => {
-    let state = navigateMobileShell(MOBILE_SHELL_HOME, { type: "drawer", open: true });
+    let state = navigateMobileShell(MOBILE_SHELL_HOME, {
+      type: "drawer",
+      open: true,
+    });
     state = navigateMobileShell(state, { type: "drawer-query", query: "no" });
     expect(state).toMatchObject({ drawer: true, drawerQuery: "no" });
-    expect(navigateMobileShell(state, { type: "back" })).toMatchObject({ drawer: false, drawerQuery: "" });
+    expect(navigateMobileShell(state, { type: "back" })).toMatchObject({
+      drawer: false,
+      drawerQuery: "",
+    });
     state = navigateMobileShell(state, { type: "open", view: "a" });
-    expect(state).toEqual({ view: "a", stack: [], drawer: false, drawerQuery: "" });
+    expect(state).toEqual({
+      view: "a",
+      stack: [],
+      drawer: false,
+      drawerQuery: "",
+    });
     for (const view of ["b", "c", "d", "e", "f", "g", "h"])
-      state = navigateMobileShell(state, { type: "open", view, history: "push" });
+      state = navigateMobileShell(state, {
+        type: "open",
+        view,
+        history: "push",
+      });
     expect(state.stack).toEqual(["b", "c", "d", "e", "f", "g"]);
-    expect(navigateMobileShell(state, { type: "open", view: "h", history: "push" }).stack).toEqual([]);
-    expect(navigateMobileShell(state, { type: "open", view: "x", history: "keep" }).stack).toEqual(state.stack);
+    expect(
+      navigateMobileShell(state, { type: "open", view: "h", history: "push" })
+        .stack,
+    ).toEqual([]);
+    expect(
+      navigateMobileShell(state, { type: "open", view: "x", history: "keep" })
+        .stack,
+    ).toEqual(state.stack);
     state = navigateMobileShell(state, { type: "back" });
-    expect(state).toMatchObject({ view: "g", stack: ["b", "c", "d", "e", "f"] });
-    expect(navigateMobileShell({ ...state, stack: [] }, { type: "back" })).toBe(MOBILE_SHELL_HOME);
+    expect(state).toMatchObject({
+      view: "g",
+      stack: ["b", "c", "d", "e", "f"],
+    });
+    expect(navigateMobileShell({ ...state, stack: [] }, { type: "back" })).toBe(
+      MOBILE_SHELL_HOME,
+    );
   });
 });
 
@@ -230,38 +294,66 @@ describe("launcher favorites migration", () => {
     const storage = memory(
       JSON.stringify({
         version: 2,
-        keys: ["example:notes", "com.android.settings", "example:workflows", "example:automations"],
+        keys: [
+          "example:notes",
+          "com.android.settings",
+          "example:workflows",
+          "example:automations",
+        ],
         defaultPolicy: "example-apps",
         previousDefaults: ["example:wallet"],
       }),
     );
-    expect(migrateLauncherViewIds(storage, product())).toEqual({ status: "migrated", renamed: 2 });
-    expect(JSON.parse(storage.getItem("example.launcher.favorites.v1") ?? "")).toEqual({
+    expect(migrateLauncherViewIds(storage, product())).toEqual({
+      status: "migrated",
+      renamed: 2,
+    });
+    expect(
+      JSON.parse(storage.getItem("example.launcher.favorites.v1") ?? ""),
+    ).toEqual({
       version: 2,
       keys: ["example:notes", "com.android.settings", "example:automations"],
       defaultPolicy: "example-apps",
       previousDefaults: ["example:inventory"],
     });
-    expect(migrateLauncherViewIds(storage, product())).toEqual({ status: "unchanged" });
+    expect(migrateLauncherViewIds(storage, product())).toEqual({
+      status: "unchanged",
+    });
   });
 
   it("leaves absent and unreadable records alone and reports a refused write", () => {
-    expect(migrateLauncherViewIds(memory(null), product())).toEqual({ status: "absent" });
-    for (const value of ["{", '{"version":9,"keys":[]}', '{"version":2,"keys":[1]}']) {
+    expect(migrateLauncherViewIds(memory(null), product())).toEqual({
+      status: "absent",
+    });
+    for (const value of [
+      "{",
+      '{"version":9,"keys":[]}',
+      '{"version":2,"keys":[1]}',
+    ]) {
       const storage = memory(value);
-      expect(migrateLauncherViewIds(storage, product())).toEqual({ status: "unreadable" });
+      expect(migrateLauncherViewIds(storage, product())).toEqual({
+        status: "unreadable",
+      });
       expect(storage.getItem("example.launcher.favorites.v1")).toBe(value);
     }
-    const refusing = memory(JSON.stringify({ version: 1, keys: ["example:workflows"] }));
+    const refusing = memory(
+      JSON.stringify({ version: 1, keys: ["example:workflows"] }),
+    );
     refusing.setItem = () => {
       throw new Error("quota");
     };
-    expect(migrateLauncherViewIds(refusing, product())).toMatchObject({ status: "failed" });
+    expect(migrateLauncherViewIds(refusing, product())).toMatchObject({
+      status: "failed",
+    });
   });
 });
 
 const installed: InstalledApp[] = [
-  { packageName: "com.android.settings", activityName: "com.android.settings.Settings", label: "Settings" },
+  {
+    packageName: "com.android.settings",
+    activityName: "com.android.settings.Settings",
+    label: "Settings",
+  },
 ];
 function shellLauncher(saved: string[] | null = null) {
   const registry = registryFor();
@@ -277,7 +369,10 @@ function shellLauncher(saved: string[] | null = null) {
     registry,
     open: (view) => opened.push(view.id),
     changed: () => {},
-    favorites: { read: () => favorites, write: (keys) => void (favorites = [...keys]) },
+    favorites: {
+      read: () => favorites,
+      write: (keys) => void (favorites = [...keys]),
+    },
   });
   shell.syncViews();
   return { registry, shell, bridge, launches, opened };
@@ -296,19 +391,32 @@ describe("launcher join", () => {
     await shell.launcher.launch(notes);
     expect(opened).toEqual(["notes"]);
     expect(launches).toEqual([]);
-    const settings = shell.launcher.snapshot().apps.find((app) => app.packageName === "com.android.settings");
+    const settings = shell.launcher
+      .snapshot()
+      .apps.find((app) => app.packageName === "com.android.settings");
     if (!settings) throw new Error("installed app missing");
     shell.launcher.toggleFavorite(settings);
-    expect(shell.homeEntries().at(-1)).toMatchObject({ kind: "app", app: { label: "Settings" } });
+    expect(shell.homeEntries().at(-1)).toMatchObject({
+      kind: "app",
+      app: { label: "Settings" },
+    });
     await shell.launcher.launch(settings);
-    expect(launches).toEqual([{ packageName: "com.android.settings", activityName: "com.android.settings.Settings" }]);
+    expect(launches).toEqual([
+      {
+        packageName: "com.android.settings",
+        activityName: "com.android.settings.Settings",
+      },
+    ]);
   });
 
   it("reads the inventory for Home only when an installed app is a favorite", () => {
     const productOnly = shellLauncher(["example:notes"]);
     productOnly.shell.prepareHome();
     expect(productOnly.bridge.list).not.toHaveBeenCalled();
-    const withApp = shellLauncher(["example:notes", "com.android.settings/com.android.settings.Settings"]);
+    const withApp = shellLauncher([
+      "example:notes",
+      "com.android.settings/com.android.settings.Settings",
+    ]);
     withApp.shell.prepareHome();
     expect(withApp.bridge.list).toHaveBeenCalledTimes(1);
   });
@@ -318,8 +426,19 @@ describe("Home, All apps and view host", () => {
   it("renders host notices, cards and tiles, and leaves the tree when covered", () => {
     const opened: string[] = [];
     const tiles = [
-      { key: "notes", label: "Notes", glyphUrl: "/icons/sticky-note.svg", onOpen: () => opened.push("notes") },
-      { key: "app", label: "Clock", image: "data:image/png;base64,AA==", badge: true, onOpen: () => opened.push("app") },
+      {
+        key: "notes",
+        label: "Notes",
+        glyphUrl: "/icons/sticky-note.svg",
+        onOpen: () => opened.push("notes"),
+      },
+      {
+        key: "app",
+        label: "Clock",
+        image: "data:image/png;base64,AA==",
+        badge: true,
+        onOpen: () => opened.push("app"),
+      },
     ];
     const allApps = vi.fn();
     const { rerender } = render(
@@ -334,7 +453,11 @@ describe("Home, All apps and view host", () => {
     );
     const home = screen.getByRole("region", { name: "Home" });
     expect(home.getAttribute("data-host-layer")).toBe("home");
-    expect(home.querySelector("[data-host-apps]")?.hasAttribute("data-mobile-shell-apps")).toBe(true);
+    expect(
+      home
+        .querySelector("[data-host-apps]")
+        ?.hasAttribute("data-mobile-shell-apps"),
+    ).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Notes" }));
     fireEvent.click(screen.getByRole("button", { name: "All apps" }));
     expect(opened).toEqual(["notes"]);
@@ -360,11 +483,19 @@ describe("Home, All apps and view host", () => {
       />,
     );
     const dialog = screen.getByRole("dialog", { name: "All apps" });
-    expect(dialog.querySelector('[data-launcher-favorite="example:notes"]')).toBeTruthy();
-    expect(dialog.querySelector('[data-launcher-app="com.android.settings/com.android.settings.Settings"]')).toBeTruthy();
+    expect(
+      dialog.querySelector('[data-launcher-favorite="example:notes"]'),
+    ).toBeTruthy();
+    expect(
+      dialog.querySelector(
+        '[data-launcher-app="com.android.settings/com.android.settings.Settings"]',
+      ),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Workflows" }));
     await vi.waitFor(() => expect(opened).toEqual(["automations"]));
-    fireEvent.change(screen.getByRole("searchbox", { name: "Search apps" }), { target: { value: "set" } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search apps" }), {
+      target: { value: "set" },
+    });
     expect(onQuery).toHaveBeenCalledWith("set");
   });
 
@@ -372,19 +503,31 @@ describe("Home, All apps and view host", () => {
     let fail = true;
     const loader = vi.fn(async () => {
       if (fail) throw new Error("chunk");
-      return { default: ({ viewId }: { viewId: string }) => <p>Loaded {viewId}</p> };
+      return {
+        default: ({ viewId }: { viewId: string }) => <p>Loaded {viewId}</p>,
+      };
     });
-    const registry = createMobileViewRegistry(product(), [{ id: "notes", label: "Notes", loader }]);
+    const registry = createMobileViewRegistry(product(), {
+      views: [{ id: "notes", loader }],
+    });
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
-    render(<MobileViewHost registry={registry} view="notes" onClose={() => {}} />);
-    expect((await screen.findByRole("alert")).textContent).toContain("Notes could not be opened.");
+    render(
+      <MobileViewHost registry={registry} view="notes" onClose={() => {}} />,
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Notes could not be opened.",
+    );
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect((await screen.findByText(/Loaded/)).textContent).toBe("Loaded notes");
+    expect((await screen.findByText(/Loaded/)).textContent).toBe(
+      "Loaded notes",
+    );
     expect(loader).toHaveBeenCalledTimes(2);
     quiet.mockRestore();
     cleanup();
-    const { container } = render(<MobileViewHost registry={registry} view="calendar" onClose={() => {}} />);
+    const { container } = render(
+      <MobileViewHost registry={registry} view="calendar" onClose={() => {}} />,
+    );
     expect(container.innerHTML).toBe("");
   });
 });
@@ -392,19 +535,30 @@ describe("Home, All apps and view host", () => {
 it("the entry imports only its own leaves, never the package barrel", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const src = path.resolve(here, "../..");
-  const allowedExternal = new Set(["react", "@elizaos/contracts", "@elizaos/capacitor-system/launcher"]);
+  const allowedExternal = new Set([
+    "react",
+    "@elizaos/contracts",
+    "@elizaos/capacitor-system/launcher",
+  ]);
   const seen = new Set<string>();
   const visit = (file: string) => {
     if (seen.has(file)) return;
     seen.add(file);
     const source = fs.readFileSync(file, "utf8");
-    for (const [, specifier] of source.matchAll(/(?:\bfrom\s+|^import\s+)["']([^"']+)["'];/gm)) {
+    for (const [, specifier] of source.matchAll(
+      /(?:\bfrom\s+|^import\s+)["']([^"']+)["'];/gm,
+    )) {
       if (!specifier.startsWith(".")) {
-        expect(allowedExternal.has(specifier), `${file}: ${specifier}`).toBe(true);
+        expect(allowedExternal.has(specifier), `${file}: ${specifier}`).toBe(
+          true,
+        );
         continue;
       }
       const base = path.resolve(path.dirname(file), specifier);
-      const resolved = [`${base}.ts`, `${base}.tsx`, base].find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+      const resolved = [`${base}.ts`, `${base}.tsx`, base].find(
+        (candidate) =>
+          fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+      );
       if (!resolved) throw new Error(`${file}: cannot resolve ${specifier}`);
       visit(resolved);
     }

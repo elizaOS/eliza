@@ -76,6 +76,13 @@ export interface MobileProductBackgrounds {
 export interface MobileProductViews {
   /** Home and All apps order of the product's views. */
   order: readonly MobileShellViewId[];
+  /** Product name of every ordered view. */
+  labels: Readonly<Partial<Record<MobileShellViewId, string>>>;
+  /**
+   * Keys of the product's own renderer that predate canonical ids. Each is
+   * also an older id mapped to the same view, so it is migrated once.
+   */
+  rendererKeys?: Readonly<Partial<Record<MobileShellViewId, string>>>;
   /** Product renderer keys and older persisted ids, each mapped once. */
   legacyIds: Readonly<Record<string, MobileShellViewId>>;
   /** Canonical ids a product view also serves, e.g. calendar serves reminders. */
@@ -246,6 +253,30 @@ export function validateMobileProductRegistration(value: unknown): string[] {
         issue("views.order", `${String(id)} is not an app view id`);
       else if (ordered.has(id)) issue("views.order", `${id} is listed twice`);
       ordered.add(String(id));
+    }
+    const labels = record(views.labels) ? views.labels : null;
+    if (!labels) issue("views.labels", "must be an object");
+    for (const id of ordered)
+      if (labels && !text(labels[id]))
+        issue(`views.labels.${id}`, "is required");
+    if (views.rendererKeys !== undefined) {
+      const keys = record(views.rendererKeys) ? views.rendererKeys : null;
+      const legacyIds = record(views.legacyIds) ? views.legacyIds : {};
+      const used = new Set<unknown>();
+      if (!keys) issue("views.rendererKeys", "must be an object");
+      for (const [id, key] of Object.entries(keys ?? {})) {
+        if (
+          !ordered.has(id) ||
+          typeof key !== "string" ||
+          legacyIds[key] !== id ||
+          used.has(key)
+        )
+          issue(
+            `views.rendererKeys.${id}`,
+            "must be an older id of this ordered view",
+          );
+        used.add(key);
+      }
     }
     if (!record(views.legacyIds)) issue("views.legacyIds", "must be an object");
     else
