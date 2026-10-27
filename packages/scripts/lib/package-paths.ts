@@ -9,7 +9,7 @@
  * submodule sources but skips installing their transitive deps, so importing
  * from that source would fail at runtime.
  */
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -189,7 +189,19 @@ export function getInstalledPackageRoot(
   } catch {
     try {
       const entryPath = scopedRequire.resolve(packageName);
-      return path.dirname(entryPath);
+      let current = path.dirname(entryPath);
+      while (true) {
+        const manifest = path.join(current, "package.json");
+        if (
+          existsSync(manifest) &&
+          typeof JSON.parse(readFileSync(manifest, "utf8")).name === "string"
+        ) {
+          return current;
+        }
+        const parent = path.dirname(current);
+        if (parent === current) return undefined;
+        current = parent;
+      }
     } catch {
       return undefined;
     }
@@ -285,7 +297,8 @@ export function getAutonomousSourceRoot(repoRoot: string): string | undefined {
     return directSrc;
   }
 
-  return path.join(packageRoot, "packages", "agent", "src");
+  const nestedSrc = path.join(packageRoot, "packages", "agent", "src");
+  return existsSync(nestedSrc) ? nestedSrc : undefined;
 }
 
 export function getAppCoreSourceRoot(repoRoot: string): string | undefined {
