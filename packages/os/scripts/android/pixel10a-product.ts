@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireClockProduct } from "./aosp-clock-handlers.mjs";
 import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
 
 const hardwareRoot = fileURLToPath(
@@ -182,6 +183,12 @@ export function composePixel10aProduct({
       path.join(output, "product.mk"),
       "\n# Exact executable modes for admitted bundled JNI.\nTARGET_FS_CONFIG_GEN += vendor/alphaphone/config.fs\n",
     );
+  // Alarms and timers stay with the system Clock in every brand's image.
+  const productMakefile = path.join(output, "product.mk");
+  const launcherProduct = fs.readFileSync(productMakefile, "utf8");
+  const withClock = requireClockProduct(launcherProduct);
+  if (withClock !== launcherProduct)
+    fs.writeFileSync(productMakefile, withClock);
   const evidence = {
     schema: 1,
     target: "pixel10a",

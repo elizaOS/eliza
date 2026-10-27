@@ -69,6 +69,13 @@ for (const brand of ["alpha", "eliza"]) {
       /eliza_common|BOARD_AVB|privapp|default-permissions/,
     );
     assert.match(mk, new RegExp(`PRODUCT_MODEL := ${f.product.model}`));
+    // Alarms and timers stay with the system Clock in both brands' images.
+    assert.equal(
+      fs
+        .readFileSync(path.join(f.output, "product.mk"), "utf8")
+        .match(/^PRODUCT_PACKAGES \+= DeskClock$/gm)?.length,
+      1,
+    );
     assert.match(
       fs.readFileSync(path.join(f.output, "AndroidProducts.mk"), "utf8"),
       new RegExp(`${f.product.productName}-cp2a-user\\b`),
@@ -110,6 +117,21 @@ for (const brand of ["alpha", "eliza"]) {
     );
   });
 }
+
+test("a launcher product that already requires DeskClock keeps one requirement", (t) => {
+  const f = fixture(t, "alpha");
+  fs.appendFileSync(
+    path.join(f.output, "product.mk"),
+    "\n# Brand staging\nPRODUCT_PACKAGES += DeskClock\n",
+  );
+  composePixel10aProduct(f);
+  assert.equal(
+    fs
+      .readFileSync(path.join(f.output, "product.mk"), "utf8")
+      .match(/DeskClock/g)?.length,
+    1,
+  );
+});
 
 test("changed privilege policy, product identity and qualified claims fail before composition", (t) => {
   const f = fixture(t, "alpha");
