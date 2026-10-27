@@ -8,6 +8,7 @@ export * from "./contracts.ts";
 export * from "./device-navigation.ts";
 export * from "./guidance.ts";
 export * from "./location.ts";
+export * from "./maps-screen.ts";
 export * from "./navigation-fix.ts";
 export * from "./navigation-relay.ts";
 export * from "./navigation-voice.ts";
