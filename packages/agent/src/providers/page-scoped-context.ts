@@ -140,9 +140,17 @@ async function fetchSourceTail(
   if (sourceRoomId === ownRoomId) {
     return [];
   }
+  // Bound it: without a limit this fetches the source room's entire
+  // history on every turn and renders all of it into the prompt, though
+  // the provider promises only a short tail. The cap keeps the newest
+  // messages (reads order newest-first); the ascending sort in
+  // pruneMainChatTail still yields them chronologically.
   const memories = await runtime.getMemories({
     roomId: sourceRoomId,
     tableName: "messages",
+    limit: 15000,
+    orderBy: "createdAt",
+    orderDirection: "desc",
   });
   const pruned = pruneMainChatTail(memories, runtime.agentId, Date.now());
   if (pruned.length < SOURCE_TAIL_MIN_FOR_INCLUSION) {
