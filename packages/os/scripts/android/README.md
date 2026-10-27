@@ -11,6 +11,13 @@ See the Android README for required source/archive inputs and qualification limi
 The lower-level `verifyDeviceSource` accepts caller-authenticated patch envelopes;
 it never applies patches or changes the source tree.
 
+Pixel 10a release signing (`aosp-release-signing.mjs`, Eliza's
+`sign-pixel10a-release.mjs`), compatibility records (`aosp-release-record.mjs`), the
+operator OTA update client with interrupted-update, fallback and stock-recovery
+tooling (`aosp-ota-update.mjs`) and read-only image checks (`verify-launcher-image.mjs`)
+take each brand's release descriptor and channel; see
+[the release guide](../../android/releases/README.md).
+
 Physical writes and publication require a signed v2 contract. Run contract tests
 with `bun run --cwd packages/os test:release` from the repository root.
 
