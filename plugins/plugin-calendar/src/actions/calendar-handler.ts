@@ -5682,8 +5682,9 @@ export function createCalendarActionRunner(
         }
 
         if (subaction === "create_event") {
-          // Reject malformed generated arguments before any lookup or model extraction.
-          normalizeCalendarAttendees(details);
+          // Outer arguments are proposals, including malformed invented guests.
+          // Resolve guest intent from original user evidence first; the canonical
+          // build below validates the resulting authorized attendees before writes.
           const calendarContext = await loadCreateEventCalendarContext(
             service,
             details,

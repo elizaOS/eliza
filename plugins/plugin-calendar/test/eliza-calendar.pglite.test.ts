@@ -162,15 +162,22 @@ afterAll(async () => {
 });
 
 describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
-  it.each(["named-missing", "unresolved", "omitted-second"] as const)(
+  it.each([
+    "named-missing",
+    "unresolved",
+    "omitted-second",
+    "named-invalid",
+  ] as const)(
     "blocks canonical authority %s before persistence",
     async (kind) => {
       const text =
         kind === "omitted-second"
           ? "Invite bob@acme.com and eve@acme.com to Review September 18 at 3 PM New York time."
-          : kind === "named-missing"
-            ? "Invite Dana to Review September 18 at 3 PM New York time."
-            : "Schedule it with them.";
+          : kind === "named-invalid"
+            ? "Invite Dana at eliza-calendar to Review September 18 at 3 PM New York time."
+            : kind === "named-missing"
+              ? "Invite Dana to Review September 18 at 3 PM New York time."
+              : "Schedule it with them.";
       const message = {
         id: `authority-${kind}`,
         entityId: "owner",
@@ -203,7 +210,16 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
                             optional: false,
                           },
                         ]
-                      : [{ name: "Dana", email: null, optional: false }],
+                      : [
+                          {
+                            name: "Dana",
+                            email:
+                              kind === "named-invalid"
+                                ? "eliza-calendar"
+                                : null,
+                            optional: false,
+                          },
+                        ],
                 },
                 noteIntent: { state: "none", evidence, sourceNote: null },
               },
@@ -225,7 +241,9 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
             attendees:
               kind === "omitted-second"
                 ? [{ email: "bob@acme.com" }, { email: "eve@acme.com" }]
-                : [],
+                : kind === "named-invalid"
+                  ? [{ email: "eliza-calendar" }]
+                  : [],
           },
         },
       });
@@ -349,69 +367,76 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     }
   });
 
-  it("creates exactly one canonical solo event despite fabricated outer guest and note fields", async () => {
-    const message = {
-      id: "00000000-0000-0000-0000-000000000399",
-      entityId: "owner",
-      roomId: "room",
-      createdAt: Date.parse("2050-09-15T22:00:00Z"),
-      content: {
-        text: "Create a calendar event Solo authority September 18 at 3 PM New York time for 15 minutes.",
-      },
-    } as Memory;
-    const evidence = [
-      { sourceId: `current:${message.id}`, quote: message.content.text },
-    ];
-    const extract = vi.fn(async ({ actionType }: { actionType: string }) =>
-      actionType === "lifeops.calendar.extract_create_event"
-        ? {
-            rawResponse: "{}",
-            parsed: {
-              requiresInput: false,
-              title: "Solo authority",
-              grantId: ELIZA_CALENDAR_GRANT_ID,
-              calendarId: ELIZA_CALENDAR_ID,
-              startAt: "2050-09-18T15:00:00",
-              endAt: "2050-09-18T15:15:00",
-              timeZone: "America/New_York",
-              guestIntent: { state: "none", evidence, guests: [] },
-              noteIntent: { state: "none", evidence, sourceNote: null },
+  it.each(["invented@acme.com", "eliza-calendar"])(
+    "creates exactly one canonical solo event despite fabricated outer guest %s and note fields",
+    async (outerGuest) => {
+      const message = {
+        id: "00000000-0000-0000-0000-000000000399",
+        entityId: "owner",
+        roomId: "room",
+        createdAt: Date.parse("2050-09-15T22:00:00Z"),
+        content: {
+          text: "Create a calendar event Solo authority September 18 at 3 PM New York time for 15 minutes.",
+        },
+      } as Memory;
+      const evidence = [
+        { sourceId: `current:${message.id}`, quote: message.content.text },
+      ];
+      const extract = vi.fn(async ({ actionType }: { actionType: string }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                requiresInput: false,
+                title: "Solo authority",
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+                startAt: "2050-09-18T15:00:00",
+                endAt: "2050-09-18T15:15:00",
+                timeZone: "America/New_York",
+                guestIntent: { state: "none", evidence, guests: [] },
+                noteIntent: { state: "none", evidence, sourceNote: null },
+              },
+            }
+          : null,
+      );
+      const action = createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: extract,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      const result = await action.handler(runtime, message, undefined, {
+        parameters: {
+          subaction: "create_event",
+          title: "Solo authority",
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            attendees: [{ email: outerGuest }],
+            sourceNote: {
+              agentId: AGENT_ID,
+              noteId: "invented",
+              contentHash: "0".repeat(64),
             },
-          }
-        : null,
-    );
-    const action = createCalendarActionRunner({
-      runTextModel: vi.fn(async () => null),
-      runJsonModel: extract,
-      recentConversationTexts: vi.fn(async () => []),
-    });
-    const result = await action.handler(runtime, message, undefined, {
-      parameters: {
-        subaction: "create_event",
-        title: "Solo authority",
-        details: {
-          grantId: ELIZA_CALENDAR_GRANT_ID,
-          calendarId: ELIZA_CALENDAR_ID,
-          attendees: [{ email: "invented@acme.com" }],
-          sourceNote: {
-            agentId: AGENT_ID,
-            noteId: "invented",
-            contentHash: "0".repeat(64),
           },
         },
-      },
-    });
-    expect(result?.success, JSON.stringify(result)).toBe(true);
-    expect(extract).toHaveBeenCalledTimes(1);
-    const rows = (
-      await pg.query<{ attendees_json: unknown; metadata_json: unknown }>(
-        "SELECT attendees_json, metadata_json FROM app_calendar.life_calendar_events",
-      )
-    ).rows;
-    expect(rows).toHaveLength(1);
-    expect(JSON.stringify(rows[0].attendees_json)).not.toContain("invented");
-    expect(JSON.stringify(rows[0].metadata_json)).not.toContain("sourceNote");
-  });
+      });
+      expect(result?.success, JSON.stringify(result)).toBe(true);
+      expect(extract).toHaveBeenCalledTimes(1);
+      const rows = (
+        await pg.query<{ attendees_json: unknown; metadata_json: unknown }>(
+          "SELECT attendees_json, metadata_json FROM app_calendar.life_calendar_events",
+        )
+      ).rows;
+      expect(rows).toHaveLength(1);
+      expect(
+        typeof rows[0].attendees_json === "string"
+          ? JSON.parse(rows[0].attendees_json)
+          : rows[0].attendees_json,
+      ).toEqual([]);
+      expect(JSON.stringify(rows[0].metadata_json)).not.toContain("sourceNote");
+    },
+  );
 
   async function runUpdate(
     text: string,
