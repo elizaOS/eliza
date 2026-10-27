@@ -70,6 +70,28 @@ export {
   SERVER_EOT_SUPPRESS_THRESHOLD,
   shouldRespondToVoiceTurn,
 } from "./respond-gate.js";
+export type {
+  AssistantAwaitingInput,
+  AssistantCapture,
+  AssistantClock,
+  AssistantHeard,
+  AssistantListenHandlers,
+  AssistantPhase,
+  AssistantPorts,
+  AssistantReply,
+  AssistantState,
+  AssistantTiming,
+  EndpointDecision,
+  EndpointOutcome,
+  EndpointRecord,
+  EndpointResult,
+} from "./voice-assistant-session.js";
+export {
+  ASSISTANT_TIMING_DEFAULTS,
+  splitSpokenSentences,
+  VoiceAssistantError,
+  VoiceAssistantSession,
+} from "./voice-assistant-session.js";
 export { scoreEndOfTurnHeuristic } from "./voice-eot.js";
 export {
   MAX_WER_EDIT_CELLS,

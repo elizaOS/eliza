@@ -22,6 +22,12 @@
       "import": "./dist/turn.js",
       "default": "./dist/turn.js"
     },
+    "./assistant-session": {
+      "eliza-source": "./src/voice-assistant-session.ts",
+      "types": "./dist/voice-assistant-session.d.ts",
+      "import": "./dist/voice-assistant-session.js",
+      "default": "./dist/voice-assistant-session.js"
+    },
     "./browser-capture": {
       "eliza-source": "./src/browser-capture/index.ts",
       "types": "./dist/browser-capture/index.d.ts",
