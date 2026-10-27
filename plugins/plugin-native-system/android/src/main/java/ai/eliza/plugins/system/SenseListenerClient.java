@@ -78,7 +78,15 @@ public final class SenseListenerClient {
         synchronized (invocations) { return invocations.computeIfAbsent(context.getPackageName(), ignored -> new SenseInvocation()); }
     }
 
-    public void bindInvocationSession(long bridge, int generation, String bindingId, String session) { invocation().bind(bridge, generation, bindingId, session); }
+    public void bindInvocationSession(long bridge, int generation, String bindingId, String session) { invocation().bind(bridge, generation, bindingId, session, SystemClock.elapsedRealtime()); }
+
+    /**
+     * Registers the host's native owner admission for this host package: the non-secret identity of
+     * the owner whose authenticated session may claim a wake that arrived before the renderer bound
+     * one. Call it from native startup (before the assistant activity records an invocation); null
+     * removes it. Without it a cold wake only opens the assistant.
+     */
+    public void admitOwner(SenseInvocation.OwnerAdmission admission) { invocation().admit(admission); }
     public void releaseInvocationBridge(long bridge) { invocation().release(bridge); }
 
     /** Caller package must come from Android's Activity caller API, never an extra or deep link. */

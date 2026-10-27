@@ -4,6 +4,125 @@ public final class SenseInvocationTest {
     private static void check(boolean value, String reason) { if (!value) throw new AssertionError(reason); }
     private static final String OWNER="11111111-1111-4111-8111-111111111111", NEXT="22222222-2222-4222-8222-222222222222";
     private static final String A="a".repeat(64), B="b".repeat(64);
+    /** A wake before any authenticated binding: only a native owner admission can let a session claim it. */
+    private static void coldStart(String host) {
+        String[] nativeOwner = {"account-1"};
+        java.util.function.Supplier<SenseInvocation> fresh = () -> {
+            SenseInvocation state = new SenseInvocation();
+            state.admit(() -> nativeOwner[0]);
+            return state;
+        };
+        // Cold process: the wake arrives first; the renderer mounts unauthenticated, then signs in.
+        SenseInvocation cold = fresh.get();
+        cold.record(host, host + ".sense", true, 100, false);
+        cold.bind(1, 1, OWNER, null, 200);
+        check(cold.take(1, 1, OWNER, A, 300, false) == null, "an unauthenticated renderer cannot consume");
+        cold = fresh.get();
+        cold.record(host, host + ".sense", true, 100, false);
+        cold.bind(1, 1, OWNER, null, 200);
+        cold.bind(1, 1, OWNER, A, 6000);
+        check("listener".equals(cold.take(1, 1, OWNER, A, 9000, false)), "same native owner claims a cold wake within the cold window");
+        check(cold.take(1, 1, OWNER, A, 9001, false) == null, "a claimed cold wake is consumed once");
+        // Once a session is bound, later wakes are warm: the short window and session fence apply.
+        cold.record(host, host + ".sense", true, 10000, false);
+        check("assist".equals(cold.take(1, 1, OWNER, A, 10000 + SenseInvocation.WINDOW_MS + 1, false)), "a warm wake keeps the short window");
+        // The first binding of a new plugin lifetime (the usual cold process) claims it too.
+        SenseInvocation first = fresh.get();
+        first.record(host, host + ".sense", true, 1000, false);
+        first.bind(1, 1, OWNER, A, 4000);
+        check("listener".equals(first.take(1, 1, OWNER, A, 4100, false)), "first binding claims a wake recorded before it");
+        // A renderer signed out again (null session) can receive a cold wake as well.
+        first.bind(1, 1, OWNER, null, 5000);
+        first.record(host, host + ".sense", true, 5100, false);
+        first.bind(1, 1, OWNER, B, 5200);
+        check("listener".equals(first.take(1, 1, OWNER, B, 5300, false)), "a signed-out renderer's next session claims the wake");
+        // The native owner changed between the wake and the binding: dropped, not reassigned.
+        SenseInvocation changed = fresh.get();
+        changed.record(host, host + ".sense", true, 100, false);
+        nativeOwner[0] = "account-2";
+        changed.bind(1, 1, OWNER, B, 200);
+        check(changed.take(1, 1, OWNER, B, 300, false) == null, "an owner change drops the cold wake");
+        nativeOwner[0] = "account-1";
+        // The owner changes after the claim but before the take: open the assistant only.
+        SenseInvocation late = fresh.get();
+        late.record(host, host + ".sense", true, 100, false);
+        late.bind(1, 1, OWNER, A, 200);
+        nativeOwner[0] = "account-3";
+        check("assist".equals(late.take(1, 1, OWNER, A, 300, false)), "the native owner must still match at the take");
+        nativeOwner[0] = "account-1";
+        // Expiry: the binding arrives after the cold window, or the take does.
+        SenseInvocation expired = fresh.get();
+        expired.record(host, host + ".sense", true, 100, false);
+        expired.bind(1, 1, OWNER, A, 100 + SenseInvocation.COLD_WINDOW_MS + 1);
+        check(expired.take(1, 1, OWNER, A, 100 + SenseInvocation.COLD_WINDOW_MS + 2, false) == null, "a late binding cannot claim an expired wake");
+        expired = fresh.get();
+        expired.record(host, host + ".sense", true, 100, false);
+        expired.bind(1, 1, OWNER, A, 200);
+        check("assist".equals(expired.take(1, 1, OWNER, A, 100 + SenseInvocation.COLD_WINDOW_MS + 1, false)), "the cold window bounds the take");
+        // Lock, signer, caller and clock rules still apply.
+        SenseInvocation rule = fresh.get();
+        rule.record(host, host + ".sense", true, 100, true);
+        rule.bind(1, 1, OWNER, A, 200);
+        check(rule.take(1, 1, OWNER, A, 300, false) == null, "a wake while locked is never held");
+        rule = fresh.get();
+        rule.record(host, host + ".sense", false, 100, false);
+        rule.bind(1, 1, OWNER, A, 200);
+        check(rule.take(1, 1, OWNER, A, 300, false) == null, "a different signer is never held");
+        rule = fresh.get();
+        rule.record(host, "other.sense", true, 100, false);
+        rule.bind(1, 1, OWNER, A, 200);
+        check(rule.take(1, 1, OWNER, A, 300, false) == null, "another caller is never held");
+        rule = fresh.get();
+        rule.record(host, host + ".sense", true, 100, false);
+        rule.bind(1, 1, OWNER, A);
+        check(rule.take(1, 1, OWNER, A, 300, false) == null, "no clock, no claim");
+        rule = fresh.get();
+        rule.record(host, host + ".sense", true, 100, false);
+        rule.bind(1, 1, OWNER, A, 200);
+        rule.record(host, null, false, 250, false);
+        check("assist".equals(rule.take(1, 1, OWNER, A, 300, false)), "a later non-listener launch replaces the claimed wake");
+        rule = fresh.get();
+        rule.record(host, host + ".sense", true, 100, false);
+        rule.bind(1, 1, OWNER, A, 200);
+        check("assist".equals(rule.take(1, 1, OWNER, A, 300, true)), "locked or background at the take");
+        // A failing, oversized or absent admission is no owner.
+        nativeOwner[0] = null;
+        rule = fresh.get();
+        rule.record(host, host + ".sense", true, 100, false);
+        rule.bind(1, 1, OWNER, A, 200);
+        check(rule.take(1, 1, OWNER, A, 300, false) == null, "no admitted owner admits nothing");
+        nativeOwner[0] = "account-1";
+        SenseInvocation failing = new SenseInvocation();
+        failing.admit(() -> { throw new IllegalStateException("store unavailable"); });
+        failing.record(host, host + ".sense", true, 100, false);
+        failing.bind(1, 1, OWNER, A, 200);
+        check(failing.take(1, 1, OWNER, A, 300, false) == null, "an unavailable owner admits nothing");
+        failing = new SenseInvocation();
+        failing.admit(() -> "x".repeat(257));
+        failing.record(host, host + ".sense", true, 100, false);
+        failing.bind(1, 1, OWNER, A, 200);
+        check(failing.take(1, 1, OWNER, A, 300, false) == null, "an oversized owner identity admits nothing");
+        failing = fresh.get();
+        failing.admit(null);
+        failing.record(host, host + ".sense", true, 100, false);
+        failing.bind(1, 1, OWNER, A, 200);
+        check(failing.take(1, 1, OWNER, A, 300, false) == null, "removing the admission restores assist-only cold starts");
+        // Stale renderer generations cannot claim it; the current mount still can.
+        SenseInvocation stale = fresh.get();
+        stale.bind(1, 2, NEXT, null, 50);
+        stale.record(host, host + ".sense", true, 100, false);
+        stale.bind(1, 1, OWNER, A, 200);
+        check(stale.take(1, 1, OWNER, A, 300, false) == null, "an older renderer mount cannot claim a cold wake");
+        stale.bind(1, 2, NEXT, A, 300);
+        check("listener".equals(stale.take(1, 2, NEXT, A, 400, false)), "the current mount still can");
+        // Reset for data erases a held wake.
+        SenseInvocation erased = fresh.get();
+        erased.record(host, host + ".sense", true, 100, false);
+        erased.reset();
+        erased.bind(1, 1, OWNER, A, 200);
+        check(erased.take(1, 1, OWNER, A, 300, false) == null, "reset drops a held cold wake");
+    }
+
     public static void main(String[] args) {
         for (String host : new String[]{"ai.elizaos.app", "ai.elizaresearch.alphaphone"}) {
             SenseInvocation state=new SenseInvocation();
@@ -43,6 +162,7 @@ public final class SenseInvocationTest {
             check(state.take(1,3,NEXT,A,101,false)==null,"old plugin cannot consume after WebView replacement");
             check("listener".equals(state.take(2,1,OWNER,A,101,false)),"old plugin bind and destroy cannot reset new plugin");
             try {state.bind(1, 1, OWNER, "credential");throw new AssertionError("invalid key");} catch (IllegalArgumentException expected) {}
+            coldStart(host);
         }
         System.out.println("PASS native Sense invocation ownership and replay fences");
     }
