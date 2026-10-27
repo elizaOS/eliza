@@ -1076,6 +1076,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // Corpus-wide message search: room scoping rests on the
+    // WaifuChat access check, which passes everything when no
+    // WaifuChat token is present — exactly the case for a paired
+    // guest session. Search alone is gated; per-conversation
+    // reads keep their existing waifu-wallet scoping.
+    pathname === "/api/conversations/messages/search" ||
     (write &&
       [
         "import",
