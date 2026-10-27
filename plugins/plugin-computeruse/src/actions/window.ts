@@ -76,7 +76,7 @@ export const windowAction: Action = {
   contextGate: {
     anyOf: ["screen_time", "automation"],
   },
-  roleGate: { minRole: "USER" },
+  roleGate: { minRole: "OWNER" },
   similes: [
     // Old per-verb name — preserved so older planner callers and training
     // data still resolve to WINDOW.
