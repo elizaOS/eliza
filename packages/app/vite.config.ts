@@ -80,6 +80,10 @@ export function resolveAndroidCloudPrebootLockupDataUri(): string {
     [".webp", "image/webp"],
   ]).get(path.extname(file).toLowerCase());
   if (!mime) throw new Error("Startup logo must be SVG, PNG, JPEG or WebP");
+  // A missing local file keeps the documented app-name fallback
+  // instead of aborting the build; outside-public and bad-extension
+  // paths above still throw as intentional validation errors.
+  if (!fs.existsSync(file)) return "";
   let bytes = fs.readFileSync(file);
   // Preserve the canonical host's reviewed transparent Android launch lockup.
   if (logoPath === "/brand/logos/eliza_logotext.svg") {
