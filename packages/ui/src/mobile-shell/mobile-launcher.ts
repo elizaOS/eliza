@@ -46,23 +46,28 @@ export function createMobileShellLauncher(options: {
 }): MobileShellLauncher {
   const { bridge, registry } = options;
   const prefix = registry.product.storage.launcherBuiltinPrefix;
-  const launcher = createLauncher(
-    {
-      ...bridge,
-      launch(target) {
-        const view = registry.fromLauncherKey(appKey(target));
-        if (!view) return bridge.launch(target);
-        options.open(view);
-        return Promise.resolve();
-      },
+  // Native plugin proxies resolve methods when they are read, so each method
+  // is delegated by name; spreading the bridge would drop them.
+  const shellBridge: LauncherBridge = {
+    list: (listOptions) => bridge.list(listOptions),
+    launch(target) {
+      const view = registry.fromLauncherKey(appKey(target));
+      if (!view) return bridge.launch(target);
+      options.open(view);
+      return Promise.resolve();
     },
-    options.changed,
-    {
-      icons: options.icons,
-      favorites: options.favorites,
-      aliases: options.aliases,
-    },
-  );
+  };
+  if (bridge.resolveDefault)
+    shellBridge.resolveDefault = (role) =>
+      bridge.resolveDefault?.(role) ?? Promise.reject(new Error("Unavailable"));
+  if (bridge.openDefault)
+    shellBridge.openDefault = (role) =>
+      bridge.openDefault?.(role) ?? Promise.reject(new Error("Unavailable"));
+  const launcher = createLauncher(shellBridge, options.changed, {
+    icons: options.icons,
+    favorites: options.favorites,
+    aliases: options.aliases,
+  });
   return {
     launcher,
     syncViews() {

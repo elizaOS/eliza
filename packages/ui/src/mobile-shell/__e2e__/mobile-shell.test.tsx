@@ -409,6 +409,39 @@ describe("launcher join", () => {
     ]);
   });
 
+  it("reads a native plugin proxy whose methods exist only when read", async () => {
+    const calls: string[] = [];
+    const plugin = new Proxy({} as LauncherBridge, {
+      get: (_target, name) => async () => {
+        calls.push(String(name));
+        if (name === "list") return { apps: installed };
+        if (name === "resolveDefault")
+          return {
+            available: true,
+            label: "Dialer",
+            packageName: "com.example.dialer",
+          };
+        return undefined;
+      },
+    });
+    const shell = createMobileShellLauncher({
+      bridge: plugin,
+      registry: registryFor(),
+      open: () => {},
+      changed: () => {},
+    });
+    shell.syncViews();
+    await shell.launcher.load();
+    expect(shell.launcher.snapshot()).toMatchObject({
+      status: "ready",
+      dial: { label: "Dialer" },
+    });
+    expect(shell.launcher.snapshot().apps.map((app) => app.label)).toContain(
+      "Settings",
+    );
+    expect(calls).toEqual(["list", "resolveDefault"]);
+  });
+
   it("reads the inventory for Home only when an installed app is a favorite", () => {
     const productOnly = shellLauncher(["example:notes"]);
     productOnly.shell.prepareHome();
