@@ -7678,17 +7678,32 @@ export async function inferNativeCalendarCreate(args: {
       ...standaloneCalendarDeps,
       ...calendarHosts.get(args.runtime),
     };
-  const extracted = await inferCreateEventDetails(
-    args.runtime,
-    args.message,
-    undefined,
-    text,
-    null,
-    args.timeZone,
-    undefined,
-    deps,
-    "NATIVE PHONE CAPABILITY CONSTRAINTS: This request prepares only one timed event on the phone calendar whose source is chosen and confirmed separately by its owner. No calendar contents or provider account catalog was read. For this port leave grantId/calendarId null; do not invent or substitute managed accounts. If the original request requires a named provider/account/calendar that this context cannot verify, all-day time, recurrence, attendees/invitations, travel buffers, availability-dependent time selection, multiple events or any other unsupported field, requiresInput=true and ask a concise clarification. A review is not a saved event.",
-  );
+  let extracted: Record<string, unknown>;
+  try {
+    extracted = await inferCreateEventDetails(
+      args.runtime,
+      args.message,
+      undefined,
+      text,
+      null,
+      args.timeZone,
+      undefined,
+      deps,
+      "NATIVE PHONE CAPABILITY CONSTRAINTS: This request prepares only one timed event on the phone calendar whose source is chosen and confirmed separately by its owner. No calendar contents or provider account catalog was read. For this port leave grantId/calendarId null; do not invent or substitute managed accounts. If the original request requires a named provider/account/calendar that this context cannot verify, all-day time, recurrence, attendees/invitations, travel buffers, availability-dependent time selection, multiple events or any other unsupported field, requiresInput=true and ask a concise clarification. A review is not a saved event.",
+    );
+  } catch (error) {
+    args.signal.throwIfAborted();
+    // Use the canonical create clarification without changing authority or retrying.
+    if (
+      error instanceof ElizaError &&
+      [
+        "CALENDAR_CREATE_AUTHORITY_UNRESOLVED",
+        "CALENDAR_NOTE_SOURCE_CONFLICT",
+        "CALENDAR_NOTE_SOURCE_INVALID",
+      ].includes(error.code)
+    ) return { text: error.message };
+    throw error;
+  }
   args.signal.throwIfAborted();
   if (
     extracted.requiresInput !== false ||
