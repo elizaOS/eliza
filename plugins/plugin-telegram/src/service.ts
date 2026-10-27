@@ -175,6 +175,7 @@ const TELEGRAM_MEMORY_PAGE_SIZE = 500;
 async function loadAllTelegramRoomMemories(
   runtime: IAgentRuntime,
   roomId: UUID,
+  limit?: number,
 ): Promise<Memory[]> {
   const memories: Memory[] = [];
   const seenIds = new Set<UUID>();
@@ -199,6 +200,9 @@ async function loadAllTelegramRoomMemories(
       for (const id of ids) seenIds.add(id as UUID);
     }
     memories.push(...page);
+    if (limit !== undefined && memories.length >= limit) {
+      return memories.slice(0, limit);
+    }
     if (page.length < TELEGRAM_MEMORY_PAGE_SIZE) return memories;
   }
 }
@@ -2849,9 +2853,17 @@ export class TelegramService extends Service {
           )
         : undefined);
     if (roomId) {
+      // A dates read with a before/after boundary or a cursor reaches
+      // this connector with no limit, and the bot drops those bounds
+      // entirely, so an unbounded load would page the room's whole
+      // stored history before the action window-filters in memory.
+      // Bound the no-limit case at 15000, keeping the newest
+      // messages (pages arrive newest-first). Limited reads pass
+      // their limit through unchanged.
       const memories = await loadAllTelegramRoomMemories(
         context.runtime,
         roomId,
+        limit ?? 15000,
       );
       const matches = memories.filter((memory) => {
         const metadata = memory.metadata as Record<string, unknown> | undefined;
@@ -2870,7 +2882,7 @@ export class TelegramService extends Service {
     );
     const chunks = await Promise.all(
       roomIds.map((roomId) =>
-        loadAllTelegramRoomMemories(context.runtime, roomId),
+        loadAllTelegramRoomMemories(context.runtime, roomId, limit ?? 15000),
       ),
     );
     const matches = chunks
