@@ -12,7 +12,11 @@ bun run --cwd plugins/plugin-maps build  # build
 bun run --cwd plugins/plugin-maps test   # tests
 ```
 
-The `./client` entry exposes host-configured device controllers and contracts.
+The `./client` entry exposes host-configured device controllers and contracts,
+including the account-bound Cloud Maps device provider (`cloud-provider`,
+`cloud-session`), the phone's `MapsDeviceNavigation` binding (`device-navigation`,
+`agent-navigation`), screen-off navigation sessions (`background-navigation`) and
+turn-by-turn presentation (`guidance`, `navigation-fix`).
 Use `./client/map-plane` for the optional MapLibre renderer and supply its worker,
 fonts, colors, regional transport and protocol. Native location uses the host
 bridge supplied to `./client/native-location`; no plugin registry or provider
@@ -30,7 +34,11 @@ provider configuration and presentation.
 
 With `ELIZAOS_CLOUD_API_KEY` set (and `ELIZAOS_CLOUD_BASE_URL` for a non-production
 Cloud), the service registers `ElizaCloudMapsAdapter` for `/api/v1/maps/*`: place
-search, details and routes with alternatives. Cloud supplies data only. The phone host
+search, details, reverse geocoding (`MAPS` place with only coordinates) and routes
+with alternatives. Cloud supplies data only. Cloud's operator chooses the data
+provider: the adapter binds its attribution and travel modes from `capabilities`,
+refreshes the service's provider description when they change, and refuses a
+response from a provider that changed after that read. The phone host
 registers a `MapsDeviceNavigation` with `MapsService.registerDeviceNavigation`; the
 `MAPS_SELECT` and `MAPS_NAVIGATION_START`, `_REROUTE` and `_STOP` actions ask it and
 report its state. Without one they return `MAPS_DEVICE_UNAVAILABLE`. GPS, the active

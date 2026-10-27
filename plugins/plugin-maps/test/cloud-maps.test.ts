@@ -49,14 +49,36 @@ type Request = {
   url: string;
 };
 
-function cloud(answer: (request: Request) => Response) {
+const COVERAGE = {
+  providerId: "eliza-cloud-osm",
+  attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+  capabilities: { modes: ["drive", "walk", "bicycle"], reverseGeocode: true },
+};
+
+/**
+ * Stub Cloud. `capabilities` answers the adapter's provider read, which is
+ * kept apart from `requests` so data requests are counted as before.
+ */
+function cloud(
+  answer: (request: Request) => Response,
+  options: {
+    coverage?: () => unknown;
+    onDescriptionChange?: (adapter: ElizaCloudMapsAdapter) => void;
+  } = {},
+) {
   const requests: Request[] = [];
+  const capabilityReads: string[] = [];
   const adapter = new ElizaCloudMapsAdapter({
     apiKey: "eliza_test_key",
     baseUrl: "https://api.example.test/api/v1",
+    onDescriptionChange: options.onDescriptionChange,
     testTransport: {
       fetchImpl: async (input, init) => {
         const url = new URL(String(input));
+        if (url.pathname === "/api/v1/maps/capabilities") {
+          capabilityReads.push(init?.method ?? "GET");
+          return Response.json(options.coverage?.() ?? COVERAGE);
+        }
         const request = {
           path: url.pathname,
           url: url.href,
@@ -69,7 +91,7 @@ function cloud(answer: (request: Request) => Response) {
       },
     },
   });
-  return { adapter, requests };
+  return { adapter, requests, capabilityReads };
 }
 
 const unusedStore = {} as SavedPlaceStore;
@@ -238,6 +260,180 @@ describe("ElizaCloudMapsAdapter", () => {
     await expect(
       adapter.searchPlaces({ query: "Casino" }),
     ).rejects.toMatchObject({ code: "MAPS_PROVIDER_CHANGED" });
+  });
+});
+
+describe("Cloud provider binding", () => {
+  const VALHALLA =
+    "© OpenStreetMap contributors (ODbL). Search: Nominatim. Routing: Valhalla.";
+
+  it("binds Cloud's advertised attribution and refreshes the service description", async () => {
+    const service = new MapsService(undefined, unusedStore);
+    const { adapter, capabilityReads } = cloud(
+      () =>
+        Response.json({
+          providerId: "eliza-cloud-osm",
+          attribution: VALHALLA,
+          places: [{ ...PLACE, attribution: VALHALLA }],
+        }),
+      {
+        coverage: () => ({ ...COVERAGE, attribution: VALHALLA }),
+        onDescriptionChange: (changed) =>
+          service.refreshAdapterDescription(changed),
+      },
+    );
+    service.registerAdapter(adapter);
+    const [before] = service.describeProviders(["eliza-cloud"]);
+    const { page, provider } = await service.searchPlacesResult({
+      query: "Casino",
+    });
+    expect(page.places).toHaveLength(1);
+    expect(provider.attribution).toBe(VALHALLA);
+    expect(provider.generation).toBeGreaterThan(before?.generation ?? 0);
+    await service.searchPlacesResult({ query: "Casino" });
+    expect(capabilityReads).toEqual(["GET"]);
+    await expect(
+      service.searchPlacesResult(
+        { query: "Casino" },
+        undefined,
+        before?.generation,
+      ),
+    ).rejects.toMatchObject({ code: "MAPS_PROVIDER_CHANGED" });
+  });
+
+  it("refuses a provider change during a session, then reads capabilities again", async () => {
+    let attribution = ELIZA_CLOUD_MAPS_ATTRIBUTION;
+    const { adapter, capabilityReads } = cloud(
+      () =>
+        Response.json({
+          providerId: "eliza-cloud-osm",
+          attribution: VALHALLA,
+          places: [{ ...PLACE, attribution: VALHALLA }],
+        }),
+      { coverage: () => ({ ...COVERAGE, attribution }) },
+    );
+    await expect(
+      adapter.searchPlaces({ query: "Casino" }),
+    ).rejects.toMatchObject({ code: "MAPS_PROVIDER_CHANGED" });
+    attribution = VALHALLA;
+    const page = await adapter.searchPlaces({ query: "Casino" });
+    expect(page.places).toHaveLength(1);
+    expect(adapter.attribution).toBe(VALHALLA);
+    expect(capabilityReads).toHaveLength(2);
+  });
+
+  it("does not cache a failed capabilities read", async () => {
+    let configured = false;
+    const { adapter, requests } = cloud(
+      () =>
+        Response.json({
+          providerId: "eliza-cloud-osm",
+          attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+          places: [PLACE],
+        }),
+      {
+        coverage: () =>
+          configured
+            ? COVERAGE
+            : { error: "not configured", code: "maps_not_configured" },
+      },
+    );
+    await expect(
+      adapter.searchPlaces({ query: "Casino" }),
+    ).rejects.toMatchObject({ code: "MAPS_MALFORMED_RESPONSE" });
+    expect(requests).toHaveLength(0);
+    configured = true;
+    expect(
+      (await adapter.searchPlaces({ query: "Casino" })).places,
+    ).toHaveLength(1);
+  });
+
+  it("refuses a travel mode Cloud does not serve before an admitted request", async () => {
+    const { adapter, requests } = cloud(() => Response.json({}), {
+      coverage: () => ({
+        ...COVERAGE,
+        capabilities: { modes: ["walk"], reverseGeocode: true },
+      }),
+    });
+    await expect(
+      adapter.planRoute({
+        origin: {
+          provider: "coordinates",
+          providerPlaceId: "coordinates:origin",
+          name: "Casino",
+          coordinates: CASINO,
+          categories: [],
+        },
+        destination: {
+          provider: "eliza-cloud",
+          providerPlaceId: "N99",
+          name: "Port",
+          coordinates: PORT,
+          categories: [],
+        },
+        travelMode: "drive",
+      }),
+    ).rejects.toMatchObject({ code: "MAPS_UNSUPPORTED_REGION" });
+    expect(requests).toHaveLength(0);
+  });
+
+  it("accepts the opaque place ids of Cloud's configured geocoder", async () => {
+    const { adapter, requests } = cloud((request) =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        place: { ...PLACE, id: (request.body as { id: string }).id },
+      }),
+    );
+    expect((await adapter.getPlace("acme:place.42"))?.providerPlaceId).toBe(
+      "acme:place.42",
+    );
+    expect(await adapter.getPlace("../etc")).toBeNull();
+    expect(requests.map((request) => request.body)).toEqual([
+      { id: "acme:place.42" },
+    ]);
+  });
+
+  it("reverse geocodes coordinates in the POST body, for the agent's place action", async () => {
+    let place: unknown = PLACE;
+    const { adapter, requests } = cloud(() =>
+      Response.json({
+        providerId: "eliza-cloud-osm",
+        attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+        place,
+      }),
+    );
+    const service = new MapsService(undefined, unusedStore);
+    service.registerAdapter(adapter);
+    const found = await mapsAction.handler(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      { parameters: { action: "place", ...CASINO } },
+    );
+    expect(found).toMatchObject({
+      success: true,
+      data: {
+        status: "found",
+        place: { providerPlaceId: "N1234", name: "Casino de Monte-Carlo" },
+      },
+    });
+    expect(requests[0]).toMatchObject({
+      path: "/api/v1/maps/reverse",
+      url: "https://api.example.test/api/v1/maps/reverse",
+      body: { coordinate: CASINO },
+    });
+    place = null;
+    const empty = await mapsAction.handler(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      { parameters: { action: "place", ...CASINO } },
+    );
+    expect(empty).toMatchObject({ success: true, data: { status: "empty" } });
+    await expect(
+      adapter.reverseGeocode({ latitude: 91, longitude: 0 }),
+    ).rejects.toMatchObject({ code: "MAPS_INVALID_INPUT" });
   });
 });
 

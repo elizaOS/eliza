@@ -1,8 +1,11 @@
 /**
  * Maps provider adapter for the Eliza Cloud Maps API (`/api/v1/maps/*`). The
- * agent gets place, detail and route data only; Cloud binds each request to the
- * account's API key, subscription and quota. Location stays in POST bodies.
- * Navigation state and GPS stay on the device (see `MapsDeviceNavigation`).
+ * agent gets place, detail, reverse-geocode and route data only; Cloud binds
+ * each request to the account's API key, subscription and quota. Location stays
+ * in POST bodies. Navigation state and GPS stay on the device (see
+ * `MapsDeviceNavigation`). Cloud's operator chooses the data provider; the
+ * adapter binds its attribution and travel modes from `capabilities` and
+ * refuses a response from a provider that changed after that read.
  */
 
 import type { GuardedFetchOptions } from "@elizaos/core";
@@ -16,6 +19,7 @@ import {
   resolveProviderConnection,
 } from "./managed-provider/index.js";
 import {
+  coordinatesSchema,
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
@@ -27,7 +31,7 @@ import {
 
 export const ELIZA_CLOUD_MAPS_PROVIDER_ID = "eliza-cloud";
 export const ELIZA_CLOUD_MAPS_CONNECTION_ID = "conn_eliza_cloud_maps_api";
-/** Attribution of the Cloud OSM provider; a response with other text is refused. */
+/** Attribution of Cloud's default OSM provider, until `capabilities` reports the current one. */
 export const ELIZA_CLOUD_MAPS_ATTRIBUTION =
   "© OpenStreetMap contributors (ODbL). Search: Nominatim. Routing: GraphHopper.";
 export const ELIZA_CLOUD_DEFAULT_API_ORIGIN = "https://api.eliza.app";
@@ -78,6 +82,24 @@ const placeResponse = z
 const routesResponse = z
   .object({ ...envelope, routes: z.array(cloudRoute).min(1).max(3) })
   .strip();
+const capabilitiesResponse = z
+  .object({
+    providerId: z.string().min(1).max(80),
+    attribution: z.string().trim().min(1).max(500),
+    capabilities: z
+      .object({
+        modes: z
+          .array(z.enum(["drive", "walk", "bicycle", "transit"]))
+          .min(1)
+          .max(4),
+        reverseGeocode: z.boolean().optional(),
+      })
+      .strip(),
+  })
+  .strip();
+type CloudCapabilities = z.infer<typeof capabilitiesResponse>;
+/** Opaque place ids issued by Cloud's configured geocoder. */
+const CLOUD_PLACE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/;
 
 type CloudPlace = z.infer<typeof cloudPlace>;
 type CloudRoute = z.infer<typeof cloudRoute>;
@@ -88,6 +110,8 @@ export interface ElizaCloudMapsAdapterOptions {
   /** Cloud API origin; a trailing `/api/v1` is accepted. Defaults to production. */
   baseUrl?: string;
   timeoutMs?: number;
+  /** Called when Cloud reports another attribution, so a host can refresh its description. */
+  onDescriptionChange?: (adapter: ElizaCloudMapsAdapter) => void;
   /** Explicit transport seam for deterministic tests only. */
   testTransport?: Pick<
     GuardedFetchOptions,
@@ -189,8 +213,13 @@ function apiOrigin(raw: string | undefined): string {
 export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
   readonly id = ELIZA_CLOUD_MAPS_PROVIDER_ID;
   readonly connectionId = ELIZA_CLOUD_MAPS_CONNECTION_ID;
-  readonly attribution = ELIZA_CLOUD_MAPS_ATTRIBUTION;
+  /** Cloud's current provider attribution, bound from `capabilities`. */
+  attribution: string = ELIZA_CLOUD_MAPS_ATTRIBUTION;
   private readonly client: ManagedProviderHttpClient;
+  private readonly onDescriptionChange?: (
+    adapter: ElizaCloudMapsAdapter,
+  ) => void;
+  private binding: Promise<CloudCapabilities> | null = null;
 
   constructor(options: ElizaCloudMapsAdapterOptions) {
     if (!options.apiKey.trim()) {
@@ -215,6 +244,38 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
     } catch (error) {
       throw toMapsError(error);
     }
+    this.onDescriptionChange = options.onDescriptionChange;
+  }
+
+  /** Cloud's provider description, read once and again after a provider change. */
+  private capabilities(): Promise<CloudCapabilities> {
+    if (!this.binding) {
+      const binding = this.readCapabilities();
+      this.binding = binding;
+      // A failed read is not cached: the next request asks again.
+      binding.catch(() => {
+        if (this.binding === binding) this.binding = null;
+      });
+    }
+    return this.binding;
+  }
+
+  private async readCapabilities(): Promise<CloudCapabilities> {
+    let capabilities: CloudCapabilities;
+    try {
+      capabilities = await this.client.requestJson(
+        this.client.url("/api/v1/maps/capabilities"),
+        { method: "GET" },
+        capabilitiesResponse,
+      );
+    } catch (error) {
+      throw toMapsError(error);
+    }
+    if (capabilities.attribution !== this.attribution) {
+      this.attribution = capabilities.attribution;
+      this.onDescriptionChange?.(this);
+    }
+    return capabilities;
   }
 
   async searchPlaces(request: PlaceSearchRequest): Promise<PlacePage> {
@@ -251,9 +312,31 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
   }
 
   async getPlace(providerPlaceId: string): Promise<PlaceRef | null> {
-    if (!/^[NWR][1-9][0-9]{0,18}$/.test(providerPlaceId)) return null;
+    if (!CLOUD_PLACE_ID.test(providerPlaceId)) return null;
     const body = await this.post("/api/v1/maps/places/details", placeResponse, {
       id: providerPlaceId,
+    });
+    return body.place ? this.placeRef(body.place) : null;
+  }
+
+  async reverseGeocode(coordinates: {
+    latitude: number;
+    longitude: number;
+  }): Promise<PlaceRef | null> {
+    const parsed = coordinatesSchema.safeParse(coordinates);
+    if (!parsed.success) {
+      throw new MapsError("Coordinates are invalid.", {
+        code: "MAPS_INVALID_INPUT",
+        cause: parsed.error,
+      });
+    }
+    if ((await this.capabilities()).capabilities.reverseGeocode === false) {
+      throw new MapsError("Eliza Cloud Maps does not reverse geocode.", {
+        code: "MAPS_UNSUPPORTED_REGION",
+      });
+    }
+    const body = await this.post("/api/v1/maps/reverse", placeResponse, {
+      coordinate: parsed.data,
     });
     return body.place ? this.placeRef(body.place) : null;
   }
@@ -280,6 +363,13 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
       });
     }
     const { origin, destination, travelMode } = parsed.data;
+    if (!(await this.capabilities()).capabilities.modes.includes(travelMode)) {
+      throw new MapsError(
+        MESSAGE_BY_CODE.MAPS_UNSUPPORTED_REGION ??
+          "This travel mode is not available.",
+        { code: "MAPS_UNSUPPORTED_REGION", context: { travelMode } },
+      );
+    }
     for (const place of [origin, destination]) {
       if (place.provider !== this.id && place.provider !== "coordinates") {
         throw new MapsError(
@@ -331,8 +421,10 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
 
   private assertAttribution(attribution: string): void {
     if (attribution !== this.attribution) {
+      // Re-read capabilities on the next request instead of trusting either text.
+      this.binding = null;
       throw new MapsError(
-        "The Eliza Cloud Maps provider changed. Update the maps plugin before continuing.",
+        "Eliza Cloud Maps changed its data provider during this request. Try again.",
         { code: "MAPS_PROVIDER_CHANGED" },
       );
     }
@@ -343,6 +435,7 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
     schema: z.ZodType<T>,
     body: unknown,
   ): Promise<T> {
+    await this.capabilities();
     let result: T;
     try {
       result = await this.client.requestJson(

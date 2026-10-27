@@ -429,6 +429,61 @@ async function execute(
           );
         }
         const query = text(params.query);
+        const pointLatitude = number(params.latitude);
+        const pointLongitude = number(params.longitude);
+        if (
+          !query &&
+          pointLatitude !== undefined &&
+          pointLongitude !== undefined
+        ) {
+          // Coordinates without a query: the place at that point (reverse geocode).
+          const { place, provider } = await service.reverseGeocodeResult(
+            validated(
+              coordinatesSchema,
+              { latitude: pointLatitude, longitude: pointLongitude },
+              "Coordinates are outside the valid latitude/longitude range.",
+            ),
+            text(params.provider),
+          );
+          if (!place) {
+            return result(
+              action,
+              {
+                success: true,
+                text: "No named place is known at those coordinates.",
+                userFacingText: "No named place is known at those coordinates.",
+                verifiedUserFacing: true,
+                data: {
+                  actionName: "MAPS",
+                  action,
+                  status: "empty",
+                  place: null,
+                },
+              },
+              callback,
+            );
+          }
+          return result(
+            action,
+            {
+              success: true,
+              text: `Found ${place.name}.`,
+              userFacingText: appendMapsCard(
+                place.formattedAddress
+                  ? `${place.name} — ${place.formattedAddress}`
+                  : place.name,
+                {
+                  kind: "place",
+                  place: toCardPlace(place),
+                  attribution: provider.attribution,
+                },
+              ),
+              verifiedUserFacing: true,
+              data: { actionName: "MAPS", action, status: "found", place },
+            },
+            callback,
+          );
+        }
         if (!query) {
           return result(
             action,
@@ -916,7 +971,8 @@ export const mapsAction: Action = {
     },
     {
       name: "latitude",
-      description: "Place/near latitude from -90 to 90.",
+      description:
+        "Place/near latitude from -90 to 90. With longitude and no query, place finds what is at that point.",
       required: false,
       schema: { type: "number" },
       subactions: ["place", "select", "save", "share", "navigate"],

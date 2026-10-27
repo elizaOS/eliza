@@ -8,6 +8,7 @@ import { MapsError } from "./errors.js";
 import type { MapsDeviceNavigation } from "./navigation.js";
 import { RuntimeSavedPlaceStore, type SavedPlaceStore } from "./store.js";
 import {
+  type Coordinates,
   coordinatesSchema,
   MAX_MAPS_PROVIDER_GENERATION,
   type MapsPlacePageResult,
@@ -168,6 +169,9 @@ export class MapsService extends Service {
         new ElizaCloudMapsAdapter({
           apiKey,
           baseUrl: typeof baseUrl === "string" ? baseUrl : undefined,
+          // Cloud's operator chooses its data provider; results carry its credit.
+          onDescriptionChange: (adapter) =>
+            service.refreshAdapterDescription(adapter),
         }),
       );
     }
@@ -235,6 +239,29 @@ export class MapsService extends Service {
       this.defaultAdapterId = providerId.data;
   }
 
+  /**
+   * Re-reads a registered adapter's attribution after the provider reported a
+   * change. The new generation makes results from the old provider stale.
+   */
+  refreshAdapterDescription(adapter: MapsProviderAdapter): void {
+    const registration = this.providers.get(adapter.id);
+    if (registration?.adapter !== adapter) return;
+    const attribution =
+      adapter.attribution === undefined
+        ? null
+        : mapsAttributionSchema.safeParse(adapter.attribution);
+    if (this.providerGeneration >= MAX_MAPS_PROVIDER_GENERATION) return;
+    this.providerGeneration += 1;
+    this.providers.set(adapter.id, {
+      adapter,
+      description: {
+        id: registration.description.id,
+        attribution: attribution?.success ? attribution.data : null,
+        generation: this.providerGeneration,
+      },
+    });
+  }
+
   unregisterAdapter(adapterId: string): void {
     this.providers.delete(adapterId);
     if (this.defaultAdapterId === adapterId) {
@@ -289,7 +316,7 @@ export class MapsService extends Service {
     };
     return {
       page: normalizedPage,
-      provider: this.copyDescription(registration.description),
+      provider: this.currentDescription(registration),
     };
   }
 
@@ -319,7 +346,35 @@ export class MapsService extends Service {
     const place = await adapter.getPlace(providerPlaceId.trim());
     return {
       place: place ? assertProviderPlace(place, adapter, "place detail") : null,
-      provider: this.copyDescription(registration.description),
+      provider: this.currentDescription(registration),
+    };
+  }
+
+  /** The place at a coordinate from a provider that reverse geocodes. */
+  async reverseGeocodeResult(
+    coordinates: Coordinates,
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<MapsPlaceResult> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
+    const point = validated(
+      coordinatesSchema,
+      coordinates,
+      "Coordinates are outside the valid latitude/longitude range.",
+    );
+    if (!adapter.reverseGeocode) {
+      throw new MapsError("This maps provider does not reverse geocode.", {
+        code: "MAPS_PROVIDER_UNAVAILABLE",
+        context: { providerId: adapter.id },
+      });
+    }
+    const place = await adapter.reverseGeocode(point);
+    return {
+      place: place
+        ? assertProviderPlace(place, adapter, "reverse geocode")
+        : null,
+      provider: this.currentDescription(registration),
     };
   }
 
@@ -343,7 +398,7 @@ export class MapsService extends Service {
         normalized,
         registration.adapter,
       ),
-      provider: this.copyDescription(registration.description),
+      provider: this.currentDescription(registration),
     };
   }
 
@@ -371,7 +426,7 @@ export class MapsService extends Service {
       routes: routes.map((route) =>
         this.boundRoute(route, normalized, adapter),
       ),
-      provider: this.copyDescription(registration.description),
+      provider: this.currentDescription(registration),
     };
   }
 
@@ -614,6 +669,18 @@ export class MapsService extends Service {
     description: MapsProviderDescription,
   ): MapsProviderDescription {
     return { ...description };
+  }
+
+  /** The description now registered for this adapter, which a request may have refreshed. */
+  private currentDescription(
+    registration: RegisteredMapsProvider,
+  ): MapsProviderDescription {
+    const current = this.providers.get(registration.description.id);
+    return this.copyDescription(
+      current?.adapter === registration.adapter
+        ? current.description
+        : registration.description,
+    );
   }
 }
 
