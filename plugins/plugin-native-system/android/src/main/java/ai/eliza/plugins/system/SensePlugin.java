@@ -13,7 +13,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 public class SensePlugin extends Plugin {
     private final long bridgeGeneration = SenseListenerClient.nextInvocationBridge();
     private volatile boolean destroyed;
-    private SenseListenerClient client() { return new SenseListenerClient(getContext()); }
+    private SenseListenerClient client() { return new SenseListenerClient(getActivity() == null ? getContext() : getActivity()); }
     @Override protected void handleOnDestroy() {
         destroyed = true;
         client().releaseInvocationBridge(bridgeGeneration);
@@ -43,6 +43,12 @@ public class SensePlugin extends Plugin {
             call.resolve();
         }
         catch (IllegalArgumentException invalid) { call.reject(invalid.getMessage()); }
+    }
+    @PluginMethod public void discardProtectedPowerInvocation(PluginCall call) {
+        Integer generation = call.getInt("generation");
+        if (!destroyed) client().discardProtectedPowerInvocation(bridgeGeneration, generation == null ? 0 : generation,
+                call.getString("bindingId"), call.getString("sessionKey"));
+        call.resolve();
     }
     @PluginMethod public void takeInvocation(PluginCall call) {
         Integer generation = call.getInt("generation");
