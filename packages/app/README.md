@@ -380,8 +380,10 @@ and output directories, `-Pname=value`/`--offline` arguments, where instrumentat
 APKs and R8 mappings are kept, a sequential low-disk mode, and the signing
 environment names: a signed release keeps `<variant>-release.apk`, an unsigned one
 is `-release-unsigned.apk`, and an unsigned release fails when every named signing
-variable is set. Stale release outputs from an earlier run are removed first. The
-archive is optional. Run `node --test packages/app/scripts/mobile/android/build-consumer.test.mjs`.
+variable is set. Stale release outputs and an earlier `apk-manifest.json` are removed
+before Gradle runs, so a failed or partly copied build never keeps old verification
+beside its artifacts. The archive is optional. Run
+`node --test packages/app/scripts/mobile/android/build-consumer.test.mjs`.
 
 `scripts/mobile/android/resident-host-sources.mjs` stages the resident runtime's
 Android classes (`RESIDENT_HOST_CLASSES`) into a host's own application package so

@@ -176,6 +176,10 @@ export function buildAndroidConsumer({
       recursive: true,
       force: true,
     });
+  // An earlier verification must not outlive a failed or partly copied build:
+  // only this invocation's verifier may leave a manifest beside the artifacts.
+  const manifest = path.join(outputDirectory, "apk-manifest.json");
+  fs.rmSync(manifest, { force: true });
   const gradle = (tasks) =>
     invoke(
       {
@@ -320,7 +324,6 @@ export function buildAndroidConsumer({
         path.join(outputDirectory, "mapping", `${variant}-release-mapping.txt`),
       );
     }
-  const manifest = path.join(outputDirectory, "apk-manifest.json");
   // Verification must produce a manifest for this invocation, not reuse an old success.
   fs.rmSync(manifest, { force: true });
   invoke(verify);

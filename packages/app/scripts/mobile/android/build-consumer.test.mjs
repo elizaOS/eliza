@@ -255,6 +255,37 @@ test("a successful verifier that produces no fresh manifest cannot reuse old evi
   assert.equal(fs.existsSync(path.join(f.root, "artifacts/production")), false);
 });
 
+test("earlier verification evidence is withdrawn before Gradle can replace any artifact", (t) => {
+  const f = fixture(t),
+    run = f.options.run;
+  fs.mkdirSync(path.join(f.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/apk-manifest.json"),
+    "old evidence",
+  );
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/standalone-debug.apk"),
+    "prior",
+  );
+  f.options.run = (command, ...args) => {
+    if (command === "./gradlew") throw Error("controlled failure");
+    return run(command, ...args);
+  };
+  assert.throws(f.build, /controlled failure/);
+  // The prior APKs stay as they were, but nothing still vouches for them.
+  assert.equal(
+    fs.existsSync(path.join(f.root, "artifacts/apk-manifest.json")),
+    false,
+  );
+  assert.equal(
+    fs.readFileSync(
+      path.join(f.root, "artifacts/standalone-debug.apk"),
+      "utf8",
+    ),
+    "prior",
+  );
+});
+
 test("reusing an archive replaces its contents when selected variants shrink", (t) => {
   const f = fixture(t);
   const first = f.build();
