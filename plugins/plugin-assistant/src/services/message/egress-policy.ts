@@ -51,6 +51,7 @@ import {
   financialHoldingIsUngrounded,
   financialObservationProviders,
 } from "./financial-observations.ts";
+import { projectBackgroundHistory } from "./history-discovery.ts";
 import { referenceRepeatedHistory } from "./history-wire.ts";
 import {
   type RecoveredReplyClaim,
@@ -153,7 +154,7 @@ export function capturePlannerReplyRecovery(
   const fullContext = render(context);
   // Source hashes were formed before redaction. A planner restoration clears
   // the model-base selector even if the original trajectory still retains it.
-  const selected = selectCompletionContext({
+  const original: ContextObject = {
     ...trajectory.context,
     metadata: {
       ...trajectory.context.metadata,
@@ -162,7 +163,19 @@ export function capturePlannerReplyRecovery(
         : (trajectory.modelBaseContext ?? trajectory.context).metadata
             ?.completionContext,
     },
-  });
+  };
+  const foreground = selectCompletionContext(original);
+  // Match the planner's validated history view. Reply-only recovery retains
+  // all originals below and can explicitly request them; it must not silently
+  // expand a background selection just because no foreground review ran.
+  const selected =
+    !trajectory.codingMode &&
+    original.metadata?.plannerQueryTokensRestored !== true &&
+    (trajectory.modelBaseContext ?? trajectory.context).metadata
+      ?.plannerQueryTokensRestored !== true &&
+    !foreground.applied
+      ? projectBackgroundHistory(original)
+      : foreground;
   const selectedContext = selected.applied
     ? render(
         projectCompleteToolValueForModel(
