@@ -20,6 +20,22 @@ access read. The shared `CameraPageView` in `@elizaos/ui` accepts these ports;
 without them a capture is only previewed. The lock-screen secure camera stays a
 system surface.
 
+## Camera session
+
+[`session`](src/session.ts) is the one preview/capture/recording lifecycle every
+camera surface drives (`CameraPageView` and other hosts' camera screens).
+`createCameraSession` takes the bridge subset, an `active()` predicate and the
+host's preview/recording options. Every start and stop bumps an epoch, so an
+answer that arrives after the surface closed never moves it forward; stops are
+chained so a new preview never races the previous release, and a preview that
+comes up after its surface closed is released. One capture, control change or
+recording start runs at a time (`exclusive`, `control`, `startRecording`).
+Stopping the surface finishes an active recording first; finalization is single
+flight and a recording is reported saved only for a complete receipt the host's
+`recordingSaved` hook accepted (the host decides where it lives). Starts are
+never retried automatically after an error; `rearm()` lets a resume grant (see
+`restartAfterResume`) start it again.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

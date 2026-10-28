@@ -148,4 +148,36 @@ describe("CameraPageView host ports", () => {
     render(<CameraPageView />);
     expect(await screen.findByTestId("camera-denied")).toBeTruthy();
   });
+
+  it("releases a preview that comes up after the view unmounted", async () => {
+    let started!: () => void;
+    camera.startPreview.mockReturnValueOnce(
+      new Promise((resolve) => {
+        started = () => resolve({ width: 4, height: 3 });
+      }),
+    );
+    const view = render(<CameraPageView />);
+    await waitFor(() => expect(camera.startPreview).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await waitFor(() => expect(camera.stopPreview).toHaveBeenCalledTimes(1));
+    started();
+    await waitFor(() => expect(camera.stopPreview).toHaveBeenCalledTimes(2));
+  });
+
+  it("captures one photo at a time", async () => {
+    let captured!: (value: typeof photo) => void;
+    camera.capturePhoto.mockReturnValueOnce(
+      new Promise((resolve) => {
+        captured = resolve;
+      }),
+    );
+    render(<CameraPageView />);
+    const shutter = await screen.findByTestId("camera-capture");
+    fireEvent.click(shutter);
+    fireEvent.click(shutter);
+    await waitFor(() => expect(camera.capturePhoto).toHaveBeenCalledTimes(1));
+    await act(async () => captured(photo));
+    expect(await screen.findByTestId("camera-photo")).toBeTruthy();
+    expect(camera.capturePhoto).toHaveBeenCalledTimes(1);
+  });
 });
