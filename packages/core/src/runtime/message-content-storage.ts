@@ -146,32 +146,19 @@ export async function persistIncomingMessageMemory(
 					}
 				: {}),
 		};
-		const normalizeContentForComparison = (raw: unknown): unknown => {
-			if (!raw || typeof raw !== "object") return raw;
-			try {
-				return JSON.parse(JSON.stringify(raw));
-			} catch {
-				return raw;
-			}
-		};
-		const normalizedExistingContent = normalizeContentForComparison(existing.content);
+		// Storage writes rows as JSON, which drops undefined fields; compare stored forms.
+		const asStored = (value: unknown): unknown =>
+			JSON.parse(JSON.stringify(value));
+		const storedContent = asStored(existing.content);
 		for (const content of [memory.content, textRedacted, allRedacted]) {
-			if (
-				isDeepStrictEqual(existing.content, content) ||
-				isDeepStrictEqual(normalizedExistingContent, normalizeContentForComparison(content))
-			)
-				return id;
+			if (isDeepStrictEqual(storedContent, asStored(content))) return id;
 			const projection = buildMessageContentProjection({
 				...memory,
 				id,
 				agentId: memory.agentId ?? runtime.agentId,
 				content,
 			});
-			const normalizedProjectionContent = normalizeContentForComparison(projection.content);
-			if (
-				!isDeepStrictEqual(existing.content, projection.content) &&
-				!isDeepStrictEqual(normalizedExistingContent, normalizedProjectionContent)
-			)
+			if (!isDeepStrictEqual(storedContent, asStored(projection.content)))
 				continue;
 			const expected = projection.segments;
 			const rows = await runtime.getMemoriesByIds(
