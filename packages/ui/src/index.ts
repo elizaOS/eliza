@@ -311,6 +311,13 @@ export { PermissionRecoveryCallout } from "./components/permissions/PermissionRe
 export { ShellModalityProvider } from "./components/ShellModalityProvider.js";
 export { ShellRoleProvider } from "./components/ShellRoleProvider.js";
 export {
+  CloudSubscriptionSummary,
+  type CloudSubscriptionSummaryOptions,
+  type CloudSubscriptionSummaryProps,
+  type ObservedServiceLimit,
+  useCloudSubscriptionSummary,
+} from "./components/settings/cloud-subscription-summary.js";
+export {
   SettingsGroup,
   SettingsRow,
   SettingsStack,
