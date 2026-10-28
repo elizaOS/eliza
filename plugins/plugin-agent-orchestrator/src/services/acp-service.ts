@@ -3854,19 +3854,10 @@ export class AcpService extends Service {
     opts: SendOptions,
     startedAt: number,
   ): Promise<PromptResult> {
-    // Register the prompt before a lazy reattach: closeSession() keeps its
-    // stop marker only while a prompt is registered, and a stop that lands
-    // during the attach must still stop this prompt.
-    this.nativePromptSessionIds.add(session.id);
-    let attached: { client: NativeAcpClient; protocolSessionId: string };
-    try {
-      attached = await this.ensureNativeClientAttached(session, opts);
-    } catch (err) {
-      this.nativePromptSessionIds.delete(session.id);
-      this.nativeStoppingSessionIds.delete(session.id);
-      throw err;
-    }
-    const { client, protocolSessionId } = attached;
+    const { client, protocolSessionId } = await this.ensureNativeClientAttached(
+      session,
+      opts,
+    );
     if (this.nativeStoppingSessionIds.has(session.id)) {
       // The session was stopped while it was attaching: close the client the
       // attach just opened and do not send the prompt.
