@@ -97,6 +97,14 @@ export function cuttlefishProductProblems(
         problems.push(
           `${product.brandConfig}: packageName ${brand.packageName} is not ${appId}`,
         );
+      if (
+        brand.architecture !== undefined &&
+        CUTTLEFISH_TARGETS.includes(product?.target) &&
+        product.target !== `cuttlefish_${brand.architecture}`
+      )
+        problems.push(
+          `${product.brandConfig}: architecture ${brand.architecture} does not match target ${product.target}`,
+        );
       if (brand.productName !== product.product)
         problems.push(
           `${product.brandConfig}: productName ${brand.productName} is not ${product.product}`,

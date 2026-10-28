@@ -126,6 +126,20 @@ test("a brand on the shared lock names it as the OS build tools resolve it", (t)
   );
 });
 
+test("the brand architecture must match the Cuttlefish target", (t) => {
+  const f = fixture(t);
+  assert.ok(
+    cuttlefishProductProblems(
+      { ...f.product, target: "cuttlefish_arm64" },
+      f.options,
+    ).some((problem) =>
+      /architecture x86_64 does not match target cuttlefish_arm64/.test(
+        problem,
+      ),
+    ),
+  );
+});
+
 test("unset, foreign and unreviewed inputs are each refused", (t) => {
   const f = fixture(t);
   const refuse = (product, pattern: RegExp, options = f.options) => {

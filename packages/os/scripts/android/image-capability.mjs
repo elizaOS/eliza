@@ -99,11 +99,12 @@ export function renderImageProvisioningOverlay(
   } = {},
 ) {
   imageFeatureName(appId);
-  if (!overlayableName.test(module ?? ""))
+  // Explicit identifiers must be strings: a JSON null must never render as "null".
+  if (typeof module !== "string" || !overlayableName.test(module))
     throw new Error(`Invalid overlay module ${module}`);
-  if (!overlayableName.test(overlayable))
+  if (typeof overlayable !== "string" || !overlayableName.test(overlayable))
     throw new Error(`Invalid overlayable ${overlayable}`);
-  if (!resourceName.test(resource))
+  if (typeof resource !== "string" || !resourceName.test(resource))
     throw new Error(`Invalid provisioning resource ${resource}`);
   return {
     "image-capabilities/Android.bp": `runtime_resource_overlay {\n    name: "${module}",\n    product_specific: true,\n    sdk_version: "current",\n}\n`,
@@ -142,16 +143,27 @@ export function assertProvisioningResourceDefault(
     resource = "aosp_image_capability",
   } = {},
 ) {
+  if (typeof overlayable !== "string" || !overlayableName.test(overlayable))
+    throw new Error(`Invalid overlayable ${overlayable}`);
+  if (typeof resource !== "string" || !resourceName.test(resource))
+    throw new Error(`Invalid provisioning resource ${resource}`);
   if (!new RegExp(`<bool name="${resource}">false</bool>`).test(valuesXml))
     throw new Error(`${resource} must default to false`);
+  if (new RegExp(`<bool name="${resource}">(?!false<)`).test(valuesXml))
+    throw new Error(`${resource} must be declared only with a false default`);
   const block = new RegExp(
     `<overlayable name="${overlayable}">([\\s\\S]*?)</overlayable>`,
   ).exec(valuesXml)?.[1];
   if (!block) throw new Error(`Overlayable ${overlayable} is not declared`);
-  const policy = /<policy type="([^"]+)">([\s\S]*?)<\/policy>/.exec(block);
-  if (policy?.[1] !== "system|product")
-    throw new Error(`${overlayable} must allow only system|product overlays`);
-  if (!new RegExp(`<item type="bool" name="${resource}" />`).test(policy[2]))
+  // Every policy that exposes the resource must be system|product; one exposing
+  // it to any other overlay (for example a public policy) is refused.
+  const item = new RegExp(`<item type="bool" name="${resource}" />`);
+  const exposing = [
+    ...block.matchAll(/<policy type="([^"]+)">([\s\S]*?)<\/policy>/g),
+  ].filter((policy) => item.test(policy[2]));
+  if (!exposing.length)
     throw new Error(`${overlayable} does not expose ${resource}`);
+  if (exposing.some((policy) => policy[1] !== "system|product"))
+    throw new Error(`${overlayable} must allow only system|product overlays`);
   return true;
 }

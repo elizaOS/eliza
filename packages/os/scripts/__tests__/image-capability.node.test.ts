@@ -127,6 +127,9 @@ test("a brand keeps its installed overlay identifiers", () => {
     { module: 'Bad"Module' },
     { overlayable: "has space" },
     { resource: 'x"/><bool name="y' },
+    { module: null },
+    { overlayable: null },
+    { resource: 7 },
   ])
     assert.throws(
       () => renderImageProvisioningOverlay("ai.elizaos.app", bad),
@@ -159,5 +162,27 @@ test("the host's provisioning default must be false and overlayable only by syst
         overlayable: "Other",
       }),
     /not declared/,
+  );
+  // A second policy exposing the resource to other overlays is refused.
+  assert.throws(
+    () =>
+      assertProvisioningResourceDefault(
+        values("false", "system|product").replace(
+          "</overlayable>",
+          '<policy type="public"><item type="bool" name="aosp_image_capability" /></policy></overlayable>',
+        ),
+      ),
+    /system\|product/,
+  );
+  // A second, true declaration of the resource is refused.
+  assert.throws(
+    () =>
+      assertProvisioningResourceDefault(
+        values("false", "system|product").replace(
+          "<overlayable",
+          '<bool name="aosp_image_capability">true</bool><overlayable',
+        ),
+      ),
+    /only with a false default/,
   );
 });
