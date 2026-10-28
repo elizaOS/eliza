@@ -5,13 +5,9 @@
  */
 
 import { System } from "@elizaos/capacitor-system";
-import { ElizaError } from "@elizaos/core/protocol";
 import { Messages } from "@elizaos/plugin-native-messages/bridge";
 import type { MessagesViewCapabilityId } from "../view-capabilities.ts";
-import {
-  COMPLETE_MESSAGES_READ_LIMIT,
-  loadMessagesState,
-} from "./messages-view-helpers.ts";
+import { loadMessagesState } from "./messages-view-helpers.ts";
 
 type MessagesCapabilityHandler = (
   params?: Record<string, unknown>,
@@ -22,16 +18,7 @@ const MESSAGES_CAPABILITY_HANDLERS: Record<
   MessagesCapabilityHandler
 > = {
   "list-threads": async () => {
-    const state = await loadMessagesState({ complete: true });
-    if (state.messages.length === COMPLETE_MESSAGES_READ_LIMIT) {
-      throw new ElizaError(
-        "Messages read reached the native bridge boundary; refusing to return a potentially incomplete conversation history.",
-        {
-          code: "NATIVE_MESSAGES_READ_INCOMPLETE",
-          context: { limit: COMPLETE_MESSAGES_READ_LIMIT },
-        },
-      );
-    }
+    const state = await loadMessagesState();
     return {
       threads: state.threads.map((thread) => ({
         id: thread.id,
@@ -71,7 +58,7 @@ const MESSAGES_CAPABILITY_HANDLERS: Record<
   },
   "request-sms-role": async () => {
     await System.requestRole({ role: "sms" });
-    const state = await loadMessagesState({ limit: 200 });
+    const state = await loadMessagesState(200);
     return {
       requested: true,
       ownsSmsRole: state.ownsSmsRole,
