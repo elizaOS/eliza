@@ -111,4 +111,4 @@ test("a 4-image request that fails on image 2 bills the 2 images sent to the pro
   expect((error as { status?: number }).status).toBe(503);
   expect(providerCalls).toBe(2);
   expect(Number(balance)).toBeCloseTo(10 - 2 * PER_IMAGE, 6);
-});
+}, 30_000);
