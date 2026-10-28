@@ -35,10 +35,13 @@ function testEnv(): NodeJS.ProcessEnv {
 
 async function keyPair(kid: string) {
   const pair = await generateKeyPair("RS256");
+  const { n, e } = await exportJWK(pair.publicKey as CryptoKey);
   return {
     privateKey: pair.privateKey,
     jwk: {
-      ...(await exportJWK(pair.publicKey as CryptoKey)),
+      kty: "RSA",
+      n,
+      e,
       kid,
       alg: "RS256",
       use: "sig",
