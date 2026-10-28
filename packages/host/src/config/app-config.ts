@@ -63,6 +63,8 @@ export interface AppPackagingConfig {
 }
 
 export interface AppWebConfig {
+  /** Optional startup mark from the host public assets. Omit for text-only startup. */
+  startupLogoPath?: string;
   /** Short display name for install surfaces like the PWA manifest */
   shortName?: string;
   /** Browser/PWA theme color */

@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 /**
  * Generic download policy for a browser surface with persistent and ephemeral (private) profiles.
@@ -143,22 +144,46 @@ public final class BrowserDownloadPolicy {
     return bytes;
   }
 
-  /** One download list entry. {@code tab} is kept only for ephemeral-profile entries. */
+  /**
+   * One download list entry. {@code tab} is kept only for ephemeral-profile entries. An entry the
+   * host transfers itself is {@code running} until it ends with the saved file's {@code uri} or as
+   * {@code failed}; running entries are never persisted.
+   */
   public static final class Entry {
     public final long id;
-    public final String name, origin, tab;
-    public final boolean ephemeral;
+    public final String name, origin, tab, uri;
+    public final boolean ephemeral, running, failed;
 
     public Entry(long id, String name, String origin, boolean ephemeral, String tab) {
+      this(id, name, origin, ephemeral, tab, null, false, false);
+    }
+
+    public Entry(long id, String name, String origin, boolean ephemeral, String tab, String uri,
+        boolean running, boolean failed) {
       if (id == 0)
         throw new IllegalArgumentException("id");
       if (ephemeral && (tab == null || tab.isEmpty()))
         throw new IllegalArgumentException("ephemeral entries need their tab");
+      if (running && (failed || uri != null))
+        throw new IllegalArgumentException("a running entry has no result yet");
       this.id = id;
       this.name = sanitizeName(name);
       this.origin = origin;
       this.ephemeral = ephemeral;
       this.tab = ephemeral ? tab : null;
+      this.uri = uri;
+      this.running = running;
+      this.failed = failed;
+    }
+
+    /** The same entry while the host transfers it. */
+    public Entry started() {
+      return new Entry(id, name, origin, ephemeral, tab, null, true, false);
+    }
+
+    /** The same entry after the host saved it at {@code savedUri} (null when it failed). */
+    public Entry finished(String savedUri) {
+      return new Entry(id, name, origin, ephemeral, tab, savedUri, false, savedUri == null);
     }
   }
 
@@ -171,13 +196,45 @@ public final class BrowserDownloadPolicy {
     public static final int MAX_ENTRIES = 50;
     private final LinkedHashMap<Long, Entry> entries = new LinkedHashMap<>();
 
-    /** Restores persisted entries; any ephemeral entry (written by an older build) is dropped. */
+    /**
+     * Restores persisted entries; an ephemeral or running entry (written by an older build or
+     * interrupted by process death) is dropped.
+     */
     public void restore(List<Entry> persisted) {
       entries.clear();
       for (Entry entry : persisted) {
-        if (!entry.ephemeral)
+        if (!entry.ephemeral && !entry.running)
           entries.put(entry.id, entry);
       }
+    }
+
+    public Entry get(long id) {
+      return entries.get(id);
+    }
+
+    /** Replaces an existing entry (a transfer that started or ended); false when it was removed. */
+    public boolean replace(Entry entry) {
+      Objects.requireNonNull(entry);
+      if (!entries.containsKey(entry.id))
+        return false;
+      entries.put(entry.id, entry);
+      return true;
+    }
+
+    /**
+     * Removes every entry {@code match} accepts and returns them, so the host can stop their
+     * running transfers.
+     */
+    public List<Entry> removeWhere(Predicate<Entry> match) {
+      List<Entry> removed = new ArrayList<>();
+      for (Iterator<Entry> it = entries.values().iterator(); it.hasNext();) {
+        Entry entry = it.next();
+        if (match.test(entry)) {
+          it.remove();
+          removed.add(entry);
+        }
+      }
+      return removed;
     }
 
     public boolean full() {
@@ -201,26 +258,18 @@ public final class BrowserDownloadPolicy {
       return Collections.unmodifiableList(new ArrayList<>(entries.values()));
     }
 
-    /** What the host may write to durable storage: persistent-profile entries only. */
+    /** What the host may write to durable storage: finished persistent-profile entries only. */
     public List<Entry> persistable() {
       List<Entry> out = new ArrayList<>();
       for (Entry entry : entries.values())
-        if (!entry.ephemeral)
+        if (!entry.ephemeral && !entry.running)
           out.add(entry);
       return out;
     }
 
     /** An ephemeral tab closed: forget its entries. Returns whether anything was removed. */
     public boolean forgetEphemeralTab(String tab) {
-      boolean changed = false;
-      for (Iterator<Entry> it = entries.values().iterator(); it.hasNext();) {
-        Entry entry = it.next();
-        if (entry.ephemeral && entry.tab.equals(tab)) {
-          it.remove();
-          changed = true;
-        }
-      }
-      return changed;
+      return !removeWhere(entry -> entry.ephemeral && entry.tab.equals(tab)).isEmpty();
     }
 
     /** Clear browsing data: the whole list, both profiles. */
@@ -230,14 +279,7 @@ public final class BrowserDownloadPolicy {
 
     /** Clear data for this site: entries whose origin is the site or one of its subdomains. */
     public boolean clearSite(String site) {
-      boolean changed = false;
-      for (Iterator<Entry> it = entries.values().iterator(); it.hasNext();) {
-        if (BrowserWebOrigin.withinSite(it.next().origin, site)) {
-          it.remove();
-          changed = true;
-        }
-      }
-      return changed;
+      return !removeWhere(entry -> BrowserWebOrigin.withinSite(entry.origin, site)).isEmpty();
     }
   }
 }

@@ -8,6 +8,8 @@ import {
   CALENDAR_CREATE_CAPABILITY,
   CALENDAR_NEXT_CAPABILITY,
   type CalendarOperation,
+  type CalendarSource,
+  calendarSource,
   validateCalendarOperation,
 } from "./calendar-contract.ts";
 import {
@@ -152,6 +154,8 @@ export type DeviceActionPayload = {
   viewProfileRevision?: string;
   /** Exact user message that requested this action; absent on older hosts. */
   requestMessageId?: string;
+  /** Exact observed local source for a host-owned standalone agenda; digest covered. */
+  calendarAgendaSource?: CalendarSource;
   /** Native durable alarm-store revision, supplied by the authenticated observation. */
   clockContextRevision?: number;
 };
@@ -305,7 +309,16 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       exactKeys(p, ["type", "url"]);
       let url: URL;
       try {
-        url = new URL(text(p.url, 4096));
+        const destination = text(p.url, 4096).trim();
+        if (destination.startsWith("/") && !destination.startsWith("//"))
+          throw new DeviceActionError("Invalid browser destination");
+        url = new URL(
+          /^[A-Za-z][A-Za-z0-9+.-]*:/.test(destination)
+            ? destination
+            : destination.startsWith("//")
+              ? `https:${destination}`
+              : `https://${destination}`,
+        );
       } catch {
         throw new DeviceActionError("Invalid browser destination");
       }
@@ -331,10 +344,24 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     "viewProfileRevision",
     "requestMessageId",
     "clockContextRevision",
+    "calendarAgendaSource",
   ]);
   if (p.action !== "device_action" || p.version !== 1)
     throw new DeviceActionError("Unsupported device protocol");
   const operation = validateDeviceOperation(p.operation);
+  const agendaSource =
+    p.calendarAgendaSource === undefined
+      ? undefined
+      : calendarSource(p.calendarAgendaSource);
+  if (
+    agendaSource &&
+    (operation.type !== "read_calendar_range" ||
+      p.workflow !== undefined ||
+      p.requestMessageId === undefined ||
+      operation.calendarIds.length !== 1 ||
+      operation.calendarIds[0] !== agendaSource.sourceId)
+  )
+    throw new DeviceActionError("Invalid standalone Calendar read binding");
   if (
     operation.type === "clock_alarm"
       ? !Number.isSafeInteger(p.clockContextRevision) ||
@@ -349,7 +376,12 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
       "post_notification",
       "speak_text",
     ].includes(operation.type) &&
-    !p.workflow
+    !p.workflow &&
+    !(
+      operation.type === "read_calendar_range" &&
+      agendaSource &&
+      p.requestMessageId
+    )
   )
     throw new DeviceActionError("Workflow read binding required");
   return {
@@ -358,6 +390,10 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     installationId: identifier(p.installationId),
     enrollmentId: identifier(p.enrollmentId),
     operation,
+    ...(agendaSource ? { calendarAgendaSource: agendaSource } : {}),
+    ...(operation.type === "clock_alarm"
+      ? { clockContextRevision: Number(p.clockContextRevision) }
+      : {}),
     ...(p.requestMessageId === undefined
       ? {}
       : { requestMessageId: identifier(p.requestMessageId) }),

@@ -5,6 +5,7 @@
  * requires its own negotiated capability.
  */
 import {
+  CALENDAR_NAMED_READ_CAPABILITY,
   type CalendarAvailabilityResult,
   DEVICE_REVIEW_TYPES,
   type DeviceReviewOperation,
@@ -14,6 +15,7 @@ import {
   isDeviceReviewType,
   isNamedTargetOperation,
   isNotesSearchOperation,
+  NAMED_TARGET_CAPABILITY,
   type NamedTargetResult,
   type NamedTargetValidators,
   type NotesSearchResult,
@@ -155,6 +157,13 @@ export function foregroundReviewOperationAvailable(
   operation: ForegroundReviewOperation,
   capabilities: readonly string[] | undefined,
 ): boolean {
+  if (
+    operation.type === "calendar_named" &&
+    (operation.action === "read"
+      ? !capabilities?.includes(CALENDAR_NAMED_READ_CAPABILITY)
+      : !capabilities?.includes(NAMED_TARGET_CAPABILITY))
+  )
+    return false;
   if (!foregroundReviewCapabilityAvailable(operation.type, capabilities))
     return false;
   return (

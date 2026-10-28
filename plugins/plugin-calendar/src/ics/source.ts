@@ -75,6 +75,31 @@ export function icsEventIdentity(event: IcsParsedEvent): string {
     .digest("hex");
 }
 
+/**
+ * One copy per event identity. A feed can repeat a VEVENT (merged or
+ * re-exported calendars), and the snapshot upsert can write each id only
+ * once. Keep the newest copy by the order the upsert uses: SEQUENCE, then
+ * revision time; on a full tie the first copy stays.
+ */
+export function newestIcsEventPerIdentity(
+  events: readonly IcsParsedEvent[],
+): IcsParsedEvent[] {
+  const byIdentity = new Map<string, IcsParsedEvent>();
+  for (const event of events) {
+    const identity = icsEventIdentity(event);
+    const kept = byIdentity.get(identity);
+    if (
+      !kept ||
+      event.sequence > kept.sequence ||
+      (event.sequence === kept.sequence &&
+        (event.revisionAt ?? "") > (kept.revisionAt ?? ""))
+    ) {
+      byIdentity.set(identity, event);
+    }
+  }
+  return [...byIdentity.values()];
+}
+
 export function lifeOpsCalendarEventFromIcs(args: {
   event: IcsParsedEvent;
   source: IcsCalendarSourceRecord;

@@ -17,6 +17,25 @@ draft database name. OCR uses the Tesseract 7 worker protocol; host the worker,
 WASM and language data together. The caller owns scan cancellation; no elapsed-time
 deadline or remote OCR service is selected implicitly.
 
+`documents/scan-event` suggests a calendar event from locally recognized poster
+or flyer text: explicit English dates, times, same-day ranges and labeled
+venues; with a reference instant and device zone, also year-less and weekday
+dates, today/tomorrow and printed IANA or UTC-offset times (converted, with the
+source zone shown), all-day for dated posters without a time and an unticked
+repeat hint. Every inference is returned as a disclosure. Ambiguous numeric
+dates, conflicting dates or weekdays and zone abbreviations stay blank.
+`reviewScanEvent` and `reviewScanAllDayEvent` validate the owner's reviewed
+fields into a provider-neutral proposal; nothing here saves. The host's own
+calendar review and Save remain the only write.
+
+`documents/source-links` validates the source link a saved item (such as a
+summary note) keeps: a selected document named by its exact bytes and, on
+Android, an `a1:` reference whose read grant the native media module retains
+while any saved or restorable item names it (unsaved links are kept three days);
+a credential-free HTTPS page the host's reading policy allows; or an exact
+recording revision. `retainedSourceReferences` lists the references saved and
+restorable items still name, for the native reference store's reconciliation.
+
 Run `bun run typecheck`, `bun run test`, `bun run lint:check`, and `bun run build`
 in this package. Consumer qualification
 must exercise IndexedDB transactions, stale selections, cancellation, restart

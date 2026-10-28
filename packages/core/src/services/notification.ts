@@ -889,6 +889,22 @@ export class NotificationService extends Service {
 		return Number.POSITIVE_INFINITY;
 	}
 
+	/** Internal read-receipt consumers must not observe an uncommitted read mark. */
+	async listDurableIncludingExpired(): Promise<AgentNotification[]> {
+		let pending: Promise<void>;
+		do {
+			pending = this.notificationWriteTail;
+			await pending;
+		} while (pending !== this.notificationWriteTail);
+		if (this.persistenceUncertain || this.stopped)
+			throw new NotificationNativeError(
+				"NOTIFICATION_INBOX_UNAVAILABLE",
+				"Notification inbox is not durably available",
+				503,
+			);
+		return this.listIncludingExpired();
+	}
+
 	getUnreadCount(): number {
 		const now = Date.now();
 		let count = 0;

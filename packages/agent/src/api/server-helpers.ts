@@ -587,17 +587,13 @@ type ConversationRoomTitleRef = Pick<
   "id" | "title" | "roomId"
 >;
 export async function persistConversationRoomTitle(
-  runtime: Pick<AgentRuntime, "getRoom" | "adapter"> | null | undefined,
+  runtime: Pick<AgentRuntime, "getRoom" | "updateRoom"> | null | undefined,
   conversation: ConversationRoomTitleRef,
 ): Promise<boolean> {
   if (!runtime) return false;
   const room = await runtime.getRoom(conversation.roomId);
   if (!room) return false;
   if (room.name === conversation.title) return false;
-  const adapter = runtime.adapter as {
-    updateRoom?: (nextRoom: typeof room) => Promise<void>;
-  };
-  if (typeof adapter.updateRoom !== "function") return false;
-  await adapter.updateRoom({ ...room, name: conversation.title });
+  await runtime.updateRoom({ ...room, name: conversation.title });
   return true;
 }

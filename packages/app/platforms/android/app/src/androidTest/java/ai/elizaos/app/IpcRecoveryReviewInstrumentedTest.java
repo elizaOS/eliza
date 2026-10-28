@@ -74,6 +74,23 @@ public final class IpcRecoveryReviewInstrumentedTest {
             assertEquals(1,Objects.requireNonNull(home.listFiles(f->f.getName().startsWith("ipc-recovery-"))).length);
         } finally {removeFixture(home);}
     }
+    @Test public void crossParentRenameMayChangeDirectoryMtimeButNotRecordMetadata() throws Exception {
+        File home=home();List<File> dirs=seed(home);
+        try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
+            java.lang.reflect.Method snapshot=IpcStartupRecovery.class.getDeclaredMethod("retainedSnapshot");snapshot.setAccessible(true);
+            @SuppressWarnings("unchecked") Map<String,String> expected=(Map<String,String>)snapshot.invoke(recovery);
+            File original=dirs.get(0),destination=new File(home,"synthetic-destination");Os.mkdir(destination.getPath(),0700);
+            File retained=new File(destination,original.getName());Os.rename(original.getPath(),retained.getPath());
+            // F2FS on the Pixel changes directory mtime as well as ctime during this rename.
+            assertTrue(retained.setLastModified(System.currentTimeMillis()+5000));
+            java.lang.reflect.Method verify=IpcStartupRecovery.class.getDeclaredMethod("verifyRetainedDirectory",File.class,String.class,Map.class,boolean.class);verify.setAccessible(true);
+            verify.invoke(null,retained,original.getName(),expected,true);
+            // File timestamps/identity are still exact, even after the directory rename.
+            File marker=new File(retained,"a.sock.generation");assertTrue(marker.setLastModified(System.currentTimeMillis()+9000));
+            java.lang.reflect.InvocationTargetException refused=assertThrows(java.lang.reflect.InvocationTargetException.class,()->verify.invoke(null,retained,original.getName(),expected,true));
+            assertTrue(refused.getCause().getMessage().contains("retained entry metadata changed"));
+        } finally {removeFixture(home);}
+    }
     @Test public void mutationAfterReviewInvalidatesWholeSetWithoutMovingAnything() throws Exception {
         File home=home();List<File> dirs=seed(home);
         try(IpcStartupRecovery recovery=IpcStartupRecovery.acquire(home)) {
