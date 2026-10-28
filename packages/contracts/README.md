@@ -34,3 +34,13 @@ routes: the owner privacy fence coordinator, tap resolution through
 authenticated reads of the exact route, the installed approval notice identity
 and the owner-return revalidation of a suspended approval notice. A tap is a read
 request; hosts retain the native ledgers, foreground checks and presentation.
+
+`@elizaos/contracts/workflow-client` is the receipt-checked client for the
+workflow agent routes: listing, exact-version activation and runs, approval
+receipts and decisions, metadata edits, removal and restore, typed generation,
+validation and saves, and reconciliation by submission or mutation identity.
+The host supplies the transport, so the client never chooses a local or linked
+agent on its own. Each mutation records its identity before it is sent; only the
+agent's refusal of that exact identity is reported as not applied, and any other
+failure leaves the outcome unknown until reconciled. The agent admits a
+submission identity at most once, so a resend cannot start a second run.

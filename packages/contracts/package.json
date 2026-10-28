@@ -34,6 +34,12 @@
       "import": "./dist/phone-workflow.js",
       "default": "./dist/phone-workflow.js"
     },
+    "./workflow-client": {
+      "eliza-source": "./src/workflow-client.ts",
+      "types": "./dist/workflow-client.d.ts",
+      "import": "./dist/workflow-client.js",
+      "default": "./dist/workflow-client.js"
+    },
     "./notice-routes": {
       "eliza-source": "./src/notice-routes.ts",
       "types": "./dist/notice-routes.d.ts",

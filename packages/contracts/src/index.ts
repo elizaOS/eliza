@@ -138,3 +138,4 @@ export * from "./os-intent/assistant-launch.js";
 export * from "./os-intent/contract.js";
 export * from "./os-intent/decode.js";
 export * from "./phone-workflow.js";
+export * from "./workflow-client.js";
