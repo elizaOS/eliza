@@ -695,6 +695,13 @@ export async function executePlannedToolCall(
 			failureResult(
 				action.name,
 				"Tool arguments must be a plain object in params",
+				{ acceptance: "rejected", executionStatus: "not_started" },
+				{
+					kind: "handler_error",
+					boundary: "handler",
+					code: "ACTION_ARGUMENTS_INVALID",
+					retryable: true,
+				},
 			),
 			{
 				ownerCapture: runtime.ownerToolExecutionObserver
@@ -779,10 +786,18 @@ export async function executePlannedToolCall(
 				validation.errors.join("; ") ||
 					`Invalid arguments for action ${action.name}`,
 				{
+					acceptance: "rejected",
+					executionStatus: "not_started",
 					parameterErrors: validation.errors,
 					...(invalidParameterNames.length > 0
 						? { invalidParameterNames }
 						: {}),
+				},
+				{
+					kind: "handler_error",
+					boundary: "handler",
+					code: "ACTION_ARGUMENTS_INVALID",
+					retryable: true,
 				},
 			),
 			{
