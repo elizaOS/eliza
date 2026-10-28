@@ -120,6 +120,26 @@ describe("canonical Calendar create authority", () => {
       expect.objectContaining({ code: "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" }),
     );
   });
+  it("rejects an invented guest whose name is only part of another word", () => {
+    const original = { id: source.id, text: "Call the dentist at noon." };
+    const evidence = [{ sourceId: original.id, quote: original.text }];
+    expect(() =>
+      validateCalendarCreateAuthority(
+        {
+          guestIntent: {
+            state: "requested",
+            evidence,
+            guests: [{ name: "Al", email: "al@gmail.com", optional: false }],
+          },
+          noteIntent: { state: "none", evidence, sourceNote: null },
+        },
+        [original],
+        [],
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "CALENDAR_CREATE_EVIDENCE_INVALID" }),
+    );
+  });
   it("rejects a guest invented for a solo request", () => {
     expect(() =>
       validateCalendarCreateAuthority(

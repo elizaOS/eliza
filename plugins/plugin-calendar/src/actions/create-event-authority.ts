@@ -187,13 +187,24 @@ export function validateCalendarCreateAuthority(
         // A guest the owner named without an address, given an address the
         // owner never wrote, is a missing address: ask for it instead of
         // reporting the whole extraction as invalid evidence.
-        const name = typeof item.name === "string" ? item.name.trim() : "";
-        if (
-          name &&
-          guest.texts.some((text) =>
-            text.toLowerCase().includes(name.toLowerCase()),
-          )
-        )
+        // The name must appear as whole words of the cited request, so a
+        // short invented name ("Al") inside another word ("Call") is still
+        // refused as invented evidence.
+        const nameWords =
+          typeof item.name === "string"
+            ? item.name
+                .toLowerCase()
+                .split(/[^\p{L}\p{N}]+/u)
+                .filter(Boolean)
+            : [];
+        const textWords = new Set(
+          guest.texts
+            .join("\n")
+            .toLowerCase()
+            .split(/[^\p{L}\p{N}]+/u)
+            .filter(Boolean),
+        );
+        if (nameWords.length && nameWords.every((word) => textWords.has(word)))
           return clarify("CALENDAR_ATTENDEE_IDENTITY_REQUIRED");
         return invalid();
       }
