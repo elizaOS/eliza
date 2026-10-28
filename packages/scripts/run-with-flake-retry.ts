@@ -12,6 +12,7 @@
  * usage: node packages/scripts/run-with-flake-retry.ts <signature-regex> -- <command> [args...]
  */
 import { spawn } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 
 const argv = process.argv.slice(2);
 const signatureRaw = argv[0] ?? "";
@@ -21,25 +22,33 @@ if (argv[1] !== "--" || !signatureRaw || argv.length < 3) {
   );
   process.exit(2);
 }
-let signature;
+let signature: RegExp;
 try {
   signature = new RegExp(signatureRaw);
 } catch (error) {
   console.error(
-    `[run-with-flake-retry] invalid signature regex: ${error.message}`,
+    `[run-with-flake-retry] invalid signature regex: ${(error as Error).message}`,
   );
   process.exit(2);
 }
 const [command, ...args] = argv.slice(2);
 
-function runOnce() {
+function runOnce(): Promise<{ code: number; matched: boolean }> {
   return new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["inherit", "pipe", "pipe"] });
     const tails = { stdout: "", stderr: "" };
+    const decoders = {
+      stdout: new StringDecoder("utf8"),
+      stderr: new StringDecoder("utf8"),
+    };
     let matched = false;
-    const capture = (chunk, sink, stream) => {
+    const capture = (
+      chunk: Buffer,
+      sink: NodeJS.WritableStream,
+      stream: "stdout" | "stderr",
+    ) => {
       sink.write(chunk);
-      const candidate = tails[stream] + chunk.toString();
+      const candidate = tails[stream] + decoders[stream].write(chunk);
       // Match while output arrives: a chatty teardown may emit more than the
       // retained overlap after the failure and must not erase the signal.
       if (!matched && signature.test(candidate)) matched = true;
