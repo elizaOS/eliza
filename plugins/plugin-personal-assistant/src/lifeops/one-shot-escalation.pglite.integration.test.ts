@@ -99,6 +99,7 @@ it.each([
         intensity: "normal",
         source: "default",
       });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -190,6 +191,7 @@ it("explicit post-fire snooze crosses the original window and preserves its save
       },
     });
     if (!record.reminderPlan) throw Error("Missing saved reminder plan");
+    vi.setSystemTime(due);
     await service.processReminders({
       now: new Date(due).toISOString(),
       scope: "definitions",
@@ -347,6 +349,7 @@ it.each(["planned", "definition-persistent", "global-persistent"])(
             ? { definitionId: record.definition.id }
             : {}),
         });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -413,6 +416,7 @@ it("preserves a valid explicit escalation profile after the one-shot plan", asyn
       },
     });
     expect(hasExplicitReminderEscalationProfile(record.definition)).toBe(true);
+    vi.setSystemTime(due);
     await service.processReminders({
       now: new Date(due).toISOString(),
       scope: "definitions",
@@ -480,6 +484,7 @@ it.each(["non-reminder", "recurring"])(
           steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
         },
       });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -645,6 +650,7 @@ it.each([1, 2])(
           steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
         },
       });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -733,6 +739,7 @@ it("processes a persisted owner snooze reply after the one-shot delivery", async
         steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
       },
     });
+    vi.setSystemTime(due);
     await service.processReminders({
       now: new Date(due).toISOString(),
       scope: "definitions",
