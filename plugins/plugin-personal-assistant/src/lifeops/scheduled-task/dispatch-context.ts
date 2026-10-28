@@ -136,9 +136,16 @@ async function resolveRecentConversation(
       );
     }
     if (roomIds.length === 0) return undefined;
+    // Bound the render: with no limit this materializes the
+    // owner's whole direct-room history and every line is
+    // serialized into a model prompt on every model-backed
+    // dispatch. The adapter orders newest-first, so the cap
+    // keeps the newest messages, displayed oldest-first
+    // after the sort below.
     const memories = await runtime.getMemoriesByRoomIds({
       tableName: "messages",
       roomIds: roomIds as never[],
+      limit: 15000,
     });
     const lines = memories
       .slice()
