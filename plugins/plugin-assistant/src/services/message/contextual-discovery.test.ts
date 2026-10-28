@@ -17,6 +17,10 @@ import {
   briefAction,
   briefDeliveredImpressionsAction,
 } from "../../../../plugin-personal-assistant/src/actions/brief.ts";
+import {
+  ownerAlarmsAction,
+  ownerRemindersAction,
+} from "../../../../plugin-personal-assistant/src/actions/owner-surfaces.ts";
 import { scheduledTaskAction } from "../../../../plugin-personal-assistant/src/actions/scheduled-task.ts";
 import { createHouseholdOperationsAction } from "../../../../plugin-personal-assistant/src/lifeops/household-operations/action.ts";
 import { createResourceCapacityAction } from "../../../../plugin-personal-assistant/src/lifeops/resource-capacity/action.ts";
@@ -298,7 +302,8 @@ describe("contextual native discovery", () => {
     ['send "search and send draft" to Amy', ["MESSAGE_SEND"]],
     ["MESSAGE_SEND_DRAFT", ["MESSAGE_SEND_DRAFT"]],
     ["schedule draft send", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
-    ["check my inbox", ["MESSAGE_LIST_INBOX", "MESSAGE_SEARCH_INBOX"]],
+    // Generic checks keep the complete family contract; list/search need an explicit operation.
+    ["check my inbox", ["MESSAGE"]],
     ["triage messages", ["MESSAGE_TRIAGE"]],
   ])(
     "retrieves the requested messaging operation for %s",
@@ -496,6 +501,31 @@ describe("contextual native discovery", () => {
     }).actions;
     expect(selected).toContain(codingAction);
   });
+
+  it.each([
+    ["change the stretch reminder to 5pm", "OWNER_REMINDERS_UPDATE"],
+    ["cancel my reminders", "OWNER_REMINDERS_CANCEL"],
+    ["change my alarm to 7am", "OWNER_ALARMS_UPDATE"],
+    ["delete my alarms", "OWNER_ALARMS_DELETE"],
+  ])(
+    "bootstraps general-routed work from the tasks domain its intent names: %s",
+    (intent, tool) => {
+      const registry = new ContextRegistry([...DEFAULT_CONTEXT_DEFINITIONS]);
+      const selected = retrieveContextualPlannerActions({
+        actions: [
+          ...promoteSubactionsToActions(scheduledTaskAction),
+          ...promoteSubactionsToActions(ownerRemindersAction),
+          ...promoteSubactionsToActions(ownerAlarmsAction),
+        ],
+        query: intent,
+        intents: [intent],
+        contexts: ["general"],
+        contextAliases: (context) => registry.get(context)?.aliases,
+        deferUnscopedBootstrap: true,
+      }).actions;
+      expect(selected.map((action) => action.name)).toContain(tool);
+    },
+  );
 
   it("defers ambiguous initial routing but preserves explicit hints and global discovery", async () => {
     const actions: Action[] = [

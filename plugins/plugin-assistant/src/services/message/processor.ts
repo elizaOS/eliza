@@ -119,6 +119,7 @@ export interface MessageProcessorResult
     | "bot_group_address_gate"
     | "bot_noise_triage"
     | "bot_loop_gate"
+    | "failure_suppressed"
     | "replaced"
     | "noMessageId";
 }
@@ -650,6 +651,7 @@ export class MessageProcessor {
     let terminalDecision: "IGNORE" | "STOP" | null = null;
     let routedDecision: ContextRoutingDecision | null = null;
     let strategyResult: StrategyResult | null = null;
+    let failureSuppressed = false;
     let _usedV5Runtime = false;
     let stage1DecidedRespond = false;
     let stage1RiskGateApplied = false;
@@ -704,6 +706,7 @@ export class MessageProcessor {
         },
         providers: state.data.providers,
         request: getUserMessageText(message),
+        contexts: event.messageHandler.plan.contexts,
         reply: proposedText,
         actionResults: [],
         actions: runtime.actions,
@@ -830,6 +833,14 @@ export class MessageProcessor {
         const [outcome] = await Promise.all([
           timeInferenceSpan("message:planner", () =>
             runV5MessageRuntimeStage1({
+              ...(opts.resolveTypedReadReply
+                ? {
+                    resolveTypedReadReply: opts.resolveTypedReadReply,
+                    ...(opts.onTypedReadEgress
+                      ? { onTypedReadEgress: opts.onTypedReadEgress }
+                      : {}),
+                  }
+                : {}),
               runtime,
               message,
               state,
@@ -863,6 +874,7 @@ export class MessageProcessor {
               },
               onStage1RespondDecision: () => {
                 stage1DecidedRespond = true;
+                opts.onResponseDecision?.();
               },
             }),
           ),
@@ -1033,6 +1045,10 @@ export class MessageProcessor {
           );
           shouldRespondToMessage = false;
           terminalDecision = "IGNORE";
+          // The room stays silent, so the outcome stays completed: consumers
+          // treat a failed outcome as a reply to deliver. The reason shows
+          // that this IGNORE came from a runtime failure.
+          failureSuppressed = true;
         }
       }
     } else if (!hasTextGenerationHandler(runtime)) {
@@ -1615,7 +1631,11 @@ export class MessageProcessor {
       responseMessages.length > 0 && !isStopResponse(responseContent);
 
     return {
-      terminalStatus: terminalFailure ? "error" : "completed",
+      terminalStatus: terminalFailure
+        ? "error"
+        : failureSuppressed
+          ? "failure_suppressed"
+          : "completed",
       didRespond,
       responseContent,
       responseMessages,

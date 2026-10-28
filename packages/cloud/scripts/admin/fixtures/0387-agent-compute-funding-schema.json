@@ -1,0 +1,71 @@
+{
+  "historical": {
+    "columns": [
+      {"name":"agent_id","type":"uuid","notNull":true,"defaultExpression":null},
+      {"name":"created_at","type":"timestamp with time zone","notNull":true,"defaultExpression":"now()"},
+      {"name":"funding_reservation_id","type":"uuid","notNull":true,"defaultExpression":null},
+      {"name":"hourly_rate","type":"numeric(16,6)","notNull":true,"defaultExpression":null},
+      {"name":"id","type":"uuid","notNull":true,"defaultExpression":"gen_random_uuid()"},
+      {"name":"organization_id","type":"uuid","notNull":true,"defaultExpression":null},
+      {"name":"period_end","type":"timestamp with time zone","notNull":true,"defaultExpression":null},
+      {"name":"period_start","type":"timestamp with time zone","notNull":true,"defaultExpression":null},
+      {"name":"provider_bound_at","type":"timestamp with time zone","notNull":false,"defaultExpression":null},
+      {"name":"provider_container_id","type":"text","notNull":false,"defaultExpression":null},
+      {"name":"provider_node_id","type":"text","notNull":false,"defaultExpression":null},
+      {"name":"settled_at","type":"timestamp with time zone","notNull":false,"defaultExpression":null},
+      {"name":"settled_through","type":"timestamp with time zone","notNull":false,"defaultExpression":null}
+    ],
+    "constraints": [
+      {"name":"agent_compute_funding_agent_tenant_fk","definition":"FOREIGN KEY (agent_id, organization_id) REFERENCES agent_sandboxes(id, organization_id) ON DELETE RESTRICT","validated":true},
+      {"name":"agent_compute_funding_period_check","definition":"CHECK (((period_end > period_start) AND (hourly_rate > (0)::numeric) AND (hourly_rate <> 'NaN'::numeric)))","validated":true},
+      {"name":"agent_compute_funding_pkey","definition":"PRIMARY KEY (id)","validated":true},
+      {"name":"agent_compute_funding_provider_check","definition":"CHECK (((num_nonnulls(provider_node_id, provider_container_id, provider_bound_at) = ANY (ARRAY[0, 3])) AND ((provider_container_id IS NULL) OR (provider_container_id ~ '^[0-9a-f]{64}$'::text)) AND ((provider_node_id IS NULL) OR (length(provider_node_id) > 0))))","validated":true},
+      {"name":"agent_compute_funding_reservation_tenant_fk","definition":"FOREIGN KEY (funding_reservation_id, organization_id) REFERENCES billing_funding_reservations(id, organization_id) ON DELETE RESTRICT","validated":true},
+      {"name":"agent_compute_funding_settlement_check","definition":"CHECK ((((settled_at IS NULL) AND (settled_through IS NULL)) OR ((settled_at IS NOT NULL) AND (settled_through IS NOT NULL) AND ((settled_through >= period_start) AND (settled_through <= period_end)))))","validated":true}
+    ],
+    "indexes": [
+      {"name":"agent_compute_funding_expiry_idx","definition":"CREATE INDEX agent_compute_funding_expiry_idx ON public.agent_compute_funding USING btree (period_end) WHERE (settled_at IS NULL)","valid":true,"ready":true,"unique":false},
+      {"name":"agent_compute_funding_open_agent_idx","definition":"CREATE UNIQUE INDEX agent_compute_funding_open_agent_idx ON public.agent_compute_funding USING btree (agent_id) WHERE (settled_at IS NULL)","valid":true,"ready":true,"unique":true},
+      {"name":"agent_compute_funding_pkey","definition":"CREATE UNIQUE INDEX agent_compute_funding_pkey ON public.agent_compute_funding USING btree (id)","valid":true,"ready":true,"unique":true},
+      {"name":"agent_compute_funding_reservation_idx","definition":"CREATE UNIQUE INDEX agent_compute_funding_reservation_idx ON public.agent_compute_funding USING btree (funding_reservation_id)","valid":true,"ready":true,"unique":true}
+    ]
+  },
+  "canonical": {
+    "columns": [
+      {"name":"agent_id","type":"uuid","notNull":true,"defaultExpression":null},
+      {"name":"created_at","type":"timestamp with time zone","notNull":true,"defaultExpression":"now()"},
+      {"name":"funding_reservation_id","type":"uuid","notNull":true,"defaultExpression":null},
+      {"name":"host_lease_confirmed_at","type":"timestamp with time zone","notNull":false,"defaultExpression":null},
+      {"name":"hourly_rate","type":"numeric(16,6)","notNull":true,"defaultExpression":null},
+      {"name":"id","type":"uuid","notNull":true,"defaultExpression":"gen_random_uuid()"},
+      {"name":"organization_id","type":"uuid","notNull":true,"defaultExpression":null},
+      {"name":"period_end","type":"timestamp with time zone","notNull":true,"defaultExpression":null},
+      {"name":"period_start","type":"timestamp with time zone","notNull":true,"defaultExpression":null},
+      {"name":"previous_funding_id","type":"uuid","notNull":false,"defaultExpression":null},
+      {"name":"provider_bound_at","type":"timestamp with time zone","notNull":false,"defaultExpression":null},
+      {"name":"provider_container_id","type":"text","notNull":false,"defaultExpression":null},
+      {"name":"provider_node_id","type":"text","notNull":false,"defaultExpression":null},
+      {"name":"settled_at","type":"timestamp with time zone","notNull":false,"defaultExpression":null},
+      {"name":"settled_through","type":"timestamp with time zone","notNull":false,"defaultExpression":null}
+    ],
+    "constraints": [
+      {"name":"agent_compute_funding_agent_tenant_fk","definition":"FOREIGN KEY (agent_id, organization_id) REFERENCES agent_sandboxes(id, organization_id) ON DELETE RESTRICT","validated":true},
+      {"name":"agent_compute_funding_host_confirmation_check","definition":"CHECK (((host_lease_confirmed_at IS NULL) OR ((provider_bound_at IS NOT NULL) AND (host_lease_confirmed_at >= provider_bound_at) AND (host_lease_confirmed_at < period_end))))","validated":true},
+      {"name":"agent_compute_funding_identity_unique","definition":"UNIQUE (id, agent_id, organization_id)","validated":true},
+      {"name":"agent_compute_funding_period_check","definition":"CHECK (((period_end > period_start) AND (hourly_rate > (0)::numeric) AND (hourly_rate <> 'NaN'::numeric)))","validated":true},
+      {"name":"agent_compute_funding_pkey","definition":"PRIMARY KEY (id)","validated":true},
+      {"name":"agent_compute_funding_predecessor_fk","definition":"FOREIGN KEY (previous_funding_id, agent_id, organization_id) REFERENCES agent_compute_funding(id, agent_id, organization_id) ON DELETE RESTRICT","validated":true},
+      {"name":"agent_compute_funding_provider_check","definition":"CHECK (((num_nonnulls(provider_node_id, provider_container_id, provider_bound_at) = ANY (ARRAY[0, 3])) AND ((provider_container_id IS NULL) OR (provider_container_id ~ '^[0-9a-f]{64}$'::text)) AND ((provider_node_id IS NULL) OR (length(provider_node_id) > 0))))","validated":true},
+      {"name":"agent_compute_funding_reservation_tenant_fk","definition":"FOREIGN KEY (funding_reservation_id, organization_id) REFERENCES billing_funding_reservations(id, organization_id) ON DELETE RESTRICT","validated":true},
+      {"name":"agent_compute_funding_settlement_check","definition":"CHECK ((((settled_at IS NULL) AND (settled_through IS NULL)) OR ((settled_at IS NOT NULL) AND (settled_through IS NOT NULL) AND ((settled_through >= period_start) AND (settled_through <= period_end)))))","validated":true}
+    ],
+    "indexes": [
+      {"name":"agent_compute_funding_expiry_idx","definition":"CREATE INDEX agent_compute_funding_expiry_idx ON public.agent_compute_funding USING btree (period_end) WHERE (settled_at IS NULL)","valid":true,"ready":true,"unique":false},
+      {"name":"agent_compute_funding_identity_unique","definition":"CREATE UNIQUE INDEX agent_compute_funding_identity_unique ON public.agent_compute_funding USING btree (id, agent_id, organization_id)","valid":true,"ready":true,"unique":true},
+      {"name":"agent_compute_funding_open_agent_idx","definition":"CREATE UNIQUE INDEX agent_compute_funding_open_agent_idx ON public.agent_compute_funding USING btree (agent_id) WHERE (settled_at IS NULL)","valid":true,"ready":true,"unique":true},
+      {"name":"agent_compute_funding_pkey","definition":"CREATE UNIQUE INDEX agent_compute_funding_pkey ON public.agent_compute_funding USING btree (id)","valid":true,"ready":true,"unique":true},
+      {"name":"agent_compute_funding_predecessor_idx","definition":"CREATE UNIQUE INDEX agent_compute_funding_predecessor_idx ON public.agent_compute_funding USING btree (previous_funding_id)","valid":true,"ready":true,"unique":true},
+      {"name":"agent_compute_funding_reservation_idx","definition":"CREATE UNIQUE INDEX agent_compute_funding_reservation_idx ON public.agent_compute_funding USING btree (funding_reservation_id)","valid":true,"ready":true,"unique":true}
+    ]
+  }
+}

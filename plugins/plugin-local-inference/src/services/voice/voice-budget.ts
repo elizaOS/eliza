@@ -257,7 +257,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		lmKvMb: 0.075 * _GB,
 		drafterMb: 0.5 * _GB,
 		ttsMb: 0.08 * _GB, // kokoro-q8 ONNX
-		asrMb: 0.4 * _GB, // entry Gemma-compatible ASR placeholder budget
+		asrMb: 0.4 * _GB, // entry Phonon-2 ASR budget
 		asrMmprojMb: 0.2 * _GB,
 		embeddingMb: 0, // pools from the text backbone on the 2b entry tier
 		vadMb: 2 * _MB, // silero-vad documented baseline
@@ -321,7 +321,7 @@ export const VOICE_ENSEMBLE_BUDGETS: Readonly<
 		lmKvMb: 2.75 * _GB,
 		drafterMb: 2.6 * _GB,
 		ttsMb: 1.28 * _GB,
-		asrMb: 1.1 * _GB, // large Gemma-compatible ASR placeholder budget
+		asrMb: 1.1 * _GB, // large Phonon-2 ASR budget
 		asrMmprojMb: 0.3 * _GB,
 		embeddingMb: 0.4 * _GB,
 		vadMb: 2 * _MB,

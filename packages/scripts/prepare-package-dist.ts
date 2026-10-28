@@ -282,35 +282,22 @@ function stripSrcPrefix(sourcePath) {
     .replace(/^src\//, "");
 }
 
+// `.mjs`/`.mts` and `.cjs`/`.cts` sources keep their module format in the
+// emitted file name, matching tsc and copied module assets.
 function replaceSourceExtension(relPath, nextExt) {
-  const declarationExtMatch = relPath.match(/\.d\.(ts|mts|cts)$/);
-  if (declarationExtMatch) {
-    return `${relPath.slice(0, -declarationExtMatch[0].length)}${nextExt}`;
-  }
-
-  const sourceExtMatch = relPath.match(/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/);
-  if (sourceExtMatch) {
-    return `${relPath.slice(0, -sourceExtMatch[0].length)}${nextExt}`;
+  const extMatch = relPath.match(
+    /(?:\.d\.([cm]?)ts|\.(?:tsx|jsx)|\.([cm]?)(?:ts|js))$/,
+  );
+  if (extMatch) {
+    const format = extMatch[1] ?? extMatch[2] ?? "";
+    return `${relPath.slice(0, -extMatch[0].length)}${nextExt.replace(/(ts|js)$/, `${format}$1`)}`;
   }
 
   if (relPath.includes("*")) {
     return relPath.endsWith(nextExt) ? relPath : `${relPath}${nextExt}`;
   }
 
-  const ext = path.posix.extname(relPath);
-  if (
-    ext === ".ts" ||
-    ext === ".tsx" ||
-    ext === ".mts" ||
-    ext === ".cts" ||
-    ext === ".js" ||
-    ext === ".jsx" ||
-    ext === ".mjs" ||
-    ext === ".cjs"
-  ) {
-    return `${relPath.slice(0, -ext.length)}${nextExt}`;
-  }
-  if (!ext) {
+  if (!path.posix.extname(relPath)) {
     return `${relPath}${nextExt}`;
   }
   return relPath;

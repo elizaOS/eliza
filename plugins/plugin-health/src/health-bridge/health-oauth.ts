@@ -488,7 +488,13 @@ async function refreshHealthToken(
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token ?? token.refreshToken,
     tokenType: payload.token_type ?? token.tokenType,
-    grantedScopes: parseGrantedScopes(token.provider, payload.scope),
+    // OAuth 2.0 treats an omitted refresh scope as the scope that the owner
+    // originally granted. Falling back to every provider default here widens
+    // the stored consent record after an ordinary refresh response.
+    grantedScopes:
+      typeof payload.scope === "string"
+        ? parseGrantedScopes(token.provider, payload.scope)
+        : [...token.grantedScopes],
     expiresAt: tokenExpiresAt(payload),
     updatedAt: new Date().toISOString(),
   };

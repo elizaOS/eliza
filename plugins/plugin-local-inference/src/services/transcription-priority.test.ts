@@ -2,7 +2,7 @@
  * Tests for the `TRANSCRIPTION` model handler priority + provider hint
  * semantics on `AgentRuntime`. These exercise the same `registerModel`
  * machinery used by plugin-elizacloud (remote OpenAI Whisper API) and the
- * local fused Gemma ASR handler so callers know exactly:
+ * local Phonon-2 ASR handler so callers know exactly:
  *
  *   - which handler wins when priorities tie (first-registered),
  *   - how an explicit `priority` overrides that,
@@ -58,7 +58,7 @@ function makeHandler(
 }
 
 describe("TRANSCRIPTION handler priority on AgentRuntime", () => {
-	it("local Gemma ASR wins over remote OpenAI Whisper by registration order when priorities tie", async () => {
+	it("local Phonon-2 ASR wins over remote OpenAI Whisper by registration order when priorities tie", async () => {
 		const { runtime, calls } = makeRuntime();
 		runtime.registerModel(
 			ModelType.TRANSCRIPTION,

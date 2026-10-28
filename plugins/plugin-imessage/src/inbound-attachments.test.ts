@@ -17,7 +17,11 @@ import {
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatDbMessage, ChatDbReader } from "./chatdb-reader";
-import { IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS, IMessageService } from "./service";
+import {
+  IMESSAGE_ATTACHMENT_READ_MAX_ATTEMPTS,
+  IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS,
+  IMessageService,
+} from "./service";
 import type { IMessageSettings } from "./types";
 
 describe("native Messages inbound attachments", () => {
@@ -153,9 +157,15 @@ describe("native Messages inbound attachments", () => {
     };
   }
 
-  function pollHarness(rows: ChatDbMessage[], createMemory: ReturnType<typeof vi.fn>) {
-    const fetchNewMessages = vi.fn((sinceRowId: number, limit: number) =>
-      rows.filter((row) => row.rowId > sinceRowId).slice(0, limit)
+  function pollHarness(
+    rows: ChatDbMessage[],
+    createMemory: ReturnType<typeof vi.fn>,
+    fetchImpl?: ChatDbReader["fetchNewMessages"]
+  ) {
+    const fetchNewMessages = vi.fn(
+      fetchImpl ??
+        ((sinceRowId: number, limit: number) =>
+          rows.filter((row) => row.rowId > sinceRowId).slice(0, limit))
     );
     const emitted: string[] = [];
     const reportError = vi.fn((_scope: string, _error: unknown, _context?: unknown) => {});
@@ -163,7 +173,9 @@ describe("native Messages inbound attachments", () => {
       agentId: "00000000-0000-0000-0000-000000000001",
       getSetting: vi.fn(() => undefined),
       getService: vi.fn(() => null),
-      emitEvent: vi.fn((type: string) => emitted.push(type)),
+      emitEvent: vi.fn(async (type: string) => {
+        emitted.push(type);
+      }),
       ensureConnection: vi.fn(async () => {}),
       createMemory,
       reportError,
@@ -273,6 +285,112 @@ describe("native Messages inbound attachments", () => {
     expect(codes.filter((code) => code === "IMESSAGE_INBOUND_PERSIST_FAILED")).toHaveLength(
       IMESSAGE_INBOUND_PERSIST_MAX_ATTEMPTS
     );
+  });
+  function attachmentReadFailure(rowId: number): ElizaError {
+    return new ElizaError("iMessage attachment metadata could not be read", {
+      code: "IMESSAGE_ATTACHMENT_READ_FAILED",
+      cause: new Error("database disk image is malformed"),
+      context: { rowId },
+      severity: "ephemeral",
+    });
+  }
+
+  /** Mirrors the chat.db reader: a failing row throws unless the caller tolerates it. */
+  function failingAttachmentFetch(
+    rows: ChatDbMessage[],
+    failingRowId: number,
+    healAfter = Infinity
+  ) {
+    let failures = 0;
+    return (
+      sinceRowId: number,
+      limit: number,
+      options?: Parameters<ChatDbReader["fetchNewMessages"]>[2]
+    ): ChatDbMessage[] => {
+      const slice = rows.filter((row) => row.rowId > sinceRowId).slice(0, limit);
+      return slice.map((row) => {
+        if (row.rowId !== failingRowId || failures >= healAfter) return row;
+        if (options?.tolerateAttachmentReadFailure?.has(row.rowId)) {
+          return { ...row, attachments: [], attachmentReadFailed: true };
+        }
+        failures++;
+        throw attachmentReadFailure(row.rowId);
+      });
+    };
+  }
+
+  it("keeps the cursor on a transient attachment metadata read failure", async () => {
+    const earlier = textRow(70, "earlier message");
+    const flaky = textRow(71, "message with a photo");
+    const createMemory = vi.fn(async () => {});
+    const { internal, emitted, reportError } = pollHarness(
+      [earlier, flaky],
+      createMemory,
+      failingAttachmentFetch([earlier, flaky], 71, 1)
+    );
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(0);
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+
+    await internal.pollForNewMessagesInner();
+
+    expect(internal.lastRowId).toBe(71);
+    expect(createMemory.mock.calls.map((call) => call[0].content.text)).toEqual([
+      earlier.text,
+      flaky.text,
+    ]);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(2);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
+  it("reports a persistent attachment metadata read failure and stops blocking later rows", async () => {
+    const stuck = textRow(80, "message whose attachments never read");
+    const later = textRow(81, "later message");
+    const createMemory = vi.fn(async () => {});
+    const { internal, fetchNewMessages, emitted, reportError } = pollHarness(
+      [stuck, later],
+      createMemory,
+      failingAttachmentFetch([stuck, later], 80)
+    );
+
+    for (let attempt = 1; attempt < IMESSAGE_ATTACHMENT_READ_MAX_ATTEMPTS; attempt++) {
+      await internal.pollForNewMessagesInner();
+      expect(internal.lastRowId).toBe(0);
+    }
+    expect(createMemory).not.toHaveBeenCalled();
+    expect(reportError).not.toHaveBeenCalled();
+
+    await internal.pollForNewMessagesInner();
+
+    expect(reportedCodes(reportError)).toEqual(["IMESSAGE_ATTACHMENT_READ_FAILED"]);
+    expect(reportError.mock.calls[0]?.[0]).toBe("IMessageService.inboundAttachmentRead");
+    expect(reportError.mock.calls[0]?.[2]).toEqual({
+      rowId: 80,
+      attempts: IMESSAGE_ATTACHMENT_READ_MAX_ATTEMPTS,
+    });
+    expect(internal.lastRowId).toBe(81);
+    expect(createMemory.mock.calls.map((call) => call[0].content.text)).toEqual([
+      stuck.text,
+      later.text,
+    ]);
+    expect(emitted.filter((type) => type === "MESSAGE_RECEIVED")).toHaveLength(2);
+
+    await internal.pollForNewMessagesInner();
+
+    expect(fetchNewMessages).toHaveBeenLastCalledWith(81, 50);
+    expect(reportError).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not swallow chat.db errors other than attachment read failures", async () => {
+    const createMemory = vi.fn(async () => {});
+    const { internal } = pollHarness([], createMemory, () => {
+      throw new Error("unexpected reader failure");
+    });
+
+    await expect(internal.pollForNewMessagesInner()).rejects.toThrow("unexpected reader failure");
   });
 });
 

@@ -96,6 +96,7 @@ test("outcome insert failure and interrupted completion retry storage only and p
     let result = outcomes.save(decision, "observation");
     assert.equal(result.status, "paid");
     assert.equal(result.saveStatus, "pending");
+    assert.equal(result.reasonCode, "outcome-save-failed");
     assert.equal(outcomes.loadEvidence().persisted, false);
     assert.equal(outcomes.loadEvidence().record.observedAt, result.observedAt);
     assert.equal(runtime.get(task.id).status, "active");
@@ -135,6 +136,19 @@ test("outcome insert failure and interrupted completion retry storage only and p
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM bill_outcomes_v1").get().n,
       1,
+    );
+    const listed = createBillOutcomeStore(db, tasks).listForOwner(owner);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].taskId, task.id);
+    assert.equal(listed[0].observedAt, result.observedAt);
+    assert.equal(listed[0].decision.reference, "TEST-123");
+    assert.equal(listed[0].decision.totalMinor, 12250);
+    assert.deepEqual(
+      createBillOutcomeStore(db, tasks).listForOwner({
+        ...owner,
+        actorId: "other",
+      }),
+      [],
     );
     assert.throws(
       () =>
@@ -375,12 +389,13 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
           allowedCapabilities: [],
           allowedOrigins: ["https://example.test"],
         });
+        const now = Date.now();
         task = current.tasks.transition(
           task.id,
           {
             owner: current.runtime.owner,
             expectedRevision: task.revision,
-            now: Date.now(),
+            now,
           },
           {
             type: "observe",
@@ -390,7 +405,7 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
               origin: "https://example.test",
               version: 1,
               inputRevision: 0,
-              observedAt: Date.now(),
+              observedAt: now,
             },
           },
         ).task;
@@ -526,6 +541,68 @@ test("a submission attempt whose INSERT fails is journaled first and written at 
       false,
       "the same task is not its own prior payment",
     );
+  } finally {
+    db.close();
+    rmSync(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("a journal codec stores every record encoded and recovers it after a restart", async () => {
+  const f = await journalFixture();
+  let { db, tasks, runtime } = f.first;
+  // A reversible stand-in for a host cipher: no record text is stored as is.
+  const journalCodec = {
+    encode: (line) => `sealed:${Buffer.from(line).toString("base64url")}`,
+    decode: (line) => {
+      if (!line.startsWith("sealed:")) throw new Error("not sealed");
+      return Buffer.from(line.slice(7), "base64url").toString();
+    },
+  };
+  try {
+    assert.throws(
+      () =>
+        createBillOutcomeStore(db, tasks, {
+          journalPath: f.journalPath,
+          journalCodec: { encode: () => "x" },
+        }),
+      /Invalid outcome journal codec/,
+    );
+    const store = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+      journalCodec,
+    });
+    db.exec(
+      "CREATE TRIGGER fail_outcome BEFORE INSERT ON bill_outcomes_v1 BEGIN SELECT RAISE(ABORT, 'injected disk write error'); END;",
+    );
+    assert.equal(
+      store.forTask(runtime, f.task.id).save(observed, "observation")
+        .saveStatus,
+      "pending",
+    );
+    const stored = readFileSync(f.journalPath, "utf8");
+    assert.match(stored, /^sealed:[A-Za-z0-9_-]+\n$/);
+    assert.doesNotMatch(stored, /TEST-9|Water Test/);
+    db.exec("DROP TRIGGER fail_outcome");
+    db.close();
+    ({ db, tasks, runtime } = f.open());
+    // Without the codec the encoded journal is refused, never misread.
+    assert.throws(
+      () => createBillOutcomeStore(db, tasks, { journalPath: f.journalPath }),
+      /Invalid outcome journal/,
+    );
+    const recovered = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+      journalCodec,
+    }).forTask(runtime, f.task.id);
+    assert.equal(recovered.loadEvidence().record.decision.reference, "TEST-9");
+    assert.equal(recovered.retry().saveStatus, "saved");
+    db.close();
+    ({ db, tasks, runtime } = f.open());
+    createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+      journalCodec,
+    });
+    assert.equal(readFileSync(f.journalPath, "utf8"), "");
   } finally {
     db.close();
     rmSync(f.directory, { recursive: true, force: true });

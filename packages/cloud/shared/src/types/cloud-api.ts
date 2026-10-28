@@ -240,12 +240,6 @@ export interface UserCharacterDto {
   token_chain: string | null;
   token_name: string | null;
   token_ticker: string | null;
-  erc8004_registered: boolean;
-  erc8004_network: string | null;
-  erc8004_agent_id: number | null;
-  erc8004_agent_uri: string | null;
-  erc8004_tx_hash: string | null;
-  erc8004_registered_at: DateLike | null;
   monetization_enabled: boolean;
   inference_markup_percentage: string | number;
   payout_wallet_address: string | null;

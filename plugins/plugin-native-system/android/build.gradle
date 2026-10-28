@@ -37,6 +37,8 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    // Plugin.getActivity() exposes AppCompatActivity in the production Java API.
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.activity:activity:$androidxActivityVersion"
 
     // Instrumented test deps (issue #9967 — first androidTest for a native plugin).

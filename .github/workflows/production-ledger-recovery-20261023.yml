@@ -1,0 +1,117 @@
+name: Production Ledger Recovery (Oct 23)
+
+run-name: Production ledger recovery ${{ inputs.mode }} ${{ github.sha }}
+
+# Runs the reviewed one-time migration-ledger recovery
+# (packages/cloud/scripts/admin/production-ledger-recovery-20261023.sql)
+# against production. `dry-run` executes the exact transaction and rolls it
+# back; `apply` commits it. The SQL refuses any ledger or schema other than the
+# reviewed state before it changes anything, so a second apply is a no-op
+# failure. Run the database authority audit afterwards.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: dry-run rolls the transaction back; apply commits it
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - apply
+      reviewed_sha:
+        description: Exact main commit the operator reviewed; must equal this run's SHA
+        required: true
+        type: string
+      writers_paused:
+        description: "apply only: type writers-paused to confirm application writers are paused"
+        required: false
+        default: ""
+        type: string
+      backup_reference:
+        description: "apply only: identifier of the fresh production backup taken for this run"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-railway-database-authority-audit
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Production ledger recovery (${{ inputs.mode }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Require reviewed canonical main source and operator confirmations
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          MODE: ${{ inputs.mode }}
+          REVIEWED_SHA: ${{ inputs.reviewed_sha }}
+          WRITERS_PAUSED: ${{ inputs.writers_paused }}
+          BACKUP_REFERENCE: ${{ inputs.backup_reference }}
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          set -euo pipefail
+          [ "$SOURCE_REF" = "refs/heads/main" ] || { echo "::error::Production ledger recovery must run from refs/heads/main"; exit 1; }
+          [ "$REVIEWED_SHA" = "$GITHUB_SHA" ] || { echo "::error::reviewed_sha does not match this run's commit"; exit 1; }
+          [ "$HAS_DATABASE_URL" = "true" ] || { echo "::error::Protected production DATABASE_URL is not configured"; exit 1; }
+          if [ "$MODE" = "apply" ]; then
+            [ "$WRITERS_PAUSED" = "writers-paused" ] || { echo "::error::apply requires writers_paused=writers-paused"; exit 1; }
+            [[ "$BACKUP_REFERENCE" =~ ^[A-Za-z0-9._:/-]{4,200}$ ]] || { echo "::error::apply requires a backup_reference"; exit 1; }
+            echo "Operator confirmed paused writers; backup reference: $BACKUP_REFERENCE"
+          fi
+
+      - name: Require the committed recovery to match its generator
+        run: |
+          set -euo pipefail
+          sql=packages/cloud/scripts/admin/production-ledger-recovery-20261023.sql
+          [ "$(head -2 "$sql")" = $'\\set ON_ERROR_STOP on\nBEGIN;' ] || { echo "::error::Recovery SQL does not open one guarded transaction"; exit 1; }
+          [ "$(grep -c '^COMMIT;$' "$sql")" = 1 ] && [ "$(tail -1 "$sql")" = "COMMIT;" ] || { echo "::error::Recovery SQL must end with exactly one COMMIT"; exit 1; }
+          echo "Recovery SQL sha256: $(sha256sum "$sql" | cut -d' ' -f1)"
+
+      - name: Run the recovery transaction
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MODE: ${{ inputs.mode }}
+          # Migration NOTICEs are schema chatter; warnings and errors still print.
+          PGOPTIONS: -c client_min_messages=warning
+        run: |
+          set -euo pipefail
+          umask 077
+          psql --version
+          sql=packages/cloud/scripts/admin/production-ledger-recovery-20261023.sql
+          run_sql="$RUNNER_TEMP/production-ledger-recovery.sql"
+          if [ "$MODE" = "dry-run" ]; then
+            sed '$ s/^COMMIT;$/ROLLBACK;/' "$sql" > "$run_sql"
+            [ "$(tail -1 "$run_sql")" = "ROLLBACK;" ] || { echo "::error::Dry run could not replace COMMIT"; exit 1; }
+          else
+            cp "$sql" "$run_sql"
+          fi
+          node packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main >/dev/null \
+            || { echo "::error::Recovery source is no longer canonical main"; exit 1; }
+          # Terse errors keep row values out of the log.
+          psql "$DATABASE_URL" --no-psqlrc --quiet --set ON_ERROR_STOP=1 \
+            --set VERBOSITY=terse --file "$run_sql" > /dev/null
+          echo "Recovery transaction finished in $MODE mode."
+
+      - name: Report the resulting ledger size
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          rows="$(psql "$DATABASE_URL" --no-psqlrc --tuples-only --no-align --set ON_ERROR_STOP=1 \
+            --command 'SELECT count(*) FROM drizzle.__drizzle_migrations')"
+          expected=373
+          [ "$MODE" = "apply" ] && expected=519
+          echo "Ledger rows: $rows (expected $expected)" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$rows" = "$expected" ] || { echo "::error::Ledger has $rows rows, expected $expected"; exit 1; }

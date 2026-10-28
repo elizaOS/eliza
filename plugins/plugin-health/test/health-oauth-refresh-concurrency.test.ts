@@ -57,7 +57,7 @@ afterEach(async () => {
 });
 
 describe("health OAuth refresh concurrency", () => {
-  it("shares one rotating refresh token request between concurrent syncs", async () => {
+  it("shares one rotating refresh and preserves an omitted scope", async () => {
     let refreshCalls = 0;
     server = createServer(async (request, response) => {
       const form = await readForm(request);
@@ -82,7 +82,6 @@ describe("health OAuth refresh concurrency", () => {
             access_token: "access-new",
             refresh_token: "refresh-next",
             expires_in: 3600,
-            scope: "activity:read",
           }),
         );
         return;
@@ -105,7 +104,7 @@ describe("health OAuth refresh concurrency", () => {
         authorizeUrl: "https://provider.example/authorize",
         tokenUrl,
         revokeUrl: null,
-        defaultScopes: ["activity:read"],
+        defaultScopes: ["read", "profile:read_all", "activity:read_all"],
         scopeSeparator: "space",
         usePkce: false,
         tokenRequestStyle: "form",
@@ -139,6 +138,10 @@ describe("health OAuth refresh concurrency", () => {
     expect(refreshed.map((token) => token?.refreshToken)).toEqual([
       "refresh-next",
       "refresh-next",
+    ]);
+    expect(refreshed.map((token) => token?.grantedScopes)).toEqual([
+      ["activity:read"],
+      ["activity:read"],
     ]);
   });
 });

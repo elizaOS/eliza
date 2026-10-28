@@ -53,6 +53,7 @@ import {
   normalizeCharacterLanguage,
   normalizeEffectReceipts,
   PRIVACY_DENIED_TEXT,
+  type ReadView,
   type RolesWorldMetadata,
   type RoomHandlerLease,
   readActionReplyFailure,
@@ -72,6 +73,7 @@ import {
   toWellFormedUnicode,
   trackPostDeliveryTask,
   type UUID,
+  validateReadView,
   withRoomDeliverySettlement,
 } from "@elizaos/core";
 import {
@@ -82,6 +84,7 @@ import {
   readAliasedEnv,
 } from "@elizaos/host/protocol";
 import {
+  bindDeviceRequestedActionPolicy,
   persistInferenceTimingSummary,
   shouldSkipResponseMemoryPersistence,
 } from "@elizaos/plugin-assistant";
@@ -479,6 +482,12 @@ export interface ChatGenerationResult {
   };
 }
 export interface ChatActionResultSummary {
+  /** Validated restart-safe locator metadata; never arbitrary tool payload. */
+  data?: {
+    actionName: string;
+    readView: ReadView;
+    control?: Record<string, unknown>;
+  };
   effectReceipts?: readonly EffectReceipt[];
   actionName?: string;
   success: boolean;
@@ -1085,7 +1094,14 @@ function buildRuntimeActionNameLookup(
   }
   return lookup;
 }
-function readRuntimeActionResults(
+/**
+ * Returns the action results recorded for `messageId`, or `[]` when the caller
+ * asked about no message or the runtime exposes no reader. A reader that throws
+ * rejects with `ElizaError` (`ACTION_RESULTS_READ_FAILED`) rather than
+ * resolving `[]`: downstream `[]` means "no action succeeded", so a failed read
+ * would be reported as unexecuted model actions instead of a read failure.
+ */
+export function readRuntimeActionResults(
   runtime: AgentRuntime,
   messageId: UUID | undefined,
 ): unknown[] {
@@ -1101,9 +1117,18 @@ function readRuntimeActionResults(
     return [];
   }
   try {
-    return getActionResults(messageId);
-  } catch {
-    return [];
+    // AgentRuntime.getActionResults reads `this.stateCache`; keep the receiver.
+    return getActionResults.call(runtime, messageId);
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow — downstream `[]` means "no
+    // action succeeded", so swallowing a read failure would make the route
+    // fail a completed turn closed with a false "actions were not executed"
+    // reply instead of reporting the read failure.
+    throw new ElizaError("Failed to read action results for message", {
+      code: "ACTION_RESULTS_READ_FAILED",
+      cause: error,
+      context: { messageId },
+    });
   }
 }
 function readActionResultName(result: unknown): string {
@@ -1253,10 +1278,67 @@ function summarizeActionResultForClient(
       : record.error instanceof Error
         ? record.error.message
         : undefined;
+  // Opaque reference spelling is provider-owned, never an authorization check.
+  // Persist only the validated, current revision-bound read metadata.
+  let readData: ChatActionResultSummary["data"];
+  if (
+    record.success === true &&
+    actionName === "MESSAGE_READ_MESSAGE" &&
+    data &&
+    (record.actionName === undefined || record.actionName === actionName)
+  ) {
+    try {
+      const readView = validateReadView(data.readView),
+        control = asRecord(data.control),
+        promptData = asRecord(record.promptData);
+      if (
+        promptData &&
+        ((promptData.readView !== undefined &&
+          !isDeepStrictEqual(promptData.readView, data.readView)) ||
+          (promptData.control !== undefined &&
+            !isDeepStrictEqual(promptData.control, data.control)))
+      )
+        throw Error("Conflicting read metadata");
+      const safeView =
+        isDeepStrictEqual(data.readView, readView) &&
+        readView.reference.kind === "email" &&
+        readView.reference.resumability === "restart-safe" &&
+        (readView.reference.expiresAt === undefined ||
+          Date.parse(readView.reference.expiresAt) > Date.now()) &&
+        typeof readView.reference.revision === "string" &&
+        readView.reference.revision === readView.slice.revision;
+      if (
+        safeView &&
+        readView.slice.completeness === "complete" &&
+        data.control === undefined
+      )
+        readData = { actionName, readView };
+      else if (
+        safeView &&
+        readView.slice.completeness === "partial-recoverable" &&
+        control &&
+        Object.keys(control).sort().join(",") ===
+          "action,expectedRevision,limit,offset,reference,source,unit" &&
+        control.action === "read_message" &&
+        control.source === "gmail" &&
+        control.reference === readView.reference.ref &&
+        control.expectedRevision === readView.reference.revision &&
+        control.offset === readView.slice.nextOffset &&
+        control.unit === readView.slice.range.unit &&
+        Number.isSafeInteger(control.limit) &&
+        Number(control.limit) > 0 &&
+        Number(control.limit) <= 65536
+      )
+        readData = { actionName, readView, control: { ...control } };
+    } catch {
+      /* Malformed source metadata never becomes durable read authority. */
+    }
+  }
   const effectReceipts = normalizeEffectReceipts(record.effectReceipts);
   if (!actionName && !values && !text && !error && effectReceipts.length === 0)
     return null;
   return {
+    ...(readData ? { data: readData } : {}),
     ...(effectReceipts.length ? { effectReceipts } : {}),
     ...(actionName ? { actionName } : {}),
     success: Boolean(record.success),
@@ -2221,6 +2303,7 @@ export async function readChatRequestPayload(
     source?: string;
     metadata?: Record<string, unknown>;
     clientMessageId?: string;
+    requestedActionPolicy?: unknown;
   }>(req, res, { maxBytes });
   if (!body) return null;
   const normalizedPrompt = normalizeIncomingChatPrompt(body.text, body.images);
@@ -2277,6 +2360,27 @@ export async function readChatRequestPayload(
       res,
       "clientMessageId must be a non-empty string of at most 128 characters",
       400,
+    );
+    return null;
+  }
+  // Consume this transport command in the authenticated request scope only;
+  // it must not become model-facing or persisted message metadata.
+  if (
+    body.requestedActionPolicy !== undefined &&
+    (!helpers.runtime ||
+      !clientMessageId ||
+      (channelType !== ChannelType.DM &&
+        channelType !== ChannelType.VOICE_DM) ||
+      !bindDeviceRequestedActionPolicy(
+        helpers.runtime,
+        body.requestedActionPolicy,
+        clientMessageId,
+      ))
+  ) {
+    helpers.error(
+      res,
+      "Requested action policy requires a current authenticated device request",
+      403,
     );
     return null;
   }

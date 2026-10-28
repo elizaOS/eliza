@@ -206,6 +206,7 @@ export class MeetingTranscriptWriter {
   private lastWriteAt = 0;
   private pendingFlush: ReturnType<typeof setTimeout> | null = null;
   private finalized = false;
+  private finalization: Promise<Transcript> | null = null;
   /**
    * Serializes every store write so an earlier throttled "recording" flush can
    * never complete after, and clobber, the terminal "ready" write when both are
@@ -281,7 +282,7 @@ export class MeetingTranscriptWriter {
    * throttled store update — at most one write per `throttleMs`.
    */
   updateSegments(segments: TranscriptSegment[]): void {
-    if (this.finalized || !this.transcript) return;
+    if (this.finalized || this.finalization || !this.transcript) return;
     this.segments = segments;
     const elapsed = this.now() - this.lastWriteAt;
     if (elapsed >= this.throttleMs) {
@@ -315,7 +316,9 @@ export class MeetingTranscriptWriter {
    * never lands over the finalized record.
    */
   private flush(): Promise<void> {
-    if (this.finalized || !this.transcript) return Promise.resolve();
+    if (this.finalized || this.finalization || !this.transcript) {
+      return Promise.resolve();
+    }
     this.lastWriteAt = this.now();
     const next: Transcript = {
       ...this.transcript,
@@ -326,7 +329,7 @@ export class MeetingTranscriptWriter {
     this.transcript = next;
     const { content, metadata } = transcriptContentAndMetadata(next);
     return this.enqueueWrite(async () => {
-      if (this.finalized) return;
+      if (this.finalized || this.finalization) return;
       try {
         const ok = await this.runtime.updateMemory({
           id: this.transcriptId,
@@ -362,14 +365,33 @@ export class MeetingTranscriptWriter {
       );
     }
     if (this.finalized) return this.transcript;
-    this.finalized = true;
+    if (this.finalization) return this.finalization;
+    const finalization = this.finalizeOnce(input);
+    this.finalization = finalization;
+    try {
+      const transcript = await finalization;
+      this.finalized = true;
+      return transcript;
+    } finally {
+      if (this.finalization === finalization) this.finalization = null;
+    }
+  }
+  private async finalizeOnce(
+    input: FinalizeMeetingTranscriptInput,
+  ): Promise<Transcript> {
     if (this.pendingFlush !== null) {
       clearTimeout(this.pendingFlush);
       this.pendingFlush = null;
     }
     // Let any incremental write already in flight settle first; queued ones
-    // see `finalized` and skip, so the "ready" write below is issued last.
+    // see `finalization` and skip, so the "ready" write below is issued last.
     await this.writeChain;
+    const current = this.transcript;
+    if (!current) {
+      throw new Error(
+        "[MeetingService] transcript disappeared during finalize",
+      );
+    }
     const endedAt = this.now();
     if (input.audioWav && input.retainedAudio) {
       throw new Error(
@@ -386,7 +408,7 @@ export class MeetingTranscriptWriter {
       audioContentType = input.retainedAudio.contentType;
     }
     const final: Transcript = {
-      ...this.transcript,
+      ...current,
       segments: input.segments,
       endedAt,
       durationMs: transcriptDurationMs(input.segments),
@@ -395,7 +417,7 @@ export class MeetingTranscriptWriter {
       audioUrl,
       audioContentType,
       metadata: {
-        ...this.transcript.metadata,
+        ...current.metadata,
         ...input.metadata,
         endReason: input.endReason,
         participants: input.participants,
@@ -413,7 +435,6 @@ export class MeetingTranscriptWriter {
     };
     const knowledgeDocumentId = await this.mirrorToKnowledge(final);
     if (knowledgeDocumentId) final.knowledgeDocumentId = knowledgeDocumentId;
-    this.transcript = final;
     const { content, metadata } = transcriptContentAndMetadata(final);
     const ok = await this.runtime.updateMemory({
       id: this.transcriptId,
@@ -425,6 +446,7 @@ export class MeetingTranscriptWriter {
         `[MeetingService] transcript ${this.transcriptId} row vanished before finalize`,
       );
     }
+    this.transcript = final;
     logger.info(
       {
         transcriptId: this.transcriptId,

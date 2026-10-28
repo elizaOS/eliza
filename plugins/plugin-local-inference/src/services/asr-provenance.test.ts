@@ -1,6 +1,12 @@
 /** Covers strict-versus-candidate ASR provenance enforcement against real manifest files. */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -164,5 +170,88 @@ describe("bundle ASR artifacts", () => {
 		writeFileSync(path.join(root, "asr", "README.md"), "not a model");
 
 		expect(bundleHasAsrModelFiles(root)).toBe(false);
+	});
+
+	// chmod cannot remove read access for uid 0 or on Windows, where the read
+	// succeeds and this assertion would fail despite correct behaviour.
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"propagates an unreadable ASR GGUF instead of reporting no model files",
+		() => {
+			const root = writeManifest({});
+			const model = path.join(root, "asr", "phonon-2-fv5.gguf");
+			writeFileSync(model, gguf("parakeet-tdt"));
+			chmodSync(model, 0o000);
+			try {
+				// A staged-but-unreadable model is a broken bundle, not a bundle
+				// with no ASR artifacts: callers must not report "no ASR model is
+				// staged". This is the read behind `Engine.startVoice()`'s
+				// `useFfiBackend && bundleHasAsrModelFiles(bundleRoot)` provenance
+				// gate (engine.ts) and `Engine.localAsrBlockersForBundle()`, so
+				// throwing here fails that call instead of skipping the gate or
+				// emitting `files.asr: no ASR model artifacts are staged`.
+				expect(() => readGgufArchitecture(model)).toThrow(
+					/failed to read GGUF header/,
+				);
+				expect(() => bundleHasAsrModelFiles(root)).toThrow(
+					/failed to read GGUF header/,
+				);
+			} finally {
+				chmodSync(model, 0o600);
+			}
+		},
+	);
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"accepts a readable Parakeet GGUF beside an unreadable one",
+		() => {
+			const root = writeManifest({});
+			const broken = path.join(root, "asr", "a-broken.gguf");
+			writeFileSync(broken, gguf("parakeet-tdt"));
+			writeFileSync(
+				path.join(root, "asr", "z-phonon-2.gguf"),
+				gguf("parakeet-tdt"),
+			);
+			chmodSync(broken, 0o000);
+			try {
+				// Listing order must not turn a usable bundle into a broken one.
+				expect(bundleHasAsrModelFiles(root)).toBe(true);
+			} finally {
+				chmodSync(broken, 0o600);
+			}
+		},
+	);
+
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"propagates an unreadable asr/ directory instead of reporting no model",
+		() => {
+			const root = writeManifest({});
+			const asrDir = path.join(root, "asr");
+			writeFileSync(
+				path.join(asrDir, "phonon-2-fv5.gguf"),
+				gguf("parakeet-tdt"),
+			);
+			chmodSync(asrDir, 0o000);
+			try {
+				expect(() => bundleHasAsrModelFiles(root)).toThrow(/EACCES/);
+			} finally {
+				chmodSync(asrDir, 0o700);
+			}
+		},
+	);
+
+	it("propagates an asr/ path that cannot be listed without relying on mode bits", () => {
+		const root = writeManifest({});
+		// `asr` is a regular file, so the listing fails with ENOTDIR for any uid.
+		rmSync(path.join(root, "asr"), { recursive: true, force: true });
+		writeFileSync(path.join(root, "asr"), "not a directory");
+		expect(() => bundleHasAsrModelFiles(root)).toThrow(/ENOTDIR/);
+	});
+
+	it("treats a GGUF deleted mid-scan as absent, not unreadable", () => {
+		// The directory listing and the header read are separate syscalls; a file
+		// removed between them is legitimately "not there".
+		expect(
+			readGgufArchitecture(path.join(tmpdir(), "eliza-absent.gguf")),
+		).toBeNull();
 	});
 });

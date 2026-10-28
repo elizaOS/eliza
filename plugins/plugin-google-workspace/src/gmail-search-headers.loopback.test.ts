@@ -1,8 +1,7 @@
 /**
- * Gmail message search through the installed googleapis HTTP client against a
- * loopback provider that, like Gmail, returns only the requested
- * `metadataHeaders` for `format=metadata`. Unsubscribe scans read
- * List-Unsubscribe headers from these search results.
+ * Gmail operations through the installed googleapis HTTP client against a
+ * loopback provider. Search returns only the requested metadata headers, and
+ * send can return a malformed receipt with no provider message id.
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -68,6 +67,10 @@ beforeAll(async () => {
       );
       return;
     }
+    if (url.pathname === "/gmail/v1/users/me/messages/send") {
+      response.end(JSON.stringify({ threadId: "sent-thread-without-message" }));
+      return;
+    }
     response.writeHead(404);
     response.end(JSON.stringify({ error: { code: 404 } }));
   });
@@ -85,7 +88,7 @@ afterAll(async () => {
   });
 });
 
-describe("Gmail search metadata headers", () => {
+describe("Gmail HTTP client", () => {
   it("returns the unsubscribe, Cc and Reply-To headers of a searched message", async () => {
     const [message] = await client.searchMessages({
       accountId: "owner-account",
@@ -98,5 +101,16 @@ describe("Gmail search metadata headers", () => {
     });
     expect(message?.cc).toEqual([{ email: "partner@example.com" }]);
     expect(message?.replyTo).toEqual({ email: "support@shop.example" });
+  });
+
+  it("rejects a send response that has no provider message id", async () => {
+    await expect(
+      client.sendGmailMessage({
+        accountId: "owner-account",
+        to: ["recipient@example.com"],
+        subject: "Receipt check",
+        bodyText: "Hello",
+      })
+    ).rejects.toMatchObject({ code: "GOOGLE_GMAIL_SEND_RECEIPT_MISSING" });
   });
 });

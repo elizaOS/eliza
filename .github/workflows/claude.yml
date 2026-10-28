@@ -80,7 +80,7 @@ jobs:
         # (low credit balance, rate limit, transient outage). @claude is a
         # best-effort assistant; an unavailable run must not turn the CI red.
         continue-on-error: true
-        uses: anthropics/claude-code-action@1d6de8cb0c237e7c15e9e1bdf973826ebae490cc
+        uses: anthropics/claude-code-action@925afb53776cf1a2b738c6bdbed37b4d4000ef13
         with:
           # ANTHROPIC_API_KEY is the credential that actually exists in this
           # repository's secrets. The OAuth-token secret this workflow used to

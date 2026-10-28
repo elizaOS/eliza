@@ -201,14 +201,11 @@ test("a failed durable method review prevents dispatch; successful storage prece
     db.exec(
       "CREATE TRIGGER fail_selection BEFORE INSERT ON bill_method_selections_v1 BEGIN SELECT RAISE(ABORT, 'disk failure'); END;",
     );
-    assert.equal(
-      (
-        await workflow.chooseExistingMethod(decision.reviewKey, {
-          operationId: "operation",
-        })
-      ).kind,
-      "blocked",
-    );
+    const unsaved = await workflow.chooseExistingMethod(decision.reviewKey, {
+      operationId: "operation",
+    });
+    assert.equal(unsaved.kind, "blocked");
+    assert.equal(unsaved.reasonCode, "selection-save-failed");
     assert.deepEqual(events, ["clear"]);
     assert.equal(store.loadMethodSelection("operation"), null);
     db.exec("DROP TRIGGER fail_selection");
@@ -283,6 +280,7 @@ test("a selection refused before the click is found again once, then reported", 
     });
     assert.equal(stopped.kind, "blocked");
     assert.match(stopped.reason, /No click was sent/);
+    assert.equal(stopped.reasonCode, "selection-not-sent");
     assert.deepEqual(proposals, ["second", "second.relocated"]);
     // A failed post-click verification is not proof that no effect occurred.
     evidenceRef = "evidence:post-click";
@@ -296,6 +294,7 @@ test("a selection refused before the click is found again once, then reported", 
       },
     );
     assert.equal(failedAfterClick.kind, "unknown-outcome");
+    assert.equal(failedAfterClick.reasonCode, "selection-unverified");
     assert.deepEqual(proposals, ["after-click"]);
   } finally {
     db.close();

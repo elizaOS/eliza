@@ -360,6 +360,32 @@ function withWorldMetadataTail<T>(
   return run;
 }
 
+/**
+ * Serialization tail for component creates, keyed by storage instance for
+ * the same reason as {@link withWorldMetadataTail}: the existence check and
+ * the write are separate storage calls, so two concurrent creates of one id
+ * would both pass the check and the second would overwrite the first.
+ */
+const componentCreateTails = new WeakMap<IStorage, Promise<void>>();
+
+function withComponentCreateTail<T>(
+  storage: IStorage,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const run = (componentCreateTails.get(storage) ?? Promise.resolve()).then(
+    operation,
+    operation,
+  );
+  componentCreateTails.set(
+    storage,
+    run.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return run;
+}
+
 function relationshipFromStored(
   r: StoredRelationship,
   fallbackAgentId: UUID,
@@ -649,6 +675,18 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const ids: UUID[] = [];
     for (const entity of entities) {
       const id = (entity.id ?? randomUUID()) as UUID;
+      // plugin-sql inserts with onConflictDoNothing, so an existing row is
+      // never overwritten — in particular not another agent's entity,
+      // whose stored agentId and metadata a blind set would replace. Like
+      // plugin-sql, the existing id is still reported as created.
+      if (await this.storage.get<Entity>(COLLECTIONS.ENTITIES, id)) {
+        logger.warn(
+          { src: "plugin:sqlite", entityId: id },
+          "Entity already existed; treating it as created",
+        );
+        ids.push(id);
+        continue;
+      }
       // Components live in their own collection, never in the entity row.
       const { components: _components, ...row } = entity;
       await this.storage.set(COLLECTIONS.ENTITIES, id, { ...row, id });
@@ -904,13 +942,35 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   // ── Component CRUD ────────────────────────────────────────────────────
 
   async createComponents(components: Component[]): Promise<UUID[]> {
-    const ids: UUID[] = [];
-    for (const component of components) {
-      const id = component.id as UUID;
-      await this.storage.set(COLLECTIONS.COMPONENTS, id, { ...component, id });
-      ids.push(id);
-    }
-    return ids;
+    // plugin-sql's createComponent is a plain insert: a duplicate id fails
+    // instead of replacing the stored row. Reject every conflict before the
+    // first write so a failed batch never leaves part of itself stored.
+    return withComponentCreateTail(this.storage, async () => {
+      const ids: UUID[] = [];
+      const seen = new Set<UUID>();
+      for (const component of components) {
+        const id = component.id as UUID;
+        if (
+          seen.has(id) ||
+          (await this.storage.get<Component>(COLLECTIONS.COMPONENTS, id))
+        ) {
+          throw new ElizaError("Component already exists", {
+            code: "COMPONENT_ALREADY_EXISTS",
+            context: { componentId: id },
+          });
+        }
+        seen.add(id);
+        ids.push(id);
+      }
+      for (const component of components) {
+        const id = component.id as UUID;
+        await this.storage.set(COLLECTIONS.COMPONENTS, id, {
+          ...component,
+          id,
+        });
+      }
+      return ids;
+    });
   }
 
   async getComponentsByIds(componentIds: UUID[]): Promise<Component[]> {
@@ -3370,7 +3430,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.RELATIONSHIPS,
         id,
       );
-      if (r) relationships.push(relationshipFromStored(r, this.agentId));
+      if (!r) continue;
+      // Only this agent's edges are listed: plugin-sql's getRelationshipsByIds
+      // query carries `agentId = this.agentId` alongside the id filter.
+      if ((r.agentId ?? this.agentId) !== this.agentId) continue;
+      relationships.push(relationshipFromStored(r, this.agentId));
     }
     return relationships;
   }
@@ -3403,6 +3467,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     for (const id of relationshipIds) {
+      // Only this agent's edges are deletable: plugin-sql's delete carries
+      // agentId in the WHERE, and a stored row for another agent is not
+      // this adapter's to delete — the same guard as updateRelationships.
+      const existing = await this.storage.get<StoredRelationship>(
+        COLLECTIONS.RELATIONSHIPS,
+        id,
+      );
+      if (!existing) continue;
+      if ((existing.agentId ?? this.agentId) !== this.agentId) continue;
       await this.storage.delete(COLLECTIONS.RELATIONSHIPS, id);
     }
   }
@@ -3602,9 +3675,25 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createTasks(tasks: Task[]): Promise<UUID[]> {
+    const pending = tasks.map((task) => ({
+      task,
+      id: (task.id ?? randomUUID()) as UUID,
+    }));
+    // An existing row for another agent is never overwritten or re-owned by
+    // stamping this agent on it. plugin-sql fails on the duplicate primary
+    // key, so fail before writing any task in the batch instead of returning
+    // fewer ids than were requested.
+    for (const { id } of pending) {
+      const existing = await this.storage.get<Task>(COLLECTIONS.TASKS, id);
+      if (existing && !this.taskIsVisibleToOwner(existing)) {
+        throw new ElizaError("SQLite task id belongs to another agent", {
+          code: "SQLITE_TASK_ID_CONFLICT",
+          context: { taskId: id },
+        });
+      }
+    }
     const ids: UUID[] = [];
-    for (const task of tasks) {
-      const id = (task.id ?? randomUUID()) as UUID;
+    for (const { task, id } of pending) {
       await this.storage.set(COLLECTIONS.TASKS, id, {
         ...task,
         id,
@@ -3808,6 +3897,27 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
   }
 
   async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
+    // plugin-sql's createPairingRequest is a plain insert: a duplicate id
+    // fails instead of replacing the stored row. A blind set here silently
+    // replaced a pending request — its pairing code included. Check every id
+    // before writing so a conflicting batch fails without partial writes.
+    const seen = new Set<UUID>();
+    for (const request of requests) {
+      const id = request.id as UUID;
+      if (
+        seen.has(id) ||
+        (await this.storage.get<PairingRequest>(
+          COLLECTIONS.PAIRING_REQUESTS,
+          id,
+        ))
+      ) {
+        throw new ElizaError("Pairing request already exists", {
+          code: "PAIRING_REQUEST_ALREADY_EXISTS",
+          context: { pairingRequestId: id },
+        });
+      }
+      seen.add(id);
+    }
     const ids: UUID[] = [];
     for (const request of requests) {
       const id = request.id as UUID;

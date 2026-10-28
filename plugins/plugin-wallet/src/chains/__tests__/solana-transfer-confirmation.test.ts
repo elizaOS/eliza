@@ -214,8 +214,13 @@ describe("Solana transfer confirmation states", () => {
 
   it("SPL transfer: confirmed on-chain -> status submitted", async () => {
     mockConfirmTransaction.mockResolvedValue({ value: { err: null } });
-    // SPL path needs token decimals and ATA
-    mockGetAccountInfo.mockResolvedValue({ data: Buffer.alloc(0) });
+    // SPL path needs token decimals and ATA. A mint account is owned by a
+    // token program; the transfer reads that owner to pick the program.
+    const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+    mockGetAccountInfo.mockResolvedValue({
+      data: Buffer.alloc(0),
+      owner: TOKEN_PROGRAM_ID,
+    });
 
     // Generate a test mint at runtime (not a real token, no secrets).
     // A hardcoded mint address triggers secret scanners (false positive).

@@ -64,11 +64,16 @@ import type {
 } from "./voice/eot-classifier";
 import type { AsrWordTiming } from "./voice/ffi-bindings";
 import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
-import {
-	readVoiceBackendModeFromEnv,
-	selectVoiceBackend,
-} from "./voice/kokoro/runtime-selection";
 import { VoiceLifecycleError } from "./voice/lifecycle";
+import {
+	createParadeeSpeakerPreset,
+	createParadeeTtsBackend,
+	ParadeeTtsBackend,
+} from "./voice/paradee/paradee-backend";
+import {
+	discoverParadeeEngine,
+	resolveParadeeEngineConfig,
+} from "./voice/paradee/paradee-engine-discovery";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import { type MtpTextRunner, mtpTextRunner } from "./voice/pipeline-impls";
 import {
@@ -76,6 +81,10 @@ import {
 	SharedResourceRegistry,
 } from "./voice/shared-resources";
 import { getSharedVoiceProfileStore } from "./voice/speaker/profile-store-factory";
+import {
+	readVoiceBackendModeFromEnv,
+	selectVoiceBackend,
+} from "./voice/tts-backend-selection";
 import type {
 	RejectedTokenRange,
 	TextToken,
@@ -467,8 +476,10 @@ export class LocalInferenceEngine {
 	 * the arbiter already counts in its resident map.
 	 */
 	getResidentFootprintMb(): number {
-		if (this.ownedEvictableRoleIds.size === 0) return 0;
-		let mb = 0;
+		let mb =
+			this.voiceBridge?.backend instanceof ParadeeTtsBackend
+				? this.voiceBridge.backend.residentModelMb
+				: 0;
 		for (const role of this.sharedResources.evictableRoles()) {
 			if (this.ownedEvictableRoleIds.has(role.id)) {
 				mb += role.estimatedResidentMb();
@@ -646,6 +657,8 @@ export class LocalInferenceEngine {
 			}
 			bridge.dispose();
 			if (this.voiceBridge === bridge) this.voiceBridge = null;
+			if (!this.hasLoadedModel() && !this.voiceBridge)
+				this.memoryMonitor.stop();
 		}
 	}
 
@@ -1051,6 +1064,7 @@ export class LocalInferenceEngine {
 			...opts,
 			sharedResources: this.sharedResources,
 		});
+		if (!this.memoryMonitor.isRunning()) this.memoryMonitor.start();
 		return this.voiceBridge;
 	}
 
@@ -1129,19 +1143,111 @@ export class LocalInferenceEngine {
 
 	/**
 	 * True when the TEXT_TO_SPEECH handler can produce audio: a live non-stub
-	 * bridge, Kokoro staged in the shared models directory, or Kokoro shipped
-	 * inside the active/assigned Eliza-1 bundle. Mirrors the artifact
-	 * resolution in `ensureActiveBundleVoiceReadyOnce` without loading anything.
+	 * bridge, or the selected on-device TTS staged for the host worker —
+	 * Paradee-8M v1.1 (`ELIZA_PARADEE_MODEL_DIR`, the shared models directory,
+	 * or the active/assigned Eliza-1 bundle's `tts/paradee/`), or Kokoro when
+	 * `ELIZA_TTS_BACKEND=kokoro` opts into it. Mirrors the artifact resolution
+	 * in `ensureActiveBundleVoiceReadyOnce` without loading anything.
 	 */
 	async canSynthesizeLocally(): Promise<boolean> {
 		const bridge = this.voiceBridge;
 		if (bridge) return (bridge.backend as { id?: string }).id !== "stub";
-		if (resolveKokoroEngineConfig() !== null) return true;
+		let mode: ReturnType<typeof readVoiceBackendModeFromEnv>;
+		try {
+			mode = readVoiceBackendModeFromEnv();
+		} catch {
+			return false;
+		}
+		const staged = (bundleRoot: string | null) =>
+			mode === "kokoro"
+				? (bundleRoot
+						? resolveKokoroEngineConfig(path.join(bundleRoot, "tts", "kokoro"))
+						: resolveKokoroEngineConfig()) !== null
+				: resolveParadeeEngineConfig({ bundleRoot }) !== null;
+		if (staged(null)) return true;
 		const bundle = await this.assignedVoiceBundle();
-		return (
-			bundle !== null &&
-			resolveKokoroEngineConfig(path.join(bundle.root, "tts", "kokoro")) !==
-				null
+		return bundle !== null && staged(bundle.root);
+	}
+
+	/** TTS backend override for the fused ASR bridge (see its caller). */
+	private asrBridgeTtsOverrides(
+		bundle: ActiveEliza1Bundle,
+	): Pick<
+		EngineVoiceBridgeOptions,
+		"ttsBackendOverride" | "speakerPresetOverride"
+	> {
+		if (readVoiceBackendModeFromEnv() === "kokoro") {
+			const kokoro =
+				resolveKokoroEngineConfig(path.join(bundle.root, "tts", "kokoro")) ??
+				resolveKokoroEngineConfig();
+			if (!kokoro) {
+				throw new VoiceStartupError(
+					"missing-bundle-root",
+					"[voice] ELIZA_TTS_BACKEND=kokoro but no Kokoro artifacts are staged.",
+				);
+			}
+			return {
+				ttsBackendOverride: createKokoroTtsBackend(kokoro, {
+					bundleRoot: bundle.root,
+				}),
+				speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
+			};
+		}
+		const paradee = discoverParadeeEngine({ bundleRoot: bundle.root });
+		if (!paradee.ok) {
+			logger.warn(
+				`[voice] Paradee TTS unavailable on the ASR bridge: ${paradee.reason}`,
+			);
+			return {};
+		}
+		return {
+			ttsBackendOverride: createParadeeTtsBackend(paradee.config),
+			speakerPresetOverride: createParadeeSpeakerPreset(),
+		};
+	}
+
+	/**
+	 * Resolve the TTS-only voice path for `ensureActiveBundleVoiceReadyOnce`:
+	 * Paradee through the host worker unless `ELIZA_TTS_BACKEND=kokoro`.
+	 * Throws a `VoiceStartupError` naming what is missing — no silent change
+	 * of voice when the selected backend cannot run.
+	 */
+	private standaloneTtsOptions(
+		bundle: ActiveEliza1Bundle | null,
+	): Pick<EngineVoiceBridgeOptions, "paradeeOnly" | "kokoroOnly"> {
+		const mode = readVoiceBackendModeFromEnv();
+		const paradee = discoverParadeeEngine({ bundleRoot: bundle?.root });
+		const kokoro =
+			mode === "kokoro"
+				? ((bundle
+						? resolveKokoroEngineConfig(path.join(bundle.root, "tts", "kokoro"))
+						: null) ?? resolveKokoroEngineConfig())
+				: null;
+		let decision: ReturnType<typeof selectVoiceBackend>;
+		try {
+			decision = selectVoiceBackend({
+				mode,
+				mobile: isMobilePlatform(),
+				paradeeAvailable: paradee.ok,
+				paradeeUnavailableReason: paradee.ok ? undefined : paradee.reason,
+				kokoroAvailable: kokoro !== null,
+			});
+		} catch (err) {
+			throw new VoiceStartupError(
+				"missing-bundle-root",
+				err instanceof Error ? err.message : String(err),
+			);
+		}
+		logger.info(
+			`[voice] Selected ${decision.backend} TTS${
+				bundle ? ` for ${bundle.tierId}` : ""
+			}: ${decision.reason}`,
+		);
+		if (decision.backend === "kokoro" && kokoro) return { kokoroOnly: kokoro };
+		if (paradee.ok) return { paradeeOnly: paradee.config };
+		throw new VoiceStartupError(
+			"missing-bundle-root",
+			"[voice] internal error: no TTS backend resolved",
 		);
 	}
 
@@ -1178,7 +1284,7 @@ export class LocalInferenceEngine {
 			: "blocked-asr-provenance";
 		throw new VoiceStartupError(
 			code,
-			`[voice] Cannot start local Gemma ASR for ${bundle.tierId}: ${blockers.join("; ")}`,
+			`[voice] Cannot start local Phonon-2 ASR for ${bundle.tierId}: ${blockers.join("; ")}`,
 		);
 	}
 
@@ -1229,7 +1335,7 @@ export class LocalInferenceEngine {
 		if (!bundle) {
 			throw new VoiceStartupError(
 				"missing-bundle-root",
-				"[voice] Cannot start local ASR: no active Eliza-1 bundle is loaded. Install and activate a Gemma ASR-capable Eliza-1 bundle.",
+				"[voice] Cannot start local ASR: no active Eliza-1 bundle is loaded. Install and activate an Eliza-1 bundle that stages the Phonon-2 ASR (asr/phonon-2-fv5.gguf).",
 			);
 		}
 		this.assertLocalAsrEligible(bundle);
@@ -1243,18 +1349,10 @@ export class LocalInferenceEngine {
 			await this.disposeVoiceBridge(bridge);
 		}
 
-		const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
-		const kokoro =
-			resolveKokoroEngineConfig(bundleKokoroRoot) ??
-			resolveKokoroEngineConfig();
-		const kokoroOverrides = kokoro
-			? {
-					ttsBackendOverride: createKokoroTtsBackend(kokoro, {
-						bundleRoot: bundle.root,
-					}),
-					speakerPresetOverride: createKokoroSpeakerPreset(kokoro),
-				}
-			: {};
+		// Speech output on the fused ASR bridge: Paradee-8M v1.1 through the
+		// host TTS worker (product voice), or Kokoro only when
+		// ELIZA_TTS_BACKEND=kokoro opts into it.
+		const ttsOverrides = this.asrBridgeTtsOverrides(bundle);
 		// Light up speaker attribution on the speak-back loop (#12257): thread
 		// the one shared VoiceProfileStore in so the engine-bridge attribution
 		// gate opens. The store is shared with Pipeline A (live frames) so both
@@ -1265,7 +1363,7 @@ export class LocalInferenceEngine {
 			bundleRoot: bundle.root,
 			useFfiBackend: true,
 			profileStore,
-			...kokoroOverrides,
+			...ttsOverrides,
 		});
 		await bridge.arm();
 		return bridge;
@@ -1280,53 +1378,16 @@ export class LocalInferenceEngine {
 			await this.activateAssignedBundleForVoice();
 			const bundle = this.activeEliza1Bundle;
 			// Speaker attribution is wired on the fused ASR path
-			// (`ensureActiveBundleAsrReadyOnce`), not here: both startVoice calls
-			// below take the Kokoro-only TTS path (`useFfiBackend: false`), which
-			// has no fused `libelizainference` handle and therefore no speaker
-			// runtime. Threading a profileStore here would be inert — the
-			// engine-bridge gate needs the fused handle to attribute (#12257).
-			if (bundle) {
-				const bundleKokoroRoot = path.join(bundle.root, "tts", "kokoro");
-				const kokoro =
-					resolveKokoroEngineConfig(bundleKokoroRoot) ??
-					resolveKokoroEngineConfig();
-				const mode = readVoiceBackendModeFromEnv();
-				const decision = selectVoiceBackend({
-					mode,
-					mobile: isMobilePlatform(),
-					kokoroAvailable: kokoro !== null,
-				});
-				logger.info(
-					`[voice] Selected ${decision.backend} backend for ${bundle.tierId}: ${decision.reason}`,
-				);
-				if (!kokoro) {
-					throw new VoiceStartupError(
-						"missing-bundle-root",
-						"[voice] Kokoro was selected but its model artifacts are not staged under <stateDir>/local-inference/models/kokoro/.",
-					);
-				}
-				bridge = this.startVoice({
-					bundleRoot: "",
-					useFfiBackend: false,
-					kokoroOnly: kokoro,
-				});
-			} else {
-				// No Eliza-1 bundle. Fall back to the Kokoro-only path when its
-				// artifacts are staged. No silent degrade: when both are absent
-				// the error names both staging options.
-				const kokoro = resolveKokoroEngineConfig();
-				if (!kokoro) {
-					throw new VoiceStartupError(
-						"missing-bundle-root",
-						"[voice] Cannot start local voice: no active Eliza-1 bundle is loaded and no Kokoro artifacts are staged under <stateDir>/local-inference/models/kokoro/. Install an Eliza-1 bundle, or stage the Kokoro ONNX + at least one voice .bin to enable local TTS.",
-					);
-				}
-				bridge = this.startVoice({
-					bundleRoot: "",
-					useFfiBackend: false,
-					kokoroOnly: kokoro,
-				});
-			}
+			// (`ensureActiveBundleAsrReadyOnce`), not here: this is a TTS-only
+			// path (`useFfiBackend: false`) with no fused `libelizainference`
+			// handle in this process and therefore no speaker runtime. Threading
+			// a profileStore here would be inert — the engine-bridge gate needs
+			// the fused handle to attribute (#12257).
+			bridge = this.startVoice({
+				bundleRoot: "",
+				useFfiBackend: false,
+				...this.standaloneTtsOptions(bundle),
+			});
 		}
 		await bridge.arm();
 		return bridge;
@@ -1794,6 +1855,8 @@ export class LocalInferenceEngine {
 			}
 			bridge.dispose();
 			if (this.voiceBridge === bridge) this.voiceBridge = null;
+			if (!this.hasLoadedModel() && !this.voiceBridge)
+				this.memoryMonitor.stop();
 		}
 	}
 

@@ -683,3 +683,77 @@ describe("subscription allowance lifecycle", () => {
     expect((await getOrgTier(org)).authority.generation).toBe(next);
   }, 60_000);
 });
+
+test("Worker mobile identity funds inference entirely from its active Plus allowance", async () => {
+  const { createHash, randomBytes } = await import("node:crypto");
+  const { getTableConfig } = await import("drizzle-orm/pg-core");
+  const { organizations } = await import("../../db/schemas/organizations");
+  const { users } = await import("../../db/schemas/users");
+  const { apiKeys } = await import("../../db/schemas/api-keys");
+  const { userModerationStatus } = await import("../../db/schemas/moderation-violations");
+  // Complete the historical billing fixture with real identity table columns.
+  for (const table of [organizations, users, apiKeys, userModerationStatus]) {
+    const config = getTableConfig(table);
+    await fixture.exec(`CREATE TABLE IF NOT EXISTS "${config.name}" (id uuid)`);
+    for (const column of config.columns) {
+      const type = "enumValues" in column && column.enumValues ? "text" : column.getSQLType();
+      await fixture.exec(
+        `ALTER TABLE "${config.name}" ADD COLUMN IF NOT EXISTS "${column.name}" ${type}`,
+      );
+    }
+  }
+  const now = await databaseNow();
+  const { org } = await seedSubscriber({
+    periodStart: new Date(now.getTime() - HOUR),
+    periodEnd: new Date(now.getTime() + 24 * HOUR),
+    allowance: "1.000000",
+    credits: "0.000000",
+  });
+  const user = "74000000-0000-4000-8000-000000000099",
+    key = `eliza_mobile_${randomBytes(32).toString("hex")}`;
+  await fixture.query("INSERT INTO users(id,organization_id,is_active) VALUES($1,$2,true)", [
+    user,
+    org,
+  ]);
+  await fixture.query(
+    `INSERT INTO api_keys(id,name,key_hash,key_prefix,user_id,organization_id,is_active,expires_at,source_app_id,usage_count,rate_limit) VALUES(gen_random_uuid(),'mobile-inference',$1,'eliza_mobile_',$2,$3,true,now()+interval '1 day','83000000-0000-4000-8000-000000000001',0,1000)`,
+    [createHash("sha256").update(key).digest("hex"), user, org],
+  );
+  const { resolveInferenceAuthContext } = await import("./inference-auth-context");
+  const deferred: Promise<unknown>[] = [];
+  const auth = await resolveInferenceAuthContext(
+    new Request("https://api.eliza.app/api/v1/chat/completions", {
+      headers: { Authorization: `Bearer ${key}` },
+    }),
+    {
+      cacheOnly: true,
+      executionCtx: {
+        waitUntil(promise) {
+          deferred.push(promise);
+        },
+      },
+    },
+  );
+  expect(auth.kind).toBe("authorized");
+  if (auth.kind !== "authorized") throw Error("Mobile caller refused");
+  const { reserveFlatUsageCredits } = await import("./ai-billing");
+  const reservation = await reserveFlatUsageCredits(
+    {
+      organizationId: auth.ctx.orgId,
+      userId: auth.ctx.userId,
+      model: "cerebras/qwen-3.8-27b",
+      provider: "cerebras",
+      billingSource: "cerebras",
+      requestId: "mobile-plus-inference-0001",
+    },
+    { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+    { idempotencyKey: "mobile-plus-inference-0001" },
+  );
+  expect(reservation.reservedAmount).toBe(0.1);
+  const state = await readState(org);
+  expect(state.balance).toBe("0.000000");
+  expect(state.allocations).toEqual([
+    expect.objectContaining({ source: "allowance", reserved_amount: "0.100000" }),
+  ]);
+  await Promise.allSettled(deferred);
+});

@@ -264,7 +264,45 @@ const path_ = (p: string) => (pathname: string) => pathname === p;
 const prefix = (p: string) => (pathname: string) => pathname.startsWith(p);
 
 // NOTE: table order matters — first match wins.
+export const PUBLIC_SERVICE_DOCUMENT_FIXTURE = {
+  success: true,
+  version: 1,
+  service: {
+    name: "Nebula",
+    terms: {
+      title: "Nebula Terms",
+      revision: "Terms revision 2026-10-25",
+      sections: [
+        {
+          title: "Service terms",
+          paragraphs: [
+            "These are the configured service terms.",
+            "<strong>Legal text stays plain text.</strong>",
+          ],
+        },
+      ],
+    },
+    privacy: {
+      title: "Nebula Privacy",
+      revision: "Privacy revision 2026-10-25",
+      sections: [
+        {
+          title: "Service privacy",
+          paragraphs: [
+            "These are the configured service privacy disclosures.",
+            "Contact privacy@example.invalid for this fixture.",
+          ],
+        },
+      ],
+    },
+  },
+};
+
 const STUB_RULES: StubRule[] = [
+  {
+    match: (pathname) => pathname === "/api/public/service",
+    body: PUBLIC_SERVICE_DOCUMENT_FIXTURE,
+  },
   {
     match: (pathname) =>
       pathname === "/auth/providers" || pathname === "/steward/auth/providers",

@@ -13,12 +13,34 @@ export async function createConfiguredBillHelper({
   runtimeModule,
   credentialGate,
   evidenceDirectory,
+  evidenceCodec,
   environment = process.env,
   onUnavailable = () => {},
   googleReadPort,
   documentRuntime,
   documentImages,
 }) {
+  // Optional host encoding of each evidence record (for example, encryption
+  // under a host-held key). The record file is `<id><extension>`.
+  if (
+    evidenceCodec !== undefined &&
+    (!evidenceCodec ||
+      typeof evidenceCodec.encode !== "function" ||
+      !/^\.[a-z0-9]{1,16}$/.test(evidenceCodec.extension ?? ""))
+  )
+    throw new BillHostError("Invalid bill evidence codec");
+  const evidenceFile = (id, record) => {
+    const text = `${JSON.stringify(record)}\n`;
+    if (!evidenceCodec)
+      return { path: join(evidenceDirectory, `${id}.json`), text };
+    const encoded = evidenceCodec.encode(text);
+    if (typeof encoded !== "string" || !encoded)
+      throw new BillHostError("Invalid bill evidence codec");
+    return {
+      path: join(evidenceDirectory, `${id}${evidenceCodec.extension}`),
+      text: encoded,
+    };
+  };
   const readback =
     hostPolicy.reconcileMethod != null ||
     hostPolicy.reconciliationEvidenceRecord != null;
@@ -62,9 +84,14 @@ export async function createConfiguredBillHelper({
     onUnavailable(),
   );
   const registrationAbort = new AbortController();
+  // `reason` lets hosts name this failure without matching the message.
+  const profileUnavailable = (cause) =>
+    Object.assign(
+      new Error("Configured browser profile unavailable", { cause }),
+      { reason: "profile-unavailable" },
+    );
   const requireProfile = () => {
-    if (native.getProfileId() !== config.profileId)
-      throw new Error("Configured browser profile unavailable");
+    if (native.getProfileId() !== config.profileId) throw profileUnavailable();
   };
   const target = Object.fromEntries(
     ["bindTask", "guideTask", "execute"].map((method) => [
@@ -73,9 +100,15 @@ export async function createConfiguredBillHelper({
         // Wait only before a new binding, never before replaying an effect or
         // revocation cleanup. The actuator fences task revisions around binding.
         if (method === "bindTask" && !args[0]?.revoked) {
-          await native.waitForProfile(config.profileId, {
-            signal: registrationAbort.signal,
-          });
+          try {
+            await native.waitForProfile(config.profileId, {
+              signal: registrationAbort.signal,
+            });
+          } catch (error) {
+            // Another, stopped or unregistered profile. Closing aborts instead.
+            if (error?.kind !== "UNAVAILABLE") throw error;
+            throw profileUnavailable(error);
+          }
           if (
             (await credentialGate()) !== config.actorId ||
             registrationAbort.signal.aborted
@@ -245,11 +278,11 @@ export async function createConfiguredBillHelper({
                 ...input,
                 status: result.status,
               });
-              await writeFile(
-                join(evidenceDirectory, `${id}.json`),
-                `${JSON.stringify(record)}\n`,
-                { mode: 0o600, flag: "wx" },
-              );
+              const file = evidenceFile(id, record);
+              await writeFile(file.path, file.text, {
+                mode: 0o600,
+                flag: "wx",
+              });
               return {
                 status: result.status,
                 evidenceRef: `${hostPolicy.evidenceNamespace}:${id}`,
@@ -267,11 +300,8 @@ export async function createConfiguredBillHelper({
           after,
           status,
         });
-        await writeFile(
-          join(evidenceDirectory, `${id}.json`),
-          `${JSON.stringify(record)}\n`,
-          { mode: 0o600, flag: "wx" },
-        );
+        const file = evidenceFile(id, record);
+        await writeFile(file.path, file.text, { mode: 0o600, flag: "wx" });
         return `${hostPolicy.evidenceNamespace}:${id}`;
       },
     });

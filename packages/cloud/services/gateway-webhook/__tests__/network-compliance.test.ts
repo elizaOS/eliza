@@ -33,6 +33,8 @@ process.env.ELIZA_APP_TWILIO_ACCOUNT_SID = "ACeliza";
 process.env.ELIZA_APP_TWILIO_AUTH_TOKEN = "eliza-token";
 process.env.ELIZA_APP_TWILIO_PHONE_NUMBER = "+14155559999";
 
+const originalTakeover = process.env.NETWORK_TAKEOVER;
+
 const MEMBER = "+14155550123";
 
 interface CloudCall {
@@ -147,11 +149,15 @@ beforeAll(() => {
 });
 
 afterAll(() => {
+  if (originalTakeover === undefined) delete process.env.NETWORK_TAKEOVER;
+  else process.env.NETWORK_TAKEOVER = originalTakeover;
   globalThis.fetch = realFetch;
   cloud.stop(true);
 });
 
 beforeEach(() => {
+  // This suite exercises the original Cloud route; takeover has its own suite.
+  process.env.NETWORK_TAKEOVER = "0";
   cloudCalls.length = 0;
   sent.length = 0;
   twilioRequests.length = 0;

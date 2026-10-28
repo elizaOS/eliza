@@ -26,7 +26,7 @@
 
 import { ElizaError, logger } from "@elizaos/core";
 import { Redis as UpstashRedis } from "@upstash/redis";
-import { Redis } from "ioredis";
+import { Redis, type RedisOptions } from "ioredis";
 import {
   createUpstashIoredisAdapter,
   type IoredisLike,
@@ -168,6 +168,29 @@ export function assertUpstashRestUrlTls(
   );
 }
 
+/** Trust an optional private CA only for this Redis connection. */
+export function getRedisTlsOptions(
+  url: string,
+  env: NodeJS.ProcessEnv = process.env,
+): RedisOptions["tls"] {
+  const ca = env.STEWARD_REDIS_TLS_CA?.trim();
+  if (!ca) return undefined;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ElizaError("Redis CA configuration requires a valid TLS URL", {
+      code: "LOGIN_REDIS_TLS_CONFIGURATION_INVALID",
+    });
+  }
+  if (parsed.protocol !== "rediss:") {
+    throw new ElizaError("Redis CA configuration requires rediss://", {
+      code: "LOGIN_REDIS_TLS_CONFIGURATION_INVALID",
+    });
+  }
+  return { ca, rejectUnauthorized: true };
+}
+
 export function getRedisDriver(): RedisDriver {
   const raw = process.env.REDIS_DRIVER?.trim().toLowerCase();
   if (raw === "upstash") return "upstash";
@@ -178,6 +201,7 @@ function buildIoredis(): Redis {
   const url = process.env.REDIS_URL || "redis://localhost:6379";
   assertRedisUrlTls(url);
   const client = new Redis(url, {
+    tls: getRedisTlsOptions(url),
     maxRetriesPerRequest: 3,
     retryStrategy(times: number) {
       if (times > 10) return null; // stop retrying after 10 attempts

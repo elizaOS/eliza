@@ -19,6 +19,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseBooleanValue,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -242,8 +243,10 @@ export class TwitterInteractionClient {
         const { profile } = session;
         // Check for mentions first (replies enabled by default)
         const repliesEnabled =
-          (getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
-            process.env.TWITTER_ENABLE_REPLIES) !== "false";
+          parseBooleanValue(
+            getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
+              process.env.TWITTER_ENABLE_REPLIES,
+          ) ?? true;
         if (repliesEnabled) {
           await this.handleMentions(session);
         }
@@ -825,12 +828,17 @@ ${tweet.text}`;
       });
     }
     // Check AUTO_RESPOND settings
+    // Boolean settings, on by default: "false", "0", "no" and "off" turn them off.
     const autoRespondMentions =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
-        process.env.TWITTER_AUTO_RESPOND_MENTIONS) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
+          process.env.TWITTER_AUTO_RESPOND_MENTIONS,
+      ) ?? true;
     const autoRespondReplies =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
-        process.env.TWITTER_AUTO_RESPOND_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
+          process.env.TWITTER_AUTO_RESPOND_REPLIES,
+      ) ?? true;
     // Filter based on AUTO_RESPOND settings
     if (!autoRespondMentions || !autoRespondReplies) {
       const inReplyToIds = Array.from(

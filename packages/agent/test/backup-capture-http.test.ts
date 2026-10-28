@@ -55,11 +55,12 @@ beforeAll(async () => {
   for (const key of ["POSTGRES_URL", "DATABASE_URL", "ELIZA_CLOUD_PROVISIONED"])
     vi.stubEnv(key, undefined);
   fixture = await createTestRuntime({
-    // The capture wire contract requires an RFC UUID, not a name-hashed v0 ID.
-    characterName: randomUUID(),
+    // Normal named agents retain deterministic Core version-0 UUIDs.
+    characterName: `Backup capture regression ${randomUUID()}`,
     pgliteDir: path.join(directory, ".elizadb"),
     settings: { LOAD_DOCS_ON_STARTUP: false },
   });
+  expect(fixture.runtime.agentId.split("-")[2]?.[0]).toBe("0");
   for (const child of ["media", "models", "skills/.cache"])
     await mkdir(path.join(directory, child), { recursive: true });
   await writeFile(path.join(directory, "media", "complete.bin"), media);

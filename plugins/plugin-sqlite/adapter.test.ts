@@ -409,6 +409,52 @@ describe("durable SQLite agent adapter", () => {
     expect(otherSource).toBeNull();
   });
 
+  it("rejects a duplicate component id with a typed error and keeps the stored row", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const componentId = id();
+    const freshId = id();
+    await adapter.createAgents([{ id: agentId, name: "Secret agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Secrets", agentId }]);
+    const component = {
+      id: componentId,
+      entityId,
+      agentId,
+      roomId,
+      worldId,
+      sourceEntityId: agentId,
+      type: "secret",
+      createdAt: 1,
+      data: { value: "original" },
+    };
+    await expect(adapter.createComponents([component])).resolves.toEqual([
+      componentId,
+    ]);
+
+    await expect(
+      adapter.createComponents([
+        { ...component, id: freshId, data: { value: "fresh" } },
+        { ...component, data: { value: "replacement" } },
+      ]),
+    ).rejects.toMatchObject({
+      code: "COMPONENT_ALREADY_EXISTS",
+      context: { componentId },
+    });
+    await expect(
+      Promise.all([
+        adapter.createComponents([{ ...component, id: freshId }]),
+        adapter.createComponents([{ ...component, id: freshId }]),
+      ]),
+    ).rejects.toMatchObject({ code: "COMPONENT_ALREADY_EXISTS" });
+
+    const stored = await adapter.getComponentsByIds([componentId, freshId]);
+    expect(stored.map(({ id, data }) => ({ id, data }))).toEqual([
+      { id: componentId, data: { value: "original" } },
+      { id: freshId, data: { value: "original" } },
+    ]);
+  });
+
   it("returns entity components from getEntitiesByIds and getEntitiesForRooms as plugin-sql does", async () => {
     const adapter = await open();
     const worldId = id();
@@ -1765,6 +1811,44 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   );
 });
 
+it("reports an existing entity id as created without overwriting another agent's row", async () => {
+  const adapter = await open();
+  const foreignId = id();
+  const otherAgentId = id();
+  const freshId = id();
+  const storage = await adapter.getConnection();
+  await storage.set("entities", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    names: ["Original"],
+    metadata: { owner: "other" },
+  });
+
+  // plugin-sql returns every requested id and treats existing rows as created.
+  expect(
+    await adapter.createEntities([
+      {
+        id: foreignId,
+        agentId,
+        names: ["Rewritten"],
+        metadata: { owner: "self" },
+      },
+      { id: freshId, agentId, names: ["Fresh"] },
+    ]),
+  ).toEqual([foreignId, freshId]);
+  expect(await storage.get("entities", foreignId)).toEqual({
+    id: foreignId,
+    agentId: otherAgentId,
+    names: ["Original"],
+    metadata: { owner: "other" },
+  });
+  expect(await storage.get("entities", freshId)).toMatchObject({
+    id: freshId,
+    agentId,
+    names: ["Fresh"],
+  });
+});
+
 it("keeps another agent's worlds out of listing, updates, and metadata swaps", async () => {
   const adapter = await open();
   const ownedId = id();
@@ -1800,6 +1884,50 @@ it("keeps another agent's worlds out of listing, updates, and metadata swaps", a
     id: foreignId,
     agentId: otherAgentId,
     name: "secret",
+  });
+});
+
+it("rejects creating a task whose id belongs to another agent", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const foreignId = id();
+  const ownedId = id();
+  const freshId = id();
+  await adapter.createTasks([{ id: ownedId, name: "a-task" }]);
+  const storage = await adapter.getConnection();
+  await storage.set("tasks", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "b-task",
+  });
+
+  await expect(
+    adapter.createTasks([
+      { id: freshId, name: "batched" },
+      { id: foreignId, name: "hijack" },
+    ]),
+  ).rejects.toMatchObject({ code: "SQLITE_TASK_ID_CONFLICT" });
+  expect(await storage.get("tasks", foreignId)).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "b-task",
+  });
+  // The batch fails before any write, so the other task was not created.
+  expect(await storage.get("tasks", freshId)).toBeNull();
+
+  expect(
+    await adapter.createTasks([
+      { id: freshId, name: "new-task" },
+      { id: ownedId, name: "a-task-again" },
+    ]),
+  ).toEqual([freshId, ownedId]);
+  expect(await storage.get("tasks", freshId)).toMatchObject({
+    agentId,
+    name: "new-task",
+  });
+  expect(await storage.get("tasks", ownedId)).toMatchObject({
+    agentId,
+    name: "a-task-again",
   });
 });
 
@@ -1983,6 +2111,38 @@ it("pages newest pairing requests by UUID when the higher id is uppercase", asyn
   ]);
   expect(page.requests.map((request) => request.id)).toEqual([
     UPPER_PAIRING_ID,
+  ]);
+});
+
+it("rejects a pairing request create that reuses a stored id", async () => {
+  const adapter = await open();
+  const pairingId = id();
+  const request = {
+    id: pairingId,
+    channel: "telegram",
+    agentId,
+    senderId: "sender",
+    code: "ORIGINAL",
+    createdAt: PAIRING_AT,
+    lastSeenAt: PAIRING_AT,
+  };
+  expect(await adapter.createPairingRequests([request])).toEqual([pairingId]);
+
+  await expect(
+    adapter.createPairingRequests([
+      { ...request, id: id(), senderId: "other", code: "OTHER" },
+      { ...request, code: "REPLACED" },
+    ]),
+  ).rejects.toMatchObject({
+    code: "PAIRING_REQUEST_ALREADY_EXISTS",
+    context: { pairingRequestId: pairingId },
+  });
+
+  const [page] = await adapter.getPairingRequests([
+    { channel: "telegram", agentId },
+  ]);
+  expect(page.requests.map(({ id, code }) => ({ id, code }))).toEqual([
+    { id: pairingId, code: "ORIGINAL" },
   ]);
 });
 

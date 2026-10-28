@@ -339,6 +339,8 @@ it("maps a heard prefix of the spoken form back to the stored text", async () =>
     const url = `/api/conversations/${conversation.id}/messages/${assistantId}/heard`;
     // TTS speaks the sanitized form: no markdown, link target or aside.
     const spoken = sanitizeSpeechText(reply);
+    // Bold is markdown emphasis, not a stage direction: its words are spoken.
+    expect(spoken.startsWith("Your flight leaves at nine.")).toBe(true);
     expect(spoken).toContain("See the schedule for the gate.");
     const heard = spoken.slice(0, spoken.indexOf("for the gate") + 3);
 

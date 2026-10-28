@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 /**
  * Builds self-contained Android and iOS agent bundles with their PGlite assets.
  * Mobile plugin policy determines the inlined plugin set; models are not bundled.
@@ -27,6 +27,7 @@ import {
   MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
+import { createMobileBundleDependencies } from "./mobile-bundle-dependencies.ts";
 import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
@@ -501,10 +502,39 @@ const stubAliases = {
   ...nativeStubs,
   ...optionalPluginStubs,
   ...pluginBrowserRemoteControlSources,
+  // Keep the view-only leaf; the parent alias disables desktop subprocesses.
+  "@elizaos/plugin-agent-orchestrator/ui": path.join(
+    repoRoot,
+    "plugins/plugin-agent-orchestrator/src/ui/index.ts",
+  ),
+  // LifeOps registers the browser tables without loading a desktop browser.
+  "@elizaos/plugin-browser/schema": path.join(
+    repoRoot,
+    "plugins/plugin-browser/src/schema.ts",
+  ),
 };
 const stubResolverPlugin = {
   name: "eliza-mobile-stubs",
   setup(build) {
+    // Desktop password-manager CLIs are not native password providers. Keep
+    // this lazy action unavailable on mobile without omitting desktop output.
+    build.onResolve({ filter: /^\.\/password-manager\.js$/ }, (args) => {
+      if (
+        args.importer ===
+        path.join(
+          repoRoot,
+          "plugins/plugin-personal-assistant/src/actions/credentials.ts",
+        )
+      ) {
+        return {
+          path: path.join(
+            repoRoot,
+            "plugins/plugin-personal-assistant/src/actions/password-manager.mobile.ts",
+          ),
+        };
+      }
+      return undefined;
+    });
     const aliasNames = Object.keys(stubAliases);
     const filter = new RegExp(
       "^(?:" +
@@ -1367,6 +1397,8 @@ const localInferenceDedupePlugin = {
   },
 };
 console.log("[build-mobile] starting Bun.build...");
+// Bun metadata paths are relative to the caller, including direct script runs.
+const buildWorkingDirectory = process.cwd();
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
@@ -1375,12 +1407,11 @@ const buildResult = await Bun.build({
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
-  // Keep Android debuggable, but compact the real iOS Bun payload. Static
-  // JavaScriptCore no-JIT spends a lot of time parsing this file; syntax +
-  // whitespace minification reduces launch cost without identifier mangling,
-  // preserving the post-build undeclared-identifier scan below.
+  metafile: TARGET === "android",
+  // Compact Android and iOS Bun payloads without changing identifier names.
+  // Android inventory comes from emitted-input metadata, not JS comments.
   minify:
-    TARGET === "ios"
+    TARGET === "ios" || TARGET === "android"
       ? {
           syntax: true,
           whitespace: true,
@@ -1594,6 +1625,36 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
     `[build-mobile] copied ${asset} (${(sz / 1024 / 1024).toFixed(2)} MB)`,
   );
 }
+// An empty database made by this same PGlite, right after initdb. The bundled
+// plugin-sql loads it for in-memory databases (plugins/plugin-sql/src/pglite/
+// initdb-snapshot.ts), so the device never runs initdb: PGlite 0.4.x keeps the
+// temporary initdb instance's WebAssembly memory (about 184 MB) for the life
+// of the process. A child process makes it, because PGlite keeps the event
+// loop alive after the dump.
+{
+  const snapshotPath = path.join(outDir, "pglite-initdb.bin");
+  const script = [
+    `const { PGlite } = await import(${JSON.stringify(pathToFileURL(path.join(pgliteDist, "index.js")).href)});`,
+    "const db = await PGlite.create({ dataDir: 'memory://' });",
+    "const dump = await db.dumpDataDir('gzip');",
+    `await Bun.write(${JSON.stringify(snapshotPath)}, dump);`,
+    "process.exit(0);",
+  ].join("\n");
+  const made = spawnSync(process.execPath, ["--eval", script], {
+    stdio: "inherit",
+    timeout: 120_000,
+  });
+  if (made.status !== 0 || !existsSync(snapshotPath)) {
+    console.error(
+      "[build-mobile] FATAL: could not make the PGlite initdb snapshot",
+    );
+    process.exit(1);
+  }
+  const sz = (await stat(snapshotPath)).size;
+  console.log(
+    `[build-mobile] wrote pglite-initdb.bin (${(sz / 1024 / 1024).toFixed(2)} MB)`,
+  );
+}
 // Copy contrib extension tarballs. They live one dir above the bundle on
 // device (Phase A handles placement); we surface them in dist-mobile/ so the
 // asset pipeline can pick them up.
@@ -1612,18 +1673,42 @@ for (const asset of [
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
 const generatedUtc = new Date().toISOString();
+let bundleDependencies:
+  | ReturnType<typeof createMobileBundleDependencies>
+  | undefined;
+if (TARGET === "android") {
+  const dependencyOutput = Object.values(
+    buildResult.metafile?.outputs ?? {},
+  ).find(
+    (output) =>
+      output.entryPoint &&
+      path.resolve(buildWorkingDirectory, output.entryPoint) === entry,
+  );
+  if (!dependencyOutput)
+    throw new Error(
+      "Mobile build did not return entrypoint dependency metadata.",
+    );
+  bundleDependencies = createMobileBundleDependencies({
+    inputs: dependencyOutput.inputs,
+    resolveDirectory: buildWorkingDirectory,
+    repositoryRoot: repoRoot,
+    bundleBytes: await Bun.file(bundlePath).bytes(),
+  });
+}
 const manifest = {
   generatedAt: generatedUtc,
   generated_utc: generatedUtc,
   claim_boundary:
     "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
+  ...(bundleDependencies ? { bundleDependencies } : {}),
   bunTarget: bunBuildTarget,
   platform: TARGET,
   pglite: {
     wasm: "pglite.wasm",
     initdb: "initdb.wasm",
     data: "pglite.data",
+    initdbSnapshot: "pglite-initdb.bin",
     extensions: {
       pg_trgm: { file: "pg_trgm.tar.gz", expectedAt: "../pg_trgm.tar.gz" },
       vector: { file: "vector.tar.gz", expectedAt: "../vector.tar.gz" },
