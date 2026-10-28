@@ -6,16 +6,8 @@
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 import { privateKeyToAccount } from "viem/accounts";
 
-// `bun test` shares one process, so this stub is visible to every later file
-// that imports payout-status. Keep the real token addresses; only the price
-// helpers below are irrelevant to the hot-wallet lookup.
 mock.module("./eliza-token-price", () => ({
-  ELIZA_TOKEN_ADDRESSES: {
-    ethereum: "0xea17df5cf6d172224892b5477a16acb111182478",
-    base: "0xea17df5cf6d172224892b5477a16acb111182478",
-    bnb: "0xea17df5cf6d172224892b5477a16acb111182478",
-    solana: "DuMbhu7mvQvqQHGcnikDgb4XegXJRyhUBfdU22uELiZA",
-  },
+  ELIZA_TOKEN_ADDRESSES: {},
 }));
 mock.module("../utils/logger", () => ({
   logger: { warn() {}, info() {}, error() {}, debug() {} },
