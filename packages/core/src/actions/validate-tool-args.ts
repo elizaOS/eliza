@@ -3,12 +3,15 @@
  * parameter JSON Schema (from `actionToJsonSchema`). Checks type / enum / numeric
  * bounds / string pattern, enforces required fields and the additionalProperties
  * policy, and fills declared defaults, collecting human-readable error strings
- * rather than throwing. `validateSchema` is exported for verifying whole
+ * rather than throwing. Invalid action definitions throw a typed, fatal error
+ * before argument validation. `validateSchema` is exported for verifying whole
  * structured outputs (e.g. remote-model planner JSON) too. Untrusted plugin
  * `pattern`s are compiled defensively and bounded by input length to blunt ReDoS,
  * since a JS regex runs synchronously and cannot be interrupted.
  */
+
 import { toActionParameterValue } from "../action-parameter-value";
+import { ElizaError } from "../errors.ts";
 import type { Action } from "../types/components.js";
 import { isObjectRecord as isRecord } from "../utils/type-guards";
 import {
@@ -488,7 +491,22 @@ export function validateToolArgs(
 	action: Action,
 	args: unknown,
 ): ValidateToolArgsResult {
-	const schema = actionToJsonSchema(action);
+	let schema: ReturnType<typeof actionToJsonSchema>;
+	try {
+		schema = actionToJsonSchema(action);
+	} catch (cause) {
+		// Only definition conversion is classified here. Argument validation below
+		// still returns its correctable parameter errors through the normal path.
+		throw new ElizaError(
+			`The definition for action ${action.name} is invalid.`,
+			{
+				code: "ACTION_DEFINITION_INVALID",
+				severity: "fatal",
+				cause,
+				context: { actionName: action.name },
+			},
+		);
+	}
 	const errors: string[] = [];
 
 	if (!isRecord(args)) {

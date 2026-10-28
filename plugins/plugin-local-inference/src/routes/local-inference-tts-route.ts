@@ -152,9 +152,9 @@ function isClosed(res: http.ServerResponse): boolean {
 /**
  * Report whether the POST route can produce audio. A registration alone is not
  * enough for the desktop engine provider: its handler is registered at boot
- * and throws until Kokoro artifacts are staged. The mobile providers own their
- * native TTS backends, which this server cannot probe, so they keep the
- * registration signal.
+ * and throws until Paradee v1.1 (or an opted-in Kokoro) is staged. The mobile
+ * providers own their native TTS backends, which this server cannot probe, so
+ * they keep the registration signal.
  */
 async function isLocalInferenceTtsReady(
 	state: CompatRuntimeState,

@@ -180,7 +180,131 @@ function extractBody(
   return { value: body.trim(), kind: "text" };
 }
 
+export interface WebFetchOriginRead {
+  format: "elizaos.web-fetch.origin.v1";
+  requestedAt: number;
+  retrievedAt: number;
+  url: string;
+  status: number;
+  contentType: string;
+  cache: "no-store";
+  redirect: "manual";
+  wttr?: {
+    nearestArea: {
+      name: string;
+      country: string;
+      latitude: string;
+      longitude: string;
+    };
+    currentCondition: {
+      temperatureC: string;
+      localObservationTime?: string;
+      observationTime: string;
+      observationDateBasis:
+        | "provider-local-date"
+        | "server-derived-for-validation";
+    };
+  };
+}
+
+function object(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+/** This is a verification projection, never a replacement for complete action text. */
+function originRead(
+  response: WebFetchOriginResult,
+): WebFetchOriginRead | undefined {
+  if (
+    !Number.isSafeInteger(response.requestedAt) ||
+    !Number.isSafeInteger(response.retrievedAt)
+  )
+    return undefined;
+  const receipt: WebFetchOriginRead = {
+    format: "elizaos.web-fetch.origin.v1",
+    requestedAt: Number(response.requestedAt),
+    retrievedAt: Number(response.retrievedAt),
+    url: response.url,
+    status: response.status,
+    contentType: response.contentType,
+    cache: "no-store",
+    redirect: "manual",
+  };
+  if (new TextEncoder().encode(JSON.stringify(receipt)).byteLength > 2048)
+    return undefined;
+  if (new URL(response.url).origin !== "https://wttr.in") return receipt;
+  let value: unknown;
+  try {
+    value = JSON.parse(response.text);
+  } catch {
+    // error-policy:J3 Malformed origin JSON has no structured weather authority.
+    return receipt;
+  }
+  const body = object(value);
+  const area =
+    Array.isArray(body?.nearest_area) && body.nearest_area.length === 1
+      ? object(body.nearest_area[0])
+      : undefined;
+  const condition =
+    Array.isArray(body?.current_condition) &&
+    body.current_condition.length === 1
+      ? object(body.current_condition[0])
+      : undefined;
+  const label = (value: unknown) =>
+    Array.isArray(value) && value.length === 1
+      ? object(value[0])?.value
+      : undefined;
+  const fields = [
+    label(area?.areaName),
+    label(area?.country),
+    area?.latitude,
+    area?.longitude,
+    condition?.temp_C,
+    condition?.observation_time,
+  ];
+  // Oversized or missing facts remain unavailable; nothing is clipped or inferred.
+  if (
+    !fields.every(
+      (field): field is string =>
+        typeof field === "string" && field.length > 0 && field.length <= 128,
+    )
+  )
+    return receipt;
+  const [name, country, latitude, longitude, temperatureC, observationTime] =
+    fields as [string, string, string, string, string, string];
+  const localObservationTime = condition?.localObsDateTime;
+  if (
+    localObservationTime !== undefined &&
+    (typeof localObservationTime !== "string" ||
+      localObservationTime.length === 0 ||
+      localObservationTime.length > 128)
+  )
+    return receipt;
+  receipt.wttr = {
+    nearestArea: { name, country, latitude, longitude },
+    currentCondition: {
+      temperatureC,
+      observationTime,
+      ...(typeof localObservationTime === "string"
+        ? { localObservationTime }
+        : {}),
+      observationDateBasis:
+        localObservationTime === undefined
+          ? "server-derived-for-validation"
+          : "provider-local-date",
+    },
+  };
+  return new TextEncoder().encode(JSON.stringify(receipt)).byteLength <= 4096
+    ? receipt
+    : undefined;
+}
+
 export interface WebFetchOriginResult {
+  requestedAt?: number;
+  retrievedAt?: number;
+  requestPolicy?: { method: "GET"; redirect: "manual"; cache: "no-store" };
   kind?: "origin-http";
   ok: boolean;
   status: number;
@@ -195,12 +319,28 @@ export interface WebFetchProviderResult {
   url: string;
   text: string;
   observedAt: number;
+  requestedAt?: number;
   truncated: false;
 }
 export type WebFetchReader = (
   url: string,
   signal?: AbortSignal,
 ) => Promise<WebFetchOriginResult | WebFetchProviderResult>;
+/** Server-bound semantic projection of the actual origin response; absent by default. */
+export interface WebFetchEvidencePort {
+  /** Optional host-scoped dispatch permission; a supplied evidence port never authorizes arbitrary URLs. */
+  authorizeUrl?(url: string): boolean;
+  authorizedUrls?(): readonly string[];
+  observePublicSearch?(result: ActionResult, query: string): void;
+  acceptsOriginUrl?(url: string): boolean;
+  projectOrigin?(
+    response: Readonly<WebFetchOriginResult>,
+  ): Readonly<Record<string, unknown>> | undefined;
+  projectProvider?(
+    response: Readonly<WebFetchProviderResult>,
+  ): Readonly<Record<string, unknown>> | undefined;
+}
+
 export function createWebFetchAction(
   reader: WebFetchReader,
   overrides: Partial<
@@ -209,6 +349,7 @@ export function createWebFetchAction(
       "description" | "routingHint" | "roleGate" | "contexts" | "contextGate"
     >
   > = {},
+  readEvidence?: WebFetchEvidencePort,
 ): Action {
   return {
     name: "WEB_FETCH",
@@ -257,7 +398,7 @@ export function createWebFetchAction(
           message: "WEB_FETCH is disabled via ELIZA_WEB_FETCH",
         });
       }
-      const url = readStringParam(options, "url")?.trim();
+      let url = readStringParam(options, "url")?.trim();
       const extract = readStringParam(options, "extract")?.trim();
       if (!url) {
         return failureToActionResult({
@@ -274,6 +415,8 @@ export function createWebFetchAction(
         const signal = input?.abortSignal ?? input?.signal;
         signal?.throwIfAborted();
         const parsedUrl = new URL(url);
+        // Canonicalize the caller URL before the reader applies its existing safety policy.
+        url = parsedUrl.href;
         if (parsedUrl.hostname.toLowerCase() === "wttr.in") {
           const location = parsedUrl.pathname.slice(1);
           const match = location.match(
@@ -294,9 +437,22 @@ export function createWebFetchAction(
             );
           }
         }
+        if (readEvidence && readEvidence.authorizeUrl?.(url) !== true) {
+          return failureToActionResult(
+            {
+              reason: "invalid_param",
+              message: "That URL is not authorized for this public request.",
+            },
+            {
+              action: "WEB_FETCH",
+              authorizedUrls: [...(readEvidence.authorizedUrls?.() ?? [])],
+            },
+          );
+        }
         const response = await reader(url, signal);
         signal?.throwIfAborted();
-        if (response.kind === "provider-extract")
+        if (response.kind === "provider-extract") {
+          const projected = readEvidence?.projectProvider?.(response);
           return successActionResult(response.text, {
             action: "WEB_FETCH",
             url: response.url,
@@ -308,7 +464,11 @@ export function createWebFetchAction(
             retrieved_at_basis:
               "Provider response received; not origin freshness or publication time",
             ...(extract ? { extract_applied: false } : {}),
+            ...(projected
+              ? { readEvidence: projected, readOnlyOperation: true }
+              : {}),
           });
+        }
         const retrievedAt = new Date().toISOString();
         if (!response.ok) {
           const result = failureToActionResult(
@@ -330,6 +490,10 @@ export function createWebFetchAction(
           return result;
         }
 
+        const receipt = readEvidence ? originRead(response) : undefined;
+        const projected = readEvidence?.acceptsOriginUrl?.(url)
+          ? readEvidence.projectOrigin?.(response)
+          : undefined;
         const extracted = extractBody(
           response.text,
           response.contentType,
@@ -347,6 +511,8 @@ export function createWebFetchAction(
             "HTTP retrieval completed; not the source publication or market update time",
           kind: extracted.kind,
           truncated: false,
+          ...(receipt ? { originRead: receipt, readOnlyOperation: true } : {}),
+          ...(projected ? { readEvidence: projected } : {}),
         });
       } catch (error) {
         const input =

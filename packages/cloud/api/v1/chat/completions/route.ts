@@ -166,6 +166,11 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
+import {
+  type CallerLlmPurpose,
+  getSafeCallerLlmPurpose,
+  getSafeProviderErrorMetadata,
+} from "./provider-error-metadata";
 
 /**
  * Write the durable billing ledger row for one settled inference. Credits are
@@ -1286,6 +1291,9 @@ export async function handleChatCompletionsPOST(
       },
       { status: 403 },
     );
+  const callerPurpose = getSafeCallerLlmPurpose(
+    req.headers.get("X-Eliza-Llm-Purpose"),
+  );
   const startTime = Date.now();
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
@@ -2360,6 +2368,7 @@ export async function handleChatCompletionsPOST(
           gatewayHandoffTelemetry,
           markProviderDispatched,
           traceId,
+          callerPurpose,
         )
       : await handleNonStreamingRequest(
           model,
@@ -2475,6 +2484,10 @@ export async function handleChatCompletionsPOST(
     );
     logger.error("[Chat Completions] Error", {
       traceId,
+      ...getSafeProviderErrorMetadata(
+        unwrapProviderError(error),
+        callerPurpose,
+      ),
       error: rawMessage,
       cause:
         error instanceof Error && error.cause
@@ -3218,6 +3231,7 @@ async function handleStreamingRequest(
   markProviderDispatched?: () => Promise<void>,
   /** Shared trace id (#16079) correlating the milestone event with the caller. */
   traceId?: string,
+  callerPurpose?: CallerLlmPurpose,
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
@@ -3502,7 +3516,12 @@ async function handleStreamingRequest(
       logger.error(
         "[Chat Completions] Stream provider error — admission settled",
         {
+          traceId,
           model,
+          ...getSafeProviderErrorMetadata(
+            unwrapProviderError(error),
+            callerPurpose,
+          ),
           conservative: deliveredProviderOutput,
           error: redactPromptCacheKey(
             error instanceof Error ? error.message : String(error),

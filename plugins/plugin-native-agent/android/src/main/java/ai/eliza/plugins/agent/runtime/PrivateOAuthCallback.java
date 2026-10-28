@@ -12,19 +12,28 @@ import java.util.concurrent.RejectedExecutionException;
  */
 public final class PrivateOAuthCallback {
   public enum Admission { NOT_MATCHED, REJECTED, QUEUED, BUSY }
+  /** Where the provider puts the response: QUERY, or FRAGMENT for {@code response_mode=fragment}.
+   * A fragment-mode provider may still report an error in the query; never in both. */
+  public enum ResponseMode { QUERY, FRAGMENT }
   @FunctionalInterface public interface Sink { void accept(String callback) throws Exception; }
   private final URI expected;
+  private final ResponseMode mode;
   private final Executor executor;
   private final Sink sink;
   private final Runnable deliveryFailed;
 
   public PrivateOAuthCallback(String redirect, Executor executor, Sink sink, Runnable deliveryFailed) {
+    this(redirect, ResponseMode.QUERY, executor, sink, deliveryFailed);
+  }
+
+  public PrivateOAuthCallback(String redirect, ResponseMode mode, Executor executor, Sink sink, Runnable deliveryFailed) {
     URI parsed = URI.create(Objects.requireNonNull(redirect));
     if (!"https".equals(parsed.getScheme()) || parsed.getHost() == null ||
         parsed.getRawUserInfo() != null || parsed.getRawQuery() != null || parsed.getRawFragment() != null ||
         parsed.getRawPath() == null || parsed.getRawPath().isEmpty() || !parsed.normalize().equals(parsed))
       throw new IllegalArgumentException("An explicit HTTPS callback is required");
     this.expected = parsed;
+    this.mode = Objects.requireNonNull(mode);
     this.executor = Objects.requireNonNull(executor);
     this.sink = Objects.requireNonNull(sink);
     this.deliveryFailed = Objects.requireNonNull(deliveryFailed);
@@ -37,8 +46,11 @@ public final class PrivateOAuthCallback {
     if (!expected.getScheme().equals(value.getScheme()) || !expected.getHost().equalsIgnoreCase(value.getHost()) ||
         expected.getPort() != value.getPort() || !expected.getRawPath().equals(value.getRawPath()))
       return Admission.NOT_MATCHED;
-    if (callback.length() > 8192 || value.getRawUserInfo() != null || value.getRawFragment() != null ||
-        value.getRawQuery() == null || value.getRawQuery().isEmpty()) return Admission.REJECTED;
+    String query = value.getRawQuery(), fragment = value.getRawFragment();
+    // One non-empty response component: the query, or in FRAGMENT mode either one but not both.
+    String response = query == null ? (mode == ResponseMode.FRAGMENT ? fragment : null) : fragment == null ? query : null;
+    boolean placed = response != null && !response.isEmpty();
+    if (callback.length() > 8192 || value.getRawUserInfo() != null || !placed) return Admission.REJECTED;
     try {
       executor.execute(() -> {
         try { sink.accept(callback); }
@@ -49,4 +61,7 @@ public final class PrivateOAuthCallback {
       return Admission.BUSY;
     }
   }
+
+  /** The configured redirect, for launchers that must name its host and path. */
+  public URI redirect() { return expected; }
 }

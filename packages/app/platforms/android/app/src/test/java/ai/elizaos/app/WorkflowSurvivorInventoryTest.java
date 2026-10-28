@@ -45,4 +45,20 @@ public class WorkflowSurvivorInventoryTest {
   Map<Integer,WorkflowSurvivorInventory.Identity> unknown=new HashMap<>(processes);unknown.put(43,identity(43,"200"));
   assertThrows(IOException.class,()->WorkflowSurvivorInventory.classifyCandidates(unknown,List.of(owner()),1,(journal,observed)->verify(journal,observed.uid,observed.pid)));
  }
+ @Test public void expiredStopDeadlineRefusesBeforeInspectingAnyProcessOrPath()throws Exception {
+  assertThrows(IOException.class,()->WorkflowSurvivorInventory.stopResident(null,null,null,0));
+  assertThrows(IOException.class,()->WorkflowSurvivorInventory.requireClassified(null,null,null,null,0));
+  assertThrows(IOException.class,()->IpcStartupRecovery.requireSoleUidProcess(0));
+ }
+ @Test public void directNativeResidentRequiresExactBunFlagsBundleAndOptionalBridgeCommand()throws Exception {
+  String bun="/apk/bun",bundle="/data/app/agent-bundle.js";
+  for(String suffix:new String[]{"","android-bridge\0"}) {
+   byte[] argv=(bun+"\0--no-install\0"+bundle+"\0"+suffix).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+   assertTrue(WorkflowSurvivorInventory.residentArguments(argv,bun,bun,bundle));
+   assertFalse(WorkflowSurvivorInventory.residentArguments(argv,bun,"/apk/musl-loader",bundle));
+  }
+  for(String invalid:new String[]{bun+"\0"+bun+"\0--no-install\0"+bundle+"\0",bun+"\0--install\0"+bundle+"\0",bun+"\0--no-install\0other\0",bun+"\0--no-install\0"+bundle+"\0workflow-child\0"})
+   assertFalse(WorkflowSurvivorInventory.residentArguments(invalid.getBytes(java.nio.charset.StandardCharsets.UTF_8),bun,bun,bundle));
+ }
+
 }

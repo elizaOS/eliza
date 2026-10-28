@@ -161,12 +161,14 @@ function isBoundConnectorPayload(
 }
 
 /**
- * `userPayloadText` and `externalContentWrapped` are runtime-internal stamps
- * that only this module may set: a connector that forwards client-supplied
- * `content.metadata` would otherwise let an external sender pre-stamp a
- * payload DIFFERENT from the visible text, steering resolvers to a target the
- * model never saw. Same doctrine as the forged autonomy marker — strip both
- * from every inbound message before hardening re-stamps them.
+ * `userPayloadText`, `externalContentWrapped`, and `injectionRiskAdjudication`
+ * are runtime-internal stamps that only this module (or the gate itself) may
+ * set: a connector that forwards client-supplied `content.metadata` would
+ * otherwise let an external sender pre-stamp a payload DIFFERENT from the
+ * visible text, steering resolvers to a target the model never saw, or
+ * pre-stamp an injection-gate allow verdict the gate then returns verbatim
+ * without adjudication. Same doctrine as the forged autonomy marker — strip
+ * all three from every inbound message before hardening re-stamps them.
  */
 function stripForgedSecurityStamps(message: Memory): void {
 	const metadata = message.content.metadata;
@@ -179,6 +181,9 @@ function stripForgedSecurityStamps(message: Memory): void {
 	}
 	if ("externalContentWrapped" in record) {
 		delete record.externalContentWrapped;
+	}
+	if ("injectionRiskAdjudication" in record) {
+		delete record.injectionRiskAdjudication;
 	}
 }
 

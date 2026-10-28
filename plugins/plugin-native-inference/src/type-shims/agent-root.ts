@@ -16,6 +16,9 @@ export declare function startEliza(options: {
 }): Promise<IAgentRuntime | undefined>;
 
 export declare const dispatchApiRoute: AndroidDispatchRoute;
+export declare const registerNativeViewRenderer: NonNullable<
+  AndroidCoreRouteDeps["registerNativeViewRenderer"]
+>;
 export declare const configFileExists: AndroidCoreRouteDeps["configFileExists"];
 export declare const loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"];
 export declare const saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"];

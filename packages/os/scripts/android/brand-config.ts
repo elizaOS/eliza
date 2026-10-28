@@ -141,6 +141,15 @@ export function loadBrandConfig(configPath) {
     );
   }
   if (
+    parsed.aospLockProfile !== undefined &&
+    (typeof parsed.aospLockProfile !== "string" ||
+      !/^[a-z0-9][a-z0-9-]*$/.test(parsed.aospLockProfile))
+  ) {
+    throw new BrandConfigurationError(
+      `Brand config ${resolved} has invalid aospLockProfile`,
+    );
+  }
+  if (
     parsed.aospDeviceOverlay !== undefined &&
     (typeof parsed.aospDeviceOverlay !== "string" ||
       parsed.aospDeviceOverlay.length === 0 ||

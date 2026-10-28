@@ -44,7 +44,7 @@ function parseIsoMs(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Headroom for core's cron scan window (366 days) before the Date limit. */
+/** Avoid scanning a garbage base close to the Date limit. */
 const CRON_SCAN_HEADROOM_MS = 366 * 24 * 60 * MINUTE_MS;
 
 function nextWindowStartIso(
@@ -168,7 +168,7 @@ export async function computeNextFireAt(
         lastFire !== null && lastFire >= context.now.getTime()
           ? lastFire
           : context.now.getTime();
-      // computeNextCronRunAtMs scans up to ~366 days past the base. A base
+      // computeNextCronRunAtMs scans forward from the base. A base
       // (garbage firedAt) close enough to the max representable date makes
       // every candidate an Invalid Date: a ~30s scan that can only return
       // null. Bail out with the same null, without the scan.

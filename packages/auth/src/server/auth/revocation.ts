@@ -11,7 +11,7 @@
 import { logger } from "@elizaos/core";
 import { Redis } from "ioredis";
 import type { getDb } from "../db/client";
-import { assertRedisUrlTls } from "../redis/index.ts";
+import { assertRedisUrlTls, getRedisTlsOptions } from "../redis/index.ts";
 import { redactedThrownDiagnostics } from "../shared/index.ts";
 import { MONOTONIC_REVOCATION_SCRIPT } from "./revocation-script";
 
@@ -186,6 +186,7 @@ class RedisRevocationStore implements RevocationStore {
       // not cross a cleartext link.
       assertRedisUrlTls(process.env.REDIS_URL);
       this.redis = new Redis(process.env.REDIS_URL, {
+        tls: getRedisTlsOptions(process.env.REDIS_URL),
         maxRetriesPerRequest: 1,
         lazyConnect: false,
         enableReadyCheck: true,

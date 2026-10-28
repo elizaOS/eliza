@@ -631,30 +631,7 @@ export interface TrajectoryConfig {
 export type TrajectoryExportOptions = CoreTrajectoryExportOptions & {
   format: TrajectoryExportFormat | "jsonl";
 };
-// ERC-8004 Registry & Drop types
-export interface RegistryStatus {
-  registered: boolean;
-  tokenId: number;
-  agentName: string;
-  agentEndpoint: string;
-  capabilitiesHash: string;
-  isActive: boolean;
-  tokenURI: string;
-  walletAddress: string;
-  totalAgents: number;
-  configured: boolean;
-}
-export interface RegistrationResult {
-  tokenId: number;
-  txHash: string;
-}
-export interface RegistryConfig {
-  configured: boolean;
-  chainId: number | null;
-  registryAddress: string | null;
-  collectionAddress: string | null;
-  explorerUrl: string | null;
-}
+// Drop / whitelist types
 export interface WhitelistStatus {
   eligible: boolean;
   twitterVerified: boolean;

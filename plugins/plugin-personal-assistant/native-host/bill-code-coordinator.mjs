@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { BillHostError } from "./errors.mjs";
 
+/** Every code-step result names its fixed reason, so a host never matches the words. */
 const manual = (message, codeReason) => ({
   kind: "human-verification",
   message,
-  ...(codeReason ? { codeReason } : {}),
+  codeReason,
 });
 /**
  * Why Google could not give the code, from the connector's fixed reasons.
@@ -45,11 +46,18 @@ export class BillCodeCoordinator {
     challengeProvider,
     resolveGoogleAccount,
     checkGoogleAccount = null,
+    assistantName = "Eliza",
     stillAuthorized = async () => true,
     now = () => Date.now(),
   }) {
     if (typeof deriveBillDecision !== "function")
       throw new BillHostError("Reviewed bill observation policy is required");
+    if (
+      typeof assistantName !== "string" ||
+      !assistantName.trim() ||
+      assistantName.length > 64
+    )
+      throw new BillHostError("Invalid assistant name");
     Object.assign(this, {
       deriveBillDecision,
       runtime,
@@ -60,6 +68,7 @@ export class BillCodeCoordinator {
       // Optional uncached read of the connected Google account. It names why
       // a code search failed: reconnect, permission or another account.
       checkGoogleAccount,
+      assistantName,
       stillAuthorized,
       now,
     });
@@ -102,7 +111,10 @@ export class BillCodeCoordinator {
   }
   async fill({ taskId, bill, signal = new AbortController().signal }) {
     if (this.#pending.has(taskId))
-      return manual("Verification code lookup is already in progress.");
+      return manual(
+        "Verification code lookup is already in progress.",
+        "lookup_in_progress",
+      );
     this.#pending.add(taskId);
     let reference, interrupt, interruptError;
     try {
@@ -134,6 +146,7 @@ export class BillCodeCoordinator {
       if (!challenge)
         return manual(
           "No supported verification challenge was found. Complete verification on the website yourself.",
+          "no_challenge",
         );
       // Her own typing comes first: a field she has started is never filled.
       const field = snapshot.elements.filter(
@@ -198,6 +211,7 @@ export class BillCodeCoordinator {
       )
         return manual(
           "This verification challenge was already handled. Check the code on the website and press Verify yourself, or request a new code there.",
+          "already_handled",
         );
       let result;
       try {
@@ -219,10 +233,12 @@ export class BillCodeCoordinator {
           incomplete:
             "The code search could not be completed. Retry later or complete verification yourself.",
         };
-        return manual(
-          messages[result.status] ||
-            "The code is unavailable. Complete verification yourself.",
-        );
+        return Object.hasOwn(messages, result.status)
+          ? manual(messages[result.status], result.status)
+          : manual(
+              "The code is unavailable. Complete verification yourself.",
+              "unavailable",
+            );
       }
       reference = result.valueRef;
       const current = this.runtime.get(taskId);
@@ -269,14 +285,17 @@ export class BillCodeCoordinator {
       )?.status === "succeeded"
         ? manual(
             "The matching code was filled. Check it on the website, then press Verify yourself.",
+            "filled",
           )
         : manual(
-            "Code entry could not be confirmed. Check the website before trying again; Eliza will not press Verify.",
+            `Code entry could not be confirmed. Check the website before trying again; ${this.assistantName} will not press Verify.`,
+            "fill_unconfirmed",
           );
     } catch {
       // Provider messages, parser exceptions and protected values must not escape.
       return manual(
         "The code could not be filled. Check the task and connection, or complete verification on the website yourself.",
+        "fill_failed",
       );
     } finally {
       if (interrupt) signal.removeEventListener("abort", interrupt);

@@ -1,3 +1,4 @@
+import type { ElizaErrorSeverity } from "../errors";
 /**
  * Runtime event system: the `EventType` enum and the per-event payload shapes an
  * agent emits and plugins subscribe to (world/entity/room/message/voice/model/
@@ -422,6 +423,7 @@ export interface ErrorReportedPayload extends EventPayload {
 	scope: string;
 	code: string;
 	message: string;
+	severity?: ElizaErrorSeverity;
 	context?: Record<string, unknown>;
 	runId?: UUID;
 	roomId?: UUID;

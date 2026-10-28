@@ -31,6 +31,7 @@
     "build:browser": "node --conditions=eliza-source browser/scripts/build.mjs",
     "test:browser": "node --conditions=eliza-source --test browser/src/*.test.mjs browser/scripts/*.test.mjs && node --test browser/protection/*.test.mjs",
     "test:browser:page": "node --conditions=eliza-source browser/scripts/test-page-freshness.mjs",
+    "test:browser:blockers": "node --conditions=eliza-source browser/scripts/test-page-blockers.mjs",
     "typecheck:browser": "tsc --noEmit -p browser/tsconfig.json",
     "lint:browser": "bunx @biomejs/biome check browser",
     "test:browser:guidance": "node --conditions=eliza-source browser/scripts/test-page-guidance.mjs",
@@ -50,12 +51,12 @@
     "@elizaos/plugin-browser": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@types/bun": "1.4.2",
     "@types/node": "25.6.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "5.0.3"
+    "vitest": "5.0.5"
   },
   "exports": {
     "./contracts": "./contracts/index.ts",

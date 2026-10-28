@@ -13,7 +13,6 @@
  * - HTTP chat endpoints
  * - A2A protocol
  * - MCP protocol
- * - ERC-8004 registered agents
  */
 
 import Decimal from "decimal.js";

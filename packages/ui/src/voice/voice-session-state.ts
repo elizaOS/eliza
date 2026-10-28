@@ -17,11 +17,11 @@
  * adapter into the unified voice-state surface (#15924).
  */
 
-import type { VoiceContinuousStatus } from "./voice-chat-types";
 import type {
   InterruptionReason,
   ServerControlFrame,
 } from "./voice-session-protocol";
+import type { VoiceContinuousStatus } from "./voice-session-status";
 
 /**
  * Client-facing session phase. `complete` is a transient terminal-of-turn state

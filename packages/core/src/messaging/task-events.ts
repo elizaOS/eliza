@@ -1,6 +1,13 @@
 /** Browser-safe, host-neutral task activity protocol. No page text or credentials. */
 import { ElizaError } from "../errors.ts";
 
+/**
+ * A task id as hosts mint and accept it: a letter or digit, then up to 255
+ * letters, digits or `_ . : @ -`. `packages/agent/native-host/task-id.mjs`
+ * holds the same rule for staged hosts that cannot import this package.
+ */
+export const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/;
+
 export type TaskStatus =
 	| "active"
 	| "paused"
@@ -34,11 +41,18 @@ export interface TaskEvent {
 		| "prepare"
 		| "dispatch"
 		| "result"
-		| "reconcile";
+		| "reconcile"
+		| "extend-origin"
+		| "retract-origin";
 	at: number;
 	status: TaskStatus;
 	operationId?: string;
 	operationStatus?: TaskOperationStatus;
+	/**
+	 * Extended tasks: the origin granted or retracted, or the observed page's
+	 * origin. Never a path or query.
+	 */
+	origin?: string;
 }
 function reject(message: string): never {
 	throw new ElizaError(message, { code: "TASK_EVENT_INVALID" });
@@ -53,7 +67,7 @@ const fields = [
 	"at",
 	"status",
 ];
-const optional = ["operationId", "operationStatus"];
+const optional = ["operationId", "operationStatus", "origin"];
 export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		reject("Expected a task event");
@@ -90,6 +104,8 @@ export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 			"dispatch",
 			"result",
 			"reconcile",
+			"extend-origin",
+			"retract-origin",
 		].includes(event.kind) ||
 		![
 			"active",
@@ -120,6 +136,23 @@ export function validateTaskEvent(value: unknown): asserts value is TaskEvent {
 			].includes(event.operationStatus))
 	)
 		reject("Invalid event operation status");
+	if (event.origin !== undefined) {
+		let parsed: URL | undefined;
+		try {
+			parsed = new URL(event.origin);
+		} catch {
+			parsed = undefined;
+		}
+		if (
+			!["observe", "resume", "extend-origin", "retract-origin"].includes(
+				event.kind,
+			) ||
+			parsed?.protocol !== "https:" ||
+			parsed.origin !== event.origin
+		)
+			reject("Invalid event origin");
+	} else if (["extend-origin", "retract-origin"].includes(event.kind))
+		reject("Origin scope event is missing its origin");
 	if (
 		event.kind === "create" &&
 		(event.sequence !== 0 || event.epoch !== 0 || event.status !== "active")

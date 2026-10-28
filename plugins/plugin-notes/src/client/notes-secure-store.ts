@@ -9,6 +9,7 @@ import {
   type NotesStorageKeys,
   NotesStore,
 } from "./notes-store.ts";
+import { NOTES_STORAGE_FULL_CODE } from "./notes-trash-policy.ts";
 export type NotesOpenStage =
   | "native-read"
   | "legacy-import"
@@ -75,6 +76,46 @@ export interface NotesVault {
     expected: unknown | null,
     value: unknown | null,
   ): Promise<{ status: string }>;
+}
+/** True for a host store's definite, not-applied capacity refusal (`code: "storage-full"`). */
+export function isNotesStorageFull(error: unknown): boolean {
+  return (
+    !!error &&
+    typeof error === "object" &&
+    (error as { code?: unknown }).code === NOTES_STORAGE_FULL_CODE
+  );
+}
+/**
+ * Definite, not-applied capacity refusal. It is a NotesDocumentConflict, so the
+ * document engine reports it as a failed write rather than an uncertain commit.
+ */
+export class NotesStorageFull extends NotesDocumentConflict {
+  readonly code = NOTES_STORAGE_FULL_CODE;
+  constructor() {
+    super("Notes storage is full. Nothing was written.");
+    this.name = "NotesStorageFull";
+  }
+}
+/**
+ * The document engine treats unexpected port errors as uncertain commits. Keep a
+ * host store's definite capacity refusal distinct so the caller can say nothing
+ * was written and offer to free space.
+ */
+export function capacityAwareNotesVault(
+  vault: NotesVault,
+  isFull: (error: unknown) => boolean = isNotesStorageFull,
+): NotesVault {
+  return {
+    read: (key) => vault.read(key),
+    async compareExchange(key, expected, value) {
+      try {
+        return await vault.compareExchange(key, expected, value);
+      } catch (error) {
+        if (isFull(error)) throw new NotesStorageFull();
+        throw error;
+      }
+    },
+  };
 }
 interface Saved {
   version: 1;

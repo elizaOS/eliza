@@ -33,6 +33,19 @@ describe("resolveGoogleChatAccountSettings", () => {
     });
   });
 
+  it.each(["0", "no", "off"])("turns the switches off for %s", async (value) => {
+    const rt = runtime({
+      GOOGLE_CHAT_ENABLED: value,
+      GOOGLE_CHAT_REQUIRE_MENTION: value,
+    });
+    expect(resolveGoogleChatAccountSettings(rt)).toMatchObject({
+      enabled: false,
+      requireMention: false,
+    });
+    // A disabled account needs no credentials, so the service starts dormant.
+    await expect(GoogleChatService.start(rt)).resolves.toBeInstanceOf(GoogleChatService);
+  });
+
   it("keeps the defaults when nothing is set", () => {
     expect(resolveGoogleChatAccountSettings(runtime())).toMatchObject({
       enabled: true,

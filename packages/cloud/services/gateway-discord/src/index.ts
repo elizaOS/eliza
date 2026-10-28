@@ -8,6 +8,7 @@
 import { hostname } from "node:os";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
+import { discordDeliveryReceiptStore } from "./delivery-receipts";
 import {
   createDiscordEventWebhookApp,
   createDiscordPublicKeyResolver,
@@ -95,15 +96,17 @@ app.route(
   }),
 );
 
+const deliveryReceipts = discordDeliveryReceiptStore({
+  get: (key) => gatewayManager.readElizaAppDeliveryReceipt(key),
+  set: (key, value, options) =>
+    gatewayManager.claimOrWriteElizaAppDeliveryReceipt(key, value, options),
+  delete: (key) => gatewayManager.deleteElizaAppDeliveryReceipt(key),
+});
+
 app.post("/internal/deliver", (c) =>
   deliverInternalDiscordMessage(c.req.raw, {
     getInternalSecret: () => process.env.GATEWAY_INTERNAL_SECRET,
-    receipts: {
-      get: (key) => gatewayManager.readElizaAppDeliveryReceipt(key),
-      set: (key, value, options) =>
-        gatewayManager.claimOrWriteElizaAppDeliveryReceipt(key, value, options),
-      delete: (key) => gatewayManager.deleteElizaAppDeliveryReceipt(key),
-    },
+    receipts: deliveryReceipts,
     sendDirectMessage: (input) =>
       gatewayManager.deliverElizaAppDirectMessage(input),
   }),
