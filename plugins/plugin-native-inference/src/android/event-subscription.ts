@@ -152,6 +152,10 @@ export interface ServeSubscriptionOptions {
   /** The per-boot `ELIZA_API_TOKEN`; unset refuses every subscription. */
   expectedToken: string | undefined;
   ephemeralStreams?: ReadonlySet<string>;
+  registerRenderer?: (
+    clientId: string,
+    send: (frame: object) => boolean,
+  ) => () => void;
   keepaliveMs?: number;
   frameByteLimit?: number;
   queueByteLimit?: number;
@@ -185,7 +189,20 @@ export async function serveAgentEventSubscription(
     return;
   }
   const bus = options.bus;
-  if (!bus) {
+  const rendererFeed =
+    frame.payload.streams.length === 1 &&
+    frame.payload.streams[0] === "view-interact";
+  const clientId = headerValue(frame.payload.headers, "x-elizaos-client-id");
+  if (
+    rendererFeed &&
+    (!options.registerRenderer ||
+      !clientId ||
+      !/^[A-Za-z0-9._-]{1,128}$/.test(clientId))
+  ) {
+    refuse("Invalid targeted renderer subscription");
+    return;
+  }
+  if (!bus && !rendererFeed) {
     refuse("Agent event service unavailable");
     return;
   }
@@ -227,41 +244,62 @@ export async function serveAgentEventSubscription(
   // so no event can fall between the two, and nothing earlier is replayed.
   send(JSON.stringify({ id, event: "subscribed", streams: [...streams] }));
   if (!open) return;
-  unsubscribe = bus.subscribe((event) => {
-    // A bus listener must never throw into the emitter or other listeners.
-    try {
-      if (!open || !event || !streams.has(event.stream)) return;
-      let line = "";
-      try {
-        line = JSON.stringify({
+  unsubscribe = rendererFeed
+    ? options.registerRenderer!(clientId!, (frame) => {
+        if (!open) return false;
+        const line = JSON.stringify({
           id,
           event: "agent_event",
-          data: buildIpcAgentEventEnvelope(
-            event,
-            ephemeralStreams.has(event.stream),
-          ),
+          data: {
+            type: "agent_event",
+            version: 1,
+            ephemeral: true,
+            stream: "view-interact",
+            payload: { clientId, frame },
+          },
         });
-      } catch {
-        // Unserializable payload: explicitly refuse this feed below.
-      }
-      if (!line || Buffer.byteLength(line) > frameLimit) {
-        send(
-          JSON.stringify({
-            id,
-            event: "error",
-            error: line
-              ? "Agent event exceeds frame limit; feed incomplete"
-              : "Agent event cannot be serialized; feed incomplete",
-          }),
-        );
-        finish();
-        return;
-      }
-      send(line);
-    } catch {
-      // error-policy:J6 delivery is observational; the bus keeps running.
-    }
-  });
+        if (Buffer.byteLength(line) > frameLimit) {
+          finish();
+          return false;
+        }
+        send(line);
+        return open;
+      })
+    : bus!.subscribe((event) => {
+        // A bus listener must never throw into the emitter or other listeners.
+        try {
+          if (!open || !event || !streams.has(event.stream)) return;
+          let line = "";
+          try {
+            line = JSON.stringify({
+              id,
+              event: "agent_event",
+              data: buildIpcAgentEventEnvelope(
+                event,
+                ephemeralStreams.has(event.stream),
+              ),
+            });
+          } catch {
+            // Unserializable payload: explicitly refuse this feed below.
+          }
+          if (!line || Buffer.byteLength(line) > frameLimit) {
+            send(
+              JSON.stringify({
+                id,
+                event: "error",
+                error: line
+                  ? "Agent event exceeds frame limit; feed incomplete"
+                  : "Agent event cannot be serialized; feed incomplete",
+              }),
+            );
+            finish();
+            return;
+          }
+          send(line);
+        } catch {
+          // error-policy:J6 delivery is observational; the bus keeps running.
+        }
+      });
   keepalive = setInterval(
     () => send(JSON.stringify({ id, event: "keepalive" })),
     options.keepaliveMs ?? EVENT_KEEPALIVE_MS,

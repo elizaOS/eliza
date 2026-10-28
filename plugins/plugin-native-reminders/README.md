@@ -23,3 +23,19 @@ The Android entry also supports undated to-dos, exact-target completion/reopen,
 stable storage-capacity refusals, and posted-reminder recovery after reboot.
 Narrow `AndroidReminderRecord.undated` before reading timestamps: to-dos have no
 due time, alarm or dated completion history.
+
+## Shared occurrence decisions
+
+`@elizaos/macosreminders/occurrence` is the browser-safe twin of the Android engine's
+civil schedule and Done/Snooze decisions: `initialReminderDue`, `nextReminderOccurrence`,
+`completeReminderOccurrence` and `snoozeReminderOccurrence`. A one-off Done completes the
+reminder; a repeat records the finished occurrence (with the dates skipped while it was
+overdue) and advances to its next future civil occurrence in the saved zone. Overlaps
+use the earlier instant, a new repeat at a nonexistent wall time is refused, and a later
+gap advances to the first valid wall time after it. History keeps the newest 32 entries.
+
+Hosts that keep reminders outside Android, such as a browser build, use these functions
+instead of a second schedule implementation. They pass the instant, the observed alert
+delivery status and their own occurrence identity scheme; persistence, notification
+delivery, revisions and receipts stay with the host. `bun run --cwd plugins/plugin-native-reminders test`
+runs the decision tests.

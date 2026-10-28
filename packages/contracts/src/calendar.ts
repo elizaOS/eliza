@@ -16,6 +16,12 @@ import type {
   LifeOpsConnectorSide,
 } from "./lifeops/connectors.js";
 import type { LifeOpsGmailMessageSummary } from "./lifeops/gmail.js";
+/** Requested NEW slot lengths; inherited event lengths retain their own policy. */
+export const CALENDAR_NEW_SLOT_DURATION_MINUTES = Object.freeze({
+  min: 5,
+  max: 480,
+});
+
 export interface LifeOpsCalendarEventEndedFilters {
   /** Only fire for events on these calendar ids (e.g. "primary"). */
   calendarIds?: string[];
@@ -597,11 +603,45 @@ export const CALENDAR_READ_ACTIONS = {
   feed: "CALENDAR_FEED",
   next_event: "CALENDAR_NEXT_EVENT",
   search_events: "CALENDAR_SEARCH_EVENTS",
+  check_availability: "CALENDAR_CHECK_AVAILABILITY",
+  propose_times: "CALENDAR_PROPOSE_TIMES",
 } as const;
+
+/** Bounded diagnostics from the same Calendar read completion guard. No user data. */
+export const CALENDAR_READ_FAILURE_CODES = [
+  "CALENDAR_READ_BINDINGS_INVALID",
+  "CALENDAR_READ_BINDING_INVALID",
+  "CALENDAR_READ_BINDING_IDENTITY_INVALID",
+  "CALENDAR_READ_COVERAGE_MISSING",
+  "CALENDAR_READ_COVERAGE_INCOMPLETE",
+  "CALENDAR_READ_EXECUTION_INVALID",
+  "CALENDAR_READ_RESULT_UNSUCCESSFUL",
+  "CALENDAR_READ_RESULT_INVALID",
+  "CALENDAR_READ_OPERATION_MISMATCH",
+  "CALENDAR_READ_SNAPSHOT_INVALID",
+  "CALENDAR_READ_RECEIPT_MISMATCH",
+  "CALENDAR_READ_INTERVAL_INVALID",
+  "CALENDAR_READ_AVAILABILITY_INVALID",
+  "CALENDAR_READ_DURATION_INVALID",
+  "CALENDAR_READ_TARGET_SNAPSHOT_INVALID",
+  "CALENDAR_READ_SLOT_INVALID",
+  "CALENDAR_READ_EVIDENCE_MISSING",
+  "CALENDAR_READ_EVIDENCE_REJECTED",
+] as const;
+export type CalendarReadFailureCode =
+  (typeof CALENDAR_READ_FAILURE_CODES)[number];
+export function isCalendarReadFailureCode(
+  value: unknown,
+): value is CalendarReadFailureCode {
+  return (
+    typeof value === "string" &&
+    CALENDAR_READ_FAILURE_CODES.some((code) => code === value)
+  );
+}
 
 export type CalendarReadBinding = {
   intentId: string;
-  operation: "feed" | "next_event" | "search_events";
+  operation: keyof typeof CALENDAR_READ_ACTIONS;
   /** Conditional applicability remains the existing planner's semantic judgment. */
   execution: "required" | "conditional";
   sourceMessageId: string;

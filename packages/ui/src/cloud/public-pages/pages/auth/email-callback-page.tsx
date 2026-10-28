@@ -182,7 +182,7 @@ function EmailCallbackContent() {
 
   useDocumentTitle(
     t("cloud.emailCallback.metaTitle", {
-      defaultValue: "Email Sign-In | Eliza Cloud",
+      defaultValue: "Email Sign-In | {{cloudName}}",
     }),
   );
 
@@ -374,7 +374,7 @@ function EmailCallbackContent() {
           defaultValue: "Returning to the app authorization screen...",
         })
       : t("cloud.emailCallback.openingEliza", {
-          defaultValue: "Opening Eliza...",
+          defaultValue: "Opening {{appName}}...",
         });
     const buttonCopy = isAppAuthorization
       ? t("cloud.emailCallback.continue", {
@@ -382,7 +382,7 @@ function EmailCallbackContent() {
         })
       : isJoinFallback
         ? t("cloud.emailCallback.continueToEliza", {
-            defaultValue: "Continue to Eliza",
+            defaultValue: "Continue to {{appName}}",
           })
         : t("common.continue", {
             defaultValue: "Continue",

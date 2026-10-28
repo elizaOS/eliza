@@ -1,3 +1,7 @@
+import {
+  bindNativeViewHost,
+  hasNativeViewRenderer,
+} from "./native-view-renderer.ts";
 import "./artifact-share-role-resolver.ts";
 import "./waifu-chat-role-resolver.ts";
 /**
@@ -441,7 +445,13 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
   nativeReaderWiredRuntimes.add(runtime);
   const requestingHost = (clientId: string): object => {
     const scope = getViewClientScope();
-    if (!scope || scope.clientId !== clientId) {
+    if (
+      !scope ||
+      scope.clientId !== clientId ||
+      !scope.request?.authorization?.ok ||
+      scope.request.runtime !== runtime ||
+      scope.request.signal.aborted
+    ) {
       throw new ElizaError(
         "Native browser requires the requesting view client",
         { code: "VIEW_CLIENT_REQUIRED" },
@@ -481,6 +491,14 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
             hostKey,
             broadcastWsToClientId: sendToClient,
             runtime,
+            userRoles: [getViewClientScope()!.request!.authorization!.role],
+            ownerId:
+              getViewClientScope()!.request!.authorization!.identityId ??
+              getViewClientScope()!.request!.authorization!.principal ??
+              resolveHostSessionAccessContext(
+                getViewClientScope()!.request!.authorization!,
+                runtime,
+              )?.requesterEntityId,
           },
         );
         if (!reply.success)
@@ -492,6 +510,11 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
       },
       navigate: async (clientId, url) => {
         const hostKey = requestingHost(clientId);
+        if (hasNativeViewRenderer(runtime, hostKey, clientId))
+          throw new ElizaError(
+            "Opening a new destination in this app requires its reviewed device navigation operation",
+            { code: "NATIVE_BROWSER_REVIEW_REQUIRED" },
+          );
         const [
           { getViewsBroadcastWsToClientId },
           { createShellNavigateViewWsFrame },
@@ -547,6 +570,14 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
             hostKey,
             broadcastWsToClientId: sendToClient,
             runtime,
+            userRoles: [getViewClientScope()!.request!.authorization!.role],
+            ownerId:
+              getViewClientScope()!.request!.authorization!.identityId ??
+              getViewClientScope()!.request!.authorization!.principal ??
+              resolveHostSessionAccessContext(
+                getViewClientScope()!.request!.authorization!,
+                runtime,
+              )?.requesterEntityId,
           },
         );
         if (!reply.success)
@@ -613,7 +644,10 @@ const optionalPluginSpecifiers = {
   workflow: "@elizaos/plugin-workflow/trigger-routes",
 } as const;
 const optionalPluginImports = {
-  capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
+  // The mobile host has no node_modules. Keep this specifier visible to the
+  // bundler, as with the native browser loader above.
+  capacitor: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-native-inference/host-bridge"),
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
@@ -3762,7 +3796,11 @@ export async function startApiServer(opts?: {
       const unregisterDefault = opts?.skipListen
         ? registerInProcessApi(state.runtime, routeKernel)
         : undefined;
+      const unregisterNative = opts?.skipListen
+        ? bindNativeViewHost(state.runtime, state)
+        : undefined;
       unregisterInProcessApi = () => {
+        unregisterNative?.();
         unregisterHost();
         unregisterDefault?.();
       };

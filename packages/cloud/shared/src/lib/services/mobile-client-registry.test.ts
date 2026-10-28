@@ -14,9 +14,9 @@ import {
 const PRIMARY_APP = "689a1597-85e7-43ca-b000-8c6392d79465";
 const ALPHA_APP = "0b8f6a3e-2c4d-4e5f-9a1b-3c5d7e9f1a2b";
 const ALPHA = {
-  clientId: "ai.elizaresearch.alphaphone",
+  clientId: "org.example.reader",
   appId: ALPHA_APP,
-  redirectUri: "https://eliza.app/alphaphone/auth/callback",
+  redirectUri: "https://eliza.app/reader/auth/callback",
   enabled: true,
 };
 const NINETY_DAYS = 90 * 24 * 60 * 60;
@@ -33,22 +33,31 @@ const env = (clients: unknown[]) => ({
 });
 
 describe("mobile client registry credential lifetime", () => {
-  test("a registered client may request 90-day credentials", () => {
-    const registration = resolveMobileAppAuthRegistration(
-      env([{ ...ALPHA, credentialTtlSeconds: NINETY_DAYS }]),
-      ALPHA.clientId,
-    );
-    expect(registration).toEqual({
-      clientId: ALPHA.clientId,
-      appId: ALPHA_APP,
-      redirectUri: ALPHA.redirectUri,
-      enabled: true,
-      environment: "production",
-      scopes: ["cloud:user"],
-      credentialTtlSeconds: NINETY_DAYS,
-    } as never);
-    expect(MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS).toBe(NINETY_DAYS);
-  });
+  test.each([PRIMARY_APP, undefined])(
+    "a registered client may request 90-day credentials with primary app %s",
+    (primaryApp) => {
+      const configuration = {
+        ...env([{ ...ALPHA, credentialTtlSeconds: NINETY_DAYS }]),
+        ELIZA_MOBILE_APP_AUTH_APP_ID: primaryApp,
+      };
+      const registration = resolveMobileAppAuthRegistration(configuration, ALPHA.clientId);
+      expect(registration).toEqual({
+        clientId: ALPHA.clientId,
+        appId: ALPHA_APP,
+        redirectUri: ALPHA.redirectUri,
+        enabled: true,
+        environment: "production",
+        scopes: ["cloud:user"],
+        credentialTtlSeconds: NINETY_DAYS,
+      } as never);
+      expect(MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS).toBe(NINETY_DAYS);
+      if (primaryApp === undefined) {
+        expect(() => resolveMobileAppAuthRegistration(configuration)).toThrow(
+          "ELIZA_MOBILE_APP_AUTH_APP_ID must be a registered app UUID",
+        );
+      }
+    },
+  );
 
   test("clients without an explicit lifetime keep the 30-day default", () => {
     expect(
@@ -97,7 +106,7 @@ describe("mobile client registry credential lifetime", () => {
     ).toEqual({ ok: false, code: "invalid_client" });
   });
 
-  test("Alpha cannot reuse the primary client's app id or redirect", () => {
+  test("An additional client cannot reuse the primary client's app id or redirect", () => {
     for (const clash of [
       { appId: PRIMARY_APP },
       { redirectUri: MOBILE_APP_AUTH_REDIRECT_URI },

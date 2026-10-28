@@ -33,7 +33,10 @@ import {
   type SpendPeriod,
 } from "../../redis/index.ts";
 import { redactedThrownDiagnostics } from "../../shared/index.ts";
-import { isRedisAvailable } from "../middleware/redis";
+import {
+  isRedisAvailable,
+  isSpendTelemetryAvailable,
+} from "../middleware/redis";
 import { deleteAgentAuthority } from "../services/agent-deletion";
 import {
   type AuditEventInput,
@@ -2412,7 +2415,7 @@ agentRoutes.get("/:agentId/spend", async (c) => {
       ),
     );
 
-  const realtimeEnabled = isRedisAvailable();
+  const realtimeEnabled = isSpendTelemetryAvailable();
   const realtimePeriods = realtimeEnabled
     ? await Promise.all(
         SPEND_PERIODS.map(async (period) => ({
@@ -3831,7 +3834,7 @@ agentRoutes.delete("/:agentId/key-quorums/:quorumId", async (c) => {
 
 export async function createAgentBatch(
   c: Context<{ Variables: AppVariables }>,
-) {
+): Promise<Response> {
   if (!requireTenantAdminOrApiKey(c)) {
     return c.json<ApiResponse>(
       {

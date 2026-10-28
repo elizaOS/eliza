@@ -32,6 +32,25 @@ import { redisNetworkConsentLedger } from "../src/network-compliance";
 import { createRedis, type GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 
+// Restore this fixture's process settings before the next gateway suite.
+const savedEnvironment = Object.fromEntries(
+  [
+    "ELIZA_APP_BLOOIO_API_KEY",
+    "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+    "MOCK_REDIS",
+    "NETWORK_OWNED_INGRESS_POLICY",
+    "NETWORK_PERSONAL_CONTINUITY_ENABLED",
+    "NETWORK_SERVICE_URL",
+    "NETWORK_SHARED_PROJECT",
+    "NETWORK_TAKEOVER",
+    "NETWORK_TAKEOVER_ALLOWLIST",
+    "NETWORK_TWILIO_ACCOUNT_SID",
+    "NETWORK_TWILIO_AUTH_TOKEN",
+    "NETWORK_TWILIO_PHONE_NUMBER",
+    "SERVICE_TURN_SECRET",
+  ].map((name) => [name, process.env[name]]),
+);
+
 process.env.MOCK_REDIS = "1";
 process.env.NETWORK_TWILIO_ACCOUNT_SID = "ACnetwork";
 process.env.NETWORK_TWILIO_AUTH_TOKEN = "network-token";
@@ -252,6 +271,10 @@ beforeAll(() => {
 afterAll(() => {
   service.stop(true);
   cloud.stop(true);
+  for (const [name, value] of Object.entries(savedEnvironment)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
 });
 
 beforeEach(() => {

@@ -204,6 +204,7 @@ import {
   MicrosoftGraphDeltaExpiredError,
   type MicrosoftGraphEvent,
 } from "../microsoft/index.js";
+import { managedCalendarDeleteEnabled } from "../mutations/managed-gate.js";
 import type { CalendarAvailabilitySource } from "./availability.js";
 import {
   CalendarRepository,
@@ -239,6 +240,7 @@ import {
   createManagedCalendarRead,
   managedCalendarPlaceholder,
 } from "./managed-calendar-read.js";
+import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
 
 type AggregatedCalendarFeedSource = {
   calendar: Pick<
@@ -1516,8 +1518,20 @@ export class CalendarService extends Service {
   }
 
   private linkedReconciler(
+    connectorAccountId: string,
     onProviderMutation?: () => void,
   ): LinkedCalendarReconciler {
+    if (this.managedCalendar?.acceptsGrantId(connectorAccountId)) {
+      return new LinkedCalendarReconciler(
+        this.linkedRepo,
+        this.linkedLocalPort(),
+        new ManagedLinkedCalendarProviderPort(
+          this.managedCalendar,
+          managedCalendarDeleteEnabled(process.env),
+        ),
+        onProviderMutation,
+      );
+    }
     const google = this.runtime.getService("google");
     if (!google || typeof google !== "object") {
       throw new CalendarServiceError(
@@ -1540,6 +1554,17 @@ export class CalendarService extends Service {
   } | null> {
     const control = await this.linkedControl.read();
     if (control.paused || !control.destination) return null;
+    if (
+      this.managedCalendar?.acceptsGrantId(
+        control.destination.connectorAccountId,
+      )
+    ) {
+      await this.verifyLinkedDestination(
+        new URL("http://localhost/api/lifeops/calendar/linked/automatic-sync"),
+        control.destination,
+      );
+      return control.destination;
+    }
     const accounts = await this.gate.getGoogleConnectorAccounts(
       new URL("http://localhost/api/lifeops/calendar/linked/automatic-sync"),
       "owner",
@@ -1571,7 +1596,7 @@ export class CalendarService extends Service {
     if (control.paused || control.dispatch) return "paused" as const;
     if (!(await this.activeLinkedCalendarTarget())) return "paused" as const;
     let providerMutationAttempted = false;
-    const reconciler = this.linkedReconciler(() => {
+    const reconciler = this.linkedReconciler(record.connectorAccountId, () => {
       providerMutationAttempted = true;
     });
     const token = await this.linkedControl.acquireDispatch(
@@ -1774,6 +1799,40 @@ export class CalendarService extends Service {
     requestUrl: URL,
     destination: NonNullable<LifeOpsLinkedCalendarControl["destination"]>,
   ): Promise<void> {
+    if (this.managedCalendar?.acceptsGrantId(destination.connectorAccountId)) {
+      const sources = await this.managedCalendar.sources();
+      if (
+        !sources.some(
+          (calendar) =>
+            calendar.provider === "google" &&
+            calendar.side === "owner" &&
+            calendar.grantId === destination.connectorAccountId &&
+            calendar.connectorAccountId === destination.connectorAccountId &&
+            calendar.calendarId === destination.providerCalendarId &&
+            ["owner", "writer"].includes(calendar.accessRole ?? ""),
+        )
+      ) {
+        throw new CalendarServiceError(
+          409,
+          "The selected managed Calendar is unavailable or not writable.",
+          "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+        );
+      }
+      try {
+        await this.managedCalendar.writeCapabilities(
+          destination.connectorAccountId,
+          destination.providerCalendarId,
+        );
+      } catch (cause) {
+        throw new CalendarServiceError(
+          409,
+          "The selected managed Calendar needs verified read and write access.",
+          "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+          { cause },
+        );
+      }
+      return;
+    }
     const accounts = await this.gate.getGoogleConnectorAccounts(
       requestUrl,
       "owner",
@@ -1974,7 +2033,11 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_RECOVERY_IDENTITY_MISMATCH",
             );
           }
-          if (!(await this.linkedReconciler().recoverDispatch(record))) {
+          if (
+            !(await this.linkedReconciler(
+              record.connectorAccountId,
+            ).recoverDispatch(record))
+          ) {
             throw new CalendarServiceError(
               409,
               "The provider outcome is still uncertain or the events differ. Sync remains paused; no provider write was retried.",

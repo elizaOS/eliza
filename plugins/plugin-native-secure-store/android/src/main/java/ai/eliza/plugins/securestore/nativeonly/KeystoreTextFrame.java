@@ -12,8 +12,10 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
 
 /** Native-only codec for deployed Base64(IV):Base64(AES-GCM ciphertext/tag) records.
- * No AAD or user-authentication requirement: hosts retain their existing alias,
- * storage location and access policy. Do not use this as a password-vault grant.
+ * No user-authentication requirement: hosts retain their existing alias, storage
+ * location and access policy. Optional AAD binds a frame to its context, such as a
+ * record name; a frame sealed with AAD opens only with the same bytes, and a frame
+ * sealed without AAD opens only without it. Do not use this as a password-vault grant.
  * All instances serialize cold key creation within this process.
  */
 public final class KeystoreTextFrame {
@@ -37,11 +39,14 @@ public final class KeystoreTextFrame {
     }
   }
 
-  public String seal(String value) throws Exception {
+  public String seal(String value) throws Exception { return seal(value, null); }
+
+  public String seal(String value, byte[] aad) throws Exception {
     if (value == null || value.length() > maxEncodedChars) throw new IllegalArgumentException("Text frame exceeds limit");
     byte[] plain = value.getBytes(StandardCharsets.UTF_8);
     try {
       Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key());
+      if (aad != null) cipher.updateAAD(aad);
       String packed = Base64.encodeToString(cipher.getIV(), Base64.NO_WRAP) + ":"
         + Base64.encodeToString(cipher.doFinal(plain), Base64.NO_WRAP);
       if (packed.length() > maxEncodedChars) throw new IllegalArgumentException("Text frame exceeds limit");
@@ -49,7 +54,9 @@ public final class KeystoreTextFrame {
     } finally { Arrays.fill(plain, (byte) 0); }
   }
 
-  public String open(String packed) throws Exception {
+  public String open(String packed) throws Exception { return open(packed, null); }
+
+  public String open(String packed, byte[] aad) throws Exception {
     if (packed == null || packed.length() > maxEncodedChars) throw new IllegalArgumentException("Invalid text frame");
     int split = packed.indexOf(':');
     if (split < 1 || split != packed.lastIndexOf(':')) throw new IllegalArgumentException("Invalid text frame");
@@ -58,6 +65,7 @@ public final class KeystoreTextFrame {
     if (iv.length != 12 || encrypted.length < 16) throw new IllegalArgumentException("Invalid text frame");
     Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
     cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(128, iv));
+    if (aad != null) cipher.updateAAD(aad);
     byte[] plain = cipher.doFinal(encrypted);
     try { return new String(plain, StandardCharsets.UTF_8); }
     finally { Arrays.fill(plain, (byte) 0); }

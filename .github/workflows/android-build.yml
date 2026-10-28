@@ -17,7 +17,7 @@ jobs:
           submodules: false
           persist-credentials: false
       - name: Setup Java 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: 21
@@ -103,7 +103,7 @@ jobs:
           test -s "$SHA256"
       - name: Upload verified release AAB evidence
         if: ${{ always() && !cancelled() && steps.release-aab-evidence.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: android-cloud-release-aab-audit
           path: |
@@ -115,7 +115,7 @@ jobs:
           if-no-files-found: error
       - name: Upload Android failure diagnostics
         if: ${{ always() && !cancelled() && steps.release-aab-evidence.outcome != 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: android-cloud-release-aab-failure-diagnostics
           path: ${{ runner.temp }}/android-cloud-release-aab-audit.log

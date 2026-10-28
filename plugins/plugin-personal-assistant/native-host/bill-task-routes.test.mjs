@@ -353,7 +353,7 @@ test("source selection gates the workflow, rereads before committing and reuses 
     await rm(directory, { recursive: true, force: true });
   }
 });
-async function routeFixture(t, workflowFactory) {
+async function routeFixture(t, workflowFactory, options = {}) {
   const directory = await mkdtemp(join(tmpdir(), "bill-route-evidence-"));
   const bundlePath = join(directory, "runtime.mjs");
   buildTaskRuntime(bundlePath);
@@ -369,7 +369,12 @@ async function routeFixture(t, workflowFactory) {
         outcomeStore: createBillOutcomeStore(context.db, context.store),
         sourceStore: createBillSourceStore(context.db, context.store),
       };
-      route = createBillTaskRoutes({ ...stores, copy, workflowFactory });
+      route = createBillTaskRoutes({
+        ...stores,
+        ...options,
+        copy,
+        workflowFactory,
+      });
       return route;
     },
   });
@@ -431,6 +436,168 @@ test("route suppresses a completed workflow response after actor, epoch or cance
       assert.equal(response.status, 401);
       assert.deepEqual(await response.json(), { code: "TASK_UNAUTHORIZED" });
     });
+});
+
+test("failed bill route answers the failing step's reason without error text", async (t) => {
+  const reviewKey = "a".repeat(64);
+  const fail = (error) => () => ({
+    refresh: async () => {
+      throw error;
+    },
+  });
+  const choice = (chooseExistingMethod) => () => ({
+    refresh: async () => ({ kind: "choose-existing-method", reviewKey }),
+    chooseExistingMethod,
+  });
+  const drop = (table) => (f) => f.stores.db.exec(`DROP TABLE ${table}`);
+  // Answers the offered choice, so the request reaches the workflow first.
+  const choose = async (f) => {
+    const offered = (
+      await (
+        await f.route(
+          new Request("http://localhost/tasks/bill/bill"),
+          f.context,
+        )
+      ).json()
+    ).decision.choice;
+    return {
+      method: "POST",
+      body: JSON.stringify({
+        callbackData: offered.callbackData,
+        contextKey: offered.contextKey,
+        value: "existing",
+      }),
+    };
+  };
+  for (const { label, reason, name, workflowFactory, before, built } of [
+    {
+      label: "profile not connected",
+      reason: "profile-unavailable",
+      name: "Error",
+      workflowFactory: fail(
+        Object.assign(new Error("Configured browser profile unavailable"), {
+          reason: "profile-unavailable",
+        }),
+      ),
+    },
+    {
+      label: "workflow factory throws",
+      reason: "workflow-missing",
+      name: "TypeError",
+      workflowFactory: () => {
+        throw new TypeError("page text 4111");
+      },
+    },
+    {
+      label: "workflow has no refresh",
+      reason: "workflow-missing",
+      name: "BillHostError",
+      workflowFactory: () => ({}),
+    },
+    {
+      label: "outcome read before the workflow",
+      reason: "store-error",
+      name: "Error",
+      workflowFactory: fail(new Error("unused")),
+      before: drop("bill_outcomes_v1"),
+      built: false,
+    },
+    {
+      label: "outcome read after the workflow",
+      reason: "store-error",
+      name: "Error",
+      workflowFactory: choice(async () => {
+        throw new Error("unused");
+      }),
+      before: async (f) => {
+        const request = await choose(f);
+        drop("bill_outcomes_v1")(f);
+        return request;
+      },
+      built: true,
+    },
+    {
+      label: "choice publish",
+      reason: "store-error",
+      name: "Error",
+      workflowFactory: choice(),
+      // A presentation table this route cannot write.
+      before: (f) =>
+        f.stores.db.exec("CREATE TABLE interactive_task_presentation_v1 (x)"),
+      built: true,
+    },
+    {
+      label: "workflow choice",
+      reason: "unknown",
+      name: "RangeError",
+      workflowFactory: choice(async () => {
+        throw new RangeError("page text 4111");
+      }),
+      before: choose,
+    },
+    {
+      label: "workflow error name contains private data",
+      reason: "unknown",
+      name: undefined,
+      workflowFactory: fail(
+        Object.assign(new Error("private page"), {
+          name: "Account4111111111111111",
+        }),
+      ),
+    },
+    {
+      label: "workflow refresh",
+      reason: "unknown",
+      name: "RangeError",
+      workflowFactory: fail(new RangeError("page text 4111")),
+    },
+  ])
+    await t.test(label, async (t) => {
+      const diagnostics = [];
+      let workflows = 0;
+      const f = await routeFixture(
+        t,
+        (input) => {
+          workflows++;
+          return workflowFactory(input);
+        },
+        { onDiagnostic: (event) => diagnostics.push(event) },
+      );
+      const init = await before?.(f);
+      workflows = 0;
+      const response = await f.route(
+        new Request("http://localhost/tasks/bill/bill", init),
+        f.context,
+      );
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        code: "BILL_WORKFLOW_UNAVAILABLE",
+        reason,
+      });
+      assert.deepEqual(diagnostics, [
+        { route: "bill", taskId: "bill", reasonCode: reason, name },
+      ]);
+      assert.doesNotMatch(JSON.stringify(diagnostics), /page text|4111/);
+      if (built !== undefined) assert.equal(workflows, built ? 1 : 0);
+    });
+});
+
+test("an unknown bill task is not found, not a failure", async (t) => {
+  const diagnostics = [];
+  const f = await routeFixture(
+    t,
+    () => {
+      throw new Error("must not build");
+    },
+    { onDiagnostic: (event) => diagnostics.push(event) },
+  );
+  const response = await f.route(
+    new Request("http://localhost/tasks/missing/bill"),
+    f.context,
+  );
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { code: "TASK_NOT_FOUND" });
+  assert.deepEqual(diagnostics, []);
 });
 
 test("malformed bill POST JSON is a client error with no workflow effect", async (t) => {

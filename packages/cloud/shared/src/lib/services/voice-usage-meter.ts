@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
+import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import {
   buildRedisClient,
   type EvalCapableRedis,
   type RedisFactoryEnv,
   supportsRedisEval,
 } from "../cache/redis-factory";
+import { getCloudBinding } from "../runtime/cloud-bindings";
 
 const DAY_MS = 86_400_000;
 const COUNTER_SCALE = 1_000_000;
@@ -52,6 +55,67 @@ redis.call('EXPIRE', KEYS[1], ARGV[4])
 redis.call('EXPIRE', KEYS[2], ARGV[4])
 return {1, 0, org, usr}
 `;
+
+export class VoiceUsageStateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VoiceUsageStateError";
+  }
+}
+
+function voiceUsageOwner(orgKey: string): string {
+  return `voice-v1:${createHash("sha256").update(orgKey).digest("hex")}`;
+}
+
+/** Retains the exact quota arithmetic while replacing the atomic transport. */
+class CloudflareVoiceUsageTransport implements AtomicVoiceUsageRedis {
+  constructor(private readonly namespace: RuntimeDurableObjectNamespace) {}
+  async eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown> {
+    const operation =
+      script === CHECK_AND_RECORD_LUA ? "reserve" : script === RELEASE_LUA ? "release" : null;
+    if (!operation || keys.length !== 2)
+      throw new VoiceUsageStateError("Unsupported voice usage operation");
+    const response = await this.namespace
+      .getByName(voiceUsageOwner(keys[0]))
+      .fetch("https://voice-usage.internal/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation, keys, args }),
+      });
+    if (!response.ok)
+      throw new VoiceUsageStateError(`Voice usage state failed (${response.status})`);
+    const value: unknown = await response.json();
+    if (operation === "release" && value !== 1)
+      throw new VoiceUsageStateError("Invalid voice release receipt");
+    return value;
+  }
+}
+
+/** Private operator transfer; no public API route exposes it. */
+export async function importCloudflareVoiceUsage(
+  namespace: RuntimeDurableObjectNamespace,
+  orgKey: string,
+  entries: Array<{ key: string; value: number; expiresAt: number }>,
+  sourceQuiesced: true,
+): Promise<void> {
+  const response = await namespace
+    .getByName(voiceUsageOwner(orgKey))
+    .fetch("https://voice-usage.internal/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operation: "import", orgKey, entries, sourceQuiesced }),
+    });
+  if (!response.ok)
+    throw new VoiceUsageStateError(`Voice usage import rejected (${response.status})`);
+  const result: unknown = await response.json();
+  if (
+    !result ||
+    typeof result !== "object" ||
+    !("imported" in result) ||
+    result.imported !== entries.length
+  )
+    throw new VoiceUsageStateError("Invalid voice usage import receipt");
+}
 
 /** Durable, cross-isolate quota accounting through one atomic Redis script. */
 export class RedisVoiceUsageStore implements VoiceUsageStore {
@@ -135,9 +199,21 @@ export class RedisVoiceUsageStore implements VoiceUsageStore {
 }
 
 export function createDurableVoiceUsageStore(
-  env: RedisFactoryEnv,
+  env: RedisFactoryEnv & {
+    CLOUD_VOICE_USAGE_BACKEND?: string;
+    VOICE_USAGE_STATE?: RuntimeDurableObjectNamespace;
+  },
   now?: () => number,
 ): RedisVoiceUsageStore | null {
+  const backend = env.CLOUD_VOICE_USAGE_BACKEND ?? "redis";
+  if (backend !== "redis") {
+    if (backend !== "cloudflare")
+      throw new VoiceUsageStateError("Invalid CLOUD_VOICE_USAGE_BACKEND");
+    const binding =
+      env.VOICE_USAGE_STATE ?? getCloudBinding<RuntimeDurableObjectNamespace>("VOICE_USAGE_STATE");
+    if (!binding) throw new VoiceUsageStateError("VOICE_USAGE_STATE binding is required");
+    return new RedisVoiceUsageStore(new CloudflareVoiceUsageTransport(binding), now);
+  }
   // The repository mock intentionally implements only common Redis commands,
   // not Lua. Local/tests use the isolate-safe in-memory store instead.
   if (env.MOCK_REDIS === "1") return null;

@@ -9,7 +9,7 @@ pluginManagement {
     }
 }
 rootProject.name = 'paradee-voice-qualify'
-def androidRoot = new File(settingsDir, '../../../platforms/android')
+def repoRoot = new File(settingsDir, '../../../../..')
 include ':paradee-voice'
-project(':paradee-voice').projectDir = new File(androidRoot, 'paradee-voice')
+project(':paradee-voice').projectDir = new File(repoRoot, 'plugins/plugin-local-inference/native/android')
 include ':app'

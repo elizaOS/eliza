@@ -1,3 +1,5 @@
+import { authoredNoteText } from "./note-authored.js";
+import { applyNotePatch } from "./note-patch.js";
 import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
@@ -9,7 +11,7 @@ import { reconstructNoteContent } from "./types.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
-import { NotesStore } from "./store.js";
+import { type EncryptedNotesDocumentPort, NotesStore } from "./store.js";
 import type {
   NotesSnapshot,
   NotesStoreStatus,
@@ -19,9 +21,7 @@ import type {
 import {
   parseCreateNoteInput,
   parseEntityId,
-  parseNoteContent,
   parseNoteEditRevision,
-  parseStickyNote,
   parseUpdateNoteInput,
 } from "./validation.js";
 
@@ -81,7 +81,7 @@ function queryMatches(
   );
   if (exactTitle.length > 0) return exactTitle;
   const searchable = (note: StickyNote) =>
-    `${reconstructNoteContent(note)} ${note.color}`;
+    `${reconstructNoteContent(note)} ${authoredNoteText(note.format)} ${note.color}`;
   // Whole-word hits outrank substring hits ("plan" names "Trip plan", not
   // "Airplane snacks"); the substring tier stays for scripts without spaces.
   const wholeWord = indexed.filter(({ note }) =>
@@ -130,7 +130,11 @@ function lookupError(
 
 /** Identity key for copies with exactly the same user-visible content. */
 function noteContentKey(note: StickyNote): string {
-  return JSON.stringify([note.title, note.body, note.color]);
+  return JSON.stringify(
+    note.format
+      ? [note.id, note.title, note.body, note.color, note.format]
+      : [note.title, note.body, note.color],
+  );
 }
 
 function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {
@@ -200,61 +204,6 @@ function assertEditRevision(
     );
 }
 
-function applyNotePatch(
-  existing: StickyNote,
-  patch: UpdateNoteInput,
-  updatedAt: string,
-): StickyNote {
-  const updated: StickyNote = { ...existing, updatedAt };
-  if (patch.textEdit) {
-    const { field, oldText, newText } = patch.textEdit;
-    const original = existing[field];
-    const first = original.indexOf(oldText);
-    const ambiguous = first >= 0 && original.indexOf(oldText, first + 1) >= 0;
-    if (first < 0 || ambiguous) {
-      throw new ElizaError(
-        first < 0
-          ? "The exact old text is absent from the current note; read it before choosing another edit. Nothing changed."
-          : "The old text matches more than once; include enough surrounding text to identify one occurrence. Nothing changed.",
-        {
-          code:
-            first < 0
-              ? "NOTES_EDIT_TEXT_NOT_FOUND"
-              : "NOTES_EDIT_TEXT_AMBIGUOUS",
-          context: { noteId: existing.id, field },
-          severity: "ephemeral",
-        },
-      );
-    }
-    // A replacement callback keeps $&, $1 and similar text literal. The
-    // match is checked under the same store barrier that commits the update.
-    const replacement = original.replace(oldText, () => newText);
-    const validated = parseStickyNote({ ...updated, [field]: replacement });
-    if (validated[field] !== replacement) {
-      throw new ElizaError(
-        "The exact edit would require whitespace normalization; nothing changed.",
-        {
-          code: "NOTES_EDIT_NORMALIZATION_REQUIRED",
-          context: { noteId: existing.id, field },
-          severity: "ephemeral",
-        },
-      );
-    }
-    updated[field] = replacement;
-    return updated;
-  }
-  if (patch.content !== undefined) {
-    Object.assign(updated, parseNoteContent(patch.content));
-  } else {
-    if (patch.title !== undefined) updated.title = patch.title;
-    // Public structured bodies exclude the separator; stored remainders include it.
-    if (patch.body !== undefined)
-      updated.body = patch.body ? `\n${patch.body}` : "";
-  }
-  if (patch.color !== undefined) updated.color = patch.color;
-  return updated;
-}
-
 export class NotesService extends Service {
   static override readonly serviceType = NOTES_SERVICE_TYPE;
 
@@ -271,6 +220,7 @@ export class NotesService extends Service {
     runtime?: IAgentRuntime,
     options: {
       store?: NotesStore;
+      encryptedPort?: EncryptedNotesDocumentPort;
       stateDir?: string;
       now?: () => Date;
       createId?: () => string;
@@ -282,6 +232,7 @@ export class NotesService extends Service {
       ? options.store
       : new NotesStore({
           stateDir: options.stateDir,
+          encryptedPort: options.encryptedPort,
           agentId: runtime ? String(runtime.agentId) : undefined,
         });
     this.now = options.now ? options.now : () => new Date();
@@ -436,12 +387,15 @@ export class NotesService extends Service {
         title: input.title,
         body: input.body,
         color: input.color,
+        ...(input.format ? { format: structuredClone(input.format) } : {}),
         createdAt: now,
         updatedAt: now,
       });
-      const existing = draft.notes.find(
-        (note) => noteContentKey(note) === requestedKey,
-      );
+      const existing = input.format
+        ? undefined
+        : draft.notes.find(
+            (note) => !note.format && noteContentKey(note) === requestedKey,
+          );
       if (existing) return { note: existing, replayed: true };
       if (draft.notes.some((note) => note.id === id)) {
         throw new ElizaError(`Notes generated duplicate note id "${id}".`, {
@@ -455,6 +409,7 @@ export class NotesService extends Service {
         title: input.title,
         body: input.body,
         color: input.color,
+        ...(input.format ? { format: structuredClone(input.format) } : {}),
         createdAt: now,
         updatedAt: now,
       };
@@ -489,7 +444,10 @@ export class NotesService extends Service {
   }> {
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
-    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
+    const revision = parseNoteEditRevision(
+      expectedRevision,
+      !patch.textEdit || patch.textEdit.action === "append",
+    );
     const updatedAt = this.now().toISOString();
     let consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
@@ -547,7 +505,10 @@ export class NotesService extends Service {
     consolidatedIds: string[];
   }> {
     const patch = parseUpdateNoteInput(patchValue);
-    const revision = parseNoteEditRevision(expectedRevision, !patch.textEdit);
+    const revision = parseNoteEditRevision(
+      expectedRevision,
+      !patch.textEdit || patch.textEdit.action === "append",
+    );
     const updatedAt = this.now().toISOString();
     const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
@@ -612,7 +573,17 @@ export class NotesService extends Service {
       removedIds = draft.notes
         .filter((note) => noteContentKey(note) === key)
         .map((note) => note.id);
-      draft.notes = draft.notes.filter((note) => noteContentKey(note) !== key);
+      const trashed = draft.notes.filter((note) =>
+        removedIds.includes(note.id),
+      );
+      draft.trash = [
+        ...(draft.trash ?? []),
+        ...trashed.map((note) => ({
+          note: structuredClone(note),
+          deletedAt: this.now().toISOString(),
+        })),
+      ];
+      draft.notes = draft.notes.filter((note) => !removedIds.includes(note.id));
       return existing;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:deleted");
@@ -624,6 +595,28 @@ export class NotesService extends Service {
       },
       removedIds,
     };
+  }
+
+  /** Restores one stable ID without overwriting an active note; a stale view cannot restore. */
+  async restoreNoteWithCommit(
+    idValue: unknown,
+    expectedRevision: unknown,
+  ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+    const id = parseEntityId(idValue);
+    const revision = parseNoteEditRevision(expectedRevision, true);
+    const transaction = await this.store.transact((draft) => {
+      assertEditRevision(draft.revision, revision);
+      const trash = draft.trash ?? [];
+      const index = trash.findIndex((entry) => entry.note.id === id);
+      const entry = trash[index];
+      if (!entry || draft.notes.some((note) => note.id === id))
+        throw notFound(id);
+      draft.notes.unshift(structuredClone(entry.note));
+      trash.splice(index, 1);
+      return entry.note;
+    });
+    await this.emitStateUpdated(transaction.snapshot, "note:restored");
+    return transaction;
   }
 
   async deleteNote(idValue: unknown): Promise<StickyNote> {
@@ -669,6 +662,15 @@ export class NotesService extends Service {
       removedIds = draft.notes
         .filter((note) => noteContentKey(note) === key)
         .map((note) => note.id);
+      draft.trash = [
+        ...(draft.trash ?? []),
+        ...draft.notes
+          .filter((note) => removedIds.includes(note.id))
+          .map((note) => ({
+            note: structuredClone(note),
+            deletedAt: this.now().toISOString(),
+          })),
+      ];
       draft.notes = kept;
       return existing;
     });
@@ -714,6 +716,13 @@ export class NotesService extends Service {
         );
       }
       const count = draft.notes.length;
+      draft.trash = [
+        ...(draft.trash ?? []),
+        ...draft.notes.map((note) => ({
+          note: structuredClone(note),
+          deletedAt: this.now().toISOString(),
+        })),
+      ];
       draft.notes = [];
       return count;
     });
