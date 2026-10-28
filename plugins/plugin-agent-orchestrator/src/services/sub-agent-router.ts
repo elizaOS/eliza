@@ -1747,6 +1747,11 @@ export class SubAgentRouter extends Service {
     // source and selected swarm room. If the connector isn't registered, fall through to
     // handleMessage without a callback — the planner will still update
     // state but no message reaches the user.
+    // One planner turn answers the user. The task room (else the first
+    // target) runs it; any other swarm room (a worktree room) only stores the
+    // post, so the user does not get the same answer and actions twice.
+    const plannerTarget =
+      targets.find((target) => target.roles.includes("task")) ?? targets[0];
     for (const target of targets) {
       const sessionMeta = session.metadata as
         | Record<string, unknown>
@@ -1843,6 +1848,19 @@ export class SubAgentRouter extends Service {
         },
         createdAt: Date.now(),
       };
+      if (target !== plannerTarget) {
+        await this.runtime.createMemory(memory, "messages").catch((err) => {
+          // error-policy:J7 the context copy for a secondary swarm room is
+          // best-effort; warned, does not abort the loop.
+          this.log("warn", "createMemory for sub-agent post failed", {
+            sessionId,
+            event,
+            roomId: target.roomId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+        continue;
+      }
       const replyCallback = this.buildReplyCallback(origin, sessionId, target);
       // messageService.handleMessage saves the memory itself ("Saving message
       // to memory" inside SERVICE:MESSAGE). When that path is available, skip

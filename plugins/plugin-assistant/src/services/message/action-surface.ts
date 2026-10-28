@@ -18,6 +18,7 @@ import {
   getDirectActionRoutingRules,
   getInferenceTimer,
   getUserMessageText,
+  inflectionTermKeys,
   type LocalizedActionExampleResolver,
   normalizeContextId,
   readEnvBool,
@@ -51,6 +52,8 @@ import {
 } from "./direct-action-heuristics.ts";
 import {
   hasUiViewPlannerScope,
+  plannerDiscoveryContexts,
+  plannerSelectedRecordActionHints,
   uiViewActionNames,
   uiViewActionPriority,
 } from "./provider-state.ts";
@@ -138,6 +141,7 @@ const GENERIC_OPERATION_WORDS = new Set([
   "change",
   "modify",
   "replace",
+  "rename",
   "patch",
   "delete",
   "remove",
@@ -192,7 +196,11 @@ function pendingActionContexts(
     ),
   );
   const domains = new Set<string>();
-  for (const intent of (intents ?? []).map(positiveIntentText)) {
+  for (const intent of (intents ?? []).flatMap((text) =>
+    intentClauses(positiveIntentText(text)).flatMap((clause) =>
+      clause.split(/\band\b/iu),
+    ),
+  )) {
     const words = tokenizeActionSearchText(intent);
     const claimed = words.some((word) => claimWords.has(word));
     if (
@@ -257,9 +265,10 @@ function positiveIntentText(intent: string): string {
     /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
     " ",
   );
-  return /\b(?:not|never|without|don['’]t|cannot|can['’]t)\b/iu.test(unquoted)
-    ? ""
-    : unquoted.trim();
+  const negative = unquoted.search(
+    /\b(?:not|never|without|don['’]t|cannot|can['’]t)\b/iu,
+  );
+  return (negative < 0 ? unquoted : unquoted.slice(0, negative)).trim();
 }
 
 /**
@@ -271,6 +280,8 @@ function positiveIntentText(intent: string): string {
 export function retrieveContextualPlannerActions(args: {
   actions: readonly Action[];
   query: string;
+  /** Current typed selection contributes affinity only; all actions already pass admission. */
+  message?: Memory;
   /** Model-selected outcomes rank operations; the full request still ranks domains. */
   intents?: readonly string[];
   contexts?: readonly string[];
@@ -298,6 +309,14 @@ export function retrieveContextualPlannerActions(args: {
         messageText: args.query,
         intents: args.intents,
         selectedContexts: args.contexts,
+        parentActionHints:
+          args.message && !args.selectedActions?.length
+            ? plannerSelectedRecordActionHints(
+                args.message,
+                args.actions,
+                args.intents,
+              )
+            : undefined,
       })
     : undefined;
   const actionsByName = new Map(
@@ -321,7 +340,7 @@ export function retrieveContextualPlannerActions(args: {
     ...declaredDomains,
     ...pendingActionContexts(
       args.actions,
-      args.intents,
+      [args.query, ...(args.intents ?? [])],
       args.contextAliases,
       args.selectedActions,
     ),
@@ -360,11 +379,27 @@ export function retrieveContextualPlannerActions(args: {
     // the remaining slots by rank. Exact hints may exceed this automatic budget.
     for (const domain of domains) {
       if (chosen.size >= available) break;
-      const representative = candidates.find((action) =>
-        actionDiscoveryContexts(action).some(
-          (context) => normalizeContextId(context) === domain,
-        ),
-      );
+      if (
+        required.some((action) =>
+          actionDiscoveryContexts(action).some(
+            (context) => normalizeContextId(context) === domain,
+          ),
+        )
+      )
+        continue;
+      const representative = candidates
+        .filter((action) =>
+          actionDiscoveryContexts(action).some(
+            (context) => normalizeContextId(context) === domain,
+          ),
+        )
+        .sort(
+          (left, right) =>
+            plannerDomainOwnership(right, domain) -
+              plannerDomainOwnership(left, domain) ||
+            actionDiscoveryContexts(left).length -
+              actionDiscoveryContexts(right).length,
+        )[0];
       if (representative) chosen.add(representative.name);
     }
     for (const action of candidates) {
@@ -384,6 +419,34 @@ export function retrieveContextualPlannerActions(args: {
     };
   };
   if (args.selectedActions) {
+    const selectedOperationNames = new Set<string>();
+    for (const action of args.selectedActions) {
+      selectedOperationNames.add(action.name);
+      for (const child of action.subActions ?? []) {
+        const name = typeof child === "string" ? child : child.name;
+        if (actionsByName.has(name)) selectedOperationNames.add(name);
+      }
+    }
+    const requestedOperationsCovered = (domain: string): boolean => {
+      const strongest = Math.max(
+        0,
+        ...args.actions.map((action) => plannerDomainOwnership(action, domain)),
+      );
+      const names = args.actions
+        .filter(
+          (action) => plannerDomainOwnership(action, domain) === strongest,
+        )
+        .map((action) => action.name);
+      return intentClauses(positiveIntentText(args.query))
+        .flatMap((clause) => clause.split(/\band\b/iu))
+        .every((clause) => {
+          const requested = preferredOperationNames(clause, names);
+          return (
+            requested.size === 0 ||
+            [...requested].some((name) => selectedOperationNames.has(name))
+          );
+        });
+    };
     // Matching both the current request and its sole intent may narrow initial
     // preload for that owner; this is not completion evidence.
     // Multiple clauses or extra candidates retain the existing bootstrap, and
@@ -395,12 +458,32 @@ export function retrieveContextualPlannerActions(args: {
       intents.length === 1 &&
       [request, intents[0]].every((text) => {
         const positive = positiveIntentText(text);
+        const clauses = intentClauses(positive)
+          .flatMap((clause) => clause.split(/[.!?\r\n:&]/u))
+          .map((clause) => clause.trim())
+          .filter(Boolean);
         return (
           positive.length > 0 &&
           !COMPOUND_INTENT_BOUNDARY.test(positive) &&
-          intentClauses(positive)
-            .flatMap((clause) => clause.split(/[.!?\r\n:&]/u))
-            .filter((clause) => clause.trim()).length === 1
+          clauses.length > 0 &&
+          // A single negative constraint can qualify the same request; it
+          // does not introduce another positive operation. Keep its original
+          // text in context. Operation words or longer clauses stay ambiguous.
+          clauses.slice(1).every((clause) => {
+            const constraint = /^no\s+([\p{L}\p{N}]+)$/iu.exec(clause)?.[1];
+            if (!constraint) return false;
+            const words = tokenizeActionSearchText(constraint);
+            if (words.length !== 1) return false;
+            const terms = new Set(inflectionTermKeys(words[0]));
+            return (
+              ![...GENERIC_OPERATION_WORDS].some((word) => terms.has(word)) &&
+              !args.actions.some((action) =>
+                tokenizeActionSearchText(action.name).some((word) =>
+                  inflectionTermKeys(word).some((term) => terms.has(term)),
+                ),
+              )
+            );
+          })
         );
       });
     if (direct && singleOutcome && args.selectedActions.length > 0) {
@@ -448,16 +531,29 @@ export function retrieveContextualPlannerActions(args: {
         )
           continue;
         const covered = new Set(rule.contexts.map(normalizeContextId));
+        // Extra explicit domains make the scope uncertain. Preserve the whole
+        // existing bootstrap rather than partially narrowing that request.
+        if (
+          [...declaredDomains].some(
+            (domain) =>
+              ![domain, ...(args.contextAliases?.(domain) ?? [])].some(
+                (context) => covered.has(normalizeContextId(context)),
+              ),
+          )
+        )
+          continue;
         for (const domain of domains) {
           // The registered owner can claim this single intent even when its
           // action name differs from the user's wording. Apply the same
-          // operation check used for lexical claims above; payload nouns alone
-          // do not add another domain. Explicit contexts remain authoritative.
+          // operation check for inferred domains. An owner declaration covers
+          // its declared domains: payload nouns must not add sibling schemas.
+          // Other explicit contexts remain authoritative.
           if (
             [domain, ...(args.contextAliases?.(domain) ?? [])].some((context) =>
               covered.has(normalizeContextId(context)),
             ) ||
-            (!declaredDomains.has(domain) &&
+            (requestedOperationsCovered(domain) &&
+              !declaredDomains.has(domain) &&
               !hasDomainOperation(args.actions, intents[0], domain))
           )
             domains.delete(domain);
@@ -473,7 +569,8 @@ export function retrieveContextualPlannerActions(args: {
         strongest > 0 &&
         args.selectedActions.some(
           (action) => plannerDomainOwnership(action, domain) === strongest,
-        )
+        ) &&
+        requestedOperationsCovered(domain)
       )
         domains.delete(domain);
     }
@@ -495,8 +592,12 @@ export function retrieveContextualPlannerActions(args: {
   // must not erase a calendar intent whose operation wording has no name match.
   const searchDomains = domains.size > 0 ? [...domains] : [undefined];
   const selected = new Set<Action>();
-  const operationQuery =
-    args.intents?.filter((intent) => intent.trim()).join("\n") || args.query;
+  // Model interpretation enriches the original request; it cannot erase an
+  // explicit operation when a prerequisite read was selected as a hint.
+  const operationQuery = [args.query, ...(args.intents ?? [])]
+    .map(positiveIntentText)
+    .filter(Boolean)
+    .join("\n");
   for (const domain of searchDomains) {
     const candidates =
       domain === undefined
@@ -567,12 +668,7 @@ export function retrieveContextualPlannerActions(args: {
         plannerDomainOwnership(action, domain) === strongest,
     );
     let operationNames = preferredOperationNames(
-      domain !== undefined && !declaredDomains.has(domain)
-        ? (args.intents ?? [])
-            .map(positiveIntentText)
-            .filter(Boolean)
-            .join("\n")
-        : operationQuery,
+      operationQuery,
       owners.map((action) => action.name),
     );
     // A generic verb alone matches unrelated families (CREATE loads alarms,
@@ -642,7 +738,14 @@ export function retrieveContextualPlannerActions(args: {
     }
     if (operationNames.size > 0) {
       const wanted = new Set(operationNames);
-      const clauses = args.intents?.length ? args.intents : [operationQuery];
+      const clauses = [
+        ...intentClauses(positiveIntentText(args.query)).flatMap((clause) =>
+          clause.split(/\band\b/iu),
+        ),
+        ...(args.intents ?? []),
+      ]
+        .map(positiveIntentText)
+        .filter(Boolean);
       for (const parent of owners) {
         const childNames = new Set(
           parent.subActions?.map((child) =>
@@ -741,10 +844,29 @@ export function retrieveContextualPlannerActions(args: {
       const children = owners.filter((action) => childNames.has(action.name));
       if (children.length === 0) continue;
       const parentWords = new Set(tokenizeActionSearchText(parent.name));
+      // Shared nouns (event/events, item/items) do not identify one operation.
+      // Keep the parent's complete contract when no specific operation was
+      // requested instead of selecting a sibling by singular/plural spelling.
+      const familyTerms = args.actions
+        .filter((action) => childNames.has(action.name))
+        .map(
+          (action) =>
+            new Set(
+              operationWords(action.name, parentWords).flatMap(
+                inflectionTermKeys,
+              ),
+            ),
+        );
+      const queryTerms = new Set([...queryWords].flatMap(inflectionTermKeys));
       const explicitChildren = children.filter((action) =>
-        operationWords(action.name, parentWords).some((word) =>
-          queryWords.has(word),
-        ),
+        operationWords(action.name, parentWords).some((word) => {
+          const keys = inflectionTermKeys(word);
+          return (
+            keys.some((key) => queryTerms.has(key)) &&
+            familyTerms.filter((terms) => keys.some((key) => terms.has(key)))
+              .length === 1
+          );
+        }),
       );
       if (explicitChildren.length === 0 && typeof parent.handler !== "function")
         continue;
@@ -868,12 +990,20 @@ export async function collectV5PlannerCandidateActions(args: {
   const declaredAdmissionDomains = new Set(
     (args.selectedContexts ?? []).map(normalizeContextId),
   );
+  const discoveryContexts = args.candidateActions?.length
+    ? args.selectedContexts
+    : plannerDiscoveryContexts(args.message, args.selectedContexts);
   const pendingDomains = new Set(
-    pendingActionContexts(
-      allRuntimeActions,
-      args.intents,
-      (context) => args.runtime.contexts?.get(context)?.aliases,
-    ).filter((context) => !declaredAdmissionDomains.has(context)),
+    [
+      ...(discoveryContexts ?? []).filter(
+        (context) => context !== "general" && context !== "simple",
+      ),
+      ...pendingActionContexts(
+        allRuntimeActions,
+        args.intents,
+        (context) => args.runtime.contexts?.get(context)?.aliases,
+      ),
+    ].filter((context) => !declaredAdmissionDomains.has(context)),
   );
   // Bound additional admission checks before validate()/connector policy can
   // perform I/O. Unknown parent-only families remain explicit discovery work.
@@ -888,7 +1018,9 @@ export async function collectV5PlannerCandidateActions(args: {
               ),
           ),
           query: (args.intents ?? []).join("\n"),
+          message: args.message,
           intents: args.intents,
+          contexts: discoveryContexts,
           contextAliases: (context) =>
             args.runtime.contexts?.get(context)?.aliases,
         }).actions.map((action) => action.name)
@@ -911,7 +1043,13 @@ export async function collectV5PlannerCandidateActions(args: {
   type Gate = "connector-policy" | "validate";
   const totals: Record<
     Gate,
-    { count: number; totalMs: number; maxMs: number; throws: number }
+    {
+      count: number;
+      totalMs: number;
+      maxMs: number;
+      maxActionName?: string;
+      throws: number;
+    }
   > = {
     "connector-policy": { count: 0, totalMs: 0, maxMs: 0, throws: 0 },
     validate: { count: 0, totalMs: 0, maxMs: 0, throws: 0 },
@@ -945,6 +1083,8 @@ export async function collectV5PlannerCandidateActions(args: {
       const total = totals[gate];
       total.count++;
       total.totalMs += durationMs;
+      if (gate === "validate" && durationMs > total.maxMs)
+        total.maxActionName = action.name;
       total.maxMs = Math.max(total.maxMs, durationMs);
       if (!returned) total.throws++;
       checks?.push({
@@ -1584,6 +1724,16 @@ export function buildV5PlannerActionSurface(params: {
   const retrievalMessageText =
     typeof messageText === "string" ? messageText : "";
   const retrievalStartedAt = performance.now();
+  const retrievalParentActionHints = candidateActions.length
+    ? parentActionHints
+    : [
+        ...parentActionHints,
+        ...plannerSelectedRecordActionHints(
+          params.message,
+          params.actions,
+          params.messageHandler.plan.intents,
+        ),
+      ];
   const retrieval = retrieveActions({
     catalog,
     messageText: retrievalMessageText,
@@ -1592,9 +1742,11 @@ export function buildV5PlannerActionSurface(params: {
       params.state,
       params.message,
     ),
-    selectedContexts: params.selectedContexts,
+    selectedContexts: candidateActions.length
+      ? params.selectedContexts
+      : plannerDiscoveryContexts(params.message, params.selectedContexts),
     candidateActions,
-    parentActionHints,
+    parentActionHints: retrievalParentActionHints,
     measurementMode,
   });
   recordInferenceSpan(
@@ -1636,7 +1788,7 @@ export function buildV5PlannerActionSurface(params: {
             text: retrievalMessageText,
             tokens: retrieval.query.tokens,
             candidateActions: [...candidateActions],
-            parentActionHints: [...parentActionHints],
+            parentActionHints: [...retrievalParentActionHints],
           },
           results: retrieval.results.map((r, idx) => ({
             name: r.name,

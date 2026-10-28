@@ -810,6 +810,7 @@ async function executeBrowserWaitForUrl(
 
 export const browserAction: Action = {
   name: "BROWSER",
+  egress: ["owner-device", "public-network"],
   contexts: ["browser", "web", "automation", "secrets"],
   roleGate: { minRole: "OWNER" },
   similes: [

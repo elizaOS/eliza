@@ -2,7 +2,7 @@
 import { execFileSync, execSync } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { platform, tmpdir } from "node:os";
+import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   readJsonBody as parseJsonBody,
@@ -1207,7 +1207,7 @@ function getPlatformInfo(): Record<string, string | boolean> {
   }
   return {
     platform: os,
-    arch: require("node:os").arch(),
+    arch: arch(),
     dockerInstalled,
     dockerRunning,
     // Compatibility field: dockerAvailable mirrors the running daemon state.

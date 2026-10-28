@@ -147,18 +147,6 @@ export const userMcps = pgTable(
     // Metadata
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
 
-    // =========================================================================
-    // ERC-8004 On-Chain Registration
-    // When MCPs are published, they can be registered on the ERC-8004 Identity
-    // Registry, making them discoverable by other agents across the ecosystem.
-    // =========================================================================
-    erc8004_registered: boolean("erc8004_registered").default(false).notNull(),
-    erc8004_network: text("erc8004_network"), // e.g., "base-sepolia", "base"
-    erc8004_agent_id: integer("erc8004_agent_id"), // Token ID on the registry
-    erc8004_agent_uri: text("erc8004_agent_uri"), // IPFS or HTTP URI
-    erc8004_tx_hash: text("erc8004_tx_hash"), // Registration transaction
-    erc8004_registered_at: timestamp("erc8004_registered_at"),
-
     // Timestamps
     created_at: timestamp("created_at").notNull().defaultNow(),
     updated_at: timestamp("updated_at").notNull().defaultNow(),
@@ -174,7 +162,6 @@ export const userMcps = pgTable(
     status_idx: index("user_mcps_status_idx").on(table.status),
     is_public_idx: index("user_mcps_is_public_idx").on(table.is_public),
     created_at_idx: index("user_mcps_created_at_idx").on(table.created_at),
-    erc8004_registered_idx: index("user_mcps_erc8004_registered_idx").on(table.erc8004_registered),
   }),
 );
 

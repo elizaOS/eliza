@@ -31,7 +31,24 @@ import type { State } from "./state";
 /**
  * Configuration options for message processing
  */
+export type {
+	TypedReadEgressReceipt,
+	TypedReadFact,
+	TypedReadReplyBinding,
+	TypedReadReplyPart,
+	TypedReadReplyPolicy,
+	TypedReadReplyResolver,
+	TypedReadReplyVerdict,
+	TypedReadRequirement,
+} from "../runtime/typed-read-contract";
+
 export interface MessageProcessingOptions {
+	/** Trusted host projection from this turn's admitted producer receipts; never populated by RPC input. */
+	resolveTypedReadReply?: import("../runtime/typed-read-contract").TypedReadReplyResolver;
+	/** In-process proof of exact producer-backed terminal text, not a model-authored success flag. */
+	onTypedReadEgress?: (
+		receipt: import("../runtime/typed-read-contract").TypedReadEgressReceipt,
+	) => void;
 	maxRetries?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;

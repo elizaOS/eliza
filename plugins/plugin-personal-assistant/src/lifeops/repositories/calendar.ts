@@ -42,12 +42,14 @@ export class LifeOpsCalendarRepository {
     provider: LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     return this.calendar.deleteCalendarEventsForProvider(
       agentId,
       provider,
       calendarId,
       side,
+      grantId,
     );
   }
 

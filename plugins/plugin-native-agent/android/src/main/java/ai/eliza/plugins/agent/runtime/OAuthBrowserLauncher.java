@@ -15,20 +15,33 @@ import java.util.Objects;
  * {@link PrivateOAuthCallback}. When the browser cannot verify the redirect host for this app,
  * the same address reopens in a Custom Tab. Custom Tab returns arrive as host App Link intents,
  * which the host passes to the same callback. The result URI is never logged or kept.
+ *
+ * <p>A Custom Tab returns to the app without a result, so a host that reports an abandoned
+ * attempt needs to know when one is open, including the verification fallback: pass a
+ * {@link CustomTabOpened} listener and treat a resume with no callback as closed.
  */
 public final class OAuthBrowserLauncher {
   /** The Auth Tab closed without an admitted callback. */
   @FunctionalInterface public interface Closed { void closed(); }
+  /** A Custom Tab was opened for the address (directly, or after an Auth Tab verification failure). */
+  @FunctionalInterface public interface CustomTabOpened { void opened(); }
   private final ComponentActivity activity;
   private final PrivateOAuthCallback callback;
+  private final CustomTabOpened customTabOpened;
   private final ActivityResultLauncher<Intent> authTab;
   private Uri pending;
   private String pendingBrowser;
 
   /** Construct in {@code onCreate}: the Activity Result API registers before the activity starts. */
   public OAuthBrowserLauncher(ComponentActivity activity, PrivateOAuthCallback callback, Closed closed) {
+    this(activity, callback, closed, () -> {});
+  }
+
+  /** As above; {@code customTabOpened} runs on the main thread each time a Custom Tab opens. */
+  public OAuthBrowserLauncher(ComponentActivity activity, PrivateOAuthCallback callback, Closed closed, CustomTabOpened customTabOpened) {
     this.activity = Objects.requireNonNull(activity);
     this.callback = Objects.requireNonNull(callback);
+    this.customTabOpened = Objects.requireNonNull(customTabOpened);
     Objects.requireNonNull(closed);
     this.authTab = AuthTabIntent.registerActivityResultLauncher(activity, result -> {
       Uri address = pending;
@@ -69,5 +82,6 @@ public final class OAuthBrowserLauncher {
     CustomTabsIntent tab = new CustomTabsIntent.Builder().setShowTitle(true).build();
     tab.intent.setPackage(browser);
     tab.launchUrl(activity, authorize);
+    customTabOpened.opened();
   }
 }

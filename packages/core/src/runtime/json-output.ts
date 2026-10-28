@@ -16,31 +16,49 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 
 	const candidate = unwrapWholeCodeFence(trimmed, ["json"]) ?? trimmed;
 
-	const parsedCandidate =
-		parseObjectCandidate<T>(candidate) ??
-		parseObjectCandidate<T>(
-			repairJsonStringEscapes(candidate, { trailingBackslashQuotes: false }),
-		) ??
-		parseObjectCandidate<T>(repairJsonStringEscapes(candidate));
+	const parsedCandidate = parseObjectCandidateWithRepairs<T>(candidate);
 	if (parsedCandidate) {
 		return parsedCandidate;
 	}
 
-	const repairedCandidate = repairJsonStringEscapes(candidate);
-	const objectText =
-		extractJsonObjects(candidate)[0] ??
-		(repairedCandidate === candidate
-			? null
-			: extractJsonObjects(repairedCandidate)[0]);
-	if (!objectText) return null;
-
+	// The reply is not one bare object. Read the outermost object regions and
+	// keep the first region that is JSON. A `{` in prose that never closes, or a
+	// quote that only frames a word, must not hide the object after it, and a
+	// region that is not JSON (a placeholder such as `{name}`) must not hide the
+	// next one.
 	return (
-		parseObjectCandidate<T>(objectText) ??
-		parseObjectCandidate<T>(
-			repairJsonStringEscapes(objectText, { trailingBackslashQuotes: false }),
-		) ??
-		parseObjectCandidate<T>(repairJsonStringEscapes(objectText))
+		parseFirstObjectRegion<T>(candidate) ??
+		parseFirstObjectRegion<T>(repairJsonStringEscapes(candidate))
 	);
+}
+
+/** Parse one candidate, then the same text with its string escapes repaired. */
+function parseObjectCandidateWithRepairs<T extends object>(
+	text: string,
+): T | null {
+	return (
+		parseObjectCandidate<T>(text) ??
+		parseObjectCandidate<T>(
+			repairJsonStringEscapes(text, { trailingBackslashQuotes: false }),
+		) ??
+		parseObjectCandidate<T>(repairJsonStringEscapes(text))
+	);
+}
+
+/**
+ * First object region that parses. The regions come from
+ * {@link extractJsonObjectSpans}, so prose before a brace never changes how that
+ * brace is read and an unclosed brace is dropped instead of swallowing the
+ * objects after it.
+ */
+function parseFirstObjectRegion<T extends object>(text: string): T | null {
+	for (const { start, end } of extractJsonObjectSpans(text)) {
+		const parsed = parseObjectCandidateWithRepairs<T>(text.slice(start, end));
+		if (parsed) {
+			return parsed;
+		}
+	}
+	return null;
 }
 
 function parseObjectCandidate<T extends object>(candidate: string): T | null {

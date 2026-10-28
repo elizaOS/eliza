@@ -13,9 +13,13 @@ export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
 export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 
 const CRON_FIELDS = 5;
-const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
+// A leap-day schedule can be eight years apart across a non-leap century.
+const CRON_SCAN_WINDOW_MS = 8 * 366 * 24 * 60 * 60 * 1000;
+const CRON_DAY_MS = 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
 const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
+// The largest DST gap in use is two hours; look back past it.
+const CRON_SPRING_FORWARD_LOOKBACK_MS = 3 * CRON_HOUR_MS;
 const CRON_FALLBACK_LOOKBACKS_MS = [
 	30 * CRON_MINUTE_MS,
 	CRON_HOUR_MS,
@@ -168,8 +172,7 @@ export function parseCronExpression(expression: string): CronSchedule | null {
 	};
 }
 
-function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
-	const candidate = new Date(candidateMs);
+function cronDateMatchesUTC(schedule: CronSchedule, candidate: Date): boolean {
 	const dayOfMonthMatches = schedule.dayOfMonth.has(candidate.getUTCDate());
 	const dayOfWeekMatches = schedule.dayOfWeek.has(candidate.getUTCDay());
 	// POSIX/Vixie cron: when BOTH day fields are restricted, a day matching
@@ -179,11 +182,15 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 		schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted
 			? dayOfMonthMatches || dayOfWeekMatches
 			: dayOfMonthMatches && dayOfWeekMatches;
+	return dayMatches && schedule.month.has(candidate.getUTCMonth() + 1);
+}
+
+function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
+	const candidate = new Date(candidateMs);
 	return (
 		schedule.minute.has(candidate.getUTCMinutes()) &&
 		schedule.hour.has(candidate.getUTCHours()) &&
-		dayMatches &&
-		schedule.month.has(candidate.getUTCMonth() + 1)
+		cronDateMatchesUTC(schedule, candidate)
 	);
 }
 
@@ -247,24 +254,35 @@ function offsetMsFromFormatter(
 	return tzDate - atMs;
 }
 
-function cronMatchesZoned(
+function cronMatches(
 	schedule: CronSchedule,
 	candidateMs: number,
-	formatter: Intl.DateTimeFormat,
-	candidateOffset: number,
-	gap: { atMs: number; offsetBefore: number; gapMs: number } | null,
+	timezone: string | undefined,
+	formatter: Intl.DateTimeFormat | null,
 ): boolean {
+	if (!timezone || timezone === "UTC" || !formatter) {
+		return cronMatchesUTC(schedule, candidateMs);
+	}
+	const candidateOffset = offsetMsFromFormatter(formatter, candidateMs);
 	const wallMs = candidateMs + candidateOffset;
 	if (!cronMatchesUTC(schedule, wallMs)) {
-		// DST spring-forward skips the wall times [atMs + offsetBefore,
-		// atMs + offsetBefore + gapMs). A skipped time the schedule names runs
-		// one gap later (02:30 -> 03:30 for a one-hour gap), as
+		// DST spring-forward skips the wall times between the old and new
+		// offset. A skipped time the schedule names runs one gap later
+		// (02:30 -> 03:30 for a one-hour gap), as
 		// resolveScheduledAtIsoInTimeZone and Date.parse read a skipped local
-		// time, instead of not running that day.
+		// time, instead of not running that day. The candidate is in the first
+		// gap-length span after the transition when the offset one gap earlier
+		// is still the old offset. No state is carried between candidates, so
+		// the whole-day skip in computeNextCronRunAtMs stays correct.
+		const priorOffset = offsetMsFromFormatter(
+			formatter,
+			candidateMs - CRON_SPRING_FORWARD_LOOKBACK_MS,
+		);
+		if (priorOffset >= candidateOffset) return false;
+		const gapMs = candidateOffset - priorOffset;
 		return (
-			gap !== null &&
-			candidateMs - gap.atMs < gap.gapMs &&
-			cronMatchesUTC(schedule, candidateMs + gap.offsetBefore)
+			offsetMsFromFormatter(formatter, candidateMs - gapMs) === priorOffset &&
+			cronMatchesUTC(schedule, candidateMs + priorOffset)
 		);
 	}
 	// DST fall-back: an ambiguous local time repeats. Fire only the FIRST
@@ -294,66 +312,40 @@ export function computeNextCronRunAtMs(
 ): number | null {
 	const schedule = parseCronExpression(expression);
 	if (!schedule) return null;
-	// Bail on a non-representable base: scanning forward from a timestamp at/over
-	// the max Date value would build ~366 days of Invalid Dates before returning
-	// null (a ~26s pathological scan).
+	// Do not scan forward from a base at or above the maximum Date value.
 	if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null;
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
 	// Cap the window at the max representable Date so a base near the ceiling
-	// scans only the representable remainder, not ~527k Invalid-Date candidates.
+	// scans only the representable remainder.
 	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
-	// Hoist ONE formatter for the entire scan: a per-candidate-minute
-	// Intl.DateTimeFormat would allocate up to ~527k times across the 366-day
-	// window.
+	// Reuse one formatter for the complete scan.
 	const formatter =
 		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
-	// Each minute's offset is read once and carried to the next minute. The
-	// walk starts two hours early so a scan that begins inside a
-	// spring-forward window still knows the gap.
-	let gap: { atMs: number; offsetBefore: number; gapMs: number } | null = null;
-	let previousOffset = 0;
-	if (formatter) {
-		const lookbackStart = start - 2 * CRON_HOUR_MS;
-		previousOffset = offsetMsFromFormatter(formatter, lookbackStart);
-		for (
-			let minute = lookbackStart + CRON_MINUTE_MS;
-			minute <= start;
-			minute += CRON_MINUTE_MS
-		) {
-			const offset = offsetMsFromFormatter(formatter, minute);
-			if (offset > previousOffset) {
-				gap = {
-					atMs: minute,
-					offsetBefore: previousOffset,
-					gapMs: offset - previousOffset,
-				};
-			}
-			previousOffset = offset;
-		}
-	}
+	let checkedDay = Number.NaN;
+	let dayCanMatch = false;
 
 	for (
 		let candidate = start + CRON_MINUTE_MS;
 		candidate <= cutoff;
 		candidate += CRON_MINUTE_MS
 	) {
-		if (!formatter) {
-			if (cronMatchesUTC(schedule, candidate)) return candidate;
+		const day = Math.floor(candidate / CRON_DAY_MS) * CRON_DAY_MS;
+		if (day !== checkedDay) {
+			checkedDay = day;
+			// A zone's local date can be the previous or next UTC date. Only
+			// skip a whole UTC day when none of those dates can match.
+			dayCanMatch = (formatter ? [-1, 0, 1] : [0]).some((offset) =>
+				cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
+			);
+		}
+		if (!dayCanMatch) {
+			candidate = day + CRON_DAY_MS - CRON_MINUTE_MS;
 			continue;
 		}
-		const offset = offsetMsFromFormatter(formatter, candidate);
-		if (offset > previousOffset) {
-			gap = {
-				atMs: candidate,
-				offsetBefore: previousOffset,
-				gapMs: offset - previousOffset,
-			};
-		}
-		if (cronMatchesZoned(schedule, candidate, formatter, offset, gap)) {
+		if (cronMatches(schedule, candidate, timezone, formatter)) {
 			return candidate;
 		}
-		previousOffset = offset;
 	}
 
 	return null;
@@ -490,4 +482,66 @@ export function resolveTriggerTiming(
 			throw new Error(`Unsupported trigger type: ${exhaustiveCheck}`);
 		}
 	}
+}
+
+/**
+ * Powered-on scheduling. A host whose agent runs only while its device is
+ * powered on (a phone-resident agent) sets this setting to `record`. A
+ * scheduled occurrence that passed while the agent was not running is then
+ * recorded once as missed and never run late, and the next occurrence is
+ * armed as usual. A delay while the agent was running (device doze, a busy
+ * scheduler) is not a missed occurrence: that occurrence still runs. Hosts
+ * without the setting keep running a late occurrence.
+ */
+export const MISSED_SCHEDULED_OCCURRENCES_SETTING =
+	"ELIZA_MISSED_SCHEDULED_OCCURRENCES";
+/** Lateness tolerated before an occurrence can be missed (resident digests use the same window). */
+export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
+export const MISSED_SCHEDULED_OCCURRENCE_TEXT =
+	"The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.";
+
+/**
+ * Whether this host selected the powered-on policy: the runtime setting wins,
+ * then the process environment (the native runtime profile sets it there).
+ */
+export function recordsMissedScheduledOccurrences(
+	runtime?: { getSetting?(key: string): unknown } | null,
+): boolean {
+	// Partial runtimes (tests, narrow hosts) may not expose settings.
+	const configured =
+		typeof runtime?.getSetting === "function"
+			? runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING)
+			: undefined;
+	const value =
+		typeof configured === "string"
+			? configured
+			: typeof process !== "undefined"
+				? process.env?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
+				: undefined;
+	return value === "record";
+}
+
+/** Wall-clock instant at which this agent process started. */
+export function agentProcessStartedAtMs(nowMs: number = Date.now()): number {
+	const uptime =
+		typeof process !== "undefined" && typeof process.uptime === "function"
+			? process.uptime()
+			: 0;
+	return nowMs - Math.round(uptime * 1000);
+}
+
+/**
+ * True when a scheduled occurrence is reached outside its window and its
+ * scheduled instant precedes the start of the agent process, so the agent was
+ * not running when it came due.
+ */
+export function isMissedScheduledOccurrence(
+	scheduledAtMs: number,
+	nowMs: number,
+	agentStartedAtMs: number = agentProcessStartedAtMs(nowMs),
+): boolean {
+	return (
+		nowMs - scheduledAtMs > SCHEDULED_OCCURRENCE_WINDOW_MS &&
+		scheduledAtMs < agentStartedAtMs
+	);
 }

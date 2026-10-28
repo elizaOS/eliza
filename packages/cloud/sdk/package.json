@@ -96,6 +96,12 @@
       "import": "./dist/account-billing-snapshot.js",
       "default": "./dist/account-billing-snapshot.js"
     },
+    "./subscription-entitlement": {
+      "eliza-source": "./src/subscription-entitlement.ts",
+      "types": "./dist/subscription-entitlement.d.ts",
+      "import": "./dist/subscription-entitlement.js",
+      "default": "./dist/subscription-entitlement.js"
+    },
     "./cloud-setup-session": {
       "eliza-source": "./src/cloud-setup-session/index.ts",
       "types": "./dist/cloud-setup-session/index.d.ts",

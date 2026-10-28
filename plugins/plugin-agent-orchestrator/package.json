@@ -109,7 +109,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@types/bun": "1.4.2",
@@ -284,13 +284,6 @@
         "default": "grok --no-auto-update agent stdio",
         "sensitive": false
       },
-      "ELIZA_ACP_FORMAT": {
-        "type": "string",
-        "description": "Agent Client Protocol event format expected from legacy transports.",
-        "required": false,
-        "default": "json",
-        "sensitive": false
-      },
       "ACPX_DEFAULT_TIMEOUT_MS": {
         "type": "number",
         "description": "Default timeout in milliseconds for ACP prompt/session calls when an action does not provide a timeout.",
@@ -306,7 +299,7 @@
       },
       "ACPX_FORMAT": {
         "type": "string",
-        "description": "Deprecated alias for ELIZA_ACP_FORMAT.",
+        "description": "Agent Client Protocol event format expected from legacy transports.",
         "required": false,
         "default": "json",
         "sensitive": false

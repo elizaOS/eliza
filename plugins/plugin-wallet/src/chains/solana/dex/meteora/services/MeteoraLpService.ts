@@ -10,6 +10,7 @@
  */
 import * as anchor from "@coral-xyz/anchor";
 import {
+  ElizaError,
   type IAgentRuntime,
   type LpPositionDetails,
   logger,
@@ -113,8 +114,13 @@ export class MeteoraLpService extends Service {
 
       return pools;
     } catch (error) {
-      console.error("[MeteoraLpService] Error fetching pools from Meteora API:", error);
-      return [];
+      // A failed lookup is not an empty pool list: LpManagementService
+      // rethrows provider failures rather than reporting "no pools", so an
+      // outage here must reach the caller instead of resolving [].
+      throw new ElizaError(
+        `Meteora pool API unavailable: ${error instanceof Error ? error.message : String(error)}`,
+        { code: "METEORA_POOLS_UNAVAILABLE", cause: error }
+      );
     }
   }
 

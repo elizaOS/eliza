@@ -37,7 +37,13 @@ export function parseDateRangeParams(searchParams: URLSearchParams): DateRangePa
   const rawStart = searchParams.get("start_date");
   const rawEnd = searchParams.get("end_date");
   const startDate = parseOptionalDate(rawStart);
-  const endDate = parseOptionalDate(rawEnd);
+  const parsedEnd = parseOptionalDate(rawEnd);
+  // A date-only end_date names a whole day: include it up to its last
+  // millisecond, since callers filter with created_at <= endDate.
+  const endDate =
+    parsedEnd && rawEnd !== null && ISO_DATE_ONLY.test(rawEnd)
+      ? new Date(parsedEnd.getTime() + 24 * 60 * 60 * 1000 - 1)
+      : parsedEnd;
 
   if (rawStart !== null && !startDate) {
     return { success: false, error: "Invalid start_date" };

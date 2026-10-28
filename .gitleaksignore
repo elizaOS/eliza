@@ -656,3 +656,6 @@ e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/del
 
 # PGP detection regular expression; the match contains regex syntax, not key material.
 1d2b39211a7b9ed918e8c91b6591b27494d85833:packages/core/src/security/pii-detectors.ts:private-key:366
+
+# TypeScript type name TwitterInteractionPayload in a test import; not key material.
+968d0b213bf5e40f818593c0eaf3cce7f665c016:plugins/plugin-x/src/interactions-mention-cursor.test.ts:twitter-api-key:18

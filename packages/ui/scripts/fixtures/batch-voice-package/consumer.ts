@@ -1,4 +1,6 @@
+import type { Logger, LoggerBindings } from "@elizaos/core/logging";
 import { ElizaError, sanitizeSpeechText } from "@elizaos/core/speech";
+import { parseVoiceUiContext } from "@elizaos/host/voice/ui-context";
 import {
   editTextControl,
   isEditableTextControl,
@@ -27,6 +29,10 @@ import {
   SegmentedSpeechPlayback,
   SpeechPlaybackError,
 } from "@elizaos/ui/voice/segmented-speech-playback";
+import {
+  createVoiceSessionClient,
+  type VoiceSessionClientOptions,
+} from "@elizaos/ui/voice/voice-session-client";
 import {
   buildVoiceTurnSignal,
   type VoiceTurnSignal,
@@ -86,3 +92,21 @@ export function leafEntries(field: EventTarget | null, stream: MediaStream) {
     capture,
   };
 }
+
+export function createRealtimeConversation(options: VoiceSessionClientOptions) {
+  return createVoiceSessionClient(options);
+}
+
+export function scopedLogger(logger: Logger, bindings: LoggerBindings) {
+  return logger.child(bindings);
+}
+
+export const voiceUiContext = parseVoiceUiContext({ uiViewPath: "/chat" });
+
+// @ts-expect-error A non-dashboard host must provide its authenticated fetch.
+const withoutTransport: VoiceSessionClientOptions = {
+  agentId: "agent",
+  conversationId: "conversation",
+  getConsentNonce: async () => "consent",
+};
+void withoutTransport;

@@ -123,6 +123,11 @@ function nonEmptySetting(value: unknown): string | undefined {
 }
 
 function cloudEnabled(value: unknown): boolean {
+  // AgentRuntime.getSetting turns a saved "true"/"false" toggle into a boolean,
+  // so the runtime-settings branch below receives `true`, not the string. A
+  // string-only check made `ELIZAOS_CLOUD_ENABLED=true` look disabled and sent
+  // the chain to the rate-limited public RPC instead of the Cloud proxy.
+  if (typeof value === "boolean") return value;
   return (
     typeof value === "string" && (value.trim().toLowerCase() === "true" || value.trim() === "1")
   );

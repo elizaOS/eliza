@@ -5034,6 +5034,29 @@ describeIfPosix("destructive-bulk scanner integration", () => {
     }
   });
 
+  it("blocks a delete after a [[ =~ ]] regex group before it deletes a real fixture", async () => {
+    const target = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-regex-group-"),
+    );
+    const quotedTarget = `'${target.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean the build output"),
+        undefined,
+        {
+          command: `[[ build =~ ^(build|dist)$ ]] && rm -rf ${quotedTarget}`,
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
   it("blocks a quote-composed executable before it deletes a real fixture", async () => {
     const target = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-quoted-command-"),
@@ -5054,6 +5077,37 @@ describeIfPosix("destructive-bulk scanner integration", () => {
       await fs.rm(target, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["; terminators", "-exec echo {} \\; -exec rm -rf {} \\;"],
+    ["+ terminators", "-exec echo {} + -execdir rm -rf {} +"],
+  ])(
+    "blocks a later find -exec delete clause with %s before it deletes a real fixture",
+    async (_label, actions) => {
+      const root = await fs.mkdtemp(
+        path.join(os.tmpdir(), "coding-tools-find-exec-"),
+      );
+      const target = path.join(root, "build");
+      await fs.mkdir(target);
+      const quotedRoot = `'${root.replaceAll("'", "'\\''")}'`;
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "list the build directories"),
+          undefined,
+          {
+            command: `find ${quotedRoot} -mindepth 1 -type d -name build -prune ${actions}`,
+          },
+        );
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("allows benign quoted examples and comment-contained quotes to run", async () => {
     const { runtime } = await makeRuntime();

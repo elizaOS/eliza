@@ -301,6 +301,11 @@ export interface AndroidCoreRouteDeps {
    * so `events_subscribe` marks them `ephemeral` exactly as the WS hub does.
    */
   ephemeralAgentEventStreams?: ReadonlySet<string>;
+  registerNativeViewRenderer?: (
+    runtime: IAgentRuntime,
+    clientId: string,
+    send: (frame: object) => boolean,
+  ) => () => void;
 }
 /** Structural stand-in for ElizaConfig — the bridge only touches `meta`. */
 export type AndroidElizaConfigLike = Record<string, unknown> & {

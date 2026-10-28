@@ -661,11 +661,13 @@ const eliza1SourceModelEntry = z.object({
 // the "base, not fine-tuned" plan is auditable: which upstream repo each
 // shipped component is converted from, and whether v1 fine-tuning was
 // applied (always `false` for the base-v1 release). The contract validator
-// enforces per-component coverage for `base-v1`.
+// enforces per-component coverage for `base-v1`. `sourceModels` is a partial
+// map (a Zod 4 `z.record` over an enum would demand every slot, including
+// components the bundle does not ship).
 export const Eliza1ProvenanceSchema = z.object({
 	releaseState: z.enum(ELIZA_1_RELEASE_STATES),
 	finetuned: z.boolean(),
-	sourceModels: z.record(
+	sourceModels: z.partialRecord(
 		z.enum(ELIZA_1_PROVENANCE_SLOTS),
 		eliza1SourceModelEntry,
 	),

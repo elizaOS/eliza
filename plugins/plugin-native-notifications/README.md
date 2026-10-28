@@ -79,6 +79,33 @@ for the configured maximum approval lifetime; it needs no missing binding or con
 A known receipt retains its original expiry. Both forms prevent delayed publication. Expiry removes approval receipts. Step receipts are bounded at 512
 and approval receipts at 256; reaching capacity refuses new entries.
 
+## Host notice routes, owner fence and recovery
+
+The host-level pieces around the ledger are shared too; a host supplies only its deployed
+identifiers, channels, icon and launch actions:
+
+- `NoticeRoutes` keeps one encrypted, bounded route per notice (`Config`: route and owner slot
+  names, the ledger `Config`, and the host's route identifier fields). A tap or Ask is captured
+  durably and opens only while the notice's receipt is posted and its owner is current; it is a read
+  request, never a decision.
+- `NoticeOwner` is the owner identity (origin, owner, agent). `NoticeCoordinator` posts and withdraws
+  approval notices with their routes, persists the owner fence before touching OS notices (approvals
+  of another owner are suspended, results withdrawn) and reposts a suspended approval quietly with a
+  rotated route after the host revalidated it for its returning owner.
+- `NoticeRecovery` promotes an admitted action-journal attempt of a workflow notification step only
+  from its original receipt; nothing is posted again.
+- `HostNoticePoster` posts step and approval notices on the host's channels (`Config`: channel IDs,
+  names and descriptions, small icon, tag prefix, open/Ask actions, route URI prefix, lock-screen
+  titles, Ask label, quiet group and step timeout). Keep these values stable across upgrades.
+- `NoticeTapInbox` captures taps on those notices from the host's launch intents (open and Ask
+  actions, route URI prefix) into the route ledger: each intent object is retained once until its
+  capture commits, a failed write keeps it for retry and is reported as unavailable rather than "no
+  tap", an Ask whose notice is gone settles into a plain open, and consumption needs the exact pending
+  tap and the foreground. Retain/release run on the UI thread; everything else on one storage worker.
+
+`test/native-host/notices.node.mjs` runs the synthetic JVM checks for routes, the owner fence,
+approval coordination, recovery and the tap inbox (org.json from `ELIZA_ORG_JSON_JAR` or the Gradle cache).
+
 `NoticeDeliveryTest` in the Android consumer exercises actual NotificationManager
 posting, dismissal, receipt reopening, digest mismatch, approval withdrawal and
 expiry. Grant the host `POST_NOTIFICATIONS` in its disposable test user and run

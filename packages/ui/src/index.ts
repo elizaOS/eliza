@@ -311,10 +311,21 @@ export { PermissionRecoveryCallout } from "./components/permissions/PermissionRe
 export { ShellModalityProvider } from "./components/ShellModalityProvider.js";
 export { ShellRoleProvider } from "./components/ShellRoleProvider.js";
 export {
+  CloudSubscriptionSummary,
+  type CloudSubscriptionSummaryOptions,
+  type CloudSubscriptionSummaryProps,
+  type ObservedServiceLimit,
+  useCloudSubscriptionSummary,
+} from "./components/settings/cloud-subscription-summary.js";
+export {
   SettingsGroup,
   SettingsRow,
   SettingsStack,
 } from "./components/settings/settings-layout.js";
+export {
+  excludeSettingsSections,
+  settingsSectionExcluded,
+} from "./components/settings/settings-section-registry.js";
 export { ActionListRow } from "./components/shared/ActionListRow.js";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.js";
 export { ConfirmDeleteControl } from "./components/shared/confirm-delete-control.js";
@@ -329,6 +340,13 @@ export { ChatSurface } from "./components/shell/ChatSurface.js";
 export { CloudSignInRecoveryView } from "./components/shell/CloudSignInRecoveryView.js";
 export { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay.js";
 export { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback.js";
+export {
+  type DockClearance,
+  type DockClearanceOptions,
+  installDockClearance,
+  measureDockClearance,
+  visibleDocks,
+} from "./components/shell/dock-clearance.js";
 export { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface.js";
 export { HomePill } from "./components/shell/HomePill.js";
 export {
@@ -342,6 +360,15 @@ export {
   NotificationsShellBoot,
 } from "./components/shell/notifications-boot.js";
 export { PairingView } from "./components/shell/PairingView.js";
+export {
+  DEFAULT_SURFACE_LAYOUT,
+  keyboardFreeHeight,
+  raisesSoftKeyboard,
+  type SurfaceLayout,
+  type SurfaceLayoutPolicy,
+  sameSurfaceLayout,
+  surfaceLayout,
+} from "./components/shell/responsive-layout.js";
 export { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks.js";
 export { ShellControllerProvider } from "./components/shell/ShellControllerContext.js";
 export { ShellOverlays } from "./components/shell/ShellOverlays.js";
@@ -1125,6 +1152,36 @@ export {
   setDesktopLauncherEntries,
 } from "./state/desktop-tray-launcher.js";
 export {
+  browserDocumentDraftSlot,
+  compareExchangeDraftStore,
+  DURABLE_DRAFT_TEXT_LIMIT,
+  type DurableDraft,
+  DurableDraftConflict,
+  type DurableDraftDocument,
+  DurableDraftInvalid,
+  type DurableDraftOptions,
+  type DurableDraftRawCapture,
+  type DurableDraftRawSlot,
+  type DurableDraftStore,
+  type DurableDraftStoreOptions,
+  DurableDraftTooLarge,
+  type DurableDraftWriteOptions,
+  emptyDurableDraft,
+  isSendingDurableDraft,
+  rawSlotDraftRecovery,
+  readDurableDraft,
+  replaceDurableDraft,
+  transactionalDraftStore,
+} from "./state/durable-draft.js";
+export {
+  DEFAULT_DURABLE_DRAFT_MESSAGES,
+  DurableDraftController,
+  type DurableDraftMessages,
+  type DurableDraftRestore,
+  type DurableDraftSendOutcome,
+  type DurableDraftState,
+} from "./state/durable-draft-controller.js";
+export {
   detectExistingFirstRunConnection,
   type ExistingFirstRunProbeResult,
 } from "./state/first-run-bootstrap.js";
@@ -1451,6 +1508,7 @@ export {
 } from "./voice/voice-activity.js";
 export {
   createVoiceCapture,
+  LocalSpeechUnavailableError,
   type VoiceCaptureFactoryOptions,
   type VoiceCaptureHandle,
 } from "./voice/voice-capture-factory.js";

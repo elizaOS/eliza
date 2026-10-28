@@ -1,7 +1,11 @@
 /** Read the gateway's sole active Cloudflare version for release receipts. */
 import { pathToFileURL } from "node:url";
 
-export async function activeGatewayDeployment(environment: string) {
+export async function activeGatewayDeployment(
+  environment: string,
+  signal?: AbortSignal,
+  expected: { versionId?: string; deploymentId?: string } = {},
+) {
   if (!["staging", "production"].includes(environment)) {
     throw new Error("Unsupported gateway environment");
   }
@@ -18,7 +22,9 @@ export async function activeGatewayDeployment(environment: string) {
     {
       headers: { authorization: `Bearer ${token}` },
       redirect: "error",
-      signal: AbortSignal.timeout(20_000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+        : AbortSignal.timeout(20_000),
     },
   );
   if (!response.ok) {
@@ -55,12 +61,21 @@ export async function activeGatewayDeployment(environment: string) {
   ) {
     throw new Error("Gateway must have one fully deployed Cloudflare version");
   }
+  if (
+    expected.versionId &&
+    active.versions[0].version_id !== expected.versionId
+  )
+    throw new Error("The expected gateway version is no longer active");
+  if (expected.deploymentId && active.id !== expected.deploymentId)
+    throw new Error("The expected gateway deployment is no longer active");
   const applicationsResponse = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${account}/containers/applications`,
     {
       headers: { authorization: `Bearer ${token}` },
       redirect: "error",
-      signal: AbortSignal.timeout(20_000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+        : AbortSignal.timeout(20_000),
     },
   );
   if (!applicationsResponse.ok) {
@@ -99,29 +114,81 @@ export async function activeGatewayDeployment(environment: string) {
   };
 }
 
+/** Only the image read may converge; a changed deployment or lookup error fails closed. */
+export async function verifiedGatewayDeployment(
+  environment: string,
+  expected: { versionId?: string; deploymentId?: string; image?: string } = {},
+  controls: {
+    read?: typeof activeGatewayDeployment;
+    now?: () => number;
+    sleep?: (ms: number) => Promise<void>;
+    timeoutMs?: number;
+    intervalMs?: number;
+  } = {},
+) {
+  const read = controls.read ?? activeGatewayDeployment;
+  const now = controls.now ?? Date.now;
+  const sleep =
+    controls.sleep ??
+    ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const timeoutMs = controls.timeoutMs ?? 90_000;
+  const intervalMs = controls.intervalMs ?? 5_000;
+  if (
+    !Number.isInteger(timeoutMs) ||
+    timeoutMs <= 0 ||
+    timeoutMs > 90_000 ||
+    !Number.isInteger(intervalMs) ||
+    intervalMs <= 0 ||
+    intervalMs > timeoutMs
+  )
+    throw new Error("Invalid gateway image convergence bounds");
+  const deadline = now() + timeoutMs;
+  const signal = AbortSignal.timeout(timeoutMs);
+  let pinned: { versionId: string; deploymentId: string } | undefined;
+  for (;;) {
+    if (now() >= deadline)
+      throw new Error("Gateway image did not converge before the deadline");
+    const active = await read(environment, signal, {
+      versionId: expected.versionId ?? pinned?.versionId,
+      deploymentId: expected.deploymentId ?? pinned?.deploymentId,
+    });
+    if (expected.versionId && active.versionId !== expected.versionId)
+      throw new Error("The expected gateway version is no longer active");
+    if (expected.deploymentId && active.deploymentId !== expected.deploymentId)
+      throw new Error("The expected gateway deployment is no longer active");
+    if (
+      pinned &&
+      (active.versionId !== pinned.versionId ||
+        active.deploymentId !== pinned.deploymentId)
+    )
+      throw new Error(
+        "Gateway deployment identity changed during image convergence",
+      );
+    if (now() >= deadline)
+      throw new Error("Gateway image did not converge before the deadline");
+    if (!expected.image || active.image === expected.image) return active;
+    // Before a deploy, callers may read metadata without an expected version.
+    // Never wait for an image on an unselected Worker deployment.
+    if (!expected.versionId)
+      throw new Error("The expected gateway image is no longer configured");
+    pinned ??= {
+      versionId: active.versionId,
+      deploymentId: active.deploymentId,
+    };
+    await sleep(Math.min(intervalMs, deadline - now()));
+  }
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
-    const active = await activeGatewayDeployment(
+    const active = await verifiedGatewayDeployment(
       process.env.TARGET_ENVIRONMENT ?? "",
+      {
+        versionId: process.env.EXPECTED_GATEWAY_VERSION,
+        deploymentId: process.env.EXPECTED_GATEWAY_DEPLOYMENT,
+        image: process.env.EXPECTED_GATEWAY_IMAGE,
+      },
     );
-    if (
-      process.env.EXPECTED_GATEWAY_VERSION &&
-      active.versionId !== process.env.EXPECTED_GATEWAY_VERSION
-    ) {
-      throw new Error("The expected gateway version is no longer active");
-    }
-    if (
-      process.env.EXPECTED_GATEWAY_DEPLOYMENT &&
-      active.deploymentId !== process.env.EXPECTED_GATEWAY_DEPLOYMENT
-    ) {
-      throw new Error("The expected gateway deployment is no longer active");
-    }
-    if (
-      process.env.EXPECTED_GATEWAY_IMAGE &&
-      active.image !== process.env.EXPECTED_GATEWAY_IMAGE
-    ) {
-      throw new Error("The expected gateway image is no longer configured");
-    }
     console.log(JSON.stringify(active));
   } catch (error) {
     console.error(
