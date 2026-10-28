@@ -1045,12 +1045,8 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     pathname === "/api/restore" ||
     under("/api/backups") ||
     under("/api/agent/export") ||
-    // Browser-workspace reads: the live tab list (title, URL,
-    // partition), the navigation/event history, and per-tab page
-    // snapshots. The writes on this prefix are already write-gated;
-    // the GETs were left open, and plugin dispatch alone only
-    // rejects unauthenticated sessions, so a paired guest session
-    // reads the owner's live browser. All-method, not write-only.
+    // The owner's live browser: tab list, event history, page snapshots,
+    // and the navigate/eval commands. All methods, not only writes.
     under("/api/browser-workspace") ||
     (write &&
       [
