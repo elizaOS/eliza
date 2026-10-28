@@ -81,7 +81,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@types/cross-spawn": "^6.0.6"
   },
   "scripts": {
@@ -128,13 +128,6 @@
         "type": "number",
         "description": "Optional selected-content byte budget for FILE reads. Requests exceeding it fail explicitly; no output is silently clipped.",
         "required": false,
-        "sensitive": false
-      },
-      "CODING_TOOLS_GREP_HEAD_LIMIT": {
-        "type": "number",
-        "description": "Default head_limit for GREP. Set to 0 to disable.",
-        "required": false,
-        "default": 250,
         "sensitive": false
       }
     }

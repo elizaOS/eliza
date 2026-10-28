@@ -1,3 +1,6 @@
+import { calendarEventOverlapsRange } from "@elizaos/contracts";
+import { calendarRangeFitsLocalDays } from "../../../../plugin-calendar/src/internal/time.ts";
+import { calendarIdentifier } from "./calendar-contract.ts";
 /** Canonical device proposal extension. These are data scopes, never executable code. */
 export interface WorkflowDeviceBinding {
   workflowId: string;
@@ -142,15 +145,12 @@ export function validateWorkflowReadOperation(
       "timeZone",
       "maximumEvents",
     ]);
-    const calendarIds = list(p.calendarIds, 16).map(identifier),
+    const calendarIds = list(p.calendarIds, 16).map(calendarIdentifier),
       start = utc(p.start),
       end = utc(p.end);
     if (new Set(calendarIds).size !== calendarIds.length)
       return reject("Duplicate calendar");
-    if (
-      Date.parse(end) <= Date.parse(start) ||
-      Date.parse(end) - Date.parse(start) > 7 * 86400000
-    )
+    if (!calendarRangeFitsLocalDays(start, end, text(p.timeZone, 100)))
       return reject("Calendar range exceeds reviewed bound");
     const timeZone = text(p.timeZone, 100);
     try {
@@ -233,8 +233,8 @@ export function validateWorkflowReadResult(
       "allDay",
     ]);
     const result = {
-      id: identifier(event.id),
-      calendarId: identifier(event.calendarId),
+      id: calendarIdentifier(event.id),
+      calendarId: calendarIdentifier(event.calendarId),
       revision: workflowDigest(event.revision),
       title: text(event.title, 1000, true),
       start: utc(event.start),
@@ -244,13 +244,10 @@ export function validateWorkflowReadResult(
     if (
       typeof result.allDay !== "boolean" ||
       !operation.calendarIds.includes(result.calendarId) ||
-      Date.parse(result.end) < Date.parse(result.start) ||
-      Date.parse(result.start) >= Date.parse(operation.end) ||
-      (Date.parse(result.end) <= Date.parse(operation.start) &&
-        !(
-          result.start === result.end &&
-          Date.parse(result.start) >= Date.parse(operation.start)
-        ))
+      !calendarEventOverlapsRange(operation, {
+        ...result,
+        allDay: result.allDay as boolean,
+      })
     )
       return reject("Calendar event is outside selected scope");
     const revision = createHash("sha256")

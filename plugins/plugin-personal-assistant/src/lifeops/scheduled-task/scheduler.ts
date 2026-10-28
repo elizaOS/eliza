@@ -793,6 +793,13 @@ async function handleCompletionTimeout(args: {
       : {}),
   };
 
+  // A raw upsert without `nextFireAtIso` writes `next_fire_at = NULL`, and the
+  // recurrence refire slice skips NULL rows: an expired daily check-in would
+  // never fire again. Keep the trigger-derived value the runner would store.
+  const persist = async (task: ScheduledTask) =>
+    args.repo.upsertScheduledTask(args.agentId, task, {
+      nextFireAtIso: await args.runner.resolveNextFireAt(task),
+    });
   const state = readNoReplyState(args.task);
   if (state.retryCount < policy.maxRetries) {
     const cadenceIndex = Math.min(
@@ -822,7 +829,7 @@ async function handleCompletionTimeout(args: {
         ...appliedIntensityMetadata,
       },
     };
-    await args.repo.upsertScheduledTask(args.agentId, args.task);
+    await persist(args.task);
     // The snooze override (status back to `scheduled` + `state.firedAt` =
     // untilIso) is the whole retry mechanism: `scheduledOverrideDue` fires the
     // task AT the override instant for every trigger kind. The trigger itself
@@ -835,7 +842,7 @@ async function handleCompletionTimeout(args: {
       untilIso: nextRetryAt,
     });
     snoozed.state.lastDecisionLog = `no_reply_retry_${state.retryCount + 1}: ${args.reason}`;
-    await args.repo.upsertScheduledTask(args.agentId, snoozed);
+    await persist(snoozed);
     return {
       task: snoozed,
       reason: `no_reply_retry_${state.retryCount + 1}`,
@@ -862,7 +869,7 @@ async function handleCompletionTimeout(args: {
       ...appliedIntensityMetadata,
     },
   };
-  await args.repo.upsertScheduledTask(args.agentId, args.task);
+  await persist(args.task);
 
   if (policy.terminalStatus === "skipped") {
     const skipped = await args.runner.apply(args.task.taskId, "skip", {
@@ -879,7 +886,7 @@ async function handleCompletionTimeout(args: {
     settled[0] ??
     args.task;
   terminal.state.lastDecisionLog = policy.terminalReason;
-  await args.repo.upsertScheduledTask(args.agentId, terminal);
+  await persist(terminal);
   return { task: terminal, reason: policy.terminalReason };
 }
 

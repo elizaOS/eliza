@@ -165,7 +165,7 @@ interface VoiceTurnMetricsState extends VoiceTurnMetricsReceipt {
   lastAudioFrameAtMs: number | null;
 }
 
-export interface VoiceSessionConfig {
+interface VoiceSessionBaseConfig {
   sessionId: string;
   jti: string;
   organizationId: string;
@@ -175,18 +175,6 @@ export interface VoiceSessionConfig {
   /** Unix-seconds expiry of the bootstrap token; the session self-severs at exp. */
   tokenExpSeconds: number;
 
-  // Provider wiring (injectable for tests: fake transports, real adapter code).
-  cartesiaApiKey: string;
-  cartesiaInkWebSocketFactory: CartesiaInkWebSocketFactory;
-  cartesiaVoiceId: string;
-  cartesiaWebSocketFactory: CartesiaWebSocketFactory;
-  fishAudioEnabled?: boolean;
-  fishAudioApiKey?: string;
-  fishAudioReferenceId?: string;
-  fishAudioModel?: FishAudioModel;
-  fishAudioSampleRate?: number;
-  fishAudioFirstAudioTimeoutMs?: number;
-  fishAudioWebSocketFactory?: FishAudioWebSocketFactory;
   /**
    * Opt in only when the client has proven echo cancellation. The safe default
    * is half duplex: assistant playback never reaches Ink as caller speech.
@@ -204,6 +192,15 @@ export interface VoiceSessionConfig {
   elizaAuthorization: string;
   elizaModel: string;
   fetchImpl?: typeof fetch;
+  /** Trusted host trial scope. Never accepted from client UI context. */
+  modelAttemptPolicy?: {
+    policyId: string;
+    sessionId: string;
+    userId: string;
+    agentId: string;
+    conversationId: string;
+    close(): void;
+  };
   /** Session-start DB/tenancy warmup, injected only by the live Worker route. */
   prewarmElizaContext?: () => Promise<void>;
   /** Optional provider-synthesized opener that runs while agent context warms. */
@@ -249,6 +246,56 @@ export interface VoiceSessionConfig {
   onTeardown?: (reason: VoiceSessionSeverReason) => Promise<void>;
 }
 
+/** Host-owned speech transports; the same turn, metering and conversation engine remains authoritative.
+ * Ports keep credentials on the host, emit canonical Ink events and supply Sonic-compatible PCM16 mono/16kHz.
+ * They must honor cancellation; the orchestrator also fences obsolete callbacks and owns teardown. */
+export interface VoiceSessionSpeechPorts {
+  openStt(
+    onEvent: (event: CartesiaInkRealtimeEvent) => void,
+  ): Pick<CartesiaInkRealtimeSession, "sendAudioChunk" | "close" | "cancel">;
+  tts: {
+    createStream(
+      options: { traceId: string; maxBufferDelayMs: number },
+      callbacks: RealtimeTtsStreamCallbacks,
+    ): RealtimeTtsStream;
+    close(reason?: string): void;
+  };
+}
+
+type DirectSpeechConfig = {
+  speechProvider?: "direct";
+  speechPorts?: never;
+  // Provider wiring (injectable for tests: fake transports, real adapter code).
+  cartesiaApiKey: string;
+  cartesiaInkWebSocketFactory: CartesiaInkWebSocketFactory;
+  cartesiaVoiceId: string;
+  cartesiaWebSocketFactory: CartesiaWebSocketFactory;
+  fishAudioEnabled?: boolean;
+  fishAudioApiKey?: string;
+  fishAudioReferenceId?: string;
+  fishAudioModel?: FishAudioModel;
+  fishAudioSampleRate?: number;
+  fishAudioFirstAudioTimeoutMs?: number;
+  fishAudioWebSocketFactory?: FishAudioWebSocketFactory;
+};
+type InjectedSpeechConfig = {
+  speechProvider: "injected";
+  speechPorts: VoiceSessionSpeechPorts;
+  cartesiaApiKey?: never;
+  cartesiaInkWebSocketFactory?: never;
+  cartesiaVoiceId?: never;
+  cartesiaWebSocketFactory?: never;
+  fishAudioEnabled?: never;
+  fishAudioApiKey?: never;
+  fishAudioReferenceId?: never;
+  fishAudioModel?: never;
+  fishAudioSampleRate?: never;
+  fishAudioFirstAudioTimeoutMs?: never;
+  fishAudioWebSocketFactory?: never;
+};
+export type VoiceSessionConfig = VoiceSessionBaseConfig &
+  (DirectSpeechConfig | InjectedSpeechConfig);
+
 type SessionState =
   | "ready"
   | "listening"
@@ -270,7 +317,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private readonly reframer = new UplinkReframer();
   private readonly usageIdentity: VoiceUsageIdentity;
 
-  private stt: CartesiaInkRealtimeSession | null = null;
+  private stt: ReturnType<VoiceSessionSpeechPorts["openStt"]> | null = null;
   private sttReady = false;
   private sttGeneration = 0;
   private sttReconnectAttempts = 0;
@@ -278,12 +325,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private sttConnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly providerPendingFrames: ArrayBuffer[] = [];
   private sttBufferOverflowReported = false;
-  private readonly cartesiaAdapter: CartesiaSonicTtsAdapter;
+  private readonly ttsAdapter: VoiceSessionSpeechPorts["tts"];
   private readonly fishAudioAdapter: FishAudioTtsAdapter | null = null;
   private ttsStream: RealtimeTtsStream | null = null;
   private assistantPlaybackStartedAtMs: number | null = null;
   private assistantPlaybackAudioBytes = 0;
   private assistantPlaybackActive = false;
+  private pendingPlaybackCompletionTraceId: string | null = null;
   private assistantPlaybackSuppressedUntilMs = Number.NEGATIVE_INFINITY;
   private assistantPlaybackDroppedUplinkBytes = 0;
   private assistantPlaybackDropLogged = false;
@@ -291,6 +339,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private state: SessionState = "ready";
   private started = false;
+  private readonly modelAttemptPolicy: VoiceSessionConfig["modelAttemptPolicy"];
   private closed = false;
   private startedAtMs: number | null = null;
   private prewarmStartedAtMs: number | null = null;
@@ -359,6 +408,63 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private isRevoked: ((jti: string) => Promise<boolean>) | null = null;
 
   constructor(config: VoiceSessionConfig) {
+    const policy = config.modelAttemptPolicy;
+    if (
+      policy &&
+      (policy.sessionId !== config.sessionId ||
+        policy.userId !== config.userId ||
+        policy.agentId !== config.agentId ||
+        policy.conversationId !== config.conversationId ||
+        typeof policy.close !== "function" ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(policy.policyId))
+    ) {
+      throw new TypeError(
+        "Voice model policy does not match the verified session",
+      );
+    }
+    this.modelAttemptPolicy = policy
+      ? Object.freeze({
+          policyId: policy.policyId,
+          sessionId: policy.sessionId,
+          userId: policy.userId,
+          agentId: policy.agentId,
+          conversationId: policy.conversationId,
+          close: policy.close,
+        })
+      : undefined;
+    if (config.speechProvider === "injected") {
+      const directFields = [
+        "cartesiaApiKey",
+        "cartesiaInkWebSocketFactory",
+        "cartesiaVoiceId",
+        "cartesiaWebSocketFactory",
+        "fishAudioEnabled",
+        "fishAudioApiKey",
+        "fishAudioReferenceId",
+        "fishAudioModel",
+        "fishAudioSampleRate",
+        "fishAudioFirstAudioTimeoutMs",
+        "fishAudioWebSocketFactory",
+      ] as const;
+      if (
+        !config.speechPorts ||
+        typeof config.speechPorts.openStt !== "function" ||
+        typeof config.speechPorts.tts?.createStream !== "function" ||
+        typeof config.speechPorts.tts?.close !== "function" ||
+        directFields.some((field) => config[field] !== undefined)
+      )
+        throw new TypeError(
+          "Injected speech ports must not include direct provider configuration",
+        );
+    } else if (
+      (config.speechProvider !== undefined &&
+        config.speechProvider !== "direct") ||
+      config.speechPorts !== undefined
+    ) {
+      throw new TypeError(
+        "Speech ports require explicit injected provider mode",
+      );
+    }
     this.config = config;
     this.sessionId = config.sessionId;
     this.jti = config.jti;
@@ -384,12 +490,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         config.initialUsageAdmissionMinutes * 60 * PCM16_BYTES_PER_SECOND,
       );
     }
-    this.cartesiaAdapter = new CartesiaSonicTtsAdapter({
-      apiKey: config.cartesiaApiKey,
-      voiceId: config.cartesiaVoiceId,
-      websocketFactory: config.cartesiaWebSocketFactory,
-    });
+    this.ttsAdapter =
+      config.speechProvider === "injected"
+        ? config.speechPorts.tts
+        : new CartesiaSonicTtsAdapter({
+            apiKey: config.cartesiaApiKey,
+            voiceId: config.cartesiaVoiceId,
+            websocketFactory: config.cartesiaWebSocketFactory,
+          });
     if (
+      config.speechProvider !== "injected" &&
       config.fishAudioEnabled &&
       config.fishAudioApiKey &&
       config.fishAudioReferenceId &&
@@ -534,6 +644,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       sessionId: this.sessionId,
       traceId: sessionTrace,
       uiContext: true,
+      playbackCompletion: true,
     });
     if (this.config.openingPrompt?.trim()) {
       const traceId = this.mintTraceId("turn");
@@ -859,6 +970,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         }
         this.meteringAdmitted = true;
         this.turnSttMs += Math.round(VOICE_PROVIDER_ADMISSION_MINUTES * 60_000);
+        // The admission charge already pays for the first metering window.
+        // Credit the audio it covers, exactly as the pre-admission constructor
+        // path does, so the same seconds are not billed a second time.
+        this.unmeteredUplinkBytes -= Math.round(
+          VOICE_PROVIDER_ADMISSION_MINUTES * 60 * PCM16_BYTES_PER_SECOND,
+        );
         // Release the buffered frames now that we are admitted.
         const buffered = this.preAdmissionFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;
@@ -900,6 +1017,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.teardown("completed");
   }
 
+  /** Actual client drain supersedes the compatibility estimate for this exact reply. */
+  playbackComplete(traceId: string): void {
+    if (this.closed || this.pendingPlaybackCompletionTraceId !== traceId)
+      return;
+    this.clearAssistantPlaybackSuppression();
+  }
+
   private isAssistantPlaybackSuppressed(): boolean {
     if (
       this.config.acousticBargeInEnabled === true ||
@@ -913,6 +1037,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private armAssistantPlaybackSuppression(): void {
+    this.pendingPlaybackCompletionTraceId = null;
     if (this.continuousHandoffEnabled) {
       // Continuous handoff keeps the uplink open, but still needs a truthful
       // first-audio marker so a thinking-time utterance cannot be reported as
@@ -978,6 +1103,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private clearAssistantPlaybackSuppression(): void {
+    this.pendingPlaybackCompletionTraceId = null;
     const wasSuppressed = this.isAssistantPlaybackSuppressed();
     this.assistantPlaybackActive = false;
     this.assistantPlaybackStartedAtMs = null;
@@ -1022,11 +1148,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private openSttSession(): void {
     const generation = ++this.sttGeneration;
     this.sttReady = false;
-    this.stt = createCartesiaInkRealtimeSession({
-      cartesiaApiKey: this.config.cartesiaApiKey,
-      webSocketFactory: this.config.cartesiaInkWebSocketFactory,
-      onEvent: (event) => this.onSttEvent(event, generation),
-    });
+    this.stt =
+      this.config.speechProvider === "injected"
+        ? this.config.speechPorts.openStt((event) =>
+            this.onSttEvent(event, generation),
+          )
+        : createCartesiaInkRealtimeSession({
+            cartesiaApiKey: this.config.cartesiaApiKey,
+            webSocketFactory: this.config.cartesiaInkWebSocketFactory,
+            onEvent: (event) => this.onSttEvent(event, generation),
+          });
     const timeoutMs = this.config.sttConnectTimeoutMs ?? STT_CONNECT_TIMEOUT_MS;
     const timer = setTimeout(() => {
       if (this.sttConnectTimer !== timer) return;
@@ -1488,6 +1619,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           endpoint: this.config.elizaEndpoint,
           authorization: this.config.elizaAuthorization,
           model: this.config.elizaModel,
+          modelAttemptPolicy: this.modelAttemptPolicy,
           transcript: pending.transcript,
           uiContext: pending.uiContext,
           agentId: this.config.agentId,
@@ -1691,7 +1823,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             firstAudioMs: firstAudioAt - greetingStartedAt,
             ttsTransportReadyMs:
               ttsOpenedAt === null ? null : ttsOpenedAt - greetingStartedAt,
-            ttsSynthesisAfterReadyMs:
+            ttsAudioAfterReadyMs:
               ttsOpenedAt === null ? null : firstAudioAt - ttsOpenedAt,
             ...this.prewarmTimingFields(firstAudioAt),
           },
@@ -1792,7 +1924,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     callbacks: RealtimeTtsStreamCallbacks,
   ): RealtimeTtsStream {
     const createCartesia = () =>
-      this.cartesiaAdapter.createStream(
+      this.ttsAdapter.createStream(
         { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
         callbacks,
       );
@@ -1819,6 +1951,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const responseStartedAt = this.now();
     const uiContext = { ...this.uiContext };
+    if (options.messageRole === "system" || options.transientInput)
+      delete uiContext.agentActionMode;
     this.assistantReferenceText = "";
     this.beginTurnMetrics(traceId, responseStartedAt);
     let firstModelTextAt: number | null = null;
@@ -1834,6 +1968,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let modelAudioStarted = false;
     let upstreamServerTiming: ElizaServerTimingReceipt | null = null;
     let ttsTransportReadyAt: number | null = null;
+    let firstTtsPhraseSubmittedAt: number | null = null;
     let modelOutputChars = 0;
     let modelSpeakableContentSeen = false;
     let upstreamComplete = false;
@@ -1869,6 +2004,18 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
                   ? null
                   : firstModelTextAt - responseStartedAt,
               firstAudioMs: firstAudioAt - responseStartedAt,
+              firstTtsPhraseSubmittedMs:
+                firstTtsPhraseSubmittedAt === null
+                  ? null
+                  : firstTtsPhraseSubmittedAt - responseStartedAt,
+              ttsFirstPhraseAfterFirstTextMs:
+                firstTtsPhraseSubmittedAt === null || firstModelTextAt === null
+                  ? null
+                  : firstTtsPhraseSubmittedAt - firstModelTextAt,
+              ttsAudioAfterFirstPhraseMs:
+                firstTtsPhraseSubmittedAt === null
+                  ? null
+                  : firstAudioAt - firstTtsPhraseSubmittedAt,
               ttsAfterFirstTextMs:
                 firstModelTextAt === null
                   ? null
@@ -1877,7 +2024,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
                 ttsTransportReadyAt === null
                   ? null
                   : ttsTransportReadyAt - responseStartedAt,
-              ttsSynthesisAfterReadyMs:
+              ttsAudioAfterReadyMs:
                 ttsTransportReadyAt === null
                   ? null
                   : firstAudioAt - ttsTransportReadyAt,
@@ -1942,6 +2089,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     ): void => {
       // Count every submitted phrase once, including progress spoken before
       // the final reply. Buffered phrases are not submitted until this point.
+      firstTtsPhraseSubmittedAt ??= this.now();
       this.turnTtsChars += input.text.length;
       this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
       stream.sendPhrase(input);
@@ -2025,6 +2173,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         endpoint: this.config.elizaEndpoint,
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
+        modelAttemptPolicy: this.modelAttemptPolicy,
         transcript,
         uiContext,
         ...(options.messageRole ? { messageRole: options.messageRole } : {}),
@@ -2176,18 +2325,19 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // Canonical conversation completion is independent of TTS playback.
       // Let the renderer reconcile the saved reply even when an earlier
       // acknowledgement already consumed the first speaking_start event.
-      if (result.completed) this.send({ t: "reply_complete", traceId });
+      if (result.completed)
+        this.send({
+          t: "reply_complete",
+          traceId,
+          ...(result.userMessageId
+            ? { userMessageId: result.userMessageId }
+            : {}),
+        });
 
       if (result.viewHandoff) {
         this.send({
           t: "navigate_view",
-          viewId: result.viewHandoff.viewId,
-          ...(result.viewHandoff.viewPath
-            ? { viewPath: result.viewHandoff.viewPath }
-            : {}),
-          ...(result.viewHandoff.subview
-            ? { subview: result.viewHandoff.subview }
-            : {}),
+          ...result.viewHandoff,
           traceId,
         });
       }
@@ -2413,6 +2563,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     if (this.closed) return;
     this.clearAssistantPlaybackSuppression();
     this.closed = true;
+    try {
+      this.modelAttemptPolicy?.close();
+    } catch (error) {
+      // error-policy:J6 Allowance retirement must not retain microphone/model resources.
+      logger.error({ error }, "Voice model allowance retirement failed");
+    }
     // Expiry/disconnect can bypass finishResponseTurn. Preserve the bounded
     // timing receipt before aborting callbacks, without labeling lost audio as
     // completed or recording transcript/audio payloads.
@@ -2485,7 +2641,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }
     // Context completion and barge-in keep the call-scoped Cartesia transport
     // warm. Session teardown is the sole owner of shared socket closure.
-    this.cartesiaAdapter.close(`session:${reason}`);
+    this.ttsAdapter.close(`session:${reason}`);
     if (this.llmAbort) {
       this.llmAbort.abort();
       this.llmAbort = null;
@@ -2521,6 +2677,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
   private send(frame: ServerControlFrame): void {
     if (this.closed && frame.t !== "error") return;
+    if (frame.t === "speaking_end" && this.assistantPlaybackActive)
+      this.pendingPlaybackCompletionTraceId = frame.traceId;
     this.config.downlink.sendControl(frame);
   }
 
@@ -2536,7 +2694,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 }
 
-interface RealtimeTtsPhraseInput {
+export interface RealtimeTtsPhraseInput {
   readonly text: string;
   readonly continueContext: boolean;
   readonly flush?: boolean;
@@ -2570,7 +2728,7 @@ function isLikelyAssistantEcho(
   return false;
 }
 
-interface RealtimeTtsStreamCallbacks {
+export interface RealtimeTtsStreamCallbacks {
   readonly onFirstAudio?: (event: { readonly elapsedMs: number }) => void;
   readonly onAudioFrame?: (event: { readonly bytes: Uint8Array }) => void;
   readonly onComplete?: (event: { readonly frameCount: number }) => void;
@@ -2578,7 +2736,7 @@ interface RealtimeTtsStreamCallbacks {
   readonly onFlushComplete?: (event: { readonly flushId?: number }) => void;
 }
 
-interface RealtimeTtsStream {
+export interface RealtimeTtsStream {
   readonly opened: Promise<void>;
   readonly closed: Promise<void>;
   sendPhrase(phrase: RealtimeTtsPhraseInput): void;

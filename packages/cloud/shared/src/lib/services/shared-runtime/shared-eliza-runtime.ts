@@ -41,6 +41,7 @@ import {
   type ToolChoice,
   type ToolDefinition,
   TurnAbortedError,
+  type TypedReadEgressReceipt,
   type UUID,
 } from "@elizaos/core";
 import type { AgentCapabilityTransport } from "@elizaos/core/protocol";
@@ -83,6 +84,7 @@ import {
   appendSharedTurn,
   NETWORK_DEFAULT_ROUTING,
 } from "./run-shared-agent-turn";
+import { createSharedAcknowledgementPlugin } from "./shared-acknowledgement-plugin";
 import { sharedCapabilityTransportForSource } from "./shared-capability-catalog";
 import { resolveSharedCapabilityIntent } from "./shared-capability-wall";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
@@ -306,6 +308,7 @@ function createRuntime(options: {
   googlePlugin?: Plugin;
   googleContextAvailable?: boolean;
   networkPlugin?: Plugin;
+  acknowledgementPlugin?: Plugin;
 }): AgentRuntime {
   const capabilityPlugin = createSharedRuntimeCapabilitiesPlugin({
     agentId: options.agentKey,
@@ -352,6 +355,7 @@ function createRuntime(options: {
       // SPIKE (The Network): host-injected store + member authority. Providers
       // and evaluators stay on lifecycle turns; actions only when enabled.
       ...(options.networkPlugin ? [options.networkPlugin] : []),
+      ...(options.acknowledgementPlugin ? [options.acknowledgementPlugin] : []),
     ],
     logLevel: "error",
   });
@@ -1036,7 +1040,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       throw error;
     }
     if (result.text.trim()) timing.markProviderFirstText();
-    usage = addUsage(usage, normalizeUsage(result.usage));
+    const callUsage = normalizeUsage(result.usage);
+    usage = addUsage(usage, callUsage);
     if (result.toolCalls.length === 0) {
       return result.text;
     }
@@ -1048,7 +1053,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         arguments: call.input,
       })),
       finishReason: result.finishReason,
-      usage,
+      usage: callUsage,
       providerMetadata: { modelName: input.model },
     } as NativeTextModelResult;
   };
@@ -1079,7 +1084,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   );
   // Recognized current-data turns require the server's preflight receipt.
   // Missing receipts must not fall back to an unbound public network action.
-  const webSearchEnabled = Boolean(
+  let webSearchEnabled = Boolean(
     publicSearchIntent && (publicSearchIntent.kind === "general" || preflightWebSearchResult),
   );
   const reminderPlugin =
@@ -1119,30 +1124,78 @@ async function executeMeasuredSharedElizaRuntimeTurn(
   const incomingEntityId = actionsEnabled ? userEntityId : lifecycleEntityId;
   const authenticatedPersonalSharedUser =
     actionsEnabled && input.execution?.authenticatedPersonalSharedUser === true;
-  const webSearchPlugin = preflightWebSearchResult
-    ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(preflightWebSearchResult))
-    : publicSearchIntent?.kind === "general"
-      ? createWebSearchEdgePlugin(async (query, options) => {
-          if (
-            normalizedRealtimeQuery(publicSearchIntent.topic) !== normalizedRealtimeQuery(query)
-          ) {
-            return {
-              success: false,
-              text: "That query does not match the explicit public topic authorized for this turn.",
-              error: "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
-              data: { actionName: "WEB_SEARCH" },
-            };
-          }
-          // Core/SDK capture retains the model's attempted arguments. The
-          // provider dispatch and result.data.query use only server-owned bytes;
-          // equivalent model casing/spacing is not an outbound data channel.
-          const result = await runWebSearchEdge(publicSearchIntent.topic, options);
-          const traceable = requireTraceableRealtimeSearch(result, publicSearchIntent.topic);
-          return traceable.success === true
-            ? { ...traceable, modelReplyRequired: true }
-            : traceable;
+  // This factory and its world/source catalog stay absent from ordinary turns.
+  // The host selector is server-owned; a payload flag grants no authority here.
+  if (input.execution.typedPublicReadReplies === true && onStreamChunk) {
+    throw new Error("Typed public read QA requires buffered delivery");
+  }
+  const typedReadTurn =
+    input.execution.typedPublicReadReplies === true &&
+    authenticatedPersonalSharedUser &&
+    input.execution.channel.type === ChannelType.DM &&
+    input.execution.channel.source === "blooio" &&
+    input.messageIds?.user
+      ? (await import("./shared-typed-read-reply")).createSharedTypedReadTurn({
+          enabled: true,
+          authenticatedPersonalSharedUser: true,
+          channelSource: input.execution.channel.source,
+          channelType: input.execution.channel.type,
+          agentKey: input.agentKey,
+          roomKey: input.execution.roomKey,
+          userEntityId,
+          turnId: input.messageIds.user,
+          message: input.capabilityText ?? input.message,
+          history: input.history,
         })
       : undefined;
+  let typedReadEgress: TypedReadEgressReceipt | undefined;
+  if (typedReadTurn) webSearchEnabled = true;
+  const webSearchPlugin = typedReadTurn
+    ? createWebSearchEdgePlugin(async (query, options) => {
+        const authorized = typedReadTurn.authorizePublicSearch(query);
+        if (!authorized) {
+          return {
+            success: false,
+            text: "That public query is outside this request.",
+            error: "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
+            data: { actionName: "WEB_SEARCH" },
+          };
+        }
+        // Every provider dispatch uses the constructor's bytes, never raw model args.
+        const result =
+          authorized.kind === "nws"
+            ? await (await import("./shared-current-weather")).runCurrentUsWeatherSearch(
+                authorized.query,
+                options,
+              )
+            : await runWebSearchEdge(authorized.query, options);
+        const traceable = requireTraceableRealtimeSearch(result, authorized.query);
+        return traceable.success === true ? { ...traceable, modelReplyRequired: true } : traceable;
+      })
+    : preflightWebSearchResult
+      ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(preflightWebSearchResult))
+      : publicSearchIntent?.kind === "general"
+        ? createWebSearchEdgePlugin(async (query, options) => {
+            if (
+              normalizedRealtimeQuery(publicSearchIntent.topic) !== normalizedRealtimeQuery(query)
+            ) {
+              return {
+                success: false,
+                text: "That query does not match the explicit public topic authorized for this turn.",
+                error: "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
+                data: { actionName: "WEB_SEARCH" },
+              };
+            }
+            // Core/SDK capture retains the model's attempted arguments. The
+            // provider dispatch and result.data.query use only server-owned bytes;
+            // equivalent model casing/spacing is not an outbound data channel.
+            const result = await runWebSearchEdge(publicSearchIntent.topic, options);
+            const traceable = requireTraceableRealtimeSearch(result, publicSearchIntent.topic);
+            return traceable.success === true
+              ? { ...traceable, modelReplyRequired: true }
+              : traceable;
+          })
+        : undefined;
   const googleContextAvailable =
     actionsEnabled && Boolean(input.execution?.google) && !publicSearchIntent;
   // Connection availability does not authorize a private read. Only the
@@ -1154,12 +1207,18 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     isSharedGoogleContextRequest(input.capabilityText)
       ? createSharedGoogleContextPlugin(input.execution.google)
       : undefined;
-  if (webSearchPlugin && publicSearchIntent?.kind === "general") {
+  const explicitPublicQuery =
+    typedReadTurn?.authorizedPublicQueries.length === 1
+      ? typedReadTurn.authorizedPublicQueries[0]
+      : !typedReadTurn && publicSearchIntent?.kind === "general"
+        ? publicSearchIntent.topic
+        : undefined;
+  if (webSearchPlugin && explicitPublicQuery) {
     webSearchPlugin.responseHandlerEvaluators = [
       {
         name: "shared.explicit_public_search",
         priority: 999,
-        deterministicActions: ["WEB_SEARCH"],
+        ...(!typedReadTurn ? { deterministicActions: ["WEB_SEARCH"] } : {}),
         shouldRun: ({ messageHandler }) => messageHandler.processMessage === "RESPOND",
         evaluate: () => ({
           requiresTool: true,
@@ -1167,29 +1226,55 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           clearCandidateActions: true,
           addCandidateActions: ["WEB_SEARCH"],
           clearReply: true,
-          deterministicToolCall: {
-            name: "WEB_SEARCH",
-            params: { query: publicSearchIntent.topic },
-          },
+          // Typed reads need the full planner's real tools and opaque egress
+          // callback. The single-action shortcut forbids follow-up tool calls.
+          ...(!typedReadTurn
+            ? {
+                deterministicToolCall: {
+                  name: "WEB_SEARCH",
+                  params: { query: explicitPublicQuery },
+                },
+              }
+            : {}),
         }),
       },
     ];
   }
   const character =
-    publicSearchIntent?.kind === "general"
+    typedReadTurn && explicitPublicQuery
       ? {
           ...input.character,
-          system: [input.character.system, sharedRealtimePromptPolicy(undefined)]
+          system: [
+            input.character.system,
+            `The public read for this request starts with WEB_SEARCH query ${JSON.stringify(explicitPublicQuery)}. Use these exact query bytes. After returned public sources identify a fully qualified place with the same city, you may request a current observation with WEB_SEARCH query "current public weather in <same original city>, <US state>" using that source location; any explicit original state or country must match. Do not infer a state from private history, profile, or population. A qualified alternative is one possible place, not confirmation of the user's intended place.`,
+          ]
             .filter(Boolean)
             .join("\n\n"),
         }
-      : input.character;
+      : publicSearchIntent?.kind === "general"
+        ? {
+            ...input.character,
+            system: [input.character.system, sharedRealtimePromptPolicy(undefined)]
+              .filter(Boolean)
+              .join("\n\n"),
+          }
+        : input.character;
   // A group turn labels each speaker `Participant <n>` (see
   // `group-participant-labels.ts`). That is a slot, not a name, so the model
   // needs one line telling it where real names come from; scoping it to the
   // channel type keeps every direct turn's prompt byte-identical.
   const isGroupTurn = input.execution.channel.type === ChannelType.GROUP;
+  let acknowledgementReaction: string | undefined;
+  const acknowledgementPlugin =
+    authenticatedPersonalSharedUser &&
+    input.execution.channel.type === ChannelType.DM &&
+    input.execution.channel.source === "blooio"
+      ? createSharedAcknowledgementPlugin((reaction) => {
+          acknowledgementReaction = reaction;
+        })
+      : undefined;
   const runtime = createRuntime({
+    ...(acknowledgementPlugin ? { acknowledgementPlugin } : {}),
     agentKey: input.agentKey,
     agentId,
     actionsEnabled,
@@ -1200,7 +1285,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           ...character,
           system: withGroupTurnNamingRule(character.system),
         }
-      : character,
+      : acknowledgementPlugin
+        ? {
+            ...character,
+            system: `${character.system ?? ""}\n\nCurrent private iMessage turn: the response handler may choose an optional acknowledgementReaction for this current inbound message when no text answer or work is needed. This is a turn-local candidate, not provider acceptance or a callable arbitrary-message reaction. Do not promise a delivered reaction, read receipt, typing feedback, or any other effect without its actual receipt.`,
+          }
+        : character,
     modelPlugin,
     ...(webSearchPlugin ? { webSearchPlugin } : {}),
     transport: sharedCapabilityTransportForSource(
@@ -1339,6 +1429,7 @@ async function executeMeasuredSharedElizaRuntimeTurn(
     if (
       publicSearchIntent?.kind === "prefetched" &&
       !preflightWebSearchResult &&
+      !typedReadTurn &&
       !privateCapabilityIntent
     ) {
       // A missing server receipt is not permission to search from private history
@@ -1477,8 +1568,16 @@ async function executeMeasuredSharedElizaRuntimeTurn(
         if (channelSafeContent) delivered.push(channelSafeContent);
         return [];
       },
-      input.abortSignal || onStreamChunk
+      input.abortSignal || onStreamChunk || typedReadTurn
         ? {
+            ...(typedReadTurn
+              ? {
+                  resolveTypedReadReply: typedReadTurn.resolveTypedReadReply,
+                  onTypedReadEgress: (receipt: TypedReadEgressReceipt) => {
+                    typedReadEgress = receipt;
+                  },
+                }
+              : {}),
             ...(input.abortSignal ? { abortSignal: input.abortSignal } : {}),
             ...(onStreamChunk ? { onStreamChunk } : {}),
             onInferenceTimingSummary: (summary) => {
@@ -1606,6 +1705,13 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       return {
         reply: "",
         responded: false,
+        ...(result.outcome.status === "completed" &&
+        result.outcome.effects?.length === 0 &&
+        !result.actionResults?.length &&
+        !input.abortSignal?.aborted &&
+        acknowledgementReaction
+          ? { acknowledgementReaction }
+          : {}),
         history: appendSharedInput(
           input.history,
           input.message.trim(),
@@ -1627,7 +1733,19 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(result.actionResults ?? []),
     ];
     const grounding = input.realtimeGrounding ?? sharedPublicWebGrounding(actionResults);
+    const verifiedTypedReadEgress =
+      typedReadTurn &&
+      typedReadEgress &&
+      (await import("@elizaos/plugin-assistant")).verifyTypedReadEgressReceipt(typedReadEgress, {
+        ownerScope: JSON.stringify([input.agentKey, input.execution.roomKey, userEntityId]),
+        turnId: input.messageIds?.user ?? "",
+        requirementIds: typedReadTurn.requirementIds,
+        reply,
+      })
+        ? typedReadEgress
+        : undefined;
     return {
+      ...(verifiedTypedReadEgress ? { internalTypedReadEgress: verifiedTypedReadEgress } : {}),
       reply,
       responded: true,
       history: appendSharedTurn(

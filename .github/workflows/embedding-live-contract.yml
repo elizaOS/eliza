@@ -1,0 +1,52 @@
+name: Embedding Live Contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected Cloud environment
+        required: true
+        type: choice
+        options: [staging, production]
+      expected_cloud_commit:
+        description: Exact commit served by the canonical Cloud API
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: embedding-live-contract-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Authenticated canonical BGE contract
+    if: ${{ (inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main') }}
+    environment: ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          show-progress: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
+      - name: Verify deployed embedding contract
+        env:
+          ELIZA_EMBEDDING_LIVE_CLOUDFLARE: "1"
+          ELIZA_EMBEDDING_CLOUD_ENVIRONMENT: ${{ inputs.environment }}
+          ELIZA_EMBEDDING_CLOUD_COMMIT: ${{ inputs.expected_cloud_commit }}
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+        run: |
+          set -euo pipefail
+          private_log=$(mktemp "$RUNNER_TEMP/embedding-contract.XXXXXX")
+          trap 'rm -f "$private_log"' EXIT
+          if bun test packages/cloud/api/__tests__/embedding-cloudflare-live.test.ts > "$private_log" 2>&1; then
+            echo "phase=embedding-contract status=passed code=EMBEDDING_CONTRACT_PASSED"
+          else
+            echo "phase=embedding-contract status=failed code=EMBEDDING_CONTRACT_FAILED" >&2
+            exit 1
+          fi

@@ -10,10 +10,12 @@ import {
   activeCommittedEffectReceipts,
   ChannelType,
   executePlannedToolCall,
+  type IAgentRuntime,
   type Memory,
   ModelType,
   projectDeferredProviders,
   resolveActionGateFailure,
+  resolveOwnerEntityIdOrDefault,
   type UUID,
   validateToolArgs,
 } from "@elizaos/core";
@@ -76,9 +78,11 @@ import {
   ApprovalService,
 } from "../src/services/approval/service.ts";
 import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
+import { deviceActionEffectReceipts } from "../src/services/device-actions/effect-receipts.ts";
 import {
   DeviceActionService,
-  withDeviceActionTurn,
+  deviceProposalDigest,
+  setDeviceActionRequestMessage,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import {
@@ -88,6 +92,24 @@ import {
 import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
 import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
+import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
+
+async function registerOwnerRoom(runtime: IAgentRuntime, message: Memory) {
+  const worldId = randomUUID() as UUID;
+  await runtime.createWorld({
+    id: worldId,
+    name: "Device action owner fixture",
+    agentId: runtime.agentId,
+    metadata: { ownership: { ownerId: message.entityId } },
+  });
+  await runtime.createRoom({
+    id: message.roomId,
+    worldId,
+    name: "Device action owner fixture",
+    source: "client_chat",
+    type: ChannelType.DM,
+  });
+}
 
 // Real HTTP, session authentication, registered proposal tool, SQL migrations,
 // and on-disk PGlite. All identities and requested content are synthetic.
@@ -178,7 +200,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             return;
           }
           try {
-            await withDeviceActionTurn(
+            await withOwnerDeviceActionTurn(
               runtimeState.runtime,
               credential,
               async () => {
@@ -330,7 +352,23 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       agentId: runtimeState.runtime.agentId,
       entityId: ownerA,
       roomId: randomUUID(),
-      content: { text: "Create fixture note" },
+      content: {
+        text: "Create fixture note",
+        metadata: {
+          clientDevice: {
+            context: {
+              view: "notes",
+              sensitive: false,
+              revision: 1,
+              selectedObject: {
+                kind: "note-source",
+                id: "fixture-notes",
+                revision: "a".repeat(64),
+              },
+            },
+          },
+        },
+      },
     } as Memory;
     const parameters = {
       operation: {
@@ -345,7 +383,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       await proposeDeviceAction.validate(runtimeState.runtime, memory),
     ).toBe(false);
     const propose = () =>
-      withDeviceActionTurn(runtimeState.runtime, credentials, async () => {
+      withOwnerDeviceActionTurn(runtimeState.runtime, credentials, async () => {
+        setDeviceActionRequestMessage(runtimeState.runtime, memory);
         expect(
           await proposeDeviceAction.validate(runtimeState.runtime, memory),
         ).toBe(true);
@@ -682,7 +721,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       receipt: { outcome: "unknown", code: "claim_response_lost" },
     });
     expect(uncertain.body.proposal.state).toBe("reconciliation_required");
-    const unknownOutcome = await withDeviceActionTurn(
+    const unknownOutcome = await withOwnerDeviceActionTurn(
       runtimeState.runtime,
       credentials,
       () =>
@@ -861,24 +900,17 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         (p: any) => p.id === item.id,
       );
       expect(canonical.execution.providerReceipt.result).toEqual(result);
-      const retrieved = await withDeviceActionTurn(
+      const replayed = await new DeviceActionService(
         runtimeState.runtime,
-        calendarCredentials,
-        () =>
-          proposeDeviceAction.handler(runtimeState.runtime, memory, undefined, {
-            parameters: { operation, operationKey: kind, reason: "fixture" },
-          }),
+      ).proposeWithOutcome(calendarCredentials, operation, kind, "fixture");
+      expect(replayed.reused).toBe(true);
+      expect(replayed.request.id).toBe(item.id);
+      expect(replayed.request.execution?.providerReceipt?.result).toEqual(
+        result,
       );
       expect(
-        activeCommittedEffectReceipts(
-          retrieved ? (retrieved.effectReceipts ?? []) : [],
-        ),
+        activeCommittedEffectReceipts(deviceActionEffectReceipts(replayed)),
       ).toHaveLength(kind.endsWith("_read_selected") ? 0 : 1);
-      expect(retrieved && retrieved.data).toMatchObject({
-        proposalId: item.id,
-        executed: false,
-        result,
-      });
       expect(
         (await request("/proposals")).body.proposals.filter(
           (p: any) => p.id === item.id,
@@ -1003,33 +1035,17 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           (p: any) => p.id === item.id,
         );
         expect(canonical.execution.providerReceipt.result).toEqual(result);
-        const retrieved = await withDeviceActionTurn(
+        const replayed = await new DeviceActionService(
           runtimeState.runtime,
-          notesCredentials,
-          () =>
-            proposeDeviceAction.handler(
-              runtimeState.runtime,
-              memory,
-              undefined,
-              {
-                parameters: {
-                  operation,
-                  operationKey: kind,
-                  reason: "fixture",
-                },
-              },
-            ),
+        ).proposeWithOutcome(notesCredentials, operation, kind, "fixture");
+        expect(replayed.reused).toBe(true);
+        expect(replayed.request.id).toBe(item.id);
+        expect(replayed.request.execution?.providerReceipt?.result).toEqual(
+          result,
         );
         expect(
-          activeCommittedEffectReceipts(
-            retrieved ? (retrieved.effectReceipts ?? []) : [],
-          ),
+          activeCommittedEffectReceipts(deviceActionEffectReceipts(replayed)),
         ).toHaveLength(kind.endsWith("_read_selected") ? 0 : 1);
-        expect(retrieved && retrieved.data).toMatchObject({
-          proposalId: item.id,
-          executed: false,
-          result,
-        });
         expect(
           (await request("/proposals")).body.proposals.filter(
             (p: any) => p.id === item.id,
@@ -1211,7 +1227,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             })
           ).status,
         ).toBe(409);
-        const retrieved = await withDeviceActionTurn(
+        const retrieved = await withOwnerDeviceActionTurn(
           runtimeState.runtime,
           c,
           () =>
@@ -1239,7 +1255,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     {
       const capability = "clock.handoff.v1";
       const allCapabilities =
-        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1";
+        "calendar.local-event.v1,notes.local-record.v1,reminders.local-record.v1,maps.selected-read.v1,clock.handoff.v1,camera.capture-photo.v1,gmail.request-policy.v1";
       const enrolled = await request(
         "/register",
         { label: "Fixture phone", workflowProtocol: 1 },
@@ -1253,6 +1269,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ...allCapabilities.split(","),
           "calendar.create.v1",
           "calendar.next-read.v1",
+          "calendar.agenda-read.v1",
+          "calendar.named-read.v1",
           "notes.query.v1",
           "reminders.local-record.v2",
           "reminders.create.v1",
@@ -1313,6 +1331,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         "Never invent the phone timezone or substitute an approximate reminder for an alarm",
       );
 
+      runtimeState.runtime.registerAction(proposeDeviceAction);
       const c = { ...credentials, capabilities: [capability] };
       const clockRequest = (path: string, body?: unknown) =>
         request(path, body, "a", deviceKey, capability);
@@ -1345,7 +1364,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         ),
       ).toBe(true);
       const globalSchema = JSON.stringify(proposeDeviceAction.parameters);
-      const clockContext = await withDeviceActionTurn(
+      const clockContext = await withOwnerDeviceActionTurn(
         runtimeState.runtime,
         c,
         () =>
@@ -1382,9 +1401,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         "select general planning and pending effect status",
       );
       expect(nativeGuidance).toContain(
-        'DISCOVER_ACTIONS with names=["PROPOSE_DEVICE_ACTION"]',
+        "use the currently authorized PROPOSE_DEVICE_ACTION schema",
       );
-      expect(nativeGuidance).toContain("if that exact tool is not loaded");
+      expect(nativeGuidance).toContain("discover its exact name if needed");
       expect(nativeGuidance).toContain(
         'Use operation={"type":"clock_handoff","action":"show"} to open Android Clock alarms without creating or changing alarms.',
       );
@@ -1408,7 +1427,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
         ["clock.handoff.v2"],
         ["clock.handoff.v1", "notes.local-record.v1"],
       ]) {
-        const currentContext = await withDeviceActionTurn(
+        const currentContext = await withOwnerDeviceActionTurn(
           runtimeState.runtime,
           { ...credentials, capabilities },
           () =>
@@ -1905,7 +1924,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           label: `Exact label ${index}`,
         })),
       };
-      const ownedPlanner = await withDeviceActionTurn(
+      const ownedPlanner = await withOwnerDeviceActionTurn(
         runtimeState.runtime,
         { ...credentials, capabilities: [ownedCapability, capability] },
         async () => {
@@ -2017,7 +2036,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
               (event) => event.type === "provider" && event.name === name,
             ),
           ).toEqual(source);
-          const withoutCapability = await withDeviceActionTurn(
+          const withoutCapability = await withOwnerDeviceActionTurn(
             runtimeState.runtime,
             { ...credentials, capabilities: [capability] },
             async () =>
@@ -2537,7 +2556,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           restored.body.proposals.find((p: any) => p.id === item.id).execution
             .providerReceipt.result,
         ).toEqual(result);
-        const recovered = await withDeviceActionTurn(
+        const recovered = await withOwnerDeviceActionTurn(
           runtimeState.runtime,
           c,
           () =>
@@ -2754,7 +2773,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           (p: any) => p.id === item.id,
         );
         expect(canonical.execution.providerReceipt.result).toEqual(result);
-        const retrieved = await withDeviceActionTurn(
+        const retrieved = await withOwnerDeviceActionTurn(
           runtimeState.runtime,
           reminderCredentials,
           () =>
@@ -2862,7 +2881,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           ),
         ).rejects.toThrow();
         const runAction = () =>
-          withDeviceActionTurn(runtimeState.runtime, c, () =>
+          withOwnerDeviceActionTurn(runtimeState.runtime, c, () =>
             proposeDeviceAction.handler(
               runtimeState.runtime,
               memory,
@@ -3344,19 +3363,23 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       ).body.profile;
       const globalParameters = JSON.stringify(proposeDeviceAction.parameters);
       const render = (credential: typeof credentials) =>
-        withDeviceActionTurn(runtimeState.runtime, credential, async () => {
-          await new Promise((resolve) => setTimeout(resolve, 1));
-          return createV5MessageContextObject({
-            runtime: runtimeState.runtime,
-            message: memory,
-            state: { values: {}, data: {}, text: "" },
-            includeTools: true,
-            selectedContexts: [
-              { id: "general", name: "General", description: "Fixture" },
-            ] as any,
-            preselectedActions: [proposeDeviceAction],
-          });
-        });
+        withOwnerDeviceActionTurn(
+          runtimeState.runtime,
+          credential,
+          async () => {
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            return createV5MessageContextObject({
+              runtime: runtimeState.runtime,
+              message: memory,
+              state: { values: {}, data: {}, text: "" },
+              includeTools: true,
+              selectedContexts: [
+                { id: "general", name: "General", description: "Fixture" },
+              ] as any,
+              preselectedActions: [proposeDeviceAction],
+            });
+          },
+        );
       const contexts = await Promise.all([
         render(credentials),
         render({
@@ -3365,12 +3388,17 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           deviceKey: "b".repeat(64),
         }),
       ]);
-      const serialized = contexts.map((context) => JSON.stringify(context));
-      expect(serialized[0]).toContain(
-        "enabled-view profile allows open_view only for",
+      const guidance = contexts.map((context) => {
+        const event = context.events.find(
+          (entry) => entry.id === "authenticated-phone-capability",
+        );
+        return event?.type === "instruction" ? event.content : "";
+      });
+      expect(guidance[0]).toContain(
+        'Enabled phone views: ["notes","workflows"]',
       );
-      expect(serialized[1]).not.toContain(
-        "enabled-view profile allows open_view only for",
+      expect(guidance[1]).not.toContain(
+        'Enabled phone views: ["notes","workflows"]',
       );
       const branch = (context: any) =>
         context.events
@@ -3580,7 +3608,7 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
   });
   const runtime = fixture.runtime;
   const credential = {
-    subjectUserId: runtime.agentId,
+    subjectUserId: resolveOwnerEntityIdOrDefault(runtime),
     installationId: randomUUID(),
     deviceKey: "b".repeat(64),
     capabilities: ["clock.handoff.v1"],
@@ -3605,7 +3633,9 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
       id: worldId,
       name: "Clock scope",
       agentId: runtime.agentId,
-      metadata: { ownership: { ownerId: runtime.agentId } },
+      metadata: {
+        ownership: { ownerId: resolveOwnerEntityIdOrDefault(runtime) },
+      },
     });
     await runtime.createRoom({
       id: roomId,
@@ -3669,7 +3699,7 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
     const message: Memory = {
       id: randomUUID(),
       roomId,
-      entityId: runtime.agentId,
+      entityId: resolveOwnerEntityIdOrDefault(runtime),
       agentId: runtime.agentId,
       content: {
         text: "Open Clock after my approval.",
@@ -3692,7 +3722,7 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
         },
       },
     };
-    const pending = await withDeviceActionTurn(runtime, credential, () =>
+    const pending = await withOwnerDeviceActionTurn(runtime, credential, () =>
       runV5MessageRuntimeStage1({
         runtime,
         message,
@@ -3802,26 +3832,33 @@ test("Clock-only enrollment scopes actual planner discovery and preserves pendin
       }),
     );
     const errors = vi.spyOn(runtime, "reportError");
-    const navigation = await withDeviceActionTurn(runtime, credential, () =>
-      runV5MessageRuntimeStage1({
-        runtime,
-        message: {
-          ...message,
-          id: randomUUID(),
-          content: {
-            ...message.content,
-            text: "Go home.",
-            metadata: {
-              ...message.content.metadata,
-              uiView: "notes",
-              uiTab: "notes",
-              uiViewPath: "/notes",
+    const navigation = await withOwnerDeviceActionTurn(
+      runtime,
+      credential,
+      () =>
+        runV5MessageRuntimeStage1({
+          runtime,
+          message: {
+            ...message,
+            id: randomUUID(),
+            content: {
+              ...message.content,
+              text: "Go home.",
+              metadata: {
+                ...message.content.metadata,
+                uiView: "notes",
+                uiTab: "notes",
+                uiViewPath: "/notes",
+              },
             },
           },
-        },
-        state: { values: { availableContexts: "general" }, data: {}, text: "" },
-        responseId: randomUUID() as UUID,
-      }),
+          state: {
+            values: { availableContexts: "general" },
+            data: {},
+            text: "",
+          },
+          responseId: randomUUID() as UUID,
+        }),
     );
     expect(outputs).toHaveLength(0);
     expect(
@@ -3880,7 +3917,7 @@ test.each([
     });
     const runtime = fixture.runtime;
     const credential = {
-      subjectUserId: runtime.agentId,
+      subjectUserId: resolveOwnerEntityIdOrDefault(runtime),
       installationId: randomUUID(),
       deviceKey: "c".repeat(64),
       capabilities: ["clock.alarms.v1"],
@@ -3942,7 +3979,9 @@ test.each([
         id: worldId,
         name: "Pending device",
         agentId: runtime.agentId,
-        metadata: { ownership: { ownerId: runtime.agentId } },
+        metadata: {
+          ownership: { ownerId: resolveOwnerEntityIdOrDefault(runtime) },
+        },
       });
       await runtime.createRoom({
         id: roomId,
@@ -3954,7 +3993,7 @@ test.each([
       const message: Memory = {
         id: randomUUID(),
         roomId,
-        entityId: runtime.agentId,
+        entityId: resolveOwnerEntityIdOrDefault(runtime),
         agentId: runtime.agentId,
         content: {
           text: "Control my current alarm.",
@@ -3989,7 +4028,7 @@ test.each([
           },
         },
       };
-      const result = await withDeviceActionTurn(runtime, credential, () =>
+      const result = await withOwnerDeviceActionTurn(runtime, credential, () =>
         runV5MessageRuntimeStage1({
           runtime,
           message,
@@ -4005,7 +4044,11 @@ test.each([
       expect(result.kind).toBe("planned_reply");
       if (result.kind === "planned_reply") {
         expect(result.result.requestFulfilled).toBe(false);
-        expect(result.result.responseContent?.text).toBe(pendingText);
+        expect(result.result.responseContent?.text).toBe(
+          action === "snooze"
+            ? "Your snooze request is queued for your phone. It isn’t confirmed yet."
+            : "Your stop request is queued for your phone. It isn’t confirmed yet.",
+        );
         expect(result.result.responseContent?.transcriptVisibility).not.toBe(
           "internal",
         );
@@ -4025,7 +4068,7 @@ test.each([
   120000,
 );
 
-test("enrolled phone record authority blocks backend discovery and forced writes without affecting counter-requests", async () => {
+test("selected native Notes authority blocks backend writes without affecting canonical counter-requests", async () => {
   const fixture = await createRealTestRuntime({
     characterName: "NativeRecordAuthority",
   });
@@ -4043,7 +4086,7 @@ test("enrolled phone record authority blocks backend discovery and forced writes
         ? notes
         : originalGet(name)) as typeof runtime.getService);
   const credential = {
-    subjectUserId: runtime.agentId,
+    subjectUserId: resolveOwnerEntityIdOrDefault(runtime),
     installationId: randomUUID(),
     deviceKey: "a".repeat(64),
     capabilities: [
@@ -4056,7 +4099,7 @@ test("enrolled phone record authority blocks backend discovery and forced writes
   const message = {
     id: randomUUID(),
     agentId: runtime.agentId,
-    entityId: runtime.agentId,
+    entityId: resolveOwnerEntityIdOrDefault(runtime),
     roomId: randomUUID(),
     content: {
       text: "Create my phone note",
@@ -4064,6 +4107,16 @@ test("enrolled phone record authority blocks backend discovery and forced writes
         clientDevice: {
           installationId: credential.installationId,
           capabilities: credential.capabilities,
+          context: {
+            view: "notes",
+            sensitive: false,
+            revision: 1,
+            selectedObject: {
+              kind: "note-source",
+              id: "fixture-notes",
+              revision: "a".repeat(64),
+            },
+          },
         },
       },
     },
@@ -4103,18 +4156,20 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       { name: "NOTES_CREATE", params: { content } },
     );
   try {
+    await registerOwnerRoom(runtime, message);
     await service.register(credential, "Native record owner");
     for (const action of actions) runtime.registerAction(action);
     const outside = discover();
     expect(outside).toContain("NOTES_CREATE");
     expect(outside).toContain("CALENDAR");
     expect(outside).toContain("OWNER_REMINDERS");
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
+      setDeviceActionRequestMessage(runtime, message);
       const catalog = discover();
       expect(catalog).not.toContain("NOTES_CREATE");
       expect(catalog).not.toContain("NOTES_PATCH");
       expect(catalog).toContain("CALENDAR");
-      expect(catalog).not.toContain("OWNER_REMINDERS");
+      expect(catalog).toContain("OWNER_REMINDERS");
       expect(catalog).toContain("PROPOSE_DEVICE_ACTION");
       for (const action of unrelatedActions) {
         expect(catalog).toContain(action.name);
@@ -4136,10 +4191,7 @@ test("enrolled phone record authority blocks backend discovery and forced writes
           await execute("Must not bypass native ownership", actionMessage),
         ).toMatchObject({ success: false });
       }
-      for (const action of [
-        ...(notesPlugin.actions ?? []),
-        ownerRemindersAction,
-      ]) {
+      for (const action of [...(notesPlugin.actions ?? [])]) {
         for (const gateContext of [
           { userRoles: ["OWNER"] as const, activeContexts: ["notes"] as const },
           {
@@ -4153,25 +4205,22 @@ test("enrolled phone record authority blocks backend discovery and forced writes
             activeContexts: ["notes"] as const,
           },
         ]) {
-          expect(actionGateFailure(action, gateContext)).toContain(
-            "authenticated phone owns",
+          expect(actionGateFailure(action, gateContext)).toMatch(
+            /(?:owns Notes|Notes.*unavailable)/i,
           );
         }
       }
       expect(notes.listNotes()).toHaveLength(0);
       // Plan-step and non-CONTEXT hook execution skip context routing, but
       // must retain native-record authority at their final handler gate.
-      for (const action of [
-        ...(notesPlugin.actions ?? []),
-        ownerRemindersAction,
-      ]) {
+      for (const action of [...(notesPlugin.actions ?? [])]) {
         expect(
           await resolveActionGateFailure(runtime, action, {
             message,
             userRoles: ["OWNER"],
             evaluateContexts: false,
           }),
-        ).toContain("authenticated phone owns");
+        ).toMatch(/(?:owns Notes|Notes.*unavailable)/i);
       }
       expect(
         await execute("Must not reach the server Notes store"),
@@ -4186,10 +4235,15 @@ test("enrolled phone record authority blocks backend discovery and forced writes
       }),
     ).toMatchObject({ success: true });
     expect(notes.listNotes()).toHaveLength(1);
-    await withDeviceActionTurn(
+    const metadata = message.content.metadata as {
+      clientDevice: { context: { selectedObject: { kind: string } } };
+    };
+    metadata.clientDevice.context.selectedObject.kind = "canonical-note-source";
+    await withOwnerDeviceActionTurn(
       runtime,
       { ...credential, capabilities: ["clock.handoff.v1"] },
       async () => {
+        setDeviceActionRequestMessage(runtime, message);
         expect(discover()).toContain("NOTES_CREATE");
         expect(discover()).toContain("CALENDAR");
         expect(discover()).toContain("OWNER_REMINDERS");
@@ -4198,8 +4252,10 @@ test("enrolled phone record authority blocks backend discovery and forced writes
         });
       },
     );
+    metadata.clientDevice.context.selectedObject.kind = "note-source";
     let release!: () => void;
-    const held = withDeviceActionTurn(runtime, credential, async () => {
+    const held = withOwnerDeviceActionTurn(runtime, credential, async () => {
+      setDeviceActionRequestMessage(runtime, message);
       await new Promise<void>((resolve) => {
         release = resolve;
       });
@@ -4214,7 +4270,7 @@ test("enrolled phone record authority blocks backend discovery and forced writes
     await held;
     expect(notes.listNotes()).toHaveLength(3);
     await expect(
-      withDeviceActionTurn(
+      withOwnerDeviceActionTurn(
         runtime,
         { ...credential, deviceKey: "b".repeat(64) },
         async () => execute("Invalid device"),
@@ -4235,7 +4291,7 @@ test("executor decodes typed phone operation JSON before validation and preserve
   });
   const runtime = fixture.runtime;
   const credential = {
-    subjectUserId: runtime.agentId,
+    subjectUserId: resolveOwnerEntityIdOrDefault(runtime),
     installationId: randomUUID(),
     deviceKey: "d".repeat(64),
     capabilities: ["notes.local-record.v1"],
@@ -4251,9 +4307,25 @@ test("executor decodes typed phone operation JSON before validation and preserve
   const message = {
     id: randomUUID(),
     agentId: runtime.agentId,
-    entityId: runtime.agentId,
+    entityId: resolveOwnerEntityIdOrDefault(runtime),
     roomId: randomUUID(),
-    content: { text: "Create my phone note" },
+    content: {
+      text: "Create my phone note",
+      metadata: {
+        clientDevice: {
+          context: {
+            view: "notes",
+            sensitive: false,
+            revision: 1,
+            selectedObject: {
+              kind: "note-source",
+              id: "fixture-notes",
+              revision: "a".repeat(64),
+            },
+          },
+        },
+      },
+    },
   } as Memory;
   const execute = (value: unknown) =>
     executePlannedToolCall(
@@ -4269,10 +4341,13 @@ test("executor decodes typed phone operation JSON before validation and preserve
       },
     );
   try {
+    await registerOwnerRoom(runtime, message);
     runtime.registerAction(proposeDeviceAction);
     await service.register(credential, "Typed operation fixture");
-    await withDeviceActionTurn(runtime, credential, async () => {
-      expect(await execute(encoded)).toMatchObject({
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
+      setDeviceActionRequestMessage(runtime, message);
+      const decodedResult = await execute(encoded);
+      expect(decodedResult, JSON.stringify(decodedResult)).toMatchObject({
         success: true,
         data: { state: "pending", executed: false, approvalRequired: true },
       });
@@ -4297,7 +4372,7 @@ test("executor decodes typed phone operation JSON before validation and preserve
     });
     // A decoded object does not grant a native session or unsupported capabilities.
     expect(await execute(encoded)).toMatchObject({ success: false });
-    await withDeviceActionTurn(
+    await withOwnerDeviceActionTurn(
       runtime,
       { ...credential, capabilities: ["clock.handoff.v1"] },
       async () => {
@@ -4305,7 +4380,7 @@ test("executor decodes typed phone operation JSON before validation and preserve
       },
     );
     await expect(
-      withDeviceActionTurn(
+      withOwnerDeviceActionTurn(
         runtime,
         { ...credential, deviceKey: "e".repeat(64) },
         async () => execute(encoded),
@@ -4352,7 +4427,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
   );
   if (!calendar) throw Error("Calendar service was not registered");
   const credential = {
-    subjectUserId: runtime.agentId,
+    subjectUserId: resolveOwnerEntityIdOrDefault(runtime),
     installationId: randomUUID(),
     deviceKey: "b".repeat(64),
     capabilities: ["calendar.local-event.v1"],
@@ -4483,7 +4558,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
   const message = {
     id: randomUUID(),
     agentId: runtime.agentId,
-    entityId: runtime.agentId,
+    entityId: resolveOwnerEntityIdOrDefault(runtime),
     roomId: randomUUID(),
     content: { text: "Read my calendar" },
   } as Memory;
@@ -4494,6 +4569,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
       { name: "CALENDAR", params },
     );
   try {
+    await registerOwnerRoom(runtime, message);
     await new DeviceActionService(runtime).register(
       credential,
       "Native Calendar owner",
@@ -4553,7 +4629,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
       providerCalendarId: "primary",
     });
     await controls.resume(selected.revision);
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
       for (const subaction of ["feed", "next_event", "create_event"])
         for (const source of [
           {},
@@ -4593,7 +4669,7 @@ test("registered Calendar preserves native ownership and explicit connected sour
           subaction: "feed",
           details: { ...range, grantId, calendarId },
         });
-        expect(result).toMatchObject({ success: true });
+        expect(result, JSON.stringify(result)).toMatchObject({ success: true });
         expect(JSON.stringify(result)).not.toContain("Backend fixture");
       }
       const appleReadsBeforeGoogleNext = appleReads;
@@ -4671,6 +4747,95 @@ test("registered Calendar preserves native ownership and explicit connected sour
   } finally {
     lookup.mockRestore();
     appleCalendarTesting.setNativeCalendarBridgeForTest(undefined as never);
+    await fixture.cleanup();
+  }
+}, 120000);
+
+test("camera capture receipts bind a saved photo to one claimed operation without pixels", async () => {
+  const fixture = await createRealTestRuntime({
+    characterName: "CameraCaptureReceipt",
+    withLLM: false,
+  });
+  const runtime = fixture.runtime,
+    service = new DeviceActionService(runtime);
+  const credential = {
+    subjectUserId: resolveOwnerEntityIdOrDefault(runtime),
+    installationId: randomUUID(),
+    deviceKey: "c".repeat(64),
+    capabilities: ["camera.capture-photo.v1"],
+  };
+  try {
+    await service.register(credential, "Camera fixture");
+    await expect(
+      service.propose(
+        { ...credential, capabilities: [] },
+        { type: "camera_capture_photo" },
+        "no-capability",
+        "Take a photo",
+      ),
+    ).rejects.toThrow("capability");
+    const proposal = await service.propose(
+      credential,
+      { type: "camera_capture_photo" },
+      "camera-one",
+      "Take a photo",
+    );
+    await service.decide(
+      credential,
+      proposal.id,
+      deviceProposalDigest(proposal),
+      true,
+    );
+    const claim = await service.claim(
+      credential,
+      proposal.id,
+      deviceProposalDigest(proposal),
+    );
+    const result = {
+      version: 1,
+      kind: "camera_capture_photo",
+      operationId: "photo-operation",
+      mediaId: "45",
+      width: 1280,
+      height: 720,
+      mime: "image/jpeg",
+    };
+    for (const invalid of [
+      { ...result, base64: "pixels" },
+      { ...result, operationId: "different-operation" },
+      { ...result, mediaId: "content://media/external/images/media/45" },
+    ])
+      await expect(
+        service.receipt(
+          credential,
+          proposal.id,
+          deviceProposalDigest(proposal),
+          claim.execution!.attemptId,
+          {
+            outcome: "applied",
+            operationId: "photo-operation",
+            result: invalid,
+          },
+        ),
+      ).rejects.toThrow("Invalid Camera receipt");
+    const done = await service.receipt(
+      credential,
+      proposal.id,
+      deviceProposalDigest(proposal),
+      claim.execution!.attemptId,
+      { outcome: "applied", operationId: "photo-operation", result },
+    );
+    expect(done.state).toBe("done");
+    expect(done.execution?.providerReceipt?.result).toEqual(result);
+    const duplicate = await service.propose(
+      credential,
+      { type: "camera_capture_photo" },
+      "camera-one",
+      "Take a photo",
+    );
+    expect(duplicate.id).toBe(proposal.id);
+    expect(duplicate.state).toBe("done");
+  } finally {
     await fixture.cleanup();
   }
 }, 120000);

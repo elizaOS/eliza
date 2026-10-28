@@ -71,6 +71,106 @@ describe("Android push bridge startup", () => {
   });
 });
 
+describe("Android cloud WebView visibility", () => {
+  it("hides the page while the activity is stopped in both variants", () => {
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
+      const onStop = source.slice(source.indexOf("public void onStop()"));
+      expect(onStop.indexOf("getWebView().onPause()")).toBeGreaterThan(-1);
+      expect(onStop.indexOf("getWebView().onPause()")).toBeLessThan(
+        onStop.indexOf("super.onStop()"),
+      );
+      const onStart = source.slice(source.indexOf("public void onStart()"));
+      expect(onStart.indexOf("getWebView().onResume()")).toBeGreaterThan(
+        onStart.indexOf("super.onStart()"),
+      );
+      expect(source).not.toMatch(
+        /void onPause\(\)[^}]*getWebView\(\)\.onPause/,
+      );
+    }
+  });
+
+  it("survives renderer death and recreates on the next start in both variants", () => {
+    // Each marker must be present before its position is compared: a missing
+    // marker's indexOf is -1, which would pass any toBeLessThan.
+    const ordered = (block: string, ...markers: string[]) => {
+      const positions = markers.map((marker) => block.indexOf(marker));
+      for (const [i, position] of positions.entries()) {
+        expect(position, markers[i]).toBeGreaterThan(-1);
+        if (i > 0) expect(positions[i - 1], markers[i]).toBeLessThan(position);
+      }
+    };
+    const method = (source: string, signature: string) => {
+      const start = source.indexOf(signature);
+      expect(start, signature).toBeGreaterThan(-1);
+      return source.slice(start, source.indexOf("\n    }\n", start));
+    };
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
+      ordered(
+        method(source, "public boolean onRenderProcessGone("),
+        "rendererGone = true;",
+        "removeView(view)",
+        "view.destroy()",
+        "if (started) recreate();",
+        "return true;",
+      );
+      ordered(
+        method(source, "public void onStart()"),
+        "super.onStart()",
+        "started = true;",
+        "if (rendererGone) {",
+        "recreate();",
+        "return;",
+        "getWebView().onResume()",
+      );
+      ordered(
+        method(source, "public void onStop()"),
+        "started = false;",
+        "!rendererGone",
+        "getWebView().onPause()",
+        "super.onStop()",
+      );
+    }
+    const launcher = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+    ordered(
+      method(launcher, "private void restoreBundledRendererAfterAuthCallback("),
+      "|| rendererGone",
+      "return;",
+      "webView.loadUrl(localUrl)",
+    );
+  });
+
+  it("gives the launcher page only its back intent, never minimize or WebView history", () => {
+    const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+      launcherKiosk: true,
+    });
+    // Registered after super.onCreate, so it is added after the Capacitor App
+    // plugin's callback on each start and runs instead of it.
+    const onCreate = source.indexOf("super.onCreate(savedInstanceState)");
+    const callback = source.indexOf("new OnBackPressedCallback(true)");
+    expect(onCreate).toBeGreaterThan(-1);
+    expect(callback).toBeGreaterThan(onCreate);
+    const handler = source.slice(
+      source.indexOf("public void handleOnBackPressed()", callback),
+      source.indexOf("});", callback),
+    );
+    // The value of ELIZA_BACK_INTENT_EVENT in packages/ui/src/events.
+    expect(handler).toContain(
+      "window.dispatchEvent(new CustomEvent('eliza:back-intent', { detail: { handled: false } }))",
+    );
+    expect(handler).not.toMatch(
+      /moveTaskToBack|goBack|history|finish|onBackPressed\(/,
+    );
+  });
+});
+
 /** Every committed main-sourceset .java basename that references ElizaAgentService. */
 function collectAgentServiceReferencingSources() {
   const referencing = [];

@@ -1,7 +1,7 @@
 /**
  * Real-browser coverage for CLI authentication completion across ordinary tabs,
  * orphaned login tabs, and named popup handoffs. The renderer and router are
- * exact-head local bytes; Steward authentication and the completion endpoint
+ * exact-head local bytes; Steward authentication, profile lookup and the completion endpoint
  * use the repository's documented browser-test seams.
  */
 
@@ -47,6 +47,25 @@ async function installManagedOriginProxy(
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(PROVIDERS),
+    });
+  });
+  await context.route("**/api/v1/user", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          id: "22222222-2222-4222-8222-222222222222",
+          email: "cli-auth-browser@test.local",
+          name: "CLI Browser Reviewer",
+          role: "owner",
+          is_active: true,
+          created_at: "2026-10-01T00:00:00Z",
+          updated_at: "2026-10-01T00:00:00Z",
+          organization: null,
+        },
+      }),
     });
   });
   await context.route("**/api/auth/cli-session/*/complete", async (route) => {
@@ -104,10 +123,21 @@ test.describe("CLI auth completion handoff", () => {
     );
     await armAuthenticatedCloudPage(page, managedOrigin);
 
-    await page.goto(`${managedOrigin}/auth/cli-login?session=sess-browser-tab`);
+    await page.goto(
+      `${managedOrigin}/auth/cli-login?session=bbbbbbbb-2222-4333-8444-cccccccccccc`,
+    );
     await expect(
       page.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
     ).toBeVisible();
+    await expect(page.getByText("cli-auth-browser@test.local")).toBeVisible();
+    if (process.env.E2E_RECORD) {
+      await test.info().attach("account-confirmation", {
+        body: await page.screenshot({ fullPage: true }),
+        contentType: "image/png",
+      });
+      await page.waitForTimeout(1500);
+    }
+    expect(completed).toEqual([]);
     await page.getByRole("button", { name: "Authorize" }).click();
 
     await expect(
@@ -119,11 +149,11 @@ test.describe("CLI auth completion handoff", () => {
     await expect(
       page.getByRole("button", { name: "Close window" }),
     ).toHaveCount(0);
-    expect(completed).toEqual(["sess-browser-tab"]);
+    expect(completed).toEqual(["bbbbbbbb-2222-4333-8444-cccccccccccc"]);
 
     const orphan = await page.context().newPage();
     const returnTo = encodeURIComponent(
-      `/auth/cli-login?session=sess-browser-tab`,
+      `/auth/cli-login?session=bbbbbbbb-2222-4333-8444-cccccccccccc`,
     );
     await orphan.goto(`${managedOrigin}/login?returnTo=${returnTo}`);
     await expect(
@@ -135,7 +165,7 @@ test.describe("CLI auth completion handoff", () => {
     await expect(
       orphan.getByRole("button", { name: "Close window" }),
     ).toHaveCount(0);
-    expect(completed).toEqual(["sess-browser-tab"]);
+    expect(completed).toEqual(["bbbbbbbb-2222-4333-8444-cccccccccccc"]);
   });
 
   test("named popup completes once, closes, and leaves replayable terminal state", async ({
@@ -154,18 +184,27 @@ test.describe("CLI auth completion handoff", () => {
     const popupPromise = page.waitForEvent("popup");
     await page.evaluate((url) => {
       window.open(url, "eliza-cloud-auth", "popup,width=520,height=720");
-    }, `${managedOrigin}/auth/cli-login?session=sess-browser-popup`);
+    }, `${managedOrigin}/auth/cli-login?session=aaaaaaaa-1111-4222-8333-dddddddddddd`);
     const popup = await popupPromise;
     await expect(
       popup.getByRole("heading", { name: "Authorize CLI Sign-In?" }),
     ).toBeVisible();
+    await expect(popup.getByText("cli-auth-browser@test.local")).toBeVisible();
+    if (process.env.E2E_RECORD) {
+      await test.info().attach("account-confirmation", {
+        body: await popup.screenshot({ fullPage: true }),
+        contentType: "image/png",
+      });
+      await popup.waitForTimeout(1500);
+    }
+    expect(completed).toEqual([]);
     await popup.getByRole("button", { name: "Authorize" }).click();
     await popup.waitForEvent("close");
-    expect(completed).toEqual(["sess-browser-popup"]);
+    expect(completed).toEqual(["aaaaaaaa-1111-4222-8333-dddddddddddd"]);
 
     const replay = await page.context().newPage();
     await replay.goto(
-      `${managedOrigin}/auth/cli-login?session=sess-browser-popup`,
+      `${managedOrigin}/auth/cli-login?session=aaaaaaaa-1111-4222-8333-dddddddddddd`,
     );
     await expect(
       replay.getByRole("heading", { name: "Authentication Complete!" }),
@@ -173,6 +212,6 @@ test.describe("CLI auth completion handoff", () => {
     await expect(
       replay.getByRole("link", { name: "Return to App" }),
     ).toHaveAttribute("href", "/");
-    expect(completed).toEqual(["sess-browser-popup"]);
+    expect(completed).toEqual(["aaaaaaaa-1111-4222-8333-dddddddddddd"]);
   });
 });

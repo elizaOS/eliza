@@ -1,9 +1,37 @@
 import { BILL_SOURCE_FAILURE_REASONS } from "./bill-source-discovery.mjs";
 import { BillHostError } from "./errors.mjs";
 
+/**
+ * Fixed reasons on a failed bill route's 503. They never carry page text,
+ * values or error messages.
+ */
+export const BILL_WORKFLOW_FAILURE_REASONS = Object.freeze([
+  "profile-unavailable",
+  "workflow-missing",
+  "store-error",
+  "unknown",
+]);
+
+// Error names are writable and can contain upstream page data. Only emit known
+// diagnostic categories, never an arbitrary name supplied by a workflow.
+const diagnosticErrorNames = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "URIError",
+  "EvalError",
+  "AggregateError",
+  "AbortError",
+  "TimeoutError",
+  "BillHostError",
+]);
+
 /** Optional bill-task HTTP facade over the host's existing task runtime and stores. */
 export function createBillTaskRoutes({
   workflowFactory,
+  onDiagnostic,
   discoverBills,
   requiresBillSelection = false,
   copy,
@@ -156,23 +184,43 @@ export function createBillTaskRoutes({
         new URL(request.url).pathname,
       );
     if (billRoute) {
+      // The failure reason of the innermost step running when an error is
+      // thrown: a step that throws leaves its own reason in place. A
+      // synchronous step stays synchronous.
+      let stage = "unknown";
+      const step = (reason, operation) => {
+        const outer = stage;
+        stage = reason;
+        const result = operation();
+        if (typeof result?.then !== "function") {
+          stage = outer;
+          return result;
+        }
+        return result.then((value) => {
+          stage = outer;
+          return value;
+        });
+      };
+      const stored = (operation) => step("store-error", operation);
       try {
         if (new URL(request.url).search)
           return Response.json({ code: "TASK_INVALID" }, { status: 400 });
-        const task = runtime.get(billRoute[1]);
-        const outcomes = outcomeStore.forTask(runtime, task.id);
-        if (request.method === "GET" && outcomes.load())
+        const task = stored(() => runtime.get(billRoute[1]));
+        const outcomes = stored(() => outcomeStore.forTask(runtime, task.id));
+        if (request.method === "GET" && stored(() => outcomes.load()))
           return Response.json(
             {
-              decision: {
+              decision: stored(() => ({
                 ...outcomes.retry(),
                 billSources: sourceStore.forTask(runtime, task.id).load()
                   ?.candidate.sources,
-              },
+              })),
             },
             { headers: { "Cache-Control": "no-store" } },
           );
-        const sourceSelection = sourceStore.forTask(runtime, task.id).load();
+        const sourceSelection = stored(() =>
+          sourceStore.forTask(runtime, task.id).load(),
+        );
         if (requiresBillSelection && !sourceSelection)
           return Response.json(
             { decision: { kind: "source-selection-required" } },
@@ -183,24 +231,29 @@ export function createBillTaskRoutes({
             { code: "BILL_WORKFLOW_UNAVAILABLE" },
             { status: 404 },
           );
-        const workflow = workflowFactory({
-          runtime,
-          task,
-          outcomes,
-          sourceSelection,
-          signal: request.signal,
-          stillAuthorized: async () => {
-            try {
-              const current = await authenticate();
-              return (
-                !request.signal.aborted &&
-                requestEpoch === currentEpoch() &&
-                current.actorId === owner.actorId
-              );
-            } catch {
-              return false;
-            }
-          },
+        const workflow = step("workflow-missing", () => {
+          const workflow = workflowFactory({
+            runtime,
+            task,
+            outcomes,
+            sourceSelection,
+            signal: request.signal,
+            stillAuthorized: async () => {
+              try {
+                const current = await authenticate();
+                return (
+                  !request.signal.aborted &&
+                  requestEpoch === currentEpoch() &&
+                  current.actorId === owner.actorId
+                );
+              } catch {
+                return false;
+              }
+            },
+          });
+          if (typeof workflow?.refresh !== "function")
+            throw new BillHostError("Bill workflow unavailable");
+          return workflow;
         });
         const choices = new InteractiveTaskChoices(runtime, choiceStore);
         const presentation = new SqliteTaskPresentation(db, runtime, choices);
@@ -208,17 +261,19 @@ export function createBillTaskRoutes({
           if (decision.kind === "choose-existing-method")
             return {
               ...decision,
-              choice: await presentation.publish(task.id, decision.reviewKey, {
-                kind: "choice",
-                id: "existing-method",
-                scope: "bill-existing-method",
-                prompt: copy.existingMethodPrompt,
-                options: [
-                  { value: "existing", label: copy.existingMethodLabel },
-                ],
-              }),
+              choice: await stored(() =>
+                presentation.publish(task.id, decision.reviewKey, {
+                  kind: "choice",
+                  id: "existing-method",
+                  scope: "bill-existing-method",
+                  prompt: copy.existingMethodPrompt,
+                  options: [
+                    { value: "existing", label: copy.existingMethodLabel },
+                  ],
+                }),
+              ),
             };
-          presentation.clear(task.id);
+          stored(() => presentation.clear(task.id));
           return decision;
         };
         let decision;
@@ -252,7 +307,8 @@ export function createBillTaskRoutes({
               input.value !== "existing"
             )
               return Response.json({ code: "TASK_INVALID" }, { status: 400 });
-            if (outcomes.load()) decision = outcomes.retry();
+            if (stored(() => outcomes.load()))
+              decision = stored(() => outcomes.retry());
             else {
               let handled;
               try {
@@ -260,19 +316,23 @@ export function createBillTaskRoutes({
                 // invalidate the first delivery's in-flight observation/proposal.
                 // The echoed context is bound to the persisted offered choice;
                 // the workflow re-observes and compares it before any effect.
-                const result = await choices.respond({
-                  taskId: task.id,
-                  contextKey: input.contextKey,
-                  callbackData: input.callbackData,
-                  value: input.value,
-                  execute: async ({ operationId, isCurrent }) => {
-                    handled = await workflow.chooseExistingMethod(
-                      input.contextKey,
-                      { operationId, isCurrent },
-                    );
-                    return { decision: handled.kind };
-                  },
-                });
+                const result = await stored(() =>
+                  choices.respond({
+                    taskId: task.id,
+                    contextKey: input.contextKey,
+                    callbackData: input.callbackData,
+                    value: input.value,
+                    execute: async ({ operationId, isCurrent }) => {
+                      handled = await step("unknown", () =>
+                        workflow.chooseExistingMethod(input.contextKey, {
+                          operationId,
+                          isCurrent,
+                        }),
+                      );
+                      return { decision: handled.kind };
+                    },
+                  }),
+                );
                 decision =
                   result.status === "in_progress"
                     ? {
@@ -282,6 +342,8 @@ export function createBillTaskRoutes({
                     : handled || (await workflow.refresh());
               } catch (error) {
                 if (error?.code !== "TASK_CHOICE_STALE") throw error;
+                // The stale choice is handled: the refresh is not a store step.
+                stage = "unknown";
                 decision = {
                   ...(await workflow.refresh()),
                   message: copy.staleChoiceMessage,
@@ -313,9 +375,23 @@ export function createBillTaskRoutes({
           },
           { headers: { "Cache-Control": "no-store" } },
         );
-      } catch {
+      } catch (error) {
+        if (error?.code === "TASK_NOT_FOUND")
+          return Response.json({ code: "TASK_NOT_FOUND" }, { status: 404 });
+        const reason =
+          error?.reason === "profile-unavailable" ? error.reason : stage;
+        try {
+          // Keep diagnostic metadata within the fixed vocabulary.
+          const name = error?.name;
+          onDiagnostic?.({
+            route: "bill",
+            taskId: billRoute[1],
+            reasonCode: reason,
+            name: diagnosticErrorNames.has(name) ? name : undefined,
+          });
+        } catch {}
         return Response.json(
-          { code: "BILL_WORKFLOW_UNAVAILABLE" },
+          { code: "BILL_WORKFLOW_UNAVAILABLE", reason },
           { status: 503 },
         );
       }

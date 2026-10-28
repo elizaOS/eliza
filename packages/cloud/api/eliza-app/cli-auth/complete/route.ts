@@ -3,16 +3,17 @@
  *
  * Web UI calls this after successful login to bind the CLI session to the
  * user. Body `{ session_id }`; auth via Bearer eliza-app session token.
- * Stores the JWT in `api_key_plain` so the CLI can pick it up via /poll.
+ * Mints the CLI API key, which the CLI reads once via /poll.
  */
 
-import { db } from "@elizaos/cloud-shared/db/client";
-import { cliAuthSessions } from "@elizaos/cloud-shared/db/schemas/cli-auth-sessions";
+import {
+  cliAuthSessionsService,
+  looksLikeCliAuthSessionId,
+} from "@elizaos/cloud-shared/lib/services/cli-auth-sessions";
 import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 
 const app = new Hono<AppEnv>();
@@ -49,38 +50,36 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Missing session_id" }, 400);
     }
 
-    const [cliSession] = await db
-      .select()
-      .from(cliAuthSessions)
-      .where(eq(cliAuthSessions.session_id, sessionId))
-      .limit(1);
-
-    if (
-      cliSession?.status !== "pending" ||
-      new Date() > cliSession.expires_at
-    ) {
+    // The shared completion mints the CLI API key and binds the session to
+    // this user in one claim, exactly as POST /api/auth/cli-session/:id/complete
+    // does. Without it the poll found no key and the CLI never signed in.
+    if (!looksLikeCliAuthSessionId(sessionId)) {
       return c.json(
         { success: false, error: "Invalid or expired CLI session" },
         400,
       );
     }
-
-    const tokenToPass = authHeader.split(" ")[1];
-
-    // D-6: api_key_plain column removed. Plaintext is no longer persisted
-    // here — the polling endpoint decrypts the api_keys row in-memory on
-    // single-use retrieval. The `tokenToPass` plaintext from the OAuth
-    // header is the api-key itself, which is already stored encrypted on
-    // the api_keys row by ApiKeysService.create().
-    void tokenToPass;
-    await db
-      .update(cliAuthSessions)
-      .set({
-        user_id: userSession.userId,
-        status: "authenticated",
-        authenticated_at: new Date(),
-      })
-      .where(eq(cliAuthSessions.session_id, sessionId));
+    try {
+      await cliAuthSessionsService.completeAuthentication(
+        sessionId,
+        userSession.userId,
+        userSession.organizationId,
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message.includes("Invalid or expired session") ||
+          error.message.includes("already authenticated"))
+      ) {
+        // error-policy:J3 an unknown, expired or foreign CLI session is caller
+        // input, not a server fault.
+        return c.json(
+          { success: false, error: "Invalid or expired CLI session" },
+          400,
+        );
+      }
+      throw error;
+    }
 
     return c.json({ success: true });
   } catch (error) {

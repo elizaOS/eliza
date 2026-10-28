@@ -6,10 +6,10 @@
  * no live model.
  */
 import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { formAction } from "./actions/form";
 import { FormService } from "./service";
-import type { FormDefinition } from "./types";
+import type { ControlType, FormDefinition } from "./types";
 
 const entityId = "00000000-0000-4000-8000-000000000401" as UUID;
 const roomId = "00000000-0000-4000-8000-000000000402" as UUID;
@@ -148,5 +148,63 @@ describe("FormService stash/restore across same-room restart (issue #22272)", ()
       second.id,
     );
     expect(await service.getStashedSessions(entityId)).toEqual([]);
+  });
+});
+
+const compositeControlType: ControlType = {
+  id: "payment",
+  getSubControls: () => [
+    { key: "amount", type: "number", label: "Amount", required: true },
+  ],
+};
+
+function checkoutForm(): FormDefinition {
+  return {
+    id: "checkout",
+    name: "Checkout",
+    controls: [
+      { key: "payment", label: "Payment", type: "payment", required: true },
+    ],
+  };
+}
+
+describe("FormService session deadline on composite answers", () => {
+  let service: FormService;
+
+  beforeEach(async () => {
+    const runtime = makeRuntime();
+    service = (await FormService.start(runtime)) as FormService;
+    (
+      runtime as unknown as { setFormService(s: FormService): void }
+    ).setFormService(service);
+    service.registerControlType(compositeControlType);
+    service.registerForm(checkoutForm());
+  });
+
+  it("extends the deadline when a subfield answer records effort", async () => {
+    const session = await service.startSession("checkout", entityId, roomId);
+    const createdDeadline = session.expiresAt;
+
+    // The user answers the composite field one minute before the deadline.
+    // That answer is effort, so the deadline must move forward from it.
+    const nowSpy = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(createdDeadline - 60_000);
+    try {
+      await service.updateSubField(
+        session.id,
+        entityId,
+        "payment",
+        "amount",
+        90,
+        0.95,
+      );
+    } finally {
+      nowSpy.mockRestore();
+    }
+
+    const saved = await service.getActiveSession(entityId, roomId);
+    expect(saved?.fields.payment.subFields?.amount.value).toBe(90);
+    expect(saved?.expiresAt).toBeGreaterThan(createdDeadline);
   });
 });

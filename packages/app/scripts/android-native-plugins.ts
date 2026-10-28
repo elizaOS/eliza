@@ -267,6 +267,7 @@ async function main() {
     dnsOutage,
     dnsOutageChain,
     systemControls,
+    surfaceControl: args.includes("--surface-control"),
     revision: run("git", ["rev-parse", "HEAD"]).trim(),
     worktreeChanges: run("git", ["status", "--porcelain"]),
     startedAt: new Date().toISOString(),
@@ -511,6 +512,10 @@ async function main() {
             "-r",
             ...(networkTransitions ? ["-e", "networkTransitions", "1"] : []),
             ...(systemControls ? ["-e", "systemControls", "1"] : []),
+            ...(args.includes("--surface-control") &&
+            plugin.directory === "plugin-native-browser-surface"
+              ? ["-e", "surfaceControl", "1"]
+              : []),
             ...(dnsOutage
               ? ["-e", "dnsOutage", "1", "-e", "dnsOutageChain", dnsOutageChain]
               : []),

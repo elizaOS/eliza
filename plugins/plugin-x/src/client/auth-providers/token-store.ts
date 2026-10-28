@@ -45,12 +45,12 @@ export class RuntimeCacheTokenStore implements TokenStore {
   }
 
   async load(): Promise<StoredOAuth2Tokens | null> {
-    try {
-      const v = await this.runtime.getCache<StoredOAuth2Tokens>(this.key);
-      return v ?? null;
-    } catch {
-      return null;
-    }
+    // Only an absent cache entry means "this account has no tokens stored".
+    // A read that throws is a broken backend, and callers answer `null` with an
+    // interactive re-login (`OAuth2PKCEAuthProvider.getAccessToken`), which
+    // hides the outage behind a login prompt.
+    const v = await this.runtime.getCache<StoredOAuth2Tokens>(this.key);
+    return v ?? null;
   }
 
   async save(tokens: StoredOAuth2Tokens): Promise<void> {

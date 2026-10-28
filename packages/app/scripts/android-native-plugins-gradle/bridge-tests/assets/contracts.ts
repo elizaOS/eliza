@@ -1781,6 +1781,7 @@
         process: "shared",
         storage: "shared",
         url: "about:blank",
+        interceptNavigation: descriptor.surfaceControl === true,
       });
       try {
         const state = await call("getSurfaceState", { ...identity, id });
@@ -1815,8 +1816,21 @@
           `data:text/html;charset=utf-8,${encodeURIComponent(
             `<html><head><title>${title}</title></head><body><main>${text}</main><div id="loaded"></div><script>document.querySelector("#loaded").textContent=String(performance.timeOrigin)+"-"+Math.random()</script><span hidden>hidden fixture</span><input value="private fixture"></body></html>`,
           )}`;
-        const firstUrl = page("First fixture", "First visible café 漢字");
-        const secondUrl = page("Second fixture", "Second visible page");
+        if (descriptor.surfaceControl) {
+          window.nativeBrowserFixtureOriginRequested = true;
+          const deadline = Date.now() + 5000;
+          while (!window.nativeBrowserControlOrigin) {
+            if (Date.now() >= deadline)
+              throw new Error("Native HTTP fixture did not start");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        }
+        const firstUrl = descriptor.surfaceControl
+          ? `${window.nativeBrowserControlOrigin}/first`
+          : page("First fixture", "First visible café 漢字");
+        const secondUrl = descriptor.surfaceControl
+          ? `${window.nativeBrowserControlOrigin}/second`
+          : page("Second fixture", "Second visible page");
         const waitForPage = async (title, previousText) => {
           const deadline = Date.now() + 8000;
           let result;
@@ -1856,7 +1870,10 @@
         await rejects("readPage", { ...identity, id, selector: ".missing" });
         const capturePresentation = async (name) => {
           window.nativeBrowserCapture = { name, done: false };
-          const deadline = Date.now() + 5000;
+          // Native waits up to five seconds for visual-state callbacks, then
+          // checks pixels, encodes PNG and sends the artifact before replying.
+          // Its caller must allow that whole bounded operation to finish.
+          const deadline = Date.now() + 20000;
           while (!window.nativeBrowserCapture.done) {
             if (Date.now() >= deadline)
               throw new Error(`Screenshot did not complete: ${name}`);
@@ -1898,6 +1915,488 @@
           restored,
           state: await call("getSurfaceState", { ...identity, id }),
         };
+        if (descriptor.surfaceControl) {
+          window.nativeBrowserControlFixtureRequested = true;
+          await waitForPage("Control fixture");
+          const snapshot = async () => {
+            const deadline = Date.now() + 5000;
+            for (;;) {
+              try {
+                return await call("controlPage", {
+                  ...identity,
+                  id,
+                  command: { subaction: "snapshot" },
+                });
+              } catch (error) {
+                if (error.code !== "UNAVAILABLE" || Date.now() >= deadline)
+                  throw error;
+                await new Promise((resolve) => setTimeout(resolve, 50));
+              }
+            }
+          };
+          let observation = await snapshot();
+          assert(
+            observation.frameScope === "main" && observation.result.complete,
+            "native control reads the main-frame DOM",
+          );
+          assert(
+            !JSON.stringify(observation).includes("private-control-value"),
+            "native control excludes password values",
+          );
+          const taskPolicy = {
+            origin: window.nativeBrowserControlOrigin,
+            expiresAt: Date.now() + 60000,
+            targets: [
+              { selector: "#query", action: "fill" },
+              { selector: "#language", action: "select" },
+              { selector: "#increment", action: "click" },
+            ],
+          };
+          const command = (read, subaction, selector, extra = {}) => ({
+            ...identity,
+            id,
+            documentId: read.documentId,
+            command: {
+              subaction,
+              snapshotId: read.result.snapshotId,
+              nodeId: read.result.elements.find(
+                (element) => element.targetSelector === selector,
+              ).id,
+              taskPolicy,
+              ...extra,
+            },
+          });
+          const fill = command(observation, "fill", "#query", {
+            text: "Wikipedia",
+          });
+          assert(
+            (
+              await call("controlPage", {
+                ...fill,
+                command: { ...fill.command, validateOnly: true },
+              })
+            ).result.validated === true,
+            "native preflight validates without consuming the input reference",
+          );
+          const guide = (read, guidance) =>
+            call("controlPage", {
+              ...identity,
+              id,
+              documentId: read.documentId,
+              command: { subaction: "guide", guidance },
+            });
+          const shown = {
+            kind: "show",
+            id: "native-step",
+            snapshotId: observation.result.snapshotId,
+            nodeId: fill.command.nodeId,
+            origin: taskPolicy.origin,
+            expiresAt: Date.now() + 15000,
+            text: "I will enter a search.",
+            assistantName: "Test helper",
+            action: "fill",
+          };
+          await rejects("controlPage", {
+            ...identity,
+            id,
+            documentId: "retired-document",
+            command: { subaction: "guide", guidance: shown },
+          });
+          assert(
+            (await guide(observation, shown)).result.accepted,
+            "native guidance accepts the observed target",
+          );
+          const preview = {
+            kind: "action-status",
+            id: shown.id,
+            snapshotId: shown.snapshotId,
+            nodeId: shown.nodeId,
+            action: "fill",
+          };
+          const previewDeadline = Date.now() + 5000;
+          while (!(await guide(observation, preview)).result.ready) {
+            if (Date.now() >= previewDeadline)
+              throw new Error("Native action preview did not become ready");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          await capturePresentation("browser-guidance.png");
+          assert(
+            (await guide(observation, { kind: "pause" })).result.paused,
+            "native guidance pauses",
+          );
+          assert(
+            !(await guide(observation, preview)).result.ready,
+            "paused guidance cannot report a ready action preview",
+          );
+          await capturePresentation("browser-guidance-paused.png");
+          assert(
+            (await guide(observation, { kind: "hide" })).result.visible ===
+              false,
+            "native guidance removal acknowledged",
+          );
+          await rejects("controlPage", {
+            ...fill,
+            documentId: "retired-document",
+          });
+          assert(
+            (await call("controlPage", fill)).result.dispatched,
+            "native fill dispatched",
+          );
+          await rejects("controlPage", fill);
+          observation = await snapshot();
+          assert(
+            observation.result.elements.find(
+              (element) => element.targetSelector === "#query",
+            ).hasInput,
+            "native fill readback sees input",
+          );
+          assert(
+            !JSON.stringify(observation).includes("internal-fr"),
+            "native snapshot excludes internal option values",
+          );
+          assert(
+            (
+              await call(
+                "controlPage",
+                command(observation, "select", "#language", { text: "French" }),
+              )
+            ).result.dispatched,
+            "native select dispatched",
+          );
+          observation = await snapshot();
+          assert(
+            observation.result.elements
+              .find((element) => element.targetSelector === "#language")
+              .options.find((option) => option.selected).label === "French",
+            "native select readback names the selected option",
+          );
+          assert(
+            (
+              await call(
+                "controlPage",
+                command(observation, "click", "#increment"),
+              )
+            ).result.dispatched,
+            "native click dispatched",
+          );
+          observation = await snapshot();
+          assert(
+            observation.result.text.includes("1"),
+            "native click readback sees the changed page",
+          );
+          await call("presentSurface", { ...identity });
+          assert(
+            (await guide(observation, { kind: "hide" })).result.visible ===
+              false,
+            "native guidance cleanup remains available while hidden",
+          );
+          await rejects("controlPage", {
+            ...identity,
+            id,
+            documentId: observation.documentId,
+            command: {
+              subaction: "guide",
+              guidance: { ...shown, snapshotId: observation.result.snapshotId },
+            },
+          });
+          await rejects("controlPage", {
+            ...identity,
+            id,
+            command: { subaction: "snapshot" },
+          });
+          await call("presentSurface", { ...identity, id });
+          await rejects(
+            "controlPage",
+            command(observation, "click", "#increment"),
+          );
+          const resumed = await snapshot();
+          await capturePresentation("browser-guidance-cleared.png");
+          assert(
+            resumed.documentId === observation.documentId,
+            "native control preserves the document across Home",
+          );
+          window.nativeBrowserPauseRequested = true;
+          const pauseDeadline = Date.now() + 8000;
+          while (!window.nativeBrowserPauseComplete) {
+            if (Date.now() >= pauseDeadline)
+              throw new Error("Native pause/resume did not complete");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+          const activityResumed = await snapshot();
+          assert(
+            activityResumed.documentId === resumed.documentId,
+            "activity pause fences commands and retains the document",
+          );
+          window.nativeBrowserEvidence.control = {
+            observation,
+            resumed,
+            activityResumed,
+          };
+          const requested = [];
+          const navigationListener = window.Capacitor.addListener(
+            descriptor.name,
+            "navigationRequested",
+            (event) => requested.push(event),
+          );
+          try {
+            const clickLink = async (selector, action = "click") => {
+              const read = await snapshot();
+              const input = command(read, action, selector);
+              input.command.taskPolicy = {
+                ...taskPolicy,
+                targets: [{ selector, action }],
+              };
+              try {
+                assert(
+                  (await call("controlPage", input)).result.dispatched,
+                  "navigation link click dispatched",
+                );
+              } catch (error) {
+                // Navigation can retire a delivered click before its reply arrives.
+                if (error.code !== "UNCERTAIN_OUTCOME") throw error;
+              }
+            };
+            await clickLink("#same-origin", "follow");
+            const sameDeadline = Date.now() + 5000;
+            let same;
+            do {
+              same = await call("getSurfaceState", { ...identity, id });
+              if (same.currentUrl.endsWith("/same")) break;
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            } while (Date.now() < sameDeadline);
+            assert(
+              same.currentUrl === `${taskPolicy.origin}/same` &&
+                requested.length === 0,
+              `same-origin page link loads without host approval: ${JSON.stringify({ same, requested })}`,
+            );
+            await waitForPage("Same fixture");
+            const history = () => call("observeHistory", { ...identity, id });
+            const move = async (reference) => {
+              try {
+                return await call("navigateHistory", {
+                  ...identity,
+                  id,
+                  reference,
+                });
+              } catch (error) {
+                if (error.code !== "UNCERTAIN_OUTCOME") throw error;
+                return { uncertain: true, result: { requiresReadback: true } };
+              }
+            };
+            await rejects("controlPage", {
+              ...identity,
+              id,
+              command: {
+                subaction: "native-history",
+                offset: -1,
+                url: `${taskPolicy.origin}/same`,
+              },
+            });
+            const initialHistory = await history();
+            const backEntry = initialHistory.destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            assert(
+              backEntry?.url === `${taskPolicy.origin}/`,
+              "Back names the observed previous document",
+            );
+            await rejects("navigateHistory", {
+              ...identity,
+              session: "wrong-session",
+              id,
+              reference: backEntry.reference,
+            });
+            const backReceipt = await move(backEntry.reference);
+            assert(
+              (backReceipt.result.dispatched || backReceipt.uncertain) &&
+                backReceipt.result.requiresReadback,
+              "history receipt requires arrival readback",
+            );
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: backEntry.reference,
+            });
+            await waitForPage("Control fixture");
+            const restoredHistoryPage = await snapshot();
+            assert(
+              restoredHistoryPage.result.elements.find(
+                (element) => element.targetSelector === "#query",
+              ).hasInput,
+              "Back restores the entered form state",
+            );
+            assert(
+              restoredHistoryPage.result.elements
+                .find((element) => element.targetSelector === "#language")
+                .options.find((option) => option.selected).label === "French",
+              "Back restores the selected option",
+            );
+            const forwardEntry = (await history()).destinations.find(
+              (entry) => entry.direction === "forward",
+            );
+            assert(
+              forwardEntry?.url === `${taskPolicy.origin}/same`,
+              "Forward names the observed next document",
+            );
+            await call("presentSurface", { ...identity });
+            await rejects("observeHistory", { ...identity, id });
+            await call("presentSurface", { ...identity, id });
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: forwardEntry.reference,
+            });
+            const refreshedForward = (await history()).destinations.find(
+              (entry) => entry.direction === "forward",
+            );
+            await move(refreshedForward.reference);
+            await waitForPage("Same fixture");
+            assert(
+              !(await history()).destinations.some(
+                (entry) => entry.direction === "forward",
+              ),
+              "exhausted Forward is not advertised",
+            );
+            const beforeSameDocument = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            await clickLink("#history-state");
+            const hashDeadline = Date.now() + 5000;
+            while (
+              !(
+                await call("getSurfaceState", { ...identity, id })
+              ).currentUrl.endsWith("#updated")
+            ) {
+              if (Date.now() >= hashDeadline)
+                throw new Error("Same-document history did not commit");
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: beforeSameDocument.reference,
+            });
+            const sameDocumentBack = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            assert(
+              sameDocumentBack.url === `${taskPolicy.origin}/same`,
+              "same-document Back retains its observed entry",
+            );
+            await move(sameDocumentBack.reference);
+            const returnDeadline = Date.now() + 5000;
+            while (
+              (await call("getSurfaceState", { ...identity, id }))
+                .currentUrl !== `${taskPolicy.origin}/same`
+            ) {
+              if (Date.now() >= returnDeadline)
+                throw new Error("Same-document Back did not arrive");
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            const beforePause = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            window.nativeBrowserPauseComplete = false;
+            window.nativeBrowserPauseRequested = true;
+            const historyPauseDeadline = Date.now() + 8000;
+            while (!window.nativeBrowserPauseComplete) {
+              if (Date.now() >= historyPauseDeadline)
+                throw new Error("History pause test did not resume");
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: beforePause.reference,
+            });
+            window.nativeBrowserEvidence.history = {
+              initialHistory,
+              backReceipt,
+              forwardEntry,
+              sameDocumentBack,
+              restored: true,
+              pauseFenced: true,
+            };
+            await clickLink("#cross-origin");
+            const requestDeadline = Date.now() + 5000;
+            while (!requested.length && Date.now() < requestDeadline)
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            assert(
+              requested.length === 1 &&
+                requested[0].url ===
+                  `${taskPolicy.origin.replace("127.0.0.1", "localhost")}/next` &&
+                requested[0].id === id &&
+                requested[0].session === identity.session &&
+                requested[0].owner === identity.owner &&
+                requested[0].epoch === identity.epoch,
+              "cross-origin page link emits the current owner's approval request",
+            );
+            assert(
+              (await call("getSurfaceState", { ...identity, id }))
+                .currentUrl === same.currentUrl,
+              "unapproved cross-origin link leaves the current native page in place",
+            );
+            await call("navigate", { ...identity, id, url: requested[0].url });
+            await waitForPage("Approved fixture");
+            assert(
+              (await history()).destinations.length === 0,
+              "cross-origin history requires the host approval path, not an observed same-origin move",
+            );
+            assert(
+              requested.length === 1,
+              "explicit host navigation is not intercepted again",
+            );
+            await call("navigate", {
+              ...identity,
+              id,
+              url: `${taskPolicy.origin}/redirect`,
+            });
+            const redirectDeadline = Date.now() + 5000;
+            while (requested.length < 2 && Date.now() < redirectDeadline)
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            assert(
+              requested.length === 2 &&
+                requested[1].redirect === true &&
+                requested[1].url === requested[0].url,
+              "cross-origin HTTP redirect waits for another host decision",
+            );
+            window.nativeBrowserEvidence.interception = { same, requested };
+            await call("navigate", {
+              ...identity,
+              id,
+              url: `${taskPolicy.origin}/same`,
+            });
+            await waitForPage("Same fixture");
+            window.nativeBrowserPostFixtureRequested = true;
+            await waitForPage("Submitted fixture");
+            await call("navigate", {
+              ...identity,
+              id,
+              url: `${taskPolicy.origin}/same`,
+            });
+            await waitForPage("Same fixture");
+            const postBack = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            assert(
+              postBack?.url === `${taskPolicy.origin}/submitted`,
+              "history observes the submitted document",
+            );
+            await move(postBack.reference);
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: postBack.reference,
+            });
+            // Let the real provider deliver its resubmission callback. Native
+            // instrumentation independently asserts exactly one server POST.
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            window.nativeBrowserEvidence.history.postTraversalReadback =
+              await call("getSurfaceState", { ...identity, id });
+          } finally {
+            (await navigationListener).remove();
+          }
+        }
       } finally {
         await call("destroySurface", { ...identity, id });
       }

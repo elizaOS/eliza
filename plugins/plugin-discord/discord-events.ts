@@ -613,6 +613,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		}
 	});
 
+	// ── messageUpdate ──────────────────────────────────────────────────
+	service.client.on("messageUpdate", async (_oldMessage, newMessage) => {
+		try {
+			await service.messageManager?.handleMessageEdit(newMessage);
+		} catch (error) {
+			service.runtime.reportError("discord:message-edit", error, {
+				accountId,
+				messageId: newMessage.id,
+				channelId: newMessage.channelId,
+			});
+		}
+	});
+
 	// ── messageReactionAdd ─────────────────────────────────────────────
 	service.client.on("messageReactionAdd", async (reaction, user) => {
 		const clientUser = service.client?.user;
@@ -761,11 +774,23 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				interaction.isAutocomplete(),
 		);
 
+		// Threads inherit their parent channel's allowlist, like the message
+		// gate already does: a slash command run in an allowed channel's
+		// thread must not be rejected for the thread id itself.
+		const interactionChannel = interaction.channel;
+		const threadParentId = interactionChannel?.isThread()
+			? interactionChannel.parentId
+			: null;
+		const interactionChannelAllowed =
+			(interaction.channelId &&
+				service.isChannelAllowed(interaction.channelId)) ||
+			(threadParentId && service.isChannelAllowed(threadParentId));
+
 		if (
 			!isFollowUpInteraction &&
 			service.allowedChannelIds &&
 			interaction.channelId &&
-			!service.isChannelAllowed(interaction.channelId) &&
+			!interactionChannelAllowed &&
 			!bypassChannelRestriction
 		) {
 			if (isSlashCommand && interaction.isCommand()) {

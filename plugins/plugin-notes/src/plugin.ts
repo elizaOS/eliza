@@ -13,7 +13,11 @@ import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
-import { namedNotesProvider, notesProvider } from "./provider.js";
+import {
+  namedNotesProvider,
+  namedNotesRoutingProvider,
+  notesProvider,
+} from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
 import { NOTES_SURFACE } from "./surface.js";
@@ -86,7 +90,22 @@ export const notesPlugin: Plugin = {
         },
         create: {
           description:
-            "Create the note the user asked to save. Separate note content from instructions about the app or the operation. Quotation marks that delimit a supplied title/body are not part of that value unless the user asks to include them; preserve quotes within the content and explicitly requested outer quotes. Preserve the selected content's punctuation, whitespace and line breaks exactly. If an unquoted trailing phrase could be either note content or an app instruction, ask which before writing instead of guessing. Put a separately supplied title and body in content joined by one newline. Creating a note does not open Notes; navigate separately only when requested.",
+            "Create the note the user asked to save. Separate note content from instructions about the app or the operation. Quotation marks that delimit a supplied title/body are not part of that value unless the user asks to include them; preserve quotes within the content and explicitly requested outer quotes. Preserve the selected content's punctuation, whitespace and line breaks exactly. If an unquoted trailing phrase could be either note content or an app instruction, ask which before writing instead of guessing. Supplied text is literal content, not a suggestion to expand: do not append checklists, tasks, summaries, headings or inferred action items unless the user requests them. Actionable prose remains prose. Generate or reformat content only when requested. Put a separately supplied title and body in content joined by one newline. Creating a note does not open Notes; navigate separately only when requested.",
+          parameters: notesAction.parameters?.map((parameter) =>
+            parameter.name === "content"
+              ? {
+                  ...parameter,
+                  description:
+                    "The exact content to save. Copy supplied text without additions, corrections or inferred tasks. For a separately supplied title and body, join their exact text with one newline; alternatively put the title here and exact body in body. Do not add a checklist, heading, summary or action item unless requested. Generate new prose only when the user asks you to compose it.",
+                }
+              : parameter.name === "body"
+                ? {
+                    ...parameter,
+                    description:
+                      "Optional exact body, only when the user supplied a separate title and body. Put the title in content. Preserve every character; do not append tasks, lists or explanations. Omit when content already contains the complete note.",
+                  }
+                : parameter,
+          ),
         },
         get: { similes: ["NOTES_GET_NOTE"] },
         patch: {
@@ -96,7 +115,7 @@ export const notesPlugin: Plugin = {
       },
     }),
   ],
-  providers: [notesProvider, namedNotesProvider],
+  providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,
   views: [

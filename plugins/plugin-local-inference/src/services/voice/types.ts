@@ -3,13 +3,13 @@ export interface TextToken {
 	index: number;
 	text: string;
 	/**
-	 * Text-model vocabulary token id, when the producer knows it. ASR
-	 * (fused Gemma ASR) and the text backbone share the Gemma tokenizer, so an
-	 * ASR-emitted token id is the same id the text model would assign — a
-	 * downstream in-process handoff can inject `id` directly into the text KV
-	 * cache without detokenize →
-	 * retokenize. Absent for producers that only have surface text (the
-	 * word-chunk approximation in `splitTranscriptToTokens`).
+	 * Text-model vocabulary token id, when the producer knows it. A producer
+	 * that shares the text backbone tokenizer can report the id the text model
+	 * would assign, so an in-process handoff can inject `id` directly into the
+	 * text KV cache without detokenize → retokenize. Absent for producers that
+	 * only have surface text: Phonon-2 (Parakeet-TDT) decodes its own
+	 * SentencePiece vocabulary, and the word-chunk approximation in
+	 * `splitTranscriptToTokens` has none.
 	 */
 	id?: number;
 }
@@ -259,7 +259,7 @@ export interface VoiceTurnMetadata {
  * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
  * the turn controller / speculative-on-pause path, and the overlapped
  * `VoicePipeline` (`voice/pipeline.ts`). The `StreamingTranscriber` below
- * is the single ASR contract; the two fused adapters (fused Gemma ASR
+ * is the single ASR contract; the two fused adapters (Phonon-2
  * streaming and fused batch, both via libelizainference) implement it in
  * `voice/transcriber.ts`. It consumes the canonical `PcmFrame` (defined
  * below in the audio front-end section) off a `MicSource` and is gated by
@@ -285,8 +285,8 @@ export interface TranscriptUpdate {
 	turn?: VoiceTurnMetadata;
 	/**
 	 * Text-model token ids for `partial`, when the backend can supply them
-	 * cheaply (fused Gemma ASR shares the text vocabulary). Absent when the
-	 * decoder reports surface text only (re-tokenization is the LLM stage's
+	 * cheaply (a decoder that shares the text vocabulary). Absent when the
+	 * decoder reports surface text only, as Phonon-2 does (re-tokenization is the LLM stage's
 	 * job there).
 	 */
 	tokens?: number[];
