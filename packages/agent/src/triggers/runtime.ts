@@ -485,10 +485,14 @@ async function dispatchWorkflow(
       : {}),
     // The occurrence this scheduler fire belongs to, so a host that runs only
     // while powered on can record a missed occurrence instead of replaying it.
+    // A fire reached before its occurrence (a direct task-service run) carries
+    // no instant: a future occurrence cannot be missed, and the workflow
+    // service rejects one, which would fail a run that should proceed.
     ...(source === "scheduler" &&
     !event &&
     typeof trigger.nextRunAtMs === "number" &&
-    Number.isSafeInteger(trigger.nextRunAtMs)
+    Number.isSafeInteger(trigger.nextRunAtMs) &&
+    trigger.nextRunAtMs <= Date.now()
       ? { scheduledAtMs: trigger.nextRunAtMs }
       : {}),
   });

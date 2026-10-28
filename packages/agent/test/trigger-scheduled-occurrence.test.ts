@@ -105,6 +105,11 @@ it("passes the scheduled instant for scheduler fires and none for manual runs", 
   expect(calls[1]).not.toHaveProperty("scheduledAtMs");
   expect(calls[1].idempotencyKey).toBeUndefined();
   expect(calls[2].scheduledAtMs).toBe(Date.parse("2026-10-13T09:00:00.000Z"));
+  // A task-service run reached before the next occurrence (10-14 09:00) is not
+  // that occurrence: it carries no future instant for the workflow to reject.
+  await run("2026-10-13T12:00:00.000Z", "scheduler");
+  expect(calls).toHaveLength(4);
+  expect(calls[3]).not.toHaveProperty("scheduledAtMs");
 });
 
 type Fixture = {
