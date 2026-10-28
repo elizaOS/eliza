@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   parseArgs,
   validateExpectation,
+  verifiedBootProblem,
   verifyLauncherImage,
 } from "../android/verify-launcher-image.mjs";
 
@@ -139,6 +140,40 @@ test("the Pixel 10a target admits only stallion and records its verified boot st
       ),
     /must stay nonprivileged/,
   );
+});
+
+test("the Pixel 10a target refuses an unlocked or failed verified boot state", () => {
+  for (const state of ["green", "yellow"])
+    assert.equal(
+      verifyLauncherImage(
+        fixture(
+          { "shell getprop ro.boot.verifiedbootstate": state },
+          pixel,
+          "pixel10a",
+        ).run,
+        pixel,
+        "0",
+        "pixel10a",
+      ).verifiedBoot.state,
+      state,
+    );
+  for (const state of ["orange", "red", ""])
+    assert.throws(
+      () =>
+        verifyLauncherImage(
+          fixture(
+            { "shell getprop ro.boot.verifiedbootstate": state },
+            pixel,
+            "pixel10a",
+          ).run,
+          pixel,
+          "0",
+          "pixel10a",
+        ),
+      /is not green or yellow; the bootloader must be locked/,
+    );
+  assert.equal(verifiedBootProblem("cuttlefish", "orange"), null);
+  assert.match(verifiedBootProblem("pixel10a", undefined), /null is not green/);
 });
 
 for (const [name, key, value] of [

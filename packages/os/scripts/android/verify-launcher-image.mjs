@@ -39,8 +39,18 @@ export const LAUNCHER_IMAGE_TARGETS = Object.freeze({
     refusal: "Only Pixel 10a (stallion) is admitted",
     serial: /^[A-Za-z0-9]{6,32}$/,
     serialMessage: "Explicit Pixel 10a USB serial required",
+    // green: locked with the stock key; yellow: locked with a custom AVB key.
+    // orange (unlocked bootloader) and red are not image evidence.
+    verifiedBootStates: ["green", "yellow"],
   },
 });
+
+/** Problem text when a target's admitted verified boot states exclude the observed one. */
+export function verifiedBootProblem(target, state) {
+  const admitted = LAUNCHER_IMAGE_TARGETS[target]?.verifiedBootStates;
+  if (!admitted || admitted.includes(state)) return null;
+  return `Verified boot state ${JSON.stringify(state ?? null)} is not ${admitted.join(" or ")}; the bootloader must be locked with verified boot enforcing`;
+}
 
 const component = (value) => value.replace("/.", `/${value.split("/")[0]}.`);
 const components = (text) =>
@@ -106,13 +116,16 @@ export function verifyLauncherImage(
   const hardware = prop("ro.hardware"),
     device = prop("ro.product.device");
   requireThat(image.admits({ hardware, device }), image.refusal);
-  const verifiedBoot =
-    target === "pixel10a"
-      ? {
-          state: prop("ro.boot.verifiedbootstate"),
-          slotSuffix: prop("ro.boot.slot_suffix"),
-        }
-      : null;
+  const verifiedBoot = image.verifiedBootStates
+    ? {
+        state: prop("ro.boot.verifiedbootstate"),
+        slotSuffix: prop("ro.boot.slot_suffix"),
+      }
+    : null;
+  const bootProblem = verifiedBoot
+    ? verifiedBootProblem(target, verifiedBoot.state)
+    : null;
+  requireThat(!bootProblem, bootProblem);
   const fingerprint = prop("ro.build.fingerprint");
   requireThat(
     fingerprint === expected.fingerprint,
