@@ -315,6 +315,10 @@ export {
   SettingsRow,
   SettingsStack,
 } from "./components/settings/settings-layout.js";
+export {
+  excludeSettingsSections,
+  settingsSectionExcluded,
+} from "./components/settings/settings-section-registry.js";
 export { ActionListRow } from "./components/shared/ActionListRow.js";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar.js";
 export { ConfirmDeleteControl } from "./components/shared/confirm-delete-control.js";
