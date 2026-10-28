@@ -207,7 +207,11 @@ public final class SmsTelephony {
    Intent intent = new Intent(config.sentAction).setClass(context, config.receiverClass).setPackage(context.getPackageName())
     .setData(Uri.fromParts(config.callbackScheme, operationId + "/mms", null))
     .putExtra(config.operationExtra, operationId).putExtra(config.indexExtra, 0).putExtra(EXTRA_MMS_FILE, name);
-   PendingIntent sent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT);
+   // Explicit and one-shot, but mutable: the MMS service returns the carrier's M-Send.conf as the
+   // EXTRA_MMS_DATA fill-in, which an immutable PendingIntent drops. The fill-in cannot change the
+   // component or the data URI; the callback accepts the operation only when it matches that URI.
+   int mutable = android.os.Build.VERSION.SDK_INT >= 31 ? PendingIntent.FLAG_MUTABLE : 0;
+   PendingIntent sent = PendingIntent.getBroadcast(context, 0, intent, mutable | PendingIntent.FLAG_ONE_SHOT);
    manager.sendMultimediaMessage(context, MmsStore.fileUri(config.mmsFileAuthority, name), null, null, sent);
    handed = true;
   } catch (RuntimeException failed) {
@@ -298,6 +302,8 @@ public final class SmsTelephony {
   if ((!sent && !delivered) || operation == null || !SmsSendJournal.OPERATION.matcher(operation).matches() || index < 0) return;
   final boolean ok = receiver.getResultCode() == Activity.RESULT_OK;
   final String mmsFile = sent ? intent.getStringExtra(EXTRA_MMS_FILE) : null;
+  // An MMS sent callback is mutable (it carries M-Send.conf): its operation must match the data URI it was created with.
+  if (mmsFile != null && !Uri.fromParts(config.callbackScheme, operation + "/mms", null).equals(intent.getData())) return;
   final boolean confirmed = mmsFile == null || sendConfirmed(intent.getByteArrayExtra(SmsManager.EXTRA_MMS_DATA));
   final Context app = context.getApplicationContext();
   final BroadcastReceiver.PendingResult pending = receiver.goAsync();

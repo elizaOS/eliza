@@ -699,7 +699,7 @@ public abstract class TelephonyPlugin extends Plugin {
      if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
      final SmsTelephony.DispatchGuard guard = () -> {
       SubscriptionInfo current = activeSubscription(sub);
-      if (!admitted() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+      if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
      };
      try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
      catch (Exception unrecorded) {

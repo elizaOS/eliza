@@ -19,9 +19,9 @@ public final class MmsPdu {
  private MmsPdu() {}
 
  public static final int SEND_REQ = 0x80, SEND_CONF = 0x81, NOTIFICATION_IND = 0x82, NOTIFYRESP_IND = 0x83, RETRIEVE_CONF = 0x84, ACKNOWLEDGE_IND = 0x85;
- /** X-Mms-Status values of M-NotifyResp.ind. */
  /** X-Mms-Response-Status of M-Send.conf: Ok. */
  public static final int RESPONSE_OK = 0x80;
+ /** X-Mms-Status values of M-NotifyResp.ind. */
  public static final int STATUS_RETRIEVED = 0x81, STATUS_DEFERRED = 0x83, STATUS_UNRECOGNISED = 0x84;
  public static final int VERSION_1_2 = 0x12;
  static final int MAX_PDU = 2 * 1024 * 1024, MAX_PARTS = 32, MAX_ADDRESSES = 20;

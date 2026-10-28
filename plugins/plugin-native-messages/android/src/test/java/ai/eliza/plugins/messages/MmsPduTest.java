@@ -107,6 +107,20 @@ public final class MmsPduTest {
   assertThrows(IllegalArgumentException.class, () -> MmsPdu.encodeNotifyResponse("T1234", 0x99));
  }
 
+ @Test public void sendConfirmationFailsOnlyOnANamedCarrierFailure() {
+  byte[] ok = concat(b(0x8C, 0x81), b(0x98), text("T1"), b(0x8D, 0x92), b(0x92, 0x80), b(0x8B), text("mid-1"));
+  byte[] refused = concat(b(0x8C, 0x81), b(0x98), text("T1"), b(0x8D, 0x92), b(0x92, 0xE0));
+  assertEquals(MmsPdu.SEND_CONF, MmsPdu.parse(ok).type);
+  assertEquals(MmsPdu.RESPONSE_OK, MmsPdu.parse(ok).responseStatus);
+  assertTrue(SmsTelephony.sendConfirmed(ok));
+  assertEquals(false, SmsTelephony.sendConfirmed(refused));
+  // No confirmation, an unreadable one, or another PDU type adds no evidence either way.
+  assertTrue(SmsTelephony.sendConfirmed(null));
+  assertTrue(SmsTelephony.sendConfirmed(new byte[0]));
+  assertTrue(SmsTelephony.sendConfirmed(b(0x8C)));
+  assertTrue(SmsTelephony.sendConfirmed(notification()));
+ }
+
  @Test public void malformedPdusAreRefusedNotGuessed() {
   assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(new byte[] { (byte) 0x98, 0x41, 0x00 }));
   byte[] truncated = Arrays.copyOf(notification(), 7);
