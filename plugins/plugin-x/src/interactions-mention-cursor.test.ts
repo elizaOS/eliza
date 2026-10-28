@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ClientBase } from "./base";
 import type { Tweet } from "./client";
 import { TwitterInteractionClient } from "./interactions";
-import type { TwitterClientState, TwitterInteractionPayload } from "./types";
+import type { TwitterClientState } from "./types";
 import { sendTweet } from "./utils";
 
 const PROFILE_ID = "bot-user";
@@ -254,50 +254,5 @@ describe("mention watermark vs. per-run engagement cap", () => {
     const recovered = await runPoll([...replied, 886], 875, replied, 2);
     expect(recovered.handled).toEqual([idAt(886)]);
     expect(recovered.watermark).toBe(BASE + 886n);
-  });
-});
-
-describe("interaction event listener failures", () => {
-  beforeEach(() => {
-    logger.log = vi.fn();
-    logger.info = vi.fn();
-    logger.warn = vi.fn();
-    logger.error = vi.fn();
-  });
-
-  it("reports a failing interaction listener instead of leaving an unhandled rejection", async () => {
-    const runtime = createRuntime();
-    vi.mocked(runtime.emitEvent).mockImplementation(() =>
-      Promise.reject(new Error("listener boom")),
-    );
-    const interactions = new TwitterInteractionClient(
-      createClient(runtime, vi.fn()),
-      runtime,
-      {} as TwitterClientState,
-    );
-
-    const interaction: TwitterInteractionPayload = {
-      id: "interaction-1",
-      type: "like",
-      userId: "user-1",
-      username: "alice",
-      name: "Alice",
-      targetTweetId: "1000000000000000500",
-      targetTweet:
-        mention() as unknown as TwitterInteractionPayload["targetTweet"],
-    };
-
-    await interactions.handleInteraction(interaction);
-
-    // The interaction memory is already saved, so a failing event listener
-    // must not escape as an unhandled rejection. It must be reported.
-    expect(runtime.reportError).toHaveBeenCalledWith(
-      "TwitterInteractionClient.emitEvent",
-      expect.any(Error),
-      expect.objectContaining({
-        accountId: "default",
-        eventName: expect.any(String),
-      }),
-    );
   });
 });

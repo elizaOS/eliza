@@ -1054,14 +1054,12 @@ ${tweet.text}`;
    * so the run must continue and the failure must reach the diagnostics.
    */
   private emitObserved(eventName: string, payload: EventPayload): void {
-    void Promise.resolve(this.runtime.emitEvent(eventName, payload)).catch(
-      (error) => {
-        this.runtime.reportError("TwitterInteractionClient.emitEvent", error, {
-          accountId: this.client.accountId,
-          eventName,
-        });
-      },
-    );
+    void this.runtime.emitEvent(eventName, payload).catch((error) => {
+      this.runtime.reportError("TwitterInteractionClient.emitEvent", error, {
+        accountId: this.client.accountId,
+        eventName,
+      });
+    });
   }
   /**
    * Handles Twitter interactions such as likes, retweets, and quotes.
