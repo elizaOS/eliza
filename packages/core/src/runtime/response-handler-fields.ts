@@ -3,6 +3,7 @@ import type { Memory } from "../types/memory";
 import type { JSONSchema } from "../types/model";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 /**
  * Field evaluators own the schema, prompt contribution, and handler for each structured
@@ -503,6 +504,9 @@ export class ResponseHandlerFieldRegistry {
 						}
 						value = parsedValue;
 					} catch (error) {
+						// A cancelled turn is not a field failure: stop here
+						// and let the turn end as cancelled.
+						if (error instanceof TurnAbortedError) throw error;
 						// error-policy:J1 Field parsing appends an explicit
 						// hard-fail trace while independent fields continue.
 						trace.parseOutcome = "hard-fail";
@@ -570,6 +574,9 @@ export class ResponseHandlerFieldRegistry {
 					break;
 				}
 			} catch (error) {
+				// A cancelled turn is not a field failure: stop here and let
+				// the turn end as cancelled.
+				if (error instanceof TurnAbortedError) throw error;
 				// error-policy:J1 Field handling appends an explicit failure trace
 				// while independent fields continue.
 				const messageStr =

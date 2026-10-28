@@ -17,6 +17,7 @@ import { readProviderOriginalMessages } from "../../runtime/provider-originals.t
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
 import {
   historicalActionResults,
+  historicalGmailReadContinuations,
   historicalNavigationReceipts,
   historicalReceiptGroups,
 } from "./navigation-history.ts";
@@ -243,6 +244,29 @@ export function appendPriorDialogueEvents(
         ? historicalActionResults(memory, currentMessage, runtime.agentId)
         : [];
     const navigation = historicalNavigationReceipts(historicalResults);
+    const readContinuations = historicalGmailReadContinuations(
+      historicalResults,
+      runtime.actions ?? [],
+    );
+    if (readContinuations.length)
+      events.push({
+        id: `historical-read-continuations:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-read-continuations:${memory.id}`,
+          label: "runtime:historical_read_continuations",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            scope:
+              "Past exact read ranges and revision-bound continuation controls only. This metadata grants no access and starts no work. When the current user asks to continue this same read, use its recorded reference, offset, unit, limit and expectedRevision through the authorized reader. Do not invent identifiers, reread an earlier page, or treat partial coverage as complete. A changed or unavailable source must be reported, not substituted.",
+            reads: readContinuations,
+          }),
+          stable: false,
+        },
+      });
+
     const { effects, observations } = historicalReceiptGroups(
       historicalResults,
       runtime.actions ?? [],

@@ -17,12 +17,20 @@ export function buildConsumerAndroidRuntime({
   bunArchiveFile,
   stageGateway,
   targetAbi = "arm64-v8a",
+  bunTarget = "linux-musl",
 }) {
   if (!["arm64-v8a", "x86_64"].includes(targetAbi))
     throw new ConsumerSourceError(
       "Consumer runtime ABI must be arm64-v8a or x86_64",
     );
   const arm64 = targetAbi === "arm64-v8a";
+  if (bunTarget !== "linux-musl" && bunTarget !== "android")
+    throw new ConsumerSourceError("Unsupported consumer Bun target");
+  if (bunTarget === "android" && !arm64)
+    throw new ConsumerSourceError(
+      "Native Android Bun currently has a verified ARM64 artifact only",
+    );
+
   const loaderArch = arm64 ? "aarch64" : "x86_64";
   if (!/^[a-f0-9]{40}$/.test(expectedCommit || ""))
     throw new ConsumerSourceError("A full reviewed source commit is required");
@@ -99,7 +107,10 @@ export function buildConsumerAndroidRuntime({
     `import {stageAndroidAgentRuntime} from ${JSON.stringify(pathToFileURL(path.join(source, stageRelative)).href)};\nawait stageAndroidAgentRuntime({androidDir:${JSON.stringify(path.join(output, "android"))},spikeDir:${JSON.stringify(path.join(source, "packages/app/scripts/aosp"))},objective:false});\n`,
     { flag: "wx" },
   );
-  execute([stageRunner], { ELIZA_ANDROID_TARGET_ABIS: targetAbi });
+  execute([stageRunner], {
+    ELIZA_ANDROID_TARGET_ABIS: targetAbi,
+    ELIZA_ANDROID_BUN_TARGET: bunTarget,
+  });
   const gatewayHashes = stageGateway(output, source, { targetAbi });
 
   if (
@@ -120,6 +131,10 @@ export function buildConsumerAndroidRuntime({
   const manifest = JSON.parse(fs.readFileSync(manifestPath));
   if (manifest.schema !== "eliza.android_agent_runtime_provenance.v1")
     throw new ConsumerSourceError("Unknown upstream runtime provenance schema");
+  if ((manifest.bun?.target ?? "linux-musl") !== bunTarget)
+    throw new ConsumerSourceError(
+      "Staged Bun target differs from requested target",
+    );
   const entries = new Set();
   if (!Array.isArray(manifest.files))
     throw new ConsumerSourceError("Missing runtime provenance files");
@@ -143,13 +158,23 @@ export function buildConsumerAndroidRuntime({
         `Staged runtime integrity failed: ${file.path}`,
       );
   }
-  for (const name of [
-    "libeliza_bun.so",
+  const muslLibraries = [
     `libeliza_ld_musl_${loaderArch}.so`,
     `libeliza_ld_musl_${loaderArch}_real.so`,
     "libeliza_stdcpp.so",
     "libeliza_gcc_s.so",
     "libsigsys-handler.so",
+  ];
+  if (
+    bunTarget === "android" &&
+    muslLibraries.some((name) => entries.has(`lib/${targetAbi}/${name}`))
+  )
+    throw new ConsumerSourceError(
+      "Native Android runtime contains musl loader libraries",
+    );
+  for (const name of [
+    "libeliza_bun.so",
+    ...(bunTarget === "android" ? [] : muslLibraries),
   ]) {
     const local = path.join(main, "jniLibs", targetAbi, name);
     const bytes = fs.readFileSync(local);
@@ -178,6 +203,7 @@ export function buildConsumerAndroidRuntime({
     ),
     stagedProvenanceSha256: hash(fs.readFileSync(manifestPath)),
     target: targetAbi,
+    bunTarget,
     completedAt: new Date().toISOString(),
     claim:
       "Fresh bundle module-load smoke and staged byte integrity only. Unreviewed development source; not a production APK or on-device execution.",

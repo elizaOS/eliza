@@ -84,9 +84,12 @@ export function normalizeMessagesLimit(value: unknown, fallback = 200): number {
   return Math.min(500, Math.max(1, Math.trunc(value)));
 }
 
-export async function loadMessagesState(limit = 200) {
+/** Read the message list plus the SMS role state. Omit `limit` to read every message. */
+export async function loadMessagesState(limit?: number) {
   const [messageResult, statusResult] = await Promise.all([
-    Messages.listMessages({ limit: normalizeMessagesLimit(limit) }),
+    Messages.listMessages(
+      limit === undefined ? {} : { limit: normalizeMessagesLimit(limit) },
+    ),
     System.getStatus().catch((cause) => {
       // error-policy:J2 role status is part of the complete read contract; a
       // failed native status call cannot be represented as an unheld role.

@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Test double for AOSP ota_from_target_files (never a signer).
+
+Records its arguments in calls.jsonl and writes an A/B OTA package shaped like the
+real tool's: payload.bin, payload_properties.txt and META-INF/com/android/metadata
+whose post-build, post-timestamp and post-security-patch-level come from the signed
+target-files and whose pre-build is the -i target-files' fingerprint. mock.json can
+override postBuild and fileHash to produce inconsistent packages.
+"""
+import base64
+import hashlib
+import json
+import os
+import sys
+import zipfile
+
+here = os.path.dirname(os.path.abspath(__file__))
+with open(os.path.join(here, 'calls.jsonl'), 'a') as log:
+    log.write(json.dumps([os.path.basename(__file__)] + sys.argv[1:]) + '\n')
+src, dst = sys.argv[-2], sys.argv[-1]
+args = sys.argv[1:-2]
+config_file = os.path.join(here, 'mock.json')
+cfg = json.load(open(config_file)) if os.path.exists(config_file) else {}
+
+
+def props(target_files):
+    with zipfile.ZipFile(target_files) as archive:
+        text = archive.read('SYSTEM/build.prop').decode()
+    return dict(line.split('=', 1) for line in text.splitlines() if '=' in line and not line.startswith('#'))
+
+
+build = props(src)
+payload = b'payload bytes ' + build.get('ro.build.date.utc', '0').encode()
+file_hash = cfg.get('fileHash') or base64.b64encode(hashlib.sha256(payload).digest()).decode()
+metadata = ['ota-type=AB',
+            'post-build=%s' % (cfg.get('postBuild') or build.get('ro.system.build.fingerprint')),
+            'post-timestamp=%s' % build.get('ro.build.date.utc', ''),
+            'post-security-patch-level=%s' % build.get('ro.build.version.security_patch', ''),
+            'pre-device=stallion']
+if '-i' in args:
+    metadata.append('pre-build=%s' % props(args[args.index('-i') + 1]).get('ro.system.build.fingerprint'))
+with zipfile.ZipFile(dst, 'w') as package:
+    package.writestr('payload.bin', payload)
+    package.writestr('payload_properties.txt', 'FILE_HASH=%s\nFILE_SIZE=%d\n' % (file_hash, len(payload)))
+    package.writestr('META-INF/com/android/metadata', '\n'.join(metadata) + '\n')

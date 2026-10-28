@@ -129,13 +129,6 @@
         "description": "Optional selected-content byte budget for FILE reads. Requests exceeding it fail explicitly; no output is silently clipped.",
         "required": false,
         "sensitive": false
-      },
-      "CODING_TOOLS_GREP_HEAD_LIMIT": {
-        "type": "number",
-        "description": "Default head_limit for GREP. Set to 0 to disable.",
-        "required": false,
-        "default": 250,
-        "sensitive": false
       }
     }
   },

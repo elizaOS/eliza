@@ -5,6 +5,10 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import {
+  type InferenceAdmissionLease,
+  markInferenceAdmissionLeaseDispatched,
+} from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { Miniflare } from "miniflare";
 
 const ADMISSION_RUNTIME_BOUNDARY_FILTERS = {
@@ -1047,5 +1051,68 @@ describe("Miniflare Durable Object integration", () => {
         })
       ).status,
     ).toBe(400);
+  }, 120_000);
+  test("lost dispatch acknowledgment replays one real durable lease without a second hold", async () => {
+    const gateName = "deadline-replay";
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "1" },
+          gateName,
+        )
+      ).status,
+    ).toBe(200);
+    const recovery = {
+      version: 1,
+      kind: "organization",
+      organizationId: "org-miniflare",
+      requestId: "deadline-replay",
+      userId: "user-deadline",
+      model: "test-model",
+      provider: "test-provider",
+      billingSource: "test",
+      description: "Replay contract",
+      accounting: { kind: "direct_debit" },
+    };
+    const body = {
+      organizationId: "org-miniflare",
+      requestId: "deadline-replay",
+      balanceUsd: 10,
+      balanceRevision: "1",
+      estimatedCostUsd: 1,
+      recovery,
+    };
+    const replies: Array<{ availableUsd: number; duplicate?: boolean }> = [];
+    const lease: InferenceAdmissionLease = {
+      organizationId: "org-miniflare",
+      requestId: "deadline-replay",
+      estimatedCostUsd: 1,
+      providerDispatched: false,
+      preProviderCancellationToken: "deadline-capability",
+      preparedDispatch: { path: "/lease-dispatched", body, state: "prepared" },
+      gate: {
+        fetch: async (request: Request) => {
+          const response = await post(
+            new URL(request.url).pathname,
+            (await request.json()) as Record<string, unknown>,
+            gateName,
+          );
+          expect(response.status).toBe(200);
+          const text = await response.text();
+          replies.push(JSON.parse(text));
+          // The real state machine committed; only its first acknowledgment is lost.
+          return new Response(replies.length === 1 ? "{" : text, {
+            status: response.status,
+          });
+        },
+      } as never,
+    };
+    await markInferenceAdmissionLeaseDispatched(lease);
+    expect(lease.providerDispatched).toBe(true);
+    expect(replies).toHaveLength(2);
+    expect(replies[0].availableUsd).toBe(9);
+    expect(replies[1]).toMatchObject({ availableUsd: 9, duplicate: true });
+    expect(lease.preProviderCancellationToken).toBeUndefined();
   }, 120_000);
 });

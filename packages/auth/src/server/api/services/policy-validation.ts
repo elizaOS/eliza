@@ -262,6 +262,16 @@ function validatePolicyConfig(policy: PolicyRule): string | null {
       ) {
         return "time-window.allowedHours must contain UTC hour windows";
       }
+      // The engine matches start <= hour < end and does not wrap past
+      // midnight. A window with start >= end (for example 22 to 6) matches
+      // no hour, so the saved rule would reject every signature.
+      if (
+        config.allowedHours.some(
+          (window) => Number(window.start) >= Number(window.end),
+        )
+      ) {
+        return "time-window.allowedHours start must be before end; split a window that crosses midnight into two windows";
+      }
       if (
         !Array.isArray(config.allowedDays) ||
         !config.allowedDays.every(

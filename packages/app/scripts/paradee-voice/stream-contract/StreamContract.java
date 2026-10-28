@@ -5,6 +5,126 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.atomic.AtomicReference;
 public final class StreamContract {
+    /** VAD under the same owner: own context and lock, unfenced by cancel, kept by trim, retired by close. */
+    static void vadContract(File root, File model, File lexicon) throws Exception {
+        InferenceSession session = new InferenceSession(root, model, lexicon, null);
+        int created = VoiceNative.created, destroyed = VoiceNative.destroyed;
+        check(session.vadSupported() && VoiceNative.created == created);
+        InferenceSession.Vad vad = session.openVad();
+        check(VoiceNative.created == created + 1 && VoiceNative.vadContext != 0);
+        long vadContext = VoiceNative.vadContext;
+        float[] two = new float[1024]; two[0] = 0.25f; two[512] = 0.75f;
+        float[] probabilities = vad.process(two);
+        check(probabilities.length == 2 && probabilities[0] == 0.25f && probabilities[1] == 0.75f);
+        try { vad.process(new float[100]); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+        vad.reset();
+        // Output cancellation and a speech stream holding the session lock never block or fence input.
+        session.cancel();
+        check(vad.process(new float[512]).length == 1);
+        CountDownLatch streaming = new CountDownLatch(1), finish = new CountDownLatch(1);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread speech = new Thread(() -> { try { session.synthesizeStream("hold", 1, (pcm, complete) -> { streaming.countDown(); await(finish); return true; }); } catch (Throwable error) { failure.set(error); } });
+        speech.start(); await(streaming);
+        InferenceSession.Vad second = session.openVad();
+        check(second.process(new float[512]).length == 1);
+        second.close(); second.close();
+        finish.countDown(); join(speech);
+        check(failure.get() == null);
+        // The speech context and the VAD context are distinct native contexts.
+        check(VoiceNative.ttsContext != vadContext);
+        // Trim releases speech models but keeps an open detector usable.
+        int beforeTrim = VoiceNative.destroyed;
+        session.trimMemory();
+        check(VoiceNative.destroyed == beforeTrim + 1 && vad.process(new float[512]).length == 1);
+        // Close waits for a window in progress, retires every detector, then frees the VAD context.
+        VoiceNative.vadEntered = new CountDownLatch(1); VoiceNative.vadRelease = new CountDownLatch(1);
+        Thread window = new Thread(() -> { try { vad.process(new float[512]); } catch (Throwable error) { failure.set(error); } });
+        window.start(); await(VoiceNative.vadEntered);
+        int closedBefore = VoiceNative.vadClosed;
+        Thread closer = new Thread(session::close); closer.start();
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        while (closer.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
+        check(closer.getState() == Thread.State.BLOCKED && VoiceNative.vadClosed == closedBefore);
+        VoiceNative.vadRelease.countDown(); join(window); join(closer);
+        VoiceNative.vadEntered = null; VoiceNative.vadRelease = null;
+        check(failure.get() == null && VoiceNative.vadClosed == closedBefore + 1);
+        try { vad.process(new float[512]); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        try { session.openVad(); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        check(session.isClosed());
+        // An idle VAD context is freed by trim; an unsupported engine opens nothing.
+        InferenceSession idle = new InferenceSession(root, model, lexicon, null);
+        idle.openVad().close();
+        int beforeIdleTrim = VoiceNative.destroyed;
+        idle.trimMemory();
+        check(VoiceNative.destroyed == beforeIdleTrim + 1);
+        VoiceNative.vadSupported = 0;
+        int opened = VoiceNative.vadOpened;
+        try { idle.openVad(); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        check(!idle.vadSupported() && VoiceNative.vadOpened == opened);
+        VoiceNative.vadSupported = 1;
+        idle.close();
+        check(VoiceNative.destroyed >= destroyed + 3);
+    }
+    /**
+     * Independent consumers of one session: a client's cancel fences only its own calls and
+     * interrupts the native call only while it is its own; a client's release drops only its
+     * hold, and the models are freed when no client holds them. The session's cancel and close
+     * still act on every client.
+     */
+    static void clientContract(File root, File model, File lexicon) throws Exception {
+        InferenceSession session = new InferenceSession(root, model, lexicon, null);
+        InferenceSession.Client first = session.client(), second = session.client();
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        try {
+            check(first.session() == session && second.session() == session);
+            first.synthesize("first", 1);
+            second.transcribe(new float[]{0.1f});
+            int destroyed = VoiceNative.destroyed;
+            first.release();
+            check(session.isSpeechLoaded() && VoiceNative.destroyed == destroyed);
+            first.synthesize("held again", 1);
+            second.release();
+            check(session.isSpeechLoaded() && VoiceNative.destroyed == destroyed);
+            first.release();
+            check(!session.isSpeechLoaded() && VoiceNative.destroyed == destroyed + 1);
+            // While one client's stream holds the session, another client's cancel and release
+            // neither interrupt it natively nor unload it, and fence only that client's queued call.
+            CountDownLatch entered = new CountDownLatch(1), finish = new CountDownLatch(1);
+            int[] chunks = {0};
+            Thread speaking = new Thread(() -> { try { second.synthesizeStream("second", 1, (pcm, complete) -> { chunks[0]++; entered.countDown(); await(finish); return true; }); } catch (Throwable error) { failure.set(error); } });
+            speaking.start(); await(entered);
+            int calls = VoiceNative.calls, ttsCancels = VoiceNative.ttsCancels, asrCancels = VoiceNative.asrCancels;
+            destroyed = VoiceNative.destroyed;
+            Thread queued = new Thread(() -> { try { first.synthesizeStream("queued", 1, (pcm, complete) -> true); failure.set(new AssertionError("queued call ran")); } catch (CancellationException expected) {} catch (Throwable error) { failure.set(error); } });
+            queued.start();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (queued.getState() != Thread.State.BLOCKED && System.nanoTime() < deadline) Thread.yield();
+            check(queued.getState() == Thread.State.BLOCKED);
+            first.cancel();
+            first.release();
+            check(VoiceNative.ttsCancels == ttsCancels && VoiceNative.asrCancels == asrCancels);
+            finish.countDown(); join(speaking); join(queued);
+            check(failure.get() == null && chunks[0] == 2 && VoiceNative.calls == calls);
+            check(session.isSpeechLoaded() && VoiceNative.destroyed == destroyed);
+            // A client's own cancel interrupts its running call natively, also from its PCM callback.
+            ttsCancels = VoiceNative.ttsCancels;
+            cancelled(() -> { try { second.synthesizeStream("own", 1, (pcm, complete) -> { second.cancel(); return true; }); } catch (java.io.IOException error) { throw new IllegalStateException(error); } });
+            check(VoiceNative.ttsCancels == ttsCancels + 1);
+            second.synthesize("after own cancel", 1);
+            // Release is refused from the PCM callback, like trim and close.
+            try { second.synthesizeStream("reentry", 1, (pcm, complete) -> { second.release(); return true; }); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            check(session.isSpeechLoaded());
+            // The session's own cancel still fences a client's call.
+            second.release();
+            VoiceNative.afterTtsLoad = session::cancel;
+            try { first.prepareSpeech(); throw new AssertionError(); } catch (CancellationException expected) {}
+            first.prepareSpeech();
+            // Close is terminal for every client and refuses new ones.
+            session.close();
+            try { first.synthesize("closed", 1); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            try { session.client(); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        } finally { VoiceNative.afterTtsLoad = null; session.close(); }
+    }
     static void check(boolean value) { if (!value) throw new AssertionError(); }
     static void await(CountDownLatch latch) { try { check(latch.await(5, TimeUnit.SECONDS)); } catch (InterruptedException error) { throw new AssertionError(error); } }
     static void join(Thread thread) throws Exception { thread.join(5000); check(!thread.isAlive()); }
@@ -56,7 +176,15 @@ public final class StreamContract {
         int created = VoiceNative.created, destroyed = VoiceNative.destroyed;
         InferenceSession session = new InferenceSession(root, model, lexicon, null);
         try {
+            check(!session.isSpeechLoaded());
+            check(session.supportsStreaming());
             check(VoiceNative.created == created);
+            check(!session.isSpeechLoaded());
+            session.prepareSpeech();
+            check(session.isSpeechLoaded());
+            check(VoiceNative.created == created + 1);
+            check(VoiceNative.ttsContext == VoiceNative.asrContext);
+            check(session.speechSampleRate() == 24000);
             session.synthesize("hello", 1);
             session.transcribe(new float[]{0.1f});
             check(VoiceNative.created == created + 1);
@@ -66,6 +194,7 @@ public final class StreamContract {
             check(text.next().equals("step"));
             int closedStreams = VoiceNative.textClosed;
             session.trimMemory();
+            check(!session.isSpeechLoaded());
             check(VoiceNative.destroyed == destroyed + 1 && VoiceNative.textClosed == closedStreams + 1);
             try { text.next(); throw new AssertionError(); } catch (IllegalStateException expected) {}
             session.synthesize("reload", 1);
@@ -74,9 +203,24 @@ public final class StreamContract {
             check(VoiceNative.destroyed == destroyed + 1);
             session.synthesize("still usable", 1);
             session.close(); session.close();
+            check(!session.isSpeechLoaded());
             check(VoiceNative.destroyed == destroyed + 2);
             try { session.synthesize("closed", 1); throw new AssertionError(); } catch (IllegalStateException expected) {}
-        } finally { session.close(); model.delete(); lexicon.delete(); asrDir.delete(); root.delete(); }
+            try { session.prepareSpeech(); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        } finally { session.close(); }
+        InferenceSession cancelledLoad = new InferenceSession(root, model, lexicon, null);
+        try {
+            int beforeLoad = VoiceNative.created;
+            VoiceNative.afterTtsLoad = cancelledLoad::cancel;
+            try { cancelledLoad.prepareSpeech(); throw new AssertionError(); } catch (CancellationException expected) {}
+            check(cancelledLoad.isSpeechLoaded());
+            cancelledLoad.prepareSpeech();
+            check(VoiceNative.created == beforeLoad + 1);
+            check(VoiceNative.ttsContext == VoiceNative.asrContext);
+        } finally { cancelledLoad.close(); }
+        vadContract(root, model, lexicon);
+        clientContract(root, model, lexicon);
+        model.delete(); lexicon.delete(); asrDir.delete(); root.delete();
         System.out.println("Paradee stream and shared inference lifecycle contracts passed");
     }
 }
