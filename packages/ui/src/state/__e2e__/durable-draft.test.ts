@@ -945,6 +945,15 @@ describe("DurableDraftController consume", () => {
     expect(f.c.state.consuming).toBe(false);
   });
 
+  it("compares the reviewed text trimmed, as the editor text is", async () => {
+    const f = fixture();
+    f.external("  Reviewed form\n");
+    await f.c.open("one");
+    await f.c.consume("  Reviewed form\n");
+    expect(f.saved()?.text).toBe("");
+    expect(f.get()).toBe("");
+  });
+
   it("restores the saved copy when the editor changes during the clear", async () => {
     const f = fixture();
     f.external("Reviewed form");

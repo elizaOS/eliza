@@ -747,7 +747,7 @@ export class DurableDraftController<Recovery = unknown> {
       this.active !== binding ||
       binding.failed ||
       !current() ||
-      this.text().trim() !== expectedText
+      this.text().trim() !== expectedText.trim()
     )
       throw new Error(this.messages.changed);
     const original = binding.record?.text ?? this.text();
@@ -758,7 +758,7 @@ export class DurableDraftController<Recovery = unknown> {
       if (
         this.active !== binding ||
         !current() ||
-        this.text().trim() !== expectedText
+        this.text().trim() !== expectedText.trim()
       ) {
         // Undo only this clear. A newer edit wins if this receipt is stale.
         try {
