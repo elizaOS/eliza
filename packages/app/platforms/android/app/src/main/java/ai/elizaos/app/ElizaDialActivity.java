@@ -13,9 +13,9 @@ import android.util.Log;
  * Receives ACTION_DIAL (open the dial pad) and ACTION_CALL (place a call
  * directly). For ACTION_DIAL we forward to the WebView which renders the
  * Eliza dial pad. For ACTION_CALL with a tel: URI we invoke
- * {@link TelecomManager#placeCall} so the framework actually originates
- * the outgoing call — without this, Eliza would be a dialer UI that
- * never dials anything.
+ * {@link TelecomDial#originate} (TelecomManager.placeCall) so the framework
+ * actually originates the outgoing call — without this, Eliza would be a
+ * dialer UI that never dials anything.
  *
  * The InCallService then receives the resulting Call object and owns
  * the native call screen independently of WebView and agent startup.
