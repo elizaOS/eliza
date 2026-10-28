@@ -211,6 +211,7 @@ export function generateAndroidConsumerHost({
       typeof profile.preserveRuntimeBytes === "boolean",
     "Runtime byte preservation must be a boolean",
   );
+  const consumedInOutput = new Set();
   function input(reference, kind) {
     requireValue(
       reference && Object.hasOwn(roots, reference.root),
@@ -239,6 +240,13 @@ export function generateAndroidConsumerHost({
       kind === "file" ? stat.isFile() : stat.isDirectory(),
       `Android host input must be a ${kind}`,
     );
+    // An input that already lives in the output (an authored in-place file) is
+    // read where it is and must survive cleanup, even if an earlier generation
+    // listed that same path as a generated copy.
+    if (candidate !== output && inside(output, candidate))
+      consumedInOutput.add(
+        path.relative(output, candidate).split(path.sep).join("/"),
+      );
     return candidate;
   }
   const toolchain = JSON.parse(
@@ -564,6 +572,12 @@ export function generateAndroidConsumerHost({
     return { file, sha256: hash(fs.readFileSync(file)) };
   });
   let runtimeMain = null;
+  // A staged runtime keeps its packaged libraries unstripped, so it always
+  // implies byte preservation; an explicit opt-out contradicts the payload.
+  requireValue(
+    !(runtimeDirectory && profile.preserveRuntimeBytes === false),
+    "A staged Android runtime requires runtime byte preservation",
+  );
   if (runtimeDirectory) {
     runtimeMain = fs.realpathSync(
       path.join(runtimeDirectory, "android/app/src/main"),
@@ -707,7 +721,11 @@ export function generateAndroidConsumerHost({
     fs.chmodSync(target, mode);
   }
   for (const relative of previous)
-    if (!files.has(relative) && fs.existsSync(path.join(output, relative)))
+    if (
+      !files.has(relative) &&
+      !consumedInOutput.has(relative) &&
+      fs.existsSync(path.join(output, relative))
+    )
       fs.unlinkSync(path.join(output, relative));
   receipt.files = [...files.keys()];
   fs.writeFileSync(markerPath, `${JSON.stringify(receipt, null, 2)}\n`);

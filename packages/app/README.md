@@ -356,7 +356,8 @@ declare, as data:
   shrinking and Proguard files (both require `releaseMinify`); `kotlin: false`
   leaves a Java-only app without the Kotlin plugin (its sources then need package
   directories, which lint uses to resolve manifest classes); `preserveRuntimeBytes` keeps
-  packaged runtime libraries unstripped, as for `runtimeDirectory`.
+  packaged runtime libraries unstripped; `runtimeDirectory` implies it and
+  rejects an explicit `false`.
 - `testMocks`: debug-only Java, resource and manifest sources plus androidTest
   sources attached only when the named switch (Gradle property or environment,
   for example `ELIZA_DEV_ALLOW_TEST_MOCKS`) is exactly `1`; the named BuildConfig

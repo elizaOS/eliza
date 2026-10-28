@@ -247,6 +247,10 @@ test("toolchain is hash pinned and optional runtime preserves exact native bytes
     normalized.buildConfigFields[0].value,
     JSON.stringify('host "literal" $value'),
   );
+  assert.equal(normalized.preserveRuntimeBytes, true);
+  // A staged runtime cannot be packaged with stripped libraries.
+  options.profile.preserveRuntimeBytes = false;
+  assert.throws(generate, /requires runtime byte preservation/);
 });
 
 test("a symlinked checkout root uses canonical ownership without admitting descendant symlinks", (t) => {
@@ -417,6 +421,36 @@ test("an in-place host sits beside authored sources and never replaces one", (t)
   assert.equal(
     fs.readFileSync(path.join(options.output, "build.gradle"), "utf8"),
     "authored",
+  );
+});
+
+test("a formerly generated manifest adopted in place survives regeneration", (t) => {
+  const { options, generate } = setup(t);
+  // First generation copies an external main manifest into the host.
+  const copied = path.join(options.output, "app/src/main/AndroidManifest.xml");
+  generate();
+  assert.ok(fs.existsSync(copied));
+  // The consumer then authors that same path and points the profile at it.
+  fs.writeFileSync(copied, "<manifest><!-- authored --></manifest>");
+  options.profile.manifest = {
+    root: "consumer",
+    path: "android/app/src/main/AndroidManifest.xml",
+  };
+  options.inPlace = true;
+  const result = generate();
+  assert.equal(
+    fs.readFileSync(copied, "utf8"),
+    "<manifest><!-- authored --></manifest>",
+  );
+  // The authored file is no longer generator-owned.
+  assert.equal(
+    result.files.includes("app/src/main/AndroidManifest.xml"),
+    false,
+  );
+  generate();
+  assert.equal(
+    fs.readFileSync(copied, "utf8"),
+    "<manifest><!-- authored --></manifest>",
   );
 });
 
