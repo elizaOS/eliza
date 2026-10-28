@@ -9,6 +9,16 @@
  * local-backup-v2-restore covers the v2 archive path, not this snapshot
  * path. Real PGlite directories and the real snapshot APIs are used
  * throughout; nothing is mocked.
+ *
+ * Acceptance criteria, each tied to a failure mode this test catches:
+ * - A-side assertions fail if the dump loses rows or relationships.
+ * - B-side assertions fail if restore merges instead of replacing B's data.
+ * - The post-restore write fails if the restored store is unusable.
+ * Sensitivity was checked with local mutation runs (not part of this diff):
+ * removing the directory replacement in restorePgliteDump fails the test
+ * with "Database already exists, cannot load from tarball", and restoring
+ * into a stray directory still reports success but fails the test when the
+ * fresh runtime reads back stale B data.
  */
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -106,9 +116,19 @@ it(
     const fixtureA = await makeRuntime(dirA);
     try {
       const a = await seed(fixtureA.runtime, "source");
+      // The snapshot path reads only these four sections (see
+      // legacyConfigProjection in agent-backup.ts). Pass them explicitly as
+      // a typed value, so a future required field raises a compile error
+      // here instead of passing silently through a cast.
+      const snapshotConfig: ElizaConfig = {
+        agents: {},
+        plugins: {},
+        features: {},
+        cloud: {},
+      };
       const snapshot = await createAgentSnapshot(
         fixtureA.runtime,
-        {} as ElizaConfig,
+        snapshotConfig,
       );
       expect(snapshot.manifest.components.database.kind).toBe("pglite-dump");
       const agentId = fixtureA.runtime.agentId;
