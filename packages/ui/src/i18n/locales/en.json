@@ -514,6 +514,7 @@
   "camera.checkingPermission": "Checking…",
   "camera.denied": "Enable camera access for {{appName}}, then return here to start the preview.",
   "camera.deniedTitle": "Camera access is off",
+  "camera.kept": "Photo kept.",
   "camera.openSettings": "Open Settings",
   "camera.openingSettings": "Opening…",
   "camera.retake": "Retake",

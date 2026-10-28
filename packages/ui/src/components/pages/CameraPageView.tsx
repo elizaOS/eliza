@@ -8,14 +8,28 @@
  * Pinned to the home screen on AOSP (see HomeScreen `nativeOs` tiles). The view
  * itself is platform-agnostic — it degrades to a permission/error state when no
  * camera is reachable rather than dead-ending.
+ *
+ * Hosts pass `ports` to decide where an explicit capture goes (keep it in their
+ * own media store, hand it to a scan review or a question). Without ports a
+ * capture is only previewed; nothing is kept or handed off implicitly. The
+ * lock-screen secure camera stays a system surface.
  */
 import {
   Camera,
   type CameraDirection,
+  type CameraHostPorts,
+  type CameraKeepOutcome,
+  type CameraSession,
+  type CameraStartOutcome,
+  cameraAccessDenied,
+  captureOperationId,
+  createCameraSession,
+  keepCapture,
   type PhotoResult,
+  restartAfterResume,
 } from "@elizaos/capacitor-camera";
 import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { appNameInterpolationVars } from "../../config/branding-base";
 import { useBranding } from "../../config/branding-react.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -36,16 +50,21 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Only an explicit camera denial gets the settings recovery state. */
 function isPermissionDeniedError(err: unknown): boolean {
-  const message = errorMessage(err).toLowerCase();
-  return (
-    message.includes("permission") ||
-    message.includes("notallowed") ||
-    message.includes("denied")
-  );
+  return cameraAccessDenied(err) === "camera";
 }
 
-export function CameraPageView(): React.JSX.Element {
+const UNAVAILABLE = "Camera is not available on this device.";
+
+export interface CameraPageViewProps {
+  /** Host capture/storage ports; see `CameraHostPorts`. */
+  ports?: CameraHostPorts;
+}
+
+export function CameraPageView({
+  ports,
+}: CameraPageViewProps = {}): React.JSX.Element {
   const { t } = useTranslation();
   const branding = useBranding();
   const previewRef = useRef<HTMLDivElement | null>(null);
@@ -54,107 +73,202 @@ export function CameraPageView(): React.JSX.Element {
   const [photo, setPhoto] = useState<PhotoResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One operation identity per capture, so a retried Keep resolves the same save.
+  const [operationId, setOperationId] = useState<string | null>(null);
+  const [kept, setKept] = useState<CameraKeepOutcome | null>(null);
+  const [handing, setHanding] = useState(false);
+  const statusRef = useRef<PreviewStatus>("starting");
+  const disposedRef = useRef(false);
+  statusRef.current = status;
 
-  // Start the preview once on mount; release the camera on unmount. Front/back
-  // switching is handled in place by `switchCamera`, so it does not restart this.
-  useEffect(() => {
-    let cancelled = false;
-    const element = previewRef.current;
-    if (!element) return;
+  const facingRef = useRef<CameraDirection>("back");
+  facingRef.current = facing;
+  // The shared camera session fences every start behind the previous release
+  // and drops answers that arrive after the view unmounted.
+  const session: CameraSession = useMemo(
+    () =>
+      createCameraSession({
+        camera: Camera,
+        active: () => !disposedRef.current && !!previewRef.current,
+        preview: () => ({
+          element: previewRef.current ?? undefined,
+          direction: facingRef.current,
+          mirror: false,
+        }),
+        recording: () => ({}),
+      }),
+    [],
+  );
 
-    void (async () => {
+  const applyStart = useCallback((outcome: CameraStartOutcome) => {
+    switch (outcome.status) {
+      case "ready":
+        setStatus("live");
+        return;
+      case "denied":
+        setStatus("denied");
+        return;
+      case "unavailable":
+        setError(
+          outcome.error === undefined
+            ? UNAVAILABLE
+            : errorMessage(outcome.error),
+        );
+        setStatus("error");
+        return;
+      default:
+        return;
+    }
+  }, []);
+
+  /** Asks for camera access, then starts the preview through the session. */
+  const startPreview = useCallback(
+    async (retry: boolean) => {
       try {
         const perm = await Camera.requestPermissions();
-        if (cancelled) return;
+        if (disposedRef.current) return;
         if (perm.camera === "denied") {
           setStatus("denied");
           return;
         }
-        await Camera.startPreview({
-          element,
-          direction: "back",
-          mirror: false,
-        });
-        if (cancelled) {
-          // error-policy:J6 best-effort teardown of a preview that raced an unmount.
-          await Camera.stopPreview().catch(() => {});
-          return;
-        }
-        setStatus("live");
       } catch (err) {
-        if (cancelled) return;
+        if (disposedRef.current) return;
         if (isPermissionDeniedError(err)) {
           setStatus("denied");
           return;
         }
         setError(errorMessage(err));
         setStatus("error");
+        return;
       }
-    })();
+      applyStart(await session.start(retry));
+    },
+    [applyStart, session],
+  );
 
+  // Start the preview once on mount; release the camera on unmount. Front/back
+  // switching is handled in place by `switchCamera`, so it does not restart this.
+  useEffect(() => {
+    // Reset for a remount (React StrictMode runs effects twice in development).
+    disposedRef.current = false;
+    if (!previewRef.current) return;
+    void startPreview(false);
     return () => {
-      cancelled = true;
-      // error-policy:J6 best-effort teardown on unmount; the preview is gone
-      // regardless and a failed stop has no further recourse.
-      void Camera.stopPreview().catch(() => {});
+      disposedRef.current = true;
+      // The session releases the preview after any start in flight; a failed
+      // stop has no further recourse and the next start resets native state.
+      void session.stop();
     };
-  }, []);
+  }, [session, startPreview]);
 
   const retryStart = useCallback(async () => {
-    const element = previewRef.current;
-    if (!element) return;
+    if (!previewRef.current) return;
     setError(null);
     setStatus("starting");
-    try {
-      const perm = await Camera.requestPermissions();
-      if (perm.camera === "denied") {
-        setStatus("denied");
-        return;
-      }
-      await Camera.startPreview({ element, direction: facing, mirror: false });
-      setStatus("live");
-    } catch (err) {
-      if (isPermissionDeniedError(err)) {
-        setStatus("denied");
-        return;
-      }
-      setError(errorMessage(err));
-      setStatus("error");
-    }
-  }, [facing]);
+    await startPreview(true);
+  }, [startPreview]);
+
+  // A preview stopped on a denial restarts on return only after access was
+  // granted in system settings; the host's read never prompts.
+  const checkAccess = ports?.checkAccess;
+  useEffect(() => {
+    if (!checkAccess) return;
+    const resumed = () => {
+      if (document.visibilityState !== "visible") return;
+      void restartAfterResume(
+        () => ({
+          denied: statusRef.current === "denied" ? "camera" : undefined,
+          phase: statusRef.current === "denied" ? "error" : statusRef.current,
+          disposed: disposedRef.current,
+        }),
+        checkAccess,
+      ).then((restart) => {
+        if (restart) void retryStart();
+      });
+    };
+    document.addEventListener("visibilitychange", resumed);
+    return () => document.removeEventListener("visibilitychange", resumed);
+  }, [checkAccess, retryStart]);
 
   const handleSwitch = useCallback(async () => {
     if (busy || status !== "live") return;
     const next: CameraDirection = facing === "back" ? "front" : "back";
     setBusy(true);
     setError(null);
+    let failure: unknown;
     try {
-      await Camera.switchCamera({ direction: next });
-      setFacing(next);
-    } catch (err) {
-      setError(errorMessage(err));
+      const outcome = await session.control(async () => {
+        try {
+          await Camera.switchCamera({ direction: next });
+        } catch (err) {
+          failure = err;
+          throw err;
+        }
+      });
+      if (outcome === "done") setFacing(next);
+      else if (outcome === "failed") setError(errorMessage(failure));
     } finally {
       setBusy(false);
     }
-  }, [busy, facing, status]);
+  }, [busy, facing, session, status]);
 
   const handleCapture = useCallback(async () => {
     if (busy || status !== "live") return;
     setBusy(true);
     setError(null);
     try {
-      const result = await Camera.capturePhoto({ format: "jpeg", quality: 90 });
-      setPhoto(result);
+      const result = await session.exclusive(() =>
+        Camera.capturePhoto({ format: "jpeg", quality: 90 }),
+      );
+      if (result.status !== "done" || disposedRef.current) return;
+      setPhoto(result.value);
+      setOperationId(captureOperationId());
+      setKept(null);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setBusy(false);
     }
-  }, [busy, status]);
+  }, [busy, session, status]);
 
   const handleRetake = useCallback(() => {
     setPhoto(null);
+    setOperationId(null);
+    setKept(null);
   }, []);
+
+  const keep = ports?.keep;
+  const handleKeep = useCallback(async () => {
+    if (!keep || !photo || !operationId || handing || kept?.status === "saved")
+      return;
+    setHanding(true);
+    try {
+      const outcome = await keepCapture(keep, photo, operationId);
+      setKept(outcome);
+      // A definite failure kept nothing, and a store keeps that receipt for its identity, so the
+      // next Keep uses a fresh one. An unknown outcome keeps this identity, so a retry resolves
+      // the same save instead of keeping a duplicate.
+      if (outcome.status === "failed") setOperationId(captureOperationId());
+    } finally {
+      setHanding(false);
+    }
+  }, [handing, keep, kept, operationId, photo]);
+
+  const handleAction = useCallback(
+    async (run: (photo: PhotoResult) => Promise<void> | void) => {
+      if (!photo || handing) return;
+      setHanding(true);
+      setError(null);
+      try {
+        await run(photo);
+      } catch (err) {
+        setError(errorMessage(err));
+      } finally {
+        setHanding(false);
+      }
+    },
+    [handing, photo],
+  );
 
   return (
     <div
@@ -242,15 +356,50 @@ export function CameraPageView(): React.JSX.Element {
             alt={t("camera.capturedAlt", { defaultValue: "Captured photo" })}
             className="h-full w-full object-contain"
           />
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-3 p-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
-            <Button
-              variant="secondary"
-              onClick={handleRetake}
-              data-testid="camera-retake"
-            >
-              <RotateCcw className="size-4" aria-hidden />
-              {t("camera.retake", { defaultValue: "Retake" })}
-            </Button>
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+            {kept ? (
+              <p
+                data-testid="camera-keep-status"
+                role="status"
+                className="rounded-full bg-black/70 px-3 py-1.5 text-center text-xs text-white"
+              >
+                {kept.status === "saved"
+                  ? (kept.message ??
+                    t("camera.kept", { defaultValue: "Photo kept." }))
+                  : kept.message}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleRetake}
+                disabled={handing}
+                data-testid="camera-retake"
+              >
+                <RotateCcw className="size-4" aria-hidden />
+                {t("camera.retake", { defaultValue: "Retake" })}
+              </Button>
+              {keep ? (
+                <Button
+                  onClick={handleKeep}
+                  disabled={handing || kept?.status === "saved"}
+                  data-testid="camera-keep"
+                >
+                  {keep.label}
+                </Button>
+              ) : null}
+              {ports?.actions?.map((action) => (
+                <Button
+                  key={action.id}
+                  variant="secondary"
+                  onClick={() => void handleAction(action.run)}
+                  disabled={handing}
+                  data-testid={`camera-action-${action.id}`}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}
