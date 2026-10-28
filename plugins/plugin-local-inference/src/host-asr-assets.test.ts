@@ -26,9 +26,9 @@ describe("host ASR asset selection", () => {
 		const assets = selectHostAsrAssets(bundle([phonon]), {});
 		expect(assets).toBe(PHONON_ASR_ASSETS);
 		expect(assets[0]?.sha256).toBe(
-			"dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+			"c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
 		);
-		expect(assets[0]?.bytes).toBe(330_632_256);
+		expect(assets[0]?.bytes).toBe(208_932_352);
 		expect(
 			selectHostAsrAssets(bundle([phonon]), { ELIZA_ASR_BACKEND: "ggml" }),
 		).toBe(PHONON_ASR_ASSETS);

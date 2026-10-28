@@ -734,6 +734,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (!element) throw new Error("Target element was not found.");
     if (typeof element.focus === "function") {
       element.focus();
+      // Match the web backend: typing after focus lands after existing text.
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        try {
+          if (element.selectionStart !== null) {
+            element.setSelectionRange(element.value.length, element.value.length);
+          }
+        } catch {}
+      }
     }
     return {
       focused: document.activeElement === element,
@@ -870,7 +878,21 @@ export function createDesktopBrowserWorkspaceCommandScript(
     ) {
       throw new Error("Keyboard text input requires an input, textarea, or select target.");
     }
-    return setInputValue(appendMode, target);
+    if (target instanceof HTMLSelectElement) return setInputValue(appendMode, target);
+    // Both keyboard commands insert at the caret or replace the selected text,
+    // matching the web backend.
+    if (target.readOnly || target.disabled) {
+      return { selector: selectorFor(target), value: target.value };
+    }
+    let start = null;
+    try {
+      start = target.selectionStart;
+    } catch {}
+    if (start === null) return setInputValue(true, target);
+    target.setRangeText(command.value ?? "", start, target.selectionEnd ?? start, "end");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+    return { selector: selectorFor(target), value: target.value };
   };
   const keyPhase = (phase) => {
     const target = keyboardTarget();

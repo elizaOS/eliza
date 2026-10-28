@@ -26,7 +26,11 @@ import com.getcapacitor.annotation.PermissionCallback
     name = "ElizaSystem",
     permissions = [Permission(alias = "camera", strings = [Manifest.permission.CAMERA])]
 )
-class SystemPlugin : Plugin() {
+open class SystemPlugin : Plugin() {
+    /** Host policy; defaults preserve the shared plugin's behavior. Rechecked after role UI returns. */
+    protected open fun isRoleEnabled(role: String): Boolean = true
+    protected open fun isDefaultAppEnabled(role: String?): Boolean = true
+
     // Device reads are delegated to a pure, Context-backed reader so they can be
     // exercised by an instrumented androidTest without a Capacitor Bridge / WebView
     // (issue #9967). This plugin stays a thin Capacitor binding: read via the
@@ -39,7 +43,7 @@ class SystemPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun requestRole(call: PluginCall) {
+    open fun requestRole(call: PluginCall) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             call.reject("Android role requests require Android 10 or newer")
             return
@@ -49,6 +53,11 @@ class SystemPlugin : Plugin() {
         val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
         if (roleName.isNullOrEmpty() || androidRole == null) {
             call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
+            return
+        }
+
+        if (!isRoleEnabled(roleName)) {
+            call.reject("Role unavailable in this product")
             return
         }
 
@@ -81,6 +90,11 @@ class SystemPlugin : Plugin() {
         val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
         if (roleName.isNullOrEmpty() || androidRole == null) {
             call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
+            return
+        }
+
+        if (!isRoleEnabled(roleName)) {
+            call.reject("Role unavailable in this product")
             return
         }
 
@@ -147,6 +161,82 @@ class SystemPlugin : Plugin() {
         call.resolve(deviceSettingsToJs(reader.readDeviceSettings()))
     }
 
+    /**
+     * Host policy: only a host acting as the launcher may ask Android to expand its shade. By
+     * default that means this package holds Android's HOME role right now, so an ordinary app
+     * answers `standalone` and never asks. A host whose launcher identity is fixed at build time
+     * (a launcher-only flavor) overrides this.
+     */
+    protected open fun canExpandNotificationShade(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        return try {
+            val roles = context.getSystemService(RoleManager::class.java) ?: return false
+            roles.isRoleAvailable(RoleManager.ROLE_HOME) && roles.isRoleHeld(RoleManager.ROLE_HOME)
+        } catch (unavailable: RuntimeException) {
+            false
+        }
+    }
+
+    /** System switch, transport and power facts; a key Android did not answer is absent (unknown). */
+    @PluginMethod
+    fun getSystemFacts(call: PluginCall) {
+        val facts = JSObject()
+        for ((key, value) in SystemFacts.read(context)) facts.put(key, value)
+        call.resolve(facts)
+    }
+
+    /**
+     * Opens one allowlisted Android settings page ([SystemSettingsPages]). Resolves with
+     * `specific: false` when only the broader fallback page opened; nothing is changed here.
+     */
+    @PluginMethod
+    fun openSettingsPage(call: PluginCall) {
+        val page = call.getString("page")
+        if (SystemSettingsPages.actions(page) == null) {
+            call.reject("Unsupported settings page")
+            return
+        }
+        val host = activity
+        if (host == null) {
+            call.reject("This Android settings page is unavailable")
+            return
+        }
+        host.runOnUiThread {
+            val opened = SystemSettingsPages.open(page, context.packageName) { intent -> host.startActivity(intent) }
+            if (opened < 0) {
+                call.reject("This Android settings page is unavailable")
+            } else {
+                call.resolve(JSObject().apply {
+                    put("status", "opened")
+                    put("page", page)
+                    put("specific", opened == 0)
+                })
+            }
+        }
+    }
+
+    /**
+     * Asks Android to open its notification shade ([SystemShade]). Only while the host window has
+     * focus, so a pull or button on visible Home is the only way to reach it. Resolves with
+     * `{status}`; anything but `opened` leaves the caller's fallback to show.
+     */
+    @PluginMethod
+    fun openNotificationShade(call: PluginCall) {
+        val host = activity
+        if (host == null) {
+            call.resolve(JSObject().apply { put("status", SystemShade.NOT_IN_FRONT) })
+            return
+        }
+        host.runOnUiThread {
+            val status = if (host.isFinishing || host.isDestroyed || !host.hasWindowFocus()) {
+                SystemShade.NOT_IN_FRONT
+            } else {
+                SystemShade.expand(context, canExpandNotificationShade())
+            }
+            call.resolve(JSObject().apply { put("status", status) })
+        }
+    }
+
     @PluginMethod
     fun setScreenBrightness(call: PluginCall) {
         val brightness = call.getDouble("brightness")
@@ -203,7 +293,7 @@ class SystemPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun setFlashlight(call: PluginCall) {
+    open fun setFlashlight(call: PluginCall) {
         // Validate the wire value before triggering an Android permission prompt.
         // JSONObject's boolean getter also accepts strings; this API requires a boolean.
         if (call.data.opt("enabled") !is Boolean) {
@@ -362,6 +452,10 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun resolveDefaultApp(call: PluginCall) {
         val role = call.getString("role")
+        if (!isDefaultAppEnabled(role)) {
+            call.reject("Default app unavailable in this product")
+            return
+        }
         val handler = try {
             SystemLauncherApps.resolveDefault(context, role)
         } catch (error: IllegalArgumentException) {
@@ -383,6 +477,10 @@ class SystemPlugin : Plugin() {
     @PluginMethod
     fun openDefaultApp(call: PluginCall) {
         val role = call.getString("role")
+        if (!isDefaultAppEnabled(role)) {
+            call.reject("Default app unavailable in this product")
+            return
+        }
         val intent = try {
             SystemLauncherApps.defaultLaunchIntent(context, role)
         } catch (error: IllegalArgumentException) {
@@ -421,6 +519,7 @@ class SystemPlugin : Plugin() {
         result.put("packageName", status.packageName)
         val roles = JSArray()
         for (role in status.roles) {
+            if (!isRoleEnabled(role.role)) continue
             val item = JSObject()
             item.put("role", role.role)
             item.put("androidRole", role.androidRole)

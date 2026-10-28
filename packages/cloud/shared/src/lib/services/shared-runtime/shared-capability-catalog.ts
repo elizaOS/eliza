@@ -336,15 +336,23 @@ export function formatSharedCapabilityCatalogForPrompt(catalog: AgentCapabilityC
     const prerequisites = capability.prerequisites.length
       ? capability.prerequisites.map((item) => item.label).join(", ")
       : "none";
+    // Public search is selected by the current public-information intent. Its
+    // absence on a conversation turn is not a provider outage or setup need.
+    const searchNotSelected =
+      capability.id === "web-search" && capability.availability === "unavailable";
     return [
       `- ${capability.label} (${capability.id})`,
-      `availability: ${humanize(capability.availability)}`,
+      searchNotSelected
+        ? "selection: not needed for this request; supported for fresh public questions"
+        : `availability: ${humanize(capability.availability)}`,
       `tier: ${capability.currentTier} -> ${capability.requiredTier}`,
       `examples: ${capability.examples.join("; ")}`,
       `prerequisites: ${prerequisites}`,
       `consequence: ${humanize(capability.consequence)}`,
       `confirmation: ${capability.requiresConfirmation ? "required before effect" : "not required"}`,
-      `next: ${humanize(capability.nextAction)}`,
+      searchNotSelected
+        ? "next: no setup needed; select only for fresh public information"
+        : `next: ${humanize(capability.nextAction)}`,
     ].join("; ");
   });
   return [

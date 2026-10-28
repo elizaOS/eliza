@@ -403,7 +403,7 @@ export async function startLocalAsrRecorder(
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
-        // Gemma ASR ingests 16 kHz mono; request it at capture so the
+        // Phonon-2 ASR ingests 16 kHz mono; request it at capture so the
         // browser resamples once instead of us downsampling a 48 kHz buffer.
         sampleRate: 16000,
         echoCancellation: true,
@@ -455,7 +455,18 @@ export async function startLocalAsrRecorder(
     context.state === "running" ? "ctx:running" : `ctx:${context.state}`,
     { state: context.state },
   );
-  if (context.state === "suspended") {
+  // A start that cannot wire the graph must release the microphone: the
+  // caller never receives a recorder, so nothing else can stop the tracks.
+  const releaseFailedStart = async (cause: unknown): Promise<never> => {
+    for (const track of stream.getTracks()) track.stop();
+    // error-policy:J6 teardown — the context may already be closed
+    await context.close().catch(() => undefined);
+    throw cause;
+  };
+  if (
+    context.state === "suspended" ||
+    (context.state as AudioContextState) === "interrupted"
+  ) {
     // A context that cannot resume produces silence (all-zero PCM → the WAV
     // reads as silent → a quiet no-op → the user sees crickets). Surface the
     // failure to the caller (voice-capture-factory setState("error")) instead
@@ -468,15 +479,12 @@ export async function startLocalAsrRecorder(
     // therefore isn't proof the graph is live; re-check the state and retry a
     // couple of times before giving up, so a context that just needed a beat to
     // actually resume after the dialog dismissed isn't misread as dead.
-    const failResume = async (cause: unknown): Promise<never> => {
-      // error-policy:J2 release the hot mic, then rethrow with context
-      for (const track of stream.getTracks()) track.stop();
-      // error-policy:J6 teardown — the context may already be closed
-      await context.close().catch(() => undefined);
-      throw new Error("AudioContext could not resume for local ASR capture", {
-        cause,
-      });
-    };
+    const failResume = (cause: unknown): Promise<never> =>
+      releaseFailedStart(
+        new Error("AudioContext could not resume for local ASR capture", {
+          cause,
+        }),
+      );
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
         await context.resume();
@@ -489,7 +497,7 @@ export async function startLocalAsrRecorder(
       // "running". The cast widens the read back to the full union so the
       // comparison reflects the mutated value instead of the stale narrow.
       const liveState = context.state as AudioContextState;
-      if (liveState !== "suspended") {
+      if (liveState === "running") {
         voiceCaptureDebug("ctx:resumed", { state: liveState, attempt });
         break;
       }
@@ -505,13 +513,30 @@ export async function startLocalAsrRecorder(
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   }
+  // "interrupted" and "closed" also produce no frames. Capture silence only
+  // when the graph is live.
+  if ((context.state as AudioContextState) !== "running") {
+    return releaseFailedStart(
+      new Error(
+        `AudioContext is not running for local ASR capture (${context.state})`,
+      ),
+    );
+  }
 
-  const source = context.createMediaStreamSource(stream);
-  const processor = context.createScriptProcessor(4096, 1, 1);
-  let analyser: AnalyserNode | null = context.createAnalyser();
-  analyser.fftSize = 256;
-  analyser.smoothingTimeConstant = 0.8;
-  source.connect(analyser);
+  let source: MediaStreamAudioSourceNode;
+  let processor: ScriptProcessorNode;
+  let analyser: AnalyserNode | null;
+  try {
+    source = context.createMediaStreamSource(stream);
+    processor = context.createScriptProcessor(4096, 1, 1);
+    analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+  } catch (error) {
+    // error-policy:J6 teardown — the graph is unusable, release the device.
+    return releaseFailedStart(error);
+  }
   const chunks: Float32Array[] = [];
   const preRollChunks: Float32Array[] = [];
   const preRollMaxSamples = Math.round(
@@ -563,8 +588,14 @@ export async function startLocalAsrRecorder(
     }
   };
 
-  source.connect(processor);
-  processor.connect(context.destination);
+  try {
+    source.connect(processor);
+    processor.connect(context.destination);
+  } catch (error) {
+    // error-policy:J6 teardown — the graph is unusable, release the device.
+    processor.onaudioprocess = null;
+    return releaseFailedStart(error);
+  }
 
   const cleanup = async () => {
     if (stopped) return;

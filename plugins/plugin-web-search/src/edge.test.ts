@@ -325,6 +325,7 @@ describe("webSearchEdgePlugin", () => {
         });
         expect(callback).toHaveBeenCalledWith({
             text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 
@@ -339,7 +340,7 @@ describe("webSearchEdgePlugin", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("reports runner failures through the channel callback", async () => {
+    it("keeps runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         globalThis.fetch = vi.fn(
             async () => new Response("unavailable", { status: 503 })
@@ -354,10 +355,11 @@ describe("webSearchEdgePlugin", () => {
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 
-    it("reports injected runner failures through the channel callback", async () => {
+    it("keeps injected runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         const controller = new AbortController();
         const [action] =
@@ -386,7 +388,38 @@ describe("webSearchEdgePlugin", () => {
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "The authorized public read is unavailable.",
+            transcriptVisibility: "internal",
         });
+    });
+
+    it("keeps validation failures internal to the conversation", async () => {
+        const cases: Array<{ parameters: Record<string, unknown>; text: string }> = [
+            { parameters: {}, text: "A web search query is required." },
+            {
+                parameters: { query: "current public result", provider: "bogus" },
+                text: "The requested search provider is not supported.",
+            },
+            {
+                parameters: { query: "current public result", provider: "fallback" },
+                text: "The alternate search provider is not available for this turn.",
+            },
+        ];
+        for (const { parameters, text } of cases) {
+            const callback = vi.fn();
+            const result = await webSearchEdgeAction.handler(
+                {} as IAgentRuntime,
+                {} as Memory,
+                undefined,
+                { parameters },
+                callback
+            );
+            expect(result.success).toBe(false);
+            expect(callback).toHaveBeenCalledOnce();
+            expect(callback).toHaveBeenCalledWith({
+                text,
+                transcriptVisibility: "internal",
+            });
+        }
     });
 });
 

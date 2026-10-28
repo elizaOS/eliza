@@ -926,6 +926,53 @@ describe("LifeOpsRepository domain CRUD", () => {
     ).toHaveLength(2);
   });
 
+  it("clearing a Google grant purges only that grant's calendar events", async () => {
+    const { LifeOpsService } = await import("../src/lifeops/service.ts");
+    const event = (grantId: string, externalId: string) => ({
+      id: crypto.randomUUID(),
+      agentId: runtime.agentId,
+      provider: "google",
+      side: "owner",
+      calendarId: "primary",
+      externalId,
+      title: `Event for ${grantId}`,
+      description: "",
+      location: "",
+      status: "confirmed",
+      startAt: NOW,
+      endAt: LATER,
+      isAllDay: false,
+      timezone: "UTC",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      accountEmail: `${grantId}@example.com`,
+      connectorAccountId: null,
+      grantId,
+      metadata: {},
+      syncedAt: LATER,
+      updatedAt: LATER,
+    });
+    // Two connected Google accounts; both name their calendar "primary".
+    await repository.upsertCalendarEvent(event("grant-a", "a-1") as never);
+    await repository.upsertCalendarEvent(event("grant-b", "b-1") as never);
+
+    await new LifeOpsService(runtime).clearGoogleGrantData({
+      id: "grant-a",
+      side: "owner",
+    } as never);
+
+    const remaining = await repository.listCalendarEvents(
+      runtime.agentId,
+      "google",
+      undefined,
+      undefined,
+      "owner",
+    );
+    expect(remaining.map((item) => item.grantId)).toEqual(["grant-b"]);
+  });
+
   it("round-trips connector sync, schedule, and work-thread records", async () => {
     const calendarEvent = {
       id: crypto.randomUUID(),

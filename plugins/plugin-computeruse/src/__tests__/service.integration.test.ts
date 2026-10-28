@@ -196,6 +196,47 @@ describe("ComputerUseService isolated session adapters", () => {
     });
     expect(outcome.session.lastError).toBe("Computer-use action failed");
   });
+
+  it("keeps a paused session paused while its frame is captured", async () => {
+    const calls: string[] = [];
+    service.registerSessionTargetExecutor(
+      { kind: "sandbox", targetId: "sandbox-paused" },
+      async (_target, action) => {
+        calls.push(action.command);
+        return { success: true };
+      },
+      async () => ({ mimeType: "image/png", data: "cGF1c2Vk" }),
+    );
+    const session = service.createSession({
+      target: { kind: "sandbox", targetId: "sandbox-paused" },
+    });
+    service.pauseSession(session.id);
+
+    // The sessions view keeps polling frames of a paused session.
+    const frame = await service.captureSessionFrame(session.id);
+
+    expect(frame.data).toBe("cGF1c2Vk");
+    expect(service.getSession(session.id)).toMatchObject({
+      status: "paused",
+      canonicalState: "paused",
+    });
+    await expect(
+      service.executeSessionAction(session.id, {
+        actionId: "after-frame",
+        expectedSequence: 0,
+        command: "mouse_move",
+        observationId: frame.provenance.observationId,
+        observationSequence: frame.provenance.sequence,
+      }),
+    ).rejects.toMatchObject({ code: "SESSION_PAUSED" });
+    expect(calls).toEqual([]);
+    expect(
+      service
+        .getSessionEvents()
+        .filter((event) => event.sessionId === session.id)
+        .map((event) => event.type),
+    ).not.toContain("session.resumed");
+  });
 });
 
 describe("parseComputerUseActionTimeoutMs", () => {

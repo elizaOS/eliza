@@ -747,7 +747,7 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
-    const authCacheEnabled = isInferenceAuthCacheEnabled();
+    let authCacheEnabled = isInferenceAuthCacheEnabled();
     const deferStrongCredentialCheck =
       authCacheEnabled &&
       options.deferStrongCredentialCheck === true &&
@@ -832,9 +832,10 @@ export async function resolveInferenceAuthContext(
       return session;
     }
     trace.authSource = credential.source;
-    if (isMobileApiKeySecret(credential.rawKey)) {
-      return { kind: "slow_path", reason: "mobile_api_key" };
-    }
+    // Mobile credentials must re-read primary lifecycle state on every request.
+    // They still need an authorized result on Workers, where generic slow-path
+    // authentication is deliberately rejected. Never read or publish an IAC entry.
+    if (isMobileApiKeySecret(credential.rawKey)) authCacheEnabled = false;
     trace.result = "error";
     const probeDiscriminator = controlledProbeDiscriminator(req);
     trace.controlledProbe = probeDiscriminator ? "on" : "off";

@@ -12,6 +12,51 @@ const sourceRoot = new URL("../src/", import.meta.url).href;
 
 const probes = [
 	[
+		"bounded model trial and physical retry ownership",
+		`
+const { createModelAttemptAllowance, runWithStreamingContext, getModelAttemptLease } = await source("streaming-context.ts");
+const { createPreparedModelRequestGuard } = await source("runtime/prepared-model-request.ts");
+const stop = new AbortController();
+const options = { signal: stop.signal, budgetMicroUsd: 12, maxAttempts: 3, maxOutputTokens: 10, expiresAt: Date.now()+60000,
+ tariffs: [{provider:"openai-compatible",model:"fixture",route:"http://localhost:1/v1",inputNanoUsdPerToken:100,outputNanoUsdPerToken:100,inputTokenUpperBound:30}] };
+const trial = createModelAttemptAllowance(options);
+const turn = new AbortController();
+const lease = trial.openTurn("turn-1",turn.signal);
+const request = {messages:[{role:"user",content:"Hi"}]};
+const guardFor = (extra={}) => createPreparedModelRequestGuard({provider:"openai-compatible",model:"fixture",route:"http://localhost:1/v1",serializeRequest:()=>"full-text-request",outputReserveTokens:10,...extra});
+assert.throws(()=>runWithStreamingContext({messageId:"turn-1",modelAttemptLease:lease},()=>guardFor()),/Invalid model/);
+await runWithStreamingContext({messageId:"turn-1",modelAttemptTurnId:"turn-1",modelAttemptLease:lease,abortSignal:turn.signal}, async()=> {
+ const guard = guardFor();
+ await runWithStreamingContext(undefined, async()=> {
+  assert.equal(getModelAttemptLease(),lease);
+  const results = await Promise.allSettled(Array.from({length:4},async()=>guard.assertBeforeAttempt()));
+  assert.equal(results.filter(r=>r.status==="fulfilled").length,3);
+  assert.equal(trial.remainingMicroUsd,0);
+ });
+ assert.throws(()=>runWithStreamingContext({messageId:"other"},()=>guardFor()),/cannot change identity/);
+ assert.throws(()=>runWithStreamingContext({messageId:"assistant",modelAttemptTurnId:"foreign"},()=>guardFor()),/cannot change identity/);
+ await runWithStreamingContext({messageId:"assistant",modelAttemptTurnId:"turn-1"},async()=>assert.equal(getModelAttemptLease(),lease));
+ assert.throws(()=>guardFor({route:"http://foreign.invalid"}).assertBeforeAttempt(),/Unqualified/);
+ assert.throws(()=>guardFor({outputReserveTokens:undefined}).assertBeforeAttempt(),/Unqualified/);
+});
+lease.close();
+await runWithStreamingContext({messageId:"turn-1",modelAttemptTurnId:"turn-1",modelAttemptLease:lease},async()=>assert.throws(()=>guardFor().assertBeforeAttempt(),/ended/));
+const next = trial.openTurn("turn-2",new AbortController().signal);
+await runWithStreamingContext({messageId:"turn-2",modelAttemptTurnId:"turn-2",modelAttemptLease:next},async()=>assert.throws(()=>guardFor().assertBeforeAttempt(),/exhausted/));
+next.close(); stop.abort();
+assert.throws(()=>trial.openTurn("turn-3",new AbortController().signal),/ended/);
+assert.throws(()=>runWithStreamingContext({messageId:"forged",modelAttemptLease:{messageId:"forged",maxOutputTokens:10000,reserve(){}}},()=>guardFor()),/Invalid model/);
+const legacy = guardFor({route:undefined,outputReserveTokens:undefined}); legacy.assertBeforeAttempt(); legacy.assertBeforeAttempt();
+const end = new AbortController();
+const activeTrial = createModelAttemptAllowance({...options,signal:end.signal,budgetMicroUsd:100});
+const activeLease = activeTrial.openTurn("live",new AbortController().signal);
+let delayed;
+await runWithStreamingContext({messageId:"live",modelAttemptTurnId:"live",modelAttemptLease:activeLease},async()=> { delayed=guardFor(); });
+activeLease.close(); assert.throws(()=>delayed.assertBeforeAttempt(),/ended/);
+end.abort(); assert.throws(()=>activeTrial.openTurn("later",new AbortController().signal),/ended/);
+`,
+	],
+	[
 		"trajectory ownership",
 		`
 const { runWithTrajectoryContext, getTrajectoryContext } = await source("trajectory-context.ts");

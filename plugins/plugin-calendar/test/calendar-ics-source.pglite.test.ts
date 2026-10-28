@@ -593,6 +593,72 @@ describe("CalendarService guarded ICS sources (real PGlite)", {
     expect(titles.rows).toEqual([{ title: "School final" }]);
   });
 
+  it("keeps syncing a feed that repeats a VEVENT, using its newest copy", async () => {
+    const source = await createSource();
+    await syncBody(
+      source.id,
+      calendar(vevent({ uid: "ok", title: "Baseline" })),
+    );
+
+    const synced = await syncBody(
+      source.id,
+      calendar(
+        vevent({
+          uid: "ok",
+          title: "Baseline edited",
+          revision: "20260701T090000Z",
+        }),
+        vevent({ uid: "dup", title: "Standup" }),
+        vevent({ uid: "dup", title: "Standup moved", sequence: 1 }),
+        vevent({ uid: "dup", title: "Standup" }),
+      ),
+    );
+
+    expect(synced.outcome).toBe("complete");
+    expect(synced.source.syncStatus).toBe("fresh");
+    const titles = await pg.query<{ title: string }>(
+      "SELECT title FROM app_calendar.life_calendar_events ORDER BY title",
+    );
+    expect(titles.rows.map((row) => row.title)).toEqual([
+      "Baseline edited",
+      "Standup moved",
+    ]);
+  });
+
+  it("keeps syncing a feed with a SEQUENCE above the 32-bit range", async () => {
+    const source = await createSource();
+    const big = vevent({
+      uid: "b",
+      title: "Big sequence",
+      sequence: 3000000000,
+    });
+    await syncBody(
+      source.id,
+      calendar(vevent({ uid: "a", title: "Normal" }), big),
+    );
+
+    const synced = await syncBody(
+      source.id,
+      calendar(
+        vevent({
+          uid: "a",
+          title: "Normal edited",
+          revision: "20260701T090000Z",
+        }),
+        big,
+      ),
+    );
+
+    expect(synced.source.syncStatus).toBe("fresh");
+    const titles = await pg.query<{ title: string }>(
+      "SELECT title FROM app_calendar.life_calendar_events ORDER BY title",
+    );
+    expect(titles.rows.map((row) => row.title)).toEqual([
+      "Big sequence",
+      "Normal edited",
+    ]);
+  });
+
   it("stores cancellation tombstones and never returns them in the feed", async () => {
     const source = await createSource();
     await syncBody(source.id, calendar(vevent({ uid: "a", title: "School" })));

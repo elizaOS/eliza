@@ -555,7 +555,8 @@ try {
     return {
       html: document.documentElement.outerHTML,
       text: document.body.innerText,
-      attributes: host.getAttributeNames(),
+      attributes: host.getAttributeNames().sort(),
+      popover: host.getAttribute("popover"),
       shadow: host.shadowRoot,
     };
   });
@@ -563,7 +564,8 @@ try {
     assert.ok(!pageView.html.includes(value));
     assert.ok(!pageView.text.includes(value));
   }
-  assert.deepEqual(pageView.attributes, ["style"]);
+  assert.deepEqual(pageView.attributes, ["popover", "style"]);
+  assert.equal(pageView.popover, "manual");
   assert.equal(pageView.shadow, null);
   const observed = await call(
     pageCommand,
@@ -722,6 +724,44 @@ try {
   cases.push(
     "an off-screen step is scrolled into view and shown; an action guide reports off-screen and never scrolls",
   );
+  // A host may immediately clear guidance and observe for the next action.
+  // No owned smooth scroll may continue changing that new observation.
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "no-preference" },
+  ]);
+  await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
+  element = await read("scroll-settle");
+  await show("scroll-settle", element("Account details"), {
+    id: "scroll-settle",
+  });
+  const revealed = await page.$eval("#far", (n) =>
+    n.getBoundingClientRect().toJSON(),
+  );
+  assert.ok(
+    revealed.top >= 0 && revealed.bottom <= 800,
+    JSON.stringify(revealed),
+  );
+  await call(pageGuidance, { kind: "hide" });
+  element = await read("after-scroll-settle");
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  const validation = await call(
+    pageCommand,
+    {
+      subaction: "click",
+      snapshotId: "after-scroll-settle",
+      nodeId: element("Account details"),
+    },
+    null,
+    true,
+  );
+  assert.equal(validation.validated, true, JSON.stringify(validation));
+  await page.emulateMediaFeatures([
+    { name: "prefers-reduced-motion", value: "reduce" },
+  ]);
+  await page.evaluate(() => scrollTo({ top: 0, behavior: "instant" }));
+  cases.push(
+    "guidance completes its reveal before returning; clearing it cannot leave a moving viewport under the next snapshot",
+  );
   const overlaps = async () => {
     const box = await part(
       ".label",
@@ -774,6 +814,135 @@ try {
   await until(shown);
   await call(pageGuidance, { kind: "hide" });
   cases.push("a remembered dismissal keeps the step hidden until restored");
+  await page.setViewport({ width: 320, height: 480 });
+  await page.goto(`${origin}/labels`);
+  await isolate();
+  await page.evaluate(() => {
+    document.querySelector("#first").style.cssText =
+      "left:220px;top:30px;width:90px;padding:8px";
+  });
+  element = await read("narrow-action");
+  await show("narrow-action", element("First step"), {
+    id: "narrow-action",
+    action: "click",
+    assistantName: "Test helper",
+  });
+  await until(shown);
+  const assertTagFits = async () => {
+    const rect = await part(
+      ".tag",
+      "({left:n.getBoundingClientRect().left,right:n.getBoundingClientRect().right,top:n.getBoundingClientRect().top,bottom:n.getBoundingClientRect().bottom,scroll:n.scrollWidth,width:n.clientWidth})",
+    );
+    assert.ok(
+      rect.left >= 8 &&
+        rect.right <= 312 &&
+        rect.top >= 8 &&
+        rect.bottom <= 472,
+      JSON.stringify(rect),
+    );
+    assert.ok(rect.scroll <= rect.width, JSON.stringify(rect));
+  };
+  await assertTagFits();
+  await page.screenshot({ path: `${output}/narrow-action-tag.png` });
+  await call(pageGuidance, { kind: "pause" });
+  await settle();
+  await assertTagFits();
+  await page.screenshot({ path: `${output}/narrow-paused-tag.png` });
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "action and paused name tags stay fully readable at the narrow viewport edge",
+  );
+  // The installed product split leaves only 191 CSS pixels for its website.
+  await page.setViewport({ width: 462, height: 191 });
+  await page.goto(`${origin}/labels`);
+  await isolate();
+  await page.evaluate(() => {
+    document.querySelector("#email").style.cssText =
+      "left:85px;top:144px;width:192px;height:22px;padding:0";
+  });
+  element = await read("compact-action");
+  await show("compact-action", element("Email"), {
+    id: "compact-action",
+    action: "fill",
+    assistantName: "Grace",
+    text: "I will type the text for your request.",
+  });
+  await until(shown);
+  const compact = await evaluate(
+    "(()=>{const s=globalThis.__elizaPageGuidanceV1;return {label:s.shadow.querySelector('.label').getBoundingClientRect().toJSON(),target:document.querySelector('#email').getBoundingClientRect().toJSON()}})()",
+  );
+  assert.ok(
+    compact.label.y >= 8 && compact.label.y + compact.label.height <= 183,
+    JSON.stringify(compact),
+  );
+  assert.ok(compact.label.y + compact.label.height <= compact.target.y - 8);
+  const cancel = await part(
+    ".close",
+    "({height:n.getBoundingClientRect().height,width:n.getBoundingClientRect().width,label:n.getAttribute('aria-label')})",
+  );
+  assert.ok(cancel.height >= 48 && cancel.width >= 92);
+  assert.equal(cancel.label, "Cancel this action");
+  await until(
+    `globalThis.__elizaPageGuidanceV1.actionReady("compact-action","compact-action",${JSON.stringify(element("Email"))},"fill")`,
+  );
+  await page.screenshot({ path: `${output}/compact-action.png` });
+  const cancelPoint = await part(
+    ".close",
+    "({x:n.getBoundingClientRect().x+n.getBoundingClientRect().width/2,y:n.getBoundingClientRect().y+n.getBoundingClientRect().height/2})",
+  );
+  await page.mouse.click(cancelPoint.x, cancelPoint.y);
+  assert.equal(
+    await evaluate("globalThis.__elizaPageGuidanceV1.dismissed"),
+    true,
+  );
+  assert.equal(
+    (
+      await call(pageGuidance, {
+        kind: "action-status",
+        id: "compact-action",
+        snapshotId: "compact-action",
+        nodeId: element("Email"),
+        action: "fill",
+      })
+    ).ready,
+    false,
+  );
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "191px split viewport shows an unobscured action preview and 48px Cancel before readiness",
+  );
+  // Normal guidance centers an off-screen control before an action is offered.
+  // Its preview must also fit beside that centered target in the split view.
+  await page.evaluate(() => {
+    document.querySelector("#email").style.top = "85px";
+  });
+  element = await read("centered-compact-action");
+  await show("centered-compact-action", element("Email"), {
+    id: "centered-compact-action",
+    action: "fill",
+    assistantName: "Grace",
+    text: "I will type the text for your request.",
+  });
+  await until(shown);
+  const centered = await evaluate(
+    "(()=>{const s=globalThis.__elizaPageGuidanceV1;return {label:s.shadow.querySelector('.label').getBoundingClientRect().toJSON(),target:document.querySelector('#email').getBoundingClientRect().toJSON(),cancel:s.shadow.querySelector('.close').getBoundingClientRect().toJSON()}})()",
+  );
+  assert.ok(
+    centered.label.y >= 8 &&
+      centered.label.bottom <= 183 &&
+      (centered.label.bottom <= centered.target.y - 8 ||
+        centered.label.y >= centered.target.bottom + 8),
+    JSON.stringify(centered),
+  );
+  assert.ok(centered.cancel.height >= 48 && centered.cancel.width >= 92);
+  await until(
+    `globalThis.__elizaPageGuidanceV1.actionReady("centered-compact-action","centered-compact-action",${JSON.stringify(element("Email"))},"fill")`,
+  );
+  await page.screenshot({ path: `${output}/centered-compact-action.png` });
+  await call(pageGuidance, { kind: "hide" });
+  cases.push(
+    "centered target in a 191px split view retains full text, 48px Cancel and preview readiness",
+  );
   await writeFile(
     `${output}/verification.json`,
     JSON.stringify(

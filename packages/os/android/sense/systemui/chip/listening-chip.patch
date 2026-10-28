@@ -1,0 +1,634 @@
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/privacy/SenseListeningPolicy.java
+@@ -0,0 +1,93 @@
++package com.android.systemui.privacy;
++
++/** Platform-derived facts only. No transcript, PCM, listener self-report or app-supplied UID. */
++public final class SenseListeningPolicy {
++ public static final String PAUSE="pause-until-resumed";
++ public static boolean identity(int uid,int foregroundUser,boolean primaryUser,boolean systemApp,
++   boolean privileged,String expectedSigner,String actualSigner,boolean matchesHost,boolean solePackage){
++  return foregroundUser==0&&primaryUser&&uid>=10000&&uid<20000&&systemApp&&privileged
++   &&expectedSigner!=null&&expectedSigner.matches("[a-f0-9]{64}")&&expectedSigner.equals(actualSigner)
++   &&matchesHost&&solePackage;
++ }
++ public static boolean recording(int admittedUid,int recordingUid,boolean silenced){
++  return admittedUid>=10000&&admittedUid<20000&&admittedUid==recordingUid&&!silenced;
++ }
++ public static boolean pause(String expectedPackage,int admittedUid,int notificationUid,String notificationPackage,
++   int notificationId,String channel,int creatorUid,String creatorPackage,boolean immutable,
++   boolean broadcast,boolean requiresUnlock,String marker){
++  return admittedUid>=10000&&admittedUid<20000&&admittedUid==notificationUid&&admittedUid==creatorUid
++   &&expectedPackage.equals(notificationPackage)&&expectedPackage.equals(creatorPackage)&&notificationId==1
++   &&"listening-indicator".equals(channel)&&immutable&&broadcast&&!requiresUnlock&&PAUSE.equals(marker);
++ }
++ // Indicator health lease (docs/aosp-listening-chip.md); mirrors the listener's IndicatorLease contract.
++ public static final String LEASE_ACQUIRE="acquire",LEASE_RENEW="renew",LEASE_REVOKE="revoke";
++ public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
++  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display",KEY_REASON="hiddenReason";
++ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off",DISPLAY_UNKNOWN="unknown";
++ /** Why the indicator is not shown, as SystemUI positively knows it. NONE: shown, or no known reason (unexplained). */
++ public static final String REASON_NONE="none",REASON_DISPLAY_OFF="display_off",REASON_AOD="aod",REASON_FULLSCREEN="fullscreen",
++  REASON_SHADE="shade",REASON_TRANSITION="transition";
++ /** A hidden report within this time of a reported keyguard, doze or display-state change is a transition. */
++ public static final long TRANSITION_DEBOUNCE_MS=1_000;
++ public static final long LEASE_RENEW_MS=1_000;
++ /**
++  * Default display state (android.view.Display.STATE_*): ON 2 and ON_SUSPEND 6 are on; DOZE 3 and
++  * DOZE_SUSPEND 4 are AOD; OFF 1 is off; UNKNOWN 0, VR 5 and anything else are unknown (the
++  * listener pauses only if it sees the screen off itself, otherwise it stops).
++  */
++ public static String display(int state){
++  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;case 1:return DISPLAY_OFF;default:return DISPLAY_UNKNOWN;}
++ }
++ /**
++  * The explanation SystemUI attaches when the indicator is not shown ({@code shown}: surface
++  * visible and, while recording, the chip too). In order: display off; AOD not showing it; a report
++  * within {@link #TRANSITION_DEBOUNCE_MS} of a keyguard/doze/display change; the expanded shade
++  * without its measured indicator; an app hiding the unlocked status bar. Anything else (for
++  * example a detached or faded chip) has no reason and the listener treats it as a loss.
++  */
++ public static String hiddenReason(boolean shown,String display,long sinceTransitionMs,boolean shadeExpanded,boolean statusBarHidden,boolean keyguardShowing){
++  if(shown)return REASON_NONE;
++  if(DISPLAY_OFF.equals(display))return REASON_DISPLAY_OFF;
++  if(DISPLAY_DOZE.equals(display))return REASON_AOD;
++  if(sinceTransitionMs>=0&&sinceTransitionMs<TRANSITION_DEBOUNCE_MS)return REASON_TRANSITION;
++  if(shadeExpanded)return REASON_SHADE;
++  if(statusBarHidden&&!keyguardShowing)return REASON_FULLSCREEN;
++  return REASON_NONE;
++ }
++ /**
++  * The status-bar chip counts only while the keyguard is not showing, the shade is collapsed and
++  * no app has hidden the status bar (immersive) without a transient reveal. SystemUI positively
++  * reports each of those; a covered or hidden status bar is not visible.
++  */
++ public static boolean statusBarCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded,boolean statusBarHidden){
++  return measured&&!keyguardShowing&&!shadeExpanded&&!statusBarHidden;
++ }
++ /** The lock-screen/AOD chip (keyguard indication area) counts while the keyguard shows and the shade is collapsed. */
++ public static boolean keyguardCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded){
++  return measured&&keyguardShowing&&!shadeExpanded;
++ }
++ /** An app requested the status bar hidden (WindowInsets.Type.statusBars() not requested visible) and it is not transiently shown. */
++ public static boolean statusBarHidden(int requestedVisibleTypes,int statusBarsType,boolean transientShown){
++  return statusBarsType!=0&&(requestedVisibleTypes&statusBarsType)==0&&!transientShown;
++ }
++ /** Below this effective alpha or visible fraction a surface does not count as shown. */
++ public static final float MIN_ALPHA=0.5f;
++ public static final int MIN_VISIBLE_PERCENT=90;
++ /**
++  * Effective on-screen visibility of one SystemUI view, measured by SystemUI from its own view
++  * tree: attached, its window visible, shown through every ancestor, aggregated-visible, mostly
++  * opaque along the ancestor chain and almost entirely inside the visible screen area.
++  */
++ public static boolean effectivelyVisible(boolean attached,boolean windowVisible,boolean shown,boolean aggregated,
++   float effectiveAlpha,long visibleArea,long area){
++  return attached&&windowVisible&&shown&&aggregated&&effectiveAlpha>=MIN_ALPHA&&area>0&&visibleArea>0
++   &&visibleArea<=area&&visibleArea*100>=area*MIN_VISIBLE_PERCENT;
++ }
++ /** Acknowledgements go only to the lease provider of the already admitted listener UID. */
++ public static boolean leaseTarget(String expectedPackage,int admittedUid,String providerPackage,int providerUid){
++  return admittedUid>=10000&&admittedUid<20000&&expectedPackage.equals(providerPackage)&&providerUid==admittedUid;
++ }
++ /** The chip may be acknowledged as visible only while SystemUI itself observes the recording. */
++ public static boolean chipAcknowledged(boolean recordingObserved,boolean anyChipVisible){return recordingObserved&&anyChipVisible;}
++ private SenseListeningPolicy(){}
++}
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/privacy/SenseListeningController.java
+@@ -0,0 +1,254 @@
++package com.android.systemui.privacy;
++
++import android.app.Notification;
++import android.app.PendingIntent;
++import android.content.*;
++import android.content.pm.*;
++import android.hardware.display.DisplayManager;
++import android.media.*;
++import android.os.*;
++import android.service.notification.StatusBarNotification;
++import android.view.Display;
++import android.graphics.Insets;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewTreeObserver;
++import android.widget.FrameLayout;
++import com.android.systemui.scene.ui.view.WindowRootView;
++import com.android.systemui.statusbar.NotificationShadeWindowController;
++import com.android.systemui.statusbar.phone.StatusBarWindowCallback;
++import javax.inject.Provider;
++import android.view.WindowInsets;
++import com.android.internal.statusbar.LetterboxDetails;
++import com.android.internal.view.AppearanceRegion;
++import com.android.systemui.CoreStartable;
++import com.android.systemui.dagger.SysUISingleton;
++import com.android.systemui.dagger.qualifiers.Background;
++import com.android.systemui.dagger.qualifiers.Main;
++import com.android.systemui.plugins.statusbar.StatusBarStateController;
++import com.android.systemui.res.R;
++import com.android.systemui.settings.UserTracker;
++import com.android.systemui.statusbar.CommandQueue;
++import com.android.systemui.statusbar.NotificationListener;
++import com.android.systemui.statusbar.policy.KeyguardStateController;
++import java.security.MessageDigest;
++import java.util.*;
++import java.util.concurrent.Executor;
++import javax.inject.Inject;
++
++/**
++ * SystemUI-owned microphone truth. Notification actions are capabilities, never capture evidence.
++ * It also holds the listener's indicator health lease ({@link SenseListeningLease}), acknowledging
++ * only what its own views measure, so the listener stops when this indicator cannot be shown.
++ */
++@SysUISingleton
++public final class SenseListeningController implements CoreStartable {
++ private static SenseListeningController instance;
++ private static final Set<SenseListeningChipView> views=new HashSet<>(); // main thread only
++ private final Context context;private final AudioManager audio;private final Handler main;
++ private final UserTracker users;private final NotificationListener notifications;
++ private final SenseListeningLease lease;
++ private final String listenerPackage,hostPackage,receiverClass;
++ private final StatusBarStateController statusBar;private final KeyguardStateController keyguard;
++ private final CommandQueue commands;private final DisplayManager displays;
++ private int uid=-1;private boolean active;
++ private final Provider<WindowRootView> windowRoot;
++ private final NotificationShadeWindowController shadeWindow;
++ private WindowRootView shadeRoot;
++ private SenseListeningChipView shadeChip;
++ // A window-state callback is required before the shade can grant a lease.
++ private boolean shadeStateKnown,shadeBlocked=true;
++ private final StatusBarWindowCallback shadeState=(showing,occluded,goingAway,bouncer,dozing,expanded,dreaming,communal)->{
++  shadeStateKnown=true;
++  shadeBlocked=showing||occluded||goingAway||bouncer||dozing||dreaming||communal;
++  if(shadeChip!=null)shadeChip.render(active&&shadeEligible());
++  transition();
++ };
++ private boolean shadeEligible(){return shadeStateKnown&&!shadeBlocked&&!keyguard.isShowing()&&!keyguard.isOccluded()
++  &&statusBar.isExpanded()&&!statusBar.isDozing()&&users.getUserId()==0&&!users.isUserSwitching();}
++ /** Maintain one non-scrolling, inset-safe child in the common legacy/Compose window root.
++  * Compose may add children after CoreStartable starts, or remove all children on teardown.
++  * Reordering invalidates this frame; acknowledgement independently verifies current ordering.
++  */
++ private boolean prepareShadeFrame(){
++  if(shadeChip.getParent()!=shadeRoot){
++   if(shadeChip.getParent()!=null)return true; // Unexpected reparenting never grants a lease.
++   FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,FrameLayout.LayoutParams.WRAP_CONTENT,Gravity.TOP|Gravity.CENTER_HORIZONTAL);
++   shadeRoot.addView(shadeChip,params);
++   shadeChip.render(active&&shadeEligible());
++   return false;
++  }
++  shadeChip.renderShade(active&&shadeEligible());
++  if(!shadeEligible())return true;
++  WindowInsets insets=shadeRoot.getRootWindowInsets();
++  if(insets==null){shadeChip.setVisibility(View.GONE);return true;}
++  Insets safe=insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
++  FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)shadeChip.getLayoutParams();
++  if(params.topMargin!=safe.top||params.leftMargin!=safe.left||params.rightMargin!=safe.right||params.bottomMargin!=safe.bottom){
++   params.topMargin=safe.top;params.leftMargin=safe.left;params.rightMargin=safe.right;params.bottomMargin=safe.bottom;
++   shadeChip.setLayoutParams(params);return false;
++  }
++  float highest=0;
++  for(int i=0;i<shadeRoot.getChildCount();i++){View child=shadeRoot.getChildAt(i);if(child!=shadeChip)highest=Math.max(highest,child.getZ());}
++  if(!Float.isFinite(highest))return true; // Measurement also rejects invalid ordering.
++  boolean changed=shadeRoot.indexOfChild(shadeChip)!=shadeRoot.getChildCount()-1||shadeChip.getZ()!=highest;
++  if(changed){shadeChip.setZ(highest);shadeChip.bringToFront();return false;}
++  return true;
++ }
++ private final ViewTreeObserver.OnPreDrawListener shadeFrame=this::prepareShadeFrame;
++ private void installShadeSurface(){
++  shadeRoot=windowRoot.get();shadeChip=SenseListeningChipView.shade(context);
++  shadeRoot.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
++   @Override public void onViewAttachedToWindow(View view){view.getViewTreeObserver().addOnPreDrawListener(shadeFrame);}
++   @Override public void onViewDetachedFromWindow(View view){view.getViewTreeObserver().removeOnPreDrawListener(shadeFrame);surfaceChanged();}
++  });
++  if(shadeRoot.isAttachedToWindow())shadeRoot.getViewTreeObserver().addOnPreDrawListener(shadeFrame);
++  prepareShadeFrame();
++ }
++ private boolean shadeInsetsApplied(){
++  WindowInsets insets=shadeRoot.getRootWindowInsets();
++  if(insets==null||shadeRoot.isLayoutRequested())return false;
++  Insets safe=insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
++  FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)shadeChip.getLayoutParams();
++  return params.topMargin==safe.top&&params.leftMargin==safe.left&&params.rightMargin==safe.right&&params.bottomMargin==safe.bottom;
++ }
++ private boolean shadeSurfaceVisible(){
++  return shadeEligible()&&shadeRoot!=null&&shadeChip!=null&&shadeChip.getParent()==shadeRoot
++   &&shadeRoot.hasWindowFocus()&&shadeInsetsApplied()&&shadeChip.topmostIn(shadeRoot)
++   &&shadeChip.hostVisible();
++ }
++ /** Default display: insets types the top app requested visible (immersive hides the status bar) and a transient reveal. */
++ private int requestedVisibleTypes=~0;private boolean statusBarTransient;
++ /** Uptime of the last reported keyguard, doze, shade-state or display-state change (main thread). */
++ private long transitionAt=-1;
++ private void transition(){transitionAt=SystemClock.uptimeMillis();surfaceChanged();}
++ private final StatusBarStateController.StateListener shadeAndDoze=new StatusBarStateController.StateListener(){
++  @Override public void onExpandedChanged(boolean expanded){surfaceChanged();}
++  @Override public void onDozingChanged(boolean dozing){transition();}
++  @Override public void onStateChanged(int state){transition();}
++ };
++ private final KeyguardStateController.Callback keyguardShowing=new KeyguardStateController.Callback(){
++  @Override public void onKeyguardShowingChanged(){transition();}
++ };
++ private final DisplayManager.DisplayListener displayState=new DisplayManager.DisplayListener(){
++  @Override public void onDisplayAdded(int id){}
++  @Override public void onDisplayRemoved(int id){}
++  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)transition();}
++ };
++ private final CommandQueue.Callbacks systemBars=new CommandQueue.Callbacks(){
++  @Override public void onSystemBarAttributesChanged(int displayId,int appearance,AppearanceRegion[] regions,boolean navbarColorManagedByIme,
++    int behavior,int requestedVisibleTypes,String packageName,LetterboxDetails[] letterboxDetails){
++   if(displayId!=Display.DEFAULT_DISPLAY)return;
++   SenseListeningController.this.requestedVisibleTypes=requestedVisibleTypes;surfaceChanged();
++  }
++  @Override public void showTransient(int displayId,int types,boolean isGestureOnSystemBar){
++   if(displayId==Display.DEFAULT_DISPLAY&&(types&WindowInsets.Type.statusBars())!=0){statusBarTransient=true;surfaceChanged();}
++  }
++  @Override public void abortTransient(int displayId,int types){
++   if(displayId==Display.DEFAULT_DISPLAY&&(types&WindowInsets.Type.statusBars())!=0){statusBarTransient=false;surfaceChanged();}
++  }
++ };
++ private final AudioManager.AudioRecordingCallback recording=new AudioManager.AudioRecordingCallback(){
++  @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){refresh(configs);}
++ };
++ private final UserTracker.Callback userCallback=new UserTracker.Callback(){
++  @Override public void onBeforeUserSwitching(int user){uid=-1;active=false;publish();}
++  @Override public void onUserChanged(int user,Context userContext){refreshCurrent();}
++ };
++ @Inject public SenseListeningController(Context context,AudioManager audio,@Main Handler main,@Background Executor background,
++   UserTracker users,NotificationListener notifications,StatusBarStateController statusBar,KeyguardStateController keyguard,
++   CommandQueue commands,DisplayManager displays,Provider<WindowRootView> windowRoot,NotificationShadeWindowController shadeWindow){
++  this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
++  this.statusBar=statusBar;this.keyguard=keyguard;this.commands=commands;this.displays=displays;this.windowRoot=windowRoot;this.shadeWindow=shadeWindow;
++  listenerPackage=context.getString(R.string.config_senseListeningPackage);
++  hostPackage=context.getString(R.string.config_senseListeningHostPackage);
++  receiverClass=context.getString(R.string.config_senseListeningReceiverClass);
++  lease=new SenseListeningLease(context,main,background,this::acknowledgement,listenerPackage);}
++ @Override public void start(){
++  instance=this;
++  shadeWindow.registerCallback(shadeState);
++  installShadeSurface();
++  audio.registerAudioRecordingCallback(recording,main);
++  users.addCallback(userCallback,main::post);
++  IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_PACKAGE_ADDED);filter.addAction(Intent.ACTION_PACKAGE_REMOVED);filter.addAction(Intent.ACTION_PACKAGE_REPLACED);filter.addDataScheme("package");
++  context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refreshCurrent();}},filter,null,main,Context.RECEIVER_NOT_EXPORTED);
++  refreshCurrent();
++  statusBar.addCallback(shadeAndDoze);
++  keyguard.addCallback(keyguardShowing);
++  displays.registerDisplayListener(displayState,main);
++  commands.addCallback(systemBars);
++  lease.start();
++ }
++ static void attach(SenseListeningChipView view){views.add(view);if(instance!=null)instance.refreshCurrent();else view.render(false);}
++ static void detach(SenseListeningChipView view){views.remove(view);surfaceChanged();}
++ static void surfaceChanged(){if(instance!=null)instance.lease.now();}
++ /**
++  * Main thread: what SystemUI itself measures and reports. Unverified identity or user switching
++  * acknowledges nothing. Lock screen and AOD use the keyguard chip; the unlocked status bar uses
++  * the status-bar chip unless the shade covers it or an app hid the status bar; the expanded shade
++  * counts only through the measured, topmost dedicated shade chip. The display state lets the
++  * listener pause (not stop) while nothing can be shown.
++  */
++ private SenseListeningLease.Acknowledgement acknowledgement(){
++  boolean admitted=uid!=-1&&!users.isUserSwitching()&&users.getUserId()==0;
++  boolean locked=keyguard.isShowing(),shade=statusBar.isExpanded();
++  boolean hidden=SenseListeningPolicy.statusBarHidden(requestedVisibleTypes,WindowInsets.Type.statusBars(),statusBarTransient);
++  boolean surface=false,chip=false;
++  for(SenseListeningChipView view:views){
++   if(view.shadeSurface())continue;
++   boolean shown=view.chipVisible(),host=shown||view.hostVisible();
++   if(view.keyguardSurface()){chip|=SenseListeningPolicy.keyguardCounts(shown,locked,shade);surface|=SenseListeningPolicy.keyguardCounts(host,locked,shade);}
++   else{chip|=SenseListeningPolicy.statusBarCounts(shown,locked,shade,hidden);surface|=SenseListeningPolicy.statusBarCounts(host,locked,shade,hidden);}
++  }
++  if(shadeSurfaceVisible()){surface=true;chip=shadeChip.chipVisible();}
++  Display display=displays.getDisplay(Display.DEFAULT_DISPLAY);
++  String state=SenseListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState());
++  boolean shown=surface&&(!active||chip);
++  String reason=SenseListeningPolicy.hiddenReason(shown,state,transitionAt<0?-1:SystemClock.uptimeMillis()-transitionAt,shade,hidden,locked);
++  return new SenseListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,state,reason);
++ }
++
++ private void publish(){for(SenseListeningChipView view:new ArrayList<>(views))view.render(active&&(!view.shadeSurface()||shadeEligible()));lease.now();}
++ private void refreshCurrent(){try{refresh(audio.getActiveRecordingConfigurations());}catch(RuntimeException unavailable){uid=-1;active=false;publish();}}
++ private int verifiedUid(){
++  try{
++   if(users.isUserSwitching()||!listenerPackage.equals(hostPackage+".sense")||!hostPackage.matches("[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+"))return -1;
++   PackageManager pm=context.getPackageManager();PackageInfo pkg=pm.getPackageInfoAsUser(listenerPackage,PackageManager.GET_SIGNING_CERTIFICATES,0);
++   ApplicationInfo app=pkg.applicationInfo;Signature[] signers=pkg.signingInfo==null?null:pkg.signingInfo.getApkContentsSigners();
++   if(signers==null||signers.length!=1||!app.enabled)return -1;
++   StringBuilder digest=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(signers[0].toByteArray()))digest.append(String.format(java.util.Locale.ROOT,"%02x",b&255));
++   String[] packages=pm.getPackagesForUid(app.uid);
++   boolean accepted=SenseListeningPolicy.identity(app.uid,users.getUserId(),UserHandle.getUserId(app.uid)==0,
++    (app.flags&ApplicationInfo.FLAG_SYSTEM)!=0,(app.privateFlags&ApplicationInfo.PRIVATE_FLAG_PRIVILEGED)!=0,
++    context.getString(R.string.config_senseListeningCertificateSha256),digest.toString(),
++    pm.checkSignatures(listenerPackage,hostPackage)==PackageManager.SIGNATURE_MATCH,
++    packages!=null&&packages.length==1&&listenerPackage.equals(packages[0]));
++   return accepted?app.uid:-1;
++  }catch(Exception unavailable){return -1;}
++ }
++ private void refresh(List<AudioRecordingConfiguration> configs){
++  uid=verifiedUid();active=false;
++  if(uid!=-1)for(AudioRecordingConfiguration config:configs)if(SenseListeningPolicy.recording(uid,config.getClientUid(),config.isClientSilenced())){active=true;break;}
++  publish();
++ }
++ static boolean pause(){return instance!=null&&instance.pauseCurrent();}
++ private boolean pauseCurrent(){
++  refreshCurrent();if(!active||uid<0)return false;
++  try{
++   StatusBarNotification[] entries=notifications.getActiveNotifications();if(entries==null)return false;
++   PendingIntent chosen=null;
++   for(StatusBarNotification entry:entries){Notification notification=entry.getNotification();if(notification.actions==null)continue;
++    for(Notification.Action action:notification.actions){PendingIntent token=action.actionIntent;if(token==null)continue;
++     Intent target=token.getIntent();
++     if(target==null||!(listenerPackage+".action.PAUSE").equals(target.getAction())
++       ||!new ComponentName(listenerPackage,receiverClass).equals(target.getComponent())
++       ||target.getData()!=null||target.getClipData()!=null||target.getExtras()!=null)continue;
++     if(SenseListeningPolicy.pause(listenerPackage,uid,entry.getUid(),entry.getPackageName(),entry.getId(),notification.getChannelId(),token.getCreatorUid(),token.getCreatorPackage(),token.isImmutable(),token.isBroadcast(),action.isAuthenticationRequired(),action.getExtras().getString(listenerPackage+".SYSTEMUI_ACTION_V1"))){if(chosen!=null)return false;chosen=token;}
++    }
++   }
++   if(chosen==null||verifiedUid()!=uid)return false;
++   chosen.send(); // No fill-in Intent, extras, resume action, provider call or shared signer assumption.
++   return true; // Keep indicator visible until AudioManager confirms recording has stopped.
++  }catch(Exception unavailable){return false;}
++ }
++}
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/privacy/SenseListeningLease.java
+@@ -0,0 +1,93 @@
++package com.android.systemui.privacy;
++
++import android.content.Context;
++import android.content.pm.ProviderInfo;
++import android.net.Uri;
++import android.os.Binder;
++import android.os.Bundle;
++import android.os.Handler;
++import java.util.concurrent.Executor;
++
++/**
++ * SystemUI side of the listener's indicator health lease. Every {@link SenseListeningPolicy#LEASE_RENEW_MS}
++ * (and at once on any surface change) it measures its own views on the main thread and sends a
++ * visibility acknowledgement to the admitted listener on the background executor. A hidden,
++ * detached or unattributed surface is acknowledged as such, so the listener stops capture; if
++ * SystemUI hangs or dies, renewals stop and the token binder dies, which also stops it.
++ * Acknowledgements carry visibility facts only: no audio, transcript, consent or resume command.
++ */
++final class SenseListeningLease {
++ /** One acknowledgement: the admitted listener UID (-1 for none) and SystemUI-measured facts. */
++ static final class Acknowledgement {
++  final int uid;final boolean surface,chip,recording;final String display,reason;
++  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording,String display,String reason){
++   this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;this.display=display;this.reason=reason;
++  }
++ }
++ interface Source{Acknowledgement read();}
++
++ private final Context context;private final Handler main;private final Executor background;private final Source source;
++ private final String listenerPackage;
++ /** Never shared beyond the lease provider: its death tells the listener this SystemUI process is gone. */
++ private final Binder token=new Binder();
++ private final Uri uri;
++ private volatile long generation=-1; // background executor only (serial)
++ private boolean running; // main thread only
++ private final Runnable tick=this::tick;
++
++ SenseListeningLease(Context context,Handler main,Executor background,Source source,String listenerPackage){
++  this.context=context;this.main=main;this.background=background;this.source=source;
++  this.listenerPackage=listenerPackage;this.uri=Uri.parse("content://"+listenerPackage+".indicator");
++ }
++ void start(){running=true;main.post(tick);}
++ /** A surface changed: acknowledge now rather than at the next renewal. */
++ void now(){if(!running)return;main.removeCallbacks(tick);main.post(tick);}
++
++ private void tick(){
++  if(!running)return;
++  Acknowledgement ack;
++  try{ack=source.read();}catch(RuntimeException unreadable){ack=null;}
++  Acknowledgement sent=ack;
++  background.execute(()->deliver(sent));
++  main.postDelayed(tick,SenseListeningPolicy.LEASE_RENEW_MS);
++ }
++
++ private void deliver(Acknowledgement ack){
++  if(ack==null||ack.uid<0||!target(ack.uid)){revoke();return;}
++  try{
++   if(generation<0){
++    Bundle acquire=new Bundle();acquire.putBinder(SenseListeningPolicy.KEY_TOKEN,token);
++    Bundle out=call(SenseListeningPolicy.LEASE_ACQUIRE,acquire);
++    generation=out==null?-1:out.getLong(SenseListeningPolicy.KEY_GENERATION,-1);
++    if(generation<0)return;
++   }
++   Bundle renew=new Bundle();
++   renew.putLong(SenseListeningPolicy.KEY_GENERATION,generation);
++   renew.putBoolean(SenseListeningPolicy.KEY_SURFACE,ack.surface);
++   renew.putBoolean(SenseListeningPolicy.KEY_CHIP,SenseListeningPolicy.chipAcknowledged(ack.recording,ack.chip));
++   renew.putBoolean(SenseListeningPolicy.KEY_RECORDING,ack.recording);
++   renew.putString(SenseListeningPolicy.KEY_DISPLAY,ack.display);
++   renew.putString(SenseListeningPolicy.KEY_REASON,ack.reason);
++   Bundle out=call(SenseListeningPolicy.LEASE_RENEW,renew);
++   // A refused renewal (expired, revoked, replaced) is never retried on the same generation.
++   if(out==null||!out.getBoolean(SenseListeningPolicy.KEY_ACCEPTED,false))generation=-1;
++  }catch(RuntimeException unavailable){generation=-1;}
++ }
++
++ private void revoke(){
++  long current=generation;
++  if(current<0)return;
++  generation=-1;
++  try{Bundle revoke=new Bundle();revoke.putLong(SenseListeningPolicy.KEY_GENERATION,current);call(SenseListeningPolicy.LEASE_REVOKE,revoke);}
++  catch(RuntimeException unavailable){/* Expiry still stops capture. */}
++ }
++
++ private boolean target(int uid){
++  try{
++   ProviderInfo provider=context.getPackageManager().resolveContentProvider(listenerPackage+".indicator",0);
++   return provider!=null&&provider.applicationInfo!=null&&SenseListeningPolicy.leaseTarget(listenerPackage,uid,provider.packageName,provider.applicationInfo.uid);
++  }catch(RuntimeException unavailable){return false;}
++ }
++
++ private Bundle call(String method,Bundle extras){return context.getContentResolver().call(uri,method,null,extras);}
++}
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/privacy/SenseListeningChipView.java
+@@ -0,0 +1,62 @@
++package com.android.systemui.privacy;
++
++import android.content.Context;
++import android.graphics.Rect;
++import android.util.AttributeSet;
++import android.view.Gravity;
++import android.view.View;
++import android.view.ViewParent;
++import android.view.ViewGroup;
++import android.widget.TextView;
++import com.android.systemui.res.R;
++
++/** Independent fixed-text surface. Its measured visibility feeds the listener's health lease. */
++public final class SenseListeningChipView extends TextView {
++ private boolean aggregated; // main thread only
++ /** Created in code by the keyguard indication-area section (lock screen and AOD); inflated in status_bar.xml otherwise. */
++ private final boolean keyguard;
++ private boolean shade;
++ static SenseListeningChipView shade(Context context){
++  SenseListeningChipView view=new SenseListeningChipView(context,null,false);view.shade=true;
++  int target=(int)Math.ceil(48*context.getResources().getDisplayMetrics().density);
++  view.setMinWidth(target);view.setMinHeight(target);view.setFilterTouchesWhenObscured(true);return view;
++ }
++ boolean shadeSurface(){return shade;}
++ void renderShade(boolean active){if((getVisibility()==VISIBLE)!=active)render(active);}
++ boolean topmostIn(ViewGroup root){
++  if(getParent()!=root||root.indexOfChild(this)!=root.getChildCount()-1||!Float.isFinite(getZ()))return false;
++  for(int i=0;i<root.getChildCount();i++){View other=root.getChildAt(i);if(other!=this&&(!Float.isFinite(other.getZ())||other.getZ()>getZ()))return false;}
++  return true;
++ }
++ public SenseListeningChipView(Context context){this(context,null,true);}
++ public SenseListeningChipView(Context context,AttributeSet attrs){this(context,attrs,false);}
++ private SenseListeningChipView(Context context,AttributeSet attrs,boolean keyguard){
++  super(context,attrs);this.keyguard=keyguard;setGravity(Gravity.CENTER);setTextSize(12);setTextColor(0xffffffff);
++  setBackgroundColor(0xff174e35);setPadding(8,2,8,2);setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);
++  setOnClickListener(view->{if(!SenseListeningController.pause())announceForAccessibility(getContext().getString(R.string.sense_listening_pause_unavailable));});
++  render(false);
++ }
++ @Override protected void onAttachedToWindow(){super.onAttachedToWindow();SenseListeningController.attach(this);}
++ @Override protected void onDetachedFromWindow(){SenseListeningController.detach(this);super.onDetachedFromWindow();}
++ @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);aggregated=visible;SenseListeningController.surfaceChanged();}
++ @Override protected void onWindowVisibilityChanged(int visibility){super.onWindowVisibilityChanged(visibility);SenseListeningController.surfaceChanged();}
++ void render(boolean active){setText(R.string.sense_listening_pause);setContentDescription(getContext().getString(R.string.sense_listening_pause));setVisibility(active?VISIBLE:GONE);setEnabled(active);SenseListeningController.surfaceChanged();}
++
++ /** Lock-screen/AOD surface rather than the status bar. */
++ boolean keyguardSurface(){return keyguard;}
++
++ /** The rendered chip itself is effectively on screen. */
++ boolean chipVisible(){return getVisibility()==VISIBLE&&measured(this,aggregated);}
++
++ /** The surface that shows the chip (status bar or keyguard indication area) is effectively on screen. */
++ boolean hostVisible(){ViewParent parent=getParent();return parent instanceof View&&measured((View)parent,((View)parent).isShown());}
++
++ private static boolean measured(View view,boolean aggregated){
++  Rect rect=new Rect();
++  boolean onScreen=view.getGlobalVisibleRect(rect);
++  float alpha=view.getAlpha();
++  for(ViewParent node=view.getParent();node instanceof View;node=node.getParent())alpha*=((View)node).getAlpha();
++  return SenseListeningPolicy.effectivelyVisible(view.isAttachedToWindow(),view.getWindowVisibility()==VISIBLE,view.isShown(),aggregated,
++   alpha,onScreen?(long)rect.width()*rect.height():0,(long)view.getWidth()*view.getHeight());
++ }
++}
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/privacy/SenseListeningChipBinder.kt
+@@ -0,0 +1,25 @@
++package com.android.systemui.privacy
++
++import androidx.lifecycle.Lifecycle
++import androidx.lifecycle.repeatOnLifecycle
++import com.android.app.tracing.coroutines.launchTraced as launch
++import com.android.systemui.keyguard.ui.viewmodel.KeyguardIndicationAreaViewModel
++import com.android.systemui.lifecycle.repeatWhenAttached
++import com.android.systemui.res.R
++import kotlinx.coroutines.DisposableHandle
++
++/** Sibling of rotating indications: same existing burn-in motion, independent content/visibility. */
++object SenseListeningChipBinder {
++    fun bind(view: SenseListeningChipView, model: KeyguardIndicationAreaViewModel): DisposableHandle =
++        view.repeatWhenAttached {
++            repeatOnLifecycle(Lifecycle.State.STARTED) {
++                launch("SenseListening#burnInX") {
++                    model.indicationAreaTranslationX.collect { view.translationX = it }
++                }
++                launch("SenseListening#burnInY") {
++                    val offset = view.resources.getDimensionPixelOffset(R.dimen.default_burn_in_prevention_offset)
++                    model.indicationAreaTranslationY(offset).collect { view.translationY = it }
++                }
++            }
++        }
++}
+--- /dev/null
++++ b/packages/SystemUI/res/values/sense_listening.xml
+@@ -0,0 +1,11 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++    <!-- Empty unless generated from the admitted listener APK signer during product staging. -->
++    <string name="config_senseListeningPackage" translatable="false"></string>
++    <string name="config_senseListeningHostPackage" translatable="false"></string>
++    <string name="config_senseListeningReceiverClass" translatable="false"></string>
++    <string name="config_senseListeningCertificateSha256" translatable="false"></string>
++    <string name="sense_listening_pause">Listening · Pause</string>
++    <string name="sense_listening_pause_unavailable">Pause unavailable. Open listening controls.</string>
++    <item name="sense_listening_chip" type="id" />
++</resources>
+--- a/packages/SystemUI/src/com/android/systemui/privacy/PrivacyModule.java
++++ b/packages/SystemUI/src/com/android/systemui/privacy/PrivacyModule.java
+@@ -23,6 +23,11 @@
+ /** Dagger module for privacy. */
+ @Module
+ public interface PrivacyModule {
++    @Binds
++    @dagger.multibindings.IntoMap
++    @dagger.multibindings.ClassKey(SenseListeningController.class)
++    com.android.systemui.CoreStartable bindSenseListeningController(SenseListeningController controller);
++
+     /** Binds {@link AppOpsPrivacyItemMonitor} into the set of {@link PrivacyItemMonitor}. */
+     @Binds
+     @IntoSet
+--- a/packages/SystemUI/res/layout/status_bar.xml
++++ b/packages/SystemUI/res/layout/status_bar.xml
+@@ -165,4 +165,9 @@
+         </FrameLayout>
+     </LinearLayout>
+ 
++    <!-- Independent of clock/notification disable flags; immersive/AOD visibility still requires qualification. -->
++    <com.android.systemui.privacy.SenseListeningChipView
++        android:layout_width="wrap_content"
++        android:layout_height="match_parent"
++        android:layout_gravity="center_horizontal|top" />
+ </com.android.systemui.statusbar.phone.PhoneStatusBarView>
+--- a/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/layout/sections/DefaultIndicationAreaSection.kt
++++ b/packages/SystemUI/src/com/android/systemui/keyguard/ui/view/layout/sections/DefaultIndicationAreaSection.kt
+@@ -17,6 +17,8 @@
+ 
+ package com.android.systemui.keyguard.ui.view.layout.sections
+ 
++import com.android.systemui.privacy.SenseListeningChipView
++import com.android.systemui.privacy.SenseListeningChipBinder
+ import android.content.Context
+ import android.view.ViewGroup
+ import androidx.constraintlayout.widget.ConstraintLayout
+@@ -40,13 +42,18 @@
+ ) : KeyguardSection() {
+     private val indicationAreaViewId = R.id.keyguard_indication_area
+     private var indicationAreaHandle: DisposableHandle? = null
++    private var listeningHandle: DisposableHandle? = null
+ 
+     override fun addViews(constraintLayout: ConstraintLayout) {
+         val view = KeyguardIndicationArea(context, null)
+         constraintLayout.addView(view)
++        constraintLayout.addView(SenseListeningChipView(context).apply { id = R.id.sense_listening_chip })
+     }
+ 
+     override fun bindData(constraintLayout: ConstraintLayout) {
++        listeningHandle = SenseListeningChipBinder.bind(
++            constraintLayout.requireViewById(R.id.sense_listening_chip), keyguardIndicationAreaViewModel)
++
+         indicationAreaHandle =
+             KeyguardIndicationAreaBinder.bind(
+                 constraintLayout.requireViewById(R.id.keyguard_indication_area),
+@@ -57,6 +64,12 @@
+ 
+     override fun applyConstraints(constraintSet: ConstraintSet) {
+         constraintSet.apply {
++            constrainWidth(R.id.sense_listening_chip, ViewGroup.LayoutParams.WRAP_CONTENT)
++            constrainHeight(R.id.sense_listening_chip, ViewGroup.LayoutParams.WRAP_CONTENT)
++            connect(R.id.sense_listening_chip, ConstraintSet.BOTTOM, indicationAreaViewId, ConstraintSet.TOP)
++            connect(R.id.sense_listening_chip, ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START)
++            connect(R.id.sense_listening_chip, ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END)
++
+             constrainWidth(indicationAreaViewId, ViewGroup.LayoutParams.MATCH_PARENT)
+             constrainHeight(indicationAreaViewId, ViewGroup.LayoutParams.WRAP_CONTENT)
+             connect(
+@@ -82,6 +95,8 @@
+     }
+ 
+     override fun removeViews(constraintLayout: ConstraintLayout) {
++        listeningHandle?.dispose()
++        constraintLayout.removeView(R.id.sense_listening_chip)
+         indicationAreaHandle?.dispose()
+         constraintLayout.removeView(indicationAreaViewId)
+     }

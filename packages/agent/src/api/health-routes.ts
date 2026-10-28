@@ -39,6 +39,7 @@ import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
 // without loading the full cloud plugin graph (which may fail in lean test
 // harnesses or partial installs).
 type CloudApiKeyResolver = {
+  getCloudInferenceFailure?: (runtime: AgentRuntime) => unknown;
   resolveCloudApiKey: (
     config: ElizaConfig,
     runtime: AgentRuntime | null,
@@ -718,11 +719,19 @@ export async function handleHealthRoutes(
     // — never 500 the status endpoint for optional cloud status fields.
     const cloudProvisioned = isCloudProvisionedContainer();
     let hasCloudApiKey = false;
+    let cloudInferenceFailure: unknown;
     try {
-      const { resolveCloudApiKey } = await getCloudApiKeyResolver();
+      const { resolveCloudApiKey, getCloudInferenceFailure } =
+        await getCloudApiKeyResolver();
       hasCloudApiKey = Boolean(
         resolveCloudApiKey(effectiveConfig, state.runtime),
       );
+      try {
+        if (state.runtime)
+          cloudInferenceFailure = getCloudInferenceFailure?.(state.runtime);
+      } catch {
+        // Diagnostics must not alter Cloud connection readiness.
+      }
     } catch {
       // error-policy:J4 optional cloud API-key probe must not fail /api/status
     }
@@ -738,10 +747,20 @@ export async function handleHealthRoutes(
       agentName: state.agentName,
       model,
       ...(await responseReadinessFields(state.runtime, state.agentState)),
+      // Registration only: turn authorization and provider acceptance are separate.
+      // Project before serialization; never include action metadata or the runtime graph.
+      deviceActionRegistration: !state.runtime
+        ? "runtime_unavailable"
+        : state.runtime.actions.some(
+              (action) => action.name === "PROPOSE_DEVICE_ACTION",
+            )
+          ? "registered"
+          : "missing",
       startedAt: state.startedAt,
       uptime,
       startup: state.startup,
       cloud: cloudStatus,
+      ...(cloudInferenceFailure ? { cloudInferenceFailure } : {}),
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
     };

@@ -165,7 +165,7 @@ final class ElizaBionicInferenceServer {
 
     /** Paradee bundle layout under {@code <bundleDir>/tts/paradee/}. */
     static final String PARADEE_DIR = "tts/paradee";
-    static final String PARADEE_MODEL = "paradee-8m-v1_0.gguf";
+    static final String PARADEE_MODEL = "paradee-8m-v1_1.gguf";
     static final String MISAKI_LEXICON = "misaki-en-us.lex";
     /** Optional eSpeak NG data for words outside the misaki lexicon. */
     static final String ESPEAK_DATA = "espeak-ng-data";

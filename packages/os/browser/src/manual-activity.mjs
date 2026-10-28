@@ -16,6 +16,12 @@ export function createManualActivity(api, getBinding) {
     record(message, sender) {
       const work = queue.then(async () => {
         const binding = getBinding(String(sender?.tab?.id));
+        let origin;
+        try {
+          origin = new URL(sender?.url).origin;
+        } catch {
+          fail();
+        }
         if (
           !binding ||
           binding.revoked ||
@@ -38,7 +44,9 @@ export function createManualActivity(api, getBinding) {
           message.kind !== "form-submit" ||
           !/^[a-f0-9-]{36}$/.test(message.eventId) ||
           message.bindingRevision !== binding.bindingRevision ||
-          new URL(sender.url).origin !== binding.origin
+          // A task the host extended (a sign-in hand-off) binds each of its
+          // origins; the event records the origin the form was submitted on.
+          !(binding.origins ?? [binding.origin]).includes(origin)
         )
           fail();
         const key = storageKey(binding);
@@ -60,7 +68,7 @@ export function createManualActivity(api, getBinding) {
             eventId: message.eventId,
             kind: "form-submit",
             documentId: sender.documentId,
-            origin: binding.origin,
+            origin,
             epoch: binding.epoch,
             observedAt: Date.now(),
             // A sign-in or code form; never proof of what else was sent.

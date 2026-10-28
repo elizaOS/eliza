@@ -34,12 +34,20 @@ try {
     "runtime/RuntimeRequestDeadline",
     "runtime/RuntimeRequestDispatcher",
     "runtime/RuntimeInstallationIdentity",
+    "runtime/NativeRuntimeEmbeddings",
     "updater/UpdateJournal",
     "updater/QualifiedClockAnchor",
     "updater/JobRunRegistry",
     "updater/PreparationFlow",
     "updater/PreparedRecovery",
     "updater/PreparedAuthorizationStore",
+    "updater/policy/ComfortWindow",
+    "updater/policy/DeviceSignals",
+    "updater/policy/OtaGates",
+    "updater/policy/OtaPolicy",
+    "updater/policy/PolicyEngine",
+    "updater/policy/PolicyLedger",
+    "updater/policy/PolicyStore",
   ].map((name) =>
     path.join(
       root,
@@ -68,6 +76,7 @@ try {
     ["runtime.test", "EmbeddedRuntimeGroupTest"],
     ["runtime.test", "RuntimeRequestDeadlineTest"],
     ["runtime.test", "RuntimeRequestDispatcherTest"],
+    ["runtime.test", "NativeRuntimeEmbeddingsTest"],
     ["updater", "UpdateJournalTest"],
     ["updater", "ProbationWindowTest"],
     ["updater", "QualifiedClockAnchorTest"],
@@ -75,6 +84,7 @@ try {
     ["updater", "PreparationFlowTest"],
     ["updater", "PreparedRecoveryTest"],
     ["updater", "PreparedAuthorizationStoreTest"],
+    ["updater.policy", "OtaPolicyTest"],
   ]) {
     execFileSync(
       bin("java"),
