@@ -108,6 +108,9 @@ describe("body-free canonical named-note Stage1 routing", () => {
   it("cannot leak bodies when discovery is enabled or disabled", async () => {
     const f = await fixture(),
       state = await composeResponseState(f.runtime, f.message(), true);
+    const routing = state.data.providers?.NAMED_NOTE_ROUTING;
+    expect(routing).toBeDefined();
+    if (!routing) throw new Error("Named Notes routing provider is missing");
     const context: ContextObject = {
       id: "named-routing-fixture",
       events: [
@@ -115,7 +118,7 @@ describe("body-free canonical named-note Stage1 routing", () => {
           id: "routing",
           type: "provider",
           name: "NAMED_NOTE_ROUTING",
-          text: state.data.providers.NAMED_NOTE_ROUTING.text,
+          text: routing.text,
         },
       ],
     };
@@ -241,7 +244,9 @@ describe("body-free canonical named-note Stage1 routing", () => {
   });
   it("keeps historical and mixed intent neutral and does not add planner or model calls", async () => {
     const f = await fixture();
-    const outputs = [];
+    const outputs: Awaited<
+      ReturnType<typeof namedNotesRoutingProvider.get>
+    >[] = [];
     for (const text of [
       "What's in Weekend bag?",
       "What did I say about Weekend bag last year?",
