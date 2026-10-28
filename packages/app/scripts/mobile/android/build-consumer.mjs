@@ -47,7 +47,8 @@ const RESERVED_OUTPUT_NAMES = [
  * between them. `record` (`{ name, metadata }`, a plain `.json` name) is the host's
  * build record, written beside the artifacts only after every artifact of this build
  * is in place and before verification, so it always describes the artifacts beside it;
- * a failed build leaves the previous record with the previous artifacts. An archive
+ * a failed Gradle build leaves the previous record with the previous artifacts, and a
+ * copy interrupted after Gradle leaves no record. An archive
  * keeps a copy. `archive` is optional. */
 export function buildAndroidConsumer({
   root = process.cwd(),
@@ -313,6 +314,10 @@ export function buildAndroidConsumer({
     if (!fs.statSync(test.source).isFile())
       throw new Error("Android test APK output is not a file");
   fs.mkdirSync(outputDirectory, { recursive: true });
+  // From the first replaced artifact on, the previous record no longer describes
+  // what is beside it: withdraw it so an interrupted copy leaves no record at all.
+  if (recordText !== null)
+    fs.rmSync(path.join(outputDirectory, record.name), { force: true });
   const copy = (source, target) => {
     fs.rmSync(target, { force: true });
     fs.copyFileSync(source, target, fs.constants.COPYFILE_FICLONE);

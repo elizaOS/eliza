@@ -349,6 +349,27 @@ test("the build record is written only beside this build's artifacts, before ver
     ),
     "previous record",
   );
+  // A copy that fails after Gradle succeeded leaves no record describing mixed artifacts.
+  const interrupted = fixture(t);
+  interrupted.options.record = {
+    name: "build-record.json",
+    metadata: { next: 2 },
+  };
+  fs.mkdirSync(path.join(interrupted.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(interrupted.root, "artifacts/build-record.json"),
+    "previous record",
+  );
+  // A directory where an APK must be copied makes the copy fail midway.
+  fs.mkdirSync(
+    path.join(interrupted.root, "artifacts/launcher-debug.apk/blocked"),
+    { recursive: true },
+  );
+  assert.throws(interrupted.build);
+  assert.equal(
+    fs.existsSync(path.join(interrupted.root, "artifacts/build-record.json")),
+    false,
+  );
 });
 
 test("reusing an archive replaces its contents when selected variants shrink", (t) => {
