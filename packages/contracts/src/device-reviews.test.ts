@@ -99,6 +99,19 @@ test("an all-day event starts exactly at a sub-thirty-minute skipped midnight", 
   assert.equal(result.busy[0]?.start, "1985-12-31T18:30:00.000Z");
 });
 
+test("an all-day event on a date split into two runs starts at the first run", () => {
+  // Antarctica/Casey on 2010-03-05: the date first exists at
+  // 2010-03-04T13:00:00.000Z (00:00 at +11); the offset drops to +08 at
+  // 15:00Z, the clock falls back into Mar 4, and Mar 5 starts again at
+  // 2010-03-04T16:00:00.000Z.
+  const result = calendarAvailability(
+    operation("Antarctica/Casey", Date.UTC(2010, 2, 5)),
+    1,
+    [allDay(Date.UTC(2010, 2, 5))],
+  );
+  assert.equal(result.busy[0]?.start, "2010-03-04T13:00:00.000Z");
+});
+
 test("all-day bounds in a zone whose transition is not at midnight are unchanged", () => {
   // America/New_York springs forward at 02:00; 2026-03-08 local midnight is
   // 05:00Z (EST) and the next midnight is 04:00Z (EDT).

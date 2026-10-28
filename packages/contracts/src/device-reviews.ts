@@ -171,6 +171,19 @@ function civilMidnight(utcMidnight: number, timeZone: string): number {
   // the following day.
   while (localDayAt(guess) < target) guess += 60_000;
   while (localDayAt(guess - 60_000) === target) guess -= 60_000;
+  // A fall back across local midnight can split the civil date into two
+  // disjoint runs (Antarctica/Casey 2010-03-05 exists at +11, the clock
+  // falls back into the previous date, and the date starts again at +08);
+  // the walks settle in the later run and cannot cross the gap. Take the
+  // boundaries implied by the neighbouring days' offsets as well and keep
+  // the earliest in-day one.
+  for (const probe of [target - 86_400_000, target + 86_400_000]) {
+    const offset = localAt(probe) - probe;
+    let candidate = target - offset;
+    if (localDayAt(candidate) !== target) continue;
+    while (localDayAt(candidate - 60_000) === target) candidate -= 60_000;
+    if (candidate < guess) guess = candidate;
+  }
   return guess;
 }
 /** Shared Calendar overlap: all-day bounds are civil dates, not timed UTC events. */
