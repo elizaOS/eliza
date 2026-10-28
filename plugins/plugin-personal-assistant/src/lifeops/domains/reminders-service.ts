@@ -3296,7 +3296,11 @@ export class RemindersDomain {
     const notifier = this.ctx.runtime.getService(ServiceType.NOTIFICATION) as {
       listDurableIncludingExpired?: () => Promise<{ id: string; agentId?: string; source: string; category: string; groupKey?: string; data?: Record<string, unknown>; createdAt: number; readAt?: number | null }[]>;
     } | null;
-    const notifications = await notifier?.listDurableIncludingExpired?.() ?? [];
+    // Uncertain notification persistence only withholds read receipts; it never
+    // aborts the reminder tick or the escalation that follows it.
+    const notifications = await Promise.resolve(notifier?.listDurableIncludingExpired?.())
+      .then((rows) => rows ?? [])
+      .catch(() => []);
     for (const attempt of attempts) {
       if (attempt.channel !== "in_app" || attempt.outcome !== "delivered" || attempt.agentId !== this.ctx.agentId()) continue;
       const id = attempt.deliveryMetadata.notificationId;
