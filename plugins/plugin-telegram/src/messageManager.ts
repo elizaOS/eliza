@@ -167,13 +167,40 @@ async function resolveTelegramFileBytes(
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
 const CODE_FENCE = "```";
 
-/** The opener (```lang) of a code block left open at the end of `text`. */
+/** The opener (```lang) of a backtick code block left open at the end of `text`. */
 function openCodeFence(text: string): string | null {
-  const fences = text.split(CODE_FENCE).length - 1;
-  if (fences % 2 === 0) return null;
-  const start = text.lastIndexOf(CODE_FENCE);
-  const lang = /^[^\s`]*/.exec(text.slice(start + CODE_FENCE.length))?.[0];
-  return `${CODE_FENCE}${lang ?? ""}`;
+  // Walk fence lines with the CommonMark rules discord's chunker uses: a fence
+  // opens on a line of 3+ backticks or tildes (up to 3 leading spaces); a
+  // backtick fence's info string may not contain a backtick, so a line like
+  // "```js" inside an open block is content, not a closer; a closer uses the
+  // same marker, at least as many characters, and only spaces/tabs after it.
+  // Counting every ``` occurrence instead miscounts that line as a closer, so
+  // a chunk cut after it loses the reopened opener: the rest of the block is
+  // sent as prose and the true closer opens a new block over the text after it.
+  // Tilde blocks are tracked so a ``` line inside one is not mistaken for a
+  // backtick fence, but only backtick openers are returned: the Telegram
+  // converter only closes ``` fences.
+  let open: { markerChar: string; markerLen: number; info: string } | null =
+    null;
+  for (const line of text.split("\n")) {
+    const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!match) continue;
+    const marker = match[2] ?? "";
+    const info = match[3] ?? "";
+    if (marker[0] === "`" && info.includes("`")) continue;
+    if (open === null) {
+      open = { markerChar: marker[0] ?? "`", markerLen: marker.length, info };
+    } else if (
+      marker[0] === open.markerChar &&
+      marker.length >= open.markerLen &&
+      /^[ \t\r]*$/.test(info)
+    ) {
+      open = null;
+    }
+  }
+  if (!open || open.markerChar !== "`") return null;
+  const lang = /^[^\s`]*/.exec(open.info)?.[0] ?? "";
+  return `${CODE_FENCE}${lang}`;
 }
 const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
