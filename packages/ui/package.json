@@ -129,6 +129,18 @@
       "import": "./dist/voice/voice-session-client-core.js",
       "default": "./dist/voice/voice-session-client-core.js"
     },
+    "./overview/daily-overview": {
+      "eliza-source": "./src/overview/daily-overview.ts",
+      "types": "./dist/overview/daily-overview.d.ts",
+      "import": "./dist/overview/daily-overview.js",
+      "default": "./dist/overview/daily-overview.js"
+    },
+    "./overview/OverviewCards": {
+      "eliza-source": "./src/overview/OverviewCards.tsx",
+      "types": "./dist/overview/OverviewCards.d.ts",
+      "import": "./dist/overview/OverviewCards.js",
+      "default": "./dist/overview/OverviewCards.js"
+    },
     "./voice/batch-conversation": {
       "eliza-source": "./src/voice/batch-conversation.ts",
       "types": "./dist/voice/batch-conversation.d.ts",
@@ -152,6 +164,18 @@
       "types": "./dist/accessibility/screen-focus.d.ts",
       "import": "./dist/accessibility/screen-focus.js",
       "default": "./dist/accessibility/screen-focus.js"
+    },
+    "./durable-draft": {
+      "eliza-source": "./src/state/durable-draft.ts",
+      "types": "./dist/state/durable-draft.d.ts",
+      "import": "./dist/state/durable-draft.js",
+      "default": "./dist/state/durable-draft.js"
+    },
+    "./durable-draft-controller": {
+      "eliza-source": "./src/state/durable-draft-controller.ts",
+      "types": "./dist/state/durable-draft-controller.d.ts",
+      "import": "./dist/state/durable-draft-controller.js",
+      "default": "./dist/state/durable-draft-controller.js"
     },
     "./voice/draft-transcript-guard": {
       "eliza-source": "./src/voice/draft-transcript-guard.ts",
