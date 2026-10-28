@@ -9,11 +9,7 @@ import type {
 	MessageActionRowComponentBuilder,
 	TextChannel,
 } from "discord.js";
-import {
-	DEFAULT_DRAFT_CHUNK_CONFIG,
-	type DraftChunkConfig,
-	findBreakPoint,
-} from "./draft-chunking";
+import { chunkDiscordText } from "./messaging";
 
 type DraftReplyToMode = "off" | "first" | "all";
 
@@ -21,7 +17,6 @@ export interface DraftStreamOptions {
 	throttleMs?: number;
 	minInitialChars?: number;
 	maxChars?: number;
-	chunkConfig?: Partial<DraftChunkConfig>;
 	log?: (msg: string) => void;
 	warn?: (msg: string) => void;
 }
@@ -33,9 +28,15 @@ export interface DraftStreamController {
 		replyToMode?: DraftReplyToMode,
 	) => Promise<DiscordMessage | null>;
 	update: (text: string) => void;
+	/**
+	 * Sends the final reply. A send that Discord refuses stops the remaining
+	 * parts and is passed to `onSendFailure`; the returned messages are the
+	 * parts that were delivered.
+	 */
 	finalize: (
 		text: string,
 		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+		onSendFailure?: (error: unknown) => void,
 	) => Promise<DiscordMessage[]>;
 	abort: (reason?: string) => Promise<void>;
 	/** End streaming without emitting an interruption message. */
@@ -72,6 +73,8 @@ export function createDraftStreamController(
 	let started = false;
 	let done = false;
 	const activeSnapshots = new Set<Promise<unknown>>();
+	// The error of the last refused snapshot send, read by finalize.
+	let lastSendError: unknown;
 
 	const clearThrottle = () => {
 		if (throttleTimer) {
@@ -135,6 +138,7 @@ export function createDraftStreamController(
 						warn(
 							`draft-stream: final component resend failed: ${sendErrorMessage}`,
 						);
+						lastSendError = sendError;
 						return false;
 					}
 				}
@@ -160,6 +164,7 @@ export function createDraftStreamController(
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			warn(`draft-stream: send failed: ${errorMessage}`);
+			lastSendError = error;
 			return false;
 		}
 	};
@@ -236,6 +241,7 @@ export function createDraftStreamController(
 	const finalize = async (
 		text: string,
 		components?: ActionRowBuilder<MessageActionRowComponentBuilder>[],
+		onSendFailure?: (error: unknown) => void,
 	): Promise<DiscordMessage[]> => {
 		if (done) {
 			return sentMessages;
@@ -256,63 +262,36 @@ export function createDraftStreamController(
 			return [];
 		}
 
-		if (trimmed.length <= maxChars) {
-			await sendTrackedSnapshot(trimmed, components);
-			if (done) {
-				return sentMessages;
-			}
-			done = true;
-			log("draft-stream: finalized (single message)");
-			return sentMessages;
-		}
-
-		const chunkConfig = {
-			...DEFAULT_DRAFT_CHUNK_CONFIG,
-			...options.chunkConfig,
-		};
-		const breakPoint = findBreakPoint(
-			trimmed,
-			maxChars,
-			chunkConfig.breakPreference,
+		// Fence-aware: a code block cut between messages is closed and reopened.
+		const chunks =
+			trimmed.length <= maxChars
+				? [trimmed]
+				: chunkDiscordText(trimmed, {
+						maxChars,
+						maxLines: Number.POSITIVE_INFINITY,
+					});
+		const [firstChunk, ...overflow] = chunks;
+		lastSendError = undefined;
+		const firstSent = await sendTrackedSnapshot(
+			firstChunk ?? "",
+			overflow.length === 0 ? components : undefined,
 		);
-		// findBreakPoint's raw maxLen fallback can land between the two UTF-16
-		// code units of a surrogate pair (most emoji), leaving a lone surrogate
-		// at the chunk boundary that corrupts the character in the delivered
-		// draft. truncateWellFormed backs the cut off by one unit instead.
-		const firstHead = truncateWellFormed(trimmed, breakPoint);
-		if (firstHead.length === 0) {
-			throw new RangeError("Discord draft chunk limit made no UTF-16 progress");
-		}
-		const firstChunk = firstHead.trimEnd();
-		let remaining = trimmed.slice(firstHead.length).trimStart();
-
-		await sendTrackedSnapshot(firstChunk);
 		if (done) {
 			return sentMessages;
 		}
+		if (!firstSent && lastSendError !== undefined) {
+			// The rest of the reply would arrive without its start.
+			done = true;
+			onSendFailure?.(lastSendError);
+			return sentMessages;
+		}
 
-		while (remaining.length > 0 && channel) {
-			if (done) {
+		for (const [index, chunk] of overflow.entries()) {
+			if (done || !channel) {
 				break;
 			}
-			const nextBreak = findBreakPoint(
-				remaining,
-				maxChars,
-				chunkConfig.breakPreference,
-			);
-			const head = truncateWellFormed(remaining, nextBreak);
-			if (head.length === 0) {
-				throw new RangeError(
-					"Discord draft chunk limit made no UTF-16 progress",
-				);
-			}
-			const chunk = head.trimEnd();
-			remaining = remaining.slice(head.length).trimStart();
-			if (!chunk) {
-				continue;
-			}
+			const isLastChunk = index === overflow.length - 1;
 			try {
-				const isLastChunk = remaining.length === 0;
 				await trackActiveSnapshot(
 					channel
 						.send({
@@ -335,12 +314,17 @@ export function createDraftStreamController(
 				warn(
 					`draft-stream: overflow send failed: ${error instanceof Error ? error.message : String(error)}`,
 				);
+				onSendFailure?.(error);
 				break;
 			}
 		}
 
 		done = true;
-		log("draft-stream: finalized (multi-message)");
+		log(
+			chunks.length === 1
+				? "draft-stream: finalized (single message)"
+				: "draft-stream: finalized (multi-message)",
+		);
 		return sentMessages;
 	};
 

@@ -427,10 +427,12 @@ const appCommand: SlashCommand = {
 	ephemeral: true,
 	requiredRole: "ADMIN",
 	requiredPermissions: PermissionFlagsBits.ManageGuild,
-	async execute(interaction, runtime) {
+	async execute(interaction, runtime, context) {
 		const memory: Memory = {
 			id: createUniqueUuid(runtime, `${interaction.id}-app`) as UUID,
-			entityId: createUniqueUuid(runtime, interaction.user.id) as UUID,
+			entityId: context?.entityId
+				? (context.entityId as UUID)
+				: (createUniqueUuid(runtime, interaction.user.id) as UUID),
 			agentId: runtime.agentId,
 			roomId: createUniqueUuid(
 				runtime,
@@ -756,7 +758,12 @@ const askCommand: SlashCommand = {
 		await interaction.deferReply();
 
 		const channelId = interaction.channelId ?? interaction.user.id;
-		const entityId = createUniqueUuid(runtime, interaction.user.id);
+		// The service resolved the caller before dispatch (an owner's Discord
+		// id maps to the canonical owner entity); a fresh entity from the raw
+		// id would answer the owner as a stranger and split their history.
+		const entityId = context?.entityId
+			? (context.entityId as UUID)
+			: createUniqueUuid(runtime, interaction.user.id);
 		const roomId = createUniqueUuid(runtime, channelId);
 		// core's ChannelType has no guild-text variant; DiscordService.getChannelType
 		// (service.ts) maps every guild text/news/thread/forum channel to GROUP, so

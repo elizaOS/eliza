@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "target": "pixel10a",
+  "sourceProfile": "pixel10a",
+  "vendorDirectory": "alphaphone",
+  "productName": "eliza_stallion_phone",
+  "model": "Eliza Pixel 10a",
+  "brand": "elizaOS",
+  "manufacturer": "Google",
+  "releaseConfig": "cp2a",
+  "launcher": {
+    "moduleName": "Eliza",
+    "packageName": "ai.elizaos.app"
+  },
+  "releaseQualified": false,
+  "sense": {
+    "moduleName": "ElizaSense",
+    "appName": "Eliza",
+    "wakeNames": ["eliza"],
+    "componentPackage": "ai.eliza.sense",
+    "assistActivity": "ai.elizaos.app.ElizaAssistActivity",
+    "storageName": "listener-settings"
+  }
+}

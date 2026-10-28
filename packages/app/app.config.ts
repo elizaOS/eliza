@@ -14,6 +14,7 @@ import type { AppConfig } from "@elizaos/host/protocol";
 import { EXTERNAL_URLS } from "@elizaos/host/protocol";
 
 interface AppWebConfig {
+  startupLogoPath?: string;
   shortName: string;
   themeColor: string;
   backgroundColor: string;
@@ -64,6 +65,7 @@ export function resolveAppConfig(env: AppIdentityEnv = process.env) {
       urlScheme: identity.urlScheme,
     },
     web: {
+      startupLogoPath: "/brand/logos/logo_white_nobg.svg",
       shortName: identity.appName,
       ...(vpsSidecar ? { iconBackgroundColor: "#202124" } : {}),
       // Launch/loading surface used by manifest theme_color + background_color,

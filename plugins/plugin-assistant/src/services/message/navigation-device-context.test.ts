@@ -6,17 +6,41 @@ const source = readFileSync(
   new URL("./context-assembly.ts", import.meta.url),
   "utf8",
 );
-const start = source.indexOf(
-  "  const authenticatedDeviceTurn = getDeviceActionTurn();",
+const parsed = ts.createSourceFile(
+  "context-assembly.ts",
+  source,
+  ts.ScriptTarget.Latest,
+  true,
 );
-const end = source.indexOf("  const responseDecision =", start);
+let statements: readonly ts.Statement[] = [];
+function visit(node: ts.Node) {
+  if (ts.isBlock(node)) {
+    const start = node.statements.findIndex(
+      (statement) =>
+        ts.isVariableStatement(statement) &&
+        statement.declarationList.declarations.some(
+          (declaration) =>
+            declaration.name.getText(parsed) === "authenticatedDeviceTurn",
+        ),
+    );
+    if (start >= 0) statements = node.statements.slice(start, start + 2);
+  }
+  ts.forEachChild(node, visit);
+}
+visit(parsed);
+if (statements.length !== 2)
+  throw new Error("Authenticated capability context block is missing");
 const fn = new Function(
   "args",
   "getDeviceActionTurn",
   "deviceOperationSupportedByCapabilities",
   "CLOCK_ALARMS_CAPABILITY",
+  "currentAppRecordSource",
+  "deviceActionToolGuidance",
   ts.transpileModule(
-    "const events=[];\n" + source.slice(start, end) + "\nreturn events;",
+    "const events=[];\n" +
+      statements.map((statement) => statement.getText(parsed)).join("\n") +
+      "\nreturn events;",
     {
       compilerOptions: {
         target: ts.ScriptTarget.ES2022,
@@ -25,18 +49,20 @@ const fn = new Function(
     },
   ).outputText,
 );
-const runtime = {};
+const runtime = { actions: [{ name: "PROPOSE_DEVICE_ACTION" }] };
 function render(capabilities: string[], matching = true) {
   const turn = {
     runtime: matching ? runtime : {},
     credential: { capabilities },
   };
   return fn(
-    { runtime },
+    { runtime, includeTools: true },
     () => turn,
     (operation: string, caps: string[]) =>
       caps.includes("native.all") || caps.includes(operation),
     "clock.alarms.v1",
+    () => "runtime",
+    () => "",
   ) as Array<{ content: string }>;
 }
 for (const capabilities of [
@@ -47,7 +73,7 @@ for (const capabilities of [
   test(`actual authenticated context separates renderer navigation from native approval for ${capabilities[0]}`, () => {
     const text = render(capabilities)[0].content;
     expect(text).toContain("registered VIEWS or VIEWS_SHOW action");
-    expect(text).toContain("do not substitute PROPOSE_DEVICE_ACTION open_view");
+    expect(text).toContain("do not substitute a native open_view proposal");
     expect(text).toContain(
       "native device and external-app handoffs retain their existing capability and approval requirements",
     );

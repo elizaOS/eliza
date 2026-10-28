@@ -290,6 +290,19 @@ function CloudProviders({
 }
 /** Route groups consolidated into the normal Eliza agent-app shell. */
 const MANAGED_CLOUD_APP_GROUPS = new Set(["cloud", "admin"]);
+function LegacySecurityRedirect(): React.JSX.Element {
+  const location = useLocation();
+  return (
+    <Navigate
+      to={{
+        pathname: "/cloud/account",
+        search: location.search,
+        hash: location.hash,
+      }}
+      replace
+    />
+  );
+}
 function CanonicalCloudAppRedirect(): React.JSX.Element {
   const location = useLocation();
   const environment = elizaCloudEnvironmentForHostname(
@@ -510,6 +523,8 @@ export function CloudRouterShell({
               }
             />
           ) : null}
+
+          <Route path="cloud/security" element={<LegacySecurityRedirect />} />
 
           {cloudRoutes.map((route) => (
             <Route

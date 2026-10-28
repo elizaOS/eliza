@@ -83,3 +83,25 @@ describe("fact keyword retrieval path", () => {
     ).toBe(1);
   });
 });
+
+describe("fact keywords across Unicode normalization forms", () => {
+  const composedClaim = "prefers café au lait";
+  const decomposedClaim = composedClaim.normalize("NFD");
+  const composedHangul = "사용자는 녹차를 좋아한다";
+  const decomposedHangul = composedHangul.normalize("NFD");
+
+  it("gives the same tokens for composed and decomposed text", () => {
+    expect(decomposedClaim).not.toBe(composedClaim);
+    expect(tokenizeFactText(decomposedClaim)).toEqual(
+      tokenizeFactText(composedClaim),
+    );
+    expect(tokenizeFactText(decomposedHangul)).toEqual(
+      tokenizeFactText(composedHangul),
+    );
+  });
+
+  it("scores composed and decomposed copies of a claim as identical", () => {
+    expect(factLexicalSimilarity([composedHangul], [decomposedHangul])).toBe(1);
+    expect(factLexicalSimilarity([composedClaim], [decomposedClaim])).toBe(1);
+  });
+});

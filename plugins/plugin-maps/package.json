@@ -84,12 +84,12 @@
     "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*",
     "@capacitor/core": "^8.5.2",
-    "maplibre-gl": "^6.14.0"
+    "maplibre-gl": "^6.16.0"
   },
   "peerDependencies": {
     "react-dom": "^19.0.0",
     "@capacitor/core": "^8.5.2",
-    "maplibre-gl": "^6.14.0"
+    "maplibre-gl": "^6.16.0"
   },
   "publishConfig": {
     "access": "public"

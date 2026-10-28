@@ -371,14 +371,22 @@ export function messageHandlerFromFieldResult(
   const replyTextRaw = stripJsonStructuralJunkReply(
     typeof result.replyText === "string" ? result.replyText : "",
   );
-  const replyEffectStatus = normalizeReplyEffectStatus(
-    result.replyEffectStatus,
-  );
   const declaredIntents = requireCompleteIntents(result.intents);
   const actionableIntents = declaredIntents.filter(
     (intent) => intent.trim().length > 0,
   );
   const modelRequiresTool = result.requiresTool === true;
+  const declaredReplyEffectStatus = normalizeReplyEffectStatus(
+    result.replyEffectStatus,
+  );
+  // applied classifies the reply's own completed-change claim. An empty reply
+  // makes none, so the claimed change is still work the planner owes.
+  const replyEffectStatus =
+    declaredReplyEffectStatus === "applied" &&
+    !replyTextRaw.trim() &&
+    sourceReply === undefined
+      ? "pending"
+      : declaredReplyEffectStatus;
   const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
     candidateActions,
     runtimeContext,

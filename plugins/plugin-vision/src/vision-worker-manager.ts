@@ -49,6 +49,8 @@ export class VisionWorkerManager {
 
   private restartAttempts = new Map<string, number>();
   private readonly MAX_RESTART_ATTEMPTS = 3;
+  /** Set by `stop()`: a restart timer that fires after shutdown must not start a worker. */
+  private stopped = false;
 
   constructor(config: VisionConfig) {
     this.config = config;
@@ -63,6 +65,7 @@ export class VisionWorkerManager {
   async initialize(): Promise<void> {
     logger.info("[VisionWorkerManager] Initializing worker threads...");
 
+    this.stopped = false;
     try {
       await this.startScreenCaptureWorker();
 
@@ -382,6 +385,8 @@ export class VisionWorkerManager {
   async stop(): Promise<void> {
     logger.info("[VisionWorkerManager] Stopping all workers...");
 
+    this.stopped = true;
+
     const stopPromises: Promise<void>[] = [];
 
     if (this.screenCaptureWorker) {
@@ -435,6 +440,7 @@ export class VisionWorkerManager {
   }
 
   private async restartScreenCaptureWorker(): Promise<void> {
+    if (this.stopped) return;
     const attempts = this.restartAttempts.get("screenCapture") || 0;
 
     if (attempts >= this.MAX_RESTART_ATTEMPTS) {
@@ -468,6 +474,7 @@ export class VisionWorkerManager {
   }
 
   private async restartOCRWorker(): Promise<void> {
+    if (this.stopped) return;
     const attempts = this.restartAttempts.get("ocr") || 0;
 
     if (attempts >= this.MAX_RESTART_ATTEMPTS) {
