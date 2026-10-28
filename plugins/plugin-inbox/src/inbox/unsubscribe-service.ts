@@ -52,6 +52,9 @@ const UNSUBSCRIBE_HTTP_TIMEOUT_MS = 15_000;
 /** Cap redirect hops so a hostile chain cannot spin the guard forever. */
 const UNSUBSCRIBE_HTTP_MAX_REDIRECTS = 5;
 
+/** Default scan bound when the caller passes no maxMessages. */
+const EMAIL_UNSUBSCRIBE_DEFAULT_MAX_MESSAGES = 15000;
+
 /** Deterministic-test seam for the SSRF-guarded unsubscribe transport. */
 export type UnsubscribeHttpTransport = Pick<
   Parameters<typeof fetchWithSsrfGuard>[0],
@@ -308,7 +311,15 @@ export class InboxUnsubscribeService {
     const query =
       normalizeOptionalString(request.query) ??
       "(category:promotions OR category:updates OR unsubscribe) newer_than:180d";
-    const maxMessages = request.maxMessages ?? undefined;
+    // Default bound: with no maxMessages the Gmail search paged
+    // the entire 180-day promotional query result, fetching
+    // metadata per message, and the route's only caller passes
+    // an empty request. Gmail lists newest-first, so the cap
+    // covers the most recent, currently-active senders — the
+    // ones the unsubscribe surface exists to act on — and an
+    // explicit larger maxMessages still opts into a full census.
+    const maxMessages =
+      request.maxMessages ?? EMAIL_UNSUBSCRIBE_DEFAULT_MAX_MESSAGES;
     if (
       maxMessages !== undefined &&
       (!Number.isSafeInteger(maxMessages) || maxMessages <= 0)
