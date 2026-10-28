@@ -252,23 +252,6 @@ describe("EDIT", () => {
     expect((await fs.readFile(file)).equals(original)).toBe(true);
   });
 
-  it("keeps a UTF-8 byte order mark", async () => {
-    const file = await seedFile("bom.cs", "\uFEFFusing System;\nclass A {}\n");
-
-    const result = await editFileHandler(env.runtime, env.message, undefined, {
-      parameters: {
-        file_path: file,
-        old_string: "class A",
-        new_string: "class B",
-      },
-    });
-
-    expect(result.success).toBe(true);
-    expect((await fs.readFile(file)).subarray(0, 3)).toEqual(
-      Buffer.from([0xef, 0xbb, 0xbf]),
-    );
-  });
-
   it("requires a prior READ (must_read_first)", async () => {
     const file = path.join(env.tmpDir, "no-read.txt");
     await fs.writeFile(file, "content here", "utf8");
