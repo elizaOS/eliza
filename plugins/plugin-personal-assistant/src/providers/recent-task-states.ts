@@ -60,6 +60,15 @@ export interface RecentTaskStatesProvider {
 const TASK_LOG_CACHE_KEY = "eliza:lifeops:scheduled-task-log:v1";
 const DEFAULT_LOOKBACK_DAYS = 7;
 /**
+ * Retention for the stored log. summarize() only ever reads the
+ * lookback window (7 days by default), so entries far older than
+ * that are dead weight — yet without trimming, every append
+ * rewrites and every read re-parses and re-sorts the whole
+ * multi-year array. 90 days is 12x the default window, so no
+ * in-repo consumer is affected.
+ */
+const TASK_LOG_RETENTION_MS = 90 * 86_400_000;
+/**
  * Read the scheduled-task log from the cache-backed list maintained alongside
  * the in-memory runner. Entries surface in **chronological order (oldest first)**.
  */
@@ -100,8 +109,20 @@ export async function appendScheduledTaskLogEntry(
   const cache = asCacheRuntime(runtime);
   const existing =
     (await cache.getCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY)) ?? [];
-  existing.push(entry);
-  await cache.setCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY, existing);
+  // Trim on append so the log cannot grow forever: drop only
+  // entries that are finitely dated, not from the future, and
+  // older than retention. Unparseable and future-dated entries
+  // are kept conservatively; a future entry becomes trimmable
+  // once it ages past retention.
+  const now = Date.now();
+  const retained = existing.filter((stored) => {
+    const ms = Date.parse(stored.recordedAt);
+    return (
+      !Number.isFinite(ms) || ms > now || now - ms <= TASK_LOG_RETENTION_MS
+    );
+  });
+  retained.push(entry);
+  await cache.setCache<RecentTaskStateEntry[]>(TASK_LOG_CACHE_KEY, retained);
 }
 
 const TERMINAL_OUTCOMES: ReadonlySet<TerminalState> = new Set<TerminalState>([
