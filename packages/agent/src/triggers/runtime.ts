@@ -35,7 +35,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
   MISSED_SCHEDULED_OCCURRENCE_TEXT,
-  MISSED_SCHEDULED_OCCURRENCES_SETTING,
+  recordsMissedScheduledOccurrences,
   registerRuntimeManagedInternalActor,
   ServiceType,
   stringToUuid,
@@ -173,13 +173,8 @@ function missedScheduledPromptOccurrence(
     !Number.isSafeInteger(trigger.nextRunAtMs)
   )
     return false;
-  const configured = runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING);
-  const policy =
-    typeof configured === "string"
-      ? configured
-      : process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING];
   return (
-    policy === "record" &&
+    recordsMissedScheduledOccurrences(runtime) &&
     isMissedScheduledOccurrence(trigger.nextRunAtMs, Date.now())
   );
 }
@@ -1009,6 +1004,10 @@ export async function executeTriggerTask(
     latencyMs: finishedAt - startedAt,
     source: options.source,
     eventKind: options.event?.kind,
+    // The durable marker that nothing ran: the occurrence this record missed.
+    ...(missed && typeof trigger.nextRunAtMs === "number"
+      ? { missedOccurrenceAt: trigger.nextRunAtMs }
+      : {}),
   };
 
   // A missed occurrence did not run: it consumes no run and is not a last run.

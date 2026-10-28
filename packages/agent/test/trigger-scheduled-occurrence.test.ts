@@ -233,7 +233,11 @@ it("records a prompt occurrence that passed while the agent was not running once
     status: "skipped",
     error: MISSED_SCHEDULED_OCCURRENCE_TEXT,
     taskDeleted: false,
-    runRecord: { status: "skipped", source: "scheduler" },
+    runRecord: {
+      status: "skipped",
+      source: "scheduler",
+      missedOccurrenceAt: Date.parse("2026-10-12T09:00:00.000Z"),
+    },
   });
   const metadata = stored(f);
   expect(metadata?.trigger).toMatchObject({
@@ -256,6 +260,10 @@ it("records a prompt occurrence that passed while the agent was not running once
   await fire(f, "2026-10-13T10:00:00.000Z", "manual");
   expect(f.prompts).toHaveLength(2);
   expect(stored(f)?.trigger?.runCount).toBe(2);
+  // Only the missed record carries the marker; runs that ran never do.
+  expect(
+    stored(f)?.triggerRuns?.map((run) => run.missedOccurrenceAt ?? null),
+  ).toEqual([Date.parse("2026-10-12T09:00:00.000Z"), null, null]);
 });
 
 it("keeps a missed one-time prompt listed and disabled so the owner can still run it", async () => {
@@ -343,6 +351,9 @@ it("reports a workflow occurrence the workflow service recorded as missed withou
     error: MISSED_SCHEDULED_OCCURRENCE_TEXT,
     executionId: "exec-1",
     taskDeleted: false,
+    runRecord: {
+      missedOccurrenceAt: Date.parse("2026-10-12T09:00:00.000Z"),
+    },
   });
   expect(stored(f)?.trigger).toMatchObject({
     runCount: 0,

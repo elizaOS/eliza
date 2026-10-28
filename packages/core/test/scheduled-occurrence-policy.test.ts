@@ -8,6 +8,7 @@ import {
 	agentProcessStartedAtMs,
 	isMissedScheduledOccurrence,
 	MISSED_SCHEDULED_OCCURRENCES_SETTING,
+	recordsMissedScheduledOccurrences,
 	SCHEDULED_OCCURRENCE_WINDOW_MS,
 } from "../src/services/trigger-scheduling.ts";
 
@@ -45,5 +46,24 @@ describe("powered-on scheduled occurrences", () => {
 		expect(MISSED_SCHEDULED_OCCURRENCES_SETTING).toBe(
 			"ELIZA_MISSED_SCHEDULED_OCCURRENCES",
 		);
+	});
+
+	it("is selected by the runtime setting, then the process environment", () => {
+		const previous = process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING];
+		const setting = (value: unknown) => ({ getSetting: () => value });
+		try {
+			delete process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING];
+			expect(recordsMissedScheduledOccurrences(undefined)).toBe(false);
+			expect(recordsMissedScheduledOccurrences(setting(null))).toBe(false);
+			expect(recordsMissedScheduledOccurrences(setting("record"))).toBe(true);
+			process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING] = "record";
+			expect(recordsMissedScheduledOccurrences(setting(undefined))).toBe(true);
+			// An explicit runtime value is the host's choice, even against the environment.
+			expect(recordsMissedScheduledOccurrences(setting("run"))).toBe(false);
+		} finally {
+			if (previous === undefined)
+				delete process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING];
+			else process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING] = previous;
+		}
 	});
 });

@@ -463,6 +463,27 @@ export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
 export const MISSED_SCHEDULED_OCCURRENCE_TEXT =
 	"The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.";
 
+/**
+ * Whether this host selected the powered-on policy: the runtime setting wins,
+ * then the process environment (the native runtime profile sets it there).
+ */
+export function recordsMissedScheduledOccurrences(
+	runtime?: { getSetting?(key: string): unknown } | null,
+): boolean {
+	// Partial runtimes (tests, narrow hosts) may not expose settings.
+	const configured =
+		typeof runtime?.getSetting === "function"
+			? runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING)
+			: undefined;
+	const value =
+		typeof configured === "string"
+			? configured
+			: typeof process !== "undefined"
+				? process.env?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
+				: undefined;
+	return value === "record";
+}
+
 /** Wall-clock instant at which this agent process started. */
 export function agentProcessStartedAtMs(nowMs: number = Date.now()): number {
 	const uptime =

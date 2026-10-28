@@ -12,8 +12,8 @@ import {
   isMissedScheduledOccurrence,
   logger,
   MISSED_SCHEDULED_OCCURRENCE_TEXT,
-  MISSED_SCHEDULED_OCCURRENCES_SETTING,
   ModelType,
+  recordsMissedScheduledOccurrences,
   Service,
   stringToUuid,
   type Task,
@@ -132,12 +132,7 @@ export interface ExecuteWorkflowOptions {
  * running a late occurrence.
  */
 export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSetting'>): boolean {
-  const configured = runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING);
-  return (
-    (typeof configured === 'string'
-      ? configured
-      : process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING]) === 'record'
-  );
+  return recordsMissedScheduledOccurrences(runtime);
 }
 
 /** Whether a terminal execution output records a missed scheduled occurrence. */
