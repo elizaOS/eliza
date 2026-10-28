@@ -228,3 +228,84 @@ it("queue shutdown waits for an active SQL write before flushing pending work", 
 		await cleanup();
 	}
 });
+
+it("queue shutdown waits for overlapping SQL work after a retry hook throws", async () => {
+	const { runtime, cleanup } = await createTestRuntime({
+		characterName: "QueueFailureStop",
+	});
+	const entered = barrier();
+	const finish = barrier();
+	const retryFailed = barrier();
+	const written = barrier();
+	const retryError = new Error("retry policy failed");
+	const order: string[] = [];
+	const queue = new BatchQueue<string>({
+		name: "QUEUE_FAILURE_STOP",
+		batchSize: 2,
+		maxParallel: 2,
+		drainIntervalMs: 60_000,
+		getPriority: () => "high",
+		process: async (item) => {
+			if (item === "failed") {
+				await entered.reached;
+				throw new Error("processor failed");
+			}
+			if (item === "blocked") {
+				entered.release();
+				await finish.reached;
+			}
+			await runtime.setCache(`queue-failure-${item}`, item);
+			order.push(item);
+			if (item === "blocked") written.release();
+		},
+		shouldRetry: () => {
+			retryFailed.release();
+			throw retryError;
+		},
+	});
+	let drain: Promise<unknown> | undefined;
+	let stop: Promise<void> | undefined;
+	try {
+		await queue.start(runtime);
+		queue.enqueue("failed");
+		queue.enqueue("blocked");
+		drain = queue.drain().catch((error: unknown) => error);
+		await retryFailed.reached;
+		queue.enqueue("pending");
+		let stopped = false;
+		stop = queue.dispose(runtime).then(() => {
+			stopped = true;
+		});
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		const earlyStop = stopped;
+		const beforeRelease = await runtime.getCache("queue-failure-blocked");
+		expect(queue.enqueue("late")).toBe(false);
+		finish.release();
+		await written.reached;
+		expect(await drain).toBe(retryError);
+		await stop;
+		const blocked = await runtime.getCache("queue-failure-blocked");
+		const pending = await runtime.getCache("queue-failure-pending");
+		const tasks = await runtime.getTasksByName("QUEUE_FAILURE_STOP");
+		console.log("BATCH_FAILURE_SHUTDOWN_OBSERVED", {
+			earlyStop,
+			beforeRelease,
+			blocked,
+			pending,
+			order,
+			tasks: tasks.length,
+		});
+		expect(earlyStop).toBe(false);
+		expect(order).toEqual(["blocked", "pending"]);
+		expect(blocked).toBe("blocked");
+		expect(pending).toBe("pending");
+		expect(tasks).toEqual([]);
+		expect(queue.size).toBe(0);
+	} finally {
+		finish.release();
+		await drain;
+		await stop;
+		await queue.dispose(runtime);
+		await cleanup();
+	}
+});

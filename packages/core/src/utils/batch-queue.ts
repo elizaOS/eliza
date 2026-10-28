@@ -622,7 +622,14 @@ export class BatchProcessor<T> {
 	}
 
 	async processBatch(items: T[]): Promise<BatchItemOutcome<T>[]> {
-		return Promise.all(items.map((item) => this.processOne(item)));
+		const pending = items.map((item) => this.processOne(item));
+		try {
+			return await Promise.all(pending);
+		} catch (error) {
+			// Keep admitted work alive until it settles, then preserve the first error.
+			await Promise.allSettled(pending);
+			throw error;
+		}
 	}
 
 	private async processOne(item: T): Promise<BatchItemOutcome<T>> {
