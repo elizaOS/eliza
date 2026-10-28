@@ -336,9 +336,7 @@ describe("acquireDatabaseStartupLock", () => {
 			});
 			expect(result.ok).toBe(false);
 			if (result.ok) throw new Error("expected held lock");
-			expect(result.error).toBe(
-				`PGlite startup lock is held at ${lockPath}.`,
-			);
+			expect(result.error).toBe(`PGlite startup lock is held at ${lockPath}.`);
 			expect(result.snapshot).toEqual({
 				held: true,
 				stale: false,
