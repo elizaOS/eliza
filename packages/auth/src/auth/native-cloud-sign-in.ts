@@ -300,6 +300,21 @@ export function nativeSignInVerified<E extends string>(
 ): NativeCloudSignInAuthenticated<E> | NativeCloudSignInMfaRequired {
   const row = object(value);
   if (row.status === "mfa") {
+    // Only the documented fields, and only for this deployment when the host names one.
+    if (
+      Object.keys(row).some(
+        (key) =>
+          ![
+            "status",
+            "method",
+            "expiresAt",
+            "attemptId",
+            "environment",
+          ].includes(key),
+      ) ||
+      (row.environment !== undefined && row.environment !== environment)
+    )
+      throw new NativeCloudSignInError("unavailable");
     if (
       row.method !== "totp" &&
       row.method !== "sms" &&

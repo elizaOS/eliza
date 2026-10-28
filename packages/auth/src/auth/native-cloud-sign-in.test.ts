@@ -133,6 +133,40 @@ describe("native Cloud sign-in renderer contract", () => {
         ),
       ),
     ).toBe("unavailable");
+    // A second factor for another deployment, or with undocumented fields, is not trusted.
+    expect(
+      nativeSignInVerified(
+        {
+          status: "mfa",
+          method: "sms",
+          expiresAt: NOW,
+          attemptId: ATTEMPT,
+          environment: "production",
+        },
+        "production",
+      ).status,
+    ).toBe("mfa");
+    expect(
+      code(() =>
+        nativeSignInVerified(
+          {
+            status: "mfa",
+            method: "totp",
+            expiresAt: NOW,
+            environment: "staging",
+          },
+          "production",
+        ),
+      ),
+    ).toBe("unavailable");
+    expect(
+      code(() =>
+        nativeSignInVerified(
+          { status: "mfa", method: "totp", expiresAt: NOW, challengeId: "x" },
+          "production",
+        ),
+      ),
+    ).toBe("unavailable");
     expect(
       nativeSignInVerified(
         { status: "authenticated", environment: "production", expiresAt: NOW },
