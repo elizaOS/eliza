@@ -87,11 +87,33 @@ describe("ManagedGmailMailboxClient", () => {
     ]);
     expect(read.historyId).toBe("42");
     expect(read.bodyHtml).toBe("<p>Body</p>");
+    expect(read.bodyHtmlOmitted).toBeUndefined();
+    expect(read.omittedLinks).toBeUndefined();
     expect(read.message.hasAttachments).toBe(true);
     expect(read.attachments.map((a) => [a.name, a.supported])).toEqual([
       ["a.pdf", true],
       ["b.zip", false],
     ]);
+  });
+
+  it("reports links and HTML left out of the display bounds", async () => {
+    const { client } = fixture({
+      "/gmail/read?": () => ({
+        message,
+        bodyText: "Body",
+        bodyHtml: `<p>${"x".repeat(512 * 1024)}</p>`,
+        links: Array.from({ length: 53 }, (_, i) => ({
+          href: `https://example.org/${i}`,
+          text: `L${i}`,
+        })),
+      }),
+    });
+    const read = await client.gmailRead("grant", "m1", signal());
+    expect(read.links).toHaveLength(50);
+    expect(read.omittedLinks).toBe(3);
+    expect(read.bodyHtml).toBeUndefined();
+    expect(read.bodyHtmlOmitted).toBe(true);
+    expect(read.bodyText).toBe("Body");
   });
 
   it("uses the host's invalid-response error for malformed provider data", async () => {

@@ -139,7 +139,11 @@ export interface GmailReadResult {
   message: GmailMessage;
   bodyText: string;
   bodyHtml?: string;
+  /** The provider sent an HTML body too large to display; `bodyText` is shown instead. */
+  bodyHtmlOmitted?: true;
   links: GmailLink[];
+  /** Distinct safe links beyond the displayed `links` limit. */
+  omittedLinks?: number;
   historyId: string | null;
   attachments: GmailMessageAttachment[];
 }
@@ -157,7 +161,11 @@ export interface GmailThreadMessage {
   message: GmailMessage;
   bodyText: string;
   bodyHtml?: string;
+  /** The provider sent an HTML body too large to display; `bodyText` is shown instead. */
+  bodyHtmlOmitted?: true;
   links: GmailLink[];
+  /** Distinct safe links beyond the displayed `links` limit. */
+  omittedLinks?: number;
   historyId: string | null;
   attachments: GmailMessageAttachment[];
 }

@@ -80,6 +80,9 @@ const REVIEWABLE_TYPES: readonly string[] = [
 ];
 const INBOX_V1 = "/api/v1/eliza/google/gmail/inbox-v1";
 const DISPATCH_TIMEOUT_MS = 45000;
+/** Display bounds for one message body; what exceeds them is reported, not silently dropped. */
+const MAX_MAIL_LINKS = 50;
+const MAX_MAIL_HTML_BYTES = 512 * 1024;
 
 export class ManagedGmailMailboxClient {
   private readonly transport: ManagedGmailTransport;
@@ -116,6 +119,24 @@ export class ManagedGmailMailboxClient {
 
   /** Inert, validated links; at most 50 distinct. */
   mailLinks(value: unknown): GmailLink[] {
+    return this.distinctLinks(value).slice(0, MAX_MAIL_LINKS);
+  }
+
+  /** The displayed links, and how many distinct safe links were left out. */
+  private linkFields(value: unknown): {
+    links: GmailLink[];
+    omittedLinks?: number;
+  } {
+    const links = this.distinctLinks(value);
+    return links.length > MAX_MAIL_LINKS
+      ? {
+          links: links.slice(0, MAX_MAIL_LINKS),
+          omittedLinks: links.length - MAX_MAIL_LINKS,
+        }
+      : { links };
+  }
+
+  private distinctLinks(value: unknown): GmailLink[] {
     if (value === undefined) return [];
     if (!Array.isArray(value) || value.length > 200) throw this.invalid();
     const seen = new Set<string>(),
@@ -127,18 +148,20 @@ export class ManagedGmailMailboxClient {
         links.push(link);
       }
     }
-    return links.slice(0, 50);
+    return links;
   }
 
   /** The complete optional display body; oversized HTML keeps the plain alternative. */
-  private mailHtml(value: unknown): { bodyHtml?: string } {
+  private mailHtml(value: unknown): {
+    bodyHtml?: string;
+    bodyHtmlOmitted?: true;
+  } {
     if (value !== undefined && value !== null && typeof value !== "string")
       throw this.invalid();
-    return typeof value === "string" &&
-      value &&
-      new TextEncoder().encode(value).length <= 512 * 1024
+    if (typeof value !== "string" || !value) return {};
+    return new TextEncoder().encode(value).length <= MAX_MAIL_HTML_BYTES
       ? { bodyHtml: value }
-      : {};
+      : { bodyHtmlOmitted: true };
   }
 
   googleConnection(value: unknown): GmailAccount {
@@ -353,7 +376,7 @@ export class ManagedGmailMailboxClient {
       message,
       bodyText: data.bodyText,
       ...this.mailHtml(data.bodyHtml),
-      links: this.mailLinks(data.links),
+      ...this.linkFields(data.links),
       historyId:
         typeof metadata.historyId === "string" ? metadata.historyId : null,
       attachments,
@@ -467,7 +490,7 @@ export class ManagedGmailMailboxClient {
         message,
         bodyText: item.bodyText,
         ...this.mailHtml(item.bodyHtml),
-        links: this.mailLinks(item.links),
+        ...this.linkFields(item.links),
         historyId: typeof item.historyId === "string" ? item.historyId : null,
         attachments: Array.isArray(item.attachments)
           ? item.attachments.map((value) => {
