@@ -313,13 +313,15 @@ describe("default-off owner-scoped typed public reads", () => {
     expect(read?.facts[0]).toMatchObject({
       kind: "quantity-report",
       qualification: "named-place-alternative",
-      providerLocality: "San Francisco, California, United States",
+      providerLocality: "San Francisco, CA",
       value: 18.3,
       unit: "°C",
     });
     expect(read?.policy.requirements[0]?.qualifiedFactIds).toHaveLength(1);
     expect(read?.policy.requirements[0]?.admittedFactIds).toHaveLength(0);
-    expect(read?.policy.requirements[0]?.unverifiedText).toContain("place you meant");
+    expect(read?.policy.requirements[0]?.unverifiedText).toBe(
+      "I couldn't verify the current temperature.",
+    );
     const empty: PlannerTrajectory = {
       context: { id: "empty-read", events: [] },
       steps: [],

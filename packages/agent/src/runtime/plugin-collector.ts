@@ -887,6 +887,23 @@ export function collectPluginNames(
     pluginsToLoad.delete("@elizaos/plugin-personal-assistant");
   }
 
+  // A selective reminder host opts into its declared storage dependencies.
+  // Do not install this contribution in every standalone or lean deployment.
+  if (
+    pluginsToLoad.has("@elizaos/plugin-personal-assistant/reminders-plugin")
+  ) {
+    for (const companion of [
+      "@elizaos/plugin-scheduling",
+      "@elizaos/plugin-reminders",
+      "@elizaos/plugin-goals",
+    ]) {
+      if (!isPluginExplicitlyDisabled(companion)) {
+        pluginsToLoad.add(companion);
+        track(companion, "selected owner reminders dependency");
+      }
+    }
+  }
+
   // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
   // hard-depends on plugin-scheduling (watch/reminder spine); always companion
   // that primitive when calendar is present.

@@ -5,18 +5,22 @@ import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../../plugins/plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  resolveViewNavigationTargets,
+  viewNavigationAvailable,
+} from "../runtime/view-navigation-targets.ts";
 
 function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
   const code = stripTypeScriptTypes(
-    source
-      .replace(/^import[\s\S]*?;\n/gm, "")
-      .replace("export const viewsAction", "const viewsAction"),
+    source.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""),
     { mode: "transform" },
   );
   const id = "11111111-1111-4111-8111-111111111111";
   let dispatches = 0;
   const ports = {
+    resolveViewNavigationTargets,
+    viewNavigationAvailable,
     randomUUID: () => id,
     checkSenderRole: async () => ({
       isOwner: owner,
@@ -163,7 +167,9 @@ test("prepared phase reaches partial FINISH after evaluator CONTINUE without exe
   expect(executions).toBe(0);
   expect(evaluations).toBe(1);
   expect(f.dispatches()).toBe(1);
-  expect(prompts.join("\n")).toContain("still pending on the external device");
+  expect(prompts.join("\n")).toContain(
+    "navigation is prepared for the originating renderer",
+  );
   expect(prompts.join("\n")).not.toContain("already settled and complete");
 });
 test("owner and exact returned binding failures remain unmarked and refused", async () => {

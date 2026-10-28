@@ -38,11 +38,17 @@ import type {
   Memory,
   ProviderDataRecord,
 } from "@elizaos/core";
-import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
+import {
+  describeUserReference,
+  hasRoleAccess,
+  logger,
+  resolveScheduledAtIsoInTimeZone,
+} from "@elizaos/core";
 import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
 import {
   getDefaultTriageService,
   requireSendConsent,
+  resolveMessageTimeZone,
   sendConsentDigest,
 } from "@elizaos/plugin-assistant";
 import { InboxRepository } from "../inbox/repository.ts";
@@ -597,7 +603,10 @@ const DEFAULT_SNOOZE_MS = 24 * 60 * 60 * 1000;
  *   - an INVALID timestamp         -> `null`, so the caller rejects bad input
  *                                     instead of silently snoozing to default
  */
-function resolveSnoozeUntil(params: InboxActionParameters): string | null {
+function resolveSnoozeUntil(
+  params: InboxActionParameters,
+  timeZone: string | null,
+): string | null {
   const raw = params.snoozedUntil ?? params.until;
   if (raw === undefined) {
     return new Date(Date.now() + DEFAULT_SNOOZE_MS).toISOString();
@@ -605,7 +614,11 @@ function resolveSnoozeUntil(params: InboxActionParameters): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const parsed = Date.parse(trimmed);
+  // A planner turn writes an offset-free time as a wall clock in the user's
+  // zone (CURRENT_TIME's); Date.parse would read it in the host zone.
+  const parsed = Date.parse(
+    timeZone ? resolveScheduledAtIsoInTimeZone(trimmed, timeZone) : trimmed,
+  );
   if (!Number.isFinite(parsed)) return null;
   return new Date(parsed).toISOString();
 }
@@ -745,16 +758,31 @@ async function replyToEntry(args: {
     send = consent === "confirmed";
   }
 
+  // Claim before drafting: a retried or concurrent approve of a body that
+  // was already sent must not reach the connector again.
+  if (send && !(await args.repo.claimReplySend(args.entry.id, args.body))) {
+    return {
+      success: false,
+      text: "This reply was already sent. Nothing was sent again.",
+      data: {
+        subaction: "reply",
+        entryId: args.entry.id,
+        alreadySent: true,
+      },
+    };
+  }
+
   seedMessageRefForEntry(args.runtime, args.entry);
   const service = getDefaultTriageService();
-  const draft = await service.draftReply(
-    args.runtime,
-    sourceMessageId,
-    args.body,
-  );
-  await args.repo.updateDraftResponse(args.entry.id, args.body);
-
+  let draft: Awaited<ReturnType<typeof service.draftReply>>;
+  try {
+    draft = await service.draftReply(args.runtime, sourceMessageId, args.body);
+  } catch (error) {
+    if (send) await args.repo.releaseReplySend(args.entry.id, args.entry);
+    throw error;
+  }
   if (!send) {
+    await args.repo.updateDraftResponse(args.entry.id, args.body);
     return {
       success: true,
       text: appendInboxDraftChoiceMarker(
@@ -772,16 +800,20 @@ async function replyToEntry(args: {
     };
   }
 
-  const sent = await service.sendDraft(
-    args.runtime,
-    draft.draftId,
-    undefined,
-    args.authorization.kind === "turn" ? args.authorization.message : undefined,
-  );
-  await args.repo.markResolved(args.entry.id, {
-    draftResponse: args.body,
-    autoReplied: true,
-  });
+  let sent: Awaited<ReturnType<typeof service.sendDraft>>;
+  try {
+    sent = await service.sendDraft(
+      args.runtime,
+      draft.draftId,
+      undefined,
+      args.authorization.kind === "turn"
+        ? args.authorization.message
+        : undefined,
+    );
+  } catch (error) {
+    await args.repo.releaseReplySend(args.entry.id, args.entry);
+    throw error;
+  }
   return {
     success: true,
     text: `Sent reply on ${sent.source}.`,
@@ -962,7 +994,12 @@ export async function executeInboxQueueOperation(args: {
     }
     case "snooze": {
       const id = requireEntryId(args.params);
-      const until = resolveSnoozeUntil(args.params);
+      const until = resolveSnoozeUntil(
+        args.params,
+        args.authorization.kind === "turn"
+          ? resolveMessageTimeZone(args.runtime, args.authorization.message)
+          : null,
+      );
       if (!until) {
         throw new Error("valid snooze timestamp is required");
       }

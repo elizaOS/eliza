@@ -103,7 +103,6 @@ export function deviceRequestCredential(
     "reminders.local-record.v2",
     "reminders.create.v1",
     "maps.selected-read.v1",
-    "camera.capture-photo.v1",
     "clock.handoff.v1",
     "clock.handoff.v2",
     "clock.alarms.v1",

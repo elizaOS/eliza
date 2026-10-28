@@ -12,7 +12,7 @@
  * work, not wrapping a one-line insert.
  */
 
-import { and, eq, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
   type DomainRegistrantInfo,
@@ -283,6 +283,10 @@ export async function listCloudflareRenewalsDue(
 /**
  * Cloudflare-registered, active, verified domains that are not yet confirmed
  * live. The health-check cron probes each domain's origin and flips `isLive`.
+ *
+ * The candidate set is unbounded: an unreachable origin stays `isLive = false`
+ * across ticks. Order by the oldest check stamp (never-checked rows first) so
+ * each batch advances through the backlog instead of re-probing the same rows.
  */
 export async function listCloudflareNeedingHealthCheck(limit: number): Promise<ManagedDomain[]> {
   return await dbRead.query.managedDomains.findMany({
@@ -292,6 +296,7 @@ export async function listCloudflareNeedingHealthCheck(limit: number): Promise<M
       eq(managedDomains.verified, true),
       eq(managedDomains.isLive, false),
     ),
+    orderBy: [sql`${managedDomains.lastHealthCheck} asc nulls first`, asc(managedDomains.id)],
     limit,
   });
 }

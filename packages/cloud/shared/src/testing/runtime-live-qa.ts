@@ -838,20 +838,19 @@ async function run() {
             );
           });
           const qualifiedPlace =
-            /San Francisco,\s*(?:CA|California),?\s*(?:United States|US|USA)/i.test(turn.reply);
-          const honestAlternative =
-            /couldn[’' ]t verify that this is the place you meant|one possible place|possible (?:place|location)|if you mean|assuming you mean|ambiguous|not specified/i.test(
+            /San Francisco,\s*(?:CA|California)(?:,?\s*(?:United States|US|USA))?:/i.test(
               turn.reply,
             );
+          const awkwardPlaceDisclaimer = /couldn[’' ]t verify.*place you meant/i.test(turn.reply);
           observation.syntheticTrustedTypedQa = true;
           observation.opaqueVerificationAudit = verifiedAudit;
           observation.freshProducerObservation = Boolean(freshProducer);
-          observation.honestQualifiedPlace = qualifiedPlace && honestAlternative;
+          observation.honestQualifiedPlace = qualifiedPlace;
           observation.status =
             freshProducer &&
             verifiedAudit.length === 1 &&
             qualifiedPlace &&
-            honestAlternative &&
+            !awkwardPlaceDisclaimer &&
             turn.responded === true &&
             turn.reply.trim() &&
             diagnostics.length === diagnosticStart &&

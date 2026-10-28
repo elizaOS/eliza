@@ -185,9 +185,6 @@ export function createSharedTypedReadReplyResolver(input: {
             isVerifiedCurrentNwsObservation(observation, nwsScope.producerQuery, nowMs)
           ) {
             if (nwsScope.namedPlaceAlternative) {
-              const sourcePlace = resolveWorldWeatherPlace(
-                `${observation.city}, ${observation.state}, United States`,
-              );
               facts.push({
                 id: factId,
                 kind: "quantity-report",
@@ -196,7 +193,7 @@ export function createSharedTypedReadReplyResolver(input: {
                 sourceUrl: observation.sourceUrl,
                 value: observation.temperatureC,
                 unit: "°C",
-                providerLocality: `${observation.city}, ${sourcePlace?.region ?? observation.state}, United States`,
+                providerLocality: `${observation.city}, ${observation.state}`,
                 observedAtMs: Date.parse(observation.timestamp),
               });
               qualifiedFactIds.push(factId);
@@ -429,12 +426,6 @@ export function createSharedTypedReadReplyResolver(input: {
           (admittedFactIds.includes(fact.id) && fact.kind === "quantity") ||
           (qualifiedFactIds.includes(fact.id) && fact.kind === "quantity-report"),
       );
-      const namedAlternativeFact = facts.find(
-        (fact) =>
-          qualifiedFactIds.includes(fact.id) &&
-          fact.kind === "quantity-report" &&
-          fact.qualification === "named-place-alternative",
-      );
       // All supported producers expose °C. With no admitted fact this is planning-only, never egress proof.
       requirements.push(
         requirement.domain === "weather"
@@ -460,11 +451,9 @@ export function createSharedTypedReadReplyResolver(input: {
                     },
                   }
                 : {}),
-              unverifiedText: namedAlternativeFact
-                ? "I couldn't verify that this is the place you meant."
-                : simpleTemperature
-                  ? "I couldn't verify the current temperature."
-                  : "I couldn't verify the requested weather details.",
+              unverifiedText: simpleTemperature
+                ? "I couldn't verify the current temperature."
+                : "I couldn't verify the requested weather details.",
             }
           : {
               id,

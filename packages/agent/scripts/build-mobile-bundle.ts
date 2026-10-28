@@ -27,6 +27,7 @@ import {
   MOBILE_MODEL_PROVIDER_PLUGINS,
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
+import { createMobileBundleDependencies } from "./mobile-bundle-dependencies.ts";
 import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
@@ -1396,6 +1397,8 @@ const localInferenceDedupePlugin = {
   },
 };
 console.log("[build-mobile] starting Bun.build...");
+// Bun metadata paths are relative to the caller, including direct script runs.
+const buildWorkingDirectory = process.cwd();
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
@@ -1404,12 +1407,11 @@ const buildResult = await Bun.build({
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
-  // Keep Android debuggable, but compact the real iOS Bun payload. Static
-  // JavaScriptCore no-JIT spends a lot of time parsing this file; syntax +
-  // whitespace minification reduces launch cost without identifier mangling,
-  // preserving the post-build undeclared-identifier scan below.
+  metafile: TARGET === "android",
+  // Compact Android and iOS Bun payloads without changing identifier names.
+  // Android inventory comes from emitted-input metadata, not JS comments.
   minify:
-    TARGET === "ios"
+    TARGET === "ios" || TARGET === "android"
       ? {
           syntax: true,
           whitespace: true,
@@ -1671,12 +1673,35 @@ for (const asset of [
   console.log(`[build-mobile] copied ${asset} (${(sz / 1024).toFixed(1)} KB)`);
 }
 const generatedUtc = new Date().toISOString();
+let bundleDependencies:
+  | ReturnType<typeof createMobileBundleDependencies>
+  | undefined;
+if (TARGET === "android") {
+  const dependencyOutput = Object.values(
+    buildResult.metafile?.outputs ?? {},
+  ).find(
+    (output) =>
+      output.entryPoint &&
+      path.resolve(buildWorkingDirectory, output.entryPoint) === entry,
+  );
+  if (!dependencyOutput)
+    throw new Error(
+      "Mobile build did not return entrypoint dependency metadata.",
+    );
+  bundleDependencies = createMobileBundleDependencies({
+    inputs: dependencyOutput.inputs,
+    resolveDirectory: buildWorkingDirectory,
+    repositoryRoot: repoRoot,
+    bundleBytes: await Bun.file(bundlePath).bytes(),
+  });
+}
 const manifest = {
   generatedAt: generatedUtc,
   generated_utc: generatedUtc,
   claim_boundary:
     "mobile_agent_bundle_manifest_only_not_android_boot_or_runtime_execution_evidence",
   bundle: bundleFilename,
+  ...(bundleDependencies ? { bundleDependencies } : {}),
   bunTarget: bunBuildTarget,
   platform: TARGET,
   pglite: {

@@ -522,6 +522,11 @@ export function requireTraceableRealtimeSearch(
     };
   }
   logger.audit("[shared-realtime] source receipt refused", {
+    ...(isCurrentWeatherUnavailableReason(data.unavailableReason)
+      ? { unavailableReason: data.unavailableReason }
+      : {}),
+    ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
+    queryScopeRejected: result.error === "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
     success: result.success === true,
     actionMatches: data.actionName === "WEB_SEARCH",
     queryMatches: normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query),

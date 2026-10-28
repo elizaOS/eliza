@@ -124,24 +124,24 @@ function civilMidnight(utcMidnight: number, timeZone: string): number {
   const y = date.getUTCFullYear(),
     m = date.getUTCMonth(),
     d = date.getUTCDate();
-  // Resolve the zone offset at the local civil-day boundary.
-  let guess = Date.UTC(y, m, d);
-  for (let pass = 0; pass < 3; pass++) {
-    const parts = Object.fromEntries(
-      new Intl.DateTimeFormat("en-US", {
-        timeZone,
-        hourCycle: "h23",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-        .formatToParts(guess)
-        .map((part) => [part.type, part.value]),
+  const target = Date.UTC(y, m, d);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const partsAt = (instant: number) =>
+    Object.fromEntries(
+      formatter.formatToParts(instant).map((part) => [part.type, part.value]),
     );
-    const local = Date.UTC(
+  const localAt = (instant: number) => {
+    const parts = partsAt(instant);
+    return Date.UTC(
       Number(parts.year),
       Number(parts.month) - 1,
       Number(parts.day),
@@ -149,8 +149,28 @@ function civilMidnight(utcMidnight: number, timeZone: string): number {
       Number(parts.minute),
       Number(parts.second),
     );
-    guess += Date.UTC(y, m, d) - local;
-  }
+  };
+  const localDayAt = (instant: number) => {
+    const parts = partsAt(instant);
+    return Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+    );
+  };
+  // Resolve the zone offset at the local civil-day boundary.
+  let guess = target;
+  for (let pass = 0; pass < 3; pass++) guess += target - localAt(guess);
+  // A transition at local midnight leaves the iteration off the boundary in
+  // either direction: a spring forward skips 00:00, so there is no fixed
+  // point and it settles on the previous civil day; a fall back repeats
+  // 00:00, so it converges on the second midnight, inside the target day.
+  // Walk to the first instant of the target civil day; minute steps are
+  // exact for the whole-minute offsets tzdata records from 1970 on. A civil
+  // date that never exists at all (a skipped date) resolves to the start of
+  // the following day.
+  while (localDayAt(guess) < target) guess += 60_000;
+  while (localDayAt(guess - 60_000) === target) guess -= 60_000;
   return guess;
 }
 /** Shared Calendar overlap: all-day bounds are civil dates, not timed UTC events. */

@@ -1,13 +1,27 @@
 import {
   type AndroidRoleName,
-  type AndroidRoleStatus,
   type DeviceSettingsStatus,
   System,
+  type SystemFacts,
+  type SystemSettingsPage,
   type SystemStatus,
   type SystemVolumeStatus,
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
-import { Button, Input, type OverlayAppContext } from "@elizaos/ui";
+import {
+  androidRoleLabel,
+  broaderPageNotice,
+  parseRoleStatuses,
+  parseSystemFacts,
+  systemSwitchRows,
+} from "@elizaos/capacitor-system/settings";
+import {
+  appNameInterpolationVars,
+  Button,
+  Input,
+  type OverlayAppContext,
+  useBranding,
+} from "@elizaos/ui";
 
 import {
   ArrowLeft,
@@ -19,6 +33,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sun,
+  ToggleRight,
   Volume2,
   Wifi,
 } from "lucide-react";
@@ -67,13 +82,6 @@ function streamPercent(volume: SystemVolumeStatus): number {
   return Math.round((volume.current / volume.max) * 100);
 }
 
-function roleStatusLabel(role: AndroidRoleStatus): string {
-  if (!role.available) return "Unavailable";
-  if (role.held) return "Assigned";
-  if (role.holders.length > 0) return role.holders[0] ?? "Assigned elsewhere";
-  return "Not assigned";
-}
-
 type SavingKey =
   | "brightness"
   | `volume:${SystemVolumeStream}`
@@ -81,9 +89,12 @@ type SavingKey =
   | null;
 
 export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
+  const { appName } = appNameInterpolationVars(useBranding());
   const [deviceSettings, setDeviceSettings] =
     useState<DeviceSettingsStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
+  // Switch states as Android reported them; an absent fact is unknown, never off.
+  const [systemFacts, setSystemFacts] = useState<SystemFacts>({});
   const [brightness, setBrightness] = useState(0.75);
   const [volumes, setVolumes] = useState<
     Partial<Record<SystemVolumeStream, number>>
@@ -97,12 +108,19 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
     setLoading(true);
     setError(null);
     try {
-      const [settingsResult, statusResult] = await Promise.all([
+      const [settingsResult, statusResult, factsResult] = await Promise.all([
         System.getDeviceSettings(),
         System.getStatus(),
+        // A host without the facts bridge shows every switch as not reported,
+        // and the bridge failure is logged rather than hidden.
+        System.getSystemFacts().catch((err: unknown) => {
+          console.warn("[DeviceSettings] getSystemFacts failed", err);
+          return {};
+        }),
       ]);
       setDeviceSettings(settingsResult);
       setSystemStatus(statusResult);
+      setSystemFacts(parseSystemFacts(factsResult));
       setBrightness(clampUnit(settingsResult.brightness));
       // Seed slider positions from the freshly loaded/refreshed server state.
       // This is the ONLY place the whole map is rebuilt: doing it on every
@@ -128,7 +146,34 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
     void refresh();
   }, [refresh]);
 
-  const roles = useMemo(() => systemStatus?.roles ?? [], [systemStatus]);
+  // Coming back from an Android page (or its quick settings) reads the switches again.
+  const refreshFacts = useCallback(async () => {
+    try {
+      setSystemFacts(parseSystemFacts(await System.getSystemFacts()));
+    } catch {
+      // error-policy:J4 an unreadable switch stays "not reported" rather than off
+      setSystemFacts({});
+    }
+  }, []);
+
+  useEffect(() => {
+    const onReturn = () => {
+      if (!document.hidden) void refreshFacts();
+    };
+    window.addEventListener("focus", onReturn);
+    document.addEventListener("visibilitychange", onReturn);
+    return () => {
+      window.removeEventListener("focus", onReturn);
+      document.removeEventListener("visibilitychange", onReturn);
+    };
+  }, [refreshFacts]);
+
+  const switchRows = useMemo(
+    () => systemSwitchRows(systemFacts),
+    [systemFacts],
+  );
+
+  const roles = useMemo(() => parseRoleStatuses(systemStatus), [systemStatus]);
   const orderedVolumes = useMemo(
     () =>
       [...(deviceSettings?.volumes ?? [])].sort((a, b) =>
@@ -224,9 +269,15 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
     setNotice(null);
     try {
       await System.requestRole({ role });
+      // Android shows its own dialog; only the read-back says whether the role moved.
       const next = await System.getStatus();
       setSystemStatus(next);
-      setNotice(`${ROLE_LABELS[role]} role updated.`);
+      const held = next.roles.find((entry) => entry.role === role)?.held;
+      setNotice(
+        held
+          ? `${ROLE_LABELS[role]} role assigned.`
+          : `${ROLE_LABELS[role]} role not changed.`,
+      );
     } catch (err) {
       // error-policy:J4 surface the role-request failure into the view's error state
       setError(err instanceof Error ? err.message : String(err));
@@ -253,6 +304,23 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
         return;
       }
       setNotice(`${label} opened.`);
+    },
+    [],
+  );
+
+  const openSystemPage = useCallback(
+    async (page: SystemSettingsPage, label: string) => {
+      setError(null);
+      setNotice(null);
+      try {
+        const opened = await System.openSettingsPage({ page });
+        setNotice(
+          broaderPageNotice(page, opened) ?? `${label} settings opened.`,
+        );
+      } catch (err) {
+        // error-policy:J4 surface the handoff failure into the view's error state
+        setError(err instanceof Error ? err.message : String(err));
+      }
     },
     [],
   );
@@ -381,6 +449,39 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                   </Button>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="py-2" data-testid="device-settings-switches">
+            <div className="flex items-center gap-3">
+              <span className="flex size-9 items-center justify-center">
+                <ToggleRight className="size-5 text-muted" />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold text-txt">
+                  System switches
+                </h2>
+                <div className="text-xs text-muted">
+                  Change these in Android settings
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {switchRows.map((row) => (
+                <Button
+                  key={row.page}
+                  variant="outline"
+                  className="h-auto justify-between gap-3 py-2 text-left"
+                  onClick={() => void openSystemPage(row.page, row.label)}
+                  aria-label={`${row.label}, ${row.value}, opens Android settings`}
+                  data-testid={`device-settings-switch-${row.page}`}
+                >
+                  <span className="text-sm font-medium text-txt">
+                    {row.label}
+                  </span>
+                  <span className="text-xs text-muted">{row.value}</span>
+                </Button>
+              ))}
             </div>
           </section>
 
@@ -538,7 +639,10 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         {ROLE_LABELS[role.role]}
                       </div>
                       <div className="mt-1 line-clamp-2 text-xs text-muted">
-                        {roleStatusLabel(role)}
+                        {androidRoleLabel(role, {
+                          packageName: systemStatus?.packageName ?? "",
+                          appName,
+                        })}
                       </div>
                     </div>
                     {role.held ? (

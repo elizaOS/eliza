@@ -4,6 +4,7 @@ import { validateCameraCaptureResult } from "../src/services/device-actions/came
 const state = vi.hoisted(() => ({ turn: undefined as any }));
 vi.mock("../src/services/device-actions/service.ts", () => ({
   getDeviceActionTurn: () => state.turn,
+  deviceAppRecordOperationAvailable: () => true,
   DeviceActionService: class {},
 }));
 
@@ -117,8 +118,8 @@ it("offers camera capture only when the device negotiated it", () => {
       deviceActionForCapabilities(proposeDeviceAction, [
         "camera.capture-photo.v1",
       ]),
-    ),
-  ).toContain("camera_capture_photo");
+    ).filter((type: string) => type === "camera_capture_photo"),
+  ).toHaveLength(1);
   expect(
     validateDevicePayload({
       action: "device_action",

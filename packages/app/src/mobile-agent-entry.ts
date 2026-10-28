@@ -18,6 +18,12 @@ const { installMobileAuthHostBridge } = await import(
   "./runtime/install-mobile-auth-host-bridge"
 );
 installMobileAuthHostBridge();
+// A host that selects a native runtime profile gets its process policy (for
+// example, powered-on scheduling) before anything reads it, signed in or not.
+const { applyNativeRuntimeProfileEnvironment } = await import(
+  "./runtime/native-runtime-profile"
+);
+applyNativeRuntimeProfileEnvironment(process.env);
 // Android's bridge command boots the runtime directly; it does not use dev-server.
 // Admit the private Google host and its provider routing before that runtime starts.
 const { startNativeManagedGoogleHostForBoot } = await import(

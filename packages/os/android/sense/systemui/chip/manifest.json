@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "project": "frameworks/base",
+  "revision": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
+  "baselineLockSha256": "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3",
+  "patch": "listening-chip.patch",
+  "patchSha256": "0ac55675a5ae895bdfbe5a4e194ab4812e99e28b4119b39b005bd87ce0f74d06",
+  "files": [
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/SenseListeningPolicy.java",
+      "beforeSha256": null,
+      "afterSha256": "67e7e3d0163e8f1a065c0ec8da8e8ad7a46078a10cc84ab3056f89a9d1fb9a11"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/SenseListeningController.java",
+      "beforeSha256": null,
+      "afterSha256": "cdd24cbd6d1fea23a5b103e21d2e972d9a9973c591a9ece30016c29a98dd4c85"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/SenseListeningLease.java",
+      "beforeSha256": null,
+      "afterSha256": "8d3f7fe8006ac0dc2abdeeaed6500c0d285f4f864f53553feacab1791fc6375e"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/SenseListeningChipView.java",
+      "beforeSha256": null,
+      "afterSha256": "e4769fe7a1314c37c00fc058d8bb9b5fa28f5340a299ab23fc93def20bf59198"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/SenseListeningChipBinder.kt",
+      "beforeSha256": null,
+      "afterSha256": "18960c60ec9ca703651435dbecc1a167a3678bf57980404ccf24368477b3fdfa"
+    },
+    {
+      "path": "packages/SystemUI/res/values/sense_listening.xml",
+      "beforeSha256": null,
+      "afterSha256": "c72596d9b572c2b171134d28c52dba1c42aa00d9fbcd390a34b832e5f999856c"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/PrivacyModule.java",
+      "beforeSha256": "e6ca87236a1b4a566125a32b8b3b9d356aebceed19be864567f9b6fa25288449",
+      "afterSha256": "70e23e3b4e5505079aa76714923171429ed4bf80b67fee8b68cba65a3540630b"
+    },
+    {
+      "path": "packages/SystemUI/res/layout/status_bar.xml",
+      "beforeSha256": "2c0140c3ee20f35a393b7d238542ab0f5ce7682ea1487ffa1275383bfb965942",
+      "afterSha256": "85e13b4464fb3bd66f62c7217e2e973b16167126f7f3e6a8e11771fa537656ef"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/keyguard/ui/view/layout/sections/DefaultIndicationAreaSection.kt",
+      "beforeSha256": "579405f851dbdd608d5cd012c960274fa9731301d9e95bfce974ab58d2fd4e82",
+      "afterSha256": "8892bbf9c06201ff2624b78026550cdb75ead7e752bed488823d7a0faf15971d"
+    }
+  ],
+  "fullTreeVerified": false,
+  "imageBuilt": false,
+  "lockAodIndicatorQualified": false,
+  "indicatorHealthLeaseImplemented": true,
+  "indicatorHealthLease": {
+    "scope": "source",
+    "systemUiCompiled": false,
+    "hostChecks": "Shared Java policy and listener tests; full SystemUI compilation and image/device acceptance remain required",
+    "qualified": false
+  }
+}

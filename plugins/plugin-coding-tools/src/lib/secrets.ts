@@ -7,7 +7,12 @@ const PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "github_token", regex: /\bghp_[A-Za-z0-9]{36}\b/ },
   { name: "github_oauth", regex: /\bgho_[A-Za-z0-9]{36}\b/ },
   { name: "github_app", regex: /\b(ghu|ghs)_[A-Za-z0-9]{36}\b/ },
-  { name: "openai_key", regex: /\bsk-[A-Za-z0-9]{20,}\b/ },
+  // Project, service-account and admin keys put - and _ in the body.
+  {
+    name: "openai_key",
+    regex:
+      /\bsk-(?:(?:proj|svcacct|admin)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{20,})\b/,
+  },
   { name: "anthropic_key", regex: /\bsk-ant-[A-Za-z0-9_-]{90,}\b/ },
   { name: "google_api_key", regex: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { name: "slack_token", regex: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/ },

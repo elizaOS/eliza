@@ -46,6 +46,7 @@ import {
   jsonSchema,
   type LanguageModelUsage,
   type ModelMessage,
+  NoObjectGeneratedError,
   Output,
   RetryError,
   type StreamTextTransform,
@@ -465,7 +466,7 @@ function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
 ): ReasoningEffort | "none" | undefined {
-  const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const raw = getSetting(runtime, "OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized === "none") {
     if (
@@ -514,7 +515,7 @@ function resolveProviderOptions(
     | { thinking?: unknown; preferToolReasoning?: unknown }
     | undefined;
   const elizaThinking = eliza?.thinking;
-  const configuredEffort = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const configuredEffort = getSetting(runtime, "OPENAI_REASONING_EFFORT");
   const preferToolReasoning =
     eliza?.preferToolReasoning === true &&
     !(typeof configuredEffort === "string" && configuredEffort.trim().toLowerCase() === "none");
@@ -4221,6 +4222,30 @@ async function generateTextAtEndpoint(
       beforeAttempt: () => assertPreparedAttempt(details),
     }).catch((error: unknown) => {
       noteRateLimitCooldown(modelCooldowns, modelName, error);
+      if (NoObjectGeneratedError.isInstance(error)) {
+        // generateText parses `output` itself and throws before this lane sees
+        // the result. The provider billed the answer anyway: report its usage,
+        // and reject a cut-off answer like the plain-text lane below does.
+        applyUsageToDetails(details, error.usage);
+        if (error.usage) {
+          emitModelUsageEvent(
+            runtime,
+            modelType,
+            params.prompt ?? "",
+            error.usage,
+            modelName,
+            retryState,
+            usageProvider
+          );
+        }
+        assertModelOutputComplete({
+          finishReason: error.finishReason,
+          provider: usageProvider,
+          model: modelName,
+          maxTokens: outputCap,
+          usage: convertUsage(error.usage),
+        });
+      }
       throw error;
     });
     observeStreamTiming(runtime, () => {

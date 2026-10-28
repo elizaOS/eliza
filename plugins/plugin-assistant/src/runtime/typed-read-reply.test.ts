@@ -242,7 +242,7 @@ describe("canonical typed public-read egress", () => {
         id: "place-alternative",
         kind: "quantity-report",
         qualification: "named-place-alternative",
-        providerLocality: "San Francisco, CA, United States",
+        providerLocality: "San Francisco, CA",
         observedAtMs: now - 1000,
         ownerScope: named.policy.ownerScope,
         sourceUrl,
@@ -251,11 +251,11 @@ describe("canonical typed public-read egress", () => {
       },
     ];
     const rendered = partialTypedReadReply(output(), named);
-    expect(rendered.messageToUser).toContain(
-      "For San Francisco, CA, United States:",
+    expect(rendered.messageToUser).toBe(
+      `San Francisco, CA: 18.3°C. ${sourceUrl}`,
     );
-    expect(rendered.messageToUser).toContain("18.3°C");
-    expect(rendered.messageToUser).toContain("place you meant");
+    expect(rendered.messageToUser).not.toContain("couldn't verify");
+    expect(rendered.messageToUser).not.toContain("place you meant");
     expect(rendered.success).toBe(false);
     expect(createTypedReadEgressReceipt(rendered, named)?.partial).toBe(true);
     const omitted = binding();

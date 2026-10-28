@@ -17,12 +17,16 @@ import {
   parseContextRoutingMetadata,
   satisfiesRoleGate,
 } from "@elizaos/core";
+import { turnObservation } from "../device-actions/turn-observation.ts";
 import {
   isAmbientStage1Turn,
   messageExplicitlyAddressesAgent,
   resolveStage1SenderRole,
 } from "./addressing.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+
+/** These approved providers emit only bounded availability metadata, never domain bodies. */
+const STAGE1_ROUTING_METADATA_PROVIDERS = ["NAMED_NOTE_ROUTING"] as const;
 
 /** Stage 1 owns interpretation, the current clock and disclosure context; domain state and output grammars wait for planning. */
 export const STAGE1_RESPONSE_STATE_PROVIDERS = [
@@ -34,6 +38,7 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "BOT_AWARENESS",
   "CHOICE",
   "CurrentElizaOwnedAlarmSnapshot",
+  ...STAGE1_ROUTING_METADATA_PROVIDERS,
 ] as const;
 
 export const CORE_RESPONSE_STATE_PROVIDERS = [
@@ -201,17 +206,51 @@ export function uiViewActionPriority(
 /** Select authorized evidence needed to interpret the turn before direct delivery. */
 export function stage1ResponseStateProviderNames(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   userRoles?: readonly RoleGateRole[],
 ): string[] {
   return [...STAGE1_RESPONSE_STATE_PROVIDERS].filter((name) => {
     const provider = runtime.providers?.find((entry) => entry.name === name);
-    return (
-      !provider ||
-      (!provider.private &&
-        satisfiesRoleGate(userRoles, provider.roleGate) &&
-        satisfiesRoleGate(userRoles, provider.contextGate?.roleGate))
-    );
+    if (!provider) return true;
+    if (
+      provider.private ||
+      !satisfiesRoleGate(userRoles, provider.roleGate) ||
+      !satisfiesRoleGate(userRoles, provider.contextGate?.roleGate)
+    )
+      return false;
+    if (STAGE1_ROUTING_METADATA_PROVIDERS.some((entry) => entry === name)) {
+      // Check each declared current-message routing decision independently. Do not
+      // union unrelated metadata to satisfy an allOf gate or miss a noneOf denial.
+      const decisions = [
+        getContextRoutingFromMessage(message),
+        parseContextRoutingMetadata(
+          message.metadata && typeof message.metadata === "object"
+            ? (message.metadata as Record<string, unknown>)[
+                CONTEXT_ROUTING_METADATA_KEY
+              ]
+            : undefined,
+        ),
+      ].filter(
+        (decision) =>
+          decision.primaryContext || decision.secondaryContexts?.length,
+      );
+      return (
+        decisions.length
+          ? decisions
+          : [{ primaryContext: "general", secondaryContexts: [] }]
+      ).every(
+        (decision) =>
+          filterProvidersByContextGate(
+            [provider],
+            [
+              decision.primaryContext ?? "general",
+              ...(decision.secondaryContexts ?? []),
+            ],
+            userRoles,
+          ).length === 1,
+      );
+    }
+    return true;
   });
 }
 
@@ -299,20 +338,8 @@ export function plannerDiscoveryContexts(
     uiViewActionNames(message).size === 0
   )
     return selectedContexts;
-  const metadata = message.content?.metadata;
-  if (metadata && typeof metadata === "object" && !Array.isArray(metadata)) {
-    const device = (metadata as Record<string, unknown>).clientDevice;
-    if (device && typeof device === "object" && !Array.isArray(device)) {
-      const context = (device as Record<string, unknown>).context;
-      if (
-        context &&
-        typeof context === "object" &&
-        !Array.isArray(context) &&
-        (context as Record<string, unknown>).sensitive === true
-      )
-        return selectedContexts;
-    }
-  }
+  if (turnObservation(message.content?.metadata)?.sensitive)
+    return selectedContexts;
   const routing = getContextRoutingFromMessage(message),
     primary = routing.primaryContext;
   if (
@@ -334,32 +361,17 @@ export function plannerSelectedRecordActionHints(
 ): string[] {
   if (!hasUiViewPlannerScope(message) || uiViewActionNames(message).size === 0)
     return [];
-  const metadata = message.content?.metadata;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
-    return [];
-  const device = (metadata as Record<string, unknown>).clientDevice;
-  if (!device || typeof device !== "object" || Array.isArray(device)) return [];
-  const context = (device as Record<string, unknown>).context;
-  if (!context || typeof context !== "object" || Array.isArray(context))
-    return [];
-  const current = context as Record<string, unknown>,
-    selection = current.selectedObject;
-  if (
-    current.sensitive === true ||
-    !selection ||
-    typeof selection !== "object" ||
-    Array.isArray(selection)
-  )
-    return [];
-  const selected = selection as Record<string, unknown>;
-  if (typeof selected.id !== "string" || typeof selected.kind !== "string")
-    return [];
+  const current = turnObservation(message.content?.metadata),
+    selected = current?.sensitive ? undefined : current?.selectedObject;
+  if (!selected) return [];
   const primary = getContextRoutingFromMessage(message).primaryContext;
   if (
     !primary ||
     primary === "general" ||
     primary === "simple" ||
-    current.view !== (metadata as Record<string, unknown>).uiView
+    !current ||
+    current.view !==
+      (message.content?.metadata as Record<string, unknown> | undefined)?.uiView
   )
     return [];
   return actions
@@ -372,9 +384,9 @@ export function plannerSelectedRecordActionHints(
       let identity: string | undefined;
       try {
         identity = action.selectionIdentity
-          ? action.selectionIdentity(selection)
-          : /^[A-Za-z0-9._:-]{16,256}$/.test(selected.id as string)
-            ? (selected.id as string)
+          ? action.selectionIdentity(selected)
+          : /^[A-Za-z0-9._:-]{16,256}$/.test(selected.id)
+            ? selected.id
             : undefined;
       } catch {
         return false;

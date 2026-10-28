@@ -13,8 +13,7 @@ async function capturedSchema() {
         schema = params.responseSchema;
         return JSON.stringify({
           grounded: true,
-          completedChangeClaim: false,
-          reason: "Fixture evidence.",
+          claims: [],
         });
       },
       reportError: () => {},
@@ -103,8 +102,7 @@ it.each([false, true])(
     for (const value of [
       {
         grounded: true,
-        completedChangeClaim: false,
-        reason: "Fixture evidence.",
+        claims: [],
       },
       { contextRequest: "full" },
     ]) {
@@ -142,8 +140,7 @@ it("retains the original recovered-reply validation after unwrapping", async () 
   transport(
     {
       grounded: "yes",
-      completedChangeClaim: false,
-      reason: "Fixture evidence.",
+      claims: [],
     },
     bodies
   );
@@ -167,7 +164,7 @@ it.each([false, true])(
   "rejects a malformed provider wrapper before delivery (stream=%s)",
   async (stream) => {
     const bodies: any[] = [];
-    transport({ grounded: true, completedChangeClaim: false, reason: "Fixture" }, bodies, false);
+    transport({ grounded: true, claims: [] }, bodies, false);
     const r = runtime();
     const chunks: string[] = [];
     const schema = await capturedSchema();
@@ -187,12 +184,11 @@ it.each([false, true])(
   }
 );
 it.each([
-  { grounded: "yes", completedChangeClaim: false, reason: "Fixture evidence." },
+  { grounded: "yes", claims: [] },
   { contextRequest: "wrong" },
   {
     grounded: true,
-    completedChangeClaim: false,
-    reason: "Fixture evidence.",
+    claims: [],
     extra: true,
   },
 ])("rejects an invalid union before streaming any text: %j", async (value) => {

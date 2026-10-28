@@ -10,6 +10,7 @@ import type { StreamChunkCallback } from "./components";
 import type { AgentContext } from "./contexts";
 import type { ContentValue, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
+import type { JSONSchema } from "./schema";
 
 /** Runtime-only canonical input binding. JSON/client/model fields cannot populate this symbol. */
 export const MODEL_CANONICAL_CONTEXT: unique symbol = Symbol.for(
@@ -1429,16 +1430,7 @@ export interface ResearchResult {
 	status?: "queued" | "in_progress" | "completed" | "failed";
 }
 
-/**
- * Optional JSON schema for validating generated objects
- */
-export interface JSONSchema {
-	type?: string | string[];
-	properties?: Record<string, JSONSchema>;
-	items?: JSONSchema | JSONSchema[];
-	required?: string[];
-	[key: string]: JsonValue | JSONSchema | JSONSchema[] | undefined;
-}
+export type { JSONSchema } from "./schema";
 
 /**
  * Parameters for object generation models

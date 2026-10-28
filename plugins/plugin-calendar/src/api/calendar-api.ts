@@ -33,7 +33,7 @@ import type {
 import type {
   MeetingAutoJoinPolicy,
   MeetingAutoJoinSettings,
-} from "../meetings/auto-join-settings.js";
+} from "../meetings/auto-join-types.js";
 
 type CalendarEditorCreateRequest = CreateLifeOpsCalendarEventRequest & {
   idempotencyKey: string;

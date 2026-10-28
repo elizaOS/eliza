@@ -574,6 +574,7 @@ export const CLOCK_ALARM_GUIDANCE =
 
 export const proposeDeviceAction: Action = {
   name: "PROPOSE_DEVICE_ACTION",
+  egress: ["owner-device"],
   description:
     "camera_capture_photo takes one still image with the current camera and saves it in Photos. Requires camera.capture-photo.v1 and the visible Camera view. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically. " +
     "Device Notes/Calendar proposals require the current turn to select native device record/source authority. Ordinary app Notes/Calendar requests, including creation from Home, use their canonical service operations when runtime record authority is selected; a phone capability or missing discovered child does not redirect the record store. " +
@@ -613,14 +614,6 @@ export const proposeDeviceAction: Action = {
               recipients: { type: "array", items: { type: "string" } },
               body: { type: "string" },
               subscriptionId: { type: "integer" },
-            },
-          },
-          {
-            type: "object",
-            additionalProperties: false,
-            required: ["type"],
-            properties: {
-              type: { type: "string", enum: ["camera_capture_photo"] },
             },
           },
           ...clockSchemas,
@@ -705,6 +698,7 @@ export const proposeDeviceAction: Action = {
         type: "string",
         minLength: 1,
         maxLength: 128,
+        pattern: "^[A-Za-z0-9][A-Za-z0-9_-]*$",
       },
     },
     {

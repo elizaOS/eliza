@@ -181,9 +181,7 @@ function renderTypedReadParts(input: {
             age > requirement.freshnessMs
           )
             return reject("unverified-time");
-          rendered.push(
-            `For ${locality}: a current observation reports ${fact.value}${fact.unit}. ${requirement.unverifiedText}`,
-          );
+          rendered.push(`${locality}: ${fact.value}${fact.unit}.`);
         } else {
           rendered.push(
             `${requirement.label}: a nearby report${locality ? ` for ${locality}` : ""}${fact.reportedDay ? ` dated ${fact.reportedDay}` : ""} says ${fact.value}${fact.unit}. ${requirement.unverifiedText}`,

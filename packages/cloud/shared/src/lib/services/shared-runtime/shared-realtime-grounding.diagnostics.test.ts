@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
 import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
+  requireTraceableRealtimeSearch,
   resolveSharedPublicSearchIntent,
   resolveSharedRealtimeRequirement,
   type SharedRealtimeBindingDiagnostic,
@@ -315,4 +316,59 @@ describe("recovered general-public citation and messaging presentation", () => {
     }
     expect(JSON.stringify(evidence)).toBe(before);
   });
+});
+
+test("source refusal audit preserves only validated closed provider diagnostics", () => {
+  const sink = spyOn(console, "info").mockImplementation(() => {});
+  const sourceDiagnostics = [
+    { hop: "observation", outcome: "http-error", httpStatus: 503, elapsedMs: 1450 },
+  ];
+  const query = "current public weather in San Francisco, California";
+  try {
+    const unavailable = requireTraceableRealtimeSearch(
+      {
+        success: false,
+        error: "PRIVATE_PROVIDER_SENTINEL",
+        data: {
+          unavailableReason: "CURRENT_WEATHER_SOURCE_UNAVAILABLE",
+          sourceDiagnostics,
+          private: "PRIVATE_PROVIDER_SENTINEL",
+        },
+      },
+      query,
+    );
+    expect(unavailable.success).toBe(false);
+    const diagnostic = sink.mock.calls.find(
+      (call) => call[0] === "[shared-realtime] source receipt refused",
+    )?.[1];
+    expect(diagnostic).toMatchObject({
+      unavailableReason: "CURRENT_WEATHER_SOURCE_UNAVAILABLE",
+      sourceDiagnostics,
+      queryScopeRejected: false,
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain("PRIVATE_PROVIDER_SENTINEL");
+    expect(JSON.stringify(diagnostic)).not.toContain(query);
+    sink.mockClear();
+    requireTraceableRealtimeSearch(
+      {
+        success: false,
+        error: "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
+        data: {
+          unavailableReason: "PRIVATE_UNKNOWN_REASON",
+          sourceDiagnostics: [{ ...sourceDiagnostics[0], url: "https://private.example" }],
+        },
+      },
+      query,
+    );
+    const scoped = sink.mock.calls.find(
+      (call) => call[0] === "[shared-realtime] source receipt refused",
+    )?.[1];
+    expect(scoped).toMatchObject({ queryScopeRejected: true });
+    expect(scoped).not.toHaveProperty("unavailableReason");
+    expect(scoped).not.toHaveProperty("sourceDiagnostics");
+    expect(JSON.stringify(scoped)).not.toContain("PRIVATE_UNKNOWN_REASON");
+    expect(JSON.stringify(scoped)).not.toContain("https://");
+  } finally {
+    sink.mockRestore();
+  }
 });

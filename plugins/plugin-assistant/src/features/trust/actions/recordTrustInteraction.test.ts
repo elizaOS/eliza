@@ -13,7 +13,7 @@ const message = {
   content: { text: "" },
 };
 
-function createRuntime(recordInteraction = vi.fn(async () => undefined)) {
+function createRuntime(recordInteraction = vi.fn(async () => true)) {
   return {
     agentId: "agent-id",
     getService: vi.fn(() => ({ trustEngine: { recordInteraction } })),
@@ -53,7 +53,7 @@ describe("TRUST record interaction", () => {
   ])(
     "rejects a missing interaction type from %s",
     async (_name, text, options) => {
-      const recordInteraction = vi.fn(async () => undefined);
+      const recordInteraction = vi.fn(async () => true);
       const runtime = createRuntime(recordInteraction);
 
       const result = await recordTrustInteractionHandler(
@@ -73,7 +73,7 @@ describe("TRUST record interaction", () => {
   );
 
   it("rejects an unknown interaction type", async () => {
-    const recordInteraction = vi.fn(async () => undefined);
+    const recordInteraction = vi.fn(async () => true);
     const runtime = createRuntime(recordInteraction);
 
     const result = await recordTrustInteractionHandler(
@@ -98,7 +98,7 @@ describe("TRUST record interaction", () => {
     // valid type and no impact persisted `undefined` into a
     // TrustInteraction.impact that the contract and the column both type as a
     // number -- and still reported success. Reported by @attentionhead.
-    const recordInteraction = vi.fn(async () => undefined);
+    const recordInteraction = vi.fn(async () => true);
     const runtime = createRuntime(recordInteraction);
     vi.spyOn(Date, "now").mockReturnValue(1_234);
 
@@ -121,7 +121,7 @@ describe("TRUST record interaction", () => {
   });
 
   it("records JSON input with canonical type casing and default target and description", async () => {
-    const recordInteraction = vi.fn(async () => undefined);
+    const recordInteraction = vi.fn(async () => true);
     const runtime = createRuntime(recordInteraction);
     vi.spyOn(Date, "now").mockReturnValue(1_234);
 
@@ -161,8 +161,31 @@ describe("TRUST record interaction", () => {
     });
   });
 
+  it("does not report an interaction the trust engine's hourly limit dropped", async () => {
+    // TrustEngine.recordInteraction resolves false for the 11th interaction on
+    // one entity within an hour (see TrustEngine.test.ts).
+    const recordInteraction = vi.fn(async () => false);
+    const runtime = createRuntime(recordInteraction);
+
+    const result = await recordTrustInteractionHandler(
+      runtime as never,
+      {
+        ...message,
+        content: { text: '{"type":"helpful_action","impact":4}' },
+      } as never,
+      undefined,
+      undefined,
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: "TRUST_INTERACTION_RATE_LIMITED",
+      data: { actionName: "TRUST", subaction: "record_interaction" },
+    });
+  });
+
   it("lets nested parameters override JSON and prefers entityId over targetEntityId", async () => {
-    const recordInteraction = vi.fn(async () => undefined);
+    const recordInteraction = vi.fn(async () => true);
     const runtime = createRuntime(recordInteraction);
 
     const result = await recordTrustInteractionHandler(
@@ -199,7 +222,7 @@ describe("TRUST record interaction", () => {
   });
 
   it("uses targetEntityId when entityId is absent", async () => {
-    const recordInteraction = vi.fn(async () => undefined);
+    const recordInteraction = vi.fn(async () => true);
     const runtime = createRuntime(recordInteraction);
 
     await recordTrustInteractionHandler(

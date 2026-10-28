@@ -189,9 +189,13 @@ function committed(data: NonNullable<ActionResult["data"]>): ActionResult {
     isObjectRecord(value) &&
     typeof value.title === "string" &&
     typeof value.body === "string"
-      ? projectNoteForModel(
-          value as Record<string, unknown> & Pick<StickyNote, "title" | "body">,
-        )
+      ? {
+          ...projectNoteForModel(
+            value as Record<string, unknown> &
+              Pick<StickyNote, "title" | "body">,
+          ),
+          ...(value.sourceNote ? { sourceNote: value.sourceNote } : {}),
+        }
       : value;
   if (data.note) modelData.note = project(data.note);
   if (Array.isArray(data.notes)) modelData.notes = data.notes.map(project);
@@ -204,7 +208,7 @@ function committed(data: NonNullable<ActionResult["data"]>): ActionResult {
           effectReceipts,
         }
       : {}),
-    data: modelData,
+    data: { actionName: "NOTES", ...data },
     ...(data.note || Array.isArray(data.notes)
       ? {
           promptData: {
@@ -690,6 +694,9 @@ export const notesAction: Action = {
         op,
         noteId: removed.value.id,
         note: removed.value,
+        deletedAt: removed.snapshot.trash?.findLast(
+          (entry) => entry.note.id === removed.value.id,
+        )?.deletedAt,
         notesRevision: removed.snapshot.revision,
         removedCount: removed.removedIds.length,
       });

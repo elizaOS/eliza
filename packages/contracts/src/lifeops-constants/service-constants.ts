@@ -15,7 +15,6 @@ import type {
   LifeOpsReminderUrgency,
 } from "../lifeops/reminders.js";
 import type { LifeOpsWorkflowPermissionPolicy } from "../lifeops/workflows.js";
-export const MAX_OVERVIEW_OCCURRENCES = 8;
 export const MAX_OVERVIEW_REMINDERS = 6;
 export const OVERVIEW_HORIZON_MINUTES = 18 * 60;
 export const DAY_MINUTES = 24 * 60;
