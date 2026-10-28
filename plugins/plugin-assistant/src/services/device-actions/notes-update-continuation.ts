@@ -37,7 +37,7 @@ export async function notesUpdateAfterReadPlan(
       binding.origin.afterRead?.kind !== "notes_update")
   )
     throw Error("Original Notes edit continuation changed");
-  if (!originalReadRequestMatches(binding, original) || !original)
+  if (!originalReadRequestMatches(binding, original, runtime) || !original)
     throw Error("Original Notes edit request changed");
   const payload = validateDevicePayload(request.payload);
   if (

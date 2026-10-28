@@ -140,7 +140,7 @@ export function calendarTimeUpdateAfterReadPlan(
   if (
     binding.purpose !== "original_calendar_time_update_after_read" ||
     binding.origin.afterRead?.kind !== "calendar_time_update" ||
-    !originalReadRequestMatches(binding, original)
+    !originalReadRequestMatches(binding, original, runtime)
   )
     throw Error("Original Calendar time-change request changed");
   const text = originalCalendarTimeText(original);
@@ -269,7 +269,7 @@ export async function calendarUpdateAfterReadPlan(
   if (
     binding.purpose !== "original_calendar_update_after_read" ||
     binding.origin.afterRead?.kind !== "calendar_update" ||
-    !originalReadRequestMatches(binding, original) ||
+    !originalReadRequestMatches(binding, original, runtime) ||
     !original
   )
     throw Error("Original Calendar update request changed");

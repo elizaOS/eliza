@@ -29,7 +29,7 @@ export function notesDeleteAfterReadPlan(
   if (
     binding.purpose !== "original_notes_delete_after_read" ||
     binding.origin.afterRead?.kind !== "notes_delete" ||
-    !originalReadRequestMatches(binding, original)
+    !originalReadRequestMatches(binding, original, runtime)
   )
     throw Error("Original Notes deletion request changed");
   if (!originalRequestsNotesDeletion(original))

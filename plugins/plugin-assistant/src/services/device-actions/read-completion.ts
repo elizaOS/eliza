@@ -252,7 +252,7 @@ export function deviceReadHostContextRevision(
 export function originalReadRequestMatches(
   binding: DeviceReadCompletion,
   message: Memory | null,
-  redact: (text: string) => string,
+  runtime: Pick<IAgentRuntime, "redactSecrets">,
 ): boolean {
   const original = binding.origin.original,
     marker = message
@@ -265,9 +265,8 @@ export function originalReadRequestMatches(
     message.agentId === binding.agentId &&
     message.entityId === original.entityId &&
     message.roomId === original.roomId &&
-    (typeof text === "string"
-      ? redact(text) === original.content.text
-      : text === original.content.text) &&
+    typeof text === "string" &&
+    runtime.redactSecrets(text) === original.content.text &&
     message.content.source === original.content.source &&
     message.content.channelType === original.content.channelType &&
     message.content.inReplyTo === original.content.inReplyTo &&

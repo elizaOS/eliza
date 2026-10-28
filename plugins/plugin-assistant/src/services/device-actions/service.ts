@@ -1267,11 +1267,7 @@ export class DeviceActionService {
         assertHostCurrent,
       );
       assertCurrent();
-      if (
-        !originalReadRequestMatches(claimed.binding, original, (text) =>
-          this.runtime.redactSecrets(text),
-        )
-      )
+      if (!originalReadRequestMatches(claimed.binding, original, this.runtime))
         throw new DeviceActionError("Original read request changed");
       return claimed.binding.reply;
     }
@@ -1281,11 +1277,7 @@ export class DeviceActionService {
       const saved = await this.runtime.getMemoryById(
         binding.origin.original.id,
       );
-      if (
-        !originalReadRequestMatches(binding, saved, (text) =>
-          this.runtime.redactSecrets(text),
-        )
-      )
+      if (!originalReadRequestMatches(binding, saved, this.runtime))
         throw new DeviceActionError("Original read request changed");
       await this.access(c, async (q, row, tx) => {
         const current = await this.boundReadCompletion(
@@ -1371,7 +1363,7 @@ export class DeviceActionService {
         const latest = await this.runtime.getMemoryById(
           binding.origin.original.id,
         );
-        if (!originalReadRequestMatches(binding, latest))
+        if (!originalReadRequestMatches(binding, latest, this.runtime))
           throw new DeviceActionError(
             "Original selected-record update request changed during extraction",
           );
