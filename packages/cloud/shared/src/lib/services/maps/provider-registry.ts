@@ -1,6 +1,6 @@
 /**
  * Chooses the Eliza Cloud Maps provider from operator configuration. The
- * production provider and its licence are an operator decision (Alpha A-23);
+ * production provider and its licence are an operator decision;
  * this seam lets an operator select one without code changes to the routes:
  *
  *   ELIZA_MAPS_PROVIDER        `osm` (default) or `none`; other kinds register

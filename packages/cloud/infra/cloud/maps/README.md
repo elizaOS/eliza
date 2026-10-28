@@ -81,8 +81,8 @@ balancers from logging query strings.
 
 ## Steps that need the operator
 
-- Choose and license the production provider and region coverage (Alpha
-  decision A-23); the reference stack is one option, not the decision.
+- Choose and license the production provider and region coverage (an
+  operator decision); the reference stack is one option, not the decision.
 - Provision hosts, DNS, TLS, capacity, monitoring and the update schedule.
 - Review and record the GraphHopper jar digest.
 - Set the Cloud settings and the Maps request allowance
