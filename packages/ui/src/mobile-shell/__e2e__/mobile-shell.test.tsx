@@ -101,6 +101,7 @@ const product = (): MobileProductRegistration => ({
   storage: {
     launcherFavorites: "example.launcher.favorites.v1",
     launcherBuiltinPrefix: "example:",
+    launcherDefaultPolicy: "example-apps",
     retained: { appearance: "example.appearance.v1" },
   },
 });
@@ -136,6 +137,7 @@ describe("product registration", () => {
     delete broken.views.labels.calendar;
     broken.views.serves = { calendar: ["notes"] };
     broken.storage.retained.again = "example.launcher.favorites.v1";
+    broken.storage.launcherDefaultPolicy = "Example apps";
     broken.identity.appId = "not an id";
     const issues = validateMobileProductRegistration(broken);
     expect(issues).toEqual(
@@ -148,6 +150,7 @@ describe("product registration", () => {
         "views.rendererKeys.notes: must be an older id of this ordered view",
         "views.serves.calendar: cannot serve notes",
         "storage: example.launcher.favorites.v1 is named twice",
+        "storage.launcherDefaultPolicy: must be a lowercase name",
       ]),
     );
     expect(() =>
@@ -442,6 +445,76 @@ describe("launcher join", () => {
     expect(calls).toEqual(["list", "resolveDefault"]);
   });
 
+  it("migrates the product's installed favorites once, before the launcher reads them", async () => {
+    const store = new Map<string, string>([
+      [
+        "example.launcher.favorites.v1",
+        JSON.stringify({
+          version: 2,
+          keys: ["example:workflows", "example:notes"],
+          defaultPolicy: "example-apps",
+        }),
+      ],
+    ]);
+    const storage = () => ({
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+    });
+    const join = () =>
+      createMobileShellLauncher({
+        bridge: {
+          list: async () => ({ apps: installed }),
+          launch: async () => {},
+        },
+        registry: registryFor(),
+        open: () => {},
+        changed: () => {},
+        storage,
+      });
+    const first = join();
+    first.syncViews();
+    expect(first.migration).toEqual({ status: "migrated", renamed: 1 });
+    expect(first.homeEntries().map((entry) => entry.key)).toEqual([
+      "example:automations",
+      "example:notes",
+    ]);
+    await first.launcher.load();
+    const settings = first.launcher
+      .snapshot()
+      .apps.find((app) => app.packageName === "com.android.settings");
+    if (!settings) throw new Error("installed app missing");
+    first.launcher.toggleFavorite(settings);
+    expect(
+      JSON.parse(store.get("example.launcher.favorites.v1") ?? ""),
+    ).toMatchObject({
+      version: 2,
+      keys: [
+        "example:automations",
+        "example:notes",
+        "com.android.settings/com.android.settings.Settings",
+      ],
+      defaultPolicy: "example-apps",
+    });
+    expect(join().migration).toEqual({ status: "unchanged" });
+    // A host-supplied store is its own record: nothing is migrated for it.
+    expect(shellLauncher().shell.migration).toBeUndefined();
+  });
+
+  it("reports unavailable storage and offers the product's default Home", () => {
+    const shell = createMobileShellLauncher({
+      bridge: { list: async () => ({ apps: [] }), launch: async () => {} },
+      registry: registryFor(),
+      open: () => {},
+      changed: () => {},
+      storage: () => {
+        throw new Error("SecurityError");
+      },
+    });
+    shell.syncViews();
+    expect(shell.migration).toMatchObject({ status: "failed" });
+    expect(shell.homeEntries()).toEqual([]);
+  });
+
   it("reads the inventory for Home only when an installed app is a favorite", () => {
     const productOnly = shellLauncher(["example:notes"]);
     productOnly.shell.prepareHome();
@@ -565,50 +638,76 @@ describe("Home, All apps and view host", () => {
   });
 });
 
-it("the entry imports only its own leaves, never the package barrel", () => {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const src = path.resolve(here, "../..");
-  const allowedExternal = new Set([
-    "react",
-    "@elizaos/contracts",
-    "@elizaos/capacitor-system/launcher",
-  ]);
-  const seen = new Set<string>();
-  const visit = (file: string) => {
-    if (seen.has(file)) return;
-    seen.add(file);
-    const source = fs.readFileSync(file, "utf8");
-    for (const [, specifier] of source.matchAll(
-      /(?:\bfrom\s+|^import\s+)["']([^"']+)["'];/gm,
-    )) {
-      if (!specifier.startsWith(".")) {
-        expect(allowedExternal.has(specifier), `${file}: ${specifier}`).toBe(
-          true,
+describe("entries", () => {
+  const src = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../..",
+  );
+  /** Every module an entry loads, and each package it imports at runtime. */
+  const closure = (entry: string) => {
+    const seen = new Set<string>();
+    const runtime = new Set<string>();
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const source = fs.readFileSync(file, "utf8");
+      for (const [statement, from, bare] of source.matchAll(
+        /^(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["'];|^import\s*["']([^"']+)["'];/gm,
+      )) {
+        const specifier = from ?? bare;
+        const typeOnly = /^(?:import|export)\s+type\b/.test(statement);
+        if (!specifier.startsWith(".")) {
+          if (!typeOnly) runtime.add(specifier);
+          continue;
+        }
+        const base = path.resolve(path.dirname(file), specifier);
+        const resolved = [`${base}.ts`, `${base}.tsx`, base].find(
+          (candidate) =>
+            fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
         );
-        continue;
+        if (!resolved) throw new Error(`${file}: cannot resolve ${specifier}`);
+        visit(resolved);
       }
-      const base = path.resolve(path.dirname(file), specifier);
-      const resolved = [`${base}.ts`, `${base}.tsx`, base].find(
-        (candidate) =>
-          fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
-      );
-      if (!resolved) throw new Error(`${file}: cannot resolve ${specifier}`);
-      visit(resolved);
-    }
+    };
+    visit(path.join(src, entry));
+    return {
+      files: [...seen].map((file) => path.relative(src, file)).sort(),
+      packages: [...runtime].sort(),
+    };
   };
-  visit(path.join(src, "mobile-shell/index.ts"));
-  expect([...seen].map((file) => path.relative(src, file)).sort()).toEqual([
-    "components/pages/InstalledAppsLauncher.tsx",
+  const core = [
     "config/theme.ts",
-    "mobile-shell/MobileAllAppsDrawer.tsx",
-    "mobile-shell/MobileHomeScreen.tsx",
-    "mobile-shell/MobileViewHost.tsx",
-    "mobile-shell/index.ts",
-    "mobile-shell/mobile-launcher.ts",
+    "mobile-shell/core.ts",
     "mobile-shell/navigation.ts",
     "mobile-shell/product-registration.ts",
     "mobile-shell/view-id-migration.ts",
     "mobile-shell/view-ids.ts",
     "mobile-shell/view-registry.ts",
-  ]);
+  ];
+
+  it("the shell entry imports only its own leaves, never the package barrel", () => {
+    expect(closure("mobile-shell/index.ts")).toEqual({
+      files: [
+        "components/pages/InstalledAppsLauncher.tsx",
+        ...core,
+        "mobile-shell/MobileAllAppsDrawer.tsx",
+        "mobile-shell/MobileHomeScreen.tsx",
+        "mobile-shell/MobileViewHost.tsx",
+        "mobile-shell/index.ts",
+        "mobile-shell/mobile-launcher.ts",
+      ].sort(),
+      packages: [
+        "@elizaos/capacitor-system/launcher",
+        "@elizaos/contracts",
+        "react",
+      ],
+    });
+  });
+
+  it("the core entry loads no React and no component", () => {
+    expect(closure("mobile-shell/core.ts")).toEqual({
+      files: core,
+      packages: ["@elizaos/contracts"],
+    });
+  });
 });

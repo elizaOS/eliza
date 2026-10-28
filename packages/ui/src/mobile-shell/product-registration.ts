@@ -96,6 +96,8 @@ export interface MobileProductStorage {
   launcherFavorites: string;
   /** Prefix of the product's own views in that list, e.g. `eliza:`. */
   launcherBuiltinPrefix: string;
+  /** Default-favorites policy written with that list, e.g. `eliza-apps`. */
+  launcherDefaultPolicy: string;
   /** Other installed storage names the product keeps reading. */
   retained: Readonly<Record<string, string>>;
 }
@@ -137,6 +139,7 @@ const LEGACY_ID = /^[a-z][a-z0-9_-]*$/;
 const APP_ID = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const CSS_PROPERTY = /^--[a-z][a-z0-9-]*$/;
 const BUILTIN_PREFIX = /^[a-z][a-z0-9-]*:$/;
+const POLICY = /^[a-z][a-z0-9-]*$/;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -319,6 +322,11 @@ export function validateMobileProductRegistration(value: unknown): string[] {
       !BUILTIN_PREFIX.test(storage.launcherBuiltinPrefix)
     )
       issue("storage.launcherBuiltinPrefix", "must be a lowercase name and :");
+    if (
+      typeof storage.launcherDefaultPolicy !== "string" ||
+      !POLICY.test(storage.launcherDefaultPolicy)
+    )
+      issue("storage.launcherDefaultPolicy", "must be a lowercase name");
     if (!record(storage.retained))
       issue("storage.retained", "must be an object");
     else
