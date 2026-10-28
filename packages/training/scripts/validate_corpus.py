@@ -658,8 +658,11 @@ def iter_records(path: Path, max_records: int | None) -> Iterable[tuple[int, dic
             if not line:
                 continue
             try:
-                yield i, json.loads(line)
-            except json.JSONDecodeError as e:
+                record = json.loads(line)
+                if not isinstance(record, dict):
+                    raise ValueError("expected a JSON object")
+                yield i, record
+            except ValueError as e:
                 yield i, {"_parse_error": str(e), "_raw": line[:200]}
 
 
