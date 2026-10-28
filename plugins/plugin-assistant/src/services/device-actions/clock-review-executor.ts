@@ -51,6 +51,20 @@ export {
   validateClockHandoffDispatch,
   validateClockHandoffResult,
 } from "./clock-handoff.ts";
+export type {
+  ClockHandoffEnvelope,
+  ClockHandoffHistory,
+  ClockHandoffHistoryOptions,
+  ClockHandoffHistoryStorage,
+  ClockHandoffRecord,
+  ClockHandoffSnapshot,
+} from "./clock-handoff-history.ts";
+export {
+  CLOCK_HANDOFF_HISTORY_ACTIONS,
+  CLOCK_HANDOFF_HISTORY_STATUSES,
+  createClockHandoffHistory,
+  validateClockHandoffRecord,
+} from "./clock-handoff-history.ts";
 export interface ClockJournalIdentity {
   scope: string;
   proposalId: string;
