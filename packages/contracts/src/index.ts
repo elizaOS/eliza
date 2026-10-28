@@ -133,6 +133,7 @@ export * from "./lifeops-normalize/time-util.js";
 export * from "./lifeops-normalize/time-zone.js";
 export * from "./native-notes-query.js";
 export * from "./native-transcript.js";
+export * from "./notice-routes.js";
 export * from "./os-intent/assistant-launch.js";
 export * from "./os-intent/contract.js";
 export * from "./os-intent/decode.js";

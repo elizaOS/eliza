@@ -34,6 +34,12 @@
       "import": "./dist/phone-workflow.js",
       "default": "./dist/phone-workflow.js"
     },
+    "./notice-routes": {
+      "eliza-source": "./src/notice-routes.ts",
+      "types": "./dist/notice-routes.d.ts",
+      "import": "./dist/notice-routes.js",
+      "default": "./dist/notice-routes.js"
+    },
     "./native-notes-query": {
       "eliza-source": "./src/native-notes-query.ts",
       "types": "./dist/native-notes-query.d.ts",
