@@ -580,6 +580,14 @@ export function applyUpdate({
       problems.push("the device reports no A/B slot");
     if (observed && observed.selinux !== "Enforcing")
       problems.push("SELinux is not enforcing on the installed build");
+    // The post-update check compares against this state; an unknown one would skip it.
+    if (
+      observed?.bootCompleted &&
+      !VERIFIED_BOOT_STRENGTH.includes(observed.verifiedBootState)
+    )
+      problems.push(
+        `the device reports an unrecognised verified boot state (${observed.verifiedBootState ?? "none"}); the update cannot verify it is not weakened`,
+      );
   }
   const classification = journal
     ? classifyUpdate(journal, state, observed)
@@ -702,7 +710,7 @@ export function applyUpdate({
               ),
             );
             throw new Error(
-              `the device did not enter recovery sideload (it is ${current}); nothing was sent. Choose "Apply update from ADB" in recovery and run apply again, or reboot the device`,
+              `the device did not enter recovery sideload (it is ${current}); nothing was sent. The device installation lock stays in place because the device was rebooted: inspect it and the journal, remove the lock, then choose "Apply update from ADB" in recovery and run apply again, or reboot the device`,
             );
           }
         }

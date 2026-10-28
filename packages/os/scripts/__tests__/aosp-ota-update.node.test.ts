@@ -558,6 +558,22 @@ test("the candidate package and records are checked before any device write; a d
     }).problems.join("\n"),
     /downgrades are refused/,
   );
+  // An unrecognised installed verified boot state would skip the post-update comparison.
+  for (const verifiedBoot of ["", "unknown"]) {
+    const unknownBoot = simulatedDevice({ verifiedBoot });
+    const result = applyUpdate({
+      device: unknownBoot,
+      ...operation(t).options,
+      execute: true,
+      confirm: true,
+    });
+    assert.equal(result.executed, false);
+    assert.match(
+      result.problems.join("\n"),
+      /unrecognised verified boot state/,
+    );
+    assert.deepEqual(writesOf(unknownBoot), []);
+  }
 });
 
 test("a confirmed update is journaled through recovery sideload and verified on the other slot", (t) => {
@@ -690,7 +706,7 @@ test("an operator who does not choose sideload leaves the device unchanged and t
   const device = simulatedDevice({ operator: "idle" });
   assert.throws(
     () => applyUpdate({ device, ...run.options, execute: true, confirm: true }),
-    /did not enter recovery sideload \(it is absent\); nothing was sent/,
+    /did not enter recovery sideload \(it is absent\); nothing was sent\. The device installation lock stays in place/,
   );
   assert.deepEqual(states(run.options.journalFile), [
     "preflight",
@@ -705,6 +721,11 @@ test("an operator who does not choose sideload leaves the device unchanged and t
   assert.ok(!device.calls.some((call) => call[1] === "sideload"));
   // The operator chooses "Apply update from ADB" later; apply resumes from sideload without another reboot.
   device.sim.operator = "present";
+  // The lock is kept after the reboot, as the error says; apply refuses until it is removed.
+  assert.throws(
+    () => applyUpdate({ device, ...run.options, execute: true, confirm: true }),
+    /device installation locked/,
+  );
   for (const name of fs.readdirSync(run.lockDirectory))
     fs.rmSync(path.join(run.lockDirectory, name));
   const resumed = applyUpdate({
