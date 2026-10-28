@@ -125,6 +125,30 @@ import {
 	omitUnvalidatedProviderSpans,
 } from "./trajectory-provider-attribution";
 
+/**
+ * Rebind provider spans to the exact string a model call persists. Copying
+ * composeState's providersText offsets onto a larger messages prompt produces
+ * false exact-match slices.
+ */
+function reboundProviderAttributions(
+	trajCtx: NonNullable<ReturnType<typeof getTrajectoryContext>>,
+	messages: unknown[] | undefined,
+	prompt: string,
+) {
+	const rebound = trajCtx.providerAttributionState
+		? buildProviderAttributionsFromState({
+				state: trajCtx.providerAttributionState,
+				prompt: canonicalPromptForModelCall({ messages, prompt }),
+			})
+		: undefined;
+	return {
+		providerOrder: rebound?.providerOrder ?? trajCtx.providerOrder,
+		providerAttributions:
+			rebound?.providerAttributions ??
+			omitUnvalidatedProviderSpans(trajCtx.providerAttributions),
+	};
+}
+
 export interface RuntimeModelDispatchHost {
 	confidentialInference(): ConfidentialInferenceAuthority | undefined;
 	processingPolicy(): ProcessingPolicy | undefined;
@@ -2455,24 +2479,8 @@ export class RuntimeModelDispatch {
 				typeof paramsRecord.prompt === "string"
 					? paramsRecord.prompt
 					: userPrompt;
-			// Rebind provider spans to the exact string this call persists. Copying
-			// composeState's providersText offsets onto a larger messages prompt
-			// produces false exact-match slices.
-			const canonicalPrompt = canonicalPromptForModelCall({
-				messages,
-				prompt,
-			});
-			const reboundAttributions = trajCtx.providerAttributionState
-				? buildProviderAttributionsFromState({
-						state: trajCtx.providerAttributionState,
-						prompt: canonicalPrompt,
-					})
-				: undefined;
-			const providerOrder =
-				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
-			const providerAttributions =
-				reboundAttributions?.providerAttributions ??
-				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
+			const { providerOrder, providerAttributions } =
+				reboundProviderAttributions(trajCtx, messages, prompt);
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -2623,33 +2631,18 @@ export class RuntimeModelDispatch {
 				`${errorMessage}${detailSuffix}`,
 			);
 			const failureEvidence = modelOutputIncompleteEvidence(args.error);
+			const messages = Array.isArray(paramsRecord.messages)
+				? (paramsRecord.messages as unknown[])
+				: undefined;
+			const prompt =
+				typeof paramsRecord.prompt === "string"
+					? paramsRecord.prompt
+					: userPrompt;
+			const { providerOrder, providerAttributions } =
+				reboundProviderAttributions(trajCtx, messages, prompt);
 			const activeTrace = this.runtime.getActiveTrace(
 				this.runtime.getCurrentRunId(),
 			);
-			// Rebind provider spans to the exact string this call persists, as
-			// the success path does. Copying composeState's providersText
-			// offsets onto a larger messages prompt produces false
-			// exact-match slices.
-			const canonicalPrompt = canonicalPromptForModelCall({
-				messages: Array.isArray(paramsRecord.messages)
-					? (paramsRecord.messages as unknown[])
-					: undefined,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
-			});
-			const reboundAttributions = trajCtx.providerAttributionState
-				? buildProviderAttributionsFromState({
-						state: trajCtx.providerAttributionState,
-						prompt: canonicalPrompt,
-					})
-				: undefined;
-			const providerOrder =
-				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
-			const providerAttributions =
-				reboundAttributions?.providerAttributions ??
-				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
 			trajLogger.logLlmCall({
 				stepId,
 				model: args.resolvedModelKey,
@@ -2657,17 +2650,12 @@ export class RuntimeModelDispatch {
 				provider: args.provider,
 				systemPrompt,
 				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
+				prompt,
 				// The failed request's messages ARE the evidence: without them a
 				// provider rejection (schema, shape, encoding) cannot be replayed or
 				// diagnosed from the trajectory. Same privacy surface as the
 				// successful-call record, which already persists messages.
-				messages: Array.isArray(paramsRecord.messages)
-					? (paramsRecord.messages as unknown[])
-					: undefined,
+				messages,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,
