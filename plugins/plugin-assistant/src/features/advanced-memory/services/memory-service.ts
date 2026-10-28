@@ -139,10 +139,21 @@ export class MemoryService extends Service {
 
     // Read config overrides from environment / character settings.
     const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
-    if (longTermEnabled === "false" || longTermEnabled === false) {
+    // A settings UI or config file can spell the value in any letter case
+    // ("FALSE", "False", " false "). An exact-match comparison let an
+    // explicit disable fail open and left long-term extraction running,
+    // the same shape as the triggers gate fixed in #37535.
+    if (longTermEnabled === false) {
       this.memoryConfig.longTermExtractionEnabled = false;
-    } else if (longTermEnabled === "true" || longTermEnabled === true) {
+    } else if (longTermEnabled === true) {
       this.memoryConfig.longTermExtractionEnabled = true;
+    } else if (typeof longTermEnabled === "string") {
+      const setting = longTermEnabled.trim().toLowerCase();
+      if (setting === "false") {
+        this.memoryConfig.longTermExtractionEnabled = false;
+      } else if (setting === "true") {
+        this.memoryConfig.longTermExtractionEnabled = true;
+      }
     }
 
     const confidenceThreshold = runtime.getSetting(
