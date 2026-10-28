@@ -150,19 +150,42 @@ test("execution receipts bind events to their run and keep interruption and occu
   );
 });
 
-test("a generic schedule's missed occurrence is recorded from its settlement alone", () => {
+test("a generic schedule's missed occurrence needs the engine's missedOccurrenceAt marker", () => {
   const output = {
     status: "missed",
     scheduledAt: "2026-10-28T07:30:00.000Z",
     text: "Not run: the agent was not running at the scheduled time",
   };
   assert.deepEqual(workflowOccurrenceNotRun(output), output);
-  const run = parseWorkflowRun(execution({ output }));
+  const recorded = {
+    output,
+    status: "success",
+    finished: true,
+    missedOccurrenceAt: output.scheduledAt,
+  };
+  const run = parseWorkflowRun(execution(recorded));
   assert.deepEqual(run.occurrence, {
     scheduledAt: "2026-10-28T07:30:00.000Z",
     status: "missed",
   });
   assert.equal(run.output, output.text);
+  // A workflow whose own output is shaped like the missed record ran: without
+  // the engine marker on a finished execution it is not a missed occurrence.
+  for (const over of [
+    { output, finished: true },
+    { output, finished: false, missedOccurrenceAt: output.scheduledAt },
+    { output, finished: true, missedOccurrenceAt: "soon" },
+    { output, finished: true, missedOccurrenceAt: 1793000000000 },
+  ]) {
+    assert.equal(parseWorkflowRun(execution(over)).occurrence, undefined);
+  }
+  // An overlap is recorded from its settlement alone.
+  assert.deepEqual(
+    parseWorkflowRun(
+      execution({ output: { ...output, status: "overlap" }, finished: true }),
+    ).occurrence,
+    { scheduledAt: output.scheduledAt, status: "overlap" },
+  );
   // Ordinary outputs and malformed settlements never read as a skipped occurrence.
   for (const value of [
     undefined,
