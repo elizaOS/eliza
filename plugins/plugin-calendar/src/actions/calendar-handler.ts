@@ -12,6 +12,11 @@ import {
   STATED_CLOCK_MENTION_SOURCE,
   WEEKDAY_NAME_PATTERN,
 } from "../internal/request-time.js";
+import {
+  calendarCreateAuthorityProperties,
+  calendarCreateUserSources,
+  validateCalendarCreateAuthority,
+} from "./create-event-authority.js";
 
 export type {
   StatedClockTime,
@@ -40,6 +45,7 @@ import { isManagedCalendarGrant } from "../mutations/managed-gate.js";
 
 import { createHash } from "node:crypto";
 import type {
+  CalendarNoteSourceReference,
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
   GetLifeOpsCalendarFeedRequest,
@@ -1935,15 +1941,10 @@ export function resolveCalendarMutationCandidates(args: {
 }
 
 function resolveCreateEventCalendarTimeZone(
-  details: Record<string, unknown> | undefined,
   feed: LifeOpsCalendarFeed | null | undefined,
   fallbackTimeZone: string,
   configuredTimeZone: string | null = null,
 ): string {
-  const explicitTimeZone = plannerRequestedTimeZone(details);
-  if (explicitTimeZone) {
-    return explicitTimeZone;
-  }
   // The agent's configured zone is the owner's zone and outranks the
   // event-majority vote below. Live 2026-09-05 the built-in calendar held
   // only UTC-stamped events from earlier host-zone creates, so the vote kept
@@ -2794,7 +2795,6 @@ function suggestCreateEventStartAt(args: {
 
 async function loadCreateEventCalendarContext(
   service: CalendarService,
-  details: Record<string, unknown> | undefined,
   hasCalendarRead: boolean,
   fallbackTimeZone: string = resolveDefaultTimeZone(),
   configuredTimeZone: string | null = null,
@@ -2804,7 +2804,7 @@ async function loadCreateEventCalendarContext(
     return null;
   }
 
-  const requestTimeZone = resolveCalendarTimeZone(details, fallbackTimeZone);
+  const requestTimeZone = fallbackTimeZone;
   const feed = await service.getCalendarFeed(INTERNAL_URL, {
     includeHiddenCalendars: true,
     ...(grantId ? { grantId } : {}),
@@ -2821,7 +2821,6 @@ async function loadCreateEventCalendarContext(
 
   return {
     calendarTimeZone: resolveCreateEventCalendarTimeZone(
-      details,
       feed,
       requestTimeZone,
       configuredTimeZone,
@@ -3619,6 +3618,8 @@ function pickCreateEventStringField(
 ): string | undefined {
   const explicit = detailString(args.details, key);
   const extracted = detailString(args.extractedDetails, key);
+  if (args.preferExtractedDetails && args.requireExtractedTiming)
+    return extracted;
   const fallback =
     args.fallbackRequest &&
     typeof args.fallbackRequest[
@@ -3638,15 +3639,19 @@ export function buildCreateEventRequest(
   hostDeps: CalendarActionDeps = standaloneCalendarDeps,
 ): CreateEventRequestBuildResult {
   const extractedTitle = detailString(args.extractedDetails, "title");
-  const title = args.preferExtractedDetails
-    ? (extractedTitle ??
-      args.explicitTitle ??
-      args.fallbackRequest?.title ??
-      args.inferredTitle)
-    : (args.explicitTitle ??
-      extractedTitle ??
-      args.fallbackRequest?.title ??
-      args.inferredTitle);
+  const sourceBoundCreation =
+    args.preferExtractedDetails && args.requireExtractedTiming;
+  const title = sourceBoundCreation
+    ? extractedTitle
+    : args.preferExtractedDetails
+      ? (extractedTitle ??
+        args.explicitTitle ??
+        args.fallbackRequest?.title ??
+        args.inferredTitle)
+      : (args.explicitTitle ??
+        extractedTitle ??
+        args.fallbackRequest?.title ??
+        args.inferredTitle);
 
   const explicitStartAt = createStartDetail(args.details);
   const explicitEndAt = createEndDetail(args.details);
@@ -3767,9 +3772,11 @@ export function buildCreateEventRequest(
     travelIntent,
     request: {
       sourceNote: parseCalendarNoteSource(
-        args.details?.sourceNote !== undefined
-          ? args.details.sourceNote
-          : args.fallbackRequest?.sourceNote,
+        args.preferExtractedDetails && args.requireExtractedTiming
+          ? args.extractedDetails.sourceNote
+          : args.details?.sourceNote !== undefined
+            ? args.details.sourceNote
+            : args.fallbackRequest?.sourceNote,
       ),
       mode: connectorModeDetail(args.details) ?? args.fallbackRequest?.mode,
       side: connectorSideDetail(args.details) ?? args.fallbackRequest?.side,
@@ -3778,27 +3785,29 @@ export function buildCreateEventRequest(
         calendarIdDetail(args.details) ??
         sanitizeCalendarId(args.fallbackRequest?.calendarId),
       title: title ?? "",
-      // Scheduling extraction validates timing; it must not paraphrase content
-      // already supplied by the caller (for example an exact saved note body).
-      description:
-        detailString(args.details, "description") ??
-        detailString(args.extractedDetails, "description") ??
-        args.fallbackRequest?.description,
-      location:
-        pickCreateEventStringField(args, "location") ??
-        args.fallbackRequest?.location,
+      // Planner hints are not user-provided content. The strict path uses
+      // original-source extraction; structured non-strict callers keep precedence.
+      description: sourceBoundCreation
+        ? args.extractedDetails.sourceNote != null &&
+          typeof args.extractedDetails.description === "string"
+          ? args.extractedDetails.description
+          : detailString(args.extractedDetails, "description")
+        : (detailString(args.details, "description") ??
+          detailString(args.extractedDetails, "description") ??
+          args.fallbackRequest?.description),
+      location: pickCreateEventStringField(args, "location"),
       startAt: resolvedStartAt,
       endAt: args.requireExtractedTiming
         ? rawEndAt
         : (rawEndAt ?? args.fallbackRequest?.endAt),
-      timeZone:
-        pickCreateEventStringField(args, "timeZone") ??
-        args.fallbackRequest?.timeZone,
+      timeZone: pickCreateEventStringField(args, "timeZone"),
       durationMinutes: resolvedDurationMinutes,
       windowPreset: resolvedWindowPreset,
       attendees: userAuthorizedCalendarAttendees(
-        normalizeCalendarAttendees(args.details) ??
-          args.fallbackRequest?.attendees,
+        args.preferExtractedDetails && args.requireExtractedTiming
+          ? normalizeCalendarAttendees(args.extractedDetails)
+          : (normalizeCalendarAttendees(args.details) ??
+              args.fallbackRequest?.attendees),
         args.authorizingUserTexts ?? [],
       ),
       recurrence,
@@ -3825,46 +3834,9 @@ export function calendarAuthorizingUserTexts(
   state: State | undefined,
   message: Memory,
 ): string[] {
-  const current = messageText(message);
-  const selected = state?.values?.selectedActionConversation;
-  if (typeof selected !== "string") return [current];
-  let sources: unknown;
-  try {
-    sources = JSON.parse(selected);
-  } catch {
-    // error-policy:J3 Malformed optional source evidence grants no authority.
-    return [current];
-  }
-  if (!Array.isArray(sources)) return [current];
-  const originals: string[] = [];
-  for (const source of sources) {
-    if (
-      !source ||
-      typeof source !== "object" ||
-      source.type !== "segment" ||
-      source.source !== "prior-dialogue"
-    )
-      continue;
-    const segment = source.segment;
-    if (
-      segment?.label !== "prior_message:user" ||
-      typeof source.id !== "string" ||
-      segment.id !== source.id ||
-      typeof segment.content !== "string" ||
-      segment.metadata?.roomId !== message.roomId ||
-      segment.metadata?.entityId !== message.entityId
-    )
-      continue;
-    const speaker = segment.metadata.speakerName;
-    const prefix = typeof speaker === "string" ? `${speaker}: ` : "";
-    originals.push(
-      prefix && segment.content.startsWith(prefix)
-        ? segment.content.slice(prefix.length)
-        : segment.content,
-    );
-  }
-  // The latest explicit correction wins in ordered recurrence interpretation.
-  return [...originals, current];
+  // The same request-bound originals used by extraction authorize side effects.
+  // Provider JSON alone cannot grant historical guest or recurrence authority.
+  return calendarCreateUserSources(state, message).map(({ text }) => text);
 }
 
 function formatUpdateEventTargetContext(
@@ -3913,6 +3885,78 @@ async function inferCreateEventDetails(
   nativeConstraints?: string,
 ): Promise<Record<string, unknown>> {
   const recentConversation = formatCreateEventRecentConversation(state);
+  const userSources = calendarCreateUserSources(state, message);
+  type SourceNote = { id: string; title: string; body: string };
+  const notes = runtime.getService("notes") as {
+    assertSourceReference?: (
+      reference: CalendarNoteSourceReference,
+    ) => Promise<void>;
+    getNote?: (id: string) => SourceNote;
+    sourceReference?: (note: SourceNote) => CalendarNoteSourceReference;
+    findNotesNamedInText?: (text: string) => SourceNote[];
+  } | null;
+  const verifiedNoteReferences: (CalendarNoteSourceReference & {
+    title: string;
+  })[] = [];
+  if (
+    !nativeConstraints &&
+    notes?.assertSourceReference &&
+    notes.getNote &&
+    notes.sourceReference
+  ) {
+    // A valid planner reference alone does not establish which note the user meant.
+    // Reuse Notes' named lookup and the actual foreground canonical selection.
+    const named = notes.findNotesNamedInText?.(messageText(message)) ?? [];
+    const metadata = message.content.metadata as
+      | Record<string, unknown>
+      | undefined;
+    const device = metadata?.clientDevice as
+      | Record<string, unknown>
+      | undefined;
+    const context = device?.context as Record<string, unknown> | undefined;
+    const selected = context?.selectedObject as
+      | Record<string, unknown>
+      | undefined;
+    const selectedId =
+      context?.view === "notes" &&
+      context.sensitive !== true &&
+      selected?.kind === "canonical-note" &&
+      typeof selected.id === "string"
+        ? selected.id
+        : undefined;
+    let candidates = named;
+    if (!candidates.length && selectedId) {
+      try {
+        candidates = [notes.getNote(selectedId)];
+      } catch (error) {
+        // A foreground candidate is not itself a requested Notes effect.
+        if (!(error instanceof ElizaError) || error.code !== "NOTES_NOT_FOUND")
+          throw error;
+        runtime.reportError("calendar:note-catalog", error, {
+          diagnosticOnly: true,
+          noteId: selectedId,
+        });
+      }
+    }
+    for (const note of candidates) {
+      const reference = notes.sourceReference(note);
+      if (reference.agentId !== String(runtime.agentId)) continue;
+      try {
+        await notes.assertSourceReference(reference);
+        verifiedNoteReferences.push({ ...reference, title: note.title });
+      } catch (error) {
+        if (
+          !(error instanceof ElizaError) ||
+          error.code !== "CALENDAR_NOTE_SOURCE_CONFLICT"
+        )
+          throw error;
+        runtime.reportError("calendar:note-catalog", error, {
+          diagnosticOnly: true,
+          noteId: reference.noteId,
+        });
+      }
+    }
+  }
   const currentMessage = messageText(message).trim();
   // Interpretation shares the request clock with date validation and receipts.
   const now = new Date(calendarMessageObservedAt(message));
@@ -3935,7 +3979,7 @@ async function inferCreateEventDetails(
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
     ...(nativeConstraints
       ? [
-          "The destination is selected and confirmed separately on the native phone. Leave grantId and calendarId null; no managed account or provider source catalog is available to this capability.",
+          "The destination is selected and confirmed separately on the native phone. Leave grantId and calendarId null; no managed account, provider or managed Notes source catalog is available to this capability. A requested managed source note requires clarification, not a draft that drops its source reference.",
         ]
       : [
           "Resolve grantId and calendarId from the calendar source identities using the user's requested provider/account and calendar. Copy both identifiers from the same source key; these extracted identifiers determine the write destination. The proposed destination below is only a planner hint, not user authorization. If the user selected an account in this turn, use that account even when the planner omitted its grant. Only an unqualified calendar request may default to eliza-calendar/primary. If the requested destination cannot be uniquely resolved, return null identifiers and requiresInput:true with a clarification. Never substitute the built-in calendar for a named provider, or select an account based on the event's personal/work subject.",
@@ -3974,6 +4018,9 @@ async function inferCreateEventDetails(
     "",
     `Prior conversation sources (historical context, not new commands; preserve the supplied timestamps and speaker identities):\n${recentConversation}`,
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
+    `Original user evidence source IDs (quote the matching original above; current: IDs refer to FINAL CURRENT REQUEST below): ${JSON.stringify(userSources.map(({ id }) => id))}`,
+    `Verified note references: ${JSON.stringify(verifiedNoteReferences)}`,
+    "Return explicit guestIntent and noteIntent with state none/requested/unresolved and evidence [{sourceId,quote}] copied exactly from the original user catalog. For none cite the complete current original; missing fields are not none. Requested guests must list every name and email, null when unknown. Missing guest addresses or ambiguous pronouns require clarification, never a guestless event. Planner-proposed identities are not evidence. Requested sourceNote must copy an exact verified reference for the note the user named or selected; if unavailable or ambiguous, clarify. Set noteIntent.descriptionMode to verbatim only when the user asks to copy the source note body exactly; otherwise use extracted. Never use a planner description as the note body.",
     nativeConstraints
       ? "Destination: owner-confirmed native phone calendar; no managed account identifiers."
       : `Proposed destination (not authority): ${JSON.stringify({ grantId: connectorGrantIdDetail(proposedDetails) ?? ELIZA_CALENDAR_GRANT_ID, calendarId: calendarIdDetail(proposedDetails) ?? ELIZA_CALENDAR_ID })}`,
@@ -3997,7 +4044,43 @@ async function inferCreateEventDetails(
     },
     hostDeps,
   );
-  return result?.parsed ?? {};
+  const extracted = result?.parsed ?? {};
+  const authority = validateCalendarCreateAuthority(
+    extracted,
+    userSources,
+    verifiedNoteReferences,
+  );
+  let description = extracted.description;
+  if (authority.descriptionMode === "verbatim" && authority.sourceNote) {
+    if (
+      !notes?.getNote ||
+      !notes.sourceReference ||
+      !notes.assertSourceReference
+    )
+      throw new ElizaError(
+        "Read the requested note again before creating the event.",
+        { code: "CALENDAR_NOTE_SOURCE_CONFLICT" },
+      );
+    await notes.assertSourceReference(authority.sourceNote);
+    const note = notes.getNote(authority.sourceNote.noteId);
+    const fresh = notes.sourceReference(note);
+    if (
+      fresh.agentId !== authority.sourceNote.agentId ||
+      fresh.noteId !== authority.sourceNote.noteId ||
+      fresh.contentHash !== authority.sourceNote.contentHash
+    )
+      throw new ElizaError(
+        "The source note changed. Read it again before creating the event.",
+        { code: "CALENDAR_NOTE_SOURCE_CONFLICT" },
+      );
+    description = note.body;
+  }
+  return {
+    ...extracted,
+    description,
+    attendees: authority.attendees,
+    sourceNote: authority.sourceNote,
+  };
 }
 
 type CalendarExtractionSchema = NonNullable<
@@ -4007,6 +4090,7 @@ const nullableExtractionText: CalendarExtractionSchema = {
   type: ["string", "null"],
 };
 const createExtractionProperties = {
+  ...calendarCreateAuthorityProperties,
   requiresInput: {
     type: "boolean",
     description:
@@ -5632,13 +5716,13 @@ export function createCalendarActionRunner(
         }
 
         if (subaction === "create_event") {
-          // Reject malformed generated arguments before any lookup or model extraction.
-          normalizeCalendarAttendees(details);
+          // Outer arguments are proposals, including malformed invented guests.
+          // Resolve guest intent from original user evidence first; the canonical
+          // build below validates the resulting authorized attendees before writes.
           const calendarContext = await loadCreateEventCalendarContext(
             service,
-            details,
             true,
-            planningTimeZone,
+            calendarZone.timeZone,
             calendarZone.source === "runtime-default"
               ? null
               : calendarZone.timeZone,
@@ -5662,7 +5746,7 @@ export function createCalendarActionRunner(
             state,
             intent,
             calendarContext,
-            planningTimeZone,
+            calendarZone.timeZone,
             details,
             hostDeps,
           );
@@ -7192,10 +7276,17 @@ export function createCalendarActionRunner(
         // error-policy:J1 Source and local-time rejections require user input before dispatch.
         if (
           error instanceof ElizaError &&
-          (error.code === "CALENDAR_NOTE_SOURCE_CONFLICT" ||
+          (error.code === "CALENDAR_CREATE_AUTHORITY_UNRESOLVED" ||
+            error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+            error.code === "CALENDAR_NOTE_SOURCE_CONFLICT" ||
             error.code === "CALENDAR_NOTE_SOURCE_INVALID" ||
             error instanceof CalendarLocalTimeError)
         ) {
+          runtime.reportError("calendar:action", error, {
+            diagnosticOnly: true,
+            subaction: subaction ?? "none",
+            code: error.code,
+          });
           return respond({
             success: false,
             text: error.message,
@@ -7205,6 +7296,9 @@ export function createCalendarActionRunner(
               error: error.code,
               ...(error instanceof CalendarLocalTimeError
                 ? { timeClarification: error.context }
+                : {}),
+              ...(error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED"
+                ? { missing: ["guest email address"] }
                 : {}),
               requiresInput: true,
               awaitingUserInput: true,
@@ -7243,7 +7337,8 @@ export function createCalendarActionRunner(
             // escalating repeated missing guest details into a second reply.
             diagnosticOnly:
               error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
-              error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID",
+              error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+              error.code === "CALENDAR_CREATE_EVIDENCE_INVALID",
             subaction: subaction ?? "none",
             status: error.status,
             code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
@@ -7318,6 +7413,7 @@ export function createCalendarActionRunner(
                 error.code !== "CALENDAR_TARGET_SELECTOR_INVALID" &&
                 error.code !== "CALENDAR_ATTENDEE_ARGUMENT_INVALID" &&
                 error.code !== "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" &&
+                error.code !== "CALENDAR_CREATE_EVIDENCE_INVALID" &&
                 (subaction === "create_event" ||
                   subaction === "update_event" ||
                   subaction === "delete_event")
@@ -7627,17 +7723,34 @@ export async function inferNativeCalendarCreate(args: {
       ...standaloneCalendarDeps,
       ...calendarHosts.get(args.runtime),
     };
-  const extracted = await inferCreateEventDetails(
-    args.runtime,
-    args.message,
-    undefined,
-    text,
-    null,
-    args.timeZone,
-    undefined,
-    deps,
-    "NATIVE PHONE CAPABILITY CONSTRAINTS: This request prepares only one timed event on the phone calendar whose source is chosen and confirmed separately by its owner. No calendar contents or provider account catalog was read. For this port leave grantId/calendarId null; do not invent or substitute managed accounts. If the original request requires a named provider/account/calendar that this context cannot verify, all-day time, recurrence, attendees/invitations, travel buffers, availability-dependent time selection, multiple events or any other unsupported field, requiresInput=true and ask a concise clarification. A review is not a saved event.",
-  );
+  let extracted: Record<string, unknown>;
+  try {
+    extracted = await inferCreateEventDetails(
+      args.runtime,
+      args.message,
+      undefined,
+      text,
+      null,
+      args.timeZone,
+      undefined,
+      deps,
+      "NATIVE PHONE CAPABILITY CONSTRAINTS: This request prepares only one timed event on the phone calendar whose source is chosen and confirmed separately by its owner. No calendar contents or provider account catalog was read. For this port leave grantId/calendarId null; do not invent or substitute managed accounts. If the original request requires a named provider/account/calendar that this context cannot verify, all-day time, recurrence, attendees/invitations, travel buffers, availability-dependent time selection, multiple events or any other unsupported field, requiresInput=true and ask a concise clarification. A review is not a saved event.",
+    );
+  } catch (error) {
+    args.signal.throwIfAborted();
+    // Use the canonical create clarification without changing authority or retrying.
+    if (
+      error instanceof ElizaError &&
+      [
+        "CALENDAR_CREATE_AUTHORITY_UNRESOLVED",
+        "CALENDAR_ATTENDEE_IDENTITY_REQUIRED",
+        "CALENDAR_NOTE_SOURCE_CONFLICT",
+        "CALENDAR_NOTE_SOURCE_INVALID",
+      ].includes(error.code)
+    )
+      return { text: error.message };
+    throw error;
+  }
   args.signal.throwIfAborted();
   if (
     extracted.requiresInput !== false ||

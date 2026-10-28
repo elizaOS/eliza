@@ -465,7 +465,7 @@ function resolveReasoningEffort(
   runtime: IAgentRuntime,
   modelName?: string
 ): ReasoningEffort | "none" | undefined {
-  const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const raw = getSetting(runtime, "OPENAI_REASONING_EFFORT");
   const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   if (normalized === "none") {
     if (
@@ -514,7 +514,7 @@ function resolveProviderOptions(
     | { thinking?: unknown; preferToolReasoning?: unknown }
     | undefined;
   const elizaThinking = eliza?.thinking;
-  const configuredEffort = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  const configuredEffort = getSetting(runtime, "OPENAI_REASONING_EFFORT");
   const preferToolReasoning =
     eliza?.preferToolReasoning === true &&
     !(typeof configuredEffort === "string" && configuredEffort.trim().toLowerCase() === "none");
