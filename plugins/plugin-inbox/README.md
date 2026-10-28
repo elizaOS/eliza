@@ -70,6 +70,11 @@ every host input is injected:
 - `createMailDraftsController` keeps account-bound local drafts (compose,
   reply, forward, attachments, set-aside drafts, reviewed suggestions) and
   removes only the exact local copy after a provider-confirmed send.
+- The mailbox list: folder queries, cursor paging that shows each message once,
+  ends on a repeated cursor and reports a list cut from a changed mailbox,
+  bounded folder-list and body caches, the validated owner-bound saved
+  snapshot with its metadata-only Home summary, and the Home attention shape
+  (counts, account label and read time; never a subject, sender or body).
 - Incremental read/modify grants, failure classification, reviewed read state,
   attachment limits, retained-edit validation, read-ahead, inert links,
   snippet decoding and the reviewed agent mail hand-off.

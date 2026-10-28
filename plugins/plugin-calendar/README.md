@@ -55,6 +55,15 @@ Browser-safe, erasable-TypeScript controllers for device and browser hosts:
   checkpoints in host storage (the provider idempotency namespace is
   configurable so installed keys are never rewritten), and
   `googleCalendarSyncPort` drives the Cloud `calendar/sync-v1` routes.
+  `createCalendarSyncHost` keeps the saved opt-in (`calendarSyncSettingsSlot`
+  for a compare-and-exchange slot), reports status and schedules passes only
+  in the foreground (debounced local edits, return to the foreground, owner
+  changes; no polling). A changed owner, Google selection or agent never
+  reuses an earlier opt-in, and an optional device gate (for example an
+  Android CalendarProvider bridge) is granted before the preference is saved
+  and withdrawn when enabling fails. `readGoogleCalendarSyncDestination`
+  verifies the calendar offers readback, conditional writes and idempotent
+  creates, and names the account and calendar the review shows.
 - `@elizaos/plugin-calendar/client/availability-review`: a reviewed foreground
   free/busy read. Only owner-chosen calendars are read at their reviewed
   revisions, the exact result is confirmed and re-read before sharing, free,
