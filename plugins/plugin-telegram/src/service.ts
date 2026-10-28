@@ -2714,7 +2714,9 @@ export class TelegramService extends Service {
     // Route through the send path instead of calling the API directly: the
     // direct call skips supergroup migration retry, 4096-character chunking,
     // and MarkdownV2 conversion with its plain-text fallback.
-    await messageManager.sendMessageWithReceipt(
+    // sendMessage throws on any failed chunk, so a partial delivery is not
+    // reported as success.
+    await messageManager.sendMessage(
       chatId,
       { text },
       undefined,
