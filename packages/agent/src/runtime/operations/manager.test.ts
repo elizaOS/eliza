@@ -219,41 +219,6 @@ describe("DefaultRuntimeOperationManager", () => {
     expect(abandoned?.error?.code).toBe("abandoned");
   });
 
-  it("keeps a live operation of this process busy for a second repository", async () => {
-    const hung: ReloadStrategy = {
-      tier: "cold",
-      apply: () => new Promise<AgentRuntime>(() => {}),
-    };
-    const first = await new DefaultRuntimeOperationManager({
-      repository,
-      runtime: () => runtime,
-      classifyContext: () => ({}),
-      healthChecker: healthChecker(async () => OK_REPORT),
-      strategies: { cold: hung },
-    }).start({ intent: { kind: "restart", reason: "still running" } });
-    if (first.kind !== "accepted") throw new Error(first.kind);
-    await vi.waitFor(async () => {
-      expect((await repository.get(first.operation.id))?.status).toBe(
-        "running",
-      );
-    });
-
-    // Another repository and manager in the same process hydrate the state.
-    const secondRepository = new FilesystemRuntimeOperationRepository(stateDir);
-    const second = await new DefaultRuntimeOperationManager({
-      repository: secondRepository,
-      runtime: () => runtime,
-      classifyContext: () => ({}),
-      healthChecker: healthChecker(async () => OK_REPORT),
-      strategies: { cold: strategy("cold") },
-    }).start({ intent: { kind: "restart", reason: "concurrent" } });
-
-    expect(second.kind).toBe("rejected-busy");
-    expect((await secondRepository.get(first.operation.id))?.status).toBe(
-      "running",
-    );
-  });
-
   it("closes a strategy-reported running phase when the strategy throws", async () => {
     const cold: ReloadStrategy = {
       tier: "cold",

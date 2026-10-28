@@ -213,7 +213,7 @@ export class FilesystemRuntimeOperationRepository
       if (
         isLive &&
         (op.processOwner
-          ? ownedByEarlierProcess(op) || localExecutorExited(op) || isStale
+          ? ownedByEarlierProcess(op) || localExecutorExited(op)
           : isStale)
       ) {
         const reaped: RuntimeOperation = {
