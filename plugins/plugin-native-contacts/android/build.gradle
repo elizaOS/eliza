@@ -37,7 +37,8 @@ repositories {
 dependencies {
     androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
     implementation project(':capacitor-android')
-    // AddressBookPlugin's screen-off receiver and the system editor's activity result.
+    // AddressBookPlugin's screen-off receiver, Capacitor's activity and the system editor's activity result.
+    implementation "androidx.appcompat:appcompat:${rootProject.ext.has('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'}"
     implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.12.0'}"
     implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.11.0'}"
 
