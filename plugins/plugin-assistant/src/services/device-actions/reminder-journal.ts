@@ -450,8 +450,9 @@ export type ReminderActionJournal = ReturnType<
 
 export const reminderDueAt = (r: { dueAt?: number; at: number }) =>
   r.dueAt ?? r.at;
-export const isUndatedReminder = (r: { undated?: boolean }) =>
-  r.undated === true;
+/** Undated to-dos have no instant, alarm or calendar day. */
+export const isUndatedReminder = (r: object): boolean =>
+  (r as { undated?: unknown }).undated === true;
 
 /** Due and not done: posted, or still scheduled after its due instant. Oldest first. */
 export function overdueReminders<R extends ReminderJournalRow>(
