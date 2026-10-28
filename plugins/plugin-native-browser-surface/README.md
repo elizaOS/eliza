@@ -258,7 +258,8 @@ untouched browser. Hosts own tab views, storage and the bounds (`BrowsingLimits`
 
 Page reading (read aloud, ask about a page) has a native and a renderer half. Android
 `BrowserPageReading` refuses sensitive addresses (`sensitiveUrl`) and holds `EXTRACT`, the
-fixed script a host runs only in an isolated world of the selected tab's main frame; it scans
+fixed script a host runs only in an isolated world of the selected tab's main frame
+(`BrowserReadingWorld`, below); it scans
 the whole document and returns `{blocked:true}` for credential prose, login fields or
 unlabelled codes, otherwise at most 5,000 characters of visible article text. `./page-reading`
 applies the same text and address rules in the renderer, probes provider support
@@ -316,6 +317,12 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   on each redirect hop, and stops that fetch when its entry, tab or site data is cleared.
   `BrowserBlobCapture` copies a page-created `blob:` file through an isolated world. The host
   passes its preference name, its "is this review still current" check and its cookie reader.
+- `BrowserReadingWorld` is the isolated world for page reading. The host calls `prepare(url)`
+  (or `prepareHistory`) before each load and `pageStarted(url)` from its client; only the
+  prepared main-frame document, announcing a one-time nonce from the committed HTTPS origin,
+  becomes `ready()`, and `evaluate` returns a result only while that document is current. A
+  redirect or unprepared navigation invalidates it. Without the capability `available()` is
+  false and nothing is injected.
 
 Hosts retain site-permission prompts, OS permissions, sealed storage and navigation.
 Hosts that do their own downloads recheck cookie policy at every redirect and never hand
