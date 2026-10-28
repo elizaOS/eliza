@@ -36,7 +36,7 @@ import {
 } from "./provider.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
-import type { StickyNote } from "./types.js";
+import { projectNoteForModel, type StickyNote } from "./types.js";
 import { parseNoteContent } from "./validation.js";
 
 /**
@@ -184,7 +184,9 @@ describe("SAVED_NOTES provider", () => {
     );
     expect(namedRead.data?.notesRevision).toBe(originalSnapshot.revision);
     expect(namedRead.data?.namedNotes).toEqual(
-      originalSnapshot.notes.filter((note) => note.title === "Same title"),
+      originalSnapshot.notes
+        .filter((note) => note.title === "Same title")
+        .map(projectNoteForModel),
     );
     expect(namedRead.text).toContain(
       `notesRevision: ${originalSnapshot.revision}.`,
@@ -241,7 +243,7 @@ describe("SAVED_NOTES provider", () => {
     );
     const originalSnapshot = service.snapshot();
     expect(result.data).toMatchObject({
-      savedNotes: originalSnapshot.notes,
+      savedNotes: originalSnapshot.notes.map(projectNoteForModel),
       notesRevision: originalSnapshot.revision,
     });
     expect(result.text).toContain(
@@ -278,7 +280,7 @@ describe("SAVED_NOTES provider", () => {
     );
     const currentSnapshot = service.snapshot();
     expect(after.data).toMatchObject({
-      savedNotes: currentSnapshot.notes,
+      savedNotes: currentSnapshot.notes.map(projectNoteForModel),
       notesRevision: currentSnapshot.revision,
     });
     expect(after.text).toContain(`notesRevision: ${currentSnapshot.revision}.`);
@@ -545,4 +547,51 @@ describe("SAVED_NOTES provider", () => {
       expect(isWellFormedText(noteLine)).toBe(true);
     }
   });
+});
+
+it("grounds named deletion history from retained Trash without exposing unrelated bodies or changing active inventory", async () => {
+  const service = await serviceWithNotes([
+    "Weekend packing\nPrivate deleted body",
+    "Unrelated\nPrivate unrelated body",
+  ]);
+  const runtime = await runtimeWith(service);
+  const target = service
+    .listNotes()
+    .find((note) => note.title === "Weekend packing");
+  if (!target) throw new Error("Missing seeded note");
+  const deleted = await service.deleteNoteWithCommit(target.id);
+  const before = service.snapshot();
+  const result = await namedNotesProvider.get(
+    runtime,
+    recallMessage(runtime, "When was Weekend packing deleted?"),
+    EMPTY_STATE,
+  );
+  const entry = before.trash?.[0];
+  if (!entry) throw new Error("Missing committed Trash entry");
+  expect(result.data?.namedNotes).toEqual([]);
+  expect(result.data?.namedDeletedNotes).toEqual([
+    {
+      noteId: deleted.value.id,
+      title: deleted.value.title,
+      deletedAt: entry.deletedAt,
+    },
+  ]);
+  expect(result.text).toContain(entry.deletedAt);
+  expect(result.text).not.toContain("Private deleted body");
+  expect(result.text).not.toContain("Unrelated");
+  expect(service.snapshot()).toEqual(before);
+  const greeting = await namedNotesProvider.get(
+    runtime,
+    recallMessage(runtime, "hello"),
+    EMPTY_STATE,
+  );
+  expect(greeting.text).toBe("");
+  await service.restoreNoteWithCommit(deleted.value.id, before.revision);
+  const restored = await namedNotesProvider.get(
+    runtime,
+    recallMessage(runtime, "When was Weekend packing deleted?"),
+    EMPTY_STATE,
+  );
+  expect(restored.data?.namedDeletedNotes).toBeUndefined();
+  expect(restored.data?.namedNotes).toHaveLength(1);
 });

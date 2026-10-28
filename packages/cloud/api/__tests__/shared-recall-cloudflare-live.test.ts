@@ -88,7 +88,7 @@ qualify(
         .trim(),
     );
     process.env.DATABASE_URL = databaseUrl.toString();
-    const { and, eq, inArray } = await import("drizzle-orm");
+    const { and, eq, inArray, sql } = await import("drizzle-orm");
     const { dbWrite, closeDatabaseConnectionsForTests } = await import(
       "../../shared/src/db/client"
     );
@@ -102,6 +102,24 @@ qualify(
     const { SharedMemoryStore } = await import(
       "../../shared/src/lib/services/shared-runtime/shared-memory-store"
     );
+    // Organization deletion is globally sealed during the billing cutover.
+    // Check before creating fixtures; qualification must not bypass that guard.
+    try {
+      const control = await dbWrite.execute(
+        sql`SELECT mode FROM auto_top_up_control WHERE singleton = true`,
+      );
+      if (control.rows.length !== 1 || control.rows[0]?.mode !== "durable") {
+        console.info(
+          "shared-recall-preflight=cleanup-unavailable code=AUTO_TOP_UP_CUTOVER_PAUSED",
+        );
+        throw new Error(
+          "Shared recall fixtures require the organization cleanup gate to be open",
+        );
+      }
+    } catch (error) {
+      await closeDatabaseConnectionsForTests();
+      throw error;
+    }
     const nonce = randomUUID();
     // Only this random fixture marker is released from the otherwise private log.
     console.info(`shared-recall-fixture=${nonce}`);
@@ -235,6 +253,9 @@ qualify(
       }
       phase = "verify-release";
       await verifyRelease();
+      console.info(
+        "shared-recall-phase=verify-release status=passed code=NONE",
+      );
     } catch (error) {
       console.info(
         `shared-recall-phase=${phase} status=failed code=${sharedRecallFailureCode(error)}`,

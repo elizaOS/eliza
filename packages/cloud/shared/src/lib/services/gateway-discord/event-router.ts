@@ -9,6 +9,7 @@ import {
   ChannelType,
   type Content,
   ContentType,
+  chunkMarkdownText,
   createUniqueUuid,
   type Media,
   Memory,
@@ -27,7 +28,6 @@ import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
 import { DISCORD_API_BASE, discordBotHeaders } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
-import { splitMessageLosslessly } from "../../utils/message-chunking";
 import { getEncryptionService } from "../secrets/encryption";
 import {
   DISCORD_RATE_LIMIT_DEFAULT_RETRY_MS,
@@ -673,7 +673,8 @@ async function sendDiscordResponse(
       clearTimeout(timeoutId);
     }
   };
-  const chunks = splitMessageLosslessly(content, MAX_DISCORD_MESSAGE_LENGTH);
+  // Fence-aware: a code block cut between messages is closed and reopened.
+  const chunks = chunkMarkdownText(content, MAX_DISCORD_MESSAGE_LENGTH);
   for (const [index, chunk] of chunks.entries()) {
     await sendChunk(chunk, index === 0 ? replyToMessageId : undefined);
   }

@@ -213,6 +213,28 @@ public final class BrowserWebPolicyTest {
     throwsIllegal(() -> new Entry(0, "n", "https://example.com", false, null), "zero id");
     throwsIllegal(
         () -> new Entry(7, "n", "https://example.com", true, null), "private entry needs its tab");
+    // Host transfers: running entries stay in memory only; a stopped transfer is reported to the host.
+    History transfers = new History();
+    Entry running = new Entry(-2, "s.pdf", "https://example.com", false, null).started();
+    Entry privateRun = new Entry(-3, "p.pdf", "https://example.com", true, "tab-p").started();
+    check(transfers.add(running) && transfers.add(privateRun), "running transfers listed");
+    check(transfers.add(new Entry(9, "os.bin", "https://example.org", false, null)), "OS transfer");
+    equal(1, transfers.persistable().size(), "running and private entries are never persisted");
+    Entry saved = running.finished("content://media/external/downloads/1");
+    check(transfers.replace(saved), "finished transfer replaces its entry");
+    check(!saved.running && !saved.failed, "saved entry is finished");
+    equal("content://media/external/downloads/1", transfers.get(-2).uri, "saved file kept");
+    equal(2, transfers.persistable().size(), "a finished normal transfer is persisted");
+    check(running.finished(null).failed, "a transfer without a file failed");
+    List<Entry> stopped = transfers.removeWhere(entry -> entry.ephemeral);
+    equal(1, stopped.size(), "removal reports the entries it removed");
+    check(stopped.get(0).running, "so the host can stop a running transfer");
+    check(!transfers.replace(privateRun.finished(null)), "a removed transfer is not re-added");
+    History reloaded = new History();
+    reloaded.restore(Arrays.asList(running, new Entry(10, "k", "https://example.com", false, null)));
+    equal(1, reloaded.all().size(), "a transfer interrupted by process death is not restored");
+    throwsIllegal(() -> new Entry(11, "n", "https://example.com", false, null, "content://x", true, false),
+        "a running entry has no saved file");
   }
 
   private static void permissions() {

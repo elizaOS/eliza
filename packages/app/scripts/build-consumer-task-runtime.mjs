@@ -108,6 +108,7 @@ export function buildTaskRuntime(
         "messaging/interactive-task",
         ...Object.values(interactionSources),
         "messaging/task-widgets",
+        "messaging/task-events",
       ]
         .map((name) => `export * from './packages/core/src/${name}.ts';`)
         .join("\n"),

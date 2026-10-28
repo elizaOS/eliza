@@ -18,8 +18,8 @@ import {
   DeviceActionService,
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
-  withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
+import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
 
 async function setup() {
   const fixture = await createRealTestRuntime({
@@ -49,7 +49,7 @@ async function setup() {
     const roomId = options.roomId ?? randomUUID(),
       key = randomUUID(),
       scope = "effect-authority";
-    return withDeviceActionTurn(
+    return withOwnerDeviceActionTurn(
       runtime,
       credential,
       async () => {
@@ -417,7 +417,7 @@ test("the final Gmail reauthorization cannot send an edited or deleted draft", a
         }
       }
       service.register(new Transport());
-      await withDeviceActionTurn(runtime, credential, async () => {
+      await withOwnerDeviceActionTurn(runtime, credential, async () => {
         const roomId = randomUUID(),
           key = randomUUID(),
           scope = "final-digest";
@@ -573,7 +573,7 @@ test("copied metadata, stale or replaced context and other connectors retain rev
       "malformed-cache",
     ] as const) {
       let current = true;
-      await withDeviceActionTurn(
+      await withOwnerDeviceActionTurn(
         runtime,
         credential,
         async () => {
@@ -645,7 +645,7 @@ test("copied metadata, stale or replaced context and other connectors retain rev
       );
     }
     await expect(
-      withDeviceActionTurn(
+      withOwnerDeviceActionTurn(
         runtime,
         { ...credential, deviceKey: "0".repeat(64) },
         async () => {},
@@ -692,7 +692,7 @@ test("the HTTP payload command requires an authenticated foreground scope and ne
     await service.register(credential, "Payload fixture");
     expect(await parse(body)).toBeNull();
     expect(errors.at(-1)).toBe(403);
-    await withDeviceActionTurn(
+    await withOwnerDeviceActionTurn(
       runtime,
       { ...credential, capabilities: [] },
       async () => {
@@ -700,7 +700,7 @@ test("the HTTP payload command requires an authenticated foreground scope and ne
         expect(errors.at(-1)).toBe(403);
       },
     );
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
       const parsed = await parse(body);
       expect(parsed?.prompt).toBe("Send QA");
       expect(parsed?.metadata?.requestedActionPolicy).toBeUndefined();
@@ -733,12 +733,12 @@ test("the HTTP payload command requires an authenticated foreground scope and ne
         ),
       ).toBe("pending");
     });
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
       expect(
         await parse({ ...body, requestedActionPolicy: "model-approved" }),
       ).toBeNull();
     });
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
       expect(await parse({ ...body, channelType: "GROUP" })).toBeNull();
     });
   } finally {
@@ -766,7 +766,7 @@ test("retired asynchronous scopes and revoked devices cannot authorize a later s
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
       const roomId = randomUUID(),
         key = randomUUID(),
         scope = "retired-policy",
@@ -800,7 +800,7 @@ test("retired asynchronous scopes and revoked devices cannot authorize a later s
     });
     release();
     expect(await result).toBe("cancelled");
-    await withDeviceActionTurn(runtime, credential, async () => {
+    await withOwnerDeviceActionTurn(runtime, credential, async () => {
       const roomId = randomUUID(),
         key = randomUUID(),
         scope = "revoked-policy",

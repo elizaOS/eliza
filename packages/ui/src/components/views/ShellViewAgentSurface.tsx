@@ -34,6 +34,8 @@ function idParam(params: Record<string, unknown> | undefined): string | null {
 }
 
 export interface ShellViewAgentSurfaceProps {
+  /** Retained hidden views keep their children but admit no agent work. */
+  active?: boolean;
   /** Stable builtin view id (matches the entry in builtin-views.ts). */
   viewId: string;
   viewType?: AgentViewType;
@@ -51,6 +53,7 @@ export interface ShellViewAgentSurfaceProps {
 }
 
 export function ShellViewAgentSurface({
+  active = true,
   viewId,
   viewType = "gui",
   surfaceKind = "builtin",
@@ -68,6 +71,7 @@ export function ShellViewAgentSurface({
     <InstalledShellViewAgentSurface
       key={installationId ?? "unbound"}
       {...{
+        active,
         viewId,
         viewType,
         surfaceKind,
@@ -83,6 +87,7 @@ export function ShellViewAgentSurface({
 }
 
 function InstalledShellViewAgentSurface({
+  active = true,
   viewId,
   viewType = "gui",
   surfaceKind,
@@ -94,14 +99,20 @@ function InstalledShellViewAgentSurface({
   installationId,
 }: ShellViewAgentSurfaceProps & { installationId?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef(active);
+  activeRef.current = active;
   const pageReader = useRef(readPage);
   pageReader.current = readPage;
 
   useEffect(() => {
+    if (!active) return;
     const handler = async (
       capability: string,
       params?: Record<string, unknown>,
     ) => {
+      if (!activeRef.current) {
+        throw new Error(`Shell view "${viewId}" is inactive`);
+      }
       if (interact && capabilities?.some((entry) => entry.id === capability)) {
         return interact(capability, params);
       }
@@ -191,7 +202,15 @@ function InstalledShellViewAgentSurface({
         : handler,
       installationId,
     );
-  }, [viewId, viewType, installationId, capabilities, surface, interact]);
+  }, [
+    active,
+    viewId,
+    viewType,
+    installationId,
+    capabilities,
+    surface,
+    interact,
+  ]);
 
   return (
     <AgentSurfaceProvider
@@ -207,8 +226,8 @@ function InstalledShellViewAgentSurface({
       >
         {children}
       </div>
-      <AgentElementOverlay />
-      <AgentSurfaceElementReporter />
+      {active ? <AgentElementOverlay /> : null}
+      {active ? <AgentSurfaceElementReporter /> : null}
     </AgentSurfaceProvider>
   );
 }

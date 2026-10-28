@@ -1,6 +1,7 @@
 ext {
     junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
     androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.6.1'
+    androidxActivityVersion = project.hasProperty('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.8.0'
 }
 
 apply plugin: 'com.android.library'
@@ -42,6 +43,8 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    // OAuthBrowserLauncher uses ComponentActivity and ActivityResultLauncher directly.
+    implementation "androidx.activity:activity:$androidxActivityVersion"
     // AuthTabIntent (OAuthBrowserLauncher) first ships in 1.9.0.
     implementation "androidx.browser:browser:1.9.0"
 

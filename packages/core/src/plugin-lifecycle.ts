@@ -516,10 +516,11 @@ async function stopOwnedServices(
 				await instance.stop();
 			}
 			if (instance) {
-				const instanceIndex = instances.indexOf(instance);
-				if (instanceIndex !== -1) {
-					instances.splice(instanceIndex, 1);
-				}
+				// The same instance can be published more than once when
+				// two plugins register the same service class, so remove
+				// every occurrence instead of just the first. Otherwise
+				// the stopped instance stays reachable through getService().
+				removeArrayItemsByReference(instances, [instance]);
 				privateState.serviceInstancesByClass.delete(ownedClass);
 			}
 		}

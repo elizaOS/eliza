@@ -21,6 +21,7 @@ import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 import type { ContextProviderEvent } from "./context-object";
 import type { DirectActionRoutingRule } from "./direct-action-routing";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 export interface ResponseHandlerPatch {
 	processMessage?: MessageHandlerAction;
@@ -447,6 +448,9 @@ export async function runResponseHandlerEvaluators(args: {
 				result.contextSources.push(...patch.contextSources);
 			}
 		} catch (error) {
+			// A cancelled turn is not an evaluator failure: stop here and let the
+			// turn end as cancelled.
+			if (error instanceof TurnAbortedError) throw error;
 			// error-policy:J7 Evaluators are independent Stage-1 enrichers; collect and
 			// report each failure while allowing the remaining evaluators to run.
 			args.runtime.reportError("ResponseHandlerEvaluator.evaluate", error, {

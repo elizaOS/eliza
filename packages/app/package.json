@@ -208,7 +208,7 @@
     "test:speech:standalone": "bun --no-install --conditions=eliza-source scripts/qualify-standalone-speech.ts",
     "build:consumer-tasks": "node scripts/build-consumer-task-runtime.mjs",
     "typecheck:consumer-build": "tsc --noEmit -p scripts/tsconfig.consumer-build.json",
-    "test:consumer-host": "node --test test/native-host/*.test.mjs scripts/mobile/android/build-consumer.test.mjs"
+    "test:consumer-host": "node --test test/native-host/*.test.mjs scripts/mobile/android/build-consumer.test.mjs scripts/mobile/artifact-inspection/apk-distribution.test.mjs"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
@@ -355,7 +355,7 @@
     "pathe": "^2.0.3",
     "playwright": "^1.64.1",
     "playwright-core": "^1.58.2",
-    "postcss": "^8.5.29",
+    "postcss": "^8.5.31",
     "puppeteer-core": "^24.43.1",
     "react-test-renderer": "19.3.1",
     "rollup-plugin-visualizer": "^7.0.1",

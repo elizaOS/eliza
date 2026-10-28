@@ -1,0 +1,19 @@
+--- a/vendor/google_devices/stallion/BoardConfig.mk
++++ b/vendor/google_devices/stallion/BoardConfig.mk
+@@ -91,10 +91,15 @@
+ BOARD_VENDOR_SEPOLICY_DIRS += vendor/google_devices/stallion/sepolicy/vendor
+ SYSTEM_EXT_PUBLIC_SEPOLICY_DIRS += vendor/google_devices/stallion/sepolicy/system_ext/public
+ PRODUCT_PUBLIC_SEPOLICY_DIRS += vendor/google_devices/stallion/sepolicy/product/public
+-SELINUX_IGNORE_NEVERALLOWS := true
++# Alpha requires platform/vendor policy compatibility before image admission.
++SELINUX_IGNORE_NEVERALLOWS := false
+ 
+ # needed for overriding AOSP-available files with extracted prebuilts
+ BUILD_BROKEN_DUP_RULES := true
+ 
+ # needed for partially backporting multi-partition libraries
+ BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES := true
++
++# Keep Citadel erase policy without the optional Graphene Wi-Fi fault injector.
++BOARD_VENDOR_SEPOLICY_DIRS := $(filter-out vendor/adevtool/config/mk/google_devices/common/sepolicy/vendor,$(BOARD_VENDOR_SEPOLICY_DIRS))
++BOARD_VENDOR_SEPOLICY_DIRS := vendor/alphaphone/stallion/sepolicy/vendor $(BOARD_VENDOR_SEPOLICY_DIRS)
