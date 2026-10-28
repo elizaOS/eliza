@@ -112,6 +112,12 @@
       "import": "./dist/auth/index.js",
       "default": "./dist/auth/index.js"
     },
+    "./auth/native-cloud-sign-in": {
+      "eliza-source": "./src/auth/native-cloud-sign-in.ts",
+      "types": "./dist/auth/native-cloud-sign-in.d.ts",
+      "import": "./dist/auth/native-cloud-sign-in.js",
+      "default": "./dist/auth/native-cloud-sign-in.js"
+    },
     "./auth/oauth-flow": {
       "eliza-source": "./src/auth/oauth-flow.ts",
       "types": "./dist/auth/oauth-flow.d.ts",

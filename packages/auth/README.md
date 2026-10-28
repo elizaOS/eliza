@@ -188,6 +188,14 @@ verifiers and Steward sessions stay native; results carry no secret. Run
 `bun run --cwd packages/auth test:native-android` (needs a JDK); it checks the
 policy and the exact plugin methods on a plain JVM, not on a device.
 
+The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
+(`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
+`NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
+`nativeSignInCodeStarted`, `nativeSignInVerified`, `nativeSignInGoogleOutcome`,
+`nativeSignInReadiness`), the failure codes the plugin rejects with and owner-facing copy
+that takes the app's and the deployment's names. An answer with an extra key, another
+deployment or a malformed time is refused as `unavailable`.
+
 ## Optional Blooio phone-code delivery
 
 Twilio Verify remains the default when its existing environment is configured.
