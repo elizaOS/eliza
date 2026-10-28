@@ -42,9 +42,21 @@ export async function readTextWithinLimit(
       combined.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    return new TextDecoder("utf-8", { fatal: rejectMalformedUtf8 }).decode(
-      combined,
-    );
+    // Decode with the charset the Content-Type names: ISO-8859-1,
+    // windows-1252 and Shift_JIS pages are not UTF-8. No label: UTF-8.
+    const label = /charset\s*=\s*"?([^";\s]+)/i.exec(
+      response.headers.get("content-type") ?? "",
+    )?.[1];
+    let decoder: TextDecoder;
+    try {
+      decoder = new TextDecoder(label ?? "utf-8", {
+        fatal: rejectMalformedUtf8,
+      });
+    } catch {
+      // error-policy:J3 an unsupported charset label keeps the UTF-8 reading.
+      decoder = new TextDecoder("utf-8", { fatal: rejectMalformedUtf8 });
+    }
+    return decoder.decode(combined);
   } finally {
     signal?.removeEventListener("abort", onAbort);
     reader.releaseLock();

@@ -197,6 +197,19 @@ export async function applyCommitmentClassGuarantees(
     warnTaskIds.push(warnTask.taskId);
   }
 
+  // A moved deadline must retire the warnings for the old deadline, or the
+  // owner is warned about a date that no longer applies.
+  const pending = await runner.list({ kind: "watcher", status: "scheduled" });
+  for (const task of pending) {
+    if (warnTaskIds.includes(task.taskId)) continue;
+    if (task.trigger.kind !== "once") continue;
+    if (task.metadata?.documentId !== artifact.documentId) continue;
+    if (task.metadata?.obligationKind !== artifact.obligationKind) continue;
+    await runner.apply(task.taskId, "dismiss", {
+      reason: `deadline moved to ${artifact.deadline}`,
+    });
+  }
+
   const obligationPayload: CommitmentObligationEventPayload = {
     runtime,
     source: "plugin-personal-assistant:commitments",

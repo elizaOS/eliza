@@ -774,11 +774,23 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				interaction.isAutocomplete(),
 		);
 
+		// Threads inherit their parent channel's allowlist, like the message
+		// gate already does: a slash command run in an allowed channel's
+		// thread must not be rejected for the thread id itself.
+		const interactionChannel = interaction.channel;
+		const threadParentId = interactionChannel?.isThread()
+			? interactionChannel.parentId
+			: null;
+		const interactionChannelAllowed =
+			(interaction.channelId &&
+				service.isChannelAllowed(interaction.channelId)) ||
+			(threadParentId && service.isChannelAllowed(threadParentId));
+
 		if (
 			!isFollowUpInteraction &&
 			service.allowedChannelIds &&
 			interaction.channelId &&
-			!service.isChannelAllowed(interaction.channelId) &&
+			!interactionChannelAllowed &&
 			!bypassChannelRestriction
 		) {
 			if (isSlashCommand && interaction.isCommand()) {

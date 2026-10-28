@@ -323,7 +323,9 @@ Return ONLY the tweet text, nothing else.`;
       };
     }
 
-    const config = (app.twitter_automation || {}) as TwitterAutomationConfig;
+    // Re-read: keep any change the owner made while the tweet was generated.
+    const config = ((await this.getAppForOrg(organizationId, appId)).twitter_automation ||
+      {}) as TwitterAutomationConfig;
     await appsRepository.update(appId, {
       twitter_automation: {
         ...config,

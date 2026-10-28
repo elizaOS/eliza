@@ -164,6 +164,13 @@ export class VoiceScheduler {
 	readonly chunker: PhraseChunker;
 	readonly rollback = new RollbackQueue();
 	readonly bargeIn = new BargeInController();
+	/**
+	 * Phrases dispatched but not yet seated in `inFlight` because the cap is
+	 * reached. A cancel must reach them too: they belong to the turn being
+	 * cancelled, and a waiter that takes the slot afterwards would speak a
+	 * fragment of the interrupted reply.
+	 */
+	private readonly waiting = new Set<InFlight>();
 	readonly ringBuffer: PcmRingBuffer;
 	readonly sink: AudioSink;
 	readonly preset: SpeakerPreset;
@@ -268,7 +275,8 @@ export class VoiceScheduler {
 		const events = this.rollback.onRejected(range);
 		let cancelledStreamingInFlight = false;
 		for (const ev of events) {
-			const inflight = this.inFlight.get(ev.phraseId);
+			const inflight =
+				this.inFlight.get(ev.phraseId) ?? this.waitingPhrase(ev.phraseId);
 			if (inflight) {
 				inflight.cancelSignal.cancelled = true;
 				cancelledStreamingInFlight ||= isStreamingTtsBackend(this.backend);
@@ -500,11 +508,18 @@ export class VoiceScheduler {
 		this.prefixQueue.clear();
 		this.lastCommittedTokenIndex = 0;
 		this.chunker.reset();
-		for (const inflight of this.inFlight.values()) {
+		for (const inflight of [...this.inFlight.values(), ...this.waiting]) {
 			inflight.cancelSignal.cancelled = true;
 			this.emitTtsCancel(inflight.phrase, "pending-tts");
 		}
 		this.cancelNativeTts();
+	}
+
+	private waitingPhrase(phraseId: number): InFlight | undefined {
+		for (const slot of this.waiting) {
+			if (slot.phrase.id === phraseId) return slot;
+		}
+		return undefined;
 	}
 
 	private async dispatchPhrase(phrase: Phrase): Promise<void> {
@@ -553,7 +568,13 @@ export class VoiceScheduler {
 			resolveDone = resolve;
 			rejectDone = reject;
 		});
-		await this.admitPhrase({ phrase, cancelSignal, done });
+		const admitted = await this.admitPhrase({ phrase, cancelSignal, done });
+		if (!admitted) {
+			// Cancelled while waiting: the cancel path already emitted tts-cancel.
+			this.rollback.drop(phrase.id);
+			resolveDone();
+			return;
+		}
 		void this.runPhraseSynthesis(phrase, cancelSignal).then(
 			resolveDone,
 			rejectDone,
@@ -564,23 +585,31 @@ export class VoiceScheduler {
 	 * Take one in-flight slot, waiting for the oldest phrase when the cap is
 	 * reached. Admission is serialized so a wake-up cannot seat two phrases in
 	 * the slot that one phrase released. A failed synthesis is reported by its
-	 * own caller; a waiter only needs the slot it frees.
+	 * own caller; a waiter only needs the slot it frees. Returns false when the
+	 * phrase was cancelled while it waited; it then takes no slot.
 	 */
-	private async admitPhrase(slot: InFlight): Promise<void> {
+	private async admitPhrase(slot: InFlight): Promise<boolean> {
 		const previous = this.admissionTail;
 		let release!: () => void;
 		this.admissionTail = new Promise<void>((resolve) => {
 			release = resolve;
 		});
+		this.waiting.add(slot);
 		await previous;
 		try {
-			while (this.inFlight.size >= this.maxInFlight) {
+			while (
+				this.inFlight.size >= this.maxInFlight &&
+				!slot.cancelSignal.cancelled
+			) {
 				const oldest = this.inFlight.values().next().value;
 				if (!oldest) break;
 				await oldest.done.catch(() => undefined);
 			}
+			if (slot.cancelSignal.cancelled) return false;
 			this.inFlight.set(slot.phrase.id, slot);
+			return true;
 		} finally {
+			this.waiting.delete(slot);
 			release();
 		}
 	}
@@ -883,7 +912,7 @@ export class VoiceScheduler {
 		this.chunker.reset();
 		this.lastCommittedTokenIndex = 0;
 
-		for (const inflight of inFlightPhrases) {
+		for (const inflight of [...inFlightPhrases, ...this.waiting]) {
 			inflight.cancelSignal.cancelled = true;
 			this.emitTtsCancel(inflight.phrase, "barge-in");
 		}

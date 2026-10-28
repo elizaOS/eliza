@@ -2090,9 +2090,9 @@ export class TelegramService extends Service {
     }
 
     const canonicalOwnerId = getCanonicalOwnerId(this.runtime);
-    // Ownership may fall back to the chat CREATOR (groups only, mirroring
-    // Discord's guild-owner grant) but never to the arbitrary message sender —
-    // see world-ownership.ts for why that default was a privilege escalation.
+    // Only the configured owner owns the world. The chat creator (groups only)
+    // gets a connector-admin grant, like Discord's guild owner — see
+    // world-ownership.ts.
     const chatCreatorEntityId = owner
       ? (createUniqueUuid(
           this.runtime,

@@ -129,6 +129,36 @@ describe("workflow run occurrence", () => {
         }),
       ).toBeNull();
   });
+
+  it("presents a generic schedule's engine-recorded missed occurrence as not run", () => {
+    const missed = { status: "missed", scheduledAt: at, text: "Not run" };
+    expect(
+      workflowRunNotRun(
+        {
+          status: "finished",
+          finished: true,
+          input: {},
+          output: missed,
+          missedOccurrenceAt: at,
+        },
+        iso,
+      )?.status,
+    ).toBe("missed");
+    // Without a valid engine marker, or on an overlap output, the shape alone is not trusted.
+    for (const over of [
+      { missedOccurrenceAt: "soon" },
+      { output: { ...missed, status: "overlap" }, missedOccurrenceAt: at },
+    ])
+      expect(
+        workflowRunNotRun({
+          status: "finished",
+          finished: true,
+          input: {},
+          output: missed,
+          ...over,
+        }),
+      ).toBeNull();
+  });
 });
 
 describe("trigger run missed occurrence", () => {

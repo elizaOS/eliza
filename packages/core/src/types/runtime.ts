@@ -634,6 +634,12 @@ export type PostConnectorRegistration = PostConnectorMetadata & {
 	source: string;
 };
 
+export interface ConnectorUnregisterOptions {
+	/** Remove only the given account: without an accountId that is the
+	 * default account, not every account of the source. */
+	exactAccount?: boolean;
+}
+
 /**
  * Represents the core runtime environment for an agent.
  * Defines methods for database interaction, plugin management, event handling,
@@ -1275,10 +1281,18 @@ export interface IAgentRuntime extends RuntimeDatabaseAdapterSurface {
 		handler: SendHandlerFunction,
 	): void;
 	registerMessageConnector(registration: MessageConnectorRegistration): void;
-	unregisterMessageConnector(source: string, accountId?: string): boolean;
+	unregisterMessageConnector(
+		source: string,
+		accountId?: string,
+		options?: ConnectorUnregisterOptions,
+	): boolean;
 	getMessageConnectors(): MessageConnector[];
 	registerPostConnector(registration: PostConnectorRegistration): void;
-	unregisterPostConnector(source: string, accountId?: string): boolean;
+	unregisterPostConnector(
+		source: string,
+		accountId?: string,
+		options?: ConnectorUnregisterOptions,
+	): boolean;
 	getPostConnectors(): PostConnector[];
 	sendMessageToTarget(target: TargetInfo, content: Content): SendHandlerResult;
 	editMessageOnTarget(

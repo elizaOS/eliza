@@ -443,7 +443,9 @@ export function createCalendarMutationApprovalGateway(options?: {
         reason:
           payload.recurrenceScope === "this_and_following"
             ? `Modify "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by splitting the recurring series. Later per-occurrence exceptions will reset${payload.notifyAttendees ? ", and attendees may receive both split update notifications" : ""}.`
-            : `Modify "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
+            : payload.recurrenceScope === "series"
+              ? `Modify every occurrence of the recurring series "${approvalSafeLabel(args.targetEvent.title)}" (not only ${new Date(payload.expectedEventStartAtMs as number).toISOString()})${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`
+              : `Modify "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
       });
     },
     async cancel(args) {
@@ -497,7 +499,9 @@ export function createCalendarMutationApprovalGateway(options?: {
         reason:
           payload.recurrenceScope === "this_and_following"
             ? `${verb} "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by truncating the recurring series; every later occurrence and exception will be removed${payload.notifyAttendees ? ", and attendees will be notified" : ""}.`
-            : `${verb} "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
+            : payload.recurrenceScope === "series"
+              ? `${verb} every occurrence of the recurring series "${approvalSafeLabel(args.targetEvent.title)}" (not only ${new Date(payload.expectedEventStartAtMs as number).toISOString()}); every occurrence and exception will be removed${payload.notifyAttendees ? ", and attendees will be notified" : ""}.`
+              : `${verb} "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
       });
     },
   };
