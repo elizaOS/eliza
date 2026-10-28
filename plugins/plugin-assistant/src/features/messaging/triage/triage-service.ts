@@ -754,16 +754,8 @@ export class TriageService {
         },
       );
     }
-    // The recreated provider draft is the scheduled delivery itself, so it
-    // carries no schedule of its own.
-    const {
-      scheduledForMs: _scheduledForMs,
-      scheduledId: _scheduledId,
-      scheduleCommit: _scheduleCommit,
-      ...unscheduled
-    } = snapshot;
     const hydrated: DraftRecord = {
-      ...unscheduled,
+      ...snapshot,
       draftId: recreated.draftId,
       preview: recreated.preview,
       sent: false,
