@@ -1,12 +1,12 @@
 package ai.eliza.voice;
 
 import java.util.Map;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.json.JSONArray;
@@ -59,8 +59,11 @@ public final class LiveCaptureController {
 
  private final Host host;
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
- private final ExecutorService stopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
- private final ExecutorService pipeWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
+ // One thread plus one waiting slot: a pipe completes its close before its drain thread returns to the
+ // pool, so a back-to-back start (or an interrupt right after a stop) waits for that thread instead of
+ // being refused as busy. A second waiting task is still refused rather than queued without bound.
+ private final ExecutorService stopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
+ private final ExecutorService pipeWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new ArrayBlockingQueue<>(1));
  private final LiveCaptureAdmission admission=new LiveCaptureAdmission();
  private final Map<String,LiveSegmentPipe> pipes=new ConcurrentHashMap<>();
  private LiveVoiceCapture live; // Confined to worker.

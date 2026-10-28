@@ -42,6 +42,10 @@ only identity and bridge wiring:
   24 kHz output, per-chunk stream validation with zeroing, and failures held until
   the native stream returns. Each backend is its own session client: cancelling
   it never fences another consumer, and releasing it drops only its own hold.
+  Because the models are freed only once no client holds them, a host that keeps
+  a long-lived `SessionSpeech` must `close()` it on its own idle timeout and on
+  `onTrimMemory` pressure; otherwise another consumer's pressure release cannot
+  unload the shared models.
 - `StreamingSpeechPlayback` plays streamed chunks through a bounded `SpeechPcmQueue`
   (backpressure paces synthesis to playback; 30 s at 24 kHz is the usual bound)
   with `AudioTrackSpeechOutput`; stop drops and zeroes unplayed audio and cancels

@@ -125,6 +125,17 @@ public final class LiveCaptureControllerTest {
    check(host.events.contains("ended:"+B+":capture"),"microphone failure reported");
    for(int i=0;i<100&&!host.events.contains("close:"+B);i++)Thread.sleep(20);
    check(host.events.contains("close:"+B),"failed capture closes the pipe");
+
+   // Back-to-back piped captures: the next start may run while the previous drain thread is still
+   // returning to the pool after completing its close. It must never be refused as busy.
+   host.failReads.set(false);
+   for(int i=0;i<300;i++){
+    String id=i%2==0?A:B;Transport each=new Transport(new CopyOnWriteArrayList<>());Result next=new Result();
+    controller.start(controller.reserve(id,100+i),false,()->each,null,next);await(next.done);
+    check(next.refused==null&&next.piped,"back-to-back capture "+i+" refused: "+next.refused);
+    Stop done=new Stop();controller.stop(id,false,System.currentTimeMillis(),done);await(done.done);
+    check(done.serverClosed,"back-to-back capture "+i+" closed");
+   }
   }finally{controller.shutdown();}
   AtomicInteger refusedAfterShutdown=new AtomicInteger();
   controller.start(controller.reserve(A,7),false,null,null,new LiveCaptureController.Started(){public void started(String id,int r,boolean e,boolean p){}public void refused(String m,String c){refusedAfterShutdown.incrementAndGet();}});

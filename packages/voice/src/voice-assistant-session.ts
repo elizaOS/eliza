@@ -45,6 +45,8 @@
  * Pure module (no Capacitor, DOM, storage or network imports): hosts supply every port.
  */
 
+import { randomId } from "./random-id.js";
+
 export type AssistantPhase =
   | "idle"
   | "starting"
@@ -857,7 +859,7 @@ export class VoiceAssistantSession {
     if (!text) return;
     const turn = ++this.turn;
     const response: Response = {
-      turnId: crypto.randomUUID(),
+      turnId: randomId(),
       controller: new AbortController(),
       sentences: [],
       played: 0,

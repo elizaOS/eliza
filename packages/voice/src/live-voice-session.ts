@@ -28,6 +28,7 @@
  * Pure module (no Capacitor, DOM, storage or logging): hosts supply the transport.
  */
 
+import { randomId } from "./random-id.js";
 import type {
   AssistantCapture,
   AssistantListenHandlers,
@@ -170,21 +171,13 @@ export function parseVoiceTranscriptEnvelope(
   }
 }
 
-function randomId(): string {
-  const value =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-  return `live-${value}`;
-}
-
 /**
  * One live session per voice conversation. `push` forwards the app-process frames and VAD edges
  * in order (one request at a time); `endTurn` closes an open segment when the conversation stops
  * listening for its own reasons; `close` finalizes and releases the agent session.
  */
 export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
-  const sessionId = randomId();
+  const sessionId = `live-${randomId()}`;
   const now =
     options.now ??
     (() =>
@@ -771,7 +764,7 @@ export function createLiveDictation(
       if (recording && !recording.clip)
         throw Error("A transcription is already recording.");
       const current: Recording = {
-        id: `live:${crypto.randomUUID()}`,
+        id: `live:${randomId()}`,
         controller: new AbortController(),
         texts: [],
       };
