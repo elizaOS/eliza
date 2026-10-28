@@ -229,7 +229,7 @@ def _load_source_allowlist() -> set[str]:
     yaml_path = ROOT / "datasets.yaml"
     if yaml_path.exists():
         slug_re = re.compile(r"^\s*-\s+slug:\s*([A-Za-z0-9_\-]+)\s*$")
-        for line in yaml_path.read_text().splitlines():
+        for line in yaml_path.read_text(encoding="utf-8").splitlines():
             m = slug_re.match(line)
             if m:
                 sources.add(m.group(1))
@@ -752,7 +752,7 @@ def _emit(report_path: Path, total: int, valid: int,
         "first_50_failing_records": failing[:50],
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
+    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     # Also surface a one-line summary to stderr for CI greppability.
     print(
         f"[validate_corpus] total={total} valid={valid} invalid={total - valid} "
