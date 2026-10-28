@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
  * the same source contract the editor saves; execution remains in the embedded
  * Smithers service behind elizaOS APIs.
  */
-import { type IAgentRuntime, ModelType, Service } from '@elizaos/core';
+import { type IAgentRuntime, ModelType, parseJsonObject, Service } from '@elizaos/core';
 import type {
   TriggerContext,
   WorkflowCancellationResult,
@@ -52,34 +52,6 @@ export interface WorkflowGenerationOptions {
 }
 
 const OWNER_METADATA_KEY = 'elizaOwnerEntityId';
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function parseJsonObject(text: string): Record<string, unknown> {
-  const trimmed = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, '')
-    .replace(/\s*```$/, '');
-  try {
-    const value = JSON.parse(trimmed);
-    if (isRecord(value)) return value;
-  } catch {
-    // error-policy:J3 the fallback below extracts one explicitly-delimited JSON object.
-  }
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    try {
-      const value = JSON.parse(trimmed.slice(start, end + 1));
-      if (isRecord(value)) return value;
-    } catch {
-      // error-policy:J3 an invalid model response becomes a visible generation error.
-    }
-  }
-  throw new WorkflowApiError('The model did not return a valid Smithers workflow object', 502);
-}
 
 function asWorkflow(value: Record<string, unknown>): WorkflowDefinition {
   if (
@@ -443,7 +415,14 @@ export class WorkflowService extends Service {
       });
       if (Buffer.byteLength(response, 'utf8') > 131072)
         throw new WorkflowApiError('Generated workflow response exceeds size limit', 502);
-      const draft = asWorkflow(parseJsonObject(response));
+      // Core reads the first complete, string-aware object region of a model
+      // reply. A code fence, or prose with a brace before or after the draft,
+      // must not turn a valid answer into a generation error.
+      const parsed = parseJsonObject<Record<string, unknown>>(response);
+      if (!parsed) {
+        throw new WorkflowApiError('The model did not return a valid Smithers workflow object', 502);
+      }
+      const draft = asWorkflow(parsed);
       let diagnostics: string[];
       try {
         diagnostics = await checkWorkflowSource(draft.source);
