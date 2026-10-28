@@ -31,6 +31,21 @@ provides its product name, builtin key prefix, icons and CSS theme tokens; the
 component does not choose a native adapter or storage namespace. AOSP
 `LauncherSurface` uses the same component for registered views and Android apps.
 
+`@elizaos/ui/mobile-shell` is the resident shell of a branded mobile product:
+Home with host notices, a card row and the app grid, All apps over the
+installed-app launcher, lazy domain views and one navigation reducer for the
+open view, Back stack, drawer and the assistant's pill, composer, sheet or full
+detent. A product supplies only a versioned registration (schema
+`elizaos.mobile-product`): identity, a `ThemeDefinition` with shell chrome and
+declared stylesheet aliases, icons, Home backgrounds, view order and labels,
+older view ids and the installed storage names it keeps reading. Validate it
+with `defineMobileProductRegistration`. Views use canonical ids (the ids of
+the agent's `VIEWS` action); a product's older ids resolve through the
+registry, and the launcher join migrates them once in the installed favorites
+before its first read. `@elizaos/ui/mobile-shell/core` is the same model
+without React components for runtime code such as agent navigation. Neither
+entry loads the package root.
+
 `@elizaos/ui/api/transport` exposes the browser-safe request helpers and
 `SseEventFramer`. It preserves event lines across fragmented network reads;
 hosts retain UTF-8 decoding policy, limits, cancellation, validation and receipts.
