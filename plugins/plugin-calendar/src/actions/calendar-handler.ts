@@ -7332,34 +7332,52 @@ export function createCalendarActionRunner(
           // validation or provider call rejected the turn (live 2026-08-09: a
           // swallowed "mode must be one of ..." surfaced only as
           // CALENDAR_SERVICE_400).
-          runtime.reportError("calendar:action", error, {
-            // The action owns this clarification; keep diagnostics without
-            // escalating repeated missing guest details into a second reply.
-            diagnosticOnly:
-              error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
-              error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
-              error.code === "CALENDAR_CREATE_EVIDENCE_INVALID",
-            subaction: subaction ?? "none",
-            status: error.status,
-            code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
-            detail: error.message,
-            // Raw, deliberately: this diagnostic exists to show the operator what
-            // the planner actually authored. Reporting the sanitized values would
-            // render a placeholder id or a reversed window as "unset" and delete
-            // the evidence for the exact input class the sanitizers absorb, so
-            // both are reported — raw for diagnosis, effective for what ran.
-            calendarId: detailString(details, "calendarId") ?? "unset",
-            effectiveCalendarId: calendarIdDetail(details) ?? "unset",
-            timeMin: detailString(details, "timeMin") ?? "unset",
-            timeMax: detailString(details, "timeMax") ?? "unset",
-            effectiveWindow: plannerWindowDetail(details, planningTimeZone)
-              ? `${plannerWindowDetail(details, planningTimeZone)?.timeMin}..${plannerWindowDetail(details, planningTimeZone)?.timeMax}`
-              : "unset",
-            timeZone: detailString(details, "timeZone") ?? "unset",
-            mode: detailString(details, "mode") ?? "unset",
-            side: detailString(details, "side") ?? "unset",
-            grantId: detailString(details, "grantId") ?? "unset",
-          });
+          const coachingFailure =
+            error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+            error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||
+            (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
+              explicitSubaction === "search_events" &&
+              searchQueries.length === 0) ||
+            ((subaction === "feed" || subaction === "search_events") &&
+              (error.code === "CALENDAR_READ_DATE_INVALID" ||
+                error.code === "CALENDAR_READ_DATE_CONFLICT"));
+          runtime.reportError(
+            "calendar:action",
+            new ElizaError(error.message, {
+              code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+              cause: error,
+            }),
+            {
+              // The action owns this clarification; keep diagnostics without
+              // escalating repeated missing guest details into a second reply.
+              diagnosticOnly:
+                error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+                error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+                error.code === "CALENDAR_CREATE_EVIDENCE_INVALID" ||
+                (error.status === 400 && coachingFailure),
+              subaction: subaction ?? "none",
+              status: error.status,
+              code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+              detail: error.message,
+              // Raw, deliberately: this diagnostic exists to show the operator what
+              // the planner actually authored. Reporting the sanitized values would
+              // render a placeholder id or a reversed window as "unset" and delete
+              // the evidence for the exact input class the sanitizers absorb, so
+              // both are reported — raw for diagnosis, effective for what ran.
+              calendarId: detailString(details, "calendarId") ?? "unset",
+              effectiveCalendarId: calendarIdDetail(details) ?? "unset",
+              timeMin: detailString(details, "timeMin") ?? "unset",
+              timeMax: detailString(details, "timeMax") ?? "unset",
+              effectiveWindow: plannerWindowDetail(details, planningTimeZone)
+                ? `${plannerWindowDetail(details, planningTimeZone)?.timeMin}..${plannerWindowDetail(details, planningTimeZone)?.timeMax}`
+                : "unset",
+              timeZone: detailString(details, "timeZone") ?? "unset",
+              mode: detailString(details, "mode") ?? "unset",
+              side: detailString(details, "side") ?? "unset",
+              grantId: detailString(details, "grantId") ?? "unset",
+            },
+          );
           const fallback = buildCalendarServiceErrorFallback(error, intent);
           const rejectedArgument = rejectedArgumentForCalendarServiceError(
             error.code,
@@ -7373,17 +7391,7 @@ export function createCalendarActionRunner(
             data: {
               // This typed preflight rejection performed no read or effect. Keep
               // its receipt and evaluation while allowing a corrected plan to finish.
-              ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
-              error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
-              error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||
-              (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
-                explicitSubaction === "search_events" &&
-                searchQueries.length === 0) ||
-              ((subaction === "feed" || subaction === "search_events") &&
-                (error.code === "CALENDAR_READ_DATE_INVALID" ||
-                  error.code === "CALENDAR_READ_DATE_CONFLICT"))
-                ? { coachingFailure: true }
-                : {}),
+              ...(coachingFailure ? { coachingFailure: true } : {}),
               actionName: "CALENDAR",
               subaction,
               error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
