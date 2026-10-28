@@ -140,6 +140,37 @@ test("the brand architecture must match the Cuttlefish target", (t) => {
   );
 });
 
+test("every inherited device tree must be the target's architecture", (t) => {
+  const f = fixture(t);
+  f.write(f.product.brandConfig, {
+    ...f.brand,
+    aospDeviceTreePaths: [
+      "device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk",
+    ],
+  });
+  assert.ok(
+    cuttlefishProductProblems(f.product, f.options).some((problem) =>
+      /device tree .*vsoc_arm64.* is not for target cuttlefish_x86_64/.test(
+        problem,
+      ),
+    ),
+  );
+  f.write(f.product.brandConfig, {
+    ...f.brand,
+    architecture: "arm64",
+    aospDeviceTreePaths: [
+      "device/google/cuttlefish/vsoc_arm64/phone/aosp_cf.mk",
+    ],
+  });
+  assert.deepEqual(
+    cuttlefishProductProblems(
+      { ...f.product, target: "cuttlefish_arm64" },
+      f.options,
+    ),
+    [],
+  );
+});
+
 test("unset, foreign and unreviewed inputs are each refused", (t) => {
   const f = fixture(t);
   const refuse = (product, pattern: RegExp, options = f.options) => {

@@ -105,6 +105,21 @@ export function cuttlefishProductProblems(
         problems.push(
           `${product.brandConfig}: architecture ${brand.architecture} does not match target ${product.target}`,
         );
+      // Each inherited Cuttlefish device tree must be the target's
+      // architecture (vsoc_x86_64_only is the x86_64 phone tree).
+      const arch = CUTTLEFISH_TARGETS.includes(product?.target)
+        ? product.target.slice("cuttlefish_".length)
+        : null;
+      for (const tree of brand.aospDeviceTreePaths ?? []) {
+        const vsoc =
+          /^device\/google\/cuttlefish\/vsoc_([a-z0-9_]+?)(?:_only)?\//.exec(
+            tree,
+          )?.[1];
+        if (arch && vsoc && vsoc !== arch)
+          problems.push(
+            `${product.brandConfig}: device tree ${tree} is not for target ${product.target}`,
+          );
+      }
       if (brand.productName !== product.product)
         problems.push(
           `${product.brandConfig}: productName ${brand.productName} is not ${product.product}`,
