@@ -2,8 +2,9 @@
 # access log unless a `log` directive is added; keep it that way, because
 # Nominatim requests carry the search text and coordinates in the query.
 # Eliza Cloud sends the access key as the `key` query parameter
-# (ELIZA_MAPS_GEOCODER_API_KEY / ELIZA_MAPS_ROUTER_API_KEY); it is removed
-# before the request reaches a backend.
+# (ELIZA_MAPS_GEOCODER_API_KEY / ELIZA_MAPS_ROUTER_API_KEY); the Valhalla
+# router sends it as `api_key`, so the routing host accepts either name. The
+# key is removed before the request reaches a backend.
 
 {$MAPS_SEARCH_HOST} {
 	@authorized query key={$MAPS_ACCESS_KEY}
@@ -17,9 +18,18 @@
 }
 
 {$MAPS_ROUTE_HOST} {
-	@authorized query key={$MAPS_ACCESS_KEY}
+	@authorized {
+		query key={$MAPS_ACCESS_KEY}
+	}
+	@authorized_api_key {
+		query api_key={$MAPS_ACCESS_KEY}
+	}
 	handle @authorized {
 		uri query -key
+		reverse_proxy graphhopper:8989
+	}
+	handle @authorized_api_key {
+		uri query -api_key
 		reverse_proxy graphhopper:8989
 	}
 	handle {

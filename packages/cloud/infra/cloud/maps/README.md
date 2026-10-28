@@ -56,6 +56,12 @@ memory for the region (a city or small country fits in a few GB).
    the regions and modes; a search and a route inside the region return
    attributed results; a point outside returns `422 unsupported_region`.
 
+To route with a Valhalla server instead of GraphHopper, run it in place of the
+`graphhopper` service, point the routing host's `reverse_proxy` at it, and set
+`ELIZA_MAPS_ROUTER=valhalla`. The Valhalla router sends the access key as
+`api_key`, the other backends as `key`; the routing host accepts either and
+strips it.
+
 ## Privacy
 
 Queries and coordinates reach only Cloud and these two backends. Cloud logs
