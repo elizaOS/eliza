@@ -1622,14 +1622,31 @@ export class RemindersDomain {
       if (!Array.isArray(roomIds) || roomIds.length === 0) {
         return noResponse;
       }
-      const memories = await this.ctx.runtime.getMemoriesByRoomIds({
-        tableName: "messages",
-        roomIds,
-      });
-      if (!Array.isArray(memories) || memories.length === 0) {
+      const nowMs = args.now.getTime();
+      // Window the read to the attempt window instead of fetching
+      // every room's whole history: getMemoriesByRoomIds takes no
+      // start/end, but per-room getMemories does, and the adapter
+      // applies them as createdAt bounds (an end bound also
+      // bypasses the compose-time superset scan). The window is a
+      // superset of the filter below (strictly after attemptedMs,
+      // at or before nowMs), so the existing filter re-applied
+      // after the fetch reproduces the in-window set exactly.
+      // The +1ms end guard covers sub-millisecond storage
+      // precision; the post-filter still enforces <= nowMs.
+      const windowed = await Promise.all(
+        roomIds.map((roomId) =>
+          this.ctx.runtime.getMemories({
+            tableName: "messages",
+            roomId,
+            start: attemptedMs,
+            end: nowMs + 1,
+          }),
+        ),
+      );
+      const memories = windowed.flat();
+      if (!Array.isArray(memories)) {
         return noResponse;
       }
-      const nowMs = args.now.getTime();
       const metadata = args.attempt.deliveryMetadata;
       const observedAt = metadata[REMINDER_REVIEW_RESPONDED_AT_METADATA_KEY];
       const observedMs =
@@ -1798,8 +1815,15 @@ export class RemindersDomain {
             };
           }
         }
+        // The reply source (typically the reminder delivery itself)
+        // can predate the attempt window, so it is not in the
+        // windowed map: resolve it on demand. A miss behaves
+        // exactly like a map miss in the checks below.
         const source = response.inReplyTo
-          ? memoriesById.get(response.inReplyTo as Memory["id"])
+          ? (memoriesById.get(response.inReplyTo as Memory["id"]) ??
+            (await this.ctx.runtime
+              .getMemoryById(response.inReplyTo as Memory["id"])
+              .catch(() => null)))
           : null;
         const reference =
           source && isRecord(source.content.metadata)
