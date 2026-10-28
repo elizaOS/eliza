@@ -420,7 +420,10 @@ export class WorkflowService extends Service {
       // must not turn a valid answer into a generation error.
       const parsed = parseJsonObject<Record<string, unknown>>(response);
       if (!parsed) {
-        throw new WorkflowApiError('The model did not return a valid Smithers workflow object', 502);
+        throw new WorkflowApiError(
+          'The model did not return a valid Smithers workflow object',
+          502
+        );
       }
       const draft = asWorkflow(parsed);
       let diagnostics: string[];
