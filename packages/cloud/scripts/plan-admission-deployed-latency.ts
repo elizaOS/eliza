@@ -26,6 +26,19 @@
  * to start without --confirm-real-requests. Local, in-process numbers for the
  * same conditions come from plan-request-limit-latency.ts.
  *
+ * Config (keys are named by environment variable, never written in the file;
+ * `expect` per condition and service is optional):
+ *   { "apiBase": "https://api-staging.example", "iterations": 50, "warmup": 3,
+ *     "services": ["inference", "maps"], "inference": { "model": "<model id>" },
+ *     "maps": { "query": "<place name>" },
+ *     "conditions": {
+ *       "normal": { "keyEnv": "BENCH_NORMAL_KEY" },
+ *       "cache-miss": { "keysEnv": "BENCH_FRESH_KEYS" },
+ *       "exhausted": { "keyEnv": "BENCH_EXHAUSTED_KEY" },
+ *       "expired": { "keyEnv": "BENCH_EXPIRED_KEY" },
+ *       "billing-outage": { "keyEnv": "BENCH_OUTAGE_KEY", "apiBase": "https://<outage deployment>" } } }
+ * Cache-miss needs iterations x services fresh keys, comma-separated.
+ *
  * Run:    node packages/cloud/scripts/plan-admission-deployed-latency.ts \
  *           --config <file.json> --confirm-real-requests
  * Output: test-results/plan-admission-deployed-latency/results.json
