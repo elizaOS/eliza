@@ -8,7 +8,7 @@
  */
 
 import type { IAgentRuntime, JSONSchema, JsonValue } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, parseJsonObject } from "@elizaos/core";
 import { FormService } from "./service";
 import type { TemplateValues } from "./template";
 import { resolveControlTemplates } from "./template";
@@ -72,24 +72,6 @@ type CorrectionJsonResponse = {
   has_correction?: string | boolean;
   corrections?: CorrectionJsonField[];
 };
-
-function parseJsonObjectResponse<T>(response: string): T | null {
-  try {
-    const trimmed = response.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    const candidate = (fenced?.[1] ?? trimmed).trim();
-    const firstBrace = candidate.indexOf("{");
-    const lastBrace = candidate.lastIndexOf("}");
-    if (firstBrace < 0 || lastBrace <= firstBrace) return null;
-    const parsed = JSON.parse(candidate.slice(firstBrace, lastBrace + 1));
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return null;
-    }
-    return parsed as T;
-  } catch {
-    return null;
-  }
-}
 
 function parseBoolean(value: unknown): boolean {
   return (
@@ -401,7 +383,7 @@ Return only a valid JSON object with this schema:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<SingleFieldJsonResponse>(response);
+  const parsed = parseJsonObject<SingleFieldJsonResponse>(response);
   const found = parsed?.found === true || parsed?.found === "true";
   if (!found || !parsed) return null;
 
@@ -499,7 +481,7 @@ Rules:
     temperature: 0.1,
   });
 
-  const parsed = parseJsonObjectResponse<CorrectionJsonResponse>(response);
+  const parsed = parseJsonObject<CorrectionJsonResponse>(response);
   const hasCorrection =
     parsed?.has_correction === true || parsed?.has_correction === "true";
   if (!parsed || !hasCorrection || !parsed.corrections) return [];

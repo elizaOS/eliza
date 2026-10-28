@@ -116,10 +116,7 @@ export const handleAgentLifecycleRoutes = lazyRoute(
 );
 
 export const handleAgentStatusRoutes = lazyRoute(
-  (ctx) =>
-    ctx !== null &&
-    (ctx.pathname === "/api/agent/self-status" ||
-      ctx.pathname.startsWith("/api/registry")),
+  (ctx) => ctx?.pathname === "/api/agent/self-status",
   async () =>
     (await import("./agent-status-routes.ts")).handleAgentStatusRoutes,
 );

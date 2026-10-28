@@ -175,7 +175,9 @@ export async function runIsolatedScriptTests(options) {
     ? mkdtempSync(path.join(os.tmpdir(), "eliza-script-tests-"))
     : undefined;
   const active = new Set();
+  let interrupted = false;
   const stop = () => {
+    interrupted = true;
     for (const child of active) terminate(child);
   };
   process.once("SIGTERM", stop);
@@ -187,18 +189,18 @@ export async function runIsolatedScriptTests(options) {
     }));
     const ordinary = fragments.filter(({ file }) => !isSerialScriptTest(file));
     const serial = fragments.filter(({ file }) => isSerialScriptTest(file));
+    const runFragment = ({ file, path: fragmentPath }) => {
+      if (interrupted) {
+        throw new Error(`Not started after interruption: ${file}`);
+      }
+      return runOne(file, options, fragmentPath, active);
+    };
     const ordinaryResults = await runPool(
       ordinary,
-      ({ file, path: fragmentPath }) =>
-        runOne(file, options, fragmentPath, active),
+      runFragment,
       options.concurrency,
     );
-    const serialResults = await runPool(
-      serial,
-      ({ file, path: fragmentPath }) =>
-        runOne(file, options, fragmentPath, active),
-      1,
-    );
+    const serialResults = await runPool(serial, runFragment, 1);
     const results = [...ordinaryResults, ...serialResults];
     const failures = results.filter(
       (result) =>
@@ -216,9 +218,9 @@ export async function runIsolatedScriptTests(options) {
         `[script-tests] failed: ${file} (exit=${exitCode} signal=${signal ?? "none"} timedOut=${timedOut})\n`,
       );
     }
-    if (failures.length === 0 && options.junit)
+    if (!interrupted && failures.length === 0 && options.junit)
       mergeJunit(fragments, options.junit);
-    return failures.length === 0 ? 0 : 1;
+    return !interrupted && failures.length === 0 ? 0 : 1;
   } finally {
     process.removeListener("SIGTERM", stop);
     process.removeListener("SIGINT", stop);

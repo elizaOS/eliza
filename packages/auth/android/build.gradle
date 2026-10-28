@@ -1,0 +1,18 @@
+apply plugin: 'com.android.library'
+// Native Eliza Cloud sign-in client (ai.eliza.auth.cloud). Hosts subclass CloudSignInPlugin with
+// their registration and protected credential store; see packages/auth/README.md.
+android {
+ namespace 'ai.eliza.auth.cloud'
+ compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+ defaultConfig { minSdk 29; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+repositories { google(); mavenCentral() }
+dependencies {
+ implementation project(':capacitor-android')
+ // Plugin.getActivity() returns an AppCompatActivity; Capacitor does not export AppCompat.
+ implementation "androidx.appcompat:appcompat:${project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'}"
+ implementation 'androidx.credentials:credentials:1.6.0'
+ implementation 'androidx.credentials:credentials-play-services-auth:1.6.0'
+ implementation 'com.google.android.libraries.identity.googleid:googleid:1.1.1'
+}

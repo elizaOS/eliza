@@ -37,8 +37,14 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { stableStringify } from "@elizaos/core";
-import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
+import {
+  resolveScheduledAtIsoInTimeZone,
+  stableStringify,
+} from "@elizaos/core";
+import {
+  resolveMessageTimeZone,
+  resolvePendingPromptsStore,
+} from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   completeLifeOpsEffect,
@@ -323,6 +329,8 @@ function buildFilter(params: ScheduledTaskParams): ScheduledTaskFilter {
 
 interface RunnerScope {
   runtime: IAgentRuntime;
+  /** Zone the planner's offset-free times are written in (CURRENT_TIME's). */
+  timeZone: string;
   runner: ScheduledTaskRunnerHandle;
   agentId: string;
   roomId: string | null;
@@ -333,6 +341,7 @@ function makeRunnerScope(runtime: IAgentRuntime, message: Memory): RunnerScope {
   const runner = getScheduledTaskRunner(runtime, { agentId });
   return {
     runtime,
+    timeZone: resolveMessageTimeZone(runtime, message),
     runner,
     agentId,
     roomId: typeof message.roomId === "string" ? message.roomId : null,
@@ -761,7 +770,10 @@ function pickNumber(
  * `expression`, and the mid-runner throw surfaced as a bare
  * `success:false` with no message.)
  */
-function normalizeTriggerInput(value: unknown): TriggerNormalization {
+function normalizeTriggerInput(
+  value: unknown,
+  timeZone: string,
+): TriggerNormalization {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {
       ok: false,
@@ -808,7 +820,11 @@ function normalizeTriggerInput(value: unknown): TriggerNormalization {
       };
     }
     case "once": {
-      const atIso = onceAtIso;
+      // The planner writes an offset-free time as a wall clock in the user's
+      // zone; Date.parse would read it in the host zone.
+      const atIso = onceAtIso
+        ? resolveScheduledAtIsoInTimeZone(onceAtIso, timeZone)
+        : onceAtIso;
       if (!atIso || !Number.isFinite(Date.parse(atIso))) {
         return {
           ok: false,
@@ -1184,7 +1200,7 @@ async function handleCreate(
       },
     };
   }
-  const normalized = normalizeTriggerInput(params.trigger);
+  const normalized = normalizeTriggerInput(params.trigger, scope.timeZone);
   if (!normalized.ok) {
     return {
       success: false,
@@ -1484,7 +1500,7 @@ async function handleUpdate(
   // replaces the stored trigger wholesale, so it is normalized the same way.
   let patch = params.patch;
   if (Object.hasOwn(patch, "trigger")) {
-    const normalized = normalizeTriggerInput(patch.trigger);
+    const normalized = normalizeTriggerInput(patch.trigger, scope.timeZone);
     if (!normalized.ok) {
       return {
         success: false,
@@ -1626,7 +1642,7 @@ async function handleSnooze(
       : undefined;
   const untilIso =
     typeof params.untilIso === "string" && params.untilIso.trim().length > 0
-      ? params.untilIso.trim()
+      ? resolveScheduledAtIsoInTimeZone(params.untilIso.trim(), scope.timeZone)
       : undefined;
   if (minutes === undefined && untilIso === undefined) {
     return {

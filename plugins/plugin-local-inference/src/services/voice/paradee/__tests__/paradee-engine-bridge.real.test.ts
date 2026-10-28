@@ -62,6 +62,18 @@ describe.skipIf(!isBun || !found.ok)(
 			expect(rtf).toBeLessThan(1);
 		}, 120_000);
 
+		it("reclaims native model memory on disarm and speaks again after rearm", async () => {
+			expect(backend.residentModelMb).toBeGreaterThan(0);
+			await bridge.disarm();
+			expect(backend.residentModelMb).toBe(0);
+			await bridge.arm();
+			expect(backend.residentModelMb).toBeGreaterThan(0);
+			const wav = await bridge.synthesizeTextToWav(
+				"Speech works after memory reclamation.",
+			);
+			expect(wavToFloat32(Buffer.from(wav)).pcm.length).toBeGreaterThan(0);
+		}, 120_000);
+
 		it("streams first audio and stops on barge-in", async () => {
 			const cancelSignal = { cancelled: false };
 			const chunks: TtsPcmChunk[] = [];

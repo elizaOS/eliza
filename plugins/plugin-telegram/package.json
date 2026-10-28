@@ -32,7 +32,7 @@
     "type-detect": "^4.1.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/config": "latest",
     "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",

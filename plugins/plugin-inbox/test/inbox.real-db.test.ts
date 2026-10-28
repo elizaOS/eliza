@@ -390,6 +390,63 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     });
   });
 
+  it("trashes every thread of a sender whose address case varies", async () => {
+    const trash = vi.fn(async () => undefined);
+    const message = (n: number, fromEmail: string) => ({
+      id: `case-message-${n}`,
+      threadId: `case-thread-${n}`,
+      from: `Shop <${fromEmail}>`,
+      fromEmail,
+      subject: `Sale ${n}`,
+      receivedAt: `2026-10-0${n}T00:00:00.000Z`,
+      metadata: {
+        headers: { "List-Unsubscribe": "<mailto:unsub@shop.example>" },
+      },
+    });
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage", "google.gmail.manage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      // Gmail's from: search ignores case and keeps each header's casing.
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            message(1, "News@Shop.example"),
+            message(2, "News@Shop.example"),
+            message(3, "news@shop.example"),
+            message(4, "news@shop.example"),
+            message(5, "news@shop.example"),
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(async () => undefined),
+      createGmailFilterForSender: vi.fn(async () => ({ filterId: "filter-c" })),
+      trashGmailThread: trash,
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, { gmail });
+
+    const scan = await unsubscribe.scanEmailSubscriptions({
+      query: "from:news@shop.example",
+    });
+    expect(
+      scan.senders.map((sender) => [sender.senderEmail, sender.messageCount]),
+    ).toEqual([["news@shop.example", 5]]);
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "news@shop.example",
+      userAuthorization: true,
+      trashExisting: true,
+    });
+    expect(result.record).toMatchObject({
+      status: "succeeded",
+      threadsTrashed: 5,
+    });
+    expect(trash).toHaveBeenCalledTimes(5);
+  });
+
   it("dedups one source message against the real DB on re-triage", async () => {
     const first = await service.triage([
       inbound({ id: "msg-dedup", text: "Can you confirm the meeting?" }),

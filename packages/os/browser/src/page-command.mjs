@@ -1,4 +1,14 @@
 /** Fixed DOM operations shared by Chromium and embedded native pages. No host imports. */
+
+/**
+ * Words on a control that commits a payment, sign-in, submission or other
+ * irreversible step. A task policy can never click such a control; the person
+ * presses it. Products that plan clicks should use this same vocabulary; this
+ * module imports nothing, so they can import it without the native wire.
+ */
+export const COMMIT_CONTROL =
+  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
+
 export function pageCommand(command, snapshotId, validateOnly = false) {
   const policy = command.taskPolicy;
   const denied = () => ({

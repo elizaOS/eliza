@@ -57,12 +57,12 @@ This does not replace rate limits, gateway queues, or other Redis state.
 
 These additional private stores also default to `redis`:
 
-| State | Protected release variable |
-| --- | --- |
-| Monthly download quotas | `CLOUD_HF_EGRESS_BACKEND` |
-| Daily voice quotas | `CLOUD_VOICE_USAGE_BACKEND` |
-| Fixed and sliding rate limits | `CLOUD_RATE_STATE_BACKEND` |
-| A2A tasks and organization index | `CLOUD_A2A_STATE_BACKEND` |
+| State                            | Protected release variable  |
+| -------------------------------- | --------------------------- |
+| Monthly download quotas          | `CLOUD_HF_EGRESS_BACKEND`   |
+| Daily voice quotas               | `CLOUD_VOICE_USAGE_BACKEND` |
+| Fixed and sliding rate limits    | `CLOUD_RATE_STATE_BACKEND`  |
+| A2A tasks and organization index | `CLOUD_A2A_STATE_BACKEND`   |
 
 Stop source writers and transfer complete state with original expiry before
 selecting `cloudflare`. Imports reject conflicts and close permanently once
@@ -92,12 +92,33 @@ Client IDs, app UUIDs and canonical HTTPS return URLs must be unique, including
 against the existing `ai.elizaos.app` registration. Unknown and disabled clients
 fail closed; malformed additional configuration does not change the legacy client.
 The global mobile-auth enable switch and environment binding still apply.
+An explicitly registered client does not require the legacy primary app UUID.
+`ELIZA_MOBILE_APP_AUTH_APP_ID` remains required for `ai.elizaos.app`; omitting it
+does not register or enable that legacy client.
+
+Auth has separate configuration boundaries. A Cloud exchange callback is not
+necessarily the browser callback used by Google:
+
+| Channel                   | Server-owned configuration                                                       | Consumer responsibility                                               |
+| ------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Cloud credential exchange | `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and an approved `apps` row                  | Client ID, environment and exact exchange callback                    |
+| Google sign-in            | Steward tenant/app redirect registration and `STEWARD_OAUTH_APP_ERROR_REDIRECTS` | PKCE, state, optional Steward `authClientId`, browser return handling |
+| Gmail connector consent   | `APP_OAUTH_RETURN_URLS`                                                          | App nonce and authenticated connection readback                       |
+| Android verified links    | `ELIZA_ANDROID_ASSET_LINKS_JSON`                                                 | Package, signing certificate and manifest URL filters                 |
+| Hosted fallback           | Pages `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`                                         | Public callback URL, package and display name                         |
+
+Request parameters can select these registrations; they cannot register a new
+callback. App IDs in Cloud and client IDs in Steward belong to different stores
+and must not be assumed interchangeable. No product repository is imported by
+these shared mechanisms.
 
 Before enabling a client, provision its own active, approved app with an active
 owner/organization, an exact allowed callback, and no live generated application
 API key. Use separate registrations in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
-before shipping. The app UUID and server secrets must not be included in the
+before shipping. The admin preflight allows an `app_url` homepage path on the
+registered HTTPS origin, while `allowed_origins` must contain the sole exact
+registered callback. The app UUID and server secrets must not be included in the
 native configuration. Retain the existing S256 grant, inactive exchange, durable
 receipt acknowledgment, self-revocation and account recovery contracts. `cloud:user`
 is the existing broad user/organization capability, not a narrower permission claim.
@@ -105,52 +126,53 @@ is the existing broad user/organization capability, not a narrower permission cl
 The release workflow publishes the registry from the protected
 `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` environment secret. The
 `Mobile App Auth Registration Admin` workflow diagnoses or repairs a client's
-`apps` row: choose the client (`ai.elizaresearch.alphaphone` for Alpha Phone,
-`ai.elizaresearch.seniorcare` for Senior Care, whose callback is
-`https://cloud.eliza.app/auth/senior-care/callback`, staging:
-`https://cloud-staging.eliza.app/auth/senior-care/callback`);
-additional clients take their app UUID from the same registry entry, which must
-be enabled and bound to that environment's callback.
+`apps` row: enter any enabled `clientId` from the selected environment's registry.
+The app UUID and exact callback come only from that protected registry. The admin
+uses the Worker's validator, including uniqueness against the primary client and
+validation of every registry entry. No application names or callback paths are
+compiled into the admin. New rows get a neutral display name;
+existing rows retain their branding. Use separate environment registries. The
+registry's callback is authoritative; the admin does not infer an environment
+from a hostname. Review each environment's registry before repair.
+Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
+standalone verifier. With the protected environment variables present, run
+`node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+--skip-database --verify-live` to check its public metadata without a database read.
+Omitting the selector keeps the primary-client release check.
 
-### Alpha-owned managed Google returns
+### App-owned managed Google returns
 
 App-owned connector callbacks use `APP_OAUTH_RETURN_URLS` for exact HTTPS
-Gmail return addresses. Initiation accepts the app nonce as the only `state`
+Gmail return addresses. The deployment owner sets this comma-separated Worker
+binding separately for each environment; no application callback is shipped in
+source. `keep_vars = true` preserves the configured allowlist during releases.
+An unset allowlist disables app-owned returns. For example, a deployment may
+allow `https://apps.example.org/reader/callback` and
+`https://apps.example.org/planner/callback` without changing upstream code.
+Initiation accepts the app nonce as the only `state`
 query parameter and returns `appReturn: 2` when configured. The callback uses
 server-owned state and returns only state/result plus `connectionId` on success.
 The app must verify that connection through its authenticated connector list.
 Denial retires state and creates no grant. Unknown state keeps existing recovery.
-Google credentials and token refresh behavior are unchanged. The Alpha domain's
+Google credentials and token refresh behavior are unchanged. The app domain's
 callback assets and Android association must be deployed before live acceptance.
 
-### Alpha Phone in-app sign-in
+### Native in-app sign-in
 
-Alpha Phone signs in natively: email codes go straight to Steward, and Google
-uses a Custom Tab whose redirect is the verified App Link
-`https://eliza.app/alphaphone/auth/callback` (staging:
-`https://staging.eliza.app/alphaphone/auth/callback`). The device redeems the
-Steward code with its PKCE verifier, then trades the Steward session for an
-`eliza_mobile_` credential through `POST /api/v1/app-auth/connect`
-(`flow: "mobile_pkce"`, Bearer Steward token), `mobile/token` and `mobile/ack`.
-Steward returns a successful code and state in the URL fragment.
+Any registered native app can use email codes or Google with a verified HTTPS
+App Link. The app supplies its configured callback and keeps its PKCE verifier
+private. It redeems the Steward code, then exchanges the Steward session through
+`POST /api/v1/app-auth/connect` (`flow: "mobile_pkce"`), `mobile/token` and
+`mobile/ack`. Successful OAuth returns carry code and state only in the fragment.
 
-The callback contract (success `#code=..&state=..` only in the fragment, error
-`{error,state}` from a fixed allowlist, the fallback page's hand-off, and the
-authorize parameters Alpha sends) is pinned by
-`packages/app/test/fixtures/alphaphone-native-signin-callback.contract.json`.
-The same file is committed in AlphaCompute/alphaphone, whose callback parser
-runs every vector. Here `packages/app/test/alphaphone-callback-contract.test.ts`
-runs it against the fallback page, and
-`packages/auth/src/server/__tests__/native-app-link-oauth.integration.test.ts`
-against Steward's real success and error hand-offs and its error codes. Change
-both copies together.
+Reusable synthetic callback vectors live in
+`packages/app/test/fixtures/native-signin-callback.contract.json`. The Pages
+fallback and Steward integration tests run these vectors. Consumer repositories
+own their actual Android packages, callbacks, branding and acceptance tests.
 
-Alpha authorizes with `prompt=select_account` (so the final redirect follows a
-user gesture and Chrome hands it to the App Link) and `mfa=exchange`. With
-`mfa=exchange`, an account with a second factor gets the normal success return;
-`POST /steward/auth/oauth/exchange` then answers
-`{ok: true, mfaRequired: true, mfa: {type, challengeId, expiresAt}, user}` with
-no tokens, and the app finishes through `/steward/auth/mfa/{type}/complete`.
+Use `prompt=select_account` for a user gesture before the App Link and
+`mfa=exchange` to finish a required second factor through the existing exchange
+and MFA endpoints. An MFA-required response carries no session tokens.
 
 Native email sign-in is a six-digit code typed into the app:
 
@@ -175,8 +197,7 @@ Native email sign-in is a six-digit code typed into the app:
 Operator configuration per environment:
 
 - `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` (GitHub Environment secret on `staging` /
-  `production`) registers `ai.elizaresearch.alphaphone` with that environment's
-  callback. Leave `credentialTtlSeconds` unset (30-day default) while the
+  `production`) registers each app's client ID, app UUID and exact callback. Leave `credentialTtlSeconds` unset (30-day default) while the
   device's `eliza_mobile_` key remains readable by the app renderer. Then run the
   admin workflow's repair for that client.
 - `ELIZA_ANDROID_ASSET_LINKS_JSON` is a GitHub **variable** (`vars.`), defined on
@@ -187,7 +208,7 @@ Operator configuration per environment:
   `eliza.app` and `staging.eliza.app`. Malformed values publish `[]`. Without
   the release signer's fingerprint, App Link verification fails on every phone:
   do not promote native sign-in to production until it is set and
-  `adb shell pm get-app-links ai.elizaresearch.alphaphone` shows the host as
+  `adb shell pm get-app-links <application-package>` shows the host as
   `verified`.
 - The Steward tenant `elizacloud` must list the callback in its
   `allowedRedirectUrls`. `/auth/oauth/:provider/authorize` receives an explicit
@@ -196,16 +217,40 @@ Operator configuration per environment:
   Google `prompt=select_account` passthrough, `mfa=exchange` and
   `/email/code/send` reach a device only after that deployment.
 
-If Android does not intercept the App Link, the Pages route
-`/alphaphone/auth/callback` serves a static, no-store page. It never forwards a
-code: an `intent://` hand-off is matched on package name only, so a sideloaded
-app with the same package name could otherwise collect a code from an authorize
-it started itself. The page tells the user to return to Alpha Phone and start
-again. Its one control opens the app with no parameters, or with
-`?error=app_link_unverified&state=<state>` when the fragment or query holds a
-well-formed state (a state alone redeems nothing), and a pinned script removes
-the fragment and query from history. Success returns rely solely on the
-verified App Link.
+For a callback hosted by Eliza Pages, set `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`
+in the protected Pages production/preview environment before deploying this change.
+This is a separate Pages binding, not an API Worker secret. It is a JSON array:
+
+```json
+[
+  {
+    "redirectUri": "https://eliza.app/example/return",
+    "androidPackage": "org.example.reader",
+    "appName": "Example Reader"
+  }
+]
+```
+
+Entries contain only public routing and display data, never app UUIDs or secrets.
+Each exact origin/path selects one package and escaped display name. Staging needs
+its own exact URLs; an entry on one host does not authorize it on another. Unknown
+routes keep ordinary site behavior, and malformed or duplicate configuration fails
+closed. Apps hosting their own callbacks need no Pages entry. The callback used
+only for Cloud's API-to-API mobile code exchange needs no browser page at all.
+
+When Android does not intercept a configured callback, Pages serves a no-store
+fallback. It never forwards a code: package-name intents do not verify the signer.
+The control opens the configured app with no parameters, or only
+`error=app_link_unverified` and a well-formed state. A hash-pinned script clears
+query and fragment from history. Success still requires a verified App Link.
+
+Migration: copy every currently supported callback, package and display name into
+the deployment's Pages binding before rollout. Retain legacy URLs as configuration
+until installed clients migrate. Update Steward tenant/app redirect allowlists,
+`STEWARD_OAUTH_APP_ERROR_REDIRECTS`, Android manifests and asset links separately.
+Adding an app requires protected configuration and app registration, not a new
+upstream product branch. Verify the public metadata, both callback hosts and real
+Android link delivery before declaring live sign-in accepted.
 
 Remaining Cloud-hosted pages a native sign-in can still reach: this fallback
 page, and Steward's OAuth error page inside the Custom Tab for non-MFA failures
@@ -285,6 +330,12 @@ the current and next two monthly periods funded; missed months do not accumulate
   off while unset. The numbers are not selected yet; `placeholder` enables
   unselected test values only. Latency benchmark:
   `bun --conditions=eliza-source packages/cloud/scripts/plan-request-limit-latency.ts`.
+  Against a deployment, `node packages/cloud/scripts/plan-admission-deployed-latency.ts
+  --config <file.json> --confirm-real-requests` reports client and Server-Timing
+  p50/p95 on the existing completion and geocode routes for accounts a person
+  prepares (normal, cache-miss, exhausted, expired, billing outage), minus an
+  unauthenticated baseline. The config names each key's environment variable;
+  normal-condition requests are real and billed or counted.
 
 Scripts (same `DATABASE_URL` and pepper as the target environment; apply
 migrations through `0547_subscription_grant_calendar_terms` first):
@@ -429,19 +480,30 @@ Success bodies name the provider and carry its attribution. Failures are typed:
 | provider_unavailable` (with `Retry-After`), `502 provider_invalid_response`.
 Cloud never returns guessed places or routes. Navigation and GPS stay on the device.
 
-The provider is OpenStreetMap data on a self-hosted Nominatim (search, geocode,
-reverse, details) and GraphHopper (routes, profiles `car`, `foot`, `bike`). Ops
-must provision, for each environment:
+The provider is chosen by settings (`shared/src/lib/services/maps/provider-registry.ts`).
+The default, `ELIZA_MAPS_PROVIDER=osm`, is OpenStreetMap data on an operator
+Nominatim-compatible geocoder (search, geocode, reverse, details) and a
+GraphHopper router (routes, profiles `car`, `foot`, `bike`); set
+`ELIZA_MAPS_ROUTER=valhalla` for a Valhalla router. Ops must provision, for
+each environment:
 
 - `ELIZA_MAPS_GEOCODER_URL`: HTTPS Nominatim 4.3 or later loaded with the region
-  extracts.
-- `ELIZA_MAPS_ROUTER_URL`: HTTPS GraphHopper with the same extracts and the
-  `car`, `foot` and `bike` profiles; optional `ELIZA_MAPS_ROUTER_API_KEY`.
+  extracts; optional `ELIZA_MAPS_GEOCODER_API_KEY`.
+- `ELIZA_MAPS_ROUTER_URL`: HTTPS GraphHopper (or Valhalla) with the same extracts;
+  optional `ELIZA_MAPS_ROUTER_API_KEY` and `ELIZA_MAPS_ROUTER_PROFILES`
+  (`{"drive":"car","walk":"foot","bicycle":"bike"}` by default).
   Set `ELIZA_MAPS_ROUTE_ALTERNATIVES=false` if the deployment cannot compute
   alternative routes.
 - `ELIZA_MAPS_COVERAGE_JSON`: the regions both services cover, as
   `[{"id","name","bounds":[west,south,east,north]}]`.
 - `ELIZA_MAPS_DATASET_REVISION`: the extract date or version that is served.
+- Optional `ELIZA_MAPS_OPERATOR`, `ELIZA_MAPS_ATTRIBUTION` and
+  `ELIZA_MAPS_PROVIDER_ID`.
+
+`capabilities` also reports `sources` and a location `disclosure`: the services
+that receive a request's text and coordinates and their operator. Cloud records
+only the operation and result code. A self-hostable reference stack with TLS,
+an access key and request logging disabled is in `infra/cloud/maps`.
 
 Ops also own the update schedule (dataset freshness), monitoring, capacity and
 ODbL obligations. Transit, traffic and map tiles are not served.
@@ -485,6 +547,23 @@ voices, not the original Kokoro identities. Responses identify the actual provid
 and speaker in `X-Eliza-TTS-Provider` and `X-Eliza-TTS-Voice`. Configured Cartesia
 defaults and custom ElevenLabs voices retain their existing selection and billing.
 Set `VOICE_BATCH_STT_PROVIDER=cloudflare` to move a pinned Whisper deployment to
-Workers AI; verify authenticated TTS/STT before retiring the old services.
+Workers AI Nova-3, including word timestamps and Telegram Ogg voice notes; verify authenticated TTS/STT before retiring the old services.
 
 Workers AI TTS accepts up to 2,000 characters per request. Longer text is rejected explicitly before synthesis; it is never truncated.
+
+## Public service identity and legal documents
+
+`GET /api/public/service` supplies plain-text documents for app-owned sign-in
+views. Set the public Worker binding `CLOUD_PUBLIC_SERVICE_JSON` to an object
+with `name`, `terms`, and `privacy`. Each document has `title`, `revision`, and
+`sections`; each section has `title` and a nonempty `paragraphs` string array.
+Provide the service operator's approved text. The endpoint does not fetch URLs,
+accept caller-defined branding, infer consent, or require a login session.
+Missing, malformed, or over-256-KiB configuration returns HTTP 503. Responses use
+`Cache-Control: no-store`; consumers must render strings as text, never HTML.
+No product identity or default legal agreement is inserted by this endpoint.
+The Cloudflare release workflow reads the same-named protected environment
+variable through its atomic Worker-binding pipeline. A blank source preserves
+the deployed value. This uses the existing binding mechanism even though the
+content is public. To withdraw published documents, replace the binding with
+`{}` so the endpoint refuses it; an empty source is not a deletion request.

@@ -172,9 +172,15 @@ it.each([
           if (params.prompt.startsWith("Review recovered reply grounding."))
             return JSON.stringify({
               grounded: true,
-              completedChangeClaim: true,
-              reason:
-                "The saved file commit receipt supports this exact write.",
+              claims: [
+                {
+                  quote: "The test file was saved with its original contents.",
+                  actor: "assistant",
+                  change: true,
+                  supported: true,
+                  evidence: "saved-recovery-http",
+                },
+              ],
             });
           return JSON.stringify({
             response: "The test file was saved with its original contents.",

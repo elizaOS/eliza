@@ -1019,6 +1019,8 @@ type IMessageRuntimeServiceLike = ConnectorMessageRuntimeServiceLike & {
   ) => Promise<{
     success: boolean;
     messageId?: string;
+    messageIds?: string[];
+    localEffectIds?: string[];
     chatId?: string;
     error?: string;
   }>;
@@ -1042,7 +1044,10 @@ export async function sendIMessageWithRuntimeService(args: {
   RuntimeServiceDelegationResult<{
     success: boolean;
     messageId?: string;
+    messageIds?: string[];
+    localEffectIds?: string[];
     chatId?: string;
+    error?: string;
   }>
 > {
   const service = getRuntimeService<IMessageRuntimeServiceLike>(args.runtime, [
@@ -1060,11 +1065,6 @@ export async function sendIMessageWithRuntimeService(args: {
       mediaUrl: args.mediaUrl,
       maxBytes: args.maxBytes,
     });
-    if (!sent.success) {
-      return unavailable(
-        sent.error ?? "iMessage runtime service sendMessage failed.",
-      );
-    }
     return { status: "handled", accountId, value: sent };
   } catch (error) {
     return unavailable("iMessage runtime service sendMessage failed.", error);

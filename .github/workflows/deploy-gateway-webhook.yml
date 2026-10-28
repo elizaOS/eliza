@@ -48,7 +48,8 @@ jobs:
       EXPECTED_GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://eliza-gateway-webhook-production.square-rain-7251.workers.dev' || 'https://eliza-gateway-webhook-staging.square-rain-7251.workers.dev' }}
       GATEWAY_WEBHOOK_URL: ${{ vars.ELIZA_APP_WEBHOOK_GATEWAY_URL }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      # Use a gateway-scoped credential without replacing shared release access.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.GATEWAY_WEBHOOK_CLOUDFLARE_API_TOKEN || secrets.CLOUDFLARE_API_TOKEN }}
       GATEWAY_RUNTIME_CONFIG: ${{ secrets.GATEWAY_WEBHOOK_RUNTIME_CONFIG }}
       GATEWAY_WEBHOOK_BOOTSTRAP_SECRET: ${{ secrets.GATEWAY_WEBHOOK_BOOTSTRAP_SECRET }}
       ELIZA_APP_WEBHOOK_GATEWAY_SECRET: ${{ secrets.ELIZA_APP_WEBHOOK_GATEWAY_SECRET }}

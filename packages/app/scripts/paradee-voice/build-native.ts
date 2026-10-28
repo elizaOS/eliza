@@ -31,7 +31,7 @@
  * and matching their pins are kept.
  *
  * --workspace holds downloads and build trees. --out defaults to
- * packages/app/platforms/android/paradee-voice/native. --model-cache is
+ * plugins/plugin-local-inference/native/android/native. --model-cache is
  * searched (recursively, by file name) for an already converted GGUF or
  * lexicon before converting. --python runs the converters (default python3;
  * the converters need torch, numpy, gguf-py, zstandard and librosa).
@@ -58,7 +58,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 const moduleDir = path.join(
   repoRoot,
-  "packages/app/platforms/android/paradee-voice",
+  "plugins/plugin-local-inference/native/android",
 );
 const forkSrc = path.join(
   repoRoot,

@@ -9,6 +9,13 @@ test("reply completion retains optional user-message correlation", () => {
     userMessageId: "12345678-1234-4234-8234-123456789abc",
   };
   expect(parseServerControl(JSON.stringify(correlated))).toEqual(correlated);
+  // Saved user messages carry the deterministic elizaOS id (version nibble 0),
+  // not an RFC 4122 version 1-5 id.
+  const elizaId = {
+    ...frame,
+    userMessageId: "61342eca-9ca5-028a-b091-674194e39955",
+  };
+  expect(parseServerControl(JSON.stringify(elizaId))).toEqual(elizaId);
   for (const invalid of [
     { ...frame, traceId: "" },
     { ...frame, traceId: 42 },

@@ -6,7 +6,7 @@
  * The gate reads the newest `mobile-voice` entry of the voice catalog and
  * requires its Phonon-2 (`asr-parakeet`) and Paradee (`tts`) rows to:
  *   - pin the converted GGUF by sha256 and byte size, equal to
- *     `packages/app/platforms/android/paradee-voice/inputs.json`;
+ *     `plugins/plugin-local-inference/native/android/inputs.json`;
  *   - name the Hugging Face source repository inputs.json pins
  *     (FermionResearch/Phonon-2, sahilmahendrakar/Paradee-8M-v1.1) at an
  *     immutable 40-character revision;
@@ -43,7 +43,7 @@ const CATALOG_PATH = path.join(
 );
 const INPUTS_PATH = path.join(
   repoRoot,
-  "packages/app/platforms/android/paradee-voice/inputs.json",
+  "plugins/plugin-local-inference/native/android/inputs.json",
 );
 const FORK_PATH = path.join(
   repoRoot,

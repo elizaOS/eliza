@@ -29,8 +29,10 @@ canvasVersion explicitly; artifact provenance must match both.
 Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
 createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
 planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
-messages, plus speechVoice. These are trusted host settings, never renderer
-input. The host remains responsible for origin admission and authenticating
+messages, plus speechVoice. A host with its own sign-in passes
+`browserSignIn: false`: `/cloud/login` and `/cloud/login/status` then answer
+404 and no `cloudSiteBase` is used. These are trusted host settings, never
+renderer input. The host remains responsible for origin admission and authenticating
 requests before this route handler. Native enrollment keeps its own registered
 application identity. Document runtimes are reviewed host-owned artifacts.
 
@@ -47,7 +49,8 @@ while status/discovery never dispatch confirmation. New reviews carry `allowance
 from the quote's saved catalog definition. Native projection preserves these terms;
 historical reviews omit them rather than borrowing current catalog terms.
 Pending pages retain lease and
-source state. Hosted invoice links are temporary private payment UI responses:
+source state. `NativeBillingRoutes` (root export) types each local billing route's
+request and response body, built from the Cloud DTOs. Hosted invoice links are temporary private payment UI responses:
 do not persist, log or add them to agent/model context. Returning from payment
 requires fresh command/subscription observation, not a success-URL assumption.
 

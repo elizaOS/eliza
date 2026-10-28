@@ -21,8 +21,8 @@
 import {
   findViewActionHandoff,
   type ViewActionHandoff,
-} from "@elizaos/core/protocol";
-import type { VoiceUiContext } from "@elizaos/host/protocol";
+} from "@elizaos/core/view-interaction";
+import type { VoiceUiContext } from "@elizaos/host/voice/ui-context";
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 /** Uplink/downlink codecs negotiated in `hello`. */
 export type VoiceSessionCodec = "pcm16" | "opus";
@@ -238,7 +238,9 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     if (
       frame.userMessageId !== undefined &&
       (typeof frame.userMessageId !== "string" ||
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        // Same shape rule as core `validateUuid`: elizaOS message ids are
+        // deterministic (version nibble 0), not RFC 4122 version 1-5.
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
           frame.userMessageId,
         ))
     )
