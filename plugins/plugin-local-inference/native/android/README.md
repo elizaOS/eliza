@@ -55,6 +55,20 @@ only identity and bridge wiring:
   (pre-roll, ~512 ms hangover) and hands each segment's frames and edges to the
   host. `LiveCaptureAdmission` and `LiveCaptureResource` fence permission callbacks,
   blocked starts, pause and stale stops. Nothing is written to storage.
+- `LiveCaptureController` is the host-neutral owner of one plugin's live capture:
+  it reserves admission before the permission prompt, replaces a running capture,
+  warms the agent's streaming ASR session before the microphone opens, publishes
+  cancellation before native startup, delivers events only while the host's
+  lifecycle gate for the capture's epoch holds, applies the Stop cutoff and
+  reports whether the agent acknowledged the close, and interrupts capture for a
+  call without blocking. A plugin keeps only its bridge, permission prompt and
+  lifecycle (`Host`, `Started`, `Stopped`).
+- `LiveSegmentPipe` routes VAD segments to `POST /api/asr/local-inference/live`
+  over a host `Transport` bound to the owner who started the capture (bounded
+  queue, cutoff, discard, acknowledged close, no retry). Its `check()` throws once
+  the owner, runtime or enrollment changed, so no audio or cleanup reaches another
+  owner. `BufferedStreamExchange` is the bounded, deadline-limited request over a
+  cancellable local agent stream that such a transport uses.
 - `VoiceLatencyTrials` / `VoiceLatencyProbe` measure a conversation turn from the
   capture timestamp of the last speech window to the platform presentation time of
   the first audible response sample (AudioTrack or MediaPlayer timestamps; head

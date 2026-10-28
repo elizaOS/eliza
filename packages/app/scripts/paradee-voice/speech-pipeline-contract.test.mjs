@@ -19,14 +19,35 @@ const fixtures = path.join(here, "speech-pipeline");
 const java = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
 
-function run(classes, fixture, expected) {
+// org.json for the JSON-carrying classes: ELIZA_JSON_JAR, else the Gradle cache's pinned jar.
+// A missing jar skips locally and fails on CI.
+const jsonCache = path.join(
+  os.homedir(),
+  ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
+);
+const jsonJar =
+  process.env.ELIZA_JSON_JAR ||
+  (fs.existsSync(jsonCache)
+    ? fs
+        .readdirSync(jsonCache)
+        .map((hash) => path.join(jsonCache, hash, "json-20250517.jar"))
+        .find((jar) => fs.existsSync(jar))
+    : undefined);
+const jsonSkip =
+  jsonJar || process.env.CI
+    ? false
+    : "Set ELIZA_JSON_JAR or install the pinned Gradle org.json dependency";
+
+function run(classes, fixture, expected, { json = false } = {}) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-pipeline-"));
+  const classpath = json ? ["-cp", jsonJar] : [];
   try {
     execFileSync(
       java("javac"),
       [
         "--release",
         "11",
+        ...classpath,
         "-d",
         temp,
         ...classes.map((name) => path.join(voice, `${name}.java`)),
@@ -36,7 +57,11 @@ function run(classes, fixture, expected) {
     );
     const output = execFileSync(
       java("java"),
-      ["-cp", temp, `ai.eliza.voice.${fixture}`],
+      [
+        "-cp",
+        json ? `${temp}${path.delimiter}${jsonJar}` : temp,
+        `ai.eliza.voice.${fixture}`,
+      ],
       { encoding: "utf8", timeout: 60000 },
     );
     assert.match(output, expected);
@@ -79,6 +104,25 @@ test("capture admission fences permission, blocked start, pause and stale stop",
     "LiveCaptureAdmissionTest",
     /^PASS live capture admission/,
   ));
+test(
+  "live segment pipe bounds queued audio and fences cutoff, cancellation and re-enrollment",
+  { skip: jsonSkip },
+  () =>
+    run(["LiveSegmentPipe"], "LiveSegmentPipeTest", /^PASS live segment pipe/, {
+      json: true,
+    }),
+);
+test(
+  "buffered stream exchange has its own deadline, response bound and enrollment fence",
+  { skip: jsonSkip },
+  () =>
+    run(
+      ["BufferedStreamExchange"],
+      "BufferedStreamExchangeTest",
+      /^PASS buffered stream exchange/,
+      { json: true },
+    ),
+);
 test("latency trials link one turn from last user audio to audible playback", () =>
   run(
     ["LiveVadGate", "VoiceLatencyTrials"],
@@ -133,6 +177,54 @@ test("validated speech over the shared session: bounds, silence, streamed chunks
     fs.rmSync(temp, { recursive: true, force: true });
   }
 });
+
+test(
+  "live capture controller orders the agent session, microphone, cancellation and teardown",
+  { skip: jsonSkip },
+  () => {
+    const sdk = path.join(
+      process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+      "platforms/android-36/android.jar",
+    );
+    assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "live-capture-"));
+    // org.json precedes android.jar so the real implementation replaces its stubs.
+    const classpath = `${jsonJar}${path.delimiter}${sdk}`;
+    try {
+      const sources = fs
+        .readdirSync(voice)
+        .filter((name) => name.endsWith(".java"))
+        .map((name) => path.join(voice, name));
+      execFileSync(
+        java("javac"),
+        [
+          "--release",
+          "21",
+          "-cp",
+          classpath,
+          "-d",
+          temp,
+          ...sources,
+          path.join(fixtures, "LiveCaptureControllerTest.java"),
+        ],
+        { stdio: "pipe", timeout: 120000 },
+      );
+      // android.jar only satisfies signatures; the fake source never reaches an Android method.
+      const output = execFileSync(
+        java("java"),
+        [
+          "-cp",
+          `${temp}${path.delimiter}${classpath}`,
+          "ai.eliza.voice.LiveCaptureControllerTest",
+        ],
+        { encoding: "utf8", timeout: 60000 },
+      );
+      assert.match(output, /^PASS live capture controller/);
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+  },
+);
 
 test("the shared speech library compiles against Android 36", () => {
   const sdk = path.join(
