@@ -35,6 +35,9 @@ component does not choose a native adapter or storage namespace. AOSP
 `SseEventFramer`. It preserves event lines across fragmented network reads;
 hosts retain UTF-8 decoding policy, limits, cancellation, validation and receipts.
 The Eliza chat client uses it without a pending-event rescan on each chunk.
+It also declares `ElizaClientFetch`, the JSON request surface `ElizaClient`
+implements, so plugin clients can accept a session-bound fetch without importing
+the client class.
 
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for

@@ -96,6 +96,12 @@
 			"types": "./dist/read-memo.d.ts",
 			"import": "./dist/read-memo.js",
 			"default": "./dist/read-memo.js"
+		},
+		"./schema-types": {
+			"eliza-source": "./src/schema-types.ts",
+			"types": "./dist/schema-types.d.ts",
+			"import": "./dist/schema-types.js",
+			"default": "./dist/schema-types.js"
 		}
 	},
 	"files": [
