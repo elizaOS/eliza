@@ -3294,13 +3294,10 @@ export async function requestLocalCalendarUpdate(args: {
   if (
     context.view !== "calendar" ||
     context.sensitive === true ||
-    !selected ||
-    typeof selected !== "object" ||
-    Array.isArray(selected)
+    selected?.kind !== "calendar-event"
   )
     return;
-  const value = selected as Record<string, unknown>;
-  if (value.kind !== "calendar-event") return;
+  const value = selected;
   if (
     active.replyContext?.message !== args.message ||
     !active.isCurrent() ||
