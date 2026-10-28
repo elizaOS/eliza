@@ -129,6 +129,24 @@ test("system facts are read-only and request no new permission", () => {
     path.join(root, "android/src/main/AndroidManifest.xml"),
     "utf8",
   );
+  // Only a host holding the HOME role asks for the shade unless it overrides the policy.
+  const plugin = fs.readFileSync(
+    path.join(
+      root,
+      "android/src/main/java/ai/eliza/plugins/system/SystemPlugin.kt",
+    ),
+    "utf8",
+  );
+  const policy = plugin.slice(
+    plugin.indexOf("fun canExpandNotificationShade()"),
+    plugin.indexOf("fun getSystemFacts("),
+  );
+  assert.match(policy, /isRoleHeld\(RoleManager\.ROLE_HOME\)/);
+  assert.doesNotMatch(policy, /Boolean = true/);
+  assert.match(
+    plugin,
+    /SystemShade\.expand\(context, canExpandNotificationShade\(\)\)/,
+  );
   for (const permission of [
     "ACCESS_WIFI_STATE",
     "BLUETOOTH_CONNECT",

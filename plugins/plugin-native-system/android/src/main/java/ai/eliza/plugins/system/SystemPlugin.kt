@@ -161,8 +161,21 @@ open class SystemPlugin : Plugin() {
         call.resolve(deviceSettingsToJs(reader.readDeviceSettings()))
     }
 
-    /** Host policy: only a host acting as the launcher may ask Android to expand its shade. */
-    protected open fun canExpandNotificationShade(): Boolean = true
+    /**
+     * Host policy: only a host acting as the launcher may ask Android to expand its shade. By
+     * default that means this package holds Android's HOME role right now, so an ordinary app
+     * answers `standalone` and never asks. A host whose launcher identity is fixed at build time
+     * (a launcher-only flavor) overrides this.
+     */
+    protected open fun canExpandNotificationShade(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        return try {
+            val roles = context.getSystemService(RoleManager::class.java) ?: return false
+            roles.isRoleAvailable(RoleManager.ROLE_HOME) && roles.isRoleHeld(RoleManager.ROLE_HOME)
+        } catch (unavailable: RuntimeException) {
+            false
+        }
+    }
 
     /** System switch, transport and power facts; a key Android did not answer is absent (unknown). */
     @PluginMethod

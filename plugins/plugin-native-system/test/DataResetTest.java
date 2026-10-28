@@ -74,7 +74,7 @@ public final class DataResetTest {
     }
 
     static void builder() {
-        for (String invalid : new String[] {null, "", "../reset", "Reset", "reset/alpha", "x".repeat(65)}) {
+        for (String invalid : new String[] {null, "", "../reset", "Reset", "reset/example", "x".repeat(65)}) {
             try { DataReset.builder(invalid, Recovery.class); throw new AssertionError("invalid marker " + invalid); } catch (IllegalArgumentException expected) { /* rejected */ }
         }
         try { DataReset.builder("reset-x", null); throw new AssertionError("missing recovery"); } catch (IllegalArgumentException expected) { /* rejected */ }

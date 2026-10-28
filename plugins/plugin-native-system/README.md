@@ -134,8 +134,8 @@ plugin changes none of these. `openSettingsPage({ page })` opens one allowlisted
 Android page (`SystemSettingsPages.PAGES`) and resolves `specific: false` when
 only a broader fallback page exists on that image, so the caller can say so.
 `openNotificationShade()` asks Android to expand its shade for a host acting as
-the launcher (`canExpandNotificationShade()`, overridable) that declares
-`EXPAND_STATUS_BAR`; outcomes are `opened` (accepted, not proof the shade is
+the launcher (`canExpandNotificationShade()`: by default, holding Android's HOME
+role; overridable) that declares `EXPAND_STATUS_BAR`; outcomes are `opened` (accepted, not proof the shade is
 visible), `standalone`, `permission-missing`, `unsupported` and `not-in-front`.
 The web fallback reports no facts, opens no page and answers `unsupported`.
 
