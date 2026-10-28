@@ -2800,6 +2800,15 @@ export class MessageManager {
 								dmComponents,
 								(outcome) => {
 									providerSendFailure = outcome.failure;
+									this.runtime.reportError(
+										"discord:dm-partial-delivery",
+										outcome.failure,
+										{
+											providerMessageIds: outcome.messages.map(
+												(sent) => sent.id,
+											),
+										},
+									);
 								},
 							),
 						);
