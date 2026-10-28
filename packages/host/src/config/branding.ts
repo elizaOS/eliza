@@ -30,6 +30,8 @@ export interface BrandingConfig {
   appName: string;
   /** Cloud service name; omitted values use the app name followed by Cloud. */
   cloudName?: string;
+  /** Host-owned support mailbox for account recovery; absent means unavailable. */
+  supportEmail?: string;
   /** Host-owned logo for public sign-in. Omit to show the app name as text. */
   logoUrl?: string;
   /** GitHub org ("elizaos" | "elizaos") */

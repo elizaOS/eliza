@@ -458,6 +458,11 @@
     "./lib/services/organization-policy-admission": "./src/lib/services/organization-policy-admission.ts",
     "./lib/services/maps/contract": "./src/lib/services/maps/contract.ts",
     "./lib/services/maps/osm-provider": "./src/lib/services/maps/osm-provider.ts",
+    "./lib/services/maps/backends": "./src/lib/services/maps/backends.ts",
+    "./lib/services/maps/graphhopper-router": "./src/lib/services/maps/graphhopper-router.ts",
+    "./lib/services/maps/nominatim-geocoder": "./src/lib/services/maps/nominatim-geocoder.ts",
+    "./lib/services/maps/provider-registry": "./src/lib/services/maps/provider-registry.ts",
+    "./lib/services/maps/valhalla-router": "./src/lib/services/maps/valhalla-router.ts",
     "./lib/services/market-preview": "./src/lib/services/market-preview.ts",
     "./lib/services/message-router": "./src/lib/services/message-router.ts",
     "./lib/services/mobile-app-auth": "./src/lib/services/mobile-app-auth.ts",
@@ -746,6 +751,7 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/plugin-coding-tools": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-google-workspace": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
@@ -795,7 +801,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.23.1",

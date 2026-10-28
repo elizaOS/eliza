@@ -6,6 +6,7 @@ import type {
   HandlerCallback,
   IAgentRuntime,
   Memory,
+  MessageProcessingOptions,
   MessageReplyRecoveryContext,
   RoomHandlerLease,
   RunTerminalOwner,
@@ -19,6 +20,8 @@ import type {
 } from "./contracts.js";
 
 export type V5MessageRuntimeInput = {
+  resolveTypedReadReply?: MessageProcessingOptions["resolveTypedReadReply"];
+  onTypedReadEgress?: MessageProcessingOptions["onTypedReadEgress"];
   runtime: IAgentRuntime;
   message: Memory;
   state: State;

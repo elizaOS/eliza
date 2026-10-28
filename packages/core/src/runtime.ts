@@ -368,6 +368,8 @@ const NON_CREDENTIAL_SECRET_KEYS: ReadonlySet<string> = new Set([
 	"LOCALE",
 	"LANGUAGE",
 	"LANG",
+	"ELIZAOS_CLOUD_ENABLED",
+	"ELIZAOS_CLOUD_BASE_URL",
 ]);
 
 // One process-lifetime context avoids per-runtime async-hook registrations.
@@ -837,7 +839,10 @@ export class AgentRuntime implements IAgentRuntime {
 			const result: Record<string, string | undefined> = {};
 			const entries = values ? Object.entries(values) : [];
 			for (const [key, value] of entries) {
-				if (typeof value === "string") {
+				if (
+					typeof value === "string" &&
+					!NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())
+				) {
 					result[key] = value;
 				}
 			}
@@ -3875,6 +3880,7 @@ export class AgentRuntime implements IAgentRuntime {
 				scope,
 				code: normalized.code,
 				message: normalized.message,
+				...(normalized.severity ? { severity: normalized.severity } : {}),
 				context: merged,
 				at: Date.now(),
 			};
@@ -3907,6 +3913,7 @@ export class AgentRuntime implements IAgentRuntime {
 						scope,
 						code: normalized.code,
 						message: normalized.message,
+						...(normalized.severity ? { severity: normalized.severity } : {}),
 						context: merged,
 						runId,
 						roomId,
@@ -3964,6 +3971,7 @@ export class AgentRuntime implements IAgentRuntime {
 					scope: entry.scope,
 					code: entry.code,
 					message: entry.message,
+					...(entry.severity ? { severity: entry.severity } : {}),
 					context: entry.context,
 					recoverable: true,
 				},

@@ -3449,12 +3449,23 @@ export class MessageManager {
 				statusReactions?.setError();
 				await abortPendingDraft();
 
+				// Only a sender who asked (a DM or a message addressed to the bot)
+				// gets the notice; a turn the agent joined on its own fails silently
+				// and releases its slot, so the sweeper does not redeliver the edge.
 				if (!responseEmitted) {
-					await sendFailureReply(
-						generationTimedOut
-							? "I timed out while generating that reply. Please retry."
-							: "I hit a provider issue while generating the reply. Please retry.",
-					);
+					if (isDM || isBotDirectlyAddressed) {
+						await sendFailureReply(
+							generationTimedOut
+								? "I timed out while generating that reply. Please retry."
+								: "I hit a provider issue while generating the reply. Please retry.",
+						);
+					} else if (speakerLease) {
+						await releaseSpeakerLease(
+							this.runtime,
+							speakerLease,
+							"failure-unaddressed",
+						);
+					}
 				}
 				if (!inboundMemoryCommitted) {
 					inboundMemoryCommitted =

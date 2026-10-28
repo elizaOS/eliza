@@ -18,6 +18,8 @@ export const plannerBatchScopeDescription =
 
 /** Canonical mandatory rules shared by default and custom planner prompts. */
 export const plannerRequiredPolicy = {
+  parameterGrounding:
+    "- Bind every argument to the current unfinished request. Prior dialogue and tool results may resolve its referents or standing constraints, but completed, superseded or unrelated edits are not pending instructions. Never copy their payloads into a new action or treat schema/example values as user data. Preserve requested literals exactly, including punctuation, trailing whitespace and final newlines.",
   sideEffects:
     "- messageToUser alone cannot save, schedule, send, update, remember, or complete anything. Execute effects only when currently authorized. A preview-only request, withheld permission, or outstanding separate confirmation forbids the effect even when a matching tool exists; use a declared non-mutating preview operation if needed, otherwise propose the preview/question without executing it.",
   completedEffects:
@@ -27,7 +29,7 @@ export const plannerRequiredPolicy = {
   responseStyle:
     "- messageToUser must read like natural conversation, not a database or debug log. Prefer concise everyday wording. Translate machine dates, 24-hour times, and Unix/epoch timestamps into familiar dates and times; do not expose internal ids, field names, raw JSON, tool names, receipt metadata, or backend jargon unless the user explicitly asks for raw or technical output. Copy code and user-provided literals exactly; put surrounding prose and punctuation outside them.",
   discovery:
-    "- candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_ACTIONS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES). An equivalent must support every requested constraint, including delivery destination; scheduling an agent action does not prove a notification was scheduled. A failed call does not authorize substituting an operation with different behavior. Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
+    "- Exposed tools already include their complete schemas. Call a fitting exposed tool directly; do not discover or reload it first. Use DISCOVER_ACTIONS for missing operations or an explicit request to inspect tool definitions. candidateActions are retrieval hints, not capabilities. For an absent hint, check exposed tools and available DISCOVER_ACTIONS for an authorized equivalent (e.g. TASKS_MANAGE_ISSUES for GITHUB_LIST_ISSUES). An equivalent must support every requested constraint, including delivery destination; scheduling an agent action does not prove a notification was scheduled. A failed call does not authorize substituting an operation with different behavior. Respect admission denials. Continue with the loaded tool: discovery does no domain work. Report unavailable only after available discovery fails to supply a fitting tool. Never invent SHELL/BROWSER/TASKS workarounds or echo commands to trigger missing capabilities.",
   workClaims:
     '- messageToUser and REPLY must not claim or imply investigation or execution in any tense unless the corresponding tool is in flight or returned evidence THIS turn. This includes subjectless progress ("Searching...", "Working on it", "Almost done") and promised future replies. A final user-facing reply ends this turn; tool-call returns still proceed through evaluation and continuation. Promise future work only when current evidence confirms an authorized, active persisted continuation or delegated task owns it; describe its actual status, not completion. A paused task awaiting user input does not authorize automatic continuation. If iterations end without usable results, state the actual attempt and outcome; never invent background work.',
   errorClaims:
@@ -123,7 +125,7 @@ export function buildPlannerTemplate({
 rules:
 - Use only the tools array; build the smallest grounded queue covering every explicit requested outcome. Navigation and reading/searching/changing data are separate: a background search does not open the user's browser. Queue both when requested. Routing hints never replace the full request or make a clause optional.
 - routed action: set parameters.action only if schema has it
-- Ground args in the user request or prior tool results. Copy explicit literals exactly, including punctuation, trailing whitespace and final newlines; never normalize them.
+${plannerRequiredPolicy.parameterGrounding}
 - obey schema; arrays as JSON arrays, not comma strings
 - no empty strings/placeholders/invented required args; gather via grounded tool or no tool
 - For currently authorized work, call a matching tool even with missing details; its handler owns required clarification and validation. Do not call a mutating operation to obtain permission the user explicitly withheld.

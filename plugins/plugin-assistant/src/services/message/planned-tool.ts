@@ -3,6 +3,7 @@ import { projectBackgroundHistory } from "./history-discovery.ts";
 
 import type {
   Action,
+  ActionFailureProvenance,
   ActionResult,
   AgentContext,
   ContextObject,
@@ -39,6 +40,7 @@ import {
   projectActionResultForClipboard,
   projectToolDiagnosticArgs,
   promotedSubactionParent,
+  readActionFailureProvenance,
   resolveUserFacingEffectReceipts,
   selectCompletionContext,
   shouldSuppressActionResultClipboard,
@@ -54,6 +56,7 @@ import type {
 } from "../../runtime/evaluator";
 import {
   actionResultToPlannerToolResult,
+  hasNonRetryableToolFailure,
   type PlannerLoopParams,
   type PlannerRuntime,
   type PlannerToolCall,
@@ -487,6 +490,7 @@ export interface SubPlannerSubStep {
   success: boolean;
   callDigest: string;
   retryable: boolean;
+  failureProvenance?: ActionFailureProvenance;
   summary?: string;
   internalTranscriptText?: string;
   error?: string;
@@ -503,6 +507,7 @@ export function collectSubPlannerSubSteps(
   for (const step of subResult.trajectory.steps) {
     if (!step.toolCall?.name || !step.result) continue;
     const result = step.result;
+    const failureProvenance = readActionFailureProvenance(result);
     const errorText =
       typeof result.error === "string"
         ? result.error
@@ -519,7 +524,8 @@ export function collectSubPlannerSubSteps(
       action: step.toolCall.name,
       success: result.success,
       callDigest: subPlannerCallDigest(step.toolCall),
-      retryable: result.data?.retryable !== false,
+      retryable: !hasNonRetryableToolFailure(result),
+      ...(failureProvenance ? { failureProvenance } : {}),
       ...(summarySource
         ? { summary: normalizeSubStepText(summarySource) }
         : {}),
@@ -565,7 +571,9 @@ export function subPlannerResultToPlannerToolResult(
     ...subResult.trajectory.steps,
   ];
   const lastStep = allSteps[allSteps.length - 1];
-  const success = evaluator?.success ?? lastStep?.result?.success ?? true;
+  const success = subResult.terminalFailure
+    ? false
+    : (evaluator?.success ?? lastStep?.result?.success ?? true);
   const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
   const internalTerminalPayload =
     lastStep?.result?.transcriptVisibility === "internal" &&
@@ -637,10 +645,9 @@ export function subPlannerResultToPlannerToolResult(
       ? {
           subPlannerEvaluation: {
             decision: "FINISH" as const,
-            success: evaluator.success === true,
-            ...(typeof evaluator.messageToUser === "string" &&
-            evaluator.messageToUser.trim()
-              ? { messageToUser: evaluator.messageToUser }
+            success: success === true,
+            ...(typeof userFacingText === "string" && userFacingText.trim()
+              ? { messageToUser: userFacingText }
               : {}),
           },
         }

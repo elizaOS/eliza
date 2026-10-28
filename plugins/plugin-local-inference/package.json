@@ -115,7 +115,8 @@
 		"native:clean": "make -C native/verify clean",
 		"bench:streaming": "bun scripts/streaming-pipeline-bench.ts",
 		"bench:stt": "bun scripts/local-stt-bench.ts",
-		"voice:hardware": "bun scripts/voice-e2e-hardware.ts"
+		"voice:hardware": "bun scripts/voice-e2e-hardware.ts",
+		"test:android-assets": "node native/android/test/voice-assets.node.mjs"
 	},
 	"dependencies": {
 		"@elizaos/cloud-routing": "workspace:*",
@@ -138,7 +139,7 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.15",
+		"@biomejs/biome": "2.6.3",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",

@@ -55,7 +55,21 @@ describe("composed action order", () => {
       );
       const byName = (name: string) =>
         runtime.actions.filter((action) => action.name === name);
-      for (const name of ["CALENDAR", "CONFLICT_DETECT", "OWNER_GOALS"]) {
+      const sharedCalendarNames = (personalAssistantPlugin.actions ?? [])
+        .filter((action) =>
+          (calendarPlugin.actions ?? []).some(
+            (standalone) => standalone.name === action.name,
+          ),
+        )
+        .map((action) => action.name);
+      expect(sharedCalendarNames).toContain("CALENDAR_FEED");
+      expect(sharedCalendarNames).toContain("CALENDAR_CREATE_EVENT");
+      for (const name of new Set([
+        "CALENDAR",
+        "CONFLICT_DETECT",
+        "OWNER_GOALS",
+        ...sharedCalendarNames,
+      ])) {
         const registered = byName(name);
         expect(registered).toHaveLength(1);
         expect(registered[0]).toBe(assistantAction(name));
