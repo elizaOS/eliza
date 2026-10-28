@@ -9,6 +9,11 @@ import type {
 } from "@elizaos/core";
 import { getRelatedEntityIds, stringifyForDiagnostics } from "@elizaos/core";
 
+// Max relationships rendered per turn: the list is sorted by
+// interaction strength, so the top slice is exactly the
+// strongest relationships the prompt actually wants.
+const RELATIONSHIPS_PROVIDER_MAX_ITEMS = 50;
+
 /**
  * Sorts relationships by interaction strength, resolves each counterpart entity
  * relative to the speaker's own ids, and renders the complete names/tags/metadata
@@ -21,14 +26,22 @@ async function formatRelationships(
   currentEntityIds: UUID[],
 ) {
   const currentEntityIdSet = new Set(currentEntityIds);
-  // Sort relationships by interaction strength (descending)
+  // Sort relationships by interaction strength (descending) and
+  // keep only the strongest: without the slice every
+  // relationship renders its counterpart's full metadata block
+  // into the prompt, so per-turn cost scaled with lifetime
+  // contact accumulation. The slice must happen after the
+  // sort, not at the adapter: the adapter orders by createdAt
+  // ascending, so an adapter-side limit would take the oldest
+  // relationships instead of the strongest.
   const sortedRelationships = relationships
     .filter((rel) => rel.metadata?.interactions)
     .sort(
       (a, b) =>
         ((b.metadata && (b.metadata.interactions as number | undefined)) || 0) -
         ((a.metadata && (a.metadata.interactions as number | undefined)) || 0),
-    );
+    )
+    .slice(0, RELATIONSHIPS_PROVIDER_MAX_ITEMS);
   if (sortedRelationships.length === 0) {
     return "";
   }
