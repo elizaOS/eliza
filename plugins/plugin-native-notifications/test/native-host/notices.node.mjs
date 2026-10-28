@@ -29,7 +29,7 @@ const cached = () => {
 };
 const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
 
-test("host notice routes, owner fence, approval coordination and journal recovery", {
+test("host notice routes, owner fence, approval coordination, journal recovery and tap inbox", {
   skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
 }, (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notice-host-"));
@@ -51,15 +51,19 @@ test("host notice routes, owner fence, approval coordination and journal recover
         "NoticeRoutes",
         "NoticeCoordinator",
         "NoticeRecovery",
+        "NoticeTapInbox",
       ].map((name) => path.join(sources, `${name}.java`)),
       path.join(plugin, "test/native-host/NoticeHostTest.java"),
+      path.join(plugin, "test/native-host/NoticeTapInboxTest.java"),
     ],
     { timeout: 60000 },
   );
-  const output = execFileSync(
-    bin("java"),
-    ["-cp", [classes, jar].join(path.delimiter), "NoticeHostTest"],
-    { timeout: 60000, encoding: "utf8" },
-  );
-  assert.match(output, /^\d+ assertions passed/);
+  for (const main of ["NoticeHostTest", "NoticeTapInboxTest"]) {
+    const output = execFileSync(
+      bin("java"),
+      ["-cp", [classes, jar].join(path.delimiter), main],
+      { timeout: 60000, encoding: "utf8" },
+    );
+    assert.match(output, /^\d+ assertions passed/, main);
+  }
 });

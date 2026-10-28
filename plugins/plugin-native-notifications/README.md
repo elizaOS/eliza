@@ -97,9 +97,14 @@ identifiers, channels, icon and launch actions:
 - `HostNoticePoster` posts step and approval notices on the host's channels (`Config`: channel IDs,
   names and descriptions, small icon, tag prefix, open/Ask actions, route URI prefix, lock-screen
   titles, Ask label, quiet group and step timeout). Keep these values stable across upgrades.
+- `NoticeTapInbox` captures taps on those notices from the host's launch intents (open and Ask
+  actions, route URI prefix) into the route ledger: each intent object is retained once until its
+  capture commits, a failed write keeps it for retry and is reported as unavailable rather than "no
+  tap", an Ask whose notice is gone settles into a plain open, and consumption needs the exact pending
+  tap and the foreground. Retain/release run on the UI thread; everything else on one storage worker.
 
 `test/native-host/notices.node.mjs` runs the synthetic JVM checks for routes, the owner fence,
-approval coordination and recovery (org.json from `ELIZA_ORG_JSON_JAR` or the Gradle cache).
+approval coordination, recovery and the tap inbox (org.json from `ELIZA_ORG_JSON_JAR` or the Gradle cache).
 
 `NoticeDeliveryTest` in the Android consumer exercises actual NotificationManager
 posting, dismissal, receipt reopening, digest mismatch, approval withdrawal and
