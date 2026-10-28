@@ -125,7 +125,33 @@ export const notesProvider: Provider = {
   },
 };
 
-/** Fresh title references for Stage 1; unrelated chat contributes no note text. */
+/** One fresh canonical title lookup for complete evidence and its body-free routing notice. */
+function namedNotesSnapshot(runtime: IAgentRuntime, message: Memory) {
+  const service = getNotesService(runtime);
+  const snapshot = service.snapshot();
+  const notes = service.findNotesNamedInText(
+    message.content.text ?? "",
+    snapshot,
+  );
+  const deletedIds = new Set(
+    service
+      .findNotesNamedInText(message.content.text ?? "", {
+        ...snapshot,
+        notes: (snapshot.trash ?? []).map((entry) => entry.note),
+      })
+      .map((note) => note.id),
+  );
+  const deletedNotes = (snapshot.trash ?? [])
+    .filter((entry) => deletedIds.has(entry.note.id))
+    .map(({ note, deletedAt }) => ({
+      noteId: note.id,
+      title: note.title,
+      deletedAt,
+    }));
+  return { snapshot, notes, deletedNotes };
+}
+
+/** Complete current named-note planning evidence; never a lean Stage 1 provider. */
 export const namedNotesProvider: Provider = {
   name: "NAMED_NOTES",
   description:
@@ -136,27 +162,10 @@ export const namedNotesProvider: Provider = {
   position: -5,
   get: async (runtime, message) => {
     try {
-      const service = getNotesService(runtime);
-      const snapshot = service.snapshot();
-      const notes = service.findNotesNamedInText(
-        message.content.text ?? "",
-        snapshot,
+      const { snapshot, notes, deletedNotes } = namedNotesSnapshot(
+        runtime,
+        message,
       );
-      const deletedIds = new Set(
-        service
-          .findNotesNamedInText(message.content.text ?? "", {
-            ...snapshot,
-            notes: (snapshot.trash ?? []).map((entry) => entry.note),
-          })
-          .map((note) => note.id),
-      );
-      const deletedNotes = (snapshot.trash ?? [])
-        .filter((entry) => deletedIds.has(entry.note.id))
-        .map(({ note, deletedAt }) => ({
-          noteId: note.id,
-          title: note.title,
-          deletedAt,
-        }));
       if (notes.length === 0 && deletedNotes.length === 0)
         return { text: "", values: {}, data: {} };
       return {
@@ -186,6 +195,37 @@ export const namedNotesProvider: Provider = {
         text: "Current named notes could not be read. Do not claim current note contents from history.",
         values: {},
         data: { namedNotes: null },
+      };
+    }
+  },
+};
+
+/** Metadata only: no record identifiers, titles, bodies, dates, or intent decisions. */
+export const namedNotesRoutingProvider: Provider = {
+  ...namedNotesProvider,
+  name: "NAMED_NOTE_ROUTING",
+  description:
+    "Fresh authorized exact-name availability for lean context routing.",
+  alwaysInResponseState: false,
+  get: async (runtime, message) => {
+    if (!message.content.text?.trim())
+      return { text: "", values: {}, data: {} };
+    try {
+      const { notes, deletedNotes } = namedNotesSnapshot(runtime, message);
+      const available = notes.length > 0 || deletedNotes.length > 0;
+      return {
+        text: available
+          ? "Fresh exact named-note reference available in the Notes context. Availability alone does not determine current, historical, or mixed intent."
+          : "",
+        values: {},
+        data: { namedNoteMatchAvailable: available },
+      };
+    } catch (error) {
+      runtime.reportError("notes.routing-provider", error);
+      return {
+        text: "Current named-note match availability is unconfirmed.",
+        values: {},
+        data: { namedNoteMatchAvailable: null },
       };
     }
   },

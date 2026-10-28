@@ -1,11 +1,11 @@
 /** Real saved plans, delivered/read receipts and >120 minutes of processing.
  * Reading never acknowledges/completes the occurrence. No live model calls. */
 import { randomUUID } from "node:crypto";
-import { ChannelType, TaskService, type UUID } from "@elizaos/core";
+import { ChannelType, NotificationService, TaskService, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
-  getRecordedTestNotifications,
+  getRecordedTestNotifications as recordedNotifications,
 } from "../../test/helpers/runtime.js";
 import { createLifeOpsReminderAttempt } from "./repository.js";
 import { LifeOpsService } from "./service.js";
@@ -13,6 +13,18 @@ import {
   hasExplicitReminderEscalationProfile,
   resolveReminderEscalationDelayMinutes,
 } from "./service-helpers-reminder.js";
+
+const deliveredNotifications=new WeakMap<object,ReturnType<NotificationService["listIncludingExpired"]>>();
+function getRecordedTestNotifications(runtime: Parameters<typeof recordedNotifications>[0]) {
+  return deliveredNotifications.get(runtime)??[];
+}
+
+async function markExactNotificationRead(service:LifeOpsService,runtime:Parameters<typeof recordedNotifications>[0],attempt:ReturnType<typeof createLifeOpsReminderAttempt>,now:number){
+  const notifier=runtime.getService("notification");
+  if(!(notifier instanceof NotificationService)||typeof attempt.deliveryMetadata.notificationId!=="string")throw Error("Missing canonical notification linkage");
+  vi.setSystemTime(now);await notifier.markRead(attempt.deliveryMetadata.notificationId);
+  await service.remindersDomain.scanReadReceipts([attempt],null,new Date(now));
+}
 
 beforeEach(() => {
   const daytime = new Date();
@@ -29,6 +41,14 @@ async function createLifeOpsTestRuntime() {
   const fixture = await createBaseLifeOpsTestRuntime();
   // Each case drives processReminders explicitly, without competing real ticks.
   await TaskService.stop(fixture.runtime);
+  const notifier=await NotificationService.start(fixture.runtime);
+  (fixture.runtime as unknown as {services:Map<string,unknown[]>}).services.set("notification",[notifier]);
+  const deliveries:ReturnType<NotificationService["listIncludingExpired"]>=[];
+  deliveredNotifications.set(fixture.runtime,deliveries);
+  const notify=notifier.notify.bind(notifier);
+  vi.spyOn(notifier,"notify").mockImplementation(async input=>{
+    const accepted=await notify(input);deliveries.push(structuredClone(accepted));return accepted;
+  });
   // A clock alone is not evidence of wakefulness. Persist the owner's awake
   // signal through the real admission path for this delivery scenario.
   vi.setSystemTime(Date.now() + 1);
@@ -85,6 +105,7 @@ it.each([
         intensity: "normal",
         source: "default",
       });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -93,11 +114,9 @@ it.each([
         f.runtime.agentId,
       );
       expect(attempts).toHaveLength(1);
-      await service.remindersDomain.scanReadReceipts(
-        attempts,
-        { lastSeenAt: due + 1 } as never,
-        new Date(due + 1),
-      );
+      await service.remindersDomain.scanReadReceipts(attempts,{lastSeenAt:due+1} as never,new Date(due+1));
+      expect(attempts[0].outcome).toBe("delivered");
+      await markExactNotificationRead(service,f.runtime,attempts[0],due+1);
       expect(attempts[0].outcome).toBe("delivered_read");
       const occurrenceId = attempts[0].ownerId;
       const before = await service.repository.getOccurrence(
@@ -178,6 +197,7 @@ it("explicit post-fire snooze crosses the original window and preserves its save
       },
     });
     if (!record.reminderPlan) throw Error("Missing saved reminder plan");
+    vi.setSystemTime(due);
     await service.processReminders({
       now: new Date(due).toISOString(),
       scope: "definitions",
@@ -186,11 +206,7 @@ it("explicit post-fire snooze crosses the original window and preserves its save
       f.runtime.agentId,
     );
     expect(firstAttempts).toHaveLength(1);
-    await service.remindersDomain.scanReadReceipts(
-      firstAttempts,
-      { lastSeenAt: due + 1 } as never,
-      new Date(due + 1),
-    );
+    await markExactNotificationRead(service,f.runtime,firstAttempts[0],due+1);
     const [firstReceipt] = await service.repository.listReminderAttempts(
       f.runtime.agentId,
     );
@@ -230,6 +246,12 @@ it("explicit post-fire snooze crosses the original window and preserves its save
     });
     const notifications = getRecordedTestNotifications(f.runtime);
     expect(notifications).toHaveLength(2);
+    expect(notifications[1].id).not.toBe(notifications[0].id);
+    const notifier=f.runtime.getService("notification");
+    if(!(notifier instanceof NotificationService))throw Error("Missing canonical inbox");
+    const retained=(await notifier.listDurableIncludingExpired()).filter(row=>row.groupKey===notifications[1].groupKey);
+    expect(retained).toHaveLength(1);
+    expect(retained[0].id).toBe(notifications[1].id);
     expect(notifications[1].body).toBe("Explicit snooze deadline");
     expect(notifications[1].body).toBe(firstBody);
     expect(notifications[1].title).toBe("Reminder");
@@ -254,6 +276,8 @@ it("explicit post-fire snooze crosses the original window and preserves its save
       f.runtime.agentId,
     );
     expect(attempts).toHaveLength(2);
+    expect(new Set(attempts.map(attempt=>attempt.id)).size).toBe(2);
+    expect(new Set(attempts.map(attempt=>attempt.deliveryMetadata.notificationId))).toEqual(new Set(notifications.map(notification=>notification.id)));
     expect(attempts.find((a) => a.id === firstReceipt.id)).toEqual(
       firstSnapshot,
     );
@@ -339,6 +363,7 @@ it.each(["planned", "definition-persistent", "global-persistent"])(
             ? { definitionId: record.definition.id }
             : {}),
         });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -405,6 +430,7 @@ it("preserves a valid explicit escalation profile after the one-shot plan", asyn
       },
     });
     expect(hasExplicitReminderEscalationProfile(record.definition)).toBe(true);
+    vi.setSystemTime(due);
     await service.processReminders({
       now: new Date(due).toISOString(),
       scope: "definitions",
@@ -472,6 +498,7 @@ it.each(["non-reminder", "recurring"])(
           steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
         },
       });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -637,6 +664,7 @@ it.each([1, 2])(
           steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
         },
       });
+      vi.setSystemTime(due);
       await service.processReminders({
         now: new Date(due).toISOString(),
         scope: "definitions",
@@ -725,6 +753,7 @@ it("processes a persisted owner snooze reply after the one-shot delivery", async
         steps: [{ channel: "in_app", offsetMinutes: 0, label: "Notify" }],
       },
     });
+    vi.setSystemTime(due);
     await service.processReminders({
       now: new Date(due).toISOString(),
       scope: "definitions",

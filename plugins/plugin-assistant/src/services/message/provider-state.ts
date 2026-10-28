@@ -25,6 +25,9 @@ import {
 } from "./addressing.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
 
+/** These approved providers emit only bounded availability metadata, never domain bodies. */
+const STAGE1_ROUTING_METADATA_PROVIDERS = ["NAMED_NOTE_ROUTING"] as const;
+
 /** Stage 1 owns interpretation, the current clock and disclosure context; domain state and output grammars wait for planning. */
 export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "RECENT_MESSAGES",
@@ -35,6 +38,7 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "BOT_AWARENESS",
   "CHOICE",
   "CurrentElizaOwnedAlarmSnapshot",
+  ...STAGE1_ROUTING_METADATA_PROVIDERS,
 ] as const;
 
 export const CORE_RESPONSE_STATE_PROVIDERS = [
@@ -202,17 +206,51 @@ export function uiViewActionPriority(
 /** Select authorized evidence needed to interpret the turn before direct delivery. */
 export function stage1ResponseStateProviderNames(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   userRoles?: readonly RoleGateRole[],
 ): string[] {
   return [...STAGE1_RESPONSE_STATE_PROVIDERS].filter((name) => {
     const provider = runtime.providers?.find((entry) => entry.name === name);
-    return (
-      !provider ||
-      (!provider.private &&
-        satisfiesRoleGate(userRoles, provider.roleGate) &&
-        satisfiesRoleGate(userRoles, provider.contextGate?.roleGate))
-    );
+    if (!provider) return true;
+    if (
+      provider.private ||
+      !satisfiesRoleGate(userRoles, provider.roleGate) ||
+      !satisfiesRoleGate(userRoles, provider.contextGate?.roleGate)
+    )
+      return false;
+    if (STAGE1_ROUTING_METADATA_PROVIDERS.some((entry) => entry === name)) {
+      // Check each declared current-message routing decision independently. Do not
+      // union unrelated metadata to satisfy an allOf gate or miss a noneOf denial.
+      const decisions = [
+        getContextRoutingFromMessage(message),
+        parseContextRoutingMetadata(
+          message.metadata && typeof message.metadata === "object"
+            ? (message.metadata as Record<string, unknown>)[
+                CONTEXT_ROUTING_METADATA_KEY
+              ]
+            : undefined,
+        ),
+      ].filter(
+        (decision) =>
+          decision.primaryContext || decision.secondaryContexts?.length,
+      );
+      return (
+        decisions.length
+          ? decisions
+          : [{ primaryContext: "general", secondaryContexts: [] }]
+      ).every(
+        (decision) =>
+          filterProvidersByContextGate(
+            [provider],
+            [
+              decision.primaryContext ?? "general",
+              ...(decision.secondaryContexts ?? []),
+            ],
+            userRoles,
+          ).length === 1,
+      );
+    }
+    return true;
   });
 }
 

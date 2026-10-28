@@ -209,6 +209,33 @@ public final class SenseInvocationTest {
             coldStart(host);
             systemGesture(host);
         }
-        System.out.println("PASS native Sense invocation ownership and replay fences, listener and system gesture");
+        SenseInvocation power=new SenseInvocation();
+        check(!power.recordProtectedPower(1,100,false),"cold power never queues");
+        power.bind(1,1,OWNER,A);check(power.take(1,1,OWNER,A,101,false)==null,"first bind cannot promote power");
+        check(power.recordProtectedPower(1,100,false),"warm bound power recorded");
+        check("power".equals(power.take(1,1,OWNER,A,101,false)),"warm matching power");
+        check(power.take(1,1,OWNER,A,102,false)==null,"power consumed once");
+        power.recordProtectedPower(1,100,false);power.discardProtectedPower(1,1,NEXT,A);
+        check("power".equals(power.take(1,1,OWNER,A,101,false)),"foreign discard cannot consume");
+        power.recordProtectedPower(1,100,false);power.discardProtectedPower(1,1,OWNER,A);
+        check(power.take(1,1,OWNER,A,101,false)==null,"matching blocked power discarded");
+        power.record("ai.elizaos.app","ai.elizaos.app.sense",true,100,false);power.discardProtectedPower(1,1,OWNER,A);
+        check("listener".equals(power.take(1,1,OWNER,A,101,false)),"power discard preserves listener");
+        power.recordProtectedPower(1,100,false);power.bind(1,1,OWNER,B);check(power.take(1,1,OWNER,B,101,false)==null,"account switch clears power");
+        power.bind(1,1,OWNER,A);power.recordProtectedPower(1,100,false);power.bind(2,1,NEXT,A);check(power.take(2,1,NEXT,A,101,false)==null,"new bridge clears power");
+        power.recordProtectedPower(2,100,false);power.bind(2,2,OWNER,A);check(power.take(2,2,OWNER,A,101,false)==null,"new renderer clears power");
+        power.recordProtectedPower(2,100,true);check("assist".equals(power.take(2,2,OWNER,A,101,false)),"locked arrival never deferred");
+        power.recordProtectedPower(2,100,false);check("assist".equals(power.take(2,2,OWNER,A,5101,false)),"power expires");
+        power.recordProtectedPower(2,100,false);check("assist".equals(power.take(2,2,OWNER,A,101,true)),"locked read cannot capture");
+        power.release(2);check(!power.recordProtectedPower(2,100,false),"released bridge cannot mint power");
+        // A native owner admission never turns a protected Power receipt into a cold wait.
+        SenseInvocation admittedPower=new SenseInvocation();admittedPower.admit(() -> "account-1");
+        check(!admittedPower.recordProtectedPower(1,100,false),"admitted owner still cannot queue cold power");
+        admittedPower.bind(1,1,OWNER,A,200);check(admittedPower.take(1,1,OWNER,A,300,false)==null,"admitted first bind cannot promote power");
+        admittedPower.recordProtectedPower(1,400,false);admittedPower.bind(1,1,OWNER,null,500);admittedPower.bind(1,1,OWNER,A,600);
+        check(admittedPower.take(1,1,OWNER,A,700,false)==null,"signed-out power is never carried to the next session");
+        admittedPower.record("ai.elizaos.app","com.android.systemui",false,true,800,false);admittedPower.discardProtectedPower(1,1,OWNER,A);
+        check("system".equals(admittedPower.take(1,1,OWNER,A,900,false)),"power discard preserves a system gesture");
+        System.out.println("PASS native Sense invocation ownership and replay fences, listener, system gesture and protected power");
     }
 }
