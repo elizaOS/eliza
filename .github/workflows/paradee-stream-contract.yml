@@ -54,6 +54,9 @@ jobs:
       - name: Check plugin rules and device WER parity on the JVM
         if: steps.changes.outputs.run == 'true'
         run: node --test packages/app/scripts/paradee-voice/plugin-contract.test.mjs
+      - name: Compile and run the shared speech pipeline on the JVM
+        if: steps.changes.outputs.run == 'true'
+        run: node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs
       - name: Load exact native headers
         if: steps.changes.outputs.run == 'true'
         run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
