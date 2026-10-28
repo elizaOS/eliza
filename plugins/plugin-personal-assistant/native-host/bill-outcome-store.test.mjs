@@ -96,6 +96,7 @@ test("outcome insert failure and interrupted completion retry storage only and p
     let result = outcomes.save(decision, "observation");
     assert.equal(result.status, "paid");
     assert.equal(result.saveStatus, "pending");
+    assert.equal(result.reasonCode, "outcome-save-failed");
     assert.equal(outcomes.loadEvidence().persisted, false);
     assert.equal(outcomes.loadEvidence().record.observedAt, result.observedAt);
     assert.equal(runtime.get(task.id).status, "active");
@@ -135,6 +136,19 @@ test("outcome insert failure and interrupted completion retry storage only and p
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM bill_outcomes_v1").get().n,
       1,
+    );
+    const listed = createBillOutcomeStore(db, tasks).listForOwner(owner);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].taskId, task.id);
+    assert.equal(listed[0].observedAt, result.observedAt);
+    assert.equal(listed[0].decision.reference, "TEST-123");
+    assert.equal(listed[0].decision.totalMinor, 12250);
+    assert.deepEqual(
+      createBillOutcomeStore(db, tasks).listForOwner({
+        ...owner,
+        actorId: "other",
+      }),
+      [],
     );
     assert.throws(
       () =>
@@ -375,12 +389,13 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
           allowedCapabilities: [],
           allowedOrigins: ["https://example.test"],
         });
+        const now = Date.now();
         task = current.tasks.transition(
           task.id,
           {
             owner: current.runtime.owner,
             expectedRevision: task.revision,
-            now: Date.now(),
+            now,
           },
           {
             type: "observe",
@@ -390,7 +405,7 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
               origin: "https://example.test",
               version: 1,
               inputRevision: 0,
-              observedAt: Date.now(),
+              observedAt: now,
             },
           },
         ).task;

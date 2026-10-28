@@ -6,6 +6,8 @@ type Request = (
 const PATH = "/api/client-devices/maps-navigation";
 
 export interface MapsRelayHost<Owner extends object> {
+  /** Signal composition for runtimes without `AbortSignal.any` (older Android WebViews). */
+  anySignal?(signals: AbortSignal[]): AbortSignal;
   current(): Owner | null;
   execute(
     owner: Owner,
@@ -14,6 +16,12 @@ export interface MapsRelayHost<Owner extends object> {
   ): Promise<unknown>;
   failure(error: unknown): string;
   connected(value: boolean, offerId: string): void;
+}
+function anySignal<Owner extends object>(
+  host: MapsRelayHost<Owner>,
+  signals: AbortSignal[],
+): AbortSignal {
+  return host.anySignal ? host.anySignal(signals) : AbortSignal.any(signals);
 }
 /** Offers navigation only during this phone's authenticated resident turn. */
 export async function withMapsNavigationRelay<T, Owner extends object>(
@@ -27,7 +35,7 @@ export async function withMapsNavigationRelay<T, Owner extends object>(
   const offerId = crypto.randomUUID();
   if (!request || !navigation) return send();
   const lifetime = new AbortController(),
-    current = AbortSignal.any([signal, lifetime.signal]);
+    current = anySignal(host, [signal, lifetime.signal]);
   const poll = async (phase: "open" | "poll" = "poll") => {
     const value = await request(
       PATH,
@@ -81,7 +89,7 @@ export async function withMapsNavigationRelay<T, Owner extends object>(
         const operation = command.operation as
           | Record<string, unknown>
           | undefined;
-        const bounded = AbortSignal.any([
+        const bounded = anySignal(host, [
           current,
           AbortSignal.timeout(Math.max(1, command.expiresAt - Date.now())),
         ]);

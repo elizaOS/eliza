@@ -39,7 +39,7 @@ function must<T>(value: T | null | undefined): T {
   return value;
 }
 
-function fixture() {
+function fixture(originalAttachments?: Memory["content"]["attachments"]) {
   const runtime = {
     agentId: "agent",
     character: { name: "Eliza" },
@@ -53,6 +53,7 @@ function fixture() {
     content: {
       text: "The bag is orange.\nKeep  two spaces.",
       senderName: "Nubs",
+      attachments: originalAttachments,
     },
   } as Memory;
   const message = {
@@ -300,6 +301,91 @@ describe("stored source-backed reply references", () => {
           .projection,
       ).loadedSourceIds,
     ]).toEqual([replyId]);
+  });
+  it("follows a reply's stored quote link when the reply carries an attachment", () => {
+    const f = fixture();
+    f.reply.content.attachments = [
+      {
+        id: "bag-photo",
+        url: "https://example.com/bag.png",
+        title: "bag.png",
+        contentType: "image/png",
+        description: "An orange bag on a table.",
+      },
+    ] as Memory["content"]["attachments"];
+    const context = f.contextFor([f.original, f.reply]);
+    const sources = completionContextSources(context);
+    const reply = must(
+      sources.sources.find((s) => s.event.id === "history:reply"),
+    );
+    const original = must(
+      sources.sources.find((s) => s.event.id === "history:original"),
+    );
+    expect(reply.event.segment.content).toContain(
+      "[attachment: bag.png; image/png; An orange bag on a table.]",
+    );
+    const projection: HistoryDiscovery = {
+      sourceSetId: sources.sourceSetId,
+      scope: { agentId: "agent", roomId: "room" },
+      visibleEventIds: new Set(),
+      loadedSourceIds: new Set(),
+    };
+    expect([
+      ...must(
+        loadHistoryReferences(context, projection, [`history:${reply.id}`])
+          .projection,
+      ).loadedSourceIds,
+    ]).toEqual([reply.id, original.id]);
+  });
+  it("finds a quoted original that carries an attachment", () => {
+    const f = fixture([
+      {
+        id: "bag-photo",
+        url: "https://example.com/bag.png",
+        title: "bag.png",
+        contentType: "image/png",
+        description: "An orange bag on a table.",
+      },
+    ] as Memory["content"]["attachments"]);
+    const context = f.contextFor([f.original, f.reply]);
+    const sources = completionContextSources(context);
+    const [original, reply] = sources.sources;
+    expect(original.event.segment.content).toBe(
+      "Nubs: The bag is orange.\nKeep  two spaces. [attachment: bag.png; image/png; An orange bag on a table.]",
+    );
+    const projection: HistoryDiscovery = {
+      sourceSetId: sources.sourceSetId,
+      scope: { agentId: "agent", roomId: "room" },
+      visibleEventIds: new Set([reply.event.id]),
+      loadedSourceIds: new Set(),
+    };
+    // The stored quote link of the reply.
+    expect([
+      ...must(
+        loadHistoryReferences(context, projection, [`history:${reply.id}`])
+          .projection,
+      ).loadedSourceIds,
+    ]).toEqual([reply.id, original.id]);
+    // A literal quote in a new draft.
+    expect(
+      requestedHistory(
+        context,
+        projection,
+        {
+          replyText: `You said "${f.original.content.text}"`,
+          completionContext: {
+            mode: "selected",
+            complete: true,
+            sourceSetId: sources.sourceSetId,
+            relevantSourceIds: [],
+            constraintSourceIds: [],
+            referentSourceIds: [],
+            pendingIntentSourceIds: [],
+          },
+        },
+        [],
+      ),
+    ).toEqual([`history:${original.id}`]);
   });
   it("follows an earlier quote chain once without relabeling its speakers", () => {
     const f = fixture();

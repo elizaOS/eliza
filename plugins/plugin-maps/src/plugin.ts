@@ -70,6 +70,7 @@ export const mapsPlugin: Plugin = {
         "MAPS_SAVE",
         "MAPS_SHARE",
         "MAPS_NAVIGATE",
+        "MAPS_COVERAGE",
         "MAPS_NAVIGATION_START",
         "MAPS_NAVIGATION_REROUTE",
         "MAPS_NAVIGATION_STOP",

@@ -98,6 +98,22 @@ export function createLocalRuntimeConversationFetch(
       const value = sourceHeaders.get(name);
       if (value !== null) headers.set(name, value);
     }
+    const policyId = sourceHeaders.get("X-Eliza-Voice-Model-Policy");
+    const sessionId = sourceHeaders.get("X-Eliza-Voice-Session-Id");
+    if (policyId !== null || sessionId !== null) {
+      if (
+        !policyId ||
+        !sessionId ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(policyId) ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(sessionId)
+      ) {
+        throw new LocalRuntimeConversationFetchError(
+          "Invalid bounded voice model policy",
+        );
+      }
+      headers.set("X-Eliza-Voice-Model-Policy", policyId);
+      headers.set("X-Eliza-Voice-Session-Id", sessionId);
+    }
     headers.set("Content-Type", "application/json");
     headers.set("Accept", "text/event-stream");
     // Preserve the speaking renderer's routing identity through the existing

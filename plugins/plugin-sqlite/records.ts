@@ -3430,7 +3430,11 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         COLLECTIONS.RELATIONSHIPS,
         id,
       );
-      if (r) relationships.push(relationshipFromStored(r, this.agentId));
+      if (!r) continue;
+      // Only this agent's edges are listed: plugin-sql's getRelationshipsByIds
+      // query carries `agentId = this.agentId` alongside the id filter.
+      if ((r.agentId ?? this.agentId) !== this.agentId) continue;
+      relationships.push(relationshipFromStored(r, this.agentId));
     }
     return relationships;
   }
@@ -3463,6 +3467,15 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
 
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     for (const id of relationshipIds) {
+      // Only this agent's edges are deletable: plugin-sql's delete carries
+      // agentId in the WHERE, and a stored row for another agent is not
+      // this adapter's to delete — the same guard as updateRelationships.
+      const existing = await this.storage.get<StoredRelationship>(
+        COLLECTIONS.RELATIONSHIPS,
+        id,
+      );
+      if (!existing) continue;
+      if ((existing.agentId ?? this.agentId) !== this.agentId) continue;
       await this.storage.delete(COLLECTIONS.RELATIONSHIPS, id);
     }
   }

@@ -12,8 +12,44 @@ const binding = Object.freeze({
   redirectUri: "https://example.org/native/callback",
 });
 const createNativeCloudAuth = (options) =>
-  createEnrollment({ ...options, binding, appName: "Example Native" });
+  createEnrollment({
+    auth: "https://auth.example.test",
+    ...options,
+    binding,
+    appName: "Example Native",
+  });
 const future = () => new Date(Date.now() + 300000).toISOString();
+test("default native login sends email challenges through the Eliza API proxy", async () => {
+  const urls = [];
+  const auth = createEnrollment({
+    binding,
+    appName: "Example Native",
+    pendingStore: {
+      read: async () => null,
+      write: async () => {},
+      clear: async () => {},
+    },
+    activate: async () => {},
+    fetchImpl: async (url) => {
+      urls.push(String(url));
+      if (new URL(url).pathname.endsWith("/config")) {
+        return Response.json({
+          ...binding,
+          codeChallengeMethod: "S256",
+          scopes: ["cloud:user"],
+          app: { name: "Example Native" },
+        });
+      }
+      assert.equal(
+        String(url),
+        "https://api.eliza.app/steward/auth/email/send",
+      );
+      return Response.json({ ok: true, data: { expiresAt: future() } });
+    },
+  });
+  await auth.handle("start", { email: "synthetic@example.com" });
+  assert.ok(urls.includes("https://api.eliza.app/steward/auth/email/send"));
+});
 function fixture(override = {}) {
   let pending = null,
     active = override.active ?? null;

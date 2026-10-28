@@ -1,7 +1,7 @@
 /**
  * GET /api/v1/subscription/entitlement
  * Returns `{ entitlement: <compact ES256 JWS> }`: the caller's current plan
- * state for native clients (Alpha Phone contract). Auth: Cloud CLI API key
+ * state for native clients. Auth: Cloud CLI API key
  * (`Authorization: Bearer eliza_…`) or a browser session. The token (format v2)
  * carries the current allowance period in micro-dollars when there is one. It presents
  * plan state only; Cloud still authorizes every inference request itself.

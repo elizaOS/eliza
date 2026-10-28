@@ -252,7 +252,7 @@ describe("NotesStore", () => {
     const second = await serviceFor(filePath);
     expect(second.snapshot()).toEqual(expected);
     expect(JSON.parse(await fs.readFile(filePath, "utf8")).schemaVersion).toBe(
-      2,
+      3,
     );
     await second.stop();
   });
@@ -431,11 +431,11 @@ describe("NotesStore", () => {
 
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
-      ["notes", "persistedAt", "revision", "schemaVersion"].sort(),
+      ["notes", "persistedAt", "revision", "schemaVersion", "trash"].sort(),
     );
   });
 
@@ -690,7 +690,7 @@ describe("NotesStore on filesystems that deny hard links (#30725)", () => {
     );
     // Exactly one candidate won; both stores adopted the same bytes.
     for (const store of stores) {
-      expect(store.snapshot()).toEqual({ revision: 0, notes: [] });
+      expect(store.snapshot()).toEqual({ revision: 0, notes: [], trash: [] });
       expect((await store.persistedSnapshot()).revision).toBe(0);
     }
     expect(persisted.revision).toBe(0);

@@ -10,6 +10,10 @@
 
 import { randomUUID } from "node:crypto";
 import { getRedis } from "./client.js";
+import {
+  cloudflareRateLimit,
+  isCloudflareRateLimitConfigured,
+} from "./cloudflare-rate-limit";
 
 // KEYS[1]=zset  ARGV: now, windowStart, maxRequests, member, ttlMs
 // Prune the window, count, and add the member only if strictly under the
@@ -80,6 +84,9 @@ export async function checkRateLimit(
   maxRequests: number,
 ): Promise<RateLimitResult> {
   validateRateLimitInput(key, windowMs, maxRequests);
+  if (isCloudflareRateLimitConfigured()) {
+    return cloudflareRateLimit("check", key, windowMs, maxRequests);
+  }
   const redis = getRedis();
   const now = Date.now();
   const windowStart = now - windowMs;
@@ -126,6 +133,9 @@ export async function getRateLimitStatus(
   maxRequests: number,
 ): Promise<RateLimitResult> {
   validateRateLimitInput(key, windowMs, maxRequests);
+  if (isCloudflareRateLimitConfigured()) {
+    return cloudflareRateLimit("status", key, windowMs, maxRequests);
+  }
   const redis = getRedis();
   const now = Date.now();
   const windowStart = now - windowMs;

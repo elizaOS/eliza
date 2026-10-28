@@ -183,7 +183,7 @@ jobs:
         run: node packages/scripts/develop-impact-evidence.ts record --expected .develop-evidence/expected.json --evidence .develop-evidence/current --observed .develop-evidence/observed.json --results-env SURFACE_RESULTS
       - name: Upload exact manifest evidence
         if: ${{ always() && !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: develop-full-manifest-${{ github.sha }}
           path: |

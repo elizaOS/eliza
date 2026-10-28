@@ -173,7 +173,9 @@ describe("native Messages inbound attachments", () => {
       agentId: "00000000-0000-0000-0000-000000000001",
       getSetting: vi.fn(() => undefined),
       getService: vi.fn(() => null),
-      emitEvent: vi.fn((type: string) => emitted.push(type)),
+      emitEvent: vi.fn(async (type: string) => {
+        emitted.push(type);
+      }),
       ensureConnection: vi.fn(async () => {}),
       createMemory,
       reportError,

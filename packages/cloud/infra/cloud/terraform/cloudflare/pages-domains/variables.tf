@@ -59,6 +59,30 @@ variable "dns_record_import_ids" {
   }
 }
 
+variable "tunnel_worker_hostname" {
+  description = "Workers.dev hostname of the verified tunnel replacement. Empty retains Railway routing. Set only after the source is stopped and its final state is imported."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = var.tunnel_worker_hostname == "" || can(regex(
+      "^eliza-tunnel-proxy-${var.environment}\\.[a-z0-9-]+\\.workers\\.dev$",
+      var.tunnel_worker_hostname,
+    ))
+    error_message = "tunnel_worker_hostname must identify this environment's eliza-tunnel-proxy Worker"
+  }
+
+  validation {
+    condition = var.tunnel_worker_hostname == "" || (
+      length(var.railway_tunnel_dns_records) > 0 &&
+      contains(flatten([
+        for pack in values(var.canonical_edge_certificate_packs) : tolist(pack.hosts)
+      ]), var.environment == "production" ? "*.tunnel.eliza.app" : "*.tunnel-staging.eliza.app")
+    )
+    error_message = "Tunnel cutover requires the original DNS inventory and a canonical tunnel wildcard certificate pack"
+  }
+}
+
 variable "railway_tunnel_dns_records" {
   description = <<-EOT
     Reviewed Cloudflare DNS inventory returned by Railway for the canonical

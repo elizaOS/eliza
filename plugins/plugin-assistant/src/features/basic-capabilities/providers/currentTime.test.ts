@@ -66,7 +66,7 @@ describe("currentTimeProvider", () => {
       timeZoneOrigin: "device",
     });
     expect(result.text).toContain("Tuesday, August 4, 2026 at 7:41:04 PM PDT");
-    expect(result.text).toContain("ISO (UTC): 2026-08-05T02:41:04.618Z");
+    expect(result.text).toContain("UTC instant: 2026-08-05T02:41:04.618Z");
     expect(result.text).toContain("America/Los_Angeles");
     expect(result.text).not.toContain("Europe/Paris");
     expect(result.text).not.toMatch(/[\r\n]/);
