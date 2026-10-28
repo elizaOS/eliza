@@ -136,10 +136,7 @@ export async function handleReaction(
 			}
 		}
 		const userName = reactor.username ?? undefined;
-		const name =
-			reaction.message.guild?.members.cache.get(reactor.id)?.displayName ??
-			reactor.globalName ??
-			userName;
+		const name = reactor.globalName ?? userName;
 
 		// Get channel type once and reuse
 		const channelType = await service.getChannelType(
