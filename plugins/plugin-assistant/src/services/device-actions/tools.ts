@@ -35,6 +35,7 @@ import {
   requestLocalCalendarUpdate,
   requestLocalNotesUpdate,
 } from "./service.ts";
+import { turnObservation } from "./turn-observation.ts";
 
 function capabilityAvailable(
   type: string,
@@ -337,21 +338,10 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
             ) => {
               if (!capabilityAvailable(type, runtime)) return false;
               try {
-                const metadata = message?.content?.metadata as
-                    | {
-                        clientDevice?: {
-                          context?: {
-                            view?: unknown;
-                            sensitive?: unknown;
-                            selectedObject?: unknown;
-                          };
-                        };
-                      }
-                    | undefined,
-                  context = metadata?.clientDevice?.context;
+                const context = turnObservation(message?.content?.metadata);
                 return (
                   context?.view === "notes" &&
-                  context.sensitive !== true &&
+                  !context.sensitive &&
                   !!notesSelectionTarget(context.selectedObject)
                 );
               } catch {

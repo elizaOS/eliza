@@ -6,10 +6,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  agentProcessStartedAtMs,
   computeNextCronRunAtMs,
   type IAgentRuntime,
+  isMissedScheduledOccurrence,
   logger,
+  MISSED_SCHEDULED_OCCURRENCE_TEXT,
   ModelType,
+  recordsMissedScheduledOccurrences,
   Service,
   stringToUuid,
   type Task,
@@ -116,6 +120,58 @@ export interface ExecuteWorkflowOptions {
   throwOnError?: boolean;
   /** Trigger hops inherited by events emitted from this execution. */
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
+}
+
+/**
+ * Hosts whose agent runs only while the device is powered on (a mobile
+ * resident) set `ELIZA_MISSED_SCHEDULED_OCCURRENCES=record` (the shared
+ * powered-on scheduling policy in `@elizaos/core`): an occurrence that passed
+ * while the agent was not running is recorded once as missed and never
+ * replayed, and the next occurrence is armed as usual. Other hosts keep
+ * running a late occurrence.
+ */
+export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSetting'>): boolean {
+  return recordsMissedScheduledOccurrences(runtime);
+}
+
+/**
+ * Whether a terminal execution output records a missed scheduled occurrence:
+ * the record this service (or a resident digest's admission) writes, with its
+ * scheduled instant and explanation, not any workflow output that happens to
+ * carry `status: 'missed'`.
+ */
+export function isMissedOccurrenceOutput(output: unknown): boolean {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
+  const record = output as Record<string, unknown>;
+  return (
+    record.status === 'missed' &&
+    typeof record.scheduledAt === 'string' &&
+    Number.isFinite(Date.parse(record.scheduledAt)) &&
+    typeof record.text === 'string'
+  );
+}
+
+/**
+ * Terminal record for a scheduled occurrence that passed while the agent was
+ * not running. A delay while the agent was running (device doze, a busy
+ * scheduler) is not missed: that occurrence still runs.
+ */
+export function missedOccurrence(
+  scheduledAtMs: number | undefined,
+  now: number,
+  agentStartedAtMs: number = agentProcessStartedAtMs(now)
+): Record<string, unknown> | undefined {
+  if (scheduledAtMs === undefined) return undefined;
+  if (!Number.isSafeInteger(scheduledAtMs) || scheduledAtMs > now + 1000)
+    throw new WorkflowApiError('Schedule requires its exact scheduled occurrence', 409);
+  if (!isMissedScheduledOccurrence(scheduledAtMs, now, agentStartedAtMs)) return undefined;
+  return {
+    status: 'missed',
+    scheduledAt: new Date(scheduledAtMs).toISOString(),
+    text: MISSED_SCHEDULED_OCCURRENCE_TEXT,
+  };
 }
 
 type RunListener = (event: WorkflowRunEvent) => void;
@@ -1758,6 +1814,13 @@ export class EmbeddedWorkflowService extends Service {
       requireMutable(workflow);
       if ((options.mode === 'trigger' || options.mode === 'schedule') && !workflow.active)
         throw new WorkflowApiError('Workflow is paused', 409);
+      // Resident digests keep their own source-aware admission below.
+      const missed =
+        !workflow.metadata?.[HOSTED_SPEC] &&
+        options.mode === 'trigger' &&
+        recordsMissedOccurrences(this.runtime)
+          ? missedOccurrence(options.scheduledAtMs, Date.now())
+          : undefined;
       if (workflow.metadata?.[HOSTED_SPEC]) {
         const scheduledAt = Number((options.triggerData ?? options.input)?.scheduledAtMs);
         hosted = await digestAdmission(tx, this.tenantId, workflow, Date.now(), scheduledAt);
@@ -1785,9 +1848,10 @@ export class EmbeddedWorkflowService extends Service {
         workflowVersionId: workflow.versionId,
         workflowName: workflow.name,
         mode: options.mode ?? 'manual',
-        status: hosted && hosted.status !== 'ready' ? 'finished' : 'queued',
-        finished: !!hosted && hosted.status !== 'ready',
+        status: missed || (hosted && hosted.status !== 'ready') ? 'finished' : 'queued',
+        finished: !!missed || (!!hosted && hosted.status !== 'ready'),
         ...(hosted && hosted.status !== 'ready' ? { stoppedAt: nowIso(), output: hosted } : {}),
+        ...(missed ? { stoppedAt: nowIso(), output: missed } : {}),
         startedAt: nowIso(),
         input: cloneJson(
           hosted

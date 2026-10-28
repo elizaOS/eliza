@@ -960,6 +960,7 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
                 context: {
                   view: "notes",
                   sensitive: false,
+                  revision: 1,
                   // Explicitly named source A must beat selected source B.
                   selectedObject: {
                     kind: "canonical-note",

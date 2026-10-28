@@ -28,6 +28,12 @@
       "import": "./dist/device-action-execution.js",
       "default": "./dist/device-action-execution.js"
     },
+    "./client-turn-observation": {
+      "eliza-source": "./src/client-turn-observation.ts",
+      "types": "./dist/client-turn-observation.d.ts",
+      "import": "./dist/client-turn-observation.js",
+      "default": "./dist/client-turn-observation.js"
+    },
     "./native-notes-query": {
       "eliza-source": "./src/native-notes-query.ts",
       "types": "./dist/native-notes-query.d.ts",

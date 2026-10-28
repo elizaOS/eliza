@@ -55,7 +55,10 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/contracts";
-import { resolveCalendarTimeZone as resolveOwnerCalendarTimeZone } from "@elizaos/contracts";
+import {
+  readClientTurnObservation,
+  resolveCalendarTimeZone as resolveOwnerCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -3907,21 +3910,12 @@ async function inferCreateEventDetails(
     // A valid planner reference alone does not establish which note the user meant.
     // Reuse Notes' named lookup and the actual foreground canonical selection.
     const named = notes.findNotesNamedInText?.(messageText(message)) ?? [];
-    const metadata = message.content.metadata as
-      | Record<string, unknown>
-      | undefined;
-    const device = metadata?.clientDevice as
-      | Record<string, unknown>
-      | undefined;
-    const context = device?.context as Record<string, unknown> | undefined;
-    const selected = context?.selectedObject as
-      | Record<string, unknown>
-      | undefined;
+    // The foreground selection is read only through the shared current-turn
+    // observation contract; a malformed observation selects nothing.
+    const context = readClientTurnObservation(message.content.metadata);
+    const selected = context?.sensitive ? undefined : context?.selectedObject;
     const selectedId =
-      context?.view === "notes" &&
-      context.sensitive !== true &&
-      selected?.kind === "canonical-note" &&
-      typeof selected.id === "string"
+      context?.view === "notes" && selected?.kind === "canonical-note"
         ? selected.id
         : undefined;
     let candidates = named;
