@@ -1059,16 +1059,11 @@ export class TelegramService extends Service {
     payload: EventPayload,
     context: Record<string, unknown>,
   ): void {
-    const reportFailure = (error: unknown) => {
-      // error-policy:J7 The update is already applied. Report the observer
-      // failure instead of making the accepted update look retryable.
-      this.runtime.reportError(scope, error, context);
-    };
-    try {
-      void this.runtime.emitEvent(event, payload).catch(reportFailure);
-    } catch (error) {
-      reportFailure(error);
-    }
+    // error-policy:J7 The update is already applied. Report the observer
+    // failure instead of making the accepted update look retryable.
+    void this.runtime
+      .emitEvent(event, payload)
+      .catch((error) => this.runtime.reportError(scope, error, context));
   }
 
   /**
