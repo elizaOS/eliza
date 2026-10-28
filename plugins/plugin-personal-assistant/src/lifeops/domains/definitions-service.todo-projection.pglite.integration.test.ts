@@ -345,3 +345,38 @@ it("morning overdue todos use canonical occurrence states and matching agent def
     await fixture.cleanup();
   }
 });
+
+it("keeps every task due in the overview window in the list, the counts and the todos", async () => {
+  const fixture = await createLifeOpsTestRuntime();
+  try {
+    const service = new LifeOpsService(fixture.runtime);
+    const dueAt = new Date(Date.now() + 120000).toISOString();
+    const titles = Array.from(
+      { length: 12 },
+      (_, index) => `Errand ${index + 1}`,
+    );
+    for (const title of titles) {
+      await service.createDefinition({
+        title,
+        kind: "task",
+        cadence: { kind: "once", dueAt },
+        timezone: "UTC",
+        metadata: { ownerSurface: "OWNER_TODOS" },
+        reminderPlan: null,
+      });
+    }
+
+    const overview = await service.getOverview();
+    const listed = overview.owner.occurrences.map(
+      (occurrence) => occurrence.title,
+    );
+    expect(listed.sort()).toEqual([...titles].sort());
+    expect(overview.owner.summary.activeOccurrenceCount).toBe(12);
+    const todos = await service.definitionsDomain.getTodos(
+      overview.owner.occurrences,
+    );
+    expect(todos.map((todo) => todo.title).sort()).toEqual([...titles].sort());
+  } finally {
+    await fixture.cleanup();
+  }
+});

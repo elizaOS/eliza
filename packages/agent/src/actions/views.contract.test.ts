@@ -6,13 +6,15 @@ import { actionToTool } from "../../../core/src/actions/to-tool.ts";
 import type { Action } from "../../../core/src/types/components.ts";
 import type { Memory } from "../../../core/src/types/memory.ts";
 import type { IAgentRuntime } from "../../../core/src/types/runtime.ts";
+import {
+  resolveViewNavigationTargets,
+  viewNavigationAvailable,
+} from "../runtime/view-navigation-targets.ts";
 
 function fixture() {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
   const js = ts.transpileModule(
-    source
-      .replace(/^import[\s\S]*?;\n/gm, "")
-      .replace("export const viewsAction", "const viewsAction"),
+    source.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""),
     {
       compilerOptions: {
         target: ts.ScriptTarget.ES2022,
@@ -23,6 +25,8 @@ function fixture() {
   let dispatches = 0;
   let owner = true;
   const ports = {
+    resolveViewNavigationTargets,
+    viewNavigationAvailable,
     randomUUID: () => "step",
     checkSenderRole: async () => ({ isOwner: owner, role: "OWNER" }),
     getStreamingContext: () => undefined,

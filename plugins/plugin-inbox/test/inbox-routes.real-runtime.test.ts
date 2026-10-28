@@ -16,6 +16,7 @@
 
 import {
   type AgentRuntime,
+  type Memory,
   ModelType,
   type ModelTypeName,
 } from "@elizaos/core";
@@ -24,11 +25,13 @@ import {
   type RouteHandlerContext,
   type RouteHandlerResult,
 } from "@elizaos/host/protocol";
+import { getDefaultTriageService } from "@elizaos/plugin-assistant";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app/test/helpers/real-runtime.ts";
+import { executeInboxQueueOperation } from "../src/actions/inbox.ts";
 import { InboxRepository } from "../src/inbox/repository.ts";
 import type { InboundMessage, TriageEntry } from "../src/inbox/types.ts";
 import { inboxPlugin } from "../src/plugin.ts";
@@ -343,6 +346,36 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
     ).entries.map((entry) => entry.id);
     expect(snoozedIds).toContain(target.id);
   });
+  it("a planner snooze reads an offset-free time in the message's time zone", async () => {
+    const unresolved = await repo.getUnresolved({ limit: 50 });
+    const target = unresolved[0];
+    if (!target) throw new Error("unreachable");
+    // "Snooze until Monday 9am" arrives as a wall clock in the user's zone;
+    // New York is on EST (-05:00) in November.
+    const message = {
+      content: {
+        text: "snooze this until monday 9am",
+        metadata: { uiTimeZone: "America/New_York" },
+      },
+    } as unknown as Memory;
+    try {
+      await executeInboxQueueOperation({
+        runtime,
+        subaction: "snooze",
+        params: { entryId: target.id, snoozedUntil: "2030-11-04T09:00:00" },
+        authorization: { kind: "turn", message },
+      });
+
+      const stored = (
+        await repo.getUnresolved({ limit: 50, includeSnoozed: true })
+      ).find((entry) => entry.id === target.id);
+      expect(stored?.snoozedUntil).toBe("2030-11-04T14:00:00.000Z");
+    } finally {
+      // Later cases read this entry as unsnoozed.
+      await repo.snoozeUntil(target.id, new Date(0).toISOString());
+    }
+  });
+
   it("snooze validates its inputs: unknown entry and bad timestamp both fail loudly", async () => {
     const missing = await call(
       "POST",
@@ -455,5 +488,76 @@ describe("inbox routes e2e — real plugin on real PGLite runtime", () => {
       after.filter((entry) => entry.sourceMessageId === "route-msg-urgent"),
     ).toHaveLength(1);
     expect(after.length).toBe(before.length);
+  });
+  it("approving an already-sent reply again sends nothing; a new reply body still sends", async () => {
+    // Connector boundary only: a discord adapter that records each dispatch
+    // and can be told to fail one send.
+    const sends: string[] = [];
+    let failNextSend = false;
+    let drafts = 0;
+    getDefaultTriageService().register({
+      source: "discord",
+      isAvailable: () => true,
+      capabilities: () => ({
+        list: false,
+        search: false,
+        manage: {},
+        send: { reply: true },
+      }),
+      listMessages: async () => [],
+      getMessage: async () => null,
+      createDraft: async (_rt: unknown, draft: { body: string }) => ({
+        draftId: `approve-twice-${++drafts}`,
+        preview: draft.body,
+      }),
+      sendDraft: async (_rt: unknown, draftId: string) => {
+        if (failNextSend) {
+          failNextSend = false;
+          throw new Error("discord send failed");
+        }
+        sends.push(draftId);
+        return { externalId: `x-${draftId}` };
+      },
+    } as never);
+    const entry = await repo.storeTriage({
+      source: "discord",
+      sourceMessageId: "approve-twice-msg",
+      sourceRoomId: "approve-twice-room",
+      channelName: "dm",
+      channelType: "dm",
+      classification: "needs_reply",
+      urgency: "medium",
+      confidence: 0.9,
+      snippet: "can you confirm?",
+      senderName: "Alice",
+      suggestedResponse: "Confirmed.",
+    });
+    const approve = () =>
+      call("POST", `/api/lifeops/inbox/${entry.id}/approve`, {
+        params: { id: entry.id },
+        body: {},
+      });
+
+    // A failed send leaves the entry sendable.
+    failNextSend = true;
+    expect((await approve()).status).toBe(500);
+    expect((await repo.getById(entry.id))?.autoReplied).toBe(false);
+
+    expect((await approve()).status).toBe(200);
+    const again = await approve();
+    expect(again.status).toBe(409);
+    expect(again.body).toMatchObject({ ok: false, alreadySent: true });
+    expect(sends).toEqual(["approve-twice-2"]);
+
+    const followUp = await call(
+      "POST",
+      `/api/lifeops/inbox/${entry.id}/reply`,
+      {
+        params: { id: entry.id },
+        body: { body: "Also, see you at 3.", confirmed: true },
+      },
+    );
+    expect(followUp.status).toBe(200);
+    expect(sends).toEqual(["approve-twice-2", "approve-twice-3"]);
   });
 });

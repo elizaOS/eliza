@@ -528,6 +528,54 @@ describe("resumeTask after a failed re-engage spawn", () => {
   }, 30_000);
 });
 
+describe("postUserMessage to a paused task", () => {
+  it("records the message without starting a worker before resume", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const live = async (taskId: string) =>
+      (await store.getTask(taskId))?.sessions.filter(
+        (s) => s.status !== "stopped",
+      ) ?? [];
+    try {
+      const task = await store.createTask({
+        title: "Paused with a message",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      const taskId = task.task.id;
+      await tasks.spawnAgentForTask(taskId);
+      await tasks.pauseTask(taskId);
+
+      const result = await tasks.postUserMessage(
+        taskId,
+        "also update the README",
+      );
+      expect(result?.recorded).toBe(true);
+      expect(result?.forwardedTo).toEqual([]);
+      expect(result?.failedTo.map((failure) => failure.sessionId)).toEqual([
+        "(paused)",
+      ]);
+      expect(await live(taskId)).toEqual([]);
+
+      // Resume starts exactly one worker for the interrupted work.
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+    } finally {
+      await service.stop();
+    }
+  }, 30_000);
+});
+
 describe("TASKS history with a task id", () => {
   async function withTwoTasks(
     body: (ctx: {

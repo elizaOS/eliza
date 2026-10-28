@@ -330,7 +330,9 @@ export class InboxUnsubscribeService {
       if (!message.fromEmail && !listUnsubscribe) {
         continue;
       }
-      const senderEmail = message.fromEmail ?? message.from;
+      // Gmail's from: search ignores case, so one sender can arrive as
+      // "News@Shop.example" and "news@shop.example"; group them together.
+      const senderEmail = (message.fromEmail ?? message.from).toLowerCase();
       const existing = senders.get(senderEmail);
       const options = listUnsubscribeOptions(listUnsubscribe);
       const method = unsubscribeMethod({

@@ -32,9 +32,64 @@ export interface RenderedContextObject {
 	promptSegments: ContextObjectPromptSegment[];
 }
 
+/** Absolute historical message time, rendered once at the model-wire boundary.
+ * Keep original content untouched for source references and exact restoration. */
+function isHistoricalDialogueSegment(
+	segment: ContextObjectPromptSegment,
+): boolean {
+	const label = segment.label;
+	return (
+		typeof label === "string" &&
+		(label.startsWith("prior_message:") ||
+			label.startsWith("verified_cross_room_message:"))
+	);
+}
+function historyMessageTimestamp(
+	segment: ContextObjectPromptSegment,
+): string | undefined {
+	if (!isHistoricalDialogueSegment(segment)) return undefined;
+	const at = segment.createdAt;
+	if (typeof at !== "number" || !Number.isSafeInteger(at) || at <= 0)
+		return undefined;
+	const date = new Date(at);
+	if (!Number.isFinite(date.getTime())) return undefined;
+	const zone = segment.metadata?.displayTimeZone;
+	if (typeof zone !== "string" || !zone.trim()) return date.toISOString();
+	try {
+		const parts = Object.fromEntries(
+			new Intl.DateTimeFormat("en-CA", {
+				timeZone: zone,
+				year: "numeric",
+				month: "2-digit",
+				day: "2-digit",
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+				hourCycle: "h23",
+				timeZoneName: "longOffset",
+			})
+				.formatToParts(date)
+				.map((part) => [part.type, part.value]),
+		);
+		const offset =
+			parts.timeZoneName === "GMT"
+				? "Z"
+				: parts.timeZoneName?.replace(/^GMT/, "");
+		if (!offset || !/^(?:Z|[+-]\d{2}:\d{2})$/.test(offset))
+			return date.toISOString();
+		return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${String(date.getUTCMilliseconds()).padStart(3, "0")}${offset}`;
+	} catch {
+		// An unavailable display zone cannot erase the actual recorded UTC instant.
+		return date.toISOString();
+	}
+}
+
 /** Render readable block framing while keeping machine labels in segment metadata. */
-export function segmentBlock(segment: PromptSegment): string {
-	const content = segment.content;
+export function segmentBlock(segment: ContextObjectPromptSegment): string {
+	const timestamp = historyMessageTimestamp(segment);
+	const content = timestamp
+		? `[message_at=${timestamp}] ${segment.content}`
+		: segment.content;
 	const label = (segment as PromptSegment & { label?: unknown }).label;
 	if (
 		label === "system" ||
@@ -383,6 +438,7 @@ function isSegmentEvent(event: ContextEvent): event is ContextSegmentEvent {
 function renderEvent(
 	rendered: RenderedContextObject,
 	event: ContextEvent,
+	displayTimeZone?: string,
 ): void {
 	if (isMessageEvent(event)) {
 		rendered.messages.push(event.message);
@@ -456,7 +512,18 @@ function renderEvent(
 	}
 
 	if (isSegmentEvent(event)) {
-		appendPromptSegment(rendered, event.segment);
+		appendPromptSegment(
+			rendered,
+			isHistoricalDialogueSegment(event.segment)
+				? {
+						...event.segment,
+						createdAt: event.createdAt,
+						...(displayTimeZone
+							? { metadata: { ...event.segment.metadata, displayTimeZone } }
+							: {}),
+					}
+				: event.segment,
+		);
 		return;
 	}
 
@@ -553,7 +620,13 @@ export function renderContextObject(
 	}
 
 	for (const event of context.events ?? []) {
-		renderEvent(rendered, event);
+		renderEvent(
+			rendered,
+			event,
+			typeof context.metadata?.displayTimeZone === "string"
+				? context.metadata.displayTimeZone
+				: undefined,
+		);
 	}
 
 	return rendered;

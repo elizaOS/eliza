@@ -104,6 +104,14 @@ function isThinCloudOwnerPhonePath(pathname: string): boolean {
   );
 }
 
+function isThinStewardNativeGooglePath(pathname: string): boolean {
+  const path = removeTrailingSlashes(pathname);
+  return (
+    path === "/steward/auth/oauth/google/native/challenge" ||
+    path === "/steward/auth/oauth/google/native/verify"
+  );
+}
+
 export function isThinStewardPath(method: string, pathname: string): boolean {
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD") {
@@ -113,7 +121,8 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
     return (
       isThinStewardEmailAuthPath(pathname) ||
       isThinStewardPasskeyLoginOptionsPath(pathname) ||
-      isThinCloudOwnerPhonePath(pathname)
+      isThinCloudOwnerPhonePath(pathname) ||
+      isThinStewardNativeGooglePath(pathname)
     );
   }
   if (upper === "OPTIONS") {
@@ -121,7 +130,8 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
       isThinStewardPublicPath(pathname) ||
       isThinStewardEmailAuthPath(pathname) ||
       isThinStewardPasskeyLoginOptionsPath(pathname) ||
-      isThinCloudOwnerPhonePath(pathname)
+      isThinCloudOwnerPhonePath(pathname) ||
+      isThinStewardNativeGooglePath(pathname)
     );
   }
   return false;

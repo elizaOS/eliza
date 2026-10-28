@@ -1,13 +1,15 @@
 /**
  * Calendar HTTP route adapter tests cover service-resolution failure policy at
- * the runtime boundary.
+ * the runtime boundary and the owner gate on the calendar read routes.
  */
 
 import type http from "node:http";
-import type { ElizaError, IAgentRuntime } from "@elizaos/core";
+import type { AccessContext, ElizaError, IAgentRuntime } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
 import {
   __calendarRouteRateLimitBucketCountForTests,
+  calendarHttpRoutes,
   calendarRouteHandler,
 } from "./plugin-routes.js";
 
@@ -234,5 +236,142 @@ describe("calendarRouteHandler", () => {
 
     expect(__calendarRouteRateLimitBucketCountForTests(runtime)).toBe(256);
     expect(notification).toHaveBeenCalledTimes(300);
+  });
+});
+
+describe("calendar owner read routes", () => {
+  const readService = {
+    ...Object.fromEntries(
+      [
+        "setCalendarIncluded",
+        "getNextCalendarEventContext",
+        "createCalendarEvent",
+        "updateCalendarEvent",
+        "deleteCalendarEvent",
+        "respondToCalendarEvent",
+        "listIcsCalendarSources",
+        "createIcsCalendarSource",
+        "updateIcsCalendarSource",
+        "deleteIcsCalendarSource",
+        "syncIcsCalendarSource",
+        "purgeImportedCalendarData",
+        "seedImportedCalendarData",
+        "listLinkedCalendarEvents",
+        "listLinkedCalendarEventViews",
+        "getLinkedCalendarEvent",
+      ].map((name) => [name, vi.fn()]),
+    ),
+    getCalendarFeed: vi.fn(async (_url: URL, _request: unknown) => ({
+      state: "partial",
+      events: [],
+    })),
+    listCalendars: vi.fn(async (_url: URL, _request: unknown) => [
+      { calendarId: "eliza" },
+    ]),
+  };
+
+  function readRoute(path: string) {
+    const route = calendarHttpRoutes.find(
+      (candidate) => candidate.type === "GET" && candidate.path === path,
+    );
+    if (!route?.routeHandler) throw new Error(`${path} is not mounted`);
+    return route.routeHandler;
+  }
+
+  function readContext(
+    overrides: Partial<RouteHandlerContext>,
+  ): RouteHandlerContext {
+    return {
+      signal: new AbortController().signal,
+      body: undefined,
+      params: {},
+      query: {},
+      headers: { host: "agent.local" },
+      method: "GET",
+      path: "/api/lifeops/calendar/feed",
+      runtime: createRuntime({ service: readService }),
+      inProcess: false,
+      isTrustedLocal: false,
+      ...overrides,
+    };
+  }
+
+  it("mounts private feed and calendars reads beside the public webhook", () => {
+    expect(
+      calendarHttpRoutes.map((route) => [route.type, route.path, route.public]),
+    ).toEqual([
+      ["GET", "/api/lifeops/calendar/feed", undefined],
+      ["GET", "/api/lifeops/calendar/calendars", undefined],
+      ["POST", "/api/lifeops/calendar/google/webhook", true],
+    ]);
+  });
+
+  it("passes the feed query to CalendarService for the trusted local owner", async () => {
+    const result = await readRoute("/api/lifeops/calendar/feed")(
+      readContext({
+        isTrustedLocal: true,
+        query: {
+          side: "owner",
+          timeMin: "2026-10-01T00:00:00.000Z",
+          timeMax: "2026-11-01T00:00:00.000Z",
+          timeZone: "America/Argentina/Buenos_Aires",
+        },
+      }),
+    );
+
+    expect(result).toEqual({
+      status: 200,
+      body: { state: "partial", events: [] },
+    });
+    const [url, request] = readService.getCalendarFeed.mock.lastCall ?? [];
+    expect(String(url)).toBe(
+      "http://agent.local/api/lifeops/calendar/feed?side=owner&timeMin=2026-10-01T00%3A00%3A00.000Z&timeMax=2026-11-01T00%3A00%3A00.000Z&timeZone=America%2FArgentina%2FBuenos_Aires",
+    );
+    expect(request).toMatchObject({
+      side: "owner",
+      timeMin: "2026-10-01T00:00:00.000Z",
+      timeMax: "2026-11-01T00:00:00.000Z",
+      timeZone: "America/Argentina/Buenos_Aires",
+    });
+  });
+
+  it("lists calendars for an OWNER session", async () => {
+    const result = await readRoute("/api/lifeops/calendar/calendars")(
+      readContext({
+        path: "/api/lifeops/calendar/calendars",
+        query: { side: "owner" },
+        accessContext: { role: "OWNER" } as AccessContext,
+      }),
+    );
+
+    expect(result).toEqual({
+      status: 200,
+      body: { calendars: [{ calendarId: "eliza" }] },
+    });
+    expect(readService.listCalendars.mock.lastCall?.[1]).toEqual({
+      mode: undefined,
+      side: "owner",
+      grantId: undefined,
+    });
+  });
+
+  it.each([
+    ["a USER session", { accessContext: { role: "USER" } as AccessContext }],
+    [
+      "a USER session over loopback",
+      {
+        isTrustedLocal: true,
+        accessContext: { role: "USER" } as AccessContext,
+      },
+    ],
+    ["a gateway token with no owner principal", {}],
+  ])("refuses %s before reading the calendar", async (_label, overrides) => {
+    readService.getCalendarFeed.mockClear();
+    const result = await readRoute("/api/lifeops/calendar/feed")(
+      readContext(overrides),
+    );
+
+    expect(result.status).toBe(403);
+    expect(readService.getCalendarFeed).not.toHaveBeenCalled();
   });
 });

@@ -109,7 +109,7 @@
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@types/bun": "1.4.2",
