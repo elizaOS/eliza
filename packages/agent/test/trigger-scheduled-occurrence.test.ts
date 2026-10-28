@@ -117,8 +117,10 @@ type Fixture = {
 };
 
 /** A fake resident with the powered-on policy, a prompt pipeline and a notifier. */
+type DraftInput = Parameters<typeof normalizeTriggerDraft>[0]["input"];
+
 function fixture(
-  input: Record<string, unknown>,
+  input: DraftInput,
   options: { policy?: string; workflowMissed?: boolean } = {},
 ): Fixture {
   const tasks = new Map<string, Task>();
