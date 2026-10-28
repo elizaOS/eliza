@@ -32,8 +32,10 @@ const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
 test("host notice routes, owner fence, approval coordination, journal recovery and tap inbox", {
   skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
 }, (t) => {
+  if (!jar) return;
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notice-host-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  /** @param {string} name */
   const bin = (name) =>
     process.env.JAVA_HOME
       ? path.join(process.env.JAVA_HOME, "bin", name)
