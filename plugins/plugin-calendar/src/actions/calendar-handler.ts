@@ -7749,6 +7749,22 @@ export async function inferNativeCalendarCreate(args: {
       ].includes(error.code)
     )
       return { text: error.message };
+    // The native create runs before the action's service-error handling. Evidence
+    // that does not match the original request (for example invented guests) is a
+    // refusal of this extraction, not a failed turn: nothing was created, and the
+    // owner is asked again instead of the planner repeating the same request.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === "CALENDAR_CREATE_EVIDENCE_INVALID"
+    ) {
+      args.runtime.reportError("calendar:native-create", error, {
+        diagnosticOnly: true,
+        code: error.code,
+      });
+      return {
+        text: "The event details could not be confirmed from your request. No event was created. Say the title, date and time again.",
+      };
+    }
     throw error;
   }
   args.signal.throwIfAborted();
