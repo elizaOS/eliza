@@ -14,9 +14,9 @@ import {
   resolveReminderEscalationDelayMinutes,
 } from "./service-helpers-reminder.js";
 
+const deliveredNotifications=new WeakMap<object,ReturnType<NotificationService["listIncludingExpired"]>>();
 function getRecordedTestNotifications(runtime: Parameters<typeof recordedNotifications>[0]) {
-  const service=runtime.getService("notification");
-  return service instanceof NotificationService ? service.listIncludingExpired() : recordedNotifications(runtime);
+  return deliveredNotifications.get(runtime)??[];
 }
 
 async function markExactNotificationRead(service:LifeOpsService,runtime:Parameters<typeof recordedNotifications>[0],attempt:ReturnType<typeof createLifeOpsReminderAttempt>,now:number){
@@ -43,6 +43,12 @@ async function createLifeOpsTestRuntime() {
   await TaskService.stop(fixture.runtime);
   const notifier=await NotificationService.start(fixture.runtime);
   (fixture.runtime as unknown as {services:Map<string,unknown[]>}).services.set("notification",[notifier]);
+  const deliveries:ReturnType<NotificationService["listIncludingExpired"]>=[];
+  deliveredNotifications.set(fixture.runtime,deliveries);
+  const notify=notifier.notify.bind(notifier);
+  vi.spyOn(notifier,"notify").mockImplementation(async input=>{
+    const accepted=await notify(input);deliveries.push(structuredClone(accepted));return accepted;
+  });
   // A clock alone is not evidence of wakefulness. Persist the owner's awake
   // signal through the real admission path for this delivery scenario.
   vi.setSystemTime(Date.now() + 1);
@@ -240,6 +246,12 @@ it("explicit post-fire snooze crosses the original window and preserves its save
     });
     const notifications = getRecordedTestNotifications(f.runtime);
     expect(notifications).toHaveLength(2);
+    expect(notifications[1].id).not.toBe(notifications[0].id);
+    const notifier=f.runtime.getService("notification");
+    if(!(notifier instanceof NotificationService))throw Error("Missing canonical inbox");
+    const retained=(await notifier.listDurableIncludingExpired()).filter(row=>row.groupKey===notifications[1].groupKey);
+    expect(retained).toHaveLength(1);
+    expect(retained[0].id).toBe(notifications[1].id);
     expect(notifications[1].body).toBe("Explicit snooze deadline");
     expect(notifications[1].body).toBe(firstBody);
     expect(notifications[1].title).toBe("Reminder");
@@ -264,6 +276,8 @@ it("explicit post-fire snooze crosses the original window and preserves its save
       f.runtime.agentId,
     );
     expect(attempts).toHaveLength(2);
+    expect(new Set(attempts.map(attempt=>attempt.id)).size).toBe(2);
+    expect(new Set(attempts.map(attempt=>attempt.deliveryMetadata.notificationId))).toEqual(new Set(notifications.map(notification=>notification.id)));
     expect(attempts.find((a) => a.id === firstReceipt.id)).toEqual(
       firstSnapshot,
     );
