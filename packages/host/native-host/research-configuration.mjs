@@ -126,6 +126,38 @@ export function initializeResearchConfiguration({
   }
   return { configPath, tokenPath };
 }
+const openStoreFor = (openStore, config) =>
+  openStore({
+    path: config.databasePath,
+    key: Buffer.from(config.encryptionKey, "base64"),
+    retentionMs: config.retentionMs,
+    maxEvents: config.maxEvents,
+  });
+/** Opens the configured store under its exclusive database lease; close releases both. */
+export function openConfiguredResearchStore({ path, openStore }) {
+  if (typeof openStore !== "function")
+    throw new NativeHostError("Explicit research store is required");
+  const config = readResearchConfiguration(path),
+    release = acquireExclusiveDatabaseLease(config.databasePath);
+  let store;
+  try {
+    store = openStoreFor(openStore, config);
+  } catch (error) {
+    release();
+    throw error;
+  }
+  return {
+    config,
+    store,
+    close() {
+      try {
+        store.close();
+      } finally {
+        release();
+      }
+    },
+  };
+}
 /** Offline transaction with recovery files retained even when database rotation fails. */
 export function rotateResearchConfiguration({ path, openStore, actor }) {
   if (
@@ -154,12 +186,7 @@ export function rotateResearchConfiguration({ path, openStore, actor }) {
       { flag: "wx", mode: 0o600, flush: true },
     );
     syncDirectory(dirname(path));
-    store = openStore({
-      path: config.databasePath,
-      key: Buffer.from(config.encryptionKey, "base64"),
-      retentionMs: config.retentionMs,
-      maxEvents: config.maxEvents,
-    });
+    store = openStoreFor(openStore, config);
     store.rotateKey(actor, nextKey);
     store.close();
     store = null;

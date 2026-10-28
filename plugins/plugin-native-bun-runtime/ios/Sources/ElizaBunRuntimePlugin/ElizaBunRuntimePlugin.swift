@@ -482,7 +482,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             "legacyOmniVoiceBase": describeFile(bundle.appendingPathComponent("tts/omnivoice-base-Q4_K_M.gguf")),
             "legacyOmniVoiceTokenizer": describeFile(bundle.appendingPathComponent("tts/omnivoice-tokenizer-Q4_K_M.gguf")),
             "text": describeFile(bundle.appendingPathComponent("text/eliza-1-2b-128k.gguf")),
-            "asr": describeFile(bundle.appendingPathComponent("asr/eliza-1-asr.gguf")),
+            "asr": describeFile(bundle.appendingPathComponent("asr/phonon-2-fv5.gguf")),
             "manifest": describeFile(bundle.appendingPathComponent("eliza-1.manifest.json")),
         ]
         let ttsDir = bundle.appendingPathComponent("tts", isDirectory: true)

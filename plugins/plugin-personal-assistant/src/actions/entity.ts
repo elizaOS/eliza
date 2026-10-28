@@ -113,6 +113,17 @@ function normalizeLookup(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Match `value` only as a whole part: no letter, mark, or digit on either
+ * side. Unlike `\b`, this also works next to non-ASCII letters ("José").
+ */
+function wholePartRegExp(value: string): RegExp {
+  return new RegExp(
+    `(?<![\\p{L}\\p{M}\\p{N}])${escapeRegExp(value)}(?![\\p{L}\\p{M}\\p{N}])`,
+    "u",
+  );
+}
+
 /** Outcome of matching one caller-supplied name against the contact directory. */
 type NamedContactResolution =
   | { kind: "matched"; relationshipId: string }
@@ -156,10 +167,7 @@ async function resolveNamedContact(
 
   // A whole name part is stronger evidence than a handle or email part.
   // Preserve ambiguity within this tier.
-  const wholePartPattern = new RegExp(
-    `(?<![\\p{L}\\p{M}\\p{N}])${escapeRegExp(needle)}(?![\\p{L}\\p{M}\\p{N}])`,
-    "u",
-  );
+  const wholePartPattern = wholePartRegExp(needle);
   const wholeName = relationships.filter((relationship) =>
     wholePartPattern.test(normalizeLookup(relationship.name)),
   );
@@ -202,13 +210,7 @@ async function resolveRelationshipIdFromText(
   // "Joanna". Two named contacts are a tie, not the first one listed.
   const fullNameMatches = relationships.filter((relationship) => {
     const name = normalizeLookup(relationship.name);
-    return (
-      name.length > 0 &&
-      new RegExp(
-        `(?<![\\p{L}\\p{M}\\p{N}])${escapeRegExp(name)}(?![\\p{L}\\p{M}\\p{N}])`,
-        "u",
-      ).test(haystack)
-    );
+    return name.length > 0 && wholePartRegExp(name).test(haystack);
   });
   if (fullNameMatches.length > 0) {
     return fullNameMatches.length === 1
@@ -227,8 +229,7 @@ async function resolveRelationshipIdFromText(
     ].filter((token) => token.length >= 3);
 
     for (const token of [...nameTokens, ...handleTokens]) {
-      const tokenPattern = new RegExp(`\\b${escapeRegExp(token)}\\b`, "i");
-      if (tokenPattern.test(rawText)) {
+      if (wholePartRegExp(token).test(haystack)) {
         candidateMatches.set(relationship.id, relationship.id);
         break;
       }

@@ -583,7 +583,7 @@ export type VoiceMode = "cloud" | "own-key";
 /**
  * Speech-to-text provider. The legacy `whisper.cpp` pipeline has been
  * retired; on-device transcription now flows through the same local-inference
- * runtime that hosts the LLM (Gemma ASR bundle). Settings UI surfaces an
+ * runtime that hosts the LLM (Phonon-2 on libelizainference). Settings UI surfaces an
  * advanced override so users can switch to Eliza Cloud or OpenAI Whisper.
  */
 export type AsrProvider = "local-inference" | "eliza-cloud" | "openai";

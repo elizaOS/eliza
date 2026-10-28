@@ -20,7 +20,8 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { draftConsentDigest } from "../send-consent.ts";
+import { deviceGmailRequestConsent } from "../../../../services/device-actions/service.ts";
+import { draftConsentDigest, requireSendConsent } from "../send-consent.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import type { TriageService } from "../triage-service.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
@@ -159,6 +160,41 @@ export const respondToMessageAction: Action = {
     const record = await service.draftReply(runtime, messageId, body, _message);
 
     const consentDigest = draftConsentDigest(record);
+    if (
+      record.source === "gmail" &&
+      (await deviceGmailRequestConsent(runtime, _message)) !== "legacy"
+    ) {
+      const consent = await requireSendConsent(
+        runtime,
+        _message,
+        consentDigest,
+        {
+          source: record.source,
+          requestMessageId: _message.id,
+          draftId: record.draftId,
+        },
+      );
+      if (consent !== "confirmed") {
+        const pending = consent === "pending";
+        const text = pending
+          ? `Reply preview: ${record.preview} — send it?`
+          : "Nothing was sent. Review the reply again.";
+        return {
+          success: pending,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          continueChain: false,
+          data: {
+            requiresConfirmation: pending,
+            cancelled: !pending,
+            draftId: record.draftId,
+            source: record.source,
+          },
+        };
+      }
+    }
     if (policy) {
       const draftReq: DraftRequest = {
         source: record.source,

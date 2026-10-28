@@ -71,6 +71,7 @@ export const KNOWN_ROUTE_SHARD_KEYS: readonly string[] = [
   "v1/credits",
   "v1/cron",
   "v1/dashboard",
+  "v1/decisions",
   "v1/device-bus",
   "v1/discord",
   "v1/discovery",

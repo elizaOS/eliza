@@ -39,7 +39,7 @@ export function isThinStewardPublicPath(pathname: string): boolean {
  *
  * - POST /steward/auth/email/send — fires on the "Magic Link" click; gates
  *   the "Check your email" screen transition.
- * - POST /steward/auth/email/code/send — the native in-app (Alpha Phone)
+ * - POST /steward/auth/email/code/send — the native in-app (Example Reader)
  *   code-only email; gates the app's code-entry screen.
  * - POST /steward/auth/email/code/verify — fires on six-digit-code submit;
  *   gates login completion.
@@ -104,6 +104,14 @@ function isThinCloudOwnerPhonePath(pathname: string): boolean {
   );
 }
 
+function isThinStewardNativeGooglePath(pathname: string): boolean {
+  const path = removeTrailingSlashes(pathname);
+  return (
+    path === "/steward/auth/oauth/google/native/challenge" ||
+    path === "/steward/auth/oauth/google/native/verify"
+  );
+}
+
 export function isThinStewardPath(method: string, pathname: string): boolean {
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD") {
@@ -113,7 +121,8 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
     return (
       isThinStewardEmailAuthPath(pathname) ||
       isThinStewardPasskeyLoginOptionsPath(pathname) ||
-      isThinCloudOwnerPhonePath(pathname)
+      isThinCloudOwnerPhonePath(pathname) ||
+      isThinStewardNativeGooglePath(pathname)
     );
   }
   if (upper === "OPTIONS") {
@@ -121,7 +130,8 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
       isThinStewardPublicPath(pathname) ||
       isThinStewardEmailAuthPath(pathname) ||
       isThinStewardPasskeyLoginOptionsPath(pathname) ||
-      isThinCloudOwnerPhonePath(pathname)
+      isThinCloudOwnerPhonePath(pathname) ||
+      isThinStewardNativeGooglePath(pathname)
     );
   }
   return false;

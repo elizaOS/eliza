@@ -48,5 +48,35 @@ public final class OwnedMediaSelection {
       throw new IllegalArgumentException("Invalid page cursor");
     return value;
   }
+  /** True when {@code key} names an owned item: {@code <id>} (photo) or {@code v:<id>} (video). */
+  public static boolean isOwnedKey(String key) {
+    return key != null && key.matches("(?:v:)?[1-9][0-9]*");
+  }
+  /** The MediaStore id of an owned item name. */
+  public static long id(String key) {
+    if (!isOwnedKey(key))
+      throw new IllegalArgumentException("Select owned media first");
+    return Long.parseLong(key.replaceFirst("^v:", ""));
+  }
+  /**
+   * MIME type for one share of several items: the common type, else {@code image/*} or {@code
+   * video/*} when they share a family, else any type.
+   */
+  public static String shareType(String current, String next) {
+    if (current == null || current.equals(next))
+      return next;
+    if (current.startsWith("image/") && next.startsWith("image/"))
+      return "image/*";
+    if (current.startsWith("video/") && next.startsWith("video/"))
+      return "video/*";
+    return "*/*";
+  }
+  /** A trimmed custom album name of 1–80 characters without control characters. */
+  public static String albumName(String value) {
+    String name = value == null ? "" : value.trim();
+    if (name.isEmpty() || name.length() > 80 || name.chars().anyMatch(Character::isISOControl))
+      throw new IllegalArgumentException("Use an album name of 1–80 characters");
+    return name;
+  }
   private OwnedMediaSelection() {}
 }

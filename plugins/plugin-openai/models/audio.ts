@@ -342,6 +342,9 @@ export async function handleTextToSpeech(
     }
 
     const audioBuffer = await response.arrayBuffer();
+    if (audioBuffer.byteLength === 0) {
+      throw new Error("OpenAI TTS returned an empty audio response");
+    }
     details.response = `[audio bytes=${audioBuffer.byteLength} format=${format}]`;
     return audioBuffer;
   });

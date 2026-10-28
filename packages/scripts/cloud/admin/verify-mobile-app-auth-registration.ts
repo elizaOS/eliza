@@ -5,6 +5,7 @@
  * the Worker is live. Database credentials are accepted only through env.
  */
 import pg from "pg";
+import { selectRegisteredMobileClient } from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
 
 const { Client } = pg;
 
@@ -13,17 +14,10 @@ export const MOBILE_APP_AUTH_REDIRECT_URI = "https://eliza.app/auth/callback";
 export const MOBILE_APP_AUTH_REDIRECT_ORIGIN = "https://eliza.app";
 export const MOBILE_APP_AUTH_SCOPE = "cloud:user";
 export const MOBILE_APP_AUTH_CONFIG_MAX_BYTES = 16_384;
-export const ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID =
-  "ai.elizaresearch.alphaphone";
-export const MOBILE_APP_AUTH_CLIENTS_JSON_MAX_BYTES = 16_384;
-const MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS = 24 * 60 * 60;
-const MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS = 90 * 24 * 60 * 60;
-
 /**
  * One server-owned native client whose `apps` row this tooling verifies and
- * repairs. The primary Eliza app is fixed; additional clients (Alpha Phone)
- * are selected from `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and bound to an
- * environment-specific App Link callback.
+ * repairs. The primary Eliza app is fixed; additional clients come from the protected
+ * environment registry. Applications own their identities and exact callbacks.
  */
 export interface MobileAppAuthRegistrationTarget {
   clientId: string;
@@ -174,27 +168,12 @@ export function requireMobileAppAuthEnabled(value: unknown): boolean {
   );
 }
 
-export function alphaPhoneMobileAppAuthTarget(
-  environment: MobileAppAuthDeploymentEnvironment,
-): MobileAppAuthRegistrationTarget {
-  const redirectOrigin =
-    environment === "production"
-      ? "https://eliza.app"
-      : "https://staging.eliza.app";
-  return Object.freeze({
-    clientId: ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID,
-    redirectUri: `${redirectOrigin}/alphaphone/auth/callback`,
-    redirectOrigin,
-    appName: "Alpha Phone",
-    appDescription: "First-party Alpha Phone native sign-in client",
-    slugPrefix: "alpha-phone-auth",
-  });
-}
-
-/** Unset selects the primary client; any other value must be a known client. */
+/** Resolve any enabled client from the same protected registry the Worker reads. */
 export function resolveMobileAppAuthRegistrationTarget(
   clientId: unknown,
   environment: unknown,
+  registry?: unknown,
+  primaryAppId?: unknown,
 ): MobileAppAuthRegistrationTarget {
   if (
     clientId === undefined ||
@@ -203,86 +182,77 @@ export function resolveMobileAppAuthRegistrationTarget(
   ) {
     return PRIMARY_MOBILE_APP_AUTH_TARGET;
   }
-  if (clientId === ALPHA_PHONE_MOBILE_APP_AUTH_CLIENT_ID) {
-    return alphaPhoneMobileAppAuthTarget(
-      requireMobileAppAuthEnvironment(environment),
-    );
-  }
-  return fail(
-    "ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID must name a known first-party mobile client",
-  );
+  requireMobileAppAuthEnvironment(environment);
+  if (typeof clientId !== "string")
+    fail("The target client ID must be a string");
+  const entry = requireRegisteredMobileClient(registry, clientId, primaryAppId);
+  return Object.freeze({
+    clientId: entry.clientId,
+    redirectUri: entry.redirectUri,
+    redirectOrigin: new URL(entry.redirectUri).origin,
+    appName: "Native App",
+    appDescription: "Registered native sign-in client",
+    slugPrefix: "mobile-auth",
+  });
 }
 
-/**
- * Resolve an additional client's app UUID from the Worker registry value and
- * prove the entry is the one the Worker will select: enabled, bound to the
- * target's exact callback, and with a bounded credential lifetime. Values are
- * never echoed; failures name the invariant only.
- */
+function requireRegisteredMobileClient(
+  raw: unknown,
+  clientId: string,
+  primaryAppId: unknown,
+) {
+  const selected = selectRegisteredMobileClient(raw, clientId, {
+    clientId: MOBILE_APP_AUTH_CLIENT_ID,
+    appId: requireMobileAppAuthAppId(primaryAppId),
+    redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+  });
+  if (!selected.ok) {
+    fail(
+      selected.code === "invalid_client"
+        ? "Unknown or disabled mobile App Auth client"
+        : "Invalid server mobile client registry",
+    );
+  }
+  return selected.registration;
+}
+
+/** Verify the complete registry, including collisions with the primary app. */
 export function requireRegisteredMobileClientAppId(
   raw: unknown,
   target: MobileAppAuthRegistrationTarget,
+  primaryAppId: unknown,
 ): string {
-  if (
-    typeof raw !== "string" ||
-    raw.trim().length === 0 ||
-    raw.length > MOBILE_APP_AUTH_CLIENTS_JSON_MAX_BYTES
-  ) {
-    return fail("ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON must be configured");
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // error-policy:J3 operator registry text is untrusted; report the invariant only.
-    return fail("ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON must be valid JSON");
-  }
-  if (!Array.isArray(parsed)) {
-    return fail("ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON must be a JSON array");
-  }
-  const matches = parsed.filter(
-    (entry) => isRecord(entry) && entry.clientId === target.clientId,
+  const entry = requireRegisteredMobileClient(
+    raw,
+    target.clientId,
+    primaryAppId,
   );
-  if (matches.length !== 1) {
-    return fail(
-      "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON must register the target client exactly once",
-    );
-  }
-  const entry = matches[0] as Record<string, unknown>;
-  const allowedKeys = new Set([
-    "clientId",
-    "appId",
-    "redirectUri",
-    "enabled",
-    "credentialTtlSeconds",
-  ]);
-  if (Object.keys(entry).some((key) => !allowedKeys.has(key))) {
-    return fail("The target client registry entry has unknown keys");
-  }
-  if (entry.enabled !== true) {
-    return fail("The target client registry entry must be enabled");
-  }
   if (entry.redirectUri !== target.redirectUri) {
-    return fail(
-      `The target client registry entry must use exactly ${target.redirectUri}`,
+    fail(
+      "The target client registry entry must use exactly the selected callback",
     );
-  }
-  const ttl = entry.credentialTtlSeconds;
-  if (
-    ttl !== undefined &&
-    (typeof ttl !== "number" ||
-      !Number.isInteger(ttl) ||
-      ttl < MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS ||
-      ttl > MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS)
-  ) {
-    return fail(
-      "The target client registry entry credentialTtlSeconds must be between one and ninety days",
-    );
-  }
-  if (typeof entry.appId !== "string" || !UUID_PATTERN.test(entry.appId)) {
-    return fail("The target client registry entry appId must be a UUID");
   }
   return entry.appId;
+}
+
+/** Resolve the same requested client and app UUID for every admin operation. */
+export function resolveMobileAppAuthRegistrationSelection(
+  clientId: unknown,
+  environment: unknown,
+  registry: unknown,
+  primaryAppId: unknown,
+): { target: MobileAppAuthRegistrationTarget; appId: string } {
+  const target = resolveMobileAppAuthRegistrationTarget(
+    clientId,
+    environment,
+    registry,
+    primaryAppId,
+  );
+  const appId =
+    target === PRIMARY_MOBILE_APP_AUTH_TARGET
+      ? requireMobileAppAuthAppId(primaryAppId)
+      : requireRegisteredMobileClientAppId(registry, target, primaryAppId);
+  return { target, appId };
 }
 
 export function requireMobileAppAuthEnvironment(
@@ -296,10 +266,9 @@ export function requireMobileAppAuthEnvironment(
   return value;
 }
 
-function requireExactFirstPartyHttpsUrl(
+function requireFirstPartyHttpsUrl(
   value: unknown,
   field: string,
-  expected: string,
   expectedOrigin: string,
 ): void {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -326,9 +295,16 @@ function requireExactFirstPartyHttpsUrl(
   if (parsed.origin !== expectedOrigin) {
     fail(`${field} must use the exact ${expectedOrigin} origin`);
   }
-  if (value !== expected) {
-    fail(`${field} must be exactly ${expected}`);
-  }
+}
+
+function requireExactFirstPartyHttpsUrl(
+  value: unknown,
+  field: string,
+  expected: string,
+  expectedOrigin: string,
+): void {
+  requireFirstPartyHttpsUrl(value, field, expectedOrigin);
+  if (value !== expected) fail(`${field} must be exactly ${expected}`);
 }
 
 export function validateMobileAppAuthRegistrationRow(
@@ -350,12 +326,9 @@ export function validateMobileAppAuthRegistrationRow(
     fail("The mobile App Auth registration must be active and approved");
   }
 
-  requireExactFirstPartyHttpsUrl(
-    row.app_url,
-    "apps.app_url",
-    target.redirectOrigin,
-    target.redirectOrigin,
-  );
+  // app_url is app metadata, not the registered return URL. Apps may use a
+  // homepage path on the same HTTPS origin; callback authority stays literal.
+  requireFirstPartyHttpsUrl(row.app_url, "apps.app_url", target.redirectOrigin);
   if (!Array.isArray(row.allowed_origins)) {
     fail("apps.allowed_origins must be a JSON array");
   }
@@ -721,12 +694,34 @@ async function main(): Promise<void> {
   const enabled = requireMobileAppAuthEnabled(
     readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENABLED"),
   );
-  const appId =
+  const primaryAppId = readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID");
+  const registry = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
+  );
+  const clientId = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID",
+  );
+  const environment = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_ENVIRONMENT",
+  );
+  const selection =
     enabled && !options.skipDatabase
-      ? requireMobileAppAuthAppId(
-          readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_APP_ID"),
+      ? resolveMobileAppAuthRegistrationSelection(
+          clientId,
+          environment,
+          registry,
+          primaryAppId,
         )
       : undefined;
+  const target =
+    selection?.target ??
+    resolveMobileAppAuthRegistrationTarget(
+      clientId,
+      environment,
+      registry,
+      primaryAppId,
+    );
+  const appId = selection?.appId;
 
   if (enabled && !options.skipDatabase) {
     if (!appId) {
@@ -736,7 +731,7 @@ async function main(): Promise<void> {
     if (!databaseUrl) {
       fail("DATABASE_URL is required for the mobile App Auth preflight");
     }
-    await verifyDatabaseMobileAppAuthRegistration(databaseUrl, appId);
+    await verifyDatabaseMobileAppAuthRegistration(databaseUrl, appId, target);
     console.log("[MobileAppAuthPreflight] Database registration is valid.");
   } else if (!enabled) {
     console.log(
@@ -748,7 +743,7 @@ async function main(): Promise<void> {
     const environment = requireMobileAppAuthEnvironment(
       readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENVIRONMENT"),
     );
-    await verifyLiveMobileAppAuthConfig(environment, fetch, enabled);
+    await verifyLiveMobileAppAuthConfig(environment, fetch, enabled, target);
     console.log(
       `[MobileAppAuthPreflight] ${environment} public config is valid.`,
     );

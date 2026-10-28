@@ -86,6 +86,8 @@ COPY plugins/plugin-web-search plugins/plugin-web-search
 COPY plugins/plugin-workflow plugins/plugin-workflow
 
 WORKDIR /app/${SERVICE_DIR}
+# Smithers creates tenant-scoped execution state below the service working dir.
+RUN mkdir -p .eliza && chown appuser:appuser .eliza && chmod 700 .eliza
 USER appuser
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \

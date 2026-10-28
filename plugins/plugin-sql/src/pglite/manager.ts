@@ -16,6 +16,7 @@ import { vector } from "@electric-sql/pglite/vector";
 import { logger } from "@elizaos/core";
 import type { IDatabaseClientManager } from "../types";
 import { createPgliteInitError, PGLITE_ERROR_CODES } from "./errors";
+import { initdbSnapshotPath, readInitdbSnapshot } from "./initdb-snapshot";
 
 type PglitePidFileStatus =
   | "missing"
@@ -330,6 +331,14 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     // Translate to the URL form so in-memory actually stays in memory.
     if ((options as { dataDir?: unknown }).dataDir === ":memory:") {
       options = { ...options, dataDir: "memory://" };
+    }
+    // An empty in-memory database starts from the bundled initdb snapshot when
+    // there is one, so PGlite never creates (and keeps) its temporary initdb
+    // instance. See initdb-snapshot.ts.
+    const snapshot = readInitdbSnapshot(initdbSnapshotPath(options));
+    if (snapshot) {
+      options = { ...options, loadDataDir: snapshot };
+      logger.debug({ src: "plugin:sql" }, "pglite: starting from the bundled initdb snapshot");
     }
     if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
       return new PGlite(options);

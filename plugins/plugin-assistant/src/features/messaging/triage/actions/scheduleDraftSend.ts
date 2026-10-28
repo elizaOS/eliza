@@ -18,6 +18,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
+import { resolveMessageTimeZone } from "../../../basic-capabilities/providers/currentTime.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import {
   draftIdParameter,
@@ -102,12 +103,15 @@ export const scheduleDraftSendAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const parsed = parseScheduleDraftSendParams(options);
+    const parsed = parseScheduleDraftSendParams(
+      options,
+      resolveMessageTimeZone(runtime, message),
+    );
     if ("error" in parsed) {
       logger.warn(`[ScheduleDraftSend] ${parsed.error}`);
       return { success: false, text: parsed.error, error: parsed.error };

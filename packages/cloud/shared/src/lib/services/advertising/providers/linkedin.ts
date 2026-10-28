@@ -4,6 +4,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { logger } from "../../../utils/logger";
+import { NO_FOLLOW_REDIRECT, refuseRedirect } from "../../../utils/no-redirect-fetch";
 import { downloadAdMedia, mediaFileName } from "../media-utils";
 import type {
   AdAccountCredentials,
@@ -1016,12 +1017,16 @@ export const linkedinAdsProvider: AdProvider = {
         if (!uploadUrl || !imageUrn) {
           throw new Error("LinkedIn image upload initialization returned no upload URL");
         }
-        const upload = await linkedinFetch(linkedinUploadUrl(uploadUrl), {
-          method: "PUT",
-          redirect: "error",
-          headers: { Authorization: `Bearer ${credentials.accessToken}` },
-          body: bytes,
-        });
+        // Never follow a redirect with the bearer token or upload bytes; "manual"
+        // because workerd rejects "error", and a 3xx is refused explicitly.
+        const upload = await refuseRedirect(
+          await linkedinFetch(linkedinUploadUrl(uploadUrl), {
+            method: "PUT",
+            redirect: NO_FOLLOW_REDIRECT,
+            headers: { Authorization: `Bearer ${credentials.accessToken}` },
+            body: bytes,
+          }),
+        );
         if (!upload.ok) throw new Error(`LinkedIn image upload failed: ${upload.status}`);
         return {
           success: true,
@@ -1053,12 +1058,14 @@ export const linkedinAdsProvider: AdProvider = {
       const instructions = validateVideoUploadInstructions(rawInstructions, bytes.byteLength);
       const uploadedPartIds: string[] = [];
       for (const instruction of instructions) {
-        const part = await linkedinFetch(instruction.uploadUrl, {
-          method: "PUT",
-          redirect: "error",
-          headers: { "Content-Type": "application/octet-stream" },
-          body: bytes.slice(instruction.firstByte, instruction.lastByte + 1),
-        });
+        const part = await refuseRedirect(
+          await linkedinFetch(instruction.uploadUrl, {
+            method: "PUT",
+            redirect: NO_FOLLOW_REDIRECT,
+            headers: { "Content-Type": "application/octet-stream" },
+            body: bytes.slice(instruction.firstByte, instruction.lastByte + 1),
+          }),
+        );
         if (!part.ok) throw new Error(`LinkedIn video part upload failed: ${part.status}`);
         const etag = part.headers.get("etag");
         if (!etag) throw new Error("LinkedIn video part upload returned no ETag");
