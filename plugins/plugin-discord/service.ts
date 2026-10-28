@@ -2767,11 +2767,26 @@ export class DiscordService extends Service implements IDiscordService {
 								member.user.tag,
 							],
 						);
+						// Mirror the cache loop below: a zero score
+						// means no match, and must not become a
+						// 0.65 target. Without the guard every
+						// guild member became a target, so a
+						// single weak real match (0.7) fell
+						// within the 0.12 ambiguity margin of
+						// the 0.65 tail and the ambiguity branch
+						// rendered the whole membership, and a
+						// query matching nobody still resolved
+						// in a single-member guild. Real matches
+						// score 0.7 or higher, so the guard drops
+						// only the non-matching tail.
+						if (score <= 0) {
+							continue;
+						}
 						const target = this.buildConnectorUserTarget(
 							member.user,
 							guild,
 							member.displayName,
-							score || 0.65,
+							score,
 							accountId,
 						);
 						if (target) {
