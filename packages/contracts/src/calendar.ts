@@ -597,11 +597,13 @@ export const CALENDAR_READ_ACTIONS = {
   feed: "CALENDAR_FEED",
   next_event: "CALENDAR_NEXT_EVENT",
   search_events: "CALENDAR_SEARCH_EVENTS",
+  check_availability: "CALENDAR_CHECK_AVAILABILITY",
+  propose_times: "CALENDAR_PROPOSE_TIMES",
 } as const;
 
 export type CalendarReadBinding = {
   intentId: string;
-  operation: "feed" | "next_event" | "search_events";
+  operation: keyof typeof CALENDAR_READ_ACTIONS;
   /** Conditional applicability remains the existing planner's semantic judgment. */
   execution: "required" | "conditional";
   sourceMessageId: string;

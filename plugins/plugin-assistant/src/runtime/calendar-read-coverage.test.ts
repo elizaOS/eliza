@@ -8,11 +8,23 @@ import {
   AgentRuntime,
   type ContextObject,
   type EvaluatorOutput,
+  executePlannedToolCall,
+  type Memory,
   type PlannerTrajectory,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
+import * as collaborator from "@elizaos/plugin-assistant";
 import { describe, expect, it, vi } from "vitest";
 import { createCalendarActionRunner } from "../../../plugin-calendar/src/actions/calendar-handler.ts";
 import { CalendarService } from "../../../plugin-calendar/src/service/CalendarService.ts";
+import {
+  calendarAction,
+  calendarActionPromotionOptions,
+} from "../../../plugin-personal-assistant/src/actions/calendar.ts";
+import { computeProposedSlots } from "../../../plugin-personal-assistant/src/actions/lib/scheduling-handler.ts";
+import { LifeOpsService } from "../../../plugin-personal-assistant/src/lifeops/service.ts";
+import { renderGroundedActionReply } from "../actions/grounded-action-reply.ts";
+
 import { calendarReadCoverage, runEvaluator } from "./evaluator.ts";
 
 const requestedAt = Date.parse("2026-10-04T01:19:35Z");
@@ -616,4 +628,369 @@ describe("request-bound Calendar read coverage", () => {
     expect(stale.messageToUser).not.toContain("STALE SAME-DAY FACT");
     expect(stale.messageToUser).toContain("Notes view is open.");
   });
+});
+
+describe("Calendar proposal and availability outcome evidence", () => {
+  function proposalFixture() {
+    const f = fixture();
+    const bindings = f.context.metadata
+      ?.calendarReadBindings as CalendarReadBinding[];
+    bindings[0].operation = "propose_times";
+    f.trajectory.outcomeIntents = [
+      "Find one free 30-minute slot tomorrow afternoon",
+    ];
+    f.output.messageToUser = "12:00 to 12:30 is available.";
+    f.trajectory.steps[0] = {
+      iteration: 1,
+      toolCall: {
+        id: "proposal-now",
+        name: "CALENDAR_PROPOSE_TIMES",
+        params: {
+          duration: { minutes: 30 },
+          windowStart: "2026-10-05T12:00:00Z",
+          windowEnd: "2026-10-05T17:00:00Z",
+          timeZone: "UTC",
+        },
+      },
+      result: {
+        success: true,
+        effectReceipts: [
+          {
+            receiptId: "proposal-current",
+            operation: "calendar.propose_times.preview",
+            resource: {
+              kind: "calendar.feed",
+              id: "selected-calendar",
+              version: "snapshot-current",
+            },
+            artifacts: [],
+            idempotency: { key: null, replayed: false },
+            observedAt: "2026-10-04T01:19:36Z",
+            outcome: "preview",
+          },
+        ],
+        data: {
+          replyContext: {
+            domain: "lifeops",
+            scenario: "scheduling_proposed_slots",
+          },
+          calendarSnapshot: {
+            resource: {
+              kind: "calendar.feed",
+              id: "selected-calendar",
+              version: "snapshot-current",
+            },
+            artifacts: [],
+            observedAt: "2026-10-04T01:19:36Z",
+          },
+          durationMinutes: 30,
+          windowStart: "2026-10-05T12:00:00Z",
+          windowEnd: "2026-10-05T17:00:00Z",
+          timeZone: "UTC",
+          slots: computeProposedSlots({
+            now: new Date("2026-10-04T01:19:36Z"),
+            windowStart: new Date("2026-10-05T12:00:00Z"),
+            windowEnd: new Date("2026-10-05T17:00:00Z"),
+            durationMinutes: 30,
+            slotCount: 1,
+            preferences: {
+              timeZone: "UTC",
+              preferredStartLocal: "09:00",
+              preferredEndLocal: "17:00",
+              defaultDurationMinutes: 30,
+              travelBufferMinutes: 0,
+              blackoutWindows: [],
+              updatedAt: null,
+            },
+            events: [],
+          }),
+        },
+      },
+    };
+    const step = f.trajectory.steps[0];
+    const result = step.result;
+    const data = result?.data;
+    const receipt = result?.effectReceipts?.[0];
+    const call = step.toolCall;
+    const binding = bindings[0];
+    if (!result || !data || !receipt || !call || !binding)
+      throw new Error("Incomplete scheduling evidence fixture");
+    return { ...f, step, result, data, receipt, call, binding };
+  }
+  it("accepts a source-bound exact-duration slot preview without booking", () => {
+    const f = proposalFixture();
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it("does not let agenda evidence finish a slot-proposal request", async () => {
+    const f = proposalFixture();
+    f.call.name = "CALENDAR_FEED";
+    f.result.data = {
+      replyContext: {
+        domain: "calendar",
+        scenario: "feed_results",
+        context: { selection: "bounded_agenda" },
+      },
+    };
+    const model = vi.fn(async () => JSON.stringify(f.output));
+    const result = await runEvaluator({
+      runtime: { useModel: model },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(false);
+    expect(result.requestFullyCovered).toBe(false);
+    expect(result.outcomeCoverage?.[0].status).toBe("blocked");
+    expect(model).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    "missing-slots",
+    "wide-slot",
+    "outside-window",
+    "wrong-source",
+    "applied-write",
+  ])("rejects %s as exact-slot preview evidence", (fault) => {
+    const f = proposalFixture();
+    const data = f.data;
+    if (fault === "missing-slots") delete data.slots;
+    if (fault === "wide-slot")
+      data.slots = [
+        {
+          startAt: "2026-10-05T12:00:00Z",
+          endAt: "2026-10-05T14:30:00Z",
+          durationMinutes: 30,
+          timeZone: "UTC",
+        },
+      ];
+    if (fault === "outside-window")
+      data.slots = [
+        {
+          startAt: "2026-10-05T18:00:00Z",
+          endAt: "2026-10-05T18:30:00Z",
+          durationMinutes: 30,
+          timeZone: "UTC",
+        },
+      ];
+    if (fault === "wrong-source") f.receipt.resource.id = "other-calendar";
+    if (fault === "applied-write")
+      f.result.effectReceipts = [
+        {
+          ...f.receipt,
+          outcome: "applied",
+          commit: {
+            kind: "durable",
+            id: "unrequested-write",
+            committedAt: "2026-10-04T01:19:36Z",
+          },
+        },
+      ];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
+  it("preserves a complete bounded search that truthfully finds no slots", () => {
+    const f = proposalFixture();
+    f.data.slots = [];
+    f.output.messageToUser = "No slots fit the requested window.";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it.each([true, false])(
+    "accepts canonical interval availability isFree=%s without a mutation",
+    (isFree) => {
+      const f = proposalFixture();
+      f.binding.operation = "check_availability";
+      f.call.name = "CALENDAR_CHECK_AVAILABILITY";
+      f.call.params = {
+        interval: { startAt: "2026-10-05T12:00:00Z", durationMinutes: 30 },
+        timeZone: "UTC",
+      };
+      f.result.effectReceipts = [
+        {
+          ...f.receipt,
+          operation: "calendar.check_availability.read",
+          outcome: "noop",
+          reason: "Observed availability only",
+        },
+      ];
+      f.result.data = {
+        ...f.data,
+        windowEnd: "2026-10-05T12:30:00Z",
+        replyContext: {
+          domain: "lifeops",
+          scenario: isFree
+            ? "scheduling_window_free"
+            : "scheduling_window_busy",
+        },
+        isFree,
+        conflicts: isFree ? [] : [{ id: "conflict" }],
+      };
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(true);
+    },
+  );
+});
+
+describe("registered scheduling handler to completion coverage", () => {
+  it.each(["propose_times", "check_availability"] as const)(
+    "accepts actual %s result/receipt without calendar writes or reply model",
+    async (operation) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-10-04T01:19:36Z"));
+      const runtime = new AgentRuntime({
+        character: {
+          name: "Actual scheduling producer",
+          bio: [],
+          settings: { TIMEZONE: "UTC" },
+        },
+        logLevel: "fatal",
+      });
+      const noModel = vi
+        .spyOn(runtime, "useModel")
+        .mockRejectedValue(new Error("No model may run in handler proof"));
+      const tasks = vi.spyOn(runtime, "getTasks").mockResolvedValue([]);
+      const feed: LifeOpsCalendarFeed = {
+        calendarId: "selected-calendar",
+        events: [],
+        source: "synced",
+        state: "complete",
+        syncedAt: "2026-10-04T01:19:36Z",
+        timeMin: "2026-10-05T12:00:00Z",
+        timeMax: "2026-10-05T17:00:00Z",
+        sources: [
+          {
+            key: "selected-source",
+            summary: "Selected Calendar",
+            accessRole: "owner",
+            visibility: "details",
+            status: "fresh",
+            syncedAt: "2026-10-04T01:19:36Z",
+            error: null,
+          },
+        ],
+      };
+      const read = vi
+        .spyOn(LifeOpsService.prototype, "getCalendarFeed")
+        .mockResolvedValue(feed);
+      const create = vi.spyOn(LifeOpsService.prototype, "createCalendarEvent");
+      const update = vi.spyOn(LifeOpsService.prototype, "updateCalendarEvent");
+      const remove = vi.spyOn(LifeOpsService.prototype, "deleteCalendarEvent");
+      vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+        renderGroundedActionReply,
+      );
+      try {
+        const actions = promoteSubactionsToActions(
+          calendarAction,
+          calendarActionPromotionOptions,
+        );
+        for (const action of actions) runtime.registerAction(action);
+        const name =
+          operation === "propose_times"
+            ? "CALENDAR_PROPOSE_TIMES"
+            : "CALENDAR_CHECK_AVAILABILITY";
+        const params =
+          operation === "propose_times"
+            ? {
+                duration: { minutes: 30 },
+                slotCount: 1,
+                windowStart: "2026-10-05T12:00:00",
+                windowEnd: "2026-10-05T17:00:00",
+                timeZone: "UTC",
+              }
+            : {
+                interval: {
+                  startAt: "2026-10-05T12:00:00Z",
+                  durationMinutes: 30,
+                },
+                timeZone: "UTC",
+              };
+        const message = {
+          id: "00000000-0000-0000-0000-000000000101",
+          agentId: runtime.agentId,
+          entityId: runtime.agentId,
+          roomId: "00000000-0000-0000-0000-000000000102",
+          createdAt: requestedAt,
+          content: {
+            text:
+              operation === "propose_times"
+                ? "Find one 30-minute opening tomorrow afternoon in UTC."
+                : "Check availability tomorrow from noon to 12:30 UTC.",
+            source: "test",
+          },
+        } as Memory;
+        const result = await executePlannedToolCall(
+          runtime,
+          {
+            message,
+            state: { values: {}, data: {}, text: "" },
+            replyOwner: "planner",
+            userRoles: ["OWNER"],
+            activeContexts: ["calendar"],
+          },
+          { name, params },
+          { actions: runtime.actions },
+        );
+        expect(result.success).toBe(true);
+        expect(result.transcriptVisibility).toBe("internal");
+        expect(result.data?.replyGrounding).toEqual(expect.any(String));
+        expect(result.effectReceipts).toHaveLength(1);
+        expect(result.effectReceipts?.[0]).toMatchObject({
+          operation:
+            operation === "propose_times"
+              ? "calendar.propose_times.preview"
+              : "calendar.check_availability.read",
+          outcome: operation === "propose_times" ? "preview" : "noop",
+          resource: { kind: "calendar.feed", id: feed.calendarId },
+        });
+        expect(result.data?.calendarSnapshot).toMatchObject({
+          resource: { kind: "calendar.feed", id: feed.calendarId },
+        });
+        if (operation === "propose_times") {
+          expect(result.data?.awaitingUserInput).toBe(true);
+          expect(result.data?.slots).toHaveLength(1);
+          expect(result.data?.durationMinutes).toBe(30);
+        }
+        const f = fixture();
+        const bindings = f.context.metadata
+          ?.calendarReadBindings as CalendarReadBinding[];
+        bindings[0] = {
+          ...bindings[0],
+          operation,
+          sourceMessageId: message.id,
+          roomId: message.roomId,
+          actorId: message.entityId,
+          requestedAt,
+        };
+        f.context.metadata = {
+          ...f.context.metadata,
+          messageId: message.id,
+          roomId: message.roomId,
+          actorId: message.entityId,
+        };
+        f.trajectory.outcomeIntents = [message.content.text ?? ""];
+        f.trajectory.steps = [
+          {
+            iteration: 1,
+            toolCall: { id: "actual-scheduling", name, params },
+            result,
+          },
+        ];
+        expect(
+          calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+        ).toBe(true);
+        expect(read).toHaveBeenCalledOnce();
+        expect(tasks).toHaveBeenCalled();
+        expect(noModel).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(remove).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        vi.useRealTimers();
+      }
+    },
+  );
 });
