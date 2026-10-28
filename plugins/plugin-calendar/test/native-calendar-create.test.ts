@@ -2,8 +2,9 @@
  * Native phone Calendar create (the requesting-device path a phone uses before
  * the owner's on-device review). A normal solo request prepares one guestless
  * event; extraction evidence that does not match the original request, such as
- * an invented guest address, is refused with a plain "No event was created"
- * answer instead of escaping the action as an exception the planner repeats.
+ * an invented guest, is refused with a plain "No event was created" answer
+ * instead of escaping the action as an exception the planner repeats. A guest
+ * the owner named but gave no address for is asked about, never guessed.
  * Synthetic model output only; nothing is saved.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
@@ -92,12 +93,13 @@ describe("native phone Calendar create", () => {
     expect(runJsonModel).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses an invented guest address with a plain answer and no exception", async () => {
+  it("refuses an invented guest with a plain answer and no exception", async () => {
+    // Jordan appears nowhere in the request: the extraction invented the guest.
     const { runtime, reportError, runJsonModel } = runtimeWith(
       plan({
         state: "requested",
         guests: [
-          { name: "Sam", email: "sam.taylor@acme.com", optional: false },
+          { name: "Jordan", email: "jordan.lee@acme.com", optional: false },
         ],
       }),
     );
@@ -112,6 +114,25 @@ describe("native phone Calendar create", () => {
       { diagnosticOnly: true, code: "CALENDAR_CREATE_EVIDENCE_INVALID" },
     );
     // One extraction; nothing is retried with the rejected arguments.
+    expect(runJsonModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for the address of a named guest given an address the owner never wrote", async () => {
+    const { runtime, reportError, runJsonModel } = runtimeWith(
+      plan({
+        state: "requested",
+        guests: [
+          { name: "Sam", email: "sam.taylor@acme.com", optional: false },
+        ],
+      }),
+    );
+    const draft = await infer(runtime);
+    expect(draft.fields).toBeUndefined();
+    expect(draft.text).toContain("No event was created.");
+    expect(draft.text).toContain("guest's valid email address");
+    // A clarification, not a diagnostic; the invented address is never used.
+    expect(reportError).not.toHaveBeenCalled();
+    expect(draft.text).not.toContain("sam.taylor@acme.com");
     expect(runJsonModel).toHaveBeenCalledTimes(1);
   });
 
