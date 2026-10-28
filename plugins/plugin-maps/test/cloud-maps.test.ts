@@ -377,6 +377,50 @@ describe("Cloud provider binding", () => {
     expect(requests).toHaveLength(0);
   });
 
+  it("uses a travel mode an operator enabled after the cached capabilities read", async () => {
+    let modes = ["walk"];
+    const { adapter, requests, capabilityReads } = cloud(
+      () => Response.json({}),
+      {
+        coverage: () => ({
+          ...COVERAGE,
+          capabilities: { modes, reverseGeocode: true },
+        }),
+      },
+    );
+    const route = (travelMode: "walk" | "drive") =>
+      adapter.planRoute({
+        origin: {
+          provider: "coordinates",
+          providerPlaceId: "coordinates:origin",
+          name: "Casino",
+          coordinates: CASINO,
+          categories: [],
+        },
+        destination: {
+          provider: "eliza-cloud",
+          providerPlaceId: "N99",
+          name: "Port",
+          coordinates: PORT,
+          categories: [],
+        },
+        travelMode,
+      });
+    // The stub answers an empty body, so each admitted route fails to parse;
+    // what matters is whether the adapter sent it.
+    await route("walk").catch(() => undefined);
+    expect(requests).toHaveLength(1);
+    expect(capabilityReads).toHaveLength(1);
+    modes = ["walk", "drive"];
+    await route("drive").catch(() => undefined);
+    expect(capabilityReads).toHaveLength(2);
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.body).toMatchObject({ mode: "drive" });
+    // A served mode is answered from the cache without another read.
+    await route("walk").catch(() => undefined);
+    expect(capabilityReads).toHaveLength(2);
+  });
+
   it("accepts the opaque place ids of Cloud's configured geocoder", async () => {
     const { adapter, requests } = cloud((request) =>
       Response.json({

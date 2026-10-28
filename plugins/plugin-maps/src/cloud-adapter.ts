@@ -316,6 +316,20 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
   }
 
   /**
+   * Whether Cloud serves a feature. The cached capabilities answer a feature
+   * Cloud offered; a refusal is confirmed against a fresh read first, so a
+   * mode or feature an operator enabled after the cached read is used at once
+   * instead of being refused until restart.
+   */
+  private async serves(
+    feature: (served: CloudCapabilities["capabilities"]) => boolean,
+  ): Promise<boolean> {
+    if (feature((await this.capabilities()).capabilities)) return true;
+    this.binding = null;
+    return feature((await this.capabilities()).capabilities);
+  }
+
+  /**
    * What Cloud serves now: regions, dataset revision, travel modes and who
    * receives locations. It reads capabilities afresh (an operator can widen
    * coverage without changing attribution); Cloud does not count that read
@@ -439,7 +453,7 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
         cause: parsed.error,
       });
     }
-    if ((await this.capabilities()).capabilities.reverseGeocode === false) {
+    if (!(await this.serves((served) => served.reverseGeocode !== false))) {
       throw new MapsError("Eliza Cloud Maps does not reverse geocode.", {
         code: "MAPS_UNSUPPORTED_REGION",
       });
@@ -472,7 +486,7 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
       });
     }
     const { origin, destination, travelMode } = parsed.data;
-    if (!(await this.capabilities()).capabilities.modes.includes(travelMode)) {
+    if (!(await this.serves((served) => served.modes.includes(travelMode)))) {
       throw new MapsError(
         MESSAGE_BY_CODE.MAPS_UNSUPPORTED_REGION ??
           "This travel mode is not available.",

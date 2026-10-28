@@ -391,19 +391,11 @@ export function createMapsRoute(
       if (!getGenerativeExecutionContext(c)) await outcome;
       return c.json(result, 200, NO_STORE);
     } catch (error) {
-      if (c.req.raw.signal.aborted) await record("cancelled");
+      // Every admitted request gets an outcome. A failure the provider raises
+      // after admission (an id the geocoder cannot use, a misconfigured
+      // backend, an unexpected throw) is a failed request, never an unknown one.
+      await record(c.req.raw.signal.aborted ? "cancelled" : "failed");
       if (!(error instanceof MapsServiceError)) throw error;
-      if (
-        !c.req.raw.signal.aborted &&
-        [
-          "unsupported_region",
-          "unsupported_mode",
-          "no_route",
-          "provider_unavailable",
-          "provider_invalid_response",
-        ].includes(error.code)
-      )
-        await record("failed");
       // Operation and code only: queries and coordinates are never logged.
       logger.warn("[Maps] Request refused", {
         operation,
