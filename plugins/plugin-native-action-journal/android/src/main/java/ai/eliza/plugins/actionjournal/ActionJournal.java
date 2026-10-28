@@ -192,6 +192,10 @@ public final class ActionJournal {
    if (before == null) throw new Refused("Entry is not journaled");
    for (String name : new String[]{"scope", "proposalId", "operationId", "operationHash", "record", "createdAt", "attemptId", "applyingAt"})
     if (!sameJson(before.opt(name), next.opt(name))) throw new Refused("Journal identity cannot change");
+   // Native admission claims can be added once by a host transition. A stale
+   // recovery snapshot must never remove or replace already-durable authority.
+   if (before.has("nativeDispatchClaim") && !sameJson(before.opt("nativeDispatchClaim"), next.opt("nativeDispatchClaim")))
+    throw new Refused("Native dispatch claim cannot change");
    String phase = before.getString("phase"), nextPhase = next.getString("phase");
    if (!phase.equals(nextPhase) && !("applying".equals(phase) && "terminal".equals(nextPhase)))
     throw new Refused("Recovery cannot authorize another dispatch");

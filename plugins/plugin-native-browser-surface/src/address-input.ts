@@ -28,13 +28,20 @@ export function parseBrowserAddressInput(
   // single-label hosts (localhost:3000, nas:8080). Requiring a dot in
   // the host let those fall into the scheme test below, where the host
   // name was misread as a protocol and the input was rejected.
-  // Bracketed IPv6 literals with a port ([::1]:8080) are the same shape:
-  // without the bracket form they fall through to the search fallback even
-  // though the user typed a complete address.
+  // Bracketed IPv6 literals ([::1]:8080) are the same shape: without the
+  // bracket form they fall through to the search fallback even though the
+  // user typed a complete address. The port is optional — a bare literal
+  // ([::1]) is a complete loopback address, not a search query. The bracket
+  // contents must be IPv6-shaped (at least one colon): a colon-less token
+  // like [1] or [abc] is a search query, and routing it to new URL() would
+  // turn valid searches into invalid-url rejections.
   const hostPort =
     /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value) ||
-    /^\[[0-9a-fA-F:.%]+\]:\d+(?:[/?#]|$)/.test(value);
-  const explicit = !hostPort && /^[a-z][a-z\d+.-]*:/i.test(value);
+    /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/.test(value);
+  // A scheme is its name, the colon and then its body. Prose such as
+  // `re: dinner` or `time: 1:30 pm` only looks scheme-shaped; reading the
+  // first word as a protocol rejected a search the user typed.
+  const explicit = !hostPort && /^[a-z][a-z\d+.-]*:(?:\S|$)/i.test(value);
   const domain = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/.test(value);
   if (!explicit && !domain && !hostPort && !value.startsWith("//")) {
     if (value.includes("@")) return { kind: "rejected", reason: "credentials" };
@@ -50,6 +57,10 @@ export function parseBrowserAddressInput(
           : `${options.defaultProtocol}//${value}`,
     );
   } catch {
+    // A bracketed token that only looked IPv6-shaped ([1:30], [a:b]) was
+    // typed as a search, not an address.
+    if (value.startsWith("[") && !explicit && !domain)
+      return { kind: "search", query: value };
     return { kind: "rejected", reason: "invalid-url" };
   }
   if (url.protocol !== "http:" && url.protocol !== "https:")

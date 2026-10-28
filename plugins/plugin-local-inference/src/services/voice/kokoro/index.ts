@@ -47,16 +47,6 @@ export {
 	readKokoroBackendFromEnv,
 } from "./pick-runtime";
 export type {
-	VoiceBackendChoice,
-	VoiceBackendDecision,
-	VoiceBackendInputs,
-	VoiceBackendMode,
-} from "./runtime-selection";
-export {
-	readVoiceBackendModeFromEnv,
-	selectVoiceBackend,
-} from "./runtime-selection";
-export type {
 	KokoroBackendOptions,
 	KokoroModelLayout,
 	KokoroPhonemeSequence,

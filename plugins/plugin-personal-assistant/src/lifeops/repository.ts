@@ -777,6 +777,15 @@ export class LifeOpsRepository {
   ): ReturnType<InboxCacheRepository["listCachedInboxMessages"]> {
     return this.inboxCache.listCachedInboxMessages(...args);
   }
+  deleteCachedInboxMessagesForGmailAccount(
+    ...args: Parameters<
+      InboxCacheRepository["deleteCachedInboxMessagesForGmailAccount"]
+    >
+  ): ReturnType<
+    InboxCacheRepository["deleteCachedInboxMessagesForGmailAccount"]
+  > {
+    return this.inboxCache.deleteCachedInboxMessagesForGmailAccount(...args);
+  }
   markCachedInboxMessageRead(
     ...args: Parameters<InboxCacheRepository["markCachedInboxMessageRead"]>
   ): ReturnType<InboxCacheRepository["markCachedInboxMessageRead"]> {

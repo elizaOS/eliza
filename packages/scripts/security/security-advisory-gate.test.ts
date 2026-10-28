@@ -36,7 +36,7 @@ describe("base-trusted workflow contract", () => {
     // suite green (#19372 review), so the pin needs its own assertion here.
     assert.match(
       workflow,
-      /uses: actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020/,
+      /uses: actions\/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1/,
     );
     assert.match(workflow, /node-version: "24\.15\.0"/);
   });

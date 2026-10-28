@@ -479,6 +479,26 @@ describe("Eliza Cloud Maps routes", () => {
     expect(empty.attribution).toContain("OpenStreetMap");
   });
 
+  test("an admitted request the provider refuses records a failed outcome", async () => {
+    const outcomes: string[] = [];
+    const calls: URL[] = [];
+    const res = await call(
+      "details",
+      deps({
+        admitRequest: async () => async (outcome) => {
+          outcomes.push(outcome);
+        },
+        provider: () => provider(() => Response.json([]), calls),
+      }),
+      // Passes the opaque route schema, but Nominatim cannot look it up.
+      { id: "eliza:not-an-osm-id" },
+    );
+    expect(res.status).toBe(400);
+    expect((await json(res)).code).toBe("invalid_request");
+    expect(calls).toHaveLength(0);
+    expect(outcomes).toEqual(["failed"]);
+  });
+
   test("malformed route values return a typed provider failure, never zero coordinates or a server crash", async () => {
     for (const path of [
       null,

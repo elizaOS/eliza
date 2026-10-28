@@ -44,7 +44,7 @@ jobs:
       DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
       PRODUCTION_APPROVAL_COMMENT_URL: ${{ inputs.production_approval_comment_url }}
       HEALTH_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app/api/health' || 'https://api-staging.eliza.app/api/health' }}
-      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
+      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://eliza-gateway-webhook-production.square-rain-7251.workers.dev' || 'https://eliza-gateway-webhook-staging.square-rain-7251.workers.dev' }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Validate protected target and production approval
@@ -68,7 +68,7 @@ jobs:
               require_exact GITHUB_REF "$GITHUB_REF" refs/heads/staging
               require_exact EDGE_SECRET_NAME "$EDGE_SECRET_NAME" PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_ENABLED
               require_exact HEALTH_URL "$HEALTH_URL" https://api-staging.eliza.app/api/health
-              require_exact GATEWAY_URL "$GATEWAY_URL" https://gateway-webhook-stg-staging.up.railway.app
+              require_exact GATEWAY_URL "$GATEWAY_URL" https://eliza-gateway-webhook-staging.square-rain-7251.workers.dev
               if [ -n "$PRODUCTION_APPROVAL_COMMENT_URL" ]; then
                 echo "::error::Production approval must not be supplied to a staging cutover"
                 exit 1
@@ -79,7 +79,7 @@ jobs:
               require_exact GITHUB_REF "$GITHUB_REF" refs/heads/main
               require_exact EDGE_SECRET_NAME "$EDGE_SECRET_NAME" PERSONAL_SHARED_TELEGRAM_EDGE_CUTOVER_PRODUCTION_ENABLED
               require_exact HEALTH_URL "$HEALTH_URL" https://api.eliza.app/api/health
-              require_exact GATEWAY_URL "$GATEWAY_URL" https://gateway-webhook-production.up.railway.app
+              require_exact GATEWAY_URL "$GATEWAY_URL" https://eliza-gateway-webhook-production.square-rain-7251.workers.dev
 
               if [[ ! "$PRODUCTION_APPROVAL_COMMENT_URL" =~ ^https://github\.com/elizaOS/eliza/(issues|pull)/[0-9]+#issuecomment-([0-9]+)$ ]]; then
                 echo "::error::Production cutover requires a canonical NubsCarson approval comment URL"
@@ -139,12 +139,8 @@ jobs:
       DESIRED_ENABLED: ${{ inputs.enabled && 'true' || 'false' }}
       PRODUCTION_APPROVAL_COMMENT_URL: ${{ inputs.production_approval_comment_url }}
       HEALTH_URL: ${{ inputs.environment == 'production' && 'https://api.eliza.app/api/health' || 'https://api-staging.eliza.app/api/health' }}
-      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://gateway-webhook-production.up.railway.app' || 'https://gateway-webhook-stg-staging.up.railway.app' }}
-      EXPECTED_GATEWAY_SERVICE_NAME: ${{ inputs.environment == 'production' && 'gateway-webhook' || 'gateway-webhook-stg' }}
-      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-      RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID_GATEWAY_WEBHOOK }}
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      GATEWAY_URL: ${{ inputs.environment == 'production' && 'https://eliza-gateway-webhook-production.square-rain-7251.workers.dev' || 'https://eliza-gateway-webhook-staging.square-rain-7251.workers.dev' }}
+      EXPECTED_GATEWAY_SERVICE_NAME: ${{ inputs.environment == 'production' && 'eliza-gateway-webhook-production' || 'eliza-gateway-webhook-staging' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       GH_TOKEN: ${{ github.token }}
@@ -153,6 +149,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -262,30 +262,6 @@ jobs:
           fi
           echo "$TARGET_ENVIRONMENT Worker Telegram identity is attested."
 
-      - name: Install pinned Railway CLI
-        if: inputs.enabled == true
-        shell: bash
-        run: |
-          set -euo pipefail
-          cli_root="$RUNNER_TEMP/railway-cli"
-          archive="$RUNNER_TEMP/railway-v5.38.0.tar.gz"
-          mkdir -p "$cli_root"
-          curl \
-            --fail \
-            --location \
-            --silent \
-            --show-error \
-            --retry 3 \
-            --output "$archive" \
-            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
-          printf '%s  %s\n' \
-            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
-            "$archive" | sha256sum --check --status
-          tar -xzf "$archive" -C "$cli_root" railway
-          chmod 0755 "$cli_root/railway"
-          echo "$cli_root" >> "$GITHUB_PATH"
-          "$cli_root/railway" --version | grep -F "railway 5.38.0"
-
       - name: Verify exact active gateway before enable
         id: gateway_proof
         if: inputs.enabled == true
@@ -293,10 +269,8 @@ jobs:
           set -euo pipefail
           required_settings=(
             EXPECTED_GATEWAY_SERVICE_NAME
-            RAILWAY_PROJECT_ID
-            RAILWAY_ENVIRONMENT_ID
-            RAILWAY_SERVICE_ID
-            RAILWAY_TOKEN
+            CLOUDFLARE_ACCOUNT_ID
+            CLOUDFLARE_API_TOKEN
           )
           for name in "${required_settings[@]}"; do
             value="${!name:-}"
@@ -305,14 +279,6 @@ jobs:
               exit 1
             fi
           done
-          for name in RAILWAY_PROJECT_ID RAILWAY_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
-            value="${!name}"
-            if [[ ! "$value" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
-              echo "::error::$name must be a Railway UUID on the protected $TARGET_ENVIRONMENT environment"
-              exit 1
-            fi
-          done
-
           gateway_run="$(mktemp)"
           gh api \
             "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-gateway-webhook.yml/runs?branch=$EXPECTED_BRANCH&event=workflow_dispatch&per_page=1" \
@@ -347,6 +313,10 @@ jobs:
              .environment == $environment and
              .service == $service and
              .telegramIdentity == "attested" and
+             .provider == "cloudflare" and
+             (.image | startswith("registry.cloudflare.com/23cf6feaeaa541f6a0675053c33da768/")) and
+             (.image | test("@sha256:[a-f0-9]{64}$")) and
+             (.versionId | type == "string" and test("^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")) and
              (.deploymentId | type == "string" and
               test("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"))' \
             "$receipt" >/dev/null; then
@@ -354,34 +324,20 @@ jobs:
             exit 1
           fi
           gateway_deployment_id="$(jq -r '.deploymentId' "$receipt")"
+          gateway_version_id="$(jq -r '.versionId' "$receipt")"
+          gateway_image="$(jq -r '.image' "$receipt")"
 
-          active_gateway="$RUNNER_TEMP/gateway-webhook-active-deployment.json"
           assert_active_gateway() {
-            local phase="$1"
-            railway service status \
-              --project "$RAILWAY_PROJECT_ID" \
-              --environment "$RAILWAY_ENVIRONMENT_ID" \
-              --service "$RAILWAY_SERVICE_ID" \
-              --json > "$active_gateway"
-            jq -e \
-              --arg id "$gateway_deployment_id" \
-              --arg service "$RAILWAY_SERVICE_ID" \
-              --arg name "$EXPECTED_GATEWAY_SERVICE_NAME" \
-              '.id == $service and
-               .name == $name and
-               .deploymentId == $id and
-               .status == "SUCCESS" and
-               .stopped == false' \
-              "$active_gateway" >/dev/null || {
-              echo "::error::Exact-source gateway deployment is not active $phase public verification"
-              exit 1
-            }
+            EXPECTED_GATEWAY_IMAGE="$gateway_image" \
+            EXPECTED_GATEWAY_DEPLOYMENT="$gateway_deployment_id" \
+            EXPECTED_GATEWAY_VERSION="$gateway_version_id" \
+              node packages/cloud/scripts/cloudflare-gateway-deployment.ts > /dev/null
           }
 
           assert_active_gateway before
           health="$(mktemp)"
           code="$(curl -sS -o "$health" -w '%{http_code}' -m 20 "$GATEWAY_URL/health" || echo '000')"
-          if [ "$code" != "200" ] || ! jq -e '.status == "healthy"' "$health" >/dev/null; then
+          if [ "$code" != "200" ] || ! jq -e --arg sha "$EXPECTED_SOURCE_SHA" '.status == "healthy" and .buildId == $sha' "$health" >/dev/null; then
             rm -f "$health"
             echo "::error::Exact-source $TARGET_ENVIRONMENT gateway is not healthy"
             exit 1
@@ -420,12 +376,16 @@ jobs:
           rm -f "$telegram_readiness"
           assert_active_gateway after
           echo "deployment_id=$gateway_deployment_id" >> "$GITHUB_OUTPUT"
+          echo "version_id=$gateway_version_id" >> "$GITHUB_OUTPUT"
+          echo "image=$gateway_image" >> "$GITHUB_OUTPUT"
           echo "Protected gateway run $gateway_run_id has active deployment $gateway_deployment_id on the exact Worker source."
 
       - name: Apply and verify served edge state
         working-directory: packages/cloud/api
         env:
           EXPECTED_GATEWAY_DEPLOYMENT_ID: ${{ steps.gateway_proof.outputs.deployment_id }}
+          EXPECTED_GATEWAY_VERSION_ID: ${{ steps.gateway_proof.outputs.version_id }}
+          EXPECTED_GATEWAY_IMAGE: ${{ steps.gateway_proof.outputs.image }}
         run: |
           set -euo pipefail
 
@@ -499,27 +459,12 @@ jobs:
               echo "::error::Exact active gateway deployment proof is absent"
               return 1
             fi
-            active_gateway="$(mktemp)"
-            railway service status \
-              --project "$RAILWAY_PROJECT_ID" \
-              --environment "$RAILWAY_ENVIRONMENT_ID" \
-              --service "$RAILWAY_SERVICE_ID" \
-              --json > "$active_gateway"
-            if ! jq -e \
-              --arg id "$EXPECTED_GATEWAY_DEPLOYMENT_ID" \
-              --arg service "$RAILWAY_SERVICE_ID" \
-              --arg name "$EXPECTED_GATEWAY_SERVICE_NAME" \
-              '.id == $service and
-               .name == $name and
-               .deploymentId == $id and
-               .status == "SUCCESS" and
-               .stopped == false' \
-              "$active_gateway" >/dev/null; then
-              rm -f "$active_gateway"
+            if ! EXPECTED_GATEWAY_DEPLOYMENT="$EXPECTED_GATEWAY_DEPLOYMENT_ID" \
+              EXPECTED_GATEWAY_VERSION="$EXPECTED_GATEWAY_VERSION_ID" \
+              node ../scripts/cloudflare-gateway-deployment.ts > /dev/null; then
               echo "::error::Exact-source gateway deployment is not active $phase edge mutation"
               return 1
             fi
-            rm -f "$active_gateway"
           }
 
           assert_active_gateway before

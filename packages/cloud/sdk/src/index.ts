@@ -33,6 +33,7 @@ export {
   applyNativeApplicationInferenceHeaders,
   NativeApplicationInferenceError,
 } from "./native-application-inference.js";
+export type * from "./native-host-routes.js";
 export type {
   PublicRouteBaseCallOptions,
   PublicRouteCallOptions,

@@ -40,12 +40,12 @@ final class NativeNotificationProjector {
         String priority = item.getString("priority");
         JSONObject data = item.optJSONObject("data");
         String ownerType = "reminder".equals(item.getString("category")) && data != null ? data.optString("ownerType", "") : "";
-        NotificationChannel selected = ElizaReminderMessagingService.resolveReminderChannel(manager, priority, ownerType);
+        NotificationChannel selected = NativeNotificationChannels.resolveReminderChannel(manager, priority, ownerType);
         if (manager.getNotificationChannel(selected.getId()) == null) {
             selected.setLockscreenVisibility(android.app.Notification.VISIBILITY_PRIVATE);
             manager.createNotificationChannel(selected);
         }
-        if (ElizaReminderMessagingService.isReminderChannelBlocked(manager, manager.getNotificationChannel(selected.getId()))) return false;
+        if (NativeNotificationChannels.isReminderChannelBlocked(manager, manager.getNotificationChannel(selected.getId()))) return false;
         String id = item.getString("id"), key = owner + ":" + id, token = UUID.randomUUID().toString();
         SharedPreferences receipts = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         if (!receipts.edit().putString(key, token).commit()) throw new IOException("Notification tap authority could not be persisted");
@@ -69,7 +69,7 @@ final class NativeNotificationProjector {
         android.app.Notification post = new NotificationCompat.Builder(context, selected.getId())
                 .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(item.getString("title"))
                 .setContentText(item.getString("body")).setStyle(new NotificationCompat.BigTextStyle().bigText(item.getString("body")))
-                .setVisibility(android.app.Notification.VISIBILITY_PRIVATE).setAutoCancel(true).setOnlyAlertOnce(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setAutoCancel(true).setOnlyAlertOnce(true)
                 .setContentIntent(PendingIntent.getActivity(context, 0, tap, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE))
                 .addExtras(extras).build();
         String tag = TAG + key;

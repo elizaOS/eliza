@@ -23,6 +23,7 @@
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   createHfProxyEgressQuotaStore,
+  HfEgressStateError,
   type HfProxyEgressQuotaStore,
 } from "@elizaos/cloud-shared/lib/services/hf-proxy-egress-quota";
 import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -238,7 +239,14 @@ app.get("/*", async (c) => {
       );
     }
 
-    const path = (c.req.param("*") ?? "").replace(/^\/+/, "");
+    // Build the upstream URL first and check the path the request will really
+    // fetch: the router decodes `%2F`, and `..` segments resolve only inside
+    // `new URL`, so the raw param can name one repo while the request leaves
+    // for another.
+    const upstream = new URL(
+      `${HF_UPSTREAM_HOST}/${(c.req.param("*") ?? "").replace(/^\/+/, "")}`,
+    );
+    const path = upstream.pathname.replace(/^\/+/, "");
     // Only forward genuine HuggingFace download paths.
     if (!path.includes("/resolve/")) {
       return c.json(
@@ -291,10 +299,8 @@ app.get("/*", async (c) => {
       );
     }
 
-    const incomingUrl = new URL(c.req.url);
-    const upstream = new URL(`${HF_UPSTREAM_HOST}/${path}`);
     // Preserve the original query (e.g. ?download=true) verbatim.
-    upstream.search = incomingUrl.search;
+    upstream.search = new URL(c.req.url).search;
 
     const headers = new Headers();
     headers.set("authorization", `Bearer ${hfToken}`);
@@ -419,6 +425,17 @@ app.get("/*", async (c) => {
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof HfEgressStateError) {
+      // error-policy:J1 Refuse provider admission when the selected quota owner is unavailable.
+      logger.error("[hf-proxy] quota state unavailable", {
+        error: error.message,
+      });
+      return c.json(
+        { error: "HuggingFace proxy quota service is unavailable." },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });

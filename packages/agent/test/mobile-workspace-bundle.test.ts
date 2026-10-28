@@ -1,9 +1,20 @@
 /** Compiles and executes workspace exports through the mobile source resolver. */
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
+import {
+  createMobileBundleDependencies,
+  readMobileBundleDependencies,
+} from "../scripts/mobile-bundle-dependencies.ts";
 
 it("bundles unbuilt nested package exports into a runnable artifact without changing browser selection", async () => {
   const root = path.resolve(import.meta.dirname, "../../..");
@@ -122,6 +133,174 @@ it("bundles unbuilt nested package exports into a runnable artifact without chan
         ),
       ).toThrow(/Missing mobile export/);
     }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 60_000);
+
+it("keeps the emitted package inventory when a runnable mobile bundle is compacted", async () => {
+  const output = testOutputPath("mobile-workspace-bundle");
+  await mkdir(output, { recursive: true });
+  const directory = await mkdtemp(path.join(output, "inventory-"));
+  const packageDirectory =
+    "node_modules/.bun/@fixture+payload@1.2.3/node_modules/@fixture/payload";
+  const aliasDirectory = "node_modules/@fixture/payload";
+  try {
+    await mkdir(path.join(directory, packageDirectory), { recursive: true });
+    await mkdir(path.join(directory, "node_modules/@fixture"), {
+      recursive: true,
+    });
+    await writeFile(
+      path.join(directory, packageDirectory, "package.json"),
+      JSON.stringify({
+        name: "@fixture/payload",
+        version: "1.2.3",
+        type: "module",
+        main: "index.js",
+      }),
+    );
+    await writeFile(
+      path.join(directory, packageDirectory, "index.js"),
+      `
+      // Keep the callable name but remove this source comment and whitespace.
+      export function retainedOperation(value) {
+        return { value: value + 1, name: retainedOperation.name };
+      }
+    `,
+    );
+    await symlink(
+      path.join(directory, packageDirectory),
+      path.join(directory, aliasDirectory),
+    );
+    await writeFile(
+      path.join(directory, "entry.ts"),
+      'import {retainedOperation} from "@fixture/payload"; console.log(JSON.stringify(retainedOperation(6)));',
+    );
+    await writeFile(
+      path.join(directory, "build.ts"),
+      `
+      const compact = process.argv[2] === "compact";
+      const directory = ${JSON.stringify(directory)};
+      const result = await Bun.build({entrypoints:[directory+"/entry.ts"],outdir:directory+"/"+(compact?"compact":"plain"),target:"bun",format:"esm",metafile:true,minify:compact?{syntax:true,whitespace:true,identifiers:false}:false});
+      if(!result.success)throw new AggregateError(result.logs,"Bundle failed");
+      await Bun.write(directory+"/"+(compact?"compact":"plain")+"/inputs.json",JSON.stringify(Object.values(result.metafile.outputs).find(output=>output.entryPoint)));
+    `,
+    );
+    const manifests = [];
+    const sizes = [];
+    for (const mode of ["plain", "compact"]) {
+      const buildCwd = mode === "compact" ? path.dirname(directory) : directory;
+      execFileSync(
+        "bun",
+        ["--no-install", path.join(directory, "build.ts"), mode],
+        {
+          cwd: buildCwd,
+          stdio: "pipe",
+        },
+      );
+      const bundle = await readFile(path.join(directory, mode, "entry.js"));
+      const output = JSON.parse(
+        await readFile(path.join(directory, mode, "inputs.json"), "utf8"),
+      );
+      expect(path.resolve(buildCwd, output.entryPoint)).toBe(
+        path.join(directory, "entry.ts"),
+      );
+      const inventory = createMobileBundleDependencies({
+        inputs: output.inputs,
+        resolveDirectory: buildCwd,
+        repositoryRoot: directory,
+        bundleBytes: bundle,
+      });
+      expect(
+        readMobileBundleDependencies(inventory, bundle, directory),
+      ).toEqual(inventory.packages);
+      expect(
+        JSON.parse(
+          execFileSync("bun", ["--no-install", `${mode}/entry.js`], {
+            cwd: directory,
+            encoding: "utf8",
+          }),
+        ),
+      ).toEqual({ value: 7, name: "retainedOperation" });
+      expect(() =>
+        readMobileBundleDependencies(
+          inventory,
+          Buffer.from("changed bundle"),
+          directory,
+        ),
+      ).toThrow(/missing or mismatched/);
+      expect(() =>
+        readMobileBundleDependencies(
+          { ...inventory, packages: [] },
+          bundle,
+          directory,
+        ),
+      ).toThrow(/missing or mismatched/);
+      expect(() =>
+        readMobileBundleDependencies(
+          {
+            ...inventory,
+            packages: [{ ...inventory.packages[0], version: "different" }],
+          },
+          bundle,
+          directory,
+        ),
+      ).toThrow(/metadata changed/);
+      expect(() =>
+        readMobileBundleDependencies(
+          {
+            ...inventory,
+            packages: [
+              {
+                ...inventory.packages[0],
+                directory: "node_modules/../outside",
+              },
+            ],
+          },
+          bundle,
+          directory,
+        ),
+      ).toThrow(/not canonical/);
+      expect(() =>
+        readMobileBundleDependencies(
+          {
+            ...inventory,
+            packages: [...inventory.packages, ...inventory.packages],
+          },
+          bundle,
+          directory,
+        ),
+      ).toThrow(/duplicates/);
+      manifests.push(inventory.packages);
+      sizes.push(bundle.length);
+    }
+    expect(manifests[1]).toEqual(manifests[0]);
+    expect(sizes[1]).toBeLessThan(sizes[0]);
+    // Preserve each emitted alias, and ignore metadata inputs which emit no bytes.
+    const aliases = createMobileBundleDependencies({
+      inputs: {
+        [`${packageDirectory}/index.js`]: { bytesInOutput: 1 },
+        [`${aliasDirectory}/index.js`]: { bytesInOutput: 1 },
+        "node_modules/not-emitted/missing.js": { bytesInOutput: 0 },
+      },
+      resolveDirectory: directory,
+      repositoryRoot: directory,
+      bundleBytes: Buffer.from("aliases"),
+    });
+    expect(aliases.packages.map((entry) => entry.directory)).toEqual([
+      packageDirectory,
+      aliasDirectory,
+    ]);
+    expect(aliases.packages[0].packageJsonSha256).toEqual(
+      aliases.packages[1].packageJsonSha256,
+    );
+    await writeFile(
+      path.join(directory, packageDirectory, "package.json"),
+      '{"name":"changed","version":"1.2.3"}',
+    );
+    expect(() =>
+      readMobileBundleDependencies(aliases, Buffer.from("aliases"), directory),
+    ).toThrow(/metadata changed/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

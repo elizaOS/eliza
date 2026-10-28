@@ -5,7 +5,7 @@
  * probing the known service-type aliases — decoupling consumers from the
  * concrete service class.
  */
-import type { UUID } from "@elizaos/core";
+import type { AgentEventInput, IAgentRuntime, UUID } from "@elizaos/core";
 
 /** In-process only: symbols survive local event delivery but never JSON/model context. */
 export const AUTONOMY_NOTIFICATION_DELIVERY = Symbol(
@@ -44,6 +44,7 @@ export interface HeartbeatEventPayloadLike {
 }
 
 export interface AgentEventServiceLike {
+  emit?: (event: AgentEventInput) => void;
   subscribe: (listener: (event: AgentEventPayloadLike) => void) => () => void;
   subscribeHeartbeat: (
     listener: (event: HeartbeatEventPayloadLike) => void,
@@ -76,4 +77,34 @@ export function getAgentEventService(
   }
 
   return null;
+}
+
+/** Publish only after a canonical client-visible message was committed. Metadata is
+ * invalidation, not content or delivery permission; clients fetch owned history. */
+export function publishConversationUpdate(
+  runtime: Pick<IAgentRuntime, "agentId" | "getService" | "reportError">,
+  conversationId: string,
+  roomId: UUID,
+  messageId: UUID,
+): void {
+  try {
+    getAgentEventService(runtime)?.emit?.({
+      runId: `conversation-delivery:${runtime.agentId}`,
+      stream: "message",
+      agentId: runtime.agentId,
+      roomId,
+      data: { type: "sent", channel: "client_chat", conversationId, messageId },
+    });
+  } catch (error) {
+    // Neither an event observer nor its error reporter can undo a committed row
+    // or prevent the independent WebSocket/notification delivery paths.
+    try {
+      runtime.reportError("conversation-event-publication", error, {
+        conversationId,
+        messageId,
+      });
+    } catch {
+      /* Best-effort diagnostics only. */
+    }
+  }
 }

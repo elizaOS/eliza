@@ -74,7 +74,7 @@ jobs:
       - name: Validate CI Bun version pin contract
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
       - name: Upload Bun runtime resolution inventory
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: bun-runtime-inventory
           path: ${{ runner.temp }}/bun-runtime-inventory.json
@@ -362,7 +362,7 @@ jobs:
         run: bun run --cwd packages/testing test:pr:e2e
       - name: Upload deterministic E2E reports
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: tests-zero-key-e2e-report
           path: |
@@ -514,7 +514,7 @@ jobs:
         run: bun run --cwd packages/app test:e2e:accounts-ui
       - name: Upload accounts-ui evidence artifacts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: scenario-pr-app-accounts-ui
           path: test-results/evidence/10722-accounts-ui-e2e/

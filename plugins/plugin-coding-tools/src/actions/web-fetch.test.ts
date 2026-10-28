@@ -121,6 +121,36 @@ it("Node JSON extraction supports bounded array indexes and refuses unsafe paths
   }
 });
 
+it("Node decodes a body with the charset its Content-Type names", async () => {
+  // [Content-Type, body bytes written as \xNN, expected text]
+  const pages: Record<string, [string, string, string]> = {
+    "/latin1": ["text/plain; charset=ISO-8859-1", "caf\xe9", "café"],
+    "/cp1252": [
+      'text/html; charset="windows-1252"',
+      "<p>\x93Price\x94 \x80 5</p>",
+      "“Price” € 5",
+    ],
+    "/sjis": ["text/plain;charset=shift_jis", "\x93\xfa\x96\x7b", "日本"],
+    // An unknown label keeps the UTF-8 reading.
+    "/unknown": ["text/plain; charset=x-unknown", "caf\xc3\xa9", "café"],
+  };
+  __setWebHttpLookupFnForTests(async () => [
+    { address: "93.184.216.34", family: 4 },
+  ]);
+  __setWebHttpPinnedFetchImplForTests(async ({ url }) => {
+    const [contentType, bytes] = pages[url.pathname];
+    return new Response(
+      Uint8Array.from(bytes, (char) => char.charCodeAt(0)),
+      { headers: { "content-type": contentType } },
+    );
+  });
+  for (const [path, [, , text]] of Object.entries(pages)) {
+    const result = await runFetch({ url: `https://example.com${path}` });
+    expect(result?.success).toBe(true);
+    expect(result?.text).toBe(text);
+  }
+});
+
 it("Node caller abort reaches the pinned HTTP transport before it settles", async () => {
   const caller = new AbortController();
   const reason = new Error("cancel owned Node read");
