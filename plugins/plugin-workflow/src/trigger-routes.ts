@@ -304,6 +304,10 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     (await listTriggerTasks(currentRuntime)).filter((task) =>
       isTriggerTaskOwnedBy(task, ownerEntityId, localOwnerEntityId, currentRuntime.agentId)
     );
+  const countActiveTriggers = (tasks: Task[]): number =>
+    tasks.filter(
+      (task) => readTriggerConfig(task)?.enabled && !isAgentOwnedHeartbeat(task, runtime.agentId)
+    ).length;
   if (method === 'GET' && pathname === '/api/triggers/health') {
     json(res, await getTriggerHealthSnapshot(runtime));
     return true;
@@ -389,10 +393,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       return true;
     }
     const existingTasks = await listOwnedTriggerTasks(runtime);
-    const activeCount = existingTasks.filter((task) => {
-      const trigger = readTriggerConfig(task);
-      return trigger?.enabled && !isAgentOwnedHeartbeat(task, runtime.agentId);
-    }).length;
+    const activeCount = countActiveTriggers(existingTasks);
     const limit = getTriggerLimit(runtime);
     if (activeCount >= limit) {
       error(res, `Active trigger limit reached (${limit})`, 429);
@@ -706,16 +707,9 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       triggerId: current.triggerId,
       previous: current,
     });
-    // Enabling a saved trigger produces the state POST bounds: the cap counts
-    // the owner's enabled triggers, so re-check it here. Without this, an owner
-    // at the cap disables triggers, creates replacements, and re-enables the
-    // old ones to hold an unbounded number of active automations.
+    // Enabling a saved trigger is bound by the same active-trigger limit as POST.
     if (!current.enabled && nextTrigger.enabled) {
-      const activeCount = (await listOwnedTriggerTasks(runtime)).filter((candidate) => {
-        if (candidate.id === task.id) return false;
-        const trigger = readTriggerConfig(candidate);
-        return trigger?.enabled && !isAgentOwnedHeartbeat(candidate, runtime.agentId);
-      }).length;
+      const activeCount = countActiveTriggers(await listOwnedTriggerTasks(runtime));
       const limit = getTriggerLimit(runtime);
       if (activeCount >= limit) {
         error(res, `Active trigger limit reached (${limit})`, 429);
