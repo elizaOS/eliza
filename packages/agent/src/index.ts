@@ -84,6 +84,7 @@ export * from "./api/memory-routes.ts";
 export * from "./api/model-catalog.ts";
 export * from "./api/model-config-routes.ts";
 export * from "./api/models-routes.ts";
+export { registerNativeViewRenderer } from "./api/native-view-renderer.ts";
 export { setOwnerContact } from "./api/owner-contact-helpers.ts";
 export * from "./api/parse-action-block.ts";
 export * from "./api/permissions-routes.ts";
@@ -102,7 +103,6 @@ export * from "./api/project-routes.ts";
 export * from "./api/provider-switch-config.ts";
 export * from "./api/rate-limiter.ts";
 export * from "./api/registry-routes.ts";
-export * from "./api/registry-service.ts";
 export * from "./api/runtime-management-routes.ts";
 export {
   handleRuntimeModePreDispatch,

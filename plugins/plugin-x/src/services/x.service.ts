@@ -24,6 +24,7 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
+  parseBooleanValue,
   Service,
   type TargetInfo,
   type UUID,
@@ -47,12 +48,13 @@ import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import {
   fetchMediaData,
-  splitTweetContent,
+  sendTextAsTweetThread,
   splitXDirectMessageContent,
 } from "../utils";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
 import { getEpochMs } from "../utils/time";
+import type { Post } from "./IPostService";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -297,9 +299,12 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Mentions and interactions
+    // Boolean setting, on by default: "false", "0", "no" and "off" turn it off.
     const repliesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
-        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+          process.env.TWITTER_ENABLE_REPLIES,
+      ) ?? true;
 
     if (repliesEnabled) {
       logger.info("Twitter replies/interactions are ENABLED");
@@ -955,40 +960,44 @@ export class XService extends Service {
             )
           ).map(({ data, mediaType }) => ({ data, type: mediaType }))
         : [];
-      const chunks = splitTweetContent(text, X_MAX_POST_LENGTH);
-      const memories: Memory[] = [];
-      let inReplyTo = replyToTweetId;
-      for (let index = 0; index < chunks.length; index += 1) {
-        const chunk = chunks[index];
-        if (chunk === undefined) continue;
-        const post = await postService.createPost(
-          {
-            agentId: runtime.agentId,
-            roomId,
-            text: chunk,
-            ...(inReplyTo ? { inReplyTo } : {}),
-            ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
-            ...(index === 0 && media.length > 0 ? { media } : {}),
-          },
-          profile,
-        );
-        memories.push(
-          this.buildXPostMemory(runtime, {
-            id: post.id,
-            userId: post.userId,
-            username: post.username,
-            text: post.text,
-            createdAt: post.timestamp,
-            inReplyTo: post.inReplyTo,
-            roomId: post.roomId,
-            metadata: post.metadata,
-            metrics: post.metrics,
-            accountId,
-            ownUserId: profile.id,
-          }),
-        );
-        inReplyTo = post.id;
-      }
+      const posts: Post[] = [];
+      // A failure after the first chunk is public reports the accepted ids
+      // (X_THREAD_PARTIALLY_POSTED) so a retry does not post the thread again.
+      await sendTextAsTweetThread(
+        text,
+        async (chunk, previousTweetId, index) => {
+          const inReplyTo = previousTweetId ?? replyToTweetId;
+          const post = await postService.createPost(
+            {
+              agentId: runtime.agentId,
+              roomId,
+              text: chunk,
+              ...(inReplyTo ? { inReplyTo } : {}),
+              ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
+              ...(index === 0 && media.length > 0 ? { media } : {}),
+            },
+            profile,
+          );
+          posts.push(post);
+          return { id: post.id };
+        },
+        X_MAX_POST_LENGTH,
+      );
+      const memories = posts.map((post) =>
+        this.buildXPostMemory(runtime, {
+          id: post.id,
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          createdAt: post.timestamp,
+          inReplyTo: post.inReplyTo,
+          roomId: post.roomId,
+          metadata: post.metadata,
+          metrics: post.metrics,
+          accountId,
+          ownUserId: profile.id,
+        }),
+      );
       return memories;
     });
   }
@@ -1265,7 +1274,20 @@ export class XService extends Service {
     // A DM fetch failure (expired token, rate limit) propagates: callers
     // translate it at their boundary, and an empty list would read as an
     // empty inbox.
-    const messages = await this.listRecentDirectMessages(accountId);
+    //
+    // A targeted bounded read stops paging once `limit` target
+    // matches are collected: the timeline is newest-first, so
+    // those are exactly the newest `limit` conversation messages
+    // the old full-scan-then-slice returned. A targeted
+    // dates-range read (limit undefined) keeps the full scan:
+    // that is the no-bounds complete-history contract.
+    const messages = await this.listRecentDirectMessages(
+      accountId,
+      targetUserId === undefined ? limit : undefined,
+      targetUserId !== undefined && limit !== undefined
+        ? { targetUserId, count: limit }
+        : undefined,
+    );
 
     // A stored room targets the provider conversation id, while a resolved
     // user target names the authenticated one-to-one counterpart. Accept both
@@ -1492,6 +1514,7 @@ export class XService extends Service {
   private async listRecentDirectMessages(
     accountId: string,
     limit?: number,
+    stop?: { targetUserId: string; count: number },
   ): Promise<
     Array<{
       id: string;
@@ -1547,6 +1570,7 @@ export class XService extends Service {
         isInbound: boolean;
         participantIds: string[];
       }> = [];
+      let stopMatches = 0;
       for await (const event of iterator) {
         if (event.event_type && event.event_type !== "MessageCreate") {
           continue;
@@ -1568,6 +1592,22 @@ export class XService extends Service {
         });
         if (limit !== undefined && messages.length >= limit) {
           break;
+        }
+        // Targeted early stop: same predicate the caller
+        // filters on, so the collected prefix is exactly what
+        // filter-then-slice would have returned.
+        if (stop) {
+          const last = messages[messages.length - 1];
+          if (
+            last &&
+            (last.conversationId === stop.targetUserId ||
+              dmCounterpartId(last) === stop.targetUserId)
+          ) {
+            stopMatches += 1;
+            if (stopMatches >= stop.count) {
+              break;
+            }
+          }
         }
       }
       this.assertDmSessionCurrent(base, session);

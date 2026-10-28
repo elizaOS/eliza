@@ -2,6 +2,7 @@
 
 export {
   buildWideLookupRange,
+  registerCalendarActionHostAdapter,
   resolveCalendarMutationCandidates,
 } from "./actions/calendar-handler.js";
 export {
@@ -49,6 +50,7 @@ export {
 export { createCalendarMutationApprovalGateway } from "./actions/mutation-approval.js";
 export {
   type CalendarClientMethods,
+  createCalendarApi,
   installCalendarClient,
 } from "./api/client-calendar.js";
 export {
@@ -64,6 +66,7 @@ export {
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
 } from "./calendar-action-schema.js";
+export { calendarReadParameters } from "./calendar-read-parameters.js";
 export {
   CalendarSection,
   type CalendarSectionProps,

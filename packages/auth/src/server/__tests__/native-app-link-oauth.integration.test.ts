@@ -636,6 +636,111 @@ describe("native App Link OAuth (Example Reader)", () => {
     expect(replay.status).toBe(401);
   }, 30_000);
 
+  test("parallel wrong TOTP codes on one challenge stop at the attempt limit", async () => {
+    const priorProxyHops = process.env.STEWARD_TRUSTED_PROXY_HOPS;
+    process.env.STEWARD_TRUSTED_PROXY_HOPS = "1";
+    try {
+      const identity = {
+        sub: "google-sub-mfa-burst",
+        email: "mfa-burst@example.test",
+        email_verified: true,
+      };
+      const first = await completeProviderRoundTrip("google", identity);
+      const session = await (
+        await nativePost("/auth/oauth/exchange", {
+          code: readHandOff(first.handOff).code,
+          redirectUri: APP_LINK,
+          tenantId: TENANT_ID,
+          codeVerifier: first.verifier,
+        })
+      ).json();
+      const bearer = (path: string, body: object) =>
+        app.request(`${ROUTER_ORIGIN}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify(body),
+        });
+      const { secret } = (await (
+        await bearer("/auth/mfa/totp/enroll", {})
+      ).json()) as { secret: string };
+      const { generateTotp } = await import("../auth/totp");
+      expect(
+        (
+          await bearer("/auth/mfa/totp/verify", {
+            code: await generateTotp(secret),
+          })
+        ).status,
+      ).toBe(200);
+
+      const verifier = base64url(randomBytes(48));
+      const authorize = await nativeGet(
+        `/auth/oauth/google/authorize?${authorizeQuery({
+          code_challenge: s256(verifier),
+          mfa: "exchange",
+        })}`,
+      );
+      const providerCode = base64url(randomBytes(16));
+      identities.set(providerCode, identity);
+      const callback = await nativeGet(
+        `/auth/oauth/google/callback?code=${providerCode}&state=${new URL(authorize.headers.get("location") ?? "").searchParams.get("state")}`,
+      );
+      const outcome = classifyCallback(
+        callback.headers.get("location") ?? "",
+        "production",
+      );
+      const exchange = (await (
+        await nativePost("/auth/oauth/exchange", {
+          code: outcome.kind === "success" ? outcome.code : "",
+          redirectUri: APP_LINK,
+          tenantId: TENANT_ID,
+          codeVerifier: verifier,
+        })
+      ).json()) as { mfa: { challengeId: string } };
+
+      const valid = new Set<string>();
+      for (let step = -2; step <= 2; step += 1) {
+        valid.add(
+          await generateTotp(secret, { time: Date.now() + step * 30_000 }),
+        );
+      }
+      const wrongCodes: string[] = [];
+      for (let n = 0; wrongCodes.length < 20; n += 1) {
+        const code = String(n).padStart(6, "0");
+        if (!valid.has(code)) wrongCodes.push(code);
+      }
+      // Each guess comes from its own address, so only the per-challenge
+      // attempt limit applies.
+      const statuses = await Promise.all(
+        wrongCodes.map(async (code, index) => {
+          const response = await app.request(
+            `${ROUTER_ORIGIN}/auth/mfa/totp/complete`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-forwarded-for": `198.51.100.${index + 10}`,
+              },
+              body: JSON.stringify({
+                challengeId: exchange.mfa.challengeId,
+                code,
+              }),
+            },
+          );
+          return response.status;
+        }),
+      );
+      expect(statuses.filter((status) => status === 401)).toHaveLength(5);
+      expect(statuses.filter((status) => status === 429)).toHaveLength(15);
+    } finally {
+      if (priorProxyHops === undefined)
+        delete process.env.STEWARD_TRUSTED_PROXY_HOPS;
+      else process.env.STEWARD_TRUSTED_PROXY_HOPS = priorProxyHops;
+    }
+  }, 30_000);
+
   test("authorize refuses an unknown mfa mode", async () => {
     const response = await nativeGet(
       `/auth/oauth/google/authorize?${authorizeQuery({ mfa: "inline" })}`,

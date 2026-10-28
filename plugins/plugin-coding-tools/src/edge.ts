@@ -9,6 +9,7 @@ import {
 import { fetchKeylessWeb } from "@elizaos/plugin-web-search/edge";
 import {
   createWebFetchAction,
+  type WebFetchEvidencePort,
   type WebFetchReader,
 } from "./actions/web-fetch-core.js";
 import { readTextWithinLimit } from "./lib/web-response.js";
@@ -48,6 +49,7 @@ const DIRECT_PUBLIC_ORIGINS = new Set([
 ]);
 
 async function readTrustedPublicOrigin(url: string, caller?: AbortSignal) {
+  const requestedAt = Date.now();
   const controller = new AbortController();
   const onAbort = () => controller.abort(caller?.reason);
   if (caller?.aborted) onAbort();
@@ -62,10 +64,13 @@ async function readTrustedPublicOrigin(url: string, caller?: AbortSignal) {
   let response: Response | undefined;
   try {
     controller.signal.throwIfAborted();
-    response = await fetch(url, {
+    const requestPolicy = {
       method: "GET",
       redirect: "manual",
       cache: "no-store",
+    } as const;
+    response = await fetch(url, {
+      ...requestPolicy,
       signal: controller.signal,
       headers: {
         Accept: "application/json,text/plain;q=0.9",
@@ -94,6 +99,9 @@ async function readTrustedPublicOrigin(url: string, caller?: AbortSignal) {
     );
     return {
       kind: "origin-http" as const,
+      requestedAt,
+      retrievedAt: Date.now(),
+      requestPolicy,
       ok: response.ok,
       status: response.status,
       url,
@@ -109,13 +117,25 @@ async function readTrustedPublicOrigin(url: string, caller?: AbortSignal) {
   }
 }
 
-export function createWebFetchEdgeAction() {
+export type {
+  WebFetchEvidencePort,
+  WebFetchOriginRead,
+  WebFetchOriginResult,
+} from "./actions/web-fetch-core.js";
+
+export function createWebFetchEdgeAction(
+  options: { readEvidence?: WebFetchEvidencePort } = {},
+) {
   const reader: WebFetchReader = async (url, signal) => {
     signal?.throwIfAborted();
     if (!isFreshPublicWebUrl(url))
       throw new Error("A safe canonical public HTTPS URL is required");
-    if (DIRECT_PUBLIC_ORIGINS.has(new URL(url).origin))
+    if (
+      DIRECT_PUBLIC_ORIGINS.has(new URL(url).origin) ||
+      options.readEvidence?.acceptsOriginUrl?.(url) === true
+    )
       return readTrustedPublicOrigin(url, signal);
+    const requestedAt = Date.now();
     const result = await fetchKeylessWeb([url], {
       signal,
       timeoutMs: 5000,
@@ -162,16 +182,21 @@ export function createWebFetchEdgeAction() {
       url,
       text: JSON.stringify(record),
       observedAt: Date.now(),
+      ...(options.readEvidence ? { requestedAt } : {}),
       truncated: false,
     };
   };
-  return createWebFetchAction(reader, {
-    roleGate: { minRole: "GUEST" },
-    contexts: ["web", "general"],
-    contextGate: { anyOf: ["web", "general"] },
-    routingHint:
-      "Read ONE known or constructable public HTTPS URL or JSON API -> WEB_FETCH; spot crypto price -> https://api.coingecko.com/api/v3/simple/price?ids=<coin>&vs_currencies=usd; current weather -> https://wttr.in/<latitude>,<longitude>?format=j1 ; disambiguate coordinates/country and read nearest_area plus observation/date fields before narrowing with extract=current_condition; discover unknown URLs -> WEB_SEARCH.",
-    description:
-      "Read one public HTTPS URL. Exact api.coingecko.com and wttr.in origins use bounded direct HTTPS GET with no-store and no redirects; JSON extract paths work for these origin responses. Check weather coordinates, nearest_area and observation date before calling it current for a city. Other public URLs use anonymous provider extracts with no origin-freshness guarantee or JSON extraction. Private addresses, credentials, custom ports and sensitive query parameters are rejected.",
-  });
+  return createWebFetchAction(
+    reader,
+    {
+      roleGate: { minRole: "GUEST" },
+      contexts: ["web", "general"],
+      contextGate: { anyOf: ["web", "general"] },
+      routingHint:
+        "Read ONE known or constructable public HTTPS URL or JSON API -> WEB_FETCH; spot crypto price -> https://api.coingecko.com/api/v3/simple/price?ids=<coin>&vs_currencies=usd; current weather -> https://wttr.in/<latitude>,<longitude>?format=j1 ; disambiguate coordinates/country and read nearest_area plus observation/date fields before narrowing with extract=current_condition; discover unknown URLs -> WEB_SEARCH.",
+      description:
+        "Read one public HTTPS URL. Exact api.coingecko.com and wttr.in origins use bounded direct HTTPS GET with no-store and no redirects; JSON extract paths work for these origin responses. Check weather coordinates, nearest_area and observation date before calling it current for a city. Other public URLs use anonymous provider extracts with no origin-freshness guarantee or JSON extraction. Private addresses, credentials, custom ports and sensitive query parameters are rejected.",
+    },
+    options.readEvidence,
+  );
 }

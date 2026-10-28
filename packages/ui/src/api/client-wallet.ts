@@ -1,6 +1,6 @@
 /**
- * Wallet domain methods — wallet addresses/balances, steward, registry
- * (ERC-8004), drop/mint, whitelist, twitter verify.
+ * Wallet domain methods — wallet addresses/balances, steward, drop/mint,
+ * whitelist, twitter verify.
  */
 
 import type {
@@ -16,9 +16,6 @@ import type {
 } from "@elizaos/contracts";
 import { ElizaClient } from "./client-base";
 import type {
-  RegistrationResult,
-  RegistryConfig,
-  RegistryStatus,
   VerificationMessageResponse,
   WhitelistStatus,
 } from "./client-types-cloud";
@@ -123,25 +120,6 @@ declare module "./client-base.js" {
       request: StewardSignRequest,
     ): Promise<BrowserWorkspaceWalletTransactionResult>;
     getWalletMarketOverview(): Promise<WalletMarketOverviewResponse>;
-    getRegistryStatus(): Promise<RegistryStatus>;
-    registerAgent(params?: {
-      name?: string;
-      endpoint?: string;
-      tokenURI?: string;
-    }): Promise<RegistrationResult>;
-    updateRegistryTokenURI(tokenURI: string): Promise<{
-      ok: boolean;
-      txHash: string;
-    }>;
-    syncRegistryProfile(params?: {
-      name?: string;
-      endpoint?: string;
-      tokenURI?: string;
-    }): Promise<{
-      ok: boolean;
-      txHash: string;
-    }>;
-    getRegistryConfig(): Promise<RegistryConfig>;
     getDropStatus(): Promise<DropStatus>;
     mintAgent(params?: {
       name?: string;
@@ -344,39 +322,6 @@ ElizaClient.prototype.getWalletMarketOverview = async function (
   this: ElizaClient,
 ) {
   return this.fetch("/api/wallet/market-overview");
-};
-ElizaClient.prototype.getRegistryStatus = async function (this: ElizaClient) {
-  return this.fetch("/api/registry/status");
-};
-ElizaClient.prototype.registerAgent = async function (
-  this: ElizaClient,
-  params?,
-) {
-  return this.fetch("/api/registry/register", {
-    method: "POST",
-    body: JSON.stringify(params ?? {}),
-  });
-};
-ElizaClient.prototype.updateRegistryTokenURI = async function (
-  this: ElizaClient,
-  tokenURI,
-) {
-  return this.fetch("/api/registry/update-uri", {
-    method: "POST",
-    body: JSON.stringify({ tokenURI }),
-  });
-};
-ElizaClient.prototype.syncRegistryProfile = async function (
-  this: ElizaClient,
-  params?,
-) {
-  return this.fetch("/api/registry/sync", {
-    method: "POST",
-    body: JSON.stringify(params ?? {}),
-  });
-};
-ElizaClient.prototype.getRegistryConfig = async function (this: ElizaClient) {
-  return this.fetch("/api/registry/config");
 };
 ElizaClient.prototype.getDropStatus = async function (this: ElizaClient) {
   return this.fetch("/api/drop/status");

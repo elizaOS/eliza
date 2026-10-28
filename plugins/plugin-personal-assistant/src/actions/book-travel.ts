@@ -14,6 +14,7 @@ import type {
 } from "@elizaos/core";
 import {
   recentConversationTexts as collectRecentConversationTexts,
+  ElizaError,
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
@@ -40,6 +41,7 @@ import {
   ApprovalAmbiguousDeliveryError,
   runApprovalDispatch,
 } from "./lib/approval-execution.js";
+import { ApprovalKnownNonDeliveryError } from "./lib/messaging-helpers.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -661,8 +663,22 @@ export async function executeApprovedBookTravel(args: {
             passengers,
             calendarSync: payload.calendarSync ?? null,
             calendarGrantId,
+            approvedTotal: {
+              cents: payload.totalCents,
+              currency: payload.currency,
+            },
           });
         } catch (error) {
+          if (
+            error instanceof ElizaError &&
+            error.code === "TRAVEL_QUOTE_CHANGED"
+          ) {
+            // No order was created: nothing was charged.
+            throw new ApprovalKnownNonDeliveryError(
+              "TRAVEL_QUOTE_CHANGED",
+              "The flight price rose after you approved it, so I did not book it. Ask me to quote it again.",
+            );
+          }
           if (error instanceof TravelPostBookingProjectionError) {
             throw new ApprovalAmbiguousDeliveryError(
               error.message,

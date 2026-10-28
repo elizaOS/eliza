@@ -92,6 +92,7 @@ import { MemoryRetentionService } from "./memory-retention-service.ts";
 import { retainedPendantSchema } from "./retained-pendant-schema.ts";
 import { activeViewSourceEvaluator } from "./view-action-affinity.ts";
 import {
+  registerViewNavigationRoutingRule,
   viewNavigationEvaluator,
   viewNavigationField,
 } from "./view-navigation.ts";
@@ -157,6 +158,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       PairingService as ServiceClass,
     ],
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
+      registerViewNavigationRoutingRule(runtime);
       registerTriggerTaskWorker(runtime);
       registerErrorEscalation(runtime);
       setCustomActionsRuntime(runtime);

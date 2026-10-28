@@ -11,3 +11,8 @@ include ':capacitor-cordova-android-plugins'
 project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
 
 apply from: 'capacitor.settings.gradle'
+
+// Explicit image-only companion; neither module is a launcher dependency.
+include ':sense', ':sense-speech'
+
+include ':voice-assets'

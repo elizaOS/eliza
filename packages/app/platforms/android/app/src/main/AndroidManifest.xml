@@ -2,6 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <queries>
+        <!-- The AOSP launcher reads launchable activities and the current dialer. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
         <!-- Capability detection must not confuse package invisibility with
              absent Google Play services and replace a working FCM path. -->
         <package android:name="com.google.android.gms" />
@@ -39,6 +48,7 @@
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/AppTheme">
+        <meta-data android:name="ai.eliza.voice.BUNDLE_DIRECTORY" android:value="eliza-1/bundle" />
         <!-- One FCM receiver; inherited stock behavior handles all non-reminder messages. -->
         <service
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
