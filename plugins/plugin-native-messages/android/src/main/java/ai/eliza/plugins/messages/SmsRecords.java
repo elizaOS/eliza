@@ -63,4 +63,10 @@ public final class SmsRecords {
  }
  /** MMS dates are seconds; SMS dates are milliseconds. */
  public static long mmsMillis(long seconds) { return seconds > 0 && seconds < 100_000_000_000L ? seconds * 1000L : seconds; }
+ /**
+  * The provider MMS date (seconds) bound for "shown at or before {@code millis}": an MMS reported at
+  * {@code seconds * 1000 <= millis} has {@code seconds <= millis / 1000}, so a message newer than the
+  * shown page is never included.
+  */
+ public static long mmsSecondsThrough(long millis) { return millis > 0 ? millis / 1000L : 0; }
 }

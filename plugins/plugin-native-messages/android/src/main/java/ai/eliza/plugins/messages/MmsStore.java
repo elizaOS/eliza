@@ -93,6 +93,29 @@ public final class MmsStore {
     new String[] { Integer.toString(SmsSendJournal.TYPE_OUTBOX), context.getPackageName() }) == 1;
  }
 
+ /**
+  * Marks one conversation's received SMS and MMS read and seen, up to the newest message the owner
+  * had on screen ({@code throughMillis}), and removes the conversation's notice. Read state is the
+  * default SMS app's to keep: Android ignores this write from any other app, so the count is 0 there.
+  * Messages that arrived after the shown page keep their unread state.
+  */
+ public static int markThreadRead(Context context, long thread, long throughMillis) {
+  if (thread <= 0 || throughMillis <= 0) throw new IllegalArgumentException("Invalid conversation read marker");
+  ContentResolver resolver = context.getContentResolver();
+  ContentValues sms = new ContentValues();
+  sms.put(Telephony.Sms.READ, 1); sms.put(Telephony.Sms.SEEN, 1);
+  int updated = resolver.update(Telephony.Sms.CONTENT_URI, sms,
+    Telephony.Sms.THREAD_ID + " = ? AND " + Telephony.Sms.TYPE + " = ? AND " + Telephony.Sms.DATE + " <= ? AND (" + Telephony.Sms.READ + " = 0 OR " + Telephony.Sms.SEEN + " = 0)",
+    new String[] { Long.toString(thread), Integer.toString(SmsRecords.INBOX), Long.toString(throughMillis) });
+  ContentValues mms = new ContentValues();
+  mms.put(Telephony.Mms.READ, 1); mms.put(Telephony.Mms.SEEN, 1);
+  updated += resolver.update(Telephony.Mms.CONTENT_URI, mms,
+    Telephony.Mms.THREAD_ID + " = ? AND " + Telephony.Mms.MESSAGE_BOX + " = ? AND " + Telephony.Mms.DATE + " <= ? AND (" + Telephony.Mms.READ + " = 0 OR " + Telephony.Mms.SEEN + " = 0)",
+    new String[] { Long.toString(thread), Integer.toString(SmsRecords.INBOX), Long.toString(SmsRecords.mmsSecondsThrough(throughMillis)) });
+  cancelThreadNotice(context, thread);
+  return updated;
+ }
+
  /** True when a message with this MMS transaction ID is already stored (a repeated notification). */
  public static boolean hasTransaction(Context context, String transactionId) {
   try (Cursor c = context.getContentResolver().query(Telephony.Mms.CONTENT_URI, new String[] { Telephony.Mms._ID }, Telephony.Mms.TRANSACTION_ID + " = ?", new String[] { transactionId }, null)) {
@@ -201,7 +224,35 @@ public final class MmsStore {
 
  // ---- Notices ---------------------------------------------------------------------------------
 
- /** A new-message notice. The lock screen sees only "New message"; content shows once unlocked. */
+ /** One notice per conversation, tagged with its thread ID: a newer message replaces it and reading the conversation removes it. */
+ static final int NOTICE_ID = 1;
+ static void cancelThreadNotice(Context context, long thread) {
+  NotificationManager notifications = context.getSystemService(NotificationManager.class);
+  if (notifications != null && thread > 0) notifications.cancel(SmsRecords.threadId(thread), NOTICE_ID);
+ }
+ /** The conversation a stored message belongs to, or 0 when the provider does not say. */
+ private static long threadOf(Context context, Uri message) {
+  try (Cursor c = context.getContentResolver().query(message, new String[] { Telephony.Sms.THREAD_ID }, null, null, null)) {
+   return c != null && c.moveToFirst() && !c.isNull(0) ? c.getLong(0) : 0;
+  } catch (RuntimeException unreadable) { return 0; }
+ }
+ /**
+  * The sender's name in the owner's contacts when this app may read them, otherwise null and the
+  * number is shown. One lookup in this profile only; nothing is read from a work profile.
+  */
+ static String contactName(Context context, String number) {
+  if (number == null || number.trim().isEmpty() || context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) != android.content.pm.PackageManager.PERMISSION_GRANTED) return null;
+  Uri lookup = Uri.withAppendedPath(android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(number));
+  try (Cursor c = context.getContentResolver().query(lookup, new String[] { android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME }, null, null, null)) {
+   String name = c != null && c.moveToFirst() ? c.getString(0) : null;
+   return name == null || name.trim().isEmpty() ? null : SmsRecords.clip(name, TelephonyPlugin.MAX_TEXT);
+  } catch (RuntimeException unreadable) { return null; }
+ }
+
+ /**
+  * A new-message notice for the message's conversation. The lock screen sees only "New message"; the
+  * sender's contact name (or number) and the text show once unlocked.
+  */
  static void notifyIncoming(Context context, SmsRoleConfiguration config, Uri message, String sender, String preview) {
   NotificationManager notifications = context.getSystemService(NotificationManager.class);
   if (notifications == null) return;
@@ -209,9 +260,11 @@ public final class MmsStore {
   notifications.createNotificationChannel(channel);
   PendingIntent open = PendingIntent.getActivity(context, 0, new Intent(context, config.openActivity).setAction(Intent.ACTION_MAIN).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
   Notification publicVersion = new Notification.Builder(context, config.channelId).setSmallIcon(config.notificationIcon).setContentTitle("New message").build();
+  String name = contactName(context, sender);
+  long thread = threadOf(context, message);
   Notification notice = new Notification.Builder(context, config.channelId)
    .setSmallIcon(config.notificationIcon)
-   .setContentTitle(sender == null ? "Unknown sender" : sender)
+   .setContentTitle(name != null ? name : sender == null ? "Unknown sender" : sender)
    .setContentText(preview)
    .setStyle(new Notification.BigTextStyle().bigText(preview))
    .setCategory(Notification.CATEGORY_MESSAGE)
@@ -220,6 +273,6 @@ public final class MmsStore {
    .setAutoCancel(true)
    .setContentIntent(open)
    .build();
-  try { notifications.notify(message.toString(), 1, notice); } catch (SecurityException notAllowed) { /* Notifications are off; the message is stored. */ }
+  try { notifications.notify(thread > 0 ? SmsRecords.threadId(thread) : message.toString(), NOTICE_ID, notice); } catch (SecurityException notAllowed) { /* Notifications are off; the message is stored. */ }
  }
 }

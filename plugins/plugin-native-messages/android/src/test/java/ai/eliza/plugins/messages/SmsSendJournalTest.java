@@ -224,6 +224,11 @@ public final class SmsSendJournalTest {
   require(SmsRecords.threadRow("thread:12") == 12 && SmsRecords.threadRow("thread:0") == -1 && SmsRecords.threadRow("thread:1 OR 1=1") == -1 && SmsRecords.threadRow(null) == -1, "thread IDs");
   require(SmsRecords.clip("ab😀", 3).equals("ab"), "clip keeps surrogate pairs whole");
   require(SmsRecords.mmsMillis(1700000000L) == 1700000000000L, "MMS seconds");
+  // Read marker: an MMS is included only when its reported time is at or before the newest shown message.
+  require(SmsRecords.mmsSecondsThrough(1700000000999L) == 1700000000L, "an MMS reported within the shown second is included");
+  require(SmsRecords.mmsMillis(SmsRecords.mmsSecondsThrough(1700000000999L) + 1) > 1700000000999L, "the next second is newer than the shown page");
+  require(SmsRecords.mmsMillis(SmsRecords.mmsSecondsThrough(1700000000000L)) == 1700000000000L, "an exact second boundary is included");
+  require(SmsRecords.mmsSecondsThrough(0) == 0 && SmsRecords.mmsSecondsThrough(-5) == 0, "no bound without a shown message");
   for (File each : dir.listFiles()) { if (each.isDirectory()) for (File inner : each.listFiles()) inner.delete(); each.delete(); } dir.delete();
  }
 

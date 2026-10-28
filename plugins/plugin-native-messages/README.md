@@ -73,12 +73,19 @@ A host that can hold the SMS role declares thin subclasses of
 (SENDTO `sms`/`smsto`), and `MmsFileProvider` (not exported,
 `grantUriPermissions`), named by an `SmsRoleConfiguration`.
 
-- Incoming SMS is stored in the provider before its notice. The lock screen
-  shows only "New message".
+- Incoming SMS is stored in the provider before its notice. There is one notice
+  per conversation; a newer message replaces it. The lock screen shows only
+  "New message"; unlocked, the title is the sender's contact name when the host
+  may read contacts, otherwise the number.
 - An MMS notification starts one download into a private file. The retrieved
   message (`MmsPdu` parses M-Retrieve.conf) is stored with its addresses and
   parts, then answered with M-NotifyResp.ind. A stored transaction is never
-  stored twice; a half-written message is removed.
+  stored twice; a repeated notification is answered with M-NotifyResp.ind again
+  so the carrier stops repeating it. A half-written message is removed.
+- Read state is the default SMS app's to keep. `markThreadRead` marks a
+  conversation's received SMS and MMS read and seen up to the newest message on
+  screen and removes its notice; later messages stay unread. Android accepts
+  the write only from the role holder, so elsewhere it changes nothing.
 - Quick replies from call screens open the compose review; nothing is sent from
   the service. The compose screen is the review: its Send press uses the same
   journal and operation-ID rules as `TelephonyPlugin.sendSms`.

@@ -53,8 +53,12 @@ public abstract class MmsResultReceiver extends BroadcastReceiver {
   if (transaction != null) respond(context, config, transaction, subscription);
  }
 
- /** M-NotifyResp.ind (retrieved) for the notification's transaction, sent through the platform MMS service. */
- private static void respond(Context context, SmsRoleConfiguration config, String transaction, int subscription) {
+ /**
+  * M-NotifyResp.ind (retrieved) for the notification's transaction, sent through the platform MMS
+  * service. Also the answer to a repeated notification of a message already stored, so a carrier that
+  * missed the first answer stops notifying.
+  */
+ static void respond(Context context, SmsRoleConfiguration config, String transaction, int subscription) {
   String name = MmsStore.newFileName();
   try {
    Files.write(MmsStore.file(context, name).toPath(), MmsPdu.encodeNotifyResponse(transaction, MmsPdu.STATUS_RETRIEVED));

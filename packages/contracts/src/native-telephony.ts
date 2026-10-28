@@ -126,6 +126,10 @@ export interface TelephonyNativePlugin {
     cursor?: string;
   }): Promise<unknown>;
   observeMessages(options: { enabled: boolean }): Promise<unknown>;
+  markThreadRead(options: {
+    threadId: string;
+    throughDate: number;
+  }): Promise<unknown>;
   sendSms(options: {
     operationId: string;
     recipients: string[];
@@ -843,6 +847,26 @@ export function createTelephonyClient(
         for (const handle of handles) await handle.remove();
         await bridge.observeMessages({ enabled: false });
       };
+    },
+    /**
+     * Marks a conversation the owner opened as read, up to the newest message shown
+     * (`throughDate`, milliseconds), and removes its notice. Only the default SMS app may keep read
+     * state, so elsewhere nothing changes: `defaultSmsApp` is false and `updated` is 0. Later
+     * messages stay unread.
+     */
+    async markThreadRead(threadId: string, throughDate: number) {
+      const bridge = native();
+      if (!THREAD_ID.test(threadId)) throw new RangeError("Invalid thread");
+      if (!Number.isSafeInteger(throughDate) || throughDate <= 0)
+        throw new RangeError("Invalid read marker date");
+      const value = object(
+        await bridge.markThreadRead({ threadId, throughDate }),
+        "read marker",
+      );
+      const defaultSmsApp = bool(value.defaultSmsApp, "read marker");
+      const updated = count(value.updated, "read marker");
+      if (!defaultSmsApp && updated !== 0) throw invalid("read marker");
+      return { defaultSmsApp, updated };
     },
     /** A reviewed native send. The host's native dialog shows the exact content again before
      * anything is sent. Reusing an operation ID returns its record and never sends twice. */

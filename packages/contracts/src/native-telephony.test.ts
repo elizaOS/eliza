@@ -124,6 +124,10 @@ test("without the admitted profile nothing reaches native code", async () => {
     );
     await assert.rejects(client.requestAccess("sms"), TelephonyUnavailable);
     await assert.rejects(client.dial("+15555550100"), TelephonyUnavailable);
+    await assert.rejects(
+      client.markThreadRead("thread:1", 1_700_000_000_000),
+      TelephonyUnavailable,
+    );
   }
   await assert.rejects(
     createTelephonyClient(null, false, {
@@ -503,6 +507,57 @@ test("change notices carry no content and stop cleanly", async () => {
     /permission-required/,
   );
   assert.equal(refused.calls.filter(([m]) => m === "remove").length, 1);
+});
+
+test("a conversation is marked read only through the shown message, by the SMS app", async () => {
+  const { plugin, calls } = stub({
+    markThreadRead: { defaultSmsApp: true, updated: 2 },
+  });
+  const client = createTelephonyClient(plugin, true);
+  assert.deepEqual(await client.markThreadRead("thread:7", 1_700_000_000_123), {
+    defaultSmsApp: true,
+    updated: 2,
+  });
+  assert.deepEqual(calls, [
+    [
+      "markThreadRead",
+      { threadId: "thread:7", throughDate: 1_700_000_000_123 },
+    ],
+  ]);
+  // Malformed requests never reach native code.
+  for (const [thread, date] of [
+    ["thread:0", 1],
+    ["7", 1],
+    ["thread:7 OR 1=1", 1],
+    ["thread:7", 0],
+    ["thread:7", -1],
+    ["thread:7", 1.5],
+    ["thread:7", Number.MAX_SAFE_INTEGER + 1],
+  ] as const)
+    await assert.rejects(client.markThreadRead(thread, date), RangeError);
+  assert.equal(calls.length, 1);
+  // Another app holds the SMS role: nothing changed, and a claimed change is refused.
+  const other = stub({ markThreadRead: { defaultSmsApp: false, updated: 0 } });
+  assert.deepEqual(
+    await createTelephonyClient(other.plugin, true).markThreadRead(
+      "thread:7",
+      5,
+    ),
+    { defaultSmsApp: false, updated: 0 },
+  );
+  for (const answer of [
+    { defaultSmsApp: false, updated: 1 },
+    { defaultSmsApp: true, updated: -1 },
+    { defaultSmsApp: "yes", updated: 0 },
+    null,
+  ])
+    await assert.rejects(
+      createTelephonyClient(
+        stub({ markThreadRead: answer }).plugin,
+        true,
+      ).markThreadRead("thread:7", 5),
+      /invalid read marker/,
+    );
 });
 
 test("native sends: exact binding, evidence-backed status, no resend", async () => {

@@ -51,7 +51,9 @@ import org.json.JSONObject;
  * unlocked phone; the send then follows {@link SmsTelephony}: "sent" only from sent callbacks,
  * "delivered" only from delivery reports, never resent automatically. Without that permission the SMS
  * app handoff remains, and a handoff is never reported as sent. Roles are requested only through
- * Android's own dialog and only when the host declares the components the role needs.
+ * Android's own dialog and only when the host declares the components the role needs. While the host
+ * holds the SMS role, opening a conversation marks its received messages read up to the newest one
+ * shown ({@link #markThreadRead}); Android accepts that provider write only from the default SMS app.
  */
 @androidx.annotation.RequiresApi(29) // RoleManager and SIM carrier identity; profile hosts target Android 10 and later.
 public abstract class TelephonyPlugin extends Plugin {
@@ -318,8 +320,10 @@ public abstract class TelephonyPlugin extends Plugin {
 
  // ---- SMS/MMS provider reads -------------------------------------------------------------------
 
- private static long before(PluginCall call) {
-  Object raw = call.getData().opt("before");
+ private static long before(PluginCall call) { return date(call, "before"); }
+ /** A date option in milliseconds: 0 when absent, -1 when it is not a positive whole number. */
+ private static long date(PluginCall call, String key) {
+  Object raw = call.getData().opt(key);
   if (raw == null || raw == JSONObject.NULL) return 0;
   if (!(raw instanceof Number)) return -1;
   double value = ((Number) raw).doubleValue();
@@ -344,6 +348,25 @@ public abstract class TelephonyPlugin extends Plugin {
   final SmsPageCursor cursor;
   try { cursor = SmsPageCursor.parse(call.getString("cursor"), false); } catch (RuntimeException invalid) { call.reject("Invalid message cursor", "invalid"); return; }
   fencedRead(call, "sms", "Messages", cancel -> SmsProviderReader.messages(getContext(), thread, limit, before, cursor, cancel));
+ }
+
+ /**
+  * Marks a conversation's received messages read, up to the newest one the owner has on screen
+  * ({@code throughDate}, milliseconds), and removes its notice. Keeping read state is the default SMS
+  * app's job and Android accepts the write only from that app: elsewhere nothing changes and the
+  * answer says so. Same admission, permission and fence as the reads; no content is returned.
+  */
+ @PluginMethod public void markThreadRead(PluginCall call) {
+  if (refused(call)) return;
+  long thread = SmsRecords.threadRow(call.getString("threadId", "")), through = date(call, "throughDate");
+  if (thread < 1 || through <= 0) { call.reject("Invalid conversation", "invalid"); return; }
+  fencedRead(call, "sms", "Messages", cancel -> {
+   JSObject value = new JSObject();
+   boolean holder = MmsStore.isDefaultSmsApp(getContext());
+   value.put("defaultSmsApp", holder);
+   value.put("updated", holder ? MmsStore.markThreadRead(getContext(), thread, through) : 0);
+   return value;
+  });
  }
 
  // ---- Incoming/outgoing change observation ----------------------------------------------------

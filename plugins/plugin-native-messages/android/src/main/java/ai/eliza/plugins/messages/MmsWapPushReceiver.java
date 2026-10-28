@@ -10,8 +10,9 @@ import android.provider.Telephony;
 /**
  * WAP_PUSH_DELIVER (MMS notifications) for the default SMS app. A new M-Notification.ind starts one
  * download through SmsManager into a private file; {@link MmsResultReceiver} stores the retrieved
- * message. A notification whose transaction is already stored is ignored, so a carrier's repeat never
- * creates a duplicate. Declared by the host behind BROADCAST_WAP_PUSH.
+ * message. A notification whose transaction is already stored is not downloaded again, so a carrier's
+ * repeat never creates a duplicate; it is answered with M-NotifyResp.ind (retrieved) once more, so the
+ * carrier stops repeating it. Declared by the host behind BROADCAST_WAP_PUSH.
  */
 public abstract class MmsWapPushReceiver extends BroadcastReceiver {
  protected abstract SmsRoleConfiguration configuration();
@@ -37,7 +38,8 @@ public abstract class MmsWapPushReceiver extends BroadcastReceiver {
   MmsPdu.Message notice = MmsPdu.parse(pdu);
   // Delivery and read reports are not stored: MMS delivery is never claimed.
   if (notice.type != MmsPdu.NOTIFICATION_IND || notice.contentLocation == null || notice.transactionId == null) return;
-  if (MmsStore.hasTransaction(context, notice.transactionId)) return;
+  // Already stored (a carrier repeat, or an earlier download): answer "retrieved" again, never download twice.
+  if (MmsStore.hasTransaction(context, notice.transactionId)) { MmsResultReceiver.respond(context, config, notice.transactionId, subscription); return; }
   String name = MmsStore.newFileName();
   Intent done = new Intent(config.mmsDownloadedAction).setClass(context, config.mmsResultReceiver).setPackage(context.getPackageName())
    .setData(Uri.fromParts("eliza-mms", name, null))
