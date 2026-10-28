@@ -258,12 +258,21 @@ function toCoordinationResponse(
 /**
  * Strip JSON action blocks from text before displaying in chat.
  * Handles both fenced (```json ... ```) and bare JSON formats.
+ *
+ * `onDroppedEnvelope` is called for every display-only span: an object that names a known
+ * action but fails the strict validator, so it is stripped from chat without being routed.
+ * That text is lost on purpose (it must not leak into chat), and the caller logs it so the
+ * loss is visible instead of silent.
  */
-export function stripActionBlockFromDisplay(text: string): string {
+export function stripActionBlockFromDisplay(
+  text: string,
+  onDroppedEnvelope?: (action: string) => void,
+): string {
   const safeText = toWellFormedUnicode(text);
   const chunks: string[] = [];
   let cursor = 0;
   for (const span of findActionSpans(safeText)) {
+    if (!span.strict) onDroppedEnvelope?.(span.value.action);
     chunks.push(safeText.slice(cursor, span.start));
     cursor = span.end;
   }

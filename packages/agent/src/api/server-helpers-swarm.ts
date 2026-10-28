@@ -955,7 +955,13 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
 
           // WS broadcast the natural language portion (strip JSON action block).
           if (result.text && result.text !== "(no response)") {
-            const displayText = stripActionBlockFromDisplay(result.text);
+            const displayText = stripActionBlockFromDisplay(
+              result.text,
+              (action) =>
+                logger.warn(
+                  `[swarm] dropped a non-routable "${action}" envelope from the chat display; its text is not routed and not shown`,
+                ),
+            );
             if (displayText && displayText.length > 2) {
               const conv = st.activeConversationId
                 ? st.conversations.get(st.activeConversationId)
