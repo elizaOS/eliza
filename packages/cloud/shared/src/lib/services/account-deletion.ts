@@ -747,11 +747,6 @@ function requireProcessAccountDeletionResources(
 }
 
 /**
- * Activates expired recovery reservations and advances one ordered, inspected
- * provider phase per request. Pre-reservation legacy rows remain on the
- * deliberate fail-closed path and never share the new saga authority.
- */
-/**
  * Activates requests whose recovery window has ended, or parks them for an
  * operator. A request the run cannot decide (`account_unavailable`,
  * `provider_work_in_flight`, `not_due`) gets no write and keeps its place at
@@ -811,6 +806,11 @@ export async function activateExpiredRecoveryRequests(input: {
   return { activated, actionRequired };
 }
 
+/**
+ * Activates expired recovery reservations and advances one ordered, inspected
+ * provider phase per request. Pre-reservation legacy rows remain on the
+ * deliberate fail-closed path and never share the new saga authority.
+ */
 export async function processDueAccountDeletions(
   limit = 10,
   resources?: ProcessAccountDeletionResources,
