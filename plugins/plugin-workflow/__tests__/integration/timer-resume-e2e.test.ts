@@ -7,7 +7,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 
-test('a run waiting on a Smithers timer resumes and finishes when the timer is due', async () => {
+async function runTimerWorkflow(markup: string, components: string) {
   const directory = await mkdtemp(join(tmpdir(), 'workflow-timer-'));
   const db = new PGlite(directory);
   let embedded: EmbeddedWorkflowService | undefined;
@@ -79,8 +79,8 @@ test('a run waiting on a Smithers timer resumes and finishes when the timer is d
       metadata: { elizaOwnerEntityId: 'owner' },
       source: `/** @jsxImportSource smthrs */
 import {createSmithers} from 'smthrs/create';import {z} from 'zod';
-const {Workflow,Sequence,Timer,Task,smithers,outputs}=createSmithers({output:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
-export default smithers(()=><Workflow name="timer-fixture"><Sequence><Timer id="wait" duration="2s"/><Task id="calculate" output={outputs.output}>{{value:56}}</Task></Sequence></Workflow>);`,
+const {${components},smithers,outputs}=createSmithers({output:z.object({value:z.number()})},{dbPath:process.env.ELIZA_SMTHRS_DB_PATH});
+export default smithers(()=><Workflow name="timer-fixture">${markup}</Workflow>);`,
     } as never);
 
     const started = await embedded.startWorkflow(String(workflow.id));
@@ -92,12 +92,35 @@ export default smithers(()=><Workflow name="timer-fixture"><Sequence><Timer id="
       await new Promise((resolve) => setTimeout(resolve, 250));
       execution = await embedded.getExecution(started.id);
     }
-    expect(statuses.has('waiting-timer')).toBe(true);
-    expect(execution.status).toBe('finished');
-    expect(JSON.stringify(execution.output)).toContain('56');
+    return { statuses, execution };
   } finally {
     await embedded?.stop();
     await db.close();
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+const TIMER_THEN_TASK =
+  '<Sequence><Timer id="wait" duration="2s"/><Task id="calculate" output={outputs.output}>{{value:56}}</Task></Sequence>';
+
+test('a run waiting on a Smithers timer resumes and finishes when the timer is due', async () => {
+  const { statuses, execution } = await runTimerWorkflow(
+    TIMER_THEN_TASK,
+    'Workflow,Sequence,Timer,Task'
+  );
+  expect(statuses.has('waiting-timer')).toBe(true);
+  expect(execution.status).toBe('finished');
+  expect(JSON.stringify(execution.output)).toContain('56');
+}, 90_000);
+
+test('a timer inside a loop resumes on time on every iteration', async () => {
+  // Each iteration creates the timer with the same id. The second one must
+  // resume when it is due (about 2s), not on the 60s fallback, so the run
+  // finishes inside the 30s polling window.
+  const { execution } = await runTimerWorkflow(
+    `<Loop until={false} maxIterations={2} onMaxReached="return-last">${TIMER_THEN_TASK}</Loop>`,
+    'Workflow,Sequence,Loop,Timer,Task'
+  );
+  expect(execution.status).toBe('finished');
+  expect((execution.events ?? []).filter((event) => event.type === 'TimerFired')).toHaveLength(2);
 }, 90_000);

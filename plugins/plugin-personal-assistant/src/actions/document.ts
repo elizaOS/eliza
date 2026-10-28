@@ -35,7 +35,8 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveScheduledAtIsoInTimeZone } from "@elizaos/core";
+import { resolveMessageTimeZone } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
@@ -178,6 +179,18 @@ function getParams(options: HandlerOptions | undefined): DocActionParameters {
     return raw as DocActionParameters;
   }
   return {};
+}
+
+/**
+ * The planner writes a deadline without an offset as a wall clock (or a
+ * calendar day) in the user's zone; Date.parse would read it in the host zone,
+ * and a bare day as UTC midnight. A bare day becomes the start of that day.
+ */
+function deadlineInTimeZone(deadline: string, timeZone: string): string {
+  const wallClock = /^\d{4}-\d{2}-\d{2}$/.test(deadline)
+    ? `${deadline}T00:00:00`
+    : deadline;
+  return resolveScheduledAtIsoInTimeZone(wallClock, timeZone);
 }
 
 function nowIso(): string {
@@ -1064,7 +1077,17 @@ export const ownerDocumentsAction: Action & {
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
 
-    const params = getParams(options);
+    const rawParams = getParams(options);
+    const params =
+      typeof rawParams.deadline === "string" && rawParams.deadline.trim()
+        ? {
+            ...rawParams,
+            deadline: deadlineInTimeZone(
+              rawParams.deadline.trim(),
+              resolveMessageTimeZone(runtime, message),
+            ),
+          }
+        : rawParams;
     const subaction = resolveSubaction(params);
     if (!subaction) {
       return {

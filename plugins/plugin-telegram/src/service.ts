@@ -16,6 +16,7 @@ import {
   createUniqueUuid,
   ElizaError,
   type Entity,
+  type EventPayload,
   EventType,
   type IAgentRuntime,
   logger,
@@ -1046,6 +1047,26 @@ export class TelegramService extends Service {
   }
 
   /**
+   * Emits an observer event and reports a rejected listener.
+   *
+   * The bot update is already applied. Event listeners are observers, so a
+   * rejected listener must not become an unhandled rejection that stops the
+   * process.
+   */
+  private emitObserved(
+    scope: string,
+    event: string,
+    payload: EventPayload,
+    context: Record<string, unknown>,
+  ): void {
+    // error-policy:J7 The update is already applied. Report the observer
+    // failure instead of making the accepted update look retryable.
+    void this.runtime
+      .emitEvent(event, payload)
+      .catch((error) => this.runtime.reportError(scope, error, context));
+  }
+
+  /**
    * Registers the `/start` handler and
    * the task-board command on a freshly created Telegraf instance. Called
    * exactly once per bot (see {@link TelegramAccountRuntime.wiring}).
@@ -1063,9 +1084,11 @@ export class TelegramService extends Service {
         accountId,
         metadata: { accountId },
       };
-      this.runtime.emitEvent(
+      this.emitObserved(
+        "TelegramService.emitSlashStart",
         TelegramEventTypes.SLASH_START as string,
         slashStartPayload,
+        { accountId },
       );
     });
 
@@ -1076,8 +1099,27 @@ export class TelegramService extends Service {
     // command messages (no double-processing).
     const commandMessageManager = activeState.messageManager;
     // #8902: the live, edited-in-place orchestrator task board (`/tasks`).
+    // Commands registered here run before the authorization middleware is
+    // installed, and a matched command handler never calls next() — so
+    // gate the board command at registration, or any stranger who can
+    // message the bot reads the owner's task board. The task-board
+    // module itself is untouched: only its bot handle is wrapped.
+    const gatedTaskBoardBot = {
+      command: (
+        name: string,
+        handler: (ctx: {
+          chat?: { id: number };
+          message?: { message_thread_id?: number };
+        }) => Promise<void>,
+      ) => {
+        bot.command(name, (ctx) =>
+          this.authorizationMiddleware(ctx, () => handler(ctx), accountId),
+        );
+      },
+      telegram: bot.telegram,
+    };
     registerTelegramTaskBoardCommand(
-      bot,
+      gatedTaskBoardBot,
       this.runtime,
       commandMessageManager,
       accountId,
@@ -1875,9 +1917,11 @@ export class TelegramService extends Service {
           accountId: string;
           metadata: { accountId: string };
         };
-        this.runtime.emitEvent(
+        this.emitObserved(
+          "TelegramService.emitEntityJoined",
           TelegramEventTypes.ENTITY_JOINED,
           entityJoinedPayload,
+          { accountId, entityId },
         );
       }
     }
@@ -2046,9 +2090,9 @@ export class TelegramService extends Service {
     }
 
     const canonicalOwnerId = getCanonicalOwnerId(this.runtime);
-    // Ownership may fall back to the chat CREATOR (groups only, mirroring
-    // Discord's guild-owner grant) but never to the arbitrary message sender —
-    // see world-ownership.ts for why that default was a privilege escalation.
+    // Only the configured owner owns the world. The chat creator (groups only)
+    // gets a connector-admin grant, like Discord's guild owner — see
+    // world-ownership.ts.
     const chatCreatorEntityId = owner
       ? (createUniqueUuid(
           this.runtime,
@@ -2699,8 +2743,9 @@ export class TelegramService extends Service {
   ): Promise<Memory | undefined> {
     const target = params.target as AccountScopedTargetInfo;
     const accountId = await this.resolveAccountIdForTarget(runtime, target);
-    const bot = this.getAccountState(accountId)?.bot ?? this.bot;
-    if (!bot) {
+    const accountState = this.getAccountState(accountId);
+    const messageManager = accountState?.messageManager ?? this.messageManager;
+    if (!messageManager) {
       throw new Error("Telegram bot is not available — cannot post to thread");
     }
     const chatId =
@@ -2710,9 +2755,17 @@ export class TelegramService extends Service {
       return undefined;
     }
     const threadId = Number(params.thread.threadId);
-    await bot.telegram.sendMessage(chatId, text, {
-      message_thread_id: Number.isFinite(threadId) ? threadId : undefined,
-    });
+    // Route through the send path instead of calling the API directly: the
+    // direct call skips supergroup migration retry, 4096-character chunking,
+    // and MarkdownV2 conversion with its plain-text fallback.
+    // sendMessage throws on any failed chunk, so a partial delivery is not
+    // reported as success.
+    await messageManager.sendMessage(
+      chatId,
+      { text },
+      undefined,
+      Number.isFinite(threadId) ? threadId : undefined,
+    );
     return undefined;
   }
 

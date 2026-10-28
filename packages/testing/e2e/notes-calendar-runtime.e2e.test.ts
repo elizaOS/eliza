@@ -347,14 +347,34 @@ async function scenario(label: string, withApprovals = false) {
       input,
       actionName,
       args,
-      contextIds: actionName === "CALENDAR" ? ["calendar", "notes"] : ["notes"],
+      contextIds:
+        actionName === "CALENDAR_CREATE_EVENT"
+          ? ["calendar", "notes"]
+          : ["notes"],
       messageToUser: checking,
     });
     // Reuse the exact Stage-1 and native planner wire fixtures, replacing only
     // their success-only evaluator with a receipt-aware scenario evaluator.
     harness.fixtures.register(...fixtures.slice(0, 2));
     if (options.extraction) {
-      const extraction = options.extraction;
+      // Script the current authority contract from this exact persisted request.
+      // The real Notes read supplied the content-bound source reference above;
+      // invented provenance or a stale case reference still fails production checks.
+      const details = record(args.details);
+      const sourceNote = details.sourceNote ?? null;
+      const evidence = [{ sourceId: `current:${inbound.id}`, quote: input }];
+      const extraction: Args = {
+        ...options.extraction,
+        guestIntent: { state: "none", evidence, guests: [] },
+        noteIntent: {
+          state: sourceNote === null ? "none" : "requested",
+          evidence,
+          sourceNote: sourceNote as JsonValue,
+          // These cases provide their desired literal description in the request;
+          // they do not ask Calendar to replace it with just the note body.
+          descriptionMode: "extracted",
+        },
+      };
       harness.fixtures.register({
         name: `extract-create-${input}`,
         match: {
@@ -423,7 +443,7 @@ async function scenario(label: string, withApprovals = false) {
           }
         } else {
           expect(receipt).toMatchObject({ success: true });
-          if (actionName === "CALENDAR") {
+          if (actionName === "CALENDAR_CREATE_EVENT") {
             expect(committed).toHaveLength(1);
             expect(committed[0].operation).toBe("calendar.event.create");
           }
@@ -601,7 +621,6 @@ function calendarArgs(
   sourceNote?: SourceNote,
 ): Args {
   return {
-    subaction: "create_event",
     title,
     details: {
       grantId: "eliza-calendar",
@@ -632,7 +651,7 @@ test("NOTE-14 runtime: content-bound note becomes one event and stale source can
   const end = `${date}T10:30:00-07:00`;
   const createdReceipt = await s.turn(
     `Create Ada review on my built-in Eliza calendar for ${date} from 10:00 to 10:30 America/Los_Angeles, using note ${note.id}. Preserve this exact description:\n${description}`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs("Ada review", description, start, end, sourceNote),
     "Created Ada review for October 8, 2030, 10:00–10:30 America/Los_Angeles.",
     { extraction: extraction("Ada review", description, start, end) },
@@ -698,7 +717,7 @@ test("NOTE-14 runtime: content-bound note becomes one event and stale source can
   const staleEnd = `${date}T12:30:00-07:00`;
   await s.turn(
     `Create a second Ada review from note ${note.id}, using the earlier source reference, for ${date}, 12:00–12:30 America/Los_Angeles.`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs("Ada review", description, staleStart, staleEnd, sourceNote),
     "The source note changed. Nothing was created. Read the current note before scheduling it.",
     {
@@ -711,7 +730,7 @@ test("NOTE-14 runtime: content-bound note becomes one event and stale source can
   const foreignSource = { ...refreshedSource, agentId: randomUUID() };
   await s.turn(
     `Schedule Ada review from note ${note.id} on ${date}, 12:00–12:30 America/Los_Angeles.`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs(
       "Ada review",
       description,
@@ -742,7 +761,7 @@ test("NOTE-14 runtime: content-bound note becomes one event and stale source can
   );
   await s.turn(
     `Create Ada review from the previously read note ${note.id} on ${date}, 12:00–12:30 America/Los_Angeles. Preserve the old description.`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs(
       "Ada review",
       description,
@@ -817,7 +836,7 @@ test("NOTE-15 runtime: missing time and real conflict pause until the user suppl
   const busyEnd = `${date}T10:30:00-07:00`;
   await s.turn(
     `Create Existing commitment on my built-in Eliza calendar for ${date}, 10:00–10:30 America/Los_Angeles.`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs("Existing commitment", "", busyStart, busyEnd),
     "Created Existing commitment for October 8, 2030, 10:00–10:30 America/Los_Angeles.",
     { extraction: extraction("Existing commitment", "", busyStart, busyEnd) },
@@ -828,7 +847,7 @@ test("NOTE-15 runtime: missing time and real conflict pause until the user suppl
   // Adversarial planner timestamps must not substitute for missing user timing.
   await s.turn(
     `Put note ${note.id}, Ada review, on my built-in Eliza calendar. Include this exact description:\n${description}`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs("Ada review", description, busyStart, busyEnd, sourceNote),
     "What date and exact time should I use for Ada review? Nothing was created.",
     {
@@ -840,7 +859,7 @@ test("NOTE-15 runtime: missing time and real conflict pause until the user suppl
   expect((await s.notes()).bytes).toEqual(notesBefore.bytes);
   await s.turn(
     `For Ada review from note ${note.id}, use ${date}, 10:00–10:30 America/Los_Angeles. Keep the source description.`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs("Ada review", description, busyStart, busyEnd, sourceNote),
     "That time conflicts with Existing commitment. Nothing was created. Which other time should I use?",
     {
@@ -854,7 +873,7 @@ test("NOTE-15 runtime: missing time and real conflict pause until the user suppl
   const end = `${date}T11:30:00-07:00`;
   await s.turn(
     `Create Ada review from note ${note.id} instead on ${date}, 11:00–11:30 America/Los_Angeles. Keep the source description.`,
-    "CALENDAR",
+    "CALENDAR_CREATE_EVENT",
     calendarArgs("Ada review", description, start, end, sourceNote),
     "Created Ada review for October 8, 2030, 11:00–11:30 America/Los_Angeles.",
     { extraction: extraction("Ada review", description, start, end) },

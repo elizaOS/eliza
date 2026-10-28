@@ -100,13 +100,7 @@ export const DEFAULT_VOICE_CONTINUOUS_MODE: VoiceContinuousMode = "off";
 /**
  * Status surfaced in the chat status bar while continuous chat is active.
  */
-export type VoiceContinuousStatus =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "speaking"
-  | "interrupting"
-  | "transcribing";
+export type { VoiceContinuousStatus } from "./voice-session-status";
 
 export interface VoiceSpeakerMetadata {
   /** Stable app/runtime entity id for the speaker when a connector can provide one. */

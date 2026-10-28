@@ -1,3 +1,4 @@
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 /**
  * Shared-runtime REST adapter (mobile chat unblock).
  *
@@ -616,6 +617,7 @@ export async function sharedRestMessageSend(
   agentName: string;
   timing?: SharedProviderTimingReceipt;
   mediaUrls?: string[];
+  acknowledgementReaction?: string;
   responded?: false;
   responseReason?: "no_response";
 }> {
@@ -665,6 +667,7 @@ export async function sharedRestMessageSend(
     timing?: unknown;
     actionResults?: unknown;
     responded?: unknown;
+    acknowledgementReaction?: unknown;
   };
   const replyText = typeof result.text === "string" ? result.text : "";
   const mediaUrls = Array.isArray(result.actionResults)
@@ -684,6 +687,10 @@ export async function sharedRestMessageSend(
         return typeof mediaUrl === "string" && mediaUrl.trim() ? [mediaUrl.trim()] : [];
       })
     : [];
+  const acknowledgementReaction =
+    result.responded === false && !replyText && mediaUrls.length === 0
+      ? parseImessageReaction(result.acknowledgementReaction)
+      : undefined;
   const timing = parseSharedProviderTimingReceipt(result.timing);
   if (result.timing !== undefined && timing === undefined) {
     logger.warn("[shared-runtime REST] message.send returned an invalid timing receipt", {
@@ -693,6 +700,7 @@ export async function sharedRestMessageSend(
   }
   return {
     text: replyText,
+    ...(acknowledgementReaction !== undefined ? { acknowledgementReaction } : {}),
     agentName: agentName || "Eliza",
     ...(result.responded === false
       ? { responded: false as const, responseReason: "no_response" as const }

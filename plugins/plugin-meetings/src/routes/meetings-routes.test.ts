@@ -262,6 +262,36 @@ describe("/api/meetings routes", () => {
       ).session.transcriptId,
     ).toBeUndefined();
   });
+  it("redacts transcriptId on the DELETE response for a viewer who cannot read the transcript", async () => {
+    const { ctx, adapter } = makeHarness();
+    const post = route("POST", "/api/meetings");
+    const del = route("DELETE", "/api/meetings/:id");
+    const created = await post(ctx({ body: { meetingUrl: MEET_URL } }));
+    const session = (
+      created.body as {
+        session: {
+          id: string;
+          transcriptId?: string;
+        };
+      }
+    ).session;
+    expect(session.transcriptId).toBeTypeOf("string");
+    await adapter.started;
+    const stopped = await del(
+      ctx({ params: { id: session.id }, accessContext: userAccess }),
+    );
+    expect(stopped.status).toBe(200);
+    // Same viewer selection as GET/:id: the reference is withheld.
+    expect(
+      (
+        stopped.body as {
+          session: {
+            transcriptId?: string;
+          };
+        }
+      ).session.transcriptId,
+    ).toBeUndefined();
+  });
   it("selects the session DTO per viewer role x grant (#14781)", async () => {
     const { ctx, adapter, fake } = makeHarness();
     const post = route("POST", "/api/meetings");

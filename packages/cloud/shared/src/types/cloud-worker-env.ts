@@ -103,6 +103,12 @@ export interface Bindings {
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
   /** Registered active and approved `apps.id` for the native Cloud client. */
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Public deployment name and plain-text Terms/Privacy documents; never a secret. */
+  CLOUD_PUBLIC_SERVICE_JSON?: string;
+  /** Split deployment-owned public text; each binding fits the Worker limit. */
+  CLOUD_PUBLIC_SERVICE_NAME?: string;
+  CLOUD_PUBLIC_SERVICE_TERMS_JSON?: string;
+  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
   /** Server-owned registrations for independently branded native clients. */

@@ -6,6 +6,7 @@
 
 import { ElizaError } from "@elizaos/core/protocol";
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
+import { callFromPhone } from "../telephony-profile.ts";
 import type { PhoneViewCapabilityId } from "../view-capabilities.ts";
 import {
   COMPLETE_CALL_LOG_READ_LIMIT,
@@ -57,8 +58,16 @@ const PHONE_CAPABILITY_HANDLERS: Record<
       typeof params?.number === "string" ? params.number : "",
     );
     if (!number) throw new Error("number is required");
-    await Phone.placeCall({ number });
-    return { placed: true, number };
+    const outcome = await callFromPhone(number);
+    if (outcome.path === "direct") return { placed: true, number };
+    // Behind the telephony profile the person places the call on the dial
+    // screen; a handoff is never reported as a placed call.
+    return {
+      placed: false,
+      handoff: outcome.result.status,
+      handler: outcome.result.handler,
+      number,
+    };
   },
   "open-dialer": async (params) => {
     const number = normalizeNumber(
