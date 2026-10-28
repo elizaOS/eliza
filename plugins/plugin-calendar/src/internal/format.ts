@@ -87,6 +87,12 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
+// Max events rendered into one feed or search reply text. The
+// full list stays in the structured data payload and is
+// re-queryable with a narrower window; the reply text answers
+// "what's on / what matches" with the first page.
+const CALENDAR_RENDER_MAX_EVENTS = 50;
+
 export function formatCalendarEventTimeRange(
   event: LifeOpsCalendarEvent,
   reference?: { asOf: Date; timeZone: string },
@@ -164,7 +170,8 @@ export function formatCalendarFeed(
     return `No events ${label}.`;
   }
   const lines: string[] = [`Events ${label}:`];
-  for (const event of feed.events) {
+  const rendered = feed.events.slice(0, CALENDAR_RENDER_MAX_EVENTS);
+  for (const event of rendered) {
     const time = formatCalendarEventTimeRange(event);
     const parts = [`- **${event.title}** (${time})`];
     if (event.location) {
@@ -185,6 +192,11 @@ export function formatCalendarFeed(
       parts.push(`  Video: ${event.conferenceLink}`);
     }
     lines.push(parts.join("\n"));
+  }
+  if (feed.events.length > CALENDAR_RENDER_MAX_EVENTS) {
+    lines.push(
+      `- Plus ${feed.events.length - CALENDAR_RENDER_MAX_EVENTS} more.`,
+    );
   }
   return lines.join("\n");
 }

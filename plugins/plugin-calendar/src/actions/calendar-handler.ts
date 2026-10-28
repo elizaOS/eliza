@@ -4539,8 +4539,14 @@ function formatTripWindowResults(
   }
 
   const lines = [`Here's what's on your calendar while you're in ${location}:`];
-  for (const event of events) {
+  const rendered = events.slice(0, CALENDAR_SEARCH_RENDER_MAX_EVENTS);
+  for (const event of rendered) {
     lines.push(`- ${formatCalendarMoment(event)}: **${event.title}**`);
+  }
+  if (events.length > CALENDAR_SEARCH_RENDER_MAX_EVENTS) {
+    lines.push(
+      `- Plus ${events.length - CALENDAR_SEARCH_RENDER_MAX_EVENTS} more.`,
+    );
   }
   return lines.join("\n");
 }
@@ -4548,6 +4554,12 @@ function formatTripWindowResults(
 // The query may be a raw user message or an LLM-extracted phrase — either can
 // be a multi-line blob, so echoes go through describeUserReference. Exported
 // for regression tests.
+
+// Max events rendered into one calendar reply text, shared by the
+// search and trip-window formatters. The full list stays in the
+// structured data payload.
+const CALENDAR_SEARCH_RENDER_MAX_EVENTS = 50;
+
 export function formatCalendarSearchResults(
   events: LifeOpsCalendarEvent[],
   query: string,
@@ -4569,7 +4581,8 @@ export function formatCalendarSearchResults(
   const lines = [
     `Found ${events.length} calendar event${events.length === 1 ? "" : "s"} for ${queryEcho} ${label}:`,
   ];
-  for (const event of events) {
+  const rendered = events.slice(0, CALENDAR_SEARCH_RENDER_MAX_EVENTS);
+  for (const event of rendered) {
     const when = event.isAllDay
       ? "all day"
       : formatCalendarEventDateTime(event);
@@ -4580,6 +4593,11 @@ export function formatCalendarSearchResults(
     if (event.description) {
       lines.push(`  ${event.description}`);
     }
+  }
+  if (events.length > CALENDAR_SEARCH_RENDER_MAX_EVENTS) {
+    lines.push(
+      `- Plus ${events.length - CALENDAR_SEARCH_RENDER_MAX_EVENTS} more.`,
+    );
   }
   return lines.join("\n");
 }
