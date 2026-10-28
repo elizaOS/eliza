@@ -5,8 +5,18 @@
  */
 import type { AgentRuntime } from "@elizaos/core";
 import { createLifeOpsSleepEpisode } from "@elizaos/plugin-health";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+  registerDefaultChannelPack,
+} from "../src/lifeops/channels/index.js";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+} from "../src/lifeops/connectors/index.js";
+import { createTelegramConnectorContribution } from "../src/lifeops/connectors/telegram.js";
 import { resolveDefaultTimeZone } from "../src/lifeops/defaults.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { resolveNextRelativeScheduleInstant } from "../src/lifeops/relative-schedule-resolver.js";
@@ -433,6 +443,137 @@ describe("merged schedule state", () => {
       expect(state?.circadianState).toBe("winding_down");
       expect(state?.relativeTime.bedtimeTargetSource).toBe("typical_sleep");
     } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("does not resend a night reminder when later activity moves the adaptive night window", async () => {
+    const fixture = await createFixture("lifeops-adaptive-night-resend");
+    // Freeze only Date so the definition is created on the test's day.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-04-20T21:30:00.000Z"));
+    try {
+      await resolveOwnerFactStore(fixture.runtime).update(
+        { timezone: "UTC" },
+        { source: "profile_save", recordedAt: new Date().toISOString() },
+      );
+      // No observed nights: the adaptive night window starts one hour after
+      // today's last activity.
+      await fixture.service.recordScreenTimeEvent({
+        source: "app",
+        identifier: "com.test.day",
+        displayName: "Day",
+        startAt: "2026-04-20T07:30:00.000Z",
+        endAt: "2026-04-20T21:00:00.000Z",
+        durationSeconds: 13.5 * 60 * 60,
+        metadata: {},
+      });
+      const created = await fixture.service.createDefinition({
+        title: "Take night pills",
+        kind: "habit",
+        cadence: { kind: "daily", windows: ["night"] },
+        timezone: "UTC",
+        reminderPlan: {
+          steps: [{ channel: "in_app", offsetMinutes: 0, label: "Night" }],
+        },
+      });
+      const delivered = async () =>
+        (
+          await fixture.service.repository.listReminderAttempts(
+            String(fixture.runtime.agentId),
+          )
+        ).filter((attempt) => attempt.planId === created.reminderPlan?.id);
+
+      vi.setSystemTime(new Date("2026-04-20T22:05:00.000Z"));
+      await fixture.service.processScheduledWork({
+        now: "2026-04-20T22:05:00.000Z",
+      });
+      expect(await delivered()).toHaveLength(1);
+
+      // The owner keeps using the computer until 22:40; once the 30-minute
+      // policy cache expires the night window moves to 23:40.
+      await fixture.service.recordScreenTimeEvent({
+        source: "app",
+        identifier: "com.test.late",
+        displayName: "Late",
+        startAt: "2026-04-20T21:00:00.000Z",
+        endAt: "2026-04-20T22:40:00.000Z",
+        durationSeconds: 100 * 60,
+        metadata: {},
+      });
+      vi.setSystemTime(new Date("2026-04-20T23:45:00.000Z"));
+      await fixture.service.processScheduledWork({
+        now: "2026-04-20T23:45:00.000Z",
+      });
+      expect(await delivered()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+      await fixture.cleanup();
+    }
+  });
+
+  it("sends a check-in once on the owner's Telegram instead of also on in-app", async () => {
+    const fixture = await createFixture("lifeops-checkin-single-send");
+    const telegramSend = vi
+      .spyOn(LifeOpsService.prototype, "sendTelegramMessage")
+      .mockResolvedValue({ messageId: "tg-42" } as Awaited<
+        ReturnType<LifeOpsService["sendTelegramMessage"]>
+      >);
+    try {
+      const connectors = createConnectorRegistry();
+      connectors.register(createTelegramConnectorContribution(fixture.runtime));
+      registerConnectorRegistry(fixture.runtime, connectors);
+      const channels = createChannelRegistry();
+      registerDefaultChannelPack(channels, fixture.runtime);
+      registerChannelRegistry(fixture.runtime, channels);
+      const domain = (
+        fixture.service as unknown as {
+          remindersDomain: {
+            ctx: { emitAssistantEvent: (...args: unknown[]) => boolean };
+            resolveCheckinRouteTarget: (channel: string) => Promise<string>;
+            dispatchCheckinReport: (args: {
+              reportId: string;
+              kind: "night";
+              message: string;
+              metadata: Record<string, unknown>;
+            }) => Promise<{ ok: boolean; messageId?: string }>;
+          };
+        }
+      ).remindersDomain;
+      domain.resolveCheckinRouteTarget = async () => "owner-chat";
+      const inAppEmit = vi
+        .spyOn(domain.ctx, "emitAssistantEvent")
+        .mockReturnValue(true);
+
+      const delivery = await domain.dispatchCheckinReport({
+        reportId: "report-night-1",
+        kind: "night",
+        message: "How did today go?",
+        metadata: {
+          contactRouteCandidates: [
+            {
+              channel: "telegram",
+              score: 2100,
+              evidence: ["active platform"],
+              vetoReasons: [],
+              interruptionBudget: "normal",
+            },
+            {
+              channel: "in_app",
+              score: 450,
+              evidence: ["in-app surface"],
+              vetoReasons: [],
+              interruptionBudget: "normal",
+            },
+          ],
+        },
+      });
+
+      expect(telegramSend).toHaveBeenCalledTimes(1);
+      expect(inAppEmit).not.toHaveBeenCalled();
+      expect(delivery).toMatchObject({ ok: true, messageId: "tg-42" });
+    } finally {
+      telegramSend.mockRestore();
       await fixture.cleanup();
     }
   });

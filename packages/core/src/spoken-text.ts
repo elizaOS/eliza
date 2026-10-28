@@ -17,6 +17,7 @@
  */
 
 import { REASONING_TAG_NAMES } from "./utils/reasoning-tags";
+import { looksLikeStageDirection } from "./utils/stage-directions";
 
 const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
 	"|",
@@ -52,7 +53,30 @@ function stripThinkingAndMarkup(input: string): string {
 	return text;
 }
 
-const STAR_DIRECTION_PATTERN = /\*{1,2}[^*\n]+\*{1,2}/g;
+// A star span is either a stage direction (`*sighs*`, not spoken) or markdown
+// emphasis (`**Settings**`, `***very important***`, `I *love* it`), whose words
+// must still be spoken. A known action word is a direction anywhere. Otherwise
+// bold is emphasis, and a single-star span is a direction only where roleplay
+// puts actions: a multi-word span at the start of the reply or of a sentence
+// (`*adjusts glasses* Let me check.`). A bold-italic span keeps its `**` form
+// here: peeling only two of its three markers on the first pass left a
+// single-star span that the next pass dropped as an action.
+const STAR_SPAN_PATTERN = /\*{1,3}([^*\n]+)\*{1,3}/g;
+
+function peelStarSpan(
+	match: string,
+	inner: string,
+	offset: number,
+	source: string,
+): string {
+	if (looksLikeStageDirection(inner)) return " ";
+	if (match.startsWith("**")) return inner;
+	// A lone emphasized word (`*Carefully* read`, `choices: *yes*`) is spoken;
+	// only a multi-word span opening a sentence reads as a roleplay action.
+	const before = source.slice(0, offset).trimEnd();
+	const opensSentence = before === "" || /[.!?。！？\n]$/u.test(before);
+	return opensSentence && /\s/u.test(inner.trim()) ? " " : inner;
+}
 
 const BALANCED_DIRECTION_PATTERNS = [
 	/\([^()]*\)/g,
@@ -116,12 +140,15 @@ function stripResidualBalancedDirections(input: string): string {
 	return parts.join("");
 }
 
-/** Fail-closes lines whose emphasis markers exceed the peel budget. */
+/** Fail-closes lines whose emphasis layers exceed the peel budget. A line of
+ * separate spans (`**a** then **b** …`) is fully consumed by one pass however
+ * many spans it holds, so only nesting reaches the fail-close. */
 function stripExcessiveStarDirections(input: string): string {
 	return input
 		.split("\n")
 		.map((line) => {
 			let markerCount = 0;
+			let starCount = 0;
 			let first = -1;
 			let last = -1;
 			for (let index = 0; index < line.length; ) {
@@ -133,13 +160,26 @@ function stripExcessiveStarDirections(input: string): string {
 				const runStart = index;
 				while (line[index] === "*") index += 1;
 				markerCount += Math.ceil((index - runStart) / 2);
+				starCount += index - runStart;
 				last = index - 1;
 			}
-			return markerCount > MAX_NON_SPEECH_STRIP_PASSES * 2 && last > first
+			return markerCount > MAX_NON_SPEECH_STRIP_PASSES * 2 &&
+				last > first &&
+				!starSpansSettleInOnePass(line, starCount)
 				? `${line.slice(0, first)} ${line.slice(last + 1)}`
 				: line;
 		})
 		.join("\n");
+}
+
+/** True when one peel pass consumes every star on the line, so the line holds
+ * flat emphasis spans instead of nested layers the bounded peel must drop. */
+function starSpansSettleInOnePass(line: string, starCount: number): boolean {
+	let covered = 0;
+	for (const match of line.matchAll(STAR_SPAN_PATTERN)) {
+		for (const char of match[0]) if (char === "*") covered += 1;
+	}
+	return covered === starCount;
 }
 
 function stripNonSpeechDirections(input: string): string {
@@ -147,7 +187,7 @@ function stripNonSpeechDirections(input: string): string {
 	let stabilized = false;
 	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
 		const previous = text;
-		text = text.replace(STAR_DIRECTION_PATTERN, " ");
+		text = text.replace(STAR_SPAN_PATTERN, peelStarSpan);
 		for (const pattern of BALANCED_DIRECTION_PATTERNS) {
 			text = text.replace(pattern, " ");
 		}

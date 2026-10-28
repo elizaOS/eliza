@@ -164,7 +164,7 @@ export function createMacosVisionOcrProvider(): AppleVisionOcrProvider {
         logger.warn(
           `[MacosVisionOcr] OCR failed: ${err instanceof Error ? err.message : String(err)}`,
         );
-        return EMPTY;
+        throw err;
       }
     },
   };

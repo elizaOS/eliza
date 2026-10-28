@@ -9,3 +9,5 @@ const loadWeb = () => import("./web").then((m) => new m.SystemWeb());
 export const System = registerPlugin<SystemPlugin>("ElizaSystem", {
   web: loadWeb,
 });
+
+export * from "./sense-bridge";

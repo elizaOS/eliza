@@ -51,14 +51,34 @@ export type SettingsOp = (typeof SETTINGS_OPS)[number];
 // Coding sub-agent adapters the orchestrator can route to. Mirrors
 // KNOWN_ADAPTER_TYPES in plugin-agent-orchestrator (kept as a literal here so
 // @elizaos/agent does not depend on the orchestrator plugin).
-const CODING_BACKENDS = ["elizaos", "pi-agent", "claude", "codex"] as const;
+// Keep in sync with CODING_AGENT_BACKENDS and normalizeTaskAgentAdapter in
+// the orchestrator: kimi and grok were added there but this mirror was not
+// updated, so set_backend rejected backends the orchestrator can route to.
+const CODING_BACKENDS = [
+  "elizaos",
+  "pi-agent",
+  "claude",
+  "codex",
+  "kimi",
+  "grok",
+] as const;
 const CODING_BACKEND_ALIASES: Record<string, string> = {
   "eliza-os": "elizaos",
   eliza: "elizaos",
   pi: "pi-agent",
+  "pi agent": "pi-agent",
   "claude-code": "claude",
+  "claude code": "claude",
   openai: "codex",
   "openai-codex": "codex",
+  "openai codex": "codex",
+  "kimi-code": "kimi",
+  "kimi code": "kimi",
+  moonshot: "kimi",
+  "grok-build": "grok",
+  "grok build": "grok",
+  xai: "grok",
+  "x-ai": "grok",
 };
 const DIFFICULTY_TAGS = ["simple", "moderate", "hard"] as const;
 const BRAIN_MODEL_KEYS = [
@@ -813,7 +833,7 @@ export const settingsAction: Action = {
     {
       name: "backend",
       description:
-        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, or codex. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
+        "[set_backend] The backend to route to. For coding: elizaos, pi-agent, claude, codex, kimi, or grok. For brain: a loaded provider id (e.g. anthropic, openai, cerebras).",
       required: false,
       schema: { type: "string" as const },
     },

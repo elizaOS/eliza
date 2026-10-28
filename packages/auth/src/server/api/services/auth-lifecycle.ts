@@ -182,6 +182,84 @@ export async function authAppClientSubjects(
   return bootstrapRows<AuthAppClientSubject>(result);
 }
 
+export type LoginMethodName =
+  | "passkey"
+  | "email"
+  | "sms"
+  | "whatsapp"
+  | "totp"
+  | "siwe"
+  | "siws"
+  | "telegram"
+  | "farcaster"
+  | "oauth"
+  | "oidc";
+
+const LOGIN_METHOD_NAMES = new Set<string>([
+  "passkey",
+  "email",
+  "sms",
+  "whatsapp",
+  "totp",
+  "siwe",
+  "siws",
+  "telegram",
+  "farcaster",
+  "oauth",
+  "oidc",
+]);
+
+export function loginMethodProviderKey(providerId: string | undefined): string {
+  return providerId?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * The refusal a tenant's login methods give a sign-in by `method` (through
+ * `providerId` for OAuth and OIDC), or null when the sign-in is allowed.
+ */
+export function loginMethodRefusal(
+  loginMethods: TenantAuthAbuseConfig["loginMethods"] | undefined,
+  method: LoginMethodName,
+  providerId?: string,
+): string | null {
+  if (!loginMethods) return null;
+  if (method === "oauth" || method === "oidc") {
+    const disabled =
+      loginMethods[method]?.[loginMethodProviderKey(providerId)] === false;
+    if (!disabled) return null;
+    return `${method === "oauth" ? "OAuth" : "OIDC"} login is disabled for this tenant`;
+  }
+  return loginMethods[method] === false
+    ? `${method} login is disabled for this tenant`
+    : null;
+}
+
+/**
+ * A switch into another tenant is a sign-in to it, so the target tenant's
+ * login methods apply to the method (and provider) recorded on the session.
+ * Returns the refusal, or null when the switch is allowed.
+ */
+export async function tenantSwitchLoginRefusal(
+  tenantId: string,
+  claims: Record<string, unknown>,
+): Promise<string | null> {
+  const method = claims.authMethod;
+  if (typeof method !== "string" || !LOGIN_METHOD_NAMES.has(method)) {
+    return null;
+  }
+  const providerId =
+    method === "oidc"
+      ? claims.oidcProviderId
+      : method === "oauth"
+        ? claims.oauthProviderId
+        : undefined;
+  return loginMethodRefusal(
+    (await authTenantConfigSubject(tenantId))?.auth_abuse_config?.loginMethods,
+    method as LoginMethodName,
+    typeof providerId === "string" ? providerId : undefined,
+  );
+}
+
 export async function createSessionToken(
   address: string,
   tenantId: string,

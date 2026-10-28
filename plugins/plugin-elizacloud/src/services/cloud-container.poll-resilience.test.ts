@@ -240,3 +240,65 @@ describe("CloudContainerService deployment polling", () => {
     expect(reported()).toEqual([]);
   });
 });
+
+describe("CloudContainerService start while the cloud is unreachable", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(async () => {
+    await active?.stop();
+    active = null;
+    vi.useRealTimers();
+  });
+
+  it("starts, reports the failed container load, and loads once the cloud answers", async () => {
+    let online = false;
+    const lists: number[] = [];
+    const fetchImpl = (async (input, init) => {
+      const method = init?.method ?? "GET";
+      const { pathname } = new URL(String(input));
+      if (method === "GET" && pathname.endsWith("/containers")) {
+        lists.push(Date.now());
+        if (!online) throw new TypeError("fetch failed");
+        return json(200, { success: true, data: [{ id: ID, status: "deploying" }] });
+      }
+      if (method === "GET" && pathname.endsWith(`/containers/${ID}`)) {
+        return json(200, { success: true, data: { id: ID, status: "running" } });
+      }
+      throw new Error(`unexpected ${method} ${pathname}`);
+    }) as typeof fetch;
+    const runtime = new AgentRuntime({
+      character: { name: "cloud-container-offline" } as Character,
+    });
+    const client = new CloudApiClient("https://cloud.test/api/v1", undefined, {
+      fetchImpl,
+    });
+    vi.spyOn(runtime, "getService").mockReturnValue({
+      isAuthenticated: () => true,
+      getClient: () => client,
+    } as never);
+
+    const service = (await CloudContainerService.start(runtime)) as CloudContainerService;
+    active = service;
+    expect(service.getTrackedContainer(ID)).toBeUndefined();
+    expect(
+      runtime
+        .getRecentReportedErrors()
+        .filter((entry) => entry.scope === "CloudContainerService.loadExisting"),
+    ).toMatchObject([
+      {
+        code: "CLOUD_CONTAINER_LOAD_FAILED",
+        context: { attempt: 1, nextLoadInMs: 30_000 },
+      },
+    ]);
+
+    online = true;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(lists).toHaveLength(2);
+    expect(service.getTrackedContainer(ID)?.status).toBe("deploying");
+
+    await vi.advanceTimersByTimeAsync(BASE_INTERVAL_MS);
+    expect(service.getTrackedContainer(ID)?.status).toBe("running");
+  });
+});

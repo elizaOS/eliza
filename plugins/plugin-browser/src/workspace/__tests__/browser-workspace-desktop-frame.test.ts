@@ -1,10 +1,16 @@
 /**
- * Desktop utility script frame selection, run in a real JSDOM page.
+ * Desktop utility script frame selection, run in a real JSDOM page, and the
+ * desktop bridge eval transport against a real local HTTP bridge.
  */
 
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
-import { createDesktopBrowserWorkspaceUtilityScript } from "../browser-workspace-desktop.js";
+import {
+  createDesktopBrowserWorkspaceUtilityScript,
+  executeDesktopBrowserWorkspaceDomCommand,
+} from "../browser-workspace-desktop.js";
 import type { BrowserWorkspaceCommand } from "../browser-workspace-types.js";
 
 function openPage(body: string): JSDOM {
@@ -60,4 +66,37 @@ describe("desktop browser workspace frame select", () => {
 
     expect(highlightedFrames(dom)).toEqual([false, true]);
   });
+});
+
+describe("desktop browser workspace bridge eval", () => {
+  it("waits for a page wait longer than the 12s bridge default", async () => {
+    // The desktop host runs page scripts for up to 30s; this bridge answers
+    // the eval after 13s, as a wait whose element appears late does.
+    const server = http.createServer((req, res) => {
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ result: { selector: "#dashboard" } }));
+      }, 13_000);
+      req.resume();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    try {
+      const result = await executeDesktopBrowserWorkspaceDomCommand(
+        {
+          subaction: "wait",
+          id: "tab-1",
+          selector: "#dashboard",
+          timeoutMs: 20_000,
+        },
+        { ELIZA_BROWSER_WORKSPACE_URL: `http://127.0.0.1:${port}` },
+      );
+      expect(result.mode).toBe("desktop");
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 30_000);
 });

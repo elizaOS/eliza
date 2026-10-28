@@ -69,7 +69,10 @@ export function optionString(options: unknown, key: string): string | null {
   return null;
 }
 
-const URL_RE = /https?:\/\/[^\s<>"')\]]+/gi;
+// A pasted meeting link is ASCII (Teams percent-encodes its path). Stopping at
+// the first non-ASCII character keeps text written right after the link, with
+// no space, out of it: "https://zoom.us/j/123에", "https://meet.google.com/abc-defg-hij。".
+const URL_RE = /https?:\/\/[^\s<>"')\]\u0080-\uffff]+/gi;
 
 /** Find the first recognizable meeting URL in free text. */
 export function findMeetingUrlInText(text: string): ParsedMeetingUrl | null {

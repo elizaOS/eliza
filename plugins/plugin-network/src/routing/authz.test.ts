@@ -97,6 +97,96 @@ describe("Network own-word boundary", () => {
       { kind: "travel", evidence: "I'M In Lisbon" },
     ]);
   });
+
+  it("records a later cue when an earlier cue of the same kind is negated", () => {
+    assert.deepEqual(
+      detectNetworkSignals(
+        "It wasn't creepy at first, but then he harassed me after dinner.",
+      ),
+      [{ kind: "safety_concern", evidence: "harassed" }],
+    );
+    assert.deepEqual(
+      detectNetworkSignals(
+        "He didn't harass me, but his follow-up messages made me uncomfortable.",
+      ),
+      [{ kind: "safety_concern", evidence: "made me uncomfortable" }],
+    );
+    assert.deepEqual(
+      detectNetworkSignals("He wasn't creepy and never harassed anyone."),
+      [],
+    );
+  });
+});
+
+describe("Network two-ended range", () => {
+  it("reads the end of a range stated with to", () => {
+    const now = new Date("2026-10-14T15:00:00Z"); // Wednesday
+    for (const [text, from, until] of [
+      ["I'm in Lisbon from Monday to Friday", "2026-10-19", "2026-10-23"],
+      [
+        "I'm in Lisbon from October 30 to November 2",
+        "2026-10-30",
+        "2026-11-02",
+      ],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          {
+            state: "traveling",
+            from: "2026-11-01",
+            until: "2026-11-05",
+            evidence: text,
+          },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: `${from}T00:00:00.000Z`,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+    // "to" between two places is not a date range: the model's end stands.
+    const places = "I'm flying from Boston to New York";
+    assert.deepEqual(
+      authorizeSetState(
+        { state: "traveling", until: "2026-11-01", evidence: places },
+        places,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: null,
+        until: "2026-11-01T00:00:00.000Z",
+      },
+    );
+    // A destination is not a start date. "from Boston to New York on Friday
+    // for two weeks" must keep the duration, not end on the departure day.
+    const placeRange =
+      "I'm flying from Boston to New York on Friday for two weeks";
+    assert.deepEqual(
+      authorizeSetState(
+        {
+          state: "traveling",
+          from: null,
+          until: "2026-10-30",
+          evidence: placeRange,
+        },
+        placeRange,
+        now,
+      ),
+      {
+        allowed: true,
+        state: "traveling",
+        from: "2026-10-16T00:00:00.000Z",
+        until: "2026-10-30T00:00:00.000Z",
+      },
+    );
+  });
 });
 
 describe("Network stated duration", () => {
@@ -207,5 +297,101 @@ describe("Network stated duration", () => {
         until: "2026-10-28T00:00:00.000Z",
       },
     );
+  });
+});
+
+describe("Network weekday with a date", () => {
+  it("ends on the stated date, not on the next weekday", () => {
+    const now = new Date("2026-10-14T15:00:00Z");
+    for (const [text, until] of [
+      ["I'm in Lisbon until Friday, October 30", "2026-10-30"],
+      ["I'm in Lisbon until Monday the 26th", "2026-10-26"],
+      ["I'm in Lisbon until Thursday 10/29", "2026-10-29"],
+      ["I'm in Lisbon until Friday", "2026-10-16"],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until, evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
+});
+
+describe("Network weekday with next week", () => {
+  it("ends on the weekday of the next calendar week, not this week's", () => {
+    const now = new Date("2026-10-14T15:00:00Z"); // Wednesday
+    for (const [text, until] of [
+      ["I'm in Lisbon until Friday next week", "2026-10-23"],
+      ["I'm in Lisbon until Friday of next week", "2026-10-23"],
+      ["I'm away until Monday next week", "2026-10-19"],
+      // A bare weekday still means its next occurrence, this week.
+      ["I'm in Lisbon until Friday", "2026-10-16"],
+    ]) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until, evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
+});
+
+describe("Network back the date", () => {
+  it("ends a stay on the date after 'back the', as authz reads it", () => {
+    const now = new Date("2026-10-19T15:00:00Z"); // Monday
+    for (const [proposal, text, until] of [
+      [
+        { state: "paused", until: null, evidence: "Pause intros" },
+        "Pause intros, back the 5th",
+        "2026-11-05",
+      ],
+      [
+        { state: "traveling", until: null, evidence: "I'm in Lisbon" },
+        "I'm in Lisbon, back the 12th",
+        "2026-11-12",
+      ],
+      // The member's own date wins over a wrong model date.
+      [
+        { state: "paused", until: "2026-10-25", evidence: "Pause intros" },
+        "Pause intros, back the 5th",
+        "2026-11-05",
+      ],
+      // The preposition forms already resolved.
+      [
+        { state: "paused", until: null, evidence: "Pause intros" },
+        "Pause intros, back on the 5th",
+        "2026-11-05",
+      ],
+    ] as const) {
+      assert.deepEqual(
+        authorizeSetState(proposal, text, now),
+        {
+          allowed: true,
+          state: proposal.state,
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
   });
 });

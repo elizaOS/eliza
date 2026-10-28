@@ -199,16 +199,30 @@ function sumReportRows(rows: RedditReportRow[] = []): CampaignMetrics {
   };
 }
 
-async function listBusinesses(credentials: AdAccountCredentials): Promise<RedditBusiness[]> {
-  const response = await redditRequest<RedditBusiness[]>(
-    "/me/businesses",
-    credentials.accessToken,
-    {
+async function listAllPages<T>(endpoint: string, accessToken: string, label: string): Promise<T[]> {
+  // Reddit pages discovery lists (100 by default); follow pagination.next_token
+  // to the end so items after the first page can be discovered and selected.
+  const items: T[] = [];
+  const seenTokens = new Set<string>();
+  let token: string | undefined;
+  do {
+    const response = await redditRequest<T[]>(endpoint, accessToken, {
       method: "GET",
-      params: { "page.size": "100" },
-    },
-  );
-  return response.data ?? [];
+      params: { "page.size": "100", "page.token": token },
+    });
+    items.push(...(response.data ?? []));
+    const next = response.pagination?.next_token ?? undefined;
+    if (next && seenTokens.has(next)) {
+      throw new Error(`Reddit ${label} listing repeated a page`);
+    }
+    if (next) seenTokens.add(next);
+    token = next;
+  } while (token);
+  return items;
+}
+
+async function listBusinesses(credentials: AdAccountCredentials): Promise<RedditBusiness[]> {
+  return listAllPages<RedditBusiness>("/me/businesses", credentials.accessToken, "business");
 }
 
 async function firstProfileId(
@@ -291,14 +305,13 @@ export const redditAdsProvider: AdProvider = {
   ): Promise<Array<{ id: string; name: string }>> {
     const businesses = await listBusinesses(credentials);
     const accounts = await Promise.all(
-      businesses.map(async (business) => {
-        const response = await redditRequest<RedditAdAccount[]>(
+      businesses.map((business) =>
+        listAllPages<RedditAdAccount>(
           `/businesses/${encodeURIComponent(business.id)}/ad_accounts`,
           credentials.accessToken,
-          { method: "GET", params: { "page.size": "100" } },
-        );
-        return response.data ?? [];
-      }),
+          "ad account",
+        ),
+      ),
     );
     return accounts.flat().map((account) => ({
       id: account.id,

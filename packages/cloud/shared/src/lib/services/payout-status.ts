@@ -526,7 +526,7 @@ class PayoutStatusService {
     const solanaRpc = env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
     const { Connection, PublicKey } =
       require("@solana/web3.js") as typeof import("@solana/web3.js");
-    const { getAssociatedTokenAddress, getAccount } =
+    const { getAssociatedTokenAddress, getAccount, TokenAccountNotFoundError } =
       require("@solana/spl-token") as typeof import("@solana/spl-token");
     const connection = new Connection(solanaRpc, "confirmed");
     const mintAddress = new PublicKey(ELIZA_TOKEN_ADDRESSES.solana);
@@ -534,7 +534,17 @@ class PayoutStatusService {
 
     const ata = await getAssociatedTokenAddress(mintAddress, walletPubkey);
 
-    const account = await getAccount(connection, ata).catch(() => null);
+    // error-policy:J3 an absent associated token account is a real "no tokens"
+    // answer; an RPC failure (429/503/timeout) is not. Only the former may
+    // become no_balance — the latter propagates to resolveNetworkStatus, which
+    // degrades Solana to not_configured instead of claiming an empty wallet.
+    let account: Awaited<ReturnType<typeof getAccount>> | null;
+    try {
+      account = await getAccount(connection, ata);
+    } catch (error) {
+      if (!(error instanceof TokenAccountNotFoundError)) throw error;
+      account = null;
+    }
 
     if (!account) {
       return {
@@ -586,9 +596,7 @@ export function getHotWalletAddresses(): { evm: string | null; solana: string | 
   let evm: string | null = null;
   const evmKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
   if (evmKey) {
-    const key = evmKey.startsWith("0x")
-      ? (evmKey as `0x${string}`)
-      : (`0x${evmKey}` as `0x${string}`);
+    const key = (/^0x/i.test(evmKey) ? `0x${evmKey.slice(2)}` : `0x${evmKey}`) as `0x${string}`;
     evm = privateKeyToAccount(key).address;
   }
 

@@ -190,7 +190,14 @@ export function getBrowserWorkspaceElementSearchTexts(
   const labelText =
     element.id && element.ownerDocument
       ? Array.from(
-          element.ownerDocument.querySelectorAll(`label[for="${element.id}"]`),
+          element.ownerDocument.querySelectorAll(
+            // The id is page-controlled. An unquoted interpolation of an id
+            // that contains a quote (legal HTML, e.g. `phone"work`) makes the
+            // selector invalid, and querySelectorAll then throws SyntaxError,
+            // aborting the whole role/label search. Quote it with the same
+            // helper this file uses for its other attribute selectors.
+            `label[for=${buildBrowserWorkspaceCssStringLiteral(element.id)}]`,
+          ),
         )
           .map((label) => label.textContent)
           .join(" ")
@@ -514,7 +521,7 @@ export function findAllBrowserWorkspaceElementsByText(
     ),
   );
 
-  return candidates.filter((element) => {
+  const matches = candidates.filter((element) => {
     const haystacks = [
       element.textContent,
       element.getAttribute("aria-label"),
@@ -532,7 +539,18 @@ export function findAllBrowserWorkspaceElementsByText(
       exact ? value === wanted : value.includes(wanted),
     );
   });
+  // A wrapper (a [data-testid] section, a heading, a label) contains the text
+  // of the link or button inside it and comes first in document order. Keep the
+  // inner control so a click by text reaches it, not the wrapper.
+  return matches.filter(
+    (element) =>
+      element.matches(BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR) ||
+      !matches.some((other) => other !== element && element.contains(other)),
+  );
 }
+
+const BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR =
+  "a, button, input, textarea, select, option, [role='button']";
 
 export function findBrowserWorkspaceElementByText(
   document: Document,

@@ -27,7 +27,7 @@ export function managedGmailHostTransport(
     url.password
   )
     throw failure("Managed Gmail requires its private loopback host.");
-  if (!token || !/^[a-f0-9]{64}$/.test(token))
+  if (!token || !/^[A-Za-z0-9_-]{64}$/.test(token))
     throw failure("Managed Gmail host authentication is unavailable.");
   return async (body: object) => {
     const response = await request(url, {

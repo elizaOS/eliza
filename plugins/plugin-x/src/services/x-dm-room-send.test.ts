@@ -115,4 +115,109 @@ describe("X DM reply to a stored DM room", () => {
       },
     ]);
   });
+
+  it("returns group history filtered by its conversation id", async () => {
+    const ownUserId = "1000";
+    const groupConversationId = "1700000000000000001";
+    const iterator = {
+      includes: {
+        users: [{ id: "2000", username: "alice" }],
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          id: "9003",
+          sender_id: "2000",
+          dm_conversation_id: groupConversationId,
+          participant_ids: [ownUserId, "2000", "3000"],
+          text: "hello group",
+          event_type: "MessageCreate",
+          created_at: "2026-10-17T12:00:00.000Z",
+        };
+      },
+    };
+    const session = {
+      profile: { userId: ownUserId },
+      client: { v2: { listDmEvents: async () => iterator } },
+    };
+    const base = {
+      twitterClient: {
+        withAuthenticatedSession: (op: (value: unknown) => unknown) =>
+          op(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    };
+    const service = Object.create(XService.prototype) as XService & {
+      defaultAccountId: string;
+      getTwitterClientForAccount: unknown;
+    };
+    service.defaultAccountId = "default";
+    service.getTwitterClientForAccount = async () => ({ client: base });
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+    } as unknown as IAgentRuntime;
+    const target = {
+      source: "x",
+      accountId: "default",
+      channelId: groupConversationId,
+    };
+
+    const messages = await service.fetchConnectorMessages(
+      { runtime, source: "x", accountId: "default", target },
+      { target },
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.content.text).toBe("hello group");
+  });
+
+  it("keeps the group type when connector history reads a group DM", async () => {
+    const ownUserId = "1000";
+    const groupConversationId = "1700000000000000001";
+    const iterator = {
+      includes: {
+        users: [{ id: "2000", username: "alice" }],
+      },
+      async *[Symbol.asyncIterator]() {
+        yield {
+          id: "9003",
+          sender_id: "2000",
+          dm_conversation_id: groupConversationId,
+          participant_ids: [ownUserId, "2000", "3000"],
+          text: "hello group",
+          event_type: "MessageCreate",
+          created_at: "2026-10-17T12:00:00.000Z",
+        };
+      },
+    };
+    const session = {
+      profile: { userId: ownUserId },
+      client: { v2: { listDmEvents: async () => iterator } },
+    };
+    const base = {
+      twitterClient: {
+        withAuthenticatedSession: (op: (value: unknown) => unknown) =>
+          op(session),
+        isAuthenticatedSessionCurrent: () => true,
+      },
+    };
+    const service = Object.create(XService.prototype) as XService & {
+      defaultAccountId: string;
+      getTwitterClientForAccount: unknown;
+    };
+    service.defaultAccountId = "default";
+    service.getTwitterClientForAccount = async () => ({ client: base });
+    const runtime = {
+      agentId: "00000000-0000-4000-8000-000000000001",
+    } as unknown as IAgentRuntime;
+
+    const messages = await service.fetchConnectorMessages({
+      runtime,
+      source: "x",
+      accountId: "default",
+    });
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.content.channelType).toBe(ChannelType.GROUP);
+    expect(messages[0]?.metadata?.chatType).toBe(ChannelType.GROUP);
+  });
 });

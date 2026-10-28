@@ -293,3 +293,24 @@ describe("plan status mapping", () => {
     expect(entitlementStatusForSubscription("incomplete", false)).toBe("none");
   });
 });
+
+test("deployment audiences are signed with real keys and do not reuse another cached audience", async () => {
+  for (const audience of ["independent-app", "another-service", "independent-app"]) {
+    const configured = env({ ELIZA_ENTITLEMENT_AUDIENCE: audience });
+    const token = await signSubscriptionEntitlement(
+      { userId: USER, organizationId: ORG, summary: activeGrant },
+      configured,
+    );
+    const { keys } = await publishedEntitlementKeys(configured);
+    const { claims } = await clientVerify(token, keys as JsonWebKey[]);
+    expect(claims.aud).toBe(audience);
+  }
+  for (const audience of ["", "invalid audience", "x".repeat(129)]) {
+    await expect(
+      signSubscriptionEntitlement(
+        { userId: USER, organizationId: ORG, summary: activeGrant },
+        env({ ELIZA_ENTITLEMENT_AUDIENCE: audience }),
+      ),
+    ).rejects.toBeInstanceOf(EntitlementSigningUnavailableError);
+  }
+});

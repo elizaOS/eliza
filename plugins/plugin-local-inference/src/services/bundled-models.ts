@@ -27,6 +27,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { ElizaError } from "@elizaos/core";
 import {
 	ensureDefaultAssignment,
 	readAssignments,
@@ -56,17 +57,54 @@ function manifestPath(): string {
 	return path.join(elizaModelsDir(), "manifest.json");
 }
 
+/**
+ * Read the manifest staged next to the bundled model files.
+ *
+ * A missing manifest is normal on Capacitor / desktop / non-AOSP installs, so
+ * ENOENT stays a silent `null`. Any other failure — the file exists but cannot
+ * be read, is truncated, or is not a v1 manifest — is a broken staging step:
+ * it must not be reported to the caller as "this build ships no models",
+ * because that silently disables every bundled model the APK did ship.
+ */
 async function readManifest(): Promise<BundledModelManifest | null> {
+	let raw: string;
 	try {
-		const raw = await fs.readFile(manifestPath(), "utf8");
-		const parsed = JSON.parse(raw) as BundledModelManifest;
-		if (parsed.version !== 1 || !Array.isArray(parsed.models)) {
+		raw = await fs.readFile(manifestPath(), "utf8");
+	} catch (cause) {
+		if ((cause as NodeJS.ErrnoException)?.code === "ENOENT") {
 			return null;
 		}
-		return parsed;
-	} catch {
-		return null;
+		throw new ElizaError(
+			"Bundled model manifest exists but could not be read",
+			{
+				code: "BUNDLED_MODEL_MANIFEST_UNREADABLE",
+				context: { path: manifestPath() },
+				cause,
+			},
+		);
 	}
+
+	let parsed: BundledModelManifest;
+	try {
+		parsed = JSON.parse(raw) as BundledModelManifest;
+	} catch (cause) {
+		throw new ElizaError("Bundled model manifest is not valid JSON", {
+			code: "BUNDLED_MODEL_MANIFEST_INVALID",
+			context: { path: manifestPath() },
+			cause,
+		});
+	}
+
+	if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
+		throw new ElizaError(
+			"Bundled model manifest is not a version 1 model list",
+			{
+				code: "BUNDLED_MODEL_MANIFEST_INVALID",
+				context: { path: manifestPath() },
+			},
+		);
+	}
+	return parsed;
 }
 
 async function ensureBundledAssignment(

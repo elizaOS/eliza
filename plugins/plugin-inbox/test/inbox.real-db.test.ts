@@ -19,6 +19,7 @@
 
 import {
   type AgentRuntime,
+  getConnectorAccountManager,
   ModelType,
   type ModelTypeName,
   type Plugin,
@@ -38,7 +39,10 @@ import {
   lifeInboxTriageExamples,
 } from "../src/db/schema.ts";
 import { curateEmailCandidates } from "../src/inbox/email-curation.ts";
-import type { InboxGmailGateway } from "../src/inbox/google-gmail-seam.ts";
+import {
+  createInboxGmailGateway,
+  type InboxGmailGateway,
+} from "../src/inbox/google-gmail-seam.ts";
 import { InboxService } from "../src/inbox/service.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
 import { InboxUnsubscribeRepository } from "../src/inbox/unsubscribe-repository.ts";
@@ -186,6 +190,30 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     );
     // High-urgency item sorts ahead of medium/low in the unresolved queue.
     expect(queue[0]?.urgency).toBe("high");
+  });
+
+  it("rejects a send-only Google account before Gmail subscription search", async () => {
+    const manager = getConnectorAccountManager(runtime);
+    await manager.upsertAccount("google", {
+      provider: "google",
+      id: "send-only-google-account",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "owner_binding",
+      status: "connected",
+      displayHandle: "send-only@example.test",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      metadata: {
+        isDefault: true,
+        grantedScopes: ["https://www.googleapis.com/auth/gmail.send"],
+      },
+    });
+
+    const gmail = createInboxGmailGateway(runtime, runtime.agentId);
+    await expect(gmail.requireGmailGrant()).rejects.toThrow(
+      "Google Gmail triage access has not been granted.",
+    );
   });
 
   it("refuses a combined unsubscribe before any effect when Gmail manage access is absent", async () => {
@@ -360,6 +388,63 @@ describe("InboxService + InboxRepository — real PGLite", () => {
       subject: "unsubscribe a1B2+c3D4",
       body: "token:q9+Zx",
     });
+  });
+
+  it("trashes every thread of a sender whose address case varies", async () => {
+    const trash = vi.fn(async () => undefined);
+    const message = (n: number, fromEmail: string) => ({
+      id: `case-message-${n}`,
+      threadId: `case-thread-${n}`,
+      from: `Shop <${fromEmail}>`,
+      fromEmail,
+      subject: `Sale ${n}`,
+      receivedAt: `2026-10-0${n}T00:00:00.000Z`,
+      metadata: {
+        headers: { "List-Unsubscribe": "<mailto:unsub@shop.example>" },
+      },
+    });
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage", "google.gmail.manage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      // Gmail's from: search ignores case and keeps each header's casing.
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            message(1, "News@Shop.example"),
+            message(2, "News@Shop.example"),
+            message(3, "news@shop.example"),
+            message(4, "news@shop.example"),
+            message(5, "news@shop.example"),
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(async () => undefined),
+      createGmailFilterForSender: vi.fn(async () => ({ filterId: "filter-c" })),
+      trashGmailThread: trash,
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, { gmail });
+
+    const scan = await unsubscribe.scanEmailSubscriptions({
+      query: "from:news@shop.example",
+    });
+    expect(
+      scan.senders.map((sender) => [sender.senderEmail, sender.messageCount]),
+    ).toEqual([["news@shop.example", 5]]);
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "news@shop.example",
+      userAuthorization: true,
+      trashExisting: true,
+    });
+    expect(result.record).toMatchObject({
+      status: "succeeded",
+      threadsTrashed: 5,
+    });
+    expect(trash).toHaveBeenCalledTimes(5);
   });
 
   it("keeps the List-Unsubscribe target of a message that is not the batch's first", async () => {

@@ -2,6 +2,7 @@
  * No model, key or private input. Other regions retain the public search path.
  */
 import type { ActionResult } from "@elizaos/core";
+import { fetchWithoutRedirects } from "../../utils/no-redirect-fetch";
 
 export const CURRENT_WEATHER_UNAVAILABLE_REASONS = [
   "CURRENT_WEATHER_DEADLINE",
@@ -74,6 +75,8 @@ export function parseCurrentWeatherSourceDiagnostics(
 export const CURRENT_WEATHER_LIMITS = Object.freeze({
   totalMs: 6000,
   requestMs: 1500,
+  // Cold GNIS geocoding can exceed a single NWS hop. Share the same total deadline.
+  geocoderMs: 3000,
   requests: 5,
   bodyBytes: 262144,
   // Observation coordinates can be quantized to two decimals while station
@@ -457,21 +460,29 @@ export async function runCurrentUsWeatherSearch(
     const request = new AbortController();
     const timeout = setTimeout(
       () => request.abort(new Error("CURRENT_WEATHER_REQUEST_DEADLINE")),
-      CURRENT_WEATHER_LIMITS.requestMs,
+      Math.min(
+        hop === "geocoder" ? CURRENT_WEATHER_LIMITS.geocoderMs : CURRENT_WEATHER_LIMITS.requestMs,
+        Math.max(1, CURRENT_WEATHER_LIMITS.totalMs - (now() - started)),
+      ),
     );
     const active = AbortSignal.any([signal, request.signal]);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     let response: Response | undefined;
     try {
       response = await controlled(
-        fetcher(url, {
-          redirect: "error",
-          signal: active,
-          headers: {
-            Accept: "application/geo+json, application/json",
-            "User-Agent": "elizaOS-public-weather/1.0 (https://elizaos.ai)",
+        // Never follow a redirect off the two allowlisted hosts. A 3xx rejects
+        // (network outcome) like the former redirect: "error", which workerd refuses.
+        fetchWithoutRedirects(
+          url,
+          {
+            signal: active,
+            headers: {
+              Accept: "application/geo+json, application/json",
+              "User-Agent": "elizaOS-public-weather/1.0 (https://elizaos.ai)",
+            },
           },
-        }),
+          fetcher,
+        ),
         active,
       );
       diagnostic.httpStatus = response.status;

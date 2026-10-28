@@ -39,6 +39,7 @@ class RecordingManageAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "gmail";
   messages: MessageRef[] = [];
   manageResult: ManageResult = { ok: true };
+  requesters: Array<Memory | undefined> = [];
   managed: Array<{ messageId: string; operation: ManageOperation }> = [];
 
   unsubscribe = true;
@@ -65,7 +66,10 @@ class RecordingManageAdapter extends BaseMessageAdapter {
     _runtime: IAgentRuntime,
     messageId: string,
     operation: ManageOperation,
+    context?: { requester?: Memory },
   ): Promise<ManageResult> {
+    expect(context?.requester).toBeDefined();
+    this.requesters.push(context?.requester);
     this.managed.push({ messageId, operation });
     return Promise.resolve(this.manageResult);
   }

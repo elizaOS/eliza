@@ -27,6 +27,14 @@ export interface RetryOptions {
    * reported as a failure instead of being published twice.
    */
   replayUnknownOutcome?: boolean;
+  /**
+   * Whether exhausting the retries after an attempt that ended unknown throws
+   * `UnknownPostOutcomeError` instead of the raw error. Only a replayed create
+   * call (one the platform deduplicates) opts in: its last unanswered attempt
+   * may have published. Preliminary steps (sessions, token exchanges, uploads),
+   * reads and deletes leave it off, since their failure proves no post exists.
+   */
+  unknownOutcomeOnExhaustion?: boolean;
 }
 
 const PLATFORM_RATE_LIMITS: Record<
@@ -153,8 +161,15 @@ export async function withRetry<T>(
   parser: (response: Response) => Promise<T>,
   options: RetryOptions,
 ): Promise<ApiResponse<T>> {
-  const { maxRetries = 3, baseDelayMs = 1000, platform, replayUnknownOutcome = true } = options;
+  const {
+    maxRetries = 3,
+    baseDelayMs = 1000,
+    platform,
+    replayUnknownOutcome = true,
+    unknownOutcomeOnExhaustion = false,
+  } = options;
   let lastError: Error | undefined;
+  let lastUnknownOutcome = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Whether this attempt ended without a definite answer from the platform:
@@ -205,8 +220,20 @@ export async function withRetry<T>(
     } catch (error) {
       // error-policy:J1 outbound social-platform API transport boundary — retries transient failures and propagates the last error after exhausting retries (fail-closed)
       lastError = error instanceof Error ? error : new Error(String(error));
-      if ((error as RateLimitError).rateLimited) throw error;
+      if ((error as RateLimitError).rateLimited) {
+        // A 429 proves only that this attempt was not accepted. When an
+        // earlier attempt of an opted-in create ended without a definite
+        // answer, that attempt may already have published, so the unknown
+        // outcome survives the rate limit instead of escaping as a
+        // refundable failure. Calls that did not opt in keep the typed
+        // rate-limit error: their failure proves no post exists.
+        if (unknownOutcomeOnExhaustion && lastUnknownOutcome) {
+          throw new UnknownPostOutcomeError(platform, lastError);
+        }
+        throw error;
+      }
       if (error instanceof SocialApiRejectionError) unknownOutcome = false;
+      lastUnknownOutcome = unknownOutcome;
       if (!replayUnknownOutcome) {
         throw unknownOutcome ? new UnknownPostOutcomeError(platform, lastError) : lastError;
       }
@@ -219,6 +246,13 @@ export async function withRetry<T>(
     }
   }
 
+  // Retries are exhausted. For a replayed create that opted in, an unanswered
+  // last attempt (a timeout, a lost body, a 5xx) may have published, so
+  // surface the unknown outcome: callers hold the credit instead of refunding.
+  // The no-replay branch above already throws this error per attempt.
+  if (unknownOutcomeOnExhaustion && lastError && lastUnknownOutcome) {
+    throw new UnknownPostOutcomeError(platform, lastError);
+  }
   throw lastError || new Error(`${platform} request failed after ${maxRetries} retries`);
 }
 

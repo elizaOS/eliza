@@ -37,6 +37,7 @@ export type BrowserWorkspaceSubaction =
   | "check"
   | "clipboard"
   | "click"
+  | "follow"
   | "fill"
   | "find"
   | "focus"
@@ -308,6 +309,8 @@ export interface EvaluateBrowserWorkspaceTabRequest {
   id: string;
   script: string;
   partition?: string;
+  /** Client-side wait for the bridge reply; defaults to the bridge request timeout. */
+  timeoutMs?: number;
 }
 
 export interface BrowserWorkspaceDomElementSummary {

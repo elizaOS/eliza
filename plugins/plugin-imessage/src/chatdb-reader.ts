@@ -24,7 +24,7 @@
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { IMessagePermissionAction } from "./types.js";
 
 /**
@@ -341,6 +341,26 @@ export interface ChatDbMessage {
   reaction: ChatDbReaction | null;
   /** Zero or more attachments bound to this message. */
   attachments: ChatDbAttachment[];
+  /**
+   * True when the caller tolerated an attachment metadata read failure for
+   * this row (see {@link ChatDbFetchOptions}); `attachments` is then empty
+   * because it could not be read, not because the message has none.
+   */
+  attachmentReadFailed?: boolean;
+}
+
+/** Error code thrown when a row's attachment metadata cannot be read. */
+export const IMESSAGE_ATTACHMENT_READ_FAILED = "IMESSAGE_ATTACHMENT_READ_FAILED";
+export const IMESSAGE_CHATDB_TIP_READ_FAILED = "IMESSAGE_CHATDB_TIP_READ_FAILED";
+
+export interface ChatDbFetchOptions {
+  /**
+   * Rows whose attachment metadata read failure the caller has already
+   * reported. For these rows a failed read yields `attachments: []` with
+   * `attachmentReadFailed: true` instead of throwing, so a persistent
+   * failure cannot head-of-line block every later row.
+   */
+  tolerateAttachmentReadFailure?: ReadonlySet<number>;
 }
 
 /**
@@ -364,14 +384,22 @@ export interface ChatDbReader {
    * caller can advance its cursor to the last row's `rowId`.
    *
    * Returns an empty array when the database has no new messages or
-   * when the reader has been closed.
+   * when the reader has been closed. Throws an `ElizaError` with code
+   * {@link IMESSAGE_ATTACHMENT_READ_FAILED} (context `rowId`) when a row's
+   * attachment metadata cannot be read, unless that row is listed in
+   * `options.tolerateAttachmentReadFailure`.
    */
-  fetchNewMessages(sinceRowId: number, limit: number): ChatDbMessage[];
+  fetchNewMessages(
+    sinceRowId: number,
+    limit: number,
+    options?: ChatDbFetchOptions
+  ): ChatDbMessage[];
   /**
    * Return the largest `message.ROWID` currently in the database. Used
    * on service start to seed the polling cursor at the tip so a fresh
    * launch does not replay the entire backlog. Returns 0 on empty dbs
-   * or if the query fails.
+   * or when the reader has been closed. Throws an `ElizaError` with code
+   * {@link IMESSAGE_CHATDB_TIP_READ_FAILED} when the query fails.
    */
   getLatestRowId(): number;
   /**
@@ -573,16 +601,21 @@ export async function openChatDb(
   // the ~97% of messages that store their content there instead of in
   // the plain `text` column, and enough status columns to surface
   // reactions, replies, edits, and read receipts to the caller.
+  //
+  // Apple dates are read as TEXT: modern macOS stores them as nanoseconds
+  // since 2001, past Number.MAX_SAFE_INTEGER, and node:sqlite throws
+  // ERR_OUT_OF_RANGE on such an INTEGER. appleDateToJsMs parses the text
+  // as a BigInt.
   const pollStmt = db.query(`
     SELECT
       m.ROWID AS row_id,
       m.guid AS guid,
       m.text AS text,
       m.attributedBody AS attributed_body,
-      m.date AS apple_date,
-      m.date_read AS apple_date_read,
-      m.date_edited AS apple_date_edited,
-      m.date_retracted AS apple_date_retracted,
+      CAST(m.date AS TEXT) AS apple_date,
+      CAST(m.date_read AS TEXT) AS apple_date_read,
+      CAST(m.date_edited AS TEXT) AS apple_date_edited,
+      CAST(m.date_retracted AS TEXT) AS apple_date_retracted,
       m.is_from_me AS is_from_me,
       m.is_read AS is_read,
       m.is_sent AS is_sent,
@@ -637,10 +670,10 @@ export async function openChatDb(
       m.guid AS guid,
       m.text AS text,
       m.attributedBody AS attributed_body,
-      m.date AS apple_date,
-      m.date_read AS apple_date_read,
-      m.date_edited AS apple_date_edited,
-      m.date_retracted AS apple_date_retracted,
+      CAST(m.date AS TEXT) AS apple_date,
+      CAST(m.date_read AS TEXT) AS apple_date_read,
+      CAST(m.date_edited AS TEXT) AS apple_date_edited,
+      CAST(m.date_retracted AS TEXT) AS apple_date_retracted,
       m.is_from_me AS is_from_me,
       m.is_read AS is_read,
       m.is_sent AS is_sent,
@@ -670,10 +703,10 @@ export async function openChatDb(
       m.guid AS guid,
       m.text AS text,
       m.attributedBody AS attributed_body,
-      m.date AS apple_date,
-      m.date_read AS apple_date_read,
-      m.date_edited AS apple_date_edited,
-      m.date_retracted AS apple_date_retracted,
+      CAST(m.date AS TEXT) AS apple_date,
+      CAST(m.date_read AS TEXT) AS apple_date_read,
+      CAST(m.date_edited AS TEXT) AS apple_date_edited,
+      CAST(m.date_retracted AS TEXT) AS apple_date_retracted,
       m.is_from_me AS is_from_me,
       m.is_read AS is_read,
       m.is_sent AS is_sent,
@@ -709,7 +742,7 @@ export async function openChatDb(
       c.display_name AS display_name,
       c.service_name AS service_name,
       c.style AS chat_style,
-      c.last_read_message_timestamp AS last_read_apple_date,
+      CAST(c.last_read_message_timestamp AS TEXT) AS last_read_apple_date,
       GROUP_CONCAT(h.id, ',') AS participant_handles
     FROM chat c
     LEFT JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
@@ -725,10 +758,10 @@ export async function openChatDb(
     guid: string;
     text: string | null;
     attributed_body: Uint8Array | null;
-    apple_date: number;
-    apple_date_read: number | null;
-    apple_date_edited: number | null;
-    apple_date_retracted: number | null;
+    apple_date: string | null;
+    apple_date_read: string | null;
+    apple_date_edited: string | null;
+    apple_date_retracted: string | null;
     is_from_me: number;
     is_read: number | null;
     is_sent: number | null;
@@ -747,7 +780,10 @@ export async function openChatDb(
     chat_style: number | null;
   };
 
-  function materializeMessages(rows: RawMessageRow[]): ChatDbMessage[] {
+  function materializeMessages(
+    rows: RawMessageRow[],
+    options: ChatDbFetchOptions = {}
+  ): ChatDbMessage[] {
     const out: ChatDbMessage[] = [];
     let undecodable = 0;
 
@@ -781,6 +817,7 @@ export async function openChatDb(
 
       // Attachments — only fetched when the cache bit indicates any.
       let attachments: ChatDbAttachment[] = [];
+      let attachmentReadFailed = false;
       if (row.cache_has_attachments === 1) {
         try {
           const attRows = attachmentsStmt.all(row.row_id) as Array<{
@@ -802,9 +839,19 @@ export async function openChatDb(
             isSticker: a.is_sticker === 1,
           }));
         } catch (error) {
-          logger.debug(
-            `[imessage] attachment query failed for rowid=${row.row_id}: ${error instanceof Error ? error.message : String(error)}`
-          );
+          if (options.tolerateAttachmentReadFailure?.has(row.row_id)) {
+            attachmentReadFailed = true;
+            logger.warn(
+              `[imessage] attachment metadata still unreadable for rowid=${row.row_id}; delivering without attachments: ${error instanceof Error ? error.message : String(error)}`
+            );
+          } else {
+            throw new ElizaError("iMessage attachment metadata could not be read", {
+              code: IMESSAGE_ATTACHMENT_READ_FAILED,
+              cause: error,
+              context: { rowId: row.row_id },
+              severity: "ephemeral",
+            });
+          }
         }
       }
 
@@ -822,7 +869,7 @@ export async function openChatDb(
         chatId: row.chat_identifier ?? "",
         chatType: row.chat_style === 43 ? "group" : "direct",
         displayName: row.display_name,
-        timestamp: appleDateToJsMs(row.apple_date),
+        timestamp: appleDateToJsMs(row.apple_date ?? 0),
         isFromMe: row.is_from_me === 1,
         service,
         isSent: row.is_sent === 1,
@@ -834,6 +881,7 @@ export async function openChatDb(
         replyToGuid: row.reply_to_guid,
         reaction,
         attachments,
+        ...(attachmentReadFailed ? { attachmentReadFailed: true } : {}),
       });
     }
 
@@ -847,7 +895,11 @@ export async function openChatDb(
   }
 
   return {
-    fetchNewMessages(sinceRowId: number, limit: number): ChatDbMessage[] {
+    fetchNewMessages(
+      sinceRowId: number,
+      limit: number,
+      options?: ChatDbFetchOptions
+    ): ChatDbMessage[] {
       if (closed) return [];
 
       let rows: RawMessageRow[];
@@ -860,7 +912,7 @@ export async function openChatDb(
         return [];
       }
 
-      return materializeMessages(rows);
+      return materializeMessages(rows, options);
     },
     getLatestRowId(): number {
       if (closed) return 0;
@@ -868,10 +920,11 @@ export async function openChatDb(
         const rows = tipStmt.all() as Array<{ max_row_id: number | null }>;
         return rows[0]?.max_row_id ?? 0;
       } catch (error) {
-        logger.error(
-          `[imessage] chat.db tip query failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return 0;
+        throw new ElizaError("iMessage chat.db tip could not be read", {
+          code: IMESSAGE_CHATDB_TIP_READ_FAILED,
+          cause: error,
+          severity: "ephemeral",
+        });
       }
     },
     getLatestOwnMessageTimestamp(): number | null {
@@ -923,7 +976,7 @@ export async function openChatDb(
           display_name: string | null;
           service_name: string | null;
           chat_style: number | null;
-          last_read_apple_date: number | null;
+          last_read_apple_date: string | null;
           participant_handles: string | null;
         }>;
         return rows.map((row) => ({

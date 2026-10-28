@@ -10,6 +10,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   isBrowserWorkspaceUserScriptAllowed,
   normalizeEnvValue,
+  resolveBrowserCommandTimeoutMs,
   resolveBrowserWorkspaceCommandElementRefs,
 } from "./browser-workspace-helpers.js";
 import {
@@ -76,6 +77,7 @@ export async function requestBrowserWorkspace<T>(
   path: string,
   init?: RequestInit,
   env: NodeJS.ProcessEnv = process.env,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   const config = resolveBrowserWorkspaceBridgeConfig(env);
   if (!config) {
@@ -98,7 +100,7 @@ export async function requestBrowserWorkspace<T>(
   const response = await fetch(`${config.baseUrl}${path}`, {
     ...init,
     headers,
-    signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (!response.ok) {
@@ -142,6 +144,7 @@ export async function evaluateBrowserWorkspaceTab(
       body: JSON.stringify(evalBody),
     },
     env,
+    request.timeoutMs,
   );
   return payload.result;
 }
@@ -208,6 +211,12 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (!left || !right) return false;
     return exact ? left === right : left.includes(right);
   };
+  const innerTextMatches = (matches) =>
+    matches.filter(
+      (element) =>
+        element.matches("a, button, input, textarea, select, option, [role='button']") ||
+        !matches.some((other) => other !== element && element.contains(other))
+    );
   const selectorFor = (element) => {
     if (!element) return "";
     if (element.id) return "#" + element.id.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
@@ -296,7 +305,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     const elements = Array.from(document.querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
-    for (const element of elements) {
+    const matches = elements.filter((element) => {
       const haystacks = [
         element.textContent,
         element.getAttribute?.("aria-label"),
@@ -308,11 +317,9 @@ export function createDesktopBrowserWorkspaceCommandScript(
         .map((value) => normalize(value))
         .filter(Boolean)
         .map((value) => value.toLowerCase());
-      if (haystacks.some((value) => value.includes(needle))) {
-        return element;
-      }
-    }
-    return null;
+      return haystacks.some((value) => value.includes(needle));
+    });
+    return innerTextMatches(matches)[0] ?? null;
   };
   const findAllByText = (wanted, exact = false) => {
     const needle = normalize(wanted).toLowerCase();
@@ -320,7 +327,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
     const elements = Array.from(document.querySelectorAll(
       "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
     ));
-    return elements.filter((element) => {
+    return innerTextMatches(elements.filter((element) => {
       const haystacks = [
         element.textContent,
         element.getAttribute?.("aria-label"),
@@ -333,7 +340,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
         .filter(Boolean)
         .map((value) => value.toLowerCase());
       return haystacks.some((value) => exact ? value === needle : value.includes(needle));
-    });
+    }));
   };
   const findByLabel = (wanted, exact = false) => {
     const labels = Array.from(document.querySelectorAll("label"));
@@ -727,6 +734,14 @@ export function createDesktopBrowserWorkspaceCommandScript(
     if (!element) throw new Error("Target element was not found.");
     if (typeof element.focus === "function") {
       element.focus();
+      // Match the web backend: typing after focus lands after existing text.
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        try {
+          if (element.selectionStart !== null) {
+            element.setSelectionRange(element.value.length, element.value.length);
+          }
+        } catch {}
+      }
     }
     return {
       focused: document.activeElement === element,
@@ -863,7 +878,21 @@ export function createDesktopBrowserWorkspaceCommandScript(
     ) {
       throw new Error("Keyboard text input requires an input, textarea, or select target.");
     }
-    return setInputValue(appendMode, target);
+    if (target instanceof HTMLSelectElement) return setInputValue(appendMode, target);
+    // Both keyboard commands insert at the caret or replace the selected text,
+    // matching the web backend.
+    if (target.readOnly || target.disabled) {
+      return { selector: selectorFor(target), value: target.value };
+    }
+    let start = null;
+    try {
+      start = target.selectionStart;
+    } catch {}
+    if (start === null) return setInputValue(true, target);
+    target.setRangeText(command.value ?? "", start, target.selectionEnd ?? start, "end");
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    target.dispatchEvent(new Event("change", { bubbles: true }));
+    return { selector: selectorFor(target), value: target.value };
   };
   const keyPhase = (phase) => {
     const target = keyboardTarget();
@@ -1225,20 +1254,26 @@ export function createDesktopBrowserWorkspaceUtilityScript(
         "a, button, input, textarea, select, option, label, h1, h2, h3, [role='button'], [data-testid]"
       )
     );
+    const matches = candidates.filter((element) => {
+      const haystacks = [
+        element.textContent,
+        element.getAttribute("aria-label"),
+        element.getAttribute("placeholder"),
+        element.getAttribute("title"),
+        element.getAttribute("name"),
+        element.value
+      ]
+        .map((value) => normalize(value).toLowerCase())
+        .filter(Boolean);
+      return haystacks.some((value) => value.includes(wanted));
+    });
+    // Keep the link or button inside a matching wrapper (see the command script).
     return (
-      candidates.find((element) => {
-        const haystacks = [
-          element.textContent,
-          element.getAttribute("aria-label"),
-          element.getAttribute("placeholder"),
-          element.getAttribute("title"),
-          element.getAttribute("name"),
-          element.value
-        ]
-          .map((value) => normalize(value).toLowerCase())
-          .filter(Boolean);
-        return haystacks.some((value) => value.includes(wanted));
-      }) || null
+      matches.find(
+        (element) =>
+          element.matches("a, button, input, textarea, select, option, [role='button']") ||
+          !matches.some((other) => other !== element && element.contains(other))
+      ) || null
     );
   };
   const resolveTarget = () => {
@@ -1607,6 +1642,7 @@ export async function executeDesktopBrowserWorkspaceUtilityCommand(
         ...command,
         id,
       }),
+      timeoutMs: resolveBrowserCommandTimeoutMs(command),
     },
     env,
   );
@@ -1787,6 +1823,10 @@ export async function executeDesktopBrowserWorkspaceDomCommand(
         },
         env,
       ),
+      // The page script can run as long as the host's eval budget (30s by
+      // default) or the command's own wait; the 12s bridge default would
+      // abort a wait or a long typed fill that is still running.
+      timeoutMs: resolveBrowserCommandTimeoutMs(command),
     },
     env,
   );

@@ -52,13 +52,8 @@ export function createContextReadTool(
               },
             }
           : {}),
-        contextRequests: {
-          ...requests,
-          minItems: Math.max(
-            1,
-            typeof requests.minItems === "number" ? requests.minItems : 1,
-          ),
-        },
+        // extractContextRead enforces nonempty reads before any provider access.
+        contextRequests: { ...requests },
       },
       required: includeAcknowledgment
         ? ["contextRequests", "acknowledgment"]
@@ -142,15 +137,28 @@ export function withAvailableContextRequests(
     (name) =>
       !Array.isArray(items.enum) || items.enum.some((value) => value === name),
   );
+  if (!names.length) {
+    const properties = { ...schema.properties };
+    delete properties.contextRequests;
+    return {
+      ...schema,
+      properties,
+      ...(schema.required
+        ? {
+            required: schema.required.filter(
+              (name) => name !== "contextRequests",
+            ),
+          }
+        : {}),
+    };
+  }
   return {
     ...schema,
     properties: {
       ...schema.properties,
       contextRequests: {
         ...requests,
-        ...(names.length
-          ? { items: { ...items, enum: names } }
-          : { maxItems: 0 }),
+        items: { ...items, enum: names },
       },
     },
   };
@@ -215,14 +223,17 @@ export function readContextRequests(
 ): string[] {
   const requested = raw?.contextRequests;
   if (requested === undefined) return [];
-  if (
-    !Array.isArray(requested) ||
-    requested.some((name) => typeof name !== "string" || !available.has(name))
-  ) {
+  const rejected = Array.isArray(requested)
+    ? requested.filter(
+        (name) => typeof name !== "string" || !available.has(name),
+      )
+    : [requested];
+  if (rejected.length) {
     throw new ElizaError(
       "Request only context providers listed as available for this turn.",
       {
         code: "CONTEXT_DISCOVERY_INVALID_REQUEST",
+        context: { rejected },
       },
     );
   }

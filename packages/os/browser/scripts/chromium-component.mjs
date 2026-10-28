@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { androidNativeHost } from "./android-host.mjs";
 import { applyAutofillFullOrigin } from "./chromium/autofill-full-origin.mjs";
 import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
+import { applyNoEarlyConnection } from "./chromium/no-early-connection.mjs";
 import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
 import { applyStandaloneCredManTests } from "./chromium/standalone-credman-tests.mjs";
 
@@ -28,7 +29,9 @@ export const EXTENSION_ID = "pmldpcoefklbdbgmggcejkfoinmjfeio";
 export const assetNames = [
   "background.mjs",
   "command-handler.mjs",
+  "task-bindings.mjs",
   "commands.mjs",
+  "page-command.mjs",
   "figtree-OFL.txt",
   "guide-font.mjs",
   "manual-activity.mjs",
@@ -63,7 +66,9 @@ const resourceIds = {
   "licenses.html": "IDR_ELIZA_BROWSER_PROTECTION_LICENSES",
   "background.mjs": "IDR_ELIZA_BROWSER_BACKGROUND",
   "command-handler.mjs": "IDR_ELIZA_BROWSER_COMMAND_HANDLER",
+  "task-bindings.mjs": "IDR_ELIZA_BROWSER_TASK_BINDINGS",
   "commands.mjs": "IDR_ELIZA_BROWSER_COMMANDS",
+  "page-command.mjs": "IDR_ELIZA_BROWSER_PAGE_COMMAND",
   "figtree-OFL.txt": "IDR_ELIZA_BROWSER_GUIDE_FONT_LICENSE",
   "guide-font.mjs": "IDR_ELIZA_BROWSER_GUIDE_FONT",
   "manual-activity.mjs": "IDR_ELIZA_BROWSER_MANUAL_ACTIVITY",
@@ -247,7 +252,7 @@ export async function generateComponentOverlay({
     replaceOnce(
       source,
       '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2460],',
-      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2470],',
+      '"chrome/browser/resources/component_extension_resources.grd": {\n    "includes": [2440],\n    "structures": [2472],',
       "component resource allocation",
     ),
   );
@@ -380,6 +385,7 @@ export async function generateComponentOverlay({
   applyIndexedDBLockOrder(edit, replaceOnce);
   if (platform === "android") {
     applyAutofillFullOrigin(edit, replaceOnce);
+    applyNoEarlyConnection(edit, replaceOnce);
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
     if (embedHost) {

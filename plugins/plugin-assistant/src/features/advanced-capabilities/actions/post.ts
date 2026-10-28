@@ -117,12 +117,13 @@ function normalizeAttachments(value: unknown): Media[] | undefined {
   return attachments.length > 0 ? attachments : undefined;
 }
 
-function postText(params: ParamRecord, message: Memory): string {
+// The post text comes from the call only. The chat message that asked for
+// the post is an instruction ("post this on X"), not the post.
+function postText(params: ParamRecord): string {
   return (
     textParam(params.text) ??
     textParam(params.message) ??
     textParam(params.post) ??
-    textParam(message.content.text) ??
     ""
   );
 }
@@ -170,7 +171,7 @@ function buildPostContent(
     ? (JSON.parse(JSON.stringify(connector.account)) as ContentValue)
     : undefined;
   const content: Content = {
-    text: postText(params, message),
+    text: postText(params),
     source: connector.source,
     channelType: ChannelType.FEED,
     metadata: {

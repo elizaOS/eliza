@@ -488,12 +488,27 @@ export const linkedinProvider: SocialMediaProvider = {
             message: { text: content.text },
           }),
         },
+        // A replay after a timeout or a 5xx publishes the comment twice
+        // (the create path in this file passes the same flag).
+        { replayUnknownOutcome: false },
       );
+
+      // A 2xx body without the created comment id is not a publication
+      // receipt: LinkedIn may have published the comment, so the outcome
+      // stays unknown and the credit is held instead of reporting a
+      // success with no post id (the slack/telegram rule).
+      const commentId = response?.id;
+      if (typeof commentId !== "string" || !commentId) {
+        throw new UnknownPostOutcomeError(
+          "linkedin",
+          new Error("LinkedIn response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "linkedin",
         success: true,
-        postId: response.id,
+        postId: commentId,
       };
     } catch (error) {
       // error-policy:J1 outbound LinkedIn comment boundary — failure surfaces as a typed `success: false` PostResult the caller must check.
@@ -518,6 +533,10 @@ export const linkedinProvider: SocialMediaProvider = {
             actor: authorUrn,
           }),
         },
+        // A like is a create: a replay after a lost response sends the
+        // create again, the same rule the create and comment calls in
+        // this file follow.
+        { replayUnknownOutcome: false },
       );
 
       return { success: true };

@@ -18,6 +18,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseBooleanValue,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -52,7 +53,10 @@ import {
   sendChunkedTweet,
   sendTextAsTweetThread,
 } from "./utils";
-import { isExplicitTwitterRejection } from "./utils/error-handler";
+import {
+  isExplicitTwitterRejection,
+  isPermanentTwitterRejection,
+} from "./utils/error-handler";
 import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
@@ -238,8 +242,10 @@ export class TwitterInteractionClient {
         const { profile } = session;
         // Check for mentions first (replies enabled by default)
         const repliesEnabled =
-          (getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
-            process.env.TWITTER_ENABLE_REPLIES) !== "false";
+          parseBooleanValue(
+            getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
+              process.env.TWITTER_ENABLE_REPLIES,
+          ) ?? true;
         if (repliesEnabled) {
           await this.handleMentions(session);
         }
@@ -821,12 +827,17 @@ ${tweet.text}`;
       });
     }
     // Check AUTO_RESPOND settings
+    // Boolean settings, on by default: "false", "0", "no" and "off" turn them off.
     const autoRespondMentions =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
-        process.env.TWITTER_AUTO_RESPOND_MENTIONS) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
+          process.env.TWITTER_AUTO_RESPOND_MENTIONS,
+      ) ?? true;
     const autoRespondReplies =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
-        process.env.TWITTER_AUTO_RESPOND_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
+          process.env.TWITTER_AUTO_RESPOND_REPLIES,
+      ) ?? true;
     // Filter based on AUTO_RESPOND settings
     if (!autoRespondMentions || !autoRespondReplies) {
       const inReplyToIds = Array.from(
@@ -1257,10 +1268,10 @@ ${tweet.text}`;
     let deliveryError: unknown = null;
     let egressAttempted = false;
     // Create a callback for handling the response
-    const callback: HandlerCallback = async (
-      response: Content,
-      tweetId?: string,
-    ) => {
+    // The callback's second argument is the producing action's name (core
+    // HandlerCallback), not a tweet id: a mention reply always targets the
+    // mention itself.
+    const callback: HandlerCallback = async (response: Content) => {
       if (!response.text) {
         logger.warn("No text content in response, skipping tweet reply");
         return [];
@@ -1272,7 +1283,7 @@ ${tweet.text}`;
         return [];
       }
       egressAttempted = true;
-      const tweetToReplyTo = tweetId || tweet.id;
+      const tweetToReplyTo = tweet.id;
       if (this.isDryRun) {
         logger.info(
           `[DRY RUN] Would have replied to ${tweet.username} with: ${response.text}`,
@@ -1319,12 +1330,19 @@ ${tweet.text}`;
       } catch (error) {
         deliveryError = error;
         // error-policy:J2 nothing reached X, or X explicitly refused the first
-        // chunk: reopen the mention. Any other failure keeps the tombstone.
+        // chunk: reopen the mention. A refusal X ties to this conversation
+        // settles it so later mentions are not held behind it; app- or
+        // account-level refusals reopen it. Any other failure keeps the
+        // tombstone.
+        const refusedFirstChunk =
+          postRequests === 1 && isExplicitTwitterRejection(error);
         if (
           postRequests === 0 ||
-          (postRequests === 1 && isExplicitTwitterRejection(error))
+          (refusedFirstChunk && !isPermanentTwitterRejection(error))
         ) {
           await this.runtime.deleteCache(settledKey);
+        } else if (refusedFirstChunk) {
+          await this.runtime.setCache(settledKey, "rejected");
         } else {
           await this.runtime.setCache(settledKey, "indeterminate");
         }

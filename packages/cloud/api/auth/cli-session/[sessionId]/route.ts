@@ -1,7 +1,8 @@
 /**
  * GET /api/auth/cli-session/[sessionId]
  * Get the status of a CLI authentication session. Public — used by the CLI to
- * poll for completion.
+ * poll for completion. The one reply that carries the API key also says whether
+ * this sign-in made the account (`accountCreated`).
  */
 
 import {
@@ -65,6 +66,8 @@ app.get("/", async (c) => {
           apiKey: apiKeyData.apiKey,
           keyPrefix: apiKeyData.keyPrefix,
           expiresAt: apiKeyData.expiresAt,
+          // True when this sign-in made the account; false when it existed.
+          accountCreated: apiKeyData.accountCreated,
         },
         200,
         corsHeaders,

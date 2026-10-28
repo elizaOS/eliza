@@ -12,13 +12,14 @@
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
+import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
 import { searchByListing } from "./adapters/base.ts";
 import { getDeferredMessageScheduler } from "./deferred-send-scheduler.ts";
 import {
   getDefaultMessageRefStore,
   type MessageRefStore,
 } from "./message-ref-store.ts";
-import { draftConsentDigest } from "./send-consent.ts";
+import { draftConsentDigest, noteDraftPreview } from "./send-consent.ts";
 import {
   compareMessageRefsByRecency,
   rankScored,
@@ -407,7 +408,7 @@ export class TriageService {
     runtime: IAgentRuntime,
     messageId: string,
     op: ManageOperation,
-    hint?: { source?: MessageSource },
+    hint?: { source?: MessageSource; requester?: Memory },
   ): Promise<ManageResult> {
     const adapter = this.getManageAdapter(runtime, messageId, hint);
     if (!adapter) {
@@ -432,7 +433,9 @@ export class TriageService {
         reason: `${adapter.source} adapter does not implement manageMessage`,
       };
     }
-    return adapter.manageMessage(runtime, messageId, op);
+    return adapter.manageMessage(runtime, messageId, op, {
+      requester: hint?.requester,
+    });
   }
 
   async draftReply(
@@ -486,6 +489,7 @@ export class TriageService {
     if (snapshot) Object.assign(record, structuredClone(snapshot));
     record.agentId = runtime.agentId;
     this.store.saveDraft(record, runtime.agentId);
+    await noteDraftPreview(runtime, requester, record.draftId);
     return record;
   }
 
@@ -536,6 +540,7 @@ export class TriageService {
     if (snapshot) Object.assign(record, structuredClone(snapshot));
     record.agentId = runtime.agentId;
     this.store.saveDraft(record, runtime.agentId);
+    await noteDraftPreview(runtime, params.requester, record.draftId);
     return record;
   }
 
@@ -553,22 +558,32 @@ export class TriageService {
         severity: "ephemeral",
       });
     }
-    if (
-      consentDigest !== undefined &&
-      draftConsentDigest(record) !== consentDigest
-    ) {
+    const digest = draftConsentDigest(record);
+    if (consentDigest !== undefined && digest !== consentDigest) {
       throw new ElizaError(
         "Draft changed after confirmation; preview it again",
         { code: "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH" },
       );
     }
+    const snapshot = structuredClone(record);
     await this.adapters
       .get(record.source)
       ?.authorizeSend?.(runtime, requester, draftId);
     if (record.sent) return record;
+    // A scheduled draft is delivered by its durable task, which no adapter can
+    // cancel; sending it now as well would deliver it twice.
+    if (record.scheduledForMs !== undefined && record.scheduleCommit) {
+      throw new ElizaError(
+        `Draft ${draftId} is scheduled for ${new Date(record.scheduledForMs).toISOString()} and will be sent then.`,
+        {
+          code: "MESSAGE_DRAFT_ALREADY_SCHEDULED",
+          context: { draftId, scheduledForMs: record.scheduledForMs },
+          severity: "ephemeral",
+        },
+      );
+    }
     const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
     const pending = this.sendsInFlight.get(sendKey);
-    const digest = draftConsentDigest(record);
     if (pending) {
       if (pending.digest !== digest)
         throw new ElizaError("Another snapshot of this draft is being sent", {
@@ -576,12 +591,7 @@ export class TriageService {
         });
       return pending.promise;
     }
-    const send = this.sendDraftOnce(
-      runtime,
-      structuredClone(record),
-      digest,
-      requester,
-    );
+    const send = this.sendDraftOnce(runtime, snapshot, digest, requester);
     this.sendsInFlight.set(sendKey, { digest, promise: send });
     try {
       return await send;
@@ -610,9 +620,17 @@ export class TriageService {
       );
     }
     if (
+      record.source === "gmail" &&
+      requester &&
+      (await deviceGmailRequestConsent(runtime, requester)) === "denied"
+    )
+      throw new ElizaError("The Gmail request ended before sending", {
+        code: "GMAIL_REQUEST_CHANGED",
+      });
+    const current = this.getDraft(runtime, record.draftId);
+    if (
       consentDigest !== undefined &&
-      draftConsentDigest(this.getDraft(runtime, record.draftId) ?? record) !==
-        consentDigest
+      (!current || draftConsentDigest(current) !== consentDigest)
     ) {
       throw new ElizaError(
         "Draft changed after confirmation; preview it again",

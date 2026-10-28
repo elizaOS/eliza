@@ -326,9 +326,15 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
+    const attachments =
+      typeof meta?.attachmentSummary === "string"
+        ? ` ${meta.attachmentSummary}`
+        : "";
     if (
-      priorDialogueContent(raw, speaker) !== event.segment.content &&
-      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+      priorDialogueContent(`${raw}${attachments}`, speaker) !==
+        event.segment.content &&
+      priorDialogueContent(`${raw.trim()}${attachments}`, speaker) !==
+        event.segment.content
     )
       continue;
     originals.set(id, raw);
@@ -575,9 +581,16 @@ export function resolveSourceReply(
       (selected.has(part.value) || snapshot.providerIds.has(part.value)) &&
       snapshot.originals.has(part.value)
     ) {
+      const text = snapshot.originals.get(part.value) ?? "";
+      // An empty original cannot form a literal span, so it is an
+      // invalid quote that deserves the one-shot source-reply repair,
+      // not a TypeError from the renderer that bypasses that repair.
+      // (Do not merely skip it: that would yield a defined-but-empty
+      // rendering that escapes the decision gate's answer check.)
+      if (text === "") throw invalid();
       parts.push({
         kind: "source",
-        text: snapshot.originals.get(part.value) ?? "",
+        text,
         reference: snapshot.references.get(part.value),
       });
     } else throw invalid();

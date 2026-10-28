@@ -74,10 +74,10 @@ let transport;
 const runtime={getService:()=>({setNativeClientTransport:value=>{transport=value;}}),registerEvent(){}};
 wireNativeBrowserPageReader(runtime);
 const command={subaction:'snapshot'};
-const owned=fn=>runWithViewClient({clientId:'owned-client',hostKey:globalThis.ownedHost},fn);
+const owned=fn=>runWithViewClient({clientId:'owned-client',hostKey:globalThis.ownedHost,request:{runtime,authorization:{ok:true,role:'OWNER',identityId:'owned-user'},signal:new AbortController().signal}},fn);
 await assert.rejects(()=>transport.executeCommand('owned-client',command),e=>e.code==='VIEW_CLIENT_REQUIRED');
 await assert.rejects(()=>runWithViewClient({clientId:'other-client',hostKey:globalThis.ownedHost},()=>transport.executeCommand('owned-client',command)),e=>e.code==='VIEW_CLIENT_REQUIRED');
-await assert.rejects(()=>runWithViewClient({clientId:'owned-client',hostKey:{}},()=>transport.executeCommand('owned-client',command)),/transport is unavailable/);
+await assert.rejects(()=>runWithViewClient({clientId:'owned-client',hostKey:{},request:{runtime,authorization:{ok:true,role:'OWNER',identityId:'owned-user'},signal:new AbortController().signal}},()=>transport.executeCommand('owned-client',command)),/transport is unavailable/);
 assert.equal(globalThis.dispatches,0);
 // Cold real server helper, before any direct plugin import or warm-up.
 const receipt=await owned(()=>transport.executeCommand('owned-client',command));
@@ -93,6 +93,7 @@ const plugin=await getBrowserPlugin(),service=new plugin.BrowserService(runtime)
 service.nativeTarget={available:async()=>true,execute:async()=>{socketCalls++;return {targetId:'chromium-device',value:'socket-result'};}};
 service.setNativeClientTransport({executeCommand:async()=>{throw Error('Fallback must not run');}});
 assert.equal((await service.execute(command)).value,'socket-result');assert.equal(socketCalls,1);
+let mountedCalls=0;service.setNativeClientTransport({executeCommand:async()=>{mountedCalls++;return {targetId:'native-client',mode:'web',subaction:'back',value:{dispatched:true,completed:false,requiresReadback:true}};}});assert.equal((await service.execute({subaction:'back'},undefined,'owned-client')).targetId,'native-client');assert.equal(mountedCalls,1);assert.equal(socketCalls,1);
 console.log(JSON.stringify({coldReceipt:true,ownerRefusals:3,incompleteRefused:true,staleReceiptRefused:true,missingViewRefused:true,nativeSocketPreferred:true,realBrowserFactory:true}));
 `,
   );

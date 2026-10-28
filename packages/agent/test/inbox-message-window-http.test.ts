@@ -154,3 +154,113 @@ it("answers inbox and character history reads with 503 before the runtime exists
     await rm(directory, { recursive: true, force: true });
   }
 }, 120_000);
+
+it("keeps an inbox reply that the connector leaves for the caller to save", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "eliza-inbox-reply-"));
+  for (const [key, value] of Object.entries({
+    ELIZA_STATE_DIR: directory,
+    ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_API_BIND_HOST: "127.0.0.1",
+    ELIZA_API_TOKEN: "",
+    ELIZA_REQUIRE_LOCAL_AUTH: "0",
+  })) {
+    vi.stubEnv(key, value);
+  }
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({ name: "InboxReply" }),
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    await runtime.initialize({ skipMigrations: true });
+    const contactId = randomUUID() as UUID;
+    const worldId = randomUUID() as UUID;
+    const roomId = randomUUID() as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "Inbox world",
+    });
+    await runtime.createEntities([
+      { id: contactId, agentId: runtime.agentId, names: ["Sam"] },
+      { id: runtime.agentId, agentId: runtime.agentId, names: ["InboxReply"] },
+    ]);
+    await runtime.createRooms([
+      {
+        id: roomId,
+        agentId: runtime.agentId,
+        worldId,
+        type: ChannelType.DM,
+        source: "imessage",
+        channelId: "+15550100",
+      },
+    ]);
+    await runtime.addParticipant(contactId, roomId);
+    await runtime.addParticipant(runtime.agentId, roomId);
+    await runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: runtime.agentId,
+        entityId: contactId,
+        roomId,
+        createdAt: Date.now() - 60_000,
+        content: { text: "Where are you?", source: "imessage" },
+      },
+      "messages",
+    );
+    // The iMessage send handler's result: provider receipt only, no memory.
+    runtime.registerSendHandler("imessage", async () => ({
+      kind: "delivered",
+      receipt: {
+        providerMessageIds: ["blooio-msg-1"],
+        acceptedAt: Date.now(),
+        evidenceKind: "provider",
+        persistence: {
+          status: "not_attempted",
+          reason:
+            "Provider accepted the message; caller owns local persistence",
+        },
+      },
+      memories: [],
+    }));
+
+    server = await startApiServer({
+      port: 0,
+      runtime,
+      skipDeferredStartupWork: true,
+    });
+    const base = `http://127.0.0.1:${server.port}/api/inbox/messages`;
+    const sent = await fetch(base, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ roomId, source: "imessage", text: "On my way" }),
+    });
+    const sentBody = (await sent.json()) as {
+      ok: boolean;
+      message?: { text: string; role: string };
+    };
+    expect(sent.status, JSON.stringify(sentBody)).toBe(200);
+    expect(sentBody.message).toMatchObject({
+      text: "On my way",
+      role: "assistant",
+    });
+
+    const thread = await fetch(
+      `${base}?limit=10&sources=imessage&roomId=${roomId}&roomSource=imessage`,
+    );
+    const threadBody = (await thread.json()) as {
+      messages: Array<{ text: string }>;
+    };
+    expect(threadBody.messages.map((message) => message.text)).toEqual([
+      "On my way",
+      "Where are you?",
+    ]);
+  } finally {
+    if (server) await server.close();
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);

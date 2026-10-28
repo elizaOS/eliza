@@ -863,15 +863,10 @@ export function formatValue(
   controlType?: ControlType,
 ): string {
   if (value === undefined || value === null) return "";
-  // Sensitive fields should be masked
-  // WHY: Passwords, tokens shouldn't be echoed back to user
-  if (control.sensitive) {
-    const strVal = String(value);
-    if (strVal.length > 8) {
-      return `${strVal.slice(0, 4)}...${strVal.slice(-4)}`;
-    }
-    return "****";
-  }
+  // Sensitive fields are masked in full.
+  // WHY: Passwords and tokens must not be echoed back. Showing the first and
+  // last four characters showed 8 of the 9 characters of a 9-character password.
+  if (control.sensitive) return "****";
   const handler = getTypeHandler(control.type, controlType);
   if (handler?.format) return handler.format(value);
   switch (control.type) {

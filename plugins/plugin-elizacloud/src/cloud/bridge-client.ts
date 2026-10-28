@@ -3,6 +3,9 @@
  */
 import { normalizeCloudSiteUrl } from "./base-url.js";
 
+/** Max silence between streamed bytes before a bridge stream is aborted. */
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
 export type CloudChainType = "evm" | "solana";
 export type CloudWalletProvider = "privy" | "steward";
 
@@ -276,7 +279,11 @@ export class ElizaCloudClient {
     };
 
     if (rpc.error) throw new Error(rpc.error.message);
-    return rpc.result?.text ?? "(no response)";
+    const replyText = rpc.result?.text;
+    if (typeof replyText !== "string" || !replyText.trim()) {
+      throw new CloudBridgeError("Bridge response did not include reply text");
+    }
+    return replyText;
   }
 
   async *sendMessageStream(
@@ -284,62 +291,105 @@ export class ElizaCloudClient {
     text: string,
     roomId = "web-chat",
     channelType: ChatChannelType = "DM",
+    options: { signal?: AbortSignal; idleTimeoutMs?: number } = {},
   ): AsyncGenerator<{ type: string; data: Record<string, unknown> }> {
     const url = `${this.baseUrl}/api/v1/eliza/agents/${agentId}/stream`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Api-Key": this.apiKey },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: crypto.randomUUID(),
-        method: "message.send",
-        params: { text, roomId, channelType },
-      }),
-      redirect: "manual",
-    });
+    const idleTimeoutMs = options.idleTimeoutMs ?? STREAM_IDLE_TIMEOUT_MS;
+    // Idle timeout, not a total deadline: long agent turns may stream for
+    // minutes, so the timer only fires when no bytes arrive for the window.
+    const controller = new AbortController();
+    const callerSignal = options.signal;
+    const abortFromCaller = () => controller.abort(callerSignal?.reason);
+    if (callerSignal?.aborted) abortFromCaller();
+    else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+    let idleTimer: ReturnType<typeof setTimeout> | undefined;
+    const armIdleTimer = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        controller.abort(
+          new DOMException(
+            `Stream received no data for ${idleTimeoutMs}ms`,
+            "TimeoutError",
+          ),
+        );
+      }, idleTimeoutMs);
+    };
 
-    if (isRedirectResponse(response)) {
-      throw new Error(
-        "Stream request was redirected; redirects are not allowed",
-      );
-    }
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let finished = false;
+    try {
+      armIdleTimer();
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": this.apiKey,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: crypto.randomUUID(),
+          method: "message.send",
+          params: { text, roomId, channelType },
+        }),
+        redirect: "manual",
+        signal: controller.signal,
+      });
 
-    if (!response.ok || !response.body) {
-      throw new Error(`Stream request failed: HTTP ${response.status}`);
-    }
+      if (isRedirectResponse(response)) {
+        throw new Error(
+          "Stream request was redirected; redirects are not allowed",
+        );
+      }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+      if (!response.ok || !response.body) {
+        throw new Error(`Stream request failed: HTTP ${response.status}`);
+      }
 
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop() ?? "";
-
-      for (const part of parts) {
-        if (!part.trim()) continue;
-        let eventType = "message";
-        let eventData = "";
-
-        for (const line of part.split("\n")) {
-          if (line.startsWith("event: ")) eventType = line.slice(7).trim();
-          else if (line.startsWith("data: "))
-            eventData += (eventData ? "\n" : "") + line.slice(6);
+      for (;;) {
+        armIdleTimer();
+        const { done, value } = await reader.read();
+        if (done) {
+          finished = true;
+          break;
         }
 
-        if (eventData) {
-          let data: Record<string, unknown>;
-          try {
-            data = JSON.parse(eventData) as Record<string, unknown>;
-          } catch {
-            continue;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          let eventType = "message";
+          let eventData = "";
+
+          for (const line of part.split("\n")) {
+            if (line.startsWith("event: ")) eventType = line.slice(7).trim();
+            else if (line.startsWith("data: "))
+              eventData += (eventData ? "\n" : "") + line.slice(6);
           }
-          yield { type: eventType, data };
+
+          if (eventData) {
+            let data: Record<string, unknown>;
+            try {
+              data = JSON.parse(eventData) as Record<string, unknown>;
+            } catch {
+              continue;
+            }
+            // Time spent in the consumer is not bridge idleness.
+            clearTimeout(idleTimer);
+            yield { type: eventType, data };
+          }
         }
+      }
+    } finally {
+      clearTimeout(idleTimer);
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+      if (reader && !finished) {
+        await reader.cancel().catch(() => undefined);
       }
     }
   }

@@ -36,7 +36,7 @@ export class TransferAction {
       throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
     }
     const chainConfig = this.walletProvider.getChainConfigs(params.fromChain);
-    const value = parseEvmBaseUnits(params.amount, 18);
+    const value = parseEvmBaseUnits(params.amount, chainConfig.nativeCurrency.decimals);
     const hash = await walletClient.sendTransaction(
       buildSendTxParams({
         account,

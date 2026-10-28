@@ -1,0 +1,4 @@
+// Explicit Eliza Pixel 10a listener consumer. It is never a dependency of the launcher APK.
+ext.elizaSenseProfile = new File(projectDir, '../../../../os/android/products/pixel10a-eliza.json')
+ext.elizaSenseSpeechProject = ':sense-speech'
+apply from: 'consumer.gradle'

@@ -399,6 +399,30 @@ beforeEach(() => {
 });
 
 describe("persisted Slack policy through Bolt handlers", () => {
+  it("reports an unavailable selected account instead of empty history", async () => {
+    const harness = await startHarness();
+    const target = {
+      source: "slack",
+      accountId: "missing-account",
+      channelId: OPS,
+    };
+
+    await expect(
+      harness.service.fetchConnectorMessages(
+        {
+          runtime: harness.runtime,
+          source: "slack",
+          accountId: "missing-account",
+          target,
+        },
+        { target },
+      ),
+    ).rejects.toMatchObject({
+      code: "SLACK_ACCOUNT_NOT_INITIALIZED",
+      context: { accountId: "missing-account" },
+    });
+  });
+
   it("claims a retried event once before persistence, emission, processing, and response", async () => {
     const harness = await startHarness();
     const appMention = harness.app.eventHandlers.get("app_mention");

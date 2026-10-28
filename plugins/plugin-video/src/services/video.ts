@@ -771,7 +771,6 @@ export class VideoService extends IVideoService {
     }
 
     const result = await transcriptionService.transcribeAudio(audioBuffer);
-    const transcript = result.text;
 
     const endTime = Date.now();
     elizaLogger.log(
@@ -779,7 +778,7 @@ export class VideoService extends IVideoService {
     );
 
     // Keep the MP3 in the content cache; callers own cache retention.
-    return transcript || "Transcription failed";
+    return result.text;
   }
 
   private async convertMp4ToMp3(

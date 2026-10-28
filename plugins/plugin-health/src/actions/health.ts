@@ -811,8 +811,32 @@ export function createHealthActionRunner(
               data: { subaction, metric, points, healthSummary },
             });
           }
-          const aggregate = aggregateMetricPoints(metric, points);
-          const fallback = `${metric} — ${byMetricWindowLabel}: ${aggregate.label} ${aggregate.value.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
+          // Providers can record the same activity (a Fitbit day total
+          // includes a run Strava also reports), so each provider is
+          // aggregated on its own and never added to another.
+          const byProvider = [
+            ...new Set(points.map((point) => point.provider)),
+          ].map((provider) => {
+            const providerPoints = points.filter(
+              (point) => point.provider === provider,
+            );
+            return {
+              provider,
+              sampleCount: providerPoints.length,
+              ...aggregateMetricPoints(metric, providerPoints),
+            };
+          });
+          const samples = (count: number) =>
+            `${count} sample${count === 1 ? "" : "s"}`;
+          const only = byProvider.length === 1 ? byProvider[0] : undefined;
+          const fallback = only
+            ? `${metric} — ${byMetricWindowLabel}: ${only.label} ${only.value.toFixed(2)} ${firstPoint.unit} across ${samples(points.length)}.`
+            : `${metric} — ${byMetricWindowLabel}, by provider (providers can record the same activity, so these are not added together): ${byProvider
+                .map(
+                  (entry) =>
+                    `${entry.provider} ${entry.label} ${entry.value.toFixed(2)} ${firstPoint.unit} across ${samples(entry.sampleCount)}`,
+                )
+                .join("; ")}.`;
           return respond({
             success: true,
             scenario: "health_connector_by_metric",
@@ -820,7 +844,7 @@ export function createHealthActionRunner(
             context: {
               metric,
               ...byMetricWindowContext,
-              [aggregate.label]: aggregate.value,
+              ...(only ? { [only.label]: only.value } : { byProvider }),
               unit: firstPoint.unit,
               sampleCount: points.length,
             },

@@ -603,3 +603,18 @@ describe("legacy type-handler override (validateField)", () => {
     clearTypeHandlers();
   });
 });
+
+describe("sensitive field display", () => {
+  const secret: FormControl = {
+    key: "password",
+    label: "Password",
+    type: "text",
+    sensitive: true,
+  };
+
+  it("shows no character of a sensitive value", () => {
+    for (const value of ["hunter2", "hunter123", "sk-live-abcdef1234567890"]) {
+      expect(formatValue(value, secret)).toBe("****");
+    }
+  });
+});

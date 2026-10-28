@@ -1045,6 +1045,9 @@ async function jsonOrThrow<T>(res: Response): Promise<T> {
   }
 }
 
+/** Helius DAS maximum page size for getAssetsByOwner. */
+const HELIUS_ASSETS_PAGE_LIMIT = 1000;
+
 export async function fetchSolanaBalances(
   address: string,
   heliusKey: string,
@@ -1081,29 +1084,38 @@ export async function fetchSolanaBalances(
   if (balanceData.error?.message) throw new Error(balanceData.error.message);
   solBalance = ((balanceData.result?.value ?? 0) / 1e9).toFixed(9);
 
-  const tokenData = await jsonOrThrow<{
-    result?: { items?: HeliusAsset[] };
-    error?: { message?: string };
-  }>(
-    await fetch(
-      url,
-      rpc(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: 2,
-          method: "getAssetsByOwner",
-          params: {
-            ownerAddress: address,
-            displayOptions: { showFungible: true, showNativeBalance: true },
-            page: 1,
-            limit: 100,
-          },
-        }),
+  // getAssetsByOwner pages include every NFT and compressed NFT, so a wallet
+  // with many of them pushes fungible tokens past the first page. Read every
+  // page; a short page is the last one.
+  const ownerAssets: HeliusAsset[] = [];
+  for (let page = 1; ; page++) {
+    const tokenData = await jsonOrThrow<{
+      result?: { items?: HeliusAsset[] };
+      error?: { message?: string };
+    }>(
+      await fetch(
+        url,
+        rpc(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "getAssetsByOwner",
+            params: {
+              ownerAddress: address,
+              displayOptions: { showFungible: true, showNativeBalance: true },
+              page,
+              limit: HELIUS_ASSETS_PAGE_LIMIT,
+            },
+          }),
+        ),
       ),
-    ),
-  );
-  if (tokenData.error?.message) throw new Error(tokenData.error.message);
-  const fungibleAssets = (tokenData.result?.items ?? []).filter(
+    );
+    if (tokenData.error?.message) throw new Error(tokenData.error.message);
+    const items = tokenData.result?.items ?? [];
+    ownerAssets.push(...items);
+    if (items.length < HELIUS_ASSETS_PAGE_LIMIT) break;
+  }
+  const fungibleAssets = ownerAssets.filter(
     (item) =>
       item.interface === "FungibleToken" || item.interface === "FungibleAsset",
   );
@@ -1112,12 +1124,7 @@ export async function fetchSolanaBalances(
     ...fungibleAssets.map((item) => item.id),
   ]);
   const tokens: SolanaTokenBalance[] = [];
-  for (const item of tokenData.result?.items ?? []) {
-    if (
-      item.interface !== "FungibleToken" &&
-      item.interface !== "FungibleAsset"
-    )
-      continue;
+  for (const item of fungibleAssets) {
     const decimals = item.token_info?.decimals ?? 0;
     const rawBalance = item.token_info?.balance ?? 0;
     const balance =

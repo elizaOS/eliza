@@ -58,7 +58,17 @@ function validLabel(g) {
     !(count("primary") && count("card"))
   );
 }
-export function createTaskGuidance(api, authorize) {
+export function createTaskGuidance(
+  api,
+  authorize,
+  {
+    validTabId = (id) =>
+      typeof id === "string" &&
+      /^\d+$/.test(id) &&
+      Number.isSafeInteger(Number(id)),
+    pageId = Number,
+  } = {},
+) {
   const active = new Map(),
     revisions = new Map(),
     queues = new Map(),
@@ -83,10 +93,7 @@ export function createTaskGuidance(api, authorize) {
   let metadata = Promise.resolve();
   const readIndex = async () => {
     const stored = (await api.storage.local.get(indexKey))[indexKey] ?? [];
-    if (
-      !Array.isArray(stored) ||
-      stored.some((id) => typeof id !== "string" || !/^\d+$/.test(id))
-    )
+    if (!Array.isArray(stored) || stored.some((id) => !validTabId(id)))
       throw new BridgeError(
         "UNAVAILABLE",
         "Guidance recovery index is invalid.",
@@ -111,7 +118,7 @@ export function createTaskGuidance(api, authorize) {
     let results;
     try {
       results = await api.scripting.executeScript({
-        target: { tabId: Number(tabId), frameIds: [0] },
+        target: { tabId: pageId(tabId), frameIds: [0] },
         func: pageGuidance,
         args: [{ kind: "hide" }],
         world: "ISOLATED",
@@ -152,18 +159,20 @@ export function createTaskGuidance(api, authorize) {
       if (
         !policy ||
         !match ||
-        !["click", "fill", "scroll"].includes(command.subaction)
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          command.subaction,
+        )
       )
         throw stale();
       const ticket = { id };
       active.set(tabId, ticket);
       const valid = () => current() && active.get(tabId) === ticket;
-      const actionId = `action:${id}`,
-        expiresAt = Math.min(Date.now() + 5000, policy.expiresAt);
+      const actionId = `action:${id}`;
+      let expiresAt = policy.expiresAt;
       const inject = async (func, args) => {
         if (!valid()) throw stale();
         const results = await api.scripting.executeScript({
-          target: { tabId: Number(tabId), frameIds: [0] },
+          target: { tabId: pageId(tabId), frameIds: [0] },
           func,
           args,
           world: "ISOLATED",
@@ -184,6 +193,11 @@ export function createTaskGuidance(api, authorize) {
             throw new BridgeError(result.error.kind, result.error.message);
           if (result.validated !== true) throw stale();
           await track(tabId, true);
+          // Native validation and metadata round trips are not preview time.
+          // Preserve the original authorization deadline while leaving room
+          // for slow native painting, cursor travel, visible dwell and Cancel.
+          // This wait never renews the original task authorization.
+          expiresAt = Math.min(Date.now() + 15000, policy.expiresAt);
           const shown = await inject(pageGuidance, [
             {
               kind: "show",
@@ -200,13 +214,16 @@ export function createTaskGuidance(api, authorize) {
                 actionSentence(command.actionText) ??
                 {
                   click: "I will select this control.",
+                  follow: "I will open this link.",
                   fill: "I will enter the approved information here.",
+                  select: "I will choose the approved option here.",
                   scroll: "I will scroll this area.",
                 }[command.subaction],
             },
           ]);
           if (shown.accepted !== true) throw stale();
         });
+        let pollDelay = 50;
         while (Date.now() < expiresAt) {
           const status = await enqueue(tabId, () =>
             inject(pageGuidance, [
@@ -221,7 +238,15 @@ export function createTaskGuidance(api, authorize) {
           );
           if (status.ready === true) return { actionId, current: valid };
           if (status.cancelled) throw stale();
-          await new Promise((resolve) => setTimeout(resolve, 50));
+          // Slow painting must not spend the task budget on readiness checks.
+          // Keep Cancel responsive and never extend the authorization deadline.
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              Math.min(pollDelay, Math.max(0, expiresAt - Date.now())),
+            ),
+          );
+          pollDelay = Math.min(pollDelay * 2, 500);
         }
         throw stale();
       } catch (error) {
@@ -334,9 +359,7 @@ export function createTaskGuidance(api, authorize) {
         !g ||
         typeof g !== "object" ||
         Object.keys(g).some((key) => !allowed.includes(key)) ||
-        typeof g.tabId !== "string" ||
-        !/^\d+$/.test(g.tabId) ||
-        !Number.isSafeInteger(Number(g.tabId)) ||
+        !validTabId(g.tabId) ||
         !Number.isSafeInteger(g.revision) ||
         g.revision < 1 ||
         !["show", "hide", "pause"].includes(g.kind) ||
@@ -451,7 +474,7 @@ export function createTaskGuidance(api, authorize) {
             g.kind === "hide"
               ? [{ result: await hide(g.tabId) }]
               : await api.scripting.executeScript({
-                  target: { tabId: Number(g.tabId), frameIds: [0] },
+                  target: { tabId: pageId(g.tabId), frameIds: [0] },
                   func: pageGuidance,
                   args: [request],
                   world: "ISOLATED",

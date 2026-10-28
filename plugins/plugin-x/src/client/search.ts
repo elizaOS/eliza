@@ -240,7 +240,7 @@ export async function* searchProfiles(
   auth: TwitterAuth,
 ): AsyncGenerator<Profile, void> {
   const client = await auth.getV2Client();
-  const userIds = new Set<string>();
+  const seenProfileIds = new Set<string>();
   const profiles: Profile[] = [];
 
   try {
@@ -263,15 +263,18 @@ export async function* searchProfiles(
       expansions: ["author_id"],
     });
 
-    for await (const tweet of searchIterator) {
-      if (tweet.author_id) {
-        userIds.add(tweet.author_id);
-      }
-
-      // Also get users from includes
+    for await (const _tweet of searchIterator) {
+      // The iterator yields one tweet at a time but exposes the whole page's
+      // included users on every step, so without a seen set the same users
+      // would be pushed once per tweet and fill the cap with duplicates.
       if (searchIterator.includes?.users) {
         for (const user of searchIterator.includes.users) {
-          if (profiles.length < maxProfiles && user.id) {
+          if (
+            profiles.length < maxProfiles &&
+            user.id &&
+            !seenProfileIds.has(user.id)
+          ) {
+            seenProfileIds.add(user.id);
             const profile: Profile = {
               userId: user.id,
               username: user.username || "",

@@ -485,16 +485,30 @@ export class ComputerUseService extends Service {
   ): Promise<ComputerUseResult> {
     switch (command) {
       case "app_list_apps":
-      case "list_apps":
+      case "list_apps": {
+        const approvalError = await this.awaitApproval(
+          command,
+          parameters,
+          signal,
+        );
+        if (approvalError) return { success: false, error: approvalError };
         return {
           success: true,
-          data: { apps: await this.listApps() },
+          data: { apps: await this.listApps(signal) },
         } as ComputerActionResult;
+      }
       case "app_get_state":
       case "get_app_state": {
         const app = this.requireStringParameter(parameters, "app");
+        const approvalError = await this.awaitApproval(
+          command,
+          parameters,
+          signal,
+        );
+        if (approvalError) return { success: false, error: approvalError };
         const state = await this.getAppState(app, {
           disableDiff: parameters.disableDiff === true,
+          signal,
         });
         return { success: true, data: { state } } as ComputerActionResult;
       }
@@ -901,40 +915,6 @@ export class ComputerUseService extends Service {
           success: false,
           error: `Command is not allowed in a host computer-use session: ${action.command}`,
         };
-      }
-      if (
-        action.command === "app_list_apps" ||
-        action.command === "list_apps"
-      ) {
-        return {
-          success: true,
-          data: { apps: await this.listApps(signal) },
-        };
-      }
-      if (
-        action.command === "app_get_state" ||
-        action.command === "get_app_state"
-      ) {
-        const parameters = action.parameters ?? {};
-        return {
-          success: true,
-          data: {
-            state: await this.getAppState(
-              this.requireStringParameter(parameters, "app"),
-              {
-                disableDiff: parameters.disableDiff === true,
-                signal,
-              },
-            ),
-          },
-        };
-      }
-      if (action.command.startsWith("app_")) {
-        return this.executeAppAction(
-          action.command,
-          action.parameters ?? {},
-          signal,
-        );
       }
       return this.executeCommand(
         action.command,
@@ -1344,7 +1324,7 @@ export class ComputerUseService extends Service {
     if (!som) return null;
     try {
       const cap = await captureDisplay(displayId);
-      const { marks, overlayPngBase64 } = await som.describe({
+      const { marks, overlayPngBase64, ocrError } = await som.describe({
         displayId: String(cap.display.id),
         sourceX: 0,
         sourceY: 0,
@@ -1375,9 +1355,12 @@ export class ComputerUseService extends Service {
           setOfMarks: {
             marks,
             ...(overlayPngBase64 ? { overlay: overlayPngBase64 } : {}),
+            ...(ocrError ? { ocrError } : {}),
           },
         },
-        message: `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
+        message: ocrError
+          ? `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}; OCR failed (${ocrError}), so no text marks.`
+          : `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
       });
     } catch (error) {
       // error-policy:J1 action boundary — SoM failure surfaces as a clear

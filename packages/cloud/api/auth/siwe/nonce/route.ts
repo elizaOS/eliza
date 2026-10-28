@@ -1,15 +1,6 @@
-/**
- * GET /api/auth/siwe/nonce
- * Returns a one-time nonce + SIWE message parameters (EIP-4361).
- *
- * Redis is built per-request via `buildRedisClient(c.env)` rather than going
- * through the module-level `cache` singleton, which is currently disabled in
- * production (`CACHE_ENABLED=false`) because its lazy-opened socket is bound
- * to the first request's I/O context on Cloudflare Workers. This bypass is a
- * targeted hotfix; the singleton is replaced by an ALS facade in a follow-up.
- */
+/** Issue a one-time SIWE nonce and its server-owned message binding. Storage is selected per request. */
 
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import {
   RateLimitPresets,
   rateLimit,
@@ -72,7 +63,7 @@ app.get("/", async (c) => {
   }
   const resolvedChainId = parsedChainId.chainId;
 
-  const redis = buildRedisClient(c.env);
+  const redis = buildAuthenticationState(c.env, c.env.AUTHENTICATION_STATE);
   if (!redis) {
     return c.json({ error: "Nonce storage unavailable" }, 503);
   }

@@ -1102,12 +1102,13 @@ describe("TrustEngine.recordInteraction rate limiting", () => {
     expect(h.state.inserted.map((r) => r.weight)).toEqual([1, 0.75, 0.5, 0.25]);
   });
 
-  it("accepts ten interactions per entity per hour and silently drops the eleventh", async () => {
+  it("accepts ten interactions per entity per hour and drops the eleventh, reporting it", async () => {
     const { h, record } = await recordedHarness();
     for (let i = 0; i < 10; i++) {
-      await record();
+      await expect(record()).resolves.toBe(true);
     }
-    await record(); // eleventh — rate limited, neither persisted nor retained
+    // eleventh — rate limited, neither persisted nor retained, and reported
+    await expect(record()).resolves.toBe(false);
     expect(h.state.inserted.length).toBe(10);
     const recent = await h.engine.getRecentInteractions(SUBJECT_ID);
     expect(recent.length).toBe(10);

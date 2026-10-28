@@ -46,6 +46,7 @@ import {
   ModelType,
   markOwnerExclusiveDisclosureUsed,
   OWNER_PRIVATE_DESTINATION_DISCLOSURE_BASIS,
+  promoteSubactionsToActions,
   resolveCanonicalOwnerIdForMessage,
   revalidateOwnerExclusiveDisclosure,
   runWithActionRoutingContext,
@@ -56,10 +57,12 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { findEntityByName } from "../../../entities.ts";
+import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
 import {
   resolveMutedTargetFlags,
   resolveMutedWorldFlags,
 } from "../../../services/message/mute-state.ts";
+import { boundGmailContinuationRevision } from "../../../services/message/navigation-history.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
 import { listInboxAction } from "../../messaging/triage/actions/listInbox.ts";
@@ -166,7 +169,7 @@ const MESSAGE_CONTEXTS = [
 ];
 
 const MESSAGE_DESCRIPTION =
-  "Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Use manage_server for structural server administration on a connector that supports it (create/edit/delete channels, categories, and roles, permission overwrites, member roles, invites, moderation, guild templates) — gated by connector configuration. Public feed publishing uses POST.";
+  "Addressed messaging action: DMs, groups, channels, rooms, threads, servers, users, inboxes, drafts, and authorized cross-world continuity. Use list_worlds to discover durable worlds shared by the verified requester and this agent, list_rooms to inspect the current or an authorized worldId, and read_message to page an exact provider message or email body. Use manage_server for structural server administration on a connector that supports it (create/edit/delete channels, categories, and roles, permission overwrites, member roles, invites, moderation, guild templates) — gated by connector configuration. Email uses send_draft with an exact preview and a later affirmative user reply. The send operation delivers through messaging connectors. Public feed publishing uses POST.";
 const MESSAGE_COMPRESSED =
   "primary message action send read_channel read_with_contact read_message search list_channels list_servers list_connections list_worlds list_rooms join leave react edit delete pin get_user manage_server triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server world inbox draft connections platforms reachable";
 
@@ -1496,6 +1499,64 @@ async function collectHookTargets(
   return candidates;
 }
 
+/**
+ * Collects hook candidates from every considered connector. A connector whose
+ * discovery hooks all failed does not abort resolution while other connectors
+ * remain; the failure is rethrown only when every considered connector failed
+ * and none produced a candidate.
+ */
+async function collectConsideredHookTargets(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  considered: readonly ConnectorWithHooks[],
+  query: string | undefined,
+  targetKind: MessageTargetKind | undefined,
+  sourceWasExact: boolean,
+  accountId?: string,
+): Promise<SendCandidate[]> {
+  const candidates: SendCandidate[] = [];
+  let firstFailure: unknown;
+  let failedConnectors = 0;
+  for (const connector of considered) {
+    const context = buildQueryContext(
+      runtime,
+      message,
+      state,
+      connector.source,
+      undefined,
+      connector,
+      accountId,
+    );
+    try {
+      candidates.push(
+        ...(await collectHookTargets(
+          runtime,
+          connector,
+          query,
+          context,
+          targetKind,
+          sourceWasExact,
+          accountId,
+        )),
+      );
+    } catch (error) {
+      // error-policy:J4 Other considered connectors may still resolve the
+      // target; collectHookTargets already reported each failed hook.
+      firstFailure ??= error;
+      failedConnectors += 1;
+    }
+  }
+  if (
+    candidates.length === 0 &&
+    failedConnectors > 0 &&
+    failedConnectors === considered.length
+  ) {
+    throw firstFailure;
+  }
+  return candidates;
+}
+
 function explicitSendTarget(
   connector: ConnectorWithHooks,
   rawTarget: string,
@@ -2395,52 +2456,32 @@ async function resolveSendTarget(
       claimEntityFound = true;
       candidates.push(...entityCandidates.candidates);
     } else {
-      for (const connector of considered) {
-        const context = buildQueryContext(
+      candidates.push(
+        ...(await collectConsideredHookTargets(
           runtime,
           message,
           state,
-          connector.source,
-          undefined,
-          connector,
-          params.accountId,
-        );
-        candidates.push(
-          ...(await collectHookTargets(
-            runtime,
-            connector,
-            params.target,
-            context,
-            params.targetKind,
-            sourceWasExact,
-            params.accountId,
-          )),
-        );
-      }
-    }
-  } else {
-    for (const connector of considered) {
-      const context = buildQueryContext(
-        runtime,
-        message,
-        state,
-        connector.source,
-        undefined,
-        connector,
-        params.accountId,
-      );
-      candidates.push(
-        ...(await collectHookTargets(
-          runtime,
-          connector,
+          considered,
           params.target,
-          context,
           params.targetKind,
           sourceWasExact,
           params.accountId,
         )),
       );
     }
+  } else {
+    candidates.push(
+      ...(await collectConsideredHookTargets(
+        runtime,
+        message,
+        state,
+        considered,
+        params.target,
+        params.targetKind,
+        sourceWasExact,
+        params.accountId,
+      )),
+    );
     candidates.push(
       ...(await collectLegacyEntityCandidates(
         runtime,
@@ -3210,14 +3251,27 @@ async function handleSend(
   // A direct-to-person delivery resolved from an unvetted source (connector
   // fuzzy match / raw explicit target) must be a known recipient — present in
   // this room or relationship-backed — or explicitly confirmed by the user.
-  if (isUnvettedDirectUserCandidate(selected)) {
-    const known = await recipientIsKnownEntity(runtime, message, target);
+  const requestConsent =
+    selected.connector.source === "gmail"
+      ? await deviceGmailRequestConsent(runtime, message)
+      : "legacy";
+  if (requestConsent === "denied")
+    return opFailure(
+      "send",
+      "GMAIL_REQUEST_CHANGED",
+      "This Gmail request changed before it could be sent. Nothing was sent.",
+    );
+  if (requestConsent !== "legacy" || isUnvettedDirectUserCandidate(selected)) {
+    const known =
+      requestConsent === "legacy" &&
+      (await recipientIsKnownEntity(runtime, message, target));
     if (!known) {
       const prompt = `Send via ${selected.connector.label} to ${selected.label} (${String(target.entityId)})${target.accountId ? ` from account ${target.accountId}` : ""}?\n${isRecord(content.metadata) && typeof content.metadata.subject === "string" ? `Subject: ${content.metadata.subject}\n` : ""}${content.text ?? ""}${content.attachments?.length ? `\nAttachments: ${content.attachments.map((attachment) => `${attachment.title ?? "attachment"} (${attachment.url})`).join(", ")}` : ""}`;
       const decision = await requireSendConsent(
         runtime,
         message,
         sendConsentDigest({ target, content }),
+        { source: selected.connector.source, requestMessageId: message.id },
       );
       if (decision !== "confirmed") {
         const pending = decision === "pending";
@@ -3249,6 +3303,15 @@ async function handleSend(
   let evidenceKind: "provider" | "local-effect" = "provider";
   let receiptIds: readonly string[] | undefined;
   try {
+    if (
+      selected.connector.source === "gmail" &&
+      (await deviceGmailRequestConsent(runtime, message)) === "denied"
+    )
+      return opFailure(
+        "send",
+        "GMAIL_REQUEST_CHANGED",
+        "The Gmail request ended before sending. Nothing was sent.",
+      );
     const sendResult = await runtime.sendMessageToTarget(target, content);
     const disposition = inspectSendHandlerResult(sendResult);
     if (disposition.kind === "unknown") {
@@ -5752,6 +5815,7 @@ async function handleGetUser(
 async function handleReadMessage(
   runtime: IAgentRuntime,
   message: Memory,
+  state: State | undefined,
   params: ParamRecord,
 ): Promise<ActionResult> {
   const sourceValue = textParam(params.source) ?? "gmail";
@@ -5764,6 +5828,17 @@ async function handleReadMessage(
   }
   const messageId = textParam(params.messageId) ?? textParam(params.id);
   const reference = textParam(params.reference);
+  if (
+    reference &&
+    [textParam(params.messageId), textParam(params.id)].some(
+      (id) => id !== undefined && id !== reference,
+    )
+  )
+    return opFailure(
+      "read_message",
+      "MESSAGE_READ_CONFLICTING_REFERENCE",
+      "Message identifiers disagree with the continuation reference.",
+    );
   if (!messageId && !reference) {
     return opFailure(
       "read_message",
@@ -5793,7 +5868,20 @@ async function handleReadMessage(
         offset: numberParam(params.offset),
         limit: numberParam(params.limit),
         unit: unitValue as "line" | "fragment" | "byte",
-        expectedRevision: textParam(params.expectedRevision),
+        expectedRevision:
+          params.expectedRevision !== undefined
+            ? textParam(params.expectedRevision)
+            : sourceValue === "gmail"
+              ? boundGmailContinuationRevision({
+                  runtime,
+                  message,
+                  state,
+                  reference: reference ?? messageId,
+                  offset: numberParam(params.offset),
+                  limit: numberParam(params.limit),
+                  unit: unitValue,
+                })
+              : undefined,
       },
     );
     const projection = {
@@ -6288,7 +6376,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "query",
     description:
-      "Search term for op=search, search_inbox, list_worlds, or list_rooms.",
+      "Search term for op=search, search_inbox, list_worlds, or list_rooms. For Gmail search_inbox, preserve an explicitly supplied native query verbatim (including from: operators); do not replace it with a label or drop it when sender/date filters are also supplied.",
     required: false,
     subactions: [
       "search",
@@ -6305,14 +6393,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     name: "content",
     description: "Inbox search text or lookup hint for triage/draft/respond.",
     required: false,
-    subactions: [
-      "search",
-      "search_inbox",
-      "draft_reply",
-      "respond",
-      "manage",
-      "send_draft",
-    ],
+    subactions: ["search", "draft_reply", "respond", "manage", "send_draft"],
     schema: { type: "string" },
   },
   {
@@ -6430,7 +6511,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "reference",
     description:
-      "Opaque continuation reference returned by read_message or a stored read_channel page.",
+      "Opaque continuation reference returned by read_message or a stored read_channel page. Always send its exact expectedRevision together with this reference.",
     required: false,
     subactions: ["read_channel", "read_message"],
     schema: { type: "string" },
@@ -6453,7 +6534,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "expectedRevision",
     description:
-      "Revision returned by the preceding read_message or stored read_channel page.",
+      "Required for read_message when reference is present or offset is greater than zero: copy control.expectedRevision from the preceding read exactly. Optional only for an initial messageId read at offset zero. Stored read_channel continuation also requires its recorded revision.",
     required: false,
     subactions: ["read_channel", "read_message"],
     schema: { type: "string" },
@@ -6497,7 +6578,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "tags",
     description:
-      "For op=search_inbox: every hit must carry all of these tags, as the connector reports them in data.messages[].tags (Gmail label names).",
+      "For op=search_inbox: only labels/tags explicitly requested by the user. Every hit must carry ALL of them. A sender, company, topic, or from: query is NOT a label. Omit this parameter when no label filter was requested. Gmail values are label names.",
     required: false,
     subactions: ["search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6547,8 +6628,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "limit",
-    description: "Max items (at least 1).",
+    description:
+      "Maximum requested items (at least 1), or read_message range length in its units. For search_inbox always preserve the user's requested limit; use 25 only if none was specified.",
     required: false,
+    requiredForSubactions: ["search_inbox"],
     subactions: [
       "read_channel",
       "read_with_contact",
@@ -6844,7 +6927,16 @@ export const messageAction: Action = {
   ] as ActionExample[][],
   validate: async (runtime, message, state, options) => {
     refreshDescriptions(messageAction, runtime);
-    const explicitOp = inferOp(paramsFromOptions(options));
+    const parameters = paramsFromOptions(options);
+    const explicitOp = inferOp(parameters);
+    // One local registration read; no connector handshake or provider request.
+    if (
+      normalizeOp(parameters.action) === "send" &&
+      !listMessageConnectors(runtime).some((connector) =>
+        connector.capabilities.includes("send_message"),
+      )
+    )
+      return false;
     if (explicitOp === "list_worlds" || explicitOp === "list_rooms") {
       // Scenario and API callers may invoke an explicit topology read without
       // a model-composed routing state. The handlers still revalidate the
@@ -6867,7 +6959,7 @@ export const messageAction: Action = {
       case "read_with_contact":
         return handleReadWithContact(runtime, message, state, params);
       case "read_message":
-        return handleReadMessage(runtime, message, params);
+        return handleReadMessage(runtime, message, state, params);
       case "search":
         return handleSearch(runtime, message, state, params);
       case "list_channels":
@@ -6920,5 +7012,41 @@ export const messageAction: Action = {
     }
   },
 };
+
+/** Both registrations expose the same authored distinction between connector
+ * sends and the owner-reviewed email draft flow. No handler or gate changes.
+ */
+export function promoteMessageActions(): readonly Action[] {
+  return promoteSubactionsToActions(messageAction, {
+    overrides: {
+      search_inbox: {
+        description:
+          "Search using exactly the user's requested filters and result limit. For Gmail, use sources=['gmail'] and one complete native Gmail query: combine requested sender/from and subject constraints in that same query, preserving an explicit user-supplied query verbatim. Keep subject text in subject: operators; never drop it or replace the requested limit after an error. Structured sender/date filters are additional constraints, never replacements for query terms. Tags are only explicitly requested labels, never sender/company names. Check returned appliedFilters before answering. If a search fails, correct the original filters or report the error; never broaden the search silently.",
+        descriptionCompressed:
+          "Gmail: sources=['gmail']; complete native query with ALL requested from: AND subject: constraints; preserve explicit query and exact limit. Omit unrequested tags. Check appliedFilters. Never drop subject/sender/limit or broaden on error. Other sources keep their connector filters.",
+      },
+      read_message: {
+        description:
+          "Read one exact message body. First page: use messageId and a byte limit. Continuation: copy reference, offset, unit, limit AND expectedRevision from the previous read control; expectedRevision is mandatory for a reference or nonzero offset. Never invent identifiers or omit the revision on retry. This reads only; it does not mark mail read or send anything.",
+        descriptionCompressed:
+          "Read exact message body. Continue only with ALL previous control fields: reference, offset, unit, limit, expectedRevision. expectedRevision is mandatory for reference/nonzero offset; copy it exactly. Never invent IDs or retry a missing revision unchanged. Read only.",
+      },
+      send: {
+        description:
+          "Send a direct message through a registered messaging connector. For Gmail or another email inbox, use MESSAGE_SEND_DRAFT to prepare an exact draft and obtain later user confirmation.",
+      },
+      send_draft: {
+        parameters: sendDraftAction.parameters,
+        description: sendDraftAction.description,
+        descriptionCompressed: sendDraftAction.descriptionCompressed,
+        similes: [
+          ...(sendDraftAction.similes ?? []),
+          "SEND_EMAIL",
+          "SEND_GMAIL",
+        ],
+      },
+    },
+  });
+}
 
 export default messageAction;

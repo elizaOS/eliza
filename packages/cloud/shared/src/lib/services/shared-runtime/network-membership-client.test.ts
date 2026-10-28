@@ -110,14 +110,14 @@ describe("Network membership Cloud boundary", () => {
             expect(request.method).toBe("POST");
             expect(request.headers.get("authorization")).toBe("Bearer server-secret");
             expect(request.headers.get("cache-control")).toBe("no-store");
-            expect(request.redirect).toBe("error");
+            expect(request.redirect).toBe("manual");
             expect(request.cache).toBe("no-store");
             expect(await request.json()).toEqual({ e164: "+12125550181" });
             input.user.phone_number = "+12125550182";
             return Response.json({ active: true });
           }
           expect(request.url).toBe("https://network.internal/agent/route");
-          expect(request.redirect).toBe("error");
+          expect(request.redirect).toBe("manual");
           expect(request.cache).toBe("no-store");
           expect(await request.json()).toEqual({ e164: "+12125550181", text: completeMessage });
           return Response.json({
@@ -386,7 +386,7 @@ describe("Network membership Cloud boundary", () => {
         expect(request.headers.get("authorization")).toBe("Bearer server-secret");
         expect(request.headers.get("cache-control")).toBe("no-store");
         expect(request.cache).toBe("no-store");
-        expect(request.redirect).toBe("error");
+        expect(request.redirect).toBe("manual");
         expect(await request.json()).toEqual({ e164: "+12125550181" });
         return new Response(null, { status: 404 });
       },
@@ -557,7 +557,7 @@ describe("Network membership Cloud boundary", () => {
           const path = new URL(request.url).pathname;
           paths.push(path);
           expect(request.headers.get("authorization")).toBe("Bearer server-secret");
-          expect(request.redirect).toBe("error");
+          expect(request.redirect).toBe("manual");
           expect(request.cache).toBe("no-store");
           expect(await request.json()).toEqual({ e164: "+12125550181" });
           return Response.json(path === "/agent/membership" ? membership : context);

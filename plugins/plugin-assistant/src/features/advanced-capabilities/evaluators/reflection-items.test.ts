@@ -535,6 +535,20 @@ describe("factMemoryEvaluator dedupe against explicit MEMORY facts", () => {
     },
   );
 
+  it("does not decay away a fact the user asked to remember", async () => {
+    const runtime = makeRuntime();
+    const lowConfidence = {
+      ...explicitFact,
+      metadata: { ...explicitFact.metadata, confidence: 0.25 },
+    } as Memory;
+    const result = await processFactOps(runtime, [lowConfidence], {
+      ops: [{ op: "decay", factId: explicitFact.id, reason: "not mentioned" }],
+    });
+    expect(runtime.deleteMemory).not.toHaveBeenCalled();
+    expect(runtime.updateMemory).not.toHaveBeenCalled();
+    expect(result?.data).toMatchObject({ decayed: 0 });
+  });
+
   it("keeps the kind/category gate for extractor-authored facts", async () => {
     const runtime = makeRuntime();
     const extractorFact: Memory = {

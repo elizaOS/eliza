@@ -295,6 +295,37 @@ describe("admission queue integration (#13772)", () => {
     expect((await service.getAdmissionSnapshot()).queueDepth).toBe(0);
   });
 
+  it("marks a queued task failed when its replayed spawn fails, instead of leaving it open", async () => {
+    const acp = new FakeAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const runtime = makeRuntime(acp);
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    const a = await newTask(store, "a");
+    await service.spawnAgentForTask(a);
+    const b = await newTask(store, "b");
+    expect((await service.spawnAgentForTask(b))?.admission?.state).toBe(
+      "queued",
+    );
+
+    // The slot frees, but launching B's agent fails (e.g. a transport error).
+    vi.spyOn(acp, "spawnSession").mockRejectedValueOnce(
+      new Error("spawn transport failed"),
+    );
+    const running = acp.listSessions().find((s) => s.status === "running");
+    if (running) acp.complete(running.id);
+    await waitUntil(
+      () =>
+        (runtime.reportError as ReturnType<typeof vi.fn>).mock.calls.length > 0,
+    );
+
+    const doc = await store.getTask(b);
+    expect(doc?.task.status).toBe("failed");
+    expect(doc?.task.metadata?.admission).toBeUndefined();
+    expect((await service.getAdmissionSnapshot()).queueDepth).toBe(0);
+  });
+
   it("reclaims an idle keepAlive session whose task is terminal to free a slot", async () => {
     const acp = new FakeAcp(1);
     const store = new OrchestratorTaskStore({ backend: "memory" });

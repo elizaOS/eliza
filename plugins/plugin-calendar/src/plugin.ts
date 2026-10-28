@@ -1,3 +1,5 @@
+import { calendarReviewAction } from "./actions/calendar-review.js";
+import { CalendarMutationPortService } from "./mutations/service.js";
 /**
  * Plugin definition for `@elizaos/plugin-calendar`: registers `CalendarService`,
  * the deterministic conflict action, the non-destructive migration service,
@@ -11,9 +13,27 @@ import {
   logger,
 } from "@elizaos/core";
 import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import {
+  registerLocalCalendarCreatePlanner,
+  registerLocalCalendarTimeUpdateRouting,
+  registerLocalCalendarUpdatePlanner,
+  requestLocalCalendarAgenda,
+  requestLocalCalendarAvailability,
+  requestLocalCalendarCreate,
+  requestLocalCalendarUpdate,
+} from "@elizaos/plugin-assistant";
 import { calendarAction } from "./actions/calendar.js";
+import {
+  inferNativeCalendarCreate,
+  inferSelectedCalendarUpdate,
+  registerCalendarActionHostAdapter,
+} from "./actions/calendar-handler.js";
 import { calendarSourcesAction } from "./actions/calendar-sources.js";
-import { conflictDetectAction } from "./actions/conflict-detect.js";
+import {
+  conflictDetectAction,
+  registerConflictDetectHostAdapter,
+} from "./actions/conflict-detect.js";
+import { calendarOperationActions } from "./calendar-read-parameters.js";
 import { createMicrosoftConnectorAccountProvider } from "./microsoft/connector-account-provider.js";
 import { calendarSourcesProvider } from "./providers/calendar-sources.js";
 import {
@@ -36,12 +56,22 @@ import { serverInteract } from "./view-interact.js";
  */
 export const calendarPlugin: Plugin = {
   name: "calendar",
+  packageName: "@elizaos/plugin-calendar",
   description:
     "Multi-provider calendar feeds, scheduling, and event management for Eliza agents.",
   dependencies: ["@elizaos/plugin-scheduling"],
   schema: calendarSchema,
-  services: [CalendarMigrationService, CalendarService],
-  actions: [calendarAction, calendarSourcesAction, conflictDetectAction],
+  services: [
+    CalendarMigrationService,
+    CalendarService,
+    CalendarMutationPortService,
+  ],
+  actions: [
+    ...calendarOperationActions(calendarAction),
+    calendarSourcesAction,
+    conflictDetectAction,
+    calendarReviewAction,
+  ],
   responseHandlerFieldEvaluators: [calendarReadBindingField],
   responseHandlerEvaluators: [calendarReadBindingEvaluator],
   providers: [calendarSourcesProvider],
@@ -50,6 +80,24 @@ export const calendarPlugin: Plugin = {
     _config: Record<string, string>,
     runtime: IAgentRuntime,
   ): Promise<void> => {
+    // The Calendar domain is loaded independently of the optional full PA
+    // plugin. Bind only its guarded requesting-device read port here; normal
+    // provider reads and model/mutation dependencies retain their host defaults.
+    registerCalendarActionHostAdapter(runtime, {
+      requestLocalAgenda: requestLocalCalendarAgenda,
+      requestLocalUpdate: requestLocalCalendarUpdate,
+      requestLocalCreate: requestLocalCalendarCreate,
+    });
+    registerConflictDetectHostAdapter(runtime, {
+      requestLocalAvailability: requestLocalCalendarAvailability,
+    });
+    registerLocalCalendarTimeUpdateRouting(runtime);
+    registerLocalCalendarUpdatePlanner(runtime, (args) =>
+      inferSelectedCalendarUpdate({ runtime, ...args }),
+    );
+    registerLocalCalendarCreatePlanner(runtime, (args) =>
+      inferNativeCalendarCreate({ runtime, ...args }),
+    );
     const manager = getConnectorAccountManager(runtime);
     manager.registerProvider(createMicrosoftConnectorAccountProvider(runtime));
     logger.info(

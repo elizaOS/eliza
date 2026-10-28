@@ -21,6 +21,7 @@ import {
   type MessageAdapter,
   type MessageAdapterCapabilities,
   type MessageDraftContext,
+  type MessageManageContext,
   type MessageRef,
   type MessageSendContext,
   type MessageSource,
@@ -112,12 +113,13 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
     runtime: IAgentRuntime,
     messageId: string,
     op: ManageOperation,
+    context?: MessageManageContext,
   ): Promise<ManageResult> {
     if (!this.isAvailable(runtime)) {
       this.logUnavailableOnce();
       return { ok: false, reason: `${this.source} adapter unavailable` };
     }
-    return this.manageMessageImpl(runtime, messageId, op);
+    return this.manageMessageImpl(runtime, messageId, op, context);
   }
 
   async createDraft(
@@ -200,6 +202,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
     _runtime: IAgentRuntime,
     _messageId: string,
     _op: ManageOperation,
+    _context?: MessageManageContext,
   ): Promise<ManageResult> {
     return Promise.resolve({
       ok: false,

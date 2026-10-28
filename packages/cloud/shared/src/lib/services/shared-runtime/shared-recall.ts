@@ -3,8 +3,8 @@
  * FACTS-provider embedding fallback (#20514): the lexical salience path in
  * shared-runtime-history-policy.ts stays primary, and an embedding search over
  * the tenant Postgres transcript runs ONLY when that keyword path missed.
- * Embeddings come from a sidecar exposing the OpenAI `/v1/embeddings` shape
- * with `bge-small-en-v1.5` (384 dimensions).
+ * Hosted turns use the canonical `bge-small-en-v1.5` provider (384 dimensions).
+ * The explicit sidecar helpers below remain available for self-hosted callers.
  *
  * `buildSharedRecallContext` is pure orchestration over injected
  * `embed`/`storeSearch` collaborators and owns no degrade policy: failures

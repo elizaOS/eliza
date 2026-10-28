@@ -17,7 +17,7 @@
 
 import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { validateUuid } from "@elizaos/core";
+import { ElizaError, validateUuid } from "@elizaos/core";
 import {
   type PushMessage,
   type PushProvider,
@@ -75,7 +75,9 @@ function parseServiceAccount(raw: string): ServiceAccount | null {
 }
 
 /**
- * Read + validate the FCM service account from the environment, or null.
+ * Read + validate the FCM service account from the environment, or null when
+ * no credential is supplied. A supplied credential that cannot be used throws,
+ * so it does not look the same as "not configured".
  * Exported for the gating check / tests.
  */
 export function readServiceAccount(
@@ -83,12 +85,20 @@ export function readServiceAccount(
 ): ServiceAccount | null {
   const inline = env.ELIZA_FCM_SERVICE_ACCOUNT?.trim();
   const path = env.ELIZA_FCM_SERVICE_ACCOUNT_PATH?.trim();
-  let raw = inline;
-  if (!raw && path) {
-    raw = readFileSync(path, "utf8").trim();
+  if (!inline && !path) return null;
+  const source = inline
+    ? "ELIZA_FCM_SERVICE_ACCOUNT"
+    : "ELIZA_FCM_SERVICE_ACCOUNT_PATH";
+  const account = parseServiceAccount(
+    inline || readFileSync(path as string, "utf8").trim(),
+  );
+  if (!account) {
+    throw new ElizaError(
+      `[FcmProvider] ${source} does not contain a usable FCM service account`,
+      { code: "FCM_SERVICE_ACCOUNT_INVALID", context: { source } },
+    );
   }
-  if (!raw) return null;
-  return parseServiceAccount(raw);
+  return account;
 }
 
 export class FcmProvider implements PushProvider {
@@ -275,14 +285,11 @@ export class FcmProvider implements PushProvider {
     });
     if (res.ok) return;
 
-    // 404 + UNREGISTERED (and NOT_FOUND / INVALID_ARGUMENT for a bad token)
-    // mean the registration token is dead — surface it so the caller drops it.
+    // Only the typed FCM detail identifies an unregistered device. A bare HTTP
+    // 404 / NOT_FOUND can instead describe the project or another resource and
+    // must not cause the caller to delete a valid registration.
     const errorCode = await readFcmErrorCode(res);
-    if (
-      res.status === 404 ||
-      errorCode === "UNREGISTERED" ||
-      errorCode === "NOT_FOUND"
-    ) {
+    if (errorCode === "UNREGISTERED") {
       throw new PushUnregisteredError(
         token,
         `[FcmProvider] token rejected (status=${res.status} code=${errorCode ?? "n/a"})`,
@@ -294,7 +301,7 @@ export class FcmProvider implements PushProvider {
   }
 }
 
-/** Pull the FCM v1 error status code out of an error response, if present. */
+/** Pull the token-specific code from a typed FCM v1 error detail, if present. */
 async function readFcmErrorCode(res: Response): Promise<string | undefined> {
   let parsed: unknown;
   try {
@@ -311,6 +318,18 @@ async function readFcmErrorCode(res: Response): Promise<string | undefined> {
   if (typeof parsed !== "object" || parsed === null) return undefined;
   const error = (parsed as { error?: unknown }).error;
   if (typeof error !== "object" || error === null) return undefined;
-  const status = (error as { status?: unknown }).status;
-  return typeof status === "string" ? status : undefined;
+  const details = (error as { details?: unknown }).details;
+  if (!Array.isArray(details)) return undefined;
+  for (const detail of details) {
+    if (typeof detail !== "object" || detail === null) continue;
+    const record = detail as Record<string, unknown>;
+    if (
+      record["@type"] ===
+        "type.googleapis.com/google.firebase.fcm.v1.FcmError" &&
+      typeof record.errorCode === "string"
+    ) {
+      return record.errorCode;
+    }
+  }
+  return undefined;
 }

@@ -25,6 +25,10 @@ import type { CloudAuthService } from "./cloud-auth";
 
 /** `runtime.reportError` scope for deployment-polling failures. */
 const POLL_ERROR_SCOPE = "CloudContainerService.deploymentPolling";
+/** `runtime.reportError` scope for failures to load the existing containers. */
+const LOAD_ERROR_SCOPE = "CloudContainerService.loadExisting";
+const LOAD_RETRY_BASE_MS = 30_000;
+const LOAD_RETRY_MAX_MS = 10 * 60_000;
 
 /** Active containers tracked locally for quick access. */
 interface TrackedContainer {
@@ -41,6 +45,8 @@ export class CloudContainerService
 
   private authService!: CloudAuthService;
   private tracked: Map<string, TrackedContainer> = new Map();
+  private loadRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private stopped = false;
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
     const service = new CloudContainerService(runtime);
@@ -49,6 +55,9 @@ export class CloudContainerService
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.loadRetryTimer) clearTimeout(this.loadRetryTimer);
+    this.loadRetryTimer = null;
     for (const [, tracked] of this.tracked) {
       if (tracked.pollingTimer) clearTimeout(tracked.pollingTimer);
     }
@@ -66,26 +75,65 @@ export class CloudContainerService
     }
     this.authService = auth as CloudAuthService;
 
-    // Load existing containers
-    if (this.authService.isAuthenticated()) {
-      const containers = await this.listContainers();
-      for (const container of containers) {
-        this.tracked.set(container.id, {
-          container,
-          pollingTimer: null,
-        });
+    if (this.authService.isAuthenticated()) await this.loadExistingContainers(1);
+  }
 
-        // Resume polling for containers that are still deploying
-        if (
-          container.status === "pending" ||
-          container.status === "building" ||
-          container.status === "deploying"
-        ) {
-          this.startPolling(container.id);
-        }
-      }
-      logger.info(`[CloudContainer] Loaded ${containers.length} existing container(s)`);
+  /**
+   * Track the containers that already exist and resume polling the ones still
+   * deploying. A failure (Cloud unreachable, a key that is replaced later) must
+   * not fail service start: the service would stay unregistered until restart.
+   * It is reported and retried with backoff instead.
+   */
+  private async loadExistingContainers(attempt: number): Promise<void> {
+    this.loadRetryTimer = null;
+    let containers: CloudContainer[];
+    try {
+      containers = await this.listContainers();
+    } catch (error) {
+      // error-policy:J1 boot and timer boundary: report, then retry.
+      if (this.stopped) return;
+      const nextLoadInMs = Math.min(
+        LOAD_RETRY_BASE_MS * 2 ** (attempt - 1),
+        LOAD_RETRY_MAX_MS
+      );
+      this.runtime.reportError(
+        LOAD_ERROR_SCOPE,
+        new ElizaError(
+          `Loading existing cloud containers failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          {
+            code: "CLOUD_CONTAINER_LOAD_FAILED",
+            severity: "ephemeral",
+            cause: error,
+            context: { attempt, nextLoadInMs },
+          }
+        )
+      );
+      this.loadRetryTimer = setTimeout(() => {
+        void this.loadExistingContainers(attempt + 1);
+      }, nextLoadInMs);
+      return;
     }
+    if (this.stopped) return;
+    for (const container of containers) {
+      // A container created or tracked while a retry was pending keeps its entry.
+      if (this.tracked.has(container.id)) continue;
+      this.tracked.set(container.id, {
+        container,
+        pollingTimer: null,
+      });
+
+      // Resume polling for containers that are still deploying
+      if (
+        container.status === "pending" ||
+        container.status === "building" ||
+        container.status === "deploying"
+      ) {
+        this.startPolling(container.id);
+      }
+    }
+    logger.info(`[CloudContainer] Loaded ${containers.length} existing container(s)`);
   }
 
   private getClient(): CloudApiClient {

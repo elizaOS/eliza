@@ -50,7 +50,6 @@ import type {
   GoogleSendEmailInput,
 } from "./types.js";
 
-const MESSAGE_METADATA_HEADERS = ["Subject", "From", "To", "Date"];
 const GMAIL_METADATA_HEADERS = [
   "Subject",
   "From",
@@ -70,6 +69,8 @@ const SUBSCRIPTION_SCAN_QUERY_DEFAULT =
   "(category:promotions OR category:updates OR list:* OR unsubscribe) newer_than:180d";
 const GMAIL_LIST_PAGE_SIZE = 500;
 const GMAIL_METADATA_CONCURRENCY = 25;
+/** Gmail's documented id limit for messages.batchModify and batchDelete. */
+const GMAIL_BATCH_MAX_IDS = 1000;
 
 interface GmailPaginationState {
   seenPageTokens: Set<string>;
@@ -104,6 +105,17 @@ function nextGmailPageToken(
   }
   state.seenPageTokens.add(token);
   return token;
+}
+
+function requireGmailSendMessageId(value: string | null | undefined): string {
+  const messageId = value?.trim();
+  if (!messageId) {
+    throw new ElizaError("Gmail send returned no provider message id.", {
+      code: "GOOGLE_GMAIL_SEND_RECEIPT_MISSING",
+      severity: "fatal",
+    });
+  }
+  return messageId;
 }
 
 export class GoogleGmailClient {
@@ -220,7 +232,7 @@ export class GoogleGmailClient {
     });
 
     return {
-      id: response.data.id ?? "",
+      id: requireGmailSendMessageId(response.data.id),
       threadId: response.data.threadId ?? undefined,
     };
   }
@@ -586,8 +598,16 @@ export class GoogleGmailClient {
     const labelIds = requireLabelIdsForOperation(params.operation, params.labelIds);
 
     if (params.operation === "trash") {
-      const outcomes = await Promise.allSettled(
-        ids.map((id) => gmail.users.messages.trash({ userId: "me", id }))
+      // Bounded like the metadata reads: one request per id at once would
+      // exceed Gmail's per-user concurrency and fail with 429.
+      const outcomes = await mapWithConcurrency(
+        ids,
+        GMAIL_METADATA_CONCURRENCY,
+        (id): Promise<PromiseSettledResult<unknown>> =>
+          gmail.users.messages.trash({ userId: "me", id }).then(
+            (value) => ({ status: "fulfilled", value }),
+            (reason: unknown) => ({ status: "rejected", reason })
+          )
       );
       const succeededMessageIds: string[] = [];
       const failures: GoogleGmailMutationReceipt["failures"] = [];
@@ -611,33 +631,54 @@ export class GoogleGmailClient {
         failures,
       };
     }
-    if (params.operation === "delete") {
-      await gmail.users.messages.batchDelete({
-        userId: "me",
-        requestBody: { ids },
-      });
-      return {
-        operation: params.operation,
-        requestedMessageIds: ids,
-        succeededMessageIds: ids,
-        failures: [],
-      };
+    const labelPatch =
+      params.operation === "delete" ? null : labelsForOperation(params.operation, labelIds);
+    // batchDelete and batchModify accept at most 1000 ids per request; one
+    // request for a larger set is rejected whole and changes nothing.
+    const succeededMessageIds: string[] = [];
+    const failures: GoogleGmailMutationReceipt["failures"] = [];
+    let firstError: unknown = null;
+    for (let start = 0; start < ids.length; start += GMAIL_BATCH_MAX_IDS) {
+      const slice = ids.slice(start, start + GMAIL_BATCH_MAX_IDS);
+      try {
+        if (labelPatch === null) {
+          await gmail.users.messages.batchDelete({
+            userId: "me",
+            requestBody: { ids: slice },
+          });
+        } else {
+          await gmail.users.messages.batchModify({
+            userId: "me",
+            requestBody: {
+              ids: slice,
+              addLabelIds: labelPatch.addLabelIds,
+              removeLabelIds: labelPatch.removeLabelIds,
+            },
+          });
+        }
+        succeededMessageIds.push(...slice);
+      } catch (error) {
+        // error-policy:J1 earlier slices are already applied, so a later
+        // refusal is reported per id instead of as a failure of the whole set.
+        firstError ??= error;
+        const code = googleErrorStatus(error) ?? null;
+        for (const messageId of slice) {
+          failures.push({
+            messageId,
+            code,
+            retryable: code === null || code === 408 || code === 429 || code >= 500,
+          });
+        }
+      }
     }
-
-    const labelPatch = labelsForOperation(params.operation, labelIds);
-    await gmail.users.messages.batchModify({
-      userId: "me",
-      requestBody: {
-        ids,
-        addLabelIds: labelPatch.addLabelIds,
-        removeLabelIds: labelPatch.removeLabelIds,
-      },
-    });
+    if (succeededMessageIds.length === 0) {
+      throw firstError;
+    }
     return {
       operation: params.operation,
       requestedMessageIds: ids,
-      succeededMessageIds: ids,
-      failures: [],
+      succeededMessageIds,
+      failures,
     };
   }
 
@@ -883,7 +924,7 @@ export class GoogleGmailClient {
       userId: "me",
       id: params.messageId,
       format: params.includeBody ? "full" : "metadata",
-      metadataHeaders: MESSAGE_METADATA_HEADERS,
+      metadataHeaders: [...GMAIL_METADATA_HEADERS],
     });
 
     return mapMessage(response.data, Boolean(params.includeBody));
@@ -921,7 +962,7 @@ export class GoogleGmailClient {
       requestBody: threadId ? { raw, threadId } : { raw },
     });
     return {
-      messageId: response.data.id ?? null,
+      messageId: requireGmailSendMessageId(response.data.id),
       threadId: response.data.threadId ?? null,
       labelIds: response.data.labelIds ?? [],
     };

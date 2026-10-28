@@ -7,8 +7,9 @@
  * sends that draft. A source whose adapter cannot send a new message is
  * refused before any draft or preview is created.
  *
- * Two independent gates guard every send. The user-confirmation gate refuses to
- * send without a later user confirmation bound to the preview; the
+ * Two independent gates guard every send. Legacy clients need a later user
+ * confirmation bound to the preview. An authenticated foreground device request
+ * can explicitly opt into an immediate Gmail send; message metadata cannot. The
  * owner SendPolicy gate (when a policy is registered) can defer any send for
  * owner approval, enqueuing the sendDraft executor for later replay.
  *
@@ -27,7 +28,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
-import { draftConsentDigest, requireSendConsent } from "../send-consent.ts";
+import {
+  draftConsentDigest,
+  pendingSendDraft,
+  requireSendConsent,
+} from "../send-consent.ts";
 import { getSendPolicy } from "../send-policy.ts";
 import { getDefaultTriageService } from "../triage-service.ts";
 import type { DraftRecord, DraftRequest } from "../types.ts";
@@ -66,21 +71,22 @@ const OUTBOUND_DRAFT_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "threadId",
-    description: "Optional existing thread identifier.",
+    description:
+      "Existing thread ID returned by the selected message source. Omit for a new email; never use the current conversation ID.",
     required: false,
     schema: { type: "string" as const },
   },
   {
     name: "channelId",
     description:
-      "Platform channel for a new outbound draft. A new discord draft requires it.",
+      "Platform channel ID returned by the selected source. A new discord draft requires it. Omit for Gmail.",
     required: false,
     schema: { type: "string" as const },
   },
   {
     name: "worldId",
     description:
-      "Account or server scope for a new outbound draft: the worldId shown on inbox messages (for gmail, the Google account id). Omit it for the default account.",
+      "Exact account/server scope ID returned by the selected adapter. Omit for the default account. An email address or conversation ID is not a scope ID; never invent one.",
     required: false,
     schema: { type: "string" as const },
   },
@@ -121,7 +127,12 @@ function normalizeSource(value: unknown): string | undefined {
 async function extractOutboundDraftFromText(
   runtime: IAgentRuntime,
   text: string,
-): Promise<{ source?: string; recipient?: string; body?: string }> {
+): Promise<{
+  source?: string;
+  recipient?: string;
+  subject?: string;
+  body?: string;
+}> {
   if (!text.trim()) return {};
   const prompt = `A user asked the agent to send an outbound message. Extract the parts of the request — this must work in any language, so do not rely on English keywords.
 
@@ -132,6 +143,7 @@ Return ONLY this XML, leaving a field empty when the request does not specify it
 <response>
 <source>the platform/app to send on — one of telegram, discord, whatsapp, imessage, gmail, twitter — or empty</source>
 <recipient>who to send to (a name, @handle, or contact), or empty</recipient>
+<subject>the exact email subject requested by the user, or empty</subject>
 <body>the exact message text to send, or empty</body>
 </response>`;
   const raw = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
@@ -145,6 +157,7 @@ Return ONLY this XML, leaving a field empty when the request does not specify it
   return {
     source: nonEmptyString(parsed.source),
     recipient: nonEmptyString(parsed.recipient),
+    subject: nonEmptyString(parsed.subject),
     body: nonEmptyString(parsed.body),
   };
 }
@@ -183,6 +196,7 @@ export async function outboundDraftOptionsFromMessage(
 
   const source = paramSource ?? normalizeSource(extracted.source);
   const body = paramBody ?? extracted.body;
+  const subject = nonEmptyString(params.subject) ?? extracted.subject;
   const rawTo = paramTo ?? extracted.recipient;
   const to = Array.isArray(rawTo)
     ? rawTo
@@ -196,6 +210,7 @@ export async function outboundDraftOptionsFromMessage(
       ...params,
       ...(source ? { source } : {}),
       ...(body ? { body } : {}),
+      ...(subject ? { subject } : {}),
       ...(to ? { to } : {}),
     },
   };
@@ -216,18 +231,18 @@ function previewOutboundDraft(
 }
 
 /**
- * SAFETY INVARIANT: MESSAGE must never send without an explicit
- * user confirmation on a later turn. When confirmation is missing the handler
- * returns the preview and asks the user to confirm.
+ * MESSAGE requires either the later-turn confirmation or an authenticated,
+ * current device request bound to the exact Gmail draft. Model parameters and
+ * message metadata never supply that authority.
  */
 export const sendDraftAction: Action = {
   name: "MESSAGE",
   contexts: ["messaging", "email", "contacts"],
   roleGate: { minRole: "ADMIN" },
   description:
-    "Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'DM Bob on Discord' and 'email Alice the notes'. The source's adapter must support sending a new message. It previews the exact draft and requires a later affirmative user reply before sending.",
+    "Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'DM Bob on Discord' and 'email Alice the notes'. The source's adapter must support sending a new message. It previews the exact draft and requires a later affirmative user reply before sending. For a plain later confirmation, omit draftId and message fields: the host resolves and checks the reviewed draft. Never invent an ID or restore history just to find one.",
   descriptionCompressed:
-    "outbound draft/send Discord|email|X DM; requires a later user confirmation",
+    "outbound draft/send Discord|email|X DM; host enforces current-device Gmail policy or later confirmation",
   similes: [
     "DISPATCH_DRAFT",
     "CONFIRM_AND_SEND",
@@ -267,8 +282,19 @@ export const sendDraftAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const parsed = parseSendDraftParams(options);
+    let parsed = parseSendDraftParams(options);
+    let currentRequestConfirmed = false;
     const service = getDefaultTriageService();
+    // A whole-turn affirmation refers to the host's latest reviewed draft.
+    // Planner content or an invented ID cannot redirect it. A different draft
+    // the planner names explicitly is kept: the digest gate below then
+    // re-previews it instead of sending the earlier armed draft.
+    const pendingId = await pendingSendDraft(runtime, _message);
+    if (pendingId && service.getDraft(runtime, pendingId)) {
+      const named = "error" in parsed ? undefined : parsed.draftId;
+      if (!named || named === pendingId || !service.getDraft(runtime, named))
+        parsed = { draftId: pendingId };
+    }
     if ("error" in parsed) {
       const draftParsed = parseDraftFollowupParams(
         await outboundDraftOptionsFromMessage(runtime, _message, options),
@@ -321,36 +347,50 @@ export const sendDraftAction: Action = {
         worldId: draftParsed.worldId,
         channelId: draftParsed.channelId,
       });
-      await requireSendConsent(runtime, _message, draftConsentDigest(record));
-      const recipients = record.to
-        .map((recipient) =>
-          recipient.displayName
-            ? `${recipient.displayName} <${recipient.identifier}>`
-            : recipient.identifier,
-        )
-        .join(", ");
-      const text = `Drafted ${record.source} message to ${recipients}.\n${previewOutboundDraft(record)}\nConfirm before I send it.`;
-      logger.info(
-        `[SendDraft] created outbound draft draftId=${record.draftId} source=${record.source}`,
-      );
-      if (callback) {
-        await callback({ text, action: "MESSAGE" });
-      }
-      return {
-        success: true,
-        text,
-        userFacingText: text,
-        verifiedUserFacing: true,
-        turnComplete: true,
-        continueChain: false,
-        data: {
-          requiresConfirmation: true,
-          preview: record.preview,
+      const initialConsent = await requireSendConsent(
+        runtime,
+        _message,
+        draftConsentDigest(record),
+        {
           draftId: record.draftId,
           source: record.source,
-          to: record.to,
+          requestMessageId: _message.id,
         },
-      };
+      );
+      if (initialConsent === "confirmed") {
+        parsed = { draftId: record.draftId };
+        currentRequestConfirmed = true;
+      } else {
+        const recipients = record.to
+          .map((recipient) =>
+            recipient.displayName
+              ? `${recipient.displayName} <${recipient.identifier}>`
+              : recipient.identifier,
+          )
+          .join(", ");
+        const text = `Drafted ${record.source} message to ${recipients}.\n${previewOutboundDraft(record)}\nConfirm before I send it.`;
+        logger.info(
+          `[SendDraft] created outbound draft draftId=${record.draftId} source=${record.source}`,
+        );
+        if (callback) {
+          await callback({ text, action: "MESSAGE" });
+        }
+        return {
+          success: true,
+          text,
+          userFacingText: text,
+          verifiedUserFacing: true,
+          turnComplete: true,
+          continueChain: false,
+          data: {
+            requiresConfirmation: true,
+            preview: record.preview,
+            draftId: record.draftId,
+            source: record.source,
+            to: record.to,
+          },
+        };
+      }
     }
 
     const existing = service.getDraft(runtime, parsed.draftId);
@@ -361,7 +401,12 @@ export const sendDraftAction: Action = {
     }
 
     const consentDigest = draftConsentDigest(existing);
-    const consent = await requireSendConsent(runtime, _message, consentDigest);
+    const consent = currentRequestConfirmed
+      ? "confirmed"
+      : await requireSendConsent(runtime, _message, consentDigest, {
+          draftId: existing.draftId,
+          source: existing.source,
+        });
     if (consent === "cancelled")
       return {
         success: false,

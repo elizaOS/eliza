@@ -38,6 +38,11 @@ public final class ReminderEngine {
  public JSONObject decide(String id,String occurrence,String action)throws JSONException{return store.decide(context,id,occurrence,action);}
  public JSONObject operate(String id,String binding,JSONObject operation)throws JSONException{return store.operate(context,id,binding,operation);}
  public JSONObject operationReceipt(String id,String binding,JSONObject operation)throws JSONException{return store.operationReceipt(context,id,binding,operation);}
+ public JSONObject stageDeletion(String token,String owner,JSONObject target,JSONObject clock)throws JSONException{return store.stageDeletion(context,token,owner,target,clock);}
+ public JSONObject stageDeletion(String token,String owner,JSONObject target,JSONObject clock,JSONObject binding)throws JSONException{return store.stageDeletion(context,token,owner,target,clock,binding);}
+ public void pauseDeletion(String token,String owner,String reason)throws JSONException{store.pauseDeletion(context,token,owner,reason);}
+ public JSONArray pendingDeletions()throws JSONException{return store.pendingDeletions(context);}
+ public JSONObject settleDeletion(String token,String owner,JSONObject clock,boolean undo)throws JSONException{return store.settleDeletion(context,token,owner,clock,undo);}
  public boolean notificationsAllowed(){return store.allowed(context);}
  public JSONObject saveTodo(String id,String title,String body)throws JSONException{return store.saveTodo(context,id,title,body);}
  public JSONObject todoDecision(JSONObject target,String action)throws JSONException{return store.todoDecision(context,target,action);}

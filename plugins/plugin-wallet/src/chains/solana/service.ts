@@ -44,8 +44,6 @@ export interface WalletPortfolioType {
 
 import {
   AccountLayout,
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
   ExtensionType,
   getAssociatedTokenAddressSync,
   getExtensionData,
@@ -83,6 +81,7 @@ import { SOLANA_SERVICE_NAME, SOLANA_WALLET_DATA_CACHE_KEY } from "./constants";
 import { parseSolanaTokenBaseUnits, SOLANA_SWAP_AMOUNT_INVALID } from "./exact-base-units";
 import { fetchJupiterJson, resolveJupiterApiBaseUrl } from "./jupiter-api";
 import { getWalletKey } from "./keypairUtils";
+import { buildSplTransferInstructions } from "./spl-transfer";
 import type {
   BirdeyePriceResponse,
   BirdeyeWalletTokenListResponse,
@@ -124,6 +123,11 @@ function nonEmptySetting(value: unknown): string | undefined {
 }
 
 function cloudEnabled(value: unknown): boolean {
+  // AgentRuntime.getSetting turns a saved "true"/"false" toggle into a boolean,
+  // so the runtime-settings branch below receives `true`, not the string. A
+  // string-only check made `ELIZAOS_CLOUD_ENABLED=true` look disabled and sent
+  // the chain to the rate-limited public RPC instead of the Cloud proxy.
+  if (typeof value === "boolean") return value;
   return (
     typeof value === "string" && (value.trim().toLowerCase() === "true" || value.trim() === "1")
   );
@@ -640,10 +644,8 @@ export class SolanaService extends Service {
     const dryRun = params.dryRun === true || params.mode === "prepare";
     const isSolTransfer = tokenAddress === null;
     const mintPubkey = isSolTransfer ? null : new PublicKey(tokenAddress);
-    const atomicAmount = this.toAtomicAmount(
-      amount,
-      mintPubkey === null ? 9 : await this.getTokenDecimalsForTransfer(mintPubkey)
-    );
+    const decimals = mintPubkey === null ? 9 : await this.getTokenDecimalsForTransfer(mintPubkey);
+    const atomicAmount = this.toAtomicAmount(amount, decimals);
     const senderKeypair = await this.getWalletKeypair();
 
     const instructions: TransactionInstruction[] = [];
@@ -657,23 +659,15 @@ export class SolanaService extends Service {
         })
       );
     } else {
-      const senderATA = getAssociatedTokenAddressSync(mintPubkey, senderKeypair.publicKey);
-      const recipientATA = getAssociatedTokenAddressSync(mintPubkey, recipientPubkey);
-
-      const recipientATAInfo = await this.connection.getAccountInfo(recipientATA);
-      if (!recipientATAInfo) {
-        instructions.push(
-          createAssociatedTokenAccountInstruction(
-            senderKeypair.publicKey,
-            recipientATA,
-            recipientPubkey,
-            mintPubkey
-          )
-        );
-      }
-
       instructions.push(
-        createTransferInstruction(senderATA, recipientATA, senderKeypair.publicKey, atomicAmount)
+        ...(await buildSplTransferInstructions(
+          this.connection,
+          mintPubkey,
+          senderKeypair.publicKey,
+          recipientPubkey,
+          atomicAmount,
+          decimals
+        ))
       );
     }
 
@@ -1240,12 +1234,25 @@ export class SolanaService extends Service {
   }
 
   async getCirculatingSupply(mint: string) {
-    const accounts = await this.connection.getParsedProgramAccounts(TOKEN_PROGRAM_ID, {
-      filters: [
-        { dataSize: 165 }, // size of token account
-        { memcmp: { offset: 0, bytes: mint } }, // filter by mint
-      ],
-    });
+    // Token accounts live under two programs: the legacy Token program and
+    // Token-2022. Query both, like the wallet token-account listing does; a
+    // Token-2022 mint has no accounts under the legacy program, so counting
+    // only that program reports a supply of 0 for it. Token-2022 accounts
+    // with extensions are longer than the plain 165-byte token account, so
+    // that query omits the dataSize filter and the loop below skips parsed
+    // entries that are not token accounts.
+    const [legacyAccounts, token2022Accounts] = await Promise.all([
+      this.connection.getParsedProgramAccounts(TOKEN_PROGRAM_ID, {
+        filters: [
+          { dataSize: 165 }, // size of token account
+          { memcmp: { offset: 0, bytes: mint } }, // filter by mint
+        ],
+      }),
+      this.connection.getParsedProgramAccounts(TOKEN_2022_PROGRAM_ID, {
+        filters: [{ memcmp: { offset: 0, bytes: mint } }],
+      }),
+    ]);
+    const accounts = [...legacyAccounts, ...token2022Accounts];
 
     const KNOWN_EXCLUDED_ACCOUNTS = ["MINT_AUTHORITY_WALLET", "TREASURY_WALLET", "BURN_ADDRESS"];
 
@@ -1254,8 +1261,9 @@ export class SolanaService extends Service {
       const data = acc.account.data as ParsedAccountData;
       const info = data.parsed.info as {
         owner: string;
-        tokenAmount: { amount: string; decimals: number };
+        tokenAmount?: { amount: string; decimals: number };
       };
+      if (!info.tokenAmount) continue;
       const owner = info.owner;
 
       if (owner === "11111111111111111111111111111111") continue;
@@ -2126,11 +2134,14 @@ export class SolanaService extends Service {
         }
       }
 
+      // The read path above expects CacheWrapper ({ exp, data }); writing
+      // `fetchedAt` instead left `check.exp` undefined, making `now - exp`
+      // NaN so the `notOlderThan` freshness check could never hit.
       await this.runtime.setCache<{
-        fetchedAt: number;
+        exp: number;
         data: KeyedParsedTokenAccount[];
       }>(key, {
-        fetchedAt: now,
+        exp: now,
         data: haveAllTokens,
       });
       return haveAllTokens;

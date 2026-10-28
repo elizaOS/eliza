@@ -1,4 +1,6 @@
-/** Exercises registered McpService discovery against an SDK server over real stdio. */
+/** Exercises registered McpService discovery against SDK servers over real stdio and HTTP. */
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import {
   type AgentRuntime,
@@ -8,6 +10,9 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mcpAction } from "../src/actions/mcp";
 import { McpService } from "../src/service";
@@ -420,5 +425,150 @@ describe("MCP resource selection through model feedback", () => {
       expect(memories).toHaveLength(1);
       expect(memories[0].content.text).toContain("last-page resource");
     }
+  );
+});
+
+type HttpTestServer = {
+  readonly url: string;
+  readonly close: () => Promise<void>;
+};
+
+/**
+ * Stateless streamable-http echo server. `getStatus` is how it refuses the
+ * optional GET/SSE channel; `beforePost` may answer a POST itself.
+ */
+async function startHttpEchoServer(options: {
+  readonly getStatus: number;
+  /** Delay before answering a GET, so its refusal lands after connect resolves. */
+  readonly getDelayMs?: number;
+  readonly beforePost?: (body: { method?: string }, res: http.ServerResponse) => boolean;
+}): Promise<HttpTestServer> {
+  const httpServer = http.createServer(async (req, res) => {
+    if (req.method !== "POST") {
+      if (options.getDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.getDelayMs));
+      }
+      res.writeHead(options.getStatus).end();
+      return;
+    }
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const parsed = JSON.parse(body) as { method?: string };
+    if (options.beforePost?.(parsed, res)) return;
+    const mcp = new McpServer({ name: "echo", version: "1.0.0" });
+    mcp.tool("echo", async () => ({ content: [{ type: "text", text: "ok" }] }));
+    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+    await mcp.connect(transport);
+    await transport.handleRequest(req, res, parsed);
+  });
+  await new Promise<void>((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
+  const { port } = httpServer.address() as AddressInfo;
+  return {
+    url: `http://127.0.0.1:${port}/mcp`,
+    close: async () => {
+      httpServer.closeAllConnections();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    },
+  };
+}
+
+async function connectHttpService(url: string): Promise<McpService> {
+  const runtime = createSQLiteTestRuntime({
+    character: { name: "mcp-http-test", bio: "MCP HTTP recovery regression" },
+    logLevel: "fatal",
+  });
+  runtimes.push(runtime);
+  await runtime.initialize();
+  await runtime.registerService(McpService);
+  const service = (await runtime.getServiceLoadPromise("mcp")) as McpService;
+  // The SSRF guard rightly refuses loopback URLs, so this test builds an
+  // unguarded transport to the local server and enters the service's own
+  // connection path directly. Error handling and reconnect stay real.
+  vi.spyOn(
+    service as unknown as {
+      buildHttpClientTransport(name: string, config: { url: string }): Promise<unknown>;
+    },
+    "buildHttpClientTransport"
+  ).mockImplementation(
+    async (_name, config) => new StreamableHTTPClientTransport(new URL(config.url))
+  );
+  await (
+    service as unknown as {
+      initializeConnection(name: string, config: Record<string, string>): Promise<void>;
+    }
+  ).initializeConnection("remote", { type: "streamable-http", url });
+  return service;
+}
+
+describe("McpService HTTP transport recovery", () => {
+  it("serves tool calls again after one failed HTTP request", async () => {
+    let failNext = false;
+    const server = await startHttpEchoServer({
+      getStatus: 405,
+      beforePost: (_body, res) => {
+        if (!failNext) return false;
+        failNext = false;
+        res.writeHead(502).end("bad gateway");
+        return true;
+      },
+    });
+    try {
+      const service = await connectHttpService(server.url);
+      expect((await service.callTool("remote", "echo")).content[0]).toMatchObject({ text: "ok" });
+
+      failNext = true;
+      await expect(service.callTool("remote", "echo")).rejects.toThrow();
+
+      // The server is healthy again; the service must reconnect on its own.
+      await vi.waitFor(
+        async () => {
+          expect((await service.callTool("remote", "echo")).content[0]).toMatchObject({
+            text: "ok",
+          });
+        },
+        { timeout: 10_000, interval: 250 }
+      );
+    } finally {
+      await server.close();
+    }
+  }, 30_000);
+
+  it.each([
+    { getStatus: 400, getDelayMs: 0 },
+    { getStatus: 404, getDelayMs: 0 },
+    // The refusal arrives after initializeConnection has already succeeded,
+    // so only the transport error filter (not the success-path timer clear)
+    // can keep it out of the reconnect ladder.
+    { getStatus: 403, getDelayMs: 750 },
+    { getStatus: 404, getDelayMs: 750 },
+  ])(
+    "stays connected without reconnecting when the server refuses the GET stream with $getStatus after $getDelayMs ms",
+    async ({ getStatus, getDelayMs }) => {
+      let initializeCount = 0;
+      const server = await startHttpEchoServer({
+        getStatus,
+        getDelayMs,
+        beforePost: (body) => {
+          if (body.method === "initialize") initializeCount++;
+          return false;
+        },
+      });
+      try {
+        const service = await connectHttpService(server.url);
+        expect(initializeCount).toBe(1);
+        // Longer than getDelayMs plus INITIAL_RETRY_DELAY (2 s), so a reconnect
+        // scheduled by the refused GET would have re-run initialize by now.
+        await new Promise((resolve) => setTimeout(resolve, getDelayMs + 3_500));
+        expect(initializeCount).toBe(1);
+        expect(service.getServers().find((s) => s.name === "remote")?.status).toBe("connected");
+        expect((await service.callTool("remote", "echo")).content[0]).toMatchObject({
+          text: "ok",
+        });
+        expect(initializeCount).toBe(1);
+      } finally {
+        await server.close();
+      }
+    },
+    30_000
   );
 });

@@ -15,6 +15,7 @@ const UNAVAILABLE_HANDLE = "busy.bsky.social";
 const originalFetch = globalThis.fetch;
 let createRecordBodies: Array<{ record: { text: string; facets?: SentFacet[] } }>;
 let resolvedHandles: string[];
+let sessionResponse: (() => Response) | null;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -28,6 +29,7 @@ function stubBlueskyServer(input: RequestInfo | URL, init?: RequestInit): Promis
   const method = url.pathname.replace("/xrpc/", "");
 
   if (method === "com.atproto.server.createSession") {
+    if (sessionResponse) return Promise.resolve(sessionResponse());
     return Promise.resolve(
       json({
         did: "did:plc:poster",
@@ -90,6 +92,7 @@ function lastFacets(): SentFacet[] {
 beforeEach(() => {
   createRecordBodies = [];
   resolvedHandles = [];
+  sessionResponse = null;
   globalThis.fetch = stubBlueskyServer as typeof fetch;
 });
 
@@ -197,4 +200,18 @@ describe("blueskyProvider.createPost facets", () => {
     expect(result.success).toBe(false);
     expect(createRecordBodies).toHaveLength(0);
   }, 20_000);
+});
+
+describe("blueskyProvider.createPost session failures", () => {
+  // withRetry backs off 1s and 2s between the three createSession attempts.
+  test("an exhausted createSession 5xx is a refundable failure, not a held unknown outcome", async () => {
+    sessionResponse = () => new Response("upstream unavailable", { status: 503 });
+    const result = await blueskyProvider.createPost(credentials, { text: "Never sent" });
+
+    expect(createRecordBodies).toHaveLength(0);
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBeUndefined();
+    expect(result.creditDisposition).toBeUndefined();
+    expect(result.error).not.toContain("may have been published");
+  }, 10_000);
 });

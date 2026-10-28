@@ -1,0 +1,170 @@
+name = "eliza-gateway"
+main = "worker.ts"
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GatewayContainer"]
+
+[[migrations]]
+tag = "v2-network-consent"
+new_sqlite_classes = ["NetworkConsentState"]
+
+[[migrations]]
+tag = "v3-delivery-receipts"
+new_sqlite_classes = ["DeliveryReceiptState"]
+
+[[migrations]]
+tag = "v4-webhook-ingress"
+new_sqlite_classes = ["WebhookIngressState"]
+
+[[migrations]]
+tag = "v5-discord-welcome"
+new_sqlite_classes = ["DiscordWelcomeState"]
+
+[[migrations]]
+tag = "v6-discord-coordination"
+new_sqlite_classes = ["DiscordCoordinationState"]
+
+[env.webhook-staging]
+name = "eliza-gateway-webhook-staging"
+
+[env.webhook-staging.vars]
+DEPLOYMENT_ENV = "staging"
+GATEWAY_KIND = "webhook"
+GATEWAY_ENABLED = "false"
+
+[env.webhook-staging.triggers]
+crons = ["* * * * *"]
+
+[[env.webhook-staging.containers]]
+class_name = "GatewayContainer"
+image = "../../gateway-webhook/Dockerfile"
+image_build_context = "../../../../.."
+max_instances = 1
+instance_type = "standard-1"
+
+[[env.webhook-staging.durable_objects.bindings]]
+name = "WEBHOOK_INGRESS_STATE"
+class_name = "WebhookIngressState"
+
+[[env.webhook-staging.durable_objects.bindings]]
+name = "DELIVERY_RECEIPT_STATE"
+class_name = "DeliveryReceiptState"
+
+[[env.webhook-staging.durable_objects.bindings]]
+name = "NETWORK_CONSENT_STATE"
+class_name = "NetworkConsentState"
+
+[[env.webhook-staging.durable_objects.bindings]]
+name = "GATEWAY"
+class_name = "GatewayContainer"
+
+[env.webhook-production]
+name = "eliza-gateway-webhook-production"
+
+[env.webhook-production.vars]
+DEPLOYMENT_ENV = "production"
+GATEWAY_KIND = "webhook"
+GATEWAY_ENABLED = "false"
+
+[env.webhook-production.triggers]
+crons = ["* * * * *"]
+
+[[env.webhook-production.containers]]
+class_name = "GatewayContainer"
+image = "../../gateway-webhook/Dockerfile"
+image_build_context = "../../../../.."
+max_instances = 1
+instance_type = "standard-1"
+
+[[env.webhook-production.durable_objects.bindings]]
+name = "WEBHOOK_INGRESS_STATE"
+class_name = "WebhookIngressState"
+
+[[env.webhook-production.durable_objects.bindings]]
+name = "DELIVERY_RECEIPT_STATE"
+class_name = "DeliveryReceiptState"
+
+[[env.webhook-production.durable_objects.bindings]]
+name = "NETWORK_CONSENT_STATE"
+class_name = "NetworkConsentState"
+
+[[env.webhook-production.durable_objects.bindings]]
+name = "GATEWAY"
+class_name = "GatewayContainer"
+
+[env.discord-staging]
+name = "eliza-gateway-discord-staging"
+
+[env.discord-staging.vars]
+DEPLOYMENT_ENV = "staging"
+GATEWAY_KIND = "discord"
+GATEWAY_ENABLED = "false"
+
+[env.discord-staging.triggers]
+crons = ["* * * * *"]
+
+[[env.discord-staging.containers]]
+class_name = "GatewayContainer"
+image = "../../gateway-discord/Dockerfile"
+image_build_context = "../../../../.."
+max_instances = 1
+instance_type = "standard-1"
+
+[[env.discord-staging.durable_objects.bindings]]
+name = "DISCORD_WELCOME_STATE"
+class_name = "DiscordWelcomeState"
+
+[[env.discord-staging.durable_objects.bindings]]
+name = "DELIVERY_RECEIPT_STATE"
+class_name = "DeliveryReceiptState"
+
+[[env.discord-staging.durable_objects.bindings]]
+name = "GATEWAY"
+class_name = "GatewayContainer"
+
+[env.discord-production]
+name = "eliza-gateway-discord-production"
+
+[env.discord-production.vars]
+DEPLOYMENT_ENV = "production"
+GATEWAY_KIND = "discord"
+GATEWAY_ENABLED = "false"
+
+[env.discord-production.triggers]
+crons = ["* * * * *"]
+
+[[env.discord-production.containers]]
+class_name = "GatewayContainer"
+image = "../../gateway-discord/Dockerfile"
+image_build_context = "../../../../.."
+max_instances = 1
+instance_type = "standard-1"
+
+[[env.discord-production.durable_objects.bindings]]
+name = "DISCORD_WELCOME_STATE"
+class_name = "DiscordWelcomeState"
+
+[[env.discord-production.durable_objects.bindings]]
+name = "DELIVERY_RECEIPT_STATE"
+class_name = "DeliveryReceiptState"
+
+[[env.discord-production.durable_objects.bindings]]
+name = "GATEWAY"
+class_name = "GatewayContainer"
+
+[[env.discord-staging.durable_objects.bindings]]
+name = "DISCORD_COORDINATION_STATE"
+class_name = "DiscordCoordinationState"
+
+[[env.discord-production.durable_objects.bindings]]
+name = "DISCORD_COORDINATION_STATE"
+class_name = "DiscordCoordinationState"

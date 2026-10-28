@@ -80,7 +80,7 @@ export function emitModelUsageEvent(
     `[Anthropic] prompt cache ${cacheOutcome}: read=${cacheRead ?? 0} write=${cacheWrite ?? 0} prompt=${promptTokens} (${model})`
   );
 
-  runtime.emitEvent(EventType.MODEL_USED, {
+  const payload = {
     runtime,
     source: "anthropic",
     provider: "anthropic",
@@ -95,7 +95,14 @@ export function emitModelUsageEvent(
       ...(cacheRead !== undefined ? { cacheRead } : {}),
       ...(cacheWrite !== undefined ? { cacheWrite } : {}),
     },
-  } as EventPayload);
+  } as EventPayload;
+
+  void Promise.resolve(runtime.emitEvent(EventType.MODEL_USED, payload)).catch((error) => {
+    runtime.reportError("AnthropicModelUsage.emitEvent", error, {
+      model,
+      modelType: String(type),
+    });
+  });
 
   return { promptTokens, completionTokens, totalTokens };
 }

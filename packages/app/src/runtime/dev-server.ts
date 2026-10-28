@@ -72,6 +72,7 @@ import {
   logRoutineDevMemoryHeartbeat,
 } from "./dev-memory-heartbeat.js";
 import { warnStalePluginDists } from "./dev-plugin-dist-staleness.js";
+import { startNativeManagedGoogleHostForBoot } from "./native-managed-google-host.js";
 import { resolveRuntimeBootstrapFailure } from "./runtime-bootstrap-policy.js";
 import {
   mergedRecoverySkipPlugins,
@@ -128,6 +129,7 @@ const port = resolveDesktopApiPort(process.env);
 const hadUserApiTokenInEnv = !!resolveApiToken(process.env);
 /** The currently active runtime — swapped on restart. */
 let currentRuntime: AgentRuntime | null = null;
+let nativeManagedGoogleHost: { close(): Promise<void> } | undefined;
 /** Teardown started by an API stop or restart; signal shutdown waits for it. */
 let pendingRuntimeTeardown: Promise<unknown> | null = null;
 /**
@@ -559,6 +561,17 @@ async function shutdown(): Promise<void> {
     }
     currentRuntime = null;
   }
+  // Close the private Google host only after the runtime has stopped, so an
+  // in-flight Gmail or Calendar request keeps its endpoint until it settles.
+  if (nativeManagedGoogleHost) {
+    try {
+      await nativeManagedGoogleHost.close();
+    } catch (error) {
+      // error-policy:J6 process shutdown still has a bounded forced exit.
+      logger.warn(`Native Google host shutdown failed: ${formatError(error)}`);
+    }
+    nativeManagedGoogleHost = undefined;
+  }
   clearTimeout(forceExitTimer);
   process.exit(0);
 }
@@ -630,6 +643,10 @@ async function main() {
     );
   }
   syncResolvedApiPort(process.env, actualPort);
+  nativeManagedGoogleHost = await startNativeManagedGoogleHostForBoot(
+    process.env,
+    (message) => logger.warn(message),
+  );
   // Boot the elizaOS agent runtime without blocking server readiness. Scheduled
   // here — before the CORS dynamic import and the cosmetic banner/pairing block
   // below — because `scheduleRuntimeBootstrap` only queues a macrotask: the lone

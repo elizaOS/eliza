@@ -38,7 +38,7 @@ export function AuthErrorPageForHost({
 
   useDocumentTitle(
     t("cloud.authError.metaTitle", {
-      defaultValue: "Authentication Error | Eliza Cloud",
+      defaultValue: "Authentication Error | {{cloudName}}",
     }),
   );
 

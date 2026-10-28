@@ -2,6 +2,7 @@
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
+import * as realDb from "@elizaos/cloud-shared/db/client";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { userIdentities } from "@elizaos/cloud-shared/db/schemas/user-identities";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
@@ -26,11 +27,12 @@ const usersRelations = relations(users, ({ one }) => ({
 const database = drizzle(pg, {
   schema: { organizations, users, userIdentities, usersRelations },
 });
-mock.module("@elizaos/cloud-shared/db/helpers", () => ({
+// Keep the managed transaction hooks; replace only the database transport.
+mock.module("@elizaos/cloud-shared/db/client", () => ({
+  ...realDb,
   db: database,
   dbRead: database,
   dbWrite: database,
-  writeTransaction: database.transaction.bind(database),
   getDbConnectionInfo: () => ({}),
 }));
 const effects: string[] = [];

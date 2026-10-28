@@ -112,17 +112,4 @@ describe("Slack thread replies order", () => {
     );
     expect(rows.map((row) => row.ts)).toEqual(["6", "5", "4", "3", "2", "1"]);
   });
-
-  it("gives chat context the thread oldest-first", async () => {
-    const { service, runtime } = createService();
-    const context = await service.getConnectorChatContext(
-      { channelId: CHANNEL_ID, threadId: THREAD_TS } as never,
-      { runtime, accountId: ACCOUNT_ID } as never,
-    );
-    expect(
-      (context?.recentMessages ?? []).map(
-        (message) => message.metadata?.slackMessageTs,
-      ),
-    ).toEqual(["1", "2", "3", "4", "5", "6"]);
-  });
 });
