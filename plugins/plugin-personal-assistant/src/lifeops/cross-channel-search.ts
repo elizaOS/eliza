@@ -184,6 +184,12 @@ export type CrossChannelSearchResult = {
 const MEMORY_MATCH_THRESHOLD = 0.55;
 const MEMORY_SEARCH_PAGE_SIZE = 500;
 
+// Newest-window size for the cluster fan-out fetch in
+// searchClusterMemories, matching the conversation-window
+// convention. The fan-out is not query-filtered, so this bounds
+// the fetch itself, not search-result completeness.
+const CROSS_CHANNEL_CLUSTER_MEMORY_COUNT = 200;
+
 const KNOWN_PLATFORM_FOR_CHANNEL: Record<CrossChannelSearchChannel, string> = {
   gmail: "gmail",
   memory: "memory",
@@ -1044,6 +1050,14 @@ async function searchClusterMemories(
   const memories = await fn({
     primaryEntityId: person.primaryEntityId,
     worldId: query.worldId,
+    // Without a count this fetched the person's entire authored
+    // history and the provider rendered every hit into the
+    // prompt. The adapter defaults to newest-first, so a count
+    // takes the newest window, and rankHits already orders
+    // newest-first, so output ordering is unchanged. Note the
+    // real cluster implementation applies the count per member,
+    // so the total is members x count.
+    count: CROSS_CHANNEL_CLUSTER_MEMORY_COUNT,
   });
   const hits = await memoriesToHits(runtime, memories, query);
   return { hits, degraded: [] };
