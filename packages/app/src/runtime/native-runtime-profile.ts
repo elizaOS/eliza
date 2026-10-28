@@ -12,6 +12,10 @@
  *   use authenticated Eliza Cloud. Its speech is a separately disclosed host
  *   upload, so the agent's own speech routing stays local-only in both.
  *
+ * On Android the process environment's embedding route is applied by
+ * plugin-native-agent `NativeRuntimeEmbeddings`, the native mirror of the
+ * `embeddings` field below; hosts call it instead of their own copy.
+ *
  * Both run the agent on the phone, so schedules run only while it is powered
  * on: an occurrence that passed while the agent was not running is recorded
  * once as missed, never replayed (the shared policy in `@elizaos/core`).
