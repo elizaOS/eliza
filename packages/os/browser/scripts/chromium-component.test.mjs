@@ -32,7 +32,9 @@ const certificate = "A".repeat(64);
 function assets() {
   return {
     "background.mjs": Buffer.from('import "./commands.mjs";\n'),
+    "task-bindings.mjs": Buffer.from("export const authority = true;\n"),
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
+    "page-command.mjs": Buffer.from("export function pageCommand() {}\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
     "figtree-OFL.txt": Buffer.from("SIL Open Font License, Version 1.1\n"),
     "guide-font.mjs": Buffer.from(
@@ -434,7 +436,7 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     count + protectionAssetNames.length <=
       Number(allocation[2]) - Number(allocation[1]),
   );
-  assert.equal(count, 23); // Includes both optional Hangouts entries, conservatively.
+  assert.equal(count, 25); // Includes both optional Hangouts entries, conservatively.
   const structures = [
     ...overlay.files[
       "chrome/browser/resources/component_extension_resources.grd"

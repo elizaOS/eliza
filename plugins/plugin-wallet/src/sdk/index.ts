@@ -568,66 +568,6 @@ export {
   USDC_CONTRACT,
 } from "./bridge/index.js";
 export type {
-  AgentIdentity,
-  AgentModelMetadata,
-  AgentRegistrationFile,
-  AgentRegistrationRef,
-  AgentServiceEndpoint,
-  ERC8004ClientConfig,
-  MetadataEntry,
-  RegistrationResult,
-  SupportedChain,
-  SupportedTrustMechanism,
-} from "./identity/erc8004.js";
-// ─── ERC-8004: Trustless Agents — Identity Registry ─────────────────────────
-export {
-  buildDataURI,
-  ERC8004Client,
-  ERC8004IdentityRegistryAbi,
-  formatAgentRegistry,
-  KNOWN_REGISTRY_ADDRESSES,
-  METADATA_KEYS,
-  parseDataURI,
-  REGISTRATION_FILE_TYPE,
-  resolveAgentURI,
-  validateRegistrationFile,
-} from "./identity/erc8004.js";
-export type {
-  AgentReputationSummary,
-  FeedbackEntry,
-  FeedbackFilters,
-  GiveFeedbackParams,
-  ReputationClientConfig,
-  RespondToFeedbackParams,
-} from "./identity/reputation.js";
-// ─── ERC-8004: Reputation Registry ─────────────────────────────────────────
-export {
-  ReputationClient,
-  ReputationRegistryAbi,
-} from "./identity/reputation.js";
-export type {
-  ParsedUAID,
-  RegisterUAIDParams,
-  UAIDProtocol,
-  UAIDResolution,
-  UAIDResolverConfig,
-  UniversalAgentIdentity,
-} from "./identity/uaid.js";
-// ─── UAID: Cross-Chain Identity Resolution (HOL Registry Broker) ────────────
-export { UAIDResolver } from "./identity/uaid.js";
-export type {
-  RequestValidationParams,
-  RespondToValidationParams,
-  ValidationClientConfig,
-  ValidationStatus,
-  ValidationSummary,
-} from "./identity/validation.js";
-// ─── ERC-8004: Validation Registry ─────────────────────────────────────────
-export {
-  ValidationClient,
-  ValidationRegistryAbi,
-} from "./identity/validation.js";
-export type {
   SwapModuleConfig,
   SwapOptions,
   SwapQuote,

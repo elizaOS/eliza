@@ -245,7 +245,7 @@ jobs:
             --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" \
             --workflow "$GITHUB_WORKFLOW_REF" --job build-deb
       - name: Upload architecture-specific package
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-debian-package-${{ matrix.debian-architecture }}
           path: |

@@ -305,6 +305,44 @@ describe("aggregate builders", () => {
     expect(result.messages).toHaveLength(501);
   });
 
+  it("marks Gmail messages unread from the UNREAD label", async () => {
+    const source = new FakeConnectorSources([
+      // Opened, but Gmail marks it important.
+      gmailSummary({
+        id: "gmail-read-important",
+        subject: "Board deck",
+        snippet: "Read already",
+        isUnread: false,
+        isImportant: true,
+      }),
+      // Not opened: a newsletter that is neither important nor reply-needed.
+      gmailSummary({
+        id: "gmail-unread-plain",
+        subject: "Weekly digest",
+        snippet: "Not opened yet",
+        isUnread: true,
+        isImportant: false,
+        likelyReplyNeeded: false,
+      }),
+    ]);
+    const fetched = await fetchGmailMessages(source, {});
+
+    const inbox = buildInbox(fetched.messages, {
+      allowed: new Set<LifeOpsInboxChannel>(["gmail"]),
+      sources: [fetched.status],
+      ownerName: null,
+    });
+
+    const unreadById = Object.fromEntries(
+      inbox.messages.map((message) => [message.id, message.unread]),
+    );
+    expect(unreadById).toEqual({
+      "gmail:ext-gmail-read-important": false,
+      "gmail:ext-gmail-unread-plain": true,
+    });
+    expect(inbox.channelCounts.gmail).toEqual({ total: 2, unread: 1 });
+  });
+
   it("normalizeInboxChannel accepts known channels case-insensitively and rejects the rest", () => {
     expect(normalizeInboxChannel("gmail")).toBe("gmail");
     expect(normalizeInboxChannel("  Discord  ")).toBe("discord");

@@ -132,6 +132,7 @@ interface WorkerResultMessage {
     output?: unknown;
     error?: unknown;
     nextRunId?: string;
+    wakeAtMs?: number;
   };
 }
 
@@ -184,6 +185,8 @@ export interface SmithersRunResult {
   output?: unknown;
   error?: { message: string; stack?: string };
   nextRunId?: string;
+  /** Earliest Signal/WaitForEvent timeout deadline of a `waiting-event` run. */
+  wakeAtMs?: number;
   events: WorkflowRunEvent[];
 }
 
@@ -406,6 +409,19 @@ export function createSmithersWorkerScript(): string {
       if(result.status === 'finished' && result.output === undefined) {
         const table = __engineInternals.resolveWorkflowOutputTable(workflow, resolveSchema(workflow.db));
         if(table) result.output = await Effect.runPromise(loadRunOutputRowsEffect(workflow.db, table, payload.runId));
+      }
+      // A Signal/WaitForEvent timeout lives only in its attempt metadata and
+      // fires only when the run is called again; report the earliest deadline.
+      if(result.status === 'waiting-event') {
+        const { SmithersDb } = await import(pathToFileURL(engineRequire.resolve('@smthrs/db/adapter')).href);
+        const attempts = await Effect.runPromise(new SmithersDb(workflow.db).listAttemptsForRun(payload.runId));
+        for(const attempt of attempts) {
+          if(attempt.state !== 'waiting-event' || !attempt.metaJson) continue;
+          const wait = JSON.parse(attempt.metaJson).waitForEvent;
+          if(wait?.timeoutMs == null) continue;
+          const deadline = Number(wait.startedAtMs) + Number(wait.timeoutMs);
+          if(Number.isFinite(deadline) && (result.wakeAtMs === undefined || deadline < result.wakeAtMs)) result.wakeAtMs = deadline;
+        }
       }
       if(orphanedRpc)await workerLease.abandon();else await workerLease.finishCanonicalResult();
       await emitAndFlush({ kind: 'result', result });
@@ -1098,6 +1114,7 @@ export async function runSmithersWorkflow(request: SmithersRunRequest): Promise<
     ...(result.output !== undefined ? { output: result.output } : {}),
     ...(result.error !== undefined ? { error: errorPayload(result.error) } : {}),
     ...(result.nextRunId ? { nextRunId: result.nextRunId } : {}),
+    ...(typeof result.wakeAtMs === 'number' ? { wakeAtMs: result.wakeAtMs } : {}),
     events,
   };
 }

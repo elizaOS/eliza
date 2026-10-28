@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { AgentGoogleConnectorError } from "../agent-google-connector";
 import { buildSharedCapabilityCatalog } from "./shared-capability-catalog";
-import { resolveSharedCapabilityWall } from "./shared-capability-wall";
+import {
+  resolveSharedCapabilityIntent,
+  resolveSharedCapabilityWall,
+} from "./shared-capability-wall";
 import {
   createSharedGoogleContextPlugin,
   isSharedGoogleContextRequest,
@@ -207,5 +210,117 @@ describe("Google Shared action/capability bridge", () => {
       success: false,
       data: { code: "GOOGLE_CONTEXT_INVALID_REQUEST" },
     });
+  });
+});
+
+describe("verb-local capability prohibitions", () => {
+  test("a prohibited extra text reply is not a separate communications request", () => {
+    for (const text of [
+      "Please react to this message with a thumbs-up and don’t send a text reply.",
+      "Please react to this message and do not send a text reply.",
+      "Please react to this message and don't ever send a text reply.",
+      "Don’t send a text reply.",
+      "Do not send an email.",
+      "Do not not not send Alice a text.",
+      "Could you not send Alice a text?",
+      "I don't want you to send Alice a text.",
+      "Please react to this message and don't send a text reply and don't call Bob.",
+    ])
+      expect(resolveSharedCapabilityIntent(text)).toBeNull();
+  });
+
+  test("negated greedy matches never swallow a later positive communications action", () => {
+    const prohibitions = [
+      "don't send a text reply",
+      "do not send an email",
+      "never send a message",
+      "don't want you to send a text reply",
+    ];
+    const conjunctions = [" and ", " then ", " and then ", "; then ", ", then ", ". Please "];
+    const requests = [
+      "email Bob",
+      "call Bob",
+      "send Alice a text",
+      "message Bob",
+      "text Bob",
+      "dm Bob",
+    ];
+    for (const prohibition of prohibitions)
+      for (const conjunction of conjunctions)
+        for (const request of requests) {
+          const text = `Please react to this message and ${prohibition}${conjunction}${request}.`;
+          expect(resolveSharedCapabilityWall(text)?.capability).toBe("communications");
+        }
+    for (const text of [
+      "Please react to this message and send Alice a text.",
+      "Email Bob and don't send a text reply.",
+      "Don't send a text reply then email Bob.",
+      "Please react to this message and don’t send a text reply then email Bob.",
+      "Don't forget to email Bob.",
+      "Do not forget to send Alice a text.",
+      "Never forget to call Bob.",
+      "Not just send Alice a text, please call Bob too.",
+      "Don't not send Alice a text.",
+      "Do not not send Alice a text.",
+      "I don't want you to not send Alice a text.",
+      'Please react and don’t send a text reply "unclosed; then email Bob.',
+      'Explain "send a text reply?"; then email Bob.',
+    ])
+      expect(resolveSharedCapabilityWall(text)?.capability).toBe("communications");
+  });
+
+  test("whole-clause explanations, quotations and withdrawn work keep their existing meaning", () => {
+    for (const text of [
+      "Explain how to send a text reply and call someone.",
+      'Translate "send a text reply and call Bob" into French.',
+      'Describe the phrase "send a text reply and call Bob".',
+      'Explain "send a text reply? then call Bob".',
+      "Describe ‘send a text reply; then call Bob’.",
+      "Translate 'don't send a text reply; then email Bob' into French.",
+      "Show me how to send a message and email someone.",
+      "What happens if I send a message and call Bob?",
+      "Could you not explain how to send an email?",
+      "I don't want you to explain how to send an email.",
+      "Don't explain how to send Alice a text.",
+      "Don't forget to explain how to send Alice a text.",
+      "Could you not forget to explain how to send Alice a text?",
+      "Don't not explain how to send Alice a text.",
+      "Email Bob; actually never mind.",
+      "Send Alice a text. Cancel that.",
+      "Stop.",
+      "Don't send a text reply; actually cancel that.",
+    ])
+      expect(resolveSharedCapabilityIntent(text)).toBeNull();
+    expect(
+      resolveSharedCapabilityWall('Explain "send Alice a text"; then email Bob.')?.capability,
+    ).toBe("communications");
+  });
+
+  test("enabled primary work retains unsupported positive secondary clauses", () => {
+    for (const text of [
+      "Remind me tomorrow and email Bob.",
+      "Add a todo and email Bob.",
+      "Add a todo and don't send a text reply then email Bob.",
+      "Remind me tomorrow to call Bob; then email Alice.",
+    ]) {
+      const result = resolveSharedCapabilityIntent(text, { reminders: true, todos: true });
+      expect(result?.kind).toBe("enabled-primary");
+      if (result?.kind !== "enabled-primary")
+        throw new Error("Expected the enabled original action");
+      expect(result.blockedSecondary.map((wall) => wall.capability)).toContain("communications");
+    }
+    for (const text of [
+      "Don't send a text reply then add a todo.",
+      "Don't forget to add a todo.",
+      "Remind me tomorrow to call Bob and send Alice a text.",
+      "Remind me tomorrow and don't send a text reply.",
+      "Remind me tomorrow to say 'call Bob; then email Alice'.",
+    ]) {
+      const result = resolveSharedCapabilityIntent(text, { reminders: true, todos: true });
+      expect(result?.kind).toBe("enabled-primary");
+      if (result?.kind !== "enabled-primary")
+        throw new Error("Expected the enabled original action");
+      expect(result.blockedSecondary).toEqual([]);
+    }
   });
 });

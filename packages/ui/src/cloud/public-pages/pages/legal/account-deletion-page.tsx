@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
 import { Input } from "../../../../components/ui/input";
+import { useBranding } from "../../../../config/branding-react.hooks";
 import { downloadAttachment } from "../../../../utils/download-share";
 import { AccountDeletionDialog } from "../../../account-security/components/account-deletion-dialog";
 import {
@@ -66,7 +67,10 @@ function statusInstruction(request: AccountDeletionStatusDto): string {
 }
 
 export default function AccountDeletionPage() {
-  useDocumentTitle("Delete your Eliza account | Eliza Cloud");
+  const branding = useBranding();
+  const cloudName = branding.cloudName || `${branding.appName} Cloud`;
+  const supportEmail = branding.supportEmail?.trim();
+  useDocumentTitle(`Delete your ${branding.appName} account | ${cloudName}`);
   const session = useSessionAuth();
   const [request, setRequest] = useState<AccountDeletionStatusDto | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -150,15 +154,16 @@ export default function AccountDeletionPage() {
       <main className="mx-auto max-w-3xl space-y-8">
         <div className="space-y-3 border-b border-border pb-6">
           <p className="text-sm font-medium text-accent">
-            Eliza Cloud account deletion
+            {cloudName} account deletion
           </p>
           <h1 className="text-4xl font-bold tracking-tight">
             Delete your account and data
           </h1>
           <p className="leading-relaxed text-muted-strong">
-            This is the external deletion-request and recovery path for the
-            Eliza app and Eliza Cloud. Status is accepted only from the opaque
-            capability issued by the server, never from a URL parameter.
+            This is the external deletion-request and recovery path for the{" "}
+            {branding.appName} app and {cloudName}. Status is accepted only from
+            the opaque capability issued by the server, never from a URL
+            parameter.
           </p>
         </div>
 
@@ -326,18 +331,25 @@ export default function AccountDeletionPage() {
 
         <section className="space-y-3 border-t border-border pt-6">
           <h2 className="text-xl font-semibold">Cannot sign in?</h2>
-          <p className="text-muted-strong">
-            Email{" "}
-            <a
-              className="underline"
-              href="mailto:support@eliza.cloud?subject=Eliza%20account%20deletion%20request"
-            >
-              support@eliza.cloud
-            </a>{" "}
-            from the address on your account. Include only your account email
-            and the words “account deletion request.” Never send a password, API
-            key, status capability, recovery capability, or wallet secret.
-          </p>
+          {supportEmail ? (
+            <p className="text-muted-strong">
+              Email{" "}
+              <a
+                className="underline"
+                href={`mailto:${encodeURIComponent(supportEmail)}?subject=${encodeURIComponent(`${branding.appName} account deletion request`)}`}
+              >
+                {supportEmail}
+              </a>{" "}
+              from the address on your account. Include only your account email
+              and the words “account deletion request.” Never send a password,
+              API key, status capability, recovery capability, or wallet secret.
+            </p>
+          ) : (
+            <p className="text-muted-strong">
+              Support contact details are unavailable. Contact the service
+              operator through your usual support channel.
+            </p>
+          )}
           <div className="flex gap-4 text-sm">
             <Link className="underline" to="/privacy-policy">
               Privacy Policy

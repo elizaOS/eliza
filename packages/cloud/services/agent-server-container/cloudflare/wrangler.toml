@@ -1,0 +1,56 @@
+name = "eliza-agent-server"
+main = "worker.ts"
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat", "enable_request_signal", "request_signal_passthrough"]
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AgentServerContainer"]
+
+[env.staging]
+name = "eliza-agent-server-staging"
+
+[env.staging.vars]
+DEPLOYMENT_ENV = "staging"
+AGENT_SERVER_ENABLED = "false"
+
+[env.staging.triggers]
+crons = ["* * * * *"]
+
+[[env.staging.containers]]
+class_name = "AgentServerContainer"
+image = "../../agent-server/Dockerfile"
+image_build_context = "../../../../.."
+max_instances = 1
+instance_type = "standard-4"
+
+[[env.staging.durable_objects.bindings]]
+name = "SERVER"
+class_name = "AgentServerContainer"
+
+[env.production]
+name = "eliza-agent-server-production"
+
+[env.production.vars]
+DEPLOYMENT_ENV = "production"
+AGENT_SERVER_ENABLED = "false"
+
+[env.production.triggers]
+crons = ["* * * * *"]
+
+[[env.production.containers]]
+class_name = "AgentServerContainer"
+image = "../../agent-server/Dockerfile"
+image_build_context = "../../../../.."
+max_instances = 1
+instance_type = "standard-4"
+
+[[env.production.durable_objects.bindings]]
+name = "SERVER"
+class_name = "AgentServerContainer"

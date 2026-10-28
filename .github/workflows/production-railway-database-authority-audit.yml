@@ -4,6 +4,17 @@ run-name: Production Railway database authority audit ${{ github.sha }}
 
 on:
   workflow_dispatch:
+    inputs:
+      restore_target_utc:
+        description: Optional fixed UTC restore candidate (YYYY-MM-DDTHH:MM:SSZ); read-only evidence only
+        required: false
+        default: ""
+        type: string
+      pitr_provisioning_plan:
+        description: Read-only PITR template and baseline plan; requires fixed restore_target_utc; never provisions
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -44,6 +55,8 @@ jobs:
 
       - name: Validate protected audit configuration
         env:
+          PLAN_REQUESTED: ${{ inputs.pitr_provisioning_plan }}
+          RESTORE_TARGET_UTC: ${{ inputs.restore_target_utc }}
           HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
           HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
@@ -51,6 +64,10 @@ jobs:
           RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
         run: |
           set -euo pipefail
+          if [ "$PLAN_REQUESTED" = "true" ] && [ -z "$RESTORE_TARGET_UTC" ]; then
+            echo "::error::Read-only PITR plan requires a fixed restore target"
+            exit 1
+          fi
           missing=()
           [ "$HAS_DATABASE_URL" = "true" ] || missing+=(DATABASE_URL)
           [ "$HAS_RAILWAY_TOKEN" = "true" ] || missing+=(RAILWAY_TOKEN)
@@ -90,6 +107,7 @@ jobs:
           "$cli_root/railway" --version | grep -F "railway 5.38.0"
 
       - name: Capture private read-only Railway authority evidence
+        id: authority_capture
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
@@ -163,6 +181,121 @@ jobs:
           fi
           tee -a "$GITHUB_STEP_SUMMARY" < "$report"
           exit "$audit_status"
+
+      - name: Capture optional private backup evidence
+        id: backup_capture
+        if: ${{ always() && inputs.restore_target_utc != '' && steps.authority_capture.outcome == 'success' }}
+        env:
+          RESTORE_TARGET_UTC: ${{ inputs.restore_target_utc }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          bun --no-env-file -e '
+            import { fixedUtcTarget } from "./packages/cloud/scripts/admin/production-backup-readiness.ts";
+            try { fixedUtcTarget(process.env.RESTORE_TARGET_UTC ?? "", new Date()); }
+            catch { console.error("Invalid fixed UTC restore target"); process.exit(1); }
+          '
+          evidence_dir="$RUNNER_TEMP/production-db-authority-audit"
+          resolved_service_id="$(<"$evidence_dir/resolved-service-id")"
+          capture() {
+            local label="$1"
+            shift
+            if ! timeout 120 "$@" > "$evidence_dir/${label}.json" 2> "$evidence_dir/${label}.stderr"; then
+              echo "::error::Railway backup evidence read failed; raw output withheld"
+              exit 1
+            fi
+          }
+          postgres=(--project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT_ID" --service "$resolved_service_id" --json)
+          capture volumes railway api \
+            'query VolumeEvidence($id: String!) { environment(id: $id) { id volumeInstances { edges { node { id environmentId serviceId volumeId mountPath state deletedAt isPendingDeletion sizeMB } } } } }' \
+            --raw-var "id=$RAILWAY_ENVIRONMENT_ID" --compact
+          capture pitr railway postgres pitr status "${postgres[@]}"
+          capture schedules railway postgres pitr schedule list "${postgres[@]}"
+          capture backups railway postgres pitr backup list "${postgres[@]}"
+          resolved_service_id=""
+
+      - name: Report enforced read-only restore candidate evidence
+        if: ${{ always() && inputs.restore_target_utc != '' && steps.authority_capture.outcome == 'success' }}
+        env:
+          RESTORE_TARGET_UTC: ${{ inputs.restore_target_utc }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS: ${{ vars.DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS || '36' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          export BACKUP_EVIDENCE_DIR="$RUNNER_TEMP/production-db-authority-audit"
+          report="$BACKUP_EVIDENCE_DIR/backup-readiness-report.json"
+          set +e
+          bun --no-env-file packages/cloud/scripts/admin/production-backup-readiness.ts > "$report"
+          readiness_status="$?"
+          set -e
+          if ! GITHUB_TOKEN='${{ github.token }}' \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main \
+            > "$BACKUP_EVIDENCE_DIR/backup-freshness.stdout" \
+            2> "$BACKUP_EVIDENCE_DIR/backup-freshness.stderr"; then
+            echo "::error::Backup evidence source is no longer canonical"
+            exit 1
+          fi
+          tee -a "$GITHUB_STEP_SUMMARY" < "$report"
+          exit "$readiness_status"
+
+      - name: Capture optional private PITR provisioning plan
+        if: ${{ always() && inputs.pitr_provisioning_plan && steps.backup_capture.outcome == 'success' }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          evidence_dir="$RUNNER_TEMP/production-db-authority-audit"
+          capture() {
+            local name="$1"
+            shift
+            if ! timeout 120 "$@" > "$evidence_dir/$name.json" 2> "$evidence_dir/$name.stderr"; then
+              echo "::error::Private PITR plan read failed; raw output withheld"
+              exit 1
+            fi
+          }
+          capture pitr-plan-baseline railway api \
+            'query PlanBaseline($id: String!) { environment(id: $id) { id config(decryptVariables: false) } }' \
+            --raw-var "id=$RAILWAY_ENVIRONMENT_ID" --compact
+          capture pitr-plan-staged railway api \
+            'query PlanStaged($id: String!) { environmentStagedChanges(environmentId: $id) { id status patch } }' \
+            --raw-var "id=$RAILWAY_ENVIRONMENT_ID" --compact
+          capture pitr-plan-template railway api \
+            'query PlanTemplate { template(code: "postgres-pitr") { id serializedConfig } }' --compact
+
+      - name: Report read-only PITR provisioning plan
+        if: ${{ always() && inputs.pitr_provisioning_plan && steps.backup_capture.outcome == 'success' }}
+        env:
+          RESTORE_TARGET_UTC: ${{ inputs.restore_target_utc }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS: ${{ vars.DATABASE_RESILIENCE_MAX_BACKUP_AGE_HOURS || '36' }}
+        run: |
+          set -euo pipefail
+          umask 077
+          export BACKUP_EVIDENCE_DIR="$RUNNER_TEMP/production-db-authority-audit"
+          report="$BACKUP_EVIDENCE_DIR/pitr-plan-report.json"
+          set +e
+          bun --no-env-file packages/cloud/scripts/admin/pitr-provisioning-plan.ts > "$report"
+          plan_status="$?"
+          set -e
+          if ! GITHUB_TOKEN='${{ github.token }}' \
+            node packages/cloud/scripts/canonical-deploy-source-guard.ts \
+            --run-sha "$GITHUB_SHA" --canonical-ref refs/heads/main \
+            > "$BACKUP_EVIDENCE_DIR/plan-freshness.stdout" \
+            2> "$BACKUP_EVIDENCE_DIR/plan-freshness.stderr"; then
+            echo "::error::PITR plan source is no longer canonical"
+            exit 1
+          fi
+          tee -a "$GITHUB_STEP_SUMMARY" < "$report"
+          exit "$plan_status"
 
       - name: Destroy private audit evidence
         if: ${{ always() }}

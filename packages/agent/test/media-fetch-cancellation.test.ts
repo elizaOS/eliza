@@ -83,7 +83,7 @@ it.each(["deadline", "caller"])(
   },
 );
 
-it.each(["success", "caller", "runtime"] as const)(
+it.each(["success", "empty", "caller", "runtime"] as const)(
   "preserves audio fields and cancellation through the configured service (%s)",
   async (mode) => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "media-request-"));
@@ -102,9 +102,9 @@ it.each(["success", "caller", "runtime"] as const)(
         body: JSON.parse(Buffer.concat(parts).toString()),
       };
       res.writeHead(200, { "content-type": "audio/wav" });
-      res.write("fixture-audio-bytes");
+      if (mode !== "empty") res.write("fixture-audio-bytes");
       markResponseStarted();
-      if (mode === "success") res.end();
+      if (mode === "success" || mode === "empty") res.end();
     });
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -149,6 +149,15 @@ it.each(["success", "caller", "runtime"] as const)(
         url: "/text-to-speech/selected-voice",
         body: { text: "Read this text", seed: 42 },
       });
+      if (mode === "empty") {
+        const result = await outcome;
+        if (!("error" in result))
+          throw new Error("Empty audio response was reported as successful");
+        expect(result.error).toEqual(
+          new Error("[elevenlabs] No audio returned from ElevenLabs"),
+        );
+        return;
+      }
       if (mode !== "success") {
         if (mode === "caller") controller.abort();
         else await runtime.stop();

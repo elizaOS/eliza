@@ -11,6 +11,11 @@
  */
 
 import { getRedis } from "./client.js";
+import {
+  isCloudflareSpendMetricsConfigured,
+  readCloudflareSpendMetrics,
+  recordCloudflareSpendMetrics,
+} from "./cloudflare-spend-metrics";
 
 export type SpendPeriod = "day" | "week" | "month";
 type SpendLimitMap = Partial<Record<SpendPeriod, number>>;
@@ -171,9 +176,20 @@ export async function recordSpend(
   const costCents = toSpendUnits(costUsd); // throws on negative/NaN; 0 → no-op below
   if (costCents <= 0) return;
 
-  const redis = getRedis();
   const now = new Date();
-
+  if (isCloudflareSpendMetricsConfigured()) {
+    await recordCloudflareSpendMetrics({
+      buckets: (["day", "week", "month"] as SpendPeriod[]).map((period) => ({
+        key: spendKey(agentId, period, getDateKey(period, now)),
+        ttlSeconds: TTL_SECONDS[period],
+      })),
+      units: costCents,
+      tenantId,
+      host,
+    });
+    return;
+  }
+  const redis = getRedis();
   const pipeline = redis.multi();
 
   for (const period of ["day", "week", "month"] as SpendPeriod[]) {
@@ -315,9 +331,12 @@ export async function getSpend(
   period: SpendPeriod,
   date?: Date,
 ): Promise<number> {
-  const redis = getRedis();
   const dateKey = getDateKey(period, date || new Date());
   const key = spendKey(agentId, period, dateKey);
+  if (isCloudflareSpendMetricsConfigured()) {
+    return fromSpendUnits((await readCloudflareSpendMetrics(key)).total);
+  }
+  const redis = getRedis();
 
   const totalCents = await redis.hget(key, "total");
   if (!totalCents) return 0;
@@ -368,9 +387,16 @@ export async function getSpendByHost(
   period: SpendPeriod,
   date?: Date,
 ): Promise<Record<string, number>> {
-  const redis = getRedis();
   const dateKey = getDateKey(period, date || new Date());
   const key = spendKey(agentId, period, dateKey);
+  if (isCloudflareSpendMetricsConfigured()) {
+    return Object.fromEntries(
+      Object.entries((await readCloudflareSpendMetrics(key)).hosts).map(
+        ([host, units]) => [host, fromSpendUnits(units)],
+      ),
+    );
+  }
+  const redis = getRedis();
 
   const all = await redis.hgetall(key);
   const result: Record<string, number> = {};

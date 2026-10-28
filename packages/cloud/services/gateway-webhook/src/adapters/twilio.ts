@@ -79,14 +79,24 @@ function normalizeSenderIdentity(address: string): string {
     : address;
 }
 
-function replyAddress(senderId: string, fromAddress: string): string {
+function replyAddress(senderId: string, inboundAddress: string): string {
   if (
-    fromAddress.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX) &&
+    inboundAddress.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX) &&
     !senderId.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX)
   ) {
     return `${WHATSAPP_ADDRESS_PREFIX}${senderId}`;
   }
   return senderId;
+}
+
+function replyFromAddress(fromAddress: string, inboundAddress: string): string {
+  if (
+    inboundAddress.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX) &&
+    !fromAddress.toLowerCase().startsWith(WHATSAPP_ADDRESS_PREFIX)
+  ) {
+    return `${WHATSAPP_ADDRESS_PREFIX}${fromAddress}`;
+  }
+  return fromAddress;
 }
 
 function isValidMediaUrl(url: string): boolean {
@@ -187,7 +197,13 @@ async function sendTwilioReply(
   const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString(
     "base64",
   );
-  const to = replyAddress(event.senderId, config.phoneNumber);
+  // The channel comes from the inbound address, not the configured
+  // number: TWILIO_PHONE_NUMBER is plain E.164, so deriving it from
+  // the config sent every WhatsApp reply out with bare SMS
+  // addressing. event.chatId keeps the raw inbound From, which
+  // carries the whatsapp: prefix for WhatsApp inbound.
+  const to = replyAddress(event.senderId, event.chatId);
+  const from = replyFromAddress(config.phoneNumber, event.chatId);
   // One Body holds at most 1600 characters, so a longer reply goes out as
   // several messages in order. Nothing is dropped.
   const chunks =
@@ -199,7 +215,7 @@ async function sendTwilioReply(
   for (const chunk of chunks) {
     let sid: string;
     try {
-      sid = await postTwilioMessage(url, auth, to, config.phoneNumber, chunk);
+      sid = await postTwilioMessage(url, auth, to, from, chunk);
     } catch (error) {
       if (
         sids.length > 0 &&
@@ -355,6 +371,11 @@ export const twilioAdapter: PlatformAdapter = {
       messageId: event.MessageSid,
       chatId: event.From,
       senderId: normalizeSenderIdentity(event.From),
+      // Receiving line, distinct from the sender: Twilio's To is the number
+      // the message was sent to, so Network turns must carry it instead of
+      // falling back to null (the Blooio adapter gained the same field in
+      // #37577; Twilio was left behind).
+      receivingNumber: normalizeSenderIdentity(event.To),
       senderName: event.ProfileName,
       text:
         mediaUrls.length > 0 && !text

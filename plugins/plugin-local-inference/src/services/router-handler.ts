@@ -54,7 +54,7 @@
  *   6. **Edge-TTS (`edge-tts`)** — free Microsoft Edge endpoint, no key.
  *
  * Same precedence applies to `TRANSCRIPTION`, with the local side using
- * the fused Gemma ASR path when the active bundle stages eligible ASR
+ * Phonon-2 on libelizainference when the active bundle stages eligible ASR
  * artifacts (no whisper.cpp fallback).
  *
  * Users can override this per slot via the routing-preferences settings

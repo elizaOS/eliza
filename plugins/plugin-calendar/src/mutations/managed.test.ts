@@ -1,9 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ call: vi.fn() }));
-vi.mock("../service/managed-calendar-read.js", () => ({
-  createManagedCalendarRead: () => ({ mutation: state.call }),
-}));
+vi.mock("../service/managed-calendar-read.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../service/managed-calendar-read.js")
+    >();
+  return {
+    ...actual,
+    createManagedCalendarRead: () =>
+      actual.createManagedCalendarRead(
+        {
+          ELIZA_MANAGED_CALENDAR_READ_BROKER:
+            "http://127.0.0.1:1/__alpha-owner-gmail",
+          ELIZA_API_TOKEN: "a".repeat(64),
+        },
+        (async (_url, init) =>
+          Response.json(
+            await state.call(JSON.parse(String(init?.body)).calendar),
+          )) as typeof fetch,
+      ),
+  };
+});
 vi.mock("./ledger.js", () => ({
   calendarMutationApprovalSha256: () => "hash",
   calendarMutationOperationKey: () => "stable-key",
@@ -14,6 +32,7 @@ import { createManagedCalendarMutationPort } from "./managed.js";
 
 const source = `alpha-google:${"a".repeat(64)}`;
 const caps = {
+  version: 1,
   grantId: source,
   calendarId: "calendar",
   accountId: "account",

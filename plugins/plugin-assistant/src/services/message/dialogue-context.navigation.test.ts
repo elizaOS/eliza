@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { appendPriorDialogueEvents } from "./dialogue-context";
 import {
   historicalActionResults,
+  historicalNavigationReceipts,
   historicalReceiptGroups,
 } from "./navigation-history";
 import { renderMessageHandlerModelInput } from "./stage1-input";
@@ -244,5 +245,97 @@ describe("historical navigation input", () => {
     expect(
       events.filter((event) => event.id?.startsWith("historical-navigation")),
     ).toEqual([]);
+  });
+});
+
+describe("aliased navigation history", () => {
+  function aliased(status = "delivered") {
+    return {
+      actionName: "VIEWS",
+      success: true,
+      text: JSON.stringify({
+        effect: "view_navigation",
+        status,
+        viewId: "automations",
+        stepId: null,
+        handoffId: "handoff-workflows",
+        label: "Automations",
+        resolvedAlias: "workflows",
+      }),
+      values: {
+        completedActionDelivered: status === "delivered",
+        completedActionHandoffId: "handoff-workflows",
+      },
+    };
+  }
+  it("retains Workflows then Home for a later Back request without relabeling preparation", () => {
+    expect(historicalNavigationReceipts([aliased()])).toHaveLength(1);
+    const previous = request(1),
+      home = request(2),
+      back = request(3);
+    back.content.text = "go back";
+    const set = (m: Memory, result: unknown) => {
+      const marker = m.content.chatIdempotency as { outcomeJson: string };
+      marker.outcomeJson = JSON.stringify({
+        userMessageId: m.id,
+        actionResults: [result],
+      });
+    };
+    set(previous, aliased());
+    set(home, {
+      actionName: "VIEWS",
+      success: true,
+      text: JSON.stringify({
+        effect: "view_navigation",
+        status: "delivered",
+        viewId: "chat",
+        stepId: null,
+        handoffId: "handoff-home",
+        label: "Home",
+      }),
+      values: {
+        completedActionDelivered: true,
+        completedActionHandoffId: "handoff-home",
+      },
+    });
+    const events: ContextEvent[] = [];
+    appendPriorDialogueEvents(
+      events,
+      { agentId: "agent" } as IAgentRuntime,
+      {
+        values: {},
+        text: "",
+        data: {
+          providers: {
+            RECENT_MESSAGES: { data: { recentMessages: [previous, home] } },
+          },
+        },
+      } as State,
+      back,
+    );
+    const history = JSON.stringify(events);
+    expect(history).toContain("workflows");
+    expect(history).toContain("automations");
+    expect(history).toContain("chat");
+    const prepared = historicalNavigationReceipts([aliased("prepared")]);
+    expect(prepared).toHaveLength(1);
+    expect(JSON.parse(prepared[0].receipt).status).toBe("prepared");
+  });
+  it("rejects invalid aliases, unknown keys and mismatched delivery proof", () => {
+    for (const resolvedAlias of [123, "", null]) {
+      const value = aliased();
+      value.text = JSON.stringify({ ...JSON.parse(value.text), resolvedAlias });
+      expect(historicalNavigationReceipts([value])).toEqual([]);
+    }
+    const unknown = aliased();
+    unknown.text = JSON.stringify({
+      ...JSON.parse(unknown.text),
+      forged: true,
+    });
+    expect(historicalNavigationReceipts([unknown])).toEqual([]);
+    const mismatch = aliased();
+    mismatch.values.completedActionHandoffId = "wrong";
+    expect(historicalNavigationReceipts([mismatch])).toEqual([]);
+    expect(historicalNavigationReceipts([])).toEqual([]);
   });
 });

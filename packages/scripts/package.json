@@ -18,9 +18,10 @@
     ".": "./lib/index.ts"
   },
   "devDependencies": {
-    "elizaos-benchmarks": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/voice": "workspace:*",
+    "@types/pg": "8.23.1",
+    "elizaos-benchmarks": "workspace:*",
     "ts-morph": "28.0.0"
   },
   "scripts": {

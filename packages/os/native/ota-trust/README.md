@@ -26,6 +26,14 @@ in test code. The independent-host test rejects another product's release.
 These tests do not prove device-owner provisioning, installed update recovery,
 full AOSP boot, production trust enrollment or real-device acceptance.
 
+Hosts that build a `TrustedTimeSource` from Roughtime can call
+`NewRoughtimeRequest` and `VerifyRoughtimeResponse` (IETF drafts 11 and 12).
+They verify the authority's Ed25519 delegation and response signatures, the
+nonce, version and Merkle binding, and the delegation window. They do no network
+I/O and read no clock. The host sends the request, adds its measured round
+trip, requires agreement from its chosen authorities and owns the boot-scoped
+anchor. Choosing authorities and keys is the host's decision.
+
 Release metadata uses a closed channel graph: top-level targets delegate only to
 terminating `stable` and `beta` roles with their own keys. Devices and the
 publication verifier refuse a Stable delegation whose threshold is below two, so

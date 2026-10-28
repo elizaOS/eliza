@@ -91,7 +91,7 @@ const maskDestination = (method, value) =>
 export function createNativeCloudAuth({
   fetchImpl = fetch,
   api = "https://api.eliza.app",
-  auth = "https://eliza.steward.fi",
+  auth = "https://api.eliza.app/steward",
   tenant = "elizacloud",
   binding,
   accountLinkRedirectUri,

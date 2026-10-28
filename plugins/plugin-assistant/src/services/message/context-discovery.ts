@@ -223,14 +223,17 @@ export function readContextRequests(
 ): string[] {
   const requested = raw?.contextRequests;
   if (requested === undefined) return [];
-  if (
-    !Array.isArray(requested) ||
-    requested.some((name) => typeof name !== "string" || !available.has(name))
-  ) {
+  const rejected = Array.isArray(requested)
+    ? requested.filter(
+        (name) => typeof name !== "string" || !available.has(name),
+      )
+    : [requested];
+  if (rejected.length) {
     throw new ElizaError(
       "Request only context providers listed as available for this turn.",
       {
         code: "CONTEXT_DISCOVERY_INVALID_REQUEST",
+        context: { rejected },
       },
     );
   }

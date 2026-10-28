@@ -53,10 +53,16 @@ final class IpcStartupRecovery implements Closeable {
     }
     /** Strong conservative gate: no other process with this full UID is permitted. */
     static void requireSoleUidProcess()throws Exception {
+        requireSoleUidProcess(android.os.SystemClock.elapsedRealtime()+10000);
+    }
+    static void requireSoleUidProcess(long deadline)throws Exception {
+        if(android.os.SystemClock.elapsedRealtime()>=deadline)throw refused("process inventory deadline");
         File self=new File("/proc/"+Process.myPid());String current=identity(self);
         if(Os.stat(self.getPath()).st_uid!=Process.myUid())throw refused("current process UID mismatch");
         File[] processes=new File("/proc").listFiles();if(processes==null || processes.length<20)throw refused("incomplete process inventory");
-        for(File proc:processes){if(!proc.getName().matches("[0-9]+") || proc.equals(self))continue;
+        for(File proc:processes){
+            if(android.os.SystemClock.elapsedRealtime()>=deadline)throw refused("process inventory deadline");
+            if(!proc.getName().matches("[0-9]+") || proc.equals(self))continue;
             StructStat s;
             try{s=Os.stat(proc.getPath());}catch(android.system.ErrnoException error){if(error.errno==OsConstants.ENOENT)continue;throw error;}
             if(s.st_uid==Process.myUid()){
@@ -91,7 +97,7 @@ final class IpcStartupRecovery implements Closeable {
             File ipc=new File(home,"ipc");StructStat directory=owned(ipc,OsConstants.S_IFDIR,0700);
             if(!ipc.getCanonicalPath().equals(ipc.getPath()))throw refused("IPC directory alias");
             File[] entries=ipc.listFiles();if(entries==null)throw refused("unreadable IPC directory");
-            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable);
+            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000);
             File[] homeEntries=home.listFiles();if(homeEntries==null)throw refused("unreadable app directory");
             // A crash during explicit archival must not silently free admission slots.
             // Refuse even when the live IPC directory is empty or fewer than eight remain.
@@ -107,7 +113,7 @@ final class IpcStartupRecovery implements Closeable {
                 else throw refused("unexpected IPC entry");
                 StructStat stat=owned(entry,kind,0600);if(kind==OsConstants.S_IFREG && stat.st_size>4096)throw refused("oversized IPC metadata");observed.put(name,stat.st_dev+":"+stat.st_ino);
             }
-            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable); // live detached child, launcher or unrelated same-UID process blocks recovery
+            if(workerBun==null||workerExecutable==null)requireSoleUidProcess();else WorkflowSurvivorInventory.requireClassified(home,new File(home,".eliza/smthrs"),workerBun,workerExecutable,android.os.SystemClock.elapsedRealtime()+10000); // live detached child, launcher or unrelated same-UID process blocks recovery
             for(File entry:entries){StructStat stat=Os.lstat(entry.getPath());if(!observed.get(entry.getName()).equals(stat.st_dev+":"+stat.st_ino))throw refused("IPC entry replaced");}
             File[] again=ipc.listFiles();if(again==null || again.length!=entries.length)throw refused("IPC entries changed");
             StructStat current=owned(ipc,OsConstants.S_IFDIR,0700);if(current.st_dev!=directory.st_dev || current.st_ino!=directory.st_ino)throw refused("IPC directory replaced");
@@ -127,10 +133,11 @@ final class IpcStartupRecovery implements Closeable {
         if(!home.getCanonicalPath().equals(home.getPath()))throw refused("home alias");
     }
     private static String metadata(StructStat s, boolean directoryAfterRename) {
-        // Rename can change directory ctime; every file timestamp remains bound.
+        // Cross-parent rename on F2FS can change directory mtime and ctime.
+        // All file timestamps remain bound; directory identity, mode, links and size stay bound.
         return s.st_dev+":"+s.st_ino+":"+s.st_uid+":"+s.st_gid+":"+s.st_mode+":"+
-            s.st_nlink+":"+s.st_size+":"+s.st_mtim.tv_sec+":"+s.st_mtim.tv_nsec+
-            (directoryAfterRename ? "" : ":"+s.st_ctim.tv_sec+":"+s.st_ctim.tv_nsec);
+            s.st_nlink+":"+s.st_size+
+            (directoryAfterRename ? "" : ":"+s.st_mtim.tv_sec+":"+s.st_mtim.tv_nsec+":"+s.st_ctim.tv_sec+":"+s.st_ctim.tv_nsec);
     }
     private SortedMap<String,String> retainedSnapshot() throws Exception {
         requireLease();
@@ -190,6 +197,7 @@ final class IpcStartupRecovery implements Closeable {
         reviewToken=null;reviewed=null;
         if(!authorized || expected==null)return recoveryResult("unavailable",0,0,"records-changed");
         int total=directoryCount(expected),moved=0;File archive=null;
+        Map<String,String> publishedDirectories=new TreeMap<>();
         try {
             requireLease();requireSoleUidProcess();
             if(!expected.equals(retainedSnapshot()))return recoveryResult("unavailable",0,total,"records-changed");
@@ -215,10 +223,15 @@ final class IpcStartupRecovery implements Closeable {
                 Os.rename(source.getPath(),target.getPath());moved++;
                 syncDirectory(archive);syncDirectory(home);
                 verifyRetainedDirectory(target,name,expected,true);
+                publishedDirectories.put(name,metadata(Os.lstat(target.getPath()),false));
             }
             requireLease();requireSoleUidProcess();
-            for(String name:expected.keySet())if(name.indexOf('/')<0)
-                verifyRetainedDirectory(new File(archive,name),name,expected,true);
+            for(String name:expected.keySet())if(name.indexOf('/')<0) {
+                File retained=new File(archive,name);
+                verifyRetainedDirectory(retained,name,expected,true);
+                if(!metadata(Os.lstat(retained.getPath()),false).equals(publishedDirectories.get(name)))
+                    throw refused("published directory changed");
+            }
             // No concurrent new retained records or unreviewed namespace changes may be hidden.
             File[] rootEntries=home.listFiles();if(rootEntries==null)throw refused("unreadable home");
             for(File entry:rootEntries)if(entry.getName().startsWith("ipc-recovery-"))throw refused("new retained records");
@@ -242,8 +255,8 @@ final class IpcStartupRecovery implements Closeable {
         StructStat directory=owned(dir,OsConstants.S_IFDIR,0700);
         if(!dir.getCanonicalPath().equals(dir.getPath()))throw refused("archive directory alias");
         String original=expected.get(name),actual=metadata(directory,renamed);
-        if(renamed)original=original.substring(0,original.lastIndexOf(':'));
-        if(renamed)original=original.substring(0,original.lastIndexOf(':'));
+        if(renamed)for(int timestampField=0;timestampField<4;timestampField++)
+            original=original.substring(0,original.lastIndexOf(':'));
         if(!actual.equals(original))throw refused("retained directory metadata changed");
         File[] entries=dir.listFiles();if(entries==null)throw refused("archive unreadable");
         int count=0;for(String key:expected.keySet())if(key.startsWith(name+"/"))count++;

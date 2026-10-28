@@ -65,7 +65,12 @@ export function readInitdbSnapshot(
   if (!path) return null;
   const bytes = size(path);
   if (bytes === null || bytes < 2 || bytes > MAX_INITDB_SNAPSHOT_BYTES) return null;
-  const data = read(path);
+  let data: Uint8Array;
+  try {
+    data = read(path);
+  } catch {
+    return null;
+  }
   // gzip magic: a file that is not a gzip archive is not a snapshot.
   if (
     data.byteLength < 2 ||

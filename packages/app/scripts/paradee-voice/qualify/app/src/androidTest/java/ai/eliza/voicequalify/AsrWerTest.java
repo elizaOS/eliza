@@ -3,6 +3,7 @@ package ai.eliza.voicequalify;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import ai.eliza.voice.Wer;
 import android.content.Context;
 import android.os.Bundle;
 import android.util.Log;

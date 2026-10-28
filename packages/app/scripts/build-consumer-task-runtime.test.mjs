@@ -71,13 +71,21 @@ test("a committed task bundle runs on SQLite and records the consumer's exact so
   fs.mkdirSync(commandRoot, { recursive: true });
   const commandDirectory = fs.mkdtempSync(path.join(commandRoot, "command-"));
   t.after(() => fs.rmSync(commandDirectory, { recursive: true, force: true }));
-  const report = buildTaskRuntime(output, {
+  const options = {
     sourceRoot,
     sourceCommit,
     browserSource: path.join(temporary, "browser"),
     commandSource: path.relative(process.cwd(), commandDirectory),
-  });
+  };
+  const report = buildTaskRuntime(output, options);
   assert.equal(report.sourceCommit, sourceCommit);
+  // Matching provenance reuses the output; changed bytes force a rebuild.
+  const built = fs.statSync(output).mtimeMs;
+  assert.deepEqual(buildTaskRuntime(output, options), report);
+  assert.equal(fs.statSync(output).mtimeMs, built);
+  fs.appendFileSync(path.join(temporary, "browser/errors.ts"), "\n");
+  assert.deepEqual(buildTaskRuntime(output, options), report);
+  assert.notEqual(fs.statSync(output).mtimeMs, built);
   assert.equal(
     report.bundleSha256,
     createHash("sha256").update(fs.readFileSync(output)).digest("hex"),

@@ -1,3 +1,7 @@
+import {
+  googleNativeClientIds,
+  verifyGoogleNativeIdToken,
+} from "../../auth/google-native";
 import { buildPhoneAuthProvidersFromEnvironment } from "../../auth/phone-provider";
 import { fetchPinnedResponse } from "../../shared/pinned-response";
 import {
@@ -127,6 +131,7 @@ import {
   writeAuditEvent as appendAuthAuditEvent,
 } from "../services/audit";
 import {
+  normalizeEmailDomain,
   publicAuthAbuseConfig,
   validateEmailAbusePolicy,
   validatePhoneAbusePolicy,
@@ -227,21 +232,6 @@ function isReservedTenantId(value: string): boolean {
   );
 }
 
-function normalizeEmailDomain(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  const at = email.lastIndexOf("@");
-  if (at <= 0 || at >= email.length - 1) return null;
-  const domain = email.slice(at + 1);
-  if (
-    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
-      domain,
-    )
-  ) {
-    return null;
-  }
-  return domain;
-}
 const TOTP_VERIFY_MAX_FAILED_ATTEMPTS = 5;
 const TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS = 10 * 60 * 1000;
 const FACTOR_ENROLLMENT_STEP_UP_MAX_AGE_MS = 5 * 60 * 1000;
@@ -265,29 +255,47 @@ export async function recordSmsVerifyFailure(
   await claimSmsVerifyAttempt(phone, purpose);
 }
 
-function totpVerifyAttemptKey(scope: string): string {
-  return `totp-verify-attempts:${hashSha256Hex(scope)}`;
+function totpVerifyAttemptSlotKey(scope: string, slot: number): string {
+  return `totp-verify-attempts:${hashSha256Hex(scope)}:${slot}`;
 }
 
-async function getTotpVerifyFailedAttempts(scope: string): Promise<number> {
-  const raw = await getMfaBackend().get(totpVerifyAttemptKey(scope));
-  if (!raw) return 0;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+/**
+ * Claim one attempt slot before a code is checked. A read-then-write counter
+ * lets a parallel burst read the same count and all reach verification, so
+ * each attempt takes its own slot atomically, like SMS verification. A
+ * failed attempt keeps its slot; success clears them all.
+ */
+async function claimTotpVerifyAttempt(scope: string): Promise<boolean> {
+  const token = `totp-verify-attempt:${randomBytes(16).toString("hex")}`;
+  for (let slot = 1; slot <= TOTP_VERIFY_MAX_FAILED_ATTEMPTS; slot++) {
+    if (
+      await getMfaBackend().setIfNotExists(
+        totpVerifyAttemptSlotKey(scope, slot),
+        token,
+        TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-async function recordTotpVerifyFailure(scope: string): Promise<number> {
-  const next = (await getTotpVerifyFailedAttempts(scope)) + 1;
-  await getMfaBackend().set(
-    totpVerifyAttemptKey(scope),
-    String(next),
-    TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS,
+async function countTotpVerifyAttempts(scope: string): Promise<number> {
+  const slots = await Promise.all(
+    Array.from({ length: TOTP_VERIFY_MAX_FAILED_ATTEMPTS }, (_, index) =>
+      getMfaBackend().get(totpVerifyAttemptSlotKey(scope, index + 1)),
+    ),
   );
-  return next;
+  return slots.filter((value) => value !== null).length;
 }
 
 async function clearTotpVerifyFailures(scope: string): Promise<void> {
-  await getMfaBackend().delete(totpVerifyAttemptKey(scope));
+  await Promise.all(
+    Array.from({ length: TOTP_VERIFY_MAX_FAILED_ATTEMPTS }, (_, index) =>
+      getMfaBackend().delete(totpVerifyAttemptSlotKey(scope, index + 1)),
+    ),
+  );
 }
 
 async function getTenantAuthAbuseConfig(tenantId: string) {
@@ -4077,6 +4085,16 @@ auth.get("/providers", async (c) => {
     siwe: methodEnabled("siwe"),
     siws: methodEnabled("siws"),
     google: enabledOauth.includes("google"),
+    googleNative:
+      enabledOauth.includes("google") &&
+      Boolean(
+        tenantId &&
+          (await authAppClientSubjects(tenantId)).some(
+            (client) =>
+              googleNativeClientIds(client.id).length > 0 &&
+              client.login_methods?.oauth?.google !== false,
+          ),
+      ),
     discord: enabledOauth.includes("discord"),
     github: enabledOauth.includes("github"),
     twitter: enabledOauth.includes("twitter"),
@@ -4094,6 +4112,194 @@ auth.get("/providers", async (c) => {
     oidc,
     captcha: publicAuthAbuseConfig(authAbuseConfig).captcha,
   });
+});
+
+type GoogleNativeChallenge = {
+  tenantId: string;
+  clientId: string;
+  audience: string;
+  nonce: string;
+  codeChallenge: string;
+  expiresAt: number;
+};
+
+// This exchanges identity only. Cloud mobile connect/token/ack still owns the
+// device credential, and provisionOAuthUser still enforces tenant policy/MFA.
+auth.post("/oauth/google/native/:operation", async (c) => {
+  setAuthNoStoreHeaders(c);
+  const operation = c.req.param("operation");
+  if (operation !== "challenge" && operation !== "verify") return c.notFound();
+  const rl = await checkAuthRateLimit(
+    c,
+    `google-native-${operation}`,
+    60_000,
+    20,
+  );
+  if (!rl.allowed)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Too many sign-in attempts. Try again later." },
+      429,
+      { "Retry-After": String(rl.retryAfterSecs ?? 60) },
+    );
+  const body = await safeJsonParse<Record<string, unknown>>(c);
+  const tenantId =
+    typeof body?.tenantId === "string" ? body.tenantId.trim() : "";
+  const clientId = normalizePublicClientId(body?.clientId);
+  if (!body || !isValidTenantId(tenantId) || !clientId)
+    return c.json<ApiResponse>(
+      { ok: false, error: "A valid tenantId and clientId are required" },
+      400,
+    );
+  const headerTenant = c.req.header("X-Steward-Tenant")?.trim();
+  if (headerTenant && headerTenant !== tenantId)
+    return c.json<ApiResponse>(
+      { ok: false, error: "tenantId does not match X-Steward-Tenant" },
+      400,
+    );
+  if (!(await getEnabledTenantAppClient(tenantId, clientId)))
+    return c.json<ApiResponse>(
+      { ok: false, error: "App client not found or disabled" },
+      404,
+    );
+  const refusal = await requireTenantLoginMethodAllowed(
+    c,
+    tenantId,
+    "oauth",
+    "google",
+    clientId,
+  );
+  if (refusal) return refusal;
+  const androidClientIds = googleNativeClientIds(clientId);
+  if (
+    !getEnabledProviders().includes("google") ||
+    androidClientIds.length === 0
+  )
+    return c.json<ApiResponse>(
+      {
+        ok: false,
+        error: "Native Google sign-in is not configured for this app",
+      },
+      503,
+    );
+  const audience = getProviderConfig("google").clientId;
+  if (operation === "challenge") {
+    if (
+      body.codeChallengeMethod !== "S256" ||
+      typeof body.codeChallenge !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.codeChallenge)
+    )
+      return c.json<ApiResponse>(
+        { ok: false, error: "An S256 code challenge is required" },
+        400,
+      );
+    const challengeId = randomBase64Url(32);
+    const nonce = randomBase64Url(32);
+    const expiresAt = Date.now() + 5 * 60_000;
+    const challenge: GoogleNativeChallenge = {
+      tenantId,
+      clientId,
+      audience,
+      nonce,
+      codeChallenge: body.codeChallenge,
+      expiresAt,
+    };
+    await getChallengeStore().set(
+      `google-native:${challengeId}`,
+      JSON.stringify(challenge),
+    );
+    return c.json({
+      ok: true,
+      challengeId,
+      nonce,
+      serverClientId: audience,
+      expiresAt: new Date(expiresAt).toISOString(),
+    });
+  }
+  if (
+    typeof body.challengeId !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(body.challengeId) ||
+    typeof body.idToken !== "string" ||
+    !body.idToken ||
+    typeof body.codeVerifier !== "string" ||
+    !isValidPkceCodeVerifier(body.codeVerifier)
+  )
+    return c.json<ApiResponse>(
+      {
+        ok: false,
+        error: "challengeId, idToken and codeVerifier are required",
+      },
+      400,
+    );
+  const key = `google-native:${body.challengeId}`;
+  const raw = await getChallengeStore().get(key);
+  if (!raw)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Sign-in challenge expired or was already used" },
+      401,
+    );
+  const challenge = JSON.parse(raw) as GoogleNativeChallenge;
+  if (
+    challenge.tenantId !== tenantId ||
+    challenge.clientId !== clientId ||
+    challenge.audience !== audience ||
+    challenge.expiresAt <= Date.now() ||
+    challenge.codeChallenge !==
+      (await pkceChallengeForVerifier(body.codeVerifier, "S256"))
+  )
+    return c.json<ApiResponse>(
+      { ok: false, error: "Sign-in challenge does not match this request" },
+      401,
+    );
+  let verified: Awaited<ReturnType<typeof verifyGoogleNativeIdToken>>;
+  try {
+    verified = await verifyGoogleNativeIdToken(
+      body.idToken,
+      audience,
+      androidClientIds,
+      challenge.nonce,
+    );
+  } catch {
+    return c.json<ApiResponse>(
+      { ok: false, error: "Google identity could not be verified" },
+      401,
+    );
+  }
+  // Invalid identity/proof never consumes state. Only one concurrent verified
+  // request may cross the atomic consume boundary and provision a session.
+  if ((await getChallengeStore().consume(key)) !== raw)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Sign-in challenge was already used" },
+      401,
+    );
+  const replay = await markOidcIdTokenUsedOnce(
+    tenantId,
+    "google",
+    body.idToken,
+    verified.claims.exp,
+  );
+  if (!replay.ok)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Google identity token was already used or expired" },
+      401,
+    );
+  const result = await provisionOAuthUser({
+    c,
+    providerName: "google",
+    tenantId,
+    providerUser: {
+      id: verified.subject,
+      email: verified.email,
+      verified_email: true,
+      name: verified.name,
+      picture: verified.picture,
+    },
+  });
+  if (!result.ok)
+    return c.json<ApiResponse>(
+      { ok: false, error: result.error },
+      result.status ?? 500,
+    );
+  return authExchangeJson(c, result.response);
 });
 
 auth.post("/telegram/challenge", async (c) => {
@@ -7162,10 +7368,7 @@ auth.post("/mfa/totp/complete", async (c) => {
     );
   }
   const attemptScope = `login:${challenge.userId}:${body.challengeId}`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     await getMfaBackend().delete(challengeKey);
     return c.json<ApiResponse>(
       {
@@ -7206,7 +7409,7 @@ auth.post("/mfa/totp/complete", async (c) => {
       !verified.stored ||
       typeof verified.acceptedStep !== "number"
     ) {
-      const failures = await recordTotpVerifyFailure(attemptScope);
+      const failures = await countTotpVerifyAttempts(attemptScope);
       if (failures >= TOTP_VERIFY_MAX_FAILED_ATTEMPTS)
         await getMfaBackend().delete(challengeKey);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
@@ -7302,10 +7505,7 @@ auth.post("/mfa/totp/step-up", async (c) => {
   }
 
   const attemptScope = `step-up:${session.payload.userId}`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -7320,7 +7520,6 @@ auth.post("/mfa/totp/step-up", async (c) => {
       body?.recoveryCode ?? "",
     );
     if (!verified.valid) {
-      await recordTotpVerifyFailure(attemptScope);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
     }
     method = "recovery_code";
@@ -7334,7 +7533,6 @@ auth.post("/mfa/totp/step-up", async (c) => {
       !verified.stored ||
       typeof verified.acceptedStep !== "number"
     ) {
-      await recordTotpVerifyFailure(attemptScope);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
     }
     await writeMfaJson(mfaKey("totp:enabled", session.payload.userId), {
@@ -7380,10 +7578,7 @@ auth.post("/mfa/recovery-codes/regenerate", async (c) => {
   }
 
   const attemptScope = `manage:${session.payload.userId}:recovery-regenerate`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -7395,7 +7590,6 @@ auth.post("/mfa/recovery-codes/regenerate", async (c) => {
     !verified.stored ||
     typeof verified.acceptedStep !== "number"
   ) {
-    await recordTotpVerifyFailure(attemptScope);
     return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
   }
   await clearTotpVerifyFailures(attemptScope);
@@ -8309,10 +8503,7 @@ auth.post("/mfa/totp/unenroll", async (c) => {
   }
 
   const attemptScope = `manage:${session.payload.userId}:totp-unenroll`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -8320,7 +8511,6 @@ auth.post("/mfa/totp/unenroll", async (c) => {
   }
   const verified = await verifyStoredTotp(session.payload.userId, body.code);
   if (!verified.valid) {
-    await recordTotpVerifyFailure(attemptScope);
     return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
   }
   await clearTotpVerifyFailures(attemptScope);
@@ -9659,7 +9849,7 @@ auth.post("/email/send", async (c) => {
  * Body: { email, tenantId?, captchaToken? }
  * Returns 200 { ok: true, data: { expiresAt, codeLength: 6 } }
  *
- * Native in-app email sign-in (Alpha Phone). Emails ONLY a six-digit code,
+ * Native in-app email sign-in. Emails ONLY a six-digit code,
  * rendered with the sign-in code template: the email has no link, and no link
  * token is ever published, so nothing in it can sign in a browser or consume
  * the challenge. The app redeems the code through POST /email/code/verify,
@@ -10723,21 +10913,34 @@ export function resolveOAuthPromptPassthrough(
  * Generates an OAuth authorization URL, stores the CSRF state in the challenge
  * store (keyed as `oauth:<state>`), then redirects the user to the provider.
  */
-// Alpha readiness is read-only: no challenge, credential or provider navigation.
-auth.get("/oauth/google/alpha-readiness", async (c) => {
+// Read-only readiness for any registered application. Never issues a credential.
+auth.get("/oauth/google/app-readiness", async (c) => {
   c.header("Cache-Control", "no-store");
   const tenantId = c.req.query("tenant_id");
   const redirectUri = c.req.query("redirect_uri");
-  const expected =
-    tenantId === "elizacloud"
-      ? "https://alphacompute.ai/alphaphone/auth/callback"
-      : tenantId === "elizacloud-staging"
-        ? "https://alphacompute.ai/alphaphone/auth/staging/callback"
-        : undefined;
-  if (!expected || redirectUri !== expected) {
-    return c.json({ ok: false, error: "Alpha Phone sign-in unavailable" }, 400);
+  if (
+    !tenantId ||
+    tenantId.length > 100 ||
+    !redirectUri ||
+    redirectUri.length > 2048
+  ) {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
   }
-  const rl = await checkAuthRateLimit(c, "alpha-auth-readiness", 60_000, 30);
+  try {
+    const target = new URL(redirectUri);
+    if (
+      target.protocol !== "https:" ||
+      target.username ||
+      target.password ||
+      target.hash ||
+      target.search
+    ) {
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+    }
+  } catch {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+  }
+  const rl = await checkAuthRateLimit(c, "app-auth-readiness", 60_000, 30);
   if (!rl.allowed) return c.json({ ok: false, error: "Try again later" }, 429);
   try {
     const denied = await requireTenantLoginMethodAllowed(
@@ -10747,10 +10950,7 @@ auth.get("/oauth/google/alpha-readiness", async (c) => {
       "google",
     );
     if (denied)
-      return c.json(
-        { ok: false, error: "Alpha Phone sign-in unavailable" },
-        403,
-      );
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 403);
     await assertAllowedOAuthRedirectUri(redirectUri, tenantId);
     getProviderConfig("google");
     const errorReturn = buildOAuthAppErrorReturn(
@@ -10760,9 +10960,9 @@ auth.get("/oauth/google/alpha-readiness", async (c) => {
       process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
     );
     if (!errorReturn) throw new Error("App error returns are not configured");
-    return c.json({ ok: true, alphaAuth: 1, tenantId, redirectUri });
+    return c.json({ ok: true, appAuth: 1, tenantId, redirectUri });
   } catch {
-    return c.json({ ok: false, error: "Alpha Phone sign-in unavailable" }, 503);
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 503);
   }
 });
 
@@ -11815,7 +12015,7 @@ async function provisionOAuthUser(opts: {
   c: Context;
   providerName: string;
   providerUser: OAuthUserInfoWithEmailSource;
-  tokenResponse: OAuthTokenResponse;
+  tokenResponse?: OAuthTokenResponse;
   tenantId?: string;
 }): Promise<
   | {
@@ -11963,20 +12163,26 @@ async function provisionOAuthUser(opts: {
     // If STEWARD_MASTER_PASSWORD changes, operators must run a decrypt +
     // re-encrypt rotation pass before switching the application to the new
     // password, otherwise existing OAuth provider tokens cannot be decrypted.
-    const encryptedProviderTokens = encryptOAuthProviderTokens(
-      tokenResponse.access_token,
-      tokenResponse.refresh_token ?? null,
-    );
+    // Native ID-token sign-in establishes identity, not Google API access.
+    // Omit token fields so an existing Gmail/Calendar grant stays intact.
+    const providerCredentials = tokenResponse
+      ? {
+          ...encryptOAuthProviderTokens(
+            tokenResponse.access_token,
+            tokenResponse.refresh_token ?? null,
+          ),
+          expiresAt: tokenResponse.expires_in
+            ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
+            : null,
+        }
+      : {};
     const [insertedAccount] = await db
       .insert(accounts)
       .values({
         userId: user.id,
         provider: providerName,
         providerAccountId: providerUser.id,
-        ...encryptedProviderTokens,
-        expiresAt: tokenResponse.expires_in
-          ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
-          : null,
+        ...providerCredentials,
       })
       .onConflictDoNothing({
         target: [accounts.provider, accounts.providerAccountId],
@@ -11999,24 +12205,26 @@ async function provisionOAuthUser(opts: {
           error: "OAuth account is already linked to another user",
         };
       }
-      const [updatedAccount] = await db
-        .update(accounts)
-        .set({
-          ...encryptedProviderTokens,
-          expiresAt: tokenResponse.expires_in
-            ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
-            : null,
-        })
-        .where(
-          and(eq(accounts.id, currentAccount.id), eq(accounts.userId, user.id)),
-        )
-        .returning({ id: accounts.id });
-      if (!updatedAccount) {
-        return {
-          ok: false as const,
-          status: 403,
-          error: "OAuth account ownership changed during sign-in",
-        };
+      if (tokenResponse) {
+        const [updatedAccount] = await db
+          .update(accounts)
+          .set({
+            ...providerCredentials,
+          })
+          .where(
+            and(
+              eq(accounts.id, currentAccount.id),
+              eq(accounts.userId, user.id),
+            ),
+          )
+          .returning({ id: accounts.id });
+        if (!updatedAccount) {
+          return {
+            ok: false as const,
+            status: 403,
+            error: "OAuth account ownership changed during sign-in",
+          };
+        }
       }
     }
 

@@ -6,6 +6,8 @@
  */
 import type {
   LifeOpsActivitySignal,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarProvider,
   LifeOpsReminderAttempt,
   LifeOpsReminderAttemptOutcome,
   LifeOpsReminderChannel,
@@ -31,6 +33,7 @@ import {
   getCurrentEnforcementWindow,
   minutesPastWindowStart,
 } from "./enforcement-windows.js";
+import type { LifeOpsRepository } from "./repository.js";
 import {
   REMINDER_ACTIVITY_GATE_METADATA_KEY,
   REMINDER_ACTIVITY_GATES,
@@ -57,6 +60,39 @@ import type {
   ReminderActivityProfileSnapshot,
   ReminderAttemptLifecycle,
 } from "./service-types.js";
+
+// Providers whose events plugin-calendar gives a reminder plan (Google,
+// Microsoft and Apple sync, and the built-in calendar). ICS imports create no
+// plans, so they are not read here.
+const REMINDER_CALENDAR_PROVIDERS = [
+  "eliza",
+  "google",
+  "microsoft",
+  "apple_calendar",
+] as const satisfies readonly LifeOpsCalendarProvider[];
+
+/**
+ * Calendar events of every provider that has reminder plans, earliest start
+ * first. Reminder dispatch stops at a per-tick limit, so the merged list must
+ * keep one start order across providers.
+ */
+export async function listReminderCalendarEvents(
+  repository: Pick<LifeOpsRepository, "listCalendarEvents">,
+  agentId: string,
+  timeMin?: string,
+  timeMax?: string,
+): Promise<LifeOpsCalendarEvent[]> {
+  const events = await Promise.all(
+    REMINDER_CALENDAR_PROVIDERS.map((provider) =>
+      repository.listCalendarEvents(agentId, provider, timeMin, timeMax),
+    ),
+  );
+  return events
+    .flat()
+    .sort(
+      (left, right) => Date.parse(left.startAt) - Date.parse(right.startAt),
+    );
+}
 
 export function _isReminderIntensity(
   value: unknown,
