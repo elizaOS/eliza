@@ -198,6 +198,16 @@ describe("current-turn client observation", () => {
     );
   });
 
+  test("a stored __proto__ metadata key stays plain data in the model copy", () => {
+    const projected = projectClientObservation(
+      residentTurn(JSON.parse('{"__proto__":{"uiView":"injected"}}')),
+    );
+    const metadata = projected.content.metadata as Record<string, unknown>;
+    expect(Object.getPrototypeOf(metadata)).toBe(Object.prototype);
+    expect(Object.hasOwn(metadata, "__proto__")).toBe(true);
+    expect(metadata.uiView).toBe("notes");
+  });
+
   test("content without metadata or observation is unchanged", () => {
     const plain: Content = { text: "hello", source: "client_chat" };
     expect(projectClientObservation(plain).content).toBe(plain);

@@ -70,24 +70,28 @@ export function projectClientObservation(
     )
       return { content };
   const serialized = JSON.stringify(observation);
-  const projected: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (key === "clientDevice") continue;
-    if (TRANSPORT_VALUES[key] !== undefined && value === TRANSPORT_VALUES[key])
-      continue;
-    // Older clients duplicated the same observation under their own key.
-    if (
-      key === "alphaPhone" &&
-      value &&
-      typeof value === "object" &&
-      !Array.isArray(value) &&
-      Object.keys(value).length === 1 &&
-      JSON.stringify(readClientTurnObservation({ clientDevice: value })) ===
-        serialized
-    )
-      continue;
-    projected[key] = value;
-  }
+  // Own data properties only: a stored `__proto__` key stays plain data.
+  const projected: Record<string, unknown> = Object.fromEntries(
+    Object.entries(record).filter(([key, value]) => {
+      if (key === "clientDevice") return false;
+      if (
+        Object.hasOwn(TRANSPORT_VALUES, key) &&
+        value === TRANSPORT_VALUES[key]
+      )
+        return false;
+      // Older clients duplicated the same observation under this legacy key
+      // (read compatibility only; nothing authors it).
+      return !(
+        key === "alphaPhone" &&
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        Object.keys(value).length === 1 &&
+        JSON.stringify(readClientTurnObservation({ clientDevice: value })) ===
+          serialized
+      );
+    }),
+  );
   const { metadata: _metadata, ...rest } = content;
   return {
     content:
