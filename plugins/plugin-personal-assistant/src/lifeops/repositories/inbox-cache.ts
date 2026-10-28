@@ -194,6 +194,20 @@ export class InboxCacheRepository {
     return rows.map(parseCachedInboxMessage);
   }
 
+  /** Removes the cached inbox copies of one Gmail account (grant). */
+  async deleteCachedInboxMessagesForGmailAccount(
+    agentId: string,
+    gmailAccountId: string,
+  ): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `DELETE FROM app_lifeops.life_inbox_messages
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND channel = ${sqlQuote("gmail")}
+          AND gmail_account_id = ${sqlQuote(gmailAccountId)}`,
+    );
+  }
+
   async markCachedInboxMessageRead(
     agentId: string,
     messageId: string,

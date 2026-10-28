@@ -2616,37 +2616,24 @@ async function handleRequestForViewClient(
     }
   }
   // ═══════════════════════════════════════════════════════════════════════
-  //  ERC-8004 Registry, Agent self-status, Privy — delegated to agent-status-routes.ts
+  //  Agent self-status — delegated to agent-status-routes.ts
   // ═══════════════════════════════════════════════════════════════════════
   if (
-    (pathname === "/api/agent/self-status" ||
-      pathname.startsWith("/api/registry")) &&
+    pathname === "/api/agent/self-status" &&
     (await (async () => {
-      const { RegistryService } = await import("./registry-service.ts");
-      const getCoreWalletAddresses =
-        pathname === "/api/agent/self-status"
-          ? (await getCoreWalletApi()).getWalletAddresses
-          : null;
+      const { getWalletAddresses } = await getCoreWalletApi();
       return handleAgentStatusRoutes({
-        req,
         res,
         method,
         pathname,
         url,
-        state:
-          pathname === "/api/agent/self-status"
-            ? {
-                ...state,
-                config: createDevCloudConfigAuthorityView(state.config),
-              }
-            : state,
+        state: {
+          ...state,
+          config: createDevCloudConfigAuthorityView(state.config),
+        },
         json,
-        error,
-        readJsonBody,
         deps: {
-          getWalletAddresses: getCoreWalletAddresses
-            ? () => getCoreWalletAddresses(state.runtime?.agentId)
-            : () => ({ evmAddress: null, solanaAddress: null }),
+          getWalletAddresses: () => getWalletAddresses(state.runtime?.agentId),
           resolveWalletCapabilityStatus,
           resolveWalletRpcReadiness,
           resolveTradePermissionMode,
@@ -2667,7 +2654,6 @@ async function handleRequestForViewClient(
                 Promise.resolve(composeSummary.call(service, activeRuntime)),
             };
           },
-          RegistryService,
         },
       });
     })())
@@ -2880,8 +2866,7 @@ async function handleRequestForViewClient(
   }
   // Browser workspace routes (/api/browser-workspace/*) are served by the
   // @elizaos/app-browser plugin via Plugin.routes.
-  // Agent self-status, Privy, and ERC-8004 registry routes are now handled
-  // by handleAgentStatusRoutes above.
+  // Agent self-status is handled by handleAgentStatusRoutes above.
   // ═══════════════════════════════════════════════════════════════════════
   // BSC trade routes and wallet trade execute are handled by registered wallet
   // plugin routes when the relevant backend is installed.

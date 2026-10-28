@@ -48,12 +48,13 @@ import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import {
   fetchMediaData,
-  splitTweetContent,
+  sendTextAsTweetThread,
   splitXDirectMessageContent,
 } from "../utils";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
 import { getEpochMs } from "../utils/time";
+import type { Post } from "./IPostService";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -959,40 +960,44 @@ export class XService extends Service {
             )
           ).map(({ data, mediaType }) => ({ data, type: mediaType }))
         : [];
-      const chunks = splitTweetContent(text, X_MAX_POST_LENGTH);
-      const memories: Memory[] = [];
-      let inReplyTo = replyToTweetId;
-      for (let index = 0; index < chunks.length; index += 1) {
-        const chunk = chunks[index];
-        if (chunk === undefined) continue;
-        const post = await postService.createPost(
-          {
-            agentId: runtime.agentId,
-            roomId,
-            text: chunk,
-            ...(inReplyTo ? { inReplyTo } : {}),
-            ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
-            ...(index === 0 && media.length > 0 ? { media } : {}),
-          },
-          profile,
-        );
-        memories.push(
-          this.buildXPostMemory(runtime, {
-            id: post.id,
-            userId: post.userId,
-            username: post.username,
-            text: post.text,
-            createdAt: post.timestamp,
-            inReplyTo: post.inReplyTo,
-            roomId: post.roomId,
-            metadata: post.metadata,
-            metrics: post.metrics,
-            accountId,
-            ownUserId: profile.id,
-          }),
-        );
-        inReplyTo = post.id;
-      }
+      const posts: Post[] = [];
+      // A failure after the first chunk is public reports the accepted ids
+      // (X_THREAD_PARTIALLY_POSTED) so a retry does not post the thread again.
+      await sendTextAsTweetThread(
+        text,
+        async (chunk, previousTweetId, index) => {
+          const inReplyTo = previousTweetId ?? replyToTweetId;
+          const post = await postService.createPost(
+            {
+              agentId: runtime.agentId,
+              roomId,
+              text: chunk,
+              ...(inReplyTo ? { inReplyTo } : {}),
+              ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
+              ...(index === 0 && media.length > 0 ? { media } : {}),
+            },
+            profile,
+          );
+          posts.push(post);
+          return { id: post.id };
+        },
+        X_MAX_POST_LENGTH,
+      );
+      const memories = posts.map((post) =>
+        this.buildXPostMemory(runtime, {
+          id: post.id,
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          createdAt: post.timestamp,
+          inReplyTo: post.inReplyTo,
+          roomId: post.roomId,
+          metadata: post.metadata,
+          metrics: post.metrics,
+          accountId,
+          ownUserId: profile.id,
+        }),
+      );
       return memories;
     });
   }
