@@ -78,6 +78,12 @@ export function maybeAugmentChatMessageWithLanguage(
 
 const CHAT_DOCUMENTS_THRESHOLD = 0.2;
 
+// Matches are ranked by similarity desc, so rendering every
+// threshold-passing match lets prompt size grow with corpus size
+// and match count, not relevance. Keep only the most relevant
+// matches; the threshold and coverage gates stay untouched.
+const CHAT_DOCUMENTS_MAX_MATCHES = 10;
+
 // Keyword search max-normalizes BM25 within each result set, so the BEST
 // positive match is always similarity 1.0 even when the lexical overlap is a
 // single ubiquitous word — the similarity threshold above is a relative
@@ -406,9 +412,9 @@ export async function maybeAugmentChatMessageWithDocuments(
     // recall belongs to the DOCUMENTS provider, where it composes in parallel
     // with the rest of the selected context instead of serially delaying chat.
     const keywordMatches = await loadMatchesAcrossScopes(userPrompt);
-    relevantMatches = selectRelevantMatches(keywordMatches).sort(
-      (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
-    );
+    relevantMatches = selectRelevantMatches(keywordMatches)
+      .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
+      .slice(0, CHAT_DOCUMENTS_MAX_MATCHES);
   } catch (error) {
     if (options.signal?.aborted) {
       throw options.signal.reason ?? error;
