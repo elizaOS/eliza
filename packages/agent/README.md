@@ -7,6 +7,13 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
+`build:mobile --target=android` compacts syntax and whitespace while keeping
+identifier names. Its `plugins-manifest.json` records each npm package that
+contributes emitted bytes, the package metadata hash, and the final bundle hash.
+Notice consumers use `scripts/mobile-bundle-dependencies.ts` to validate this
+inventory against the bundle and prepared source before reading license files.
+Missing or changed inputs fail validation; source comments are not an inventory.
+
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
 Agent code imports core APIs and catalog maps through `@elizaos/core`.
 `RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying

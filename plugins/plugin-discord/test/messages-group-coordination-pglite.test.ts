@@ -139,6 +139,11 @@ function makeRuntime(
 			memories.set(id, { ...memory, id: id as UUID });
 			return id as UUID;
 		}),
+		updateMemory: vi.fn(async (patch: Partial<Memory> & { id: UUID }) => {
+			const existing = memories.get(patch.id as string);
+			if (existing) memories.set(patch.id as string, { ...existing, ...patch });
+			return true;
+		}),
 		getMemories: vi.fn(async () => []),
 		messageService: {
 			handleMessage: async (
@@ -451,7 +456,7 @@ describe("group coordination on the real SQL path — latest-human-edge-wins", (
 		expect(abandoned?.delivered_message_id).toBeNull();
 	});
 
-	it("fences the provider-error reply after a newer human edge", async () => {
+	it("sends no provider-error reply for an unaddressed turn, even after a newer human edge", async () => {
 		const channelId = freshChannelId();
 		const sends: Sent[] = [];
 		const observerRuntime = makeRuntime(AGENT_B, "instance-observer");
@@ -484,12 +489,10 @@ describe("group coordination on the real SQL path — latest-human-edge-wins", (
 			}),
 		);
 
-		// The normal callback never ran; this specifically proves the catch-path
-		// fallback is fenced immediately before channel.send.
+		// The normal callback never ran, and an unaddressed turn gets no failure
+		// notice, so no send is attempted and nothing needs fencing.
 		expect(sends).toHaveLength(0);
-		const aborts = await receiptsFor(channelId, "stale-edge-abort");
-		expect(aborts).toHaveLength(1);
-		expect(aborts[0].outcome).toBe("failure-reply");
+		expect(await receiptsFor(channelId, "stale-edge-abort")).toHaveLength(0);
 		const slots = await slotsFor(channelId);
 		expect(slots[0]?.state).toBe("released");
 	});

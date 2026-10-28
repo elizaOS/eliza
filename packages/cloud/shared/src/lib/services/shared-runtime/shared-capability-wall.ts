@@ -40,8 +40,12 @@ export type SharedCapabilityResolution =
       blockedSecondary: SharedCapabilityWall[];
     };
 
+// An explanation scopes the whole clause. A prohibition scopes its verb only:
+// a later positive command must still be checked against the available tools.
 const NON_EXECUTION_CONTEXT =
-  /^(?:please\s+)?(?:(?:(?:can|could|would)\s+you\s+(?:please\s+)?(?:not|avoid|refrain\s+from|explain|describe|define|translate|tell\s+me\s+how|show\s+me\s+how))|(?:i\s+)?(?:do\s+not|don['’]?t|dont)(?:\s+want\s+(?:you\s+)?to)?|never|explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
+  /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+(?:please\s+)?)?(?:(?:(?:i\s+)?(?:do\s+not|don['’]?t|dont)(?:\s+(?:want\s+(?:you\s+)?to|forget\s+to))?|never(?:\s+forget\s+to)?|not(?:\s+forget\s+to)?|avoid|refrain\s+from)\s+)*(?:explain|describe|define|translate|teach\s+me|tell\s+me\s+how|show\s+me\s+how|how\s+(?:do|would|can|to)|what\s+(?:is|are|would|happens?)|why\s+(?:do|would|can|is|are)|if\s+(?:i|we|you)|before\s+you)\b/i;
+const NEGATED_ACTION_PREFIX =
+  /\b(?:(?:do\s+not|don['’]?t|dont)(?:\s+(?:ever|please))*(?:\s+want\s+(?:you\s+)?to)?|never|not(?:\s+to)?|avoid|refrain\s+from)(?:\s+(?:ever|please))*\s*$/i;
 
 /** A final explicit retraction cancels the executable clauses before it. */
 export function hasTrailingSharedActionCancellation(message: string | undefined): boolean {
@@ -194,26 +198,81 @@ function wallFor(match: CapabilityMatch): SharedCapabilityWall {
   return { capability, label, constraint };
 }
 
+/** Quoted payload cannot introduce clause boundaries or negate an outside verb.
+ * Keep the original text for action/argument matching and all model context.
+ */
+function actionClauseContext(text: string): string {
+  const characters = text.split("");
+  let quote: { start: number; closing: string } | undefined;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quote && character === "\\") {
+      index += 1;
+      continue;
+    }
+    if (
+      (character === "'" || character === "’") &&
+      /[\p{L}\p{N}]$/u.test(text.slice(Math.max(0, index - 2), index)) &&
+      /^[\p{L}\p{N}]/u.test(text.slice(index + 1, index + 3))
+    )
+      continue;
+    if (quote) {
+      if (character === quote.closing) {
+        characters.fill(" ", quote.start, index + 1);
+        quote = undefined;
+      }
+    } else {
+      const closing =
+        character === "“"
+          ? "”"
+          : character === "‘"
+            ? "’"
+            : character === '"' || character === "'" || character === "`"
+              ? character
+              : undefined;
+      if (closing) quote = { start: index, closing };
+    }
+  }
+  // Unclosed quotations remain untouched: they cannot hide a later command.
+  return characters.join("");
+}
+
 function startsInNonExecutionClause(text: string, index: number): boolean {
   const prefix = text.slice(0, index);
   const boundaries = Array.from(prefix.matchAll(/[.!?;,\n]+/g));
   const boundary = boundaries.at(-1);
   const clauseStart = boundary ? boundary.index + boundary[0].length : 0;
-  return NON_EXECUTION_CONTEXT.test(text.slice(clauseStart, index));
+  const clausePrefix = text.slice(clauseStart, index);
+  if (NON_EXECUTION_CONTEXT.test(clausePrefix)) return true;
+  let remainder = clausePrefix;
+  let negated = false;
+  let negation: RegExpExecArray | null;
+  while ((negation = NEGATED_ACTION_PREFIX.exec(remainder)) !== null) {
+    negated = !negated;
+    remainder = remainder.slice(0, negation.index);
+  }
+  return negated;
 }
 function matchesForRule(
   rule: (typeof RULES)[number],
   priority: number,
   text: string,
+  clauseText: string,
 ): CapabilityMatch[] {
   const flags = rule.pattern.global ? rule.pattern.flags : `${rule.pattern.flags}g`;
   const pattern = new RegExp(rule.pattern.source, flags);
-  return Array.from(text.matchAll(pattern), (match) => ({
-    rule,
-    priority,
-    index: match.index,
-    end: match.index + match[0].length,
-  })).filter((match) => !startsInNonExecutionClause(text, match.index));
+  const matches: CapabilityMatch[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(text)) !== null) {
+    if (startsInNonExecutionClause(clauseText, match.index)) {
+      // A bounded phrase can span a later command. Revisit overlapping starts
+      // after rejecting its verb so that command cannot disappear with it.
+      pattern.lastIndex = match.index + 1;
+      continue;
+    }
+    matches.push({ rule, priority, index: match.index, end: match.index + match[0].length });
+  }
+  return matches;
 }
 
 function beginsSeparateClause(text: string, primary: CapabilityMatch, candidate: CapabilityMatch) {
@@ -239,10 +298,11 @@ export function resolveSharedCapabilityIntent(
   const text = (message ?? "").trim();
   if (!text || hasTrailingSharedActionCancellation(text)) return null;
   const publicGoogleProduct = Boolean(sharedPublicGoogleProductQuery(text));
+  const clauseText = actionClauseContext(text);
   const matches = RULES.flatMap((rule, priority) =>
     publicGoogleProduct && (rule.capability === "cloud-apps" || rule.capability === "calendar")
       ? []
-      : matchesForRule(rule, priority, text),
+      : matchesForRule(rule, priority, text, clauseText),
   ).sort((left, right) => left.index - right.index || left.priority - right.priority);
   const primary = matches[0];
   if (!primary) return null;
@@ -254,7 +314,8 @@ export function resolveSharedCapabilityIntent(
     .slice(1)
     .filter(
       (candidate) =>
-        !isEnabled(candidate, capabilities, text) && beginsSeparateClause(text, primary, candidate),
+        !isEnabled(candidate, capabilities, text) &&
+        beginsSeparateClause(clauseText, primary, candidate),
     )
     .flatMap((candidate) => {
       if (blockedCapabilities.has(candidate.rule.capability)) return [];

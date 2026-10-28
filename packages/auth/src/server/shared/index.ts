@@ -232,7 +232,6 @@ export interface AgentIdentity {
     bitcoin?: string;
     monero?: string;
   };
-  erc8004TokenId?: string;
   platformId?: string; // e.g. waifu.fun agent ID
   createdAt: Date;
 }

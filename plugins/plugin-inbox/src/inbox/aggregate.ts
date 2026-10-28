@@ -186,8 +186,9 @@ export function toInboxMessage(
   const receivedAt = receivedDate.toISOString();
   const subject = channel === "gmail" ? (message.subject ?? null) : null;
 
-  // Gmail triage exposes `likelyReplyNeeded`/`isImportant`. X DMs carry real
-  // read state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
+  // Gmail carries its UNREAD label (`gmailIsUnread`); a producer without it
+  // falls back to the reply-needed/important hints. X DMs carry real read
+  // state (the fetcher maps dm.readAt -> lastSeenAt and dm.repliedAt ->
   // repliedAt), so a read-or-replied DM must not inflate unread counts. Chat
   // memories still lack a read flag, so they stay unread for triage.
   const hasSeenState = [message.lastSeenAt, message.repliedAt].some(
@@ -195,10 +196,11 @@ export function toInboxMessage(
   );
   const unread =
     channel === "gmail"
-      ? Boolean(
+      ? (message.gmailIsUnread ??
+        Boolean(
           message.gmailLikelyReplyNeeded === true ||
             message.gmailIsImportant === true,
-        )
+        ))
       : channel === "x_dm"
         ? !hasSeenState
         : true;

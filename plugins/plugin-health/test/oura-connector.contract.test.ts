@@ -303,4 +303,66 @@ describe("Oura connector — recorded real API contract", () => {
     ).rejects.toThrow("Oura pagination exceeded the sync deadline");
     expect(activityPages).toBeLessThanOrEqual(2);
   });
+
+  it("places heart-rate readings on the owner's local day", async () => {
+    let heartRateUrl = "";
+    const recordedFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (!url.includes("/usercollection/heartrate")) {
+        return recordedFetch(input);
+      }
+      heartRateUrl = url;
+      return jsonResponse({
+        data: [
+          // 2026-04-30 18:00 in Los Angeles: the day before the window.
+          {
+            id: "hr-prev",
+            bpm: 61,
+            source: "awake",
+            timestamp: "2026-05-01T01:00:00+00:00",
+          },
+          // 2026-05-01 08:00 in Los Angeles.
+          {
+            id: "hr-morning",
+            bpm: 58,
+            source: "awake",
+            timestamp: "2026-05-01T15:00:00+00:00",
+          },
+          // 2026-05-01 20:00 in Los Angeles, already 2026-05-02 in UTC.
+          {
+            id: "hr-evening",
+            bpm: 64,
+            source: "awake",
+            timestamp: "2026-05-02T03:00:00+00:00",
+          },
+        ],
+        next_token: null,
+      });
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-oura",
+      startDate: "2026-05-01",
+      endDate: "2026-05-01",
+      timeZone: "America/Los_Angeles",
+    });
+
+    const heartRate = payload.samples.filter((s) => s.metric === "heart_rate");
+    expect(
+      heartRate.map((s) => [s.sourceExternalId, s.localDate]).sort(),
+    ).toEqual([
+      ["hr-evening:heart_rate", "2026-05-01"],
+      ["hr-morning:heart_rate", "2026-05-01"],
+    ]);
+    // The read spans the local day in any zone, not only the UTC day.
+    const query = new URL(heartRateUrl).searchParams;
+    expect(Date.parse(query.get("start_datetime") ?? "")).toBeLessThan(
+      Date.parse("2026-05-01T00:00:00Z"),
+    );
+    expect(Date.parse(query.get("end_datetime") ?? "")).toBeGreaterThan(
+      Date.parse("2026-05-02T03:00:00Z"),
+    );
+  });
 });

@@ -180,6 +180,10 @@ export function getStage1UnusableDecisionRepair(
       candidates.length === 0 &&
       contextRequests.length === 0);
   if (!endedWithoutAnswer) return undefined;
+  // Preserve a known structured contradiction in the first review rather
+  // than asking for a simple answer that still leaves navigation inconsistent.
+  const routingRepair = getStage1RoutingRepair(parsed);
+  if (routingRepair) return routingRepair;
   return [
     "response_contract_repair:",
     terminalReask

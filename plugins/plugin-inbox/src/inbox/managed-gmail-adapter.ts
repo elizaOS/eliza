@@ -283,7 +283,10 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
         id: row.id,
         source: "gmail",
         externalId: row.id,
-        from: { identifier: row.senderName, displayName: row.senderName },
+        from: {
+          identifier: row.senderIdentifier ?? row.senderName,
+          displayName: row.senderName,
+        },
         to: [],
         subject: row.threadTopic,
         snippet: row.snippet,
@@ -301,11 +304,128 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
     runtime: IAgentRuntime,
     filters: SearchMessagesFilters,
   ) {
-    if (filters.tags?.length || filters.untilMs !== undefined || filters.sender)
+    if (
+      !filters.sender &&
+      !filters.tags?.length &&
+      filters.sinceMs === undefined &&
+      filters.untilMs === undefined
+    )
+      return this.messages(runtime, filters, filters.content);
+    const literal = (value: string) => {
+      if (
+        !value.trim() ||
+        [...value].some(
+          (char) =>
+            char === '"' ||
+            char === "\\" ||
+            char.charCodeAt(0) < 32 ||
+            char.charCodeAt(0) === 127,
+        )
+      )
+        throw unavailable(
+          "This Gmail filter contains unsupported quoting or control characters.",
+        );
+      return `"${value}"`;
+    };
+    const clauses: string[] = [];
+    if (filters.content) {
+      if (filters.content.includes("\\"))
+        throw unavailable(
+          "Escaped Gmail query syntax cannot be combined with structured filters.",
+        );
+      // Keep explicit OR/grouping inside the content query so added filters
+      // constrain every branch. Reject unbalanced syntax instead of widening.
+      const stack: string[] = [];
+      let quoted = false;
+      for (const char of filters.content) {
+        if (char === '"') quoted = !quoted;
+        else if (!quoted) {
+          if (char === "(" || char === "{") stack.push(char);
+          else if (char === ")" || char === "}") {
+            if (stack.pop() !== (char === ")" ? "(" : "{"))
+              throw unavailable("Unbalanced Gmail query.");
+          }
+        }
+      }
+      if (quoted || stack.length) throw unavailable("Unbalanced Gmail query.");
+      clauses.push(`(${filters.content})`);
+    } else clauses.push("in:inbox");
+    const senderId = filters.sender?.identifier,
+      senderName = filters.sender?.displayName;
+    if (senderId && !/^[^\s@]+@[^\s@]+$/.test(senderId))
       throw unavailable(
-        "Use a Gmail query for sender, label, or date-range filters.",
+        "Use an email address for sender.identifier, or put a domain in the Gmail query.",
       );
-    return this.messages(runtime, filters, filters.content);
+    if (senderId) clauses.push(`from:${literal(senderId)}`);
+    // Gmail word/phrase search cannot represent arbitrary name substrings.
+    // Keep this constraint local; a saturated candidate window fails below.
+    for (const tag of filters.tags ?? []) clauses.push(`label:${literal(tag)}`);
+    for (const value of [filters.sinceMs, filters.untilMs])
+      if (
+        value !== undefined &&
+        (!Number.isSafeInteger(value) ||
+          !Number.isFinite(new Date(value).getTime()))
+      )
+        throw unavailable("Invalid Gmail date.");
+    if (
+      filters.sinceMs !== undefined &&
+      filters.untilMs !== undefined &&
+      filters.sinceMs > filters.untilMs
+    )
+      throw unavailable("Gmail date range ends before it starts.");
+    // Native date search has second precision. Filter its boundary candidates
+    // against the requested inclusive millisecond bounds before disclosure.
+    if (filters.sinceMs !== undefined && filters.sinceMs >= 1000)
+      clauses.push(`after:${Math.floor(filters.sinceMs / 1000) - 1}`);
+    if (filters.untilMs !== undefined && filters.untilMs >= 0)
+      clauses.push(`before:${Math.floor(filters.untilMs / 1000) + 1}`);
+    const query = clauses.join(" ");
+    if (query.length > 4096) throw unavailable("Gmail query is too long.");
+    return this.messages(
+      runtime,
+      { ...filters, sinceMs: undefined },
+      query,
+    ).then((rows) => {
+      if (
+        senderId &&
+        rows.some((row) => !/^\S+@\S+$/.test(row.from.identifier))
+      )
+        throw unavailable(
+          "The Gmail host did not provide sender addresses needed to verify this filter.",
+        );
+      const selected = rows.filter((row) => {
+        if (
+          (filters.sinceMs !== undefined &&
+            row.receivedAtMs < filters.sinceMs) ||
+          (filters.untilMs !== undefined && row.receivedAtMs > filters.untilMs)
+        )
+          return false;
+        if (
+          senderId &&
+          row.from.identifier.toLowerCase() !== senderId.toLowerCase()
+        )
+          return false;
+        if (
+          senderName &&
+          !row.from.displayName
+            ?.toLowerCase()
+            .includes(senderName.toLowerCase()) &&
+          row.from.identifier.toLowerCase() !== senderName.toLowerCase()
+        )
+          return false;
+        return true;
+      });
+      if (selected.length < rows.length && rows.length >= (filters.limit ?? 25))
+        throw unavailable(
+          "The bounded Gmail search needs a narrower query to verify all filtered results.",
+        );
+      // These labels are proved by the AND-composed native query; this is the
+      // matched requested subset, not a complete label inventory.
+      return selected.map((row) => ({
+        ...row,
+        tags: [...(filters.tags ?? [])],
+      }));
+    });
   }
   protected async readMessageImpl(
     runtime: IAgentRuntime,
@@ -322,7 +442,7 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
       !request.expectedRevision
     )
       throw unavailable(
-        "Gmail continuation requires the recorded source revision.",
+        "Gmail continuation requires expectedRevision: copy control.expectedRevision from the previous read together with its reference and offset. Do not retry the same arguments without it.",
       );
     if (
       request.limit !== undefined &&

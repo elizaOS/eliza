@@ -17,7 +17,7 @@
 
 import { createPrivateKey, createSign, type KeyObject } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { validateUuid } from "@elizaos/core";
+import { ElizaError, validateUuid } from "@elizaos/core";
 import {
   type PushMessage,
   type PushProvider,
@@ -75,7 +75,9 @@ function parseServiceAccount(raw: string): ServiceAccount | null {
 }
 
 /**
- * Read + validate the FCM service account from the environment, or null.
+ * Read + validate the FCM service account from the environment, or null when
+ * no credential is supplied. A supplied credential that cannot be used throws,
+ * so it does not look the same as "not configured".
  * Exported for the gating check / tests.
  */
 export function readServiceAccount(
@@ -83,12 +85,20 @@ export function readServiceAccount(
 ): ServiceAccount | null {
   const inline = env.ELIZA_FCM_SERVICE_ACCOUNT?.trim();
   const path = env.ELIZA_FCM_SERVICE_ACCOUNT_PATH?.trim();
-  let raw = inline;
-  if (!raw && path) {
-    raw = readFileSync(path, "utf8").trim();
+  if (!inline && !path) return null;
+  const source = inline
+    ? "ELIZA_FCM_SERVICE_ACCOUNT"
+    : "ELIZA_FCM_SERVICE_ACCOUNT_PATH";
+  const account = parseServiceAccount(
+    inline || readFileSync(path as string, "utf8").trim(),
+  );
+  if (!account) {
+    throw new ElizaError(
+      `[FcmProvider] ${source} does not contain a usable FCM service account`,
+      { code: "FCM_SERVICE_ACCOUNT_INVALID", context: { source } },
+    );
   }
-  if (!raw) return null;
-  return parseServiceAccount(raw);
+  return account;
 }
 
 export class FcmProvider implements PushProvider {

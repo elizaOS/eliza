@@ -4,6 +4,7 @@
  * ensures the LifeOps scheduler task exists so the profile drives scheduling.
  */
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
+import { CALENDAR_NEW_SLOT_DURATION_MINUTES } from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -542,8 +543,8 @@ export function normalizeLifeOpsMeetingPreferencesPatch(
   }
   if (
     typeof patch.defaultDurationMinutes === "number" &&
-    patch.defaultDurationMinutes >= 5 &&
-    patch.defaultDurationMinutes <= 480
+    patch.defaultDurationMinutes >= CALENDAR_NEW_SLOT_DURATION_MINUTES.min &&
+    patch.defaultDurationMinutes <= CALENDAR_NEW_SLOT_DURATION_MINUTES.max
   ) {
     out.defaultDurationMinutes = Math.floor(patch.defaultDurationMinutes);
   }

@@ -167,6 +167,22 @@ describe("plugin-elizacloud TEXT_TO_SPEECH roundtrip", () => {
     expect(Array.from(out as Uint8Array)).toEqual(Array.from(expected));
   });
 
+  it("rejects a successful cloud response that carries no audio bytes", async () => {
+    // A 200 with an empty body is not a silent clip. Returning it as audio
+    // makes byte-expecting callers (GENERATE_MEDIA, read-aloud) write or play
+    // a zero-byte file while reporting success.
+    const { client } = makeFakeClient(new Uint8Array(0));
+    setCloudTtsClientFactoryForTesting(() => client);
+
+    await expect(
+      handleTextToSpeech(makeRuntime(), {
+        text: "hello",
+        voiceId: "EXAVITQu4vr4xnSDxMaL",
+        modelId: "eleven_flash_v2_5",
+      })
+    ).rejects.toThrow("ElizaOS Cloud TTS returned an empty audio response");
+  });
+
   it("returns an AudioStreamResult that yields chunks + resolves full bytes when audioStream is set", async () => {
     // Multi-chunk body so chunking is observable.
     const chunks = [new Uint8Array([1, 2]), new Uint8Array([3, 4, 5])];

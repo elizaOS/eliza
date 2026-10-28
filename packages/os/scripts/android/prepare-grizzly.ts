@@ -17,6 +17,10 @@ import {
 } from "./bootstrap-aosp.ts";
 import { lintInitRc } from "./lint-init-rc.ts";
 import { withSisoCompatibility } from "./siso-env.ts";
+import {
+  assertGeneratedVintfApi as sharedAssertGeneratedVintfApi,
+  readReleaseBoardApi,
+} from "./vendor-api.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(here, "../..");
@@ -221,21 +225,9 @@ function normalizeGeneratedSePolicy(aospRoot) {
 
 // Preserve the stock policy contract. A mismatched development release must
 // be corrected in the lunch configuration, not hidden by rewriting VINTF.
+// The checks are shared with every Pixel target (scripts/android/vendor-api.mjs).
 export function assertGeneratedVintfApi(aospRoot, expectedApi) {
-  if (!/^[0-9]{6}$/.test(expectedApi ?? ""))
-    fail("Missing locked vendor API level");
-  const manifestPath = path.join(
-    aospRoot,
-    "vendor/google_devices/grizzly/vintf/vendor/manifest.xml",
-  );
-  const contents = fs.readFileSync(manifestPath, "utf8");
-  const versions = [
-    ...contents.matchAll(
-      /<sepolicy>\s*<version>([0-9]+)<\/version>\s*<\/sepolicy>/g,
-    ),
-  ];
-  if (versions.length !== 1 || versions[0][1] !== expectedApi)
-    fail(`Generated vendor VINTF policy must retain locked API ${expectedApi}`);
+  sharedAssertGeneratedVintfApi(aospRoot, expectedApi, "grizzly");
 }
 
 export function grizzlyLunchTarget(aospRoot, lock) {
@@ -246,17 +238,10 @@ export function grizzlyLunchTarget(aospRoot, lock) {
     !/^[a-z0-9_]+$/.test(productName ?? "")
   )
     fail("A locked Pixel release configuration and vendor API are required");
-  const flag = fs.readFileSync(
-    path.join(
-      aospRoot,
-      "build/release/flag_values",
-      releaseConfig,
-      "RELEASE_BOARD_API_LEVEL.textproto",
-    ),
-    "utf8",
-  );
-  const values = [...flag.matchAll(/string_value:\s*"([0-9]+)"/g)];
-  if (values.length !== 1 || values[0][1] !== vendorApiLevel)
+  if (
+    readReleaseBoardApi(aospRoot, releaseConfig, "distro-android:grizzly") !==
+    vendorApiLevel
+  )
     fail(
       `Pixel release ${releaseConfig} does not match stock vendor API ${vendorApiLevel}`,
     );

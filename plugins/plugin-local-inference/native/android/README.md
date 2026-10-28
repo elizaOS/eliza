@@ -5,18 +5,97 @@ Android bindings owned by `@elizaos/plugin-local-inference`, using the same
 lazy native context for text, embeddings, Paradee TTS and Phonon-2 ASR.
 `trimMemory()` cancels active work and releases native models; the next call
 reloads them. `close()` is terminal. Native callers own scheduling and should
-trim on Android memory pressure.
+trim on Android memory pressure; consumers of the process-wide session release
+their own client instead (below).
+
+`supportsStreaming()` checks the engine without opening a context or loading
+models. `speechSampleRate()` loads only speech output when needed and returns
+its actual rate. Consumers can use these methods on the shared session instead
+of opening a separate `ParadeeVoice` handle to check output capabilities.
+Use `prepareSpeech()` when readiness requires both speech output and recognition
+models to initialize. It uses the same context and reports initialization or
+cancellation failures. `isSpeechLoaded()` observes the actual output wrapper
+without loading anything, including after a cancelled first load. Trimming or
+closing the session clears that state.
+
+`VoiceAssets.sharedInference(context)` returns the process-wide session for the
+installed bundle (on a worker thread). Each native consumer in the process uses its
+own `client()`: calls still serialize on the session, but a client's `cancel()` fences
+only that client's calls (it interrupts the native call only while it is the
+client's), and its `release()` drops only its own hold on the models, which are freed
+once no client holds them. One consumer's idle or memory-pressure release therefore
+never cancels or unloads another's speech, and no consumer cancels, trims or closes
+the shared session itself. `openVad()` opens a Silero VAD detector (16 kHz,
+512-sample windows) on a small VAD-only context under the same owner and lock-free
+with respect to speech: capture keeps running while a synthesis stream holds the
+session (full duplex), and `cancel()` never fences input. `trimMemory()` keeps open
+detectors and frees an idle VAD context; `close()` retires every detector.
+
+## Shared native speech pipeline
+
+These classes are the common Android speech path for every host; products supply
+only identity and bridge wiring:
+
+- `LocalSpeechEngine` serially owns one lazy backend. `SessionSpeech.shared(context)`
+  is the validated backend over the shared session: 0.1–60 s finite recognition
+  input (silence transcribes to nothing), bounded reviewed text, finite non-silent
+  24 kHz output, per-chunk stream validation with zeroing, and failures held until
+  the native stream returns. Each backend is its own session client: cancelling
+  it never fences another consumer, and releasing it drops only its own hold.
+  Because the models are freed only once no client holds them, a host that keeps
+  a long-lived `SessionSpeech` must `close()` it on its own idle timeout and on
+  `onTrimMemory` pressure; otherwise another consumer's pressure release cannot
+  unload the shared models.
+- `StreamingSpeechPlayback` plays streamed chunks through a bounded `SpeechPcmQueue`
+  (backpressure paces synthesis to playback; 30 s at 24 kHz is the usual bound)
+  with `AudioTrackSpeechOutput`; stop drops and zeroes unplayed audio and cancels
+  synthesis; exactly one terminal outcome is reported.
+- `SpeechAudioFocus` / `SpeechAudioFocusPolicy`: transient duckable assistant-speech
+  focus held only while speech plays, no speech over a ringing phone or call, and
+  call-mode watching that stops speech and conversation capture.
+- `LiveVoiceCapture` reads 16 kHz microphone PCM (the echo-cancelled communication
+  source for a conversation when the device has a canceller, `LiveCaptureSource`),
+  runs the shared VAD on every 32 ms window, gates segments with `LiveVadGate`
+  (pre-roll, ~512 ms hangover) and hands each segment's frames and edges to the
+  host. `LiveCaptureAdmission` and `LiveCaptureResource` fence permission callbacks,
+  blocked starts, pause and stale stops. Nothing is written to storage.
+- `LiveCaptureController` is the host-neutral owner of one plugin's live capture:
+  it reserves admission before the permission prompt, replaces a running capture,
+  warms the agent's streaming ASR session before the microphone opens, publishes
+  cancellation before native startup, delivers events only while the host's
+  lifecycle gate for the capture's epoch holds, applies the Stop cutoff and
+  reports whether the agent acknowledged the close, and interrupts capture for a
+  call without blocking. A plugin keeps only its bridge, permission prompt and
+  lifecycle (`Host`, `Started`, `Stopped`).
+- `LiveSegmentPipe` routes VAD segments to `POST /api/asr/local-inference/live`
+  over a host `Transport` bound to the owner who started the capture (bounded
+  queue, cutoff, discard, acknowledged close, no retry). Its `check()` throws once
+  the owner, runtime or enrollment changed, so no audio or cleanup reaches another
+  owner. `BufferedStreamExchange` is the bounded, deadline-limited request over a
+  cancellable local agent stream that such a transport uses.
+- `VoiceLatencyTrials` / `VoiceLatencyProbe` measure a conversation turn from the
+  capture timestamp of the last speech window to the platform presentation time of
+  the first audible response sample (AudioTrack or MediaPlayer timestamps; head
+  position only as a labelled fallback), with stage marks, cold/overlap/abandon
+  outcomes, network/thermal state and the build/engine/model identity. Hosts name
+  the export document and their build with `VoiceLatencyProbe.configureHost`.
+
+`node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
+runs the host-JVM contracts and compiles the library against Android 36. They are
+not AudioTrack, AudioRecord, model, device-audio or latency evidence.
 
 The optional `ElizaInferencePlugin` Capacitor transport provides one process
-queue, idle unloading and Android memory-pressure handling. Enable it with
+queue, idle unloading and Android memory-pressure handling, through its own client
+of the shared session. Enable it with
 `elizaInferenceCapacitor=true` and register `ElizaInferencePlugin` with the host.
 The legacy `elizaParadeeCapacitor` flag and `ParadeeVoicePlugin` name select the
 same owner. Existing `ai.eliza.voice` Java APIs remain source compatible;
 new code should use `InferenceSession` instead of opening independent handles.
-The old app-side Gradle path forwards here. The public `Wer` helper and Android
+The old app-side Gradle path forwards here. The public `Wer` helper and legacy Android
 on-device recognizer API remain available. The Capacitor transcription route
-retains Android-first recognition with native Phonon-2 fallback, using the same
-request queue and cancellation owner.
+uses only Phonon-2 through `InferenceSession`, with the same request queue and
+cancellation owner. Missing native assets or a failed transcription report an
+error; they never select the platform recognizer or a cloud provider.
 
 The Eliza app uses its existing `ElizaBionicInferenceServer` shared context.
 Hosts using that server should route speech through it. The optional Capacitor
@@ -101,8 +180,12 @@ A consumer Gradle library sets `ext.elizaParadeeSourceDir` to this directory
 and applies `consumer.gradle`. Optional properties: `elizaParadeeNativeDir`,
 `elizaParadeeFfiIncludeDir`, `elizaParadeeInferenceLibDir`, and
 `elizaParadeePackageInference=false` when the app already packages
-`libelizainference.so`. The build fails if a generated file differs from
-`native/build-record.json`.
+`libelizainference.so` and its admitted `libc++_shared.so`. In that mode the
+library packages only its JNI bridge; both runtime libraries remain the host's
+responsibility. This also excludes CMake's implicit copies, avoiding duplicate
+runtime selection during APK merging. The default still packages both runtime
+libraries for standalone consumers such as Sense. The build fails if a generated
+file differs from `native/build-record.json`.
 
 Store the model uncompressed in the APK (`androidResources { noCompress 'gguf', 'lex' }`).
 A host made by `scripts/mobile/android/consumer-host.mjs` sets this in its profile:
@@ -121,3 +204,13 @@ audio; that is flagged for review, not a blocker. `libelizainference.so` links e
 that ships it must meet the GPL. The bundle `notices/` carry the eSpeak NG
 license, and the misaki (Apache-2.0) and spaCy (MIT) notices for the G2P
 rules ported from them.
+
+## Hosts with an existing native inference server
+
+Set `elizaParadeeAssetsOnly=true` when applying `consumer.gradle` to package only the pinned models and `VoiceBundleAssets` installer. This mode includes no inference session classes, JNI bridge or native library. The Eliza Android app uses this mode through `:voice-assets`; `ELIZA_VOICE_NATIVE_DIR` selects its generated native input directory. Explicit cloud and host-test builds omit these assets.
+
+Admission checks the complete asset inventory against the build record and rejects duplicate paths, extra files and symlinks. Required speech models must also match `inputs.json`; a matching record cannot substitute a different model.
+
+`VoiceAssets.install(context)` delegates to the same installer. The default private directory remains `paradee-voice-v1`. A host may set application manifest metadata `ai.eliza.voice.BUNDLE_DIRECTORY` to a relative private directory; Eliza uses `eliza-1/bundle` for its existing bionic server. The installer validates that directory beneath `filesDir`. It copies and verifies model files but never opens a native context.
+
+Run `bun run test:android-assets` from this package to exercise the installer with real JVM file operations and synthetic model bytes. It requires JDK 17 or newer and `org.json:json:20250517` in the Gradle cache (or `ELIZA_JSON_JAR`). This test does not qualify models or a device.

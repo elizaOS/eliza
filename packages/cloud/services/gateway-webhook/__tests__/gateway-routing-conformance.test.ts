@@ -2,6 +2,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  __serverRouterTestHooks as discordRouterTestHooks,
   forwardToServer as forwardDiscord,
   resolveAgentServer as resolveDiscord,
 } from "../../gateway-discord/src/server-router";
@@ -15,6 +16,7 @@ import {
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);
+  discordRouterTestHooks.resetMessageForwardTimeoutMs();
 });
 
 describe("gateway routing facade conformance", () => {
@@ -171,5 +173,46 @@ describe("gateway routing facade conformance", () => {
         else process.env[key] = value;
       }
     }
+  });
+
+  test("runs a Discord agent turn once when it times out or fails", async () => {
+    let calls = 0;
+    let respond: "slow" | "error" = "slow";
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async () => {
+        calls += 1;
+        if (respond === "error") return new Response("boom", { status: 500 });
+        await Bun.sleep(300);
+        return Response.json({ response: "too late" });
+      },
+    });
+    servers.push(server);
+    discordRouterTestHooks.setMessageForwardTimeoutMs(100);
+
+    await expect(
+      forwardDiscord(
+        server.url.origin,
+        "direct",
+        "test-agent",
+        "user-1",
+        "slow turn",
+      ),
+    ).rejects.toThrow("timed out");
+    expect(calls).toBe(1);
+
+    calls = 0;
+    respond = "error";
+    await expect(
+      forwardDiscord(
+        server.url.origin,
+        "direct",
+        "test-agent",
+        "user-1",
+        "failing turn",
+      ),
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
   });
 });

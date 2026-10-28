@@ -58,6 +58,7 @@
     "@capacitor/haptics": "8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",
+    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/ui": "workspace:*",
@@ -91,7 +92,7 @@
   ],
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.64.9",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5",

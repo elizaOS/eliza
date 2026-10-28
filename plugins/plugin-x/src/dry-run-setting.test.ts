@@ -143,3 +143,45 @@ describe("TWITTER_DRY_RUN", () => {
     }
   });
 });
+
+describe("TWITTER_ENABLE_REPLIES", () => {
+  it.each(["false", "FALSE", "0", "no", "off"])(
+    "turns mention and reply handling off for %s",
+    async (value) => {
+      const runtime = runtimeWith({
+        TWITTER_ENABLE_REPLIES: value,
+        TWITTER_ENABLE_DMS: "false",
+      });
+      await runtime.initialize({ skipMigrations: true });
+      try {
+        const state = await validatedState(runtime);
+        expect(state.TWITTER_ENABLE_REPLIES).toBe("false");
+        expect(
+          new TwitterClientInstance(runtime, state).interaction,
+        ).toBeUndefined();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
+
+  it.each(["true", "1", "yes", "on"])(
+    "keeps mention and reply handling on for %s",
+    async (value) => {
+      const runtime = runtimeWith({
+        TWITTER_ENABLE_REPLIES: value,
+        TWITTER_ENABLE_DMS: "false",
+      });
+      await runtime.initialize({ skipMigrations: true });
+      try {
+        const state = await validatedState(runtime);
+        expect(state.TWITTER_ENABLE_REPLIES).toBe("true");
+        expect(
+          new TwitterClientInstance(runtime, state).interaction,
+        ).toBeDefined();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
+});

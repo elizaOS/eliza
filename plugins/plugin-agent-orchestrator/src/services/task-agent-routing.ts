@@ -255,7 +255,8 @@ export function resolveWorkdirByConvention(
       continue;
     }
     for (const name of entries) {
-      // Match the directory name as a contiguous phrase. Hyphens and
+      // Match the directory name as a contiguous phrase, on word boundaries
+      // like route terms, so `site` does not match "website". Hyphens and
       // spaces are interchangeable so `camping-car-europe` matches
       // "camping car europe" and vice versa.
       const variants = new Set([
@@ -265,7 +266,7 @@ export function resolveWorkdirByConvention(
       ]);
       for (const variant of variants) {
         if (variant.length < 4) continue; // skip generic tokens like "app"
-        if (haystack.includes(variant)) {
+        if (containsPhrase(haystack, variant)) {
           matches.push(path.join(root, name));
           break;
         }
