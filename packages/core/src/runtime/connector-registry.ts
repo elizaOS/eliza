@@ -5,6 +5,7 @@ import { ElizaError } from "../errors.ts";
 import { guardOutboundEnvelopeText } from "../security/outbound-envelope-guard.js";
 import { sanitizeOutboundText } from "../security/outbound-sanitize.ts";
 import { ensureAgentVoice } from "../security/voice-gate.ts";
+import { getTrajectoryContext } from "../trajectory-context.ts";
 import type { Memory } from "../types/memory.js";
 import {
 	SEND_HANDLER_NOT_FOUND,
@@ -310,15 +311,22 @@ export class RuntimeConnectorRegistry {
 			source,
 		});
 		// Proactive sends bypass the message-turn callback wrap, so the shared
-		// machine-syntax sanitizer and the fail-closed envelope guard
-		// apply here — after the voice gate, whose rephrase is itself model text.
+		// machine-syntax sanitizer, the fail-closed envelope guard, and the
+		// secret-swap reply policy (an in-turn MESSAGE send carries values the
+		// execution boundary restored) apply here — after the voice gate, whose
+		// rephrase is itself model text.
+		const secretSession = getTrajectoryContext()?.secretSwapSession;
 		const outboundContent =
 			typeof voicedContent.text === "string"
 				? {
 						...voicedContent,
 						text: guardOutboundEnvelopeText(
 							this.runtime,
-							sanitizeOutboundText(voicedContent.text),
+							sanitizeOutboundText(
+								secretSession
+									? secretSession.redactRestoredSecretValues(voicedContent.text)
+									: voicedContent.text,
+							),
 							"sendMessageToTarget",
 						),
 					}
