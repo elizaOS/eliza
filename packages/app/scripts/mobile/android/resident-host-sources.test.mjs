@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   RESIDENT_HOST_CLASSES,
   RESIDENT_HOST_HELPERS,
+  RESIDENT_NOTIFICATION_CLASSES,
   RESIDENT_NOTIFICATION_STRINGS,
   ResidentHostSourceError,
   residentHelperKind,
@@ -158,6 +159,146 @@ test("a changed anchor fails closed instead of producing a partly branded servic
   }
 });
 
+test("lifecycle hooks wrap the one root publication and follow every running path", () => {
+  const hooks = {
+    rootPublication: { className: "HostTransport", method: "publishRoot" },
+    ready: { className: "HostNotifications", method: "resume" },
+  };
+  const text = rewriteResidentClass(
+    "ElizaAgentService",
+    service(),
+    identity({ lifecycleHooks: hooks }),
+  );
+  assert.equal(
+    text.split(
+      "            HostTransport.publishRoot(() -> { currentLocalAgentToken = token; });",
+    ).length,
+    2,
+  );
+  assert.equal(
+    text.split("            currentLocalAgentToken = token;").length,
+    1,
+  );
+  assert.equal(
+    text.split(
+      'currentStatus = "running"; HostNotifications.resume(getApplicationContext());',
+    ).length,
+    5,
+  );
+  // Without hooks the upstream lifecycle is unchanged.
+  const plain = rewriteResidentClass(
+    "ElizaAgentService",
+    service(),
+    identity(),
+  );
+  assert.doesNotMatch(plain, /HostTransport|HostNotifications/);
+  // A changed lifecycle anchor fails closed instead of skipping a running path.
+  for (const [from, to, message] of [
+    [
+      "            currentLocalAgentToken = token;",
+      "            currentLocalAgentToken = rotated;",
+      /root publication/,
+    ],
+    [
+      'currentStatus = "running";',
+      'currentStatus = "ready";',
+      /ready lifecycle/,
+    ],
+  ]) {
+    const changed = service().replace(from, to);
+    assert.notEqual(changed, service());
+    assert.throws(
+      () =>
+        rewriteResidentClass(
+          "ElizaAgentService",
+          changed,
+          identity({ lifecycleHooks: hooks }),
+        ),
+      (error) =>
+        error instanceof ResidentHostSourceError && message.test(error.message),
+    );
+  }
+});
+
+test("a host may compile the shared notification classes with its icon and channel labels", (t) => {
+  const present = RESIDENT_NOTIFICATION_CLASSES.filter((name) =>
+    fs.existsSync(path.join(upstreamRoot, residentRoot, `${name}.java`)),
+  );
+  assert.ok(present.includes("NativeNotificationProjector"));
+  const output = path.join(temporary(t), "java");
+  const branded = identity({
+    notification: { ...identity().notification, channelLabel: "Host" },
+  });
+  const result = stageResidentHostSources({
+    sourceRoot: upstreamRoot,
+    output,
+    identity: branded,
+    classes: [...RESIDENT_HOST_CLASSES, ...present],
+  });
+  assert.equal(
+    result.files.length,
+    RESIDENT_HOST_CLASSES.length + present.length,
+  );
+  for (const name of present) {
+    const text = fs.readFileSync(
+      path.join(output, "example/host", `${name}.java`),
+      "utf8",
+    );
+    assert.match(text, /^package example\.host;$/m, name);
+    assert.doesNotMatch(text, /ai\.elizaos\.app|ic_dialog_info/, name);
+  }
+  assert.ok(
+    fs
+      .readFileSync(
+        path.join(output, "example/host/NativeNotificationProjector.java"),
+        "utf8",
+      )
+      .includes(".setSmallIcon(R.drawable.notification_icon)"),
+  );
+  // Channel ids stay upstream's; only the visible labels take the host name.
+  const channels = [
+    "package ai.elizaos.app;",
+    'id = "eliza_alerts"; name = "Eliza alerts";',
+    'id = "eliza_notifications"; name = "Eliza";',
+    'id = "eliza_updates"; name = "Eliza updates";',
+    'id = "eliza_quiet"; name = "Eliza background";',
+  ].join("\n");
+  const labelled = rewriteResidentClass(
+    "NativeNotificationChannels",
+    channels,
+    branded,
+  );
+  for (const expected of [
+    'id = "eliza_alerts"; name = "Host alerts";',
+    'id = "eliza_notifications"; name = "Host";',
+    'id = "eliza_updates"; name = "Host updates";',
+    'id = "eliza_quiet"; name = "Host background";',
+  ])
+    assert.ok(labelled.includes(expected), expected);
+  assert.equal(
+    rewriteResidentClass("NativeNotificationChannels", channels, identity()),
+    channels.replace("ai.elizaos.app", "example.host"),
+  );
+  assert.throws(
+    () =>
+      rewriteResidentClass(
+        "NativeNotificationChannels",
+        channels.replace('name = "Eliza updates"', 'name = "Updates"'),
+        branded,
+      ),
+    /notification channels/,
+  );
+  assert.throws(
+    () =>
+      rewriteResidentClass(
+        "NativeNotificationProjector",
+        "package ai.elizaos.app;",
+        branded,
+      ),
+    /shared notification builders/,
+  );
+});
+
 test("identity mappings are complete, distinct and never reuse the upstream identity", () => {
   for (const mutate of [
     (value) => (value.packageName = "ai.elizaos.app"),
@@ -169,6 +310,12 @@ test("identity mappings are complete, distinct and never reuse the upstream iden
     (value) => delete value.notification.strings.runningDetail,
     (value) => (value.environmentHook.method = "configure()"),
     (value) => (value.environmentHook.unavailableStatus = "$&"),
+    (value) => (value.notification.channelLabel = "Host\nalerts"),
+    (value) => (value.notification.channelLabel = " Host"),
+    (value) =>
+      (value.lifecycleHooks = { started: { className: "A", method: "b" } }),
+    (value) =>
+      (value.lifecycleHooks = { ready: { className: "A", method: "b()" } }),
   ]) {
     const value = structuredClone(identity());
     mutate(value);

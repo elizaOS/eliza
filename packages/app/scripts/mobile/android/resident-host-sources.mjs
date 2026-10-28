@@ -6,8 +6,9 @@
  * keep that host's identity. The rewrite anchors are owned here, next to the
  * sources they match, and every anchor fails closed when the source changes.
  * The consumer supplies only data: package, socket namespaces, notification
- * resources, an optional environment hook and the shared plugin helper sources
- * it compiles beside them.
+ * resources, optional environment and lifecycle hooks, the optional shared
+ * notification classes it compiles, and the shared plugin helper sources it
+ * compiles beside them.
  */
 
 import { createHash } from "node:crypto";
@@ -42,6 +43,23 @@ export const RESIDENT_HOST_CLASSES = Object.freeze([
   "ElizaAsrNativeEnv",
   "ElizaVoiceNative",
   "BgeEmbeddingSession",
+]);
+
+/**
+ * Shared native notification classes a host may also select. Their ids, wire
+ * format and routing stay upstream's; a host that selects them compiles them in
+ * its own package so its notification icon and channel labels apply.
+ */
+export const RESIDENT_NOTIFICATION_CLASSES = Object.freeze([
+  "NativeNotificationInbox",
+  "NativeNotificationWire",
+  "NativeNotificationRoute",
+  "NativeNotificationChannels",
+  "NativeNotificationProjector",
+]);
+const SELECTABLE_CLASSES = Object.freeze([
+  ...RESIDENT_HOST_CLASSES,
+  ...RESIDENT_NOTIFICATION_CLASSES,
 ]);
 
 /**
@@ -86,6 +104,19 @@ export const RESIDENT_NOTIFICATION_STRINGS = Object.freeze([
   ["restartBlocked", '"Eliza agent · Restart blocked"', 1],
   ["runningDetail", '"On-device agent ready"', 1],
 ]);
+/** NativeNotificationChannels labels by channel: anchor and the suffix after the host label. */
+const CHANNEL_LABELS = Object.freeze([
+  ['name = "Eliza alerts"', " alerts"],
+  ['name = "Eliza"', ""],
+  ['name = "Eliza updates"', " updates"],
+  ['name = "Eliza background"', " background"],
+]);
+const PROJECTOR_ICON = "android.R.drawable.ic_dialog_info";
+// ElizaAgentService publishes a rotated local-agent root here, once.
+const ROOT_PUBLICATION_ANCHOR = "            currentLocalAgentToken = token;";
+// Every path that reaches the running state: start, detached adoption and the ready probes.
+const READY_ANCHOR = 'currentStatus = "running";';
+const READY_OCCURRENCES = 4;
 const ENVIRONMENT_ANCHOR =
   'agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);';
 const SOCKET_ANCHORS = Object.freeze({
@@ -106,6 +137,7 @@ const javaPackage = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 const javaIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const resourceName = /^[a-z][a-z0-9_]*$/;
 const socketName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+const channelLabel = /^[A-Za-z0-9][A-Za-z0-9 ]{0,31}$/;
 // A shared native plugin's main Java source; the capture is its package path.
 const HELPER_SOURCE =
   /^plugins\/plugin-native-[a-z0-9-]+\/android\/src\/main\/java\/((?:[a-z][a-z0-9_]*\/)+[A-Z][A-Za-z0-9_]*\.java)$/;
@@ -137,7 +169,13 @@ export function residentHostIdentity(identity) {
     identity && typeof identity === "object",
     "A resident host identity is required",
   );
-  const { packageName, sockets, notification, environmentHook } = identity;
+  const {
+    packageName,
+    sockets,
+    notification,
+    environmentHook,
+    lifecycleHooks,
+  } = identity;
   requireValue(
     javaPackage.test(packageName ?? "") && packageName !== UPSTREAM_PACKAGE,
     "Resident host package must be the consumer application package",
@@ -170,6 +208,34 @@ export function residentHostIdentity(identity) {
       "Notification strings must name a string resource for every runtime notification",
     );
   }
+  requireValue(
+    notification.channelLabel === undefined ||
+      notification.channelLabel === null ||
+      (typeof notification.channelLabel === "string" &&
+        channelLabel.test(notification.channelLabel) &&
+        notification.channelLabel === notification.channelLabel.trim()),
+    "Notification channel label must be a short plain name",
+  );
+  const hooks = {};
+  if (lifecycleHooks !== undefined && lifecycleHooks !== null) {
+    requireValue(
+      typeof lifecycleHooks === "object" &&
+        !Array.isArray(lifecycleHooks) &&
+        Object.keys(lifecycleHooks).every((key) =>
+          ["rootPublication", "ready"].includes(key),
+        ),
+      "Lifecycle hooks are rootPublication and ready",
+    );
+    for (const [key, hook] of Object.entries(lifecycleHooks)) {
+      requireValue(
+        hook &&
+          javaIdentifier.test(hook.className ?? "") &&
+          javaIdentifier.test(hook.method ?? ""),
+        `Lifecycle hook ${key} needs a host class and static method`,
+      );
+      hooks[key] = { className: hook.className, method: hook.method };
+    }
+  }
   if (environmentHook !== undefined && environmentHook !== null)
     requireValue(
       javaIdentifier.test(environmentHook.className ?? "") &&
@@ -184,15 +250,17 @@ export function residentHostIdentity(identity) {
       smallIcon: notification.smallIcon,
       color: notification.color ?? null,
       strings: strings && { ...strings },
+      channelLabel: notification.channelLabel ?? null,
     },
     environmentHook: environmentHook ? { ...environmentHook } : null,
+    lifecycleHooks: hooks,
   };
 }
 
 /** Rewrite one resident class for a host identity. Pure; throws when an anchor changed. */
 export function rewriteResidentClass(name, source, identity) {
   requireValue(
-    RESIDENT_HOST_CLASSES.includes(name),
+    SELECTABLE_CLASSES.includes(name),
     `Unknown resident class ${name}`,
   );
   const host = residentHostIdentity(identity);
@@ -207,6 +275,26 @@ export function rewriteResidentClass(name, source, identity) {
     .replaceAll(SOCKET_ANCHORS.inference, () =>
       JSON.stringify(host.sockets.inference),
     );
+  if (name === "NativeNotificationProjector")
+    return replaceCounted(
+      value,
+      PROJECTOR_ICON,
+      `R.drawable.${host.notification.smallIcon}`,
+      1,
+      "Review changed shared notification builders",
+    );
+  if (name === "NativeNotificationChannels") {
+    if (host.notification.channelLabel)
+      for (const [anchor, suffix] of CHANNEL_LABELS)
+        value = replaceCounted(
+          value,
+          anchor,
+          `name = ${JSON.stringify(host.notification.channelLabel + suffix)}`,
+          1,
+          `Review changed shared notification channels: ${anchor}`,
+        );
+    return value;
+  }
   if (name !== "ElizaAgentService") return value;
   // Product presentation over the canonical runtime: the state machine,
   // notification timing, Stop action and binder-free bootstrap stay unchanged.
@@ -229,6 +317,26 @@ export function rewriteResidentClass(name, source, identity) {
       "Review changed runtime notification builders",
     );
   }
+  const { rootPublication, ready } = host.lifecycleHooks;
+  // The host publishes a rotated root through its own guard (for example to
+  // suspend a previous transport atomically) instead of a bare assignment.
+  if (rootPublication)
+    value = replaceCounted(
+      value,
+      ROOT_PUBLICATION_ANCHOR,
+      `            ${rootPublication.className}.${rootPublication.method}(() -> { ${ROOT_PUBLICATION_ANCHOR.trim()} });`,
+      1,
+      "Review changed resident root publication",
+    );
+  // The host learns of readiness on every running path, never before readiness.
+  if (ready)
+    value = replaceCounted(
+      value,
+      READY_ANCHOR,
+      `${READY_ANCHOR} ${ready.className}.${ready.method}(getApplicationContext());`,
+      READY_OCCURRENCES,
+      "Review changed resident ready lifecycle",
+    );
   requireValue(
     occurrences(value, ENVIRONMENT_ANCHOR) === 1,
     "Native runtime environment insertion point changed",
@@ -304,7 +412,7 @@ export function stageResidentHostSources({
   requireValue(
     Array.isArray(classes) &&
       new Set(classes).size === classes.length &&
-      classes.every((name) => RESIDENT_HOST_CLASSES.includes(name)) &&
+      classes.every((name) => SELECTABLE_CLASSES.includes(name)) &&
       classes.includes("ElizaAgentService"),
     "Resident classes must be distinct known classes including ElizaAgentService",
   );
