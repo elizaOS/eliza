@@ -36,6 +36,13 @@ export const PENDING_APPROVALS_UNAVAILABLE_TEXT = [
   "The approval queue could not be read for this turn. Do not say that nothing is pending and do not approve, reject, or dispatch a queued action from memory. Ask the owner to retry after the queue is available.",
 ].join("\n");
 
+// Max rows rendered into one turn's prompt. The list already
+// orders newest-first, and the provider's purpose is surfacing
+// the live decision, so the newest rows are the actionable ones.
+// Older rows stay resolvable through RESOLVE_REQUEST's own
+// listing, which uses the same subject scoping key.
+const PENDING_APPROVALS_MAX_RENDERED = 50;
+
 // Renders id + action + reason but never the queued payload: the reason is
 // authored for owner-facing display, while payloads carry full message/email
 // bodies that would bloat and leak into every prompt.
@@ -116,11 +123,16 @@ export const pendingApprovalsProvider: Provider = {
     let pending: ReadonlyArray<ApprovalRequest>;
     try {
       const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+      // Bound the per-turn render: with limit null the store
+      // emits no LIMIT clause, so every pending row — including
+      // lapsed rows, which are only expired lazily on transition
+      // — was rendered into every owner turn's prompt. Fetch one
+      // extra row to detect the overflow without a count query.
       pending = await queue.list({
         subjectUserId,
         state: "pending",
         action: null,
-        limit: null,
+        limit: PENDING_APPROVALS_MAX_RENDERED + 1,
       });
     } catch (error) {
       // error-policy:J4 explicit user-facing degrade — a queue-read failure
@@ -141,13 +153,22 @@ export const pendingApprovalsProvider: Provider = {
     }
     if (pending.length === 0) return EMPTY;
 
+    const truncated = pending.length > PENDING_APPROVALS_MAX_RENDERED;
+    const rendered = truncated
+      ? pending.slice(0, PENDING_APPROVALS_MAX_RENDERED)
+      : pending;
     return {
-      text: renderPendingApprovalsText(pending),
+      text:
+        renderPendingApprovalsText(rendered) +
+        (truncated
+          ? "\nMore pending approvals exist beyond those shown; use RESOLVE_REQUEST to list them."
+          : ""),
       values: {
-        pendingApprovalCount: pending.length,
-        pendingApprovalIds: pending.map((request) => request.id),
+        pendingApprovalCount: rendered.length,
+        pendingApprovalIds: rendered.map((request) => request.id),
+        ...(truncated ? { pendingApprovalsTruncated: true } : {}),
       },
-      data: { pendingApprovals: pending },
+      data: { pendingApprovals: rendered },
     };
   },
 };
