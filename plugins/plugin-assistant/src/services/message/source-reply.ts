@@ -326,9 +326,15 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
+    const attachments =
+      typeof meta?.attachmentSummary === "string"
+        ? ` ${meta.attachmentSummary}`
+        : "";
     if (
-      priorDialogueContent(raw, speaker) !== event.segment.content &&
-      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+      priorDialogueContent(`${raw}${attachments}`, speaker) !==
+        event.segment.content &&
+      priorDialogueContent(`${raw.trim()}${attachments}`, speaker) !==
+        event.segment.content
     )
       continue;
     originals.set(id, raw);

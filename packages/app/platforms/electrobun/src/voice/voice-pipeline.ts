@@ -33,7 +33,6 @@ const VOICE_MODEL_ROLES: Readonly<Record<VoiceModelId, VoiceComponentRole>> = {
 	vad: "vad",
 	wakeword: "unknown",
 	embedding: "voice",
-	asr: "asr",
 	"mobile-voice": "voice",
 };
 const VOICE_MODEL_NAMES: Readonly<Record<VoiceModelId, string>> = {
@@ -46,12 +45,11 @@ const VOICE_MODEL_NAMES: Readonly<Record<VoiceModelId, string>> = {
 	vad: "Voice Activity Detection",
 	wakeword: "Wake Word",
 	embedding: "Voice Embedding",
-	asr: "ASR",
-	"mobile-voice": "Mobile Voice Bundle",
+	"mobile-voice": "Device Voice (Paradee v1.1 + Phonon-2)",
 };
 function providerForVoiceModel(id: VoiceModelId): string {
 	if (id === "kokoro") return "kokoro";
-	if (id === "asr" || id === "vad") return "eliza-1";
+	if (id === "vad") return "eliza-1";
 	return "local-inference";
 }
 function latestVoiceVersions(): Map<VoiceModelId, VoiceModelVersion> {

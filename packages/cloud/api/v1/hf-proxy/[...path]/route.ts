@@ -23,6 +23,7 @@
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   createHfProxyEgressQuotaStore,
+  HfEgressStateError,
   type HfProxyEgressQuotaStore,
 } from "@elizaos/cloud-shared/lib/services/hf-proxy-egress-quota";
 import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -419,6 +420,17 @@ app.get("/*", async (c) => {
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof HfEgressStateError) {
+      // error-policy:J1 Refuse provider admission when the selected quota owner is unavailable.
+      logger.error("[hf-proxy] quota state unavailable", {
+        error: error.message,
+      });
+      return c.json(
+        { error: "HuggingFace proxy quota service is unavailable." },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });

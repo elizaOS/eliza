@@ -144,3 +144,109 @@ test("SIGTERM to a real host drains its owned child and removes listeners", asyn
       host.kill("SIGKILL");
   }
 });
+
+// Process groups and the watchdog are POSIX only.
+const posixOnly = {
+  skip: process.platform === "win32" && "process groups are POSIX only",
+};
+const moduleUrl = new URL("./development-process-scope.ts", import.meta.url)
+  .href;
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const killIfAlive = (pid: number) => {
+  if (alive(pid)) process.kill(pid, "SIGKILL");
+};
+const waitForDeath = async (pid: number, waitMs: number) => {
+  const deadline = Date.now() + waitMs;
+  while (alive(pid) && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+};
+// Runs `body` in a host that prints a JSON line, then kills the host with SIGKILL.
+const killHostAfter = async (body: string) => {
+  const host = spawn(process.execPath, ["--input-type=module", "-e", body], {
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  assert.ok(host.stdout);
+  const [line] = await once(host.stdout, "data");
+  host.kill("SIGKILL");
+  await once(host, "close");
+  return JSON.parse(String(line));
+};
+
+test(
+  "orphanWatchdog stops a child whose host is killed with SIGKILL",
+  posixOnly,
+  async () => {
+    const orphanAfterHostKill = (orphanWatchdog: boolean) =>
+      killHostAfter(`import {createDevelopmentProcessScope} from ${JSON.stringify(moduleUrl)};
+      const scope=createDevelopmentProcessScope({cwd:process.cwd(),drainWindowMs:1000,orphanWatchdog:${orphanWatchdog},onUnexpectedExit:()=>{}});
+      const child=scope.launch('child',process.execPath,['-e','setInterval(()=>{},1000)'],process.env,'ignore');
+      child.once('spawn',()=>console.log(child.pid));`);
+    const watched: number = await orphanAfterHostKill(true);
+    try {
+      await waitForDeath(watched, 5000);
+      assert.equal(alive(watched), false);
+    } finally {
+      killIfAlive(watched);
+    }
+    const unwatched: number = await orphanAfterHostKill(false);
+    try {
+      await waitForDeath(unwatched, 1000);
+      assert.equal(alive(unwatched), true);
+    } finally {
+      killIfAlive(unwatched);
+    }
+  },
+);
+
+// Each group is a detached idle child of the host, so it outlives the host.
+const groupsScript = (count: number, then: string) =>
+  `import {spawn} from 'node:child_process';
+  import {startOrphanWatchdog} from ${JSON.stringify(moduleUrl)};
+  const groups=Array.from({length:${count}},()=>{const g=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{detached:true,stdio:'ignore'});g.unref();return g.pid;});
+  const watchdog=startOrphanWatchdog();
+  for(const g of groups)watchdog.register(g);
+  ${then}
+  console.log(JSON.stringify({groups,watchdog:watchdog.pid}));`;
+
+test(
+  "orphan watchdog skips a group unregistered before the host dies",
+  posixOnly,
+  async () => {
+    const { groups } = await killHostAfter(
+      groupsScript(2, "watchdog.unregister(groups[1]);"),
+    );
+    try {
+      // The registered group's death shows the watchdog has run.
+      await waitForDeath(groups[0], 5000);
+      assert.equal(alive(groups[0]), false);
+      assert.equal(alive(groups[1]), true);
+    } finally {
+      for (const group of groups) killIfAlive(group);
+    }
+  },
+);
+
+test(
+  "orphan watchdog release exits the helper without signalling",
+  posixOnly,
+  async () => {
+    const { groups, watchdog } = await killHostAfter(
+      groupsScript(1, "watchdog.release();"),
+    );
+    try {
+      await waitForDeath(watchdog, 5000);
+      assert.equal(alive(watchdog), false);
+      assert.equal(alive(groups[0]), true);
+    } finally {
+      killIfAlive(watchdog);
+      for (const group of groups) killIfAlive(group);
+    }
+  },
+);

@@ -169,7 +169,8 @@ it("lists every known voice model as uninstalled without fabricating readiness",
   const { installations } = await jsonGet("/api/local-inference/voice-models");
   const ids = installations.map((installation) => installation.id);
   expect(ids).toContain("kokoro");
-  expect(ids).toContain("asr");
+  expect(ids).toContain("mobile-voice");
+  expect(ids).not.toContain("asr");
   expect(ids).toEqual(
     [...new Set(VOICE_MODEL_VERSIONS.map((version) => version.id))].sort(),
   );

@@ -1849,6 +1849,42 @@ it("reports an existing entity id as created without overwriting another agent's
   });
 });
 
+it("keeps an existing memory when a create reuses its id, like plugin-sql", async () => {
+  const adapter = await open();
+  const memoryId = id();
+  await adapter.createMemories([
+    {
+      memory: {
+        ...memory("original text"),
+        id: memoryId,
+        createdAt: 1_700_000_000_000,
+        embedding: undefined,
+      },
+      tableName: "messages",
+    },
+  ]);
+
+  // plugin-sql inserts with ON CONFLICT DO NOTHING: the stored row wins and
+  // every requested id is still reported as created.
+  expect(
+    await adapter.createMemories([
+      {
+        memory: {
+          ...memory("rewritten text"),
+          id: memoryId,
+          createdAt: 1_700_000_000_500,
+          embedding: undefined,
+        },
+        tableName: "messages",
+      },
+    ]),
+  ).toEqual([memoryId]);
+
+  const [stored] = await adapter.getMemoriesByIds([memoryId], "messages");
+  expect(stored.content.text).toBe("original text");
+  expect(stored.createdAt).toBe(1_700_000_000_000);
+});
+
 it("keeps another agent's worlds out of listing, updates, and metadata swaps", async () => {
   const adapter = await open();
   const ownedId = id();
@@ -2290,6 +2326,52 @@ it("returns messages from the requested world and treats limit 0 as empty", asyn
     found,
   );
   expect(await adapter.getMemoriesByWorldId({ worldId, limit: 0 })).toEqual([]);
+});
+
+it("keeps another agent's memories when deleteAllMemories wipes a room", async () => {
+  const adapter = await open();
+  await adapter.ensureEmbeddingDimension(3);
+  const otherAgentId = id();
+  const ownedId = id();
+  const foreignId = id();
+  const nullId = id();
+  await adapter.createMemories([
+    {
+      memory: { ...memory("owned message"), id: ownedId },
+      tableName: "messages",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("memories", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    entityId,
+    roomId,
+    tableName: "messages",
+    content: { text: "foreign message" },
+    createdAt: Date.now(),
+  });
+  await storage.set("memories", nullId, {
+    id: nullId,
+    // Legacy/migrated rows can carry a SQL NULL agent_id, which the
+    // storage layer reads back as null rather than undefined.
+    agentId: null as unknown as UUID,
+    entityId,
+    roomId,
+    tableName: "messages",
+    content: { text: "legacy null-agent message" },
+    createdAt: Date.now(),
+  });
+
+  await adapter.deleteAllMemories([roomId], "messages");
+
+  expect(await storage.get("memories", ownedId)).toBeNull();
+  expect(await storage.get("memories", nullId)).toBeNull();
+  expect(await storage.get("memories", foreignId)).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    content: { text: "foreign message" },
+  });
 });
 
 it("keeps entity name lookups inside the requested agent and honors an explicit empty page", async () => {

@@ -22,6 +22,7 @@
  */
 
 import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
+import { getBootConfig } from "../config/boot-config-store";
 import { isMobileLocalAgentUrl } from "../first-run/mobile-runtime-mode";
 import { getFrontendPlatform } from "../platform/platform-guards";
 import { loadAgentProfileRegistry } from "../state/agent-profiles";
@@ -79,7 +80,8 @@ function profileRecencyMs(profile: {
 /**
  * Resolve the Cloud runtime that should serve the workflow surface, or null
  * when the active base must keep serving it (which is every case except the
- * bundled mobile on-device runtime with a linked Cloud agent).
+ * bundled mobile on-device runtime with a linked Cloud agent, and always for a
+ * host that disables `workflowSurfaceCloudFallback`).
  *
  * Dedicated runtimes (agent subdomain or raw container bridge) are preferred
  * over shared REST-adapter bases: a dedicated base serves real workflow data
@@ -89,6 +91,8 @@ function profileRecencyMs(profile: {
 export function resolveWorkflowSurfaceTarget(
   activeBaseUrl: string | null | undefined,
 ): WorkflowSurfaceTarget | null {
+  // A local-only host keeps its workflow surface on the active agent.
+  if (getBootConfig().workflowSurfaceCloudFallback === false) return null;
   const platform = getFrontendPlatform();
   if (platform !== "android" && platform !== "ios") return null;
   if (!isMobileLocalAgentUrl(activeBaseUrl ?? "")) return null;

@@ -1,4 +1,4 @@
-/** Message consent is bound to one actor, room, preview and later user turn. */
+/** Message consent binds one actor and room to a preview confirmation or a current authenticated request. */
 import { createHash, randomUUID } from "node:crypto";
 import {
   ElizaError,
@@ -7,6 +7,7 @@ import {
   stableStringify,
   unwrapUserMessageText,
 } from "@elizaos/core";
+import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
 import type { DraftRecord } from "./types.ts";
 
 export function sendConsentDigest(value: unknown): string {
@@ -62,6 +63,10 @@ function pendingSend(value: unknown): value is PendingSend {
 }
 
 export interface SendConsentOptions {
+  /** Actual connector source, not a claim of authority. */
+  readonly source?: string;
+  /** Canonical origin of a newly prepared operation; never read from model options. */
+  readonly requestMessageId?: string;
   /** Host-owned draft reference for a later reply; never send authority. */
   readonly draftId?: string;
   /**
@@ -164,8 +169,16 @@ export async function requireSendConsent(
   const key = `message-consent:${message.entityId}:${message.roomId}`;
   const existing = await runtime.getCache<unknown>(key);
   const now = Date.now();
+  if (existing != null && !pendingSend(existing)) return "cancelled";
+  if (pendingSend(existing) && existing.consumedBy === message.id)
+    return "cancelled";
+  const directDecision =
+    options.source === "gmail" && options.requestMessageId === message.id
+      ? await deviceGmailRequestConsent(runtime, message, digest)
+      : "legacy";
+  if (directDecision === "denied") return "cancelled";
+
   if (pendingSend(existing)) {
-    if (existing.consumedBy === message.id) return "cancelled";
     const fresh =
       existing.digest === digest &&
       existing.consumedBy === null &&

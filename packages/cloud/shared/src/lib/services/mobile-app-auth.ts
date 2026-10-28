@@ -155,15 +155,6 @@ export function resolveMobileAppAuthRegistration(
       `${MOBILE_APP_AUTH_ENABLED_ENV} must be exactly true or false`,
     );
   }
-  if (
-    typeof env.ELIZA_MOBILE_APP_AUTH_APP_ID !== "string" ||
-    !UUID_RE.test(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
-  ) {
-    return invalid(
-      "server_configuration_error",
-      `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
-    );
-  }
   if (clientId !== MOBILE_APP_AUTH_CLIENT_ID) {
     const selected = selectRegisteredMobileClient(
       env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
@@ -188,6 +179,15 @@ export function resolveMobileAppAuthRegistration(
       scopes: MOBILE_APP_AUTH_SCOPES,
       credentialTtlSeconds: credentialTtlSeconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
     };
+  }
+  if (
+    typeof env.ELIZA_MOBILE_APP_AUTH_APP_ID !== "string" ||
+    !UUID_RE.test(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
+  ) {
+    return invalid(
+      "server_configuration_error",
+      `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
+    );
   }
   return {
     appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,

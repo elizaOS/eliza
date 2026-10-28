@@ -73,9 +73,11 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
   async function run(
     message: Memory,
     parameters: Record<string, unknown>,
+    previousResults?: ActionResult[],
   ): Promise<ActionResult> {
     const result = await todoAction.handler?.(runtime, message, undefined, {
       parameters,
+      ...(previousResults ? { actionContext: { previousResults } } : {}),
     } as HandlerOptions);
     if (!result) throw new Error("TODO action returned no result");
     return result;
@@ -88,6 +90,25 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
   async function seed(entityId: UUID, content: string) {
     return service.create({ entityId, agentId: runtime.agentId, content });
   }
+
+  it.each([
+    ["Buy 12 bolts and 24 nuts", "Buy 24 bolts and 12 nuts"],
+    ["Buy 1.5 kg rice and 2.5 kg flour", "Buy 2.5 kg rice and 1.5 kg flour"],
+  ])(
+    "keeps different quantities as separate todos: %s",
+    async (first, second) => {
+      const entityId = newEntity();
+      await seed(entityId, first);
+      const added = await run(say(entityId, `add ${second}`), {
+        action: "create",
+        content: second,
+      });
+      expect(added.data?.duplicate).not.toBe(true);
+      expect((await rows(entityId)).map((todo) => todo.content).sort()).toEqual(
+        [first, second].sort(),
+      );
+    },
+  );
 
   it("completes a todo named by a paraphrase of its listed content, across turns, without ids", async () => {
     const entityId = newEntity();
@@ -359,6 +380,40 @@ describe("TODO visible-content addressing — real PGLite (#29690)", () => {
     expect(confirmed.text).toBe('Added "Call mom" to your list.');
     expect(confirmed.effectReceipts?.[0]?.outcome).toBe("applied");
     expect(await rows(entityId)).toHaveLength(2);
+  });
+
+  it("one yes to two duplicate questions from one turn creates both, once", async () => {
+    const entityId = newEntity();
+    await seed(entityId, "Buy milk");
+    await seed(entityId, "Buy eggs");
+    const count = async (content: string) =>
+      (await rows(entityId)).filter((todo) => todo.content === content).length;
+
+    const ask = say(entityId, "add buy milk and buy eggs");
+    const askMilk = await run(ask, { action: "create", content: "Buy milk" });
+    const askEggs = await run(ask, { action: "create", content: "Buy eggs" }, [
+      askMilk,
+    ]);
+    expect(askMilk.data).toMatchObject({ duplicate: true });
+    expect(askEggs.data).toMatchObject({ duplicate: true });
+
+    const yes = say(entityId, "yes");
+    const milk = await run(yes, { action: "create", content: "Buy milk" });
+    const eggs = await run(yes, { action: "create", content: "Buy eggs" }, [
+      milk,
+    ]);
+    expect(milk.text).toBe('Added "Buy milk" to your list.');
+    expect(eggs.text).toBe('Added "Buy eggs" to your list.');
+    expect(await count("Buy milk")).toBe(2);
+    expect(await count("Buy eggs")).toBe(2);
+
+    // Both questions are answered: a later yes does not add a third copy.
+    const again = await run(say(entityId, "yes"), {
+      action: "create",
+      content: "Buy milk",
+    });
+    expect(again.data).toMatchObject({ duplicate: true });
+    expect(await count("Buy milk")).toBe(2);
   });
 
   it("does not treat a completed todo as a duplicate", async () => {

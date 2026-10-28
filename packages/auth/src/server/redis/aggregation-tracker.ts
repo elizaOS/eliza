@@ -26,6 +26,10 @@
 
 import { randomUUID } from "node:crypto";
 import { getRedis } from "./client.js";
+import {
+  cloudflareAggregation,
+  isCloudflareAggregationConfigured,
+} from "./cloudflare-aggregation";
 
 /** Maximum rolling window we retain events for (matches the 30d named window). */
 const MAX_WINDOW_SECONDS = 2592000;
@@ -153,8 +157,6 @@ export async function recordAggregationEvent(
   const valueMember = `${now}:${cryptoSeq()}|${valueRaw.toString()}`;
   const recipientMember = `${now}:${cryptoSeq()}|${to}`;
 
-  const redis = getRedis();
-
   // value_sum + tx_count buckets (agent always; per_recipient / per_chain when
   // the discriminator is present).
   const valueKeys: string[] = [aggKey(event.agentId, "value", "agent", "")];
@@ -174,6 +176,22 @@ export async function recordAggregationEvent(
       aggKey(event.agentId, "recipients", "per_chain", chainKey),
     );
   }
+
+  if (isCloudflareAggregationConfigured()) {
+    const records = [
+      ...[...valueKeys, ...countKeys].map((key, index) => ({
+        key,
+        member: `${valueMember}:${index + 1}`,
+      })),
+      ...recipientKeys.map((key, index) => ({
+        key,
+        member: `${recipientMember}:${index + 1}`,
+      })),
+    ];
+    await cloudflareAggregation("record", { now, records });
+    return;
+  }
+  const redis = getRedis();
 
   // value + count families carry the value payload member.
   await runRecord(
@@ -240,15 +258,19 @@ export async function getAggregationSnapshot(
 
   let members: string[];
   try {
-    const redis = getRedis();
-    members = (await redis.eval(
-      READ_LUA,
-      1,
-      key,
-      String(windowStart),
-      String(now),
-      String(retentionCutoff),
-    )) as string[];
+    if (isCloudflareAggregationConfigured()) {
+      members = await cloudflareAggregation("read", { key, now, windowStart });
+    } else {
+      const redis = getRedis();
+      members = (await redis.eval(
+        READ_LUA,
+        1,
+        key,
+        String(windowStart),
+        String(now),
+        String(retentionCutoff),
+      )) as string[];
+    }
   } catch {
     return null;
   }

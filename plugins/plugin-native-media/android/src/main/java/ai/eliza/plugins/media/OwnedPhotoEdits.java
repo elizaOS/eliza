@@ -21,6 +21,13 @@ public final class OwnedPhotoEdits {
   private final ContentResolver resolver;
   private final SharedPreferences journal;
   private final OwnedMediaConfig config;
+  /** Optional host-validated source. It never changes the owned copy destination. */
+  public interface SourceAccess {
+    boolean accepts(String id);
+    Uri source(String id) throws Exception;
+    String revision(String id) throws Exception;
+  }
+  private final SourceAccess sourceAccess;
   private volatile Session active;
   private static final int MAX_EDGE = 2048;
   private static final class Session {
@@ -31,18 +38,24 @@ public final class OwnedPhotoEdits {
     boolean reduced;
   }
   public OwnedPhotoEdits(Context c, OwnedMediaConfig config) {
+    this(c, config, null);
+  }
+  public OwnedPhotoEdits(Context c, OwnedMediaConfig config, SourceAccess sourceAccess) {
+    this.sourceAccess = sourceAccess;
     context = c;
     this.config = config;
     resolver = c.getContentResolver();
     journal = c.getSharedPreferences(config.preferences("photo-edit-results"), 0);
   }
-  private Uri source(String id) {
+  private Uri source(String id) throws Exception {
+    if (sourceAccess != null && sourceAccess.accepts(id)) return sourceAccess.source(id);
     if (id == null || !id.matches("[1-9][0-9]*"))
       throw new IllegalArgumentException("Only saved still photos can be edited");
     return ContentUris.withAppendedId(
         MediaStore.Images.Media.EXTERNAL_CONTENT_URI, Long.parseLong(id));
   }
   private String revision(String id) throws Exception {
+    if (sourceAccess != null && sourceAccess.accepts(id)) return sourceAccess.revision(id);
     String[] fields = Build.VERSION.SDK_INT >= 30
         ? new String[] {"date_added", "_size", "generation_modified", "is_trashed"}
         : new String[] {"date_added", "_size"};

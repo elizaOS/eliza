@@ -4,7 +4,7 @@
  * Database-backed deduplication to prevent replay attacks.
  */
 
-import { count, eq, gt, lt, sql } from "drizzle-orm";
+import { count, eq, gt, lt } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { idempotencyKeys } from "../../db/schemas/idempotency-keys";
 import { logger } from "./logger";
@@ -50,13 +50,14 @@ export async function isAlreadyProcessed(key: string): Promise<boolean> {
 
 /**
  * Atomically claim a key for processing. Returns true if THIS caller claimed it.
- * Uses INSERT ... ON CONFLICT DO NOTHING so only one concurrent caller wins.
+ * Uses a conditional upsert so a live claim cannot be acquired again.
  * Unlike isAlreadyProcessed + markAsProcessed, this is a single atomic operation
  * with no TOCTOU race window.
  */
 export async function tryClaimForProcessing(key: string, source = "unknown"): Promise<boolean> {
   try {
-    const expires_at = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
+    const now = new Date();
+    const expires_at = new Date(now.getTime() + IDEMPOTENCY_TTL_MS);
     const rows = await dbWrite
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })
@@ -65,11 +66,11 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
         set: { source, expires_at },
         // Reclaim keys whose TTL has passed: a crashed claimer must not block
         // retries until the cleanup cron runs. Live keys stay claimed.
-        where: sql`${idempotencyKeys.expires_at} < now()`,
+        setWhere: lt(idempotencyKeys.expires_at, now),
       })
       .returning({ key: idempotencyKeys.key });
 
-    // length === 1 means we inserted (claimed), 0 means key already exists (conflict)
+    // A returned row means inserted or reclaimed; a live conflict returns none.
     return rows.length === 1;
   } catch {
     logger.error("[Idempotency] Error claiming key", {

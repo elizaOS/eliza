@@ -22,6 +22,41 @@ import type {
   BrowserWorkspaceCommandResult,
 } from "./workspace/browser-workspace-types.js";
 
+export { commitFormHash } from "./commit-form-hash.js";
+
+/**
+ * Stable `reason` values on the failures a native-socket request can end with,
+ * set beside `kind` on each such `BrowserDispatchFailure`. Messages are prose
+ * for people and may change; these do not. The four frame and page reasons
+ * come from the browser peer; any other peer failure is `peer-error`, and a
+ * successful reply this target cannot read is `invalid-reply`. Capability,
+ * argument and policy refusals raised before a request is sent carry `kind`
+ * only.
+ */
+export const NATIVE_SOCKET_FAILURE_REASONS = [
+  "reply-timeout",
+  "request-cancelled",
+  "profile-unavailable",
+  "connection-lost",
+  "frame-inventory-incomplete",
+  "frame-identity-changed",
+  "frame-read-incomplete",
+  "page-loading",
+  "peer-error",
+  "invalid-reply",
+] as const;
+
+export type NativeSocketFailureReason =
+  (typeof NATIVE_SOCKET_FAILURE_REASONS)[number];
+
+const PEER_FAILURE_REASONS: ReadonlySet<string> =
+  new Set<NativeSocketFailureReason>([
+    "frame-inventory-incomplete",
+    "frame-identity-changed",
+    "frame-read-incomplete",
+    "page-loading",
+  ]);
+
 /** Label tone: the person acts, the assistant acts, an offer, or a host-confirmed success. */
 export type NativeTaskGuideTone =
   | "instruction"
@@ -81,7 +116,9 @@ const capabilities = new Set([
   "snapshot",
   "click",
   "fill",
+  "select",
   "scroll",
+  "follow",
   "back",
   "forward",
   "reload",
@@ -97,15 +134,177 @@ export interface NativeTaskContext {
 export interface NativeTaskBinding extends NativeTaskContext {
   tabId: string;
   bindingRevision: number;
+  /** The origin of the page the binding starts on. */
   origin: string;
+  /**
+   * Every origin the bound page may be observed and acted on (2 to 16, `origin`
+   * included), for a task the host extended. Requires the `task-origins` peer
+   * capability. Absent: `origin` alone.
+   */
+  origins?: string[];
   expiresAt: number;
   revoked: boolean;
   /** Overlay display name (cursor tag and label mark). Defaults to "Eliza". */
   assistantName?: string;
   targets: Array<{
     selector: string;
-    action: "click" | "fill" | "fill-code" | "scroll";
+    action: "click" | "fill" | "fill-code" | "select" | "scroll" | "follow";
   }>;
+}
+/** Longest life of a consented-commit grant, from the person's yes to its use. */
+export const COMMIT_GRANT_MAX_MS = 60000;
+/**
+ * A host-issued, single-use grant for one commit (a submit, or a fill or
+ * select that sends its form) the person explicitly said yes to. The host
+ * issues it only after recording her yes to this exact step, control and
+ * value. The browser checks every field, spends it once, and reports the
+ * effect as a consented commit; without one, commits stay blocked.
+ */
+export interface NativeCommitGrant {
+  /** Unique per yes; a spent ID is refused. */
+  grantId: string;
+  taskId: string;
+  epoch: number;
+  /** Must equal the task binding origin. Never crosses origins. */
+  origin: string;
+  /** The observed control (`<snapshotId>:0:<node>`): one page revision. */
+  targetRef: string;
+  /** The reviewed binding selector of the same control. */
+  selector: string;
+  subaction: "click" | "fill" | "select";
+  /**
+   * Lowercase hex SHA-256 of the exact fill/select text she approved.
+   * Required for fill and select; not allowed on click.
+   */
+  valueHash?: string;
+  /**
+   * The one request this commit may send that is not the granted form's own
+   * page load: a script ("Pay" posts with fetch), or a form whose page
+   * handler sends it with fetch. `url` is an absolute https URL; `path` is
+   * a path (and optional query) on the page's origin. Without it, the
+   * granted submit button's form action and method are the only request
+   * consented; for any other control no request is, and one is reported as
+   * an effect violation. A page load of the granted form must match it too.
+   * Fetch, XHR and beacon methods are not observable from the page, so the
+   * page enforces the URL (and POST for a beacon); the method is still bound
+   * into the grant the host issued.
+   */
+  requestTarget?: NativeCommitRequestTarget;
+  /**
+   * `commitFormHash` of the form data the host showed the person, in the
+   * order the form sends it. The page consents a submit only when the
+   * actual submission's form data (the submitter's name/value included)
+   * hashes the same, so a field a script changed or added after her yes
+   * stops it. Hosts doing money commits MUST send it. Without it, the
+   * consented commit reports the submitted hash (`consentedCommit.formHash`,
+   * left out for a form with a password, code or card field) to compare
+   * after the fact.
+   */
+  formHash?: string;
+  /** Epoch milliseconds, at most COMMIT_GRANT_MAX_MS ahead at use. */
+  expiresAt: number;
+}
+/** The request a commit grant expects; exactly one of `url` and `path`. */
+export type NativeCommitRequestTarget =
+  | { url: string; path?: never; method: NativeCommitRequestMethod }
+  | { path: string; url?: never; method: NativeCommitRequestMethod };
+export type NativeCommitRequestMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE";
+/** Shape check for a grant's `requestTarget`; the bridge applies the same. */
+export function validCommitRequestTarget(
+  target: unknown,
+): target is NativeCommitRequestTarget {
+  if (!target || typeof target !== "object" || Array.isArray(target))
+    return false;
+  const value = target as Record<string, unknown>;
+  const keys = Object.keys(value);
+  if (
+    !keys.every((key) => ["url", "path", "method"].includes(key)) ||
+    !["GET", "POST", "PUT", "PATCH", "DELETE"].includes(
+      value.method as string,
+    ) ||
+    "url" in value === "path" in value
+  )
+    return false;
+  if ("path" in value)
+    return (
+      typeof value.path === "string" &&
+      value.path.length <= 2048 &&
+      /^\/(?!\/)[^\s#\\]*$/.test(value.path)
+    );
+  if (typeof value.url !== "string" || value.url.length > 2048) return false;
+  try {
+    const url = new URL(value.url);
+    return (
+      url.protocol === "https:" &&
+      !url.username &&
+      !url.password &&
+      !value.url.includes("#")
+    );
+  } catch {
+    return false;
+  }
+}
+/** Shape and scope checks shared by the trusted transports. */
+export function validCommitGrant(
+  grant: unknown,
+  expected: {
+    taskContext: NativeTaskContext;
+    subaction: string;
+    targetRef?: string;
+    selector?: string;
+    now: number;
+  },
+): grant is NativeCommitGrant {
+  const value = grant as Partial<NativeCommitGrant> | null;
+  return (
+    Boolean(value) &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value as object).every((key) =>
+      [
+        "grantId",
+        "taskId",
+        "epoch",
+        "origin",
+        "targetRef",
+        "selector",
+        "subaction",
+        "valueHash",
+        "requestTarget",
+        "formHash",
+        "expiresAt",
+      ].includes(key),
+    ) &&
+    typeof value?.grantId === "string" &&
+    /^[A-Za-z0-9_.:@-]{1,256}$/.test(value.grantId) &&
+    value.taskId === expected.taskContext.taskId &&
+    value.epoch === expected.taskContext.epoch &&
+    typeof value.origin === "string" &&
+    value.subaction === expected.subaction &&
+    ["click", "fill", "select"].includes(value.subaction) &&
+    typeof value.targetRef === "string" &&
+    value.targetRef === expected.targetRef &&
+    typeof value.selector === "string" &&
+    value.selector === expected.selector &&
+    Number.isSafeInteger(value.expiresAt) &&
+    Number(value.expiresAt) > expected.now &&
+    Number(value.expiresAt) <= expected.now + COMMIT_GRANT_MAX_MS &&
+    // A click carries no value; a fill or select must name its exact value.
+    (value.subaction === "click"
+      ? value.valueHash === undefined
+      : typeof value.valueHash === "string" &&
+        /^[0-9a-f]{64}$/.test(value.valueHash)) &&
+    (value.requestTarget === undefined ||
+      validCommitRequestTarget(value.requestTarget)) &&
+    (value.formHash === undefined ||
+      (typeof value.formHash === "string" &&
+        /^[0-9a-f]{64}$/.test(value.formHash)))
+  );
 }
 interface NativeReply {
   resolve(value: unknown): void;
@@ -225,7 +424,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
   private androidSocketPath = androidNativeBrowserSocketPath();
   constructor(
     private readonly onDiagnostic: (error: Error) => void,
-    private readonly liveness = { registrationMs: 30000, heartbeatMs: 90000 },
+    private readonly liveness: {
+      registrationMs: number;
+      heartbeatMs: number;
+      /** How long a dispatched request waits for the peer's reply. */
+      replyMs?: number;
+    } = { registrationMs: 30000, heartbeatMs: 90000 },
   ) {}
 
   private reportConnectionError(error: Error): void {
@@ -252,6 +456,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     capabilities.has(command.subaction) &&
     this.advertised.has(command.subaction) &&
     (!command.id || /^\d+$/.test(command.id));
+  /** Whether the registered profile advertised `capability`. False while no profile is registered. */
+  hasCapability(capability: string): boolean {
+    return this.advertised.has(capability);
+  }
   getProfileId(): string | null {
     return !this.stopped && this.socket && !this.socket.destroyed
       ? this.profileId
@@ -475,7 +683,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "The native Chromium connection ended after dispatch; inspect the same profile before retrying.",
-            { targetId: this.id },
+            { targetId: this.id, reason: "connection-lost" },
           ),
         );
       }
@@ -544,7 +752,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     if (message.ok === true) pending.resolve(message.result);
     else {
       const error = message.error as
-        | { kind?: string; message?: string }
+        | { kind?: string; message?: string; reason?: unknown }
         | undefined;
       const kind =
         error?.kind === "UNAVAILABLE"
@@ -560,7 +768,15 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         new BrowserDispatchFailure(
           kind,
           error?.message ?? "Native browser command failed.",
-          { targetId: this.id },
+          {
+            targetId: this.id,
+            // Only reasons from the fixed list cross the trust boundary.
+            reason:
+              typeof error?.reason === "string" &&
+              PEER_FAILURE_REASONS.has(error.reason)
+                ? error.reason
+                : "peer-error",
+          },
         ),
       );
     }
@@ -632,7 +848,11 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     const { tabs, windowCount } =
       (listing as { tabs?: unknown; windowCount?: unknown } | null) ?? {};
     if (!Array.isArray(tabs))
-      throw new Error("Invalid Chromium tab inventory.");
+      throw new BrowserDispatchFailure(
+        "UNCERTAIN_OUTCOME",
+        "Invalid Chromium tab inventory.",
+        { targetId: this.id, reason: "invalid-reply" },
+      );
     // An extension that does not count windows cannot rule out another one.
     return currentPageFromTabs(tabs, windowCount);
   }
@@ -659,7 +879,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         new BrowserDispatchFailure(
           "STALE_REF",
           "The browser request was cancelled before dispatch.",
-          { targetId: this.id },
+          { targetId: this.id, reason: "request-cancelled" },
         ),
       );
     if (signal && !this.advertised.has("cancel"))
@@ -675,7 +895,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         new BrowserDispatchFailure(
           "UNAVAILABLE",
           "No registered Chromium profile is connected.",
-          { targetId: this.id },
+          { targetId: this.id, reason: "profile-unavailable" },
         ),
       );
     const id = randomUUID();
@@ -713,7 +933,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "The browser request was cancelled after dispatch; inspect the same tab without replaying it.",
-            { targetId: this.id },
+            { targetId: this.id, reason: "request-cancelled" },
           ),
         );
       };
@@ -726,10 +946,10 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           new BrowserDispatchFailure(
             "UNCERTAIN_OUTCOME",
             "Chromium did not acknowledge the request before the deadline; inspect the same tab before retrying.",
-            { targetId: this.id },
+            { targetId: this.id, reason: "reply-timeout" },
           ),
         );
-      }, 30000);
+      }, this.liveness.replyMs ?? 30000);
       this.pending.set(id, {
         resolve: finish(resolve),
         reject: finish((error) => {
@@ -758,7 +978,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
             new BrowserDispatchFailure(
               "UNCERTAIN_OUTCOME",
               "The native command transport failed after dispatch; inspect the same profile before retrying.",
-              { targetId: this.id, cause },
+              { targetId: this.id, cause, reason: "connection-lost" },
             ),
           );
           socket.destroy();
@@ -803,7 +1023,7 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       throw new BrowserDispatchFailure(
         "UNCERTAIN_OUTCOME",
         "Invalid website advice receipt.",
-        { targetId: this.id },
+        { targetId: this.id, reason: "invalid-reply" },
       );
     return {
       updated: Number(receipt.updated),
@@ -817,6 +1037,12 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       throw new BrowserDispatchFailure(
         "UNSUPPORTED",
         "This browser does not enforce task bindings.",
+        { targetId: this.id },
+      );
+    if (binding.origins !== undefined && !this.advertised.has("task-origins"))
+      throw new BrowserDispatchFailure(
+        "UNSUPPORTED",
+        "This browser does not support a task with more than one website.",
         { targetId: this.id },
       );
     if (
@@ -885,12 +1111,33 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       actionText?: string;
       /** The one reviewed binding target (CSS selector) this action is for. */
       expectedSelector?: string;
+      /** Host-issued grant for the one commit the person said yes to. */
+      commitGrant?: NativeCommitGrant;
     } = {},
   ): Promise<BrowserWorkspaceCommandResult> {
     if (
+      options.commitGrant !== undefined &&
+      (!options.taskContext ||
+        !this.advertised.has("task-commit-grant") ||
+        !validCommitGrant(options.commitGrant, {
+          taskContext: options.taskContext,
+          subaction: command.subaction,
+          targetRef: command.selector,
+          selector: options.expectedSelector,
+          now: Date.now(),
+        }))
+    )
+      throw new BrowserDispatchFailure(
+        "POLICY_BLOCKED",
+        "A commit grant must match this bound task action and be current.",
+        { targetId: this.id },
+      );
+    if (
       options.expectedSelector !== undefined &&
       (!options.taskContext ||
-        !["click", "fill", "scroll"].includes(command.subaction) ||
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          command.subaction,
+        ) ||
         typeof options.expectedSelector !== "string" ||
         !options.expectedSelector ||
         options.expectedSelector.length > 256 ||
@@ -904,7 +1151,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
     if (
       options.actionText !== undefined &&
       (!options.taskContext ||
-        !["click", "fill", "scroll"].includes(command.subaction) ||
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          command.subaction,
+        ) ||
         !validActionText(options.actionText))
     )
       throw new BrowserDispatchFailure(
@@ -928,16 +1177,20 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
       protectedValueKind: _untrusted,
       actionText: _untrustedText,
       expectedSelector: _untrustedTarget,
+      commitGrant: _untrustedGrant,
       ...safeCommand
     } = command as BrowserWorkspaceCommand & {
       protectedValueKind?: unknown;
       actionText?: unknown;
       expectedSelector?: unknown;
+      commitGrant?: unknown;
     };
     command = safeCommand as BrowserWorkspaceCommand;
     if (
       options.taskContext &&
-      ["click", "fill", "scroll"].includes(command.subaction) &&
+      ["click", "fill", "select", "scroll", "follow"].includes(
+        command.subaction,
+      ) &&
       !this.advertised.has("task-action-feedback")
     )
       throw new BrowserDispatchFailure(
@@ -967,7 +1220,11 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         typeof listing !== "object" ||
         !Array.isArray((listing as { tabs?: unknown }).tabs)
       )
-        throw new Error("Invalid Chromium tab inventory.");
+        throw new BrowserDispatchFailure(
+          "UNCERTAIN_OUTCOME",
+          "Invalid Chromium tab inventory.",
+          { targetId: this.id, reason: "invalid-reply" },
+        );
       const tabs = (
         listing as { tabs: Array<{ id?: unknown; active?: unknown }> }
       ).tabs.filter((tab) => tab.active === true && typeof tab.id === "string");
@@ -979,6 +1236,8 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
         );
       command = { ...command, id: String(tabs[0].id) };
     }
+    if (command.subaction === "select" && command.text === undefined)
+      command = { ...command, text: command.value };
     const profileId = this.profileId;
     const scopedCommand = options.taskContext
       ? {
@@ -996,6 +1255,9 @@ export class NativeSocketBrowserTarget implements BrowserTarget {
           ...(options.expectedSelector === undefined
             ? {}
             : { expectedSelector: options.expectedSelector }),
+          ...(options.commitGrant === undefined
+            ? {}
+            : { commitGrant: options.commitGrant }),
         }
       : command;
     const result = await this.request(scopedCommand, options.signal);

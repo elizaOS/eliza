@@ -214,6 +214,7 @@ test('native selected source persists through HTTP; explicit dossier has one mod
       hostedDigestSourcePauseProtocol: 1,
       hostedNativeSourceProtocol: 1,
       hostedNativeEveningProtocol: 1,
+      hostedDossierProtocol: 1,
     });
     const noSource = await workflowAction.handler(
       state.runtime,
