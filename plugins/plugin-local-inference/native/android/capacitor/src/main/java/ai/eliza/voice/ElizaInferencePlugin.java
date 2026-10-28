@@ -42,10 +42,10 @@ public class ElizaInferencePlugin extends Plugin {
 
     private static final class Request {
         private boolean cancelled;
-        private InferenceSession active;
-        synchronized void begin(InferenceSession session) {
+        private InferenceSession.Client active;
+        synchronized void begin(InferenceSession.Client client) {
             if (cancelled) throw new CancellationException();
-            active = session;
+            active = client;
         }
         synchronized void cancel() {
             cancelled = true;
@@ -240,6 +240,8 @@ public class ElizaInferencePlugin extends Plugin {
         final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
         final Context context;
         volatile InferenceSession current;
+        /** This transport's client of the shared session; worker thread only writes it. */
+        volatile InferenceSession.Client client;
         volatile Request activeRequest;
         volatile boolean pressure;
         volatile long lastActivity = SystemClock.elapsedRealtime();
@@ -254,17 +256,23 @@ public class ElizaInferencePlugin extends Plugin {
                 if (SystemClock.elapsedRealtime() - lastActivity >= 120000) trim();
             }, 30, 30, TimeUnit.SECONDS);
         }
-        InferenceSession session(Request request) throws IOException {
+        InferenceSession.Client session(Request request) throws IOException {
             if (request != null) request.check();
-            // The process-wide owner: other native consumers (capture VAD, streamed
-            // speech) share its context lifecycle instead of loading a second copy.
-            if (current == null || current.isClosed()) current = VoiceAssets.sharedInference(context);
-            if (request != null) request.begin(current);
+            // The process-wide owner, through this transport's own client: other native
+            // consumers (capture VAD, streamed speech) share its context lifecycle instead
+            // of loading a second copy, and this transport's cancellation and idle or
+            // memory-pressure release never fence or unload their calls.
+            if (current == null || current.isClosed() || client == null) {
+                current = VoiceAssets.sharedInference(context);
+                client = current.client();
+            }
+            InferenceSession.Client active = client;
+            if (request != null) request.begin(active);
             lastActivity = SystemClock.elapsedRealtime();
-            return current;
+            return active;
         }
         void trim() {
-            try { if (current != null) current.trimMemory(); }
+            try { InferenceSession.Client active = client; if (active != null) active.release(); }
             catch (RuntimeException failure) { Log.e("ElizaInference", "Native memory release failed", failure); }
             finally { pressure = false; }
         }
@@ -272,8 +280,8 @@ public class ElizaInferencePlugin extends Plugin {
             pressure = true;
             Request request = activeRequest;
             if (request != null) request.cancel();
-            InferenceSession session = current;
-            if (session != null) session.cancel();
+            InferenceSession.Client active = client;
+            if (active != null) active.cancel();
             worker.execute(this::trim);
         }
         @Override public void onTrimMemory(int level) {

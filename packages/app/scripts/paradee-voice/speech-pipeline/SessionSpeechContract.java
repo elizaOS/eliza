@@ -9,7 +9,8 @@ import java.util.concurrent.CancellationException;
 /**
  * Host-JVM contract of the validated speech backend over the shared session (stub natives):
  * bounded input, silent input, finite non-silent output, per-chunk stream validation with zeroing,
- * cancellation, and trim-not-close over a shared session. Not model or device evidence.
+ * cancellation, and client-scoped cancel and release over a shared session. Not model or device
+ * evidence.
  */
 public final class SessionSpeechContract {
  static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
@@ -73,16 +74,31 @@ public final class SessionSpeechContract {
    rejects(IllegalStateException.class,()->speech.synthesizeStream("rate",()->false,(samples,complete)->true),"an unexpected stream rate is refused");
    VoiceNative.sampleRate=24000;session.trimMemory();
    VoiceNative.streamed=null;
-   // A shared backend trims instead of closing; an owned one closes.
+   // A shared backend releases its hold instead of closing; as the last holder it frees the models.
    speech.close();
-   check(!session.isClosed()&&!session.isSpeechLoaded(),"shared backend close trims the session");
+   check(!session.isClosed()&&!session.isSpeechLoaded(),"the last shared backend's close frees the models");
    VoiceNative.synthesized=tone(4800,.3f);
-   check(speech.synthesize("again").samples.length==4800,"the trimmed session reloads");
+   check(speech.synthesize("again").samples.length==4800,"the released session reloads");
+   // Two backends over one session are separate clients: one's release keeps the other's models,
+   // and one's cancel never fences the other's call; its own cancel does.
+   SessionSpeech other=new SessionSpeech(session,false);
+   check(other.synthesize("other").samples.length==4800,"a second backend shares the loaded models");
+   speech.close();
+   check(session.isSpeechLoaded(),"one backend's release keeps another holder's models");
+   other.close();
+   check(!session.isSpeechLoaded(),"the last holder's release frees the models");
+   VoiceNative.afterTtsLoad=speech::cancel;
+   check(other.synthesize("unfenced").samples.length==4800,"another backend's cancel never fences this call");
+   VoiceNative.afterTtsLoad=other::cancel;
+   other.close();
+   rejects(CancellationException.class,()->other.synthesize("fenced"),"a backend's own cancel fences its call");
+   VoiceNative.afterTtsLoad=null;
+   other.close();
    SessionSpeech owned=new SessionSpeech(new InferenceSession(root,model,lexicon,null),true);
    InferenceSession ownedSession=owned.session();
    owned.close();
    check(ownedSession.isClosed(),"owned backend close is terminal");
    System.out.println("PASS session speech validation");
-  }finally{session.close();model.delete();lexicon.delete();asr.delete();root.delete();VoiceNative.synthesized=new float[]{1};VoiceNative.streamed=null;VoiceNative.heard="transcript";}
+  }finally{VoiceNative.afterTtsLoad=null;session.close();model.delete();lexicon.delete();asr.delete();root.delete();VoiceNative.synthesized=new float[]{1};VoiceNative.streamed=null;VoiceNative.heard="transcript";}
  }
 }

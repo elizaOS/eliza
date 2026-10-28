@@ -25,7 +25,8 @@ final class VoiceNative {
     static String nativeParadeePhonemize(long context, byte[] text) { return "test"; }
     static float[] nativeParadeeSynthesize(long context, byte[] text, float speed) { return synthesized.clone(); }
     static float[] nativeParadeeSynthesizePhonemes(long context, byte[] text, float speed) { return new float[]{1}; }
-    static int nativeCancelTts(long context) { return 0; }
+    static volatile int ttsCancels, asrCancels;
+    static int nativeCancelTts(long context) { ttsCancels++; return 0; }
     static int nativeMmapEvict(long context, String region) { return 0; }
     static void nativeParadeeSynthesizeStream(long context, byte[] text, float speed, Object sink) {
         calls++;
@@ -41,7 +42,7 @@ final class VoiceNative {
     static int nativeAsrSupported() { return 1; }
     static int nativeMmapAcquire(long context, String region) { asrContext = context; return 0; }
     static String nativeAsrTranscribe(long context, float[] pcm, int rate) { asrContext = context; return heard; }
-    static int nativeAsrCancel(long context) { return 0; }
+    static int nativeAsrCancel(long context) { asrCancels++; return 0; }
     static int nativeAsrStreamSupported() { return 1; }
     static long nativeAsrStreamOpen(long context, int rate) { return 100; }
     static int nativeAsrStreamFeed(long stream, float[] pcm) { return pcm.length; }

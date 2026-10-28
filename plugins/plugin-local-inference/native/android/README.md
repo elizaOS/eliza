@@ -5,7 +5,8 @@ Android bindings owned by `@elizaos/plugin-local-inference`, using the same
 lazy native context for text, embeddings, Paradee TTS and Phonon-2 ASR.
 `trimMemory()` cancels active work and releases native models; the next call
 reloads them. `close()` is terminal. Native callers own scheduling and should
-trim on Android memory pressure.
+trim on Android memory pressure; consumers of the process-wide session release
+their own client instead (below).
 
 `supportsStreaming()` checks the engine without opening a context or loading
 models. `speechSampleRate()` loads only speech output when needed and returns
@@ -18,8 +19,13 @@ without loading anything, including after a cancelled first load. Trimming or
 closing the session clears that state.
 
 `VoiceAssets.sharedInference(context)` returns the process-wide session for the
-installed bundle (on a worker thread). Native consumers in one process share it and
-trim it; none of them closes it. `openVad()` opens a Silero VAD detector (16 kHz,
+installed bundle (on a worker thread). Each native consumer in the process uses its
+own `client()`: calls still serialize on the session, but a client's `cancel()` fences
+only that client's calls (it interrupts the native call only while it is the
+client's), and its `release()` drops only its own hold on the models, which are freed
+once no client holds them. One consumer's idle or memory-pressure release therefore
+never cancels or unloads another's speech, and no consumer cancels, trims or closes
+the shared session itself. `openVad()` opens a Silero VAD detector (16 kHz,
 512-sample windows) on a small VAD-only context under the same owner and lock-free
 with respect to speech: capture keeps running while a synthesis stream holds the
 session (full duplex), and `cancel()` never fences input. `trimMemory()` keeps open
@@ -34,7 +40,8 @@ only identity and bridge wiring:
   is the validated backend over the shared session: 0.1–60 s finite recognition
   input (silence transcribes to nothing), bounded reviewed text, finite non-silent
   24 kHz output, per-chunk stream validation with zeroing, and failures held until
-  the native stream returns. Releasing it trims the shared session.
+  the native stream returns. Each backend is its own session client: cancelling
+  it never fences another consumer, and releasing it drops only its own hold.
 - `StreamingSpeechPlayback` plays streamed chunks through a bounded `SpeechPcmQueue`
   (backpressure paces synthesis to playback; 30 s at 24 kHz is the usual bound)
   with `AudioTrackSpeechOutput`; stop drops and zeroes unplayed audio and cancels
@@ -60,7 +67,8 @@ runs the host-JVM contracts and compiles the library against Android 36. They ar
 not AudioTrack, AudioRecord, model, device-audio or latency evidence.
 
 The optional `ElizaInferencePlugin` Capacitor transport provides one process
-queue, idle unloading and Android memory-pressure handling. Enable it with
+queue, idle unloading and Android memory-pressure handling, through its own client
+of the shared session. Enable it with
 `elizaInferenceCapacitor=true` and register `ElizaInferencePlugin` with the host.
 The legacy `elizaParadeeCapacitor` flag and `ParadeeVoicePlugin` name select the
 same owner. Existing `ai.eliza.voice` Java APIs remain source compatible;

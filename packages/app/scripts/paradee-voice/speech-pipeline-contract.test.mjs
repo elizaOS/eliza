@@ -86,7 +86,7 @@ test("latency trials link one turn from last user audio to audible playback", ()
     /^PASS voice latency trials/,
   ));
 
-test("validated speech over the shared session: bounds, silence, streamed chunks and trim", () => {
+test("validated speech over the shared session: bounds, silence, streamed chunks and client-scoped release", () => {
   const sdk = path.join(
     process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
     "platforms/android-36/android.jar",
@@ -186,7 +186,13 @@ test("live capture uses the shared session's VAD and never a platform recognizer
   const speech = strip("SessionSpeech.java");
   assert.match(
     speech,
-    /public void close\(\)\{if\(owned\)inference\.close\(\);else inference\.trimMemory\(\);\}/,
+    /public void close\(\)\{if\(owned\)inference\.close\(\);else client\.release\(\);\}/,
   );
   assert.doesNotMatch(speech, /\.open(?:Asr|Voice)\(/);
+  // Every call and cancellation goes through the backend's own client of the session.
+  assert.match(speech, /public void cancel\(\)\{client\.cancel\(\);\}/);
+  assert.doesNotMatch(
+    speech,
+    /inference\.(?:cancel|trimMemory|synthesize|transcribe|prepareSpeech|speechSampleRate)\(/,
+  );
 });
