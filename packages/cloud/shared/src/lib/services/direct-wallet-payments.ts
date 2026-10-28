@@ -941,6 +941,81 @@ export async function verifyEvmNativePayment(params: {
   };
 }
 
+/**
+ * Token-balance fields the Solana deposit verifier needs from getTransaction.
+ * Kept local so we do not depend on @solana/web3.js parsing versioned txs:
+ * 1.98.4's response schema only accepts version 0 | "legacy", so a v1 result
+ * fails client-side even when maxSupportedTransactionVersion is 1.
+ */
+type SolanaTokenBalance = {
+  mint: string;
+  owner?: string;
+  uiTokenAmount: { amount: string };
+};
+
+type SolanaPaymentTx = {
+  slot: number;
+  meta: {
+    err: unknown;
+    preTokenBalances?: SolanaTokenBalance[] | null;
+    postTokenBalances?: SolanaTokenBalance[] | null;
+  } | null;
+};
+
+/**
+ * Fetches a confirmed Solana transaction for deposit verification without
+ * going through Connection.getParsedTransaction. Posts getTransaction with
+ * maxSupportedTransactionVersion: 1 so versioned (v0/v1) deposits are
+ * readable, and reads only slot + token-balance meta. Leaves @solana/web3.js
+ * pinned at 1.98.4 (no codecs major bump).
+ */
+async function fetchSolanaPaymentTransaction(
+  rpcUrl: string,
+  txHash: string,
+): Promise<SolanaPaymentTx | null> {
+  const response = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getTransaction",
+      params: [
+        txHash,
+        {
+          encoding: "jsonParsed",
+          commitment: "confirmed",
+          // Accept legacy, v0, and v1. Bound 0 rejects v1 with RPC -32015.
+          maxSupportedTransactionVersion: 1,
+        },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Solana RPC HTTP ${response.status}`);
+  }
+  const payload = (await response.json()) as {
+    error?: { code?: number; message?: string };
+    result?: {
+      slot?: number;
+      meta?: {
+        err: unknown;
+        preTokenBalances?: SolanaTokenBalance[] | null;
+        postTokenBalances?: SolanaTokenBalance[] | null;
+      } | null;
+    } | null;
+  };
+  if (payload.error) {
+    throw new Error(payload.error.message ?? `Solana RPC error ${payload.error.code ?? "unknown"}`);
+  }
+  const result = payload.result;
+  if (!result) return null;
+  return {
+    slot: typeof result.slot === "number" ? result.slot : 0,
+    meta: result.meta ?? null,
+  };
+}
+
 async function verifySolanaTokenPayment(params: {
   cfg: DirectWalletNetworkConfig;
   payerAddress: string;
@@ -952,16 +1027,10 @@ async function verifySolanaTokenPayment(params: {
   }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
-  let tx = await connection.getParsedTransaction(params.txHash, {
-    commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
-  });
+  let tx = await fetchSolanaPaymentTransaction(params.cfg.rpcUrl, params.txHash);
   for (let attempt = 0; !tx && attempt < 12; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    tx = await connection.getParsedTransaction(params.txHash, {
-      commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
-    });
+    tx = await fetchSolanaPaymentTransaction(params.cfg.rpcUrl, params.txHash);
   }
   if (!tx) {
     // Not on chain from this RPC's view — mempool propagation, a lagging
