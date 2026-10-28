@@ -1339,8 +1339,7 @@ export class MessageManager {
       );
       // Fall through to the text path below so an attachment reply never drops
       // the agent's accompanying prose (sent as a follow-up message).
-      if (undelivered.size > 0)
-        this.undeliveredAttachments.set(content, undelivered);
+      this.undeliveredAttachments.set(content, undelivered);
     }
 
     {
