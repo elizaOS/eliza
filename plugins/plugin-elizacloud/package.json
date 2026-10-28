@@ -129,7 +129,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.9",
     "@ai-sdk/provider": "4.0.29",
-    "@ai-sdk/provider-utils": "5.0.5",
+    "@ai-sdk/provider-utils": "5.0.68",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/host": "workspace:*",

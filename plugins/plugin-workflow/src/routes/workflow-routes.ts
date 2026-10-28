@@ -238,6 +238,9 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         metadataMutationProtocol: 1,
         lifecycleMutationProtocol: 1,
         typedAuthoringProtocol: 1,
+        // Typed local-time triggers: armed per reviewed version (activate with expectedVersionId),
+        // admitted at exact occurrences while the agent runs, missed occurrences recorded, never replayed.
+        typedScheduleProtocol: 1,
         hostedDigestProtocol: 1,
         // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
         hostedDigestSourcePauseProtocol: 1,
@@ -574,10 +577,19 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
       return;
     }
     if (ctx.method === 'POST' && (match.suffix === '/activate' || match.suffix === '/deactivate')) {
+      const body = await readBody(ctx.req);
+      const expectedVersionId = body.expectedVersionId;
+      if (
+        expectedVersionId !== undefined &&
+        (typeof expectedVersionId !== 'string' ||
+          !expectedVersionId ||
+          expectedVersionId.length > 200)
+      )
+        throw new WorkflowApiError('Expected workflow version is invalid', 400);
       const workflow =
         match.suffix === '/activate'
-          ? await service.activateWorkflow(match.id, owner)
-          : await service.deactivateWorkflow(match.id, owner);
+          ? await service.activateWorkflow(match.id, owner, expectedVersionId)
+          : await service.deactivateWorkflow(match.id, owner, expectedVersionId);
       ctx.json(ctx.res, workflow);
       return;
     }
@@ -670,6 +682,7 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         'WORKFLOW_METADATA_NOT_APPLIED',
         'WORKFLOW_TYPED_NOT_APPLIED',
         'WORKFLOW_LIFECYCLE_NOT_APPLIED',
+        'WORKFLOW_ACTIVATION_NOT_APPLIED',
       ].includes(String(error.response.code)) &&
       (status === 409 || (status === 400 && error.response.code === 'HOSTED_SOURCE_NOT_SAVED'))
         ? error.response
