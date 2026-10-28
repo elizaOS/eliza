@@ -147,6 +147,12 @@
       "import": "./dist/accessibility/index.js",
       "default": "./dist/accessibility/index.js"
     },
+    "./accessibility/screen-focus": {
+      "eliza-source": "./src/accessibility/screen-focus.ts",
+      "types": "./dist/accessibility/screen-focus.d.ts",
+      "import": "./dist/accessibility/screen-focus.js",
+      "default": "./dist/accessibility/screen-focus.js"
+    },
     "./voice/draft-transcript-guard": {
       "eliza-source": "./src/voice/draft-transcript-guard.ts",
       "types": "./dist/voice/draft-transcript-guard.d.ts",
