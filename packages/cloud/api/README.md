@@ -324,6 +324,12 @@ the current and next two monthly periods funded; missed months do not accumulate
   off while unset. The numbers are not selected yet; `placeholder` enables
   unselected test values only. Latency benchmark:
   `bun --conditions=eliza-source packages/cloud/scripts/plan-request-limit-latency.ts`.
+  Against a deployment, `node packages/cloud/scripts/plan-admission-deployed-latency.ts
+  --config <file.json> --confirm-real-requests` reports client and Server-Timing
+  p50/p95 on the existing completion and geocode routes for accounts a person
+  prepares (normal, cache-miss, exhausted, expired, billing outage), minus an
+  unauthenticated baseline. The config names each key's environment variable;
+  normal-condition requests are real and billed or counted.
 
 Scripts (same `DATABASE_URL` and pepper as the target environment; apply
 migrations through `0547_subscription_grant_calendar_terms` first):
