@@ -14,6 +14,7 @@ import {
   type DurableDraftStore,
   DurableDraftTooLarge,
   emptyDurableDraft,
+  isSendingDurableDraft,
   rawSlotDraftRecovery,
   readDurableDraft,
   replaceDurableDraft,
@@ -31,6 +32,8 @@ const record = (text: string, revision = "1"): DurableDraft => ({
   revision,
   text,
 });
+const marked = (row: DurableDraft, sending?: boolean): DurableDraft =>
+  sending ? { ...row, sending: true } : row;
 
 /** An editor bound to an in-memory store that checks every write's receipt. */
 function fixture() {
@@ -40,9 +43,12 @@ function fixture() {
     async read() {
       return saved;
     },
-    async save(expected, value) {
+    async save(expected, value, _signal, write) {
       expect(expected).toEqual(saved);
-      saved = record(value, String(Number(saved?.revision ?? 0) + 1));
+      saved = marked(
+        record(value, String(Number(saved?.revision ?? 0) + 1)),
+        write?.sending,
+      );
       return saved;
     },
   };
@@ -78,9 +84,12 @@ function queuedRestoreFixture(savedText: string | null = null) {
     async read() {
       return saved;
     },
-    async save(expected, value) {
+    async save(expected, value, _signal, write) {
       expect(expected).toEqual(saved);
-      saved = record(value, `${Number(saved?.revision ?? 0) + 1}`);
+      saved = marked(
+        record(value, `${Number(saved?.revision ?? 0) + 1}`),
+        write?.sending,
+      );
       return saved;
     },
   };
@@ -439,6 +448,263 @@ describe("DurableDraftController sending", () => {
   });
 });
 
+/** One editor run (an app process, or a window) over a shared raw slot. */
+function editorRun(slot: DurableDraftRawSlot) {
+  let text = "";
+  const c = new DurableDraftController(
+    async (binding) => compareExchangeDraftStore(binding, slot),
+    () => text,
+    (value) => {
+      text = value;
+    },
+    () => {},
+  );
+  return {
+    c,
+    get: () => text,
+    set(value: string) {
+      text = value;
+      c.edit(value);
+    },
+  };
+}
+const savedRow = (slot: { raw: () => string | null }) =>
+  JSON.parse(slot.raw() ?? "null") as DurableDraft | null;
+
+describe("DurableDraftController sending across restarts and windows", () => {
+  it("marks the saved copy while a send is in flight; the commit clears it unmarked", async () => {
+    const slot = rawSlot();
+    const run = editorRun(slot);
+    await run.c.open("test");
+    run.set("Hello agent");
+    await run.c.hold("Hello agent");
+    expect(savedRow(slot)).toMatchObject({
+      text: "Hello agent",
+      sending: true,
+    });
+    run.set("");
+    await run.c.commit();
+    const cleared = savedRow(slot);
+    expect(cleared?.text).toBe("");
+    expect(isSendingDurableDraft(cleared)).toBe(false);
+  });
+
+  it("saves a released message unmarked, so a restart restores it as a draft", async () => {
+    const slot = rawSlot();
+    const run = editorRun(slot);
+    await run.c.open("test");
+    run.set("Refused before posting");
+    await run.c.hold("Refused before posting");
+    run.set("");
+    run.c.release();
+    await tick();
+    expect(savedRow(slot)).not.toHaveProperty("sending");
+    expect(savedRow(slot)?.text).toBe("Refused before posting");
+    const restarted = editorRun(slot);
+    await restarted.c.open("test");
+    expect(restarted.get()).toBe("Refused before posting");
+    expect(restarted.c.state.conflict).toBe(false);
+  });
+
+  it("never restores a message that was in flight when the app stopped; it is offered for review", async () => {
+    const slot = rawSlot();
+    const first = editorRun(slot);
+    await first.c.open("test");
+    first.set("Maybe delivered");
+    await first.c.hold("Maybe delivered");
+    first.set("");
+    // The process dies before the send settles.
+    const restarted = editorRun(slot);
+    await restarted.c.open("test");
+    expect(restarted.get()).toBe("");
+    expect(restarted.c.state).toMatchObject({
+      opening: false,
+      conflict: true,
+      unsettled: true,
+      savedText: "Maybe delivered",
+      message: DEFAULT_DURABLE_DRAFT_MESSAGES.unsettled,
+    });
+    // Nothing else can be sent from this draft until the person decides.
+    restarted.set("Something new");
+    await expect(restarted.c.hold("Something new")).rejects.toThrow(
+      DEFAULT_DURABLE_DRAFT_MESSAGES.reviewUnsettled,
+    );
+    await tick();
+    expect(savedRow(slot)).toMatchObject({
+      text: "Maybe delivered",
+      sending: true,
+    });
+  });
+
+  it("puts an unsettled message back on request as an ordinary draft", async () => {
+    const slot = rawSlot();
+    const first = editorRun(slot);
+    await first.c.open("test");
+    first.set("Check first");
+    await first.c.hold("Check first");
+    const restarted = editorRun(slot);
+    await restarted.c.open("test");
+    restarted.c.restoreSaved();
+    expect(restarted.get()).toBe("Check first");
+    expect(restarted.c.state).toMatchObject({
+      conflict: false,
+      unsettled: false,
+      message: DEFAULT_DURABLE_DRAFT_MESSAGES.savedRestored,
+    });
+    await tick();
+    expect(savedRow(slot)).not.toHaveProperty("sending");
+    const again = editorRun(slot);
+    await again.c.open("test");
+    expect(again.get()).toBe("Check first");
+    expect(again.c.state.conflict).toBe(false);
+  });
+
+  it("replaces an unsettled message with the editor's text when the person keeps it", async () => {
+    const slot = rawSlot();
+    const first = editorRun(slot);
+    await first.c.open("test");
+    first.set("Already delivered");
+    await first.c.hold("Already delivered");
+    const restarted = editorRun(slot);
+    await restarted.c.open("test");
+    restarted.c.keepCurrent();
+    await tick();
+    expect(savedRow(slot)?.text).toBe("");
+    expect(savedRow(slot)).not.toHaveProperty("sending");
+    expect(restarted.c.state.conflict).toBe(false);
+    restarted.set("Next message");
+    await restarted.c.hold("Next message");
+    expect(savedRow(slot)).toMatchObject({
+      text: "Next message",
+      sending: true,
+    });
+  });
+
+  it("offers the review when text typed before opening equals the unsettled message", async () => {
+    const slot = rawSlot();
+    const first = editorRun(slot);
+    await first.c.open("test");
+    first.set("Same words");
+    await first.c.hold("Same words");
+    const restarted = editorRun(slot);
+    restarted.set("Same words");
+    await restarted.c.open("test");
+    expect(restarted.get()).toBe("Same words");
+    expect(restarted.c.state).toMatchObject({
+      conflict: true,
+      unsettled: true,
+    });
+    restarted.c.keepCurrent();
+    await tick();
+    expect(savedRow(slot)).not.toHaveProperty("sending");
+    expect(savedRow(slot)?.text).toBe("Same words");
+  });
+
+  it("never lets another window take over a message that is being sent", async () => {
+    const slot = rawSlot();
+    const sender = editorRun(slot);
+    await sender.c.open("test");
+    sender.set("From window A");
+    await sender.c.hold("From window A");
+    sender.set("");
+    const other = editorRun(slot);
+    await other.c.open("test");
+    expect(other.get()).toBe("");
+    expect(other.c.state.unsettled).toBe(true);
+    await sender.c.commit();
+    expect(savedRow(slot)?.text).toBe("");
+    expect(other.get()).toBe("");
+  });
+
+  it("refuses the send when the mark cannot be written, keeping the text for review", async () => {
+    const slot = rawSlot();
+    const run = editorRun(slot);
+    await run.c.open("test");
+    run.set("Keep me");
+    await tick();
+    slot.set(JSON.stringify(record("Other window", "other")));
+    await expect(run.c.hold("Keep me")).rejects.toThrow(
+      /Review local draft storage/,
+    );
+    expect(run.c.holding).toBe(false);
+    expect(run.get()).toBe("Keep me");
+    expect(run.c.state).toMatchObject({
+      conflict: true,
+      unsettled: false,
+      savedText: "Other window",
+    });
+    expect(savedRow(slot)?.text).toBe("Other window");
+  });
+
+  it("cancels the send when the editor changes while the mark is written", async () => {
+    const slot = rawSlot();
+    let pause: Promise<void> | undefined;
+    let resume = () => {};
+    const gated: DurableDraftRawSlot = {
+      read: () => slot.read(),
+      async compareExchange(expected, value) {
+        if (pause) await pause;
+        return slot.compareExchange(expected, value);
+      },
+    };
+    const run = editorRun(gated);
+    await run.c.open("test");
+    run.set("Original");
+    await tick();
+    pause = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const holding = run.c.hold("Original");
+    await tick();
+    run.set("Original and more");
+    pause = undefined;
+    resume();
+    await expect(holding).rejects.toThrow(/draft changed/);
+    await tick();
+    expect(run.c.holding).toBe(false);
+    expect(savedRow(slot)?.text).toBe("Original and more");
+    expect(savedRow(slot)).not.toHaveProperty("sending");
+  });
+
+  it("writes no mark for an empty editor", async () => {
+    const slot = rawSlot();
+    const run = editorRun(slot);
+    await run.c.open("test");
+    const writes = slot.writes();
+    await run.c.hold("");
+    expect(slot.writes()).toBe(writes);
+    await run.c.commit();
+    expect(run.c.holding).toBe(false);
+  });
+
+  it("still sends through a host store that drops the write option, without the mark", async () => {
+    const slot = rawSlot();
+    let text = "";
+    const c = new DurableDraftController(
+      async (binding) => {
+        const store = compareExchangeDraftStore(binding, slot);
+        return {
+          ...store,
+          save: (expected, value) => store.save(expected, value),
+        };
+      },
+      () => text,
+      (value) => {
+        text = value;
+      },
+      () => {},
+    );
+    await c.open("test");
+    text = "Plain store";
+    c.edit(text);
+    await c.hold("Plain store");
+    expect(savedRow(slot)).not.toHaveProperty("sending");
+    text = "";
+    await c.commit();
+    expect(savedRow(slot)?.text).toBe("");
+  });
+});
+
 describe("DurableDraftController queued UI restores", () => {
   it("cannot clear newer unsent typing when the restore commits", async () => {
     const f = queuedRestoreFixture();
@@ -551,6 +817,51 @@ describe("durable draft rows", () => {
       }),
     ).toThrow(DurableDraftTooLarge);
   });
+
+  it("carry the sending mark only as `true`, and mark or unmark as a new revision", () => {
+    const sending = { ...record("Out"), sending: true as const };
+    expect(readDurableDraft(sending, "test")).toEqual(sending);
+    expect(isSendingDurableDraft(sending)).toBe(true);
+    expect(isSendingDurableDraft(record("Out"))).toBe(false);
+    expect(isSendingDurableDraft(null)).toBe(false);
+    for (const value of [
+      { ...record("Out"), sending: false },
+      { ...record("Out"), sending: "yes" },
+      { ...record("Out"), sending: true, extra: true },
+    ])
+      expect(() => readDurableDraft(value, "test")).toThrow(
+        DurableDraftInvalid,
+      );
+    let next = 0;
+    const revision = () => `m${++next}`;
+    const saved = record("Out");
+    const markedRow = replaceDurableDraft(saved, saved, "test", "Out", {
+      revision,
+      sending: true,
+    });
+    expect(markedRow).toEqual({ ...record("Out", "m1"), sending: true });
+    expect(
+      replaceDurableDraft(markedRow, markedRow, "test", "Out", {
+        sending: true,
+      }),
+    ).toBe(markedRow);
+    const unmarked = replaceDurableDraft(markedRow, markedRow, "test", "Out", {
+      revision,
+    });
+    expect(unmarked).toEqual(record("Out", "m2"));
+    // A writer that saw the row before it was marked holds a stale receipt.
+    expect(() =>
+      replaceDurableDraft(markedRow, saved, "test", "Edited", { revision }),
+    ).toThrow(DurableDraftConflict);
+    expect(() =>
+      replaceDurableDraft(
+        markedRow,
+        { ...markedRow, sending: undefined } as unknown as DurableDraft,
+        "test",
+        "Edited",
+      ),
+    ).toThrow(DurableDraftInvalid);
+  });
 });
 
 /** A native-style secure slot: compares exact bytes. */
@@ -617,6 +928,23 @@ describe("compareExchangeDraftStore", () => {
     expect((await store.read())?.text).toBe("Keep");
   });
 
+  it("writes and reads back the sending mark, and a plain write clears it", async () => {
+    const slot = rawSlot();
+    const store = compareExchangeDraftStore("test", slot);
+    const first = await store.save(null, "Out");
+    const sending = await store.save(first, "Out", undefined, {
+      sending: true,
+    });
+    expect(JSON.parse(slot.raw() ?? "null")).toEqual(sending);
+    expect(sending.sending).toBe(true);
+    const read = compareExchangeDraftStore("test", slot);
+    const restored = await read.read();
+    expect(isSendingDurableDraft(restored)).toBe(true);
+    const cleared = await read.save(restored, "");
+    expect(JSON.parse(slot.raw() ?? "null")).toEqual(cleared);
+    expect(cleared).not.toHaveProperty("sending");
+  });
+
   it("exposes the host recovery port unchanged", () => {
     const recovery = { kind: "host" };
     expect(
@@ -657,6 +985,19 @@ describe("transactionalDraftStore", () => {
       DurableDraftConflict,
     );
     expect((await store.read())?.text).toBe("");
+  });
+
+  it("writes the sending mark and clears it with the next write", async () => {
+    const doc = document();
+    const store = transactionalDraftStore("test", doc);
+    const sending = await store.save(null, "Out", undefined, {
+      sending: true,
+    });
+    expect(doc.value()).toEqual(sending);
+    expect(isSendingDurableDraft(await store.read())).toBe(true);
+    const cleared = await store.save(sending, "");
+    expect(doc.value()).toEqual(cleared);
+    expect(isSendingDurableDraft(await store.read())).toBe(false);
   });
 
   it("refuses an aborted save without editing", async () => {

@@ -6,7 +6,11 @@
  * silently: every write names the record it replaces.
  *
  * The row holds text only. It carries no message receipts, approvals or
- * source handles, so restoring a draft never re-authorises anything. Hosts
+ * source handles, so restoring a draft never re-authorises anything. While
+ * its text is a message being sent, the row is marked `sending`; a reader
+ * that finds the mark outside the send that wrote it (after a restart, or
+ * in another window) knows the message may already have been delivered and
+ * must not offer it as an ordinary draft. Hosts
  * own the storage namespace (installed slot or document names stay stable);
  * this module defines the row, its validation, and adapters over the two
  * store shapes hosts already have:
@@ -30,6 +34,16 @@ export interface DurableDraft {
   binding: string;
   revision: string;
   text: string;
+  /**
+   * Present, and always `true`, while `text` is a message whose dispatch has
+   * not settled. Rows written before this mark existed never carry it.
+   */
+  sending?: true;
+}
+
+/** Whether a saved row is a message that was being sent when it was written. */
+export function isSendingDurableDraft(draft: DurableDraft | null): boolean {
+  return draft?.sending === true;
 }
 
 /** Default bound on a draft's UTF-8 text, in bytes. */
@@ -68,10 +82,17 @@ export interface DurableDraftOptions {
   revision?: () => string;
 }
 
+/** How a write marks the saved text (see {@link DurableDraft.sending}). */
+export interface DurableDraftWriteOptions {
+  /** Mark the text as a message being sent; any other write clears the mark. */
+  sending?: boolean;
+}
+
 const encoder = new TextEncoder();
 const byteLength = (text: string): number => encoder.encode(text).length;
 const defaultRevision = (): string => crypto.randomUUID();
 const DRAFT_KEYS = "binding,revision,text,version";
+const SENDING_DRAFT_KEYS = "binding,revision,sending,text,version";
 
 /**
  * Validate one stored value for `binding`. `null` (no draft) is allowed;
@@ -87,8 +108,10 @@ export function readDurableDraft(
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new DurableDraftInvalid();
   const row = value as Record<string, unknown>;
+  const keys = Object.keys(row).sort().join(",");
   if (
-    Object.keys(row).sort().join(",") !== DRAFT_KEYS ||
+    (keys !== DRAFT_KEYS &&
+      (keys !== SENDING_DRAFT_KEYS || row.sending !== true)) ||
     row.version !== 1 ||
     row.binding !== binding ||
     typeof row.revision !== "string" ||
@@ -103,7 +126,10 @@ export function readDurableDraft(
 function sameDraft(a: DurableDraft | null, b: DurableDraft | null): boolean {
   if (a === null || b === null) return a === b;
   return (
-    a.binding === b.binding && a.revision === b.revision && a.text === b.text
+    a.binding === b.binding &&
+    a.revision === b.revision &&
+    a.text === b.text &&
+    isSendingDurableDraft(a) === isSendingDurableDraft(b)
   );
 }
 
@@ -112,14 +138,15 @@ function sameDraft(a: DurableDraft | null, b: DurableDraft | null): boolean {
  * the record the writer last saw; any other saved state (including another
  * writer's clear) throws {@link DurableDraftConflict}. Clearing keeps a
  * revisioned empty row rather than deleting it, so an old empty receipt can
- * never match again. Unchanged text returns the saved row as is.
+ * never match again. Unchanged text with an unchanged mark returns the saved
+ * row as is; marking or unmarking the same text is a new revision.
  */
 export function replaceDurableDraft(
   actual: unknown,
   expected: DurableDraft | null,
   binding: string,
   text: string,
-  options: DurableDraftOptions = {},
+  options: DurableDraftOptions & DurableDraftWriteOptions = {},
 ): DurableDraft {
   const textLimit = options.textLimit ?? DURABLE_DRAFT_TEXT_LIMIT;
   const saved = readDurableDraft(actual, binding, textLimit);
@@ -127,12 +154,15 @@ export function replaceDurableDraft(
   if (typeof text !== "string" || byteLength(text) > textLimit)
     throw new DurableDraftTooLarge();
   if (!sameDraft(saved, expected)) throw new DurableDraftConflict();
-  if (saved?.text === text) return saved;
+  const sending = options.sending === true;
+  if (saved?.text === text && isSendingDurableDraft(saved) === sending)
+    return saved;
   return {
     version: 1,
     binding,
     revision: (options.revision ?? defaultRevision)(),
     text,
+    ...(sending ? { sending: true as const } : {}),
   };
 }
 
@@ -152,10 +182,16 @@ export function emptyDurableDraft(
 export interface DurableDraftStore<Recovery = unknown> {
   recovery?: Recovery;
   read(signal?: AbortSignal): Promise<DurableDraft | null>;
+  /**
+   * Replace `expected` with `text`. `write.sending` marks the saved text as a
+   * message being sent; a store (or a host wrapper) that drops the option
+   * saves an unmarked row, which only loses the restart protection.
+   */
   save(
     expected: DurableDraft | null,
     text: string,
     signal?: AbortSignal,
+    write?: DurableDraftWriteOptions,
   ): Promise<DurableDraft>;
 }
 
@@ -198,13 +234,14 @@ export function compareExchangeDraftStore<Recovery = undefined>(
       if (row) receipts.set(row, raw);
       return row;
     },
-    async save(expected, text, signal) {
+    async save(expected, text, signal, write) {
       signal?.throwIfAborted();
       // The slot itself compares bytes, so the writer's own view of the row
       // stands in for the saved state here.
       const next = replaceDurableDraft(expected, expected, binding, text, {
         textLimit,
         revision: options.revision,
+        sending: write?.sending,
       });
       const expectedRaw =
         expected === null
@@ -250,7 +287,7 @@ export function transactionalDraftStore<Recovery = undefined>(
       signal?.throwIfAborted();
       return readDurableDraft(value, binding, textLimit);
     },
-    async save(expected, text, signal) {
+    async save(expected, text, signal, write) {
       signal?.throwIfAborted();
       let result: DurableDraft | undefined;
       await document.editJson((actual) => {
@@ -258,6 +295,7 @@ export function transactionalDraftStore<Recovery = undefined>(
         result = replaceDurableDraft(actual, expected, binding, text, {
           textLimit,
           revision: options.revision,
+          sending: write?.sending,
         });
         return result;
       }, signal);

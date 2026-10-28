@@ -11,16 +11,18 @@
  * twice from the draft:
  *
  * 1. {@link DurableDraftController.hold} before dispatch: the saved copy must
- *    equal the editor exactly; it stays saved while the editor is cleared for
- *    the in-flight message, and reopening the same binding meanwhile never
- *    offers that text again.
+ *    equal the editor exactly; it stays saved, marked as sending, while the
+ *    editor is cleared for the in-flight message. Reopening the same binding
+ *    meanwhile never offers that text again, and neither does a restart or
+ *    another window: a marked copy found outside its own send is offered for
+ *    review ("may already have been sent"), never restored as a draft.
  * 2. {@link DurableDraftController.release} when dispatch certainly did not
- *    happen: the text returns to the editor (newer typing is kept after it).
- *    {@link DurableDraftController.commit} when dispatch happened, or may
- *    have happened: only then is the saved copy cleared. An unknown outcome
- *    is therefore never re-offered for sending; the host reconciles it from
- *    history instead. {@link DurableDraftController.settle} maps an outcome
- *    to one of the two.
+ *    happen: the text returns to the editor (newer typing is kept after it)
+ *    and is saved unmarked. {@link DurableDraftController.commit} when
+ *    dispatch happened, or may have happened: only then is the saved copy
+ *    cleared. An unknown outcome is therefore never re-offered for sending;
+ *    the host reconciles it from history instead.
+ *    {@link DurableDraftController.settle} maps an outcome to one of the two.
  *
  * {@link DurableDraftController.consume} is the single-step variant for
  * forms whose own save is the effect: it clears the saved copy only while
@@ -37,6 +39,11 @@ export interface DurableDraftMessages {
   readFailed: string;
   /** Saved text and editor text differ; both are offered. */
   savedAvailable: string;
+  /**
+   * The saved text was being sent by a send that is not this one (an earlier
+   * run of the app, or another window); it is offered for review.
+   */
+  unsettled: string;
   /** A write was refused; the saved copy is offered for review. */
   saveConflict: string;
   /** A write failed and the saved copy could not be read either. */
@@ -45,6 +52,8 @@ export interface DurableDraftMessages {
   savedRestored: string;
   /** Sending is refused until the draft storage is reviewed. */
   storageUnavailable: string;
+  /** Sending is refused until an unsettled message has been reviewed. */
+  reviewUnsettled: string;
   /** The editor no longer holds the text that was about to be sent. */
   changed: string;
   /** A held message was not dispatched and is back in the editor. */
@@ -65,11 +74,15 @@ export const DEFAULT_DURABLE_DRAFT_MESSAGES: Readonly<DurableDraftMessages> =
       "Local draft could not be opened. Your current text is retained.",
     readFailed: "Local draft could not be read. Your current text is retained.",
     savedAvailable: "A saved draft is available. Review both copies.",
+    unsettled:
+      "This message may already have been sent. Check the conversation before sending it again.",
     saveConflict:
       "Draft was not saved. Review the saved copy before replacing it.",
     saveFailed: "Draft was not saved. Your current text is retained.",
     savedRestored: "Saved draft restored. Review before sending.",
     storageUnavailable: "Review local draft storage before sending.",
+    reviewUnsettled:
+      "Review the message that may already have been sent before sending another.",
     changed: "The draft changed. Review it before sending.",
     notSent: "Not sent. Your message is back in the composer.",
     savedLocally: "Draft saved locally.",
@@ -86,6 +99,11 @@ export interface DurableDraftState {
   opening: boolean;
   /** Saved and editor text differ; `savedText` holds the saved copy. */
   conflict: boolean;
+  /**
+   * With `conflict`: the saved copy is a message that may already have been
+   * sent (it was marked as sending by a send that did not settle here).
+   */
+  unsettled: boolean;
   savedText: string;
   /** {@link DurableDraftController.consume} is in progress. */
   consuming: boolean;
@@ -137,12 +155,19 @@ const initialState = (): DurableDraftState => ({
   message: "",
   opening: true,
   conflict: false,
+  unsettled: false,
   savedText: "",
   consuming: false,
   error: false,
 });
 const wait = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
+/**
+ * isSendingDurableDraft (./durable-draft), repeated so this module keeps only
+ * type imports and loads on its own.
+ */
+const isSendingDurableDraft = (draft: DurableDraft | null): boolean =>
+  draft?.sending === true;
 
 export class DurableDraftController<Recovery = unknown> {
   private active?: Binding<Recovery>;
@@ -198,6 +223,7 @@ export class DurableDraftController<Recovery = unknown> {
     this.publish({
       opening: false,
       conflict: false,
+      unsettled: false,
       consuming: false,
       error: true,
       message: this.messages.openFailed,
@@ -226,6 +252,7 @@ export class DurableDraftController<Recovery = unknown> {
     this.publish({
       opening: true,
       conflict: false,
+      unsettled: false,
       consuming: false,
       error: false,
       message: "",
@@ -247,12 +274,24 @@ export class DurableDraftController<Recovery = unknown> {
         }
       }
       if (this.active !== binding) return;
+      // The in-flight message's text stays saved until dispatch settles; it is
+      // never offered again in the meantime.
+      const held = this.held;
+      const sending =
+        held?.binding.key === key && binding.record?.text === held.text;
+      // A copy marked as sending by any other send (an earlier run of the app,
+      // or another window) may already have been delivered: it is offered for
+      // review and never restored as an ordinary draft.
+      const unsettled = !sending && isSendingDurableDraft(binding.record);
       if (this.text() !== initial || initial !== "") {
         // Text typed before (or while) the draft opened always wins the
         // editor; a different saved copy is offered for review instead.
         binding.ready = true;
-        if (binding.record && binding.record.text !== this.text()) {
-          this.offerBoth(binding, binding.record.text);
+        if (
+          binding.record &&
+          (binding.record.text !== this.text() || unsettled)
+        ) {
+          this.offerBoth(binding, binding.record.text, unsettled);
           return;
         }
         binding.last = binding.record?.text ?? "";
@@ -260,11 +299,11 @@ export class DurableDraftController<Recovery = unknown> {
         this.edit(this.text());
         return;
       }
-      // The in-flight message's text stays saved until dispatch settles; it is
-      // never offered again in the meantime.
-      const held = this.held;
-      const sending =
-        held?.binding.key === key && binding.record?.text === held.text;
+      if (unsettled && binding.record) {
+        binding.ready = true;
+        this.offerBoth(binding, binding.record.text, true);
+        return;
+      }
       const restored = sending ? "" : (binding.record?.text ?? "");
       binding.last = restored;
       if (sending && held) held.peer = binding;
@@ -291,6 +330,7 @@ export class DurableDraftController<Recovery = unknown> {
         this.publish({
           opening: false,
           conflict: false,
+          unsettled: false,
           error: true,
           message: this.messages.readFailed,
         });
@@ -298,14 +338,27 @@ export class DurableDraftController<Recovery = unknown> {
     }
   }
 
-  private offerBoth(binding: Binding<Recovery>, savedText: string): void {
+  private offerBoth(
+    binding: Binding<Recovery>,
+    savedText: string,
+    unsettled = false,
+  ): void {
     binding.failed = true;
     this.publish({
       opening: false,
       conflict: true,
+      unsettled,
       savedText,
-      message: this.messages.savedAvailable,
+      message: unsettled
+        ? this.messages.unsettled
+        : this.messages.savedAvailable,
     });
+  }
+
+  /** The binding's saved copy is the mark of the send in flight here. */
+  private sendingHere(binding: Binding<Recovery>): boolean {
+    const held = this.held;
+    return !!held && (held.binding === binding || held.peer === binding);
   }
 
   /** Record the editor's text; saved in order for the active binding. */
@@ -321,20 +374,46 @@ export class DurableDraftController<Recovery = unknown> {
     )
       return;
     this.publish({ message: "" });
+    this.queueSave(binding, () => text, true);
+  }
+
+  /**
+   * Queue one unmarked write for `binding`, after its earlier writes. `text`
+   * runs when the write starts; undefined skips it. A refused write offers
+   * the saved copy for review. With `clearStatus`, a write that saved what
+   * the editor last showed clears the status message.
+   */
+  private queueSave(
+    binding: Binding<Recovery>,
+    text: () => string | undefined,
+    clearStatus = false,
+  ): void {
     binding.queue = binding.queue.then(async () => {
       if (binding.failed) return;
+      const value = text();
+      if (value === undefined) return;
       try {
         binding.record = await this.requireStore(binding).save(
           binding.record,
-          text,
+          value,
         );
-        if (this.active === binding && binding.last === text)
+        if (clearStatus && this.active === binding && binding.last === value)
           this.publish({ message: "" });
       } catch {
         binding.failed = true;
         if (this.active === binding) await this.reviewConflict(binding);
       }
     });
+  }
+
+  /**
+   * Save `binding`'s own saved text again without the sending mark, unless
+   * it was rewritten (and so unmarked) first.
+   */
+  private unmark(binding: Binding<Recovery>): void {
+    this.queueSave(binding, () =>
+      isSendingDurableDraft(binding.record) ? binding.record?.text : undefined,
+    );
   }
 
   private requireStore(
@@ -349,18 +428,24 @@ export class DurableDraftController<Recovery = unknown> {
       const latest = await this.requireStore(binding).read();
       if (this.active !== binding) return;
       binding.record = latest;
+      const unsettled =
+        isSendingDurableDraft(latest) && !this.sendingHere(binding);
       this.publish({
         opening: false,
         conflict: true,
+        unsettled,
         error: false,
         savedText: latest?.text ?? "",
-        message: this.messages.saveConflict,
+        message: unsettled
+          ? this.messages.unsettled
+          : this.messages.saveConflict,
       });
     } catch {
       if (this.active === binding)
         this.publish({
           opening: false,
           conflict: false,
+          unsettled: false,
           error: true,
           message: this.messages.saveFailed,
         });
@@ -376,8 +461,12 @@ export class DurableDraftController<Recovery = unknown> {
     void this.restore(binding.last);
     this.publish({
       conflict: false,
+      unsettled: false,
       message: binding.last ? this.messages.savedRestored : "",
     });
+    // The person chose to edit that text again: it is an ordinary draft now.
+    if (isSendingDurableDraft(binding.record) && !this.sendingHere(binding))
+      this.unmark(binding);
   }
 
   /** Resolve a conflict by saving the editor's text over the saved copy. */
@@ -387,8 +476,15 @@ export class DurableDraftController<Recovery = unknown> {
     binding.failed = false;
     const text = this.text();
     binding.last = binding.record?.text ?? "";
-    this.publish({ conflict: false, error: false, message: "" });
-    this.edit(text);
+    this.publish({
+      conflict: false,
+      unsettled: false,
+      error: false,
+      message: "",
+    });
+    // The same text is saved again only to drop a sending mark.
+    if (text === binding.last) this.unmark(binding);
+    else this.edit(text);
   }
 
   /** Reopen the active binding after a storage failure. */
@@ -401,8 +497,9 @@ export class DurableDraftController<Recovery = unknown> {
 
   /**
    * Before dispatch: require the saved copy to match the editor exactly, then
-   * keep it saved while the editor is cleared for the in-flight message.
-   * Follow with {@link commit}, {@link release} or {@link settle}.
+   * mark it as sending and keep it saved while the editor is cleared for the
+   * in-flight message. Follow with {@link commit}, {@link release} or
+   * {@link settle}. Nothing has been dispatched when this throws.
    */
   async hold(
     expectedText: string,
@@ -410,7 +507,11 @@ export class DurableDraftController<Recovery = unknown> {
   ): Promise<void> {
     const binding = this.active;
     if (!binding?.ready || binding.failed || this.state.consuming || this.held)
-      throw new Error(this.messages.storageUnavailable);
+      throw new Error(
+        this.state.unsettled
+          ? this.messages.reviewUnsettled
+          : this.messages.storageUnavailable,
+      );
     this.edit(this.text());
     await binding.queue;
     if (
@@ -420,7 +521,52 @@ export class DurableDraftController<Recovery = unknown> {
       this.text() !== expectedText
     )
       throw new Error(this.messages.changed);
-    this.held = { binding, text: this.text() };
+    if (this.held) throw new Error(this.messages.storageUnavailable);
+    const held: Held<Recovery> = { binding, text: expectedText };
+    this.held = held;
+    // An empty editor has no draft to protect.
+    if (!held.text) return;
+    // In order with this binding's other writes, so the mark is never
+    // overtaken by an earlier queued edit.
+    const marking = binding.queue.then(async () => {
+      binding.record = await this.requireStore(binding).save(
+        binding.record,
+        held.text,
+        undefined,
+        { sending: true },
+      );
+    });
+    binding.queue = marking.catch(() => {});
+    try {
+      await marking;
+    } catch {
+      // Nothing was dispatched and the editor still holds the text.
+      if (this.held === held) this.held = undefined;
+      binding.failed = true;
+      if (this.active === binding) await this.reviewConflict(binding);
+      throw new Error(this.messages.storageUnavailable);
+    }
+    if (
+      this.held === held &&
+      this.active === binding &&
+      current() &&
+      this.text() === expectedText
+    )
+      return;
+    // The editor or its binding changed while the mark was written: nothing
+    // is sent, and the copy is saved unmarked again, with any newer typing
+    // when the editor still shows this binding.
+    if (this.held === held) {
+      this.held = undefined;
+      this.queueSave(binding, () =>
+        this.active === binding
+          ? this.text()
+          : isSendingDurableDraft(binding.record)
+            ? binding.record?.text
+            : undefined,
+      );
+    }
+    throw new Error(this.messages.changed);
   }
 
   /** A send is held between {@link hold} and its settlement. */
@@ -441,8 +587,9 @@ export class DurableDraftController<Recovery = unknown> {
           : undefined;
     if (!binding) {
       // The editor moved to another binding before dispatch. The text stays
-      // saved with its own conversation; an empty editor also gets it back so
-      // unsent words are never only in storage.
+      // saved with its own conversation, unmarked; an empty editor also gets
+      // it back so unsent words are never only in storage.
+      this.unmark(held.binding);
       if (this.text().trim()) return;
       void this.restore(held.text);
       this.publish({ message: this.messages.notSent });
@@ -450,10 +597,14 @@ export class DurableDraftController<Recovery = unknown> {
     }
     const now = this.text();
     const restored = now.trim() ? `${held.text}\n${now}` : held.text;
-    // The saved copy was never cleared.
+    // The saved copy was never cleared; it is saved again without the
+    // sending mark, with any newer typing after it.
     binding.last = held.text;
     void this.restore(restored);
-    if (!binding.failed) this.edit(restored);
+    if (!binding.failed) {
+      if (restored === held.text) this.unmark(binding);
+      else this.edit(restored);
+    }
     this.publish({ message: this.messages.notSent });
   }
 
@@ -490,6 +641,7 @@ export class DurableDraftController<Recovery = unknown> {
           this.publish({
             opening: false,
             conflict: false,
+            unsettled: false,
             error: true,
             message: this.messages.clearFailed,
           });
