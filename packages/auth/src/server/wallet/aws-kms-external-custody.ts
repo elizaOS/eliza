@@ -286,7 +286,7 @@ function assertEvmRequest(request: ExternalKeySignTransactionRequest): void {
 }
 
 function isPrivateIpv4(host: string): boolean {
-  const octets = host.split("./").map(Number);
+  const octets = host.split(".").map(Number);
   if (octets.length !== 4 || octets.some((octet) => !Number.isInteger(octet)))
     return false;
   const [first, second] = octets;

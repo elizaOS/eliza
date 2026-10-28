@@ -762,7 +762,7 @@ function isPrivateHttpHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (host === "localhost" || host === "::1" || host.endsWith(".localhost"))
     return true;
-  if (!host.includes("./")) return true; // Docker/Kubernetes service name.
+  if (!host.includes(".")) return true; // Docker/Kubernetes service name.
   if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host))
     return true;
   const match = /^172\.(\d+)\./.exec(host);
