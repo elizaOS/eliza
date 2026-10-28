@@ -88,6 +88,33 @@ export async function recordBaseline(
   manifest.states[key] = image;
 }
 
+/**
+ * Narrows the manifest to the states a capture actually produced. `recordBaseline`
+ * only adds and overwrites, so a state the app stopped rendering (a removed tab, a
+ * plugin that left the monorepo) stayed required forever and
+ * `--require-baseline-states` could never converge. `viewports` limits the prune to
+ * the viewports under review, so a filtered run cannot drop the others. Images are
+ * content-addressed and shared between states, so removing a key never deletes bytes
+ * another state still resolves to.
+ */
+export function pruneBaselineStates(
+  manifest: BaselineManifest,
+  keep: Iterable<string>,
+  viewports: string[] = [],
+): string[] {
+  const keepSet = new Set(keep);
+  const scope = viewports.length ? new Set(viewports) : null;
+  const removed: string[] = [];
+  for (const key of Object.keys(manifest.states)) {
+    const [viewport] = key.split("/");
+    if (scope && !scope.has(viewport)) continue;
+    if (keepSet.has(key)) continue;
+    delete manifest.states[key];
+    removed.push(key);
+  }
+  return removed.sort();
+}
+
 export async function saveBaselineManifest(
   root: string,
   manifest: BaselineManifest,

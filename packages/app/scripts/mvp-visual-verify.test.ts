@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   loadBaselineManifest,
+  pruneBaselineStates,
   recordBaseline,
   requiredBaselineStates,
   resolveBaselinePath,
@@ -20,6 +21,7 @@ import {
   escapeContactSheetHtml,
   renderContactSheet,
 } from "./mvp-visual-verify/html-report.ts";
+import { computeMissingRequiredStates } from "./mvp-visual-verify.ts";
 
 describe("visual baseline identity", () => {
   test("shares image bytes without losing states or coupling later updates", async () => {
@@ -75,6 +77,47 @@ describe("visual baseline identity", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("narrowing the store to the capture drops a state the app stopped rendering", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "app-baselines-prune-"));
+    try {
+      const source = path.join(root, "capture.png");
+      await writeFile(source, "captured bytes");
+      const manifest = await loadBaselineManifest(root);
+      // Required-but-never-captured state: a tab or plugin the app no longer renders.
+      await recordBaseline(root, manifest, "desktop", "removed-tab", source);
+      await recordBaseline(root, manifest, "mobile", "views", source);
+      const captured = ["mobile/views"];
+      const pruned = pruneBaselineStates(manifest, captured);
+      expect(pruned).toEqual(["desktop/removed-tab"]);
+      await saveBaselineManifest(root, manifest);
+      expect(await loadBaselineManifest(root)).toEqual(manifest);
+
+      const required = requiredBaselineStates(manifest, ["desktop", "mobile"]);
+      expect(required).toEqual(["views@mobile"]);
+      expect(
+        computeMissingRequiredStates(required, [
+          { slug: "views", viewport: "mobile" },
+        ]),
+      ).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("prunes only the viewports under review", () => {
+    const manifest = {
+      version: 1 as const,
+      states: {
+        "desktop/views": "images/aa.png",
+        "mobile/views": "images/aa.png",
+      },
+    };
+    expect(pruneBaselineStates(manifest, [], ["mobile"])).toEqual([
+      "mobile/views",
+    ]);
+    expect(Object.keys(manifest.states)).toEqual(["desktop/views"]);
   });
 });
 

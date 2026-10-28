@@ -18,10 +18,17 @@
  *
  * Usage:
  *   node scripts/mvp-visual-verify.ts [--input <dir>] [--baseline <dir>]
- *                                      [--update-baseline] [--viewport <name>]...
+ *                                      [--update-baseline] [--prune-baseline]
+ *                                      [--viewport <name>]...
  *                                      [--require-state <slug[@viewport]>]...
  *                                      [--require-baseline-states]
  *                                      [--strict]
+ *
+ * `--update-baseline` records the current shots and then narrows the store to the
+ * states this capture produced, so the update path converges instead of accumulating
+ * states the app no longer renders; `--prune-baseline` narrows the store without
+ * recording anything new (use it when the remaining drift is a recorded-baseline
+ * refresh a reviewer must approve).
  * Env: ELIZA_AUDIT_APP_DIR overrides the input dir (matches the audit spec);
  * ELIZA_MVP_VISUAL_BASELINE_DIR overrides the committed baseline directory.
  */
@@ -41,6 +48,7 @@ import {
 import { testOutputPath } from "../../scripts/lib/test-output.ts";
 import {
   loadBaselineManifest,
+  pruneBaselineStates,
   recordBaseline,
   requiredBaselineStates,
   resolveBaselinePath,
@@ -60,6 +68,7 @@ export function parseArgs(argv) {
     requiredStates: [],
     requireBaselineStates: false,
     updateBaseline: false,
+    pruneBaseline: false,
     strict: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -71,6 +80,7 @@ export function parseArgs(argv) {
     else if (a === "--require-baseline-states")
       args.requireBaselineStates = true;
     else if (a === "--update-baseline") args.updateBaseline = true;
+    else if (a === "--prune-baseline") args.pruneBaseline = true;
     else if (a === "--strict") args.strict = true;
     else if (a === "--help" || a === "-h") args.help = true;
   }
@@ -283,7 +293,24 @@ async function main() {
     await closeOcrEngines();
   }
 
-  if (args.updateBaseline) await saveBaselineManifest(baselineRoot, baselines);
+  const keepStates = results.map((r) => `${r.viewport}/${r.slug}`);
+  const prunedBaselineStates: string[] = [];
+  if (args.updateBaseline || args.pruneBaseline) {
+    if (!results.length) {
+      throw new Error(
+        "--update-baseline/--prune-baseline refused: this run captured no states, so narrowing the store would empty it",
+      );
+    }
+    prunedBaselineStates.push(
+      ...pruneBaselineStates(baselines, keepStates, args.viewports),
+    );
+    await saveBaselineManifest(baselineRoot, baselines);
+    if (prunedBaselineStates.length) {
+      log(
+        `pruned ${prunedBaselineStates.length} baseline state(s) this capture no longer produces (kept ${Object.keys(baselines.states).length})`,
+      );
+    }
+  }
 
   results.sort((a, b) =>
     a.slug === b.slug
@@ -327,6 +354,7 @@ async function main() {
     requireBaselineStates: args.requireBaselineStates,
     requiredStates,
     missingRequiredStates,
+    prunedBaselineStates,
     newBaselines,
     overflowStates: results.filter((r) => (r.horizontalOverflowPx ?? 0) > 2)
       .length,
@@ -348,7 +376,7 @@ async function main() {
     `wrote ${results.length} states → ${path.join(outDir, "report.json")} + contact-sheet.html`,
   );
   log(
-    `expectation failures: ${summary.expectationFailures} | expectation skips: ${summary.expectationSkips} | missing required states: ${summary.missingRequiredStates.length} | overflow states: ${summary.overflowStates} | new baselines: ${summary.newBaselines}`,
+    `expectation failures: ${summary.expectationFailures} | expectation skips: ${summary.expectationSkips} | missing required states: ${summary.missingRequiredStates.length} | overflow states: ${summary.overflowStates} | new baselines: ${summary.newBaselines} | pruned baseline states: ${summary.prunedBaselineStates.length}`,
   );
   if (summary.expectationFailures > 0) {
     for (const r of results.filter((r) => !r.expectation.pass)) {
