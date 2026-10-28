@@ -1092,9 +1092,7 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
         writer.run("ROLLBACK");
         writer.close();
       }
-      expect(reader.listMessages({ limit: 3 }).map((r) => r.rowId)).toEqual([
-        11, 12, 13,
-      ]);
+      expect(reader.listMessages({ limit: 3 }).map((r) => r.rowId)).toEqual([11, 12, 13]);
 
       reader.close();
     } finally {
