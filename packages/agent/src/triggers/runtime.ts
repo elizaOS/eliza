@@ -467,15 +467,24 @@ async function dispatchWorkflow(
     source,
     event,
   );
+  // A schedule armed for one reviewed workflow version (a hosted digest, or a typed
+  // phone workflow's local-time trigger) passes that version and the exact occurrence
+  // it fires for, so the workflow admits, records as missed, or refuses that occurrence.
+  const reviewedVersionId =
+    typeof task.metadata?.reviewedVersionId === "string"
+      ? task.metadata.reviewedVersionId
+      : typeof task.metadata?.hostedVersionId === "string"
+        ? task.metadata.hostedVersionId
+        : undefined;
   const payload = event
     ? {
         eventKind: event.kind,
         eventPayload: event.payload ?? {},
       }
-    : typeof task.metadata?.hostedVersionId === "string"
+    : reviewedVersionId !== undefined
       ? {
           scheduledAtMs: trigger.nextRunAtMs,
-          workflowVersionId: task.metadata.hostedVersionId,
+          workflowVersionId: reviewedVersionId,
         }
       : {};
   const result = await svc.execute(trigger.workflowId, payload, {
