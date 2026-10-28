@@ -2369,10 +2369,20 @@ export class SlackService extends Service implements ISlackService {
       }
 
       if (responseMemories.length > 0) {
-        await this.runtime.emitEvent(
-          SlackEventTypes.MESSAGE_SENT as string,
-          this.buildEventPayload(accountId),
-        );
+        // Listeners are observers: a failing listener must not turn an
+        // already-sent message into a send failure that invites a retry.
+        try {
+          await this.runtime.emitEvent(
+            SlackEventTypes.MESSAGE_SENT as string,
+            this.buildEventPayload(accountId),
+          );
+        } catch (error) {
+          this.runtime.reportError("SlackService.processAgentMessage", error, {
+            event: SlackEventTypes.MESSAGE_SENT,
+            accountId,
+            channelId,
+          });
+        }
       }
 
       if (attachmentFailures.length > 0) {

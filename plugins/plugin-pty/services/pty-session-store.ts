@@ -278,13 +278,22 @@ export class PtySessionStore {
     );
   }
 
-  /** Spawn a new interactive session and start streaming its output. */
-  async start(spec: PtySpawnSpec): Promise<PtySessionInfo> {
+  /**
+   * The cap must be re-checked after the awaits below: two starts can both
+   * pass the entry check before either records its session, so an entry-only
+   * check would spawn more processes than {@link maxSessions} allows.
+   */
+  private assertCapacity(): void {
     if (this.sessions.size >= this.maxSessions) {
       throw new Error(
         `PTY session limit reached (${this.maxSessions}); stop a session before starting another.`,
       );
     }
+  }
+
+  /** Spawn a new interactive session and start streaming its output. */
+  async start(spec: PtySpawnSpec): Promise<PtySessionInfo> {
+    this.assertCapacity();
     let cwd = await this.confineCwd(spec.cwd);
     if (!this.resolvedSpawn) {
       this.resolvedSpawn = await this.resolveSpawn();
@@ -297,6 +306,9 @@ export class PtySessionStore {
 
     const env = buildPtyEnv(spec.env, cwd);
 
+    // Nothing awaits between this check, the synchronous spawn, and the
+    // record insert: that trio is what claims a slot.
+    this.assertCapacity();
     const pty = spawn(spec.command, spec.args, {
       cwd,
       env,

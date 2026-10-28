@@ -564,6 +564,8 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
     // shell refuses the offending line and aborts, so only lines already
     // completed can have executed. Reserved words, assignment prefixes
     // (arrays), and function definitions keep the ordinary analyzed reading.
+    // Inside `[[ ... ]]` bash reads the `=~` operand as a regular expression,
+    // so `^(a|b)` is valid there and the line runs: fail closed instead.
     if (dialect === "posix" && char === "(" && !boundary) {
       const previous = result.tokens[result.tokens.length - 1];
       const previousWord =
@@ -574,6 +576,15 @@ function lex(source: string, dialect: ShellDialect, budget: Budget): Lexed {
         !POSIX_RESERVED_WORDS.has(previousWord) &&
         !/^[\t ]*\)/.test(source.slice(index + 1))
       ) {
+        if (
+          result.tokens.some(
+            (token) => token.kind === "word" && token.value === "[[",
+          )
+        ) {
+          result.error =
+            "conditional regular expression is not statically supported";
+          break;
+        }
         let keep = result.tokens.length;
         while (keep > 0) {
           const token = result.tokens[keep - 1];
@@ -1888,10 +1899,16 @@ function classifyArgv(
           .map((word) => word.value),
       };
     }
-    const start = rest.findIndex((word) =>
-      ["-exec", "-execdir", "-ok", "-okdir"].includes(word.value),
-    );
-    if (start >= 0) {
+    // find runs every action clause, so each -exec/-execdir/-ok/-okdir
+    // command is classified, not only the first one.
+    for (let start = 0; start < rest.length; start += 1) {
+      if (
+        !["-exec", "-execdir", "-ok", "-okdir"].includes(
+          rest[start]?.value ?? "",
+        )
+      ) {
+        continue;
+      }
       const finish = rest.findIndex(
         (word, index) => index > start && [";", "+"].includes(word.value),
       );
@@ -1904,6 +1921,8 @@ function classifyArgv(
         budget,
       );
       if (verdict.destructive) return verdict;
+      if (finish < 0) break;
+      start = finish;
     }
   }
   if (bin === "rsync") {

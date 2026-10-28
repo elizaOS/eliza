@@ -26,7 +26,6 @@ import type {
   CaptureLifeOpsPhoneConsentRequest,
   LifeOpsActivitySignal,
   LifeOpsCalendarEvent,
-  LifeOpsCalendarProvider,
   LifeOpsChannelPolicy,
   LifeOpsCircadianState,
   LifeOpsManualOverrideResult,
@@ -220,6 +219,7 @@ import {
   isWithinQuietHours as isWithinQuietHoursPolicy,
   normalizeGeneratedReminderBody,
   normalizeGeneratedWorkflowBody,
+  ownerDeclinedEvent,
 } from "../service-helpers-misc.js";
 import { computeDefinitionPerformance } from "../service-helpers-occurrence.js";
 import {
@@ -231,6 +231,7 @@ import {
   hasExplicitReminderEscalationProfile,
   isReminderChannel,
   isReminderReviewClosed,
+  listReminderCalendarEvents,
   normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
   normalizeActivitySignalState as normalizeReminderActivitySignalState,
   normalizeReminderIntensityInput,
@@ -1142,14 +1143,6 @@ function collectNearbyReminderTitles(args: {
   return titles;
 }
 
-function ownerDeclinedEvent(event: LifeOpsCalendarEvent): boolean {
-  return event.attendees.some(
-    (attendee) =>
-      attendee.self &&
-      attendee.responseStatus?.trim().toLowerCase() === "declined",
-  );
-}
-
 function buildActiveCalendarEventReminders(
   events: Array<{
     id: string;
@@ -1269,38 +1262,22 @@ export type RemindersDeps = {
   checkinSource: CheckinSourceService;
 };
 
-// Providers whose events plugin-calendar gives a reminder plan (Google,
-// Microsoft and Apple sync, and the built-in calendar). ICS imports create no
-// plans, so they are not read here.
-const REMINDER_CALENDAR_PROVIDERS = [
-  "eliza",
-  "google",
-  "microsoft",
-  "apple_calendar",
-] as const satisfies readonly LifeOpsCalendarProvider[];
-
 export class RemindersDomain {
   constructor(
     private readonly ctx: LifeOpsContext,
     private readonly deps: RemindersDeps,
   ) {}
 
-  private async listReminderCalendarEvents(
+  private listReminderCalendarEvents(
     timeMin?: string,
     timeMax?: string,
   ): Promise<LifeOpsCalendarEvent[]> {
-    const agentId = this.ctx.agentId();
-    const events = await Promise.all(
-      REMINDER_CALENDAR_PROVIDERS.map((provider) =>
-        this.ctx.repository.listCalendarEvents(
-          agentId,
-          provider,
-          timeMin,
-          timeMax,
-        ),
-      ),
+    return listReminderCalendarEvents(
+      this.ctx.repository,
+      this.ctx.agentId(),
+      timeMin,
+      timeMax,
     );
-    return events.flat();
   }
 
   /**
@@ -3677,6 +3654,7 @@ export class RemindersDomain {
       const result = await channel.send({
         target,
         message: args.message,
+        idempotencyKey: `lifeops-checkin:${args.kind}:${args.reportId}`,
         metadata: {
           ...args.metadata,
           checkinKind: args.kind,

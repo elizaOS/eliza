@@ -16,11 +16,11 @@
  */
 
 import crypto from "node:crypto";
-import { hostname } from "node:os";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { ClassifyContext } from "./classifier.ts";
 import type { HealthChecker } from "./health.ts";
+import { currentProcessOwner } from "./repository.ts";
 import type {
   OperationError,
   OperationErrorCode,
@@ -155,7 +155,7 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     const now = Date.now();
     const op: RuntimeOperation = {
       id: crypto.randomUUID(),
-      processOwner: { hostname: hostname(), pid: process.pid },
+      processOwner: currentProcessOwner(),
       kind: preparedIntent.kind,
       intent: preparedIntent,
       tier,
