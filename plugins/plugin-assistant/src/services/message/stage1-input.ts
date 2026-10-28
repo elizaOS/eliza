@@ -211,9 +211,7 @@ export function renderMessageHandlerModelInput(
         ),
       )
     : priorDialogueSegments;
-  const transcript = transcriptSegments
-    .map((segment) => segment.content)
-    .join("\n");
+  const transcript = transcriptSegments.map(segmentBlock).join("\n");
   // Past effects remain complete historical evidence, before the instruction
   // that establishes the current request. They cannot become pending work by
   // being regrouped into the current turn's tool/result tail.
@@ -236,11 +234,13 @@ export function renderMessageHandlerModelInput(
     taskIndex > 0 ? instructions.slice(0, taskIndex).trim() : "";
   const taskInstructions =
     taskIndex >= 0 ? instructions.slice(taskIndex) : `# Task\n${instructions}`;
-  const currentMessages = turnTailSegments.filter(
-    (segment) => segment.label === "message:user",
-  );
+  // A platform reply's referenced message belongs to the current turn: keep it
+  // in event order directly before the current message, not ahead of the task.
+  const isCurrentTurnMessage = (segment: { label?: string }) =>
+    segment.label === "message:user" || segment.label === "reply_reference";
+  const currentMessages = turnTailSegments.filter(isCurrentTurnMessage);
   const otherTurnSegments = turnTailSegments.filter(
-    (segment) => segment.label !== "message:user",
+    (segment) => !isCurrentTurnMessage(segment),
   );
   const orderedDynamicSegments = [
     ...compactHistoricalReceiptSegments(historicalNavigationSegments),

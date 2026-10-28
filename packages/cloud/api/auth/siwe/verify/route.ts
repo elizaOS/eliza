@@ -1,12 +1,6 @@
-/**
- * POST /api/auth/siwe/verify
- * Validates SIWE message + signature, consumes nonce, finds-or-creates
- * a user by wallet address, and issues an API key.
- *
- * Redis is built per-request — see comment in `nonce/route.ts` for why.
- */
+/** Verify the wallet signature and atomically consume its server-issued nonce. Storage is selected per request. */
 
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import {
   RateLimitPresets,
   rateLimit,
@@ -30,7 +24,7 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STRICT));
 
 app.post("/", async (c) => {
-  const redis = buildRedisClient(c.env);
+  const redis = buildAuthenticationState(c.env, c.env.AUTHENTICATION_STATE);
   if (!redis) {
     return c.json({ error: "Service temporarily unavailable" }, 503);
   }

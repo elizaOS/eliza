@@ -6,6 +6,7 @@ import type {
 } from "@elizaos/contracts/calendar-linked-sync";
 import { z } from "zod";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
+import { NO_FOLLOW_REDIRECT, withoutRedirects } from "../../utils/no-redirect-fetch";
 
 export interface CalendarSyncOwner {
   organizationId: string;
@@ -377,7 +378,7 @@ export class ManagedCalendarSyncProvider {
         url,
         {
           method,
-          redirect: "error",
+          redirect: NO_FOLLOW_REDIRECT,
           signal: scope.owner.signal,
           headers: {
             Authorization: `Bearer ${scope.grant.token}`,
@@ -390,7 +391,9 @@ export class ManagedCalendarSyncProvider {
           provider: "google-calendar-sync",
           timeoutMs: 30000,
           maxResponseBytes: providerBytesLimit,
-          fetchImpl: this.dependencies.request,
+          // A 3xx rejects like the former redirect: "error" (workerd refuses
+          // that mode), so it lands on the outcome-unknown path below.
+          fetchImpl: withoutRedirects(this.dependencies.request),
         },
       );
       status = response.status;

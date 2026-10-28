@@ -318,6 +318,33 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
 export const OPTIONAL_PLUGIN_MAP: Readonly<Record<string, string>> =
   shortIdPluginMap;
 
+/**
+ * Resolve a `plugins.allow` / `plugins.deny` id to the package name used in
+ * the load set: channel names ("twitter"), short ids ("openai") and full
+ * package names all map to the same `@elizaos/...` package.
+ */
+function pluginPackageNameFromConfigName(name: string): string {
+  return (
+    CHANNEL_PLUGIN_MAP[name] ??
+    OPTIONAL_PLUGIN_MAP[name] ??
+    packageNameFromPluginConfigId(name)
+  );
+}
+
+/**
+ * Build the deny set from config/env names. Each name is kept as written (so
+ * unscoped drop-in and ejected plugin names still match) and also added as
+ * its resolved package name, so a short id denies the loaded package.
+ */
+export function collectDeniedPluginNames(names: Iterable<string>): Set<string> {
+  const denied = new Set<string>();
+  for (const name of names) {
+    denied.add(name);
+    denied.add(pluginPackageNameFromConfigName(name));
+  }
+  return denied;
+}
+
 // ---------------------------------------------------------------------------
 // Main function
 // ---------------------------------------------------------------------------
@@ -612,10 +639,7 @@ export function collectPluginNames(
       // same way plugins.entries does — addToAllowlist() pushes both the
       // short ID and the full package name, so bare short IDs must be
       // expanded to avoid importing the raw SDK package (e.g. "openai").
-      const pluginName =
-        CHANNEL_PLUGIN_MAP[item] ??
-        OPTIONAL_PLUGIN_MAP[item] ??
-        packageNameFromPluginConfigId(item);
+      const pluginName = pluginPackageNameFromConfigName(item);
       pluginsToLoad.add(pluginName);
       track(pluginName, `plugins.allow[${JSON.stringify(item)}]`);
     }
@@ -857,10 +881,27 @@ export function collectPluginNames(
   if (
     personalAssistantDisabledByEnv() ||
     leanChat ||
-    storeBuild ||
+    (!onMobile && storeBuild) ||
     isCloudContainer
   ) {
     pluginsToLoad.delete("@elizaos/plugin-personal-assistant");
+  }
+
+  // A selective reminder host opts into its declared storage dependencies.
+  // Do not install this contribution in every standalone or lean deployment.
+  if (
+    pluginsToLoad.has("@elizaos/plugin-personal-assistant/reminders-plugin")
+  ) {
+    for (const companion of [
+      "@elizaos/plugin-scheduling",
+      "@elizaos/plugin-reminders",
+      "@elizaos/plugin-goals",
+    ]) {
+      if (!isPluginExplicitlyDisabled(companion)) {
+        pluginsToLoad.add(companion);
+        track(companion, "selected owner reminders dependency");
+      }
+    }
   }
 
   // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
@@ -994,6 +1035,10 @@ export function collectPluginNames(
   ) {
     pluginsToLoad.delete("@elizaos/plugin-agent-orchestrator/ui");
   }
+  // Full PA already owns this canonical surface. Never install a second
+  // promotion/handler set alongside it; mobile/store uses the selective owner.
+  if (pluginsToLoad.has("@elizaos/plugin-personal-assistant"))
+    pluginsToLoad.delete("@elizaos/plugin-personal-assistant/reminders-plugin");
   return pluginsToLoad;
 }
 

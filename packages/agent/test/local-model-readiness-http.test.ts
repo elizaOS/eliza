@@ -12,6 +12,8 @@ import {
 import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import { proposeDeviceAction } from "../../../plugins/plugin-assistant/src/services/device-actions/action.ts";
+import { recordCloudInferenceFailure } from "../../../plugins/plugin-elizacloud/src/utils/inference-diagnostics.ts";
 import { installRouterHandler } from "../../../plugins/plugin-local-inference/src/services/router-handler.ts";
 import { detectRuntimeModel } from "../src/api/agent-model.ts";
 import {
@@ -111,6 +113,70 @@ afterAll(async () => {
   if (directory) await rm(directory, { recursive: true, force: true });
   vi.unstubAllEnvs();
 }, 120_000);
+
+it("projects live device action registration without action metadata or validation", async () => {
+  const status = async () => {
+    const response = await fetch(`http://127.0.0.1:${server.port}/api/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(200);
+    return response.text();
+  };
+  expect(JSON.parse(await status()).deviceActionRegistration).toBe("missing");
+  const privateDescription = "private-action-description-not-for-status";
+  const privateParameter = "private-action-parameter-not-for-status";
+  const validate = vi.fn(() => {
+    throw new Error("Status must not validate an action outside its turn");
+  });
+  runtime.registerAction({
+    ...proposeDeviceAction,
+    description: privateDescription,
+    parameters: [
+      {
+        name: privateParameter,
+        description: privateDescription,
+        schema: { type: "string" },
+      },
+    ],
+    validate,
+  });
+  try {
+    const registered = await status();
+    expect(JSON.parse(registered).deviceActionRegistration).toBe("registered");
+    expect(registered).not.toContain(privateDescription);
+    expect(registered).not.toContain(privateParameter);
+    expect(registered).not.toContain("PROPOSE_DEVICE_ACTION");
+    expect(JSON.parse(registered)).not.toHaveProperty("actions");
+    expect(JSON.parse(registered)).not.toHaveProperty("runtime");
+    expect(validate).not.toHaveBeenCalled();
+  } finally {
+    runtime.unregisterAction(proposeDeviceAction.name);
+  }
+  expect(JSON.parse(await status()).deviceActionRegistration).toBe("missing");
+});
+
+it("distinguishes an unavailable runtime from an absent registered action", async () => {
+  const starting = await startApiServer({
+    port: 0,
+    initialAgentState: "starting",
+    skipDeferredStartupWork: true,
+  });
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:${starting.port}/api/status`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      state: "starting",
+      deviceActionRegistration: "runtime_unavailable",
+    });
+  } finally {
+    await starting.close();
+  }
+});
 
 it("reports local load/unload through authenticated HTTP and does not label a connector as a model", async () => {
   const status = async () => {
@@ -281,3 +347,39 @@ it("includes the local readiness reason on initial and periodic WebSocket status
     ws.close();
   }
 }, 20_000);
+
+it("exposes only finite Cloud failure facts through authenticated existing status", async () => {
+  recordCloudInferenceFailure(
+    runtime,
+    "ACTION_PLANNER",
+    { tools: [] },
+    Object.assign(new Error("PRIVATE_PROVIDER_ERROR"), {
+      status: 400,
+      error: { param: "PRIVATE_PARAM" },
+    }),
+  );
+  const response = await fetch(`http://127.0.0.1:${server.port}/api/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(response.status).toBe(200);
+  const status = await response.json();
+  expect(status.cloudInferenceFailure).toEqual({
+    version: 1,
+    at: expect.any(Number),
+    stage: "action-planner",
+    status: 400,
+    reason: "unknown",
+    strictTools: [],
+    schemaKeywords: [],
+    schemaScanTruncated: false,
+    schemaDepth: 0,
+    schemaProperties: 0,
+    schemaEnumValues: 0,
+    schemaTextChars: 0,
+  });
+  expect(JSON.stringify(status.cloudInferenceFailure)).not.toContain("PRIVATE");
+  const unauthenticated = await fetch(
+    `http://127.0.0.1:${server.port}/api/status`,
+  );
+  expect(unauthenticated.status).toBe(401);
+});

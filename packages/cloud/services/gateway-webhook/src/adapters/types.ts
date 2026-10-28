@@ -14,6 +14,8 @@ export interface ChatEvent {
   chatId: string;
   chatType?: string;
   channelId?: string;
+  /** Receiving phone number, distinct from the provider's opaque channel id. */
+  receivingNumber?: string;
   channelType?: string;
   protocol?: string;
   senderId: string;
@@ -73,7 +75,19 @@ export interface PlatformAdapter {
     deliveryHooks?: TelegramDeliveryHooks,
     mediaUrls?: readonly string[],
   ): Promise<PlatformDeliveryReceipt>;
-  sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
+  /** Read feedback remains independent from whether the agent chooses to reply. */
+  sendReadReceipt?(config: WebhookConfig, event: ChatEvent): Promise<void>;
+  /** Optional add-only reaction to the current verified private inbound message. */
+  sendAcknowledgementReaction?(
+    config: WebhookConfig,
+    event: ChatEvent,
+    reaction: string,
+  ): Promise<void>;
+  sendTypingIndicator(
+    config: WebhookConfig,
+    event: ChatEvent,
+    feedback?: { markRead: boolean },
+  ): Promise<void>;
   /** Clears an explicit provider typing state when the adapter supports it. */
   stopTypingIndicator?(config: WebhookConfig, event: ChatEvent): Promise<void>;
   /** Resolve provider-owned voice bytes while credentials are still local. */

@@ -1,6 +1,6 @@
 /**
  * Issues the short-lived signed subscription entitlement read by native
- * clients (the Alpha Phone contract): a compact ES256 JWS of the caller's
+ * clients: a compact ES256 JWS of the caller's
  * current plan state. The token only presents plan state; Cloud still
  * authorizes every inference request from its own policy.
  *
@@ -12,6 +12,7 @@
  *   ELIZA_ENTITLEMENT_NEXT_PUBLIC_KEY        optional base64 SPKI public key published before it signs
  *   ELIZA_ENTITLEMENT_NEXT_KEY_ID            kid of the next key (set together with the key)
  *   ELIZA_ENTITLEMENT_ISSUER                 exact API origin clients expect as `iss`
+ *   ELIZA_ENTITLEMENT_AUDIENCE               deployment contract audience; defaults to cloud-subscription
  *
  * Rotation: (1) publish the new public key as NEXT and wait longer than the
  * key-set cache (ENTITLEMENT_KEYS_MAX_AGE_SECONDS); (2) make it the signing key
@@ -49,7 +50,7 @@ import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-p
 import { resolveSubscriptionPlanDefinition } from "./subscription-catalog";
 
 export const ENTITLEMENT_TYPE = "eliza-entitlement+jwt";
-export const ENTITLEMENT_AUDIENCE = "eliza-alpha-phone";
+export const ENTITLEMENT_AUDIENCE = "cloud-subscription";
 /** Current claim-set version (see the format note above). */
 export const ENTITLEMENT_FORMAT_VERSION = 2;
 /** Client ceiling is 60 minutes; Cloud issues well inside it. */
@@ -95,6 +96,7 @@ export class EntitlementSigningUnavailableError extends Error {
 }
 
 interface SigningConfig {
+  audience: string;
   issuer: string;
   kid: string;
   privateKey: CryptoKey;
@@ -145,6 +147,9 @@ export async function loadEntitlementSigningConfig(
   const nextKey = env.ELIZA_ENTITLEMENT_NEXT_PUBLIC_KEY;
   const nextKid = env.ELIZA_ENTITLEMENT_NEXT_KEY_ID;
   const issuer = requiredIssuer(env.ELIZA_ENTITLEMENT_ISSUER);
+  const audience = env.ELIZA_ENTITLEMENT_AUDIENCE ?? ENTITLEMENT_AUDIENCE;
+  if (!KEY_ID_PATTERN.test(audience))
+    throw new EntitlementSigningUnavailableError("ELIZA_ENTITLEMENT_AUDIENCE is invalid");
   if (!privateKey || !kid)
     throw new EntitlementSigningUnavailableError("Entitlement signing key is not configured");
   if (!KEY_ID_PATTERN.test(kid))
@@ -163,6 +168,7 @@ export async function loadEntitlementSigningConfig(
     throw new EntitlementSigningUnavailableError("ELIZA_ENTITLEMENT_NEXT_KEY_ID is invalid");
   const source = [
     issuer,
+    audience,
     kid,
     privateKey,
     previousKid ?? "",
@@ -190,7 +196,7 @@ export async function loadEntitlementSigningConfig(
       });
       keys.push(publicJwk(await exportJWK(next), nextKid));
     }
-    config = { issuer, kid, privateKey: signing, keys };
+    config = { audience, issuer, kid, privateKey: signing, keys };
   } catch (error) {
     if (error instanceof EntitlementSigningUnavailableError) throw error;
     // error-policy:J2 malformed key material is a configuration outage, never a token.
@@ -429,7 +435,7 @@ export async function signSubscriptionEntitlement(
   return new SignJWT(claims)
     .setProtectedHeader({ alg: "ES256", typ: ENTITLEMENT_TYPE, kid: config.kid })
     .setIssuer(config.issuer)
-    .setAudience(ENTITLEMENT_AUDIENCE)
+    .setAudience(config.audience)
     .setSubject(input.userId)
     .setJti(input.jti ?? crypto.randomUUID())
     .setIssuedAt(iat)

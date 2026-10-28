@@ -4,6 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
+import type { ApiKey } from "../../db/schemas/api-keys";
 
 export const MOBILE_API_KEY_PREFIX = "eliza_mobile_";
 const MOBILE_API_KEY_RE = /^eliza_mobile_[0-9a-f]{64}$/;
@@ -31,4 +32,16 @@ export function mobileApiKeyIngressRateLimitKey(secret: string): string {
   }
   const fingerprint = createHash("sha256").update(secret).digest("hex");
   return `mobile-api-key-ingress:sha256:${fingerprint}`;
+}
+
+/** Mobile keys require durable activation, a client binding and finite lifetime. */
+export function isUsableMobileApiKey(value: ApiKey | undefined): boolean {
+  return Boolean(
+    value?.is_active &&
+      !value.deleted_at &&
+      typeof value.source_app_id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.source_app_id) &&
+      value.expires_at &&
+      new Date(value.expires_at) > new Date(),
+  );
 }

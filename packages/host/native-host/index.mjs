@@ -14,6 +14,7 @@ export * from "./sensitive-text.mjs";
 export * from "./task-runtime-gateway.mjs";
 export { createSqlCipherTaskProvider } from "./task-sqlcipher.mjs";
 export { openTaskDatabase } from "./task-storage.mjs";
+export * from "./task-storage-sealing.mjs";
 export * from "./task-trace-capture.mjs";
 export * from "./trace-queue.mjs";
 export * from "./trace-transport.mjs";

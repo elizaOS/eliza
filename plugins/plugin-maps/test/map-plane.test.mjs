@@ -259,7 +259,7 @@ test("invalid global descriptor registers no protocol", () => {
   assert.equal(effects.protocols.length, 0);
 });
 
-test("new global pin gets street zoom and live host padding without recentering an unchanged selection or changing route padding", () => {
+test("global selection follows changed host layout without resetting zoom, replacing its marker or stealing navigation", () => {
   let padding = { top: 80, bottom: 430, left: 30, right: 30 };
   const f = fixture(global, { selectionPadding: () => padding });
   const point = { longitude: -122.42, latitude: 37.77 };
@@ -278,6 +278,17 @@ test("new global pin gets street zoom and live host padding without recentering 
   assert.equal(f.map.easeCalls, 1);
   f.plane.update(point);
   assert.equal(f.map.easeCalls, 1);
+  const marker = f.map.marker;
+  f.map.options.zoom = 16;
+  padding = { top: 80, bottom: 250, left: 30, right: 340 };
+  f.map.events.idle();
+  assert.equal(f.map.easeCalls, 2);
+  assert.equal(f.map.getZoom(), 16);
+  assert.equal(f.map.marker, marker);
+  assert.deepEqual(Array.from(f.map.center.offset), [-155, -85]);
+  f.map.events.idle();
+  f.plane.update(point);
+  assert.equal(f.map.easeCalls, 2);
   padding = { top: 80, bottom: 250, left: 30, right: 30 };
   f.plane.update({ ...point, latitude: 37.78 });
   assert.deepEqual(Array.from(f.map.center.offset), [
@@ -290,7 +301,7 @@ test("new global pin gets street zoom and live host padding without recentering 
     left: 0,
     right: 0,
   });
-  assert.equal(f.map.easeCalls, 2);
+  assert.equal(f.map.easeCalls, 3);
   f.map.events.idle();
   assert.equal(f.container.dataset.mapZoom, "14");
   f.plane.update(
@@ -303,7 +314,22 @@ test("new global pin gets street zoom and live host padding without recentering 
     left: 1,
     right: 1,
   });
-  assert.equal(f.map.easeCalls, 2);
+  assert.equal(f.map.easeCalls, 3);
+  padding = { top: 20, bottom: 100, left: 30, right: 30 };
+  f.map.events.idle();
+  assert.equal(
+    f.map.easeCalls,
+    3,
+    "route keeps camera ownership after layout change",
+  );
+  f.plane.update({ ...point, latitude: 37.78 }, null, { follow: true });
+  padding = { top: 10, bottom: 10, left: 10, right: 10 };
+  f.map.events.idle();
+  assert.equal(
+    f.map.easeCalls,
+    3,
+    "following keeps camera ownership after layout change",
+  );
   const regionalMap = fixture(regional);
   regionalMap.plane.update(point);
   assert.equal("zoom" in regionalMap.map.center, false);

@@ -27,6 +27,12 @@ import {
 } from "./website-reputation";
 
 const USER_AGENT = "Eliza-Cloud-Website-Reputation";
+/**
+ * Never follow a redirect. The Workers runtime rejects `redirect: "error"`
+ * with a TypeError on every call, so use "manual": a 3xx response is not ok and
+ * `readBoundedText` rejects it.
+ */
+const NO_REDIRECTS = "manual" as const;
 const sha256 = (body: string) => createHash("sha256").update(body).digest("hex");
 const reason = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).slice(0, 200);
@@ -72,7 +78,7 @@ export async function downloadThreatFeed(
   try {
     const response = await fetchImpl(feed.url, {
       headers,
-      redirect: "error",
+      redirect: NO_REDIRECTS,
       signal: AbortSignal.timeout(30_000),
     });
     const body = await readBoundedText(response, feed.maxBytes);
@@ -90,7 +96,7 @@ export async function downloadThreatFeed(
     const atom = await readBoundedText(
       await fetchImpl(`https://github.com/${repo}/commits/master/${path}.atom`, {
         headers,
-        redirect: "error",
+        redirect: NO_REDIRECTS,
         signal: AbortSignal.timeout(10_000),
       }),
       512 * 1024,
@@ -101,7 +107,7 @@ export async function downloadThreatFeed(
     const body = await readBoundedText(
       await fetchImpl(`https://raw.githubusercontent.com/${repo}/${sha}/${path}`, {
         headers,
-        redirect: "error",
+        redirect: NO_REDIRECTS,
         signal: AbortSignal.timeout(30_000),
       }),
       feed.maxBytes,

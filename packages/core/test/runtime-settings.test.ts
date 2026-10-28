@@ -176,6 +176,39 @@ describe("AgentRuntime.getSetting", () => {
 		expect(runtime.getSetting("SOLANA_RPC_URL")).toBeNull();
 	});
 
+	it.each(["top-level", "nested"])(
+		"excludes legacy public Cloud settings from %s secret catalogs",
+		(location) => {
+			const secrets = {
+				ELIZAOS_CLOUD_ENABLED: "true",
+				ELIZAOS_CLOUD_BASE_URL: "https://cloud.example.invalid",
+				" elizaos_cloud_enabled ": "true",
+			};
+			const runtime = new AgentRuntime({
+				character: {
+					name: "legacy-cloud-public-settings",
+					...(location === "top-level"
+						? { secrets }
+						: { settings: { secrets } }),
+				} as Character,
+				logLevel: "fatal",
+			});
+			expect(runtime.getSetting("ELIZAOS_CLOUD_ENABLED")).toBe(true);
+			const createSwap = () =>
+				(
+					runtime as unknown as { createSecretSwapSession(): SecretSwapSession }
+				).createSecretSwapSession();
+			const text = "Cloud enabled true at https://cloud.example.invalid";
+			expect(createSwap().substituteText(text)).toBe(text);
+			expect(runtime.redactSecrets(text)).toBe(text);
+			runtime.setSetting("PASSWORD", "true", true);
+			expect(createSwap().substituteText("credential true")).not.toContain(
+				"true",
+			);
+			expect(runtime.getSetting("ELIZAOS_CLOUD_ENABLED")).toBe(true);
+		},
+	);
+
 	it("replaces and revokes a boot-copied nested secret", () => {
 		const runtime = new AgentRuntime({
 			character: {

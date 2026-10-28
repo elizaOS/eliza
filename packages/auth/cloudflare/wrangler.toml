@@ -1,0 +1,108 @@
+name = "eliza-login"
+main = "worker.ts"
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+preview_urls = false
+
+[observability]
+enabled = true
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LoginContainer"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LoginRateLimits"]
+
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["LoginAggregations"]
+
+[[migrations]]
+tag = "v4"
+new_sqlite_classes = ["LoginSpendMetrics"]
+
+# Canonical public origins. Cloud's API Worker reaches login through these
+# custom domains (Workers can fetch another Worker's custom domain; zone routes
+# cannot be fetched Worker-to-Worker). `wrangler deploy` creates the proxied DNS
+# record and certificate, and fails if a conflicting DNS record already exists.
+# To rename a host, change it here and in CLOUDFLARE_LOGIN_HOSTS in
+# packages/cloud/scripts/verify-steward-upstream-binding.ts; the
+# login-release-routing test keeps them in sync. workers.dev stays enabled
+# for pre-DNS checks and rollback.
+[env.staging]
+name = "eliza-login-staging"
+workers_dev = true
+preview_urls = false
+routes = [
+  { pattern = "login-staging.eliza.app", custom_domain = true },
+]
+
+[env.staging.vars]
+LOGIN_ENABLED = "false"
+
+[env.staging.triggers]
+crons = ["* * * * *"]
+
+[[env.staging.containers]]
+class_name = "LoginContainer"
+image = "./Dockerfile"
+image_build_context = "../../.."
+max_instances = 1
+instance_type = "standard-1"
+
+[[env.staging.durable_objects.bindings]]
+name = "LOGIN"
+class_name = "LoginContainer"
+
+[[env.staging.durable_objects.bindings]]
+name = "RATE_LIMITS"
+class_name = "LoginRateLimits"
+
+[env.production]
+name = "eliza-login-production"
+workers_dev = true
+preview_urls = false
+routes = [
+  { pattern = "login.eliza.app", custom_domain = true },
+]
+
+[env.production.vars]
+LOGIN_ENABLED = "false"
+
+[env.production.triggers]
+crons = ["* * * * *"]
+
+[[env.production.containers]]
+class_name = "LoginContainer"
+image = "./Dockerfile"
+image_build_context = "../../.."
+max_instances = 1
+instance_type = "standard-1"
+
+[[env.production.durable_objects.bindings]]
+name = "LOGIN"
+class_name = "LoginContainer"
+
+[[env.production.durable_objects.bindings]]
+name = "RATE_LIMITS"
+class_name = "LoginRateLimits"
+
+[[env.staging.durable_objects.bindings]]
+name = "AGGREGATIONS"
+class_name = "LoginAggregations"
+
+[[env.production.durable_objects.bindings]]
+name = "AGGREGATIONS"
+class_name = "LoginAggregations"
+
+[[env.staging.durable_objects.bindings]]
+name = "SPEND_METRICS"
+class_name = "LoginSpendMetrics"
+
+[[env.production.durable_objects.bindings]]
+name = "SPEND_METRICS"
+class_name = "LoginSpendMetrics"

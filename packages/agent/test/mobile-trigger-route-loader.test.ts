@@ -78,7 +78,7 @@ console.log(JSON.stringify({mode,coldStatus:cold.status,created:tasks.size,execu
     builder,
     `
 const [entry,output,corePort,mode,stub]=process.argv.slice(2);
-const result=await Bun.build({entrypoints:[entry],outdir:output,target:'bun',format:'esm',conditions:['eliza-source'],...(mode==='absent'?{external:['@elizaos/plugin-workflow/trigger-routes']}:{}) ,plugins:[{name:'closed-runtime-ports',setup(build){build.onResolve({filter:/^@elizaos\\/core$/},()=>({path:corePort}));if(mode==='ios')build.onResolve({filter:/^@elizaos\\/plugin-workflow(?:\\/|$)/},()=>({path:stub}));}}]});
+const result=await Bun.build({entrypoints:[entry],outdir:output,target:'bun',format:'esm',conditions:['eliza-source'],external:['@elizaos/plugin-native-inference/host-bridge',...(mode==='absent'?['@elizaos/plugin-workflow/trigger-routes']:[])] ,plugins:[{name:'closed-runtime-ports',setup(build){build.onResolve({filter:/^@elizaos\\/core$/},()=>({path:corePort}));if(mode==='ios')build.onResolve({filter:/^@elizaos\\/plugin-workflow(?:\\/|$)/},()=>({path:stub}));}}]});
 if(!result.success){console.error(result.logs);process.exit(1);}
 `,
   );
