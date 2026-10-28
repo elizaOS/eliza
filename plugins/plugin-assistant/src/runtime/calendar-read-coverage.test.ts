@@ -26,7 +26,11 @@ import { computeProposedSlots } from "../../../plugin-personal-assistant/src/act
 import { LifeOpsService } from "../../../plugin-personal-assistant/src/lifeops/service.ts";
 import { renderGroundedActionReply } from "../actions/grounded-action-reply.ts";
 
-import { calendarReadCoverage, runEvaluator } from "./evaluator.ts";
+import {
+  calendarReadCoverage,
+  parseEvaluatorOutput,
+  runEvaluator,
+} from "./evaluator.ts";
 
 const requestedAt = Date.parse("2026-10-04T01:19:35Z");
 
@@ -718,6 +722,92 @@ describe("Calendar proposal and availability outcome evidence", () => {
       throw new Error("Incomplete scheduling evidence fixture");
     return { ...f, step, result, data, receipt, call, binding };
   }
+  it.each([
+    ["binding", "CALENDAR_READ_BINDING_IDENTITY_INVALID"],
+    ["coverage", "CALENDAR_READ_COVERAGE_MISSING"],
+    ["tool", "CALENDAR_READ_OPERATION_MISMATCH"],
+    ["snapshot", "CALENDAR_READ_SNAPSHOT_INVALID"],
+    ["receipt", "CALENDAR_READ_RECEIPT_MISMATCH"],
+    ["interval", "CALENDAR_READ_INTERVAL_INVALID"],
+    ["availability", "CALENDAR_READ_AVAILABILITY_INVALID"],
+  ])(
+    "reports the original %s rejection without private details",
+    async (fault, code) => {
+      const f = proposalFixture();
+      if (fault === "binding") f.binding.actorId = "private-other-owner";
+      if (fault === "coverage") f.output.outcomeCoverage = [];
+      if (fault === "tool") f.call.name = "CALENDAR_FEED";
+      if (fault === "snapshot") delete f.data.calendarSnapshot;
+      if (fault === "receipt") f.receipt.resource.id = "private-other-calendar";
+      if (fault === "interval") f.data.windowEnd = f.data.windowStart;
+      if (fault === "availability") {
+        f.binding.operation = "check_availability";
+        f.call.name = "CALENDAR_CHECK_AVAILABILITY";
+        f.result.effectReceipts = [
+          {
+            ...f.receipt,
+            operation: "calendar.check_availability.read",
+            outcome: "noop",
+            reason: "Read only",
+          },
+        ];
+        f.data.isFree = false;
+        f.data.conflicts = [];
+      }
+      const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+      expect(coverage.verified).toBe(false);
+      expect(coverage.failureCode).toBe(code);
+      const result = await runEvaluator({
+        runtime: { useModel: vi.fn(async () => JSON.stringify(f.output)) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.replyFailure).toEqual({
+        kind: "reply_generation_error",
+        transient: false,
+        code,
+        message: "I couldn't confirm that Calendar request.",
+      });
+      expect(result.messageToUser).toContain(
+        "I couldn't confirm that Calendar request.",
+      );
+      expect(JSON.stringify(result.replyFailure)).not.toMatch(
+        /private-|selected-calendar|request-now|owner-room/,
+      );
+    },
+  );
+  it("does not retain a failed candidate diagnostic when later evidence proves the read", () => {
+    const f = proposalFixture();
+    const invalid = structuredClone(f.step);
+    const invalidCall = invalid.toolCall;
+    const coverage = f.output.outcomeCoverage?.[0];
+    if (!invalidCall || !coverage) throw new Error("Missing evidence fixture");
+    invalidCall.id = "invalid-first";
+    invalidCall.name = "CALENDAR_FEED";
+    f.trajectory.steps.unshift(invalid);
+    coverage.evidenceStepIds = ["step:1", "step:2"];
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual({
+      verified: true,
+      unverifiedIntentIds: [],
+    });
+  });
+  it("rejects model-authored runtime failure diagnostics", () => {
+    const f = proposalFixture();
+    const parsed = parseEvaluatorOutput(
+      JSON.stringify({
+        ...f.output,
+        replyFailure: {
+          kind: "reply_generation_error",
+          transient: false,
+          code: "CALENDAR_READ_RECEIPT_MISMATCH",
+          message: "untrusted",
+        },
+      }),
+    );
+    expect(parsed.protocolFailure).toBe(true);
+    expect(parsed.replyFailure).toBeUndefined();
+  });
   it("accepts a source-bound exact-duration slot preview without booking", () => {
     const f = proposalFixture();
     expect(

@@ -607,6 +607,38 @@ export const CALENDAR_READ_ACTIONS = {
   propose_times: "CALENDAR_PROPOSE_TIMES",
 } as const;
 
+/** Bounded diagnostics from the same Calendar read completion guard. No user data. */
+export const CALENDAR_READ_FAILURE_CODES = [
+  "CALENDAR_READ_BINDINGS_INVALID",
+  "CALENDAR_READ_BINDING_INVALID",
+  "CALENDAR_READ_BINDING_IDENTITY_INVALID",
+  "CALENDAR_READ_COVERAGE_MISSING",
+  "CALENDAR_READ_COVERAGE_INCOMPLETE",
+  "CALENDAR_READ_EXECUTION_INVALID",
+  "CALENDAR_READ_RESULT_UNSUCCESSFUL",
+  "CALENDAR_READ_RESULT_INVALID",
+  "CALENDAR_READ_OPERATION_MISMATCH",
+  "CALENDAR_READ_SNAPSHOT_INVALID",
+  "CALENDAR_READ_RECEIPT_MISMATCH",
+  "CALENDAR_READ_INTERVAL_INVALID",
+  "CALENDAR_READ_AVAILABILITY_INVALID",
+  "CALENDAR_READ_DURATION_INVALID",
+  "CALENDAR_READ_TARGET_SNAPSHOT_INVALID",
+  "CALENDAR_READ_SLOT_INVALID",
+  "CALENDAR_READ_EVIDENCE_MISSING",
+  "CALENDAR_READ_EVIDENCE_REJECTED",
+] as const;
+export type CalendarReadFailureCode =
+  (typeof CALENDAR_READ_FAILURE_CODES)[number];
+export function isCalendarReadFailureCode(
+  value: unknown,
+): value is CalendarReadFailureCode {
+  return (
+    typeof value === "string" &&
+    CALENDAR_READ_FAILURE_CODES.some((code) => code === value)
+  );
+}
+
 export type CalendarReadBinding = {
   intentId: string;
   operation: keyof typeof CALENDAR_READ_ACTIONS;

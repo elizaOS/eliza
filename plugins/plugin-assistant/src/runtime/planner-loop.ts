@@ -1194,6 +1194,9 @@ async function runPlannerLoopIterations(
     status: "finished",
     trajectory,
     evaluator,
+    ...(evaluator.replyFailure
+      ? { terminalFailure: evaluator.replyFailure }
+      : {}),
     finalMessage: userSafeFinalMessage(
       terminalMessageWithFailureAuthority(
         trajectory,
