@@ -3303,7 +3303,7 @@ export class RemindersDomain {
       if (typeof id !== "string") continue;
       const notification = notifications.find((row) => row.id === id);
       const attemptedAt = Date.parse(attempt.attemptedAt ?? "");
-      if (!notification || notification.agentId !== attempt.agentId || notification.source !== "lifeops" || notification.category !== "reminder"
+      if (!Number.isFinite(attemptedAt) || !notification || !Number.isFinite(notification.createdAt) || notification.agentId !== attempt.agentId || notification.source !== "lifeops" || notification.category !== "reminder"
         || notification.groupKey !== `reminder:${attempt.ownerType}:${attempt.ownerId}`
         || notification.data?.ownerType !== attempt.ownerType || notification.data?.ownerId !== attempt.ownerId
         || notification.data?.scheduledFor !== attempt.scheduledFor

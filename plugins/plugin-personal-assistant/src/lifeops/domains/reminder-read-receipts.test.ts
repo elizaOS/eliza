@@ -43,9 +43,9 @@ describe("reminder read receipt authority", () => {
     await f.domain.scanReadReceipts([f.attempt],null,new Date("2026-10-28T09:59:00.000Z"));
     expect(f.update).toHaveBeenCalledTimes(1);
   });
-  it.each(["id","agentId","groupKey","ownerId","scheduledFor","unread"])("rejects unrelated or unread notification evidence: %s",async fault=>{
+  it.each(["id","agentId","groupKey","ownerId","scheduledFor","unread","missingAttemptTime","invalidAttemptTime","invalidCreatedTime"])("rejects unrelated or unread notification evidence: %s",async fault=>{
     const f=fixture("in_app");const row={id:"notice",agentId:"agent",source:"lifeops",category:"reminder",groupKey:"reminder:occurrence:occurrence",data:{ownerType:"occurrence",ownerId:"occurrence",scheduledFor:f.attempt.scheduledFor},createdAt:Date.parse(f.attempt.attemptedAt!),readAt:Date.parse("2026-10-28T09:57:00.000Z")};
-    if(fault==="id")row.id="other";if(fault==="agentId")row.agentId="other";if(fault==="groupKey")row.groupKey="other";if(fault==="ownerId")row.data.ownerId="other";if(fault==="scheduledFor")row.data.scheduledFor="2026-10-29T09:56:30.000Z";if(fault==="unread")row.readAt=0;
+    if(fault==="id")row.id="other";if(fault==="agentId")row.agentId="other";if(fault==="groupKey")row.groupKey="other";if(fault==="ownerId")row.data.ownerId="other";if(fault==="scheduledFor")row.data.scheduledFor="2026-10-29T09:56:30.000Z";if(fault==="unread")row.readAt=0;if(fault==="missingAttemptTime")f.attempt.attemptedAt=null;if(fault==="invalidAttemptTime")f.attempt.attemptedAt="invalid";if(fault==="invalidCreatedTime")row.createdAt=NaN;
     f.notices.push(row);await f.domain.scanReadReceipts([f.attempt],f.activity,new Date("2026-10-28T09:58:00.000Z"));expect(f.update).not.toHaveBeenCalled();expect(f.attempt.outcome).toBe("delivered");
   });
 
