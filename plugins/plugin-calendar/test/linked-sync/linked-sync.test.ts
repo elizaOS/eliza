@@ -74,9 +74,9 @@ const event = (title = "QA"): LinkedCalendarSemanticEvent => ({
 
 /** One synthetic Google calendar behind the Cloud sync-v1 contract. */
 function cloud(
-  store: (
-    event: LinkedCalendarSemanticEvent,
-  ) => LinkedCalendarSemanticEvent = (value) => value,
+  store: (event: LinkedCalendarSemanticEvent) => LinkedCalendarSemanticEvent = (
+    value,
+  ) => value,
 ) {
   const events = new Map<
     string,
