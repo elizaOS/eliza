@@ -17,6 +17,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import {
   startComputerUseRuntime,
@@ -594,6 +595,51 @@ describe("ComputerUseService validates input before the approval gate", () => {
 
     expect(result?.success).toBe(false);
     expect(result?.text).toContain("text is required for clipboard write");
+  }, 10_000);
+
+  it("blocks app listing and app state reads while computer use is paused", async () => {
+    // A paused gate must stop these reads before the native adapter; the spies
+    // stand in for the adapter so a broken gate cannot read the host desktop.
+    const listApps = vi.spyOn(service, "listApps").mockResolvedValue([]);
+    const getAppState = vi
+      .spyOn(service, "getAppState")
+      .mockResolvedValue(
+        {} as Awaited<ReturnType<ComputerUseService["getAppState"]>>,
+      );
+    const reads: Array<[string, Record<string, unknown>]> = [
+      ["list_apps", {}],
+      ["app_list_apps", {}],
+      ["get_app_state", { app: "Finder" }],
+      ["app_get_state", { app: "Finder" }],
+    ];
+    try {
+      for (const [command, parameters] of reads) {
+        const result = await service.executeCommand(command, parameters);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toContain("paused");
+      }
+
+      const session = service.createSession({ target: { kind: "host" } });
+      for (const [index, [command, parameters]] of reads.entries()) {
+        const outcome = await service.executeSessionAction(session.id, {
+          actionId: `paused-app-read-${index}`,
+          expectedSequence: index,
+          command,
+          parameters,
+        });
+
+        expect(outcome.result.success).toBe(false);
+        expect(outcome.result.error).toContain("paused");
+      }
+      service.closeSession(session.id);
+
+      expect(listApps).not.toHaveBeenCalled();
+      expect(getAppState).not.toHaveBeenCalled();
+    } finally {
+      listApps.mockRestore();
+      getAppState.mockRestore();
+    }
   }, 10_000);
 });
 

@@ -49,7 +49,12 @@ const WhatsAppWebhookMessageSchema = z.object({
 });
 
 const WhatsAppWebhookContactSchema = z.object({
-  profile: z.object({ name: z.string() }),
+  // Meta's contact profile is optional: a sender who never set a
+  // WhatsApp display name arrives without one. Requiring it here
+  // fails the whole payload parse and silently drops their message.
+  // The name itself is optional too, so an empty profile object
+  // parses instead of failing the same way.
+  profile: z.object({ name: z.string().optional() }).optional(),
   wa_id: z.string(),
 });
 
@@ -281,7 +286,9 @@ export const whatsappAdapter: PlatformAdapter = {
         const contactMap = new Map<string, string>();
         if (value.contacts) {
           for (const contact of value.contacts) {
-            contactMap.set(contact.wa_id, contact.profile.name);
+            if (contact.profile?.name) {
+              contactMap.set(contact.wa_id, contact.profile.name);
+            }
           }
         }
 

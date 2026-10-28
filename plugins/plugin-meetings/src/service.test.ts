@@ -160,6 +160,27 @@ describe("MeetingService.requestJoin — validation", () => {
     expect(adapter.session).not.toBeNull();
   });
 
+  it("fails closed when the runtime reports the cloud flag as a boolean", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const fake = makeFakeRuntime();
+    const { deps } = scriptedDeps([adapter], []);
+    // AgentRuntime.getSetting maps the string "true" to the boolean true. A
+    // string-only guard read missed that shape and started capture without a
+    // policy on a cloud-managed runtime.
+    const runtime = {
+      ...fake.runtime,
+      getSetting: (key: string) =>
+        key === "ELIZAOS_CLOUD_ENABLED" ? true : fake.runtime.getSetting(key),
+    };
+    const service = new MeetingService(runtime as never, deps);
+
+    await expect(
+      service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL }),
+    ).rejects.toMatchObject({ code: "policy_blocked" });
+    expect(adapter.session).toBeNull();
+    expect(fake.memories.size).toBe(0);
+  });
+
   it("enforces single-bot-per-meeting across URL spellings", async () => {
     const { service } = makeService();
     await service.requestJoin({

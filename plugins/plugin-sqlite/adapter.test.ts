@@ -1716,6 +1716,40 @@ describe("durable SQLite agent adapter", () => {
     );
     expect((await reopened.getCaches(["crash"])).has("crash")).toBe(false);
   });
+
+  it("keeps another agent's messages out of searchMessages", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const otherAgentId = id();
+    const ownId = id();
+    const foreignId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("zephyr status is nominal beta"), id: ownId },
+        tableName: "messages",
+      },
+    ]);
+    // Simulate a shared file / legacy migration holding another agent's row.
+    const storage = await adapter.getConnection();
+    await storage.set("memories", foreignId, {
+      id: foreignId,
+      agentId: otherAgentId,
+      entityId,
+      roomId,
+      tableName: "messages",
+      content: { text: "zephyr launch is confidential alpha" },
+      createdAt: Date.now(),
+    });
+
+    const hits = await adapter.searchMessages({
+      roomIds: [roomId],
+      query: "zephyr",
+      tableName: "messages",
+      limit: 50,
+    });
+    // plugin-sql scopes the same query with `agent_id = this.agentId`.
+    expect(hits.map((hit) => hit.memory.id).sort()).toEqual([ownId]);
+  });
 });
 
 it("rejects a different lifecycle agent scope before invoking the callback", async () => {
@@ -1758,6 +1792,47 @@ it("enumerates persisted memory types after reopening the owner file", async () 
   await adapter.close();
   const reopened = await open();
   expect(await reopened.listMemoryTypes()).toEqual(["plugin_unlisted"]);
+});
+
+it("keeps another agent's memories out of searchMemories", async () => {
+  const adapter = await open();
+  await adapter.ensureEmbeddingDimension(3);
+  const otherAgentId = id();
+  const own = { ...memory("own message"), embedding: [1, 0, 0] };
+  await adapter.createMemories([{ memory: own, tableName: "messages" }]);
+  // A legacy migration can leave another agent's rows in this shared file.
+  const storage = await adapter.getConnection();
+  const foreignId = id();
+  await storage.set("memories", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    entityId,
+    roomId,
+    tableName: "messages",
+    content: { text: "foreign message" },
+    embedding: [1, 0, 0],
+    createdAt: Date.now(),
+  });
+  // On boot the runtime rebuilds the vector index from every row in the file
+  // (clearEmbeddingsOutsideActiveDimension), so the foreign vector is indexed.
+  await adapter.clearEmbeddingsOutsideActiveDimension();
+  const hits = await adapter.searchMemories({
+    tableName: "messages",
+    embedding: [1, 0, 0],
+    roomId,
+    count: 10,
+    match_threshold: 0.5,
+  });
+  // plugin-sql scopes this read with `agent_id = this.agentId`; the sqlite
+  // read must not surface another agent's memory either.
+  expect(hits.map((row) => row.id)).toEqual([own.id]);
+  // getMemoriesByRoomIds carries the same `agent_id = this.agentId` filter in
+  // plugin-sql.
+  const byRooms = await adapter.getMemoriesByRoomIds({
+    roomIds: [roomId],
+    tableName: "messages",
+  });
+  expect(byRooms.map((row) => row.id)).toEqual([own.id]);
 });
 
 it("cache CAS has one winner, preserves null and rejects lossy values", async () => {
