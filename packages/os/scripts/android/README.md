@@ -21,6 +21,13 @@ Every brand's Pixel 10a composition also declares its launcher's versioned
 (`image-capability.mjs`), the marker image-only native surfaces require along
 with a system-partition install.
 
+`secure-camera.mjs` keeps capture over Keyguard with the stock AOSP Camera2
+`SecureCameraActivity` and the SystemUI power gesture for every brand: it
+authenticates the reviewed source inputs in `android/sources/secure-camera.json`,
+stages the Camera2 product overlay, refuses a launcher manifest that shows over
+Keyguard or handles the secure capture actions, and runs read-only image checks.
+It never proves locked-capture isolation, unlock return or device acceptance.
+
 Pixel 10a release signing (`aosp-release-signing.mjs`, Eliza's
 `sign-pixel10a-release.mjs`), compatibility records (`aosp-release-record.mjs`), the
 operator OTA update client with interrupted-update, fallback and stock-recovery
