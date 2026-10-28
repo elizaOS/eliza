@@ -29,6 +29,12 @@ public final class SenseListenerClient {
         this.packageName = context.getPackageName() + ".sense";
     }
 
+    /** The image listener package exists for this user, whatever its signer or control grant. */
+    public boolean installed() {
+        try { context.getPackageManager().getApplicationInfo(packageName, 0); return true; }
+        catch (PackageManager.NameNotFoundException | RuntimeException absent) { return false; }
+    }
+
     public boolean available() {
         try {
             ApplicationInfo info = context.getPackageManager().getApplicationInfo(packageName, 0);
