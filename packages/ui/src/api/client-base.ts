@@ -89,6 +89,8 @@ import {
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import {
   type AgentRequestTransport,
+  type ElizaClientFetch,
+  type ElizaClientFetchOptions,
   fetchAgentTransport,
   SseEventFramer,
 } from "./transport";
@@ -856,7 +858,7 @@ function sleepUnlessAborted(
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
-export class ElizaClient {
+export class ElizaClient implements ElizaClientFetch {
   private _baseUrl: string;
   private _userSetBase: boolean;
   private _token: string | null;
@@ -2136,20 +2138,7 @@ export class ElizaClient {
   async fetch<T>(
     path: string,
     init?: RequestInit,
-    options?: {
-      allowNonOk?: boolean;
-      timeoutMs?: number;
-      /** Skip the 202 resume-retry loop (see `rawRequest.skipResume`). */
-      skipResume?: boolean;
-      /**
-       * Called with the (bounded-read, best-effort-parsed) body when the FIRST
-       * response is a 202 and `skipResume` is set — lets the status poll map the
-       * cloud resume-progress body to a real value WITHOUT bypassing the shared
-       * bounded body-read / timeout logic (#14040 sub-defect 2). Non-202
-       * responses go through the normal strict-parse path unchanged.
-       */
-      on202?: (body: unknown) => T;
-    },
+    options?: ElizaClientFetchOptions<T>,
   ): Promise<T> {
     const res = await this.rawRequest(
       path,

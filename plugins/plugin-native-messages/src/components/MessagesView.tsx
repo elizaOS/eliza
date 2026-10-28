@@ -15,8 +15,8 @@ import {
 } from "@elizaos/plugin-native-messages/bridge";
 
 import { consumeNavigateViewPayload } from "@elizaos/ui";
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sendFromMessages } from "../telephony-profile.ts";
 import {
   type MessagesSnapshot,
   MessagesSpatialView,
@@ -129,8 +129,17 @@ export function MessagesView() {
     setSending(true);
     setError(null);
     try {
-      await Messages.sendSms({ address, body });
-      setComposeBody("");
+      const outcome = await sendFromMessages(address, body);
+      if (
+        outcome.path === "reviewed" &&
+        !["submitted", "sent", "delivered"].includes(outcome.result.status)
+      ) {
+        // The reviewed send ended without leaving the device (cancelled in the
+        // native review, denied or failed): keep the draft and never resend.
+        setError(`Message not sent (${outcome.result.status}).`);
+      } else {
+        setComposeBody("");
+      }
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -4,6 +4,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { ElizaError } from "@elizaos/core";
 import { isAndroidMobile, resolveApiToken } from "@elizaos/host/protocol";
+import {
+  applyNativeCloudRuntimeProfile,
+  type NativeRuntimeProfileStores,
+  parseNativeCloudRuntimeDeclaration,
+} from "./native-runtime-profile.js";
 
 const brokerKeys = [
   "ELIZA_MANAGED_GMAIL_READ_BROKER",
@@ -28,6 +33,7 @@ const unavailable = (message: string) =>
 /** Load one explicitly admitted application host module, not a discovered plugin. */
 export async function startNativeManagedGoogleHost(
   env: NodeJS.ProcessEnv = process.env,
+  profileStores?: NativeRuntimeProfileStores,
 ): Promise<{ close(): Promise<void> } | undefined> {
   const prepareCloud =
     isAndroidMobile(env) && enabled(env.ELIZAOS_CLOUD_USE_INFERENCE);
@@ -108,9 +114,13 @@ export async function startNativeManagedGoogleHost(
   try {
     module = await import(pathToFileURL(filename).href);
     if (prepareCloud) {
-      if (typeof module.prepareNativeCloudRuntime !== "function")
-        throw new Error("Native Cloud routing preparation is unavailable");
-      await module.prepareNativeCloudRuntime();
+      // The admitted product module declares only its Cloud deployment; the
+      // shared runtime profile owns every routing decision.
+      await applyNativeCloudRuntimeProfile(
+        env,
+        parseNativeCloudRuntimeDeclaration(module.nativeCloudRuntime),
+        profileStores,
+      );
       if (env.ELIZAOS_CLOUD_API_KEY !== token)
         throw new Error("Native Cloud credential changed during preparation");
     }
@@ -178,9 +188,10 @@ export async function startNativeManagedGoogleHost(
 export async function startNativeManagedGoogleHostForBoot(
   env: NodeJS.ProcessEnv = process.env,
   warn: (message: string) => void = (message) => console.warn(message),
+  profileStores?: NativeRuntimeProfileStores,
 ): Promise<{ close(): Promise<void> } | undefined> {
   try {
-    return await startNativeManagedGoogleHost(env);
+    return await startNativeManagedGoogleHost(env, profileStores);
   } catch (error) {
     if (
       error instanceof ElizaError &&

@@ -28,6 +28,12 @@
       "import": "./dist/device-action-execution.js",
       "default": "./dist/device-action-execution.js"
     },
+    "./client-turn-observation": {
+      "eliza-source": "./src/client-turn-observation.ts",
+      "types": "./dist/client-turn-observation.d.ts",
+      "import": "./dist/client-turn-observation.js",
+      "default": "./dist/client-turn-observation.js"
+    },
     "./native-notes-query": {
       "eliza-source": "./src/native-notes-query.ts",
       "types": "./dist/native-notes-query.d.ts",
@@ -45,6 +51,30 @@
       "types": "./dist/imessage-reaction.d.ts",
       "import": "./dist/imessage-reaction.js",
       "default": "./dist/imessage-reaction.js"
+    },
+    "./sms-send": {
+      "eliza-source": "./src/sms-send.ts",
+      "types": "./dist/sms-send.d.ts",
+      "import": "./dist/sms-send.js",
+      "default": "./dist/sms-send.js"
+    },
+    "./mms-send": {
+      "eliza-source": "./src/mms-send.ts",
+      "types": "./dist/mms-send.d.ts",
+      "import": "./dist/mms-send.js",
+      "default": "./dist/mms-send.js"
+    },
+    "./native-telephony": {
+      "eliza-source": "./src/native-telephony.ts",
+      "types": "./dist/native-telephony.d.ts",
+      "import": "./dist/native-telephony.js",
+      "default": "./dist/native-telephony.js"
+    },
+    "./native-telephony-session": {
+      "eliza-source": "./src/native-telephony-session.ts",
+      "types": "./dist/native-telephony-session.d.ts",
+      "import": "./dist/native-telephony-session.js",
+      "default": "./dist/native-telephony-session.js"
     }
   },
   "scripts": {
