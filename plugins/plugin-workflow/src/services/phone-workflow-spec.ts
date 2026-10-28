@@ -196,6 +196,78 @@ export function typedScheduleAdmission(
     };
   return { ...base, status: 'ready', text: '' };
 }
+export interface SkippedTypedOccurrence extends TypedScheduleAdmission {
+  status: 'missed';
+  /** The reviewed local wall time that did not exist that day, as `YYYY-MM-DDTHH:MM`. */
+  skippedLocalTime: string;
+}
+function zonedWall(ms: number, formatter: Intl.DateTimeFormat) {
+  const parts: Record<string, number> = {};
+  for (const part of formatter.formatToParts(ms))
+    if (part.type !== 'literal') parts[part.type] = Number(part.value);
+  return {
+    wallMs: Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour % 24, parts.minute),
+    date: Date.UTC(parts.year, parts.month - 1, parts.day),
+  };
+}
+const pad = (value: number) => String(value).padStart(2, '0');
+/**
+ * Reviewed occurrences that never existed because the local clock jumped past
+ * them (a spring-forward daylight-saving transition), between the last occurrence
+ * that did exist before `scheduledAt` and `scheduledAt` itself. The cron
+ * scheduler matches local wall times, so it never fires for such a day; the
+ * occurrence is recorded as missed at the instant it would have had on the
+ * pre-transition offset (02:30 EST for a skipped 02:30 in America/New_York),
+ * with the skipped local time. Occurrences at or before `armedSinceMs` (when the
+ * reviewed version was turned on) are not recorded.
+ */
+export function skippedTypedOccurrences(
+  trigger: PhoneTimeTrigger,
+  scheduledAt: number,
+  armedSinceMs: number
+): SkippedTypedOccurrence[] {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: trigger.timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+  });
+  const [hour, minute] = trigger.localTime.split(':').map(Number);
+  const offsetAt = (ms: number) => {
+    const floored = Math.floor(ms / 60000) * 60000;
+    return zonedWall(floored, formatter).wallMs - floored;
+  };
+  const today = zonedWall(scheduledAt, formatter).date;
+  const skipped: SkippedTypedOccurrence[] = [];
+  // Every day set holds at least one weekday, so the previous existing occurrence is
+  // at most a week back.
+  for (let back = 1; back <= 7; back++) {
+    const date = today - back * 86_400_000;
+    if (!trigger.days.includes(new Date(date).getUTCDay())) continue;
+    const wallMs = date + (hour * 60 + minute) * 60000;
+    const before = wallMs - offsetAt(date - 43_200_000);
+    const after = wallMs - offsetAt(before);
+    if (
+      zonedWall(before, formatter).wallMs === wallMs ||
+      zonedWall(after, formatter).wallMs === wallMs
+    )
+      break;
+    if (before <= armedSinceMs) break;
+    const day = new Date(date);
+    const local = `${day.getUTCFullYear()}-${pad(day.getUTCMonth() + 1)}-${pad(day.getUTCDate())}T${trigger.localTime}`;
+    skipped.push({
+      scheduledAt: new Date(before).toISOString(),
+      trigger,
+      status: 'missed',
+      skippedLocalTime: local,
+      text: `${trigger.localTime} did not occur on ${local.slice(0, 10)} in ${trigger.timeZone} because the clocks moved forward. This occurrence did not run and will not run later.`,
+    });
+  }
+  return skipped.reverse();
+}
 export function phoneSpecDigest(spec: PhoneWorkflowSpec) {
   return createHash('sha256').update(JSON.stringify(spec)).digest('hex');
 }

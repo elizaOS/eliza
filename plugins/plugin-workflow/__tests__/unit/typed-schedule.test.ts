@@ -8,6 +8,7 @@ import {
   PHONE_SPEC_KEY,
   phoneTriggerSchedule,
   phoneWorkflowCatalog,
+  skippedTypedOccurrences,
   storedPhoneTimeTrigger,
   typedScheduleAdmission,
   validatePhoneSpec,
@@ -144,4 +145,64 @@ test('generation keeps the owner trigger and never accepts a model-supplied sche
   await expect(
     generatePhoneSpec(input, async () => JSON.stringify({ ...spec, trigger: weekdays }))
   ).rejects.toThrow('supplied a schedule');
+});
+
+test('a reviewed local time skipped by a spring-forward transition is recorded as missed', () => {
+  const daily = { ...weekdays, localTime: '02:30', days: [0, 1, 2, 3, 4, 5, 6] };
+  // 2026-03-08 is the America/New_York spring-forward date: 02:00 EST jumps to 03:00 EDT.
+  const nextDay = Date.parse('2026-03-09T06:30:00Z'); // 02:30 EDT on 2026-03-09
+  expect(
+    computeNextCronRunAtMs('30 2 * * *', Date.parse('2026-03-07T12:00:00Z'), daily.timeZone)
+  ).toBe(nextDay);
+  const armedBefore = Date.parse('2026-03-01T00:00:00Z');
+  expect(skippedTypedOccurrences(daily, nextDay, armedBefore)).toEqual([
+    {
+      scheduledAt: '2026-03-08T07:30:00.000Z',
+      trigger: daily,
+      status: 'missed',
+      skippedLocalTime: '2026-03-08T02:30',
+      text: '02:30 did not occur on 2026-03-08 in America/New_York because the clocks moved forward. This occurrence did not run and will not run later.',
+    },
+  ]);
+  // Armed after the skipped time: nothing to record.
+  expect(skippedTypedOccurrences(daily, nextDay, Date.parse('2026-03-08T12:00:00Z'))).toEqual([]);
+  // A day whose local time existed, and the fall-back (repeated hour) date, record nothing.
+  expect(skippedTypedOccurrences(daily, Date.parse('2026-03-10T06:30:00Z'), armedBefore)).toEqual(
+    []
+  );
+  expect(skippedTypedOccurrences(daily, Date.parse('2026-11-02T07:30:00Z'), armedBefore)).toEqual(
+    []
+  );
+  // Times outside the transition hour and zones without DST never skip.
+  expect(
+    skippedTypedOccurrences(
+      { ...daily, localTime: '07:30' },
+      Date.parse('2026-03-09T11:30:00Z'),
+      armedBefore
+    )
+  ).toEqual([]);
+  expect(
+    skippedTypedOccurrences(
+      { ...daily, timeZone: 'UTC' },
+      Date.parse('2026-03-09T02:30:00Z'),
+      armedBefore
+    )
+  ).toEqual([]);
+  // A weekly trigger looks back past the days it does not run on to the skipped Sunday.
+  const sundaysAndWednesdays = { ...daily, days: [0, 3] };
+  expect(
+    skippedTypedOccurrences(
+      sundaysAndWednesdays,
+      Date.parse('2026-03-11T06:30:00Z'),
+      armedBefore
+    ).map((o) => o.skippedLocalTime)
+  ).toEqual(['2026-03-08T02:30']);
+  // Southern hemisphere: Pacific/Auckland skips 02:00-03:00 on 2026-09-27.
+  const auckland = { ...daily, timeZone: 'Pacific/Auckland' };
+  expect(
+    skippedTypedOccurrences(auckland, Date.parse('2026-09-27T13:30:00Z'), armedBefore).map((o) => [
+      o.skippedLocalTime,
+      o.scheduledAt,
+    ])
+  ).toEqual([['2026-09-27T02:30', '2026-09-26T14:30:00.000Z']]);
 });

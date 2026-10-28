@@ -266,6 +266,12 @@ export interface WorkflowOccurrenceNotRun {
   status: "missed" | "overlap";
   scheduledAt: string;
   text: string;
+  /**
+   * Set on a missed occurrence whose reviewed local wall time did not exist that
+   * day (the clocks moved forward past it), as `YYYY-MM-DDTHH:MM` local time;
+   * `scheduledAt` is then the instant it would have had before the transition.
+   */
+  skippedLocalTime?: string;
 }
 
 /** Reads a raw execution output as an occurrence that did not run, or undefined for any other output. */
@@ -283,6 +289,11 @@ export function workflowOccurrenceNotRun(
         status: p.status,
         scheduledAt: p.scheduledAt,
         text: p.text.slice(0, 1000),
+        ...(p.status === "missed" &&
+        typeof p.skippedLocalTime === "string" &&
+        /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(p.skippedLocalTime)
+          ? { skippedLocalTime: p.skippedLocalTime }
+          : {}),
       }
     : undefined;
 }

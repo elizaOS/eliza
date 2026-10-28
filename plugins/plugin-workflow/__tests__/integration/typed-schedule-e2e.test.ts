@@ -280,6 +280,83 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
     ])
       await expect(embedded!.startWorkflow(id, { mode: 'trigger', triggerData })).rejects.toThrow();
 
+    // A reviewed local time that a spring-forward transition skipped (02:30 on
+    // 2026-03-08 in America/New_York) never fires; the next occurrence records it
+    // once as missed, with the skipped local time, and runs nothing for it.
+    const dstTrigger = {
+      kind: 'time',
+      localTime: '02:30',
+      timeZone: 'America/New_York',
+      days: [0, 1, 2, 3, 4, 5, 6],
+    };
+    const dstSaved = (
+      await call('/phone/workflows', {
+        ...review,
+        spec: { ...spec, name: 'Night draft', trigger: dstTrigger },
+        mutationId: randomUUID(),
+      })
+    ).body.receipt;
+    owned.push(dstSaved.workflowId);
+    const dstVersion = (
+      await call(`/workflows/${dstSaved.workflowId}/activate`, {
+        expectedVersionId: dstSaved.versionId,
+      })
+    ).body.versionId;
+    // Armed before the transition.
+    await (runtime.db as any)
+      .update(schema.embeddedWorkflows)
+      .set({ updatedAt: '2026-03-01T00:00:00.000Z' })
+      .where((await import('drizzle-orm')).eq(schema.embeddedWorkflows.id, dstSaved.workflowId));
+    const afterGap = Date.parse('2026-03-09T06:30:00Z');
+    const dstRun = await embedded!.startWorkflow(dstSaved.workflowId, {
+      mode: 'trigger',
+      triggerData: { scheduledAtMs: afterGap, workflowVersionId: dstVersion },
+    });
+    expect(dstRun.output).toMatchObject({
+      status: 'missed',
+      scheduledAt: '2026-03-09T06:30:00.000Z',
+    });
+    const dstRecords = async () =>
+      (
+        await (runtime.db as any)
+          .select()
+          .from(schema.embeddedExecutions)
+          .where(
+            (
+              await import('drizzle-orm')
+            ).eq(schema.embeddedExecutions.workflowId, dstSaved.workflowId)
+          )
+      ).map((row: any) => row.execution);
+    const skippedRun = (await dstRecords()).find((e: any) => e.id !== dstRun.id);
+    expect(skippedRun).toMatchObject({
+      status: 'finished',
+      finished: true,
+      workflowVersionId: dstVersion,
+      output: {
+        status: 'missed',
+        scheduledAt: '2026-03-08T07:30:00.000Z',
+        skippedLocalTime: '2026-03-08T02:30',
+      },
+      input: {
+        typedSchedule: {
+          scheduledAt: '2026-03-08T07:30:00.000Z',
+          trigger: dstTrigger,
+          status: 'missed',
+        },
+      },
+    });
+    // Re-delivering either occurrence records nothing more.
+    await embedded!.startWorkflow(dstSaved.workflowId, {
+      mode: 'trigger',
+      triggerData: { scheduledAtMs: afterGap, workflowVersionId: dstVersion },
+    });
+    await embedded!.startWorkflow(dstSaved.workflowId, {
+      mode: 'trigger',
+      triggerData: { scheduledAtMs: afterGap + 86_400_000, workflowVersionId: dstVersion },
+    });
+    expect(await dstRecords()).toHaveLength(3);
+    await call(`/workflows/${dstSaved.workflowId}/deactivate`, { expectedVersionId: dstVersion });
+
     // An occurrence never stacks behind a run that is still active.
     const heldId = randomUUID();
     const held = {

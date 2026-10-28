@@ -85,6 +85,7 @@ import {
   phoneDraftDefinition,
   phoneSpecDigest,
   phoneTriggerSchedule,
+  skippedTypedOccurrences,
   storedPhoneTimeTrigger,
   TYPED_SCHEDULE_INPUT,
   type TypedScheduleAdmission,
@@ -1917,6 +1918,63 @@ export class EmbeddedWorkflowService extends Service {
           Date.now(),
           computeNextCronRunAtMs
         );
+        // The cron scheduler never fires for a reviewed local time that a spring-forward
+        // transition skipped; record each such occurrence since this version was armed
+        // as missed, once, so run history shows it did not run.
+        for (const skipped of skippedTypedOccurrences(
+          typedTrigger,
+          Date.parse(typed.scheduledAt),
+          Date.parse(workflow.updatedAt)
+        )) {
+          const idempotencyKey = `typed-time:${workflow.id}:${workflow.versionId}:skipped:${skipped.skippedLocalTime}`;
+          const [recorded] = await tx
+            .select({ id: embeddedExecutions.id })
+            .from(embeddedExecutions)
+            .where(
+              and(
+                eq(embeddedExecutions.agentId, this.tenantId),
+                eq(embeddedExecutions.workflowId, id),
+                eq(embeddedExecutions.idempotencyKey, idempotencyKey)
+              )
+            )
+            .limit(1);
+          if (recorded) continue;
+          const at = nowIso(),
+            { skippedLocalTime, ...admission } = skipped;
+          const execution: WorkflowExecution = {
+            id: randomUUID(),
+            workflowId: id,
+            workflowVersionId: workflow.versionId,
+            workflowName: workflow.name,
+            mode: options.mode ?? 'trigger',
+            status: 'finished',
+            finished: true,
+            startedAt: at,
+            stoppedAt: at,
+            output: {
+              status: 'missed',
+              scheduledAt: skipped.scheduledAt,
+              text: skipped.text,
+              skippedLocalTime,
+            },
+            input: cloneJson({ [TYPED_SCHEDULE_INPUT]: admission }),
+            events: [],
+            approvals: [],
+            idempotencyKey,
+          };
+          await tx.insert(embeddedExecutions).values({
+            agentId: this.tenantId,
+            id: execution.id,
+            workflowId: id,
+            status: execution.status,
+            mode: execution.mode,
+            finished: true,
+            stoppedAt: at,
+            startedAt: at,
+            execution,
+            idempotencyKey,
+          });
+        }
         // One run at a time: an occurrence never stacks behind a run still waiting
         // for phone approvals or reconciliation; it is recorded and not run.
         const [active] = await tx

@@ -180,6 +180,27 @@ test("a generic schedule's missed occurrence is recorded from its settlement alo
   }
 });
 
+test("a missed occurrence skipped by a clock change carries its skipped local time", () => {
+  const output = {
+    status: "missed",
+    scheduledAt: "2026-03-08T07:30:00.000Z",
+    text: "02:30 did not occur on 2026-03-08 in America/New_York because the clocks moved forward.",
+    skippedLocalTime: "2026-03-08T02:30",
+  };
+  assert.deepEqual(workflowOccurrenceNotRun(output), output);
+  // Malformed values, and the field on an overlap, are dropped.
+  assert.equal(
+    workflowOccurrenceNotRun({ ...output, skippedLocalTime: "02:30" })
+      ?.skippedLocalTime,
+    undefined,
+  );
+  assert.equal(
+    workflowOccurrenceNotRun({ ...output, status: "overlap" })
+      ?.skippedLocalTime,
+    undefined,
+  );
+});
+
 test("a run records its submission identity before sending and accepts only that receipt", async () => {
   const recorded: Array<string | undefined> = [];
   const { calls, client } = agent({
