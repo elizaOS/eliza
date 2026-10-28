@@ -713,6 +713,7 @@ export const TASK_STATUS_TRANSITIONS: Readonly<
   archived: {
     reopened: "open",
     restarted: "active",
+    archived: "archived",
   },
 };
 

@@ -796,6 +796,35 @@ function rowToRequest(row: Record<string, unknown>): ApprovalRequest {
 const SELECT_COLUMNS =
   "id, state, requested_by, subject_user_id, action, payload, channel, reason, idempotency_key, expires_at, resolved_at, resolved_by, resolution_reason, execution_attempt_id, execution_provider, provider_idempotency_key, execution_claimed_at, dispatch_started_at, provider_receipt, execution_error, reconciliation_resolved_at, reconciliation_resolved_by, reconciliation_reason, created_at, updated_at";
 
+/** One metadata/status lookup for exact original message/proposal pairs. This
+ * internal reader requires a separately authenticated owner-only source proof.
+ * Cost: one SELECT per assembled context, no queue transitions or notification I/O. */
+export async function readApprovalRequestsForOriginalSources(
+  runtime: IAgentRuntime,
+  references: readonly { proposalId: string; requestMessageId: string }[],
+): Promise<ApprovalRequest[]> {
+  if (!references.length) return [];
+  const pairs = [
+    ...new Map(
+      references.map((r) => [
+        JSON.stringify([r.proposalId, r.requestMessageId]),
+        r,
+      ]),
+    ).values(),
+  ];
+  const sourcePredicate = pairs
+    .map(
+      (r) =>
+        `(id = ${sqlText(r.proposalId)} AND payload->>'requestMessageId' = ${sqlText(r.requestMessageId)})`,
+    )
+    .join(" OR ");
+  const rows = await executeRawSql(
+    runtime,
+    `SELECT ${SELECT_COLUMNS} FROM approval_requests WHERE agent_id = ${sqlText(runtime.agentId)} AND requested_by = ${sqlText(runtime.agentId)} AND action = 'device_action' AND (${sourcePredicate})`,
+  );
+  return rows.map(rowToRequest);
+}
+
 function sameIdempotentApproval(
   existing: ApprovalRequest,
   input: ApprovalEnqueueInput,

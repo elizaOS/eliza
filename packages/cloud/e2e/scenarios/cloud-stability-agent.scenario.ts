@@ -407,6 +407,7 @@ const definition = scenario({
                   multiStep: false,
                   requestKind: "reminder",
                   nativeProjection: "in_app_only",
+                  notificationMode: "default",
                   title: reminderArgs.title,
                   description: null,
                   cadenceKind: "once",

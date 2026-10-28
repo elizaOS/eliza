@@ -36,6 +36,36 @@ describe("parseBrowserAddressInput bracketed IPv6", () => {
     });
   });
 
+  it("keeps prose that only looks scheme-shaped as a search query", () => {
+    for (const input of [
+      "re: dinner",
+      "weather: paris",
+      "time: 1:30 pm",
+      "Fwd: the deck",
+    ]) {
+      expect(parseBrowserAddressInput(input, OPTS)).toEqual({
+        kind: "search",
+        query: input,
+      });
+    }
+  });
+
+  it("still rejects a token that is a scheme with a body", () => {
+    expect(parseBrowserAddressInput("javascript:alert(1)", OPTS)).toEqual({
+      kind: "rejected",
+      reason: "unsupported-protocol",
+    });
+    expect(parseBrowserAddressInput("mailto:a@b.com", OPTS)).toEqual({
+      kind: "rejected",
+      reason: "unsupported-protocol",
+    });
+    // A scheme name with no body stays a malformed address, not a search.
+    expect(parseBrowserAddressInput("https:", OPTS)).toEqual({
+      kind: "rejected",
+      reason: "invalid-url",
+    });
+  });
+
   it("keeps other control inputs unchanged", () => {
     expect(parseBrowserAddressInput("hello world", OPTS)).toEqual({
       kind: "search",

@@ -1,0 +1,263 @@
+{
+  "$comment": "Callback contract of the native Eliza Cloud sign-in client (packages/auth/android). The registration (package, callback path) is synthetic; hosts are Eliza Cloud's web hosts. CloudSignInContractTest parses every vector with CloudSignInFlow.parseCallback.",
+  "contract": "app-auth-callback",
+  "version": 1,
+  "package": "ai.example.signin",
+  "callbackPath": "/example/auth/callback",
+  "hosts": {
+    "production": "eliza.app",
+    "staging": "staging.eliza.app"
+  },
+  "rules": {
+    "success": "Exactly {code,state} in the URL fragment, no query. Steward emits this through setRedirectFragment. A code anywhere else is never a success.",
+    "error": "Exactly {error,state} in the query or the fragment (one of them), error from errorAllowlist. Never a code.",
+    "return": "The exact callback URL with no parameters, or any other parameter shape: no sign-in result. The client keeps its pending record until expiry or an explicit retry, compares state before burning anything, and shows a retry message.",
+    "reject": "Not this environment's callback (scheme, host, port, userinfo or path differ): ignored.",
+    "values": "Parameter names appear once; values are non-empty, unescaped [A-Za-z0-9_.~-] (no percent-encoding); state is 43 base64url characters (32 random bytes).",
+    "fallbackPage": "The callback path rendered in a browser (App Link not intercepted) never forwards a success code: its return control opens the app with no parameters (or {error:'app_link_unverified',state} when it forwards state)."
+  },
+  "errorAllowlist": [
+    "app_link_unverified",
+    "mfa_required",
+    "oauth_authentication_failed",
+    "oauth_authorization_failed",
+    "oauth_callback_incomplete",
+    "oauth_identity_incomplete",
+    "oauth_login_disabled",
+    "oauth_profile_fetch_failed",
+    "oauth_provider_mismatch",
+    "oauth_provider_unavailable",
+    "oauth_provider_unknown",
+    "oauth_redirect_invalid",
+    "oauth_state_consumed",
+    "oauth_state_expired",
+    "oauth_state_invalid",
+    "oauth_token_exchange_failed"
+  ],
+  "fallbackHandoffs": [
+    {
+      "name": "fallback page for a success URL forwards nothing",
+      "pageUrl": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "intentUrl": "intent://eliza.app/example/auth/callback#Intent;scheme=https;package=ai.example.signin;end",
+      "environment": "production",
+      "deliveredUrl": "https://eliza.app/example/auth/callback",
+      "expect": "return"
+    },
+    {
+      "name": "fallback page for a code-in-query URL forwards nothing",
+      "pageUrl": "https://eliza.app/example/auth/callback?code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "intentUrl": "intent://eliza.app/example/auth/callback#Intent;scheme=https;package=ai.example.signin;end",
+      "environment": "production",
+      "deliveredUrl": "https://eliza.app/example/auth/callback",
+      "expect": "return"
+    },
+    {
+      "name": "staging fallback page forwards nothing",
+      "pageUrl": "https://staging.eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "intentUrl": "intent://staging.eliza.app/example/auth/callback#Intent;scheme=https;package=ai.example.signin;end",
+      "environment": "staging",
+      "deliveredUrl": "https://staging.eliza.app/example/auth/callback",
+      "expect": "return"
+    }
+  ],
+  "cases": [
+    {
+      "name": "success: code and state in the fragment, as Steward emits",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "success",
+      "code": "stwd-Code_0123456789.abcdef~XYZ",
+      "state": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+    },
+    {
+      "name": "success: fragment parameter order does not matter",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM&code=stwd-Code_0123456789.abcdef~XYZ",
+      "expect": "success",
+      "code": "stwd-Code_0123456789.abcdef~XYZ",
+      "state": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+    },
+    {
+      "name": "success: staging return host for the staging environment",
+      "environment": "staging",
+      "url": "https://staging.eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "success",
+      "code": "stwd-Code_0123456789.abcdef~XYZ",
+      "state": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+    },
+    {
+      "name": "error: Steward recovery link puts error and state in the query",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?error=oauth_authorization_failed&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "error",
+      "error": "oauth_authorization_failed",
+      "state": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+    },
+    {
+      "name": "error: error and state in the fragment",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#error=mfa_required&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "error",
+      "error": "mfa_required",
+      "state": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+    },
+    {
+      "name": "error: fallback page's app_link_unverified",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?error=app_link_unverified&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "error",
+      "error": "app_link_unverified",
+      "state": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM"
+    },
+    {
+      "name": "return: parameterless hand-off from the fallback page",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback",
+      "expect": "return"
+    },
+    {
+      "name": "return: empty query",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?",
+      "expect": "return"
+    },
+    {
+      "name": "return: empty fragment",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#",
+      "expect": "return"
+    },
+    {
+      "name": "return: code in the query is never a success",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "return: extra fragment parameter",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM&scope=openid",
+      "expect": "return"
+    },
+    {
+      "name": "return: code without state",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ",
+      "expect": "return"
+    },
+    {
+      "name": "return: malformed state",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=short",
+      "expect": "return"
+    },
+    {
+      "name": "return: duplicated code",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&code=stwd-Code_0123456789.abcdef~XYZx&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "return: error outside the allowlist",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?error=not_a_listed_error&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "return: error without state",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?error=oauth_authorization_failed",
+      "expect": "return"
+    },
+    {
+      "name": "return: query and fragment together",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback?error=oauth_state_invalid&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "return: percent-encoded value",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=%41stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "return: code and error together",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#error=oauth_state_invalid&code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "return: empty code value",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback#code=&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "return"
+    },
+    {
+      "name": "reject: http scheme",
+      "environment": "production",
+      "url": "http://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: foreign host",
+      "environment": "production",
+      "url": "https://evil.example/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: lookalike host",
+      "environment": "production",
+      "url": "https://eliza.app.evil.example/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: explicit port",
+      "environment": "production",
+      "url": "https://eliza.app:443/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: userinfo",
+      "environment": "production",
+      "url": "https://user@eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: trailing slash",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/callback/#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: path case differs",
+      "environment": "production",
+      "url": "https://eliza.app/example/auth/Callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: upper-case host",
+      "environment": "production",
+      "url": "https://ELIZA.APP/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: staging host in production",
+      "environment": "production",
+      "url": "https://staging.eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: production host in staging",
+      "environment": "staging",
+      "url": "https://eliza.app/example/auth/callback#code=stwd-Code_0123456789.abcdef~XYZ&state=ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM",
+      "expect": "reject"
+    },
+    {
+      "name": "reject: intent URI",
+      "environment": "production",
+      "url": "intent://eliza.app/example/auth/callback#Intent;scheme=https;package=ai.example.signin;end",
+      "expect": "reject"
+    }
+  ]
+}

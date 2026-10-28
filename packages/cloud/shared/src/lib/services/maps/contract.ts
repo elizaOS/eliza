@@ -75,6 +75,30 @@ export interface MapsCoverageRegion {
   bounds: MapsBounds;
 }
 
+/** Names of the data and services behind one provider configuration. */
+export interface MapsCoverageSources {
+  /** Map data, e.g. "OpenStreetMap". */
+  data: string;
+  /** Search, geocoding and place details service, e.g. "Nominatim". */
+  search: string;
+  /** Routing service, e.g. "GraphHopper". */
+  routing: string;
+}
+
+/**
+ * Who receives the query text and coordinates of a Maps request. Hosts show it
+ * near search and location controls. Cloud itself records only the operation
+ * and its result code, never queries or coordinates.
+ */
+export interface MapsDisclosure {
+  recipients: Array<{
+    role: "gateway" | "search" | "routing";
+    name: string;
+    operator: string;
+  }>;
+  cloudRecords: "operation-and-result-code";
+}
+
 export interface MapsCoverage {
   providerId: string;
   /** Stable opaque handle for this Cloud provider configuration. */
@@ -82,6 +106,8 @@ export interface MapsCoverage {
   /** Dataset revision the operator provisioned, e.g. an extract date. */
   revision: string;
   attribution: string;
+  sources: MapsCoverageSources;
+  disclosure: MapsDisclosure;
   regions: MapsCoverageRegion[];
   capabilities: {
     /** Cloud serves no map tiles yet; hosts keep their own map plane. */
@@ -167,8 +193,9 @@ export const mapsTextSearchRequestSchema = z
 
 export const mapsReverseRequestSchema = z.object({ coordinate: coordinateSchema }).strict();
 
+/** An id the configured geocoder issued; each geocoder validates its own format. */
 export const mapsPlaceDetailsRequestSchema = z
-  .object({ id: z.string().regex(/^[NWR][1-9][0-9]{0,18}$/) })
+  .object({ id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9:._-]{0,255}$/) })
   .strict();
 
 export const mapsRoutesRequestSchema = z

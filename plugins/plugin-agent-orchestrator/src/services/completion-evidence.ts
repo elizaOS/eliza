@@ -185,9 +185,11 @@ export function normalizeEvidenceText(text: string): string {
   return toWellFormedUnicode(text.trim());
 }
 
-/** Markers that class a signal as TEST output (vitest/jest run, suite result). */
+/** Markers that class a signal as TEST output (vitest/jest run, suite result).
+ *  Case-sensitive, so runner summaries are listed as the runner prints them
+ *  (vitest "Test Files  1 passed", bun test "Ran 3 tests across 1 file"). */
 const TEST_MARKER_RE =
-  /\b(?:vitest|jest|pytest|test\s+files?|tests?\s+(?:passed|failed|run)|✓|✗|✔|✖|specs?|suites?|coverage|PASS|FAIL)\b/;
+  /\b(?:vitest|jest|pytest|test\s+files?|Test\s+Files|tests?\s+(?:passed|failed|run)|Ran\s+\d+\s+tests?\s+across|✓|✗|✔|✖|specs?|suites?|coverage|PASS|FAIL)\b/;
 /** Markers that class a signal as BUILD/TYPECHECK output (tsc/tsgo/compile). */
 const BUILD_MARKER_RE =
   /\b(?:tsc|tsgo|typecheck|type-check|type\s+error|compiled|compilation|build\s+(?:succeeded|failed|complete)|cargo\s+build|go\s+build)\b/;

@@ -6,6 +6,7 @@
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { ownerDocumentsAction } from "../src/actions/document.ts";
 import {
   buildCommitmentRegretAudit,
   commitmentExtractionEvaluator,
@@ -15,6 +16,7 @@ import {
   LifeOpsRepository,
   trackDocumentObligationArtifact,
 } from "../src/lifeops/index.js";
+import { getScheduledTaskRunner } from "../src/lifeops/scheduled-task/service.ts";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,
@@ -395,6 +397,125 @@ describe("commitment ledger repository", () => {
         commitmentLedgerId: first.record.id,
         standingGuarantee: true,
       },
+    });
+  });
+
+  it("moves an installed class warning when the owner changes a deadline", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const message: Memory = {
+      id: crypto.randomUUID() as Memory["id"],
+      entityId: runtime.agentId,
+      roomId: runtime.agentId,
+      agentId: runtime.agentId,
+      content: { text: "Track the contract deadline", source: "test" },
+      createdAt: Date.now(),
+    } as Memory;
+
+    const installed = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "guarantee_class",
+          obligationClass: "renewal",
+          warnDaysBefore: 10,
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(installed?.success).toBe(true);
+
+    const created = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_approval",
+          documentTitle: "Vendor contract",
+          deadline: "2026-12-01T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(created?.success).toBe(true);
+    const documentRequestId = (
+      created?.data as { documentRequestId?: string } | undefined
+    )?.documentRequestId;
+    if (!documentRequestId) {
+      throw new Error("document action returned no document request");
+    }
+
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const warnWatches = async () =>
+      (await runner.list({ status: "scheduled" })).filter(
+        (task) => task.metadata?.documentId === documentRequestId,
+      );
+
+    const before = await warnWatches();
+    expect(before).toHaveLength(1);
+    expect(before[0]?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-11-21T17:00:00.000Z",
+    });
+
+    const updated = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "track_deadline",
+          documentRequestId,
+          deadline: "2026-12-15T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(updated?.success).toBe(true);
+
+    const after = await warnWatches();
+    expect(after).toHaveLength(1);
+    expect(after[0]?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-12-05T17:00:00.000Z",
+    });
+
+    const second = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_approval",
+          documentTitle: "Second vendor contract",
+          deadline: "2027-01-10T17:00:00.000Z",
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(second?.success).toBe(true);
+    const secondDocumentId = (
+      second?.data as { documentRequestId?: string } | undefined
+    )?.documentRequestId;
+    if (!secondDocumentId) {
+      throw new Error("document action returned no second document request");
+    }
+    const secondWarnings = (await runner.list({ status: "scheduled" })).filter(
+      (task) => task.metadata?.documentId === secondDocumentId,
+    );
+    expect(secondWarnings).toHaveLength(1);
+    expect(secondWarnings[0]?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-12-31T17:00:00.000Z",
     });
   });
 });
