@@ -3294,7 +3294,9 @@ export class RemindersDomain {
     const RECEIPT_SCAN_WINDOW_MS = 4 * 60 * 60 * 1000; // 4 hours
     const cutoff = now.getTime() - RECEIPT_SCAN_WINDOW_MS;
     const candidates = attempts.filter((attempt) => {
-      if (attempt.outcome !== "delivered") {
+      // General activity is reachability, not proof that an in-app alert was
+      // opened. Native/browser inbox reads carry their own explicit receipts.
+      if (attempt.outcome !== "delivered" || attempt.channel === "in_app") {
         return false;
       }
       const attemptedMs = attempt.attemptedAt
