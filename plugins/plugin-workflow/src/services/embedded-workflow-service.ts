@@ -135,13 +135,20 @@ export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSettin
   return recordsMissedScheduledOccurrences(runtime);
 }
 
-/** Whether a terminal execution output records a missed scheduled occurrence. */
+/**
+ * Whether a terminal execution output records a missed scheduled occurrence:
+ * the record this service (or a resident digest's admission) writes, with its
+ * scheduled instant and explanation, not any workflow output that happens to
+ * carry `status: 'missed'`.
+ */
 export function isMissedOccurrenceOutput(output: unknown): boolean {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
+  const record = output as Record<string, unknown>;
   return (
-    !!output &&
-    typeof output === 'object' &&
-    !Array.isArray(output) &&
-    (output as Record<string, unknown>).status === 'missed'
+    record.status === 'missed' &&
+    typeof record.scheduledAt === 'string' &&
+    Number.isFinite(Date.parse(record.scheduledAt)) &&
+    typeof record.text === 'string'
   );
 }
 

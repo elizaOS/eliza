@@ -12,10 +12,27 @@ import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import {
   EmbeddedWorkflowService,
+  isMissedOccurrenceOutput,
   missedOccurrence,
   recordsMissedOccurrences,
 } from '../../src/services/embedded-workflow-service';
 import { createWorkflowDispatchService } from '../../src/services/workflow-dispatch';
+
+test('only a recorded missed occurrence reads as missed', () => {
+  const now = Date.parse('2026-10-27T09:10:00.000Z');
+  expect(isMissedOccurrenceOutput(missedOccurrence(now - 10 * 60_000, now, now - 60_000))).toBe(
+    true
+  );
+  // A workflow's own output that merely carries this status ran and is not missed.
+  for (const output of [
+    { status: 'missed' },
+    { status: 'missed', scheduledAt: 'soon', text: 'x' },
+    ['missed'],
+    'missed',
+    null,
+  ])
+    expect(isMissedOccurrenceOutput(output)).toBe(false);
+});
 
 test('missed occurrence policy is explicit and bounded by the scheduled window', () => {
   const now = Date.parse('2026-10-27T09:10:00.000Z');
