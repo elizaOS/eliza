@@ -287,11 +287,20 @@ export class FilesystemRuntimeOperationRepository
       );
 
     const toDrop: RuntimeOperation[] = [];
+    let kept = 0;
     for (let i = 0; i < terminal.length; i++) {
       const op = terminal[i];
-      const tooOld = now - (op.finishedAt ?? op.startedAt) > this.retentionMs;
-      const beyondCap = i >= this.maxRecords;
-      if (tooOld || beyondCap) toDrop.push(op);
+      const finishedAt = op.finishedAt ?? op.startedAt;
+      const tooOld = now - finishedAt > this.retentionMs;
+      // `findByIdempotencyKey` accepts a key for IDEMPOTENCY_RETENTION_MS, so
+      // the cap must not forget that record earlier: a retry after the record
+      // was pruned would start a second operation instead of deduping.
+      const keyStillFresh =
+        !!op.idempotencyKey && now - finishedAt <= IDEMPOTENCY_RETENTION_MS;
+      const beyondCap = kept >= this.maxRecords;
+      if (tooOld) toDrop.push(op);
+      else if (beyondCap && !keyStillFresh) toDrop.push(op);
+      else kept += 1;
     }
 
     if (toDrop.length === 0) return 0;

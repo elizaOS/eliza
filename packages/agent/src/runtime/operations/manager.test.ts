@@ -95,6 +95,43 @@ describe("DefaultRuntimeOperationManager", () => {
     expect(hot.calls).toBe(0);
   });
 
+  it("keeps a recent idempotency key when the terminal-record cap prunes older operations", async () => {
+    const capped = new FilesystemRuntimeOperationRepository(stateDir, {
+      maxRecords: 1,
+    });
+    const cold = strategy("cold");
+    const manager = new DefaultRuntimeOperationManager({
+      repository: capped,
+      runtime: () => runtime,
+      classifyContext: () => ({}),
+      healthChecker: healthChecker(async () => OK_REPORT),
+      strategies: { cold },
+    });
+
+    const first = await manager.start({
+      intent: { kind: "restart", reason: "first" },
+      idempotencyKey: "cap-key",
+    });
+    if (first.kind !== "accepted") throw new Error(first.kind);
+    await waitForTerminal(capped, first.operation.id);
+
+    const second = await manager.start({
+      intent: { kind: "restart", reason: "second" },
+      idempotencyKey: "other-key",
+    });
+    if (second.kind !== "accepted") throw new Error(second.kind);
+    await waitForTerminal(capped, second.operation.id);
+    await capped.pruneTerminal();
+
+    const retry = await manager.start({
+      intent: { kind: "restart", reason: "retry" },
+      idempotencyKey: "cap-key",
+    });
+    expect(retry.kind).toBe("deduped");
+    if (retry.kind !== "deduped") return;
+    expect(retry.operation.id).toBe(first.operation.id);
+  });
+
   it("never substitutes a lighter tier for a heavier one", async () => {
     const hot = strategy("hot");
     const manager = new DefaultRuntimeOperationManager({
