@@ -48,11 +48,17 @@ public final class DataResetTest {
         check(text.disclosure.contains("There is no backup or undo"), "no backup disclosed");
         check(text.disclosure.contains("are not deleted or cancelled") && text.disclosure.contains("Other apps are not reset"), "scope disclosed");
         check(text.noScreenLock.equals("Set a device screen lock in Android before resetting Example data."), "lock");
-        String absent = text.recoveryBody(false, false), pending = text.recoveryBody(true, true), unreachable = text.recoveryBody(true, false);
+        String absent = text.recoveryBody(null, false, false), pending = text.recoveryBody(null, true, true), unreachable = text.recoveryBody(null, true, false);
         check(absent.contains("Android has not accepted") && !absent.contains("listener's settings"), "android reason");
         check(pending.contains("confirmation has not arrived") && pending.contains("open the listener's settings"), "listener pending reason");
         check(unreachable.contains("cannot reach the listener's controls") && !unreachable.contains("open the listener's settings"), "unreachable reason");
-        for (String body : new String[] {absent, pending, unreachable}) {
+        // The recorded outcome wins over the listener's current state.
+        String refused = text.recoveryBody(DataReset.Outcome.ANDROID_REFUSED, true, true);
+        check(refused.contains("Android has not accepted") && !refused.contains("confirmation has not arrived") && !refused.contains("listener's settings"), "refused after acknowledgement");
+        String unacknowledged = text.recoveryBody(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, true, true);
+        check(unacknowledged.contains("confirmation has not arrived") && unacknowledged.contains("open the listener's settings"), "recorded listener reason");
+        check(text.recoveryBody(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, true, false).contains("cannot reach the listener's controls"), "recorded, now unreachable");
+        for (String body : new String[] {absent, pending, unreachable, refused, unacknowledged}) {
             check(body.contains("has not been deleted yet") && body.endsWith("Phone and Android Settings remain available."), "never claims deletion");
             check(!body.matches("(?is).*(reset (is )?complete|data (was|has been) deleted\\.).*"), "no completion claim");
         }
@@ -61,7 +67,7 @@ public final class DataResetTest {
         check(text.retryResult(DataReset.Outcome.LISTENER_UNACKNOWLEDGED, false).startsWith("The listener could not be reached"), "unreachable");
         check(text.retryResult(DataReset.Outcome.DISPATCHED, false).equals("Android is deleting Example's data. Example will close."), "dispatched");
         DataResetCopy custom = DataResetCopy.forProduct("Example").disclosure("Custom.").progressMessage("Signing out...").recoveryRemoteNote("(Remote note.)").build();
-        check(custom.disclosure.equals("Custom.") && custom.progressMessage.equals("Signing out...") && custom.recoveryBody(false, false).contains("deleted yet. (Remote note.)\n\n"), "overrides");
+        check(custom.disclosure.equals("Custom.") && custom.progressMessage.equals("Signing out...") && custom.recoveryBody(null, false, false).contains("deleted yet. (Remote note.)\n\n"), "overrides");
         for (String invalid : new String[] {null, "", "   ", "x".repeat(61)}) {
             try { DataResetCopy.forProduct(invalid); throw new AssertionError("invalid product " + invalid); } catch (IllegalArgumentException expected) { /* rejected */ }
         }
@@ -148,6 +154,12 @@ public final class DataResetTest {
         check(reset.attempt(app, before) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "user retry from unreadable state");
         long[] fresh = reset.failureState(app);
         check(fresh[0] == 1 && fresh[1] == before, "user retry starts a fresh window");
+        check(reset.lastFailure(app) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "outcome recorded with the budget");
+        // A record from a build before the outcome field keeps its budget and reports no outcome.
+        Files.write(failures.toPath(), ("1:" + before).getBytes());
+        check(reset.failureState(app)[0] == 1 && reset.lastFailure(app) == null, "two-part record");
+        Files.write(failures.toPath(), ("1:" + before + ":DISPATCHED").getBytes());
+        check(!DataReset.automaticAttemptAllowed(reset.failureState(app), before) && reset.lastFailure(app) == null, "a dispatched outcome is never a failure record");
 
         // Background starts stop without taking the screen; activity, unknown, stale and pre-35 starts show recovery.
         check(failures.delete(), "reset budget");
@@ -180,10 +192,12 @@ public final class DataResetTest {
         Files.write(failures.toPath(), "garbage".getBytes());
         reset.record(app);
         check(!failures.exists() && DataReset.automaticAttemptAllowed(reset.failureState(app), System.currentTimeMillis()), "fresh budget");
+        check(reset.lastFailure(app) == null, "a new confirmation has no failure yet");
         // Acknowledged, then Android refused: the next launch completes without showing recovery.
         SenseListenerClient.acknowledged = true; ActivityManager.mode = 2;
         stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "refused");
         check(reset.pending(app), "refused keeps marker");
+        check(reset.lastFailure(app) == DataReset.Outcome.ANDROID_REFUSED, "recovery explains the refusal, not the listener");
         ActivityManager.mode = 0; int recoveriesBefore = Context.recoveries;
         stops(() -> reset.admitBeforeStartup(app, "fixture.example"), "accepted");
         check(Context.recoveries == recoveriesBefore, "accepted dispatch shows no recovery");

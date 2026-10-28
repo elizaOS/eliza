@@ -1,6 +1,5 @@
 import {
   type AndroidRoleName,
-  type AndroidRoleStatus,
   type DeviceSettingsStatus,
   System,
   type SystemFacts,
@@ -10,12 +9,19 @@ import {
   type SystemVolumeStream,
 } from "@elizaos/capacitor-system";
 import {
+  androidRoleLabel,
   broaderPageNotice,
   parseRoleStatuses,
   parseSystemFacts,
   systemSwitchRows,
 } from "@elizaos/capacitor-system/settings";
-import { Button, Input, type OverlayAppContext } from "@elizaos/ui";
+import {
+  appNameInterpolationVars,
+  Button,
+  Input,
+  type OverlayAppContext,
+  useBranding,
+} from "@elizaos/ui";
 
 import {
   ArrowLeft,
@@ -76,20 +82,6 @@ function streamPercent(volume: SystemVolumeStatus): number {
   return Math.round((volume.current / volume.max) * 100);
 }
 
-function roleStatusLabel(
-  role: AndroidRoleStatus,
-  packageName: string | undefined,
-): string {
-  if (!role.available) return "Unavailable";
-  if (role.held) return "Assigned";
-  // Holder lookups are best effort (package visibility, Android's own resolver), so an empty
-  // answer never claims that no app holds the role.
-  const other = role.holders.find(
-    (holder) => holder !== "android" && holder !== packageName,
-  );
-  return other ?? "Not assigned to this app";
-}
-
 type SavingKey =
   | "brightness"
   | `volume:${SystemVolumeStream}`
@@ -97,6 +89,7 @@ type SavingKey =
   | null;
 
 export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
+  const { appName } = appNameInterpolationVars(useBranding());
   const [deviceSettings, setDeviceSettings] =
     useState<DeviceSettingsStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -118,8 +111,12 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
       const [settingsResult, statusResult, factsResult] = await Promise.all([
         System.getDeviceSettings(),
         System.getStatus(),
-        // A host without the facts bridge shows every switch as not reported.
-        System.getSystemFacts().catch(() => ({})),
+        // A host without the facts bridge shows every switch as not reported,
+        // and the bridge failure is logged rather than hidden.
+        System.getSystemFacts().catch((err: unknown) => {
+          console.warn("[DeviceSettings] getSystemFacts failed", err);
+          return {};
+        }),
       ]);
       setDeviceSettings(settingsResult);
       setSystemStatus(statusResult);
@@ -642,7 +639,10 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         {ROLE_LABELS[role.role]}
                       </div>
                       <div className="mt-1 line-clamp-2 text-xs text-muted">
-                        {roleStatusLabel(role, systemStatus?.packageName)}
+                        {androidRoleLabel(role, {
+                          packageName: systemStatus?.packageName ?? "",
+                          appName,
+                        })}
                       </div>
                     </div>
                     {role.held ? (

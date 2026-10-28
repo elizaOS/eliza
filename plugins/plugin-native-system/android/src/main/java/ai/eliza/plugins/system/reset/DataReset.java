@@ -48,11 +48,6 @@ public final class DataReset {
 
     public enum Outcome { DISPATCHED, LISTENER_UNACKNOWLEDGED, ANDROID_REFUSED, DEFERRED }
 
-    /** True when no listener is installed or the installed one durably acknowledged revocation. */
-    public interface ListenerRevocation {
-        boolean acknowledged(Context context);
-    }
-
     /**
      * Bounded, best-effort host work before Android's clear, for example revoking this device's
      * remote sign-in while the credential still exists. It runs only while a confirmed reset is
@@ -73,7 +68,6 @@ public final class DataReset {
     private final Class<? extends Activity> recoveryActivity;
     private final String recoveryProcessSuffix;
     private final String logTag;
-    private final ListenerRevocation listener;
     private final BeforeDispatch beforeDispatch;
 
     private DataReset(Builder builder) {
@@ -81,7 +75,6 @@ public final class DataReset {
         recoveryActivity = builder.recoveryActivity;
         recoveryProcessSuffix = builder.recoveryProcessSuffix;
         logTag = builder.logTag;
-        listener = builder.listener != null ? builder.listener : context -> new SenseListenerClient(context).resetForData();
         beforeDispatch = builder.beforeDispatch;
     }
 
@@ -100,7 +93,6 @@ public final class DataReset {
         private final Class<? extends Activity> recoveryActivity;
         private String recoveryProcessSuffix = ":reset_recovery";
         private String logTag = "ElizaDataReset";
-        private ListenerRevocation listener;
         private BeforeDispatch beforeDispatch;
 
         private Builder(String markerName, Class<? extends Activity> recoveryActivity) {
@@ -120,12 +112,6 @@ public final class DataReset {
         public Builder logTag(String tag) {
             if (tag == null || tag.isEmpty() || tag.length() > 23) throw new IllegalArgumentException("Invalid log tag");
             logTag = tag;
-            return this;
-        }
-
-        /** Replaces the default same-signer image listener acknowledgement. */
-        public Builder listenerRevocation(ListenerRevocation revocation) {
-            listener = revocation;
             return this;
         }
 
@@ -189,21 +175,52 @@ public final class DataReset {
     }
 
     /**
+     * The failure record: {@code count:first[:outcome]}. Builds before the outcome field wrote two
+     * parts; an interrupted reset from such a build still resumes with its budget.
+     */
+    private String[] failureRecord(Context context) {
+        AtomicFile file = failures(context);
+        if (!exists(file)) return null;
+        try {
+            return new String(file.readFully(), StandardCharsets.US_ASCII).trim().split(":");
+        } catch (Exception unreadable) {
+            return new String[0];
+        }
+    }
+
+    private static Outcome outcomeNamed(String name) {
+        for (Outcome outcome : Outcome.values()) {
+            if (outcome != Outcome.DISPATCHED && outcome != Outcome.DEFERRED && outcome.name().equals(name)) return outcome;
+        }
+        return null;
+    }
+
+    /**
      * {count, first failure time in the current window}. Unreadable or corrupt state counts as an
      * exhausted budget until a user-initiated attempt starts a new window.
      */
     public long[] failureState(Context context) {
-        AtomicFile file = failures(context);
-        if (!exists(file)) return new long[] {0, 0};
+        String[] parts = failureRecord(context);
+        if (parts == null) return new long[] {0, 0};
         try {
-            String[] parts = new String(file.readFully(), StandardCharsets.US_ASCII).trim().split(":");
             long count = Long.parseLong(parts[0]), first = Long.parseLong(parts[1]);
+            boolean shape = parts.length == 2 || (parts.length == 3 && outcomeNamed(parts[2]) != null);
             // A negative or overflowing count would otherwise grant unbounded automatic attempts.
-            if (parts.length == 2 && count >= 0 && count <= Integer.MAX_VALUE && first >= 0) return new long[] {count, first};
+            if (shape && count >= 0 && count <= Integer.MAX_VALUE && first >= 0) return new long[] {count, first};
         } catch (Exception unreadable) {
             // Treated as exhausted below.
         }
         return new long[] {AUTOMATIC_ATTEMPTS, -1};
+    }
+
+    /**
+     * Why the most recent attempt did not dispatch ({@link Outcome#LISTENER_UNACKNOWLEDGED} or
+     * {@link Outcome#ANDROID_REFUSED}), or null when no attempt has failed since the confirmation
+     * or the record does not say. Recovery explains this rather than guessing from listener state.
+     */
+    public Outcome lastFailure(Context context) {
+        String[] parts = failureRecord(context);
+        return parts != null && parts.length == 3 ? outcomeNamed(parts[2]) : null;
     }
 
     public static boolean automaticAttemptAllowed(long[] state, long now) {
@@ -213,7 +230,7 @@ public final class DataReset {
         return now < state[1] || now - state[1] >= AUTOMATIC_WINDOW_MS;
     }
 
-    private void recordFailure(Context context, long now) {
+    private void recordFailure(Context context, long now, Outcome outcome) {
         // A late result after Android finished the clear must not recreate state in fresh data.
         if (!pending(context)) return;
         long[] state = failureState(context);
@@ -221,7 +238,7 @@ public final class DataReset {
                 ? new long[] {1, now}
                 : new long[] {Math.min(state[0] + 1, Integer.MAX_VALUE), state[1]};
         try {
-            write(failures(context), (next[0] + ":" + next[1]).getBytes(StandardCharsets.US_ASCII));
+            write(failures(context), (next[0] + ":" + next[1] + ":" + outcome.name()).getBytes(StandardCharsets.US_ASCII));
         } catch (Exception unavailable) {
             // The pending marker, not this counter, keeps the reset fail-closed.
         }
@@ -235,7 +252,8 @@ public final class DataReset {
     public Outcome attempt(Context context, long now) {
         Outcome outcome;
         try {
-            if (!listener.acknowledged(context)) {
+            // True when no listener is installed or the installed one durably acknowledged.
+            if (!new SenseListenerClient(context).resetForData()) {
                 outcome = Outcome.LISTENER_UNACKNOWLEDGED;
             } else {
                 ActivityManager manager = context.getSystemService(ActivityManager.class);
@@ -244,7 +262,7 @@ public final class DataReset {
         } catch (RuntimeException failure) {
             outcome = Outcome.ANDROID_REFUSED;
         }
-        if (outcome != Outcome.DISPATCHED) recordFailure(context, now);
+        if (outcome != Outcome.DISPATCHED) recordFailure(context, now, outcome);
         return outcome;
     }
 

@@ -182,10 +182,14 @@ A host builds one `DataReset` with its installed identities and shares it:
 - `beforeDispatch(...)` optionally adds bounded, best-effort work that runs only
   while a confirmed reset is pending, such as revoking this device's remote
   sign-in. It never blocks or cancels the local reset beyond its budget.
-- `listenerRevocation(...)` replaces the default acknowledgement from the
-  same-signer image listener (`SenseListenerClient.resetForData()`). An installed
-  listener that does not durably acknowledge consent revocation keeps the marker
-  and all app data; an absent listener is safe to reset.
+- The same-signer image listener (`SenseListenerClient.resetForData()`) must
+  acknowledge first. An installed listener that does not durably acknowledge
+  consent revocation keeps the marker and all app data; an absent listener is
+  safe to reset.
+- The failure record keeps the last failed attempt's outcome, so the recovery
+  screen explains what actually happened (Android refused the clear, or the
+  listener did not acknowledge) rather than guessing from the listener's
+  current install state.
 
 Wire it in three places:
 

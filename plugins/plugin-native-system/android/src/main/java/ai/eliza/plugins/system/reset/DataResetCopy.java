@@ -85,11 +85,17 @@ public final class DataResetCopy {
         screenUnavailable = "That screen is not available on this phone.";
     }
 
-    /** The recovery explanation for the current listener state; never claims deletion happened. */
-    public String recoveryBody(boolean listenerInstalled, boolean listenerControllable) {
+    /**
+     * The recovery explanation; never claims deletion happened. The reason is the last failed
+     * attempt's outcome ({@link DataReset#lastFailure}); only when none is recorded is it inferred
+     * from the listener state.
+     */
+    public String recoveryBody(DataReset.Outcome lastFailure, boolean listenerInstalled, boolean listenerControllable) {
+        boolean listenerReason = lastFailure == DataReset.Outcome.LISTENER_UNACKNOWLEDGED
+                || (lastFailure != DataReset.Outcome.ANDROID_REFUSED && listenerInstalled);
         return recoveryIntro
-                + (!listenerInstalled ? reasonAndroid : listenerControllable ? reasonListenerPending : reasonListenerUnreachable)
-                + closedNote + (listenerControllable ? listenerHint : "") + availableNote;
+                + (!listenerReason ? reasonAndroid : listenerControllable ? reasonListenerPending : reasonListenerUnreachable)
+                + closedNote + (listenerReason && listenerControllable ? listenerHint : "") + availableNote;
     }
 
     /** Status after a recovery retry that Android did not dispatch. */

@@ -61,7 +61,7 @@ public abstract class DataResetRecoveryActivity extends Activity {
         root.addView(title);
         TextView body = new TextView(this);
         body.setTextSize(16);
-        body.setText(text.recoveryBody(installed, controllable));
+        body.setText(text.recoveryBody(reset().lastFailure(this), installed, controllable));
         root.addView(body);
         status = new TextView(this);
         status.setTextSize(16);
