@@ -248,8 +248,12 @@ public final class DataReset {
      * One attempt: durable listener revocation first, then Android's package-scoped clear of this
      * app itself. On {@link Outcome#DISPATCHED} Android stops every process of the package and
      * deletes its data, including the marker; any other outcome leaves the marker and all data.
+     * Without a durable confirmed request this does nothing and returns {@link Outcome#DEFERRED}:
+     * a stale caller (for example a recovery retry after the reset already finished) can neither
+     * withdraw the listener's consent nor erase data the owner did not confirm deleting.
      */
     public Outcome attempt(Context context, long now) {
+        if (!pending(context)) return Outcome.DEFERRED;
         Outcome outcome;
         try {
             // True when no listener is installed or the installed one durably acknowledged.

@@ -190,6 +190,9 @@ A host builds one `DataReset` with its installed identities and shares it:
   screen explains what actually happened (Android refused the clear, or the
   listener did not acknowledge) rather than guessing from the listener's
   current install state.
+- `attempt(...)` acts only while a confirmed request is pending. Without the
+  marker it returns `DEFERRED` and neither asks the listener to withdraw consent
+  nor asks Android to clear data, so a stale retry cannot erase unconfirmed data.
 
 Wire it in three places:
 

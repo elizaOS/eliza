@@ -116,8 +116,15 @@ public abstract class DataResetRecoveryActivity extends Activity {
         Thread attempt = new Thread(() -> {
             DataReset.Outcome outcome = reset.attempt(context, System.currentTimeMillis());
             boolean controllable = new SenseListenerClient(context).available();
+            boolean pending = reset.pending(context);
             main.post(() -> {
                 if (destroyed) return;
+                if (!pending) {
+                    // Nothing left to recover: the reset finished or was never requested.
+                    open(getPackageManager().getLaunchIntentForPackage(getPackageName()), null);
+                    finish();
+                    return;
+                }
                 status.setText(text.retryResult(outcome, controllable));
                 if (outcome != DataReset.Outcome.DISPATCHED) retry.setEnabled(true);
             });

@@ -93,11 +93,13 @@ public final class DataResetTest {
         SenseListenerClient.onReset = () -> order.add("listener");
         ActivityManager.onClear = () -> order.add("clear");
         check(!reset.pending(app), "nothing pending");
-        // A late failure from a stale recovery attempt cannot recreate reset state in fresh data.
-        SenseListenerClient.acknowledged = false;
-        check(reset.attempt(app, System.currentTimeMillis()) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED, "late failure");
-        check(data.listFiles() == null || data.listFiles().length == 0, "no state recreated");
+        // A stale attempt without a confirmed request touches neither the listener nor app data,
+        // even when the listener would acknowledge and Android would accept.
         SenseListenerClient.acknowledged = true;
+        int listenerBefore = SenseListenerClient.calls, clearsBefore = ActivityManager.calls;
+        check(reset.attempt(app, System.currentTimeMillis()) == DataReset.Outcome.DEFERRED, "unconfirmed attempt");
+        check(SenseListenerClient.calls == listenerBefore && ActivityManager.calls == clearsBefore, "no consent revocation or clear without confirmation");
+        check(data.listFiles() == null || data.listFiles().length == 0, "no state recreated");
         // Nothing pending: startup admission returns and runs no host work.
         order.clear();
         reset.admitBeforeStartup(app, "fixture.example");
@@ -205,7 +207,7 @@ public final class DataResetTest {
         for (File file : data.listFiles()) check(file.delete(), "erase fixture");
         check(!reset.pending(app), "fresh data");
         SenseListenerClient.acknowledged = false;
-        check(reset.attempt(app, System.currentTimeMillis()) == DataReset.Outcome.LISTENER_UNACKNOWLEDGED && data.listFiles().length == 0, "late failure after completion");
+        check(reset.attempt(app, System.currentTimeMillis()) == DataReset.Outcome.DEFERRED && data.listFiles().length == 0, "stale attempt after completion");
         SenseListenerClient.acknowledged = true;
         order.clear();
         reset.admitBeforeStartup(app, "fixture.example");
