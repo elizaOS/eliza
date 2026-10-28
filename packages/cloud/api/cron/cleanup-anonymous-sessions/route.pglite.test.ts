@@ -14,7 +14,7 @@ const OLD = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
 const PAST = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
-const INACTIVE_NO_SESSION = "00000000-0000-4000-8000-00000000000a";
+const INACTIVE_NO_MESSAGES = "00000000-0000-4000-8000-00000000000a";
 const ACTIVE_WITH_MESSAGES = "00000000-0000-4000-8000-00000000000b";
 const EXPIRED_ONE = "00000000-0000-4000-8000-00000000000c";
 const EXPIRED_TWO = "00000000-0000-4000-8000-00000000000e";
@@ -92,8 +92,12 @@ beforeAll(async () => {
     );
   };
 
-  // Anonymous, old, and no session row: never sent a message; must be pruned.
-  await seedUser(INACTIVE_NO_SESSION, true, null);
+  // Anonymous, old, and a session with zero messages: must be pruned.
+  await seedUser(INACTIVE_NO_MESSAGES, true, null);
+  await pg().query(
+    "INSERT INTO anonymous_sessions(session_token, user_id, message_count, expires_at) VALUES ('token-a', $1, 0, $2)",
+    [INACTIVE_NO_MESSAGES, FUTURE],
+  );
   // Anonymous, old, but has messages: must be kept.
   await seedUser(ACTIVE_WITH_MESSAGES, true, null);
   await pg().query(

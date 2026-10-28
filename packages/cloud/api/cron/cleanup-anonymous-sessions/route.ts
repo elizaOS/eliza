@@ -94,7 +94,7 @@ app.get("/", async (c) => {
 
     let deletedInactiveUsers = 0;
     for (const record of inactiveUsersWithSessions) {
-      if (record.messageCount === null || record.messageCount === 0) {
+      if (record.messageCount === 0) {
         await dbWrite.delete(users).where(eq(users.id, record.userId));
         deletedInactiveUsers++;
       }
