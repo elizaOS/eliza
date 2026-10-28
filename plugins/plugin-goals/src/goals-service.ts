@@ -97,13 +97,9 @@ const CJK_SCRIPT_CHAR =
 
 function tokenizeGoalText(text: string | null | undefined): string[] {
   const raw = typeof text === "string" ? text : "";
-  // Canonical composition first: the word split below treats a combining mark
-  // as a separator, so a decomposed "café" (e + U+0301) would become the token
-  // "cafe" while the precomposed spelling stays "café". The two spellings are
-  // the same goal, but no token would overlap and dedup would create a
-  // duplicate row. Lowercasing can itself decompose (U+0130), so compose again.
+  // The split below treats a combining mark as a separator, so compose first:
+  // a decomposed "café" (e + U+0301) must give the same token as "café".
   return raw
-    .normalize("NFC")
     .toLowerCase()
     .normalize("NFC")
     .split(/[^\p{L}\p{N}]+/u)
