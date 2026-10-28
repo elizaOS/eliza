@@ -37,8 +37,11 @@ import type {
   BrowserWorkspaceCommandResult,
 } from "./workspace/browser-workspace-types.js";
 
+export { createBrowserBridgeCompanionStatus } from "./bridge-records.js";
+export * from "./contracts.js";
 export { BrowserDispatchFailure } from "./dispatch-types.js";
 export { decodeNativeBrowserCommandResult } from "./native-page-reader.js";
+export { FRAME_FILE } from "./workspace/frame-path.js";
 
 const commands = [
   "open",
@@ -116,6 +119,7 @@ export class BrowserService extends Service {
   ): Promise<BrowserWorkspaceCommandResult> {
     if (
       (!targetId || targetId === "chromium-device") &&
+      (!clientId || targetId === "chromium-device") &&
       this.nativeTarget &&
       (await this.nativeTarget.available())
     ) {
@@ -195,7 +199,9 @@ export class BrowserService extends Service {
       // error-policy:J2 uncertain native effects must never be replayed in another browser.
       if (
         isBrowserDispatchFailure(error) ||
-        isIdempotentBrowserSubaction(command.subaction)
+        isIdempotentBrowserSubaction(command.subaction, {
+          script: command.script,
+        })
       )
         throw error;
       throw new BrowserDispatchFailure(
@@ -320,6 +326,22 @@ export const browserPlugin: HttpPlugin = {
   name: "@elizaos/plugin-browser",
   description: "Authenticated native device browser control",
   services: [BrowserService],
+  views: [
+    {
+      id: "browser",
+      label: "Browser",
+      path: "/browser",
+      modalities: ["gui"],
+      roleGate: { minRole: "OWNER" },
+      capabilities: [
+        {
+          id: "browser-command",
+          description: "Control the authenticated mounted native Browser",
+          authority: "agent",
+        },
+      ],
+    },
+  ],
   routes: [
     nativeDeviceBrowserRoute,
     nativeDeviceBrowserStatusRoute,
@@ -347,3 +369,5 @@ export const showBrowserWorkspaceTab = desktopConnectorUnavailable;
 export function isBrowserWorkspaceBridgeConfigured(): boolean {
   return false;
 }
+
+export { parseNativeHistoryCommand } from "./native-client-command.ts";

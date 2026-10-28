@@ -1460,7 +1460,7 @@ export const briefAction: Action & {
     {
       name: "include",
       description:
-        "Include flags: { calendar?, inbox?, life? }. Ordinary briefs use configured inboxes by default. Leave include.inbox unset for ordinary briefs; set true only when the owner explicitly requests inbox/email coverage, or false to exclude it.",
+        "Include flags: { calendar?, inbox?, life?, commitments? }. Ordinary briefs use configured inboxes by default. Leave include.inbox unset for ordinary briefs; set true only when the owner explicitly requests inbox/email coverage, or false to exclude it.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -1468,6 +1468,15 @@ export const briefAction: Action & {
       description:
         "Format: narrative = LLM compose; json = LifeOpsBriefing only. Default narrative.",
       schema: { type: "string" as const, enum: ["narrative", "json"] },
+    },
+    {
+      name: "optimizationTask",
+      description:
+        "compose_* narrative only: meeting_prep = prep dossier for a specific meeting; morning_brief = ordinary brief. Omit to infer from the owner message.",
+      schema: {
+        type: "string" as const,
+        enum: ["meeting_prep", "morning_brief"],
+      },
     },
   ],
   examples,

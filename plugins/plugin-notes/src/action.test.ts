@@ -140,6 +140,25 @@ function execute(
 }
 
 describe("promoted Notes execution", () => {
+  it("returns the canonical deletion instant through authorized executor data and model receipt", async () => {
+    let instant = "2026-10-26T19:00:00.000Z";
+    const runtime = await executorHarness(() => new Date(instant));
+    const service = getNotesService(runtime);
+    const created = await service.createNoteWithCommit({
+      content: "Weekend packing\nBring water.",
+    });
+    instant = "2026-10-26T20:42:36.954Z";
+    const deleted = await execute(runtime, {
+      name: "NOTES_DELETE",
+      params: { noteId: created.value.id },
+    });
+    expect(deleted.success).toBe(true);
+    expect(deleted.data?.deletedAt).toBe(instant);
+    expect(deleted.promptData?.deletedAt).toBe(instant);
+    expect(service.snapshot().trash?.[0]?.deletedAt).toBe(instant);
+    expect(service.snapshot().notes).toEqual([]);
+  });
+
   it.each([
     ["NOTES_LIST", "NOTES_GET"],
     ["NOTES_LIST", "NOTES_PATCH", "NOTES_UPDATE"],
@@ -231,7 +250,7 @@ describe("promoted Notes execution", () => {
         ?.description,
     ).toMatch(/unique literal match atomically/);
   });
-  it("requires an update selector on the provider wire and preserves unrelated text through real admission", async () => {
+  it("requires an update selector at admission and preserves unrelated text", async () => {
     const runtime = await executorHarness();
     const action = notesPlugin.actions?.find(
       (entry) => entry.name === "NOTES_UPDATE",
@@ -257,9 +276,9 @@ describe("promoted Notes execution", () => {
     const missing = { replacementContent: "Packing\nBring spare cable." };
     const errors: string[] = [];
     validateSchema(schema, missing, "", errors);
-    expect(errors).toEqual(
-      expect.arrayContaining([expect.stringContaining("content")]),
-    );
+    // The provider wire permits either selector. Admission below requires one
+    // before writing; an unconditional content requirement would reject noteId.
+    expect(errors).toEqual([]);
     const service = getNotesService(runtime);
     const original = await service.createNote({
       title: "Packing",
@@ -691,7 +710,10 @@ describe("promoted Notes execution", () => {
     },
   );
 
-  it.each([null, "latest", false, ["createdAt"]])(
+  // Each row is one argument list. A bare `["createdAt"]` row would be spread
+  // by `it.each` into a single string argument, so the array case would assert
+  // against the valid scalar "createdAt" and never exercise an array payload.
+  it.each([[null], ["latest"], [false], [["createdAt"]]])(
     "rejects invalid latestBy %j",
     async (latestBy) => {
       const runtime = await executorHarness();
@@ -1089,6 +1111,14 @@ describe("promoted Notes execution", () => {
       params: { content: "Conversation context QA" },
     });
     expect(deleted.success).toBe(true);
+    expect(deleted.data?.deletedAt).toEqual(
+      getNotesService(runtime)
+        .snapshot()
+        .trash?.findLast((entry) => entry.note.id === deleted.data?.noteId)
+        ?.deletedAt,
+    );
+    expect(deleted.data?.deletedAt).toEqual(expect.any(String));
+    expect(deleted.promptData?.deletedAt).toEqual(deleted.data?.deletedAt);
     expect(deleted.data?.note).toEqual(updated.data?.note);
     expect((await run(runtime, { action: "list" })).data?.notes).toEqual([]);
 
@@ -1530,6 +1560,25 @@ describe("NOTES operation parsing", () => {
       total: 2,
       filterApplied: true,
     });
+  });
+
+  it("matches topic-scoped reads across Unicode forms and repeated whitespace", async () => {
+    const runtime = await harness();
+    await run(runtime, { action: "create", content: "Café plans" });
+    await run(runtime, {
+      action: "create",
+      content: "spare key under the mat",
+    });
+
+    for (const topic of ["Café", "café   plans", "CAFÉ\tPLANS"]) {
+      const match = await run(runtime, { action: "list", content: topic });
+      expect(match.data?.notes).toMatchObject([{ title: "Café plans" }]);
+      expect(match.data).toMatchObject({
+        count: 1,
+        total: 2,
+        filterApplied: true,
+      });
+    }
   });
 
   it("preserves literal colon content through create and full replacement", async () => {
@@ -2322,8 +2371,11 @@ describe("structured Notes field patches", () => {
       awaitingUserInput: true,
       requiresInput: true,
       candidates: expect.arrayContaining([
-        expect.objectContaining({ body: "\nSilver folder" }),
-        expect.objectContaining({ body: "\nBring it tomorrow" }),
+        expect.objectContaining({ body: "Silver folder", bodySeparator: "\n" }),
+        expect.objectContaining({
+          body: "Bring it tomorrow",
+          bodySeparator: "\n",
+        }),
       ]),
     });
     expect(result.effectReceipts).toBeUndefined();

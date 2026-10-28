@@ -605,6 +605,24 @@ function importWarnings(
   return warnings;
 }
 
+/**
+ * The VTT files the transcript is read from. Zoom can list the same speech
+ * twice, as the audio transcript and as closed captions; reading both puts
+ * every utterance in the transcript twice. Use the audio transcript, and the
+ * captions only when there is none.
+ */
+function transcriptSources(
+  files: readonly DownloadedFile[],
+): readonly DownloadedFile[] {
+  const vtt = files.filter((file) => file.mimeType === "text/vtt");
+  const audioTranscripts = vtt.filter(
+    (file) =>
+      file.source.recording_type === "audio_transcript" ||
+      file.source.file_type?.toUpperCase() === "TRANSCRIPT",
+  );
+  return audioTranscripts.length > 0 ? audioTranscripts : vtt;
+}
+
 function buildZoomSharedMeetingArtifact(input: {
   requestedMeetingId: string;
   meeting: ZoomMeetingResponse;
@@ -631,15 +649,15 @@ function buildZoomSharedMeetingArtifact(input: {
       label: file.source.recording_type,
     }),
   );
-  const streamByMediaId = new Map(
-    sourceStreams.map((stream) => [stream.mediaRefId, stream]),
+  // Keyed by file, not media id: byte-identical transcript and caption files
+  // share a content-hash media id, and spans must name the file they came from.
+  const streamByFile = new Map(
+    input.files.map((file, index) => [file, sourceStreams[index]]),
   );
   const transcriptSpans: MeetingArtifactTranscriptSpan[] = [];
   const speakerLabels = new Map<string, string>();
-  for (const file of input.files.filter(
-    (candidate) => candidate.mimeType === "text/vtt",
-  )) {
-    const stream = streamByMediaId.get(file.media.id);
+  for (const file of transcriptSources(input.files)) {
+    const stream = streamByFile.get(file);
     if (!stream) continue;
     for (const cue of parseWebVtt(file.bytes.toString("utf8"))) {
       const participant = cue.speakerLabel
@@ -686,7 +704,13 @@ function buildZoomSharedMeetingArtifact(input: {
         scope: "owner-private",
       },
     },
-    media: input.files.map((file) => file.media),
+    // Byte-identical files (an audio transcript and its closed captions)
+    // share a content-hash media id; list each media item once.
+    media: [
+      ...new Map(
+        input.files.map((file) => [file.media.id, file.media]),
+      ).values(),
+    ],
     sourceStreams,
     platformParticipants,
     diarizedSpeakers: [...speakerLabels].map(([id, displayName]) => {
@@ -794,6 +818,14 @@ function epochMs(value: string | undefined): number | undefined {
 }
 
 function parseWebVtt(value: string): VttCue[] {
+  const entities: Record<string, string> = {
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&nbsp;": "\u00a0",
+    "&lrm;": "\u200e",
+    "&rlm;": "\u200f",
+  };
   const blocks = value
     .replace(/^\uFEFF/, "")
     .split(/\r?\n\r?\n+/)
@@ -813,6 +845,10 @@ function parseWebVtt(value: string): VttCue[] {
       .slice(timingIndex + 1)
       .join(" ")
       .replace(/<[^>]+>/g, "")
+      .replace(
+        /&(?:amp|lt|gt|nbsp|lrm|rlm);/g,
+        (entity) => entities[entity] ?? entity,
+      )
       .trim();
     if (!rawText) continue;
     const speaker = /^([^:]{1,120}):\s+(.+)$/.exec(rawText);

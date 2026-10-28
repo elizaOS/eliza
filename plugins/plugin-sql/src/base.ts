@@ -602,6 +602,19 @@ type AgentRow = typeof agentTable.$inferSelect;
 type AgentMessageExamples = NonNullable<Agent["messageExamples"]>;
 type AgentKnowledge = NonNullable<Agent["knowledge"]>;
 type MemoryRow = typeof memoryTable.$inferSelect;
+type RoomRow = Pick<
+  typeof roomTable.$inferSelect,
+  | "id"
+  | "name"
+  | "channelId"
+  | "agentId"
+  | "messageServerId"
+  | "serverId"
+  | "worldId"
+  | "type"
+  | "source"
+  | "metadata"
+>;
 
 class AtomicMemoryPublicationConflict extends Error {}
 
@@ -624,6 +637,21 @@ function memoryFromRow(row: MemoryRow, embedding?: number[], similarity?: number
         : (row.metadata as MemoryMetadata),
     ...(embedding ? { embedding } : {}),
     ...(similarity !== undefined ? { similarity } : {}),
+  };
+}
+
+function roomFromRow(room: RoomRow): Room {
+  return {
+    ...room,
+    id: room.id as UUID,
+    name: room.name ?? undefined,
+    agentId: room.agentId as UUID,
+    messageServerId: room.messageServerId as UUID,
+    serverId: room.serverId ?? undefined,
+    worldId: room.worldId as UUID,
+    channelId: room.channelId as UUID,
+    type: room.type as ChannelType,
+    metadata: room.metadata as Metadata,
   };
 }
 
@@ -1661,14 +1689,20 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(participantTable)
         .leftJoin(
           entityTable,
-          and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
+          and(
+            eq(participantTable.entityId, entityTable.id),
+            eq(participantTable.agentId, this.agentId),
+            eq(entityTable.agentId, this.agentId)
+          )
         );
 
       if (includeComponents) {
         query.leftJoin(componentTable, eq(componentTable.entityId, entityTable.id));
       }
 
-      const result = await query.where(eq(participantTable.roomId, roomId));
+      const result = await query.where(
+        and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
+      );
 
       // Group components by entity if includeComponents is true
       const entitiesByIdMap = new Map<UUID, Entity>();
@@ -2057,7 +2091,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       assertJsonbStorable(component.data);
       await this.db.insert(componentTable).values({
         ...component,
-        createdAt: new Date(),
+        createdAt: component.createdAt !== undefined ? new Date(component.createdAt) : new Date(),
       });
       return true;
     });
@@ -2309,7 +2343,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(
           and(
             eq(participantTable.roomId, params.authorizedRoomId),
-            eq(participantTable.entityId, params.accessContext.requesterEntityId)
+            eq(participantTable.entityId, params.accessContext.requesterEntityId),
+            eq(participantTable.agentId, params.agentId)
           )
         )
         .limit(1);
@@ -4058,11 +4093,15 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         // string exceeds levenshtein's 255-char ceiling, so no fuzzy cache
         // match can exist for it: an empty result is the correct typed answer,
         // not a masked failure. Every other error is a real fault → rethrow.
-        if (
-          error instanceof Error &&
-          error.message === "levenshtein argument exceeds maximum length of 255 characters"
-        ) {
-          return [];
+        // Drizzle wraps the database error in Error.cause.
+        const seen = new Set<Error>();
+        let current = error;
+        while (current instanceof Error && !seen.has(current)) {
+          seen.add(current);
+          if (current.message === "levenshtein argument exceeds maximum length of 255 characters") {
+            return [];
+          }
+          current = current.cause;
         }
         throw new ElizaError("getCachedEmbeddings failed", {
           code: "DB_QUERY_FAILED",
@@ -5201,6 +5240,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           channelId: roomTable.channelId,
           agentId: roomTable.agentId,
           messageServerId: roomTable.messageServerId,
+          serverId: roomTable.serverId,
           worldId: roomTable.worldId,
           type: roomTable.type,
           source: roomTable.source,
@@ -5209,19 +5249,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .from(roomTable)
         .where(and(inArray(roomTable.id, roomIds), eq(roomTable.agentId, this.agentId)));
 
-      // Map the result to properly typed Room objects
-      const rooms = result.map((room) => ({
-        ...room,
-        id: room.id as UUID,
-        name: room.name ?? undefined,
-        agentId: room.agentId as UUID,
-        messageServerId: room.messageServerId as UUID,
-        serverId: room.messageServerId as UUID, // Backward compatibility alias
-        worldId: room.worldId as UUID,
-        channelId: room.channelId as UUID,
-        type: room.type as ChannelType,
-        metadata: room.metadata as Metadata,
-      }));
+      const rooms = result.map(roomFromRow);
 
       return rooms;
     });
@@ -5234,19 +5262,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async getRoomsByWorld(worldId: UUID): Promise<Room[]> {
     return this.withDatabase(async () => {
-      const result = await this.db.select().from(roomTable).where(eq(roomTable.worldId, worldId));
-      const rooms = result.map((room) => ({
-        ...room,
-        id: room.id as UUID,
-        name: room.name ?? undefined,
-        agentId: room.agentId as UUID,
-        messageServerId: room.messageServerId as UUID,
-        serverId: room.messageServerId as UUID, // Backward compatibility alias
-        worldId: room.worldId as UUID,
-        channelId: room.channelId as UUID,
-        type: room.type as ChannelType,
-        metadata: room.metadata as Metadata,
-      }));
+      const result = await this.db
+        .select()
+        .from(roomTable)
+        .where(and(eq(roomTable.worldId, worldId), eq(roomTable.agentId, this.agentId)));
+      const rooms = result.map(roomFromRow);
       return rooms;
     });
   }
@@ -5262,7 +5282,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       await this.db
         .update(roomTable)
         .set({ ...room, agentId: this.agentId })
-        .where(eq(roomTable.id, room.id));
+        .where(and(eq(roomTable.id, room.id), eq(roomTable.agentId, this.agentId)));
     });
   }
 
@@ -5299,7 +5319,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (!roomId) throw new Error("Room ID is required");
     return this.withDatabase(async () => {
       await this.db.transaction(async (tx) => {
-        await tx.delete(roomTable).where(eq(roomTable.id, roomId));
+        await tx
+          .delete(roomTable)
+          .where(and(eq(roomTable.id, roomId), eq(roomTable.agentId, this.agentId)));
       });
     });
   }
@@ -5315,7 +5337,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({ roomId: participantTable.roomId })
         .from(participantTable)
         .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-        .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)));
+        .where(
+          and(
+            eq(participantTable.entityId, entityId),
+            eq(participantTable.agentId, this.agentId),
+            eq(roomTable.agentId, this.agentId)
+          )
+        );
 
       return result.map((row) => row.roomId as UUID);
     });
@@ -5334,7 +5362,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           .selectDistinct({ roomId: participantTable.roomId })
           .from(participantTable)
           .innerJoin(roomTable, eq(participantTable.roomId, roomTable.id))
-          .where(and(eq(participantTable.entityId, entityId), eq(roomTable.agentId, this.agentId)))
+          .where(
+            and(
+              eq(participantTable.entityId, entityId),
+              eq(participantTable.agentId, this.agentId),
+              eq(roomTable.agentId, this.agentId)
+            )
+          )
       );
       for (const row of result) roomIds.add(row.roomId as UUID);
     }
@@ -5435,7 +5469,11 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           return await tx
             .delete(participantTable)
             .where(
-              and(eq(participantTable.entityId, entityId), eq(participantTable.roomId, roomId))
+              and(
+                eq(participantTable.entityId, entityId),
+                eq(participantTable.roomId, roomId),
+                eq(participantTable.agentId, this.agentId)
+              )
             )
             .returning();
         });
@@ -5468,7 +5506,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           roomId: participantTable.roomId,
         })
         .from(participantTable)
-        .where(eq(participantTable.entityId, entityId));
+        .where(
+          and(eq(participantTable.entityId, entityId), eq(participantTable.agentId, this.agentId))
+        );
 
       const entities = await this.getEntitiesByIds([entityId]);
 
@@ -5493,7 +5533,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select({ entityId: participantTable.entityId })
         .from(participantTable)
-        .where(eq(participantTable.roomId, roomId));
+        .where(
+          and(eq(participantTable.roomId, roomId), eq(participantTable.agentId, this.agentId))
+        );
 
       return result.map((row) => row.entityId as UUID);
     });
@@ -5511,7 +5553,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const result = await this.db
         .select()
         .from(participantTable)
-        .where(and(eq(participantTable.roomId, roomId), eq(participantTable.entityId, entityId)))
+        .where(
+          and(
+            eq(participantTable.roomId, roomId),
+            eq(participantTable.entityId, entityId),
+            eq(participantTable.agentId, this.agentId)
+          )
+        )
         .limit(1);
 
       return result.length > 0;
@@ -5968,17 +6016,34 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const newWorldId = normalizedWorld.id as UUID;
 
       assertJsonbStorable(normalizedWorld.metadata);
-      try {
-        await this.db.insert(worldTable).values(normalizedWorld);
-      } catch (error) {
-        if (isDuplicateKeyError(error)) {
-          throw new ElizaError("World already exists", {
-            code: "WORLD_ALREADY_EXISTS",
-            cause: error,
+      // ON CONFLICT DO NOTHING keeps an enclosing transaction usable so the
+      // owner of a colliding id can be read back instead of aborting it.
+      const inserted = await this.db
+        .insert(worldTable)
+        .values(normalizedWorld)
+        .onConflictDoNothing({ target: worldTable.id })
+        .returning();
+      if (inserted.length === 0) {
+        // World ids are a global primary key while world reads are scoped to
+        // the adapter agent. A colliding row this agent does not own is a
+        // caller id collision, not a creation race: retrying can never
+        // succeed, so it carries its own code that ensureWorldExists does not
+        // retry.
+        const owned = await this.db
+          .select({ id: worldTable.id })
+          .from(worldTable)
+          .where(and(eq(worldTable.id, newWorldId), eq(worldTable.agentId, this.agentId)))
+          .limit(1);
+        if (owned.length === 0) {
+          throw new ElizaError("World id is owned by another agent", {
+            code: "WORLD_OWNED_BY_OTHER_AGENT",
             context: { worldId: newWorldId, agentId: this.agentId },
           });
         }
-        throw error;
+        throw new ElizaError("World already exists", {
+          code: "WORLD_ALREADY_EXISTS",
+          context: { worldId: newWorldId, agentId: this.agentId },
+        });
       }
       return newWorldId;
     });
@@ -6147,7 +6212,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async removeWorld(id: UUID): Promise<void> {
     return this.withDatabase(async () => {
-      await this.db.delete(worldTable).where(eq(worldTable.id, id));
+      await this.db
+        .delete(worldTable)
+        .where(and(eq(worldTable.id, id), eq(worldTable.agentId, this.agentId)));
     });
   }
 
@@ -6178,7 +6245,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           entityId: task.entityId as UUID,
           tags: task.tags,
           metadata: metadata,
-          createdAt: now,
+          // Preserve a caller-supplied createdAt (agent import replays the
+          // original task row, and sqlite keeps it too). Stamp now only
+          // when the caller did not provide one.
+          createdAt: task.createdAt !== undefined ? new Date(Number(task.createdAt)) : now,
           updatedAt: now,
           agentId: this.agentId as UUID,
         };
@@ -7886,7 +7956,10 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           ...(includeComponents && { components: componentTable }),
         })
         .from(requested)
-        .innerJoin(participantTable, sql`${participantTable.roomId} = requested.room_id`)
+        .innerJoin(
+          participantTable,
+          sql`${participantTable.roomId} = requested.room_id AND ${participantTable.agentId} = ${this.agentId}`
+        )
         .leftJoin(
           entityTable,
           and(eq(participantTable.entityId, entityTable.id), eq(entityTable.agentId, this.agentId))
@@ -8240,18 +8313,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         query = query.limit(limit) as typeof query;
       }
       const result = await query;
-      return result.map((room) => ({
-        ...room,
-        id: room.id as UUID,
-        name: room.name ?? undefined,
-        agentId: room.agentId as UUID,
-        messageServerId: room.messageServerId as UUID,
-        serverId: room.messageServerId as UUID,
-        worldId: room.worldId as UUID,
-        channelId: room.channelId as UUID,
-        type: room.type as ChannelType,
-        metadata: room.metadata as Metadata,
-      }));
+      return result.map(roomFromRow);
     });
   }
 
@@ -8330,7 +8392,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const rows = await this.db
         .select({ roomId: participantTable.roomId, entityId: participantTable.entityId })
         .from(participantTable)
-        .where(inArray(participantTable.roomId, roomIds));
+        .where(
+          and(inArray(participantTable.roomId, roomIds), eq(participantTable.agentId, this.agentId))
+        );
       const byRoom = new Map<string, UUID[]>();
       for (const row of rows) {
         if (row.roomId === null) continue;
@@ -8457,7 +8521,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     if (relationshipIds.length === 0) return;
     return this.withDatabase(async () => {
-      await this.db.delete(relationshipTable).where(inArray(relationshipTable.id, relationshipIds));
+      await this.db
+        .delete(relationshipTable)
+        .where(
+          and(
+            inArray(relationshipTable.id, relationshipIds),
+            eq(relationshipTable.agentId, this.agentId)
+          )
+        );
     });
   }
 

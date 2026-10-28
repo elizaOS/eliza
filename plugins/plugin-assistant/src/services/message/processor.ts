@@ -119,6 +119,7 @@ export interface MessageProcessorResult
     | "bot_group_address_gate"
     | "bot_noise_triage"
     | "bot_loop_gate"
+    | "failure_suppressed"
     | "replaced"
     | "noMessageId";
 }
@@ -148,6 +149,24 @@ export interface MessageProcessorHost {
     ...args: Parameters<MessageFailures["buildNoModelProviderReply"]>
   ): ReturnType<MessageFailures["buildNoModelProviderReply"]>;
   registerPendingReplyPersist(runtime: IAgentRuntime, roomId: UUID): () => void;
+}
+
+/**
+ * A Stop that lands after the model answered but before the reply is stored
+ * or sent must still win: the egress hooks and grounding checks await, and
+ * nothing after them re-reads the turn signal. Throwing the turn's own abort
+ * reason keeps the run terminal `cancelled` and lets the chat route write its
+ * interrupted receipt instead of a completed reply the user stopped.
+ */
+function throwIfTurnAborted(): void {
+  const signal = getStreamingContext()?.abortSignal;
+  if (!signal?.aborted) return;
+  const reason = signal.reason;
+  throw reason instanceof TurnAbortedError
+    ? reason
+    : new TurnAbortedError(
+        reason instanceof Error ? reason.message : String(reason),
+      );
 }
 
 export class MessageProcessor {
@@ -632,6 +651,7 @@ export class MessageProcessor {
     let terminalDecision: "IGNORE" | "STOP" | null = null;
     let routedDecision: ContextRoutingDecision | null = null;
     let strategyResult: StrategyResult | null = null;
+    let failureSuppressed = false;
     let _usedV5Runtime = false;
     let stage1DecidedRespond = false;
     let stage1RiskGateApplied = false;
@@ -686,6 +706,7 @@ export class MessageProcessor {
         },
         providers: state.data.providers,
         request: getUserMessageText(message),
+        contexts: event.messageHandler.plan.contexts,
         reply: proposedText,
         actionResults: [],
         actions: runtime.actions,
@@ -751,6 +772,7 @@ export class MessageProcessor {
         message,
         earlyContent,
       );
+      throwIfTurnAborted();
       const earlyMemory: Memory = {
         id: earlyResponseId,
         entityId: runtime.agentId,
@@ -811,6 +833,14 @@ export class MessageProcessor {
         const [outcome] = await Promise.all([
           timeInferenceSpan("message:planner", () =>
             runV5MessageRuntimeStage1({
+              ...(opts.resolveTypedReadReply
+                ? {
+                    resolveTypedReadReply: opts.resolveTypedReadReply,
+                    ...(opts.onTypedReadEgress
+                      ? { onTypedReadEgress: opts.onTypedReadEgress }
+                      : {}),
+                  }
+                : {}),
               runtime,
               message,
               state,
@@ -844,6 +874,7 @@ export class MessageProcessor {
               },
               onStage1RespondDecision: () => {
                 stage1DecidedRespond = true;
+                opts.onResponseDecision?.();
               },
             }),
           ),
@@ -1014,6 +1045,10 @@ export class MessageProcessor {
           );
           shouldRespondToMessage = false;
           terminalDecision = "IGNORE";
+          // The room stays silent, so the outcome stays completed: consumers
+          // treat a failed outcome as a reply to deliver. The reason shows
+          // that this IGNORE came from a runtime failure.
+          failureSuppressed = true;
         }
       }
     } else if (!hasTextGenerationHandler(runtime)) {
@@ -1329,6 +1364,7 @@ export class MessageProcessor {
               deliverableResponseContent,
             );
           responseContent = deliverableResponseContent;
+          throwIfTurnAborted();
           // Registered BEFORE the callback fires so a follow-up prompted
           // by this delivery always finds the barrier pending; released
           // (never rejected) in the finally once the persist settles.
@@ -1595,7 +1631,11 @@ export class MessageProcessor {
       responseMessages.length > 0 && !isStopResponse(responseContent);
 
     return {
-      terminalStatus: terminalFailure ? "error" : "completed",
+      terminalStatus: terminalFailure
+        ? "error"
+        : failureSuppressed
+          ? "failure_suppressed"
+          : "completed",
       didRespond,
       responseContent,
       responseMessages,

@@ -32,6 +32,7 @@ import {
   TODO_PARENT_CYCLE_ERROR_CODE,
   TodosService,
 } from "@elizaos/plugin-todos";
+import { sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -1263,6 +1264,40 @@ describe("TodosService + currentTodosProvider — real PGLite", () => {
           (mutation) => mutation.idempotencyKey === idempotencyKey,
         ),
       );
+    }
+  });
+
+  it("stores created, updated, and completed timestamps on one UTC clock", async () => {
+    // A Postgres session that is not UTC is the case that exposed two clocks:
+    // the store writes a JS `Date` (a UTC ISO string) for `updatedAt` and
+    // `completedAt`, while the column default kept the session wall clock.
+    // Set a non-UTC session so the invariant holds on every host.
+    const db = runtime.db as NodePgDatabase;
+    await db.execute(sql`set time zone 'Asia/Shanghai'`);
+    try {
+      const beforeCreate = Date.now();
+      const completed = await service.create({
+        agentId: runtime.agentId,
+        entityId: ENTITY_ID,
+        content: "Completed at creation time",
+        status: "completed",
+      });
+      const afterCreate = Date.now();
+
+      expect(completed.completedAt).not.toBeNull();
+      // `createdAt` is the real instant, never the session wall clock.
+      expect(completed.createdAt.getTime()).toBeGreaterThanOrEqual(
+        beforeCreate - 2_000,
+      );
+      expect(completed.createdAt.getTime()).toBeLessThanOrEqual(
+        afterCreate + 2_000,
+      );
+      // One operation cannot record completion before creation.
+      expect(completed.completedAt?.getTime()).toBeGreaterThanOrEqual(
+        completed.createdAt.getTime(),
+      );
+    } finally {
+      await db.execute(sql`reset time zone`);
     }
   });
 });

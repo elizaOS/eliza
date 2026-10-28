@@ -37,7 +37,12 @@ async function __hono_POST(
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const body = await request.json();
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
   const parsed = PostTweetSchema.safeParse(body);
 
   if (!parsed.success) {

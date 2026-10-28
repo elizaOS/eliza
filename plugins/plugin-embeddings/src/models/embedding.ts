@@ -8,7 +8,13 @@
  * ../index.ts; see the package CLAUDE.md for the routing priority.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
-import { fetchWithConfidentialInference, logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
+import {
+  fetchWithConfidentialInference,
+  logger,
+  ModelType,
+  toWellFormedUnicode,
+  VECTOR_DIMS,
+} from "@elizaos/core";
 
 import type { EmbeddingResponse } from "../types";
 import {
@@ -241,6 +247,13 @@ async function requestEmbeddingsFromEndpoint(
         }, expected ${embeddingDimension}. Check EMBEDDING_DIMENSIONS / EMBEDDING_MODEL.`
       );
     }
+    const invalidComponent = item.embedding.findIndex((value) => !Number.isFinite(value));
+    if (invalidComponent !== -1) {
+      throw new Error(
+        `${endpoint.role} embedding API returned a non-numeric or non-finite vector component ` +
+          `at vector ${idx}, component ${invalidComponent}`
+      );
+    }
     vectors[idx] = item.embedding;
   }
 
@@ -261,7 +274,9 @@ async function requestEmbeddingsFromEndpoint(
  *
  * The runtime boot dimension-probe calls this with `null` purely to learn the
  * vector length (it reads `.length`), so a correctly-sized marker vector is the
- * only legitimate synthetic return — every real failure throws.
+ * only legitimate synthetic return — every real failure throws. The probe pins
+ * the first provider that answers it, so without an endpoint the probe throws
+ * too and the runtime moves on to the next provider.
  */
 export async function handleTextEmbedding(
   runtime: IAgentRuntime,
@@ -272,6 +287,7 @@ export async function handleTextEmbedding(
 
   const text = extractText(params);
   if (text === null) {
+    requireBaseURL(runtime);
     logger.debug("[Embeddings] Returning init-probe vector");
     const probe = new Array(embeddingDimension).fill(0);
     probe[0] = 0.1;
@@ -283,7 +299,11 @@ export async function handleTextEmbedding(
     throw new Error("Cannot generate embedding for empty text");
   }
 
-  const vectors = await requestEmbeddings(runtime, trimmed, embeddingDimension, signal);
+  // Wire-boundary guarantee: lone surrogates in the JSON body fail on strict
+  // provider parsers (#18025), as the OpenAI embedding handler notes.
+  const wellFormed = toWellFormedUnicode(trimmed);
+
+  const vectors = await requestEmbeddings(runtime, wellFormed, embeddingDimension, signal);
   const vector = vectors[0];
   if (!vector) {
     throw new Error("Embedding provider returned no vector for the input");
@@ -310,7 +330,7 @@ export async function handleBatchTextEmbedding(
     if (typeof text !== "string" || text.trim().length === 0) {
       throw new Error(`Cannot generate embedding for empty text at index ${i}`);
     }
-    return text.trim();
+    return toWellFormedUnicode(text.trim());
   });
 
   return requestEmbeddings(runtime, prepared, embeddingDimension, undefined);

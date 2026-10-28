@@ -17,6 +17,8 @@
  *
  * Frame protocol (shared kernel `createStdioBridge`), one connection per call:
  *   in:  {"id","method":"http_request"|"http_request_stream","stream?":true,"payload":{path,method,headers,body}}
+ *   in:  {"id","method":"events_subscribe","payload":{streams,headers}}  (live agent_event feed;
+ *        see event-subscription.ts)
  *   out (buffered):  {"id","ok":true,"result":{status,statusText,headers,body,bodyBase64,bodyEncoding}}
  *   out (streaming): {"id","stream":"response",status,statusText,headers}
  *                    {"id","stream":"chunk","dataBase64"}
@@ -96,6 +98,10 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
     loadElizaConfig: AndroidCoreRouteDeps["loadElizaConfig"];
     saveElizaConfig: AndroidCoreRouteDeps["saveElizaConfig"];
     hasPersistedFirstRunState: AndroidCoreRouteDeps["hasPersistedFirstRunState"];
+    EPHEMERAL_AGENT_EVENT_STREAMS?: ReadonlySet<string>;
+    registerNativeViewRenderer: NonNullable<
+      AndroidCoreRouteDeps["registerNativeViewRenderer"]
+    >;
   };
   return {
     startEliza: mod.startEliza,
@@ -106,6 +112,8 @@ async function loadAgentModule(): Promise<AndroidAgentModule> {
       loadElizaConfig: mod.loadElizaConfig,
       saveElizaConfig: mod.saveElizaConfig,
       hasPersistedFirstRunState: mod.hasPersistedFirstRunState,
+      ephemeralAgentEventStreams: mod.EPHEMERAL_AGENT_EVENT_STREAMS,
+      registerNativeViewRenderer: mod.registerNativeViewRenderer,
     },
   };
 }

@@ -91,7 +91,7 @@ public class PasswordsPlugin extends Plugin {
   @PluginMethod public void lock(PluginCall call) {
     PasswordVaultAccess access = access(call); if (access == null) return;
     access.lock();
-    getActivity().runOnUiThread(SecretSurfaces::dismiss);
+    getActivity().runOnUiThread(() -> { PasswordEditor.dismiss(); SecretSurfaces.dismiss(); });
     JSObject result = new JSObject(); result.put("locked", true); call.resolve(result);
   }
 
@@ -160,6 +160,24 @@ public class PasswordsPlugin extends Plugin {
     } catch (Exception failure) { fail(call, failure); }
   }
 
+  /** Native-only creation: neither draft fields nor generated values cross the bridge. */
+  @PluginMethod public void openEditor(PluginCall call) {
+    if (call.getData().length() != 0) { call.reject("Editor does not accept draft fields", "invalid"); return; }
+    PasswordVaultAccess access = access(call); if (access == null) return;
+    Activity activity = getActivity();
+    if (activity == null) { call.reject("Saved passwords are unavailable", "unavailable"); return; }
+    long ticket = access.ticket();
+    activity.runOnUiThread(() -> {
+      try {
+        PasswordEditor.open(activity, access, ticket, new PasswordEditor.Result() {
+          public void saved(String id) { JSObject result = new JSObject(); result.put("status", "saved"); result.put("id", id); call.resolve(result); }
+          public void cancelled() { JSObject result = new JSObject(); result.put("status", "cancelled"); call.resolve(result); }
+        });
+      } catch (PasswordEditor.Busy busy) { call.reject("Finish the current editor first", "busy"); }
+      catch (Exception failure) { fail(call, failure); }
+    });
+  }
+
   @PluginMethod public void remove(PluginCall call) {
     PasswordVaultAccess access = access(call); if (access == null) return;
     String id = call.getString("id");
@@ -225,6 +243,7 @@ public class PasswordsPlugin extends Plugin {
       // The device-credential screen stops the host while an unlock is pending; keep that one.
       if (!access.pending()) access.lock(unlockTicket);
     } catch (Exception ignored) { /* Nothing to lock. */ }
+    PasswordEditor.dismiss(getActivity());
     SecretSurfaces.dismiss();
   }
 
@@ -236,6 +255,7 @@ public class PasswordsPlugin extends Plugin {
   @Override protected void handleOnDestroy() {
     try { PasswordVaultAccess.get(getContext()).lock(unlockTicket); }
     catch (Exception ignored) { /* Nothing to lock. */ }
+    PasswordEditor.dismiss(getActivity());
     SecretSurfaces.dismiss();
     super.handleOnDestroy();
   }

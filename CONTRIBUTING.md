@@ -122,6 +122,88 @@ IDs, credentials, access tokens, and other secrets. Repository validators
 accept contributions with no attribution and validate only an attribution
 block that an author chooses to provide.
 
+## Slop bounty contributions
+
+[Slop](https://slop.cash) pays a monthly pool of up to 1,000 USDC for accepted
+elizaOS work. GitHub is the authority. Maintainers accept or reject each
+outcome. Slop scores only accepted merges, and pays in USDC after maintainer
+review. Payment is not guaranteed or held in escrow. All other rules in this
+guide also apply.
+
+1. **Star and fork first.** This step is required for project tracking and is
+   approved by counsel. Use your own GitHub account. Do the work in your fork.
+
+   ```bash
+   gh repo fork elizaOS/eliza --clone
+   gh api -X PUT user/starred/elizaOS/eliza
+   ```
+
+   You can also use the GitHub website, a browser agent, or computer use.
+2. **Stay in approved scope.** The PRD and MVP plan are binding. This
+   repository does not contain a PRD or MVP plan file. Before you start, a
+   maintainer must confirm in the linked issue that the work is in approved
+   scope. Do not invent scope.
+3. **Accepted work:** bugs that you reproduce first, end-to-end or live tests
+   that prove real behavior, security fixes, input validation at a real
+   boundary, and measured quality gains (hill climbing) with before-and-after
+   scores from the same benchmark.
+4. **Not accepted** (closed, and may be penalized): UI, visual, style, or copy
+   changes, unless the change fixes a broken user flow and includes
+   before-and-after video; features without an approved PRD and MVP plan
+   update; preference refactors; busywork tests; mock-only proof;
+   placeholder or TODO code; unverified claims; duplicate PRs; and secrets in
+   commits.
+5. **Use real LLM calls.** Evidence must come from a real model provider.
+   Mocked or deterministic model output is not proof. Record the provider and
+   exact model ID.
+
+### Environment
+
+Copy `.env.example` to `.env` (or `.env.test`). Never commit these files. The
+live lane is `bun run test:live`, and `bun run test:e2e:live` runs only the
+end-to-end tests. Set only the variables that the tests you run need.
+
+| Variable | Purpose | Required | Get it from |
+| --- | --- | --- | --- |
+| `CEREBRAS_API_KEY` | Model key for the live lane. `packages/scripts/test-env.ts` stops without it. | Yes, for the live lane | <https://inference.cerebras.ai> |
+| `ELIZA_LIVE_TEST=1` | Turns on `*.live` tests. | Yes, for live tests | Set by hand |
+| `ELIZA_RUN_LIVE_TESTS=1` | Turns on core and orchestrator live tests. | For those tests | Set by hand |
+| `OPENAI_API_KEY` | OpenAI provider, or an alternative key for some live tests. | Optional | <https://platform.openai.com> |
+| `ANTHROPIC_API_KEY` | Anthropic provider and Anthropic-only live tests. | For those tests | <https://console.anthropic.com> |
+| `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `XAI_API_KEY` | Other model providers. | Optional | Each provider's console |
+| `POSTGRES_URL` | PostgreSQL `*.real` tests. | For those tests | A local or scratch database |
+
+Connector tests need the credentials listed for them in `.env.example` and
+`packages/scripts/post-merge-secrets.txt`. Each package README lists the
+variables for that package. Each guarded live test and its variables are in
+`packages/scripts/lib/real-live-suites.ts`.
+
+### Agent-client test matrix
+
+Eliza runs through agents. Test the real flow in more than one agent client.
+Install each client that you test, and use computer use to drive it through
+the real flow. This step is very important. Clients include Claude Code,
+OpenAI Codex or ChatGPT, Hermes Agent (Nous Research), OpenClaw, Muse, Grok
+bot, elizaOS agents, and Cursor. For each run, record the client name,
+client version, provider, and exact model ID. This record is necessary for
+Slop scoring. It does not change the optional
+[Contribution Provenance](#contribution-provenance) rule for other PRs.
+
+### PR evidence checklist
+
+- [ ] The repository is starred and forked, and the PR comes from the fork.
+- [ ] A linked issue that reproduces the problem, or a maintainer-confirmed
+      requirement.
+- [ ] The root cause and the fix.
+- [ ] Real end-to-end evidence: commands, output, LLM provider, and exact
+      model ID.
+- [ ] Agent clients tested, with version, provider, and model for each run.
+- [ ] Logs, and video when a user flow is involved. Before-and-after video
+      for a broken-flow UI fix.
+- [ ] Test steps and expected results.
+- [ ] Risks and tradeoffs.
+- [ ] Plain language that a non-technical reader can understand.
+
 ## Security Reporting
 
 The canonical security policy — reporting channels, disclosure window, and

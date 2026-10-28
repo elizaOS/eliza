@@ -15,7 +15,12 @@ import type {
 } from "../../mobile-push/types";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest, BridgeResponse } from "../eliza-sandbox";
-import { coordinatorFetch, deadlineBoundCoordinatorStub } from "./coordinator-fetch";
+import {
+  coordinatorFetch,
+  deadlineBoundCoordinatorStub,
+  SHARED_RUNTIME_TURN_DEADLINE_MS,
+} from "./coordinator-fetch";
+import type { NetworkAdmissionEnvelope } from "./network-shared-admission";
 import type { NetworkSharedTurnObservation } from "./network-shared-context";
 import type { PersonalSharedFallbackAccountState } from "./personal-fallback-account-state";
 import { personalSharedAgentId } from "./personal-shared-identity";
@@ -54,6 +59,8 @@ export interface SharedConversationCoordinatorOptions {
   trustedNetworkContext?: NetworkSharedTurnObservation;
   /** Authenticated Network service admission, carried outside caller RPC params. */
   trustedNetworkTurn?: unknown;
+  /** Original signed ingress envelope; the Durable Object re-verifies it. */
+  trustedNetworkAdmission?: NetworkAdmissionEnvelope;
 }
 
 export interface SharedConversationHistoryCoordinatorOptions {
@@ -96,11 +103,9 @@ export async function coordinateSharedPushList(
   agentId: string,
   options: SharedConversationHistoryCoordinatorOptions,
 ): Promise<MobilePushTokenRecord[]> {
-  const result = await coordinateSharedPushOperation<{ tokens: MobilePushTokenRecord[] }>(
-    agentId,
-    "push-list",
-    options,
-  );
+  const result = await coordinateSharedPushOperation<{
+    tokens: MobilePushTokenRecord[];
+  }>(agentId, "push-list", options);
   return result.tokens;
 }
 
@@ -131,12 +136,19 @@ export async function coordinateSharedPushDispatch(
   message: MobilePushMessage,
   options: SharedConversationHistoryCoordinatorOptions,
 ): Promise<void> {
-  await coordinateSharedPushOperation(agentId, "push-dispatch", options, { message });
+  await coordinateSharedPushOperation(agentId, "push-dispatch", options, {
+    message,
+  });
 }
 
 export interface SharedCutoverSeal {
   /** Exact fallback interval whose database revision fences recovery. */
-  fallback?: { id: string; generation: number; revision: number; roomId: string };
+  fallback?: {
+    id: string;
+    generation: number;
+    revision: number;
+    roomId: string;
+  };
   token: string;
   leaseMs: number;
   organizationId: string;
@@ -226,7 +238,9 @@ export async function coordinateSharedLifecycleEvent(
 }
 
 export interface SharedNetworkDelivery {
-  project: "network";
+  approvedPhotos?: import("@elizaos/plugin-network/contract").ApprovedRelayPhoto[];
+  project: "network" | "eliza-app";
+  connectorAccountId?: string;
   app?: "ntwrk" | "slop" | "peon" | "friends";
   userId: string;
   organizationId: string;
@@ -235,14 +249,23 @@ export interface SharedNetworkDelivery {
   idempotencyKey: string;
   text: string;
   handled?: { messageId: string; replyIds: string[] };
-  inbound?: { id: string; text: string; createdAt: number };
+  inbound?: {
+    id: string;
+    text: string;
+    createdAt: number;
+    transport?: "imessage" | "sms" | "rcs" | "unknown";
+  };
   compliance?: { command: "stop" | "help" | "start"; messageId: string };
 }
 
 /** The canonical room owns admission, the durable send intent, receipt and transcript. */
 export async function coordinateNetworkDelivery(
   delivery: SharedNetworkDelivery,
-  options: SharedConversationHistoryCoordinatorOptions & { reconcileOnly?: true },
+  options: SharedConversationHistoryCoordinatorOptions & {
+    reconcileOnly?: true;
+    trustedNetworkAdmission?: NetworkAdmissionEnvelope;
+    trustedNetworkServiceDelivery?: NetworkAdmissionEnvelope;
+  },
 ): Promise<Response> {
   const agentId = personalSharedAgentId(delivery);
   return await coordinatorStub(requireHistoryCoordinator(options), agentId, agentId).fetch(
@@ -256,6 +279,14 @@ export async function coordinateNetworkDelivery(
         agentId,
         roomId: agentId,
         delivery,
+        ...(options.trustedNetworkAdmission
+          ? { trustedNetworkAdmission: options.trustedNetworkAdmission }
+          : {}),
+        ...(options.trustedNetworkServiceDelivery
+          ? {
+              trustedNetworkServiceDelivery: options.trustedNetworkServiceDelivery,
+            }
+          : {}),
       }),
     },
   );
@@ -413,6 +444,9 @@ export async function coordinateSharedBridge(
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
           : {}),
+        ...(options.trustedNetworkAdmission
+          ? { trustedNetworkAdmission: options.trustedNetworkAdmission }
+          : {}),
         ...(options.trustedNetworkTurn !== undefined
           ? { trustedNetworkTurn: options.trustedNetworkTurn }
           : {}),
@@ -422,6 +456,8 @@ export async function coordinateSharedBridge(
       }),
       ...(options.abortSignal ? { signal: options.abortSignal } : {}),
     },
+    // Cost: one existing DO hop; non-streaming inference completes before response headers.
+    rpc.method === "message.send" ? SHARED_RUNTIME_TURN_DEADLINE_MS : undefined,
   );
   await requireCoordinatorResponse(response, "conversation");
   return (await response.json()) as BridgeResponse;
@@ -455,6 +491,9 @@ export async function coordinateSharedStream(
         ...(options.channel ? { channel: options.channel } : {}),
         ...(options.trustedAccountState
           ? { trustedAccountState: options.trustedAccountState }
+          : {}),
+        ...(options.trustedNetworkAdmission
+          ? { trustedNetworkAdmission: options.trustedNetworkAdmission }
           : {}),
         ...(options.trustedNetworkTurn !== undefined
           ? { trustedNetworkTurn: options.trustedNetworkTurn }

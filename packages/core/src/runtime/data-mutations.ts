@@ -164,7 +164,7 @@ export class RuntimeDataMutations {
 	): Promise<void> {
 		// Apply secret redaction (same as createMemory) to prevent plaintext secrets
 		const secrets = this.host.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content.text) {
+		if (memory.content.text) {
 			memory = {
 				...memory,
 				content: {
@@ -183,16 +183,25 @@ export class RuntimeDataMutations {
 		memories: Array<{ memory: Memory; tableName: string }>,
 		options?: { entityContext?: UUID },
 	): Promise<void> {
-		const messages = memories
-			.filter((entry) => entry.tableName === "messages" && entry.memory.id)
+		const messageEntries = memories.filter(
+			(entry) => entry.tableName === "messages",
+		);
+		const messages = messageEntries
+			.filter((entry) => entry.memory.id)
 			.map((entry) => entry.memory as Memory & { id: UUID });
+		// Memory.id is optional: id-less upserts still write rows through the
+		// adapter's createMemory fallback, so their rooms must be invalidated
+		// too, or the memo keeps serving the stale window.
+		const messageRoomIds = new Set(
+			messageEntries.map((entry) => entry.memory.roomId),
+		);
 		return this.mutateSourceEvidence(
 			messages.map((row) => row.id),
 			messages,
 			async () => {
 				await this.runtime.adapter.upsertMemories(memories, options);
-				for (const message of messages)
-					this.host.roomMessagesMemo().invalidate(message.roomId);
+				for (const roomId of messageRoomIds)
+					this.host.roomMessagesMemo().invalidate(roomId);
 			},
 		);
 	}
@@ -299,8 +308,8 @@ export class RuntimeDataMutations {
 	}
 
 	private redactMessageContentForStorage(content: Content): Content {
+		// The pattern sweep runs without configured secrets, as in redactSecrets.
 		const secrets = this.host.getSecretsForRedaction();
-		if (Object.keys(secrets).length === 0) return content;
 		const redact = (value: string | undefined): string | undefined =>
 			typeof value === "string"
 				? redactWithSecrets(value, { secrets, applyPatterns: true })
@@ -499,9 +508,10 @@ export class RuntimeDataMutations {
 		// fallback, so omitted caller identity still produces a scoped source.
 		memory = { ...memory, agentId: memory.agentId ?? this.runtime.agentId };
 
-		// Redact any secrets from memory content before storing
+		// Redact any secrets from memory content before storing. The credential
+		// pattern sweep also runs when the character configures no secrets.
 		const secrets = this.host.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content.text) {
+		if (memory.content.text) {
 			memory = {
 				...memory,
 				content: {

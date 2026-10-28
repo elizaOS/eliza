@@ -408,7 +408,15 @@ export class PersonalDeliveryProjection {
           path === PERSONAL_DELIVERY_PROJECTION_FENCE_PATH ||
           path === PERSONAL_DELIVERY_PROJECTION_RELEASE_PATH
         ) {
-          const body: unknown = await request.json();
+          let body: unknown;
+          try {
+            body = await request.json();
+          } catch {
+            return Response.json(
+              { error: "Invalid JSON body" },
+              { status: 400 },
+            );
+          }
           const token =
             body && typeof body === "object"
               ? (body as Record<string, unknown>).token
@@ -432,7 +440,12 @@ export class PersonalDeliveryProjection {
         if (path !== PERSONAL_DELIVERY_PROJECTION_RESOLVE_PATH) {
           return Response.json({ error: "Not found" }, { status: 404 });
         }
-        const body: unknown = await request.json();
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+        }
         if (!isPersonalDeliveryInput(body)) {
           return Response.json(
             { error: "Invalid personal delivery input" },

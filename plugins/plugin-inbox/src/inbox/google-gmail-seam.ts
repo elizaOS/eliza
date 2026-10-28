@@ -83,7 +83,6 @@ function googleCapabilitiesForAccount(
   }
   if (scopes.some((scope) => scope.includes("gmail.send"))) {
     capabilities.add("google.gmail.send");
-    capabilities.add("google.gmail.triage");
   }
   if (
     scopes.some(

@@ -17,10 +17,30 @@ import type {
   SecretProvider,
   SecretScope,
 } from "../../../db/schemas/secrets";
+import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
+import { isValidUUID } from "../../utils/validation";
 import { getEncryptionService, type SecretsEncryptionService } from "./encryption";
 
 const MAX_SECRET_VALUE_BYTES = 65536; // 64KB max for secret values
+
+export class SystemSecretConfigurationError extends Error {
+  readonly code = "SYSTEM_SECRET_CONFIGURATION_INVALID";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "SystemSecretConfigurationError";
+  }
+}
+
+function resolveSystemOrganizationId(): string | null {
+  const systemOrgId = getCloudAwareEnv().SYSTEM_ORG_ID?.trim();
+  if (!systemOrgId) return null;
+  if (!isValidUUID(systemOrgId)) {
+    throw new SystemSecretConfigurationError("SYSTEM_ORG_ID must be a valid UUID.");
+  }
+  return systemOrgId;
+}
 
 export interface CreateSecretParams {
   organizationId: string;
@@ -907,12 +927,18 @@ class SecretsService {
   }
 
   async getSystemSecret(name: string): Promise<string | null> {
-    const systemOrgId = process.env.SYSTEM_ORG_ID || "system";
+    const systemOrgId = resolveSystemOrganizationId();
+    if (!systemOrgId) return null;
     return this.get(systemOrgId, name);
   }
 
   async createSystemSecret(name: string, value: string): Promise<SecretMetadata> {
-    const systemOrgId = process.env.SYSTEM_ORG_ID || "system";
+    const systemOrgId = resolveSystemOrganizationId();
+    if (!systemOrgId) {
+      throw new SystemSecretConfigurationError(
+        "SYSTEM_ORG_ID is required to create a system secret.",
+      );
+    }
     const audit: AuditContext = {
       actorType: "system",
       actorId: "platform-credentials",

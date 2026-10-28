@@ -152,3 +152,51 @@ it("trims a stored identity name, in settings and in settings.extra", () => {
     agentIdentityName({ name: "Nova", settings: { identityName: "  " } }),
   ).toBe("Nova");
 });
+
+it("refuses a character save while the agent is stopped instead of reporting it saved", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "character-stopped-"));
+  const configPath = path.join(dir, "eliza.json");
+  vi.stubEnv("ELIZA_STATE_DIR", dir);
+  vi.stubEnv("ELIZA_CONFIG_PATH", configPath);
+  vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", configPath);
+  saveElizaConfig({
+    ui: { assistant: { name: "Eliza" } },
+    agents: { list: [{ id: "main", default: true, name: "Eliza" }] },
+  });
+  try {
+    // POST /api/agent/stop leaves the route state without a runtime.
+    const state = {
+      runtime: null,
+      agentName: "Eliza",
+      config: loadElizaConfig(),
+    };
+    const replies: Array<{ status: number; message?: string }> = [];
+    for (const method of ["PUT", "GET"]) {
+      await handleCharacterRoutes({
+        req: {} as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        method,
+        pathname: "/api/character",
+        state,
+        readJsonBody: async <T extends object>() =>
+          ({ name: "Nova" }) as unknown as T,
+        json: (_res, _data, code = 200) => {
+          replies.push({ status: code });
+        },
+        error: (_res, message, code = 500) => {
+          replies.push({ status: code, message });
+        },
+        pickRandomNames: () => [],
+        saveConfig: saveElizaConfig,
+        validateCharacter: (body) => CharacterSchema.safeParse(body),
+      });
+    }
+
+    expect(replies.map((reply) => reply.status)).toEqual([503, 503]);
+    expect(state.agentName).toBe("Eliza");
+    expect(buildCharacterFromConfig(loadElizaConfig()).name).toBe("Eliza");
+  } finally {
+    vi.unstubAllEnvs();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

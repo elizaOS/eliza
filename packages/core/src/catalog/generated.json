@@ -354,22 +354,6 @@
 					"label": "Api Key",
 					"help": "CapSolver API key for automated CAPTCHA solving",
 					"advanced": false
-				},
-				"BROWSERBASE_API_KEY": {
-					"type": "secret",
-					"required": false,
-					"sensitive": true,
-					"label": "Api Key",
-					"help": "API key for Browserbase cloud browser service",
-					"advanced": false
-				},
-				"BROWSERBASE_PROJECT_ID": {
-					"type": "string",
-					"required": false,
-					"sensitive": false,
-					"label": "Project Id",
-					"help": "Project ID for Browserbase",
-					"advanced": false
 				}
 			},
 			"render": {
@@ -477,16 +461,6 @@
 					"advanced": false,
 					"min": 100,
 					"max": 600000,
-					"unit": "ms"
-				},
-				"CODING_TOOLS_SHELL_BG_BUDGET_MS": {
-					"type": "number",
-					"required": false,
-					"sensitive": false,
-					"label": "Foreground budget",
-					"help": "Shell invocations exceeding this auto-background and return a task_id.",
-					"advanced": true,
-					"min": 1000,
 					"unit": "ms"
 				}
 			},
@@ -1135,14 +1109,6 @@
 					"help": "Voice profile to use for text-to-speech output.",
 					"advanced": false
 				},
-				"ELIZAOS_CLOUD_TTS_INSTRUCTIONS": {
-					"type": "textarea",
-					"required": false,
-					"sensitive": false,
-					"label": "Cloud Tts Instructions",
-					"help": "Optional instructions to control the style or behavior of the text-to-speech request.",
-					"advanced": false
-				},
 				"ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY": {
 					"type": "boolean",
 					"required": false,
@@ -1483,70 +1449,21 @@
 			"source": "bundled",
 			"tags": ["github"],
 			"config": {
-				"GITHUB_REPO": {
-					"type": "string",
-					"required": false,
-					"sensitive": false,
-					"label": "Repo",
-					"help": "Default GitHub repository name",
-					"advanced": false
-				},
-				"GITHUB_OWNER": {
-					"type": "string",
-					"required": false,
-					"sensitive": false,
-					"label": "Owner",
-					"help": "Default GitHub repository owner (username or organization)",
-					"advanced": false
-				},
-				"GITHUB_APP_ID": {
-					"type": "string",
-					"required": false,
-					"sensitive": false,
-					"label": "App Id",
-					"help": "GitHub App ID for app-based authentication",
-					"advanced": false
-				},
-				"GITHUB_BRANCH": {
-					"type": "string",
-					"required": false,
-					"sensitive": false,
-					"default": "main",
-					"label": "Branch",
-					"help": "Default branch name (defaults to main)",
-					"advanced": false
-				},
-				"GITHUB_API_TOKEN": {
-					"type": "secret",
-					"required": true,
-					"sensitive": true,
-					"label": "Api Token",
-					"help": "GitHub personal access token for API authentication",
-					"advanced": false
-				},
-				"GITHUB_WEBHOOK_SECRET": {
+				"GITHUB_USER_PAT": {
 					"type": "secret",
 					"required": false,
 					"sensitive": true,
-					"label": "Webhook Secret",
-					"help": "Secret for validating GitHub webhook payloads",
+					"label": "Personal Access Token",
+					"help": "Token for your GitHub account. Not needed when you connect a GitHub account.",
 					"advanced": false
 				},
-				"GITHUB_APP_PRIVATE_KEY": {
+				"GITHUB_AGENT_PAT": {
 					"type": "secret",
 					"required": false,
 					"sensitive": true,
-					"label": "App Private Key",
-					"help": "GitHub App private key for app-based authentication",
-					"advanced": false
-				},
-				"GITHUB_INSTALLATION_ID": {
-					"type": "string",
-					"required": false,
-					"sensitive": false,
-					"label": "Installation Id",
-					"help": "GitHub App installation ID",
-					"advanced": false
+					"label": "Agent Access Token",
+					"help": "Optional token for a separate GitHub account that the agent acts as.",
+					"advanced": true
 				}
 			},
 			"render": {
@@ -1604,58 +1521,7 @@
 			"version": "2.0.0-beta.0",
 			"source": "bundled",
 			"tags": ["goals", "objectives", "task-management"],
-			"config": {
-				"GOAL_BATCH_SIZE": {
-					"type": "number",
-					"required": false,
-					"sensitive": false,
-					"label": "Batch Size",
-					"help": "Batch processing size",
-					"advanced": false
-				},
-				"GOAL_CHECK_INTERVAL": {
-					"type": "number",
-					"required": false,
-					"sensitive": false,
-					"label": "Check Interval",
-					"help": "Check interval",
-					"advanced": false,
-					"min": 0,
-					"unit": "ms"
-				},
-				"GOAL_MAX_CONCURRENT": {
-					"type": "number",
-					"required": false,
-					"sensitive": false,
-					"label": "Max Concurrent",
-					"help": "Maximum concurrent operations",
-					"advanced": false
-				},
-				"GOAL_ENABLE_MONITORING": {
-					"type": "boolean",
-					"required": false,
-					"sensitive": false,
-					"label": "Enable Monitoring",
-					"help": "Enable monitoring",
-					"advanced": false
-				},
-				"GOAL_REMINDER_COOLDOWN": {
-					"type": "number",
-					"required": false,
-					"sensitive": false,
-					"label": "Reminder Cooldown",
-					"help": "Cooldown period",
-					"advanced": false
-				},
-				"GOAL_ENABLE_SMART_REMINDERS": {
-					"type": "boolean",
-					"required": false,
-					"sensitive": false,
-					"label": "Enable Smart Reminders",
-					"help": "Enable smart reminder features",
-					"advanced": false
-				}
-			},
+			"config": {},
 			"render": {
 				"visible": true,
 				"pinTo": [],

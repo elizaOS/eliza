@@ -6,11 +6,12 @@
  */
 
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import type {
   BatcherResult,
   ResolvedSection,
 } from "../../types/prompt-batcher.ts";
+import { BatcherDisposedError } from "../../types/prompt-batcher.ts";
 import { PromptBatcher } from "./batcher";
 import type { DispatchOutcome } from "./shared";
 
@@ -29,6 +30,7 @@ function makeRuntime() {
         warn: () => {},
         error: () => {},
       },
+      reportError: () => {},
       getCache: async <T>(key: string): Promise<T | null> =>
         (cache.get(key) as T | undefined) ?? null,
       setCache: async (key: string, value: unknown): Promise<void> => {
@@ -37,7 +39,9 @@ function makeRuntime() {
       deleteCache: async (key: string): Promise<void> => {
         cache.delete(key);
       },
-      getTasksByName: async () => tasks,
+      // A snapshot, as a database read is: a caller must not see rows another
+      // caller inserts after its own read.
+      getTasksByName: async () => [...tasks],
       createTask: async (task: Record<string, unknown>) => {
         const id = `00000000-0000-0000-0000-${String(tasks.length + 1).padStart(
           12,
@@ -132,6 +136,102 @@ function makeMessage(index: number): Memory {
 }
 
 describe("PromptBatcher recurring loop and cache behavior", () => {
+  test("keeps one BATCHER_DRAIN row when a section is removed and re-added in the same tick", async () => {
+    const { runtime, tasks } = makeRuntime();
+    const dispatcher = makeDispatcher();
+    const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+    await ready();
+    const section = {
+      minCycleMs: 0,
+      contextBuilder: async () => "drain context",
+      preamble: "Drain buffered messages.",
+      schema: [{ field: "value", type: "string", required: true }],
+      onResult: () => {},
+    };
+    const drainRows = () =>
+      tasks.filter((task) => task.name === "BATCHER_DRAIN").length;
+
+    batcher.think("autonomy", section);
+    await wait(20);
+    expect(drainRows()).toBe(1);
+
+    // The autonomy interval change re-registers the section at once.
+    batcher.removeSection("autonomy");
+    batcher.think("autonomy", section);
+    await wait(20);
+
+    expect(batcher.getSectionCountForAffinity("autonomy")).toBe(1);
+    expect(drainRows()).toBe(1);
+  });
+
+  test("a drain ensure queued before dispose creates no task after it", async () => {
+    const { runtime, tasks } = makeRuntime();
+    const dispatcher = makeDispatcher();
+    const createTask = runtime.createTask;
+    let createsAfterDispose = 0;
+    let disposed = false;
+    runtime.createTask = async (task: Record<string, unknown>) => {
+      if (disposed) createsAfterDispose += 1;
+      return createTask(task);
+    };
+    const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+    await ready();
+
+    // The ensure is queued by addSection(); dispose() lands before it runs.
+    const pending = batcher.addSection({
+      id: "autonomy",
+      frequency: "recurring",
+      affinityKey: "autonomy",
+      contextBuilder: async () => "drain context",
+      preamble: "Drain buffered messages.",
+      schema: [{ field: "value", type: "string", required: true }],
+      onResult: () => {},
+    });
+    disposed = true;
+    batcher.dispose();
+    await expect(pending).rejects.toBeInstanceOf(BatcherDisposedError);
+    await wait(20);
+
+    expect(createsAfterDispose).toBe(0);
+    expect(tasks.filter((task) => task.name === "BATCHER_DRAIN")).toHaveLength(
+      0,
+    );
+  });
+
+  test("a drain whose start is in flight at dispose is torn down, not kept", async () => {
+    const { runtime, tasks } = makeRuntime();
+    const dispatcher = makeDispatcher();
+    let releaseCreate: () => void = () => {};
+    const createTask = runtime.createTask;
+    runtime.createTask = async (task: Record<string, unknown>) => {
+      await new Promise<void>((resolve) => {
+        releaseCreate = resolve;
+      });
+      return createTask(task);
+    };
+    const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+    await ready();
+
+    const pending = batcher.addSection({
+      id: "autonomy",
+      frequency: "recurring",
+      affinityKey: "autonomy",
+      contextBuilder: async () => "drain context",
+      preamble: "Drain buffered messages.",
+      schema: [{ field: "value", type: "string", required: true }],
+      onResult: () => {},
+    });
+    await wait(20); // start() is now waiting on createTask
+    batcher.dispose();
+    await expect(pending).rejects.toBeInstanceOf(BatcherDisposedError);
+    releaseCreate();
+    await wait(20);
+
+    expect(tasks.filter((task) => task.name === "BATCHER_DRAIN")).toHaveLength(
+      0,
+    );
+  });
+
   test("preserves a message appended while a drain is in flight", async () => {
     const { runtime } = makeRuntime();
     const dispatcher = makeDispatcher();
@@ -289,6 +389,81 @@ describe("PromptBatcher recurring loop and cache behavior", () => {
     expect(delivered[0]?.fields.value).toBe(
       "generated:autonomy:Agent Name: Batcher Test\n\nloop=1",
     );
+  });
+
+  test("waits for failed affinity cleanup before exposing a retry", async () => {
+    const { runtime, tasks } = makeRuntime();
+    const dispatcher = makeDispatcher();
+    const batcher = new PromptBatcher(runtime, dispatcher as never, SETTINGS);
+    await ready();
+
+    let signalDeleteEntered!: () => void;
+    const deleteEntered = new Promise<void>((resolve) => {
+      signalDeleteEntered = resolve;
+    });
+    let releaseDelete!: () => void;
+    const deleteGate = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    const deleteTask = runtime.deleteTask;
+    runtime.deleteTask = async (id) => {
+      signalDeleteEntered();
+      await deleteGate;
+      await deleteTask(id);
+    };
+
+    let failUpdate = true;
+    const updateTask = runtime.updateTask;
+    runtime.updateTask = async (id, patch) => {
+      if (failUpdate) {
+        failUpdate = false;
+        throw new Error("late sync failure");
+      }
+      await updateTask(id, patch);
+    };
+
+    let intervalCalls = 0;
+    vi.spyOn(batcher, "getIdealTickInterval").mockImplementation(() => {
+      intervalCalls += 1;
+      return intervalCalls === 1 ? SETTINGS.maxDrainIntervalMs : 25;
+    });
+
+    const section = {
+      id: "late-sync-retry",
+      frequency: "recurring" as const,
+      affinityKey: "race",
+      minCycleMs: 25,
+      priority: "background" as const,
+      preamble: "Retry after cleanup.",
+      contextBuilder: () => "retry context",
+      schema: [{ field: "value", type: "string", required: true }],
+    };
+    const failed = batcher.addSection(section);
+    let rejectedBeforeCleanup = false;
+    const observedFailure = failed.catch(() => {
+      rejectedBeforeCleanup = true;
+    });
+
+    await deleteEntered;
+    await wait(0);
+    expect(rejectedBeforeCleanup).toBe(false);
+
+    releaseDelete();
+    await expect(failed).rejects.toThrow("late sync failure");
+    await observedFailure;
+
+    const retried = batcher.addSection(section);
+    await ready();
+    expect(tasks).toHaveLength(1);
+
+    await batcher.drainAffinityGroup("race");
+    await expect(retried).resolves.toMatchObject({
+      fields: {
+        value:
+          "generated:late-sync-retry:Agent Name: Batcher Test\n\nretry context",
+      },
+    });
+    expect(tasks).toHaveLength(1);
   });
 
   test("once sections reuse fresh cache without another model dispatch", async () => {

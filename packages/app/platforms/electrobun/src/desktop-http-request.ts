@@ -100,7 +100,12 @@ export async function desktopHttpRequest(params: unknown): Promise<{
 			body: request.body,
 			signal: abortController.signal,
 		});
-		const contentType = response.headers.get("content-type") ?? "";
+		// Media types are case-insensitive (RFC 2045 §5.1); normalize only the
+		// type before the first ";" so parameter values keep their case.
+		const contentType =
+			response.headers
+				.get("content-type")
+				?.replace(/^[^;]+/, (type) => type.trim().toLowerCase()) ?? "";
 		const isBinary =
 			contentType.startsWith("audio/") ||
 			contentType.startsWith("image/") ||

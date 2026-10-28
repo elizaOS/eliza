@@ -1,6 +1,7 @@
 /** Persists audited rate overrides with a durable organization policy generation in the same primary transaction. */
 import { eq } from "drizzle-orm";
-import { dbRead, writeTransaction } from "../helpers";
+import { withInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
+import { dbRead } from "../helpers";
 import {
   type NewOrgRateLimitOverride,
   type OrgRateLimitOverride,
@@ -37,7 +38,7 @@ export class OrgRateLimitOverridesRepository {
       >,
     actor: string,
   ): Promise<OrgRateLimitOverride> {
-    return writeTransaction(async (tx) => {
+    return withInferencePolicyMutation({ organizationIds: [data.organization_id] }, async (tx) => {
       await lockOrganizationPolicy(tx, data.organization_id);
       const [before] = await tx
         .select()
@@ -89,7 +90,7 @@ export class OrgRateLimitOverridesRepository {
   }
 
   async deleteByOrganizationId(organizationId: string, actor: string): Promise<void> {
-    await writeTransaction(async (tx) => {
+    await withInferencePolicyMutation({ organizationIds: [organizationId] }, async (tx) => {
       await lockOrganizationPolicy(tx, organizationId);
       const removed = await tx
         .delete(orgRateLimitOverrides)

@@ -464,6 +464,7 @@ test("a shard-scoped app mounts only the request path's route family", async () 
   // Manually registered special-case routes stay present in every shard app.
   expect(hasPrefix(authPaths, "/api/i18n/locale")).toBe(true);
   expect(hasPrefix(authPaths, "/.well-known/openid-configuration")).toBe(true);
+  expect(hasPrefix(authPaths, "/.well-known/assetlinks.json")).toBe(true);
 });
 
 test("process-global wiring is installed once per isolate, not once per shard", async () => {

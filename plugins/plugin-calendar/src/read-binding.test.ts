@@ -21,6 +21,120 @@ import {
 } from "./read-binding.js";
 
 describe("Calendar operation bindings", () => {
+  it("offers provider-compatible intent strings without weakening host parsing", () => {
+    const item = calendarReadBindingField.schema.items;
+    if (!item || Array.isArray(item) || typeof item !== "object")
+      throw new Error("Expected binding object schema");
+    expect(item.properties?.intentId).toEqual({ type: "string" });
+    expect(item.additionalProperties).toBe(false);
+    expect(item.required).toEqual(["intentId", "operation", "execution"]);
+    const context = {} as Parameters<
+      NonNullable<typeof calendarReadBindingField.parse>
+    >[1];
+    for (const intentId of [
+      "intent:0",
+      "intent:-1",
+      "intent:01",
+      "intent:1x",
+      "other:1",
+      "intent:1\nx",
+      "intent:",
+      1,
+      null,
+    ]) {
+      expect(
+        calendarReadBindingField.parse?.(
+          [{ intentId, operation: "feed", execution: "required" }],
+          context,
+        ),
+      ).toBeNull();
+    }
+  });
+  it("activates for an owner Notes request when Calendar reads are registered", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Notes request", bio: [] },
+      logLevel: "fatal",
+    });
+    for (const action of promoteSubactionsToActions(
+      ownerCalendarAction,
+      calendarActionPromotionOptions,
+    ))
+      runtime.registerAction(action);
+    expect(
+      await calendarReadBindingField.shouldRun?.({
+        runtime,
+        message: {
+          id: stringToUuid("note-request"),
+          agentId: runtime.agentId,
+          entityId: stringToUuid("owner"),
+          roomId: stringToUuid("room"),
+          createdAt: 1000,
+          content: { text: "Read the selected note" },
+        },
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      }),
+    ).toBe(true);
+  });
+  it("binds only existing same-response intents without an arbitrary ID cap", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Intent identity", bio: [] },
+      logLevel: "fatal",
+    });
+    const message: Memory = {
+      id: stringToUuid("intent-request"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("room"),
+      createdAt: 1000,
+      content: { text: "Calendar read" },
+    };
+    const context = {
+      runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "OWNER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    const intents = Array.from(
+      { length: 1024 },
+      (_, i) => `Current intent ${i + 1}`,
+    );
+    for (const [intentId, accepted] of [
+      ["intent:1024", true],
+      ["intent:1025", false],
+    ] as const) {
+      const value = calendarReadBindingField.parse?.(
+        [{ intentId, operation: "feed", execution: "required" }],
+        context,
+      );
+      if (!value)
+        throw new Error("Canonical ID rejected before current-intent binding");
+      const parsed = { intents, calendarReadBindings: value };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed,
+        value,
+      });
+      effect?.mutateResult?.(parsed);
+      expect(parsed.calendarReadBindings).toEqual(
+        accepted
+          ? [
+              {
+                intentId,
+                operation: "feed",
+                execution: "required",
+                sourceMessageId: message.id,
+                roomId: message.roomId,
+                actorId: message.entityId,
+                requestedAt: 1000,
+              },
+            ]
+          : [],
+      );
+    }
+  });
   it("does not force a tool requirement for a conditional-only binding", async () => {
     const runtime = new AgentRuntime({
       character: { name: "Conditional binding", bio: [] },
@@ -64,15 +178,13 @@ describe("Calendar operation bindings", () => {
       evaluators: [calendarReadBindingEvaluator],
     });
     expect(handler.plan.requiresTool).toBe(false);
-    expect(handler.plan.candidateActions).toEqual(["CALENDAR_NEXT_EVENT"]);
+    expect(handler.plan.candidateActions).toBeUndefined();
   });
-  it("activates on the actual personal-assistant Calendar promotion path, not a bare parent", async () => {
+  it("activates on registered Calendar read operations from both plugin hosts", async () => {
     const runtime = new AgentRuntime({
       character: { name: "Registered Calendar", bio: [] },
       logLevel: "fatal",
     });
-    for (const action of calendarPlugin.actions ?? [])
-      runtime.registerAction(action);
     const context = {
       runtime,
       message: {
@@ -88,6 +200,9 @@ describe("Calendar operation bindings", () => {
       turnSignal: new AbortController().signal,
     };
     expect(await calendarReadBindingField.shouldRun?.(context)).toBe(false);
+    for (const action of calendarPlugin.actions ?? [])
+      runtime.registerAction(action);
+    expect(await calendarReadBindingField.shouldRun?.(context)).toBe(true);
     for (const action of promoteSubactionsToActions(
       ownerCalendarAction,
       calendarActionPromotionOptions,
@@ -115,6 +230,16 @@ describe("Calendar operation bindings", () => {
       text: "Read my Calendar agenda for next week",
       operation: "feed",
       action: "CALENDAR_FEED",
+    },
+    {
+      text: "Find an open 45-minute time for a planning call Friday afternoon",
+      operation: "propose_times",
+      action: "CALENDAR_PROPOSE_TIMES",
+    },
+    {
+      text: "Check whether 11:00 to 11:30 Thursday is free",
+      operation: "check_availability",
+      action: "CALENDAR_CHECK_AVAILABILITY",
     },
   ] as const)(
     "preserves the declared $operation rather than a feed heuristic for $text",

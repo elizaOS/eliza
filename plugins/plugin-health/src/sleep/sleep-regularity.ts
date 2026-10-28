@@ -28,15 +28,24 @@ function round(value: number): number {
 function durationMinutes(startMs: number, endMs: number): number {
   return Math.max(0, Math.round((endMs - startMs) / 60000));
 }
+// A night counts when it ended inside the window, so callers that load a
+// longer history get the same result as a load of exactly `windowDays`.
 function isRegularityEpisode(
   episode: SleepRegularityEpisodeLike,
   nowMs: number,
+  windowDays: number,
 ): episode is SleepRegularityEpisodeLike & {
   endAt: string;
 } {
   const startMs = parseIsoMs(episode.startAt);
   const endMs = parseIsoMs(episode.endAt);
-  if (startMs === null || endMs === null || endMs <= startMs || endMs > nowMs) {
+  if (
+    startMs === null ||
+    endMs === null ||
+    endMs <= startMs ||
+    endMs > nowMs ||
+    endMs <= nowMs - windowDays * 86_400_000
+  ) {
     return false;
   }
   if (episode.cycleType === "nap") {
@@ -183,7 +192,7 @@ export function computeSleepRegularity(args: {
 }): LifeOpsScheduleRegularity {
   const windowDays = args.windowDays ?? 28;
   const relevant = args.episodes.filter((episode) =>
-    isRegularityEpisode(episode, args.nowMs),
+    isRegularityEpisode(episode, args.nowMs, windowDays),
   );
   if (relevant.length === 0) {
     return {
@@ -275,7 +284,7 @@ export function computePersonalBaseline(args: {
 }): LifeOpsPersonalBaseline | null {
   const windowDays = args.windowDays ?? 28;
   const relevant = args.episodes.filter((episode) =>
-    isRegularityEpisode(episode, args.nowMs),
+    isRegularityEpisode(episode, args.nowMs, windowDays),
   );
   if (relevant.length < BASELINE_MIN_SAMPLE_COUNT) {
     return null;

@@ -840,14 +840,22 @@ export async function applyFirstRunConnectionConfig(
   connection: FirstRunConnection,
 ): Promise<void> {
   const normalizedConnection = connection;
+  const hadCanonicalRouting = Object.hasOwn(config, "serviceRouting");
 
   delete (config as Record<string, unknown>).connection;
+  // A chat-brain pin (SETTINGS set_backend) is a strict text-provider pin. A
+  // new provider choice replaces it, or the old provider keeps the brain.
+  setEnvValue(config, "ELIZA_BRAIN_PROVIDER", undefined);
   const existingDeploymentTarget = normalizeDeploymentTargetConfig(
     config.deploymentTarget,
   );
   // Embeddings follow the runtime: a cloud agent uses cloud embeddings, a
   // local agent (including local+cloud-inference hybrid) keeps embeddings
   // local so vectors never depend on a network round-trip.
+  const defaultLocalEmbeddingRoute =
+    !hadCanonicalRouting && existingDeploymentTarget?.runtime !== "cloud"
+      ? { backend: "eliza-local-inference", transport: "direct" as const }
+      : undefined;
   const excludeServices =
     existingDeploymentTarget?.runtime === "cloud"
       ? undefined
@@ -900,6 +908,9 @@ export async function applyFirstRunConnectionConfig(
       },
       ...(excludeServices ? { excludeServices } : {}),
     });
+
+    if (defaultLocalEmbeddingRoute)
+      serviceRouting.embeddings = defaultLocalEmbeddingRoute;
 
     applyCanonicalFirstRunConfig(config, {
       deploymentTarget: existingDeploymentTarget,
@@ -1005,6 +1016,9 @@ export async function applyFirstRunConnectionConfig(
       })
     : {
         llmText: directLlmRoute,
+        ...(defaultLocalEmbeddingRoute
+          ? { embeddings: defaultLocalEmbeddingRoute }
+          : {}),
       };
 
   if (requiresAdditionalRuntimeProvider(normalizedConnection.provider)) {

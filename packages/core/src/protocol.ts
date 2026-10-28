@@ -111,6 +111,8 @@ export {
 export {
 	createInteractiveTask,
 	type InteractiveTask,
+	MAX_TASK_ORIGIN_CHAIN,
+	MAX_TASK_ORIGIN_GRANTS,
 	sameTaskOwner,
 	TASK_ACTION_NOT_DISPATCHED,
 	TASK_ACTION_NOT_DISPATCHED_REF,
@@ -118,6 +120,8 @@ export {
 	type TaskContext,
 	type TaskObservation,
 	type TaskOperation,
+	type TaskOriginGrant,
+	type TaskOriginStep,
 	type TaskOwner,
 	type TaskTransition,
 	transitionInteractiveTask,
@@ -126,6 +130,7 @@ export {
 export {
 	mergeTaskEventPage,
 	mergeTaskEvents,
+	TASK_ID_PATTERN,
 	type TaskEvent,
 	type TaskEventPage,
 	TaskEventReader,
@@ -220,7 +225,11 @@ export type {
 	PlannerTrajectory,
 	RunEvaluatorParams,
 } from "./runtime/planner-types.ts";
-export * from "./runtime/prepared-model-request";
+export type {
+	CreatePreparedModelRequestGuardArgs,
+	PreparedModelRequestBudget,
+	PreparedModelRequestGuard,
+} from "./runtime/prepared-model-request";
 export {
 	extractReplyTextFromTranscript,
 	looksLikeRawFieldTranscript,
@@ -552,6 +561,10 @@ export {
 	stripReasoningPrefixes,
 } from "./utils/reasoning-tags.ts";
 export * from "./utils/reference-echo";
+export {
+	containsResourceAddress,
+	parseWebResourceAddress,
+} from "./utils/resource-address.js";
 export { sleepWithAbort } from "./utils/retry";
 export * from "./utils/session-key.js";
 export * from "./utils/streaming";
@@ -565,7 +578,6 @@ export {
 export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export * from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
-
 export * from "./utils/union-find.ts";
 export { uuidFromString, validateUuid } from "./utils/uuid.js";
 export { createCompletedActionNavigationState } from "./views/completed-action-navigation.ts";

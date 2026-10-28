@@ -28,6 +28,7 @@ import {
   type HouseholdInboundApprovalError,
   parseHouseholdInboundApprovalCommand,
   processHouseholdInboundApproval,
+  resolveVerifiedHouseholdInboundEntityId,
 } from "./inbound-approval.js";
 import { createHouseholdCoordinationService } from "./service.js";
 import {
@@ -340,6 +341,40 @@ describe("household inbound approval — real PGlite", () => {
     );
     expect(rows).toHaveLength(1);
   });
+  it("verifies a DM from the bare handle of a contact saved with the @ spelling", async () => {
+    // Contacts saved from chat carry the `@handle` spelling; connector claims
+    // carry the bare `username`. `resolve()` treats them as one identity and
+    // the verified re-check must apply the same rule.
+    const handle = `tg-${randomUUID()}`;
+    const coParentId = await person({
+      label: "co-parent-at",
+      handle: `@${handle}`,
+    });
+    const pending = await pendingProposal(coParentId);
+    const message = telegramMessage({
+      handle,
+      approvalRequestId: pending.approvalRequestId,
+      messageId: `tg-message-${randomUUID()}`,
+    });
+    const command = parseHouseholdInboundApprovalCommand(
+      String(message.content.text),
+    );
+    const identity = authenticatedHouseholdInboundIdentity(message);
+    if (!command || !identity) throw new Error("inbound fixture invalid");
+    expect(
+      await resolveVerifiedHouseholdInboundEntityId(runtime, identity),
+    ).toBe(coParentId);
+    const result = await processHouseholdInboundApproval({
+      runtime,
+      message,
+      command,
+      identity,
+      now: () => new Date("2027-03-01T12:00:01.000Z"),
+    });
+    expect(result.status).toBe("processed");
+    expect(result.receipt.partyEntityId).toBe(coParentId);
+  });
+
   it("delivers the taught approval command to the party's contact channel end-to-end", async () => {
     const handle = `tg-${randomUUID()}`;
     const coParentId = await person({ label: "delivered-co-parent", handle });

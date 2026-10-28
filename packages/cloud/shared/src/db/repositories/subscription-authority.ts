@@ -5,6 +5,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { ensureInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 import { settlementDigest as settlementScheduleProofDigest } from "../../lib/services/settlement-digest";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
@@ -335,6 +336,8 @@ export class SubscriptionAuthorityRepository {
     source: BillingSubscriptionRevisionSource,
     expectedAccountSubscriptionId: string | null,
   ): Promise<SubscriptionMutationResult> {
+    await ensureInferencePolicyMutation(tx, values.organization_id);
+
     const [organization] = await tx
       .select({
         id: organizations.id,
@@ -500,6 +503,8 @@ export class SubscriptionAuthorityRepository {
 
   /** Release the subscription identity only inside irreversible account erasure. */
   async releaseForAccountDeletion(tx: DbTransaction, organizationId: string): Promise<void> {
+    await ensureInferencePolicyMutation(tx, organizationId);
+
     const [organization] = await tx
       .select({ id: organizations.id })
       .from(organizations)
@@ -521,7 +526,9 @@ export class SubscriptionAuthorityRepository {
       .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId))
       .returning({ organizationId: organizationSubscriptionAuthorities.organization_id });
     if (released.length !== 1)
-      conflict("Account subscription authority is unavailable during erasure", { organizationId });
+      conflict("Account subscription authority is unavailable during erasure", {
+        organizationId,
+      });
   }
 
   async advance(
@@ -691,6 +698,8 @@ export class SubscriptionAuthorityRepository {
         }
       | { kind: "reconciliation"; identity: ReconciliationIdentity },
   ): Promise<SubscriptionMutationResult> {
+    await ensureInferencePolicyMutation(tx, input.organizationId);
+
     if (
       input.observation === "authenticated_historical_target_with_live_compatibility" &&
       provenance.kind !== "paid_upgrade"

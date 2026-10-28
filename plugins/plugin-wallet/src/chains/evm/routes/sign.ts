@@ -211,8 +211,11 @@ function hexOrIntToBigInt(value: unknown): bigint | undefined {
         return undefined;
     if (typeof value === "bigint")
         return value;
-    if (typeof value === "number")
+    if (typeof value === "number") {
+        if (!Number.isSafeInteger(value))
+            throw new EvmSignInputError(`invalid bigint value: ${value}`);
         return BigInt(value);
+    }
     if (typeof value === "string") {
         if (value.length === 0)
             return undefined;

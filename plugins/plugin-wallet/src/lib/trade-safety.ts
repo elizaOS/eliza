@@ -87,7 +87,8 @@ export function assertQuoteFresh(
       "Quote is missing a timestamp — please request a fresh quote",
     );
   }
-  if (now - quotedAt > QUOTE_MAX_AGE_MS) {
+  const age = now - quotedAt;
+  if (age > QUOTE_MAX_AGE_MS || age < 0) {
     throw new Error("Quote expired — please request a fresh quote");
   }
 }

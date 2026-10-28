@@ -477,14 +477,19 @@ export function resolveBscRpcUrls(
     network === "testnet"
       ? DEFAULT_PUBLIC_BSC_TESTNET_RPC_URLS
       : DEFAULT_PUBLIC_BSC_RPC_URLS;
+  // Network-gated: the dedicated testnet URL must never answer mainnet
+  // queries, and the mainnet URLs must never answer testnet queries. The
+  // resolution list is consumed first-success-first, so a wrong-network URL
+  // earlier in the list would return wrong-network data.
   return uniqueRpcUrls(
-    [
-      process.env.BSC_TESTNET_RPC_URL,
-      process.env.NODEREAL_BSC_RPC_URL,
-      process.env.QUICKNODE_BSC_RPC_URL,
-      process.env.BSC_RPC_URL,
-      cloudRpcUrl,
-    ],
+    network === "testnet"
+      ? [process.env.BSC_TESTNET_RPC_URL, cloudRpcUrl]
+      : [
+          process.env.NODEREAL_BSC_RPC_URL,
+          process.env.QUICKNODE_BSC_RPC_URL,
+          process.env.BSC_RPC_URL,
+          cloudRpcUrl,
+        ],
     options.cloudManagedAccess ? publicDefaults : [],
   );
 }
@@ -526,12 +531,14 @@ export function resolveSolanaRpcUrls(
     network === "testnet"
       ? DEFAULT_PUBLIC_SOLANA_TESTNET_RPC_URLS
       : DEFAULT_PUBLIC_SOLANA_RPC_URLS;
+  // Network-gated: SOLANA_TESTNET_RPC_URL only applies in testnet mode and
+  // SOLANA_RPC_URL only in mainnet mode. The list is consumed
+  // first-success-first, so a wrong-network URL would return wrong-network
+  // balances.
   return uniqueRpcUrls(
-    [
-      process.env.SOLANA_TESTNET_RPC_URL,
-      process.env.SOLANA_RPC_URL,
-      cloudRpcUrl,
-    ],
+    network === "testnet"
+      ? [process.env.SOLANA_TESTNET_RPC_URL, cloudRpcUrl]
+      : [process.env.SOLANA_RPC_URL, cloudRpcUrl],
     publicDefaults,
   );
 }

@@ -28,6 +28,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
+import { toContainerDto } from "../dto";
 import { PatchContainerSchema } from "../schema";
 
 const app = new Hono<AppEnv>();
@@ -87,7 +88,7 @@ app.patch("/", async (c) => {
 
     if (action.action === "restart") {
       const container = await client.restartContainer(id, user.organization_id);
-      return c.json({ success: true, container });
+      return c.json({ success: true, data: toContainerDto(container) });
     }
     if (action.action === "setEnv") {
       const container = await client.setEnv(
@@ -95,7 +96,7 @@ app.patch("/", async (c) => {
         user.organization_id,
         action.environmentVars,
       );
-      return c.json({ success: true, container });
+      return c.json({ success: true, data: toContainerDto(container) });
     }
     // scale — setScale returns void (only desiredCount === 1 is supported), so
     // re-read the container to return a uniform ContainerSummary.
@@ -104,7 +105,7 @@ app.patch("/", async (c) => {
     if (!container) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
-    return c.json({ success: true, container });
+    return c.json({ success: true, data: toContainerDto(container) });
   } catch (error) {
     return handleContainerError(c, error);
   }
@@ -167,7 +168,7 @@ app.delete("/", async (c) => {
         containerId: id,
         purgeVolume,
       });
-      return c.json({ success: true, container });
+      return c.json({ success: true, data: toContainerDto(container) });
     }
 
     await client.deleteContainer(id, user.organization_id, { purgeVolume });

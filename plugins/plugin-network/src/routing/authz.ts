@@ -21,7 +21,8 @@ export function sanitize(text: string): string {
   return text
     .replace(/[\u{E0000}-\u{E007F}]/gu, "")
     .replace(/[​-‏‪-‮⁠-⁤﻿]/g, "")
-    .normalize("NFKC");
+    .normalize("NFKC")
+    .replace(/[‘’]/g, "'");
 }
 
 const norm = (text: string) =>
@@ -65,7 +66,7 @@ function quotedSpanRanges(text: string): QuotedSpanRange[] {
     if (range) ranges.push(range);
   }
   for (const match of text.matchAll(
-    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=,\s*(?:and|but)\s+(?:I|we)\b|\s+but\b|[\n.;!?]|$)/dgi,
+    /\b(?:said|says|wrote|writes|texted|messaged|told me|asked me)\b\s*:?\s*([^\n.;!?]*?)(?=,\s*(?:and|but)\s+(?:I|we)\b|\s+and\s+(?:I|we)\s+(?:said|says|told|asked|wrote|writes|texted|messaged)\b|\s+but\b|[\n.;!?]|$)/dgi,
   )) {
     if (FIRST_PERSON_REPORTING_SUBJECT.test(text.slice(0, match.index)))
       continue;
@@ -317,7 +318,11 @@ export function authorizeSetState(
     from = parsed > now.getTime() ? new Date(parsed).toISOString() : null;
   }
   // Dates stated in the member's own words win over the model's: resolved deterministically.
-  const stated = resolveWindow(ownWords(memberText), now);
+  const stated = resolveWindow(
+    ownWords(memberText),
+    now,
+    from ? new Date(from) : undefined,
+  );
   if (stated.until) until = stated.until;
   if (stated.from)
     from = Date.parse(stated.from) > now.getTime() ? stated.from : null;

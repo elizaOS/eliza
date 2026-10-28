@@ -31,6 +31,7 @@ import {
   isElizaCloudControlPlaneHostname,
   isElizaDedicatedAgentHostname,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { readStoredStewardToken } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { NETWORK_STATUS_CHANGE_EVENT } from "../events";
@@ -44,6 +45,7 @@ import {
   saveAgentProfileRegistry,
   upsertAndActivateAgentProfile,
 } from "../state/agent-profiles";
+import { isPlainWebPlatform } from "../state/loopback-steward-development";
 import {
   clearPersistedActiveServer,
   createPersistedActiveServer,
@@ -58,6 +60,7 @@ import {
 import { shellLocalStorage } from "../surface-realm-channel";
 import {
   directCloudSharedAgentIdFromBase,
+  isManagedCloudSharedAgentBase,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base";
 import { mergeStreamingText } from "../utils/streaming-text.js";
@@ -86,8 +89,10 @@ import {
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import {
   type AgentRequestTransport,
+  type ElizaClientFetch,
+  type ElizaClientFetchOptions,
   fetchAgentTransport,
-  findSseEventBreak,
+  SseEventFramer,
 } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -853,7 +858,7 @@ function sleepUnlessAborted(
 // ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
-export class ElizaClient {
+export class ElizaClient implements ElizaClientFetch {
   private _baseUrl: string;
   private _userSetBase: boolean;
   private _token: string | null;
@@ -1002,6 +1007,15 @@ export class ElizaClient {
         return activeServer.accessToken?.trim() || null;
       }
       return null;
+    }
+    // Managed web Shared requests use the account's current authority. A
+    // refresh or logout must not leave an older installed bearer in use.
+    if (
+      isPlainWebPlatform() &&
+      isManagedCloudSharedAgentBase(this.baseUrl) &&
+      isTrustedCloudApiBaseUrl(this.baseUrl)
+    ) {
+      return readStoredStewardToken()?.trim() || null;
     }
     if (this._token) return this._token;
     const bootToken = getBootConfig().apiToken;
@@ -2124,20 +2138,7 @@ export class ElizaClient {
   async fetch<T>(
     path: string,
     init?: RequestInit,
-    options?: {
-      allowNonOk?: boolean;
-      timeoutMs?: number;
-      /** Skip the 202 resume-retry loop (see `rawRequest.skipResume`). */
-      skipResume?: boolean;
-      /**
-       * Called with the (bounded-read, best-effort-parsed) body when the FIRST
-       * response is a 202 and `skipResume` is set — lets the status poll map the
-       * cloud resume-progress body to a real value WITHOUT bypassing the shared
-       * bounded body-read / timeout logic (#14040 sub-defect 2). Non-202
-       * responses go through the normal strict-parse path unchanged.
-       */
-      on202?: (body: unknown) => T;
-    },
+    options?: ElizaClientFetchOptions<T>,
   ): Promise<T> {
     const res = await this.rawRequest(
       path,
@@ -2904,7 +2905,7 @@ export class ElizaClient {
     }
     const decoder = new TextDecoder();
     const reader = res.body.getReader();
-    let buffer = "";
+    const framer = new SseEventFramer();
     const streamState: StreamChatState = {
       deltaProtocol: true,
       fullText: "",
@@ -2998,12 +2999,7 @@ export class ElizaClient {
         break;
       }
       if (done || !value) break;
-      buffer += decoder.decode(value, { stream: true });
-      let eventBreak = findSseEventBreak(buffer);
-      while (eventBreak) {
-        const rawEvent = buffer.slice(0, eventBreak.index);
-        buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        const eventLines = rawEvent.split(/\r?\n/);
+      framer.push(decoder.decode(value, { stream: true }), (eventLines) => {
         const eventName = sseEventName(eventLines);
         for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
@@ -3018,21 +3014,19 @@ export class ElizaClient {
               notifyReplyReady,
             )
           ) {
-            buffer = "";
             // error-policy:J6 best-effort reader teardown after terminal done.
             void reader
               .cancel("elizaos-sse-terminal-done")
               .catch(() => undefined);
-            break;
+            return true;
           }
         }
-        if (streamState.receivedDone) break;
-        eventBreak = findSseEventBreak(buffer);
-      }
+        return false;
+      });
       if (streamState.receivedDone) break;
     }
-    if (!streamState.receivedDone && buffer.trim()) {
-      const trailingLines = buffer.split(/\r?\n/);
+    if (!streamState.receivedDone) {
+      const trailingLines = framer.takePending();
       const trailingEventName = sseEventName(trailingLines);
       for (const line of trailingLines) {
         if (line.startsWith("data:")) {

@@ -182,6 +182,24 @@ describe("PtySessionStore.start", () => {
     await expect(store.start(spec())).rejects.toThrow(/session limit/i);
   });
 
+  it("holds the cap when two starts race before either spawn lands", async () => {
+    const { store, fake } = makeStore({ maxSessions: 1 });
+    const results = await Promise.allSettled([
+      store.start(spec({ label: "a" })),
+      store.start(spec({ label: "b" })),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    expect(fulfilled).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected");
+    if (rejected?.status !== "rejected") {
+      throw new Error("expected the second concurrent start to be rejected");
+    }
+    expect(String(rejected.reason)).toMatch(/session limit/i);
+    // Only one real process may be left behind, and the store must agree.
+    expect(fake.calls).toHaveLength(1);
+    expect(store.size).toBe(1);
+  });
+
   it("confines cwd to an existing directory under the allowed root", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "pty-jail-"));
     const inside = path.join(root, "repo", "sub");
@@ -347,6 +365,57 @@ describe("PtySessionStore lifecycle", () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(fake.ptys[0].killed).toBe(true);
     expect(store.has(a.sessionId)).toBe(false);
+  });
+
+  it("stop rejects and keeps the session when kill fails, then succeeds on retry", async () => {
+    const { store, bridge, fake } = makeStore();
+    const a = await store.start(spec());
+    fake.ptys[0].killError = new Error("EPERM");
+
+    await expect(store.stop(a.sessionId)).rejects.toMatchObject({
+      code: "PTY_SESSION_STOP_FAILED",
+    });
+    expect(fake.ptys[0].killed).toBe(false);
+    expect(store.has(a.sessionId)).toBe(true);
+    expect(store.list().map((s) => s.sessionId)).toEqual([a.sessionId]);
+
+    // The PTY listeners stay wired so the still-running process is observable.
+    const events: SessionOutputEvent[] = [];
+    bridge.on("session_output", (e) => events.push(e as SessionOutputEvent));
+    fake.ptys[0].emitData("still-alive");
+    expect(events).toEqual([{ sessionId: a.sessionId, data: "still-alive" }]);
+
+    fake.ptys[0].killError = undefined;
+    await store.stop(a.sessionId);
+    expect(fake.ptys[0].killed).toBe(true);
+    expect(store.has(a.sessionId)).toBe(false);
+  });
+
+  it("retries an idle stop after a failed kill without an unhandled rejection", async () => {
+    vi.useFakeTimers();
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { store, fake } = makeStore({ idleTimeoutMs: 100 });
+      const a = await store.start(spec());
+      fake.ptys[0].killError = new Error("EPERM");
+
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fake.ptys[0].killed).toBe(false);
+      expect(store.has(a.sessionId)).toBe(true);
+
+      fake.ptys[0].killError = undefined;
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fake.ptys[0].killed).toBe(true);
+      expect(store.has(a.sessionId)).toBe(false);
+
+      vi.useRealTimers();
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   it("list() returns serializable info without leaking the PTY handle", async () => {

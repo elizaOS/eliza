@@ -8,6 +8,7 @@ import {
   createDevelopmentLauncherDescriptor,
   renderOverlay,
   stageLauncher,
+  validateCompanionInspection,
   validateDescriptor,
   validateInspection,
 } from "../android/stage-launcher-overlay.ts";
@@ -282,4 +283,189 @@ test("system-only launcher keeps the APK and revocable grants in the same image"
     () => renderOverlay({ ...d, partition: "vendor" } as never),
     /partition/,
   );
+});
+
+// A second presigned package (for example an update supervisor) of the same product.
+const updater = {
+  moduleName: "AlphaPhoneUpdater",
+  packageName: "ai.elizaresearch.alphaphone.updater",
+  apkSha256: "c".repeat(64),
+};
+test("companions are pinned, distinct, and staged without grants or privilege", () => {
+  const d = { ...descriptor, companions: [updater] };
+  assert.deepEqual(validateDescriptor(d), d);
+  for (const companions of [
+    [],
+    [{ ...updater, moduleName: descriptor.moduleName }],
+    [{ ...updater, moduleName: "Launcher" }],
+    [{ ...updater, moduleName: "AlphaPhoneDefaultPermissions" }],
+    [{ ...updater, packageName: descriptor.packageName }],
+    [updater, { ...updater, packageName: "ai.elizaresearch.other" }],
+    [{ ...updater, apkSha256: "C".repeat(64) }],
+    [{ ...updater, moduleName: 'X"/>' }],
+    // A companion carries no grants and no signer of its own.
+    [{ ...updater, defaultPermissions: ["android.permission.RECORD_AUDIO"] }],
+    [{ ...updater, certificateSha256: "d".repeat(64) }],
+  ])
+    assert.throws(
+      () => validateDescriptor({ ...descriptor, companions }),
+      /Invalid companion/,
+    );
+  const generated = renderOverlay({
+    ...d,
+    defaultPermissions: ["android.permission.RECORD_AUDIO"],
+  });
+  assert.equal(generated.blueprint.match(/android_app_import \{/g)?.length, 2);
+  assert.match(generated.blueprint, /apk: "AlphaPhoneUpdater\.apk"/);
+  assert.equal(generated.blueprint.match(/product_specific: true/g)?.length, 3);
+  assert.doesNotMatch(generated.blueprint, /privileged|overrides:/);
+  assert.match(
+    generated.product,
+    /PRODUCT_PACKAGES \+= AlphaPhone AlphaPhoneDefaultPermissions AlphaPhoneUpdater\n/,
+  );
+  assert.doesNotMatch(generated.permissions ?? "", /updater/);
+  assert.doesNotMatch(
+    renderOverlay({ ...d, partition: "system" }).blueprint,
+    /product_specific/,
+  );
+});
+test("companion inspection requires its package, the launcher signer, and no HOME", () => {
+  const d = { ...descriptor, companions: [updater] };
+  const companionBadging = `package: name='${updater.packageName}'`;
+  const service =
+    "  E: service\n    A: android:exported(0x01010010)=(type 0x12)0xffffffff";
+  validateCompanionInspection(
+    d,
+    updater,
+    companionBadging,
+    service,
+    signer,
+    false,
+  );
+  assert.throws(
+    () =>
+      validateCompanionInspection(d, updater, badging, service, signer, false),
+    /package mismatch/,
+  );
+  assert.throws(
+    () =>
+      validateCompanionInspection(
+        d,
+        updater,
+        companionBadging,
+        service,
+        signer.replaceAll("b", "c"),
+        false,
+      ),
+    /signer differs/,
+  );
+  assert.throws(() =>
+    validateCompanionInspection(
+      d,
+      updater,
+      companionBadging,
+      service,
+      `${signer}\n${signer}`,
+      false,
+    ),
+  );
+  assert.throws(
+    () =>
+      validateCompanionInspection(
+        d,
+        updater,
+        companionBadging,
+        xml,
+        signer,
+        false,
+      ),
+    /must not be a launcher/,
+  );
+  for (const home of [
+    xml.replace("E: activity", "E: activity-alias"),
+    xml.replace(/ {4}A: android:exported[^\n]*\n/, ""),
+  ]) {
+    assert.throws(
+      () =>
+        validateCompanionInspection(
+          d,
+          updater,
+          companionBadging,
+          home,
+          signer,
+          false,
+        ),
+      /must not be a launcher/,
+    );
+  }
+  const debug = `A: android:debuggable(0x0101000f)=(type 0x12)0xffffffff\n${service}`;
+  assert.throws(
+    () =>
+      validateCompanionInspection(
+        d,
+        updater,
+        companionBadging,
+        debug,
+        signer,
+        false,
+      ),
+    /requires --development/,
+  );
+  validateCompanionInspection(
+    d,
+    updater,
+    companionBadging,
+    debug,
+    signer,
+    true,
+  );
+});
+test("companion APKs must match the descriptor before any SDK tool runs", () => {
+  const dir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "launcher-companion-test-"),
+  );
+  try {
+    const launcher = path.join(dir, "launcher.apk");
+    const companion = path.join(dir, "updater.apk");
+    fs.writeFileSync(launcher, "launcher");
+    fs.writeFileSync(companion, "wrong");
+    const descriptorPath = path.join(dir, "descriptor.json");
+    const sha = (text: string) =>
+      createHash("sha256").update(text).digest("hex");
+    fs.writeFileSync(
+      descriptorPath,
+      JSON.stringify({
+        ...descriptor,
+        apkSha256: sha("launcher"),
+        companions: [{ ...updater, apkSha256: sha("updater") }],
+      }),
+    );
+    const stage = (companions?: Record<string, string>) =>
+      stageLauncher({
+        descriptor: descriptorPath,
+        apk: launcher,
+        ...(companions ? { companions } : {}),
+        output: path.join(dir, "out"),
+        aapt: "must-not-run",
+        apksigner: "must-not-run",
+        development: true,
+      });
+    for (const companions of [
+      undefined,
+      {},
+      { AlphaPhoneUpdater: companion, Other: companion },
+    ])
+      assert.throws(() => stage(companions), /exactly one APK/);
+    assert.throws(
+      () => stage({ AlphaPhoneUpdater: companion }),
+      /AlphaPhoneUpdater APK hash mismatch/,
+    );
+    assert.deepEqual(fs.readdirSync(dir).sort(), [
+      "descriptor.json",
+      "launcher.apk",
+      "updater.apk",
+    ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

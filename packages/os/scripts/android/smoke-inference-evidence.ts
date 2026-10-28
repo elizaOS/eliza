@@ -1,4 +1,6 @@
 /** Evidence checks for one isolated smoke chat, bounded by its log snapshots. */
+import { createHash } from "node:crypto";
+
 export function inspectSmokeResponse(body) {
   const text =
     body?.choices?.[0]?.message?.content ?? body?.choices?.[0]?.delta?.content;
@@ -48,7 +50,10 @@ export function inspectFreshLocalGeneration(before, after) {
   };
 }
 
-/** Match a complete native reply to a generation started in this request window. */
+/**
+ * Match a complete native reply to a generation started in this request window.
+ * The native log carries only the reply length and SHA-256, never its text.
+ */
 export function inspectFreshNativeGeneration({
   before,
   after,
@@ -101,10 +106,11 @@ export function inspectFreshNativeGeneration({
       Number.isFinite(body.ms) &&
       body.ms > 0 &&
       body.incomplete === false &&
-      typeof body.text === "string" &&
-      body.text.trim() &&
+      Number.isInteger(body.textChars) &&
+      body.textChars > 0 &&
       typeof responseText === "string" &&
-      body.text.trim() === responseText.trim()
+      body.textSha256 ===
+        createHash("sha256").update(responseText.trim()).digest("hex")
     ) {
       completions++;
     }

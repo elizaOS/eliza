@@ -10,6 +10,7 @@ import {
   type AgentRuntime,
   createMessageMemory,
   type Memory,
+  validateToolArgs,
 } from "@elizaos/core";
 import {
   type EntityStore,
@@ -166,6 +167,31 @@ describe("household resource capacity — real PGlite", () => {
       now: currentDate,
     });
     await service.initialize();
+    // Schema/handler parity: every input the real service accepts anywhere in
+    // this file must also pass validateToolArgs on the real action, so the
+    // declared nested contract can never be narrower than the handler's.
+    const planned = createResourceCapacityAction({
+      authorize: async () => true,
+    });
+    const admitted = (args: Record<string, unknown>): void => {
+      expect(validateToolArgs(planned, args).errors).toEqual([]);
+    };
+    const putResource = service.putResource.bind(service);
+    service.putResource = async (input) => {
+      const result = await putResource(input);
+      admitted({
+        action: "put_resource",
+        resource: input.definition,
+        expectedRevision: input.expectedRevision,
+      });
+      return result;
+    };
+    const evaluate = service.evaluate.bind(service);
+    service.evaluate = async (input) => {
+      const result = await evaluate(input);
+      admitted({ action: "evaluate_plan", ...input.evaluation });
+      return result;
+    };
   }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
@@ -737,6 +763,111 @@ describe("household resource capacity — real PGlite", () => {
     const action = createResourceCapacityAction({
       authorize: async () => true,
     });
+    // The planner path validates the declared nested contract first: every
+    // resource kind and a full plan must be admitted exactly as the service
+    // accepts them.
+    const capacityNeed = need({
+      needId: "action-schema-need",
+      startsAt: "2027-03-10T15:00:00.000Z",
+      endsAt: "2027-03-10T16:00:00.000Z",
+      location: "place:school",
+    });
+    for (const args of [
+      {
+        action: "put_resource",
+        resource: caregiverResource(householdId, resourceId),
+        expectedRevision: 0,
+      },
+      {
+        action: "put_resource",
+        resource: vehicleResource(householdId, "vehicle-schema", "seat-schema"),
+        expectedRevision: 0,
+      },
+      {
+        action: "put_resource",
+        resource: carSeatResource(
+          householdId,
+          "seat-schema",
+          "vehicle-schema",
+          {
+            installationState: "unconfirmed",
+            installationEvidenceRef: null,
+            installationObservedAt: null,
+            installationExpiresAt: null,
+          },
+        ),
+        expectedRevision: 0,
+      },
+      {
+        action: "evaluate_plan",
+        plan: {
+          householdId,
+          title: "School run",
+          childEntityIds: [childOneId],
+          needs: [capacityNeed],
+        },
+        assignments: assignments([capacityNeed], {
+          caregiverResourceId: resourceId,
+          vehicleResourceId: "vehicle-schema",
+          carSeatResourceId: "seat-schema",
+        }),
+        transitions: [
+          {
+            resourceId,
+            fromNeedId: capacityNeed.needId,
+            toNeedId: "another-need",
+            minimumMinutes: 10,
+            sourceRef: "maps:route:v1",
+            observedAt: "2027-03-10T11:00:00.000Z",
+            expiresAt: null,
+          },
+        ],
+        maximumSourceAgeMinutes: 60,
+      },
+    ]) {
+      expect(validateToolArgs(action, args).errors).toEqual([]);
+    }
+    // A guessed shape is rejected before the handler, and the published tool
+    // schema carries the version constant the planner cannot otherwise know.
+    expect(
+      validateToolArgs(action, {
+        action: "put_resource",
+        expectedRevision: 0,
+        resource: { kind: "vehicle", name: "Minivan", seats: 7 },
+      }).errors,
+    ).toEqual(["Argument 'resource' did not satisfy any anyOf branch"]);
+    expect(
+      JSON.stringify(
+        action.parameters?.find((parameter) => parameter.name === "resource")
+          ?.schema,
+      ),
+    ).toContain(
+      `"schemaVersion":{"type":"string","enum":["${RESOURCE_CAPACITY_POLICY_VERSION}"]}`,
+    );
+    expect(
+      validateToolArgs(action, {
+        action: "evaluate_plan",
+        maximumSourceAgeMinutes: 60,
+        plan: {
+          needs: [
+            {
+              childId: childOneId,
+              startAt: "2027-03-10T15:00:00.000Z",
+              endAt: "2027-03-10T16:00:00.000Z",
+              location: "place:school",
+            },
+          ],
+        },
+      }).errors,
+    ).toEqual(
+      expect.arrayContaining([
+        "Missing required argument 'plan.householdId'",
+        "Missing required argument 'plan.childEntityIds'",
+        "Missing required argument 'plan.needs[0].needId'",
+        "Missing required argument 'plan.needs[0].startsAt'",
+        "Unexpected argument 'plan.needs[0].childId'",
+      ]),
+    );
     const result = await action.handler(
       runtime,
       createMessageMemory({

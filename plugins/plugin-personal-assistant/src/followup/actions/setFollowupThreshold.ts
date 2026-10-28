@@ -31,6 +31,24 @@ interface SetFollowupThresholdParams {
   thresholdDays?: unknown;
 }
 
+// Han/Kana/Hangul letters do not count as word characters so names can abut
+// particles ("김민준은"). Mirrors the whole-word matcher merged for app-block
+// (#35709) in this plugin.
+const WORD_CHAR_SOURCE =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
+function includesWholePhrase(text: string, phrase: string): boolean {
+  const words = phrase.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const body = words
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return new RegExp(
+    `(?<!${WORD_CHAR_SOURCE})${body}(?!${WORD_CHAR_SOURCE})`,
+    "iu",
+  ).test(text);
+}
+
 async function resolveDisplayName(
   runtime: IAgentRuntime,
   contact: ContactInfo,
@@ -50,7 +68,6 @@ export const setFollowupThresholdAction: Action = {
     "CHANGE_FOLLOWUP_INTERVAL",
     "SET_CONTACT_FREQUENCY_DAYS",
     // PRD action-catalog alias.
-    // See packages/docs/action-prd-map.md.
     "FOLLOWUP_CREATE_RULE",
   ],
   description:
@@ -120,13 +137,29 @@ export const setFollowupThresholdAction: Action = {
     } else if (contactName.trim().length > 0) {
       const needle = contactName.trim().toLowerCase();
       const contacts = await service.searchContacts({});
-      const matches: Array<{ contact: ContactInfo; displayName: string }> = [];
+      const substringMatches: Array<{
+        contact: ContactInfo;
+        displayName: string;
+      }> = [];
+      const wholeWordMatches: Array<{
+        contact: ContactInfo;
+        displayName: string;
+      }> = [];
       for (const contact of contacts) {
         const displayName = await resolveDisplayName(runtime, contact);
         if (displayName.toLowerCase().includes(needle)) {
-          matches.push({ contact, displayName });
+          const match = { contact, displayName };
+          substringMatches.push(match);
+          if (includesWholePhrase(displayName, needle)) {
+            wholeWordMatches.push(match);
+          }
         }
       }
+      // A whole-word hit outranks substring hits ("Ann" names Ann Lee, not
+      // Joanne Park), mirroring merged #35741/#35729; the substring tier
+      // stays for genuine fragments ("Joann") when no whole-word hit exists.
+      const matches =
+        wholeWordMatches.length > 0 ? wholeWordMatches : substringMatches;
       if (matches.length === 0) {
         return {
           success: false,

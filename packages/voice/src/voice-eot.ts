@@ -79,6 +79,40 @@ const TRAILING_FILLERS = new Set([
   "ah",
   "maybe",
 ]);
+/**
+ * Words that never end a finished sentence. Every other continuation word
+ * can: "I think so.", "I did.", "Turn the lights on.", "Maybe."
+ */
+const NEVER_SENTENCE_FINAL = new Set([
+  "a",
+  "an",
+  "the",
+  "and",
+  "but",
+  "or",
+  "nor",
+  "because",
+  "although",
+  "if",
+  "unless",
+  "whereas",
+  "um",
+  "uh",
+  "uhh",
+  "umm",
+  "erm",
+  "er",
+  "hmm",
+  "hm",
+]);
+/**
+ * A decimal point needs a preceding number, unlike "that's the point". "One
+ * point" is also a finished phrase ("at one point", "won by one point"), so it
+ * only reads as a decimal without a full stop or after another number word
+ * ("twenty one point").
+ */
+const NUMBER_BEFORE_POINT =
+  /^(?:\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:-(?:one|two|three|four|five|six|seven|eight|nine))?|hundred|thousand|million|billion)$/;
 /** Dangling auxiliaries/modals that need another clause or phrase to land. */
 const TRAILING_CONTINUATIONS = new Set([
   "am",
@@ -132,18 +166,26 @@ const QUESTION_TAGS = [
  * Rules fire in priority order; the first match wins:
  *
  *   1  Trailing ellipsis ("…" / "..")                       0.20  (trail-off)
- *   2  Sentence-final punctuation (. ! ?)                   0.95
+ *   2  Sentence-final ! or ?                                0.95
  *   3  Question-tag suffix ("right?", "yeah", "correct")    0.85
- *   4  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
- *   5  Trailing filler / hedge (um / uh / maybe / …)        0.20  (holding floor)
- *   6  Trailing preposition / article (to / the / with …)   0.20  (incomplete NP)
- *   7  Dangling modal/auxiliary (could / would / is / …)    0.20  (incomplete clause)
- *   8  Short utterance (< 3 words, no trail-off)            0.70  (command/ack)
- *   9  No signal                                            0.50
+ *   4  Unfinished number ("1,", "$", "45 point", and         0.20  (mid-amount)
+ *      "one point" without a full stop)
+ *   5  Sentence-final full stop, unless the last word can    0.95
+ *      never end a sentence (the / and / um / …)
+ *   6  Trailing conjunction (and / but / because / …)       0.15  (mid-clause)
+ *   7  Trailing filler / hedge (um / uh / maybe / …)        0.20  (holding floor)
+ *   8  Trailing preposition / article (to / the / with …)   0.20  (incomplete NP)
+ *   9  Dangling modal/auxiliary (could / would / is / …)    0.20  (incomplete clause)
+ *  10  Short utterance (< 3 words, no trail-off)            0.70  (command/ack)
+ *  11  No signal                                            0.50
  *
- * Note the continuation checks precede the short-utterance rule so a 2-word
- * trail-off ("and so", "going to", "we could") is NOT misread as a complete
- * short command.
+ * Speech recognizers add a full stop to most results, including ones cut off
+ * mid-clause ("I want to pay the."). A final "." therefore does not end the
+ * turn when the word before it never ends a sentence, but it does end a
+ * finished answer whose last word only sometimes trails off ("I think so.",
+ * "Yes I can.", "Turn the lights on."). The continuation checks precede the
+ * short-utterance rule so a 2-word trail-off ("and so", "going to", "we
+ * could") is NOT misread as a complete short command.
  */
 export function scoreEndOfTurnHeuristic(transcript: string): number {
   const text = transcript.trim();
@@ -151,18 +193,39 @@ export function scoreEndOfTurnHeuristic(transcript: string): number {
   // A trailing ellipsis is the strongest trail-off signal — the speaker paused
   // mid-thought. Checked BEFORE sentence-final punctuation, since "..." ends in ".".
   if (/(\.{2,}|…)$/.test(text)) return 0.2;
-  // Sentence-final punctuation → almost certainly done.
-  if (/[.!?]$/.test(text)) return 0.95;
-  const lower = text.toLowerCase();
+  // A final ! or ? → almost certainly done.
+  if (/[!?]$/.test(text)) return 0.95;
   for (const tag of QUESTION_TAGS) {
-    if (lower.endsWith(tag)) return 0.85;
+    if (text.toLowerCase().endsWith(tag)) return 0.85;
   }
-  const words = lower
+  // A final full stop is often the recognizer's, not the speaker's, so it is
+  // set aside here and weighed against the last word below.
+  const fullStop = text.endsWith(".");
+  const body = fullStop ? text.slice(0, -1).trimEnd() : text;
+  // An amount cut off mid-number ("1,", "$") — before the words lose punctuation.
+  if (/(\d,|\$)$/.test(body)) return 0.2;
+  const words = body
     .replace(/[^a-z0-9'\s-]/gi, "")
     .split(/\s+/)
-    .filter(Boolean);
-  if (words.length === 0) return 0.5;
+    .filter(Boolean)
+    // A capital "A" is the letter ("option A", "vitamin A"), not the article.
+    .map((word) => (word === "A" ? word : word.toLowerCase()));
+  if (words.length === 0) return fullStop ? 0.95 : 0.5;
   const lastWord = trimEndCharacters(words[words.length - 1], "',;:-");
+  // A decimal point cut off before its digits ("45 point", "one point").
+  // "One point" alone is finished, but not as the end of "twenty one point".
+  const beforeLast = words.at(-2) ?? "";
+  if (
+    lastWord === "point" &&
+    NUMBER_BEFORE_POINT.test(beforeLast) &&
+    !(
+      fullStop &&
+      (beforeLast === "one" || beforeLast === "1") &&
+      !NUMBER_BEFORE_POINT.test(words.at(-3) ?? "")
+    )
+  )
+    return 0.2;
+  if (fullStop && !NEVER_SENTENCE_FINAL.has(lastWord)) return 0.95;
   // Trailing conjunction / filler / incomplete phrase → mid-clause, the speaker
   // is continuing. Checked BEFORE the short-utterance rule so a 2-word trail-off
   // ("going to", "and so", "we could") is NOT misread as a complete command.

@@ -117,8 +117,7 @@ public final class PasswordConsumerTest {
   java.util.concurrent.CountDownLatch laidOut = new java.util.concurrent.CountDownLatch(1);
   InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> {
    for (android.view.View root : android.view.inspector.WindowInspector.getGlobalWindowViews()) {
-    android.widget.TextView text = root.findViewById(android.R.id.message);
-    if (text != null && String.valueOf(text.getText()).contains(message) && root.isShown()) selected.set(root);
+    if (containsText(root, message) && root.isShown()) selected.set(root);
    }
    android.view.View view = selected.get(); assertNotNull("Owned transfer dialog is visible", view);
    assertTrue("Dialog keeps screen capture blocked", (((android.view.WindowManager.LayoutParams)view.getLayoutParams()).flags & android.view.WindowManager.LayoutParams.FLAG_SECURE) != 0);
@@ -126,6 +125,14 @@ public final class PasswordConsumerTest {
   });
   assertTrue("Dialog layout settled", laidOut.await(5, java.util.concurrent.TimeUnit.SECONDS));
   InstrumentationRegistry.getInstrumentation().runOnMainSync(() -> captureView(selected.get(), name));
+ }
+ private static boolean containsText(android.view.View view, String message) {
+  if (view instanceof android.widget.TextView && String.valueOf(((android.widget.TextView)view).getText()).contains(message)) return true;
+  if (view instanceof android.view.ViewGroup) {
+   android.view.ViewGroup group = (android.view.ViewGroup)view;
+   for (int i = 0; i < group.getChildCount(); i++) if (containsText(group.getChildAt(i), message)) return true;
+  }
+  return false;
  }
  private void launch(Context context, String username, String password) throws Exception {
   String user = shell("am get-current-user");

@@ -61,6 +61,31 @@ export interface TaskActionProposal {
 	authorizationId: string;
 	expiresAt: number;
 }
+/**
+ * A host-authorized origin a running task was extended to, for example the
+ * sign-in service a government site sends the person to. Never automatic: the
+ * host adds it with "extend-origin" only after its own safety check passed.
+ */
+export interface TaskOriginGrant {
+	origin: string;
+	/** Opaque reference to the host's safety check (blocklist, look-alike) for this origin. */
+	checkRef: string;
+	/** Task epoch the grant took effect in. */
+	epoch: number;
+	grantedAt: number;
+	/** Set by "retract-origin"; the origin then leaves `allowedOrigins`. */
+	retractedAt: number | null;
+}
+/** One observed move of the page between origins of an extended task. */
+export interface TaskOriginStep {
+	origin: string;
+	epoch: number;
+	at: number;
+}
+/** At most this many grants per task, retracted ones included. */
+export const MAX_TASK_ORIGIN_GRANTS = 16;
+/** The task keeps the latest steps; the event journal keeps every observed origin. */
+export const MAX_TASK_ORIGIN_CHAIN = 64;
 export interface TaskOperation {
 	proposal: TaskActionProposal;
 	status: TaskOperationStatus;
@@ -80,6 +105,13 @@ export interface InteractiveTask {
 	observation: TaskObservation | null;
 	operations: TaskOperation[];
 	updatedAt: number;
+	/**
+	 * Present, with `originChain`, only once the host extended the task beyond
+	 * its starting origins. A task bound to one origin has neither field.
+	 */
+	originGrants?: TaskOriginGrant[];
+	/** Observed origin moves, oldest first, for example ssa.gov, login.gov, ssa.gov. */
+	originChain?: TaskOriginStep[];
 }
 export interface TaskContext {
 	owner: TaskOwner;
@@ -91,6 +123,14 @@ export type TaskTransition =
 	| { type: "resume"; observation: TaskObservation }
 	| { type: "pause" | "cancel" | "recover" | "revoke" | "complete" }
 	| { type: "prepare"; proposal: TaskActionProposal }
+	/**
+	 * Trusted host only, after its own safety check of this exact origin passed.
+	 * Adds the origin to `allowedOrigins` and starts a new epoch that needs a
+	 * fresh observation. Both scope changes clear the current observation.
+	 */
+	| { type: "extend-origin"; origin: string; checkRef: string }
+	/** Remove an origin an "extend-origin" added; the starting origins stay. */
+	| { type: "retract-origin"; origin: string }
 	| { type: "dispatch"; operationId: string }
 	| {
 			type: "result" | "reconcile";
@@ -163,6 +203,69 @@ function validateOwner(owner: TaskOwner): void {
 	id(owner.connector.source);
 	id(owner.connector.accountId);
 }
+function validateOriginScope(value: InteractiveTask): void {
+	const { originGrants: grants, originChain: chain } = value;
+	if ((grants === undefined) !== (chain === undefined))
+		reject("Task origin grants and chain disagree");
+	if (grants === undefined || chain === undefined) return;
+	if (
+		!Array.isArray(grants) ||
+		!Array.isArray(chain) ||
+		grants.length > MAX_TASK_ORIGIN_GRANTS ||
+		chain.length > MAX_TASK_ORIGIN_CHAIN
+	)
+		reject("Invalid task origin history");
+	const active = new Set<string>();
+	for (const grant of grants) {
+		shape(grant, ["origin", "checkRef", "epoch", "grantedAt", "retractedAt"]);
+		origin(grant.origin);
+		id(grant.checkRef);
+		counter(grant.epoch);
+		counter(grant.grantedAt);
+		if (
+			grant.epoch > value.epoch ||
+			grant.grantedAt > value.updatedAt ||
+			(grant.retractedAt !== null &&
+				(!Number.isSafeInteger(grant.retractedAt) ||
+					grant.retractedAt < grant.grantedAt ||
+					grant.retractedAt > value.updatedAt))
+		)
+			reject("Invalid task origin grant");
+		if (grant.retractedAt !== null) continue;
+		if (
+			active.has(grant.origin) ||
+			!value.allowedOrigins.includes(grant.origin)
+		)
+			reject("Active origin grant is outside task scope");
+		active.add(grant.origin);
+	}
+	if (
+		grants.some(
+			(grant) =>
+				grant.retractedAt !== null &&
+				value.allowedOrigins.includes(grant.origin) &&
+				!active.has(grant.origin),
+		)
+	)
+		reject("Retracted origin is still in task scope");
+	let previous: TaskOriginStep | undefined;
+	for (const step of chain) {
+		shape(step, ["origin", "epoch", "at"]);
+		origin(step.origin);
+		counter(step.epoch);
+		counter(step.at);
+		if (
+			step.epoch > value.epoch ||
+			step.at > value.updatedAt ||
+			(previous &&
+				(step.origin === previous.origin ||
+					step.epoch < previous.epoch ||
+					step.at < previous.at))
+		)
+			reject("Invalid task origin chain");
+		previous = step;
+	}
+}
 function validateObservation(value: TaskObservation): void {
 	shape(value, [
 		"id",
@@ -219,21 +322,25 @@ function validateProposal(value: TaskActionProposal): void {
 }
 /** Validate journal structure at the trusted storage boundary before use. */
 export function validateInteractiveTask(value: InteractiveTask): void {
-	shape(value, [
-		"schemaVersion",
-		"id",
-		"owner",
-		"goalRef",
-		"revision",
-		"epoch",
-		"status",
-		"authorization",
-		"allowedCapabilities",
-		"allowedOrigins",
-		"observation",
-		"operations",
-		"updatedAt",
-	]);
+	shape(
+		value,
+		[
+			"schemaVersion",
+			"id",
+			"owner",
+			"goalRef",
+			"revision",
+			"epoch",
+			"status",
+			"authorization",
+			"allowedCapabilities",
+			"allowedOrigins",
+			"observation",
+			"operations",
+			"updatedAt",
+		],
+		["originGrants", "originChain"],
+	);
 	if (value.schemaVersion !== 1) reject("Unsupported task schema");
 	id(value.id);
 	id(value.goalRef);
@@ -277,6 +384,7 @@ export function validateInteractiveTask(value: InteractiveTask): void {
 		reject("Invalid task policy or operations");
 	value.allowedOrigins.forEach(origin);
 	value.allowedCapabilities.forEach(id);
+	validateOriginScope(value);
 	if ((auth.state === "active") !== (auth.revokedAt === null))
 		reject("Authorization revocation is inconsistent");
 	if (value.observation !== null) {
@@ -382,6 +490,24 @@ function checkObservation(
 	if (previous && observation.version <= previous.version)
 		reject("Observation must advance monotonically", "TASK_STALE_OBSERVATION");
 }
+/** Extended tasks only: append a move to another origin, keeping the latest steps. */
+function recordOriginStep(
+	task: InteractiveTask,
+	observation: TaskObservation,
+): void {
+	const chain = task.originChain;
+	const last = chain?.at(-1);
+	if (!chain || last?.origin === observation.origin) return;
+	chain.push({
+		origin: observation.origin,
+		epoch: task.epoch,
+		// Observation clocks need not be monotonic; the chain must stay ordered
+		// or the stored task would no longer validate.
+		at: Math.max(observation.observedAt, last?.at ?? 0),
+	});
+	if (chain.length > MAX_TASK_ORIGIN_CHAIN)
+		chain.splice(0, chain.length - MAX_TASK_ORIGIN_CHAIN);
+}
 function checkDispatch(
 	task: InteractiveTask,
 	proposal: TaskActionProposal,
@@ -429,7 +555,13 @@ export function transitionInteractiveTask(
 		["prepared", "dispatched", "unknown"].includes(op.status),
 	);
 	const terminal = ["completed", "cancelled"].includes(task.status);
-	if (terminal && !["reconcile", "recover", "revoke"].includes(transition.type))
+	// Narrowing scope stays possible after a task ends, like revocation.
+	if (
+		terminal &&
+		!["reconcile", "recover", "revoke", "retract-origin"].includes(
+			transition.type,
+		)
+	)
 		reject("Task has ended", "TASK_ENDED");
 	switch (transition.type) {
 		case "observe":
@@ -447,6 +579,70 @@ export function transitionInteractiveTask(
 			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
 			task.observation = structuredClone(transition.observation);
 			if (transition.type === "resume") task.status = "active";
+			recordOriginStep(task, transition.observation);
+			break;
+		}
+		case "extend-origin": {
+			if (task.authorization.state !== "active")
+				reject("Task authorization is revoked", "TASK_REVOKED");
+			if (unresolved && ["dispatched", "unknown"].includes(unresolved.status))
+				reject(
+					"Resolve the previous operation before changing scope",
+					"TASK_UNKNOWN_OUTCOME",
+				);
+			if (typeof transition.origin !== "string") reject("Invalid task origin");
+			origin(transition.origin);
+			id(transition.checkRef);
+			if (task.allowedOrigins.includes(transition.origin))
+				reject("Origin is already in task scope");
+			if ((task.originGrants?.length ?? 0) >= MAX_TASK_ORIGIN_GRANTS)
+				reject("Too many origin grants for one task", "TASK_ORIGIN_LIMIT");
+			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			if (!task.originGrants || !task.originChain) {
+				// The chain starts where the person already is.
+				task.originChain = task.observation
+					? [
+							{
+								origin: task.observation.origin,
+								epoch: task.epoch,
+								at: task.observation.observedAt,
+							},
+						]
+					: [];
+				task.originGrants = [];
+			}
+			// Nothing observed or prepared under the narrower scope can act under
+			// this one: like a reconciled readback, the next action needs a fresh look.
+			task.epoch++;
+			task.observation = null;
+			task.originGrants.push({
+				origin: transition.origin,
+				checkRef: transition.checkRef,
+				epoch: task.epoch,
+				grantedAt: context.now,
+				retractedAt: null,
+			});
+			task.allowedOrigins.push(transition.origin);
+			break;
+		}
+		case "retract-origin": {
+			const grant = task.originGrants?.find(
+				(item) =>
+					item.origin === transition.origin && item.retractedAt === null,
+			);
+			if (!grant) reject("Origin was not granted to this task");
+			task.epoch++;
+			if (unresolved?.status === "prepared") unresolved.status = "cancelled";
+			else if (unresolved?.status === "dispatched") {
+				// Same fence as pause: the effect may have run under the old scope.
+				unresolved.status = "unknown";
+				task.status = "paused";
+			}
+			grant.retractedAt = context.now;
+			task.allowedOrigins = task.allowedOrigins.filter(
+				(item) => item !== transition.origin,
+			);
+			task.observation = null;
 			break;
 		}
 		case "pause":
@@ -553,6 +749,17 @@ export function transitionInteractiveTask(
 		status: task.status,
 	};
 	if ("operationId" in transition) event.operationId = transition.operationId;
+	// Per-origin audit for extended tasks; single-origin events are unchanged.
+	if (
+		transition.type === "extend-origin" ||
+		transition.type === "retract-origin"
+	)
+		event.origin = transition.origin;
+	else if (
+		task.originGrants &&
+		(transition.type === "observe" || transition.type === "resume")
+	)
+		event.origin = transition.observation.origin;
 	if (transition.type === "prepare") event.operationId = transition.proposal.id;
 	if (event.operationId)
 		event.operationStatus = task.operations.find(

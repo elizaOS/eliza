@@ -70,7 +70,11 @@ const redis = createRedis();
 const app = new Hono();
 
 app.get("/health", (c) =>
-  c.json({ status: draining ? "draining" : "healthy", pod: POD_NAME }),
+  c.json({
+    status: draining ? "draining" : "healthy",
+    pod: POD_NAME,
+    buildId: process.env.ELIZA_GATEWAY_SOURCE_SHA ?? null,
+  }),
 );
 app.get("/ready", async (c) => {
   if (draining) return c.json({ status: "draining" }, 503);

@@ -78,6 +78,7 @@ interface GateWaiter {
 	priority: LocalInferencePriority;
 	label: string;
 	enqueuedAtMs: number;
+	expiresAtMs?: number;
 	grant: () => void;
 	fail: (err: Error) => void;
 	/** Cleanup for the waiter's timeout timer / abort listener. */
@@ -198,6 +199,10 @@ export class InferencePriorityGate {
 				priority,
 				label,
 				enqueuedAtMs,
+				expiresAtMs:
+					priority === "background" && opts.waitMs !== undefined
+						? enqueuedAtMs + Math.max(0, opts.waitMs)
+						: undefined,
 				grant: () => {
 					waiter.settle();
 					this.holder = { priority, label, acquiredAtMs: this.now() };
@@ -264,9 +269,23 @@ export class InferencePriorityGate {
 	}
 
 	private release(): void {
+		const holderLabel = this.holder?.label ?? null;
 		this.holder = null;
-		const next = this.interactiveQueue.shift() ?? this.backgroundQueue.shift();
-		next?.grant();
+		let next = this.interactiveQueue.shift() ?? this.backgroundQueue.shift();
+		while (next) {
+			if (next.expiresAtMs !== undefined && this.now() >= next.expiresAtMs) {
+				next.fail(
+					new InferenceBackgroundWaitTimeoutError(
+						this.now() - next.enqueuedAtMs,
+						holderLabel,
+					),
+				);
+				next = this.interactiveQueue.shift() ?? this.backgroundQueue.shift();
+				continue;
+			}
+			next.grant();
+			break;
+		}
 	}
 }
 

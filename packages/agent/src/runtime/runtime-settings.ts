@@ -24,6 +24,7 @@ import {
 import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
+  writeConfigEnvValue,
 } from "../config/env-vars.ts";
 import { isVaultRef } from "./operations/vault-bridge.ts";
 
@@ -116,7 +117,7 @@ export function hydrateConfigEnvForBoot(
         !isUnresolvedVaultRef(value) &&
         !env[key]
       ) {
-        env[key] = value;
+        writeConfigEnvValue(key, value, env);
       }
     }
   };
@@ -222,8 +223,9 @@ export function reconcileDirectTextModelSettings(
   );
   const explicit = collectConfigEnvVars(current);
   for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-    const ownsPrevious =
-      before[key] !== undefined && runtime.getSetting(key) === before[key];
+    // Read the live value once, before cleanup below mutates it.
+    const live = runtime.getSetting(key);
+    const ownsPrevious = before[key] !== undefined && live === before[key];
     if (ownsPrevious) {
       // initialize() can mirror constructor pins into both secret locations.
       // Remove only matching copies; setSetting(secret=true) would also erase
@@ -233,7 +235,11 @@ export function reconcileDirectTextModelSettings(
       const nestedSecrets = runtime.character.settings?.secrets;
       if (nestedSecrets?.[key] === before[key]) delete nestedSecrets[key];
     }
-    if (after[key] !== undefined) {
+    const canApply =
+      before[key] !== undefined
+        ? String(live) === String(before[key])
+        : live === null;
+    if (after[key] !== undefined && canApply) {
       runtime.setSetting(key, after[key]);
     } else if (ownsPrevious) {
       runtime.setSetting(key, explicit[key] ?? env[key] ?? null);

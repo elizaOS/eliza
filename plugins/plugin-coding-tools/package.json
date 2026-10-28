@@ -25,6 +25,12 @@
       "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
       "default": "./dist/*.js"
+    },
+    "./edge": {
+      "eliza-source": "./src/edge.ts",
+      "types": "./dist/edge.d.ts",
+      "import": "./dist/edge.js",
+      "default": "./dist/edge.js"
     }
   },
   "files": [
@@ -75,7 +81,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@types/cross-spawn": "^6.0.6"
   },
   "scripts": {
@@ -116,13 +122,6 @@
         "default": 120000,
         "min": 100,
         "max": 600000,
-        "sensitive": false
-      },
-      "CODING_TOOLS_SHELL_BG_BUDGET_MS": {
-        "type": "number",
-        "description": "Foreground budget. Shell invocations exceeding this auto-background and return a task_id (matches Claude's 15s ASSISTANT_BLOCKING_BUDGET_MS).",
-        "required": false,
-        "default": 15000,
         "sensitive": false
       },
       "CODING_TOOLS_MAX_FILE_SIZE_BYTES": {

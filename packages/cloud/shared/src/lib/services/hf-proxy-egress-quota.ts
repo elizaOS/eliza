@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
+import { getCloudBinding } from "../runtime/cloud-bindings";
 /**
  * Atomically reserves monthly Hugging Face proxy egress before provider work.
  * Production uses one Redis script per reservation; the isolate-local store is
@@ -94,6 +97,98 @@ export class RedisHfProxyEgressQuotaStore implements HfProxyEgressQuotaStore {
   }
 }
 
+export class HfEgressStateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HfEgressStateError";
+  }
+}
+function owner(organizationId: string, month: string): string {
+  if (!organizationId || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month))
+    throw new HfEgressStateError("Invalid quota identity");
+  return `hf-v1:${createHash("sha256")
+    .update(JSON.stringify([organizationId, month]))
+    .digest("hex")}`;
+}
+async function callState(
+  namespace: RuntimeDurableObjectNamespace,
+  organizationId: string,
+  month: string,
+  input: object,
+): Promise<unknown> {
+  const response = await namespace
+    .getByName(owner(organizationId, month))
+    .fetch("https://hf-egress.internal/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+  if (!response.ok)
+    throw new HfEgressStateError(
+      `Hugging Face quota state rejected operation (${response.status})`,
+    );
+  return response.json();
+}
+class CloudflareHfEgressQuotaStore implements HfProxyEgressQuotaStore {
+  constructor(private readonly namespace: RuntimeDurableObjectNamespace) {}
+  private async update(
+    organizationId: string,
+    month: string,
+    operation: "reserve" | "release",
+    bytes: number,
+    limitBytes?: number,
+  ): Promise<HfProxyEgressDecision> {
+    assertQuotaInput(bytes, limitBytes);
+    const result = await callState(this.namespace, organizationId, month, {
+      operation,
+      bytes,
+      limitBytes,
+    });
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !("allowed" in result) ||
+      typeof result.allowed !== "boolean" ||
+      !("usedBytes" in result) ||
+      typeof result.usedBytes !== "number" ||
+      !Number.isSafeInteger(result.usedBytes) ||
+      result.usedBytes < 0
+    )
+      throw new HfEgressStateError("Invalid quota receipt");
+    return { allowed: result.allowed, usedBytes: result.usedBytes };
+  }
+  reserve(
+    organizationId: string,
+    month: string,
+    bytes: number,
+    limitBytes: number,
+  ): Promise<HfProxyEgressDecision> {
+    return this.update(organizationId, month, "reserve", bytes, limitBytes);
+  }
+  async release(organizationId: string, month: string, bytes: number): Promise<void> {
+    const result = await this.update(organizationId, month, "release", bytes);
+    if (!result.allowed) throw new HfEgressStateError("Quota release was not acknowledged");
+  }
+}
+/** Private binding transfer before activation; never exposed by a public route. */
+export async function importCloudflareHfEgress(
+  namespace: RuntimeDurableObjectNamespace,
+  organizationId: string,
+  month: string,
+  usedBytes: number,
+  expiresAt: number,
+  sourceQuiesced: true,
+): Promise<void> {
+  const result = await callState(namespace, organizationId, month, {
+    operation: "import",
+    usedBytes,
+    expiresAt,
+    sourceQuiesced,
+  });
+  if (!result || typeof result !== "object" || !("imported" in result) || result.imported !== true)
+    throw new HfEgressStateError("Invalid quota import receipt");
+}
+
 /** Atomic within one isolate, for deterministic tests and local development. */
 export class InMemoryHfProxyEgressQuotaStore implements HfProxyEgressQuotaStore {
   private readonly counters = new Map<string, number>();
@@ -131,8 +226,19 @@ export function resetHfProxyEgressQuotaForTests(): void {
 }
 
 export function createHfProxyEgressQuotaStore(
-  env: RedisFactoryEnv,
+  env: RedisFactoryEnv & {
+    CLOUD_HF_EGRESS_BACKEND?: string;
+    HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;
+  },
 ): HfProxyEgressQuotaStore | null {
+  const backend = env.CLOUD_HF_EGRESS_BACKEND ?? "redis";
+  if (backend !== "redis") {
+    if (backend !== "cloudflare") throw new HfEgressStateError("Invalid CLOUD_HF_EGRESS_BACKEND");
+    const binding =
+      env.HF_EGRESS_STATE ?? getCloudBinding<RuntimeDurableObjectNamespace>("HF_EGRESS_STATE");
+    if (!binding) throw new HfEgressStateError("HF_EGRESS_STATE binding is required");
+    return new CloudflareHfEgressQuotaStore(binding);
+  }
   const redis = buildRedisClient(env);
   if (redis && supportsRedisEval(redis)) {
     return new RedisHfProxyEgressQuotaStore(redis);

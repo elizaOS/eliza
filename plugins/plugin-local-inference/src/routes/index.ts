@@ -18,6 +18,12 @@ export {
 	handleLiveDiarizationRoute,
 	resetLiveDiarizationSession,
 } from "./live-diarization-route.js";
+export {
+	handleLiveAsrRoute,
+	LIVE_ASR_PATH,
+	LIVE_ASR_STATUS_PATH,
+	resetLiveAsrSessions,
+} from "./local-inference-asr-live.js";
 export * from "./local-inference-asr-route.js";
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";

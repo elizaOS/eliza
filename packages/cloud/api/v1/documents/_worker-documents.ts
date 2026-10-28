@@ -77,7 +77,7 @@ export async function resolveDocumentScope(
 
   const character = await charactersService.getByIdForUser(
     normalizedCharacterId,
-    user.id,
+    user,
   );
   if (!character) {
     return Response.json(
@@ -140,9 +140,15 @@ export function toDocumentRecord(memory: Memory) {
 function fragmentTextChunks(text: string): string[] {
   const maxLength = 4000;
   const chunks: string[] = [];
-  for (let offset = 0; offset < text.length; offset += maxLength) {
-    const chunk = text.slice(offset, offset + maxLength).trim();
+  for (let offset = 0; offset < text.length; ) {
+    let end = Math.min(offset + maxLength, text.length);
+    // Never cut between the halves of a surrogate pair (an emoji, for
+    // example): a lone half is not valid JSON text for the jsonb column.
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
+    const chunk = text.slice(offset, end).trim();
     if (chunk) chunks.push(chunk);
+    offset = end;
   }
   return chunks.length > 0 ? chunks : [text];
 }
@@ -161,6 +167,42 @@ export async function listDocumentRecords(
   });
 
   return memories.map(toDocumentRecord);
+}
+
+/** Number of documents in the scope, over the same filter `listDocumentRecords` pages. */
+export async function countDocumentRecords(scope: DocumentScope) {
+  return memoriesRepository.countByType(
+    scope.agentId,
+    "documents",
+    scope.roomId,
+  );
+}
+
+/**
+ * Every document record in the scope, newest first, yielded one keyset page at
+ * a time so a document added or removed during the scan can neither repeat
+ * nor hide another one, and the caller holds one page in memory, not the
+ * whole scope.
+ */
+export async function* scanDocumentRecords(
+  scope: DocumentScope,
+  pageSize = 200,
+) {
+  let after: { createdAt: number; id: string } | undefined;
+  for (;;) {
+    const page = await memoriesRepository.search({
+      agentId: scope.agentId,
+      roomId: scope.roomId,
+      type: "documents",
+      limit: pageSize,
+      after,
+    });
+    yield page.map(toDocumentRecord);
+    const last = page.at(-1);
+    if (page.length < pageSize || !last?.id || last.createdAt === undefined)
+      return;
+    after = { createdAt: last.createdAt, id: last.id };
+  }
 }
 
 export async function createDocumentRecord(
@@ -269,7 +311,53 @@ async function ensureDocumentStorageGraph(
   `);
 }
 
-export function validateDocumentFiles(files: File[]): Response | null {
+const BINARY_DOCUMENT_EXTENSIONS = [".pdf", ".doc", ".docx"];
+const BINARY_DOCUMENT_CONTENT_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+/** PDF, legacy Office (OLE) and OOXML/zip file signatures. */
+const BINARY_SIGNATURES = [
+  [0x25, 0x50, 0x44, 0x46, 0x2d],
+  [0xd0, 0xcf, 0x11, 0xe0],
+  [0x50, 0x4b, 0x03, 0x04],
+];
+/** How much of a file is read to tell text from a binary document. */
+export const DOCUMENT_SNIFF_BYTES = 8192;
+
+/**
+ * Documents are stored as the file's text, and the Worker has no PDF or
+ * Word extractor, so a binary document would be stored as undecodable bytes
+ * and never match a query. Refuse what is known to be binary (by name, type
+ * or content); anything else, including extensionless text, is stored.
+ */
+export function isReadableTextDocument(
+  filename: string,
+  contentType: string | undefined,
+  head: Uint8Array,
+): boolean {
+  const dot = filename.lastIndexOf(".");
+  const extension = dot >= 0 ? filename.slice(dot).toLowerCase() : "";
+  if (BINARY_DOCUMENT_EXTENSIONS.includes(extension)) return false;
+  const type = (contentType ?? "").split(";")[0].trim().toLowerCase();
+  if (BINARY_DOCUMENT_CONTENT_TYPES.has(type)) return false;
+  if (
+    BINARY_SIGNATURES.some((signature) =>
+      signature.every((byte, index) => head[index] === byte),
+    )
+  ) {
+    return false;
+  }
+  return !head.subarray(0, DOCUMENT_SNIFF_BYTES).includes(0);
+}
+
+export const UNREADABLE_DOCUMENT_ERROR =
+  "cannot be read as text. PDF, Word and other binary files are not supported; upload a text document.";
+
+export async function validateDocumentFiles(
+  files: File[],
+): Promise<Response | null> {
   if (files.length === 0) {
     return Response.json(
       { success: false, error: "No files provided" },
@@ -304,6 +392,26 @@ export function validateDocumentFiles(files: File[]): Response | null {
         error: `"${oversized.name}" exceeds the 5MB file limit`,
       },
       { status: 413 },
+    );
+  }
+
+  let unreadable: File | undefined;
+  for (const file of files) {
+    const head = new Uint8Array(
+      await file.slice(0, DOCUMENT_SNIFF_BYTES).arrayBuffer(),
+    );
+    if (!isReadableTextDocument(file.name, file.type, head)) {
+      unreadable = file;
+      break;
+    }
+  }
+  if (unreadable) {
+    return Response.json(
+      {
+        success: false,
+        error: `"${unreadable.name}" ${UNREADABLE_DOCUMENT_ERROR}`,
+      },
+      { status: 415 },
     );
   }
 

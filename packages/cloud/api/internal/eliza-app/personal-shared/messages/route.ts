@@ -1,3 +1,5 @@
+import { transcribeCloudflareAudio } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
 import {
@@ -15,6 +17,7 @@ import {
   personalSharedGroupParticipantsRepository,
 } from "@elizaos/cloud-shared/db/repositories/personal-shared-group-participants";
 import { personalSharedGroupsRepository } from "@elizaos/cloud-shared/db/repositories/personal-shared-groups";
+import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import type { AgentSandbox } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import {
   failureResponse,
@@ -48,10 +51,20 @@ import {
   groupParticipantLabel,
   redactGroupParticipantHandles,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/group-participant-labels";
+import {
+  type NetworkAdmissionEnvelope,
+  networkAccountMatchesPolicy,
+  parseNetworkAdmissionPolicy,
+  verifyNetworkHandledEnvelope,
+  verifyNetworkOpenAdmission,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-admission";
 import { networkContextForPersonalSurface } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-context";
 import { prepareNetworkSharedTurnForAccount } from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-turn";
 import { personalSharedAgent } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
-import { personalSharedProjectScope } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
+import {
+  personalSharedAgentId,
+  personalSharedProjectScope,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import { prewarmPersonalSharedAgentTurnCaches } from "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent";
 import { resolveSharedRuntimeWorkerRequestContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/resolve-shared-agent";
 import {
@@ -325,6 +338,7 @@ const sharedMessageSchema = z.union([
       // the gateway (internal auth). Validated strictly downstream.
       networkTurn: z.unknown().optional(),
       networkHandled: z.unknown().optional(),
+      transport: z.enum(["imessage", "sms", "rcs", "unknown"]).optional(),
     })
     .refine(
       (input) => input.platform === "blooio" || input.mediaUrls === undefined,
@@ -592,6 +606,19 @@ async function transcribeTelegramVoiceNote(
   bytes: Uint8Array,
   filename: string,
 ): Promise<string> {
+  if (env.AI) {
+    const result = await transcribeCloudflareAudio(
+      env.AI,
+      bytes,
+      undefined,
+      undefined,
+      "audio/ogg",
+    );
+    const transcript = result.text.trim();
+    if (!transcript)
+      throw new Error("Telegram voice transcription returned no speech");
+    return transcript;
+  }
   const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
   if (!whisperBaseUrl) {
     throw new Error("Telegram voice transcription is not configured");
@@ -795,12 +822,113 @@ app.post("/", async (c) => {
         503,
       );
     }
+    const canonicalNetworkIngress =
+      "phoneNumber" in parsed.data &&
+      parsed.data.project === "eliza-app" &&
+      (("networkTurn" in parsed.data &&
+        parsed.data.networkTurn !== undefined) ||
+        ("networkHandled" in parsed.data &&
+          parsed.data.networkHandled !== undefined));
+    if (
+      !networkProject &&
+      !canonicalNetworkIngress &&
+      (("networkTurn" in parsed.data &&
+        parsed.data.networkTurn !== undefined) ||
+        ("networkHandled" in parsed.data &&
+          parsed.data.networkHandled !== undefined))
+    )
+      return jsonError(
+        c,
+        403,
+        "Invalid Network ingress scope",
+        "access_denied",
+      );
+    const canonicalTransport =
+      canonicalNetworkIngress && "transport" in parsed.data
+        ? parsed.data.transport
+        : undefined;
+    if (canonicalNetworkIngress && !canonicalTransport)
+      return jsonError(
+        c,
+        403,
+        "Missing Network transport proof",
+        "access_denied",
+      );
+    const networkEnvelope: NetworkAdmissionEnvelope | undefined =
+      canonicalNetworkIngress
+        ? {
+            originalBody,
+            path: new URL(c.req.url).pathname,
+            signatureHeaders: Object.fromEntries(
+              ["x-ntwrk-svc-ts", "x-ntwrk-svc-id", "x-ntwrk-svc-sig"].map(
+                (name) => [name, c.req.raw.headers.get(name) ?? ""],
+              ),
+            ),
+          }
+        : undefined;
+    const canonicalNetworkPrimaryMatches = async (
+      phoneNumber: string,
+    ): Promise<boolean> => {
+      const policy = parseNetworkAdmissionPolicy(
+        c.env.NETWORK_OWNED_INGRESS_POLICY,
+      );
+      const user =
+        await usersRepository.findByPhoneNumberWithOrganization(phoneNumber);
+      if (
+        !policy ||
+        !user ||
+        !user.organization_id ||
+        user.phone_number !== phoneNumber ||
+        !user.phone_verified ||
+        !user.is_active ||
+        user.deleted_at ||
+        !user.organization?.is_active
+      )
+        return false;
+      const agentId = personalSharedAgentId({
+        userId: user.id,
+        organizationId: user.organization_id,
+      });
+      return networkAccountMatchesPolicy(
+        {
+          userId: user.id,
+          organizationId: user.organization_id,
+          agentId,
+          roomId: agentId,
+        },
+        policy,
+      );
+    };
+    if (
+      canonicalNetworkIngress &&
+      "networkTurn" in parsed.data &&
+      parsed.data.networkTurn !== undefined
+    ) {
+      const admission = await verifyNetworkOpenAdmission({
+        originalBody,
+        headers: c.req.raw.headers,
+        path: new URL(c.req.url).pathname,
+        service: auth.service,
+        secret: c.env.SERVICE_TURN_SECRET,
+        enabled: c.env.NETWORK_PERSONAL_CONTINUITY_ENABLED,
+        policy: parseNetworkAdmissionPolicy(c.env.NETWORK_OWNED_INGRESS_POLICY),
+        ingress: parsed.data,
+        turn: parsed.data.networkTurn,
+      });
+      if (!admission)
+        return jsonError(
+          c,
+          403,
+          "Invalid Network turn admission",
+          "access_denied",
+        );
+    }
     if (
       "networkHandled" in parsed.data &&
       parsed.data.networkHandled !== undefined
     ) {
       if (
-        !networkProject ||
+        (!networkProject && !canonicalNetworkIngress) ||
         auth.service !== "webhook-gateway" ||
         (parsed.data.platform !== "blooio" && parsed.data.platform !== "twilio")
       )
@@ -808,6 +936,17 @@ app.post("/", async (c) => {
           c,
           403,
           "Invalid handled-turn authority",
+          "access_denied",
+        );
+      if (
+        canonicalNetworkIngress &&
+        (!networkEnvelope ||
+          !(await verifyNetworkHandledEnvelope(networkEnvelope, c.env)))
+      )
+        return jsonError(
+          c,
+          403,
+          "Invalid handled Network admission",
           "access_denied",
         );
       const handled = z
@@ -852,7 +991,7 @@ app.post("/", async (c) => {
         inbound.from !== parsed.data.phoneNumber ||
         inbound.channel !== parsed.data.platform ||
         parsed.data.messageId !==
-          `${inbound.channel}:network:${inbound.messageId}` ||
+          `${inbound.channel}:${parsed.data.project}:${inbound.messageId}` ||
         inbound.text.trim() !== parsed.data.message ||
         admitted.replies.length !== admitted.replyIds.length ||
         new Set(admitted.replyIds).size !== admitted.replyIds.length
@@ -916,7 +1055,8 @@ app.post("/", async (c) => {
         const idempotencyKey = `network:policy:${inbound.channel}:${inbound.messageId}`;
         const body = JSON.stringify({
           platform: inbound.channel,
-          project: "network",
+          project: parsed.data.project,
+          connectorAccountId: parsed.data.connectorAccountId,
           phoneNumber: inbound.from,
           text,
           idempotencyKey,
@@ -986,6 +1126,40 @@ app.post("/", async (c) => {
           },
         );
       }
+      if (canonicalNetworkIngress) {
+        if (!(await canonicalNetworkPrimaryMatches(inbound.from)))
+          return jsonError(
+            c,
+            403,
+            "Network primary account scope mismatch",
+            "access_denied",
+          );
+        const policy = parseNetworkAdmissionPolicy(
+          c.env.NETWORK_OWNED_INGRESS_POLICY,
+        );
+        if (!policy)
+          return jsonError(c, 403, "Invalid Network scope", "access_denied");
+        const agentId = personalSharedAgentId({
+          userId: policy.userId,
+          organizationId: policy.organizationId,
+        });
+        if (
+          await findActivePersonalDedicatedTarget(
+            policy.organizationId,
+            policy.userId,
+            agentId,
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              code: "personal_eliza_dedicated",
+              error: "Dedicated owns this conversation",
+              retryable: false,
+            },
+            409,
+          );
+      }
       const worker = resolveSharedRuntimeWorkerRequestContext(c);
       if ("error" in worker)
         return jsonError(
@@ -1010,10 +1184,39 @@ app.post("/", async (c) => {
           },
           409,
         );
+      if (canonicalNetworkIngress) {
+        const policy = parseNetworkAdmissionPolicy(
+          c.env.NETWORK_OWNED_INGRESS_POLICY,
+        );
+        const agentId = personalSharedAgentId(account);
+        if (
+          !policy ||
+          !networkAccountMatchesPolicy(
+            {
+              userId: account.userId,
+              organizationId: account.organizationId,
+              agentId,
+              roomId: agentId,
+            },
+            policy,
+          )
+        )
+          return jsonError(
+            c,
+            403,
+            "Network account scope mismatch",
+            "access_denied",
+          );
+      }
       const delivered = await coordinateNetworkDelivery(
         {
-          project: "network",
-          app: admitted.app ?? "ntwrk",
+          project: canonicalNetworkIngress ? "eliza-app" : "network",
+          connectorAccountId: parsed.data.connectorAccountId,
+          ...(canonicalNetworkIngress
+            ? admitted.app
+              ? { app: admitted.app }
+              : {}
+            : { app: admitted.app ?? "ntwrk" }),
           userId: account.userId,
           organizationId: account.organizationId,
           phoneNumber: inbound.from,
@@ -1028,6 +1231,9 @@ app.post("/", async (c) => {
             id: parsed.data.messageId,
             text: inbound.text,
             createdAt: inbound.receivedAt,
+            ...(canonicalNetworkIngress && "transport" in parsed.data
+              ? { transport: parsed.data.transport }
+              : {}),
           },
           ...(complianceCommand
             ? {
@@ -1038,7 +1244,12 @@ app.post("/", async (c) => {
               }
             : {}),
         },
-        { namespace: worker.namespace },
+        {
+          namespace: worker.namespace,
+          ...(networkEnvelope
+            ? { trustedNetworkAdmission: networkEnvelope }
+            : {}),
+        },
       );
       const receipt = (await delivered.json()) as Record<string, unknown>;
       return Response.json(
@@ -1717,6 +1928,39 @@ app.post("/", async (c) => {
       dedicated = delivery.dedicatedTarget;
       isNewPersonalAccount = delivery.isNew;
     } else {
+      if (canonicalNetworkIngress) {
+        if (!(await canonicalNetworkPrimaryMatches(parsed.data.phoneNumber)))
+          return jsonError(
+            c,
+            403,
+            "Network primary account scope mismatch",
+            "access_denied",
+          );
+        const policy = parseNetworkAdmissionPolicy(
+          c.env.NETWORK_OWNED_INGRESS_POLICY,
+        );
+        if (!policy)
+          return jsonError(c, 403, "Invalid Network scope", "access_denied");
+        const agentId = personalSharedAgentId({
+          userId: policy.userId,
+          organizationId: policy.organizationId,
+        });
+        dedicated = await findActivePersonalDedicatedTarget(
+          policy.organizationId,
+          policy.userId,
+          agentId,
+        );
+        if (dedicated)
+          return c.json(
+            {
+              success: false,
+              code: "personal_eliza_dedicated",
+              error: "Dedicated owns this conversation",
+              retryable: false,
+            },
+            409,
+          );
+      }
       const delivery = await resolvePersonalDeliveryProjection(
         c.env,
         {
@@ -1733,6 +1977,46 @@ app.post("/", async (c) => {
       accountResolution = delivery.resolution;
       dedicated = delivery.dedicatedTarget;
       isNewPersonalAccount = delivery.isNew;
+      if (canonicalNetworkIngress) {
+        const policy = parseNetworkAdmissionPolicy(
+          c.env.NETWORK_OWNED_INGRESS_POLICY,
+        );
+        const canonicalAgentId = personalSharedAgentId(account);
+        if (
+          !policy ||
+          !networkAccountMatchesPolicy(
+            {
+              userId: account.userId,
+              organizationId: account.organizationId,
+              agentId: canonicalAgentId,
+              roomId: canonicalAgentId,
+            },
+            policy,
+          )
+        )
+          return jsonError(
+            c,
+            403,
+            "Network account scope mismatch",
+            "access_denied",
+          );
+        if (dedicated === undefined)
+          dedicated = await findActivePersonalDedicatedTarget(
+            account.organizationId,
+            account.userId,
+            canonicalAgentId,
+          );
+        if (dedicated)
+          return c.json(
+            {
+              success: false,
+              code: "personal_eliza_dedicated",
+              error: "Dedicated owns this conversation",
+              retryable: false,
+            },
+            409,
+          );
+      }
     }
     // Every trusted product turn reuses the account's original Personal
     // assistant and room. The Network project enables only its turn capabilities.
@@ -2309,6 +2593,7 @@ app.post("/", async (c) => {
     // this phone/account binding. Network reads reuse their exact primary
     // verified projection without authenticating the internal token as a user.
     const networkObservation =
+      !canonicalNetworkIngress &&
       !serviceVouchedNetworkTurn &&
       !isGroupMessage(parsed.data) &&
       (parsed.data.platform === "twilio" ||
@@ -2362,7 +2647,9 @@ app.post("/", async (c) => {
           "platform",
           trustedDelivery,
           capabilityText,
-          undefined,
+          canonicalTransport
+            ? { type: ChannelType.DM, source: canonicalTransport }
+            : undefined,
           sharedFallback?.accountState,
           c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers),
           c.req.raw.signal,
@@ -2372,6 +2659,7 @@ app.post("/", async (c) => {
             "networkTurn" in parsed.data
             ? parsed.data.networkTurn
             : undefined,
+          networkEnvelope,
         );
     // The same values ship on `Server-Timing` below; a second uncorrelated
     // per-turn log on the hot path would only duplicate them.
@@ -2388,6 +2676,14 @@ app.post("/", async (c) => {
         .join(", "),
     );
 
+    const acknowledgementReaction =
+      !groupConversationId &&
+      parsed.data.platform === "blooio" &&
+      result.responded === false &&
+      !result.text &&
+      !result.mediaUrls?.length
+        ? parseImessageReaction(result.acknowledgementReaction)
+        : undefined;
     return c.json({
       success: true,
       data: {
@@ -2397,6 +2693,9 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(acknowledgementReaction !== undefined
+          ? { acknowledgementReaction }
+          : {}),
         ...(result.responded === false
           ? { responded: false, responseReason: result.responseReason }
           : {}),

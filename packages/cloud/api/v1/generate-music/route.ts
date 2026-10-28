@@ -77,7 +77,12 @@ const musicRequestSchema = z.object({
     })
     .strict()
     .optional(),
-  extraInput: z.record(z.string(), z.unknown()).optional(),
+  // Passed through to the provider as-is, so it may only carry fields that
+  // are neither billed (length, plan) nor screened (prompt, lyrics, audio).
+  extraInput: z
+    .object({ genre: z.string().trim().min(1).max(100).optional() })
+    .strict()
+    .optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -247,6 +252,9 @@ app.post("/", async (c) => {
         text: [
           `Music prompt: ${request.prompt}`,
           request.lyrics ? `Lyrics: ${request.lyrics}` : undefined,
+          request.extraInput?.genre
+            ? `Genre: ${request.extraInput.genre}`
+            : undefined,
           request.referenceUrl
             ? `Reference URL: ${request.referenceUrl}`
             : undefined,

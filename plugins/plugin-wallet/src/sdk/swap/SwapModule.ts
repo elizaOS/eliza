@@ -243,11 +243,6 @@ export class SwapModule {
     );
     const approvalRequired = approvalTxHash !== undefined;
 
-    let feeTxHash: Hash | undefined;
-    if (quote.feeAmount > 0n && feeWallet !== this.accountAddress) {
-      feeTxHash = await this.transferFee(tokenIn, quote.feeAmount, feeWallet);
-    }
-
     const account = this.walletClient.account;
     if (!account) throw new Error("SwapModule: walletClient has no account");
 
@@ -274,6 +269,18 @@ export class SwapModule {
       data: swapData,
       chain: this.walletClient.chain ?? null,
     });
+
+    const swapReceipt = await this.publicClient.waitForTransactionReceipt({
+      hash: txHash,
+    });
+    if (swapReceipt.status !== "success") {
+      throw new Error("SwapModule: swap transaction reverted");
+    }
+
+    let feeTxHash: Hash | undefined;
+    if (quote.feeAmount > 0n && feeWallet !== this.accountAddress) {
+      feeTxHash = await this.transferFee(tokenIn, quote.feeAmount, feeWallet);
+    }
 
     return { txHash, feeTxHash, quote, approvalRequired, approvalTxHash };
   }

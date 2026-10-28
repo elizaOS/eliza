@@ -205,6 +205,40 @@ describe("local inference registry removal", () => {
 		expect(readRawRegistry().models).toEqual([]);
 	});
 
+	it.skipIf(process.platform === "win32")(
+		"keeps the registry row when the artifact stat fails for a reason other than ENOENT",
+		async () => {
+			const stateDir = useTempStateDir();
+			const modelPath = path.join(
+				stateDir,
+				"local-inference",
+				"models",
+				"eliza-1-2b",
+				"text",
+				"model.gguf",
+			);
+			fs.mkdirSync(path.dirname(modelPath), { recursive: true });
+			fs.writeFileSync(modelPath, "fake-model");
+			await upsertElizaModel(installedModel("eliza-1-2b", modelPath));
+
+			// Replace the artifact with a self-referencing symlink so `stat` fails
+			// with ELOOP: the path cannot be resolved, which is a broken read
+			// (EACCES, EIO, EMFILE and ELOOP in the field) and NOT proof the
+			// download is gone. The failure must reach the caller, and the registry
+			// must keep the row it could not verify instead of rewriting itself
+			// from an unverified view.
+			fs.rmSync(modelPath);
+			fs.symlinkSync(modelPath, modelPath);
+
+			await expect(listInstalledModels()).rejects.toMatchObject({
+				code: "ELOOP",
+			});
+			expect(readRawRegistry().models?.map((m) => m.id)).toEqual([
+				"eliza-1-2b",
+			]);
+		},
+	);
+
 	it("keeps healthy rows while healing a mixed registry", async () => {
 		const stateDir = useTempStateDir();
 		const keptModelPath = path.join(
@@ -325,6 +359,43 @@ describe("local inference registry removal", () => {
 		},
 	);
 
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"surfaces an unreadable artifact instead of dropping its registry row",
+		async () => {
+			const stateDir = useTempStateDir();
+			const textDir = path.join(
+				stateDir,
+				"local-inference",
+				"models",
+				"eliza-1-2b",
+				"text",
+			);
+			const modelPath = path.join(textDir, "model.gguf");
+			fs.mkdirSync(textDir, { recursive: true });
+			fs.writeFileSync(modelPath, "fake-model");
+			await upsertElizaModel(installedModel("eliza-1-2b", modelPath));
+			expect((await listInstalledModels()).map((m) => m.id)).toEqual([
+				"eliza-1-2b",
+			]);
+
+			// EACCES while stat-ing the artifact proves nothing about whether the
+			// model is still on disk, so the row must not be healed away.
+			fs.chmodSync(textDir, 0o000);
+			try {
+				await expect(listInstalledModels()).rejects.toMatchObject({
+					code: "EACCES",
+				});
+			} finally {
+				fs.chmodSync(textDir, 0o755);
+			}
+
+			expect(readRawRegistry().models?.map((m) => m.id)).toEqual([
+				"eliza-1-2b",
+			]);
+			expect(fs.existsSync(modelPath)).toBe(true);
+		},
+	);
+
 	it.skipIf(process.platform === "win32")(
 		"refuses a registry path that escapes through a symlinked parent",
 		async () => {
@@ -354,4 +425,77 @@ describe("local inference registry removal", () => {
 			]);
 		},
 	);
+
+	it.each([
+		'{"version":1,"models":[{"id":"model-a"',
+		JSON.stringify({ version: 2, models: [{ id: "model-a" }] }),
+		JSON.stringify({ version: 1, models: null }),
+	])("refuses to rewrite an invalid registry: %s", async (corrupted) => {
+		const stateDir = useTempStateDir();
+		const modelsDir = path.join(stateDir, "local-inference", "models");
+		for (const id of ["model-a", "model-b"]) {
+			const textDir = path.join(modelsDir, id, "text");
+			fs.mkdirSync(textDir, { recursive: true });
+			fs.writeFileSync(path.join(textDir, "model.gguf"), "fake-model");
+			await upsertElizaModel(
+				installedModel(id, path.join(textDir, "model.gguf"), {
+					bundleRoot: path.join(modelsDir, id),
+				}),
+			);
+		}
+		expect(readRawRegistry().models?.map((model) => model.id)).toEqual([
+			"model-a",
+			"model-b",
+		]);
+
+		// Invalid JSON and unsupported schemas must preserve the original bytes.
+		fs.writeFileSync(registryPath(), corrupted);
+		const textDir = path.join(modelsDir, "model-c", "text");
+		fs.mkdirSync(textDir, { recursive: true });
+		fs.writeFileSync(path.join(textDir, "model.gguf"), "fake-model");
+
+		await expect(
+			upsertElizaModel(
+				installedModel("model-c", path.join(textDir, "model.gguf"), {
+					bundleRoot: path.join(modelsDir, "model-c"),
+				}),
+			),
+		).rejects.toMatchObject({ code: "REGISTRY_UNREADABLE" });
+		await expect(listInstalledModels()).rejects.toMatchObject({
+			code: "REGISTRY_UNREADABLE",
+		});
+
+		// The unreadable file must be left untouched: rewriting it from the empty
+		// read dropped every other installed model's only row.
+		expect(fs.readFileSync(registryPath(), "utf8")).toBe(corrupted);
+	});
+
+	it("still treats a missing registry file as an empty registry", async () => {
+		const stateDir = useTempStateDir();
+		const textDir = path.join(
+			stateDir,
+			"local-inference",
+			"models",
+			"model-a",
+			"text",
+		);
+		fs.mkdirSync(textDir, { recursive: true });
+		fs.writeFileSync(path.join(textDir, "model.gguf"), "fake-model");
+
+		await expect(
+			upsertElizaModel(
+				installedModel("model-a", path.join(textDir, "model.gguf"), {
+					bundleRoot: path.join(
+						stateDir,
+						"local-inference",
+						"models",
+						"model-a",
+					),
+				}),
+			),
+		).resolves.toBeUndefined();
+		expect(readRawRegistry().models?.map((model) => model.id)).toEqual([
+			"model-a",
+		]);
+	});
 });

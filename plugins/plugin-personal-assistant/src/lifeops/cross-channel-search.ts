@@ -62,6 +62,8 @@ type RelationshipsGraphService = {
 
 // Local fallback used when the registered RelationshipsGraphService doesn't
 // implement getMemoriesForCluster — degrades to a single-entity query.
+// `entityId` names the isolation principal, not the speaker; the speaker
+// filter is `authorEntityIds` (as in the graph builder's getMemoriesForCluster).
 async function getClusterMemories(
   runtime: IAgentRuntime,
   primaryEntityId: UUID,
@@ -72,6 +74,7 @@ async function getClusterMemories(
     worldId: params.worldId,
     count: params.count,
     entityId: primaryEntityId,
+    authorEntityIds: [primaryEntityId],
   });
 }
 

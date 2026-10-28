@@ -662,10 +662,55 @@ describe("scheduling SQL persistence", () => {
         taskId: created.task.taskId,
         excludeRollups: true,
       });
+      // Both commits share the runner's fixed timestamp, so the shared
+      // log-store comparator contract (occurredAtIso, then logId — #35967)
+      // orders the apply receipt (stl_apply_…) before the creation receipt
+      // (stl_create_…).
       expect(raw.map((entry) => entry.logId)).toEqual([
-        created.commit.logId,
         applied.commit.logId,
+        created.commit.logId,
       ]);
+    },
+    SQL_PERSISTENCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "orders same-timestamp log rows by log id, including under a limit",
+    async () => {
+      const harness = await createRuntimeHarness();
+      harnesses.push(harness);
+      const agentId = harness.runtime.agentId;
+      const logStore = createSchedulingSqlScheduledTaskLogStore({
+        runtime: harness.runtime,
+        agentId,
+      });
+      // Insertion order differs from log-id order on purpose: the in-memory
+      // and record stores sort ties on occurredAtIso by logId (#35967), and
+      // the SQL store must return the same rows in the same order.
+      for (const logId of ["stl_b", "stl_d", "stl_a", "stl_e", "stl_c"]) {
+        await logStore.append({
+          logId,
+          taskId: "task-tiebreak",
+          agentId,
+          occurredAtIso: "2026-05-01T08:00:00.000Z",
+          transition: "fire_attempt",
+          rolledUp: false,
+        });
+      }
+      const all = await logStore.list({ agentId, taskId: "task-tiebreak" });
+      expect(all.map((entry) => entry.logId)).toEqual([
+        "stl_a",
+        "stl_b",
+        "stl_c",
+        "stl_d",
+        "stl_e",
+      ]);
+      const limited = await logStore.list({
+        agentId,
+        taskId: "task-tiebreak",
+        limit: 2,
+      });
+      expect(limited.map((entry) => entry.logId)).toEqual(["stl_a", "stl_b"]);
     },
     SQL_PERSISTENCE_TEST_TIMEOUT_MS,
   );

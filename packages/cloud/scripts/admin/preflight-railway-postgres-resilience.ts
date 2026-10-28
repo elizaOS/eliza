@@ -84,6 +84,16 @@ interface BackupDocument {
 }
 
 export interface ResilienceEvidence {
+  /** Produced by the existing read-only authority audit, bound to this captured service. */
+  imageAuthority?: {
+    projectId: string;
+    environmentId: string;
+    serviceId: string;
+    imageSha256: string;
+    canonicalPostgresMajor: "18" | "other" | "unavailable";
+    protectedPostgresMajor: "18" | "other" | "unavailable";
+    protectedAuthorityMatches: boolean;
+  };
   status: StatusDocument;
   services: ServiceDocument[];
   volumes: VolumeInventoryDocument;
@@ -97,6 +107,8 @@ export interface ResilienceExpectation {
   projectId: string;
   environmentId: string;
   serviceId: string;
+  /** Exact reviewed image-string receipt from protected configuration; never self-approved from current evidence. */
+  approvedImageSha256?: string;
   productionServiceReceipt?: string;
   productionVolumeReceipt?: string;
   maxBackupAgeHours: number;
@@ -188,6 +200,27 @@ function scheduledBackupTime(backup: BackupDocument): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
+function approvedDigestImage(
+  evidence: ResilienceEvidence,
+  expected: ResilienceExpectation,
+  image: string,
+): boolean {
+  const authority = evidence.imageAuthority;
+  return (
+    /^ghcr\.io\/railwayapp-templates\/(?:postgres-ssl|postgres-ha\/postgres-patroni)@sha256:[a-f0-9]{64}$/.test(
+      image,
+    ) &&
+    sha256(image) === expected.approvedImageSha256 &&
+    authority?.imageSha256 === expected.approvedImageSha256 &&
+    authority.projectId === expected.projectId &&
+    authority.environmentId === expected.environmentId &&
+    authority.serviceId === expected.serviceId &&
+    authority.canonicalPostgresMajor === "18" &&
+    authority.protectedPostgresMajor === "18" &&
+    authority.protectedAuthorityMatches === true
+  );
+}
+
 export function verifyRailwayPostgresResilience(
   evidence: ResilienceEvidence,
   expected: ResilienceExpectation,
@@ -203,6 +236,8 @@ export function verifyRailwayPostgresResilience(
     throw new TypeError("maxBackupAgeHours must be a positive integer");
   }
 
+  if (expected.approvedImageSha256 !== undefined)
+    requireReceipt(expected.approvedImageSha256, "approvedImageSha256");
   const matching = evidence.services.filter(
     ({ id }) => id === expected.serviceId,
   );
@@ -284,7 +319,9 @@ export function verifyRailwayPostgresResilience(
     exactPostgres18Service:
       matching.length === 1 &&
       typeof service?.source?.image === "string" &&
-      /(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(service.source.image),
+      (expected.approvedImageSha256 === undefined
+        ? /(?:^|\/)postgres[^:]*:18(?:$|[-.])/.test(service.source.image)
+        : approvedDigestImage(evidence, expected, service.source.image)),
     exactReadyVolume: volumes.length === 1,
     immutableVolumeBound,
     pitrTargetBound:

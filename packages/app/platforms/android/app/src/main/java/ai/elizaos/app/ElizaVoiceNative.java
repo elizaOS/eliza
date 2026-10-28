@@ -4,18 +4,16 @@ package ai.elizaos.app;
 import android.util.Log;
 
 /**
- * JNI loader + native-method surface for the fused fork voice runtime.
+ * JNI loader + native-method surface for the fused fork inference runtime.
  *
- * <p>Loads the NDK/bionic-built {@code libelizainference.so} (the omnivoice
- * {@code elizainference} target — VAD, wake-word, speaker, diarizer fused at
- * ABI v7) IN the {@code ai.elizaos.app} APK process via
- * {@link System#loadLibrary}, then through {@code libelizavoicejni.so} exposes
- * the full fused voice ABI directly (no separate musl bun agent transport).
- *
- * <p>The text musl stack (libeliza_bun / musl ld) is untouched; this class is
- * the bionic, in-process path for the FOUR voice classifiers. Handles are raw
- * native pointers returned as {@code long}; the Java side keeps them opaque and
- * passes them back through {@code close()} for cleanup.
+ * <p>Loads the NDK/bionic-built {@code libelizainference.so} IN the app
+ * process, then {@code libelizavoicejni.so}. The bridge binds every native
+ * below with RegisterNatives from its JNI_OnLoad; a native it cannot bind
+ * fails the load with the method name in logcat. Speech runs on the fused
+ * library: Paradee-8M TTS with native misaki G2P, ASR, VAD, wake word,
+ * speaker and diarizer. Handles are raw native pointers returned as
+ * {@code long}; the Java side keeps them opaque and passes them back for
+ * cleanup.
  */
 final class ElizaVoiceNative {
 
@@ -27,23 +25,28 @@ final class ElizaVoiceNative {
     private ElizaVoiceNative() {}
 
     /**
-     * Load the fused voice library + the JNI shim. The fused .so is statically
-     * linked (ggml/llama/mtmd folded in) so it has no external NEEDED deps
-     * beyond bionic libc/libm/libdl — load order is just: the engine, then the
-     * shim that links it.
+     * Load the fused library, then the JNI bridge that links it. The bridge's
+     * JNI_OnLoad registers the natives of this class; a missing native throws
+     * UnsatisfiedLinkError here.
      */
     static synchronized boolean ensureLoaded() {
         if (loaded) {
             return true;
         }
+        // The library reads the ASR backend and thread count from the process
+        // environment, so set them before it loads.
         try {
+            final String asrEnv = ElizaAsrNativeEnv.apply(
+                BuildConfig.ELIZA_ASR_THREADS,
+                (key, value) -> android.system.Os.setenv(key, value, true));
+            Log.i(TAG, "ASR env (ELIZA_ASR_BACKEND/ELIZA_ASR_THREADS): " + asrEnv);
             System.loadLibrary("elizainference");
             Log.i(TAG, "Loaded fused voice engine: libelizainference.so");
             System.loadLibrary("elizavoicejni");
             Log.i(TAG, "Loaded JNI bridge: libelizavoicejni.so");
             loaded = true;
             loadError = null;
-        } catch (UnsatisfiedLinkError e) {
+        } catch (UnsatisfiedLinkError | IllegalStateException e) {
             loadError = e.getMessage();
             Log.e(TAG, "Failed to load fused voice native libraries", e);
             loaded = false;
@@ -61,7 +64,7 @@ final class ElizaVoiceNative {
 
     // ── ABI / capability probes ──────────────────────────────────────────
 
-    /** {@code eliza_inference_abi_version()} — expect "7". */
+    /** {@code eliza_inference_abi_version()}: "17" or newer for this bridge. */
     static native String nativeVoiceAbiVersion();
 
     /** {@code eliza_inference_vad_supported()}. */
@@ -237,18 +240,6 @@ final class ElizaVoiceNative {
      */
     static native String nativeLlmSelfTest(String bundleDir, String prompt, int maxTokens);
 
-    /** Kokoro-82M model native sample rate (24000 for v1.0), or -1 if not loaded. */
-    static native int nativeKokoroSampleRate(long ctxHandle);
-
-    /**
-     * Synthesize precomputed {@code ipa} with the fused Kokoro-82M head (ABI v15), loading
-     * the GGUF + voice preset on first use. Returns 24 kHz fp32 PCM. This is the
-     * on-device voice the Android app speaks with — TalkMode delegates here (via
-     * the bionic inference host) instead of falling back to the platform TTS.
-     */
-    static native float[] nativeKokoroSynthesizeIpa(
-            long ctxHandle, String ggufPath, String voiceBinPath, String ipa, float speed);
-
     // ── Batch ASR + mmproj vision (the agent's STT / screen-recognition path) ──
 
     /**
@@ -259,6 +250,89 @@ final class ElizaVoiceNative {
      * a real on-device transcript without the full attribution pipeline.
      */
     static native String nativeAsrTranscribe(long ctxHandle, float[] pcm, int sampleRate);
+
+    /** {@code eliza_inference_asr_supported()} (ABI v17): 1 when this build can transcribe. */
+    static native int nativeAsrSupported();
+
+    /**
+     * Stop a {@link #nativeAsrTranscribe} running on another thread; that call
+     * throws {@link java.util.concurrent.CancellationException}. Cancelling
+     * nothing is not an error.
+     */
+    static native int nativeAsrCancel(long ctxHandle);
+
+    // ── Streaming ASR (Parakeet-TDT / Phonon-2 backend) ──────────────────
+    //
+    // open → feed* → partial* → finish → close. Streaming needs the bundle's
+    // asr/ region to be the parakeet backend (asr/phonon-2-fv5.gguf); a
+    // library built without it makes open throw IllegalArgumentException and
+    // callers keep nativeAsrTranscribe. feed only buffers, so it may run on the audio
+    // thread while partial/finish decode on a worker. close must not race any
+    // other call on the same stream. Token ids are not returned.
+
+    /** {@code eliza_inference_asr_stream_supported()}: 1 once a context has the parakeet backend loaded. */
+    static native int nativeAsrStreamSupported();
+
+    /** Acquire "asr" and open a stream for mono fp32 PCM at {@code sampleRate} Hz. Returns a stream handle. */
+    static native long nativeAsrStreamOpen(long ctxHandle, int sampleRate);
+
+    /** Buffer {@code pcm} (no decode); returns the samples consumed. */
+    static native int nativeAsrStreamFeed(long streamHandle, float[] pcm);
+
+    /** Decode what was fed and return the running transcript. */
+    static native String nativeAsrStreamPartial(long streamHandle);
+
+    /** Drain, decode and return the final transcript; later feeds throw. Close afterwards. */
+    static native String nativeAsrStreamFinish(long streamHandle);
+
+    /** Stop a partial/finish running on another thread; it throws CancellationException. */
+    static native int nativeAsrStreamCancel(long streamHandle);
+
+    /** Free the stream. Idempotent on 0. */
+    static native void nativeAsrStreamClose(long streamHandle);
+
+    // ── Paradee-8M TTS with native misaki G2P (ABI v17) ──────────────────
+
+    /** {@code eliza_inference_paradee_supported()}: 1 when this build links Paradee + misaki G2P. */
+    static native int nativeParadeeSupported();
+
+    /**
+     * Load the Paradee GGUF and the misaki lexicon on the context. eSpeak NG
+     * data ({@code espeakDirOrNull}, the directory that contains
+     * {@code espeak-ng-data}) is only used for words outside the lexicon; null
+     * keeps G2P to misaki rules. Cheap when the same files are already loaded.
+     */
+    static native int nativeParadeeLoad(long ctxHandle, String ggufPath, String lexiconPath, String espeakDirOrNull);
+
+    /** Loaded model sample rate (24000), or a negative ELIZA_* code. */
+    static native int nativeParadeeSampleRate(long ctxHandle);
+
+    /** Which G2P the loaded model uses (ELIZA_PARADEE_G2P_*), or a negative ELIZA_* code. */
+    static native int nativeParadeeG2pKind(long ctxHandle);
+
+    /** English UTF-8 text to misaki phonemes. */
+    static native String nativeParadeePhonemize(long ctxHandle, byte[] utf8Text);
+
+    static native int nativeParadeeStreamSupported();
+
+    static native void nativeParadeeSynthesizeStream(long ctx, byte[] utf8Text, float speed, Object sink);
+
+    /** English UTF-8 text to 24 kHz mono fp32 PCM. Throws CancellationException on {@link #nativeCancelTts}. */
+    static native float[] nativeParadeeSynthesize(long ctxHandle, byte[] utf8Text, float speed);
+
+    /** UTF-8 misaki phonemes to 24 kHz mono fp32 PCM. Throws CancellationException on {@link #nativeCancelTts}. */
+    static native float[] nativeParadeeSynthesizePhonemes(long ctxHandle, byte[] utf8Phonemes, float speed);
+
+    /** Stop the TTS pass running on another thread. Cancelling nothing is not an error. */
+    static native int nativeCancelTts(long ctxHandle);
+
+    // ── Voice memory regions ─────────────────────────────────────────────
+
+    /** {@code eliza_inference_mmap_acquire(ctx, region)}: load "tts" / "asr" weights. */
+    static native int nativeMmapAcquire(long ctxHandle, String region);
+
+    /** {@code eliza_inference_mmap_evict(ctx, region)}: free "tts" / "asr" weights, keep the context. */
+    static native int nativeMmapEvict(long ctxHandle, String region);
 
     /** {@code eliza_inference_vision_supported()} (ABI v9): 1 if mmproj vision is built. */
     static native int nativeVisionSupported();

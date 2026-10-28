@@ -20,9 +20,9 @@ import {
 /**
  * Character-authored replacements for the framework's canned failure replies.
  *
- * Only the keys the core message service actually reads are listed — see
- * `buildTransientFailureReply` / `buildNoModelProviderReply` in
- * `packages/core/src/services/message.ts`, which resolve
+ * Only the keys the assistant message service actually reads are listed —
+ * see the failure-template resolution and `buildNoModelProviderReply` in
+ * `plugins/plugin-assistant/src/services/message/failures.ts`, which resolves
  * `character.templates?.<key> || <builtin>`. Keys are deliberately NOT widened
  * to the full `Character.templates` record: prompt-shaped keys such as
  * `messageHandlerTemplate` are ignored by the local runtime, so allowing them

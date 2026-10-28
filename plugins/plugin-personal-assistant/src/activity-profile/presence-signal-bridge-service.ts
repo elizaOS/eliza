@@ -107,12 +107,9 @@ function readPlatform(payload: MessagePayload): string {
   const content = isRecord(messageRecord?.content)
     ? messageRecord.content
     : null;
-  const candidates = [
-    content?.channelType,
-    content?.source,
-    messageRecord?.source,
-    payload.source,
-  ];
+  // The platform is the connector that carried the message. The channel type
+  // is the room kind (DM, GROUP) and must not key an identity.
+  const candidates = [content?.source, messageRecord?.source, payload.source];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate;

@@ -639,6 +639,14 @@ export interface FieldHistoryEntry {
   field: string;
   /** Previous value (to restore); absent when the change was the field's first answer. */
   oldValue?: JsonValue;
+  /**
+   * Status of the previous answer, so undo restores an answer that still
+   * awaited confirmation as uncertain, and a rejected answer whose control
+   * has left the form as invalid. Absent in entries recorded before it.
+   */
+  oldStatus?: FieldState["status"];
+  /** Confidence of the previous answer, restored with it. */
+  oldConfidence?: number;
   /** New value (for audit) */
   newValue: JsonValue;
   /** When the change happened */

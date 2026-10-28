@@ -32,6 +32,7 @@ import {
 	type GenerateTextParams,
 	getInferencePriorityGate,
 	getInferenceTimer,
+	getTrajectoryContext,
 	type IAgentRuntime,
 	type ImageDescriptionParams,
 	type ImageDescriptionResult,
@@ -90,7 +91,16 @@ import {
 	VISION_IMAGE_MAX_BYTES,
 } from "../services/vision/image-input";
 import type { VisionImageInput } from "../services/vision/types";
-import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import {
+	decodeMonoPcm16Wav,
+	encodeMonoPcm16Wav,
+	type TranscriptionAudio,
+} from "../services/voice";
+import { transcribeViaBionicHost } from "../services/voice/bionic-transcription";
+import {
+	hasLiveVoiceTurnAwaitingToken,
+	noteLlmFirstToken,
+} from "../services/voice/live-voice-latency";
 import { extractRequestedKokoroVoiceId } from "../services/voice/requested-voice.js";
 import {
 	createVerifiedBgeContext,
@@ -299,7 +309,27 @@ export async function hasLocalTextModelAvailable(
  * garbage (a BERT model forced to autoregress), so we fail loudly with an
  * actionable message instead. See elizaOS/eliza#7687.
  */
-async function ensureAssignedModelLoaded(
+let assignedModelLoads: Promise<unknown> = Promise.resolve();
+
+/**
+ * One check-and-load at a time. Without this, two requests that both find
+ * no model resident (first use, or after an idle unload) both start a load:
+ * the backend refuses the second ("acquire() called with a live session") and
+ * that turn fails, or a different slot's load unloads the model serving the
+ * first. A queued caller re-checks once the earlier load has finished.
+ */
+function ensureAssignedModelLoaded(
+	loader: LocalInferenceLoader | null,
+	slot: AgentModelSlot,
+): Promise<void> {
+	const run = assignedModelLoads.then(() =>
+		ensureAssignedModelLoadedNow(loader, slot),
+	);
+	assignedModelLoads = run.catch(() => undefined);
+	return run;
+}
+
+async function ensureAssignedModelLoadedNow(
 	loader: LocalInferenceLoader | null,
 	slot: AgentModelSlot,
 ): Promise<void> {
@@ -532,6 +562,31 @@ function engineGenerateArgsFromParams(
 	};
 }
 
+/**
+ * End-of-turn latency (live voice): when a live voice turn waits for its
+ * reply, the first streamed chunk of the next interactive generation marks
+ * `llm-first-token` on it (`live-voice-latency.ts`). Only the instant is
+ * recorded; the chunk text is not read.
+ */
+function instrumentVoiceFirstToken(
+	engineArgs: { onTextChunk?: (chunk: string) => void | Promise<void> },
+	priority: GenerateTextParams["priority"],
+): void {
+	const inner = engineArgs.onTextChunk;
+	if (!inner || priority === "background" || !hasLiveVoiceTurnAwaitingToken()) {
+		return;
+	}
+	const roomId = getTrajectoryContext()?.roomId ?? null;
+	let seen = false;
+	engineArgs.onTextChunk = (chunk: string) => {
+		if (!seen && chunk.length > 0) {
+			seen = true;
+			noteLlmFirstToken(roomId);
+		}
+		return inner(chunk);
+	};
+}
+
 function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 	return async (runtime, params) => {
 		const loader = getLoader(runtime);
@@ -553,6 +608,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 			extractPromptCacheKey(providerOptions) ??
 			undefined;
 		const engineArgs = engineGenerateArgsFromParams(params, cacheKey);
+		instrumentVoiceFirstToken(engineArgs, params.priority);
 
 		// Prefer a runtime-registered loader that implements `generate` — that's
 		// the mobile / device-bridge path (bionic host / AOSP adapter / device
@@ -1339,7 +1395,7 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 // libelizainference, so the engine-driven transcriber / memory-arbiter vision
 // paths above can't run here. Instead the audio / image bytes are forwarded to
 // the in-process bionic host over the UDS (op="asr" / op="image"), which runs
-// the fused Gemma ASR + mmproj vision path on the Mali GPU and returns text.
+// Phonon-2 ASR and the mmproj vision path on the Mali GPU and returns text.
 // This is the same delegation `BionicHostLoader` already does for text
 // generation.
 
@@ -1351,6 +1407,7 @@ function getBionicHostLoader(runtime: IAgentRuntime): BionicHostLoader | null {
 	if (
 		svc &&
 		typeof (svc as BionicHostLoader).transcribe === "function" &&
+		typeof (svc as BionicHostLoader).synthesize === "function" &&
 		typeof (svc as BionicHostLoader).describeImage === "function"
 	) {
 		return svc as BionicHostLoader;
@@ -1425,12 +1482,70 @@ function makeBionicTranscriptionHandler(): TranscriptionHandler {
 		}
 		const audio = extractTranscriptionAudio(params);
 		throwIfAborted(signal);
+		// Stream on the host's Phonon-2 decoder when it reports one; batch
+		// op="asr" only when it answers that its backend cannot stream.
+		if (
+			typeof loader.asrStreamSupported === "function" &&
+			typeof loader.createStreamingTranscriber === "function"
+		) {
+			const streamSink =
+				params && typeof params === "object"
+					? (
+							params as {
+								onStreamChunk?: (chunk: string) => void | Promise<void>;
+							}
+						).onStreamChunk
+					: undefined;
+			const { text } = await transcribeViaBionicHost(loader, {
+				pcm: audio.pcm,
+				sampleRate: audio.sampleRate,
+				signal,
+				toBase64: float32ToBase64LE,
+				...(typeof streamSink === "function"
+					? {
+							onPartial: (delta: string) => {
+								void streamSink(delta);
+							},
+						}
+					: {}),
+			});
+			throwIfAborted(signal);
+			return text;
+		}
 		const transcript = await loader.transcribe({
 			pcmBase64: float32ToBase64LE(audio.pcm),
 			sampleRate: audio.sampleRate,
+			signal,
 		});
 		throwIfAborted(signal);
 		return transcript;
+	};
+}
+
+/**
+ * Bionic-delegated TEXT_TO_SPEECH: the fused Paradee head lives in the app
+ * process, so the text goes to the bionic host (op="tts") and the PCM comes
+ * back. Aborting the request's signal cancels the native synthesis.
+ */
+function makeBionicTextToSpeechHandler(): TextToSpeechHandler {
+	return async (runtime, params) => {
+		const signal = extractSpeechSignal(params);
+		throwIfAborted(signal);
+		const text = extractSpeechText(params).trim();
+		if (text.length === 0) {
+			throw new Error(
+				"[local-inference] TEXT_TO_SPEECH text must be non-empty",
+			);
+		}
+		const loader = getBionicHostLoader(runtime);
+		if (!loader) {
+			throw new Error(
+				"[local-inference] bionic-host TEXT_TO_SPEECH requires the bionic-host loader (localInferenceLoader service)",
+			);
+		}
+		const { pcm, sampleRate } = await loader.synthesize({ text, signal });
+		throwIfAborted(signal);
+		return encodeMonoPcm16Wav(pcm, sampleRate);
 	};
 }
 
@@ -1927,7 +2042,9 @@ export async function ensureLocalInferenceHandler(
 		try {
 			runtimeWithRegistration.registerModel(
 				ModelType.TEXT_TO_SPEECH,
-				makeTextToSpeechHandler(),
+				bionicHostRegistered
+					? makeBionicTextToSpeechHandler()
+					: makeTextToSpeechHandler(),
 				provider,
 				LOCAL_INFERENCE_PRIORITY,
 			);
@@ -1935,7 +2052,7 @@ export async function ensureLocalInferenceHandler(
 			// priority (0). It is the last-resort handler: any cloud / other-plugin
 			// TRANSCRIPTION handler registers above 0 and wins. When the handler
 			// does run, it drives the fused libelizainference ASR runtime — the sole
-			// on-device transcriber (Gemma ASR streaming → fused batch interim →
+			// on-device transcriber (Phonon-2 streaming → fused batch interim →
 			// AsrUnavailableError) via the engine's armed voice bridge — see
 			// makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
 			// (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a

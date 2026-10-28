@@ -24,6 +24,10 @@ public final class EmbeddedRuntimeLaunchTest {
     ProcessBuilder gateway = launch.gateway(bundle.resolve("gateway.js"));
     check(!gateway.environment().containsKey("PROVIDER_KEY")); check(!gateway.environment().containsKey("ELIZA_API_TOKEN"));
     check(gateway.environment().get("NAPI_RS_NATIVE_LIBRARY_PATH").equals(installed.resolve("libeliza_canvas.so").toString()));
+    ProcessBuilder script = launch.script(bundle.resolve("probe.js"), "--once");
+    check(script.command().equals(List.of(installed.resolve("libeliza_ld_musl_aarch64.so").toString(),installed.resolve("libeliza_bun.so").toString(),"--no-env-file","--no-install",bundle.resolve("probe.js").toString(),"--once")));
+    check(script.directory().equals(bundle.toFile())); check(script.environment().get("HOME").equals(state.toString()));
+    check(!script.environment().containsKey("ELIZA_API_TOKEN")); check(!script.environment().containsKey("NAPI_RS_NATIVE_LIBRARY_PATH"));
     check(Files.isSymbolicLink(root.resolve("aliases/libstdc++.so.6")));
     check(EmbeddedRuntimeLaunch.fingerprint("abc").equals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
     try { launch.agent(bundle.resolve("agent.js"),state.resolve("config"),0,token,Map.of()); throw new AssertionError(); } catch (IllegalArgumentException expected) { checks++; }
@@ -37,6 +41,14 @@ public final class EmbeddedRuntimeLaunchTest {
     String output=new String(child.getInputStream().readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
     if(child.waitFor()!=0)throw new AssertionError("Host JVM probe failed: "+output);
     check(output.equals(state.toString()));
+    // The same trusted launch path selects x86_64 from an ABI-specific install.
+    Files.delete(installed.resolve("libeliza_ld_musl_aarch64.so"));
+    Files.writeString(installed.resolve("libeliza_ld_musl_x86_64.so"), "fixture");
+    EmbeddedRuntimeLaunch x86 = new EmbeddedRuntimeLaunch(bundle,installed,root.resolve("aliases"),state,"example.host",root.toString());
+    check(x86.gateway(bundle.resolve("gateway.js")).command().get(0).equals(installed.resolve("libeliza_ld_musl_x86_64.so").toString()));
+    Files.writeString(installed.resolve("libeliza_ld_musl_aarch64.so"), "fixture");
+    try { new EmbeddedRuntimeLaunch(bundle,installed,root.resolve("aliases"),state,"example.host",root.toString()); throw new AssertionError("Mixed ABI loaders accepted"); } catch (java.io.IOException expected) { checks++; }
+    Files.delete(installed.resolve("libeliza_ld_musl_aarch64.so"));
     Files.delete(state.resolve("tmp")); Files.createSymbolicLink(state.resolve("tmp"), bundle);
     try { new EmbeddedRuntimeLaunch(bundle,installed,root.resolve("aliases"),state,"example.host",root.toString()); throw new AssertionError(); } catch (java.io.IOException expected) { checks++; }
     System.out.println("EmbeddedRuntimeLaunch: " + checks + " checks passed");

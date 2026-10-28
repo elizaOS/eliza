@@ -166,6 +166,18 @@ test("pins provider proration, separates recurring estimate and persists complet
   expect(quote.review.dueNow.amountDueCents).toBe(3500);
   expect(quote.review.recurringEstimate.amountDueCents).toBe(10000);
   expect(quote.review.targetAllowanceUsd).toBe("90.000000");
+  expect(quote.review.allowanceTerms).toEqual({
+    fundingClass: "allowance_eligible",
+    rollover: false,
+    expiresAt: "billing_period_end",
+  });
+  const stored = await client
+    .getPgliteClientForTests()
+    .query<{ terms: unknown }>(
+      "SELECT review->'allowanceTerms' AS terms FROM organization_plan_change_quotes WHERE id=$1",
+      [quote.id],
+    );
+  expect(stored.rows[0]?.terms).toEqual(quote.review.allowanceTerms);
   expect(session).toHaveBeenCalledTimes(2);
   expect(preview).toHaveBeenCalledTimes(2);
   expect(mutation).not.toHaveBeenCalled();

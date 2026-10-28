@@ -30,6 +30,7 @@ import {
 } from "@elizaos/host/protocol";
 
 import { hasSelectedContextOrSignalSync } from "@elizaos/plugin-assistant";
+import { loadElizaConfig } from "../config/config.ts";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
@@ -69,6 +70,13 @@ export function unregisterCustomActionLive(id: string): boolean {
   liveActions.delete(id);
   if (!_runtime || !action || !_runtime.actions.includes(action)) return false;
   return _runtime.unregisterAction(action.name);
+}
+
+/** Register every enabled custom action saved in config. Called from plugin.init(). */
+export function registerSavedCustomActions(): void {
+  for (const def of loadElizaConfig().customActions ?? []) {
+    if (def.enabled) registerCustomActionLive(def);
+  }
 }
 
 /** Valid handler types that we actually support. */

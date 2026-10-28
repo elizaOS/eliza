@@ -75,10 +75,10 @@ export function summarizeOutboundAttachmentUrl(url: string): {
 	}
 }
 
-function decodeDataUrl(
+async function decodeDataUrl(
 	url: string,
 	maxBytes: number,
-): ResolvedOutboundAttachmentBytes {
+): Promise<ResolvedOutboundAttachmentBytes> {
 	const comma = url.indexOf(",");
 	if (!isDataUrl(url) || comma < 0) {
 		throw new MediaFetchError("fetch_failed", "malformed data URL");
@@ -96,9 +96,14 @@ function decodeDataUrl(
 	let buffer: Buffer;
 	try {
 		if (isBase64) {
-			buffer = Buffer.from(payload.replace(/\s+/g, ""), "base64");
+			// Decode URL escapes before base64 so escaped +, / and = keep their bytes.
+			buffer = Buffer.from(
+				decodeURIComponent(payload).replace(/\s+/g, ""),
+				"base64",
+			);
 		} else {
-			buffer = Buffer.from(decodeURIComponent(payload), "utf8");
+			// A non-base64 data URL contains percent-encoded bytes, not UTF-8 text.
+			buffer = Buffer.from(await (await fetch(url)).arrayBuffer());
 		}
 	} catch (error) {
 		// error-policy:J3 malformed data-URL encoding is untrusted input; never

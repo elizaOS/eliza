@@ -949,16 +949,19 @@ export class MeetingService extends Service {
     const configured = this.settingString(
       "ELIZA_MEETINGS_CAPTURE_POLICY",
     )?.toLowerCase();
-    const cloudEnabled = this.settingString(
-      "ELIZAOS_CLOUD_ENABLED",
-    )?.toLowerCase();
+    // AgentRuntime.getSetting maps the strings "true"/"false" to booleans, so a
+    // string-only read reports a live cloud runtime as local and skips the
+    // policy gate below. Read the value the runtime really returns.
+    const cloudEnabled = this.runtime.getSetting("ELIZAOS_CLOUD_ENABLED");
     const organizationManaged =
       Boolean(
         this.settingString("ELIZAOS_CLOUD_ORG_ID") ??
           this.settingString("ELIZA_CLOUD_ORGANIZATION_ID"),
       ) ||
-      cloudEnabled === "true" ||
-      cloudEnabled === "1";
+      cloudEnabled === true ||
+      (typeof cloudEnabled === "string" &&
+        (cloudEnabled.trim().toLowerCase() === "true" ||
+          cloudEnabled.trim() === "1"));
     if (configured === "allow") return;
     if (configured === "deny") {
       throw new MeetingJoinError(

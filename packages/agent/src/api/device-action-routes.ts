@@ -1,14 +1,19 @@
 import type http from "node:http";
 import {
   CALENDAR_AVAILABILITY_CAPABILITY,
+  CALENDAR_NAMED_READ_CAPABILITY,
   NAMED_TARGET_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
 } from "@elizaos/contracts";
-import { validateNativeNotesReadReplyHint } from "@elizaos/contracts/native-notes-query";
+import {
+  isOriginalDeviceReadOperationType,
+  validateNativeNotesReadReplyHint,
+} from "@elizaos/contracts/native-notes-query";
 import {
   AgentRuntime,
   ChannelType,
   ElizaError,
+  getStreamingContext,
   type IAgentRuntime,
   runWithStreamingContext,
   type UUID,
@@ -35,6 +40,7 @@ import {
   createConversationStreamDisconnectTracker,
   resolvePairedSessionToken,
 } from "./conversation-routes.ts";
+import { handleMapsNavigationRelay } from "./maps-navigation-relay.ts";
 import { workflowDeviceOwner } from "./workflow-device-owner.ts";
 
 function isDeviceRequestRejection(cause: unknown): boolean {
@@ -81,11 +87,15 @@ export function deviceRequestCredential(
       ? capabilityHeader.split(",").map((value) => value.trim())
       : [];
   const allowedCapabilities = new Set([
+    "camera.capture-photo.v1",
+    "gmail.request-policy.v1",
     "calendar.local-event.v1",
     "calendar.create.v1",
     "calendar.next-read.v1",
+    "calendar.agenda-read.v1",
     "notes.local-record.v1",
     "notes.query.v1",
+    CALENDAR_NAMED_READ_CAPABILITY,
     CALENDAR_AVAILABILITY_CAPABILITY,
     NAMED_TARGET_CAPABILITY,
     NOTES_SEARCH_CAPABILITY,
@@ -96,6 +106,7 @@ export function deviceRequestCredential(
     "clock.handoff.v1",
     "clock.handoff.v2",
     "clock.alarms.v1",
+    "sms.send.v1",
   ]);
   if (
     capabilities.length > allowedCapabilities.size ||
@@ -164,6 +175,7 @@ export async function handleDeviceActionRoutes(
             "calendar.local-event.v1",
             "calendar.create.v1",
             "calendar.next-read.v1",
+            "calendar.agenda-read.v1",
             "notes.local-record.v1",
             "notes.query.v1",
             CALENDAR_AVAILABILITY_CAPABILITY,
@@ -173,12 +185,60 @@ export async function handleDeviceActionRoutes(
             "reminders.local-record.v2",
             "reminders.create.v1",
             "maps.selected-read.v1",
+            "camera.capture-photo.v1",
             "clock.handoff.v1",
             "clock.handoff.v2",
             "clock.alarms.v1",
+            "sms.send.v1",
           ],
         },
       });
+      return true;
+    }
+    if (
+      method === "POST" &&
+      pathname === "/api/client-devices/maps-navigation"
+    ) {
+      if (ctx.authorization?.role !== "OWNER") {
+        error(res, "Owner role required", 403);
+        return true;
+      }
+      if (!(runtime instanceof AgentRuntime)) {
+        error(res, "Canonical navigation host unavailable", 503);
+        return true;
+      }
+      const body = await ctx.readJsonBody<unknown>(req, res);
+      if (!body) return true;
+      const recheck = async () => {
+        const resolve = getAgentHostBridge().resolveHttpRequestAuthorization;
+        const fresh = ctx.revalidateAuthorization
+          ? await ctx.revalidateAuthorization()
+          : resolve
+            ? await resolve(req, runtime, {
+                allowCookieAuth: true,
+                allowTrustedLocalBypass: false,
+                allowBearerAuth: true,
+              })
+            : null;
+        const current = fresh ? deviceRequestCredential(req, fresh) : null;
+        if (
+          res.destroyed ||
+          !fresh?.ok ||
+          fresh.role !== "OWNER" ||
+          current?.subjectUserId !== credential.subjectUserId ||
+          current.installationId !== credential.installationId
+        )
+          throw new DeviceActionError("Navigation owner authority retired");
+        ctx.assertRuntimeCurrent?.();
+      };
+      const result = await handleMapsNavigationRelay(
+        runtime,
+        credential,
+        body,
+        recheck,
+      );
+      await recheck();
+      json(res, result);
       return true;
     }
     if (method === "GET" && pathname === "/api/client-devices/context") {
@@ -239,7 +299,7 @@ export async function handleDeviceActionRoutes(
               proposal.state === "pending" &&
               proposal.expiresAt.getTime() > Date.now() &&
               proposal.payload.action === "device_action" &&
-              ["notes_query", "notes_read_selected"].includes(
+              isOriginalDeviceReadOperationType(
                 proposal.payload.operation.type,
               );
             const readReplyOrigin = pendingRead
@@ -349,53 +409,54 @@ export async function handleDeviceActionRoutes(
       try {
         if (!(await tracker.authorityReady))
           throw new DeviceActionError("Read completion authority retired");
-        const reply = await runtime.turnControllers.runWith(
-          roomId,
-          (turnSignal) => {
+        const complete = () =>
+          runtime.turnControllers.runWith(roomId, (turnSignal) => {
             const signal = AbortSignal.any([tracker.signal, turnSignal]);
             return runtime.roomHandlerQueue.withLease(
               roomId,
               (lease) =>
-                runWithStreamingContext({ abortSignal: signal }, () =>
-                  service.completeReadReply(
-                    credential,
-                    retained,
-                    signal,
-                    async (reply, current, assertCurrent) => {
-                      assertCurrent();
-                      await persistAssistantConversationMemory(
-                        runtime,
-                        roomId,
-                        {
-                          text: reply.text,
-                          inReplyTo: reply.inReplyTo as UUID,
-                          source: "client_chat",
-                          channelType: ChannelType.API,
-                          agentVoiced: true,
-                          metadata: {
-                            deviceReadCompletion: {
-                              proposalId: retained.proposalId,
-                              attemptId: retained.attemptId,
-                              requestId: retained.requestId,
+                runWithStreamingContext(
+                  { ...getStreamingContext(), abortSignal: signal },
+                  () =>
+                    service.completeReadReply(
+                      credential,
+                      retained,
+                      signal,
+                      async (reply, current, assertCurrent) => {
+                        assertCurrent();
+                        await persistAssistantConversationMemory(
+                          runtime,
+                          roomId,
+                          {
+                            text: reply.text,
+                            inReplyTo: reply.inReplyTo as UUID,
+                            source: "client_chat",
+                            channelType: ChannelType.API,
+                            agentVoiced: true,
+                            metadata: {
+                              deviceReadCompletion: {
+                                proposalId: retained.proposalId,
+                                attemptId: retained.attemptId,
+                                requestId: retained.requestId,
+                              },
                             },
                           },
-                        },
-                        ChannelType.API,
-                        undefined,
-                        reply.messageId as UUID,
-                        lease,
-                        assertCurrent,
-                      );
-                      current.throwIfAborted();
-                    },
-                    recheck,
-                    ctx.assertRuntimeCurrent,
-                  ),
+                          ChannelType.API,
+                          undefined,
+                          reply.messageId as UUID,
+                          lease,
+                          assertCurrent,
+                        );
+                        current.throwIfAborted();
+                      },
+                      recheck,
+                      ctx.assertRuntimeCurrent,
+                    ),
                 ),
               { signal },
             );
-          },
-        );
+          });
+        const reply = await complete();
         tracker.signal.throwIfAborted();
         tracker.markCompleted();
         json(res, { reply });

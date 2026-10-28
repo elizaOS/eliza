@@ -20,7 +20,9 @@ func rewriteRole(t *testing.T, r *repository, file, signer string, change func(*
 	}
 	change(m)
 	m.Signatures = nil
-	if _, err = m.Sign(r.signers[signer]); err != nil {
+	if signer == "stable" || signer == "beta" {
+		r.signChannel(t, m, signer)
+	} else if _, err = m.Sign(r.signers[signer]); err != nil {
 		t.Fatal(err)
 	}
 	r.files[baseURL+file], err = m.ToBytes(false)
@@ -88,7 +90,7 @@ func TestChannelKeysCannotReuseTopLevelAuthority(t *testing.T) {
 	rewriteRole(t, r, "1.targets.json", "targets", func(m *metadata.Metadata[metadata.TargetsType]) {
 		id := root.Signed.Roles["targets"].KeyIDs[0]
 		m.Signed.Delegations.Keys[id] = root.Signed.Keys[id]
-		m.Signed.Delegations.Roles[0].KeyIDs = []string{id}
+		m.Signed.Delegations.Roles[0].KeyIDs[0] = id
 	})
 	if _, err = fetch(privateDir(t), r, now); err == nil || !strings.Contains(err.Error(), "shares another authority") {
 		t.Fatalf("wrong rejection: %v", err)
@@ -112,10 +114,10 @@ func TestChannelThresholdRequiresDistinctAuthorizedSignatures(t *testing.T) {
 	rewriteRole(t, r, "1.targets.json", "targets", func(m *metadata.Metadata[metadata.TargetsType]) {
 		m.Signed.Delegations.Keys[id] = key
 		m.Signed.Delegations.Roles[0].KeyIDs = append(m.Signed.Delegations.Roles[0].KeyIDs, id)
-		m.Signed.Delegations.Roles[0].Threshold = 2
+		m.Signed.Delegations.Roles[0].Threshold = 3
 	})
 	if _, err = fetch(privateDir(t), r, now); err == nil {
-		t.Fatal("Missing second signature accepted")
+		t.Fatal("Missing third signature accepted")
 	}
 	stable, err := metadata.Targets().FromBytes(r.files[baseURL+"1.stable.json"])
 	if err != nil {
@@ -141,9 +143,7 @@ func TestBetaDelegatedTargetAuthenticatesIndependently(t *testing.T) {
 	target := beta.Signed.Targets["stable/launcher.json"]
 	beta.Signed.Targets = map[string]*metadata.TargetFiles{"beta/launcher.json": target}
 	beta.Signatures = nil
-	if _, err = beta.Sign(r.signers["beta"]); err != nil {
-		t.Fatal(err)
-	}
+	r.signChannel(t, beta, "beta")
 	r.files[baseURL+"1.beta.json"], err = beta.ToBytes(false)
 	if err != nil {
 		t.Fatal(err)
@@ -166,5 +166,94 @@ func TestBetaDelegatedTargetAuthenticatesIndependently(t *testing.T) {
 	data, err := FetchDescriptorInterval(privateDir(t), r.root, baseURL, "beta", "launcher", now.UnixMilli(), now.UnixMilli(), r)
 	if err != nil || !bytes.Equal(data, r.body) {
 		t.Fatalf("Beta delegation failed: %v", err)
+	}
+}
+
+// stableRole returns the fixture's Stable delegation inside top-level targets.
+func stableRole(m *metadata.Metadata[metadata.TargetsType]) *metadata.DelegatedRole {
+	for i := range m.Signed.Delegations.Roles {
+		if m.Signed.Delegations.Roles[i].Name == "stable" {
+			return &m.Signed.Delegations.Roles[i]
+		}
+	}
+	return nil
+}
+
+// resignStable replaces the Stable metadata signatures with the named signers.
+func resignStable(t *testing.T, r *repository, signers ...string) {
+	t.Helper()
+	m, err := metadata.Targets().FromBytes(r.files[baseURL+"1.stable.json"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Signatures = nil
+	for _, name := range signers {
+		if _, err = m.Sign(r.signers[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.files[baseURL+"1.stable.json"], err = m.ToBytes(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStableRequiresSecondApproval(t *testing.T) {
+	r := fixture(t)
+	if data, err := fetch(privateDir(t), r, now); err != nil || !bytes.Equal(data, r.body) {
+		t.Fatalf("two Stable approvals rejected: %v", err)
+	}
+	// A delegation that lowers Stable to one approval is refused before any
+	// Stable metadata is trusted, even when that metadata carries two signatures.
+	for _, keys := range []int{1, 2} {
+		r = fixture(t)
+		rewriteRole(t, r, "1.targets.json", "targets", func(m *metadata.Metadata[metadata.TargetsType]) {
+			role := stableRole(m)
+			if keys == 1 {
+				delete(m.Signed.Delegations.Keys, role.KeyIDs[1])
+				role.KeyIDs = role.KeyIDs[:1]
+			}
+			role.Threshold = 1
+		})
+		if _, err := fetch(privateDir(t), r, now); err == nil || !strings.Contains(err.Error(), "stable channel requires 2 distinct approvals") {
+			t.Fatalf("single-approval Stable delegation (%d keys) accepted: %v", keys, err)
+		}
+	}
+	// With the delegation intact, one approver signing alone or twice is not enough.
+	for _, signers := range [][]string{{"stable"}, {"stable-second"}, {"stable", "stable"}} {
+		r = fixture(t)
+		resignStable(t, r, signers...)
+		if _, err := fetch(privateDir(t), r, now); err == nil {
+			t.Fatalf("Stable release with approvals %v accepted", signers)
+		}
+	}
+	// A Beta signature is not a second Stable approval.
+	r = fixture(t)
+	resignStable(t, r, "stable", "beta")
+	if _, err := fetch(privateDir(t), r, now); err == nil {
+		t.Fatal("Beta key counted as a Stable approval")
+	}
+	// The second approver key may not be an alias of the first.
+	r = fixture(t)
+	rewriteRole(t, r, "1.targets.json", "targets", func(m *metadata.Metadata[metadata.TargetsType]) {
+		role := stableRole(m)
+		role.KeyIDs[1] = role.KeyIDs[0]
+	})
+	if _, err := fetch(privateDir(t), r, now); err == nil || !strings.Contains(err.Error(), "shared channel key") {
+		t.Fatalf("aliased Stable approver accepted: %v", err)
+	}
+}
+
+func TestBetaNeedsOneApproval(t *testing.T) {
+	r := fixture(t)
+	rewriteRole(t, r, "1.targets.json", "targets", func(m *metadata.Metadata[metadata.TargetsType]) {
+		for i := range m.Signed.Delegations.Roles {
+			if m.Signed.Delegations.Roles[i].Name == "beta" {
+				m.Signed.Delegations.Roles[i].Threshold = 0
+			}
+		}
+	})
+	if _, err := fetch(privateDir(t), r, now); err == nil {
+		t.Fatal("Beta delegation without an approval threshold accepted")
 	}
 }

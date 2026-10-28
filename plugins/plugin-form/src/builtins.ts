@@ -293,12 +293,6 @@ const booleanType: ControlType = {
     return ["true", "yes", "1", "on"].includes(str);
   },
 
-  format: (value: JsonValue): string => {
-    if (value === true) return "Yes";
-    if (value === false) return "No";
-    return String(value ?? "");
-  },
-
   extractionPrompt: "a yes/no or true/false value",
 };
 
@@ -352,8 +346,6 @@ const selectType: ControlType = {
   },
 
   parse: (value: string): string => value.trim(),
-
-  format: (value: JsonValue): string => String(value ?? ""),
 
   // Note: extractionPrompt is typically customized per-field with option labels
   extractionPrompt: "one of the available options",

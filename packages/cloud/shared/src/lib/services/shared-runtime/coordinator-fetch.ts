@@ -8,6 +8,8 @@
 import type { RuntimeDurableObjectStub } from "../../../types/cloud-worker-env";
 
 const SHARED_RUNTIME_FETCH_TIMEOUT_MS = 10_000;
+/** Existing generation budget; control reads retain their independent ten-second deadline. */
+export const SHARED_RUNTIME_TURN_DEADLINE_MS = 75_000;
 
 export function coordinatorFetch(
   stub: RuntimeDurableObjectStub,

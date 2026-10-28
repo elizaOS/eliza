@@ -21,6 +21,8 @@ export interface IcsParsedEvent {
   status: string;
   startAt: string;
   endAt: string;
+  /** Original validated RFC 5545 DURATION, when the event uses one. */
+  duration: string | null;
   isAllDay: boolean;
   timezone: string;
   url: string | null;

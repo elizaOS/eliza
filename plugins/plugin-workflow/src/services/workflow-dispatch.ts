@@ -20,6 +20,7 @@ import { WorkflowApiError } from '../types/index';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
+  isMissedOccurrenceExecution,
 } from './embedded-workflow-service';
 
 export const WORKFLOW_DISPATCH_SERVICE_TYPE = 'WORKFLOW_DISPATCH' as const;
@@ -34,6 +35,12 @@ export interface WorkflowDispatchResult {
    * instead of treating the call as a fresh execution.
    */
   dedup?: boolean;
+  /**
+   * True when the execution recorded a scheduled occurrence that passed while
+   * the agent was not running: it finished without running any step, so the
+   * caller must not report it as a completed run.
+   */
+  missed?: boolean;
   /**
    * Machine-readable permanent-failure class. `workflow_not_found` means the
    * target workflow row no longer exists, so retrying the same dispatch can
@@ -52,6 +59,8 @@ export interface WorkflowDispatchOptions {
   idempotencyKey?: string;
   /** Trigger ancestry copied onto events emitted by this execution. */
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
 }
 
 export interface WorkflowDispatchService {
@@ -159,7 +168,8 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
           id,
           triggerData,
           idempotencyKey,
-          options.triggerChainDepth
+          options.triggerChainDepth,
+          options.scheduledAtMs
         ).finally(() => {
           inflight.delete(inflightKey);
         });
@@ -167,7 +177,14 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
         return promise;
       }
 
-      return runDispatch(service, id, triggerData, undefined, options.triggerChainDepth);
+      return runDispatch(
+        service,
+        id,
+        triggerData,
+        undefined,
+        options.triggerChainDepth,
+        options.scheduledAtMs
+      );
     },
   };
 }
@@ -177,7 +194,8 @@ async function runDispatch(
   workflowId: string,
   triggerData: Record<string, unknown>,
   idempotencyKey: string | undefined,
-  triggerChainDepth: number | undefined
+  triggerChainDepth: number | undefined,
+  scheduledAtMs: number | undefined
 ): Promise<WorkflowDispatchResult> {
   try {
     const execution = await service.executeWorkflow(workflowId, {
@@ -185,8 +203,14 @@ async function runDispatch(
       triggerData,
       idempotencyKey,
       ...(triggerChainDepth !== undefined ? { triggerChainDepth } : {}),
+      ...(scheduledAtMs !== undefined ? { scheduledAtMs } : {}),
     });
-    return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
+    const missed = isMissedOccurrenceExecution(execution);
+    return {
+      ok: true,
+      ...(execution.id ? { executionId: execution.id } : {}),
+      ...(missed ? { missed: true } : {}),
+    };
   } catch (err) {
     // error-policy:J1 dispatch boundary — the trigger scheduler consumes a
     // structured result; a permanent not-found is classed so it can disable

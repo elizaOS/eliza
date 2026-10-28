@@ -21,6 +21,10 @@ import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-work
 import { logger } from "../utils/logger";
 import { timingSafeEqualSecret } from "./cron";
 import {
+  organizationCreatedBySignIn,
+  STEWARD_SESSION_CLOCK_ALLOWANCE_MS,
+} from "./new-organization";
+import {
   isPlaywrightTestAuthEnabled,
   PLAYWRIGHT_TEST_SESSION_COOKIE_NAME,
   type PlaywrightTestAuthEnv,
@@ -271,15 +275,28 @@ export async function getCurrentUserForStewardToken(
   } else {
     const { usersService } = await import("../services/users");
     user = await usersService.getByStewardId(claims.userId);
+    // A retry of the same sign-in finds the account the first request made, so
+    // "made by this session" is read from the session and organization records.
+    if (
+      user &&
+      organizationCreatedBySignIn(
+        user.organization?.created_at,
+        claims.issuedAt * 1000,
+        STEWARD_SESSION_CLOCK_ALLOWANCE_MS,
+      )
+    )
+      c.set("stewardAccountCreated", true);
     if (!user) {
       try {
         const { syncUserFromSteward } = await import("../steward-sync");
-        user = await syncUserFromSteward({
+        const synced = await syncUserFromSteward({
           stewardUserId: claims.userId,
           email: claims.email,
           walletAddress: claims.walletAddress,
           walletChainType: claims.walletChain,
         });
+        if (synced.accountCreated) c.set("stewardAccountCreated", true);
+        user = synced;
       } catch (error) {
         logger.error("[AUTH] Steward JIT sync failed", {
           userId: claims.userId,

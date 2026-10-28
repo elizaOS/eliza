@@ -258,6 +258,11 @@ function canonicalWalk(
 		// Object keys carrying these were already dropped by the snapshot; reaching
 		// one here means an array slot, which `JSON.stringify` renders as `null`.
 		if (isJsonInvisible(value)) return emit(ctx, "null");
+		// BigInt has no JSON representation: JSON.stringify throws a raw TypeError.
+		// Route it through the typed rejection like every other unbounded value.
+		if (typeof value === "bigint") {
+			ctx.options.onUnbounded({ bigint: true });
+		}
 		return emit(ctx, JSON.stringify(value));
 	}
 

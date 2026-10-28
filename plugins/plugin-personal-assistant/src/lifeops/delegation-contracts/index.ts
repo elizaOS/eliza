@@ -229,7 +229,7 @@ export function renderDelegationContractsProviderText(
 function normalize(value: string): string {
   return value
     .toLowerCase()
-    .replace(/[^a-z0-9%.$]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}0-9%.$]+/gu, " ")
     .trim();
 }
 
@@ -303,9 +303,16 @@ function tripwireMatches(
     return pricePushbackMatches(turn.text);
   }
   if (tripwire.kind === "keyword") {
-    return tripwire.keywords.some((keyword) =>
-      normalizedText.includes(normalize(keyword)),
-    );
+    return tripwire.keywords.some((keyword) => {
+      const normalizedKeyword = normalize(keyword);
+      // A keyword with no letters, marks, or digits (symbol-only, empty, or
+      // blank) normalizes to "", and "" is a substring of every turn text, so
+      // it must never match.
+      return (
+        normalizedKeyword.length > 0 &&
+        normalizedText.includes(normalizedKeyword)
+      );
+    });
   }
   if (tripwire.kind === "renewal_delta_percent") {
     return (

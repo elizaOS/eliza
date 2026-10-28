@@ -325,6 +325,7 @@ describe("webSearchEdgePlugin", () => {
         });
         expect(callback).toHaveBeenCalledWith({
             text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 
@@ -339,7 +340,7 @@ describe("webSearchEdgePlugin", () => {
         expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it("reports runner failures through the channel callback", async () => {
+    it("keeps runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         globalThis.fetch = vi.fn(
             async () => new Response("unavailable", { status: 503 })
@@ -354,10 +355,11 @@ describe("webSearchEdgePlugin", () => {
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "Web search is temporarily unavailable.",
+            transcriptVisibility: "internal",
         });
     });
 
-    it("reports injected runner failures through the channel callback", async () => {
+    it("keeps injected runner failures internal to the conversation", async () => {
         const callback = vi.fn();
         const controller = new AbortController();
         const [action] =
@@ -386,7 +388,38 @@ describe("webSearchEdgePlugin", () => {
         expect(callback).toHaveBeenCalledOnce();
         expect(callback).toHaveBeenCalledWith({
             text: "The authorized public read is unavailable.",
+            transcriptVisibility: "internal",
         });
+    });
+
+    it("keeps validation failures internal to the conversation", async () => {
+        const cases: Array<{ parameters: Record<string, unknown>; text: string }> = [
+            { parameters: {}, text: "A web search query is required." },
+            {
+                parameters: { query: "current public result", provider: "bogus" },
+                text: "The requested search provider is not supported.",
+            },
+            {
+                parameters: { query: "current public result", provider: "fallback" },
+                text: "The alternate search provider is not available for this turn.",
+            },
+        ];
+        for (const { parameters, text } of cases) {
+            const callback = vi.fn();
+            const result = await webSearchEdgeAction.handler(
+                {} as IAgentRuntime,
+                {} as Memory,
+                undefined,
+                { parameters },
+                callback
+            );
+            expect(result.success).toBe(false);
+            expect(callback).toHaveBeenCalledOnce();
+            expect(callback).toHaveBeenCalledWith({
+                text,
+                transcriptVisibility: "internal",
+            });
+        }
     });
 });
 
@@ -423,4 +456,45 @@ it("direct edge runner distinguishes typed outage from successful zero hits and 
         runWebSearchEdge("aborted query", { signal: controller.signal })
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchImpl).not.toHaveBeenCalled();
+});
+
+it("only an opted-in host runner accepts explicit fallback selection", async () => {
+    const network = vi.fn(async () => {
+        throw new Error("Unexpected public I/O");
+    });
+    globalThis.fetch = network as typeof fetch;
+    const host = vi.fn(async () => ({ success: true, text: "host evidence" }));
+    const unavailable = createWebSearchEdgePlugin(host).actions?.[0];
+    const available = createWebSearchEdgePlugin(host, { fallbackEnabled: true }).actions?.[0];
+    if (!unavailable || !available) throw new Error("Expected canonical search actions");
+    expect(unavailable.parameters?.some((parameter) => parameter.name === "provider")).toBe(false);
+    expect(
+        available.parameters?.find((parameter) => parameter.name === "provider")?.schema
+    ).toEqual({ type: "string", enum: ["default", "fallback"] });
+    for (const provider of ["fallback", "unknown"]) {
+        const denied = await unavailable.handler({} as IAgentRuntime, {} as Memory, undefined, {
+            parameters: { query: "Tokyo news", provider },
+        });
+        expect(denied).toMatchObject({ success: false });
+    }
+    expect(await runWebSearchEdge("Tokyo news", { provider: "fallback" })).toMatchObject({
+        success: false,
+    });
+    expect(host).not.toHaveBeenCalled();
+    const result = await available.handler({} as IAgentRuntime, {} as Memory, undefined, {
+        parameters: { query: "Tokyo news", provider: "fallback" },
+    });
+    expect(result).toMatchObject({ success: true, text: "host evidence" });
+    expect(host).toHaveBeenCalledExactlyOnceWith("Tokyo news", {
+        signal: undefined,
+        provider: "fallback",
+    });
+    expect(network).not.toHaveBeenCalled();
+});
+
+it("refuses fallback opt-in without a host-authorized runner", () => {
+    expect(() => createWebSearchEdgePlugin(undefined, { fallbackEnabled: true })).toThrow(
+        "host-authorized runner"
+    );
+    expect(() => createWebSearchEdgePlugin(runWebSearchEdge, { fallbackEnabled: true })).toThrow();
 });

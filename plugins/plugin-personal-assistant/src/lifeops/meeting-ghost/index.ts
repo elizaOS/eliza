@@ -266,8 +266,9 @@ const WEEKDAYS = new Map([
 
 function normalize(value: string): string {
   return value
+    .normalize("NFC")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, " ")
     .trim();
 }
 
@@ -287,13 +288,37 @@ function speakerOf(segment: TranscriptSegment): string {
   return segment.speakerLabel ?? segment.speakerEntityId ?? "Unknown";
 }
 
+// Letters and digits of every script are word characters, except Hangul,
+// Han and kana, which may abut particles or neighboring characters.
+const SPACED_WORD_CHAR =
+  /(?![\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])[\p{L}\p{M}\p{N}]/u;
+
+function includesWholePhrase(text: string, phrase: string): boolean {
+  const first = phrase[0] ?? "";
+  const last = phrase[phrase.length - 1] ?? "";
+  for (
+    let index = text.indexOf(phrase);
+    index !== -1;
+    index = text.indexOf(phrase, index + 1)
+  ) {
+    const before = text[index - 1] ?? "";
+    const after = text[index + phrase.length] ?? "";
+    const joinedBefore =
+      SPACED_WORD_CHAR.test(first) && SPACED_WORD_CHAR.test(before);
+    const joinedAfter =
+      SPACED_WORD_CHAR.test(last) && SPACED_WORD_CHAR.test(after);
+    if (!joinedBefore && !joinedAfter) return true;
+  }
+  return false;
+}
+
 function careAboutMatches(text: string, careAbout: string): boolean {
   const normalizedText = normalize(text);
   const normalizedCare = normalize(careAbout);
   if (!normalizedCare) return false;
+  if (includesWholePhrase(normalizedText, normalizedCare)) return true;
   const tokens = normalizedCare.split(" ").filter((token) => token.length > 2);
   if (tokens.length === 0) return false;
-  if (normalizedText.includes(normalizedCare)) return true;
   return tokens.every((token) => normalizedText.includes(token));
 }
 
@@ -302,15 +327,35 @@ function findAttendeeEmail(
   name: string,
 ): string | null {
   const normalizedName = normalize(name);
-  const attendee = attendees.find((entry) => {
+  if (!normalizedName) return null;
+  const exact = attendees.filter(
+    (entry) => normalize(entry.name) === normalizedName,
+  );
+  if (exact.length > 0)
+    return exact.length === 1 ? (exact[0].email ?? null) : null;
+  // A whole-word match outranks a raw substring match: "Ann" names Ann Lee
+  // even though it is also a substring of Joanne Park. Only a unique
+  // whole-word hit resolves; several stay ambiguous.
+  const wholeWord = attendees.filter((entry) => {
     const attendeeName = normalize(entry.name);
+    if (!attendeeName) return false;
+    return (
+      includesWholePhrase(attendeeName, normalizedName) ||
+      includesWholePhrase(normalizedName, attendeeName)
+    );
+  });
+  if (wholeWord.length > 0)
+    return wholeWord.length === 1 ? (wholeWord[0].email ?? null) : null;
+  const matches = attendees.filter((entry) => {
+    const attendeeName = normalize(entry.name);
+    if (!attendeeName) return false;
     return (
       attendeeName === normalizedName ||
       attendeeName.includes(normalizedName) ||
       normalizedName.includes(attendeeName)
     );
   });
-  return attendee?.email ?? null;
+  return matches.length === 1 ? (matches[0].email ?? null) : null;
 }
 
 function parseDecision(

@@ -38,11 +38,17 @@ import type {
   Memory,
   ProviderDataRecord,
 } from "@elizaos/core";
-import { describeUserReference, hasRoleAccess, logger } from "@elizaos/core";
+import {
+  describeUserReference,
+  hasRoleAccess,
+  logger,
+  resolveScheduledAtIsoInTimeZone,
+} from "@elizaos/core";
 import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
 import {
   getDefaultTriageService,
   requireSendConsent,
+  resolveMessageTimeZone,
   sendConsentDigest,
 } from "@elizaos/plugin-assistant";
 import { InboxRepository } from "../inbox/repository.ts";
@@ -103,9 +109,15 @@ export interface InboxItem {
   readonly platform: InboxPlatform;
   readonly channel: string;
   readonly senderName: string;
+  readonly senderIdentifier?: string;
   readonly snippet: string;
   readonly receivedAt: string;
   readonly threadTopic?: string;
+  /**
+   * The conversation this message belongs to, scoped to its account
+   * (`worldId:threadId`); absent when the source has no thread.
+   */
+  readonly threadKey?: string;
   readonly deepLink?: string;
   readonly unread?: boolean;
 }
@@ -181,6 +193,7 @@ export type InboxSendAuthorization =
  */
 export type InboxFetcher = (args: {
   runtime: IAgentRuntime;
+  requester?: Memory;
   since?: string;
   limit?: number;
   query?: string;
@@ -209,6 +222,9 @@ function mapMessageRefToInboxItem(ref: MessageRef): InboxItem | null {
     snippet: ref.snippet,
     receivedAt: new Date(ref.receivedAtMs).toISOString(),
     ...(ref.subject ? { threadTopic: ref.subject } : {}),
+    ...(ref.threadId
+      ? { threadKey: `${ref.worldId ?? ""}:${ref.threadId}` }
+      : {}),
     ...(typeof ref.metadata?.htmlLink === "string"
       ? { deepLink: ref.metadata.htmlLink }
       : {}),
@@ -240,7 +256,7 @@ function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
       throw new Error(`no inbox source registered for ${platform}`);
     };
   }
-  return async ({ runtime, since, limit, query }) => {
+  return async ({ runtime, since, limit, query, requester }) => {
     if (typeof runtime.getService !== "function") return [];
     try {
       const service = getDefaultTriageService();
@@ -253,14 +269,20 @@ function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
         );
       }
       const refs = query
-        ? await service.search(runtime, {
-            sources: [source],
-            content: query,
-            sinceMs: parseSinceMs(since),
-            ...(limit === undefined ? {} : { limit }),
-          })
+        ? await service.search(
+            runtime,
+            {
+              sources: [source],
+              requester,
+              content: query,
+              sinceMs: parseSinceMs(since),
+              ...(limit === undefined ? {} : { limit }),
+            },
+            { probeOverflow: false },
+          )
         : await service.triage(runtime, {
             sources: [source],
+            requester,
             sinceMs: parseSinceMs(since),
             ...(limit === undefined ? {} : { limit }),
           });
@@ -347,9 +369,14 @@ function resolvePlatforms(
   return [...seen];
 }
 
+/**
+ * One row per conversation: messages of one thread collapse to the newest. A
+ * subject is not a thread (two senders can both write "Quick question"), so
+ * only the source's own thread id groups messages.
+ */
 function dedupeKey(item: InboxItem): string {
-  if (item.threadTopic && item.threadTopic.length > 0) {
-    return `topic:${item.threadTopic.toLowerCase()}::${item.platform}::${item.channel}`;
+  if (item.threadKey) {
+    return `thread:${item.platform}::${item.threadKey}`;
   }
   return `id:${item.platform}::${item.id}`;
 }
@@ -398,6 +425,7 @@ export function dedupeAndOrder(
  */
 async function fetchInboxItems(args: {
   runtime: IAgentRuntime;
+  requester?: Memory;
   platforms: readonly InboxPlatform[];
   since?: string;
   limit?: number;
@@ -414,6 +442,7 @@ async function fetchInboxItems(args: {
       const fetcher = activeFetchers[platform];
       return fetcher({
         runtime: args.runtime,
+        requester: args.requester,
         ...(args.since ? { since: args.since } : {}),
         ...(probeLimit === undefined ? {} : { limit: probeLimit }),
         ...(args.query ? { query: args.query } : {}),
@@ -481,8 +510,13 @@ function fetchScopeSuffix(args: {
  * contract, enriching from the canonical {@link MessageRef} in the core triage
  * store when one exists (full body text, group/DM shape, thread + room ids).
  */
-function toInboundMessage(item: InboxItem): InboundMessage {
-  const ref = getDefaultTriageService().getStore().getMessage(item.id);
+function toInboundMessage(
+  runtime: IAgentRuntime,
+  item: InboxItem,
+): InboundMessage {
+  const ref = getDefaultTriageService()
+    .getStore()
+    .getMessage(item.id, runtime.agentId);
   const timestamp = ref?.receivedAtMs ?? Date.parse(item.receivedAt);
   if (!Number.isFinite(timestamp)) {
     throw new Error(
@@ -569,7 +603,10 @@ const DEFAULT_SNOOZE_MS = 24 * 60 * 60 * 1000;
  *   - an INVALID timestamp         -> `null`, so the caller rejects bad input
  *                                     instead of silently snoozing to default
  */
-function resolveSnoozeUntil(params: InboxActionParameters): string | null {
+function resolveSnoozeUntil(
+  params: InboxActionParameters,
+  timeZone: string | null,
+): string | null {
   const raw = params.snoozedUntil ?? params.until;
   if (raw === undefined) {
     return new Date(Date.now() + DEFAULT_SNOOZE_MS).toISOString();
@@ -577,7 +614,11 @@ function resolveSnoozeUntil(params: InboxActionParameters): string | null {
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  const parsed = Date.parse(trimmed);
+  // A planner turn writes an offset-free time as a wall clock in the user's
+  // zone (CURRENT_TIME's); Date.parse would read it in the host zone.
+  const parsed = Date.parse(
+    timeZone ? resolveScheduledAtIsoInTimeZone(trimmed, timeZone) : trimmed,
+  );
   if (!Number.isFinite(parsed)) return null;
   return new Date(parsed).toISOString();
 }
@@ -640,32 +681,35 @@ function seedMessageRefForEntry(
   const messageId = ensureSourceMessageId(entry);
   const threadId = entry.sourceRoomId ?? entry.sourceMessageId;
   const service = getDefaultTriageService();
-  if (service.getStore().getMessage(messageId)) return;
-  service.getStore().saveMessage({
-    id: messageId,
-    source,
-    externalId: messageId,
-    from: {
-      identifier: entry.sourceEntityId ?? entry.senderName ?? messageId,
-      ...(entry.senderName ? { displayName: entry.senderName } : {}),
+  if (service.getStore().getMessage(messageId, runtime.agentId)) return;
+  service.getStore().saveMessage(
+    {
+      id: messageId,
+      source,
+      externalId: messageId,
+      from: {
+        identifier: entry.sourceEntityId ?? entry.senderName ?? messageId,
+        ...(entry.senderName ? { displayName: entry.senderName } : {}),
+      },
+      to: [{ identifier: runtime.agentId }],
+      snippet: entry.snippet,
+      body: entry.threadContext?.join("\n") ?? entry.snippet,
+      receivedAtMs: inboxReceivedAtMs(entry.createdAt),
+      hasAttachments: false,
+      isRead: false,
+      metadata: {
+        inboxEntryId: entry.id,
+        deepLink: entry.deepLink,
+        triageReasoning: entry.triageReasoning,
+      },
+      ...(threadId ? { threadId } : {}),
+      ...(entry.source === "gmail" ? { subject: entry.channelName } : {}),
+      ...(entry.sourceRoomId
+        ? { worldId: entry.sourceRoomId, channelId: entry.sourceRoomId }
+        : {}),
     },
-    to: [{ identifier: runtime.agentId }],
-    snippet: entry.snippet,
-    body: entry.threadContext?.join("\n") ?? entry.snippet,
-    receivedAtMs: inboxReceivedAtMs(entry.createdAt),
-    hasAttachments: false,
-    isRead: false,
-    metadata: {
-      inboxEntryId: entry.id,
-      deepLink: entry.deepLink,
-      triageReasoning: entry.triageReasoning,
-    },
-    ...(threadId ? { threadId } : {}),
-    ...(entry.source === "gmail" ? { subject: entry.channelName } : {}),
-    ...(entry.sourceRoomId
-      ? { worldId: entry.sourceRoomId, channelId: entry.sourceRoomId }
-      : {}),
-  });
+    runtime.agentId,
+  );
 }
 
 async function replyToEntry(args: {
@@ -694,7 +738,11 @@ async function replyToEntry(args: {
         sourceRoomId: args.entry.sourceRoomId ?? null,
         body: args.body,
       }),
-      { affirmations: [`inbox approve ${args.entry.id}`] },
+      {
+        affirmations: [`inbox approve ${args.entry.id}`],
+        source: args.entry.source,
+        requestMessageId: args.authorization.message.id,
+      },
     );
     if (consent === "cancelled") {
       return {
@@ -710,16 +758,31 @@ async function replyToEntry(args: {
     send = consent === "confirmed";
   }
 
+  // Claim before drafting: a retried or concurrent approve of a body that
+  // was already sent must not reach the connector again.
+  if (send && !(await args.repo.claimReplySend(args.entry.id, args.body))) {
+    return {
+      success: false,
+      text: "This reply was already sent. Nothing was sent again.",
+      data: {
+        subaction: "reply",
+        entryId: args.entry.id,
+        alreadySent: true,
+      },
+    };
+  }
+
   seedMessageRefForEntry(args.runtime, args.entry);
   const service = getDefaultTriageService();
-  const draft = await service.draftReply(
-    args.runtime,
-    sourceMessageId,
-    args.body,
-  );
-  await args.repo.updateDraftResponse(args.entry.id, args.body);
-
+  let draft: Awaited<ReturnType<typeof service.draftReply>>;
+  try {
+    draft = await service.draftReply(args.runtime, sourceMessageId, args.body);
+  } catch (error) {
+    if (send) await args.repo.releaseReplySend(args.entry.id, args.entry);
+    throw error;
+  }
   if (!send) {
+    await args.repo.updateDraftResponse(args.entry.id, args.body);
     return {
       success: true,
       text: appendInboxDraftChoiceMarker(
@@ -737,11 +800,20 @@ async function replyToEntry(args: {
     };
   }
 
-  const sent = await service.sendDraft(args.runtime, draft.draftId);
-  await args.repo.markResolved(args.entry.id, {
-    draftResponse: args.body,
-    autoReplied: true,
-  });
+  let sent: Awaited<ReturnType<typeof service.sendDraft>>;
+  try {
+    sent = await service.sendDraft(
+      args.runtime,
+      draft.draftId,
+      undefined,
+      args.authorization.kind === "turn"
+        ? args.authorization.message
+        : undefined,
+    );
+  } catch (error) {
+    await args.repo.releaseReplySend(args.entry.id, args.entry);
+    throw error;
+  }
   return {
     success: true,
     text: `Sent reply on ${sent.source}.`,
@@ -825,16 +897,31 @@ export async function executeInboxQueueOperation(args: {
       }
       const { merged, degraded, capped } = await fetchInboxItems({
         runtime: args.runtime,
+        requester:
+          args.authorization.kind === "turn"
+            ? args.authorization.message
+            : undefined,
         platforms,
         ...(since ? { since } : {}),
         ...(limit === undefined ? {} : { limit }),
       });
-      const alreadyTriaged = await repo.getBySourceMessageIds(
-        merged.map((item) => item.id),
+      const alreadyTriagedByPlatform = new Map<InboxPlatform, Set<string>>();
+      await Promise.all(
+        platforms.map(async (platform) => {
+          const ids = merged
+            .filter((item) => item.platform === platform)
+            .map((item) => item.id);
+          alreadyTriagedByPlatform.set(
+            platform,
+            await repo.getBySourceMessageIds(platform, ids),
+          );
+        }),
       );
       const freshMessages = merged
-        .filter((item) => !alreadyTriaged.has(item.id))
-        .map((item) => toInboundMessage(item));
+        .filter(
+          (item) => !alreadyTriagedByPlatform.get(item.platform)?.has(item.id),
+        )
+        .map((item) => toInboundMessage(args.runtime, item));
       if (freshMessages.length > 0) {
         const service = new InboxService(args.runtime);
         const { triaged } = await service.triage(freshMessages);
@@ -907,7 +994,12 @@ export async function executeInboxQueueOperation(args: {
     }
     case "snooze": {
       const id = requireEntryId(args.params);
-      const until = resolveSnoozeUntil(args.params);
+      const until = resolveSnoozeUntil(
+        args.params,
+        args.authorization.kind === "turn"
+          ? resolveMessageTimeZone(args.runtime, args.authorization.message)
+          : null,
+      );
       if (!until) {
         throw new Error("valid snooze timestamp is required");
       }
@@ -1206,6 +1298,7 @@ export const inboxAction: Action & {
     const { merged, totalBeforeDedupe, degraded, capped } =
       await fetchInboxItems({
         runtime,
+        requester: message,
         platforms,
         ...(since ? { since } : {}),
         ...(limit === undefined ? {} : { limit }),

@@ -9,6 +9,9 @@ credentials. `extractCompleteDocument` also requires a working IMAGE_DESCRIPTION
 and rejects failed pages rather than presenting partial text as complete. Text-only
 helpers do not establish complete visual extraction.
 
+`convertPdfToText` preserves native PDF line breaks and words split across font
+runs. It does not insert spaces between adjoining runs or perform model inference.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

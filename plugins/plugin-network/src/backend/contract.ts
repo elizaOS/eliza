@@ -25,7 +25,55 @@ export const SIGNALS_PATH = "/internal/signals";
 export const UPDATES_PATH = "/internal/updates";
 export const RELAY_PATH = "/internal/relay";
 
+/** Opaque server-selected route identity carried INSIDE the existing signed JSON body.
+ * No URL, credential or client-supplied clock grants authority. Receivers separately
+ * resolve this tuple against their expected audience, realm and retained route policy.
+ */
+export interface NetworkRouteAuthorityV1 {
+  readonly version: 1;
+  readonly routeId: string;
+  readonly generation: string;
+  readonly audience: string;
+  readonly realmId: string;
+}
+
+/** Structural validation only; this does not verify a signature or grant admission. */
+export function parseNetworkRouteAuthorityV1(
+  value: unknown,
+): NetworkRouteAuthorityV1 | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const record = value as Record<string, unknown>;
+  const keys = ["version", "routeId", "generation", "audience", "realmId"];
+  if (
+    Object.keys(record).length !== keys.length ||
+    Object.keys(record).some((key) => !keys.includes(key)) ||
+    record.version !== 1
+  )
+    return undefined;
+  const boundedId = (input: unknown, limit: number): input is string =>
+    typeof input === "string" &&
+    input.length <= limit &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u.test(input);
+  if (
+    !boundedId(record.routeId, 64) ||
+    !boundedId(record.generation, 64) ||
+    !boundedId(record.audience, 128) ||
+    !boundedId(record.realmId, 64)
+  )
+    return undefined;
+  return Object.freeze({
+    version: 1,
+    routeId: record.routeId,
+    generation: record.generation,
+    audience: record.audience,
+    realmId: record.realmId,
+  });
+}
+
 export interface TurnRequest {
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   /** The provider message id (Blooio msg_… / Twilio SM…). Idempotency key: a replay returns the stored result and runs nothing. */
   messageId: string;
   channel: "blooio" | "twilio";
@@ -91,6 +139,8 @@ export type TurnResponse =
 
 /** Gateway acknowledgement of the exact collected outputs for one inbound turn. */
 export interface TurnReceiptRequest {
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   channel: TurnRequest["channel"];
   messageId: string;
   replyIds: string[];
@@ -105,7 +155,170 @@ export interface TurnReceiptResponse {
   replayed: boolean;
 }
 
+/** Approved by the service for ONE voluntary item, never a gallery permission or model URL.
+ * Structural parsing does not grant consent, review authority or delivery admission.
+ */
+export interface ApprovedRelayPhoto {
+  version: 1;
+  app: NetworkAppId;
+  itemId: string;
+  threadId: string;
+  senderMemberId: string;
+  recipientMemberId: string;
+  photoId: string;
+  sha256: string;
+  bytes: number;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  consentId: string;
+  consentedAt: number;
+  reviewId: string;
+  reviewedAt: number;
+  policyVersion: string;
+  expiresAt: number;
+}
+
+export const RELAY_PHOTO_RESOLVE_PATH = "/internal/relay-photo/resolve";
+export const RELAY_PHOTO_MAX_BYTES = 8 * 1024 * 1024;
+export const RELAY_PHOTO_MAX_ITEMS = 3;
+export const RELAY_PHOTO_CONSENT_TTL_MS = 15 * 60_000;
+export interface RelayPhotoResolveRequest {
+  /** Retain the existing server-bound route; never substitutes for route admission. */
+  networkAuthority?: NetworkRouteAuthorityV1;
+  /** Existing Cloud/Gateway provider intent key; never a new retry namespace. */
+  id: string;
+  deliveryId: string;
+  to: string;
+  approvedPhotos: ApprovedRelayPhoto[];
+}
+export interface RelayPhotoResolveResponse {
+  photos: Array<
+    Pick<ApprovedRelayPhoto, "photoId" | "sha256" | "bytes" | "contentType"> & {
+      /** Only a purpose-separated delivery capability from the trusted service origin. */
+      url: string;
+    }
+  >;
+}
+
+/** Strict, normalized immutable identity for hashing; freshness is checked only before a new send.
+ * Receipt recovery must still recognize an expired descriptor without dispatching again.
+ */
+export function parseApprovedRelayPhotos(
+  value: unknown,
+): ApprovedRelayPhoto[] | undefined {
+  if (
+    !Array.isArray(value) ||
+    !value.length ||
+    value.length > RELAY_PHOTO_MAX_ITEMS
+  )
+    return undefined;
+  const keys = [
+    "version",
+    "app",
+    "itemId",
+    "threadId",
+    "senderMemberId",
+    "recipientMemberId",
+    "photoId",
+    "sha256",
+    "bytes",
+    "contentType",
+    "consentId",
+    "consentedAt",
+    "reviewId",
+    "reviewedAt",
+    "policyVersion",
+    "expiresAt",
+  ];
+  const id = (v: unknown): v is string =>
+    typeof v === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u.test(v);
+  const time = (v: unknown): v is number =>
+    typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+  const photos: ApprovedRelayPhoto[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry))
+      return undefined;
+    const p = entry as Record<string, unknown>;
+    if (
+      Object.keys(p).length !== keys.length ||
+      Object.keys(p).some((k) => !keys.includes(k)) ||
+      p.version !== 1 ||
+      !NETWORK_APP_IDS.includes(p.app as NetworkAppId)
+    )
+      return undefined;
+    if (
+      ![
+        p.itemId,
+        p.threadId,
+        p.senderMemberId,
+        p.recipientMemberId,
+        p.consentId,
+        p.reviewId,
+        p.policyVersion,
+      ].every(id) ||
+      p.senderMemberId === p.recipientMemberId ||
+      typeof p.photoId !== "string" ||
+      !/^ph_[a-f0-9]{24}$/u.test(p.photoId) ||
+      typeof p.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/u.test(p.sha256)
+    )
+      return undefined;
+    if (
+      typeof p.bytes !== "number" ||
+      !Number.isSafeInteger(p.bytes) ||
+      p.bytes <= 0 ||
+      p.bytes > RELAY_PHOTO_MAX_BYTES ||
+      typeof p.contentType !== "string" ||
+      !["image/jpeg", "image/png", "image/webp"].includes(p.contentType)
+    )
+      return undefined;
+    if (
+      !time(p.consentedAt) ||
+      !time(p.reviewedAt) ||
+      !time(p.expiresAt) ||
+      p.reviewedAt < p.consentedAt ||
+      p.expiresAt <= p.reviewedAt ||
+      p.expiresAt - p.consentedAt > RELAY_PHOTO_CONSENT_TTL_MS
+    )
+      return undefined;
+    photos.push({
+      version: 1,
+      app: p.app as NetworkAppId,
+      itemId: p.itemId as string,
+      threadId: p.threadId as string,
+      senderMemberId: p.senderMemberId as string,
+      recipientMemberId: p.recipientMemberId as string,
+      photoId: p.photoId,
+      sha256: p.sha256,
+      bytes: p.bytes,
+      contentType: p.contentType as ApprovedRelayPhoto["contentType"],
+      consentId: p.consentId as string,
+      consentedAt: p.consentedAt,
+      reviewId: p.reviewId as string,
+      reviewedAt: p.reviewedAt,
+      policyVersion: p.policyVersion as string,
+      expiresAt: p.expiresAt,
+    });
+  }
+  const first = photos[0];
+  if (!first) return undefined;
+  const shared = keys.filter(
+    (k) => !["photoId", "sha256", "bytes", "contentType"].includes(k),
+  ) as Array<keyof ApprovedRelayPhoto>;
+  if (
+    new Set(photos.map((p) => p.photoId)).size !== photos.length ||
+    photos.some((p) => shared.some((k) => p[k] !== first[k]))
+  )
+    return undefined;
+  return photos;
+}
+
 export interface DeliverRequest {
+  /** Server-approved voluntary relay only. No arbitrary media URL is accepted. */
+  approvedPhotos?: ApprovedRelayPhoto[];
+  /** Mandatory for isolated reply delivery; must match a durably admitted turn. */
+  networkParentTurn?: Pick<TurnRequest, "channel" | "messageId">;
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   /** Idempotency key (also x-ntwrk-svc-id). The gateway sends each key at most once. */
   id: string;
   to: string;
@@ -142,6 +355,8 @@ export type DeliverResponse =
  * memberId and app are the service's, from the open TurnResponse; never from model output.
  */
 export interface SetStateRequest {
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   messageId: string;
   channel: TurnRequest["channel"];
   idempotencyKey: string;
@@ -165,6 +380,8 @@ export interface SetStateResponse {
 }
 
 export interface SignalsRequest {
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   channel: TurnRequest["channel"];
   messageId: string;
   app: NetworkAppId;
@@ -179,6 +396,8 @@ export interface SignalsResponse {
 }
 
 export interface UpdatesRequest {
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   channel: TurnRequest["channel"];
   app: NetworkAppId;
   memberId: string;
@@ -196,6 +415,8 @@ export interface UpdatesResponse {
  * `rendered` ever reaches the other member, through /api/internal/network/deliver (kind "relay").
  */
 export interface RelaySendRequest {
+  /** Optional for legacy production; mandatory and server-verified in isolated realms. */
+  networkAuthority?: NetworkRouteAuthorityV1;
   channel: TurnRequest["channel"];
   messageId: string;
   app: NetworkAppId;

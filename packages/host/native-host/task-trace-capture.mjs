@@ -80,23 +80,27 @@ export function createTaskTraceCapture({
         // The journal keeps every task the owner ever ran, so scan it in id
         // pages rather than refusing an owner with many tasks. Per-task
         // checkpoints make re-reading an already captured task a no-op.
+        // One JSON array per page over `get`: the encrypted task driver has
+        // no `all`, and the task store reads its journal the same way.
         const taskPage = db.prepare(
-          "SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? AND id>? ORDER BY id LIMIT ?",
+          "SELECT json_group_array(id) AS ids FROM (SELECT id FROM interactive_task_journal_v1 WHERE owner_key=? AND id>? ORDER BY id LIMIT ?)",
         );
         let captured = 0,
           excluded = 0,
           budget = 5000;
         for (let afterId = ""; ; ) {
-          const rows = taskPage.all(ownerKey, afterId, TASK_SCAN_PAGE);
-          for (const row of rows) {
-            const sourceId = pseudonym("source", row.id),
-              taskId = pseudonym("task", row.id),
-              sessionId = pseudonym("session", row.id);
+          const ids = JSON.parse(
+            taskPage.get(ownerKey, afterId, TASK_SCAN_PAGE).ids,
+          );
+          for (const id of ids) {
+            const sourceId = pseudonym("source", id),
+              taskId = pseudonym("task", id),
+              sessionId = pseudonym("session", id);
             let cursor = queue.checkpoint(sourceId);
             for (;;) {
               if (!isCurrentOwner())
                 throw new NativeHostError("Pilot task owner changed");
-              const page = tasks.events(row.id, owner, cursor);
+              const page = tasks.events(id, owner, cursor);
               if (
                 !Array.isArray(page.events) ||
                 (page.hasMore && page.events.length === 0) ||
@@ -126,7 +130,7 @@ export function createTaskTraceCapture({
                       complete: "completed",
                     }[entry.kind] ?? "unknown";
                   queue.append({
-                    eventId: pseudonym("event", row.id, entry.sequence),
+                    eventId: pseudonym("event", id, entry.sequence),
                     participantId,
                     deviceId,
                     sessionId,
@@ -158,8 +162,8 @@ export function createTaskTraceCapture({
               if (!page.hasMore) break;
             }
           }
-          if (rows.length < TASK_SCAN_PAGE) break;
-          afterId = rows.at(-1).id;
+          if (ids.length < TASK_SCAN_PAGE) break;
+          afterId = ids.at(-1);
         }
         return { captured, excluded, hasMore: false };
       } finally {

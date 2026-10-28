@@ -800,10 +800,6 @@ function AppProviderInner({
       inventorySortDirection,
       inventoryChainFilters,
       walletError,
-      registryStatus,
-      registryLoading,
-      registryRegistering,
-      registryError,
       dropStatus,
       dropLoading,
       mintInProgress,
@@ -831,9 +827,6 @@ function AppProviderInner({
     loadNfts,
     handleWalletApiKeySave,
     handleExportKeys,
-    loadRegistryStatus,
-    registerOnChain,
-    syncRegistryProfile,
     loadDropStatus,
     mintFromDrop,
     loadWhitelistStatus,
@@ -1154,18 +1147,18 @@ function AppProviderInner({
     (
       text: string,
       options?: { metadata?: Record<string, unknown> },
-    ): Promise<void> => {
+    ): Promise<boolean> => {
       // The in-chat model-status card's `__model__:` controls (cancel / switch
       // to cloud / retry / download) are consumed by the model-status conductor
       // and NEVER reach the server — regardless of onboarding state.
-      if (tryHandleModelAction(text)) return Promise.resolve();
+      if (tryHandleModelAction(text)) return Promise.resolve(true);
       // Tutorial choice picks (`__tutorial__:` prefix) are likewise consumed
       // unconditionally — a tap on a leftover tour widget in an old transcript
       // must never become a literal chat message to the agent.
-      if (tryHandleTutorialAction(text)) return Promise.resolve();
+      if (tryHandleTutorialAction(text)) return Promise.resolve(true);
       // Same contract for the in-chat boot-recovery card's `__boot_recovery__:`
       // controls (re-log in / try again / retry setup).
-      if (tryHandleBootRecoveryAction(text)) return Promise.resolve();
+      if (tryHandleBootRecoveryAction(text)) return Promise.resolve(true);
       const firstRunIsComplete = firstRunComplete === true;
       switch (
         classifyActionMessage(text, firstRunIsComplete, {
@@ -1184,15 +1177,15 @@ function AppProviderInner({
           if (fallbackPath && typeof window !== "undefined") {
             window.location.assign(fallbackPath);
           }
-          return Promise.resolve();
+          return Promise.resolve(true);
         }
         case "conductor":
           tryHandleFirstRunText(text);
-          return Promise.resolve();
+          return Promise.resolve(true);
         case "send":
           // Explicit "start/stop/restart tutorial" commands drive the tour
           // locally; every other message flows to the real send untouched.
-          if (tryHandleTutorialText(text)) return Promise.resolve();
+          if (tryHandleTutorialText(text)) return Promise.resolve(true);
           return options
             ? rawSendActionMessage(text, options)
             : rawSendActionMessage(text);
@@ -1870,10 +1863,6 @@ function AppProviderInner({
       inventorySortDirection,
       inventoryChainFilters,
       walletError,
-      registryStatus,
-      registryLoading,
-      registryRegistering,
-      registryError,
       dropStatus,
       dropLoading,
       mintInProgress,
@@ -2084,9 +2073,6 @@ function AppProviderInner({
       rejectStewardTx,
       handleWalletApiKeySave,
       handleExportKeys,
-      loadRegistryStatus,
-      registerOnChain,
-      syncRegistryProfile,
       loadDropStatus,
       mintFromDrop,
       loadWhitelistStatus,
@@ -2215,10 +2201,6 @@ function AppProviderInner({
       inventorySortDirection,
       inventoryChainFilters,
       walletError,
-      registryStatus,
-      registryLoading,
-      registryRegistering,
-      registryError,
       dropStatus,
       dropLoading,
       mintInProgress,
@@ -2422,9 +2404,6 @@ function AppProviderInner({
       rejectStewardTx,
       handleWalletApiKeySave,
       handleExportKeys,
-      loadRegistryStatus,
-      registerOnChain,
-      syncRegistryProfile,
       loadDropStatus,
       mintFromDrop,
       loadWhitelistStatus,

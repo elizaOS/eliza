@@ -82,6 +82,17 @@ the selected service; the plugin never sets secure settings or infers selection.
 
 ## Secrets boundary
 
+`openEditor()` creates an entry through a native FLAG_SECURE form. It accepts no
+arguments: typing and generation stay in native memory, and the only result is
+`{status: "saved", id}` or `{status: "cancelled"}`. The existing vault unlock must
+still be active. The editor refuses overlapping editors, rejects obscured input,
+disables view-state persistence, autofill and password copy/cut actions, and clears drafts on Cancel,
+background, lock or grant expiry. It accepts one exact HTTPS origin and never
+silently replaces an existing entry. Oversize edits are rejected as a whole with a visible error, never truncated. Editing/revision control, device-unlocked
+custody migration and host microphone/capture coordination are separate work;
+this method does not change the vault authentication policy. Hosts must stop
+capture and speech before opening any secret surface.
+
 No `ElizaPasswords` method resolves with a secret. `save` accepts a password typed by the user
 (write-only) or generates one natively (`generate`). `reveal` shows a FLAG_SECURE native dialog
 that hides after 30 s or when the host stops; `copy` marks the clip sensitive and schedules

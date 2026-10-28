@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { expect, test } from "vitest";
 
-test("actual shared Calendar reader scopes owner-day all-day events by civil dates", {
+test("actual shared Calendar reader scopes owner-day all-day events by civil dates and reads free/busy", {
   skip: !process.env.ELIZA_JSON_JAR,
 }, () => {
   const root = resolve(import.meta.dirname, "../../../.."),
@@ -52,6 +52,18 @@ test("actual shared Calendar reader scopes owner-day all-day events by civil dat
         { encoding: "utf8" },
       ),
     ).toMatch(/^PASS selected Calendar reader/);
+    // Free/busy read: the provider query runs in sqlite3 over CalendarProvider column names.
+    expect(
+      execFileSync(
+        join(java, "bin/java"),
+        [
+          "-cp",
+          `${temporary}:${process.env.ELIZA_JSON_JAR}`,
+          "ai.eliza.plugins.calendar.read.SelectedCalendarAvailabilityTest",
+        ],
+        { encoding: "utf8" },
+      ),
+    ).toMatch(/^PASS selected Calendar availability reader/);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }

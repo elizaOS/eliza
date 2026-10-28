@@ -34,10 +34,12 @@ async function resolveTargetMessageId(
   runtime: IAgentRuntime,
   service: TriageService,
   parsed: ManageMessageParams,
+  requester: Memory,
 ): Promise<string | null> {
   if (parsed.messageId) return parsed.messageId;
   const hits = await service.search(runtime, {
     ...parsed.lookup,
+    requester,
     sources:
       parsed.lookup.sources ?? (parsed.source ? [parsed.source] : undefined),
     limit: 1,
@@ -142,7 +144,12 @@ export const manageMessageAction: Action = {
     }
 
     const service = getDefaultTriageService();
-    const messageId = await resolveTargetMessageId(runtime, service, parsed);
+    const messageId = await resolveTargetMessageId(
+      runtime,
+      service,
+      parsed,
+      message,
+    );
     if (!messageId) {
       const text = "No matching message found to manage.";
       logger.warn(`[ManageMessage] ${text}`);
@@ -151,7 +158,7 @@ export const manageMessageAction: Action = {
 
     if (parsed.operation.kind === "unsubscribe") {
       // Refuse before asking: a yes to an unsupported unsubscribe can only fail.
-      const adapter = service.getManageAdapter(messageId, {
+      const adapter = service.getManageAdapter(runtime, messageId, {
         source: parsed.source,
       });
       if (adapter?.capabilities().manage.unsubscribe !== true) {
@@ -205,6 +212,7 @@ export const manageMessageAction: Action = {
 
     const result = await service.manage(runtime, messageId, parsed.operation, {
       source: parsed.source,
+      requester: message,
     });
 
     const opLabel = parsed.operation.kind;

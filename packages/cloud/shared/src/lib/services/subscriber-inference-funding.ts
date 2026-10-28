@@ -21,6 +21,10 @@ import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { writeTransaction } from "../../db/helpers";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
+import {
+  type AllowanceFundingAuthority,
+  subscriptionAllowanceRepository,
+} from "../../db/repositories/subscription-allowance";
 import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscription-allowance-eligibility";
 import { billingFundingReservations } from "../../db/schemas/billing-funding-reservations";
 import { organizations } from "../../db/schemas/organizations";
@@ -102,7 +106,12 @@ function capacityFrom(
 export async function readSubscriberFundingCapacityInTransaction(
   tx: DbTransaction,
   organizationId: string,
-  options: { policy?: OrganizationQuotaPolicy; now?: Date } = {},
+  options: {
+    policy?: OrganizationQuotaPolicy;
+    now?: Date;
+    /** Updated locked period already checked for eligibility at `now` in this transaction. */
+    allowanceAuthority?: AllowanceFundingAuthority;
+  } = {},
 ): Promise<SubscriberFundingCapacity> {
   if (options.policy) {
     const balance = requireOrganizationPolicyBalance(options.policy);
@@ -129,7 +138,16 @@ export async function readSubscriberFundingCapacityInTransaction(
     .where(eq(organizations.id, organizationId));
   if (!org) invalidCapacity(organizationId, "organization");
   const now = options.now ?? (await readPostLockDatabaseNow(tx));
-  const allowance = await readEligibleSubscriptionAllowance(tx, organizationId, now, false);
+  const authority = options.allowanceAuthority;
+  if (authority)
+    subscriptionAllowanceRepository.assertLockedAuthority(tx, organizationId, authority);
+  const allowance = authority
+    ? authority.period.state === "open" &&
+      authority.period.period_start <= now &&
+      authority.period.expires_at > now
+      ? authority.period
+      : undefined
+    : await readEligibleSubscriptionAllowance(tx, organizationId, now, false);
   return capacityFrom(
     organizationId,
     org.credit_balance,
@@ -203,6 +221,7 @@ export async function fundSubscriberInferenceCharge(
     let purchasedCreditRefunded = false;
     let replayed = false;
     let actualCost = input.amountUsd;
+    let allowanceAuthority: AllowanceFundingAuthority | undefined;
     if (existing) {
       replayed = true;
       reservationId = existing.id;
@@ -247,15 +266,24 @@ export async function fundSubscriberInferenceCharge(
           reservationTtlMs: RESERVATION_SWEEP_GRACE_MS,
           metadata,
         });
-        await subscriptionFundingService.settleInTransaction(tx, {
-          organizationId: input.organizationId,
-          logicalOperationId,
-          operation: "ai_inference",
-          actualAmount: reserved.reservation.requested_amount,
-          occurredAt: reserved.reservation.created_at,
-          metadata,
-          payoutActualAmount,
-        });
+        await subscriptionFundingService.settleInTransaction(
+          tx,
+          {
+            organizationId: input.organizationId,
+            logicalOperationId,
+            operation: "ai_inference",
+            actualAmount: reserved.reservation.requested_amount,
+            occurredAt: reserved.reservation.created_at,
+            metadata,
+            payoutActualAmount,
+          },
+          reserved.allowanceAuthority,
+        );
+        // reserve and settle retain the same locked source. Reuse only the
+        // period whose eligibility was checked above at this transaction's
+        // original capacity clock; finalization updates this authority in place.
+        if (reserved.allowanceAuthority?.period.id === allowance?.id)
+          allowanceAuthority = reserved.allowanceAuthority;
         reservationId = reserved.reservation.id;
         purchasedCreditDebited = reserved.purchasedCreditDebited;
         collected = funded;
@@ -271,6 +299,7 @@ export async function fundSubscriberInferenceCharge(
     }
     const capacity = await readSubscriberFundingCapacityInTransaction(tx, input.organizationId, {
       now,
+      allowanceAuthority,
     });
     return {
       collected,

@@ -25,7 +25,7 @@ const AGENT_ID = "00000000-0000-4000-8000-000000000001" as UUID;
 const OWNER_ID = "00000000-0000-4000-8000-000000000002" as UUID;
 const ROOM_ID = "00000000-0000-4000-8000-000000000003" as UUID;
 
-function relationship(id: string, name: string, phone: string) {
+function relationship(id: string, name: string, phone: string, notes = "") {
   return {
     id,
     agentId: AGENT_ID,
@@ -34,7 +34,7 @@ function relationship(id: string, name: string, phone: string) {
     primaryHandle: phone,
     email: null,
     phone,
-    notes: "",
+    notes,
     tags: [],
     relationshipType: "friend",
     lastContactedAt: null,
@@ -256,6 +256,24 @@ describe("VOICE_CALL confirmation and recipient binding", () => {
     );
   });
 
+  it("drafts the owner call when the request mentions blocked browser work", async () => {
+    const runtime = makeRuntime();
+    const text = "My browser is blocked on the login page, call me now.";
+    const owner = { recipientKind: "owner", bodyText: "You asked me to call." };
+
+    const draft = await dial(runtime, text, owner);
+
+    expect(draft?.success).toBe(false);
+    expect(draft?.data?.requiresConfirmation).toBe(true);
+    expect(draft?.text).toContain("You asked me to call.");
+    expect(draft?.values?.policyRecorded).toBeUndefined();
+
+    const confirmed = await dial(runtime, "yes", owner);
+
+    expect(confirmed?.success).toBe(true);
+    expect(twilio.sendTwilioVoiceCall).toHaveBeenCalledTimes(1);
+  });
+
   it("calls the declared recipient, not a contact the message only mentions", async () => {
     const runtime = makeRuntime();
     const external = {
@@ -302,6 +320,58 @@ describe("VOICE_CALL confirmation and recipient binding", () => {
     });
 
     expect(partial?.data?.error).toBe("AMBIGUOUS_RECIPIENT");
+  });
+
+  it("matches contact names as whole words, not inside other names", async () => {
+    vi.spyOn(LifeOpsService.prototype, "listRelationships").mockResolvedValue([
+      relationship("rel-joanna", "Joanna Park", "+14155550111"),
+    ] as never);
+    const shorter = await dial(makeRuntime(), "call Ann", {
+      recipientKind: "external",
+      recipient: "Ann",
+    });
+    expect(shorter?.data?.matchedRelationshipId).toBeUndefined();
+    expect(shorter?.data?.to).not.toBe("+14155550111");
+
+    vi.spyOn(LifeOpsService.prototype, "listRelationships").mockResolvedValue([
+      relationship("rel-al", "Al", "+14155550111"),
+    ] as never);
+    const longer = await dial(makeRuntime(), "call Alice", {
+      recipientKind: "external",
+      recipient: "Alice",
+    });
+    expect(longer?.data?.matchedRelationshipId).toBeUndefined();
+    expect(longer?.data?.to).not.toBe("+14155550111");
+    expect(twilio.sendTwilioVoiceCall).not.toHaveBeenCalled();
+  });
+
+  it("does not pick a contact because the recipient appears in its notes", async () => {
+    vi.spyOn(LifeOpsService.prototype, "listRelationships").mockResolvedValue([
+      relationship("rel-dan", "Dan", "+14155550111", "Alice's brother"),
+    ] as never);
+
+    const draft = await dial(makeRuntime(), "call Alice", {
+      recipientKind: "external",
+      recipient: "Alice",
+    });
+
+    expect(draft?.data?.matchedRelationshipId).toBeUndefined();
+    expect(draft?.data?.to).not.toBe("+14155550111");
+  });
+
+  it("finds the named contact in the message text without matching inside words", async () => {
+    vi.spyOn(LifeOpsService.prototype, "listRelationships").mockResolvedValue([
+      relationship("rel-al", "Al", "+14155550111"),
+      relationship("rel-bob", "Bob", "+14155550222"),
+    ] as never);
+
+    const draft = await dial(makeRuntime(), "call Bob", {
+      recipientKind: "external",
+    });
+
+    expect(draft?.data?.error).toBeUndefined();
+    expect(draft?.data?.to).toBe("+14155550222");
+    expect(draft?.data?.matchedRelationshipId).toBe("rel-bob");
   });
 
   it("asks which contact when the message text names more than one", async () => {

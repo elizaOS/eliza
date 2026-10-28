@@ -33,7 +33,7 @@ import {
   isMobilePlatform,
   type PluginInstallRecord,
 } from "@elizaos/host/protocol";
-import { saveElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   isDevCloudConfigAuthorityView,
   resolveDevCloudEnvAuthority,
@@ -64,6 +64,7 @@ import {
 } from "./database-selection.ts";
 import {
   CHANNEL_PLUGIN_MAP,
+  collectDeniedPluginNames,
   collectPluginNames,
   MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
@@ -110,6 +111,7 @@ const RUNTIME_APP_PLUGIN_SUBPATHS = new Set([
   "@elizaos/plugin-inbox",
   "@elizaos/plugin-personal-assistant",
   "@elizaos/plugin-native-phone",
+  "@elizaos/plugin-maps",
   "@elizaos/plugin-notes",
   "@elizaos/plugin-knowledge",
   "@elizaos/plugin-native-wifi",
@@ -2511,6 +2513,22 @@ function projectRoutingOnlyPlugin(plugin: Plugin): Plugin {
   };
 }
 
+/**
+ * Save only the repaired install records. The boot config passed to
+ * resolvePlugins holds vault-resolved secrets in `env`, so saving it would
+ * write them to disk in plaintext; the on-disk copy keeps its vault refs.
+ * @internal Exported for testing.
+ */
+export function persistRepairedInstallRecords(
+  pluginNames: Iterable<string>,
+): void {
+  const durable = loadElizaConfig();
+  for (const pluginName of pluginNames) {
+    repairBrokenInstallRecord(durable, pluginName);
+  }
+  saveElizaConfig(durable);
+}
+
 export async function resolvePlugins(
   config: ElizaConfig,
   opts?: {
@@ -2655,14 +2673,14 @@ export async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const denyList = new Set<string>((config.plugins?.deny || []) as string[]);
   const envSkipPlugins = (process.env.ELIZA_SKIP_PLUGINS ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  for (const pluginName of envSkipPlugins) {
-    denyList.add(pluginName);
-  }
+  const denyList = collectDeniedPluginNames([
+    ...(config.plugins?.deny ?? []),
+    ...envSkipPlugins,
+  ]);
   if (envSkipPlugins.length > 0) {
     logger.info(
       `[eliza] Skipping ${envSkipPlugins.length} plugin(s) via ELIZA_SKIP_PLUGINS: ${envSkipPlugins.join(", ")}`,
@@ -3248,7 +3266,7 @@ export async function resolvePlugins(
       return plugins;
     }
     try {
-      saveElizaConfig(config);
+      persistRepairedInstallRecords(repairedInstallRecords);
       logger.info(
         `[eliza] Repaired ${repairedInstallRecords.size} plugin install record(s): ${Array.from(repairedInstallRecords).join(", ")}`,
       );

@@ -108,6 +108,11 @@ export function projectOrganizationUpgradeReview(input: {
     currentPeriodEnd: new Date(end).toISOString(),
     targetBaseAmountCents: target.amountCents,
     targetAllowanceUsd: target.allowance.amountUsd,
+    allowanceTerms: {
+      fundingClass: target.allowance.fundingClass,
+      rollover: target.allowance.rollover,
+      expiresAt: target.allowance.expiresAt,
+    },
     additionalAllowanceUsd,
     dueNow: invoice(input.dueNow, false),
     recurringEstimate: invoice(input.recurring, true),

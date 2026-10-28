@@ -61,7 +61,11 @@ export function stageAndroidRuntimeInventory({
   nativeLibraryDirectory,
   excludedAgentDirectories = [],
   format = DEFAULT_ANDROID_RUNTIME_INVENTORY_FORMAT,
+  targetAbi = "arm64-v8a",
 }) {
+  if (!["arm64-v8a", "x86_64"].includes(targetAbi))
+    fail("Unsupported runtime ABI");
+  const loaderArch = targetAbi === "arm64-v8a" ? "aarch64" : "x86_64";
   if (typeof format !== "string" || !formatPattern.test(format))
     fail("Invalid runtime inventory format");
   directory(assetsDirectory);
@@ -147,7 +151,13 @@ export function stageAndroidRuntimeInventory({
     "bundle/gateway/local-agent-gateway.mjs",
   ])
     if (!destinations.has(required)) fail("Incomplete runtime asset inventory");
-  for (const required of ["libeliza_bun.so", "libeliza_ld_musl_aarch64.so"])
+  const otherLoader = targetAbi === "arm64-v8a" ? "x86_64" : "aarch64";
+  if (libraries.has(`libeliza_ld_musl_${otherLoader}.so`))
+    fail("Mixed runtime ABIs");
+  for (const required of [
+    "libeliza_bun.so",
+    `libeliza_ld_musl_${loaderArch}.so`,
+  ])
     if (!libraries.has(required)) fail("Incomplete runtime native inventory");
   const manifest = Buffer.from(`${format}\n${entries.join("\n")}\n`);
   if (manifest.length > 2 * 1024 * 1024)

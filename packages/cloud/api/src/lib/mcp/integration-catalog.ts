@@ -97,13 +97,7 @@ export const INTEGRATION_TRUST: Readonly<Record<string, IntegrationTrust>> =
       authMode: "none",
       domains: [],
       reviewedAt: "2026-08-20",
-      capabilities: [
-        read("get_current_time"),
-        read("convert_timezone"),
-        read("format_date"),
-        read("calculate_time_diff"),
-        read("list_timezones"),
-      ],
+      capabilities: [read("get_current_time")],
     };
     const weather: IntegrationTrust = {
       publisher: "elizaOS",
@@ -111,12 +105,7 @@ export const INTEGRATION_TRUST: Readonly<Record<string, IntegrationTrust>> =
       authMode: "none",
       domains: ["api.open-meteo.com", "geocoding-api.open-meteo.com"],
       reviewedAt: "2026-08-20",
-      capabilities: [
-        read("get_current_weather"),
-        read("get_weather_forecast"),
-        read("compare_weather"),
-        read("search_location"),
-      ],
+      capabilities: [read("get_current_weather"), read("search_location")],
     };
     const crypto: IntegrationTrust = {
       publisher: "elizaOS",

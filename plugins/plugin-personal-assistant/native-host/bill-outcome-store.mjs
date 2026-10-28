@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
+  fstatSync,
   fsyncSync,
+  ftruncateSync,
   openSync,
   readFileSync,
   renameSync,
@@ -10,17 +12,71 @@ import {
 import { isDeepStrictEqual } from "node:util";
 import { BillHostError } from "./errors.mjs";
 
+/** The identity line codec: each record is its JSON text. */
+const plainLines = Object.freeze({
+  encode: (line) => line,
+  decode: (line) => line,
+});
+/**
+ * A host codec maps each record's JSON text to one stored line and back, for
+ * example to encrypt the journal under a host-held key. Encoded lines must be
+ * nonempty strings without line breaks; decode must return the original text
+ * or throw. The codec never sees partial lines.
+ */
+function lineCodec(codec) {
+  if (codec === undefined) return plainLines;
+  if (
+    !codec ||
+    typeof codec.encode !== "function" ||
+    typeof codec.decode !== "function"
+  )
+    throw new BillHostError("Invalid outcome journal codec");
+  return {
+    encode(line) {
+      const encoded = codec.encode(line);
+      if (typeof encoded !== "string" || !encoded || /[\r\n]/.test(encoded))
+        throw new BillHostError("Invalid outcome journal codec");
+      return encoded;
+    },
+    decode(line) {
+      const decoded = codec.decode(line);
+      if (typeof decoded !== "string")
+        throw new BillHostError("Invalid outcome journal");
+      return decoded;
+    },
+  };
+}
+
 /**
  * Append-only file, independent of the database. An observed outcome or
  * submission attempt is written here before its INSERT, so a failed INSERT or
  * a process exit does not lose the provider reference or the attempt.
  */
-function outcomeJournal(path) {
+function outcomeJournal(path, codec) {
+  let needsRecovery = false;
   const append = (entry) => {
+    if (needsRecovery)
+      throw new BillHostError("Outcome journal requires restart recovery");
+    // Encode before opening: a codec failure leaves the file untouched.
+    const line = `${codec.encode(JSON.stringify(entry))}\n`;
     const fd = openSync(path, "a", 0o600);
     try {
-      writeFileSync(fd, `${JSON.stringify(entry)}\n`);
-      fsyncSync(fd);
+      const previousLength = fstatSync(fd).size;
+      try {
+        writeFileSync(fd, line);
+        fsyncSync(fd);
+      } catch (error) {
+        // Do not let a later record turn this incomplete append into a corrupt line.
+        needsRecovery = true;
+        try {
+          ftruncateSync(fd, previousLength);
+          fsyncSync(fd);
+          needsRecovery = false;
+        } catch {
+          // Existing startup recovery must run before another append is allowed.
+        }
+        throw error;
+      }
     } finally {
       closeSync(fd);
     }
@@ -40,7 +96,7 @@ function outcomeJournal(path) {
     lines.pop();
     for (const line of lines) {
       try {
-        entries.push(JSON.parse(line));
+        entries.push(JSON.parse(codec.decode(line)));
       } catch {
         throw new BillHostError("Invalid outcome journal");
       }
@@ -48,10 +104,13 @@ function outcomeJournal(path) {
     return entries;
   };
   const replace = (entries) => {
+    const text = entries
+      .map((e) => `${codec.encode(JSON.stringify(e))}\n`)
+      .join("");
     const temporary = `${path}.${randomUUID()}.tmp`;
     const fd = openSync(temporary, "wx", 0o600);
     try {
-      writeFileSync(fd, entries.map((e) => `${JSON.stringify(e)}\n`).join(""));
+      writeFileSync(fd, text);
       fsyncSync(fd);
     } finally {
       closeSync(fd);
@@ -62,7 +121,12 @@ function outcomeJournal(path) {
 }
 
 /** Minimal product outcome records. No page bodies, tokens, or permanent transcripts. */
-export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
+export function createBillOutcomeStore(
+  db,
+  tasks,
+  { journalPath, journalCodec } = {},
+) {
+  const codec = lineCodec(journalCodec);
   db.exec(
     "CREATE TABLE IF NOT EXISTS bill_outcomes_v1 (task_id TEXT PRIMARY KEY, owner_key TEXT NOT NULL, document TEXT NOT NULL)",
   );
@@ -83,7 +147,7 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
   );
   const pending = new Map();
   const pendingAttempts = new Map();
-  const journal = journalPath ? outcomeJournal(journalPath) : null;
+  const journal = journalPath ? outcomeJournal(journalPath, codec) : null;
   const key = (owner) =>
     JSON.stringify([
       owner.agentId,
@@ -351,6 +415,22 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
       validate(JSON.parse(row.document));
       return { taskId: row.task_id };
     },
+    /** This owner's saved outcomes, newest first: `{ taskId, observedAt, decision }`. */
+    listForOwner(owner) {
+      return db
+        .prepare(
+          "SELECT task_id, document FROM bill_outcomes_v1 WHERE owner_key=? ORDER BY rowid DESC",
+        )
+        .all(key(owner))
+        .map((row) => {
+          const record = validate(JSON.parse(row.document));
+          return {
+            taskId: row.task_id,
+            observedAt: record.observedAt,
+            decision: structuredClone(record.decision),
+          };
+        });
+    },
     forTask(runtime, taskId) {
       const owner = runtime.owner,
         ownerKey = key(owner),
@@ -410,6 +490,7 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
             ...structuredClone(record.decision),
             observedAt: record.observedAt,
             saveStatus: "pending",
+            reasonCode: "outcome-save-failed",
             message:
               "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
           };
@@ -861,6 +942,7 @@ export function createBillOutcomeStore(db, tasks, { journalPath } = {}) {
               ...structuredClone(record.decision),
               observedAt: record.observedAt,
               saveStatus: "pending",
+              reasonCode: "outcome-save-failed",
               message:
                 "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
             };

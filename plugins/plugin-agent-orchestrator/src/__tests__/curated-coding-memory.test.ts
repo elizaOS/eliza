@@ -307,6 +307,80 @@ describe("curated coding memory", () => {
     }
   });
 
+  it("keeps distinct Korean notes instead of merging them", async () => {
+    const workdir = await tempWorkspace();
+    try {
+      const service = new CuratedCodingMemoryService(memoryRuntime(workdir));
+      await service.harvestVerifiedTask(
+        doc({
+          workdir,
+          taskId: "task-1",
+          text: "Decision: 결제 모듈은 재시도 횟수를 세 번으로 제한한다",
+          senderKind: "user",
+        }),
+      );
+      await service.harvestVerifiedTask(
+        doc({
+          workdir,
+          taskId: "task-2",
+          text: "Decision: 로그 파일은 매일 자정에 압축해서 보관한다",
+          senderKind: "user",
+        }),
+      );
+      const file = await readFile(memoryPath(workdir), "utf8");
+      expect(file.match(/### note:/g)).toHaveLength(2);
+      expect(file).toContain("재시도 횟수를 세 번으로");
+      expect(file).toContain("자정에 압축해서");
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("still dedupes an identical Korean note", async () => {
+    const workdir = await tempWorkspace();
+    try {
+      const service = new CuratedCodingMemoryService(memoryRuntime(workdir));
+      for (const taskId of ["task-1", "task-2"]) {
+        await service.harvestVerifiedTask(
+          doc({
+            workdir,
+            taskId,
+            text: "Lesson: 결제 모듈은 재시도 횟수를 세 번으로 제한한다.",
+          }),
+        );
+      }
+      const file = await readFile(memoryPath(workdir), "utf8");
+      expect(file.match(/### note:/g)).toHaveLength(1);
+      expect(file).toContain("task:task-1");
+      expect(file).toContain("task:task-2");
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
+  it("retrieves a Korean note for a Korean query", async () => {
+    const workdir = await tempWorkspace();
+    try {
+      const service = new CuratedCodingMemoryService(memoryRuntime(workdir));
+      await service.harvestVerifiedTask(
+        doc({
+          workdir,
+          taskId: "task-1",
+          text: "Lesson: 결제 모듈은 재시도 횟수를 세 번으로 제한한다.",
+        }),
+      );
+      const notes = await service.retrieveRelevant({
+        text: "결제 모듈 재시도 횟수는 몇 번?",
+        repoKey: "https://github.com/elizaOS/eliza.git",
+      });
+      expect(notes.map((note) => note.text)).toEqual([
+        "결제 모듈은 재시도 횟수를 세 번으로 제한한다.",
+      ]);
+    } finally {
+      await rm(workdir, { recursive: true, force: true });
+    }
+  });
+
   it("retains every harvested note", async () => {
     const workdir = await tempWorkspace();
     try {

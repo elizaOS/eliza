@@ -1,6 +1,7 @@
 /** Real host HTTP and on-disk config acceptance; no mocked route/persistence services. */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -16,6 +17,7 @@ import {
 } from "../src/actions/plugin.ts";
 import { runtimeAction } from "../src/actions/runtime.ts";
 import { startApiServer } from "../src/api/server.ts";
+import { loadElizaConfig } from "../src/config/config.ts";
 
 let directory: string;
 let server: Awaited<ReturnType<typeof startApiServer>>;
@@ -277,6 +279,60 @@ it("normalizes npm-name configuration on enable and clears every persisted crede
   ).toMatchObject({ isSet: false, maskedValue: null });
 }, 120_000);
 
+it("replaces a saved connector token so the next boot uses the new value", async () => {
+  const previous = `${secret}-connector`;
+  const replacement = `${secret}-rotated`;
+  for (const container of ["connectors", "channels"]) {
+    await server.close();
+    await writeFile(
+      path.join(directory, "eliza.json"),
+      JSON.stringify({ [container]: { discord: { token: previous } } }),
+    );
+    server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+    const response = await request("/api/plugins/discord", "PUT", {
+      config: { DISCORD_API_TOKEN: replacement },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const saved = JSON.parse(
+      await readFile(path.join(directory, "eliza.json"), "utf8"),
+    );
+    expect(saved[container].discord.token, container).toBe(replacement);
+    // Boot applies config.env first and connector fields last.
+    vi.stubEnv("DISCORD_API_TOKEN", undefined);
+    vi.stubEnv("DISCORD_BOT_TOKEN", undefined);
+    loadElizaConfig();
+    expect(process.env.DISCORD_API_TOKEN, container).toBe(replacement);
+  }
+}, 120_000);
+
+it("keeps the type of a list or true/false connector field it replaces", async () => {
+  await server.close();
+  await writeFile(
+    path.join(directory, "eliza.json"),
+    JSON.stringify({
+      connectors: {
+        discord: { allowFrom: ["1"] },
+        imessage: { enabled: true },
+      },
+    }),
+  );
+  server = await startApiServer({ port: 0, skipDeferredStartupWork: true });
+  for (const [plugin, config] of [
+    ["discord", { DISCORD_ALLOW_FROM: "1, 2" }],
+    ["imessage", { IMESSAGE_ENABLED: "false" }],
+  ] as const) {
+    const response = await request(`/api/plugins/${plugin}`, "PUT", {
+      config,
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+  }
+  const saved = JSON.parse(
+    await readFile(path.join(directory, "eliza.json"), "utf8"),
+  );
+  expect(saved.connectors.discord.allowFrom).toEqual(["1", "2"]);
+  expect(saved.connectors.imessage.enabled).toBe(false);
+}, 120_000);
+
 it("applies saved secrets to a live plugin's cached configuration", async () => {
   await server.close();
   await writeFile(
@@ -494,3 +550,50 @@ it("executes narrow promoted plugin schemas through authenticated HTTP without c
     await fixture.cleanup();
   }
 }, 120_000);
+
+it("keeps a plugin save made while a settings save is still sending its body", async () => {
+  const configPath = path.join(directory, "eliza.json");
+  const pluginKey = "sk-synthetic-overlapping-plugin-save-not-real";
+  // A settings save whose body is still arriving when the plugin save runs.
+  const body = JSON.stringify({ ui: { theme: "dark" } });
+  const settings = new Promise<number>((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port: server.port,
+        path: "/api/config",
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+          "x-forwarded-for": "203.0.113.10",
+          Authorization: `Bearer ${token}`,
+        },
+      },
+      (res) => {
+        res.resume();
+        res.on("end", () => resolve(res.statusCode ?? 0));
+      },
+    );
+    req.on("error", reject);
+    req.write(body.slice(0, 5));
+    setTimeout(async () => {
+      const plugin = await request("/api/plugins/openai", "PUT", {
+        config: { OPENAI_API_KEY: pluginKey },
+      });
+      expect(plugin.status, await plugin.clone().text()).toBe(200);
+      req.end(body.slice(5));
+    }, 200);
+  });
+  expect(await settings).toBe(200);
+
+  const saved = JSON.parse(await readFile(configPath, "utf8"));
+  expect(saved.ui?.theme).toBe("dark");
+  expect(saved.plugins.entries.openai.config.OPENAI_API_KEY).toBe(pluginKey);
+  // The next save starts from the live config and must keep both changes.
+  const later = await request("/api/config", "PUT", { ui: { language: "en" } });
+  expect(later.status, await later.clone().text()).toBe(200);
+  const after = JSON.parse(await readFile(configPath, "utf8"));
+  expect(after.ui?.theme).toBe("dark");
+  expect(after.plugins.entries.openai.config.OPENAI_API_KEY).toBe(pluginKey);
+}, 60_000);

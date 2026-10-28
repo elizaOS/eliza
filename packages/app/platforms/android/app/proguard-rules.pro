@@ -14,6 +14,11 @@
     public static java.lang.String localAgentToken();
     public static java.lang.String requestLocalAgent(java.lang.String);
     public static void requestLocalAgentStream(java.lang.String, java.util.function.Consumer);
+    public static void subscribeLocalAgentEvents(java.lang.String, java.util.function.Consumer, ai.elizaos.app.ElizaAgentService$LocalStreamHandle);
+}
+-keep class ai.elizaos.app.ElizaAgentService$LocalStreamHandle {
+    public <init>();
+    public void cancel();
 }
 
 # Background Runner's bundled JS engine resolves this namespace from native

@@ -283,6 +283,13 @@ export class McpService extends Service {
         resources,
         resourceTemplates,
       };
+      // An error raised during connect or discovery may have scheduled a
+      // reconnect; the session is healthy now, so cancel it rather than tear
+      // down a working connection when the timer fires.
+      if (state.reconnectTimeout) {
+        clearTimeout(state.reconnectTimeout);
+        state.reconnectTimeout = undefined;
+      }
       state.status = "connected";
       state.lastConnected = new Date();
       state.reconnectAttempts = 0;
@@ -314,17 +321,26 @@ export class McpService extends Service {
       const errorMessage = error?.message ?? String(error);
       const lower = errorMessage.toLowerCase();
       // For HTTP transports the optional server→client stream (the long-lived
-      // GET/SSE channel) routinely times out or disconnects on request/response
-      // servers that never hold it open. That is benign and must not tear down
-      // the working POST channel, so match the SDK's message variants
-      // ("timeout" / "timed out" / "SSE error" / "SSE stream disconnected")
-      // case-insensitively.
+      // GET/SSE channel) routinely times out, disconnects, or is refused (a
+      // stateless server or gateway answering GET with 400/403/404 instead of
+      // 405) on request/response servers that never hold it open. That is
+      // benign and must not tear down the working POST channel, so match the
+      // SDK's GET/SSE message variants ("timeout" / "timed out" / "SSE error" /
+      // "SSE stream disconnected" / "Failed to open SSE stream" / "Failed to
+      // reconnect[ SSE stream]" / "Maximum reconnection attempts")
+      // case-insensitively as substrings: the SDK's StreamableHTTPError
+      // prefixes its message with "Streamable HTTP error: ". POST failures
+      // ("Error POSTing to endpoint", fetch network errors) fall through to
+      // the reconnect ladder below.
       const isExpectedTimeout =
         isHttpTransport &&
         (errorMessage === "undefined" ||
           errorMessage === "" ||
           lower.includes("sse error") ||
           lower.includes("sse stream disconnected") ||
+          lower.includes("failed to open sse stream") ||
+          lower.includes("failed to reconnect") ||
+          lower.includes("maximum reconnection attempts") ||
           lower.includes("timeout") ||
           lower.includes("timed out"));
       if (!isExpectedTimeout) {
@@ -332,7 +348,11 @@ export class McpService extends Service {
         connection.server.status = "disconnected";
         this.appendErrorMessage(connection, error.message);
       }
-      if (!isHttpTransport) {
+      // A failed HTTP request (502, a lost session's 404, a network blip)
+      // marks the server disconnected, and callTool refuses disconnected
+      // servers, so HTTP needs the same reconnect ladder as stdio or one bad
+      // response disables the server until the agent restarts.
+      if (!isHttpTransport || !isExpectedTimeout) {
         this.handleDisconnection(name, error);
       }
     };
@@ -640,6 +660,11 @@ export class McpService extends Service {
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
     }
+    if (connection.server.status !== "connected") {
+      throw new Error(
+        `Server "${serverName}" is not connected (status: ${connection.server.status})`
+      );
+    }
     const timeout = this.connectionRequestTimeout(connection);
     const result = await connection.client.callTool(
       {
@@ -661,6 +686,11 @@ export class McpService extends Service {
     }
     if (connection.server.disabled) {
       throw new Error(`Server "${serverName}" is disabled`);
+    }
+    if (connection.server.status !== "connected") {
+      throw new Error(
+        `Server "${serverName}" is not connected (status: ${connection.server.status})`
+      );
     }
     return await connection.client.readResource(
       { uri },

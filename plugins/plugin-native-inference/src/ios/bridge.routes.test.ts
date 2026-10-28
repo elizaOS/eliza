@@ -1158,6 +1158,16 @@ describe("iOS bridge — local-inference verify route", () => {
     });
   });
 });
+describe("iOS bridge — local TTS text", () => {
+  it("treats a reply that is only an open code fence as having no speakable text", async () => {
+    const backend = makeBackend(createFakeRuntime());
+    const res = await call(backend, "POST", "/api/tts/local-inference", {
+      text: "```bash\nrm -rf build/",
+    });
+    expect(res.status).toBe(400);
+    expect(res.json).toEqual({ error: "Missing text" });
+  });
+});
 describe("iOS bridge — unmatched routes still fall through", () => {
   it("returns null (→ eventual 404) for an unknown /api path", async () => {
     const backend = makeBackend(createFakeRuntime());

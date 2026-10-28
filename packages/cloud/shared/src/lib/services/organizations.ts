@@ -16,6 +16,7 @@ import {
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
 import { setInferenceOrganizationActive } from "./inference-credential-revocation";
+import { withInferencePolicyMutation } from "./inference-policy-fence";
 import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 /**
@@ -107,7 +108,9 @@ export class OrganizationsService {
     if (data.is_active === false) {
       await setInferenceOrganizationActive(id, false);
     }
-    const result = await organizationsRepository.update(id, data);
+    const result = await withInferencePolicyMutation({ organizationIds: [id] }, (tx) =>
+      organizationsRepository.update(id, data, tx),
+    );
     // Invalidate cache after update
     await this.invalidateCache(id);
     // Deactivation: when is_active flips to false, evict the org's warm IAC

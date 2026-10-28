@@ -11,10 +11,7 @@
  *
  * In-process servers need no helper: bind port 0 and read the port off the
  * server handle (`Bun.serve({ port: 0 }).port`, `server.address().port`).
- * This module covers the cross-process handshake. Multi-process suites whose
- * workers must independently compute the SAME port without a parent channel
- * keep the per-runner deterministic resolver in
- * packages/homepage/scripts/e2e-port.mjs.
+ * This module covers the cross-process handshake.
  */
 
 import { randomUUID } from "node:crypto";

@@ -335,8 +335,9 @@ export function buildForwardBody(
 
 /**
  * Forwards a chat message to the correct agent-server pod via hash-ring routing.
- * Parses the agent-server response to extract the `.response` field expected
- * by platform adapters (e.g. Telegram, WhatsApp sendReply).
+ * Parses the agent-server response to extract the `.response` text and the
+ * reply attachment URLs expected by platform adapters (e.g. Telegram, WhatsApp
+ * sendReply).
  *
  * @param options - Optional platform metadata enriching the POST body with
  *   `platformName`, `senderName`, and `chatId` for downstream personalization
@@ -349,7 +350,7 @@ export async function forwardToServer(
   userId: string,
   text: string,
   options?: ForwardMessageOptions,
-): Promise<string> {
+): Promise<AgentReply> {
   const body = buildForwardBody(userId, text, options);
 
   // senderName and chatId excluded from logs (PII — phone numbers, display names)
@@ -384,7 +385,13 @@ export async function forwardToServer(
  * text without erroring), hiding the fault from logs and the caller. Fail-closed
  * by throwing so `processMessage`'s catch logs a structured forward failure.
  */
-export function parseAgentResponse(raw: string, agentId: string): string {
+export interface AgentReply {
+  text: string;
+  /** Reply attachment URLs as the agent produced them; adapters choose which to send. */
+  mediaUrls: string[];
+}
+
+export function parseAgentResponse(raw: string, agentId: string): AgentReply {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -402,7 +409,13 @@ export function parseAgentResponse(raw: string, agentId: string): string {
       `Agent-server response for agent ${agentId} missing string "response" field (got ${typeof response})`,
     );
   }
-  return response;
+  const mediaUrls = (data as { mediaUrls?: unknown }).mediaUrls;
+  return {
+    text: response,
+    mediaUrls: Array.isArray(mediaUrls)
+      ? mediaUrls.filter((url): url is string => typeof url === "string")
+      : [],
+  };
 }
 
 /**

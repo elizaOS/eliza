@@ -21,8 +21,47 @@ commands. Building an image does not flash a physical device.
 The Pixel 11 Pro lock targets stock B1 (`CD1A.260905.001.B1`) with the pinned
 Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference is
 a build input; physical installation still requires qualification and a signed contract.
-Alpha Phone (#31023) names Pixel 10, which has no lock here; see the grizzly
-`decisionNote` in `hardware-targets.json` before choosing a device.
+The shared `pixel10a` profile in `aosp.lock.json` pins the Pixel 10a (`stallion`)
+Android 17 source inventory in `sources/pixel10a-stallion.json`. Eliza and Alpha
+can both consume it; product branding does not select a different hardware source.
+It is distinct from Pixel 10 (`frankel`/`blazer`/`mustang`) and Pixel 11 Pro.
+
+Verify the full prepared source tree and matching factory archive without writing
+to either input:
+
+```bash
+node packages/os/scripts/android/verify-source-lock.ts --profile pixel10a \
+  --aosp-root /absolute/aosp --vendor-archive /absolute/stallion-factory.zip
+```
+
+This profile binds all 1,087 project revisions, manifest configuration, 16 reviewed
+source overrides, 6,360 generated files, and recorded ignored inputs. The inventory
+is copied byte-for-byte from Alpha's reviewed source contract (SHA-256
+`760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3`).
+Alpha names inside that immutable inventory identify provenance, not launcher branding.
+Pixel staging uses the reviewed `patches/soong-app-native` extension because
+Android 17 image products can omit legacy Android.mk application modules. Apply
+that exact patch in the prepared AOSP checkout and pass `--applied-app-native-patch`
+to `stage-pixel10a-product.ts`. Source verification checks its original and patched
+file hashes. The shared native stager then converts its admitted APK/JNI payloads
+to Soong rules after product composition, preserving companion definitions,
+nonprivileged launcher policy, executable modes and payload bytes. Conversion
+alone does not prove that an image built or booted.
+
+An API consumer can pass independently authenticated, reviewed patch envelopes to
+`verifyProfileSource` or `verifyDeviceSource`; exact baseline preimages and postimages
+are checked, and every other source fence remains in force.
+
+A product's explicit brand config can select `aospLockPath: "android/aosp.lock.json"`
+and `aospLockProfile: "pixel10a"`. `build-aosp.ts` runs the same full source check
+before staging; supply `--vendor-archive` or `ELIZA_PIXEL_VENDOR_ARCHIVE`. The default
+Cuttlefish selection is unchanged. Selecting a source profile does not supply a
+hardware product, alter APK privileges, or qualify an image. Both products compose
+the same least-privilege Pixel 10a product; release signing, compatibility records,
+the operator update client and rollback/recovery tooling are described in
+[releases/](releases/README.md). Both still need their real image, signing, voice,
+telephony, update/recovery drills and physical-device validation. `pixel10a-stallion`
+therefore stays installer- and lab-ineligible, and `releaseQualified` stays false.
 The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
 images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,
@@ -93,6 +132,9 @@ is unchanged. Development unpacked-extension proofs do not qualify release build
   a profile in `aosp.lock.json`.
 - [`signing/`](signing/README.md): offline key ceremony for the AOSP image keys
   and the Ed25519 release keys, and the signing-environment decryptor.
+- [`releases/`](releases/README.md): Pixel 10a release descriptors and update
+  channels, the signing job, compatibility records, the operator OTA update client
+  and rollback/recovery tooling.
 - Read-only device qualification against a requirements file. The shipped
   [`device-requirements/treble-gsi.json`](device-requirements/treble-gsi.json)
   checks Treble/GSI readiness; products pass their own thresholds. An `identity`
@@ -152,6 +194,13 @@ replace the full local-agent APK contract, grant roles, build an image, or quali
 boot, OTA, Chromium signer admission, or physical hardware. Keep those checks
 separate. Test with `node --test packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts`.
 
+To stage a second package of the same product, such as its update supervisor, add
+`companions: [{ moduleName, packageName, apkSha256 }]` to the descriptor and pass
+`--companion MODULE=PATH` for each one. A companion must carry exactly the
+launcher's signer (`certificateSha256`), a different package and module name, and
+no HOME activity. It is staged in the launcher's partition as another presigned,
+nonprivileged import, and it gets no default permissions.
+
 For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
 launcher descriptor. Both the nonprivileged APK and optional revocable permission
 file then install in `/system`; the default remains `/product`. Inherit the staged
@@ -162,3 +211,71 @@ release, add Treble compatibility patches, or import Eliza's launcher identity.
 The linked community Android 16 package is an unofficial GSI retaining Lenovo's
 `.271` vendor/kernel stack, not a device source port or evidence for Eliza's
 Android 17 target. Read-only stock qualification cannot enable installation.
+
+## Common Pixel 10a product composition
+
+The explicit Pixel 10a path uses the same hardware composition for both launchers:
+`products/pixel10a-eliza.json` and `products/pixel10a-alpha.json` vary the product
+name, model, brand and launcher package/module. Device configuration, the stock
+kernel, eSIM flags provider, source patches and SELinux inputs live once under
+`devices/pixel10a`. Both main APKs are presigned, nonprivileged product apps.
+The legacy privileged `eliza_common.mk` is not included by this target; existing
+Cuttlefish, grizzly and GSI products keep their current policy.
+
+```bash
+make -C packages/os/android stage-pixel10a ARGS="--product packages/os/android/products/pixel10a-eliza.json --launcher-descriptor /absolute/launcher.json --apk /absolute/launcher.apk --aosp-root /absolute/aosp --vendor-archive /absolute/factory.zip --output /absolute/new-overlay --source-commit REVIEWED_ELIZA_COMMIT --development"
+```
+
+Use the Alpha product JSON with its matching admitted launcher descriptor for the
+other consumer. Full source verification runs before staging. The shared launcher
+stager authenticates APK bytes, signer and HOME activity; provisioning takes the
+HOME and assistant component names from that admitted APK. Autofill is offered
+only when its guarded service is present. The current Eliza manifest has no such
+service. The original stock launcher remains installed.
+
+A product that leaves capture over Keyguard to the system Camera2 sets
+`launcher.refuseLockScreenSurfaces: true` (the Alpha product does). Staging then
+refuses a launcher APK whose manifest shows an activity over Keyguard
+(`showWhenLocked`, `showOnLockScreen`, `turnScreenOn`) or handles a secure-capture
+action, before any output is moved into place. Eliza's product leaves it unset
+because its launcher keeps an alarm ringing activity over Keyguard.
+
+The output must be installed at `vendor/alphaphone`: the immutable generated
+`stallion.mk` references `vendor/alphaphone/stallion/device.mk`. This compatibility
+path and the retained `AlphaPixelConfig` internal module names are provenance,
+not a different application identity. Do not rename those source references by
+editing the shared source inventory; a future move needs a reviewed patch envelope.
+
+`composePixel10aProduct` also supports an already admitted downstream overlay,
+including Alpha's existing runtime/native staging. If a listener has been staged,
+its allowlist must contain exactly `CAPTURE_AUDIO_HOTWORD` and
+`START_ACTIVITIES_FROM_BACKGROUND` for the matching `.sense` package. The common
+renderer for this policy grants neither network access nor `RECORD_AUDIO`.
+The caller must still authenticate that separate APK, its speech payload and its
+indicator configuration before composition.
+
+This command also verifies and stages resident JNI through the shared native
+admission module. `--source-commit` is the full reviewed Eliza runtime revision;
+`--runtime-source` optionally selects the Git repository holding that commit.
+The Bun pin is read from the committed object, and the APK build receipt must
+bind that source revision, package, runtime provenance and all final runtime bytes.
+`--bun-target android` selects the separately pinned native Android Bun artifact;
+the default remains `linux-musl`. Alpha supplies its existing exact source stamp,
+view-policy and workflow lock through a thin adapter to the same verifier.
+`nativeLibrariesStaged` is true only with an explicit matching admission receipt
+and unchanged staged native bytes; a Makefile alone is not evidence. Eliza's separate
+Sense APK,
+shared Autofill implementation, full exact-source image build, voice/telephony and
+physical device acceptance remain open. No source or device is written by the
+composer, and the physical target remains installer-ineligible and unqualified.
+
+Native admission is shared by both product consumers in
+`scripts/android/stage-android-native.py`. Callers authenticate the source contract;
+the common module enforces archive uniqueness, ABI/ELF/compression, runtime file
+hashes, asset/JNI parity, the stable Bun binary pin, and source/worker bindings.
+The Eliza source contract checks `META-INF/eliza/aosp-build-provenance.json` and
+its final packaged-file closure. The downstream exact-JSON contract retains its
+preparer, dependency-lock and view-policy checks without putting product-specific
+file paths or source hashes into the shared implementation. These are byte and
+source-admission checks: `runtimeVerified`, `deployReady`, image/boot and device
+qualification remain false.

@@ -353,9 +353,23 @@ export class AppFrontendHostingService {
     const all = await appFrontendDeploymentsRepository.listByApp(appId, 500);
     const superseded = all.filter((d) => d.status === "superseded");
     for (const dep of superseded.slice(keep)) {
-      await this.deleteArtifacts(dep);
-      await appFrontendDeploymentsRepository.delete(dep.id);
+      await this.deleteDeployment(dep);
     }
+  }
+
+  /**
+   * Delete an inactive deployment and then its R2 artifacts. Returns false,
+   * deleting nothing, when the deployment is active (or became active since
+   * the caller read it) or no longer exists.
+   */
+  async deleteDeployment(deployment: AppFrontendDeployment): Promise<boolean> {
+    const deleted = await appFrontendDeploymentsRepository.deleteInactive(
+      deployment.app_id,
+      deployment.id,
+    );
+    if (!deleted) return false;
+    await this.deleteArtifacts(deleted);
+    return true;
   }
 
   /** Activate a specific (ready/superseded) deployment — this is rollback too. */
@@ -374,7 +388,7 @@ export class AppFrontendHostingService {
     return appFrontendDeploymentsRepository.activate(appId, deploymentId);
   }
 
-  /** Best-effort delete of a deployment's R2 artifacts (call before row delete). */
+  /** Best-effort delete of a deployment's R2 artifacts (call after the row delete). */
   async deleteArtifacts(deployment: AppFrontendDeployment): Promise<void> {
     const bucket = getRuntimeR2Bucket();
     if (!bucket || !deployment.manifest) return;

@@ -1,8 +1,26 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { createNativeAccountMethods } from "./account-methods.mjs";
 
 const fail = (message, status = 400, code) =>
   Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
+/**
+ * A 429 with the wait in whole seconds, when it is known: the service's
+ * `Retry-After` delta-seconds, or this host's own resend gate. An HTTP-date or
+ * a malformed value is left out, so a caller never shows an invented time.
+ */
+const tooMany = (message, seconds) =>
+  Object.assign(
+    fail(message, 429),
+    Number.isSafeInteger(seconds) && seconds >= 0
+      ? { retryAfter: seconds }
+      : {},
+  );
+const retryAfterHeader = (response) => {
+  const value = response.headers?.get?.("retry-after")?.trim();
+  return value && /^\d{1,9}$/.test(value) ? Number(value) : undefined;
+};
+const secondsUntil = (time) =>
+  Math.max(0, Math.ceil((time - Date.now()) / 1000));
 const opaque = () => randomBytes(32).toString("base64url");
 const validTime = (value) =>
   typeof value === "string" &&
@@ -13,6 +31,16 @@ const fingerprint = (secret) =>
 const EMAIL_RE =
   /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u;
 const PHONE_RE = /^\+[1-9]\d{7,14}$/;
+/** Steward's public client id shape (`normalizePublicClientId`). */
+const AUTH_CLIENT_ID_RE = /^[a-z0-9][a-z0-9_-]{2,63}$/;
+/** Steward keeps OAuth authorize state for five minutes. */
+const GOOGLE_ATTEMPT_MS = 5 * 60 * 1000;
+const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "[::1]"];
+const sameSecret = (a, b) =>
+  typeof a === "string" &&
+  typeof b === "string" &&
+  a.length === b.length &&
+  timingSafeEqual(Buffer.from(a), Buffer.from(b));
 const BILLING_OPERATIONS = [
   "billing-status",
   "billing-start",
@@ -63,15 +91,21 @@ const maskDestination = (method, value) =>
 export function createNativeCloudAuth({
   fetchImpl = fetch,
   api = "https://api.eliza.app",
-  auth = "https://eliza.steward.fi",
+  auth = "https://api.eliza.app/steward",
   tenant = "elizacloud",
   binding,
   accountLinkRedirectUri,
+  // App-owned return address for API-only Google sign-in. It must be on the
+  // Steward tenant's (or `authClientId`'s) redirect allowlist; without it the
+  // `google` method is unavailable.
+  googleRedirectUri,
+  authClientId,
   appName,
   deviceName = appName,
   messages = {},
   pendingStore,
   activate,
+  activateVerified,
   readActive = async () => null,
   clearActive = async () => {},
   beforeStart = async () => {},
@@ -91,6 +125,8 @@ export function createNativeCloudAuth({
     throw new TypeError(
       "Explicit native application configuration is required",
     );
+  if (activateVerified !== undefined && typeof activateVerified !== "function")
+    throw new TypeError("Verified activation callback must be a function");
   const redirect = new URL(binding.redirectUri);
   if (
     redirect.protocol !== "https:" ||
@@ -100,6 +136,29 @@ export function createNativeCloudAuth({
   )
     throw new TypeError("Invalid application callback");
   binding = Object.freeze({ ...binding });
+  let googleRedirect = null;
+  if (googleRedirectUri !== undefined) {
+    try {
+      googleRedirect = new URL(googleRedirectUri);
+    } catch {}
+    if (
+      !googleRedirect ||
+      !(
+        googleRedirect.protocol === "https:" ||
+        (googleRedirect.protocol === "http:" &&
+          LOOPBACK_HOSTS.includes(googleRedirect.hostname))
+      ) ||
+      googleRedirect.username ||
+      googleRedirect.password ||
+      googleRedirect.hash
+    )
+      throw new TypeError("Invalid Google sign-in return address");
+  }
+  if (
+    authClientId !== undefined &&
+    (typeof authClientId !== "string" || !AUTH_CLIENT_ID_RE.test(authClientId))
+  )
+    throw new TypeError("Invalid Auth client id");
   const message = (key, fallback) => messages[key] ?? fallback;
   let accountMethods,
     attempt = null,
@@ -132,12 +191,12 @@ export function createNativeCloudAuth({
     check(ticket);
     if (!response.ok) {
       if (response.status === 429)
-        throw fail(
+        throw tooMany(
           message(
             "error2",
             "Too many attempts. Please wait before trying again.",
           ),
-          429,
+          retryAfterHeader(response),
         );
       if (response.status === 400 || response.status === 401)
         throw fail(
@@ -206,6 +265,7 @@ export function createNativeCloudAuth({
       );
     return {
       available: true,
+      ...(googleRedirect ? { methods: ["email", "phone", "google"] } : {}),
       pending: Boolean(await pendingStore.read()),
       appName: typeof value.app?.name === "string" ? value.app.name : appName,
       scopes: ["cloud:user"],
@@ -370,12 +430,12 @@ export function createNativeCloudAuth({
           "billing_not_enrolled",
         );
       if (billingAttempt && Date.now() < billingAttempt.resendAt)
-        throw fail(
+        throw tooMany(
           message(
             "error28",
             "Please wait a minute before requesting another code.",
           ),
-          429,
+          secondsUntil(billingAttempt.resendAt),
         );
       if (
         input.method !== undefined &&
@@ -589,7 +649,47 @@ export function createNativeCloudAuth({
         502,
       );
     check(ticket);
-    await activate(pending.proof.secret, () => check(ticket));
+    if (activateVerified) {
+      // Resolve with the newly acknowledged credential itself, not the interactive
+      // Auth session, a decoded token subject, or any renderer-provided identity.
+      const verified = await account(pending.proof.secret, ticket);
+      check(ticket);
+      const owner = Object.freeze({
+        authority: new URL(api).origin,
+        userId: verified.id,
+        organizationId: verified.organizationId,
+      });
+      if (
+        pending.verifiedOwner !== undefined &&
+        (typeof pending.verifiedOwner !== "object" ||
+          pending.verifiedOwner === null ||
+          Object.keys(pending.verifiedOwner).length !== 3 ||
+          Object.entries(owner).some(
+            ([key, value]) => pending.verifiedOwner[key] !== value,
+          ))
+      )
+        throw fail("Saved sign-in owner changed", 409, "account_owner_changed");
+      if (pending.verifiedOwner === undefined) {
+        pending.verifiedOwner = owner;
+        const saved = JSON.stringify(pending);
+        await pendingStore.write(saved);
+        check(ticket);
+        if ((await pendingStore.read()) !== saved)
+          throw fail("Verified sign-in receipt was not stored", 503);
+        check(ticket);
+      }
+      await activateVerified(
+        Object.freeze({
+          version: 1,
+          credential: pending.proof.secret,
+          credentialId: pending.proof.credentialId,
+          owner,
+        }),
+        () => check(ticket),
+      );
+    } else {
+      await activate(pending.proof.secret, () => check(ticket));
+    }
     check(ticket);
     await pendingStore.clear();
     check(ticket);
@@ -597,7 +697,15 @@ export function createNativeCloudAuth({
     // The session that just minted this credential is also current billing authority.
     if (session && scope === billingScope)
       retainBilling(session, pending.proof.secret);
-    return { status: "authenticated", connected: true };
+    // Cloud says whether this sign-in made the account. A sign-in saved before
+    // Cloud sent this fact has no flag, and the reply then has no `created`.
+    return {
+      status: "authenticated",
+      connected: true,
+      ...(typeof pending.accountCreated === "boolean"
+        ? { created: pending.accountCreated }
+        : {}),
+    };
   }
   async function exchange(value, ticket, scope) {
     if (value.mfaRequired === true) {
@@ -694,12 +802,154 @@ export function createNativeCloudAuth({
         credentialId: credential.credentialId,
         secret: credential.secret,
       },
+      // Kept with the receipt, so a resumed acknowledgement reports it too.
+      ...(typeof grant.accountCreated === "boolean"
+        ? { accountCreated: grant.accountCreated }
+        : {}),
     };
     check(ticket);
     await pendingStore.write(JSON.stringify(pending));
     check(ticket);
     // Durable encrypted receipt precedes activation; an interrupted acknowledgement can be retried.
     return finish(ticket, pending, value.token, scope);
+  }
+  /**
+   * API-only Google sign-in. The browser visits Steward's authorize route (which
+   * forwards to Google) and comes back to the app-owned `googleRedirectUri`; no
+   * Eliza web page is involved. The PKCE verifier and state stay in this attempt.
+   */
+  async function startGoogle(ticket) {
+    if (!googleRedirect)
+      throw fail(
+        message("error36", "Google sign-in is not available here."),
+        503,
+        "google_unavailable",
+      );
+    await config(ticket);
+    await beforeStart();
+    check(ticket);
+    const verifier = opaque(),
+      state = opaque();
+    const url = new URL(`${auth}/auth/oauth/google/authorize`);
+    for (const [key, value] of Object.entries({
+      redirect_uri: googleRedirect.href,
+      tenant_id: tenant,
+      ...(authClientId ? { client_id: authClientId } : {}),
+      response_type: "code",
+      code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+      code_challenge_method: "S256",
+      state,
+      // A second factor comes back as an ordinary code and finishes in-app.
+      mfa: "exchange",
+      // A shared device always asks which Google account, never reusing the
+      // browser's signed-in one silently.
+      prompt: "select_account",
+    }))
+      url.searchParams.set(key, value);
+    attempt = {
+      id: opaque(),
+      method: "google",
+      state,
+      verifier,
+      expiresAt: Date.now() + GOOGLE_ATTEMPT_MS,
+      resendAt: 0,
+    };
+    return {
+      status: "browser",
+      sessionId: attempt.id,
+      url: url.href,
+      expiresAt: new Date(attempt.expiresAt).toISOString(),
+    };
+  }
+  async function returnGoogle(input, ticket, scope) {
+    const expired = () =>
+      fail(message("error9", "Sign-in expired. Start again."), 410);
+    if (
+      attempt?.method !== "google" ||
+      !attempt.state ||
+      Date.now() >= attempt.expiresAt
+    )
+      throw expired();
+    if (
+      Object.keys(input).some((key) => key !== "callbackUrl") ||
+      typeof input.callbackUrl !== "string" ||
+      input.callbackUrl.length > 4096
+    )
+      throw fail(message("error37", "Invalid Google sign-in return."));
+    let returned;
+    try {
+      returned = new URL(input.callbackUrl);
+    } catch {
+      throw fail(message("error37", "Invalid Google sign-in return."));
+    }
+    if (
+      returned.origin !== googleRedirect.origin ||
+      returned.pathname !== googleRedirect.pathname ||
+      returned.username ||
+      returned.password
+    )
+      throw fail(message("error37", "Invalid Google sign-in return."));
+    // Success arrives in the fragment. Steward's failure page links back with
+    // `error` and `state` added to the redirect's query instead.
+    const query = new URLSearchParams(returned.search);
+    const failed = query.has("error");
+    const params = failed
+      ? new URLSearchParams(
+          [...query].filter(([key]) => key === "error" || key === "state"),
+        )
+      : new URLSearchParams(returned.hash.slice(1));
+    const expected = failed ? ["error", "state"] : ["code", "state"];
+    if (failed) {
+      query.delete("error");
+      query.delete("state");
+    }
+    if (
+      (failed ? returned.hash : "") ||
+      query.toString() !== googleRedirect.searchParams.toString() ||
+      [...params.keys()].length !== expected.length ||
+      expected.some(
+        (key) => params.getAll(key).length !== 1 || !params.get(key),
+      )
+    )
+      throw fail(message("error37", "Invalid Google sign-in return."));
+    // A return for another attempt neither completes nor cancels this one.
+    if (!sameSecret(params.get("state"), attempt.state))
+      throw fail(
+        message("error38", "This Google sign-in belongs to another attempt."),
+        409,
+        "google_state_mismatch",
+      );
+    const verifier = attempt.verifier;
+    // Single use: a matched return can never be replayed into this attempt.
+    attempt.state = null;
+    attempt.verifier = null;
+    if (failed) {
+      attempt = null;
+      throw fail(
+        message("error39", "Google sign-in was not completed. Start again."),
+        401,
+        "google_sign_in_failed",
+      );
+    }
+    const code = params.get("code");
+    if (!/^[A-Za-z0-9_-]{20,512}$/.test(code))
+      throw fail(message("error37", "Invalid Google sign-in return."));
+    return await exchange(
+      await call(
+        auth,
+        "/auth/oauth/exchange",
+        {
+          code,
+          redirect_uri: googleRedirect.href,
+          tenant_id: tenant,
+          code_verifier: verifier,
+        },
+        undefined,
+        ticket,
+      ),
+      ticket,
+      scope,
+    );
   }
   return {
     /**
@@ -914,6 +1164,7 @@ export function createNativeCloudAuth({
             );
           check(ticket);
           const method = input.method ?? "email";
+          if (method === "google") return await startGoogle(ticket);
           if (!["email", "phone"].includes(method))
             throw fail(message("error25", "Choose email or phone sign-in."));
           if (
@@ -937,12 +1188,12 @@ export function createNativeCloudAuth({
           )
             throw fail(message("error27", "Enter a valid email address."));
           if (attempt && Date.now() < attempt.resendAt)
-            throw fail(
+            throw tooMany(
               message(
                 "error28",
                 "Please wait a minute before requesting another code.",
               ),
-              429,
+              secondsUntil(attempt.resendAt),
             );
           await config(ticket);
           await beforeStart();
@@ -981,6 +1232,8 @@ export function createNativeCloudAuth({
             resendAt: attempt.resendAt,
           };
         }
+        if (operation === "google-return")
+          return await returnGoogle(input, ticket, scope);
         if (
           !attempt ||
           input.sessionId !== attempt.id ||
@@ -989,7 +1242,11 @@ export function createNativeCloudAuth({
           throw fail(message("error9", "Sign-in expired. Start again."), 410);
         if (typeof input.code !== "string" || !/^\d{6}$/.test(input.code))
           throw fail(message("error30", "Enter the six-digit code."));
-        if (operation === "verify" && !attempt.mfa)
+        if (
+          operation === "verify" &&
+          !attempt.mfa &&
+          attempt.method !== "google"
+        )
           return await exchange(
             await call(
               auth,

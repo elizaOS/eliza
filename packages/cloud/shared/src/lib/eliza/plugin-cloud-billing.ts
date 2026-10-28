@@ -109,9 +109,9 @@ export const agentCreditsProvider: Provider = {
         const allocated = Number(budget.allocated_budget);
         const spent = Number(budget.spent_budget);
         const available = allocated - spent;
-        const dailyLimit = budget.daily_limit ? Number(budget.daily_limit) : null;
+        const dailyLimit = budget.daily_limit != null ? Number(budget.daily_limit) : null;
         const dailySpent = Number(budget.daily_spent);
-        const dailyRemaining = dailyLimit ? dailyLimit - dailySpent : null;
+        const dailyRemaining = dailyLimit !== null ? dailyLimit - dailySpent : null;
 
         // Determine effective available (minimum of budget and daily remaining)
         const effectiveAvailable =

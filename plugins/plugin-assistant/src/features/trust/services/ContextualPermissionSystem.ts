@@ -38,6 +38,8 @@ export class ContextualPermissionSystem {
     string,
     { decision: AccessDecision; expiry: number }
   >();
+  private permissionCacheEpoch = 0;
+  private entityPermissionCacheEpochs = new Map<UUID, number>();
 
   /**
    * Cap on cached permission decisions. The cache is keyed by a full
@@ -128,8 +130,13 @@ export class ContextualPermissionSystem {
     return decision.allowed;
   }
 
+  private getPermissionCacheEpoch(entityId: UUID): string {
+    return `${this.permissionCacheEpoch}:${this.entityPermissionCacheEpochs.get(entityId) ?? 0}`;
+  }
+
   async checkAccess(request: AccessRequest): Promise<AccessDecision> {
     const cacheKey = JSON.stringify(request);
+    const cacheEpoch = this.getPermissionCacheEpoch(request.entityId);
     const cached = this.permissionCache.get(cacheKey);
     if (cached) {
       if (cached.expiry > Date.now()) {
@@ -149,35 +156,39 @@ export class ContextualPermissionSystem {
       },
     );
     if (injectionCheck.detected && injectionCheck.action === "block") {
-      return this.createDecision(request, {
-        allowed: false,
-        method: "denied",
-        reason: `Security block: ${injectionCheck.details}`,
-      });
+      return this.createDecision(
+        request,
+        {
+          allowed: false,
+          method: "denied",
+          reason: `Security block: ${injectionCheck.details}`,
+        },
+        cacheEpoch,
+      );
     }
 
     // Role-based check
     const roleDecision = await this.checkRolePermissions(request);
     if (roleDecision.allowed) {
-      return this.createDecision(request, roleDecision);
+      return this.createDecision(request, roleDecision, cacheEpoch);
     }
 
     // Trust-based check
     const trustDecision = await this.checkTrustPermissions(request);
     if (trustDecision.allowed) {
-      return this.createDecision(request, trustDecision);
+      return this.createDecision(request, trustDecision, cacheEpoch);
     }
 
     // Elevation check -- active temporary grants
     const elevationDecision = this.checkActiveElevations(request);
     if (elevationDecision.allowed) {
-      return this.createDecision(request, elevationDecision);
+      return this.createDecision(request, elevationDecision, cacheEpoch);
     }
 
     // Delegation check
     const delegationDecision = await this.checkDelegatedPermissions(request);
     if (delegationDecision.allowed) {
-      return this.createDecision(request, delegationDecision);
+      return this.createDecision(request, delegationDecision, cacheEpoch);
     }
 
     const reason = this.generateDenialReason(
@@ -185,11 +196,15 @@ export class ContextualPermissionSystem {
       trustDecision,
       delegationDecision,
     );
-    return this.createDecision(request, {
-      allowed: false,
-      method: "denied",
-      reason,
-    });
+    return this.createDecision(
+      request,
+      {
+        allowed: false,
+        method: "denied",
+        reason,
+      },
+      cacheEpoch,
+    );
   }
 
   private async checkRolePermissions(
@@ -357,7 +372,9 @@ export class ContextualPermissionSystem {
       }
       if (
         elevation.entityId === request.entityId &&
-        elevation.requestedPermission.action === request.action
+        elevation.requestedPermission.action === request.action &&
+        (elevation.requestedPermission.resource === "*" ||
+          elevation.requestedPermission.resource === request.resource)
       ) {
         return {
           allowed: true,
@@ -396,15 +413,44 @@ export class ContextualPermissionSystem {
         target.revoked = true;
         target.revokedAt = Date.now();
         target.revokedBy = revokedBy;
+        this.invalidatePermissionCache();
         return true;
       }
     }
     return false;
   }
 
+  /**
+   * Invalidate cached permission decisions, optionally scoped to one entity.
+   * The epoch also prevents an in-flight check from repopulating stale data.
+   */
+  invalidatePermissionCache(entityId?: UUID): void {
+    if (!entityId) {
+      this.permissionCache.clear();
+      this.permissionCacheEpoch += 1;
+      this.entityPermissionCacheEpochs.clear();
+      return;
+    }
+    for (const key of this.permissionCache.keys()) {
+      try {
+        const request = JSON.parse(key) as { entityId?: unknown };
+        if (request.entityId === entityId) {
+          this.permissionCache.delete(key);
+        }
+      } catch {
+        this.permissionCache.delete(key);
+      }
+    }
+    this.entityPermissionCacheEpochs.set(
+      entityId,
+      (this.entityPermissionCacheEpochs.get(entityId) ?? 0) + 1,
+    );
+  }
+
   private createDecision(
     request: AccessRequest,
     partialDecision: Partial<AccessDecision>,
+    cacheEpoch = this.getPermissionCacheEpoch(request.entityId),
   ): AccessDecision {
     const decision: AccessDecision = {
       request,
@@ -414,7 +460,10 @@ export class ContextualPermissionSystem {
       evaluatedAt: Date.now(),
       ...partialDecision,
     };
-    if (decision.allowed) {
+    if (
+      decision.allowed &&
+      cacheEpoch === this.getPermissionCacheEpoch(request.entityId)
+    ) {
       const cacheKey = JSON.stringify(request);
       this.permissionCache.delete(cacheKey);
       this.permissionCache.set(cacheKey, {

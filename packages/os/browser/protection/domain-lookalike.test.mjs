@@ -4,6 +4,7 @@ import { detectDomainLookalike } from "./domain-lookalike.mjs";
 
 const references = Object.freeze([
   "google.com",
+  "facebook.com",
   "bankofamerica.com",
   "chase.com",
   "capitalone.com",
@@ -12,6 +13,7 @@ const references = Object.freeze([
 test("flags swaps, Unicode, changed suffixes, private suffixes and embedded official hosts", () => {
   for (const host of [
     "goolge.com",
+    "faceb00k.com",
     "gоogle.com",
     "google.net",
     "bankofamerіca.com",

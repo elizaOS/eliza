@@ -257,17 +257,23 @@ export async function pollDeviceFlow(options: {
   const now = deps?.now ?? Date.now;
 
   const nowMs = now();
-  sweepExpired(nowMs);
   const flow = pendingFlows.get(flowId);
   // A flow owned by a different agent is reported exactly like a flow that
   // never existed — no oracle for other agents' pending flows.
   if (!flow || flow.agentKey !== agentKey) {
+    sweepExpired(nowMs);
     throw new DeviceFlowError(
       "GitHub sign-in flow is unknown or expired. Start a new sign-in.",
       "unknown_flow",
       404,
     );
   }
+  if (nowMs >= flow.expiresAtMs) {
+    pendingFlows.delete(flowId);
+    sweepExpired(nowMs);
+    return { status: "expired" };
+  }
+  sweepExpired(nowMs);
   if (nowMs < flow.nextPollAtMs) {
     return {
       status: "pending",

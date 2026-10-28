@@ -12,7 +12,7 @@ import {
 } from "../../native-host/android-runtime-inventory.mjs";
 
 const plugin = fileURLToPath(new URL("../..", import.meta.url));
-function fixture(t) {
+function fixture(t, targetAbi = "arm64-v8a") {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-inventory-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const assetsDirectory = path.join(root, "assets"),
@@ -28,55 +28,61 @@ function fixture(t) {
     ["extension.tar", "synthetic tar fixture"],
   ])
     fs.writeFileSync(path.join(assetsDirectory, "agent", name), bytes);
-  for (const name of ["libeliza_bun.so", "libeliza_ld_musl_aarch64.so"])
+  for (const name of [
+    "libeliza_bun.so",
+    targetAbi === "x86_64"
+      ? "libeliza_ld_musl_x86_64.so"
+      : "libeliza_ld_musl_aarch64.so",
+  ])
     fs.writeFileSync(
       path.join(nativeLibraryDirectory, name),
       "synthetic native bytes; no execution",
     );
-  return { root, assetsDirectory, nativeLibraryDirectory };
+  return { root, assetsDirectory, nativeLibraryDirectory, targetAbi };
 }
-test("Node inventory interoperates with immutable Java extraction, restart and integrity checks", (t) => {
-  const f = fixture(t),
-    first = stageAndroidRuntimeInventory(f),
-    second = stageAndroidRuntimeInventory(f);
-  assert.deepEqual(second, first);
-  const classes = path.join(f.root, "classes");
-  fs.mkdirSync(classes);
-  const bin = (name) =>
-    process.env.JAVA_HOME
-      ? path.join(process.env.JAVA_HOME, "bin", name)
-      : name;
-  execFileSync(
-    bin("javac"),
-    [
-      "-d",
-      classes,
-      path.join(
-        plugin,
-        "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeBundleStore.java",
-      ),
-      path.join(
-        plugin,
-        "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeAssets.java",
-      ),
-      path.join(plugin, "test/native-host/RuntimeInventoryInterop.java"),
-    ],
-    { timeout: 60000 },
-  );
-  assert.match(
+for (const targetAbi of ["arm64-v8a", "x86_64"])
+  test(`${targetAbi} Node inventory interoperates with Java extraction, restart and integrity checks`, (t) => {
+    const f = fixture(t, targetAbi),
+      first = stageAndroidRuntimeInventory(f),
+      second = stageAndroidRuntimeInventory(f);
+    assert.deepEqual(second, first);
+    const classes = path.join(f.root, "classes");
+    fs.mkdirSync(classes);
+    const bin = (name) =>
+      process.env.JAVA_HOME
+        ? path.join(process.env.JAVA_HOME, "bin", name)
+        : name;
     execFileSync(
-      bin("java"),
+      bin("javac"),
       [
-        "-cp",
+        "-d",
         classes,
-        "ai.eliza.plugins.agent.runtime.test.RuntimeInventoryInterop",
-        f.root,
+        path.join(
+          plugin,
+          "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeBundleStore.java",
+        ),
+        path.join(
+          plugin,
+          "android/src/main/java/ai/eliza/plugins/agent/runtime/RuntimeAssets.java",
+        ),
+        path.join(plugin, "test/native-host/RuntimeInventoryInterop.java"),
       ],
-      { encoding: "utf8", timeout: 60000 },
-    ),
-    /tamper rejection passed/,
-  );
-});
+      { timeout: 60000 },
+    );
+    assert.match(
+      execFileSync(
+        bin("java"),
+        [
+          "-cp",
+          classes,
+          "ai.eliza.plugins.agent.runtime.test.RuntimeInventoryInterop",
+          f.root,
+        ],
+        { encoding: "utf8", timeout: 60000 },
+      ),
+      /tamper rejection passed/,
+    );
+  });
 test("unsafe inputs and incomplete inventories cannot replace the admitted manifest", (t) => {
   const f = fixture(t),
     first = stageAndroidRuntimeInventory(f),
@@ -228,4 +234,21 @@ test("ota-trust verifier fixture is exactly what the packager writes", (t) => {
     fs.readdirSync(path.join(assetsDirectory, "runtime-blobs")),
     [blob],
   );
+});
+
+test("inventory rejects mismatched and mixed ABI loaders without changing admission", (t) => {
+  const f = fixture(t, "x86_64");
+  assert.throws(
+    () => stageAndroidRuntimeInventory({ ...f, targetAbi: "arm64-v8a" }),
+    /Mixed runtime ABIs/,
+  );
+  assert.throws(
+    () => stageAndroidRuntimeInventory({ ...f, targetAbi: "riscv64" }),
+    /Unsupported runtime ABI/,
+  );
+  fs.writeFileSync(
+    path.join(f.nativeLibraryDirectory, "libeliza_ld_musl_aarch64.so"),
+    "other ABI",
+  );
+  assert.throws(() => stageAndroidRuntimeInventory(f), /Mixed runtime ABIs/);
 });

@@ -6,7 +6,9 @@
  * the real fused omnivoice + llama.cpp build to exist.
  *
  * What works:
- *   - `eliza_inference_abi_version()` returns the ABI version from `ffi.h`.
+ *   - `eliza_inference_abi_version()` returns "5". `ffi.h` is the current
+ *     header, but this stub exports only the v5 symbol set, so it models the
+ *     oldest library the binding still accepts (at degraded capability).
  *   - `eliza_inference_create(bundle_dir, ...)` validates the path
  *     argument and returns a tiny heap-allocated context. Bundle_dir
  *     must be non-NULL and non-empty; nothing on disk is required, so
@@ -74,9 +76,8 @@ static void set_error(char ** out_error, const char * msg) {
 /* ABI version                                                       */
 /* ----------------------------------------------------------------- */
 
-#define _ELIZA_STR2(x) #x
-#define _ELIZA_STR(x) _ELIZA_STR2(x)
-static const char * const ELIZA_ABI_VERSION_STRING = _ELIZA_STR(ELIZA_INFERENCE_ABI_VERSION);
+/* The v5 compatibility floor, not ELIZA_INFERENCE_ABI_VERSION: see above. */
+static const char * const ELIZA_ABI_VERSION_STRING = "5";
 
 const char * eliza_inference_abi_version(void) {
     return ELIZA_ABI_VERSION_STRING;

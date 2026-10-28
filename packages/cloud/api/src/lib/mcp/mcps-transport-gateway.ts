@@ -404,7 +404,11 @@ async function callCryptoTool(
     });
     if (!res.ok) return errorResult({ error: "CoinGecko request failed" });
     const data = (await res.json()) as Record<string, Record<string, number>>;
-    return textResult(data[coin] ?? {});
+    const price = data[coin];
+    if (price === undefined) {
+      return errorResult({ error: `Unknown coin: ${coin}` });
+    }
+    return textResult(price);
   }
 
   if (name === "get_market_data") {
@@ -501,7 +505,14 @@ async function handleBuiltinJsonRpc(
     if (!name) {
       return jsonRpcError(id, -32602, "Missing tool name");
     }
-    const result = await callBuiltinTool(provider, name, args);
+    let result: ToolResult;
+    try {
+      result = await callBuiltinTool(provider, name, args);
+    } catch (error) {
+      result = errorResult({
+        error: error instanceof Error ? error.message : "Tool call failed",
+      });
+    }
     return jsonRpcResult(id, result);
   }
 

@@ -160,7 +160,11 @@ export function createElizaCalendarEvent(args: {
     side: "owner",
     calendarId: ELIZA_CALENDAR_ID,
     title,
-    description: args.request.description?.trim() ?? "",
+    // A verified source note carries exact authored body bytes. Ordinary
+    // structured descriptions retain their existing whitespace normalization.
+    description: args.request.sourceNote
+      ? (args.request.description ?? "")
+      : (args.request.description?.trim() ?? ""),
     location: args.request.location?.trim() ?? "",
     status: "confirmed",
     startAt: args.startAt,

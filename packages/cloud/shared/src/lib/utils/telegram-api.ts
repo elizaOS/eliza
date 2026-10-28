@@ -7,6 +7,7 @@
  * so no consumer can receive a response whose deadline it does not release.
  */
 import { ElizaError } from "@elizaos/core";
+import { fetchWithoutRedirects } from "./no-redirect-fetch";
 
 export const TELEGRAM_API_BASE = "https://api.telegram.org";
 
@@ -143,7 +144,9 @@ async function telegramApiFetch(
   const signal = init?.signal ? AbortSignal.any([init.signal, deadline.signal]) : deadline.signal;
 
   try {
-    const response = await raceAbort(fetch(url, { ...init, redirect: "error", signal }), signal);
+    // Never follow a redirect off the fixed Telegram origin (the bot token is in
+    // the path). "manual" + explicit refusal: workerd rejects redirect: "error".
+    const response = await raceAbort(fetchWithoutRedirects(url, { ...init, signal }), signal);
     return {
       response,
       signal,

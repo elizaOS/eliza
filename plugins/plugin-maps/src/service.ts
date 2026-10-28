@@ -3,16 +3,21 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import { Service } from "@elizaos/core";
 import type { MapsProviderAdapter } from "./adapter.js";
+import { ElizaCloudMapsAdapter } from "./cloud-adapter.js";
 import { MapsError } from "./errors.js";
+import type { MapsDeviceNavigation } from "./navigation.js";
 import { RuntimeSavedPlaceStore, type SavedPlaceStore } from "./store.js";
 import {
+  type Coordinates,
   coordinatesSchema,
   MAX_MAPS_PROVIDER_GENERATION,
+  type MapsCoverage,
   type MapsPlacePageResult,
   type MapsPlaceResult,
   type MapsProviderDescription,
   type MapsRouteResult,
   mapsAttributionSchema,
+  mapsCoverageSchema,
   mapsProviderIdSchema,
   mapsProviderIdsSchema,
   type PlacePage,
@@ -151,13 +156,50 @@ export class MapsService extends Service {
     this.store = store ?? new RuntimeSavedPlaceStore(this.runtime);
   }
 
+  private deviceNavigation: MapsDeviceNavigation | null = null;
+
+  /**
+   * Registers the Eliza Cloud Maps adapter when the runtime has an Eliza Cloud
+   * API key. Cloud supplies data only; navigation stays with the device host.
+   */
   static override async start(runtime: IAgentRuntime): Promise<MapsService> {
-    return new MapsService(runtime);
+    const service = new MapsService(runtime);
+    const apiKey = runtime.getSetting?.("ELIZAOS_CLOUD_API_KEY");
+    if (typeof apiKey === "string" && apiKey.trim()) {
+      const baseUrl = runtime.getSetting?.("ELIZAOS_CLOUD_BASE_URL");
+      service.registerAdapter(
+        new ElizaCloudMapsAdapter({
+          apiKey,
+          baseUrl: typeof baseUrl === "string" ? baseUrl : undefined,
+          // Cloud's operator chooses its data provider; results carry its credit.
+          onDescriptionChange: (adapter) =>
+            service.refreshAdapterDescription(adapter),
+        }),
+      );
+    }
+    return service;
   }
 
   override async stop(): Promise<void> {
     this.providers.clear();
     this.defaultAdapterId = null;
+    this.deviceNavigation = null;
+  }
+
+  /** The device host (phone) registers its navigation owner; null removes it. */
+  registerDeviceNavigation(controller: MapsDeviceNavigation | null): void {
+    this.deviceNavigation = controller;
+  }
+
+  /** The registered device navigation owner, or a typed unavailable error. */
+  requireDeviceNavigation(): MapsDeviceNavigation {
+    if (!this.deviceNavigation) {
+      throw new MapsError(
+        "Navigation runs on the phone, and no phone navigation is connected to this agent.",
+        { code: "MAPS_DEVICE_UNAVAILABLE" },
+      );
+    }
+    return this.deviceNavigation;
   }
 
   registerAdapter(adapter: MapsProviderAdapter, makeDefault = false): void {
@@ -197,6 +239,29 @@ export class MapsService extends Service {
     });
     if (makeDefault || this.defaultAdapterId === null)
       this.defaultAdapterId = providerId.data;
+  }
+
+  /**
+   * Re-reads a registered adapter's attribution after the provider reported a
+   * change. The new generation makes results from the old provider stale.
+   */
+  refreshAdapterDescription(adapter: MapsProviderAdapter): void {
+    const registration = this.providers.get(adapter.id);
+    if (registration?.adapter !== adapter) return;
+    const attribution =
+      adapter.attribution === undefined
+        ? null
+        : mapsAttributionSchema.safeParse(adapter.attribution);
+    if (this.providerGeneration >= MAX_MAPS_PROVIDER_GENERATION) return;
+    this.providerGeneration += 1;
+    this.providers.set(adapter.id, {
+      adapter,
+      description: {
+        id: registration.description.id,
+        attribution: attribution?.success ? attribution.data : null,
+        generation: this.providerGeneration,
+      },
+    });
   }
 
   unregisterAdapter(adapterId: string): void {
@@ -253,7 +318,7 @@ export class MapsService extends Service {
     };
     return {
       page: normalizedPage,
-      provider: this.copyDescription(registration.description),
+      provider: this.currentDescription(registration),
     };
   }
 
@@ -271,15 +336,80 @@ export class MapsService extends Service {
   ): Promise<MapsPlaceResult> {
     const registration = this.provider(provider, expectedGeneration);
     const { adapter } = registration;
-    if (!providerPlaceId || providerPlaceId.length > 512) {
+    if (!providerPlaceId.trim() || providerPlaceId.length > 512) {
       throw new MapsError("Place id is invalid.", {
         code: "MAPS_INVALID_INPUT",
       });
     }
-    const place = await adapter.getPlace(providerPlaceId);
+    // A provider place id never carries surrounding whitespace, but a caller
+    // can pad one. Percent-encoding the padding into the resource name makes
+    // the provider answer 404, so the agent reports an existing place as
+    // missing. Send the id without the padding the guard already ignores.
+    const place = await adapter.getPlace(providerPlaceId.trim());
     return {
       place: place ? assertProviderPlace(place, adapter, "place detail") : null,
-      provider: this.copyDescription(registration.description),
+      provider: this.currentDescription(registration),
+    };
+  }
+
+  /** The place at a coordinate from a provider that reverse geocodes. */
+  async reverseGeocodeResult(
+    coordinates: Coordinates,
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<MapsPlaceResult> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
+    const point = validated(
+      coordinatesSchema,
+      coordinates,
+      "Coordinates are outside the valid latitude/longitude range.",
+    );
+    if (!adapter.reverseGeocode) {
+      throw new MapsError("This maps provider does not reverse geocode.", {
+        code: "MAPS_PROVIDER_UNAVAILABLE",
+        context: { providerId: adapter.id },
+      });
+    }
+    const place = await adapter.reverseGeocode(point);
+    return {
+      place: place
+        ? assertProviderPlace(place, adapter, "reverse geocode")
+        : null,
+      provider: this.currentDescription(registration),
+    };
+  }
+
+  /**
+   * What the provider reports it serves (regions, modes, location recipients),
+   * or null when it publishes no coverage. Nothing is inferred for it.
+   */
+  async coverageResult(
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<{
+    coverage: MapsCoverage | null;
+    provider: MapsProviderDescription;
+  }> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
+    if (!adapter.coverage) {
+      return {
+        coverage: null,
+        provider: this.currentDescription(registration),
+      };
+    }
+    const parsed = mapsCoverageSchema.safeParse(await adapter.coverage());
+    if (!parsed.success || parsed.data.provider !== adapter.id) {
+      throw new MapsError("Maps provider returned invalid coverage.", {
+        code: "MAPS_MALFORMED_RESPONSE",
+        context: { adapterId: adapter.id, surface: "coverage" },
+        ...(parsed.success ? {} : { cause: parsed.error }),
+      });
+    }
+    return {
+      coverage: parsed.data,
+      provider: this.currentDescription(registration),
     };
   }
 
@@ -296,7 +426,49 @@ export class MapsService extends Service {
     expectedGeneration?: number,
   ): Promise<MapsRouteResult> {
     const registration = this.provider(provider, expectedGeneration);
+    const normalized = this.routeRequest(request, registration.adapter);
+    return {
+      route: this.boundRoute(
+        await registration.adapter.planRoute(normalized),
+        normalized,
+        registration.adapter,
+      ),
+      provider: this.currentDescription(registration),
+    };
+  }
+
+  /**
+   * Plans the recommended route and any provider alternatives. An adapter
+   * without alternatives returns exactly its single route.
+   */
+  async planRouteAlternativesResult(
+    request: RoutePlanRequest,
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<{ routes: RoutePlan[]; provider: MapsProviderDescription }> {
+    const registration = this.provider(provider, expectedGeneration);
     const { adapter } = registration;
+    const normalized = this.routeRequest(request, adapter);
+    const routes = adapter.planRouteAlternatives
+      ? await adapter.planRouteAlternatives(normalized)
+      : [await adapter.planRoute(normalized)];
+    if (routes.length === 0) {
+      throw new MapsError("No route is available between these places.", {
+        code: "MAPS_NOT_FOUND",
+      });
+    }
+    return {
+      routes: routes.map((route) =>
+        this.boundRoute(route, normalized, adapter),
+      ),
+      provider: this.currentDescription(registration),
+    };
+  }
+
+  private routeRequest(
+    request: RoutePlanRequest,
+    adapter: MapsProviderAdapter,
+  ): RoutePlanRequest {
     const normalized = {
       origin: validated(
         placeRefSchema,
@@ -334,9 +506,17 @@ export class MapsService extends Service {
         }
       }
     }
+    return normalized;
+  }
+
+  private boundRoute(
+    candidate: RoutePlan,
+    normalized: RoutePlanRequest,
+    adapter: MapsProviderAdapter,
+  ): RoutePlan {
     const route = validated(
       routePlanSchema,
-      await adapter.planRoute(normalized),
+      candidate,
       "Maps provider returned an invalid route.",
     );
     if (route.provider !== adapter.id) {
@@ -407,10 +587,7 @@ export class MapsService extends Service {
         },
       );
     }
-    return {
-      route,
-      provider: this.copyDescription(registration.description),
-    };
+    return route;
   }
 
   async savePlace(request: SavePlaceRequest): Promise<SavePlaceResult> {
@@ -527,6 +704,18 @@ export class MapsService extends Service {
     description: MapsProviderDescription,
   ): MapsProviderDescription {
     return { ...description };
+  }
+
+  /** The description now registered for this adapter, which a request may have refreshed. */
+  private currentDescription(
+    registration: RegisteredMapsProvider,
+  ): MapsProviderDescription {
+    const current = this.providers.get(registration.description.id);
+    return this.copyDescription(
+      current?.adapter === registration.adapter
+        ? current.description
+        : registration.description,
+    );
   }
 }
 

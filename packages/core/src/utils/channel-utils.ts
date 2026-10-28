@@ -319,14 +319,16 @@ export function removeAckReactionAfterReply(
 	if (!params.ackReactionValue) {
 		return;
 	}
-	void params.ackReactionPromise.then((didAck) => {
-		if (!didAck) {
-			return;
-		}
-		// error-policy:J6 Acknowledgement removal is best-effort UI teardown; the
-		// caller's error hook is its observable failure channel.
-		params.remove().catch((err) => params.onError?.(err));
-	});
+	void params.ackReactionPromise
+		.then((didAck) => {
+			if (!didAck) {
+				return;
+			}
+			return params.remove();
+		})
+		// error-policy:J6 Report acknowledgement and removal failures through
+		// the caller's error hook without leaving a rejected teardown promise.
+		.catch((err) => params.onError?.(err));
 }
 
 // Sender Labels

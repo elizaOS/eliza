@@ -1,4 +1,13 @@
 import {
+  type NetworkAdmissionEnvelope,
+  networkAccountMatchesPolicy,
+  parseNetworkAdmissionPolicy,
+  type VerifiedNetworkAdmission,
+  verifyNetworkAdmissionEnvelope,
+  verifyNetworkHandledEnvelope,
+  verifyNetworkServiceDeliveryEnvelope,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-admission";
+import {
   isCanonicalPersonalSharedAgent,
   personalSharedAgentId,
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
@@ -12,6 +21,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-owner-model-capture-store";
 import { sharedRuntimeConversationRoomId } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-storage-identity";
 import { ChannelType } from "@elizaos/core";
+import { parseApprovedRelayPhotos } from "@elizaos/plugin-network/contract";
 
 /**
  * Strongly ordered conversation state for shared-runtime agent turns.
@@ -78,6 +88,8 @@ type ConversationRequest =
       agentId: string;
       roomId: string;
       delivery: SharedNetworkDelivery;
+      trustedNetworkAdmission?: NetworkAdmissionEnvelope;
+      trustedNetworkServiceDelivery?: NetworkAdmissionEnvelope;
     }
   | {
       operation: "bridge";
@@ -103,6 +115,7 @@ type ConversationRequest =
       trustedAccountState?: unknown;
       trustedNetworkContext?: unknown;
       trustedNetworkTurn?: unknown;
+      trustedNetworkAdmission?: NetworkAdmissionEnvelope;
     }
   | {
       operation: "stream";
@@ -128,6 +141,7 @@ type ConversationRequest =
       trustedAccountState?: unknown;
       trustedNetworkContext?: unknown;
       trustedNetworkTurn?: unknown;
+      trustedNetworkAdmission?: NetworkAdmissionEnvelope;
     }
   | {
       operation: "prewarm";
@@ -1671,6 +1685,8 @@ export class SharedRuntimeConversation {
     payload: Extract<ConversationRequest, { operation: "network-delivery" }>,
   ): Promise<Response> {
     const d = payload.delivery;
+    const approvedPhotos =
+      d?.approvedPhotos && parseApprovedRelayPhotos(d.approvedPhotos);
     const failure = (error: string, status = 422, retryable = false) =>
       Response.json(
         {
@@ -1691,7 +1707,18 @@ export class SharedRuntimeConversation {
     if (this.env.NETWORK_PERSONAL_CONTINUITY_ENABLED !== "true")
       return failure("network_personal_continuity_disabled", 503);
     if (
-      d?.project !== "network" ||
+      (d?.project !== "network" && d?.project !== "eliza-app") ||
+      (d.approvedPhotos !== undefined &&
+        (!approvedPhotos ||
+          d.platform !== "blooio" ||
+          d.handled ||
+          d.inbound ||
+          d.compliance ||
+          !d.app ||
+          "networkAuthority" in d ||
+          "networkParentTurn" in d ||
+          "policyReply" in d ||
+          approvedPhotos.some((p) => p.app !== d.app))) ||
       typeof d.text !== "string" ||
       (d.handled &&
         (typeof d.handled.messageId !== "string" ||
@@ -1702,7 +1729,8 @@ export class SharedRuntimeConversation {
           ) ||
           new Set(d.handled.replyIds).size !== d.handled.replyIds.length ||
           !d.inbound ||
-          d.inbound.id !== `${d.platform}:network:${d.handled.messageId}` ||
+          d.inbound.id !==
+            `${d.platform}:${d.project}:${d.handled.messageId}` ||
           (d.text.trim()
             ? d.handled.replyIds.length === 0
             : d.handled.replyIds.length !== 0))) ||
@@ -1772,11 +1800,141 @@ export class SharedRuntimeConversation {
         d.inbound ? [d.inbound.id, d.inbound.text] : null,
         d.handled ? [d.handled.messageId, d.handled.replyIds] : null,
         d.compliance ? [d.compliance.command, d.compliance.messageId] : null,
+        ...(d.project === "eliza-app"
+          ? [d.connectorAccountId, d.inbound?.transport ?? null]
+          : []),
+        ...(approvedPhotos ? [["approved-photos", approvedPhotos]] : []),
       ]),
     );
     let intent = await this.state.storage.get<NetworkDeliveryIntent>(key);
+    if (d.project === "eliza-app" && d.handled) {
+      const verified = payload.trustedNetworkAdmission
+        ? await verifyNetworkHandledEnvelope(
+            payload.trustedNetworkAdmission,
+            this.env,
+          )
+        : undefined;
+      const policy = parseNetworkAdmissionPolicy(
+        this.env.NETWORK_OWNED_INGRESS_POLICY,
+      );
+      if (
+        !verified ||
+        !policy ||
+        !verified.handled.response.accountEligible ||
+        !networkAccountMatchesPolicy(
+          {
+            userId: d.userId,
+            organizationId: d.organizationId,
+            agentId: payload.agentId,
+            roomId: payload.roomId,
+          },
+          policy,
+        )
+      )
+        return failure("invalid_admission", 403);
+      const { ingress, handled } = verified;
+      if (
+        d.platform !== ingress.platform ||
+        d.project !== ingress.project ||
+        d.connectorAccountId !== ingress.connectorAccountId ||
+        d.phoneNumber !== ingress.phoneNumber ||
+        d.inbound?.id !== ingress.messageId ||
+        d.inbound?.text !== ingress.message ||
+        d.inbound?.createdAt !== handled.request.receivedAt ||
+        d.inbound?.transport !== handled.request.transport ||
+        d.handled?.messageId !== handled.request.messageId ||
+        JSON.stringify(d.handled.replyIds) !==
+          JSON.stringify(handled.response.replyIds) ||
+        d.text !== handled.response.replies.join("\n\n") ||
+        d.app !== (handled.response.app ?? undefined) ||
+        d.idempotencyKey !==
+          `network:handled:${d.platform}:${handled.request.messageId}`
+      )
+        return failure("invalid_admission", 403);
+      const command = ingress.message.trim().toLowerCase();
+      if (
+        d.compliance &&
+        (handled.response.replyKind !== "compliance" ||
+          d.compliance.command !== command ||
+          d.compliance.messageId !== ingress.messageId)
+      )
+        return failure("invalid_admission", 403);
+    }
+
+    if (d.project === "eliza-app" && !d.handled) {
+      const verified = payload.trustedNetworkServiceDelivery
+        ? await verifyNetworkServiceDeliveryEnvelope(
+            payload.trustedNetworkServiceDelivery,
+            this.env,
+          )
+        : undefined;
+      if (
+        !verified ||
+        !networkAccountMatchesPolicy(
+          {
+            userId: d.userId,
+            organizationId: d.organizationId,
+            agentId: payload.agentId,
+            roomId: payload.roomId,
+          },
+          verified.policy,
+        )
+      )
+        return failure("invalid_admission", 403);
+      const original = verified.delivery,
+        p = verified.policy;
+      if (
+        d.project !== p.project ||
+        d.connectorAccountId !== p.connectorAccountId ||
+        d.phoneNumber !== original.to ||
+        d.platform !== (original.channel ?? "blooio") ||
+        d.app !== original.app ||
+        d.text !== original.text ||
+        JSON.stringify(approvedPhotos) !==
+          JSON.stringify(original.approvedPhotos) ||
+        d.idempotencyKey !== `network:svc:${original.id}` ||
+        d.inbound ||
+        d.compliance
+      )
+        return failure("invalid_admission", 403);
+      if (
+        payload.trustedNetworkServiceDelivery!.path.endsWith("/receipt") &&
+        !payload.reconcileOnly
+      )
+        return failure("invalid_admission", 403);
+    }
     if (intent && intent.hash !== hash)
       return failure("delivery_conflict", 409);
+    if (approvedPhotos && this.env.NETWORK_RELAY_ENABLED !== "1") {
+      if (!intent) return failure("photo_relay_disabled", 403);
+      if (intent.state === "prepared") {
+        // Only the never-dispatched state can be finalized without a receipt.
+        // Contradictory dispatch/acceptance markers must remain held, not retried.
+        if (
+          intent.dispatchedAt !== undefined ||
+          intent.receipt ||
+          intent.serviceReceiptPending ||
+          "serviceReceiptExhaustedAt" in intent
+        )
+          return failure("unknown", 202);
+        await this.state.storage.put(key, {
+          ...intent,
+          state: "rejected",
+          refusal: { error: "rejected", retryable: false },
+        });
+        if (
+          (await this.state.storage.get(NETWORK_DELIVERY_ACTIVE_KEY)) === key
+        ) {
+          await this.state.storage.delete(NETWORK_DELIVERY_ACTIVE_KEY);
+          await this.updateAlarmDeadlines(
+            ({ networkDeliveryRetryAt: _due, ...rest }) => rest,
+          );
+        }
+        return failure("photo_relay_disabled", 403);
+      }
+      // Dispatching/unknown/accepted/complete intents keep their existing
+      // receipt-only recovery; closing admission cannot discard an acceptance.
+    }
     if (payload.reconcileOnly && (!intent || intent.state === "prepared"))
       return failure("unknown", 202);
     if (intent?.state === "complete" || intent?.state === "rejected") {
@@ -1900,6 +2058,9 @@ export class SharedRuntimeConversation {
             role: "user",
             content: intent.inbound.text,
             createdAt: intent.inbound.createdAt,
+            ...(intent.inbound.transport
+              ? { channel: intent.inbound.transport }
+              : {}),
           },
         ],
       );
@@ -1933,10 +2094,14 @@ export class SharedRuntimeConversation {
           NETWORK_DELIVERY_UNCLAIMED_GRACE_MS;
       const gatewayBody = JSON.stringify({
         platform: d.platform,
-        project: "network",
+        project: d.project,
+        ...(d.connectorAccountId
+          ? { connectorAccountId: d.connectorAccountId }
+          : {}),
         ...(d.app ? { app: d.app } : {}),
         phoneNumber: d.phoneNumber,
         text: d.text,
+        ...(approvedPhotos ? { approvedPhotos } : {}),
         idempotencyKey: intent.providerKey,
         ...(d.compliance ? { networkCompliance: d.compliance } : {}),
         ...(abandonUnclaimed ? { abandonUnclaimed: true } : {}),
@@ -1947,14 +2112,15 @@ export class SharedRuntimeConversation {
       let response: Response | undefined;
       let receipt: Record<string, unknown> | null = null;
       try {
-        const signed = d.compliance
-          ? await svcSign(String(this.env.SERVICE_TURN_SECRET ?? ""), {
-              method: "POST",
-              path,
-              id: intent.providerKey,
-              body: gatewayBody,
-            })
-          : {};
+        const signed =
+          d.compliance || approvedPhotos
+            ? await svcSign(String(this.env.SERVICE_TURN_SECRET ?? ""), {
+                method: "POST",
+                path,
+                id: intent.providerKey,
+                body: gatewayBody,
+              })
+            : {};
         response = await fetch(`${base}${path}`, {
           method: "POST",
           headers: {
@@ -2034,6 +2200,19 @@ export class SharedRuntimeConversation {
             id: `network-delivered:${intent.providerKey}`,
             role: "assistant",
             content: d.text,
+            ...(approvedPhotos
+              ? {
+                  relayPhotoRefs: approvedPhotos.map(
+                    ({ photoId, itemId, sha256, bytes, contentType }) => ({
+                      photoId,
+                      itemId,
+                      sha256,
+                      bytes,
+                      contentType,
+                    }),
+                  ),
+                }
+              : {}),
             createdAt: Date.parse(intent.receipt.acceptedAt),
           },
         ],
@@ -2078,7 +2257,13 @@ export class SharedRuntimeConversation {
   private async handle(request: Request): Promise<Response> {
     if (new URL(request.url).pathname === "/owner-capture/read")
       return this.readOwnerCapture(request);
-    const payload = (await request.json()) as ConversationRequest;
+    let parsedPayload: ConversationRequest;
+    try {
+      parsedPayload = (await request.json()) as ConversationRequest;
+    } catch {
+      return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+    const payload = parsedPayload;
     if (
       (payload.operation === "personal-bridge" ||
         payload.operation === "personal-stream") &&
@@ -2165,6 +2350,50 @@ export class SharedRuntimeConversation {
         },
         { status: 400 },
       );
+    }
+
+    let verifiedNetworkAdmission: VerifiedNetworkAdmission | undefined;
+    if (
+      payload.operation !== "network-delivery" &&
+      "trustedNetworkAdmission" in payload &&
+      payload.trustedNetworkAdmission
+    ) {
+      verifiedNetworkAdmission = await verifyNetworkAdmissionEnvelope(
+        payload.trustedNetworkAdmission,
+        this.env,
+      );
+      const policy = parseNetworkAdmissionPolicy(
+        this.env.NETWORK_OWNED_INGRESS_POLICY,
+      );
+      if (
+        !verifiedNetworkAdmission ||
+        !policy ||
+        !("agent" in payload) ||
+        !isCanonicalPersonalSharedAgent(payload.agent) ||
+        (payload.operation !== "personal-bridge" &&
+          payload.operation !== "personal-stream") ||
+        validatedChannel?.type !== ChannelType.DM ||
+        validatedChannel.source !==
+          verifiedNetworkAdmission.ingress.transport ||
+        payload.rpc.method !== "message.send" ||
+        (payload.trustedUserUtterance ?? payload.rpc.params?.text) !==
+          verifiedNetworkAdmission.ingress.message ||
+        payload.rpc.params?.clientMessageId !==
+          verifiedNetworkAdmission.ingress.messageId ||
+        !networkAccountMatchesPolicy(
+          {
+            userId: payload.agent.user_id,
+            organizationId: payload.agent.organization_id,
+            agentId: payload.agent.id,
+            roomId: String(payload.rpc.params?.roomId ?? payload.agent.id),
+          },
+          policy,
+        )
+      )
+        return Response.json(
+          { error: "Invalid Network capability" },
+          { status: 403 },
+        );
     }
 
     // Deletion fence: once the agent behind this room is purged, every later
@@ -2803,13 +3032,15 @@ export class SharedRuntimeConversation {
       const { sharedRuntimeChatService, sharedRuntimeRoomKey } = await import(
         "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
       );
-      const agent = personal
-        ? payload.agent
-        : await import(
-            "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates"
-          ).then(({ rehydrateCachedAgentDates }) =>
-            rehydrateCachedAgentDates(payload.agent),
-          );
+      const agent =
+        payload.operation === "personal-bridge" ||
+        payload.operation === "personal-stream"
+          ? payload.agent
+          : (
+              await import(
+                "@elizaos/cloud-shared/lib/services/shared-runtime/cached-agent-dates"
+              )
+            ).rehydrateCachedAgentDates(payload.agent);
       if (personal) await this.rememberPersonalOwner(agent);
       const executionCtx = {
         waitUntil: (promise: Promise<unknown>) => this.state.waitUntil(promise),
@@ -2831,6 +3062,9 @@ export class SharedRuntimeConversation {
           trustedUserUtterance: payload.trustedUserUtterance,
           channel: validatedChannel,
           ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
+          ...(verifiedNetworkAdmission
+            ? { trustedNetworkAdmission: verifiedNetworkAdmission }
+            : {}),
           ...(personal && "trustedNetworkTurn" in payload
             ? { trustedNetworkTurn: payload.trustedNetworkTurn }
             : {}),
@@ -2917,6 +3151,9 @@ export class SharedRuntimeConversation {
         result = await sharedRuntimeChatService.bridge(agent, payload.rpc, {
           ownerCapture: ownerCapture?.capture,
           ...(networkContext ? { trustedNetworkContext: networkContext } : {}),
+          ...(verifiedNetworkAdmission
+            ? { trustedNetworkAdmission: verifiedNetworkAdmission }
+            : {}),
           ...(personal && "trustedNetworkTurn" in payload
             ? { trustedNetworkTurn: payload.trustedNetworkTurn }
             : {}),

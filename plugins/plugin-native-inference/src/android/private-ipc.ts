@@ -7,6 +7,8 @@ export const BODY_LIMIT = 10 * 1024 * 1024,
 export const TRANSPORT_DEADLINE_MS = 600_000;
 const GLOBAL_LIMIT = 64 * 1024 * 1024,
   CONNECTION_LIMIT = 4,
+  /** Long-lived event subscriptions; held apart from request slots. */
+  SUBSCRIPTION_LIMIT = 2,
   HEADER_LIMIT = 64 * 1024,
   WRITE_LIMIT = 12 * 1024 * 1024;
 function requireValue(ok: unknown, message: string): asserts ok {
@@ -119,8 +121,36 @@ function recover(file: string, marker: string) {
 }
 export interface PrivateConnection {
   write(frame: unknown): void;
+  /** Write one pre-serialized JSON frame (no newline); same budget as write. */
+  writeLine(line: string): void;
   close(): void;
+  /** Drop the transport now, discarding queued bytes (overflow, shutdown). */
+  destroy(): void;
+  /** Bytes queued on this transport that the peer has not read yet. */
+  readonly bufferedBytes: number;
   readonly aborted: AbortSignal;
+}
+/**
+ * `events_subscribe` frame: a long-lived, live-only agent-event feed.
+ * `streams` is the required exact-match filter; `headers` carries the bearer.
+ */
+export interface PrivateSubscribeFrame {
+  id?: unknown;
+  method: "events_subscribe";
+  payload: { streams: string[]; headers?: Record<string, string> };
+}
+export const SUBSCRIPTION_STREAM_LIMIT = 16;
+const STREAM_NAME = /^[a-z0-9][a-z0-9_.:-]{0,63}$/;
+/** Validate an `events_subscribe` stream filter; throws on any invalid entry. */
+export function parseSubscriptionStreams(value: unknown): string[] {
+  requireValue(
+    Array.isArray(value) &&
+      value.length > 0 &&
+      value.length <= SUBSCRIPTION_STREAM_LIMIT &&
+      value.every((s) => typeof s === "string" && STREAM_NAME.test(s)),
+    "Invalid IPC event stream filter",
+  );
+  return [...new Set(value as string[])];
 }
 export async function startPrivateServer(
   dispatch: (
@@ -137,6 +167,17 @@ export async function startPrivateServer(
   ) => Promise<void>,
   env = process.env,
   policy: { transportDeadlineMs?: number } = {},
+  handlers: {
+    /**
+     * Serves one `events_subscribe` connection until it ends. Without it the
+     * method is refused like any unknown method. Subscriptions take no
+     * transport deadline: they end on peer close, overflow or server stop.
+     */
+    subscribe?: (
+      frame: PrivateSubscribeFrame,
+      connection: PrivateConnection,
+    ) => Promise<void>;
+  } = {},
 ) {
   const transportDeadline = policy.transportDeadlineMs ?? TRANSPORT_DEADLINE_MS;
   requireValue(
@@ -155,6 +196,7 @@ export async function startPrivateServer(
   const sockets = new Set<Socket>();
   let bufferedTotal = 0,
     activeConnections = 0,
+    activeSubscriptions = 0,
     closing = false;
   function removeLock() {
     fs.closeSync(lockFd);
@@ -204,8 +246,19 @@ export async function startPrivateServer(
       const connection: PrivateConnection = {
         aborted: abort.signal,
         close: () => socket.end(),
+        destroy: () => socket.destroy(),
+        get bufferedBytes() {
+          return socket.writableLength;
+        },
         write(frame) {
-          const data = `${JSON.stringify(frame)}\n`,
+          connection.writeLine(JSON.stringify(frame));
+        },
+        writeLine(line) {
+          if (line.includes("\n")) {
+            socket.destroy();
+            throw Error("Private IPC frame must be a single line");
+          }
+          const data = `${line}\n`,
             bytes = Buffer.byteLength(data);
           if (
             bytes > 10 * 1024 * 1024 ||
@@ -252,6 +305,59 @@ export async function startPrivateServer(
             frame && typeof frame === "object" && !Array.isArray(frame),
             "Invalid IPC frame",
           );
+          if (frame.method === "events_subscribe") {
+            const subscribe = handlers.subscribe;
+            requireValue(subscribe, "Unsupported IPC method");
+            requireValue(
+              frame.stream === undefined || frame.stream === false,
+              "Inconsistent IPC stream method",
+            );
+            const payload = frame.payload;
+            requireValue(
+              payload && typeof payload === "object" && !Array.isArray(payload),
+              "Invalid IPC payload",
+            );
+            const streams = parseSubscriptionStreams(payload.streams);
+            requireValue(
+              payload.headers === undefined ||
+                (payload.headers &&
+                  typeof payload.headers === "object" &&
+                  !Array.isArray(payload.headers)),
+              "Invalid IPC headers",
+            );
+            requireValue(
+              Buffer.byteLength(JSON.stringify(payload.headers ?? {})) <=
+                HEADER_LIMIT,
+              "IPC headers too large",
+            );
+            requireValue(
+              activeSubscriptions < SUBSCRIPTION_LIMIT,
+              "IPC subscription limit reached",
+            );
+            // Move from a request slot to a subscription slot: a held-open
+            // feed must not starve buffered/streaming requests.
+            release();
+            activeSubscriptions++;
+            let ended = false;
+            const endSubscription = () => {
+              if (ended) return;
+              ended = true;
+              activeSubscriptions--;
+            };
+            socket.once("close", endSubscription);
+            void subscribe(
+              {
+                id: frame.id,
+                method: "events_subscribe",
+                payload: { streams, headers: payload.headers },
+              },
+              connection,
+            ).then(
+              () => socket.end(),
+              () => socket.destroy(),
+            );
+            return;
+          }
           requireValue(
             frame.method === "http_request" ||
               frame.method === "http_request_stream",

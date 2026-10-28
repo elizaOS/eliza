@@ -12,7 +12,7 @@ import {
   type Memory,
 } from "@elizaos/core";
 import { MEETING_PLATFORM_LABELS } from "@elizaos/core/protocol";
-import { MeetingJoinError } from "../service.js";
+import { MeetingJoinError, type MeetingService } from "../service.js";
 import {
   MEETING_URL_PARAMETER,
   optionString,
@@ -107,8 +107,11 @@ export const joinMeetingAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async (_runtime, message, _state, options) =>
-    resolveMeetingUrl(message, options) !== null,
+  // Only a missing service makes the action unavailable. A missing link is a
+  // handler reply ("I need a meeting link"), checked before any side effect;
+  // gating on it here would report the capability as missing instead.
+  validate: async (runtime) =>
+    runtime.getService<MeetingService>("meetings") !== null,
   handler,
   examples: [
     [

@@ -28,6 +28,8 @@ export class SubmittedNavigation {
   constructor(
     private readonly options: {
       check: (address: string) => Promise<SubmittedNavigationVerdict>;
+      /** Only a confirmed blacklist hit stops navigation after the host check. */
+      policy?: "check-first" | "blacklist";
     },
   ) {}
   readonly snapshot = (): SubmittedNavigationState => this.state;
@@ -75,13 +77,15 @@ export class SubmittedNavigation {
           };
         }
       } catch {
-        /* A failed or malformed check never permits navigation. */
+        /* A failed or malformed check remains unavailable under either host policy. */
       }
       if (this.state.revision !== revision) return;
       this.publish({
         ...this.state,
         verdict: Object.freeze(verdict),
-        permitted: verdict.status === "no-known-threat",
+        permitted:
+          verdict.status === "no-known-threat" ||
+          (this.options.policy === "blacklist" && verdict.status !== "blocked"),
       });
     })();
   }

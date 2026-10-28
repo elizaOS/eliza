@@ -115,14 +115,18 @@ function buildEvent(args: {
 function isAsleepState(state: LifeOpsCircadianState): boolean {
   return state === "sleeping" || state === "napping";
 }
+// winding_down is up and awake too: the decision table reports it for the
+// hours before the owner's baseline bedtime, which is when bedtime.imminent
+// is due (relative-time's minutesAwake counts it the same way).
 function isAwakeState(state: LifeOpsCircadianState): boolean {
-  return state === "awake" || state === "waking";
+  return state === "awake" || state === "waking" || state === "winding_down";
 }
 /**
  * Edge-triggered circadian event derivation per `sleep-wake-spec.md`:
  * - Events fire only on state transitions, never on stable ticks.
- * - `wake.observed` fires on sleeping/napping -> waking transitions.
- * - `wake.confirmed` fires on waking -> awake transitions (paired with sleep.ended).
+ * - `wake.observed` fires on sleeping/napping -> waking|awake transitions.
+ * - `wake.confirmed` fires on waking|sleeping|napping -> awake transitions
+ *   (paired with sleep.ended).
  * - `sleep.onset_candidate` fires on awake/winding_down -> (onset) transitions
  *   when the state machine starts the SLEEP_ONSET_WINDOW. For this interim
  *   adapter we fire it alongside sleep.detected; the scorer rewrite is where
@@ -130,7 +134,8 @@ function isAwakeState(state: LifeOpsCircadianState): boolean {
  * - `sleep.detected` fires on any -> sleeping transition.
  * - `nap.detected` fires on any -> napping transition.
  * - `bedtime.imminent` fires once when minutesUntilBedtimeTarget crosses
- *   from >30 to <=30 with a target after the current time.
+ *   from >30 to <=30 with a target after the current time, while the owner
+ *   is awake, waking or winding down.
  * - `regularity.changed` fires on regularityClass transitions.
  */
 export function deriveSleepWakeEvents(args: {
@@ -178,13 +183,15 @@ export function deriveSleepWakeEvents(args: {
         }),
       );
     }
-    // wake.observed on (sleeping|napping) -> waking edge
-    if (
-      currentState === "waking" &&
+    // A wake detected late skips "waking" (that state needs a recent wake),
+    // so a direct (sleeping|napping) -> awake edge observes and confirms the
+    // wake in one step.
+    const wokeFromSleep =
       previousState !== null &&
       isAsleepState(previousState) &&
-      current.wakeAt
-    ) {
+      (currentState === "waking" || currentState === "awake");
+    // wake.observed on (sleeping|napping) -> waking|awake edge
+    if (wokeFromSleep && current.wakeAt) {
       events.push(
         buildEvent({
           kind: "lifeops.wake.observed",
@@ -195,10 +202,10 @@ export function deriveSleepWakeEvents(args: {
         }),
       );
     }
-    // wake.confirmed + sleep.ended on waking -> awake edge
+    // wake.confirmed + sleep.ended on (waking|sleeping|napping) -> awake edge
     if (
       currentState === "awake" &&
-      previousState === "waking" &&
+      (previousState === "waking" || wokeFromSleep) &&
       current.wakeAt
     ) {
       events.push(

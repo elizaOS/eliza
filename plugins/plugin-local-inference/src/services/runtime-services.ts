@@ -25,7 +25,13 @@ export interface RuntimeLocalInferenceLoader extends LocalInferenceLoader {
 	transcribe?: (args: {
 		pcmBase64: string;
 		sampleRate: number;
+		signal?: AbortSignal;
 	}) => Promise<string>;
+	synthesize?: (args: {
+		text: string;
+		speed?: number;
+		signal?: AbortSignal;
+	}) => Promise<{ pcm: Float32Array; sampleRate: number }>;
 	describeImage?: (args: {
 		imageBase64: string;
 		mmprojPath?: string;
@@ -46,6 +52,7 @@ export class LocalInferenceLoaderRuntimeService
 	readonly prepareEmbeddingModel?: LocalInferenceLoader["prepareEmbeddingModel"];
 	readonly getMemoryArbiter?: () => unknown;
 	readonly transcribe?: RuntimeLocalInferenceLoader["transcribe"];
+	readonly synthesize?: RuntimeLocalInferenceLoader["synthesize"];
 	readonly describeImage?: RuntimeLocalInferenceLoader["describeImage"];
 
 	constructor(
@@ -63,6 +70,7 @@ export class LocalInferenceLoaderRuntimeService
 			this.getMemoryArbiter = loader.getMemoryArbiter.bind(loader);
 		}
 		if (loader.transcribe) this.transcribe = loader.transcribe.bind(loader);
+		if (loader.synthesize) this.synthesize = loader.synthesize.bind(loader);
 		if (loader.describeImage) {
 			this.describeImage = loader.describeImage.bind(loader);
 		}

@@ -1,7 +1,8 @@
 /**
  * Coordinates cloud service rate-limit retries and typed exhaustion errors behind route handlers.
  */
-import type { SocialPlatform } from "../../types/social-media";
+import type { PostResult, SocialPlatform } from "../../types/social-media";
+import { extractErrorMessage } from "../../utils/error-handling";
 import { logger } from "../../utils/logger";
 
 export interface RateLimitError extends Error {
@@ -14,10 +15,26 @@ export interface ApiResponse<T> {
   data: T;
 }
 
-interface RetryOptions {
+export interface RetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   platform: SocialPlatform;
+  /**
+   * Whether a request whose outcome is unknown (a timeout, a dropped
+   * connection, a 5xx from a proxy) may be sent again. A rate-limited (429)
+   * answer is never an unknown outcome and is always retried. Create calls
+   * that the platform cannot deduplicate pass `false`, so a slow success is
+   * reported as a failure instead of being published twice.
+   */
+  replayUnknownOutcome?: boolean;
+  /**
+   * Whether exhausting the retries after an attempt that ended unknown throws
+   * `UnknownPostOutcomeError` instead of the raw error. Only a replayed create
+   * call (one the platform deduplicates) opts in: its last unanswered attempt
+   * may have published. Preliminary steps (sessions, token exchanges, uploads),
+   * reads and deletes leave it off, since their failure proves no post exists.
+   */
+  unknownOutcomeOnExhaustion?: boolean;
 }
 
 const PLATFORM_RATE_LIMITS: Record<
@@ -102,17 +119,70 @@ export function createRateLimitError(
   return error;
 }
 
+/**
+ * A create call that was sent once and got no definite answer (a dropped
+ * connection, a timeout, a 5xx): the platform may have published it. It is
+ * not replayed, and it must not be refunded or reported as a plain failure,
+ * or the user resends it by hand and posts twice.
+ */
+export class UnknownPostOutcomeError extends Error {
+  constructor(platform: string, cause: Error) {
+    super(`${platform} did not confirm the post; it may have been published: ${cause.message}`, {
+      cause,
+    });
+    this.name = "UnknownPostOutcomeError";
+  }
+}
+
+/** A parsed provider response explicitly rejected the operation. */
+export class SocialApiRejectionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SocialApiRejectionError";
+  }
+}
+
+/** The PostResult for a failed create; an unknown outcome holds the credit. */
+export function failedPostResult(platform: SocialPlatform, error: unknown): PostResult {
+  if (error instanceof UnknownPostOutcomeError) {
+    return {
+      platform,
+      success: false,
+      error: error.message,
+      errorCode: "POST_OUTCOME_UNKNOWN",
+      creditDisposition: "hold",
+    };
+  }
+  return { platform, success: false, error: extractErrorMessage(error) };
+}
+
 export async function withRetry<T>(
   fn: () => Promise<Response>,
   parser: (response: Response) => Promise<T>,
   options: RetryOptions,
 ): Promise<ApiResponse<T>> {
-  const { maxRetries = 3, baseDelayMs = 1000, platform } = options;
+  const {
+    maxRetries = 3,
+    baseDelayMs = 1000,
+    platform,
+    replayUnknownOutcome = true,
+    unknownOutcomeOnExhaustion = false,
+  } = options;
   let lastError: Error | undefined;
+  let lastUnknownOutcome = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Whether this attempt ended without a definite answer from the platform:
+    // the request may have been accepted even though no response came back.
+    let unknownOutcome = false;
     try {
-      const response = await fn();
+      let response: Response;
+      try {
+        response = await fn();
+      } catch (error) {
+        unknownOutcome = true;
+        throw error;
+      }
 
       if (isRateLimitResponse(response)) {
         const retryAfter = parseRetryAfter(response);
@@ -139,14 +209,34 @@ export async function withRetry<T>(
           );
           return "";
         });
+        unknownOutcome = response.status >= 500;
         throw new Error(`${platform} API error ${response.status}: ${errorBody}`);
       }
 
+      // A successful status does not prove a create failed if its response
+      // body is lost or unreadable. Only a parsed provider refusal is definite.
+      unknownOutcome = true;
       return { data: await parser(response) };
     } catch (error) {
       // error-policy:J1 outbound social-platform API transport boundary — retries transient failures and propagates the last error after exhausting retries (fail-closed)
       lastError = error instanceof Error ? error : new Error(String(error));
-      if ((error as RateLimitError).rateLimited) throw error;
+      if ((error as RateLimitError).rateLimited) {
+        // A 429 proves only that this attempt was not accepted. When an
+        // earlier attempt of an opted-in create ended without a definite
+        // answer, that attempt may already have published, so the unknown
+        // outcome survives the rate limit instead of escaping as a
+        // refundable failure. Calls that did not opt in keep the typed
+        // rate-limit error: their failure proves no post exists.
+        if (unknownOutcomeOnExhaustion && lastUnknownOutcome) {
+          throw new UnknownPostOutcomeError(platform, lastError);
+        }
+        throw error;
+      }
+      if (error instanceof SocialApiRejectionError) unknownOutcome = false;
+      lastUnknownOutcome = unknownOutcome;
+      if (!replayUnknownOutcome) {
+        throw unknownOutcome ? new UnknownPostOutcomeError(platform, lastError) : lastError;
+      }
 
       if (attempt < maxRetries) {
         const delayMs = clampRateLimitWaitMs(baseDelayMs * 2 ** attempt);
@@ -156,6 +246,13 @@ export async function withRetry<T>(
     }
   }
 
+  // Retries are exhausted. For a replayed create that opted in, an unanswered
+  // last attempt (a timeout, a lost body, a 5xx) may have published, so
+  // surface the unknown outcome: callers hold the credit instead of refunding.
+  // The no-replay branch above already throws this error per attempt.
+  if (unknownOutcomeOnExhaustion && lastError && lastUnknownOutcome) {
+    throw new UnknownPostOutcomeError(platform, lastError);
+  }
   throw lastError || new Error(`${platform} request failed after ${maxRetries} retries`);
 }
 

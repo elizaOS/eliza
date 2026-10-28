@@ -39,22 +39,28 @@ export function normalizeOptionalString(value: unknown): string | undefined {
 
 export function normalizeOptionalBoolean(
   value: unknown,
-  _field: string,
+  field: string,
 ): boolean | undefined {
-  if (value === undefined || value === null) return undefined;
-  if (typeof value === "boolean") return value;
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
   if (typeof value === "string") {
     // Match the canonical normalizer (packages/contracts, plugin-calendar):
     // trim and lowercase before comparing, and accept "1"/"0" string forms.
+    // Anything else (including null, numbers, and other strings) is invalid
+    // input and fails explicitly instead of being treated as absent.
     const normalized = value.trim().toLowerCase();
-    if (normalized === "true" || normalized === "1") return true;
-    if (normalized === "false" || normalized === "0") return false;
-  } else if (value === 1) {
-    return true;
-  } else if (value === 0) {
-    return false;
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
   }
-  return undefined;
+  fail(400, `${field} must be a boolean`);
 }
 
 export function normalizeOptionalIsoString(
@@ -72,10 +78,15 @@ export function normalizeOptionalIsoString(
     // 400 via requireNonEmptyString. Same defect class as #34687.
     fail(400, `${field} must be a non-empty string`);
   }
-  if (Number.isNaN(Date.parse(trimmed))) {
+  const parsed = Date.parse(trimmed);
+  if (Number.isNaN(parsed)) {
     fail(400, `${field} must be a valid ISO timestamp`);
   }
-  return trimmed;
+  // Match the canonical normalizer (packages/contracts, plugin-calendar):
+  // return the parsed instant in canonical ISO form, not the caller's
+  // spelling, so offset, date-only, and other parseable spellings of the
+  // same instant are stored identically to every other LifeOps timestamp.
+  return new Date(parsed).toISOString();
 }
 
 export function normalizeOptionalFiniteNumber(

@@ -16,6 +16,7 @@ import {
 import { appBillingScopes } from "./app-billing";
 import { billingSubscriptionRevisions, billingSubscriptions } from "./billing-subscriptions";
 import { organizations } from "./organizations";
+import { subscriptionGrants } from "./subscription-grants";
 
 export const ENTITLEMENT_PLAN_KEYS = ["free", "plus_monthly", "pro_monthly"] as const;
 export type EntitlementPlanKey = (typeof ENTITLEMENT_PLAN_KEYS)[number];
@@ -66,6 +67,8 @@ export const organizationEntitlements = pgTable(
     source_subscription_revision: bigint("source_subscription_revision", {
       mode: "number",
     }),
+    /** Set only for a `promo_grant` projection published by a redeemed grant code. */
+    source_grant_id: uuid("source_grant_id"),
     created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     rebuilt_at: timestamp("rebuilt_at", { withTimezone: true }).notNull().defaultNow(),
@@ -99,9 +102,14 @@ export const organizationEntitlements = pgTable(
       ],
       name: "organization_entitlements_source_revision_tenant_fk",
     }).onDelete("restrict"),
+    source_grant_tenant_fk: foreignKey({
+      columns: [table.source_grant_id, table.organization_id],
+      foreignColumns: [subscriptionGrants.id, subscriptionGrants.organization_id],
+      name: "organization_entitlements_source_grant_tenant_fk",
+    }).onDelete("restrict"),
     plan_state_check: check(
       "organization_entitlements_plan_state_check",
-      sql`(${table.billing_scope_id} IS NOT NULL AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND ${table.state} IN ('trialing','active','grace','past_due','unpaid','paused','canceled','incomplete','incomplete_expired') AND ${table.access} IN ('granted','read_only','denied') AND ${table.entitlement_effective} = (${table.access} = 'granted')) OR (${table.billing_scope_id} IS NULL AND ${table.plan_key} IN ('free','plus_monthly','pro_monthly') AND ${table.state} IN ('free','active','grace','past_due','unpaid') AND ((${table.plan_key} = 'free' AND ${table.state} = 'free' AND ${table.entitlement_effective} AND (${table.source_subscription_id} IS NULL) = (${table.source_subscription_revision} IS NULL)) OR (${table.plan_key} <> 'free' AND ${table.state} <> 'free' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND (${table.entitlement_effective} = (${table.state} IN ('active','grace'))))))`,
+      sql`(${table.source_grant_id} IS NULL AND ((${table.billing_scope_id} IS NOT NULL AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND ${table.state} IN ('trialing','active','grace','past_due','unpaid','paused','canceled','incomplete','incomplete_expired') AND ${table.access} IN ('granted','read_only','denied') AND ${table.entitlement_effective} = (${table.access} = 'granted')) OR (${table.billing_scope_id} IS NULL AND ${table.plan_key} IN ('free','plus_monthly','pro_monthly') AND ${table.state} IN ('free','active','grace','past_due','unpaid') AND ((${table.plan_key} = 'free' AND ${table.state} = 'free' AND ${table.entitlement_effective} AND (${table.source_subscription_id} IS NULL) = (${table.source_subscription_revision} IS NULL)) OR (${table.plan_key} <> 'free' AND ${table.state} <> 'free' AND ${table.source_subscription_id} IS NOT NULL AND ${table.source_subscription_revision} IS NOT NULL AND (${table.entitlement_effective} = (${table.state} IN ('active','grace'))))))) OR (${table.source_grant_id} IS NOT NULL AND ${table.billing_scope_id} IS NULL AND ${table.plan_key} IN ('plus_monthly','pro_monthly') AND ${table.state} = 'active' AND ${table.entitlement_effective} AND ${table.access} = 'granted' AND ${table.source_subscription_id} IS NULL AND ${table.source_subscription_revision} IS NULL)`,
     ),
     effective_bounds_check: check(
       "organization_entitlements_effective_bounds_check",

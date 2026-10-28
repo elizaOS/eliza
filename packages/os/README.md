@@ -60,6 +60,8 @@ Release-script tests (`test:release`) require Python 3.11+, cryptography, binuti
 complete native and release lane; portable checks do not qualify device writes.
 Browser tests additionally require a JDK, C++20 compiler and OpenSSL development
 headers/libraries on the compiler search path.
+`test:ota-publisher` also requires the exact Go version in `native/ota-trust/go.mod`;
+its signed-graph integration test fails when that toolchain is missing.
 
 The retained release tools use canonical JSON fixtures mirrored from
 [`elizaOS/os` at `735afc708eb3`](https://github.com/elizaOS/os/tree/735afc708eb3e7a76050c0c918c916bb5545b0bf/packages/os/release).
@@ -73,10 +75,22 @@ CAS ports; the core has no default signer or publication destination. Run
 `bun run --cwd packages/os test:ota-publisher` for concurrency and real process-death
 recovery contracts. These tests do not authorize or perform production publication.
 
+`createPublicationAuthorizer` (`native/ota-publisher/publication-authorizer.mjs`)
+builds the transaction's `authorizeBundle` port. Each call reads the durable
+floors and the host's qualified publisher time, verifies the complete signed
+graph, binds every descriptor in the plan to it, and gets a fresh source approval
+and preflight report for each exact descriptor. It then verifies the graph again
+and only then advances the floors. `verifyPublicationGraph` runs the shared
+`ota-trust/cmd/verify-publication` executable with a host-supplied path,
+`AbortSignal` and `timeoutMs`. There are no default deadlines, request budgets or
+transport, and no APK or public-release verifier: those stay with the host.
+
 Downstream launcher hosts may use `createDevelopmentLauncherDescriptor` from
 `scripts/android/stage-launcher-overlay.ts` only with explicit development
 mode. It verifies one signer against a private APK copy and returns a hash-bound
 descriptor; it grants no production signer authority. `stageLauncher` rechecks
 the staged bytes, manifest and signer, and accepts an optional SDK environment.
+Optional same-signer companion packages are staged beside the launcher without
+grants or privileged placement.
 Product identity, output selection and independently reviewed production
 descriptors remain with the consumer.

@@ -46,14 +46,19 @@ import { serveRegistryHostRequest } from "./registry-host";
 import { knownRouteShardKey } from "./router-shards";
 import { isThinStewardPath } from "./steward/public-paths";
 
+export { A2ATaskState } from "./a2a-task-state";
 export { AnonymousChatGate } from "./anonymous-chat-gate";
+export { AuthenticationState } from "./authentication-state";
 export { isThinCliSessionPath } from "./cli-session-paths";
 export { DoorDashCheckoutGate } from "./doordash-checkout-gate";
+export { HfEgressState } from "./hf-egress-state";
 export { InferenceAdmissionGate } from "./inference-admission-gate";
 export { InferenceRateLimitV2RollbackFloor } from "./inference-rate-limit-v2-rollback-floor";
+export { InferenceRecoveryService } from "./inference-recovery-service";
 export { OnboardingSessionCoordinator } from "./onboarding-session-coordinator";
 export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
+export { RateLimitState } from "./rate-limit-state";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
 export {
   isThinStewardEmailAuthPath,
@@ -62,6 +67,7 @@ export {
   isThinStewardPublicPath,
 } from "./steward/public-paths";
 export { TwitterOAuthRefreshCoordinator } from "./twitter-oauth-refresh-coordinator";
+export { VoiceUsageState } from "./voice-usage-state";
 
 /**
  * Full-app promises memoised per route shard (issue #22550). Each entry is a
@@ -875,7 +881,9 @@ function isFrontendAliasBackendPath(url: URL): boolean {
     // every other well-known path on the alias hosts off the SPA, including
     // publishing the internal-service JWKS where it is not published today.
     url.pathname === "/.well-known/openid-configuration" ||
-    url.pathname === "/.well-known/oidc/jwks.json"
+    url.pathname === "/.well-known/oidc/jwks.json" ||
+    // Android App Link verification for native sign-in redirects on this host.
+    url.pathname === "/.well-known/assetlinks.json"
   );
 }
 export function getFrontendAliasApiProxyTarget(url: URL): URL | null {

@@ -25,8 +25,10 @@ function readConfiguredApiBase(): string | undefined {
   return typeof base === "string" && base.trim().length > 0 ? base : undefined;
 }
 
+// The top-level label is letters, or the punycode form of an internationalized
+// one (xn--p1ai for .рф).
 const HOSTNAME_RE =
-  /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$/;
+  /^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$/;
 
 function isString(value: string | null): value is string {
   return typeof value === "string";
@@ -48,7 +50,21 @@ function normalizeHostname(value: unknown): string | null {
   }
   const withoutWildcard = trimmed.replace(/^\*\./, "");
   const withoutTrailingDot = withoutWildcard.replace(/\.$/, "");
-  const ascii = withoutTrailingDot.toLowerCase();
+  // An internationalized name (bücher.de, яндекс.рф) is blocked by its ASCII
+  // (punycode) form, as a full https:// URL already is above and as the
+  // blocker engine does; the ASCII-only pattern below would drop it. Only a
+  // bare host is converted: a path, port or credentials stay invalid.
+  let ascii = withoutTrailingDot.toLowerCase();
+  const nonAscii = [...ascii].some((char) => (char.codePointAt(0) ?? 0) > 0x7f);
+  if (nonAscii && !/[\s/\\:?#@]/.test(ascii)) {
+    try {
+      ascii = new URL(`https://${ascii}`).hostname;
+    } catch {
+      // error-policy:J3 untrusted hostname input — a name the URL parser
+      // rejects is reported as an explicit invalid (null).
+      return null;
+    }
+  }
   return HOSTNAME_RE.test(ascii) ? ascii : null;
 }
 

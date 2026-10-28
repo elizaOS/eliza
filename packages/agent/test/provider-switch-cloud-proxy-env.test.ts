@@ -10,6 +10,7 @@ import type {
   RuntimeOperationManager,
   StartOperationRequest,
 } from "../src/runtime/operations/types.ts";
+import { buildRuntimeSettingsProjection } from "../src/runtime/runtime-settings.ts";
 
 let testVault: TestVault;
 const savedEnv = { ...process.env };
@@ -24,6 +25,7 @@ const proxyEnvKeys = [
   "ANTHROPIC_SMALL_MODEL",
   "ANTHROPIC_LARGE_MODEL",
   "ELIZA_PROVIDER",
+  "ELIZA_BRAIN_PROVIDER",
   "CEREBRAS_API_KEY",
   "EVOLINK_API_KEY",
   "ELIZA_MOCK_OPENAI_BASE",
@@ -199,3 +201,52 @@ it.each([
     });
   },
 );
+
+it("sends chat to the new provider after a chat-brain pin and a provider switch", async () => {
+  // SETTINGS set_backend saved this pin; boot copies config.env to process.env.
+  const config = {
+    env: { ELIZA_BRAIN_PROVIDER: "openai" },
+  } as unknown as ElizaConfig;
+  process.env.ELIZA_BRAIN_PROVIDER = "openai";
+  process.env.OPENAI_API_KEY = "sk-user-openai-key";
+
+  expect(
+    await switchProvider(config, {
+      provider: "anthropic",
+      apiKey: "sk-ant-user-key",
+    }),
+  ).toBe(202);
+
+  // The restarted runtime: boot names the switched provider as the brain,
+  // and both plugins load (the OpenAI key is kept).
+  const runtime = new AgentRuntime({
+    character: { name: "ProviderSwitchRouting" },
+    settings: buildRuntimeSettingsProjection(config, {
+      brainProviderName: anthropicPlugin.name,
+    }),
+  });
+  for (const plugin of [openaiPlugin, anthropicPlugin]) {
+    const handler = plugin.models?.[ModelType.TEXT_SMALL];
+    if (!handler) throw new Error(`${plugin.name} has no TEXT_SMALL handler`);
+    runtime.registerModel(ModelType.TEXT_SMALL, handler, plugin.name);
+  }
+  const hosts: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url =
+        input instanceof Request ? input.url : new URL(String(input)).href;
+      hosts.push(new URL(url).host);
+      return new Response(
+        JSON.stringify({
+          error: { message: "invalid api key", type: "authentication_error" },
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    }),
+  );
+  await expect(
+    runtime.useModel(ModelType.TEXT_SMALL, { prompt: "Reply briefly." }),
+  ).rejects.toThrow();
+  expect(hosts[0]).toBe("api.anthropic.com");
+});

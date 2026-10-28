@@ -7,7 +7,7 @@
  * and HuggingFace tree-listing sources are fall-backs.
  *
  * Response body matches `VoiceModelCatalogResponse` from
- * `@/packages/lib/services/voice-model-catalog`. The Ed25519 signature
+ * `@elizaos/cloud-shared/lib/services/voice-model-catalog`. The Ed25519 signature
  * is base64-encoded in the `X-Eliza-Signature` header — the runtime
  * verifies the EXACT response text against this header before parsing.
  *

@@ -6,6 +6,7 @@ const options = { allowPrivateDomains: true };
 // Common Greek/Cyrillic/Latin visual substitutions. This is a suspicion signal,
 // not a complete Unicode security implementation or a safety verdict.
 const confusables = {
+  0: "o",
   а: "a",
   ɑ: "a",
   α: "a",

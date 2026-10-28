@@ -45,22 +45,6 @@
       "label": "Api Key",
       "help": "CapSolver API key for automated CAPTCHA solving",
       "advanced": false
-    },
-    "BROWSERBASE_API_KEY": {
-      "type": "secret",
-      "required": false,
-      "sensitive": true,
-      "label": "Api Key",
-      "help": "API key for Browserbase cloud browser service",
-      "advanced": false
-    },
-    "BROWSERBASE_PROJECT_ID": {
-      "type": "string",
-      "required": false,
-      "sensitive": false,
-      "label": "Project Id",
-      "help": "Project ID for Browserbase",
-      "advanced": false
     }
   },
   "render": {

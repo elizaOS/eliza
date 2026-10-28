@@ -212,28 +212,74 @@ export class NetworkServiceClient {
     return result;
   }
 
-  setState(req: SetStateRequest): Promise<SetStateResponse> {
-    return this.#post<SetStateResponse>(
+  async setState(req: SetStateRequest): Promise<SetStateResponse> {
+    const result = await this.#post<unknown>(
       SET_STATE_PATH,
       req.idempotencyKey,
       req,
     );
+    if (
+      !isRecord(result) ||
+      !isStringOrNull(result.eventId) ||
+      typeof result.previous !== "string" ||
+      !MEMBER_STATES.has(result.previous) ||
+      typeof result.current !== "string" ||
+      !MEMBER_STATES.has(result.current) ||
+      result.current !== req.state ||
+      !isStringOrNull(result.from) ||
+      !isStringOrNull(result.until) ||
+      typeof result.committedAt !== "string" ||
+      !Number.isFinite(Date.parse(result.committedAt)) ||
+      typeof result.replayed !== "boolean" ||
+      typeof result.unchanged !== "boolean" ||
+      (!result.unchanged &&
+        (typeof result.eventId !== "string" || !result.eventId.trim()))
+    )
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid state commit receipt",
+      );
+    return result as unknown as SetStateResponse;
   }
 
-  recordSignals(req: SignalsRequest): Promise<SignalsResponse> {
-    return this.#post<SignalsResponse>(
+  async recordSignals(req: SignalsRequest): Promise<SignalsResponse> {
+    const result = await this.#post<unknown>(
       SIGNALS_PATH,
       `${req.messageId}:signals`,
       req,
     );
+    if (
+      !isRecord(result) ||
+      typeof result.recorded !== "number" ||
+      !Number.isSafeInteger(result.recorded) ||
+      result.recorded < 0 ||
+      result.recorded > req.signals.length
+    )
+      throw new NetworkServiceError(
+        200,
+        "Network service returned an invalid signals receipt",
+      );
+    return result as unknown as SignalsResponse;
   }
 
-  readUpdates(req: UpdatesRequest): Promise<UpdatesResponse> {
-    return this.#post<UpdatesResponse>(
+  async readUpdates(req: UpdatesRequest): Promise<UpdatesResponse> {
+    const result = await this.#post<unknown>(
       UPDATES_PATH,
       `${req.messageId}:updates`,
       req,
     );
+    if (
+      !isRecord(result) ||
+      !Array.isArray(result.items) ||
+      result.items.some(
+        (item) => !isRecord(item) || typeof item.summary !== "string",
+      )
+    )
+      throw new NetworkServiceError(
+        200,
+        "Network service returned invalid member updates",
+      );
+    return result as unknown as UpdatesResponse;
   }
 
   /** Ask the service to relay the member's message to a match. Idempotent by messageId. */

@@ -36,7 +36,11 @@ export function resolveRetainableAgentBackupBytes(
 ): number {
 	if (rawOverride === undefined) return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
 	const trimmed = rawOverride.trim();
-	if (trimmed === "") return MAX_RESTORABLE_AGENT_BACKUP_BYTES;
+	if (trimmed === "") {
+		throw new Error(
+			`Invalid snapshot retain budget ${JSON.stringify(rawOverride)}: expected a positive integer count of bytes`,
+		);
+	}
 
 	if (!/^\d+$/.test(trimmed)) {
 		throw new Error(

@@ -434,83 +434,106 @@ export async function processIrreversibleAccountDeletionSaga(input: {
   now?: Date;
 }): Promise<ProcessAccountDeletionSagaResult> {
   const now = input.now ?? new Date();
-  const requests = await accountDeletionRequestsRepository.findRunnableIrreversibleRequests(
-    now,
-    input.limit,
-  );
   const result: ProcessAccountDeletionSagaResult = {
-    processed: requests.length,
+    processed: 0,
     completed: 0,
     progressed: 0,
     reconciling: 0,
     actionRequired: 0,
   };
-
-  for (const request of requests) {
-    const context = providerContext(request, input.blob);
-    if (!context) {
-      result.actionRequired++;
-      logger.error("[AccountDeletionSaga] Irreversible receipt lacks provider authority", {
-        requestId: request.id,
-      });
-      continue;
-    }
-    const phases = await accountDeletionRequestsRepository.listPhaseReceipts(request.id);
-    const next = phases.find(
-      (phase) => phase.status !== "completed" && phase.status !== "canceled",
-    );
-    if (!next) {
-      result.actionRequired++;
-      logger.error("[AccountDeletionSaga] Irreversible receipt has no terminal erasure phase", {
-        requestId: request.id,
-      });
-      continue;
-    }
-    if (next.status === "action_required") {
-      result.actionRequired++;
-      continue;
-    }
-
-    if (next.phase === "database_erasure") {
-      const lease = await accountDeletionRequestsRepository.leasePhase({
-        requestId: request.id,
-        phase: next.phase,
-        leaseOwnerDigest: digest(randomUUID()),
-        now,
-        leaseMilliseconds: PHASE_LEASE_MILLISECONDS,
-      });
-      if (!lease) continue;
-      const outcome = await processDatabaseErasure({
-        request,
-        phaseReceiptId: lease.receipt.id,
-        generation: lease.generation,
-        phaseReceiptDigests: phases.flatMap((phase) =>
-          phase.provider_receipt_digest ? [phase.provider_receipt_digest] : [],
-        ),
-        now,
-      });
-      if (outcome === "completed") result.completed++;
-      else if (outcome === "retry") result.reconciling++;
-      else if (outcome === "action_required") result.actionRequired++;
-      continue;
-    }
-
-    if (!isProviderPhase(next.phase)) {
-      // Export creation and export revocation have dedicated workers. Their
-      // incomplete receipt remains the ordered head and blocks provider purge.
-      continue;
-    }
-    if (input.allowedPhases && !input.allowedPhases.has(next.phase)) continue;
-    const outcome = await processProviderPhase({
-      request,
-      phase: next.phase,
-      adapter: input.adapters[next.phase],
-      context,
+  // A request this lane cannot act on (another lane owns its head phase, or
+  // the request needs an operator) gets no write, so it keeps its place at the
+  // front of the due set. The run pages past such requests until `limit`
+  // phases have been attempted or the due set is exhausted.
+  const seen: string[] = [];
+  let attempted = 0;
+  while (attempted < input.limit) {
+    const requests = await accountDeletionRequestsRepository.findRunnableIrreversibleRequests(
       now,
-    });
-    if (outcome === "progressed") result.progressed++;
-    else if (outcome === "reconciling") result.reconciling++;
-    else if (outcome === "action_required") result.actionRequired++;
+      input.limit - attempted,
+      seen,
+    );
+    if (requests.length === 0) break;
+    for (const request of requests) {
+      seen.push(request.id);
+      result.processed++;
+      attempted += await runIrreversiblePhase({ ...input, request, now, result });
+    }
   }
   return result;
+}
+
+/** Runs the head phase of one due request; returns 1 when a phase was attempted, 0 when the request was skipped. */
+async function runIrreversiblePhase(input: {
+  request: AccountDeletionRequest;
+  blob: RuntimeR2Bucket;
+  adapters: AccountDeletionProviderAdapters;
+  allowedPhases?: ReadonlySet<AccountDeletionProviderPhase>;
+  now: Date;
+  result: ProcessAccountDeletionSagaResult;
+}): Promise<0 | 1> {
+  const { request, now, result } = input;
+  const context = providerContext(request, input.blob);
+  if (!context) {
+    result.actionRequired++;
+    logger.error("[AccountDeletionSaga] Irreversible receipt lacks provider authority", {
+      requestId: request.id,
+    });
+    return 0;
+  }
+  const phases = await accountDeletionRequestsRepository.listPhaseReceipts(request.id);
+  const next = phases.find((phase) => phase.status !== "completed" && phase.status !== "canceled");
+  if (!next) {
+    result.actionRequired++;
+    logger.error("[AccountDeletionSaga] Irreversible receipt has no terminal erasure phase", {
+      requestId: request.id,
+    });
+    return 0;
+  }
+  if (next.status === "action_required") {
+    result.actionRequired++;
+    return 0;
+  }
+
+  if (next.phase === "database_erasure") {
+    const lease = await accountDeletionRequestsRepository.leasePhase({
+      requestId: request.id,
+      phase: next.phase,
+      leaseOwnerDigest: digest(randomUUID()),
+      now,
+      leaseMilliseconds: PHASE_LEASE_MILLISECONDS,
+    });
+    if (!lease) return 1;
+    const outcome = await processDatabaseErasure({
+      request,
+      phaseReceiptId: lease.receipt.id,
+      generation: lease.generation,
+      phaseReceiptDigests: phases.flatMap((phase) =>
+        phase.provider_receipt_digest ? [phase.provider_receipt_digest] : [],
+      ),
+      now,
+    });
+    if (outcome === "completed") result.completed++;
+    else if (outcome === "retry") result.reconciling++;
+    else if (outcome === "action_required") result.actionRequired++;
+    return 1;
+  }
+
+  if (!isProviderPhase(next.phase)) {
+    // Export creation and export revocation have dedicated workers. Their
+    // incomplete receipt remains the ordered head and blocks provider purge.
+    return 0;
+  }
+  if (input.allowedPhases && !input.allowedPhases.has(next.phase)) return 0;
+  const outcome = await processProviderPhase({
+    request,
+    phase: next.phase,
+    adapter: input.adapters[next.phase],
+    context,
+    now,
+  });
+  if (outcome === "progressed") result.progressed++;
+  else if (outcome === "reconciling") result.reconciling++;
+  else if (outcome === "action_required") result.actionRequired++;
+  return 1;
 }

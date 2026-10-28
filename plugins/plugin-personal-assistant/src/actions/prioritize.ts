@@ -2,8 +2,8 @@
  * `PRIORITIZE` umbrella action — LLM-ranked importance × urgency.
  *
  * Subactions:
- *   - `rank_todos`       — todo items in the owner's life domain
- *   - `rank_threads`     — open inbox / messaging threads
+ *   - `rank_todos`       — open tasks on the TODO action's list (TodosService), not OWNER_TODOS items
+ *   - `rank_threads`     — open work threads (WORK_THREAD records), not inbox mail
  *   - `rank_decisions`   — pending approval queue decisions
  *   - `rank_commitments` — regret-audited commitment-ledger obligations (#14864)
  *
@@ -71,6 +71,17 @@ const SUBACTION_TO_SUBJECT: Readonly<Record<Subaction, Subject>> = {
   rank_threads: "threads",
   rank_decisions: "decisions",
   rank_commitments: "commitments",
+};
+
+/**
+ * Owner-facing noun for each subject. `threads` are WORK_THREAD records.
+ * `todos` are the TODO action's tasks, not OWNER_TODOS items.
+ */
+const SUBJECT_LABEL: Readonly<Record<Subject, string>> = {
+  todos: "TODO list tasks",
+  threads: "work threads",
+  decisions: "decisions",
+  commitments: "commitments",
 };
 
 interface PrioritizeActionParameters {
@@ -593,7 +604,7 @@ const examples: ActionExample[][] = [
     {
       name: "{{agentName}}",
       content: {
-        text: "Ranked your top todos by urgency × importance.",
+        text: "Ranked top 5 TODO list tasks by urgency × importance.",
         action: ACTION_NAME,
       },
     },
@@ -601,12 +612,12 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
-      content: { text: "Which threads need my attention first?" },
+      content: { text: "Which work threads need my attention first?" },
     },
     {
       name: "{{agentName}}",
       content: {
-        text: "Ranked your open threads by priority.",
+        text: "Ranked your open work threads by priority.",
         action: ACTION_NAME,
       },
     },
@@ -625,12 +636,12 @@ export const prioritizeAction: Action & {
     "surface:internal",
   ],
   description:
-    "Rank owner open todos, message threads, pending decisions, or regret-audited commitments by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions, rank_commitments.",
+    "Rank owner open TODO list tasks (the TODO action list, not OWNER_TODOS items), work threads (WORK_THREAD records, not inbox or message threads), pending decisions, or regret-audited commitments by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions, rank_commitments.",
   descriptionCompressed:
-    "prioritize: rank_todos|rank_threads|rank_decisions|rank_commitments; topN ranking by urgency × importance",
+    "prioritize: rank_todos(TODO list, not OWNER_TODOS)|rank_threads(work threads, not inbox)|rank_decisions|rank_commitments; topN ranking by urgency × importance",
   routingHint:
-    'prioritization ("focus on", "rank today", "which thread first", "what matters most", "what will I regret") -> PRIORITIZE; do not use plain list -> OWNER_TODOS.list / MESSAGE.list_inbox',
-  contexts: ["focus", "tasks", "inbox", "approvals"],
+    'prioritization ("focus on", "rank today", "which work thread first", "what matters most", "what will I regret") -> PRIORITIZE; plain todo list -> OWNER_TODOS.list; rank_todos reads only the TODO action task list, not OWNER_TODOS items; email or message threads -> MESSAGE, rank_threads reads only WORK_THREAD records',
+  contexts: ["focus", "tasks", "approvals"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
@@ -638,13 +649,13 @@ export const prioritizeAction: Action & {
     {
       name: "action",
       description:
-        "Prioritize op: rank_todos | rank_threads | rank_decisions | rank_commitments.",
+        "Prioritize op: rank_todos | rank_threads | rank_decisions | rank_commitments. rank_todos ranks the TODO action task list, not OWNER_TODOS items. rank_threads ranks work threads (WORK_THREAD records), not inbox or message threads.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "subject",
       description:
-        "Alt selector: todos | threads | decisions | commitments. Maps to subaction.",
+        "Alt selector: todos | threads | decisions | commitments. Maps to subaction. todos = TODO action task list. threads = work threads.",
       schema: {
         type: "string" as const,
         enum: ["todos", "threads", "decisions", "commitments"],
@@ -686,6 +697,7 @@ export const prioritizeAction: Action & {
     }
 
     const subject = SUBACTION_TO_SUBJECT[subaction];
+    const label = SUBJECT_LABEL[subject];
     const topN =
       typeof params.topN === "number" && params.topN > 0
         ? Math.floor(params.topN)
@@ -707,7 +719,7 @@ export const prioritizeAction: Action & {
         subaction,
         subject,
       });
-      const text = `I couldn't load your ${subject} to rank. Please try again.`;
+      const text = `I couldn't load your ${label} to rank. Please try again.`;
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {
         success: false,
@@ -720,7 +732,7 @@ export const prioritizeAction: Action & {
       };
     }
     if (items.length === 0) {
-      const text = `No open ${subject} to rank.`;
+      const text = `No open ${label} to rank.`;
       logger.info(`[PRIORITIZE] ${subaction} empty topN=${topN}`);
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {
@@ -746,7 +758,7 @@ export const prioritizeAction: Action & {
           score: 0,
           reasoning: "model unavailable; preserved input order",
         }));
-      const text = `Ranked ${fallbackRanked.length} ${subject} (model unavailable, used input order).`;
+      const text = `Ranked ${fallbackRanked.length} ${label} (model unavailable, used input order).`;
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {
         success: true,
@@ -777,7 +789,7 @@ export const prioritizeAction: Action & {
       logger.error(`[PRIORITIZE] ${subaction} model call failed: ${detail}`);
       return {
         success: false,
-        text: `I couldn't rank your ${subject} — the language model call failed.`,
+        text: `I couldn't rank your ${label} — the language model call failed.`,
         data: {
           subaction,
           subject,
@@ -796,8 +808,8 @@ export const prioritizeAction: Action & {
 
     const text =
       ranked.length === 0
-        ? `Ranked 0 ${subject} — model produced no valid entries.`
-        : `Ranked top ${ranked.length} ${subject} by urgency × importance.`;
+        ? `Ranked 0 ${label} — model produced no valid entries.`
+        : `Ranked top ${ranked.length} ${label} by urgency × importance.`;
 
     await callback?.({ text, source: "action", action: ACTION_NAME });
 

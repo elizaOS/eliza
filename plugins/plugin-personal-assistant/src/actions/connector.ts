@@ -62,6 +62,16 @@ const DISCONNECT_UNSUPPORTED_KINDS: ReadonlySet<string> = new Set([
   "health",
 ] satisfies (typeof VERBOSE_DISPATCHER_KINDS)[number][]);
 
+/**
+ * Registry connectors whose credentials are environment settings (for example
+ * TWILIO_* / DUFFEL_*). LifeOps cannot revoke them, so `disconnect` is refused
+ * instead of reporting a disconnect that leaves the credentials working.
+ */
+const ENV_MANAGED_CONNECTOR_KINDS: ReadonlySet<string> = new Set([
+  "twilio",
+  "duffel",
+]);
+
 const VALID_SUBACTIONS = [
   "connect",
   "disconnect",
@@ -1288,6 +1298,13 @@ async function dispatchGenericRegistry(
       };
     }
     case "disconnect": {
+      if (ENV_MANAGED_CONNECTOR_KINDS.has(connectorKind)) {
+        return unsupportedOperation(
+          connectorKind,
+          subaction,
+          `${contribution.describe.label} uses credentials from the agent's environment settings; remove them there to disconnect it.`,
+        );
+      }
       await contribution.disconnect();
       return {
         success: true,
@@ -1353,7 +1370,6 @@ export const connectorAction: Action & {
     "SERVICE_STATUS",
     // PRD action-catalog alias. NotificationIntent endpoint resolution maps
     // to CONNECTOR.list + CONNECTOR.status (the registered endpoints).
-    // See packages/docs/action-prd-map.md.
     "NOTIFICATION_RESOLVE_ENDPOINTS",
   ],
   tags: [
@@ -1369,7 +1385,7 @@ export const connectorAction: Action & {
     "Installed connector account state: connect, disconnect, verify, status, list. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
     "External accounts: Google (Gmail/Drive package OAuth), Telegram, Discord, etc. " +
-    "disconnect works for google and registry-only connectors (e.g. twilio, duffel); x, telegram, discord, imessage, whatsapp, wechat, health cannot be disconnected here. " +
+    "disconnect works for google and registry-only connectors; x, telegram, discord, imessage, whatsapp, wechat, health cannot be disconnected here, and twilio, duffel use environment settings that must be removed there. " +
     "Do NOT use this for 'connect Google Calendar' / calendar feed authorization — use CALENDAR_SOURCES. " +
     "Connector kinds from runtime ConnectorRegistry; verify active upstream API probe. " +
     "Plugin install/uninstall/configure -> use PLUGIN.",
@@ -1514,6 +1530,28 @@ export const connectorAction: Action & {
       };
     }
 
+    // The Google domain refuses every non-local mode (assertLocalMode). Name
+    // the argument here, before the disconnect confirmation, so connect does
+    // not collapse it into a generic failure and the owner is not asked to
+    // confirm a call that can only be refused.
+    if (
+      connector === "google" &&
+      params.mode !== undefined &&
+      params.mode !== "local"
+    ) {
+      return {
+        success: false,
+        text: `[${ACTION_NAME}] google does not support mode "${params.mode}"; omit mode or set it to "local".`,
+        data: {
+          actionName: ACTION_NAME,
+          connector,
+          subaction,
+          error: "GOOGLE_MODE_UNSUPPORTED",
+          mode: params.mode,
+        },
+      };
+    }
+
     // F33: `disconnect` revokes a live grant — destructive and not instantly
     // reversible (re-auth may need the owner's device). Require an explicit
     // confirmation cue in the owner's own message: the bare ask gets a
@@ -1524,6 +1562,7 @@ export const connectorAction: Action & {
     if (
       subaction === "disconnect" &&
       !DISCONNECT_UNSUPPORTED_KINDS.has(connector) &&
+      !ENV_MANAGED_CONNECTOR_KINDS.has(connector) &&
       !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
     ) {
       return {
@@ -1593,7 +1632,7 @@ export const connectorAction: Action & {
     {
       name: "mode",
       description:
-        "local | cloud_managed | remote. Default connector-specific.",
+        "local | cloud_managed | remote. Default connector-specific. google accepts only local: omit it for google.",
       required: false,
       schema: {
         type: "string" as const,

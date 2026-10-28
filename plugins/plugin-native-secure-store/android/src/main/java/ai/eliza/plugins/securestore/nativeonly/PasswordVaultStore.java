@@ -23,14 +23,30 @@ public class PasswordVaultStore {
     public static final KeyPolicy LEGACY = new KeyPolicy(120, false);
     public final int validitySeconds;
     public final boolean biometric;
+    private final android.content.Context deviceContext;
     public KeyPolicy(int validitySeconds, boolean biometric) {
       if (validitySeconds < 5 || validitySeconds > 600) throw new IllegalArgumentException("Unsupported password unlock window");
-      this.validitySeconds = validitySeconds; this.biometric = biometric;
+      this.validitySeconds = validitySeconds; this.biometric = biometric; this.deviceContext = null;
+    }
+    private KeyPolicy(android.content.Context context) {
+      if (android.os.Build.VERSION.SDK_INT < 35) throw new IllegalArgumentException("Device-unlocked password custody requires Android 15");
+      this.deviceContext = Objects.requireNonNull(context).getApplicationContext();
+      this.validitySeconds = 0; this.biometric = false;
+    }
+    /** New, separately named custody only. Does not change an existing authentication-bound key. */
+    public static KeyPolicy deviceUnlocked(android.content.Context context) { return new KeyPolicy(context); }
+    public boolean requiresDeviceUnlockOnly() { return deviceContext != null; }
+    private void checkDevice() throws DeviceLocked {
+      if (deviceContext == null) return;
+      android.app.KeyguardManager guard = deviceContext.getSystemService(android.app.KeyguardManager.class);
+      android.os.UserManager user = deviceContext.getSystemService(android.os.UserManager.class);
+      if (guard == null || user == null || !user.isUserUnlocked() || !guard.isDeviceSecure() || guard.isDeviceLocked()) throw new DeviceLocked();
     }
     int authenticators() { return biometric ? KeyProperties.AUTH_BIOMETRIC_STRONG | KeyProperties.AUTH_DEVICE_CREDENTIAL : KeyProperties.AUTH_DEVICE_CREDENTIAL; }
   }
   public static final int MAX_ENTRIES = 1000, MAX_BINDINGS = 20, MAX_LABEL = 200, MAX_USERNAME = 1024, MAX_PASSWORD = 16384;
   private final AtomicFile file;
+  private final AtomicFile devicePolicyFile;
   private final String alias;
   private final boolean authenticationRequired;
   private final KeyPolicy policy;
@@ -42,18 +58,28 @@ public class PasswordVaultStore {
   public PasswordVaultStore(File directory, String alias, byte[] aad, KeyPolicy policy) throws IOException {
     this.aad = aad.clone();
     if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Password storage unavailable");
-    this.file = new AtomicFile(new File(directory, "vault.enc")); this.alias = alias; this.policy = policy; this.authenticationRequired = policy != null;
+    this.devicePolicyFile = policy != null && policy.requiresDeviceUnlockOnly() ? new AtomicFile(new File(directory, "vault.device-unlocked-v1")) : null;
+    this.file = new AtomicFile(new File(directory, "vault.enc")); this.alias = alias; this.policy = policy; this.authenticationRequired = policy != null && !policy.requiresDeviceUnlockOnly();
   }
+  /** Device lock and screen-lock removal deny access without starting an app authentication prompt. */
+  public static final class DeviceLocked extends IOException { DeviceLocked() { super("Unlock the device to use saved passwords"); } }
+  private void checkDevice() throws DeviceLocked { if (policy != null) policy.checkDevice(); }
   private SecretKey key(boolean existing) throws Exception {
+    synchronized (PasswordVaultStore.class) { return keyLocked(existing); }
+  }
+  private SecretKey keyLocked(boolean existing) throws Exception {
+    checkDevice();
     KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
     if (keys.containsAlias(alias)) {
       SecretKey key=(SecretKey)keys.getKey(alias,null);
       android.security.keystore.KeyInfo info=(android.security.keystore.KeyInfo)SecretKeyFactory.getInstance(key.getAlgorithm(),"AndroidKeyStore").getKeySpec(key,android.security.keystore.KeyInfo.class);
+      if (policy != null && policy.requiresDeviceUnlockOnly() && info.isUserAuthenticationRequired()) throw new IOException("Password key authentication policy mismatch");
       if (authenticationRequired && (!info.isUserAuthenticationRequired() || info.getUserAuthenticationValidityDurationSeconds()!=policy.validitySeconds)) throw new IOException("Password key authentication policy mismatch");
       if (authenticationRequired && android.os.Build.VERSION.SDK_INT>=30 && info.getUserAuthenticationType()!=policy.authenticators()) throw new IOException("Password key authenticator policy mismatch");
+      if (devicePolicyFile != null) verifyDeviceKeyProvenance(key);
       return key;
     }
-    if (existing) throw new KeyLost();
+    if (existing || (devicePolicyFile != null && (devicePolicyFile.getBaseFile().exists() || new File(devicePolicyFile.getBaseFile().getPath() + ".bak").exists()))) throw new KeyLost();
     KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
     KeyGenParameterSpec.Builder spec = new KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
       .setKeySize(256).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).setRandomizedEncryptionRequired(true);
@@ -63,8 +89,35 @@ public class PasswordVaultStore {
       else spec.setUserAuthenticationValidityDurationSeconds(policy.validitySeconds);
     }
     if (android.os.Build.VERSION.SDK_INT >= 28) spec.setUnlockedDeviceRequired(true);
-    generator.init(spec.build()); return generator.generateKey();
+    generator.init(spec.build());
+    SecretKey generated = generator.generateKey();
+    if (devicePolicyFile != null) {
+      byte[] marker = PasswordVaultFrame.seal(generated, devicePolicyAad(), devicePolicyValue());
+      FileOutputStream output = null;
+      try { output = devicePolicyFile.startWrite(); output.write(marker); devicePolicyFile.finishWrite(output); }
+      catch (Exception failure) { if (output != null) devicePolicyFile.failWrite(output); throw failure; }
+      verifyDeviceKeyProvenance(generated);
+    }
+    return generated;
   }
+  private byte[] devicePolicyAad() {
+    byte[] tag = "device-unlocked-key-provenance-v1".getBytes(StandardCharsets.UTF_8);
+    byte[] combined = Arrays.copyOf(aad, aad.length + tag.length);
+    System.arraycopy(tag, 0, combined, aad.length, tag.length); return combined;
+  }
+  private byte[] devicePolicyValue() { return ("device-unlocked-v1:" + alias).getBytes(StandardCharsets.UTF_8); }
+  /** KeyInfo cannot report unlockedDeviceRequired. Admit only keys created by this versioned path. */
+  private void verifyDeviceKeyProvenance(SecretKey key) throws Exception {
+    File base = devicePolicyFile.getBaseFile(), backup = new File(base.getPath() + ".bak");
+    if (!base.exists() && !backup.exists()) throw new IOException("Device-unlocked key provenance is missing");
+    for (File candidate : new File[]{base, backup})
+      if (java.nio.file.Files.isSymbolicLink(candidate.toPath()) || (candidate.exists() && (!candidate.isFile() || candidate.length() > 4096)))
+        throw new IOException("Invalid device-unlocked key provenance");
+    byte[] value = PasswordVaultFrame.open(key, devicePolicyAad(), devicePolicyFile.readFully());
+    try { if (!Arrays.equals(value, devicePolicyValue())) throw new IOException("Invalid device-unlocked key provenance"); }
+    finally { Arrays.fill(value, (byte)0); }
+  }
+
   /**
    * Stored records exist but their key is gone (for example, deleted with the screen lock). The
    * message is the historical one, so existing callers that match it keep working.
@@ -76,6 +129,7 @@ public class PasswordVaultStore {
    * missing or permanently invalidated. A key that merely needs user authentication is not.
    */
   public synchronized boolean unrecoverable() throws Exception {
+    checkDevice();
     File base = file.getBaseFile(), backup = new File(base.getPath() + ".bak");
     if (!base.exists() && !backup.exists()) return false;
     KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
@@ -96,6 +150,7 @@ public class PasswordVaultStore {
     KeyStore keys = KeyStore.getInstance("AndroidKeyStore"); keys.load(null);
     if (keys.containsAlias(alias)) keys.deleteEntry(alias);
     file.delete();
+    if (devicePolicyFile != null) devicePolicyFile.delete();
   }
 
   public android.security.keystore.KeyInfo keyProtection() throws Exception {
@@ -103,6 +158,7 @@ public class PasswordVaultStore {
     return (android.security.keystore.KeyInfo)SecretKeyFactory.getInstance(key.getAlgorithm(),"AndroidKeyStore").getKeySpec(key,android.security.keystore.KeyInfo.class);
   }
   private JSONArray load() throws Exception {
+    checkDevice();
     File base=file.getBaseFile(), backup=new File(base.getPath()+".bak");
     if (!base.exists() && !backup.exists()) return new JSONArray();
     // AtomicFile must recover a committed legacy backup before a missing base
@@ -112,9 +168,10 @@ public class PasswordVaultStore {
     }
     byte[] bytes = file.readFully(); if (bytes.length < PasswordVaultFrame.MIN_FRAME_BYTES || bytes[0] != PasswordVaultFrame.VERSION) throw new IOException("Invalid password storage");
     byte[] plaintext = PasswordVaultFrame.open(key(true), aad, bytes);
-    try { return new JSONArray(new String(plaintext, StandardCharsets.UTF_8)); } finally { Arrays.fill(plaintext, (byte)0); }
+    try { JSONArray records = new JSONArray(new String(plaintext, StandardCharsets.UTF_8)); checkDevice(); return records; } finally { Arrays.fill(plaintext, (byte)0); }
   }
   private void persist(JSONArray records) throws Exception {
+    checkDevice();
     byte[] plaintext = records.toString().getBytes(StandardCharsets.UTF_8);
     byte[] frame;
     try { frame = PasswordVaultFrame.seal(key(file.getBaseFile().exists()), aad, plaintext); } finally { Arrays.fill(plaintext, (byte)0); }
@@ -123,6 +180,35 @@ public class PasswordVaultStore {
     catch (Exception failure) { if (out != null) file.failWrite(out); throw failure; }
     File target = file.getBaseFile(); target.setReadable(false, false); target.setReadable(true, true); target.setWritable(false, false); target.setWritable(true, true);
   }
+  /**
+   * Copy an authenticated native snapshot into a distinct device-unlocked vault. Preserve the
+   * source alias, file, IDs and timestamps. A repeated attempt only succeeds when the target
+   * already contains the exact same snapshot; never replace unrelated target data.
+   *
+   * The host must keep using the source until this method returns and it durably commits its
+   * selected custody version. A crash before that host commit can retry this method. Conflicting
+   * snapshots require explicit recovery. No host selection or source deletion occurs here.
+   * An absent source contains no secret and may produce an empty snapshot without a challenge.
+   */
+  public synchronized int migrateToDeviceUnlocked(PasswordVaultStore target) throws Exception {
+    if (!authenticationRequired || target == null || target.policy == null || !target.policy.requiresDeviceUnlockOnly()
+        || alias.equals(target.alias) || file.getBaseFile().getCanonicalFile().equals(target.file.getBaseFile().getCanonicalFile()))
+      throw new IOException("Use a separate device-unlocked password vault");
+    JSONArray snapshot = load(); // The old Keystore key still enforces its original authentication.
+    synchronized (target) {
+      target.checkDevice();
+      File base = target.file.getBaseFile();
+      if (base.exists() || new File(base.getPath() + ".bak").exists()) {
+        if (!snapshot.toString().equals(target.load().toString())) throw new IOException("Password migration target already contains different records");
+      } else {
+        target.persist(snapshot);
+        if (!snapshot.toString().equals(target.load().toString())) throw new IOException("Password migration verification failed");
+      }
+      target.checkDevice();
+      return snapshot.length();
+    }
+  }
+
   public static String origin(String input) throws Exception {
     URI uri = new URI(input.trim());
     if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null || !(uri.getRawPath() == null || uri.getRawPath().isEmpty() || uri.getRawPath().equals("/")) || uri.getPort() < -1 || uri.getPort() > 65535) throw new IOException("Use an HTTPS website address without a path");
@@ -131,7 +217,7 @@ public class PasswordVaultStore {
   public synchronized JSONArray list() throws Exception {
     JSONArray records = load(), summaries = new JSONArray();
     for (int i = 0; i < records.length(); i++) { JSONObject item = records.getJSONObject(i); summaries.put(new JSONObject().put("id",item.getString("id")).put("origin",item.optString("origin","")).put("username",item.getString("username"))); }
-    return summaries;
+    checkDevice(); return summaries;
   }
   /** Facets of a record; legacy records are bound to their single web origin. */
   public static List<String> bindings(JSONObject item) throws Exception {
@@ -154,7 +240,7 @@ public class PasswordVaultStore {
       summaries.put(new JSONObject().put("id", item.getString("id")).put("label", label).put("username", item.getString("username"))
         .put("bindings", new JSONArray(facets)).put("updatedAt", item.optLong("updatedAt", 0)).put("createdAt", item.optLong("createdAt", item.optLong("updatedAt", 0))));
     }
-    return summaries;
+    checkDevice(); return summaries;
   }
   private static String entryLabel(JSONObject item, List<String> facets) throws Exception {
     String label = item.optString("label", "");
@@ -167,7 +253,7 @@ public class PasswordVaultStore {
       JSONObject item = records.getJSONObject(i);
       item.put("label", entryLabel(item, bindings(item)));
     }
-    return records;
+    checkDevice(); return records;
   }
   /**
    * Creates (null id) or updates an entry with one or more normalized bindings. A null password
@@ -231,7 +317,7 @@ public class PasswordVaultStore {
     return id;
   }
   public synchronized JSONObject get(String id) throws Exception {
-    JSONArray records=load(); for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) return records.getJSONObject(i); throw new IOException("Password no longer exists");
+    JSONArray records=load(); for(int i=0;i<records.length();i++) if(records.getJSONObject(i).getString("id").equals(id)) { checkDevice(); return records.getJSONObject(i); } throw new IOException("Password no longer exists");
   }
   public synchronized String save(String id, String website, String username, String password) throws Exception {
     String normalized=origin(website);

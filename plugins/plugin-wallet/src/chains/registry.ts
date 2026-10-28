@@ -28,19 +28,17 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import {
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  getAssociatedTokenAddressSync,
-} from "@solana/spl-token";
-import {
   Connection,
   LAMPORTS_PER_SOL,
   PublicKey,
+  type SendOptions,
+  SendTransactionError,
   SystemProgram,
   type TransactionInstruction,
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+import bs58 from "bs58";
 import { type Address, type Chain, encodeFunctionData, parseAbi } from "viem";
 import * as viemChains from "viem/chains";
 import type { WalletBackendService } from "../services/wallet-backend-service.js";
@@ -77,6 +75,7 @@ import {
   getWalletKey,
 } from "./solana/keypairUtils";
 import type { SolanaService } from "./solana/service";
+import { buildSplTransferInstructions } from "./solana/spl-transfer";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const SOLANA_DEFAULT_RPC = "https://api.mainnet-beta.solana.com";
@@ -293,6 +292,9 @@ function transactionToExecution(
       value: tx.value.toString(),
       data: tx.data,
       chainId: tx.chainId ?? chain.id,
+      ...(tx.confirmationStatus === "unconfirmed"
+        ? { confirmationStatus: "unconfirmed" }
+        : {}),
     },
   };
 }
@@ -946,16 +948,15 @@ async function executeSolanaTransfer(
   const tokenMint = resolveSolanaMint(params.fromToken);
   let lamports: number | null = null;
   let tokenBaseUnits: bigint | null = null;
+  let tokenDecimals = 0;
   let connection: Connection | null = null;
   if (tokenMint === SOL_MINT) {
     // Reject an inexact lamport amount before a signer or RPC lookup.
     lamports = parseSolanaTransferLamports(params.amount);
   } else {
     connection = getSolanaConnection(context.runtime);
-    tokenBaseUnits = parseSolanaTokenBaseUnits(
-      params.amount,
-      await getSolanaTokenDecimals(connection, tokenMint),
-    );
+    tokenDecimals = await getSolanaTokenDecimals(connection, tokenMint);
+    tokenBaseUnits = parseSolanaTokenBaseUnits(params.amount, tokenDecimals);
   }
   const { keypair: senderKeypair } = await getWalletKey(context.runtime, true);
   if (!senderKeypair) {
@@ -974,34 +975,15 @@ async function executeSolanaTransfer(
       }),
     );
   } else if (tokenBaseUnits !== null) {
-    const mintPubkey = new PublicKey(tokenMint);
-    const adjustedAmount = tokenBaseUnits;
-    const senderAta = getAssociatedTokenAddressSync(
-      mintPubkey,
-      senderKeypair.publicKey,
-    );
-    const recipientAta = getAssociatedTokenAddressSync(
-      mintPubkey,
-      recipientPubkey,
-    );
-    const recipientAtaInfo = await connection.getAccountInfo(recipientAta);
-    if (!recipientAtaInfo) {
-      instructions.push(
-        createAssociatedTokenAccountInstruction(
-          senderKeypair.publicKey,
-          recipientAta,
-          recipientPubkey,
-          mintPubkey,
-        ),
-      );
-    }
     instructions.push(
-      createTransferInstruction(
-        senderAta,
-        recipientAta,
+      ...(await buildSplTransferInstructions(
+        connection,
+        new PublicKey(tokenMint),
         senderKeypair.publicKey,
-        adjustedAmount,
-      ),
+        recipientPubkey,
+        tokenBaseUnits,
+        tokenDecimals,
+      )),
     );
   }
 
@@ -1013,9 +995,15 @@ async function executeSolanaTransfer(
   }).compileToV0Message();
   const transaction = new VersionedTransaction(message);
   transaction.sign([senderKeypair]);
-  const signature = await connection.sendTransaction(transaction, {
-    skipPreflight: false,
-  });
+
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      transaction,
+      { skipPreflight: false },
+      latestBlockhash,
+      "Solana transfer failed on-chain",
+    );
 
   return {
     status: "submitted",
@@ -1029,7 +1017,83 @@ async function executeSolanaTransfer(
     to: params.recipient,
     amount: params.amount,
     fromToken: tokenMint,
+    metadata: {
+      confirmationStatus,
+      ...(sendUncertain ? { sendUncertain: true } : {}),
+    },
   };
+}
+
+/**
+ * Send a signed Solana transaction and classify its outcome.
+ *
+ * - SendTransactionError: the RPC answered and rejected the transaction
+ *   (with skipPreflight: false this includes preflight rejections, where the
+ *   node does NOT broadcast). A definitive failure: rethrow. A retry is safe.
+ *   Per @solana/web3.js v1.98.4 the error's "action" field reflects the
+ *   skipPreflight option, not the cause, so only the error type is used.
+ * - Any other send error (network failure, timeout, lost response): the
+ *   broadcast status is uncertain and the transaction may have landed. Do
+ *   NOT throw (a retry risks a duplicate spend). Return unconfirmed with the
+ *   signature derived from the signed transaction for manual verification.
+ * - confirmation.value.err: an explicit on-chain failure. Throw; a retry is
+ *   safe.
+ * - Any other confirmation error (timeout, RPC error): the outcome is
+ *   uncertain. Return unconfirmed; never report it as success or failure.
+ *   An explorer "not found" is not proof that the transaction was not sent.
+ */
+async function sendAndConfirmSolanaTransaction(
+  connection: Connection,
+  transaction: VersionedTransaction,
+  sendOptions: SendOptions,
+  latestBlockhash: Readonly<{
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }>,
+  failurePrefix: string,
+): Promise<{
+  signature: string;
+  confirmationStatus: "confirmed" | "unconfirmed";
+  sendUncertain: boolean;
+}> {
+  let signature: string;
+  try {
+    signature = await connection.sendTransaction(transaction, sendOptions);
+  } catch (error) {
+    if (error instanceof SendTransactionError) {
+      throw error;
+    }
+    return {
+      signature: bs58.encode(transaction.signatures[0]),
+      confirmationStatus: "unconfirmed",
+      sendUncertain: true,
+    };
+  }
+
+  let confirmation: Awaited<ReturnType<Connection["confirmTransaction"]>>;
+  try {
+    confirmation = await connection.confirmTransaction(
+      {
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      },
+      "confirmed",
+    );
+  } catch {
+    // error-policy:J2 the transaction was sent; its outcome is unknown.
+    return {
+      signature,
+      confirmationStatus: "unconfirmed",
+      sendUncertain: false,
+    };
+  }
+  if (confirmation.value.err) {
+    throw new Error(
+      `${failurePrefix}: ${JSON.stringify(confirmation.value.err)}`,
+    );
+  }
+  return { signature, confirmationStatus: "confirmed", sendUncertain: false };
 }
 
 interface JupiterSwapBuild {
@@ -1218,25 +1282,19 @@ async function executeSolanaSwap(
   transaction.sign([keypair]);
 
   const latestBlockhash = await connection.getLatestBlockhash();
-  const signature = await connection.sendTransaction(transaction, {
-    skipPreflight: false,
-    maxRetries: 3,
-    preflightCommitment: "confirmed",
-  });
 
-  const confirmation = await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    },
-    "confirmed",
-  );
-  if (confirmation.value.err) {
-    throw new Error(
-      `Transaction failed: ${JSON.stringify(confirmation.value.err)}`,
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      transaction,
+      {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed",
+      },
+      latestBlockhash,
+      "Transaction failed",
     );
-  }
 
   return {
     status: "submitted",
@@ -1250,6 +1308,10 @@ async function executeSolanaSwap(
     amount: params.amount,
     fromToken: inputMint,
     toToken: outputMint,
+    metadata: {
+      confirmationStatus,
+      ...(sendUncertain ? { sendUncertain: true } : {}),
+    },
   };
 }
 

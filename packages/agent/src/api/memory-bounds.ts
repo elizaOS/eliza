@@ -26,44 +26,6 @@ export function sweepExpiredEntries(
   }
 }
 
-// ── Conversation soft cap ─────────────────────────────────────────────
-
-interface ConversationLike {
-  updatedAt: string;
-}
-
-/**
- * Evict the oldest conversation (by `updatedAt`) when the map exceeds `cap`.
- * Returns the evicted key, or null if no eviction was needed.
- */
-export function evictOldestConversation<T extends ConversationLike>(
-  map: Map<string, T>,
-  cap: number,
-): string | null {
-  if (map.size <= cap) return null;
-
-  let oldestKey: string | null = null;
-  let oldestTime = Number.POSITIVE_INFINITY;
-  for (const [k, v] of map) {
-    const parsed = new Date(v.updatedAt).getTime();
-    // `updatedAt` is an ISO string on a persisted/adapter-shaped record, so it
-    // can be unparseable. `new Date("nope").getTime()` is NaN and every
-    // comparison against NaN is false, so such a row could never be selected
-    // as oldest — with all rows corrupt nothing was evicted at all and this
-    // soft cap silently stopped bounding memory. A corrupt row is also the
-    // least trustworthy one to keep, so it sorts as the oldest candidate.
-    const t = Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
-    if (oldestKey === null || t < oldestTime) {
-      oldestTime = t;
-      oldestKey = k;
-    }
-  }
-  // `!== null` rather than truthiness: "" is a legal Map key, and the falsy
-  // check skipped deleting it while still reporting it as evicted.
-  if (oldestKey !== null) map.delete(oldestKey);
-  return oldestKey;
-}
-
 // ── Static file cache ─────────────────────────────────────────────────
 
 interface CachedFile {

@@ -36,22 +36,20 @@ const meta = {
           { status: 403 },
         );
       }
+      // The managed-domain rows GET /api/v1/apps/:id/domains returns.
       return Response.json({
         success: true,
-        sandboxUrl: null,
         domains: [
           {
             id: "contrast-review-domain",
-            subdomain: "contrast-review-app",
-            subdomainUrl: "https://contrast-review-app.example.test",
-            customDomain: "review.example.test",
-            customDomainUrl: "https://review.example.test",
-            customDomainVerified: true,
+            domain: "review.example.test",
+            registrar: "external",
+            status: "active",
+            verified: true,
             sslStatus: "active",
-            isPrimary: true,
-            verificationRecords: [],
-            createdAt: "2026-09-01T00:00:00.000Z",
-            verifiedAt: "2026-09-01T00:00:00.000Z",
+            expiresAt: null,
+            cloudflareZoneId: null,
+            verificationToken: null,
           },
         ],
       });

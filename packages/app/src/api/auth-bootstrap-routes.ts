@@ -11,7 +11,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger as Logger } from "@elizaos/core";
-import { authStoreForRuntime } from "../services/auth-store";
+import { authStoreForHost } from "../services/auth-store";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,
@@ -82,7 +82,7 @@ export async function handleAuthBootstrapRoutes(
     return true;
   }
 
-  const store = authStoreForRuntime(state.current);
+  const store = authStoreForHost(state);
   if (!store) {
     sendJsonResponse(res, 503, {
       error: "db_unavailable",
@@ -143,14 +143,30 @@ export async function handleAuthBootstrapRoutes(
   const identityId = deriveIdentityIdFromCloudUser(claims.sub);
   const existing = await store.findIdentity(identityId);
   if (!existing) {
-    await store.createIdentity({
-      id: identityId,
-      kind: "owner",
-      displayName: `Cloud user ${claims.sub.slice(0, 8)}`,
-      createdAt: now,
-      passwordHash: null,
-      cloudUserId: claims.sub,
-    });
+    try {
+      await store.createIdentity({
+        id: identityId,
+        kind: "owner",
+        displayName: `Cloud user ${claims.sub.slice(0, 8)}`,
+        createdAt: now,
+        passwordHash: null,
+        cloudUserId: claims.sub,
+      });
+    } catch (err) {
+      // error-policy:J2 conflict recovery: only a lost createIdentity race is
+      // recoverable here. Re-read and require the winner's row to be the
+      // owner identity for this Cloud user; any other failure (schema
+      // rejection, storage write failure, no-row driver error) is rethrown
+      // with its cause so the boundary reports the real error.
+      const winner = await store.findIdentity(identityId);
+      if (
+        !winner ||
+        winner.kind !== "owner" ||
+        winner.cloudUserId !== claims.sub
+      ) {
+        throw err;
+      }
+    }
   }
 
   const sessionId = crypto.randomBytes(32).toString("hex");

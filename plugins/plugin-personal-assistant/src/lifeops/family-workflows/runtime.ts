@@ -6,7 +6,10 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
-import { SELF_ENTITY_ID } from "@elizaos/contracts";
+import {
+  normalizeEntityIdentityHandle,
+  SELF_ENTITY_ID,
+} from "@elizaos/contracts";
 import { ElizaError, type IAgentRuntime, Service } from "@elizaos/core";
 import {
   CALENDAR_OWNER_MUTATION_GATEWAY_SERVICE,
@@ -580,9 +583,8 @@ export class FamilyWorkflowRuntimeService extends Service {
             ? ["email", "gmail"]
             : ["imessage", "blooio", "sms", "phone"]
           ).includes(identity.platform.toLowerCase()) &&
-          (input.email
-            ? identity.handle.toLowerCase() === recipient.toLowerCase()
-            : identity.handle === recipient),
+          normalizeEntityIdentityHandle(identity.platform, identity.handle) ===
+            normalizeEntityIdentityHandle(identity.platform, recipient),
       )
     ) {
       throw new Error(

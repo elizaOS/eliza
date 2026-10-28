@@ -76,10 +76,8 @@ async function __hono_GET(
     }
     const summary = await appEarningsService.getEarningsSummary(id);
     const breakdown = await appEarningsService.getEarningsBreakdown(id);
-    const recentTransactions = await appEarningsService.getTransactionHistory(
-      id,
-      { limit: 10 },
-    );
+    const { transactions: recentTransactions } =
+      await appEarningsService.getTransactionHistory(id, { limit: 10 });
     const chartData = await appEarningsService.getDailyEarningsChart(id, days);
     return Response.json({
       success: true,

@@ -315,7 +315,7 @@ authedDescribe("ElizaCloudClient real API e2e: job status", () => {
     async () => {
       const client = clientWithApiKey();
       const jobId = process.env.ELIZA_CLOUD_SDK_JOB_ID as string;
-      await expect(client.getJob(jobId)).resolves.toHaveProperty("status");
+      await expect(client.getJob(jobId)).resolves.toHaveProperty("data.status");
       await expect(
         client.pollJob(jobId, { timeoutMs: 30_000, intervalMs: 1_000 }),
       ).resolves.toHaveProperty("status");

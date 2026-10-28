@@ -10,6 +10,7 @@ import {
   type ConversationRouteState,
   handleConversationRoutes,
 } from "../src/api/conversation-routes.ts";
+import type { ConversationMeta } from "../src/api/server-types.ts";
 
 function runtimeMissingState(): ConversationRouteState {
   return {
@@ -100,4 +101,46 @@ it("answers 503 from POST /api/conversations/cleanup-empty when the runtime is m
   expect(result.payload).toEqual({
     error: "Agent runtime not available",
   });
+});
+
+function stateWithConversation(): {
+  state: ConversationRouteState;
+  id: string;
+} {
+  const state = runtimeMissingState();
+  const id = "conv-stopped-1";
+  state.conversations.set(id, {
+    id,
+    title: "Original title",
+    roomId:
+      "11111111-1111-4111-8111-111111111111" as ConversationMeta["roomId"],
+    createdAt: "2026-10-13T00:00:00.000Z",
+    updatedAt: "2026-10-13T00:00:00.000Z",
+  });
+  return { state, id };
+}
+
+it("answers 503 from PATCH /api/conversations/:id when the runtime is missing", async () => {
+  const { state, id } = stateWithConversation();
+  const result = await call(state, "PATCH", `/api/conversations/${id}`, {
+    title: "Renamed while stopped",
+  });
+  expect(result).toEqual({
+    status: 503,
+    payload: { error: "Agent is not running" },
+  });
+  // The in-process record did not change on its own: the room keeps the title.
+  expect(state.conversations.get(id)?.title).toBe("Original title");
+});
+
+it("answers 503 from DELETE /api/conversations/:id when the runtime is missing", async () => {
+  const { state, id } = stateWithConversation();
+  const result = await call(state, "DELETE", `/api/conversations/${id}`);
+  expect(result).toEqual({
+    status: 503,
+    payload: { error: "Agent is not running" },
+  });
+  // No tombstone without the room deletion that only the runtime can do.
+  expect(state.deletedConversationIds.has(id)).toBe(false);
+  expect(state.conversations.has(id)).toBe(true);
 });

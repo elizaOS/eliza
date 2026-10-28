@@ -14,8 +14,10 @@ import { fetchOpenRouterCatalogEntries } from "./openrouter";
 
 const CEREBRAS_PRICING_SOURCE_URL = "https://www.cerebras.ai/pricing";
 // OpenRouter doesn't return a priced row from BitRouter for `openai/gpt-oss-120b`,
-// but it's the canonical fallback for the cloud's default TEXT_SMALL model
-// (`openai/gpt-oss-120b:nitro`, see packages/core/src/contracts/service-routing.ts).
+// which backs the still-served gateway `:nitro` and `:free` variants
+// (BITROUTER_NITRO_TEXT_MODEL and BITROUTER_DEFAULT_FREE_MODEL in
+// packages/cloud/shared/src/lib/models/catalog.ts). The cloud's default
+// TEXT_SMALL is the Cerebras-native `qwen-3.8-27b`.
 // Variant stripping in candidate-selection.ts collapses :nitro / :free to the
 // base id, so one base entry covers every variant.
 const OPENROUTER_PRICING_SOURCE_URL = "https://openrouter.ai/openai/gpt-oss-120b";

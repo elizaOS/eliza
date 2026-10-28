@@ -91,8 +91,12 @@ import {
 } from "./aosp-model-paths.js";
 import { createAospNetworkAdmissionCheck } from "./aosp-network-admission.js";
 import {
-  AOSP_KOKORO_ASSETS,
-  downloadAospVoiceAsset,
+  AOSP_VOICE_GROUPS,
+  aospEspeakDataParent,
+  aospParadeePaths,
+  aospVoiceGroupNeedsStaging,
+  readAospVoiceLocalSource,
+  stageAospVoiceGroup,
 } from "./aosp-voice-download.js";
 import {
   classifyInferenceRamClass,
@@ -323,11 +327,12 @@ export async function activateAospLocalInferenceModel(args: {
       path: args.modelPath,
       loadedAt,
     });
-    // Eagerly stage the on-device Kokoro voice when a local chat model is
-    // selected/activated, so the first spoken reply already uses the neural
-    // voice. Background staging requires a permitted OS network and is idempotent
-    // (no-op if tts/kokoro/ exists or ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
-    ensureKokoroTtsAssetsInBackground(
+    // Eagerly stage the pinned on-device voice bundle (Paradee TTS, VAD, ASR)
+    // when a local chat model is selected/activated, so the first spoken reply
+    // already uses it. Background staging requires a permitted OS network and
+    // is idempotent (each group is skipped once its directory exists, or when
+    // ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1).
+    ensureAospVoiceAssetsInBackground(
       resolveBundleRootFromModelPath(args.modelPath),
     );
     return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
@@ -365,14 +370,19 @@ type TextToSpeechHandler = (
   runtime: IAgentRuntime,
   params: TextToSpeechParams | string,
 ) => Promise<Uint8Array>;
-interface AospKokoroPrewarmOptions {
+interface AospTtsPrewarmOptions {
   shouldSkip?: () => boolean;
 }
-interface AospFusedKokoroConfig {
+interface AospParadeeConfig {
   libPath: string;
   bundleRoot: string;
-  kokoroGgufPath: string;
-  kokoroVoicePath: string;
+  paradeeGgufPath: string;
+  lexiconPath: string;
+  /**
+   * Directory that contains the staged `espeak-ng-data/` (eSpeak NG English
+   * data for words outside the misaki lexicon), or null when it is not staged.
+   */
+  espeakDataDir: string | null;
 }
 type TranscriptionHandler = (
   runtime: IAgentRuntime,
@@ -1375,48 +1385,65 @@ async function downloadRecommendedAospModel(
 function resolveBundledModelsDir(): string {
   return path.join(resolveStateDir(), "local-inference", "models");
 }
-// Kokoro-82M is the small/fast on-device voice — the only on-device TTS
-// backend. It isn't always bundled into
-// the APK, so fetch the acoustic GGUF + the af_sam speaker preset into the
-// bundle's `tts/kokoro/` dir — the exact dir ElizaBionicInferenceServer.tts()
-// and the fused Kokoro loader read. The on-device voice is an ESSENTIAL feature
-// (without it the app speaks with the platform TextToSpeech — the "android
-// voice"), so unlike the general recommended-model auto-download it fetches by
+// The on-device voice is the pinned `mobile-voice` bundle from
+// model-catalog/voice-model-versions.json: Paradee-8M TTS + misaki lexicon in
+// `tts/paradee/` (the dir ElizaBionicInferenceServer.tts() and the fused
+// Paradee loader read), Silero VAD in `vad/`, and the ASR model in `asr/`:
+// Phonon-2 (Parakeet-TDT; the fused library's parakeet backend, batch and
+// streaming), the only local ASR. An `asr/` group staged with the retired
+// Qwen3-ASR pair is re-staged with Phonon-2, or removed while Phonon-2 is not
+// available. ELIZA_ASR_THREADS is read by the fused library itself. All of it runs on
+// libelizainference. The voice is an ESSENTIAL
+// feature, so unlike the general recommended-model auto-download it fetches by
 // default; opt out with ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD=1 (offline/kiosk).
+// ELIZA_VOICE_BUNDLE_FROM names a local directory laid out like the bundle
+// (plus voice-pins.json for unpublished rows); it is preferred over the
+// network, and it is the only source for rows the owner has not published.
 // Voice artifacts are pinned independently of the selected text tier.
-const KOKORO_GGUF_FILE = AOSP_KOKORO_ASSETS[0].name;
-const KOKORO_VOICE_FILE = AOSP_KOKORO_ASSETS[1].name;
-const KOKORO_STYLE_DIM = 256;
-let kokoroTtsDownloadInflight: Promise<void> | null = null;
-function ensureKokoroTtsAssetsInBackground(bundleRoot: string): void {
+let voiceDownloadInflight: Promise<void> | null = null;
+function ensureAospVoiceAssetsInBackground(bundleRoot: string): void {
   if (process.env.ELIZA_DISABLE_VOICE_AUTO_DOWNLOAD?.trim() === "1") return;
-  if (kokoroTtsDownloadInflight) return;
-  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
-  if (existsSync(kokoroDir)) return;
-  const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
-  kokoroTtsDownloadInflight = (async () => {
-    removeAospGeneratedStagingDir(stagingDir, bundleRoot);
-    mkdirSync(stagingDir, { recursive: true });
-    for (const asset of AOSP_KOKORO_ASSETS) {
-      await downloadAospVoiceAsset(asset, path.join(stagingDir, asset.name));
+  if (voiceDownloadInflight) return;
+  const groups = AOSP_VOICE_GROUPS;
+  if (!groups.some((g) => aospVoiceGroupNeedsStaging(bundleRoot, g))) return;
+  const fromDir = process.env.ELIZA_VOICE_BUNDLE_FROM?.trim();
+  voiceDownloadInflight = (async () => {
+    const local = fromDir ? readAospVoiceLocalSource(fromDir) : undefined;
+    for (const group of groups) {
+      try {
+        const result = await stageAospVoiceGroup(bundleRoot, group, {
+          local,
+          removeStaging: (dir) =>
+            removeAospGeneratedStagingDir(dir, bundleRoot),
+        });
+        if (result.status === "staged") {
+          logger.info(
+            `[aosp-local-inference] voice group ${group.dir} staged under ${result.dir}`,
+          );
+        } else if (result.status === "unavailable") {
+          logger.warn(
+            `[aosp-local-inference] voice group ${group.dir} not staged: ${result.reason}`,
+          );
+        }
+      } catch (err) {
+        // error-policy:J4 explicit degrade — one group failing (network not
+        // admitted, sha mismatch) leaves that group absent; the staging dir was
+        // removed and the next activation retries. The other groups continue.
+        logger.warn(
+          `[aosp-local-inference] voice group ${group.dir} staging failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
-    // Atomic publish: tts/kokoro/ appears only when both files are complete.
-    renameSync(stagingDir, kokoroDir);
-    logger.info(
-      `[aosp-local-inference] Kokoro voice staged under ${kokoroDir}`,
-    );
   })()
-    // error-policy:J4 explicit degrade — Kokoro voice is an optional enhancement;
-    // a failed background download logs + cleans staging and the agent uses the
-    // platform system TTS. Not a model/inference failure.
+    // error-policy:J4 explicit degrade — reading ELIZA_VOICE_BUNDLE_FROM pins
+    // failed; logged, and the next activation retries.
     .catch((err) => {
       logger.warn(
-        `[aosp-local-inference] Kokoro voice auto-download failed (falling back to system TTS): ${err instanceof Error ? err.message : String(err)}`,
+        `[aosp-local-inference] voice bundle staging failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      removeAospGeneratedStagingDir(stagingDir, bundleRoot);
     })
     .finally(() => {
-      kokoroTtsDownloadInflight = null;
+      voiceDownloadInflight = null;
     });
 }
 export function removeAospGeneratedStagingDir(
@@ -2042,15 +2069,15 @@ function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
   return out;
 }
 /**
- * Pre-warm the fused Kokoro TTS pipeline on a delayed timer so the
- * first user-facing synthesis does not pay the GGUF load + voice-preset
- * init cost inside a request handler. Best-effort: failures are
+ * Pre-warm the fused Paradee TTS pipeline on a delayed timer so the
+ * first user-facing synthesis does not pay the GGUF + lexicon load cost
+ * inside a request handler. Best-effort: failures are
  * logged at WARN since the foreground request will surface a clean
  * error if the FFI surface is unavailable.
  */
-export function prewarmAospKokoroTextToSpeechHandler(
+export function prewarmAospTextToSpeechHandler(
   handler: TextToSpeechHandler,
-  opts: AospKokoroPrewarmOptions = {},
+  opts: AospTtsPrewarmOptions = {},
 ): () => Promise<void> {
   if (readBooleanEnv("ELIZA_AOSP_TTS_PREWARM") !== true) {
     return () => Promise.resolve();
@@ -2067,7 +2094,7 @@ export function prewarmAospKokoroTextToSpeechHandler(
   const delay = setTimeout(() => {
     if (opts.shouldSkip?.()) {
       logger.info(
-        "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
+        "[aosp-local-inference] Paradee TEXT_TO_SPEECH pre-warm skipped; foreground TTS already warmed the backend",
       );
       return;
     }
@@ -2081,14 +2108,14 @@ export function prewarmAospKokoroTextToSpeechHandler(
     })
       .then((bytes) => {
         logger.info(
-          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
+          `[aosp-local-inference] Paradee TEXT_TO_SPEECH pre-warm completed in ${Date.now() - started}ms (${bytes.byteLength} bytes)`,
         );
       })
       // error-policy:J7 pre-warm is a latency optimization; a failure is logged
       // and the first real TTS call re-attempts the load. Not a request path.
       .catch((err) => {
         logger.warn(
-          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH pre-warm failed: " +
+          "[aosp-local-inference] Paradee TEXT_TO_SPEECH pre-warm failed: " +
             (err instanceof Error ? err.message : String(err)),
         );
       })
@@ -2172,56 +2199,95 @@ function shouldEvictChatForVoiceLoad(): boolean {
     return true;
   }
 }
-export function makeAospFusedKokoroTextToSpeechHandler(): TextToSpeechHandler {
-  let contextPromise: Promise<{
-    ffi: BunFfiModule;
-    symbols: Record<string, (...args: unknown[]) => unknown>;
-    close: () => void;
-    ctx: unknown;
-    config: AospFusedKokoroConfig;
-    sampleRate: number;
-  }> | null = null;
-  async function ensureContext(): Promise<{
-    ffi: BunFfiModule;
-    symbols: Record<string, (...args: unknown[]) => unknown>;
-    close: () => void;
-    ctx: unknown;
-    config: AospFusedKokoroConfig;
-    sampleRate: number;
-  }> {
+/** ELIZA_ERR_CANCELLED in eliza-inference-ffi.h. */
+const ELIZA_ERR_CANCELLED = -7;
+/** First libelizainference ABI with the Paradee + misaki entries. */
+export const AOSP_PARADEE_MIN_ABI = 17;
+interface AospParadeeContext {
+  ffi: BunFfiModule;
+  symbols: Record<string, (...args: unknown[]) => unknown>;
+  close: () => void;
+  ctx: unknown;
+  config: AospParadeeConfig;
+  sampleRate: number;
+}
+/**
+ * TEXT_TO_SPEECH on the fused Paradee-8M head (ABI v17). Text goes through
+ * the native misaki G2P inside libelizainference, which also splits it into
+ * <= 510-id chunks; the handler returns 24 kHz mono PCM16 WAV.
+ */
+export function makeAospParadeeTextToSpeechHandler(): TextToSpeechHandler {
+  let contextPromise: Promise<AospParadeeContext> | null = null;
+  async function ensureContext(): Promise<AospParadeeContext> {
     if (contextPromise) return contextPromise;
     contextPromise = Promise.resolve()
       .then(async () => {
-        const config = resolveAospFusedKokoroConfig();
+        const config = resolveAospParadeeConfig();
         if (!config) {
           throw new Error(
-            "[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with a staged tts/kokoro/ voice.",
+            "[aosp-local-inference] fused Paradee TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with a staged tts/paradee/ voice.",
           );
         }
         const ffi = await loadAospVoiceFfi();
         const T = ffi.FFIType;
         const usize = T.usize ?? T.ptr;
-        const lib = ffi.dlopen(config.libPath, {
-          eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
-          eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-          eliza_inference_kokoro_supported: { args: [], returns: T.i32 },
-          eliza_inference_kokoro_load: {
-            // ctx, gguf_path, voice_bin_path, style_dim, out_error
-            args: [T.ptr, T.ptr, T.ptr, T.i32, T.ptr],
-            returns: T.i32,
-          },
-          eliza_inference_kokoro_synthesize: {
-            // ctx, text, text_len, speed, out_pcm, max_samples, out_error
-            args: [T.ptr, T.ptr, usize, T.f32, T.ptr, usize, T.ptr],
-            returns: T.i32,
-          },
-          eliza_inference_kokoro_sample_rate: {
-            args: [T.ptr],
-            returns: T.i32,
-          },
-          eliza_inference_free_string: { args: [usize], returns: T.void },
-        });
+        let lib: ReturnType<BunFfiModule["dlopen"]>;
+        try {
+          lib = ffi.dlopen(config.libPath, {
+            eliza_inference_abi_version: { args: [], returns: T.cstring },
+            eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
+            eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+            eliza_inference_paradee_supported: { args: [], returns: T.i32 },
+            eliza_inference_paradee_load: {
+              // ctx, gguf_path, lexicon_path, espeak_data_dir (or NULL), out_error
+              args: [T.ptr, T.ptr, T.ptr, T.ptr, T.ptr],
+              returns: T.i32,
+            },
+            eliza_inference_paradee_synthesize_alloc: {
+              // ctx, text, text_len, speed, out_pcm, out_samples, out_error
+              args: [T.ptr, T.ptr, usize, T.f32, T.ptr, T.ptr, T.ptr],
+              returns: T.i32,
+            },
+            eliza_inference_paradee_sample_rate: {
+              args: [T.ptr],
+              returns: T.i32,
+            },
+            eliza_inference_paradee_g2p_kind: {
+              args: [T.ptr],
+              returns: T.i32,
+            },
+            eliza_inference_free_pcm: { args: [usize], returns: T.void },
+            eliza_inference_free_string: { args: [usize], returns: T.void },
+          });
+        } catch (err) {
+          // error-policy:J2 context-adding rethrow — a missing symbol means a
+          // pre-v17 library; name the fix instead of bun's bare dlsym error.
+          throw new Error(
+            `[aosp-local-inference] libelizainference.so lacks the Paradee TTS ABI (needs v${AOSP_PARADEE_MIN_ABI}+ built with ELIZA_ENABLE_PARADEE): ${err instanceof Error ? err.message : String(err)}`,
+            { cause: err },
+          );
+        }
         const symbols = lib.symbols;
+        const closeLib = () => {
+          try {
+            lib.close();
+          } catch {
+            // error-policy:J6 best-effort teardown — close lib on a load failure (error thrown next).
+          }
+        };
+        const abi = Number(String(symbols.eliza_inference_abi_version?.()));
+        if (!(abi >= AOSP_PARADEE_MIN_ABI)) {
+          closeLib();
+          throw new Error(
+            `[aosp-local-inference] libelizainference.so ABI ${abi} is older than ${AOSP_PARADEE_MIN_ABI}; Paradee TTS needs the v${AOSP_PARADEE_MIN_ABI} fused library.`,
+          );
+        }
+        if ((symbols.eliza_inference_paradee_supported?.() as number) !== 1) {
+          closeLib();
+          throw new Error(
+            "[aosp-local-inference] libelizainference.so was built without Paradee (ELIZA_ENABLE_PARADEE off); rebuild the fused lib with -DLLAMA_BUILD_PARADEE=ON -DLLAMA_BUILD_MISAKI_G2P=ON.",
+          );
+        }
         const errCreate = Buffer.alloc(8);
         const bundleArg = cString(config.bundleRoot);
         const ctx = symbols.eliza_inference_create(
@@ -2230,62 +2296,61 @@ export function makeAospFusedKokoroTextToSpeechHandler(): TextToSpeechHandler {
         );
         if (isFfiNullPointer(ctx)) {
           const message = readFfiStringAndFree(ffi, symbols, errCreate);
-          try {
-            lib.close();
-          } catch {
-            // error-policy:J6 best-effort teardown — close lib on FFI create failure (error thrown next).
-          }
+          closeLib();
           throw new Error(
-            `[aosp-local-inference] fused Kokoro create failed: ${message}`,
+            `[aosp-local-inference] fused Paradee create failed: ${message}`,
           );
         }
-        if ((symbols.eliza_inference_kokoro_supported?.() as number) !== 1) {
-          try {
-            symbols.eliza_inference_destroy(ctx);
-          } catch {
-            // error-policy:J6 best-effort teardown — destroy ctx on unsupported-Kokoro (error thrown next).
-          }
-          try {
-            lib.close();
-          } catch {
-            // error-policy:J6 best-effort teardown — close lib on unsupported-Kokoro (error thrown next).
-          }
-          throw new Error(
-            "[aosp-local-inference] libelizainference.so does not export the Kokoro TTS engine (pre-v10 build); rebuild the fused lib with -DLLAMA_BUILD_KOKORO=ON.",
-          );
-        }
-        const errLoad = Buffer.alloc(8);
         const loadStarted = Date.now();
-        const ggufArg = cString(config.kokoroGgufPath);
-        const voiceArg = cString(config.kokoroVoicePath);
-        const loadRc = symbols.eliza_inference_kokoro_load(
-          ctx,
-          ffi.ptr(ggufArg),
-          ffi.ptr(voiceArg),
-          KOKORO_STYLE_DIM,
-          ffi.ptr(errLoad),
-        ) as number;
+        const ggufArg = cString(config.paradeeGgufPath);
+        const lexiconArg = cString(config.lexiconPath);
+        const load = (espeakDataDir: string | null) => {
+          const errLoad = Buffer.alloc(8);
+          const espeakArg = espeakDataDir ? cString(espeakDataDir) : null;
+          const rc = symbols.eliza_inference_paradee_load(
+            ctx,
+            ffi.ptr(ggufArg),
+            ffi.ptr(lexiconArg),
+            espeakArg ? ffi.ptr(espeakArg) : null,
+            ffi.ptr(errLoad),
+          ) as number;
+          return {
+            rc,
+            message: rc < 0 ? readFfiStringAndFree(ffi, symbols, errLoad) : "",
+          };
+        };
+        const { rc: loadRc, message: loadMessage } =
+          loadAospParadeeWithEspeakFallback(load, config.espeakDataDir, (m) =>
+            logger.warn(m),
+          );
         if (loadRc < 0) {
-          const message = readFfiStringAndFree(ffi, symbols, errLoad);
+          const message = loadMessage;
           try {
             symbols.eliza_inference_destroy(ctx);
           } catch {
-            // error-policy:J6 best-effort teardown — destroy ctx on Kokoro load failure (error thrown next).
+            // error-policy:J6 best-effort teardown — destroy ctx on Paradee load failure (error thrown next).
           }
-          try {
-            lib.close();
-          } catch {
-            // error-policy:J6 best-effort teardown — close lib on Kokoro load failure (error thrown next).
-          }
+          closeLib();
           throw new Error(
-            `[aosp-local-inference] fused Kokoro load rc=${loadRc}: ${message}`,
+            `[aosp-local-inference] fused Paradee load rc=${loadRc}: ${message}`,
           );
         }
-        const sampleRate =
-          (symbols.eliza_inference_kokoro_sample_rate?.(ctx) as number) ||
-          24000;
+        const sampleRate = symbols.eliza_inference_paradee_sample_rate(
+          ctx,
+        ) as number;
+        if (!(sampleRate > 0)) {
+          try {
+            symbols.eliza_inference_destroy(ctx);
+          } catch {
+            // error-policy:J6 best-effort teardown — destroy ctx on a bad sample rate (error thrown next).
+          }
+          closeLib();
+          throw new Error(
+            `[aosp-local-inference] fused Paradee reported sample rate ${sampleRate}`,
+          );
+        }
         logger.info(
-          `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate})`,
+          `[aosp-local-inference] fused Paradee TEXT_TO_SPEECH backend ready in ${Date.now() - loadStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, sampleRate=${sampleRate}, g2pKind=${describeParadeeG2pKind(symbols, ctx)})`,
         );
         return {
           ffi,
@@ -2315,56 +2380,81 @@ export function makeAospFusedKokoroTextToSpeechHandler(): TextToSpeechHandler {
     if (signal?.aborted) {
       throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
     }
-    // Kokoro-82M is a ~50 MB acoustic model in a SEPARATE FFI allocation from
-    // the resident chat model, so — unlike the retired ~0.66 GB neural TTS
-    // model — it loads alongside chat without tripping lmkd's low watermark.
-    // No chat eviction is needed.
+    // Paradee-8M is ~32 MB in its own FFI allocation, so it loads beside the
+    // resident chat model without chat eviction.
     const started = Date.now();
     const { ffi, symbols, ctx, config, sampleRate } = await ensureContext();
     const readyMs = Date.now() - started;
     const maxSeconds = readPositiveIntEnv("ELIZA_AOSP_TTS_MAX_SECONDS", 30);
-    const maxSamples = Math.max(sampleRate, maxSeconds * sampleRate);
-    const out = Buffer.alloc(maxSamples * 4);
+    const outPcm = Buffer.alloc(8);
+    const outSamples = Buffer.alloc(8);
     const errTts = Buffer.alloc(8);
     const textArg = cString(text);
     const textBytes = Buffer.byteLength(text, "utf8");
     const synthStarted = Date.now();
-    const rc = symbols.eliza_inference_kokoro_synthesize(
+    const rc = symbols.eliza_inference_paradee_synthesize_alloc(
       ctx,
       ffi.ptr(textArg),
       BigInt(textBytes),
       1.0,
-      ffi.ptr(out),
-      BigInt(maxSamples),
+      ffi.ptr(outPcm),
+      ffi.ptr(outSamples),
       ffi.ptr(errTts),
     ) as number;
     const synthMs = Date.now() - synthStarted;
+    if (rc === ELIZA_ERR_CANCELLED) {
+      readFfiStringAndFree(ffi, symbols, errTts);
+      throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+    }
     if (rc < 0) {
       throw new Error(
-        `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`,
+        `[aosp-local-inference] fused Paradee TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`,
       );
+    }
+    const pcmPtr = outPcm.readBigUInt64LE(0);
+    const samples = Number(outSamples.readBigUInt64LE(0));
+    let pcm: Float32Array;
+    try {
+      if (samples <= 0 || pcmPtr === 0n) {
+        throw new Error(
+          "[aosp-local-inference] fused Paradee TEXT_TO_SPEECH returned no audio",
+        );
+      }
+      if (samples > maxSeconds * sampleRate) {
+        throw new Error(
+          `[aosp-local-inference] fused Paradee TEXT_TO_SPEECH returned ${samples} samples, over the ${maxSeconds}s limit`,
+        );
+      }
+      if (typeof ffi.toArrayBuffer !== "function") {
+        throw new Error(
+          "[aosp-local-inference] bun:ffi toArrayBuffer is unavailable",
+        );
+      }
+      pcm = new Float32Array(
+        ffi.toArrayBuffer(Number(pcmPtr), 0, samples * 4).slice(0),
+      );
+    } finally {
+      if (pcmPtr !== 0n) symbols.eliza_inference_free_pcm(pcmPtr);
     }
     if (signal?.aborted) {
       throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
     }
-    const pcmBytes = out.subarray(0, rc * 4);
-    const pcm = new Float32Array(pcmBytes.buffer, pcmBytes.byteOffset, rc);
     const encodeStarted = Date.now();
     const wav = encodeWavPcm16(pcm, sampleRate);
     const encodeMs = Date.now() - encodeStarted;
     logger.info(
-      `[aosp-local-inference] fused Kokoro TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${rc} wavBytes=${wav.byteLength} sampleRate=${sampleRate}`,
+      `[aosp-local-inference] fused Paradee TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${samples} wavBytes=${wav.byteLength} sampleRate=${sampleRate}`,
     );
     return wav;
   };
 }
 export function makeAospTextToSpeechHandler(
-  opts: { kokoro?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
+  opts: { paradee?: TextToSpeechHandler; onForegroundUse?: () => void } = {},
 ): TextToSpeechHandler {
-  const kokoro = opts.kokoro ?? makeAospFusedKokoroTextToSpeechHandler();
+  const paradee = opts.paradee ?? makeAospParadeeTextToSpeechHandler();
   return async (runtime, params) => {
     opts.onForegroundUse?.();
-    return kokoro(runtime, params);
+    return paradee(runtime, params);
   };
 }
 type BunFfiModule = {
@@ -2421,37 +2511,73 @@ async function loadAospVoiceFfi(): Promise<BunFfiModule> {
   }
   return ffi;
 }
+/**
+ * Load Paradee with the staged eSpeak NG data; when that load fails, load the
+ * lexicon alone. error-policy:J4 explicit degrade: the data could not be used
+ * (for example a library whose libespeak-ng keeps a short N_PATH_HOME
+ * buffer), and speech that spells out unknown words beats no speech. The
+ * fallback is logged through `warn`. Without eSpeak data it is one load.
+ */
+export function loadAospParadeeWithEspeakFallback(
+  load: (espeakDataDir: string | null) => { rc: number; message: string },
+  espeakDataDir: string | null,
+  warn: (message: string) => void,
+): { rc: number; message: string; espeakDataDir: string | null } {
+  const first = load(espeakDataDir);
+  if (first.rc >= 0 || !espeakDataDir) return { ...first, espeakDataDir };
+  warn(
+    `[aosp-local-inference] fused Paradee load with eSpeak NG data failed (rc=${first.rc}: ${first.message}); retrying without it, so words outside the misaki lexicon will be spelled out`,
+  );
+  return { ...load(null), espeakDataDir: null };
+}
+/** ELIZA_PARADEE_G2P_* in eliza-inference-ffi.h, as a log label. */
+function describeParadeeG2pKind(
+  symbols: Record<string, (...args: unknown[]) => unknown>,
+  ctx: unknown,
+): string {
+  const kind = symbols.eliza_inference_paradee_g2p_kind?.(ctx) as
+    | number
+    | undefined;
+  if (kind === 2) return "espeak";
+  if (kind === 1) return "rules";
+  if (kind === 0) return "lexicon-only";
+  return `unknown(${String(kind)})`;
+}
 function cString(value: string): Buffer {
   return Buffer.from(`${value}\0`, "utf8");
 }
 function resolveElizaInferenceLibPath(): string {
   return resolveAospElizaInferenceLibPath();
 }
-function resolveAospFusedKokoroConfig(): AospFusedKokoroConfig | null {
+function resolveAospParadeeConfig(): AospParadeeConfig | null {
   const libPath = resolveElizaInferenceLibPath();
   if (!existsSync(libPath)) return null;
   let bundleRoot: string;
   try {
     bundleRoot = resolveAssignedChatBundleRoot();
   } catch {
-    // error-policy:J4 explicit degrade — no resolvable chat bundle means the fused
-    // Kokoro TTS config is unavailable (null); the caller falls back to system TTS.
+    // error-policy:J4 explicit degrade — no resolvable chat bundle means the
+    // fused Paradee TTS config is unavailable (null); the handler reports it.
     return null;
   }
-  // Ensure the on-device Kokoro voice is present (Kokoro is the only on-device
-  // TTS backend). Without tts/kokoro/, on-device TTS has nothing to synthesize
-  // and the app falls back to the platform "android voice". This fetches in the
-  // background; the platform TTS covers replies until it lands.
-  ensureKokoroTtsAssetsInBackground(bundleRoot);
-  const kokoroDir = path.join(bundleRoot, "tts", "kokoro");
-  const kokoroGgufPath = path.join(kokoroDir, KOKORO_GGUF_FILE);
-  const kokoroVoicePath = path.join(kokoroDir, KOKORO_VOICE_FILE);
-  if (!existsSync(kokoroGgufPath) || !existsSync(kokoroVoicePath)) {
-    // Kokoro voice not staged yet — the background download above will land it;
-    // until then on-device TTS reports unavailable and the platform TTS covers.
-    return null;
+  // Ensure the on-device voice bundle is present. This fetches in the
+  // background; until tts/paradee/ lands, on-device TTS reports unavailable.
+  ensureAospVoiceAssetsInBackground(bundleRoot);
+  const paths = aospParadeePaths(bundleRoot);
+  if (!existsSync(paths.gguf) || !existsSync(paths.lexicon)) return null;
+  const espeakDataDir = aospEspeakDataParent(bundleRoot);
+  if (!espeakDataDir) {
+    logger.warn(
+      "[aosp-local-inference] eSpeak NG data (tts/paradee/espeak-ng-data) is not staged; Paradee will spell out words outside the misaki lexicon until it is",
+    );
   }
-  return { libPath, bundleRoot, kokoroGgufPath, kokoroVoicePath };
+  return {
+    libPath,
+    bundleRoot,
+    paradeeGgufPath: paths.gguf,
+    lexiconPath: paths.lexicon,
+    espeakDataDir,
+  };
 }
 /**
  * The fused lib resolves the chat GGUF strictly as `<bundleRoot>/text/*.gguf`,
@@ -2950,6 +3076,8 @@ interface AospPreparedTextRequestArgs {
   contextWindowTokens: number;
   prompt: string;
   promptTokenCount: number;
+  /** Caller's explicit output cap; absent when decode may fill the context. */
+  requestedMaxTokens?: number;
   stopSequences?: string[];
   grammar?: string;
   stopOnFirstSentence?: boolean;
@@ -2968,7 +3096,10 @@ export function createAospPreparedTextRequestGuard(
     provider: PROVIDER,
     model: path.basename(args.modelPath),
     contextWindowTokens: args.contextWindowTokens,
-    outputReserveTokens: args.config.maxTokens,
+    // An explicit cap reserves its tokens. Without one, config.maxTokens is the
+    // remaining context, a decode ceiling rather than a reservation, so reserve
+    // only room to begin decoding (as the iOS native path does).
+    outputReserveTokens: args.requestedMaxTokens ?? 1,
     projectRequest: () => ({
       prompt: args.prompt,
       stopSequences: args.stopSequences ? [...args.stopSequences] : undefined,
@@ -3441,6 +3572,7 @@ export async function tryBuildAospFusedTextLoader(): Promise<AospLoader | null> 
           active.contextSize ?? readPositiveIntEnv("ELIZA_LLAMA_N_CTX", 4096),
         prompt: args.prompt,
         promptTokenCount: promptTokens.length,
+        requestedMaxTokens: args.maxTokens,
         stopSequences: args.stopSequences,
         grammar: args.grammar,
         stopOnFirstSentence: args.stopOnFirstSentence,
@@ -3608,13 +3740,12 @@ export async function ensureAospLocalInferenceHandlers(
       "[aosp-local-inference] ASR assets absent under the chat bundle; NOT registering a local TRANSCRIPTION handler (native SpeechRecognizer owns on-device STT). Readiness probes will correctly report transcription as unavailable.",
     );
   }
-  const baseKokoroTextToSpeechHandler =
-    makeAospFusedKokoroTextToSpeechHandler();
-  let foregroundKokoroTextToSpeechUsed = false;
+  const baseParadeeTextToSpeechHandler = makeAospParadeeTextToSpeechHandler();
+  let foregroundTextToSpeechUsed = false;
   const textToSpeechHandler = makeAospTextToSpeechHandler({
-    kokoro: baseKokoroTextToSpeechHandler,
+    paradee: baseParadeeTextToSpeechHandler,
     onForegroundUse: () => {
-      foregroundKokoroTextToSpeechUsed = true;
+      foregroundTextToSpeechUsed = true;
     },
   });
   for (const modelType of slots) {
@@ -3654,8 +3785,8 @@ export async function ensureAospLocalInferenceHandlers(
   // Runtime service start owns both prewarm tasks; service stop cancels/joins
   // them before unloading and closing the exact loader used by these handlers.
   owner.registerTtsPrewarm(() =>
-    prewarmAospKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
-      shouldSkip: () => foregroundKokoroTextToSpeechUsed,
+    prewarmAospTextToSpeechHandler(baseParadeeTextToSpeechHandler, {
+      shouldSkip: () => foregroundTextToSpeechUsed,
     }),
   );
   const registeredList = `TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH${asrAssetsPresent ? " / TRANSCRIPTION" : ""}`;

@@ -3,7 +3,10 @@ import type { OrganizationSubscriptionDowngradeReviewDto } from "@elizaos/cloud-
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
 import type { BillingSubscription } from "../../db/schemas/billing-subscriptions";
-import { organizationInvoiceReviewTermsSchema } from "./organization-plan-change-contract";
+import {
+  organizationAllowanceTermsSchema,
+  organizationInvoiceReviewTermsSchema,
+} from "./organization-plan-change-contract";
 import { projectOrganizationPlanInvoice } from "./organization-plan-invoice-review";
 import { assertOrganizationSubscription } from "./organization-subscription-source";
 import {
@@ -27,6 +30,7 @@ export const organizationDowngradeReviewSchema: z.ZodType<OrganizationSubscripti
       amountDueNowCents: z.literal(0),
       targetBaseAmountCents: z.number().int().positive().safe(),
       targetAllowanceUsd: z.string().regex(/^(0|[1-9]\d*)\.\d{6}$/),
+      allowanceTerms: organizationAllowanceTermsSchema.optional(),
       recurringEstimate: organizationInvoiceReviewTermsSchema,
       observedAt: z.iso.datetime(),
       expiresAt: z.iso.datetime(),
@@ -126,6 +130,11 @@ export function projectOrganizationDowngradeReview(input: {
     amountDueNowCents: 0,
     targetBaseAmountCents: target.amountCents,
     targetAllowanceUsd: target.allowance.amountUsd,
+    allowanceTerms: {
+      fundingClass: target.allowance.fundingClass,
+      rollover: target.allowance.rollover,
+      expiresAt: target.allowance.expiresAt,
+    },
     recurringEstimate,
     observedAt: input.observedAt.toISOString(),
     expiresAt: new Date(Math.min(observed + 60_000, end)).toISOString(),

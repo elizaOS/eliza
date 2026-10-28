@@ -79,9 +79,16 @@ function parseContentDispositionFileName(
 	if (!header) {
 		return undefined;
 	}
-	const starMatch = /filename\*\s*=\s*([^;]+)/i.exec(header);
-	if (starMatch?.[1]) {
-		const cleaned = stripQuotes(starMatch[1].trim());
+	const parameters = Array.from(
+		header.matchAll(
+			/(?:^|;)\s*([^=;\s]+)\s*=\s*(?:"((?:\\.|[^"\\])*)"|([^;]*))/g,
+		),
+	);
+	const starMatch = parameters.find(
+		(parameter) => parameter[1].toLowerCase() === "filename*",
+	);
+	if (starMatch) {
+		const cleaned = stripQuotes((starMatch[2] ?? starMatch[3]).trim());
 		// RFC 5987 ext-value is `charset'language'value` where the language
 		// tag is optional but both single quotes are mandatory, e.g.
 		// `UTF-8''na%C3%AFve.txt` or `UTF-8'en'na%C3%AFve.txt`. Strip the
@@ -91,16 +98,28 @@ function parseContentDispositionFileName(
 		const extValueMatch = /^([^']*)'([^']*)'([\s\S]*)$/.exec(cleaned);
 		const encoded = extValueMatch ? extValueMatch[3] : cleaned;
 		try {
-			return getBasename(decodeURIComponent(encoded));
+			const decoded =
+				extValueMatch?.[1].toLowerCase() === "iso-8859-1"
+					? encoded.replace(/%([0-9a-f]{2})/gi, (_match, hex: string) =>
+							String.fromCharCode(Number.parseInt(hex, 16)),
+						)
+					: decodeURIComponent(encoded);
+			return getBasename(decoded);
 		} catch {
 			// error-policy:J3 Malformed RFC 5987 encoding is untrusted header
 			// input; retain only its basename as the sanitized invalid fallback.
 			return getBasename(encoded);
 		}
 	}
-	const match = /filename\s*=\s*([^;]+)/i.exec(header);
-	if (match?.[1]) {
-		return getBasename(stripQuotes(match[1].trim()));
+	const match = parameters.find(
+		(parameter) => parameter[1].toLowerCase() === "filename",
+	);
+	if (match) {
+		const value =
+			match[2] === undefined
+				? stripQuotes(match[3].trim())
+				: match[2].replace(/\\(.)/g, "$1");
+		return getBasename(value);
 	}
 	return undefined;
 }
@@ -253,7 +272,13 @@ function enforceContentLengthLimit(
 function fileNameFromUrl(url: string): string | undefined {
 	try {
 		const parsed = new URL(url);
-		const base = getBasename(parsed.pathname);
+		let pathname = parsed.pathname;
+		try {
+			pathname = decodeURIComponent(pathname);
+		} catch {
+			// error-policy:J3 Keep malformed URL escapes as a literal filename.
+		}
+		const base = getBasename(pathname);
 		return base || undefined;
 	} catch {
 		// error-policy:J3 Redirect-derived URL text is untrusted; absence of a

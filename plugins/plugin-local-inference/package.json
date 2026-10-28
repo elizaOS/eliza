@@ -48,6 +48,18 @@
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
+		"./host-asr-worker": {
+			"eliza-source": "./src/host-asr-worker.ts",
+			"types": "./src/host-asr-worker.ts",
+			"import": "./dist/host-asr-worker.js",
+			"default": "./dist/host-asr-worker.js"
+		},
+		"./host-tts-worker": {
+			"eliza-source": "./src/host-tts-worker.ts",
+			"types": "./src/host-tts-worker.ts",
+			"import": "./dist/host-tts-worker.js",
+			"default": "./dist/host-tts-worker.js"
+		},
 		"./voice-workbench": {
 			"eliza-source": "./src/voice-workbench.ts",
 			"types": "./src/voice-workbench.ts",
@@ -103,7 +115,8 @@
 		"native:clean": "make -C native/verify clean",
 		"bench:streaming": "bun scripts/streaming-pipeline-bench.ts",
 		"bench:stt": "bun scripts/local-stt-bench.ts",
-		"voice:hardware": "bun scripts/voice-e2e-hardware.ts"
+		"voice:hardware": "bun scripts/voice-e2e-hardware.ts",
+		"test:android-assets": "node native/android/test/voice-assets.node.mjs"
 	},
 	"dependencies": {
 		"@elizaos/cloud-routing": "workspace:*",
@@ -116,7 +129,7 @@
 		"@huggingface/tokenizers": "0.1.3",
 		"phonemizer": "^1.2.1",
 		"ws": "^8.21.3",
-		"yaml": "^2.8.2",
+		"yaml": "^2.9.1",
 		"@elizaos/auth": "workspace:*",
 		"zod": "^4.4.3",
 		"@elizaos/contracts": "workspace:*",
@@ -126,12 +139,12 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.15",
+		"@biomejs/biome": "2.6.3",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",
 		"typescript": "^6.0.3",
-		"vitest": "^5.0.3",
+		"vitest": "^5.0.5",
 		"@elizaos/testing": "workspace:*",
 		"@elizaos/plugin-sqlite": "workspace:*"
 	},

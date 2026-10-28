@@ -340,48 +340,81 @@ export async function checkAuthRateLimit(
     : max;
   const key = `ratelimit:auth:${endpoint}:${hashSha256Hex(resolved.subject)}:${windowMs}`;
 
-  const deny = (retryAfterSecs: number) => {
-    const headers = formatRateLimitHeaders({
-      limit: effectiveMax,
-      remaining: 0,
-      resetMs: retryAfterSecs * 1000,
-      retryAfterMs: retryAfterSecs * 1000,
-    });
-    headers["RateLimit-Policy"] =
-      `${effectiveMax};w=${Math.ceil(windowMs / 1000)}`;
-    for (const [name, value] of Object.entries(headers)) c.header(name, value);
-    return { allowed: false, retryAfterSecs };
-  };
+  const result = await consumeAuthRateLimit(
+    endpoint,
+    key,
+    windowMs,
+    effectiveMax,
+  );
+  if (result.allowed) return { allowed: true };
+  const headers = formatRateLimitHeaders({
+    limit: effectiveMax,
+    remaining: 0,
+    resetMs: result.retryAfterSecs * 1000,
+    retryAfterMs: result.retryAfterSecs * 1000,
+  });
+  headers["RateLimit-Policy"] =
+    `${effectiveMax};w=${Math.ceil(windowMs / 1000)}`;
+  for (const [name, value] of Object.entries(headers)) c.header(name, value);
+  return { allowed: false, retryAfterSecs: result.retryAfterSecs };
+}
+
+/**
+ * One deployment-wide budget (no client subject), e.g. the SMS send ceiling
+ * that stops pumping traffic rotating IPs and destinations. Same backing store
+ * and outage semantics as checkAuthRateLimit; needs no request context.
+ */
+export async function checkGlobalAuthBudget(
+  endpoint: string,
+  windowMs: number,
+  max: number,
+): Promise<{ allowed: boolean; retryAfterSecs: number }> {
+  return consumeAuthRateLimit(
+    endpoint,
+    `ratelimit:auth:${endpoint}:global:${windowMs}`,
+    windowMs,
+    max,
+  );
+}
+
+async function consumeAuthRateLimit(
+  endpoint: string,
+  key: string,
+  windowMs: number,
+  max: number,
+): Promise<{ allowed: boolean; retryAfterSecs: number }> {
+  const allow = { allowed: true, retryAfterSecs: 0 };
+  const deny = (retryAfterSecs: number) => ({ allowed: false, retryAfterSecs });
 
   if (embeddedRateLimiter) {
-    const result = await embeddedRateLimiter(key, windowMs, effectiveMax);
-    return result.allowed ? { allowed: true } : deny(result.retryAfterSecs);
+    const result = await embeddedRateLimiter(key, windowMs, max);
+    return result.allowed ? allow : deny(result.retryAfterSecs);
   }
 
   try {
     const redisMw = await import("../middleware/redis.js");
     if (!redisMw.isRedisAvailable()) {
-      if (allowAuthRateLimitSoftFail()) return { allowed: true };
+      if (allowAuthRateLimitSoftFail()) return allow;
       if (redisMw.isRedisConfigured() && authRateLimitOutageAllow(endpoint)) {
-        return { allowed: true };
+        return allow;
       }
       return deny(60);
     }
 
     const { checkRateLimit } = await import("../../redis/index.ts");
-    const result = await checkRateLimit(key, windowMs, effectiveMax);
+    const result = await checkRateLimit(key, windowMs, max);
     if (!result.allowed) {
       return deny(Math.ceil(result.resetMs / 1000));
     }
-    return { allowed: true };
+    return allow;
   } catch (err) {
-    if (allowAuthRateLimitSoftFail()) return { allowed: true };
+    if (allowAuthRateLimitSoftFail()) return allow;
     // Any step above can throw — the dynamic imports, the availability probe,
     // or checkRateLimit itself — so a throw is NOT proof Redis was seen
     // available. Treat it as an outage and let the bounded valve decide; the
     // deliberate hard deny for never-configured Redis in production is the
     // non-throwing isRedisAvailable() branch above, which returns instead.
-    if (authRateLimitOutageAllow(endpoint, err)) return { allowed: true };
+    if (authRateLimitOutageAllow(endpoint, err)) return allow;
     return deny(60);
   }
 }

@@ -4150,7 +4150,7 @@ export async function startMocks(opts?: {
 }
 
 // ---------------------------------------------------------------------------
-// CLI entrypoint — `bun scripts/mocks/start-mocks.ts --envs a,b,c`
+// CLI entrypoint — `bun packages/testing/scripts/mocks/start-mocks.ts --envs a,b,c`
 // ---------------------------------------------------------------------------
 
 /** Parses mock-server options and rejects the retired corpus loader option. */

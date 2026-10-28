@@ -2,7 +2,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
-import { dbWrite } from "../../../../db/helpers";
+import { dbWrite, writeTransaction } from "../../../../db/helpers";
 import { type AgentSandbox } from "../../../../db/repositories/agent-sandboxes";
 import { agentComputeFunding } from "../../../../db/schemas/agent-compute-funding";
 import {
@@ -385,7 +385,7 @@ export class SandboxWarmClaim {
     agentId: string,
     organizationId: string,
   ): Promise<boolean> {
-    const prepared = await dbWrite.transaction(async (tx) => {
+    const prepared = await writeTransaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, organizationId);
       const current = await this.host.getAgentForLifecycleMutation(tx, agentId, organizationId);
       if (!current || current.warm_claim_credential_state !== "failed") {
@@ -473,7 +473,7 @@ export class SandboxWarmClaim {
     // invalidation can be repeated once the rotation is durable. Only ever
     // read after the transaction resolves.
     const rotatedKeyHashes: string[] = [];
-    const prepared = await dbWrite.transaction(async (tx) => {
+    const prepared = await writeTransaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, organizationId);
       const current = await this.host.getAgentForLifecycleMutation(tx, agentId, organizationId);
       if (!current) {
@@ -870,7 +870,7 @@ export class SandboxWarmClaim {
     if (!expectedFingerprint || expectedEnvironmentRevision === null) {
       throw new Error("Warm-claim attestation metadata is incomplete");
     }
-    const revocation = await dbWrite.transaction(async (tx) => {
+    const revocation = await writeTransaction(async (tx) => {
       await this.host.lockLifecycle(tx, agentId, organizationId);
       const current = await this.host.getAgentForLifecycleMutation(tx, agentId, organizationId);
       if (current) {

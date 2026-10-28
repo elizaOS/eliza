@@ -164,6 +164,39 @@ describe("SCHEDULED_TASK action", () => {
     expect(completedTask?.state.status).toBe("completed");
   });
 
+  it("reads an offset-free once time in the message's time zone, not the host's", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    // CURRENT_TIME shows the user's zone, so "Monday 9am" arrives as 09:00
+    // with no offset. New York is on EST (-05:00) after 2026-11-01.
+    const message = autonomyMessage(runtime.agentId, "remind me monday 9am");
+    message.content.metadata = { uiTimeZone: "America/New_York" };
+
+    const created = await scheduledTaskAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "create",
+          kind: "reminder",
+          promptInstructions: "call the dentist",
+          trigger: { kind: "once", atIso: "2026-11-02T09:00:00" },
+          priority: "medium",
+        },
+      },
+      undefined,
+      [],
+    );
+
+    expect(created?.success).toBe(true);
+    const task = (created?.data as { task?: ScheduledTask } | undefined)?.task;
+    expect(task?.trigger).toEqual({
+      kind: "once",
+      atIso: "2026-11-02T14:00:00.000Z",
+    });
+  });
+
   it("proves mutation preconditions, replay noops, and every ledger-backed transition", async () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
@@ -390,6 +423,12 @@ describe("SCHEDULED_TASK action", () => {
       },
     );
     expect(result.success, JSON.stringify(result)).toBe(true);
+    // The supplied Discord destination is not applied, and the result says so.
+    expect(result.data).toMatchObject({
+      outputIgnored: true,
+      boundOutput: { destination: "channel", target: "telegram:owner-chat-42" },
+    });
+    expect(result.text).toContain("telegram chat");
     const task = (result.data as { task?: ScheduledTask } | undefined)?.task;
     expect(task?.output).toEqual({
       destination: "channel",
@@ -429,6 +468,34 @@ describe("SCHEDULED_TASK action", () => {
       },
     );
     expect(poisonedUpdate.success).toBe(true);
+    expect(poisonedUpdate.data).toMatchObject({ outputIgnored: true });
+    expect(poisonedUpdate.text).toContain("telegram chat");
+
+    // A patch whose only change is the pinned destination changes nothing.
+    for (const output of [
+      { destination: "channel", target: "discord:public-room" },
+      {},
+      null,
+    ]) {
+      const outputOnlyUpdate = await executePlannedToolCall(
+        runtime,
+        { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+        {
+          name: "SCHEDULED_TASKS",
+          params: {
+            action: "update",
+            taskId: task?.taskId,
+            patch: {
+              output,
+            },
+          },
+        },
+      );
+      expect(outputOnlyUpdate.success).toBe(false);
+      expect(outputOnlyUpdate.data).toMatchObject({
+        error: "OUTPUT_BOUND_TO_CHAT",
+      });
+    }
     const protectedTask = (await runner.list()).find(
       (candidate) => candidate.taskId === task?.taskId,
     );

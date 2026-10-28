@@ -31,6 +31,19 @@ export class TalkModeWeb extends WebPlugin {
   private statusText = "Off";
   private synthesis: SpeechSynthesis | null = null;
   private currentUtterance: SpeechSynthesisUtterance | null = null;
+  // The utterance the browser is actually playing, bound by its start event.
+  // SpeechSynthesis queues later speak() calls behind the active one, so the
+  // most recently submitted utterance is not necessarily the one playing.
+  private activeUtterance: SpeechSynthesisUtterance | null = null;
+  // Monotonic start of the ACTIVE utterance, in milliseconds, set by its
+  // onstart event rather than at submission: a queued utterance has not
+  // started playing yet. The native bridges report how far playback had
+  // progressed when stopSpeaking() interrupts it (Android:
+  // TalkModeAndroidBridgeContract.interruptedAtSeconds over
+  // speakStartTimeMs; iOS: stopSpeakingInternal returns the elapsed
+  // interval). Web playback has no position API, so the elapsed time since
+  // the active utterance's start event is the matching quantity.
+  private speechStartedAtMs: number | null = null;
   private pendingSpeech = new Map<
     SpeechSynthesisUtterance,
     { cancelled: boolean }
@@ -96,6 +109,15 @@ export class TalkModeWeb extends WebPlugin {
       const recognition = new SpeechRecognitionAPI();
       recognition.continuous = true;
       recognition.interimResults = true;
+      // Apply the configured STT language, as both native bridges do
+      // (Android passes it as EXTRA_LANGUAGE; iOS builds the recognizer
+      // with that locale) and as the sibling Swabble web implementation
+      // does. Without this the browser recognizer silently uses the
+      // page/system default language instead of the caller's config.
+      const sttLanguage = this.config.stt?.language;
+      if (typeof sttLanguage === "string" && sttLanguage.trim()) {
+        recognition.lang = sttLanguage;
+      }
 
       recognition.onresult = (event: SpeechRecognitionResultEvent) => {
         // A replaced recognizer can still deliver a queued result before
@@ -185,6 +207,17 @@ export class TalkModeWeb extends WebPlugin {
   }
 
   async speak(options: SpeakOptions): Promise<SpeakResult> {
+    // Both native bridges resolve missing, non-string, empty, or blank text
+    // as a no-op success before any TTS engine is touched (Android
+    // TalkModePlugin.speak getString/trim guard; iOS TalkModePlugin.speak
+    // guard), and they report usedSystemTts: false because nothing was
+    // spoken. Keep that order and result here: the empty case must not
+    // claim system TTS, and it must not fail when synthesis is unavailable.
+    const text = typeof options?.text === "string" ? options.text.trim() : "";
+    if (!text) {
+      return { completed: true, interrupted: false, usedSystemTts: false };
+    }
+
     if (!this.synthesis) {
       return {
         completed: false,
@@ -195,10 +228,6 @@ export class TalkModeWeb extends WebPlugin {
     }
 
     // Web can only use system TTS (no ElevenLabs due to CORS)
-    const text = options.text.trim();
-    if (!text) {
-      return { completed: true, interrupted: false, usedSystemTts: true };
-    }
 
     this.setState("speaking", "Speaking");
     this.notifyListeners("speaking", { text, isSystemTts: true });
@@ -227,9 +256,22 @@ export class TalkModeWeb extends WebPlugin {
       // not claim successful speech even if the browser later reports an end.
       const isStale = () => this.currentUtterance !== utterance;
 
+      // The start event binds the interruption clock to the utterance the
+      // browser is actually playing. speak() calls queue behind it, so a
+      // later submission must not restart the clock before it starts.
+      utterance.onstart = () => {
+        if (outcome.cancelled || !this.pendingSpeech.has(utterance)) return;
+        this.activeUtterance = utterance;
+        this.speechStartedAtMs = performance.now();
+      };
+
       utterance.onend = () => {
         const stale = isStale();
         this.pendingSpeech.delete(utterance);
+        if (this.activeUtterance === utterance) {
+          this.activeUtterance = null;
+          this.speechStartedAtMs = null;
+        }
         if (!stale) this.currentUtterance = null;
         this.notifyListeners("speakComplete", {
           completed: !outcome.cancelled,
@@ -249,6 +291,10 @@ export class TalkModeWeb extends WebPlugin {
       utterance.onerror = (event) => {
         const stale = isStale();
         this.pendingSpeech.delete(utterance);
+        if (this.activeUtterance === utterance) {
+          this.activeUtterance = null;
+          this.speechStartedAtMs = null;
+        }
         if (!stale) this.currentUtterance = null;
         this.notifyListeners("speakComplete", { completed: false });
         if (!stale) this.setState("idle", "Speech error");
@@ -266,6 +312,15 @@ export class TalkModeWeb extends WebPlugin {
 
   async stopSpeaking(): Promise<{ interruptedAt?: number }> {
     if (this.synthesis && this.currentUtterance) {
+      // Both native bridges include interruptedAt (seconds since playback
+      // of the active utterance started) when stopSpeaking interrupts live
+      // speech, and omit it when nothing is playing — including when an
+      // utterance is only queued and has not started. Compute it before
+      // cancelling, which clears the start time.
+      const interruptedAt =
+        this.activeUtterance !== null && this.speechStartedAtMs !== null
+          ? (performance.now() - this.speechStartedAtMs) / 1000
+          : undefined;
       this.cancelPendingSpeech();
       // The cancelled utterance's own end event is stale from here on, so the
       // resumed listening state is set here rather than by that handler.
@@ -273,7 +328,7 @@ export class TalkModeWeb extends WebPlugin {
         this.enabled ? "listening" : "idle",
         this.enabled ? "Listening" : "Off",
       );
-      return { interruptedAt: undefined };
+      return interruptedAt !== undefined ? { interruptedAt } : {};
     }
     return {};
   }
@@ -283,6 +338,8 @@ export class TalkModeWeb extends WebPlugin {
     for (const outcome of this.pendingSpeech.values()) outcome.cancelled = true;
     this.pendingSpeech.clear();
     this.currentUtterance = null;
+    this.activeUtterance = null;
+    this.speechStartedAtMs = null;
     this.synthesis?.cancel();
   }
 

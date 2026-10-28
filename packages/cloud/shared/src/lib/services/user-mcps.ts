@@ -495,6 +495,13 @@ class UserMcpsService {
     return userMcpsRepository.listByOrganization(organizationId, options);
   }
 
+  async countByOrganization(
+    organizationId: string,
+    options?: { status?: UserMcp["status"] },
+  ): Promise<number> {
+    return userMcpsRepository.countByOrganization(organizationId, options);
+  }
+
   /**
    * List public MCPs (for registry)
    */
@@ -504,6 +511,7 @@ class UserMcpsService {
     limit?: number;
     offset?: number;
     orderBy?: "name";
+    excludeOrganizationId?: string;
   }): Promise<UserMcp[]> {
     return userMcpsRepository.listPublic({ ...options, status: "live" });
   }

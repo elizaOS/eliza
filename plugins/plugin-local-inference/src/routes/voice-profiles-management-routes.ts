@@ -34,10 +34,11 @@ import type * as http from "node:http";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
 import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
-import {
-	type VoiceProfileRecord,
+import type {
+	VoiceProfileRecord,
 	VoiceProfileStore,
 } from "../services/voice/profile-store.js";
+import { getSharedVoiceProfileStore } from "../services/voice/speaker/profile-store-factory.js";
 
 // ---------------------------------------------------------------------------
 // Store wiring (injectable for tests)
@@ -53,9 +54,9 @@ function voiceProfilesRoot(): string {
 }
 async function getStore(): Promise<VoiceProfileStore> {
 	if (profileStoreOverride) return profileStoreOverride;
-	const store = new VoiceProfileStore({ rootDir: voiceProfilesRoot() });
-	await store.init();
-	return store;
+	// The live voice pipelines hold this store; a separate instance would
+	// leave their cached index and records in place after an edit or delete.
+	return getSharedVoiceProfileStore(voiceProfilesRoot());
 }
 function ownerEntityId(): string | null {
 	const raw = process.env.ELIZA_ADMIN_ENTITY_ID;

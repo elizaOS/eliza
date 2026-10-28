@@ -18,6 +18,7 @@
  */
 
 import { normalizePostMessageTargetOrigin } from "@elizaos/cloud-shared/lib/services/agent-github-return";
+import { serializeInlineScriptValue } from "@elizaos/cloud-shared/lib/utils/html";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -42,7 +43,7 @@ app.get("/", (c) => {
     c.env.AGENT_APP_ORIGIN as string | undefined,
   );
 
-  const payload = JSON.stringify({
+  const payload = serializeInlineScriptValue({
     type: "agent-paypal-oauth",
     code,
     state,

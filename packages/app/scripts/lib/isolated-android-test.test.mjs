@@ -11,7 +11,10 @@ import {
   deviceLeaseStateDir,
   readDeviceLease,
 } from "./device-lease.ts";
-import { runIsolatedAndroidTest } from "./isolated-android-test.mjs";
+import {
+  DEVELOPMENT_DEVICE_NOTE,
+  runIsolatedAndroidTest,
+} from "./isolated-android-test.mjs";
 import { runIsolatedAndroidUserTest } from "./isolated-android-user-test.mjs";
 
 // The fake instrumentation and custody commands read concurrently. Publish a
@@ -61,14 +64,26 @@ if(args.slice(0,4).join(' ')==='shell pm list users')console.log('UserInfo{0:Own
 if(args.slice(0,4).join(' ')==='shell dumpsys activity activities')console.log('topResumedActivity=ActivityRecord u'+(state.foreground||0)+' org.stock.home/.Home');
 if(args.includes('remove-user')){state.userExists=false;publishFixtureState(file,state);console.log('Success');}
 
+if(args.includes('run-as')&&args.at(-2)==='cat'&&args.at(-1).startsWith('app-evidence/')){const item=${JSON.stringify(path.join(root, "app-files"))}+'/'+args.at(-1).slice(13);if(!fs.existsSync(item))process.exit(1);process.stdout.write(fs.readFileSync(item));return;}
 if(args[0]==='emu')console.log('owned-test-fixture\\nOK');
-if(args.includes('ro.kernel.qemu'))console.log('1');
+if(args.includes('ro.kernel.qemu'))console.log(mode.startsWith('device')&&mode!=='device-emulator'?'0':'1');
+if(args.includes('ro.product.model'))console.log('Example Tablet');
+if(args.slice(0,3).join(' ')==='shell settings get')console.log(state.settings?.[args[4]]??'1');
+if(args.slice(0,3).join(' ')==='shell cmd wifi')console.log('Wifi is '+(state.wifi??'enabled'));
+if(args.slice(0,3).join(' ')==='shell cmd media_session')console.log('volume is '+(state.mediaVolume??'7')+' in range [0..15]');
+if(args.includes('ro.product.device'))console.log(mode==='cuttlefish-wrong-device'?'physical':'vsoc_x86_64');
+if(args.includes('sys.boot_completed'))console.log(mode.endsWith('-booting')?'0':'1');
+if(args.includes('ro.build.fingerprint'))console.log(state.replaced?'Other/image/device:16/test':mode.startsWith('device')?'Example/tablet/tablet:15/test':'Example/fixture/vsoc_x86_64:16/test');
+if(args.includes('ro.serialno'))console.log(mode.startsWith('device')?'DEVTABLET01':'CUTTLEFISHCVD01');
+if(args.includes('/proc/sys/kernel/random/boot_id'))console.log(state.rebooted?'22222222-2222-2222-2222-222222222222':'11111111-1111-1111-1111-111111111111');
+if(args.includes('get-role-holders'))console.log(state.browser||'org.stock.browser');
+
 if(args.includes('ro.product.cpu.abi'))console.log('x86_64');
 if(args.includes('getenforce'))console.log(mode==='permissive'?'Permissive':'Enforcing');
 if(args.includes('packages')&&mode==='appeared'){state.reads=(state.reads||0)+1;if(state.reads===2)state.packages.push('org.example.consumer');publishFixtureState(file,state);}
 if(args.includes('packages')&&!args.includes('--uid'))console.log(state.packages.map(p=>'package:'+p).join('\\n'));
 if(args.includes('resolve-activity'))console.log(args.includes('-p')?'org.stock.home/.Home':state.home);
-if(args[0]==='install'){const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);publishFixtureState(file,state);if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
+if(args[0]==='install'){if(mode==='install-unacknowledged-absent')process.exit(1);const id=args.at(-1).includes('companion.apk')?'org.example.companion':args.at(-1).includes('test.apk')?'org.example.consumer.test':'org.example.consumer';state.packages=[...new Set([...state.packages,id])];(state.files??={})[id]=file+'.'+id+'.apk';fs.copyFileSync(args.at(-1),state.files[id]);publishFixtureState(file,state);if(mode==='install-failure'&&id.endsWith('.test'))process.exit(1);console.log('Success');}
 if(args.slice(0,3).join(' ')==='shell pm path')console.log('package:/data/'+args.at(-1)+'.apk');
 if(args[0]==='pull'){const id=args[1].slice('/data/'.length,-4);fs.copyFileSync(state.files[id],args[2]);}
 
@@ -108,6 +123,12 @@ if(args.includes('instrument')){
   console.log('OK ('+cases.length+' tests)'+String.fromCharCode(10)+'INSTRUMENTATION_CODE: -1');return;
  }
  if(mode==='home-change'){state.home='other/.Home';publishFixtureState(file,state);}
+ if(mode==='cuttlefish-replaced'){state.replaced=true;publishFixtureState(file,state);}
+ if(mode==='cuttlefish-rebooted'){state.rebooted=true;publishFixtureState(file,state);}
+ if(mode==='cuttlefish-browser-change'){state.browser='other.browser';publishFixtureState(file,state);}
+ if(mode.startsWith('device-change-')){const key=mode.slice(14);if(key==='home')state.home='other/.Home';else if(key==='browser')state.browser='other.browser';else if(key==='wifi')state.wifi='disabled';else if(key==='media_volume')state.mediaVolume='3';else state.settings={[key]:'0'};publishFixtureState(file,state);}
+ if(mode==='device-rebooted'){state.rebooted=true;publishFixtureState(file,state);}
+
  console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 1');
  if(mode!=='partial')console.log('INSTRUMENTATION_STATUS: class=org.example.consumer.Probe\\nINSTRUMENTATION_STATUS: test=probe\\nINSTRUMENTATION_STATUS: numtests=1\\nINSTRUMENTATION_STATUS_CODE: 0');
  console.log('OK (1 test)\\nINSTRUMENTATION_CODE: -1');
@@ -161,7 +182,10 @@ test("external consumer variants execute fully, clean packages and preserve HOME
     collected = [];
   const report = await runIsolatedAndroidTest({
     ...f.options,
-    prepareVariant: async (c) => prepared.push(c.variant),
+    prepareVariant: async (c) => {
+      assert.equal(c.developmentDevice, undefined);
+      prepared.push(c.variant);
+    },
     collectVariant: (c) => collected.push(c.variant),
   });
   assert.deepEqual(prepared, ["standalone", "launcher"]);
@@ -207,10 +231,40 @@ for (const mode of [
     const report = JSON.parse(
       fs.readFileSync(path.join(f.options.directory, "verification.json")),
     );
-    assert.equal(report.cleaned, mode !== "cleanup-failure");
+    assert.equal(
+      report.cleaned,
+      !["cleanup-failure", "install-failure"].includes(mode),
+    );
     assert.equal(report.homeUnchanged, mode !== "home-change");
     if (mode === "cleanup-failure") assert.ok(report.cleanupErrors.length > 0);
+    if (mode === "install-failure") {
+      assert.equal(report.cleanupDeferred, true);
+      assert.equal(
+        report.unacknowledgedInstalls[0].packageName,
+        "org.example.consumer.test",
+      );
+      assert.ok(!f.commands().some((c) => c[0] === "uninstall"));
+    }
   });
+test("an unacknowledged install is not clean even when no package is visible yet", async (t) => {
+  const f = fixture(t, "install-unacknowledged-absent");
+  await assert.rejects(runIsolatedAndroidTest(f.options));
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  assert.equal(report.cleaned, false);
+  assert.equal(report.cleanupDeferred, true);
+  assert.deepEqual(report.unacknowledgedInstalls, [
+    {
+      packageName: "org.example.consumer",
+      expectedSha256: createHash("sha256")
+        .update(fs.readFileSync(f.options.variants[0].apk))
+        .digest("hex"),
+    },
+  ]);
+  assert.ok(!f.commands().some((c) => c[0] === "uninstall"));
+});
 test("callback failure cleans owned packages and releases the device lease", async (t) => {
   const f = fixture(t);
   await assert.rejects(
@@ -225,6 +279,61 @@ test("callback failure cleans owned packages and releases the device lease", asy
   assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
   const report = await runIsolatedAndroidTest(f.options);
   assert.equal(report.cleaned, true);
+});
+test("wake and declared app evidence run around each variant's instrumentation", async (t) => {
+  const f = fixture(t);
+  const files = path.join(f.root, "app-files");
+  fs.mkdirSync(files);
+  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 255]);
+  fs.writeFileSync(path.join(files, "result.json"), '{"passed":true}');
+  fs.writeFileSync(path.join(files, "screen.png"), png);
+  const options = {
+    ...f.options,
+    wake: true,
+    appEvidence: {
+      directory: "app-evidence",
+      json: ["result.json"],
+      png: ["screen.png"],
+    },
+  };
+  const seen = [];
+  const report = await runIsolatedAndroidTest({
+    ...options,
+    collectVariant: (c) => seen.push(c.appEvidence.json["result.json"]),
+  });
+  assert.deepEqual(seen, [{ passed: true }, { passed: true }]);
+  for (const variant of ["standalone", "launcher"]) {
+    assert.deepEqual(
+      fs.readFileSync(path.join(f.options.directory, `${variant}-screen.png`)),
+      png,
+    );
+    assert.deepEqual(
+      report.variants
+        .find((r) => r.variant === variant)
+        .appEvidence.map((e) => e.file),
+      [`${variant}-result.json`, `${variant}-screen.png`],
+    );
+  }
+  const commands = f.commands().map((c) => c.join(" "));
+  const wake = commands.indexOf("shell input keyevent KEYCODE_WAKEUP");
+  assert.equal(commands[wake + 1], "shell wm dismiss-keyguard");
+  assert.ok(wake < commands.findIndex((c) => c.includes("instrument")));
+  assert.equal(report.cleaned, true);
+
+  fs.writeFileSync(path.join(files, "screen.png"), "not a png");
+  fs.rmSync(options.directory, { recursive: true });
+  await assert.rejects(
+    runIsolatedAndroidTest(options),
+    /screen\.png is not a PNG/,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...options,
+      appEvidence: { directory: "../files", json: ["result.json"] },
+    }),
+    /App-relative evidence directory required/,
+  );
 });
 test("runner arguments cannot replace the requested test selection", async (t) => {
   const f = fixture(t);
@@ -1436,4 +1545,268 @@ test("the harness owns interruption nonce and rejects malformed controls before 
     f.commands().filter((args) => args.includes("instrument")).length,
     1,
   );
+});
+
+const cuttlefishOptions = (options) => ({
+  ...options,
+  serial: "127.0.0.1:6520",
+  expectedAvdName: undefined,
+  expectedCuttlefish: {
+    callerOwned: true,
+    serialNumber: "CUTTLEFISHCVD01",
+    fingerprint: "Example/fixture/vsoc_x86_64:16/test",
+  },
+});
+test("explicit owned Cuttlefish runs both variants with unchanged roles", async (t) => {
+  const f = fixture(t);
+  const report = await runIsolatedAndroidTest(cuttlefishOptions(f.options));
+  assert.equal(report.cleaned, true);
+  assert.equal(report.browserUnchanged, true);
+  assert.equal(report.homeUnchanged, true);
+  assert.equal(report.variants.length, 2);
+  assert.equal(
+    f.commands().some((c) => c[0] === "emu"),
+    false,
+  );
+});
+for (const mode of ["cuttlefish-wrong-device", "cuttlefish-booting"])
+  test(`${mode} is rejected without installation`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(runIsolatedAndroidTest(cuttlefishOptions(f.options)));
+    assert.equal(
+      f.commands().some((c) => ["install", "uninstall"].includes(c[0])),
+      false,
+    );
+  });
+for (const field of ["callerOwned", "serialNumber", "fingerprint"])
+  test(`Cuttlefish rejects mismatched ${field}`, async (t) => {
+    const f = fixture(t);
+    const options = cuttlefishOptions(f.options);
+    options.expectedCuttlefish[field] =
+      field === "callerOwned" ? false : "wrong";
+    await assert.rejects(runIsolatedAndroidTest(options));
+    assert.equal(
+      f.commands().some((c) => c[0] === "install"),
+      false,
+    );
+  });
+for (const mode of ["cuttlefish-replaced", "cuttlefish-rebooted"])
+  test(`${mode} retains packages and defers cleanup`, async (t) => {
+    const f = fixture(t, mode);
+    await assert.rejects(runIsolatedAndroidTest(cuttlefishOptions(f.options)));
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "verification.json")),
+    );
+    assert.equal(report.cleaned, false);
+    assert.equal(report.cleanupDeferred, true);
+    assert.equal(
+      f
+        .commands()
+        .some((c) => c[0] === "uninstall" || c.includes("force-stop")),
+      false,
+    );
+  });
+test("Cuttlefish browser role drift fails qualification", async (t) => {
+  const f = fixture(t, "cuttlefish-browser-change");
+  await assert.rejects(
+    runIsolatedAndroidTest(cuttlefishOptions(f.options)),
+    /Default browser changed/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.browserUnchanged, false);
+});
+
+test("Cuttlefish and AVD profiles cannot be mixed", async (t) => {
+  const f = fixture(t);
+  const options = cuttlefishOptions(f.options);
+  options.expectedAvdName = "owned-test-fixture";
+  await assert.rejects(
+    runIsolatedAndroidTest(options),
+    /Choose AVD or Cuttlefish/,
+  );
+  assert.equal(f.commands().length, 0);
+});
+test("Cuttlefish rejects non-loopback endpoints and secondary users", async (t) => {
+  const f = fixture(t);
+  for (const overrides of [{ serial: "10.0.0.1:6520" }, { androidUser: 10 }]) {
+    await assert.rejects(
+      runIsolatedAndroidTest({ ...cuttlefishOptions(f.options), ...overrides }),
+    );
+  }
+  assert.equal(f.commands().length, 0);
+});
+
+const developmentDeviceOptions = (options) => ({
+  ...options,
+  serial: "DEVTABLET01",
+  expectedAvdName: undefined,
+  developmentDevice: {
+    ownerApproved: true,
+    model: "Example Tablet",
+    fingerprint: "Example/tablet/tablet:15/test",
+  },
+});
+test("an owner-approved development device runs both variants with unchanged settings", async (t) => {
+  const f = fixture(t, "device");
+  const lanes = [];
+  const report = await runIsolatedAndroidTest({
+    ...developmentDeviceOptions(f.options),
+    prepareVariant: async (c) => {
+      lanes.push(c.developmentDevice);
+      // A hook cannot move the identity the runner checks before each command.
+      assert.throws(() => {
+        c.developmentDevice.serialNumber = "OTHERTABLET02";
+      }, TypeError);
+    },
+  });
+  assert.deepEqual(
+    lanes.map((device) => device?.serialNumber),
+    ["DEVTABLET01", "DEVTABLET01"],
+  );
+  assert.equal(report.evidenceClass, "development-device");
+  assert.equal(report.note, DEVELOPMENT_DEVICE_NOTE);
+  assert.deepEqual(report.originalSettings, {
+    font_scale: "1",
+    screen_off_timeout: "1",
+    airplane_mode_on: "1",
+    mobile_data: "1",
+    wifi: "enabled",
+    media_volume: "7",
+  });
+  assert.equal(report.cleaned, true);
+  assert.equal(report.homeUnchanged, true);
+  assert.equal(report.browserUnchanged, true);
+  assert.equal(report.settingsUnchanged, true);
+  assert.equal(report.developmentDevice.model, "Example Tablet");
+  assert.equal(report.variants.length, 2);
+  assert.equal(
+    f.commands().some((c) => c[0] === "emu"),
+    false,
+  );
+  assert.deepEqual(JSON.parse(fs.readFileSync(f.state)).packages, []);
+});
+for (const [field, value, expected] of [
+  ["ownerApproved", false, /Owner-approved development device required/],
+  ["model", "Other Tablet", /Development device model differs/],
+  [
+    "fingerprint",
+    "Other/tablet/tablet:15/test",
+    /Development device fingerprint changed/,
+  ],
+])
+  test(`a development device rejects mismatched ${field} before installation`, async (t) => {
+    const f = fixture(t, "device");
+    const options = developmentDeviceOptions(f.options);
+    options.developmentDevice[field] = value;
+    await assert.rejects(runIsolatedAndroidTest(options), expected);
+    assert.equal(
+      f.commands().some((c) => ["install", "uninstall"].includes(c[0])),
+      false,
+    );
+  });
+test("an emulator is not admitted as a development device", async (t) => {
+  const f = fixture(t, "device-emulator");
+  await assert.rejects(
+    runIsolatedAndroidTest(developmentDeviceOptions(f.options)),
+    /An emulator is not a development device/,
+  );
+  assert.equal(
+    f.commands().some((c) => c[0] === "install"),
+    false,
+  );
+});
+for (const [key, expected, flag] of [
+  ["font_scale", /Device settings changed/, "settingsUnchanged"],
+  ["screen_off_timeout", /Device settings changed/, "settingsUnchanged"],
+  ["airplane_mode_on", /Device settings changed/, "settingsUnchanged"],
+  ["mobile_data", /Device settings changed/, "settingsUnchanged"],
+  ["wifi", /Device settings changed/, "settingsUnchanged"],
+  ["media_volume", /Device settings changed/, "settingsUnchanged"],
+  ["home", /Default HOME changed/, "homeUnchanged"],
+  ["browser", /Default browser changed/, "browserUnchanged"],
+])
+  test(`development device ${key} drift fails qualification`, async (t) => {
+    const f = fixture(t, `device-change-${key}`);
+    await assert.rejects(
+      runIsolatedAndroidTest(developmentDeviceOptions(f.options)),
+      expected,
+    );
+    const report = JSON.parse(
+      fs.readFileSync(path.join(f.options.directory, "verification.json")),
+    );
+    assert.equal(report[flag], false);
+    assert.equal(report.cleaned, true);
+  });
+test("an adb serial other than ro.serialno is not admitted as a development device", async (t) => {
+  const f = fixture(t, "device");
+  await assert.rejects(
+    runIsolatedAndroidTest({
+      ...developmentDeviceOptions(f.options),
+      serial: "OTHERTABLET02",
+    }),
+    /Development device instance changed/,
+  );
+  assert.equal(
+    f.commands().some((c) => c[0] === "install"),
+    false,
+  );
+});
+test("a development device that has not finished booting is not admitted", async (t) => {
+  const f = fixture(t, "device-booting");
+  await assert.rejects(
+    runIsolatedAndroidTest(developmentDeviceOptions(f.options)),
+    /Development device boot incomplete/,
+  );
+  assert.equal(
+    f.commands().some((c) => c[0] === "install"),
+    false,
+  );
+});
+test("a rebooted development device retains packages and defers cleanup", async (t) => {
+  const f = fixture(t, "device-rebooted");
+  await assert.rejects(
+    runIsolatedAndroidTest(developmentDeviceOptions(f.options)),
+    /Development device boot changed/,
+  );
+  const report = JSON.parse(
+    fs.readFileSync(path.join(f.options.directory, "verification.json")),
+  );
+  assert.equal(report.cleaned, false);
+  assert.equal(report.cleanupDeferred, true);
+  assert.equal(
+    f.commands().some((c) => c[0] === "uninstall"),
+    false,
+  );
+});
+test("development device admission cannot be mixed and requires user 0", async (t) => {
+  const f = fixture(t, "device");
+  const mixed = /Choose AVD, Cuttlefish or development device admission/;
+  for (const [overrides, expected] of [
+    [{ expectedAvdName: "owned-test-fixture" }, mixed],
+    [
+      {
+        expectedCuttlefish: {
+          callerOwned: true,
+          serialNumber: "CUTTLEFISHCVD01",
+          fingerprint: "Example/fixture/vsoc_x86_64:16/test",
+        },
+      },
+      mixed,
+    ],
+    [
+      { serial: "emulator-5554" },
+      /A development device serial is its ro.serialno/,
+    ],
+    [{ androidUser: 10 }, /A development device requires owner user 0/],
+  ])
+    await assert.rejects(
+      runIsolatedAndroidTest({
+        ...developmentDeviceOptions(f.options),
+        ...overrides,
+      }),
+      expected,
+    );
+  assert.equal(f.commands().length, 0);
 });

@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, unlinkSync } from "node:fs";
 import { platform, tmpdir } from "node:os";
 import { join } from "node:path";
+import { splitWindowFields } from "../platform/windows-list.js";
 
 export type DesktopInputButton = "left" | "right";
 
@@ -176,11 +177,11 @@ export function listDesktopWindows(): DesktopWindowInfo[] {
       .split("\n")
       .filter(Boolean)
       .map((entry) => {
-        const parts = entry.split("|||");
+        const [app, title, id] = splitWindowFields(entry);
         return {
-          app: parts[0] ?? "unknown",
-          title: parts[1] ?? "unknown",
-          id: parts[2] ?? "0",
+          app: app || "unknown",
+          title: title || "unknown",
+          id: id || "0",
         };
       });
   }

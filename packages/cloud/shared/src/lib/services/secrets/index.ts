@@ -39,6 +39,7 @@ export {
   type SecretBindingMetadata,
   type SecretMetadata,
   SecretsService,
+  SystemSecretConfigurationError,
   secretsService,
   type UpdateSecretParams,
 } from "./secrets";

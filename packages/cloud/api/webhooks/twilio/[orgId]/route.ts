@@ -20,6 +20,7 @@ import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { processOnce } from "@elizaos/cloud-shared/lib/utils/idempotency";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
+  extractMedia,
   extractMediaUrls,
   parseTwilioWebhookEvent,
   type TwilioWebhookEvent,
@@ -202,7 +203,8 @@ async function handleIncomingMessage(
   const from = event.From;
   const to = event.To;
   const body = event.Body?.trim();
-  const mediaUrls = extractMediaUrls(event);
+  const media = extractMedia(event);
+  const mediaUrls = media.map((item) => item.url);
 
   if (!body && mediaUrls.length === 0) {
     logger.info("[TwilioWebhook] Skipping empty message", { orgId });
@@ -242,6 +244,10 @@ async function handleIncomingMessage(
     body: body || "",
     providerMessageId: event.MessageSid,
     mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
+    mediaTypes:
+      mediaUrls.length > 0
+        ? media.map((item) => item.contentType ?? "")
+        : undefined,
     metadata: messageContext.metadata,
   });
 

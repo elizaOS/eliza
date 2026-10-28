@@ -65,7 +65,10 @@ type AiGenerateText = AiModule["generateText"];
 type AiEmbed = AiModule["embed"];
 let aiCorePromise: Promise<AiModule> | null = null;
 function loadAiCore(): Promise<AiModule> {
-  aiCorePromise ??= importAiProvider<AiModule>("ai");
+  aiCorePromise ??= importAiProvider<AiModule>("ai").catch((error: unknown) => {
+    aiCorePromise = null;
+    throw error;
+  });
   return aiCorePromise;
 }
 

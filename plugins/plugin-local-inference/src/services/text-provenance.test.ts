@@ -1,5 +1,5 @@
 /** Covers reading the GGUF `general.architecture` bytes and the Gemma-4 strict-release architecture blockers. Deterministic, synthetic GGUF headers. */
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -130,4 +130,55 @@ describe("readBundleTextArchitectureBlockers", () => {
 		const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
 		expect(readBundleTextArchitectureBlockers(root)).toEqual([]);
 	});
+	it("blocks a shipped text GGUF whose header is not GGUF", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
+		mkdirSync(path.join(root, "text"));
+		writeFileSync(
+			path.join(root, "text", "eliza-1-2b-128k.gguf"),
+			Buffer.from("not a gguf file at all"),
+		);
+		const blockers = readBundleTextArchitectureBlockers(root);
+		expect(blockers).toHaveLength(1);
+		expect(blockers[0]).toMatch(/could not read the GGUF header/);
+		expect(blockers[0]).toMatch(/not a GGUF file/);
+		expect(blockers[0]).toMatch(/cannot be verified/);
+	});
+	it("blocks a shipped text GGUF whose header is truncated", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
+		mkdirSync(path.join(root, "text"));
+		// Magic + version, then the tensor/KV counts are cut off.
+		writeFileSync(
+			path.join(root, "text", "eliza-1-2b-128k.gguf"),
+			Buffer.concat([u32(0x4655_4747), u32(3)]),
+		);
+		const blockers = readBundleTextArchitectureBlockers(root);
+		expect(blockers).toHaveLength(1);
+		expect(blockers[0]).toMatch(/gguf header truncated/);
+		expect(blockers[0]).toMatch(/cannot be verified/);
+	});
+	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+		"blocks when text/ exists but cannot be listed",
+		() => {
+			const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
+			const textDir = path.join(root, "text");
+			mkdirSync(textDir);
+			writeFileSync(
+				path.join(textDir, "eliza-1-2b-128k.gguf"),
+				gguf([kvString("general.architecture", "qwen35")]),
+			);
+
+			// A mode-0 directory makes readdirSync fail with EACCES while the
+			// Qwen stand-in is still shipped. The gate must not read "I could
+			// not look" as "there is nothing to check".
+			chmodSync(textDir, 0o000);
+			try {
+				const blockers = readBundleTextArchitectureBlockers(root);
+				expect(blockers).toHaveLength(1);
+				expect(blockers[0]).toMatch(/files\.text/);
+				expect(blockers[0]).toMatch(/EACCES/);
+			} finally {
+				chmodSync(textDir, 0o755);
+			}
+		},
+	);
 });

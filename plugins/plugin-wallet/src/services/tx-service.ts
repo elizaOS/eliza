@@ -13,6 +13,7 @@ import {
   truncateWellFormed,
 } from "@elizaos/core";
 import * as ethers from "ethers";
+import { prefixEvmHex } from "../chains/evm/routes/evm-hex.js";
 
 /**
  * Renders a redacted preview of a rejected private key for the constructor's
@@ -47,7 +48,7 @@ export interface JsonRpcEndpointProbeResult {
  * Validate that a private key is a valid 32-byte hex string.
  */
 function isValidPrivateKey(key: string): boolean {
-  const normalized = key.startsWith("0x") ? key.slice(2) : key;
+  const normalized = prefixEvmHex(key).slice(2);
   // Must be 64 hex characters (32 bytes)
   if (normalized.length !== 64) return false;
   // Must be valid hex
@@ -153,9 +154,7 @@ export class TxService {
     this.rpcUrl = normalizeJsonRpcUrl(rpcUrl);
     this.provider = new ethers.JsonRpcProvider(this.rpcUrl);
 
-    const normalizedKey = privateKey.startsWith("0x")
-      ? privateKey
-      : `0x${privateKey}`;
+    const normalizedKey = prefixEvmHex(privateKey);
 
     // Create wallet with provider
     this.wallet = new ethers.Wallet(normalizedKey, this.provider);

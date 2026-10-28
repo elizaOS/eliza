@@ -78,6 +78,8 @@ export interface MobileAppAuthRegistration {
   environment: MobileAppAuthEnvironment;
   redirectUri: string;
   scopes: typeof MOBILE_APP_AUTH_SCOPES;
+  /** Lifetime of minted credentials; MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS by default. */
+  credentialTtlSeconds: number;
 }
 
 export interface MobileAppAuthRuntimeEnv {
@@ -153,15 +155,6 @@ export function resolveMobileAppAuthRegistration(
       `${MOBILE_APP_AUTH_ENABLED_ENV} must be exactly true or false`,
     );
   }
-  if (
-    typeof env.ELIZA_MOBILE_APP_AUTH_APP_ID !== "string" ||
-    !UUID_RE.test(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
-  ) {
-    return invalid(
-      "server_configuration_error",
-      `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
-    );
-  }
   if (clientId !== MOBILE_APP_AUTH_CLIENT_ID) {
     const selected = selectRegisteredMobileClient(
       env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
@@ -179,7 +172,22 @@ export function resolveMobileAppAuthRegistration(
           ? "Unknown or disabled mobile App Auth client"
           : "Invalid server mobile client registry",
       );
-    return { ...selected.registration, environment, scopes: MOBILE_APP_AUTH_SCOPES };
+    const { credentialTtlSeconds, ...registration } = selected.registration;
+    return {
+      ...registration,
+      environment,
+      scopes: MOBILE_APP_AUTH_SCOPES,
+      credentialTtlSeconds: credentialTtlSeconds ?? MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
+    };
+  }
+  if (
+    typeof env.ELIZA_MOBILE_APP_AUTH_APP_ID !== "string" ||
+    !UUID_RE.test(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
+  ) {
+    return invalid(
+      "server_configuration_error",
+      `${MOBILE_APP_AUTH_APP_ID_ENV} must be a registered app UUID`,
+    );
   }
   return {
     appId: env.ELIZA_MOBILE_APP_AUTH_APP_ID,
@@ -187,6 +195,7 @@ export function resolveMobileAppAuthRegistration(
     environment,
     redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
     scopes: MOBILE_APP_AUTH_SCOPES,
+    credentialTtlSeconds: MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS,
   };
 }
 
@@ -304,11 +313,12 @@ export async function issueMobileAppAuthCode(input: {
 async function prepareInactiveCredential(input: {
   state: MobileAppAuthGrantState;
   now: Date;
+  credentialTtlSeconds: number;
 }): Promise<{ insert: NewApiKey; secret: string }> {
   const { key, hash, prefix } = apiKeysService.generateMobileApiKey();
   const id = crypto.randomUUID();
   const encrypted = await encryptApiKey(input.state.grant.organization_id, id, key);
-  const expiresAt = new Date(input.now.getTime() + MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS * 1000);
+  const expiresAt = new Date(input.now.getTime() + input.credentialTtlSeconds * 1000);
   const provenance = buildMobileAppAuthCredentialProvenance({
     grantId: input.state.grant.id,
     environment: input.state.grant.environment,
@@ -483,7 +493,11 @@ export async function exchangeMobileAppAuthCode(input: {
     return invalid("authorization_complete", "Authorization code has already been acknowledged");
   }
 
-  const candidate = await prepareInactiveCredential({ state: existing, now });
+  const candidate = await prepareInactiveCredential({
+    state: existing,
+    now,
+    credentialTtlSeconds: input.registration.credentialTtlSeconds,
+  });
   const claim = await mobileAppAuthGrantsRepository.exchange(binding, candidate.insert, now);
   if (claim.kind === "invalid") {
     return rejectInvalidExchangeClaim(claim.reason);

@@ -108,7 +108,7 @@ function parseStructuredRecord(raw: string): Record<string, unknown> | null {
 
 function parseTimeOfDay(value: string): string | null {
   const normalized = value.trim().toLowerCase();
-  const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b/);
+  const hhmmMatch = normalized.match(/\b(\d{1,2}):(\d{2})\b(?!\s*(?:am|pm)\b)/);
   if (hhmmMatch) {
     const hour = Number(hhmmMatch[1]);
     const minute = Number(hhmmMatch[2]);
@@ -138,6 +138,20 @@ function parseTimeOfDay(value: string): string | null {
   }
   const rawHour = Number(clockMatch[1]);
   const minute = Number(clockMatch[2] ?? "0");
+  // Clock-hour tokens only name the 12-hour dial. Without a range check,
+  // "25am" silently becomes "01:00" (25 % 12) and "5:99pm" emits the invalid
+  // time "17:99". The sibling parseClockToken in actions/life.ts already
+  // rejects out-of-range clock hours the same way.
+  if (
+    !Number.isFinite(rawHour) ||
+    !Number.isFinite(minute) ||
+    rawHour < 1 ||
+    rawHour > 12 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
   const meridiem = clockMatch[3];
   const hour =
     meridiem === "am"

@@ -34,6 +34,11 @@ nested `AGENTS.md` files.
   evidence of the complete user flow, plus detailed steps to test the change.
 - Write all issues and PRs in ASD-STE100 Simplified Technical English. Use short,
   direct sentences, explain technical terms, and write for a non-technical reader.
+- Slop bounty work: star and fork the repository first and work from the fork.
+  Use real LLM calls for evidence. Make no UI changes except broken-flow fixes
+  with before-and-after video. Test in more than one agent client and record
+  each client, version, provider, and model. Rules, environment variables, and
+  the evidence checklist: [Slop bounty contributions](CONTRIBUTING.md#slop-bounty-contributions).
 
 - Preserve unrelated changes in this shared working tree.
 - Use pinned Bun 1.4.2 and Node 24.15.0, ESM, and the repository's Biome config.

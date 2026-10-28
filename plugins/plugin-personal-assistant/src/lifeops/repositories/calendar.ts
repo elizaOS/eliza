@@ -2,6 +2,7 @@
 
 import type {
   LifeOpsCalendarEvent,
+  LifeOpsCalendarProvider,
   LifeOpsConnectorGrant,
   LifeOpsConnectorSide,
 } from "@elizaos/contracts";
@@ -41,12 +42,14 @@ export class LifeOpsCalendarRepository {
     provider: LifeOpsConnectorGrant["provider"],
     calendarId?: string,
     side?: LifeOpsConnectorSide,
+    grantId?: string,
   ): Promise<void> {
     return this.calendar.deleteCalendarEventsForProvider(
       agentId,
       provider,
       calendarId,
       side,
+      grantId,
     );
   }
 
@@ -88,7 +91,7 @@ export class LifeOpsCalendarRepository {
 
   async listCalendarEvents(
     agentId: string,
-    provider: LifeOpsConnectorGrant["provider"],
+    provider: LifeOpsCalendarProvider | LifeOpsConnectorGrant["provider"],
     timeMin?: string,
     timeMax?: string,
     side?: LifeOpsConnectorSide,

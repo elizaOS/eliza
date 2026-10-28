@@ -42,6 +42,7 @@ import { isTrustedCloudApiBaseUrl } from "../state/runtime-url-trust";
 import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
+  currentOwnedElizaPagesOrigin,
   isDedicatedCloudAgentBase,
   isElizaCloudControlPlaneAgentlessBase,
   isPersonalSharedElizaId,
@@ -216,10 +217,19 @@ function isCloudRouteNotFound(error: unknown): error is ApiError {
 
 function resolveKnownDirectCloudApiBase(baseUrl: string): string | null {
   try {
+    const url = new URL(baseUrl);
+    const proxy = currentOwnedElizaPagesOrigin();
+    if (proxy && url.origin === proxy) {
+      if (url.username || url.password || url.search || url.hash) return null;
+      const path = url.pathname.replace(/\/+$/, "");
+      return path === "" ||
+        path === "/api/v1/eliza/agents" ||
+        isTrustedCloudApiBaseUrl(baseUrl)
+        ? proxy
+        : null;
+    }
     return (
-      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
-        new URL(baseUrl).hostname.toLowerCase(),
-      ) ?? null
+      DIRECT_ELIZA_CLOUD_API_BY_HOST.get(url.hostname.toLowerCase()) ?? null
     );
   } catch {
     // error-policy:J3 malformed Cloud endpoints fail closed.
@@ -285,6 +295,8 @@ function resolveDedicatedCloudAgentControlPlaneApiBase(
 ): string | null {
   if (!isDedicatedCloudAgentClient(client)) return null;
   if (typeof window !== "undefined") {
+    const proxy = currentOwnedElizaPagesOrigin();
+    if (proxy) return proxy;
     const pageApiBase = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
     );
@@ -613,9 +625,8 @@ export {
 
 function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   const baseUrl = client.getBaseUrl().trim();
-  if (baseUrl && isDirectCloudBase(client)) {
-    return resolveDirectCloudAuthApiBase(baseUrl);
-  }
+  const knownBase = baseUrl ? resolveKnownDirectCloudApiBase(baseUrl) : null;
+  if (knownBase) return knownBase;
   const dedicatedControlPlaneApiBase =
     resolveDedicatedCloudAgentControlPlaneApiBase(client);
   if (dedicatedControlPlaneApiBase) return dedicatedControlPlaneApiBase;
@@ -652,6 +663,8 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
   // page host. Firing this branch while connected would mis-route to the cloud
   // host and 401. See PR #11448.
   if (!baseUrl && typeof window !== "undefined") {
+    const proxy = currentOwnedElizaPagesOrigin();
+    if (proxy) return proxy;
     const byHost = DIRECT_ELIZA_CLOUD_API_BY_HOST.get(
       window.location.hostname.toLowerCase(),
     );

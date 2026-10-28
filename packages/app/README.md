@@ -14,6 +14,15 @@ Concurrent worktrees should use `bun run --cwd packages/app dev:shared`. UI chan
 require `bun run --cwd packages/app audit:app` and inspection of affected desktop/mobile
 captures.
 
+## Startup branding
+
+The static startup view uses `appName` and optional `web.startupLogoPath` from
+`app.config.ts`. The mark must be a path in the host public assets; omit it for
+text-only startup. Android Cloud embeds the host's local `branding.logoUrl`
+(SVG, PNG, JPEG or WebP) because that package omits the public asset tree.
+Missing or remote logos use the app name instead. The canonical Eliza host
+sets its own marks explicitly.
+
 ## Eliza alarms
 
 `/clock` lists this owner's alarms from native Android storage. It provides local
@@ -55,10 +64,15 @@ A new APK must be built from the changed native sources and tested on the device
 
 ## Development
 
+Set `ELIZA_PGLITE_AUTO_RESET=0` for hosts that must preserve an existing database
+on startup failure. The host then reports the original terminal PGlite error
+without resetting the database singleton or quarantining the data directory.
+Omitting this setting retains the existing automatic recovery behavior.
+
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
-bun run build:client  # build
+bun run --cwd packages/app build  # build
 bun run --cwd packages/app test   # tests
 ```
 
@@ -78,6 +92,12 @@ for native builds and physical-device tests.
 Web subscription settings select a registered product with `VITE_ELIZA_APPLICATION_SLOT`;
 agent-backed settings use `ELIZAOS_CLOUD_APPLICATION_SLOT` from the runtime.
 These select a product, not a merchant credential or paid entitlement.
+
+Independent Android consumer profiles may use `main`, `androidTest`, `debug`,
+`release`, and their declared flavor names in `sourceSets`. Keep test trust and
+other debug-only resources in `debug`; they must not enter release artifacts.
+Run `node packages/app/scripts/mobile/android/qualify-consumer-host.mjs` from the
+repository root with the Android SDK and JDK configured to check real APK isolation.
 
 ## Disposable hosted Android fixtures
 
@@ -178,8 +198,11 @@ the registered Capacitor BGE bridge from a real WebView, including tokenization,
 embedding, admission rejection, and context release.
 
 Use `--speech-model-dir <directory>` instead of `--embedding` for CPU Kokoro
-transport and PCM diagnostics through the framed host. Supply `kokoro-82m-v1_0.gguf` and `af_sam.bin`
-from the pinned assets in `plugins/plugin-native-inference/src/aosp-voice-download.ts`.
+transport and PCM diagnostics through the framed host. Supply `kokoro-82m-v1_0.gguf`
+(sha256 `165acd9d…`) and `af_sam.bin` (sha256 `68746708…`) from `elizaos/eliza-1` at
+revision `1e4c7371`. These are no longer the agent's voice: the AOSP agent now
+stages the pinned `mobile-voice` bundle (Paradee-8M + misaki lexicon, Phonon-2 ASR,
+Silero VAD) from `plugins/plugin-native-inference/src/model-catalog/voice-model-versions.json`.
 The test verifies their hashes inside the installed APK, checks speed, input
 rejection and release/reload, and exports full PCM plus a playable WAV. A passing
 diagnostic does not qualify speech intelligibility: the report explicitly marks
@@ -189,30 +212,96 @@ defect remains unresolved (issue #30679). Diagnosis needs a matched canonical
 reference and the first divergent tensor. Microphone capture, phonemization and
 physical speaker playback are outside this IPA-input diagnostic.
 
+## Mobile voice quality gates
+
+The shipped mobile voice (Paradee-8M TTS and Phonon-2 ASR, both on
+libelizainference, no ONNX) is gated by `scripts/voice-quality/host-wer-gate.ts`
+on the host and by `scripts/paradee-voice/qualify` on a device. Both use the
+pins and thresholds in `scripts/voice-quality/fixtures.json`: TTS round-trip
+WER <= 0.08 over the Paradee card samples, the 25 qualify sentences and the
+first 200 Paradee held-out sentences; ASR WER <= 0.06 over 100 LibriSpeech
+test-clean utterances and `speech-fixture/0.wav`; and an empty transcript for
+silence. RTF is reported. The host report goes to `test-results/voice-quality/`.
+
+ASR is Phonon-2 (`asr/phonon-2-fv5.gguf`, Parakeet-TDT 0.6B with five-value
+weights, 208,932,352 bytes, sha256 `c0f6ad42…`) on the library's parakeet
+backend, which also streams (`ElizaVoiceNative.nativeAsrStream*`,
+`NativeAsr.openStream`). The GGUF is not published yet, so stage it by
+converting the pinned source and pass it through `ELIZA_VOICE_BUNDLE_FROM`
+(`<dir>/asr/phonon-2-fv5.gguf`; the catalog row pins its hash):
+`python tools/parakeet/convert_phonon2_to_gguf.py --archive phonon-2.bps.tar.zst
+--output phonon-2-fv5.gguf --verify` in the llama.cpp submodule, with the
+archive from `FermionResearch/Phonon-2@7e153e40`. Phonon-2 is the only
+local ASR model; `ELIZA_ASR_THREADS` sets decode threads. Phonon-2 weights are CC-BY-4.0
+(derived from NVIDIA parakeet-tdt-0.6b-v3): ship the attribution and
+Fermion's NOTICE. The NOTICE lists CHiME-6 (CC-BY-SA-4.0) and SPGISpeech
+(Kensho terms) training audio, which is flagged for review and does not block
+a build.
+
+The agent reaches streaming ASR over the bionic UDS: `ElizaBionicInferenceServer`
+serves `asr_stream_supported / open / feed / partial / finish / close / cancel`
+(`BionicAsrStreams`: one stream per connection, at most 5 s per feed, 120 s per
+stream and 4 streams; disconnecting cancels and frees the stream; logs carry
+lengths, never text). On the agent side `BionicHostLoader.openAsrStream()` and
+`createStreamingTranscriber()` emit partials and use batch `op:"asr"` only when
+the host reports `STREAM_UNSUPPORTED`. Before loading the library,
+`ElizaVoiceNative` sets `ELIZA_ASR_BACKEND=ggml`, the registered in-tree
+backend used by Phonon-2. For `ELIZA_ASR_THREADS`, a process value wins over
+the build-time `BuildConfig` value; the default is one thread per big core.
+
+```sh
+bun packages/app/scripts/voice-quality/host-wer-gate.ts --librispeech /data/LibriSpeech
+# device inputs, then build the qualify app with them:
+bun packages/app/scripts/voice-quality/host-wer-gate.ts --librispeech /data/LibriSpeech \
+  --export-device-fixtures /tmp/voice-fixtures
+packages/app/platforms/android/gradlew -p packages/app/scripts/paradee-voice/qualify \
+  -PasrFixturesDir=/tmp/voice-fixtures :app:connectedDebugAndroidTest
+```
+
+A device run is owner acceptance; the qualify app only depends on `:paradee-voice`.
+
 ## Standalone host speech
 
-Bun hosts may explicitly enable owner-authenticated local speech with
-`ELIZA_KOKORO_ENABLED=1`, an absolute `ELIZA_INFERENCE_LIBRARY`, its reviewed
-`ELIZA_KOKORO_LIBRARY_SHA256`, and an absolute `ELIZA_KOKORO_MODEL_DIR`.
-The worker requires ABI 14 or later, the pinned Kokoro 82M v1.0 GGUF and
-`voices/af_bella.bin`; it does not download assets or use a cloud fallback.
-`GET /api/tts/kokoro/status` reports readiness. `POST /api/tts/kokoro` accepts
-only `{ "text": "..." }` (1–500 characters) and a UUID `X-Request-Id`, returning
-mono PCM16 WAV at 24 kHz. Both require an active owner session, not merely the
-host's static API token, and are available only in local runtime modes.
+Bun hosts may explicitly enable owner-authenticated local speech on
+libelizainference (ABI 17 or later). Both workers need an absolute
+`ELIZA_INFERENCE_LIBRARY` and its reviewed `ELIZA_INFERENCE_LIBRARY_SHA256`.
+They hash every pinned asset before loading native code, do not download
+assets, and have no cloud fallback.
 
-Each server owns its worker and replay ledger. Runtime replacement stops the
-old worker; closing the server prevents further speech startup. Cancelling a
-request destroys its worker context and a subsequent request initializes a
-new one. Direct compat-handler hosts must call `closeStandaloneKokoro(state)`
-on shutdown and `stopStandaloneKokoro(state)` before replacing the runtime.
+- Speech output: `ELIZA_PARADEE_ENABLED=1` and an absolute
+  `ELIZA_PARADEE_MODEL_DIR` with the pinned `paradee-8m-v1_1.gguf` and
+  `misaki-en-us.lex`. Text is phonemized by the native misaki G2P.
+  `GET /api/tts/paradee/status` reports readiness. `POST /api/tts/paradee`
+  accepts only `{ "text": "..." }` (1–500 characters) and returns mono PCM16
+  WAV at 24 kHz (voice `af_heart`, provider `libelizainference-paradee`).
+- Speech input: `ELIZA_ASR_ENABLED=1` and an absolute `ELIZA_ASR_MODEL_DIR`
+  with the pinned Phonon-2 GGUF at `asr/phonon-2-fv5.gguf` (build it with
+  `bun packages/app/scripts/voice/build-phonon2-gguf.ts`), plus pinned `vad/silero-vad-v5.gguf` as the
+  only GGUF in `vad/`. Native Silero VAD rejects non-speech before ASR; speech
+  retains the complete input audio. No text model is loaded.
+  `GET /api/asr/libelizainference/status` reports readiness.
+  `POST /api/asr/libelizainference` accepts a mono PCM16 WAV at 8–48 kHz
+  (`Content-Type: audio/wav`, at most 60 s) and returns
+  `{ "text": "...", "provider": "local-inference" }`.
+
+Requests need a UUID `X-Request-Id` and an active owner session, not merely the
+host's static API token, and are available only in local runtime modes.
+Each server owns its workers and replay ledger. A client abort or deadline
+cancels the native call (`eliza_inference_cancel_tts` or
+`eliza_inference_asr_cancel`) and keeps the worker loaded; a worker that does
+not answer within 10 s is killed. After two idle minutes a worker evicts its
+weights and reloads them on the next request. Runtime replacement stops the
+workers; closing the server prevents further speech startup. Direct
+compat-handler hosts must call `closeStandaloneSpeech(state)` on shutdown and
+`stopStandaloneSpeech(state)` before replacing the runtime.
 
 With the same reviewed native asset environment, run
-`bun run --cwd packages/app test:tts:standalone` for real HTTP policy, durable
-SQLite session, native speech, replay, host-isolation and cancellation checks.
-The test writes synthetic audio and a report under
-`test-results/standalone-kokoro-http`; it fails if assets are unavailable.
-This qualification does not prove browser playback or Android execution.
+`bun run --cwd packages/app test:speech:standalone` for real HTTP policy,
+durable SQLite session, native speech, a speech-to-text round trip, replay,
+host-isolation and cancellation checks. The test writes synthetic audio and a
+report under `test-results/standalone-speech-http`; it fails if assets are
+unavailable. This qualification does not prove browser playback or Android
+execution.
 
 ### Android secure-store broker
 
@@ -244,23 +333,102 @@ upstream or dependency roots; selected native files can be copied without admitt
 whole plugin source directories. Existing unmarked projects, identity changes,
 unowned-file collisions and symlink escapes are rejected. Generated ownership
 permits regeneration and removal of formerly selected generated files while
-preserving other build outputs. Hosts keep authored manifests/resources outside
+preserving other build outputs. Ownership is recorded with the output's place in
+the consumer, so a moved or renamed checkout still owns its generated host, while
+the marker copied to another place owns nothing there. Hosts keep authored manifests/resources outside
 the generated project and supply already-verified optional runtime payloads. The
-generator owns the non-translatable `app_name` brand string; host resources must
-not redefine it. Other UI strings can use the host's localized resource directories.
+generator owns the non-translatable `app_name` brand string (written under the
+generated `eliza-consumer-host/res`); host resources must not redefine it. Other UI
+strings can use the host's localized resource directories. A manifest already at its
+source-set location in an in-place host is used where it is; other manifests are
+copied into the generated app module, where lint resolves the classes they name.
+
+`inPlace: true` writes the generated build files into the consumer's own authored
+Android directory, beside its standard `app/src` layout: an existing unmarked
+directory is admitted, but no authored file is ever replaced. The profile can also
+declare, as data:
+
+- `signing`: the four environment variable *names* for the release key store,
+  password, alias and key password. Gradle signs releases only when all four are
+  set, fails on a partial set by name, and never prints a value. `versionOverride`
+  names the release version code/name variables, validated like the identity.
+- `buildTypes`: debug/release ABI filters and BuildConfig fields, release resource
+  shrinking and Proguard files (both require `releaseMinify`); `kotlin: false`
+  leaves a Java-only app without the Kotlin plugin (its sources then need package
+  directories, which lint uses to resolve manifest classes); `preserveRuntimeBytes` keeps
+  packaged runtime libraries unstripped; `runtimeDirectory` implies it and
+  rejects an explicit `false`.
+- `testMocks`: debug-only Java, resource and manifest sources plus androidTest
+  sources attached only when the named switch (Gradle property or environment,
+  for example `ELIZA_DEV_ALLOW_TEST_MOCKS`) is exactly `1`; the named BuildConfig
+  field is `true` only in those debug variants.
+- `admission`: argv commands (no shell) run as tasks before every `preBuild`, and
+  `settingsAdmission` commands run before any module is configured.
+  `generatedSources` adds build directories those tasks produce; `assetFiles` stages
+  named files into the APK assets; `appScripts` applies consumer-owned Gradle files
+  for product configuration after the generated policy.
+- `generationInputs`: files whose digests the host records; a changed input makes
+  the generated host refuse to configure until it is regenerated.
+- dependencies may name a `module` with a `toolchainVersion` key to take the
+  reviewed toolchain version. A `path` of `.` names a declared root itself.
+
+Modules from the upstream and dependency roots, and consumer modules marked
+`relocateBuild` (for example an authenticated staged copy), keep their build outputs
+under the generated host's `build/modules/<name>`, so shared checkouts, dependency
+trees and staged sources stay unchanged.
+
+`scripts/mobile/android/build-consumer.mjs` builds the selected distributions of a
+generated host and retains only verified artifacts. Hosts choose the Gradle project
+and output directories, `-Pname=value`/`--offline` arguments, where instrumentation
+APKs and R8 mappings are kept, a sequential low-disk mode, and the signing
+environment names: a signed release keeps `<variant>-release.apk`, an unsigned one
+is `-release-unsigned.apk`, and an unsigned release fails when every named signing
+variable is set. Stale release outputs and an earlier `apk-manifest.json` are removed
+before Gradle runs, so a failed or partly copied build never keeps old verification
+beside its artifacts. A host build `record` (a named JSON file, for example the build
+options its verifier checks) is written only after every artifact of the build is in
+place and before verification, so it always describes the artifacts beside it; a
+failed build keeps the previous record with the previous artifacts. The archive is
+optional. Run
+`node --test packages/app/scripts/mobile/android/build-consumer.test.mjs`.
+
+`scripts/mobile/android/resident-host-sources.mjs` stages the resident runtime's
+Android classes (`RESIDENT_HOST_CLASSES`) into a host's own application package so
+`R`, `BuildConfig` and installed component names keep that host's identity. The
+host supplies data: abstract socket names for the agent, inference and secure-store
+routes, the notification small icon, an optional `0xAARRGGBB` accent and string
+resources for the runtime notifications, an optional static environment hook, and
+the shared helpers it compiles beside them: main Java sources of native plugins
+(`plugins/plugin-native-*/android/src/main/java/...`), which keep their packages. A
+helper reviewed in `RESIDENT_HOST_HELPERS` as reading the host's `BuildConfig` gains
+that import; every other helper is staged verbatim (`residentHelperKind`), so a host
+adopts a new shared helper without an edit here. The rewrite anchors live here and
+fail closed when the upstream source changes; each staged file reports source and
+generated digests for the host's provenance receipt. Run
+`node --test packages/app/scripts/mobile/android/resident-host-sources.test.mjs`.
+
+`scripts/mobile/artifact-inspection/apk-distribution.mjs` is the shared distribution
+check of a built consumer APK. `readApk` collects aapt badging/xmltree, zip entries and
+dex markers; `apkDistributionProblems` judges them against a host policy given as data:
+the exported-component allowlist (each with its guarding permission or `null`),
+development class names, manifest text and entries tolerated only in a test-mocks debug
+build, forbidden permissions, entries and dex prefixes, and required entries. Backup,
+cleartext, release network security config, test-only names, source maps and version
+fields are checked for every host. `parseApkSignerDigest` reads `apksigner --print-certs`
+and requires an explicit API level for rotated signers. Product-specific checks stay with
+the host. Run `node --test packages/app/scripts/mobile/artifact-inspection/apk-distribution.test.mjs`.
 
 The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
 JDK 21, independently of the full app's newer default wrapper. The distribution
 and shared wrapper JAR are hash pinned. Run the filesystem contract with
-`node --test scripts/mobile/android/consumer-host.test.mjs`; with SDK 36 and
-build-tools 36.0.0, `node scripts/mobile/android/qualify-consumer-host.mjs` builds
+`node --test packages/app/scripts/mobile/android/consumer-host.test.mjs`; with SDK 36 and
+build-tools 36.0.0, `node packages/app/scripts/mobile/android/qualify-consumer-host.mjs` builds
 two independent identities and checks eight host variant APKs plus four separate
 companion APKs. Linked-library compilation and companion asset isolation are checked.
 Reports go to root `test-results/android-consumer-host`. This is build/manifest
 qualification, not installed service, HOME-role, AOSP or device acceptance.
 
-Shared local speech sources and reproducible runtime/model tooling are documented
-in [local speech](scripts/local-speech/README.md). The source-export resolver in
+The source-export resolver in
 `scripts/lib/consumer-source-resolver.mjs` composes declared Eliza source exports
 for independent Bun hosts; consumers retain their source pin, credentials and policy. `scripts/lib/immutable-workspace-source.mjs`
 authenticates prepared workspace files against an exact commit, including ignored
@@ -283,7 +451,12 @@ There are no default command/instrumentation deadlines: callers may supply
 AbortSignal. ADB/AAPT work is cancellable; cleanup ignores the aborted operation
 signal, force-stops owned targets and uses its separate caller deadline. If either
 stop fails, it retains both packages and reports `cleanupDeferred`; recover the
-owned fixture explicitly before another run. Callbacks
+owned fixture explicitly before another run. A failed or cancelled install without
+an acknowledged success also defers cleanup and reports `unacknowledgedInstalls`
+with the expected APK hashes. Android can finish that install after the host ADB
+process exits, so an absent package at cleanup is not proof that the fixture is
+clean. Recover only the exact owned fixture and verified artifact before retrying.
+Callbacks
 receive the signal and must cooperate with cancellation before returning. The
 lease follows the caller environment and remains held for a live process, rather
 than expiring during long instrumentation. Product callbacks own controlled
@@ -345,13 +518,21 @@ identity, readiness predicates and process reuse policy.
 cleanup with the existing process-group drain. It never adopts or restarts a
 process. Hosts choose commands, environments, readiness and diagnostics; call
 `dispose` in finally. `waitForClose` remains valid after an early close event.
+With `orphanWatchdog: true` (POSIX only), a detached helper sends SIGTERM to each
+child's process group if the host dies without draining it, for example on SIGKILL.
 
 `scripts/mobile/android/build-consumer.mjs` runs an external consumer's admission and
 sync commands, assembles selected app distributions (debug, unsigned release and
 instrumentation), runs lint and product APK verification, then archives only the
 selected APKs plus verification manifest and host metadata. It never signs, installs
 or publishes a release. Hosts select environment, distribution names and archive
-identity. Missing build outputs or failed verification prevent archive publication.
+identity. `lint: false` and `androidTest: false` skip lint and the instrumentation
+APKs, and the archive's `build-checks.json` records which of the two ran. A prepare
+step may also be a synchronous function or `{ gradleTasks }`, which adds tasks to the
+same Gradle run instead of starting another one; a step has exactly one of these
+shapes. The generated `variables.gradle` exposes `rootProject.ext.consumerIdentity`
+(`appId`, `namespace`) for extra modules.
+Missing build outputs or failed verification prevent archive publication.
 Run `node --test scripts/mobile/android/build-consumer.test.mjs` for ordering, failure
 and stale-artifact isolation checks.
 
@@ -374,6 +555,15 @@ letters/digits/underscores/hyphens starting with a letter. Results are recorded 
 `variants[].phases` and output in `<variant>-phase-<name>.log`. Runner extras
 cannot override test selection. Cleanup hooks may run a final fixture phase even
 after cancellation; failed or partial installs do not expose this function.
+
+Set `wake: true` to send `KEYCODE_WAKEUP` and `wm dismiss-keyguard` after the
+APKs install and before `prepareVariant`. Set `appEvidence: {directory, json,
+png}` to copy named files from an app-relative sandbox directory with `run-as`
+after the last instrumentation. Each file is saved as `<variant>-<name>` in the
+report directory, JSON must parse and PNG must have a PNG signature. Its hash is
+recorded in `variants[].appEvidence`, and `collectVariant` receives
+`context.appEvidence.{files,json}`. A missing or invalid file fails the variant.
+The free-form `evidence` field is unchanged.
 
 Consumer APK audits can import `parseXmlTree` and `manifestFacts` from
 `scripts/lib/android-manifest-facts.mjs`. These pure helpers decode aapt xmltree
@@ -409,3 +599,49 @@ UI context and cancellation. The process-local usage ceiling is 60 input-audio
 minutes per UTC day per host/owner; restarting resets that local counter.
 Hosts configured with mandatory `hostAdmission` currently refuse this optional
 protocol until continuous protected-host admission is implemented.
+
+Consumer `runIsolatedAndroidTest` can alternatively select a caller-owned disposable
+Cuttlefish on `127.0.0.1:PORT`: omit `expectedAvdName` and supply
+`expectedCuttlefish: {callerOwned: true, serialNumber, fingerprint}` with exact
+`ro.serialno` and `ro.build.fingerprint` values. This lane requires a booted vsoc
+instance, enforcing SELinux, the requested ABI and foreground owner user 0. It
+pins the kernel boot ID and rechecks instance/image/user/boot before each runner
+command, including `context.run` callbacks and cancellation cleanup. Reconnection or reboot
+retains installations for explicit recovery rather than deleting from a changed
+instance. HOME and browser roles must remain unchanged; the runner does not
+repair unrelated role policy. SDK AVD admission is unchanged. Caller ownership
+is an explicit assertion, not inferred from a loopback address, and this lane
+proves only the selected APK scenarios, not product-image or live integrations.
+
+A third lane admits one owner-approved physical development device: omit
+`expectedAvdName` and supply `developmentDevice: {ownerApproved: true, model,
+fingerprint}` with the exact `ro.product.model` and `ro.build.fingerprint`. The
+adb serial must be the device's `ro.serialno`. The device must not be an emulator,
+must have finished booting, enforce SELinux and run owner user 0 in front. The
+runner pins the boot ID as for Cuttlefish. Because the device is not reset after
+the run, it also records font scale, screen-off timeout, airplane mode, mobile
+data, live Wi-Fi state (`cmd wifi status`) and media volume, and fails when one
+changed, as it does for HOME and the browser role. A caller that changes one must
+restore it. Scenario hooks receive the frozen pin as `context.developmentDevice` in this
+lane, so a hook cannot change the identity the runner checks. This
+lane is development-device evidence only, not release hardware, a product image
+or user acceptance: `verification.json` records `evidenceClass:
+"development-device"` and that note.
+
+`buildConsumerAndroidRuntime` accepts `targetAbi: "x86_64"` for an emulator or
+Cuttlefish bundle; the default remains `"arm64-v8a"`. The reviewed upstream stager
+selects the matching Bun, musl loader and libraries, and the consumer builder
+checks their target ELF machine and records the ABI in provenance. A supplied
+`bunArchiveFile` uses the selected architecture's verified local archive input.
+The host gateway callback receives `{targetAbi}` as its third argument so it can
+stage ABI-specific dependencies. Hosts must also select that ABI for runtime
+inventory, native document assets and APK packaging. This is bundle integrity
+support; installed execution, live services and image boot remain separate tests.
+
+### Packaged Android native speech assets
+
+Native sideload and AOSP builds package the hash-pinned Paradee, Phonon-2, Silero VAD, lexicon and notice files through `:voice-assets`. Generate inputs with `packages/app/scripts/paradee-voice/build-native.ts`; its default output is `plugins/plugin-local-inference/native/android/native`. To use another generated directory, pass `ELIZA_VOICE_NATIVE_DIR=/absolute/path/to/native` to the Android build. A missing or changed bundle fails the native build. Cloud and host-E2E packages omit these assets.
+
+Select `ELIZA_ANDROID_TARGET_ABIS=arm64-v8a` for Pixel APKs or `ELIZA_ANDROID_TARGET_ABIS=x86_64` for Cuttlefish. The selection covers both staged runtime assets and packaged native libraries, including when another architecture remains in the build directory. Without a selection the existing multi-architecture behavior is retained. Separate device APKs keep the complete model bundle within the existing size budget.
+
+The app installs this bundle into its existing `filesDir/eliza-1/bundle` on the service's startup worker before starting the bionic inference server, including when it adopts a surviving agent. That server remains the model owner; the asset module adds no native library or second inference session. The legacy downstream `VoiceAssets` API uses the same installer and keeps its existing private directory unless the host declares the storage metadata. APK integrity and presence do not establish physical speech quality or device acceptance.

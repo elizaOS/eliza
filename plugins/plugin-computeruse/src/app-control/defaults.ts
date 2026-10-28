@@ -113,12 +113,16 @@ export class RegisteredVisualGrounder implements AppControlGrounder {
     }
     const ocr = getCoordOcrProvider();
     if (!ocr) return null;
-    const result = await ocr.describe({
-      displayId: String(state.displayId),
-      sourceX,
-      sourceY,
-      pngBytes,
-    });
+    // A failed OCR run is no OCR match; grounding falls back like a miss.
+    const result = await ocr
+      .describe({
+        displayId: String(state.displayId),
+        sourceX,
+        sourceY,
+        pngBytes,
+      })
+      .catch(() => null);
+    if (!result) return null;
     const normalizedLabel = element.label?.trim().toLocaleLowerCase();
     const candidates = normalizedLabel
       ? result.blocks.filter((block) =>

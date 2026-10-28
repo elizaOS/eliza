@@ -234,12 +234,8 @@ async function opListTables(
     runtime,
     `SELECT
        t.table_schema AS schema,
-       t.table_name AS name,
-       COALESCE(s.n_live_tup, 0) AS row_count
+       t.table_name AS name
      FROM information_schema.tables t
-     LEFT JOIN pg_stat_user_tables s
-       ON s.schemaname = t.table_schema
-       AND s.relname = t.table_name
      WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
        AND t.table_type = 'BASE TABLE'
      ORDER BY t.table_schema, t.table_name`,
@@ -285,26 +281,37 @@ async function opListTables(
     columnsByTable.set(key, cols);
   }
 
-  const allTables: TableInfo[] = tablesResult.rows.map((row) => {
-    const key = JSON.stringify([row.schema, row.name]);
-    return {
-      name: String(row.name),
-      schema: String(row.schema),
-      rowCount: Number(row.row_count ?? 0),
-      columns: columnsByTable.get(key) ?? [],
-    };
-  });
+  const allTables = tablesResult.rows.map((row) => ({
+    name: String(row.name),
+    schema: String(row.schema),
+  }));
 
   const filter = params.filter?.trim().toLowerCase() ?? "";
   const includeEmpty = params.includeEmpty ?? true;
-  const tables = allTables.filter((table) => {
-    if (filter) {
-      const qualified = `${table.schema}.${table.name}`.toLowerCase();
-      if (!qualified.includes(filter)) return false;
-    }
-    if (!includeEmpty && table.rowCount === 0) return false;
-    return true;
-  });
+  const named = filter
+    ? allTables.filter((table) =>
+        `${table.schema}.${table.name}`.toLowerCase().includes(filter),
+      )
+    : allTables;
+  // Count the table itself. pg_stat_user_tables.n_live_tup is a statistic: on
+  // PGlite it reads 0 for every table after a restart, so it reported full
+  // tables as "0 rows" and includeEmpty:false dropped them.
+  const counted: TableInfo[] = [];
+  for (const table of named) {
+    const countResult = await executeRawSql(
+      runtime,
+      `SELECT count(*) AS total FROM ${qualifiedTable(table.schema, table.name)}`,
+    );
+    counted.push({
+      ...table,
+      rowCount: Number(countResult.rows[0]?.total),
+      columns:
+        columnsByTable.get(JSON.stringify([table.schema, table.name])) ?? [],
+    });
+  }
+  const tables = includeEmpty
+    ? counted
+    : counted.filter((table) => table.rowCount > 0);
 
   const lines = tables.map(
     (t) =>

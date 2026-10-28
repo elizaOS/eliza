@@ -15,9 +15,11 @@ import { createHash } from "node:crypto";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
-  LifeOpsCalendarProvider,
 } from "@elizaos/contracts";
-import { resolveCalendarTimeZone } from "@elizaos/contracts";
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -38,24 +40,22 @@ import {
   resolveActionArgs,
   type SubactionsMap,
   stableStringify,
-  toWellFormedUnicode,
 } from "@elizaos/core";
-import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
+import {
+  renderGroundedActionReply,
+  requestLocalCalendarAgenda,
+} from "@elizaos/plugin-assistant";
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
-  type CalendarMutationApprovalResult,
-  type CalendarMutationGatewayDep,
   CalendarService,
   CalendarServiceError,
+  calendarReadParameters,
   createCalendarActionRunner,
-  isAppleCalendarGrant,
-  isElizaCalendarGrant,
-  isMicrosoftCalendarGrantId,
+  createCalendarMutationApprovalGateway,
+  registerCalendarActionHostAdapter,
 } from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
@@ -65,17 +65,7 @@ import {
   lifeOpsNoopEffect,
 } from "../lifeops/action-effect-result.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
-import type {
-  ApprovalAction,
-  ApprovalChannel,
-  ApprovalEnqueueInput,
-  ApprovalEnqueueResult,
-  ApprovalPayload,
-  CalendarCancellationMode,
-  CalendarSeriesMasterBinding,
-} from "../lifeops/approval-queue.types.js";
 import { settleBriefEngagementReward } from "../lifeops/briefing/engagement-reward.js";
-import { buildApprovalChoiceText } from "../lifeops/choice-markers.js";
 import {
   resolveDefaultTimeZone,
   resolveKnownTimeZone,
@@ -129,409 +119,6 @@ function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
   return service;
 }
 
-type CalendarApprovalPayload = Extract<
-  ApprovalPayload,
-  { action: "schedule_event" | "modify_event" | "cancel_event" }
->;
-
-interface CalendarApprovalQueue {
-  enqueueWithResult(
-    input: ApprovalEnqueueInput,
-  ): Promise<ApprovalEnqueueResult>;
-}
-
-function approvalSafeLabel(value: string): string {
-  return toWellFormedUnicode(
-    value
-      .replace(/[\r\n\t]+/g, " ")
-      .replace(/[[\]]/g, "")
-      .replace(/\s+/g, " ")
-      .trim(),
-  );
-}
-
-function requireApprovalMessageIdentity(message: Memory): {
-  messageId: string;
-  createdAt: number;
-} {
-  const messageId =
-    message.id === undefined || message.id === null
-      ? ""
-      : String(message.id).trim();
-  const createdAt = message.createdAt;
-  if (!messageId || !Number.isFinite(createdAt)) {
-    throw new CalendarServiceError(
-      409,
-      "Calendar approval requires a persisted source message id and timestamp.",
-      "CALENDAR_APPROVAL_MESSAGE_BINDING_REQUIRED",
-    );
-  }
-  return { messageId, createdAt: createdAt as number };
-}
-
-function requireCalendarTimestamp(value: string, field: string): number {
-  const timestamp = Date.parse(value);
-  if (!Number.isFinite(timestamp)) {
-    throw new CalendarServiceError(
-      400,
-      `${field} must be a valid calendar date-time.`,
-      "CALENDAR_APPROVAL_INVALID_TIMESTAMP",
-    );
-  }
-  return timestamp;
-}
-
-function requireCalendarProviderVersion(event: LifeOpsCalendarEvent): string {
-  const etag = event.metadata.etag;
-  if (typeof etag !== "string" || !etag.trim()) {
-    throw new CalendarServiceError(
-      409,
-      "Calendar approval requires the provider ETag for an atomic mutation.",
-      "CALENDAR_PROVIDER_VERSION_MISSING",
-    );
-  }
-  return etag.trim();
-}
-
-async function bindFollowingSeriesMaster(
-  runtime: IAgentRuntime,
-  target: LifeOpsCalendarEvent,
-  recurrenceScope: string | undefined,
-): Promise<CalendarSeriesMasterBinding | null> {
-  if (recurrenceScope !== "this_and_following") return null;
-  const grantId = target.grantId?.trim();
-  if (!grantId) {
-    throw new CalendarServiceError(
-      409,
-      "This-and-following approval requires the target connector grant.",
-      "CALENDAR_MUTATION_TARGET_BINDING_REQUIRED",
-    );
-  }
-  const master = await resolveCalendarService(
-    runtime,
-  ).getConditionalCalendarMutationTarget(INTERNAL_URL, {
-    side: target.side,
-    grantId,
-    calendarId: target.calendarId,
-    eventId: target.externalId,
-    recurrenceScope: "series",
-  });
-  const recurringEventId =
-    target.recurringEventId ??
-    (typeof target.metadata.recurringEventId === "string"
-      ? target.metadata.recurringEventId
-      : null);
-  if (
-    !recurringEventId ||
-    recurringEventId !== master.externalId ||
-    master.provider !== target.provider ||
-    master.grantId !== target.grantId ||
-    master.calendarId !== target.calendarId
-  ) {
-    throw new CalendarServiceError(
-      409,
-      "The selected occurrence is no longer bound to its approved recurring-series master.",
-      "CALENDAR_MUTATION_TARGET_CHANGED",
-    );
-  }
-  return {
-    externalId: master.externalId,
-    startAtMs: requireCalendarTimestamp(master.startAt, "seriesMaster.startAt"),
-    updatedAt: new Date(
-      requireCalendarTimestamp(master.updatedAt, "seriesMaster.updatedAt"),
-    ).toISOString(),
-    etag: requireCalendarProviderVersion(master),
-  };
-}
-
-function calendarApprovalIdempotencyKey(
-  messageId: string,
-  payload: CalendarApprovalPayload,
-): string {
-  const digest = createHash("sha256")
-    .update(stableStringify(payload))
-    .digest("hex");
-  return `calendar-conversation:${messageId}:${digest}`;
-}
-
-function calendarApprovalChannel(
-  provider: LifeOpsCalendarProvider,
-): ApprovalChannel {
-  switch (provider) {
-    case "google":
-      return "google_calendar";
-    case "microsoft":
-      return "microsoft_calendar";
-    case "apple_calendar":
-      return "apple_calendar";
-    case "ics":
-      return "ics_calendar";
-    case "eliza":
-      return "internal";
-  }
-}
-
-/**
- * The create path binds a grant rather than an existing provider event, so
- * the provider is derived from the grant-id namespace the calendar service
- * used to prepare the request (Apple and Microsoft grants are recognizable;
- * every remaining writable grant is Google).
- */
-function boundCalendarProviderForGrant(
-  grantId: string,
-): LifeOpsCalendarProvider {
-  if (isElizaCalendarGrant(grantId)) return "eliza";
-  if (isAppleCalendarGrant(grantId)) return "apple_calendar";
-  if (isMicrosoftCalendarGrantId(grantId)) return "microsoft";
-  return "google";
-}
-
-async function enqueueCalendarApproval(args: {
-  runtime: IAgentRuntime;
-  message: Memory;
-  queue: CalendarApprovalQueue;
-  action: Extract<
-    ApprovalAction,
-    "schedule_event" | "modify_event" | "cancel_event"
-  >;
-  provider: LifeOpsCalendarProvider;
-  payload: CalendarApprovalPayload;
-  reason: string;
-}): Promise<CalendarMutationApprovalResult> {
-  const identity = requireApprovalMessageIdentity(args.message);
-  const idempotencyKey = calendarApprovalIdempotencyKey(
-    identity.messageId,
-    args.payload,
-  );
-  const enqueued = await args.queue.enqueueWithResult({
-    requestedBy: "PERSONAL_ASSISTANT:CALENDAR",
-    subjectUserId: String(args.message.entityId),
-    action: args.action,
-    payload: args.payload,
-    channel: calendarApprovalChannel(args.provider),
-    reason: args.reason,
-    idempotencyKey,
-    expiresAt: new Date(identity.createdAt + 24 * 60 * 60 * 1000),
-  });
-  const { request } = enqueued;
-  if (
-    request.idempotencyKey !== idempotencyKey ||
-    !Number.isFinite(request.createdAt.getTime())
-  ) {
-    throw new CalendarServiceError(
-      500,
-      "The calendar approval queue returned incomplete persistence proof.",
-      "CALENDAR_APPROVAL_PERSISTENCE_PROOF_REQUIRED",
-    );
-  }
-  return {
-    requestId: request.id,
-    action: args.action,
-    state: request.state,
-    acceptedAt: request.createdAt.toISOString(),
-    idempotencyKey: request.idempotencyKey,
-    replayed: enqueued.reused,
-    text: enqueued.reused
-      ? `${request.reason}\nThe bound approval request is already ${request.state}.`
-      : request.state === "pending"
-        ? buildApprovalChoiceText({
-            requestId: request.id,
-            reason: request.reason,
-            action: request.action,
-          })
-        : `${request.reason}\nThe bound approval request is already ${request.state}.`,
-  };
-}
-
-function cancellationModeForEvent(
-  event: LifeOpsCalendarEvent,
-): CalendarCancellationMode {
-  if (event.organizer?.self === true) return "organizer_cancel";
-  const selfAttendee = event.attendees.find((attendee) => attendee.self);
-  if (selfAttendee) {
-    return selfAttendee.organizer ? "organizer_cancel" : "decline_invitation";
-  }
-  throw new CalendarServiceError(
-    409,
-    "Calendar cancellation is blocked because the owner's organizer or invitee role cannot be verified.",
-    "CALENDAR_ORGANIZER_IDENTITY_UNKNOWN",
-  );
-}
-
-export function createCalendarMutationApprovalGateway(options?: {
-  createQueue?: (runtime: IAgentRuntime) => CalendarApprovalQueue;
-}): CalendarMutationGatewayDep {
-  const resolveQueue =
-    options?.createQueue ??
-    ((runtime: IAgentRuntime) =>
-      createApprovalQueue(runtime, { agentId: runtime.agentId }));
-  return {
-    async schedule(args) {
-      const payload: CalendarApprovalPayload = {
-        action: "schedule_event",
-        ...(args.request.sourceNote !== undefined
-          ? { sourceNote: structuredClone(args.request.sourceNote) }
-          : {}),
-        side: args.request.side,
-        grantId: args.request.grantId,
-        calendarId: args.request.calendarId,
-        title: args.request.title,
-        startsAtMs: requireCalendarTimestamp(args.request.startAt, "startAt"),
-        endsAtMs: requireCalendarTimestamp(args.request.endAt, "endAt"),
-        allDay: args.request.allDay ?? null,
-        timeZone: args.request.timeZone ?? null,
-        durationMinutes: args.request.durationMinutes ?? null,
-        windowPreset: args.request.windowPreset ?? null,
-        attendees:
-          args.request.attendees?.map((attendee) => ({
-            email: attendee.email,
-            ...(attendee.displayName !== undefined
-              ? { displayName: attendee.displayName }
-              : {}),
-            ...(attendee.optional !== undefined
-              ? { optional: attendee.optional }
-              : {}),
-          })) ?? [],
-        location: args.request.location ?? null,
-        description: args.request.description ?? null,
-        recurrence: args.request.recurrence ?? null,
-        notifyAttendees: args.request.notifyAttendees === true,
-        travelBuffer: args.travelBuffer ?? null,
-      };
-      const notification = payload.notifyAttendees
-        ? "and notify attendees"
-        : "without sending attendee notifications";
-      const travel = payload.travelBuffer
-        ? ` with a ${payload.travelBuffer.bufferMinutes}-minute travel buffer`
-        : "";
-      return enqueueCalendarApproval({
-        runtime: args.runtime,
-        message: args.message,
-        queue: resolveQueue(args.runtime),
-        action: "schedule_event",
-        provider: boundCalendarProviderForGrant(args.request.grantId),
-        payload,
-        reason: payload.allDay
-          ? `Create "${approvalSafeLabel(payload.title)}" as an all-day event from ${payload.allDay.startDate} through ${payload.allDay.endDateExclusive} (exclusive) on the bound calendar${travel}, ${notification}.`
-          : `Create "${approvalSafeLabel(payload.title)}" at ${new Date(payload.startsAtMs).toISOString()} on the bound calendar${travel}, ${notification}.`,
-      });
-    },
-    async modify(args) {
-      const seriesMaster = await bindFollowingSeriesMaster(
-        args.runtime,
-        args.targetEvent,
-        args.request.recurrenceScope,
-      );
-      const payload: CalendarApprovalPayload = {
-        action: "modify_event",
-        side: args.request.side,
-        grantId: args.request.grantId,
-        calendarId: args.request.calendarId,
-        eventId: args.request.eventId,
-        expectedProvider: args.targetEvent.provider,
-        expectedProviderVersion: requireCalendarProviderVersion(
-          args.targetEvent,
-        ),
-        expectedEventUpdatedAt: args.targetEvent.updatedAt,
-        expectedEventStartAtMs: requireCalendarTimestamp(
-          args.targetEvent.startAt,
-          "targetEvent.startAt",
-        ),
-        recurrenceScope: args.request.recurrenceScope ?? null,
-        seriesMaster,
-        notifyAttendees: args.request.notifyAttendees,
-        patch: {
-          title: args.request.title ?? null,
-          startsAtMs: args.request.startAt
-            ? requireCalendarTimestamp(args.request.startAt, "startAt")
-            : null,
-          endsAtMs: args.request.endAt
-            ? requireCalendarTimestamp(args.request.endAt, "endAt")
-            : null,
-          allDay: args.request.allDay ?? null,
-          timeZone: args.request.timeZone ?? null,
-          attendees:
-            args.request.attendees?.map((attendee) => ({
-              email: attendee.email,
-              ...(attendee.displayName !== undefined
-                ? { displayName: attendee.displayName }
-                : {}),
-              ...(attendee.optional !== undefined
-                ? { optional: attendee.optional }
-                : {}),
-            })) ?? null,
-          location: args.request.location ?? null,
-          description: args.request.description ?? null,
-          recurrence: args.request.recurrence ?? null,
-        },
-      };
-      if (Object.values(payload.patch).every((value) => value === null)) {
-        throw new CalendarServiceError(
-          400,
-          "Calendar update approval requires at least one concrete change.",
-          "CALENDAR_MUTATION_EMPTY_PATCH",
-        );
-      }
-      return enqueueCalendarApproval({
-        runtime: args.runtime,
-        message: args.message,
-        queue: resolveQueue(args.runtime),
-        action: "modify_event",
-        provider: args.targetEvent.provider,
-        payload,
-        reason:
-          payload.recurrenceScope === "this_and_following"
-            ? `Modify "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by splitting the recurring series. Later per-occurrence exceptions will reset${payload.notifyAttendees ? ", and attendees may receive both split update notifications" : ""}.`
-            : `Modify "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
-      });
-    },
-    async cancel(args) {
-      const cancellationMode = cancellationModeForEvent(args.targetEvent);
-      const seriesMaster = await bindFollowingSeriesMaster(
-        args.runtime,
-        args.targetEvent,
-        args.request.recurrenceScope,
-      );
-      const payload: CalendarApprovalPayload = {
-        action: "cancel_event",
-        side: args.request.side,
-        grantId: args.request.grantId,
-        calendarId: args.request.calendarId,
-        eventId: args.request.eventId,
-        expectedProvider: args.targetEvent.provider,
-        expectedProviderVersion: requireCalendarProviderVersion(
-          args.targetEvent,
-        ),
-        expectedEventUpdatedAt: args.targetEvent.updatedAt,
-        expectedEventStartAtMs: requireCalendarTimestamp(
-          args.targetEvent.startAt,
-          "targetEvent.startAt",
-        ),
-        recurrenceScope: args.request.recurrenceScope ?? null,
-        seriesMaster,
-        cancellationMode,
-        notifyAttendees: args.request.notifyAttendees,
-      };
-      const verb =
-        cancellationMode === "organizer_cancel"
-          ? "Cancel"
-          : "Decline the invitation for";
-      return enqueueCalendarApproval({
-        runtime: args.runtime,
-        message: args.message,
-        queue: resolveQueue(args.runtime),
-        action: "cancel_event",
-        provider: args.targetEvent.provider,
-        payload,
-        reason:
-          payload.recurrenceScope === "this_and_following"
-            ? `${verb} "${approvalSafeLabel(args.targetEvent.title)}" from ${new Date(payload.expectedEventStartAtMs as number).toISOString()} forward by truncating the recurring series; every later occurrence and exception will be removed${payload.notifyAttendees ? ", and attendees will be notified" : ""}.`
-            : `${verb} "${approvalSafeLabel(args.targetEvent.title)}" on ${new Date(payload.expectedEventStartAtMs as number).toISOString()}${payload.notifyAttendees ? " and notify attendees" : " without sending attendee notifications"}.`,
-      });
-    },
-  };
-}
-
 /**
  * LifeOps-owned dependencies the moved calendar handler relies on. The handler
  * itself lives in `@elizaos/plugin-calendar`; these are the host integrations
@@ -540,6 +127,7 @@ export function createCalendarMutationApprovalGateway(options?: {
  * injected rather than moved.
  */
 const calendarActionDeps: CalendarActionDeps = {
+  requestLocalAgenda: requestLocalCalendarAgenda,
   runTextModel: runLifeOpsTextModel,
   runJsonModel: runLifeOpsJsonModel,
   recentConversationTexts: (args) => recentConversationTexts(args),
@@ -549,7 +137,10 @@ const calendarActionDeps: CalendarActionDeps = {
       domain: "calendar",
       preferCharacterVoice: true,
     }),
-  mutationGateway: createCalendarMutationApprovalGateway(),
+  mutationGateway: createCalendarMutationApprovalGateway({
+    createQueue: (runtime) =>
+      createApprovalQueue(runtime, { agentId: runtime.agentId }),
+  }),
   travelBuffer: {
     resolveTravelIntent: (args) => resolveCreateEventTravelIntent(args),
     computeTravelBuffer: (args) => {
@@ -575,6 +166,13 @@ const calendarActionDeps: CalendarActionDeps = {
       error instanceof TravelTimeUnavailableError,
   },
 };
+
+/** Bind PA integrations before Calendar's registered actions can execute. */
+export function registerPersonalAssistantCalendarHost(
+  runtime: IAgentRuntime,
+): void {
+  registerCalendarActionHostAdapter(runtime, calendarActionDeps);
+}
 
 const googleCalendarAction = createCalendarActionRunner(calendarActionDeps);
 
@@ -638,11 +236,7 @@ function actionResultCalendarEvent(
     : null;
 }
 
-// Re-exported for consumers that route calendar-plan extraction without going
-// through the umbrella handler (multilingual routing test, live LLM extraction
-// test). The implementation lives in `@elizaos/plugin-calendar`; importing this
-// module first runs `createCalendarActionRunner` above, so the extractor's
-// injected LLM dependencies are wired before any caller invokes it.
+// Direct plan-extraction consumers resolve the same runtime-specific host adapter.
 export { extractCalendarPlanWithLlm } from "@elizaos/plugin-calendar";
 
 type OwnerCalendarSubaction =
@@ -664,7 +258,11 @@ type OwnerCalendarSubaction =
 const ACTION_NAME = "CALENDAR";
 
 const proposalDurationProperties: Record<string, ActionParameterSchema> = {
-  minutes: { type: "number", minimum: 5, maximum: 480 },
+  minutes: {
+    type: "number",
+    minimum: CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+    maximum: CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+  },
   existingEventQuery: { type: "string", minLength: 1 },
 };
 
@@ -1667,7 +1265,7 @@ export const calendarAction: Action & {
     "CARVE_OUT_TIME",
     "RESERVE_TIME",
     // PRD action-catalog aliases. These resolve to CALENDAR subactions via
-    // handler argument routing; see packages/docs/action-prd-map.md.
+    // handler argument routing.
     "CALENDAR_LIST_UPCOMING",
     "CALENDAR_FIND_AVAILABILITY",
     "CALENDAR_CREATE_EVENT",
@@ -2202,7 +1800,10 @@ export const calendarAction: Action & {
 /** Updates and deletions share one explicit event selector; legacy umbrella
  * parameters remain available for compatible domain callers. */
 const calendarMutationTargetParameters: NonNullable<Action["parameters"]> = [
-  ...(calendarAction.parameters ?? []),
+  ...(calendarAction.parameters ?? []).filter(
+    (parameter) =>
+      parameter.name !== "targetKind" && parameter.name !== "target",
+  ),
   {
     name: "targetKind",
     required: true,
@@ -2271,12 +1872,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ),
     },
     ...Object.fromEntries(
-      (
-        [
-          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
-          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
-        ] as const
-      ).map(([name, schema]) => [
+      (["feed", "search_events"] as const).map((name) => [
         name,
         {
           ...(name === "search_events"
@@ -2288,25 +1884,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
                 description:
                   "Read the complete agenda for a day or range. For whole dates supply details.date as the first YYYY-MM-DD date, optional endDate as the last included date, and timeZone; code calculates the local midnight boundaries. For partial-day ranges use timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
               }),
-          parameters: calendarAction.parameters?.map((parameter) => {
-            if (name === "search_events" && parameter.name === "query") {
-              return {
-                ...parameter,
-                required: true,
-                description:
-                  "Required event-content search text, such as a title, attendee, location or topic. Put date bounds in details; use CALENDAR_FEED for an unfiltered agenda.",
-                schema: { type: "string", minLength: 1 },
-              };
-            }
-            return parameter.name === "details"
-              ? {
-                  ...parameter,
-                  description:
-                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
-                  schema,
-                }
-              : parameter;
-          }),
+          parameters: calendarReadParameters(calendarAction, name),
         },
       ]),
     ),
@@ -2324,3 +1902,5 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
     },
   },
 };
+
+export { createCalendarMutationApprovalGateway } from "@elizaos/plugin-calendar";

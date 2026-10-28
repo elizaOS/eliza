@@ -9,6 +9,11 @@ import type { ChatTurnUsage } from "./types";
 import type { ChatTurnStatus } from "@elizaos/contracts";
 import {
   asObjectRecord as asRecord,
+  CHAT_UPLOAD_MIME_TYPE_SET,
+  MAX_CHAT_ATTACHMENT_NAME_LENGTH,
+  MAX_CHAT_IMAGE_BASE64_BYTES,
+  MAX_CHAT_MEDIA_BASE64_BYTES,
+  MAX_CHAT_UPLOAD_ATTACHMENTS,
   MESSAGE_SOURCE_CLIENT_CHAT,
 } from "@elizaos/core/protocol";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
@@ -24,6 +29,7 @@ import type {
   ConversationChannelType,
   ConversationMessage,
   ImageAttachment,
+  MessageAttachment,
   MessageAttachmentContentType,
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
@@ -370,14 +376,104 @@ interface ChatSendTextInternalOptions extends ChatSendTextOptions {
 function replayedTurnOptions(
   conversationId: string | null,
   message: ConversationMessage,
+  images: ImageAttachment[] | undefined,
 ): ChatSendTextInternalOptions {
   return {
     [CHAT_SEND_REPLAY]: true,
     conversationId,
+    ...(images?.length ? { images } : {}),
     ...(message.replyToMessageId
       ? { metadata: { replyToMessageId: message.replyToMessageId } }
       : {}),
   };
+}
+const BASE64_DATA_URL = /^data:([^;,]+);base64,(.+)$/s;
+const STORED_MEDIA_URL =
+  /^\/api\/media\/[a-f0-9]{64}\.[a-z0-9]{1,8}(?:[?#][^\r\n]*)?$/;
+/**
+ * Rebuild the upload payload for a turn's attachments so a replayed turn
+ * (Retry / Edit) carries its media. The send route accepts bytes only and the
+ * replay deletes the stored user row, so the bytes are read back first: an
+ * optimistic bubble still holds them inline, a persisted turn serves them from
+ * the media store. Throws when any attachment cannot be read; the caller must
+ * then leave the stored turn untouched.
+ */
+async function readReplayedTurnImages(
+  attachments: MessageAttachment[],
+): Promise<ImageAttachment[]> {
+  if (attachments.length > MAX_CHAT_UPLOAD_ATTACHMENTS) {
+    throw new Error(
+      "The original turn has too many attachments to replay intact",
+    );
+  }
+  const images = await Promise.all(
+    attachments.map(async (attachment): Promise<ImageAttachment> => {
+      const name = attachment.title ?? "";
+      const transcript = attachment.transcriptId
+        ? { transcriptId: attachment.transcriptId }
+        : {};
+      // A redacted viewer holds only the scrubbed variant; replaying it would
+      // store that variant as the turn's original.
+      if (attachment.redacted) {
+        throw new Error(`attachment "${name}" is redacted for this viewer`);
+      }
+      const inline = BASE64_DATA_URL.exec(attachment.url);
+      if (inline) {
+        const thumbnail = attachment.thumbnailUrl
+          ? BASE64_DATA_URL.exec(attachment.thumbnailUrl)
+          : null;
+        return {
+          data: inline[2],
+          mimeType: inline[1],
+          name: name || "attachment",
+          ...(thumbnail
+            ? { thumbnail: { data: thumbnail[2], mimeType: thumbnail[1] } }
+            : {}),
+          ...transcript,
+        };
+      }
+      // Only a content-addressed media path is read with the API credential.
+      // Other root-relative paths could expose authenticated API responses.
+      if (!STORED_MEDIA_URL.test(attachment.url)) {
+        throw new Error(`attachment "${name}" is not stored media`);
+      }
+      const blob = await (await client.rawRequest(attachment.url)).blob();
+      const data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const encoded = BASE64_DATA_URL.exec(String(reader.result));
+          if (!encoded)
+            reject(new Error(`attachment "${name}" could not be encoded`));
+          else resolve(encoded[2]);
+        };
+        reader.onerror = () =>
+          reject(reader.error ?? new Error("Attachment read failed"));
+        reader.onabort = () => reject(new Error("Attachment read aborted"));
+        reader.readAsDataURL(blob);
+      });
+      return {
+        data,
+        mimeType: attachment.mimeType ?? blob.type,
+        name: name || "attachment",
+        ...transcript,
+      };
+    }),
+  );
+  for (const image of images) {
+    const cap = image.mimeType.toLowerCase().startsWith("image/")
+      ? MAX_CHAT_IMAGE_BASE64_BYTES
+      : MAX_CHAT_MEDIA_BASE64_BYTES;
+    if (
+      !CHAT_UPLOAD_MIME_TYPE_SET.has(image.mimeType.toLowerCase()) ||
+      image.data.length > cap ||
+      (image.name?.length ?? 0) > MAX_CHAT_ATTACHMENT_NAME_LENGTH
+    ) {
+      throw new Error(
+        `attachment "${image.name}" cannot be replayed intact within the upload limits`,
+      );
+    }
+  }
+  return images;
 }
 /**
  * Commands render only after the drain resolves whether they are local,
@@ -619,7 +715,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   const notifyChatSendIdle = useCallback(() => {
     for (const wake of chatSendIdleWaitersRef.current.splice(0)) wake();
   }, []);
-  const pendingActionKeysRef = useRef(new Set<string>());
+  const pendingActionKeysRef = useRef(new Map<string, Promise<boolean>>());
   const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
@@ -1036,11 +1132,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatSending(false);
       setChatFirstTokenReceived(false);
       setServerTurnStatus(null);
+      notifyChatSendIdle();
       return restoredQueuedDraft;
     }, [
       chatAbortRef,
       activeConversationIdRef,
       flushStreamingText,
+      notifyChatSendIdle,
       resolveQueuedChatSends,
       setChatFirstTokenReceived,
       setServerTurnStatus,
@@ -2723,9 +2821,12 @@ export function useChatSend(deps: UseChatSendDeps) {
   );
   // biome-ignore lint/correctness/useExhaustiveDependencies: conversations omitted to limit rerenders
   const deliverActionMessage = useCallback(
-    async (text: string, options?: Pick<ChatSendTextOptions, "metadata">) => {
+    async (
+      text: string,
+      options?: Pick<ChatSendTextOptions, "metadata">,
+    ): Promise<boolean> => {
       const trimmed = text.trim();
-      if (!trimmed) return;
+      if (!trimmed) return false;
       const viewHandoffOwner: ChatViewHandoffOwner = {
         conversationId: null,
         generation: null,
@@ -2737,8 +2838,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       // still choosing the initial conversation. An unavailable restore leaves
       // the action unsent instead of allocating a competing conversation.
       const admissionGeneration = sendCancellationGenerationRef.current;
-      if ((await settleConversationHydrationForSend?.()) === false) return;
-      if (admissionGeneration !== sendCancellationGenerationRef.current) return;
+      if ((await settleConversationHydrationForSend?.()) === false)
+        return false;
+      if (admissionGeneration !== sendCancellationGenerationRef.current)
+        return false;
+      const requestedConversationId = activeConversationIdRef.current;
       // Wait for the current turn instead of discarding the action. The
       // handoff freeze holds it too: a send to the shared agent after its
       // snapshot is lost to the skip-all import (see flushQueuedChatSends).
@@ -2747,8 +2851,12 @@ export function useChatSend(deps: UseChatSendDeps) {
           chatSendIdleWaitersRef.current.push(resolve);
         });
         if (admissionGeneration !== sendCancellationGenerationRef.current)
-          return;
+          return false;
       }
+      // A queued choice belongs to the conversation that admitted it. Do not
+      // deliver it into a different conversation selected while it waited.
+      if (activeConversationIdRef.current !== requestedConversationId)
+        return false;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
       let controller: AbortController | null = null;
@@ -2778,7 +2886,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                 actionTitle || t("common.newChat"),
               );
             if (admissionGeneration !== sendCancellationGenerationRef.current)
-              return;
+              return false;
             if (!isConversationRecord(rawConversation)) {
               throw new Error(
                 "Conversation creation returned an invalid payload.",
@@ -2807,7 +2915,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             convRoomId = conversation.roomId;
           } catch {
             if (admissionGeneration !== sendCancellationGenerationRef.current)
-              return;
+              return false;
             // error-policy:J4 surfaced user-facing failure state. An
             // action/inbox send that can't start a conversation must not
             // vanish silently (mirrors the cold-open path in
@@ -2817,7 +2925,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               "error",
               8000,
             );
-            return;
+            return false;
           }
         }
         if (activeConversationIdRef.current === convId) {
@@ -2992,7 +3100,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           const abortError = err as Error;
           if (abortError.name === "AbortError" || controller?.signal.aborted) {
             dropEmptyAssistantPlaceholder(convId, assistantMsgId);
-            return;
+            return true;
           }
           dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           // Surface a status-specific notice so an inbox/connector send that
@@ -3032,6 +3140,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             }
           }
         }
+        return true;
       } finally {
         if (controller && abortServerTurn) {
           controller.signal.removeEventListener("abort", abortServerTurn);
@@ -3077,19 +3186,28 @@ export function useChatSend(deps: UseChatSendDeps) {
     ],
   );
   const sendActionMessage = useCallback(
-    async (text: string, options?: Pick<ChatSendTextOptions, "metadata">) => {
+    async (
+      text: string,
+      options?: Pick<ChatSendTextOptions, "metadata">,
+    ): Promise<boolean> => {
       // A waiting action no longer fails the busy check, so a repeated
       // activation of the same control would start one agent turn each.
-      const actionKey = JSON.stringify([text.trim(), options?.metadata]);
-      if (pendingActionKeysRef.current.has(actionKey)) return;
-      pendingActionKeysRef.current.add(actionKey);
+      const actionKey = JSON.stringify([
+        activeConversationIdRef.current,
+        text.trim(),
+        options?.metadata,
+      ]);
+      const pending = pendingActionKeysRef.current.get(actionKey);
+      if (pending) return pending;
+      const delivery = deliverActionMessage(text, options);
+      pendingActionKeysRef.current.set(actionKey, delivery);
       try {
-        await deliverActionMessage(text, options);
+        return await delivery;
       } finally {
         pendingActionKeysRef.current.delete(actionKey);
       }
     },
-    [deliverActionMessage],
+    [activeConversationIdRef, deliverActionMessage],
   );
   const handleChatStop = useCallback(() => {
     interruptActiveChatPipeline();
@@ -3109,9 +3227,9 @@ export function useChatSend(deps: UseChatSendDeps) {
   const replyRecoveriesRef = useRef(new Set<string>());
   const handleChatRetry = useCallback(
     async (assistantMsgId: string) => {
-      const currentMessages = conversationMessagesRef.current;
+      let currentMessages = conversationMessagesRef.current;
       // Find the failed/interrupted assistant message + its preceding user turn.
-      const assistantIdx = currentMessages.findIndex(
+      let assistantIdx = currentMessages.findIndex(
         (m) => m.id === assistantMsgId && m.role === "assistant",
       );
       if (assistantIdx < 0) return;
@@ -3164,6 +3282,37 @@ export function useChatSend(deps: UseChatSendDeps) {
       const userMsg = currentMessages[userIdx];
       const retryText = userMsg.text;
       if (!retryText) return;
+      let retryImages: ImageAttachment[] | undefined;
+      if (userMsg.attachments?.length) {
+        // The read is async: hold the retry key against a second click, and
+        // stop if the transcript changed while the bytes were loading.
+        replyRecoveriesRef.current.add(recoveryKey);
+        try {
+          retryImages = await readReplayedTurnImages(userMsg.attachments);
+        } catch (err) {
+          setActionNotice(
+            `Failed to retry message: ${err instanceof Error ? err.message : "network error"}`,
+            "error",
+            4200,
+          );
+          return;
+        } finally {
+          replyRecoveriesRef.current.delete(recoveryKey);
+        }
+        if (activeConversationIdRef.current !== convId) return;
+        currentMessages = conversationMessagesRef.current;
+        assistantIdx = currentMessages.findIndex(
+          (m) => m.id === assistantMsgId && m.role === "assistant",
+        );
+        userIdx = currentMessages.findIndex((m) => m.id === userMsg.id);
+        if (
+          assistantIdx < 0 ||
+          userIdx < 0 ||
+          currentMessages[userIdx] !== userMsg ||
+          currentMessages[assistantIdx] !== assistantMessage
+        )
+          return;
+      }
       const canTruncate =
         Boolean(convId) &&
         userMsg.source !== "local_command" &&
@@ -3174,7 +3323,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (canTruncate && convId && hasLaterUserTurn) {
         await sendChatTextInternal(
           retryText,
-          replayedTurnOptions(convId, userMsg),
+          replayedTurnOptions(convId, userMsg, retryImages),
         );
         return;
       }
@@ -3199,7 +3348,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           });
           await sendChatTextInternal(
             retryText,
-            replayedTurnOptions(convId, userMsg),
+            replayedTurnOptions(convId, userMsg, retryImages),
           );
         } catch (err) {
           await loadConversationMessages(convId);
@@ -3227,7 +3376,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         ),
       );
       void sendChatTextInternal(retryText, {
-        ...replayedTurnOptions(convId, userMsg),
+        ...replayedTurnOptions(convId, userMsg, retryImages),
         ...(clientMessageId
           ? {
               [CHAT_SEND_IDENTITY_OVERRIDE]: {
@@ -3285,6 +3434,26 @@ export function useChatSend(deps: UseChatSendDeps) {
       ) {
         return false;
       }
+      let editImages: ImageAttachment[] | undefined;
+      if (targetMessage.attachments?.length) {
+        try {
+          editImages = await readReplayedTurnImages(targetMessage.attachments);
+        } catch (err) {
+          setActionNotice(
+            `Failed to edit message: ${err instanceof Error ? err.message : "network error"}`,
+            "error",
+            4200,
+          );
+          return false;
+        }
+        if (activeConversationIdRef.current !== convId) return false;
+        currentMessages = conversationMessagesRef.current;
+        messageIndex = currentMessages.findIndex(
+          (message) => message.id === messageId && message.role === "user",
+        );
+        if (messageIndex < 0 || currentMessages[messageIndex] !== targetMessage)
+          return false;
+      }
       const restoredQueuedDraft = interruptActiveChatPipelineWithDraft();
       if (!restoredQueuedDraft.text) {
         setChatInput("");
@@ -3304,7 +3473,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
         await sendChatTextInternal(
           nextText,
-          replayedTurnOptions(convId, targetMessage),
+          replayedTurnOptions(convId, targetMessage, editImages),
         );
         return true;
       } catch (err) {

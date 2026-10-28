@@ -716,13 +716,14 @@ export function parseBooleanFromText(
 export const getContentTypeFromMimeType = (
 	mimeType: string,
 ): ContentType | undefined => {
-	if (mimeType.startsWith("image/")) return ContentType.IMAGE;
-	if (mimeType.startsWith("video/")) return ContentType.VIDEO;
-	if (mimeType.startsWith("audio/")) return ContentType.AUDIO;
+	const normalizedMimeType = mimeType.toLowerCase();
+	if (normalizedMimeType.startsWith("image/")) return ContentType.IMAGE;
+	if (normalizedMimeType.startsWith("video/")) return ContentType.VIDEO;
+	if (normalizedMimeType.startsWith("audio/")) return ContentType.AUDIO;
 	if (
-		mimeType.includes("pdf") ||
-		mimeType.includes("document") ||
-		mimeType.startsWith("text/")
+		normalizedMimeType.includes("pdf") ||
+		normalizedMimeType.includes("document") ||
+		normalizedMimeType.startsWith("text/")
 	) {
 		return ContentType.DOCUMENT;
 	}

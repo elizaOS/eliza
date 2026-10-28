@@ -25,6 +25,7 @@ import {
   type ScheduledTaskSubjectKind,
   TASK_EXECUTION_PROFILES,
 } from "./types.js";
+import { isOwnerWindowKey } from "./window-bounds.js";
 
 export class ScheduledTaskValidationError extends Error {
   readonly code = "scheduled_task_validation_failed";
@@ -122,7 +123,7 @@ const MONTH_MAX_DAYS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
  * every tick. When both day fields are restricted core fires on either one, so
  * the day-of-week field alone makes the schedule reachable.
  */
-function cronHasCalendarDate(
+export function cronHasCalendarDate(
   schedule: NonNullable<ReturnType<typeof parseCronExpression>>,
 ): boolean {
   if (schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted) {
@@ -205,6 +206,10 @@ function validateTrigger(
     case "during_window":
       if (!isNonEmptyString(trigger.windowKey)) {
         issues.push(`${path}.trigger.windowKey must be a non-empty string`);
+      } else if (!isOwnerWindowKey(trigger.windowKey)) {
+        issues.push(
+          `${path}.trigger.windowKey must be one of: morning, afternoon, evening, night, morning_or_night, morning_or_evening`,
+        );
       }
       break;
     case "event":

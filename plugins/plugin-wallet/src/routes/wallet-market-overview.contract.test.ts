@@ -266,3 +266,25 @@ it("retains partial cloud data and its source errors when the direct fallback al
   expect(directCalls).toBe(1);
   expect(res.json()).toEqual(cloud);
 });
+
+it.each(["invalid", null])(
+  "keeps an invalid probability at its outcome index (%s)",
+  async (invalid) => {
+    installMarketFetch(recorded.coinGeckoMarkets, [
+      {
+        slug: "alignment",
+        question: "Which outcome wins?",
+        outcomes: JSON.stringify(["First", "Second"]),
+        outcomePrices: JSON.stringify([invalid, "0.75"]),
+        volume24hr: 100,
+      },
+    ]);
+    const res = createResponse();
+    await handleWalletMarketOverviewRoute(createRequest(), res);
+    const dto = res.json<import("../contracts").WalletMarketOverviewResponse>();
+    expect(dto.predictions[0]).toMatchObject({
+      highlightedOutcomeLabel: "Second",
+      highlightedOutcomeProbability: 0.75,
+    });
+  },
+);

@@ -151,6 +151,23 @@ const GAME_APP_HINTS = [
   "mojang",
 ];
 
+// Han/Kana/Hangul letters do not count as word characters so names can abut
+// particles ("인스타그램을", "YouTube를").
+const WORD_CHAR_SOURCE =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
+function includesWholePhrase(text: string, phrase: string): boolean {
+  const words = phrase.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const body = words
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return new RegExp(
+    `(?<!${WORD_CHAR_SOURCE})${body}(?!${WORD_CHAR_SOURCE})`,
+    "iu",
+  ).test(text);
+}
+
 function inferAndroidPackageNamesFromIntent(
   intent: string,
   installedApps: InstalledAppEntry[],
@@ -168,8 +185,8 @@ function inferAndroidPackageNamesFromIntent(
     const displayName = app.displayName.trim().toLowerCase();
     const packageName = app.packageName.trim().toLowerCase();
     return (
-      (displayName.length > 0 && normalizedIntent.includes(displayName)) ||
-      (packageName.length > 0 && normalizedIntent.includes(packageName))
+      includesWholePhrase(normalizedIntent, displayName) ||
+      includesWholePhrase(normalizedIntent, packageName)
     );
   });
 

@@ -69,6 +69,18 @@ function inferOpFromText(text: string): McpOp | null {
   }
   return null;
 }
+/**
+ * A structured selection names its own operation: toolName belongs to call_tool
+ * and uri to read_resource. It outranks the request-text guess, which would
+ * otherwise route a complete tool call to read_resource whenever the user's
+ * wording mentions reading a file or doc. `arguments` alone names no target, so
+ * it does not decide the operation.
+ */
+function inferOpFromSelection(params: Record<string, unknown>): McpOp | null {
+  if (typeof params.toolName === "string" && params.toolName.trim() !== "") return "call_tool";
+  if (typeof params.uri === "string" && params.uri.trim() !== "") return "read_resource";
+  return null;
+}
 function getDirectResourceSelection(options?: unknown): ResourceSelection | null {
   const params = readOptions(options as HandlerOptions);
   const serverName = typeof params.serverName === "string" ? params.serverName.trim() : "";
@@ -562,7 +574,8 @@ export const mcpAction: Action = {
   ): Promise<ActionResult> => {
     const opts = readOptions(options);
     const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op ?? opts.operation);
-    const op = requested ?? inferOpFromText(textOf(message)) ?? "call_tool";
+    const op =
+      requested ?? inferOpFromSelection(opts) ?? inferOpFromText(textOf(message)) ?? "call_tool";
     const incomplete = incompleteSelectionReason(op, opts);
     if (incomplete) {
       await callback?.({ text: incomplete, source: message.content?.source });

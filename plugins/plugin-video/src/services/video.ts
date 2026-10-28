@@ -682,7 +682,13 @@ export class VideoService extends IVideoService {
               .map((seg) => (typeof seg?.utf8 === "string" ? seg.utf8 : ""))
               .join(""),
           )
-          .join("");
+          .reduce(
+            (text, cue) =>
+              text && cue && !/\s$/.test(text) && !/^\s/.test(cue)
+                ? `${text} ${cue}`
+                : text + cue,
+            "",
+          );
         return normalizeCaptionNewlines(joined);
       } else {
         elizaLogger.log(
@@ -765,7 +771,6 @@ export class VideoService extends IVideoService {
     }
 
     const result = await transcriptionService.transcribeAudio(audioBuffer);
-    const transcript = result.text;
 
     const endTime = Date.now();
     elizaLogger.log(
@@ -773,7 +778,7 @@ export class VideoService extends IVideoService {
     );
 
     // Keep the MP3 in the content cache; callers own cache retention.
-    return transcript || "Transcription failed";
+    return result.text;
   }
 
   private async convertMp4ToMp3(

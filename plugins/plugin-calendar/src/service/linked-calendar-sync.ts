@@ -1,3 +1,27 @@
+import {
+  type LinkedCalendarEventRecord,
+  type LinkedCalendarOperation,
+  type LinkedCalendarProviderPort,
+  type LinkedCalendarProviderSnapshot,
+  type LinkedCalendarSemanticEvent,
+  type LinkedCalendarState,
+  linkedCalendarSemanticText,
+} from "@elizaos/contracts";
+
+export {
+  type LinkedCalendarCheckpointStore,
+  type LinkedCalendarEventRecord,
+  type LinkedCalendarLocalPort,
+  type LinkedCalendarLocalSnapshot,
+  type LinkedCalendarOperation,
+  type LinkedCalendarProviderPort,
+  type LinkedCalendarProviderSnapshot,
+  type LinkedCalendarReconcileOutcome,
+  LinkedCalendarReconciler,
+  type LinkedCalendarSemanticEvent,
+  type LinkedCalendarState,
+} from "@elizaos/contracts";
+
 /**
  * Durable two-way reconciliation for events explicitly linked between the
  * built-in Eliza calendar and one Google calendar. The checkpoint records the
@@ -21,127 +45,6 @@ import {
   toText,
   withCalendarTransaction,
 } from "../internal/sql.js";
-
-export type LinkedCalendarState =
-  | "clean"
-  | "dirty"
-  | "conflicted"
-  | "quarantined"
-  | "paused"
-  | "local_only";
-
-export type LinkedCalendarOperation = "create" | "update" | "delete";
-
-export interface LinkedCalendarEventRecord {
-  id: string;
-  agentId: string;
-  localEventId: string;
-  connectorAccountId: string;
-  providerCalendarId: string;
-  providerEventId: string | null;
-  providerEtag: string | null;
-  localRevision: number;
-  lastCommonSemanticHash: string | null;
-  state: LinkedCalendarState;
-  pendingOperation: LinkedCalendarOperation | null;
-  idempotencyKey: string;
-  lastErrorCode: string | null;
-  lastErrorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface LinkedCalendarSemanticEvent {
-  title: string;
-  description: string;
-  location: string;
-  startAt: string;
-  endAt: string;
-  timeZone: string | null;
-  isAllDay: boolean;
-  attendees: ReadonlyArray<{ email: string; optional?: boolean }>;
-  deleted?: boolean;
-}
-
-export interface LinkedCalendarLocalSnapshot {
-  eventId: string;
-  revision: number;
-  event: LinkedCalendarSemanticEvent;
-}
-
-export interface LinkedCalendarProviderSnapshot {
-  eventId: string;
-  etag: string | null;
-  event: LinkedCalendarSemanticEvent;
-}
-
-export interface LinkedCalendarProviderPort {
-  get(
-    record: LinkedCalendarEventRecord,
-  ): Promise<LinkedCalendarProviderSnapshot | null>;
-  create(
-    record: LinkedCalendarEventRecord,
-    event: LinkedCalendarSemanticEvent,
-  ): Promise<LinkedCalendarProviderSnapshot>;
-  update(
-    record: LinkedCalendarEventRecord,
-    event: LinkedCalendarSemanticEvent,
-  ): Promise<LinkedCalendarProviderSnapshot>;
-  delete(record: LinkedCalendarEventRecord): Promise<void>;
-}
-
-export interface LinkedCalendarLocalPort {
-  get(eventId: string): Promise<LinkedCalendarLocalSnapshot | null>;
-  applyProviderEvent(
-    eventId: string,
-    event: LinkedCalendarSemanticEvent,
-    expectedRevision: number,
-  ): Promise<LinkedCalendarLocalSnapshot>;
-  delete(eventId: string, expectedRevision: number): Promise<void>;
-}
-
-export interface LinkedCalendarCheckpointStore {
-  save(
-    record: LinkedCalendarEventRecord,
-    patch: Partial<
-      Omit<
-        LinkedCalendarEventRecord,
-        "id" | "agentId" | "localEventId" | "createdAt"
-      >
-    >,
-    now?: Date,
-  ): Promise<LinkedCalendarEventRecord>;
-}
-
-function googleMutationFailure(error: unknown): {
-  outcome: "not_accepted" | "precondition_failed";
-  code: string;
-  message: string;
-} | null {
-  if (!error || typeof error !== "object") return null;
-  const candidate = error as {
-    outcome?: unknown;
-    code?: unknown;
-    message?: unknown;
-  };
-  if (
-    candidate.outcome !== "not_accepted" &&
-    candidate.outcome !== "precondition_failed"
-  ) {
-    return null;
-  }
-  return {
-    outcome: candidate.outcome,
-    code:
-      typeof candidate.code === "string"
-        ? candidate.code
-        : "GOOGLE_CALENDAR_MUTATION_REJECTED",
-    message:
-      typeof candidate.message === "string"
-        ? candidate.message
-        : "Google Calendar rejected the mutation.",
-  };
-}
 
 function parseState(value: unknown): LinkedCalendarState {
   const state = toText(value);
@@ -209,24 +112,9 @@ function parseRecord(row: Record<string, unknown>): LinkedCalendarEventRecord {
 export function linkedCalendarSemanticHash(
   event: LinkedCalendarSemanticEvent,
 ): string {
-  const normalized = {
-    title: event.title.trim(),
-    description: event.description.trim(),
-    location: event.location.trim(),
-    startAt: event.startAt,
-    endAt: event.endAt,
-    timeZone: event.isAllDay ? null : event.timeZone,
-    // Retain timed-event checkpoints; all-day semantics need a distinct hash.
-    ...(event.isAllDay ? { isAllDay: true } : {}),
-    attendees: [...event.attendees]
-      .map((attendee) => ({
-        email: attendee.email.trim().toLowerCase(),
-        optional: attendee.optional === true,
-      }))
-      .sort((left, right) => left.email.localeCompare(right.email)),
-    deleted: event.deleted === true,
-  };
-  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+  return createHash("sha256")
+    .update(linkedCalendarSemanticText(event))
+    .digest("hex");
 }
 
 export class LinkedCalendarRepository {
@@ -660,399 +548,6 @@ export class LinkedCalendarRepository {
   }
 }
 
-export type LinkedCalendarReconcileOutcome =
-  | "clean"
-  | "dirty"
-  | "pushed"
-  | "pulled"
-  | "conflicted"
-  | "quarantined"
-  | "paused";
-
-export class LinkedCalendarReconciler {
-  constructor(
-    private readonly repository: LinkedCalendarCheckpointStore,
-    private readonly local: LinkedCalendarLocalPort,
-    private readonly provider: LinkedCalendarProviderPort,
-    private readonly onProviderMutation?: () => void,
-  ) {}
-
-  async reconcile(
-    record: LinkedCalendarEventRecord,
-  ): Promise<LinkedCalendarReconcileOutcome> {
-    if (record.state === "paused" || record.state === "local_only")
-      return "paused";
-    if (record.state === "conflicted") return "conflicted";
-    if (record.state === "quarantined") return "quarantined";
-
-    const local = await this.local.get(record.localEventId);
-    if (!local) {
-      if (record.pendingOperation === "delete") {
-        const provider = await this.provider.get(record);
-        try {
-          if (provider) {
-            this.onProviderMutation?.();
-            await this.provider.delete(record);
-          }
-        } catch (error) {
-          const mutationFailure = googleMutationFailure(error);
-          if (mutationFailure?.outcome === "not_accepted") {
-            await this.repository.save(record, {
-              state: "dirty",
-              pendingOperation: "delete",
-              lastErrorCode: mutationFailure.code,
-              lastErrorMessage: mutationFailure.message,
-            });
-            return "dirty";
-          }
-          if (mutationFailure?.outcome === "precondition_failed") {
-            await this.repository.save(record, {
-              state: "conflicted",
-              pendingOperation: null,
-              lastErrorCode: mutationFailure.code,
-              lastErrorMessage: mutationFailure.message,
-            });
-            return "conflicted";
-          }
-          return this.quarantine(
-            record,
-            "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-        await this.repository.save(record, {
-          state: "paused",
-          pendingOperation: null,
-          providerEtag: null,
-          lastErrorCode: "LINKED_CALENDAR_LOCAL_EVENT_DELETED",
-          lastErrorMessage:
-            "The Eliza event was deleted and the linked Google event was removed.",
-        });
-        return "pushed";
-      }
-      return this.quarantine(
-        record,
-        "LINKED_LOCAL_EVENT_MISSING",
-        "The linked Eliza event no longer exists.",
-      );
-    }
-    const provider = await this.provider.get(record);
-    const localHash = linkedCalendarSemanticHash(local.event);
-    const providerHash = provider
-      ? linkedCalendarSemanticHash(provider.event)
-      : null;
-    const localChanged = record.lastCommonSemanticHash !== localHash;
-    const providerChanged =
-      providerHash !== null && record.lastCommonSemanticHash !== providerHash;
-
-    if (
-      provider &&
-      localChanged &&
-      providerChanged &&
-      localHash !== providerHash
-    ) {
-      await this.repository.save(record, {
-        state: "conflicted",
-        pendingOperation: null,
-        lastErrorCode: "LINKED_CALENDAR_CONCURRENT_EDIT",
-        lastErrorMessage:
-          "Eliza and Google changed since their last common version.",
-      });
-      return "conflicted";
-    }
-
-    if (provider && providerChanged && !localChanged) {
-      if (provider.event.deleted) {
-        try {
-          await this.local.delete(local.eventId, local.revision);
-        } catch (error) {
-          return this.quarantine(
-            record,
-            "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
-            error instanceof Error ? error.message : String(error),
-          );
-        }
-        await this.repository.save(record, {
-          state: "paused",
-          pendingOperation: null,
-          providerEventId: provider.eventId,
-          providerEtag: provider.etag,
-          lastCommonSemanticHash: linkedCalendarSemanticHash(provider.event),
-          lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
-          lastErrorMessage:
-            "Google deleted the linked event; the Eliza event was removed and the retained link was paused.",
-        });
-        return "pulled";
-      }
-      let applied: LinkedCalendarLocalSnapshot;
-      try {
-        applied = await this.local.applyProviderEvent(
-          local.eventId,
-          provider.event,
-          local.revision,
-        );
-      } catch (error) {
-        return this.quarantine(
-          record,
-          "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-      await this.repository.save(record, {
-        localRevision: applied.revision,
-        providerEventId: provider.eventId,
-        providerEtag: provider.etag,
-        lastCommonSemanticHash: providerHash,
-        state: "clean",
-        pendingOperation: null,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      });
-      return "pulled";
-    }
-
-    if (!provider && record.providerEventId && !localChanged) {
-      try {
-        await this.local.delete(local.eventId, local.revision);
-      } catch (error) {
-        return this.quarantine(
-          record,
-          "LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-      await this.repository.save(record, {
-        state: "paused",
-        pendingOperation: null,
-        providerEtag: null,
-        lastErrorCode: "LINKED_CALENDAR_PROVIDER_EVENT_DELETED",
-        lastErrorMessage:
-          "Google deleted the linked event; the Eliza event was removed and the retained link was paused.",
-      });
-      return "pulled";
-    }
-
-    if (!provider || (localChanged && localHash !== providerHash)) {
-      return this.push(record, local, provider);
-    }
-
-    if (
-      record.state !== "clean" ||
-      record.lastCommonSemanticHash !== localHash ||
-      record.localRevision !== local.revision ||
-      record.providerEtag !== provider.etag
-    ) {
-      await this.repository.save(record, {
-        localRevision: local.revision,
-        providerEventId: provider.eventId,
-        providerEtag: provider.etag,
-        lastCommonSemanticHash: localHash,
-        state: "clean",
-        pendingOperation: null,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      });
-    }
-    return "clean";
-  }
-
-  /**
-   * Checkpoints a provider-confirmed outcome without replaying a mutation.
-   * The caller retains the dispatch barrier until this returns true. An absent
-   * create or unchanged update ETag cannot prove a timed-out request finished.
-   */
-  async recoverDispatch(record: LinkedCalendarEventRecord): Promise<boolean> {
-    const local = await this.local.get(record.localEventId);
-    const provider = await this.provider.get(record);
-    if (record.pendingOperation === "delete") {
-      if (
-        !record.providerEventId ||
-        provider ||
-        (local && !local.event.deleted)
-      )
-        return false;
-      await this.repository.save(record, {
-        state: "paused",
-        pendingOperation: null,
-        providerEtag: null,
-        lastErrorCode: "LINKED_CALENDAR_DELETE_RECOVERED",
-        lastErrorMessage: "Google confirmed the pending event deletion.",
-      });
-      return true;
-    }
-    if (!local || !provider || local.event.deleted || provider.event.deleted)
-      return false;
-    if (
-      linkedCalendarSemanticHash(local.event) !==
-      linkedCalendarSemanticHash(provider.event)
-    )
-      return false;
-    if (
-      record.pendingOperation === "update" &&
-      (!record.providerEtag ||
-        !provider.etag ||
-        record.providerEtag === provider.etag)
-    )
-      return false;
-    await this.repository.save(record, {
-      providerEventId: provider.eventId,
-      providerEtag: provider.etag,
-      localRevision: local.revision,
-      lastCommonSemanticHash: linkedCalendarSemanticHash(provider.event),
-      state: "clean",
-      pendingOperation: null,
-      lastErrorCode: null,
-      lastErrorMessage: null,
-    });
-    return true;
-  }
-
-  async resolveConflict(
-    record: LinkedCalendarEventRecord,
-    strategy: "keep_eliza" | "keep_google",
-  ): Promise<LinkedCalendarReconcileOutcome> {
-    if (record.state !== "conflicted") return this.reconcile(record);
-    const local = await this.local.get(record.localEventId);
-    if (!local) {
-      return this.quarantine(
-        record,
-        "LINKED_LOCAL_EVENT_MISSING",
-        "The linked Eliza event no longer exists.",
-      );
-    }
-    const provider = await this.provider.get(record);
-    if (!provider) {
-      return this.quarantine(
-        record,
-        "LINKED_PROVIDER_EVENT_MISSING",
-        "The linked Google event no longer exists.",
-      );
-    }
-    if (strategy === "keep_google") {
-      let applied: LinkedCalendarLocalSnapshot;
-      try {
-        applied = await this.local.applyProviderEvent(
-          local.eventId,
-          provider.event,
-          local.revision,
-        );
-      } catch (error) {
-        return this.quarantine(
-          record,
-          "LINKED_CALENDAR_LOCAL_CAS_REJECTED",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-      await this.repository.save(record, {
-        localRevision: applied.revision,
-        providerEventId: provider.eventId,
-        providerEtag: provider.etag,
-        lastCommonSemanticHash: linkedCalendarSemanticHash(provider.event),
-        state: "clean",
-        pendingOperation: null,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      });
-      return "pulled";
-    }
-    const dirty = await this.repository.save(record, {
-      state: "dirty",
-      pendingOperation: "update",
-      lastCommonSemanticHash: linkedCalendarSemanticHash(provider.event),
-      lastErrorCode: null,
-      lastErrorMessage: null,
-    });
-    return this.reconcile(dirty);
-  }
-
-  private async push(
-    record: LinkedCalendarEventRecord,
-    local: LinkedCalendarLocalSnapshot,
-    provider: LinkedCalendarProviderSnapshot | null,
-  ): Promise<LinkedCalendarReconcileOutcome> {
-    const operation: LinkedCalendarOperation = local.event.deleted
-      ? "delete"
-      : provider
-        ? "update"
-        : "create";
-    let pending = record;
-    if (record.pendingOperation !== operation || record.state !== "dirty") {
-      pending = await this.repository.save(record, {
-        state: "dirty",
-        pendingOperation: operation,
-        localRevision: local.revision,
-      });
-    }
-    try {
-      if (operation === "delete") {
-        if (provider) {
-          this.onProviderMutation?.();
-          await this.provider.delete(pending);
-        }
-        await this.repository.save(pending, {
-          providerEventId: provider?.eventId ?? pending.providerEventId,
-          providerEtag: null,
-          lastCommonSemanticHash: linkedCalendarSemanticHash(local.event),
-          state: "clean",
-          pendingOperation: null,
-          lastErrorCode: null,
-          lastErrorMessage: null,
-        });
-      } else {
-        this.onProviderMutation?.();
-        const written =
-          operation === "create"
-            ? await this.provider.create(pending, local.event)
-            : await this.provider.update(pending, local.event);
-        await this.repository.save(pending, {
-          providerEventId: written.eventId,
-          providerEtag: written.etag,
-          localRevision: local.revision,
-          lastCommonSemanticHash: linkedCalendarSemanticHash(written.event),
-          state: "clean",
-          pendingOperation: null,
-          lastErrorCode: null,
-          lastErrorMessage: null,
-        });
-      }
-      return "pushed";
-    } catch (error) {
-      const mutationFailure = googleMutationFailure(error);
-      if (mutationFailure) {
-        const state: LinkedCalendarState =
-          mutationFailure.outcome === "precondition_failed"
-            ? "conflicted"
-            : "dirty";
-        await this.repository.save(pending, {
-          state,
-          pendingOperation: state === "dirty" ? operation : null,
-          lastErrorCode: mutationFailure.code,
-          lastErrorMessage: mutationFailure.message,
-        });
-        return state === "conflicted" ? "conflicted" : "dirty";
-      }
-      return this.quarantine(
-        pending,
-        "LINKED_CALENDAR_UNKNOWN_PROVIDER_OUTCOME",
-        error instanceof Error ? error.message : String(error),
-      );
-    }
-  }
-
-  private async quarantine(
-    record: LinkedCalendarEventRecord,
-    code: string,
-    message: string,
-  ): Promise<"quarantined"> {
-    await this.repository.save(record, {
-      state: "quarantined",
-      lastErrorCode: code,
-      lastErrorMessage: message,
-    });
-    return "quarantined";
-  }
-}
-
 /** Production provider port that reuses the account-scoped Google adapter. */
 export class GoogleLinkedCalendarProviderPort
   implements LinkedCalendarProviderPort
@@ -1145,6 +640,10 @@ function googleEventInput(event: LinkedCalendarSemanticEvent) {
       email: attendee.email,
       optional: attendee.optional === true,
     })),
+    // The built-in Eliza calendar cannot hold recurrence, so an absent local
+    // series must leave Google's RRULE untouched. Sending `[]` would make the
+    // PATCH clear the provider series and delete every future occurrence.
+    ...(event.recurrence?.length ? { recurrence: [...event.recurrence] } : {}),
   };
 }
 
@@ -1178,7 +677,11 @@ export function linkedCalendarSnapshotFromGoogle(
       isAllDay: event.isAllDay === true,
       attendees: (event.attendees ?? []).map((attendee) => ({
         email: attendee.email,
+        optional: attendee.optional === true,
       })),
+      ...(event.recurrence?.length
+        ? { recurrence: [...event.recurrence] }
+        : {}),
       deleted: event.status === "cancelled",
     },
   };

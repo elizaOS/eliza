@@ -1,10 +1,11 @@
 /** Exercises work-thread merges against real PGlite transactions, including late conflicts, event failures, and replay. */
 import { PGlite } from "@electric-sql/pglite";
-import { stringToUuid } from "@elizaos/core";
+import { type IAgentRuntime, stringToUuid } from "@elizaos/core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { WorkThreadRepository } from "../src/lifeops/repositories/work-threads.js";
 import { OptimisticLockError } from "../src/lifeops/sql.js";
+import { createWorkThreadStore } from "../src/lifeops/work-threads/store.js";
 import type { WorkThread } from "../src/lifeops/work-threads/types.js";
 
 const agentId = stringToUuid("work-thread-merge-pglite");
@@ -89,6 +90,28 @@ describe("atomic work-thread merges (real PGlite)", () => {
       },
     });
   }
+  it("keeps an owner edit when a merge uses an earlier thread snapshot", async () => {
+    const store = createWorkThreadStore({
+      agentId,
+      adapter: { db: drizzle(pg) },
+    } as unknown as IAgentRuntime);
+    const updated = await store.update(target.id, {
+      summary: "Owner edited summary",
+      currentPlanSummary: "Owner edited plan",
+      eventType: "steered",
+    });
+    expect(updated?.version).toBe(2);
+    const edited = { rows: await rows(), events: await events() };
+    await expect(merge()).rejects.toBeInstanceOf(OptimisticLockError);
+    expect({ rows: await rows(), events: await events() }).toEqual(edited);
+    expect(await repository.getWorkThread(agentId, target.id)).toMatchObject({
+      summary: "Owner edited summary",
+      currentPlanSummary: "Owner edited plan",
+      version: 2,
+    });
+    expect(edited.events).toHaveLength(1);
+    expect(edited.events[0]).toMatchObject({ type: "steered" });
+  });
   it("rolls back target and earlier source writes when a later source version conflicts", async () => {
     const before = await rows();
     await expect(

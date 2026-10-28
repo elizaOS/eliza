@@ -8,7 +8,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SELF_ENTITY_ID } from "@elizaos/contracts";
-import type { AgentRuntime, Memory } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  type Memory,
+  validateToolArgs,
+} from "@elizaos/core";
 import {
   type EntityStore,
   type RelationshipStore,
@@ -156,6 +160,27 @@ describe("school source facts — real PGlite", () => {
     relationshipStore = graph.getRelationshipStore(runtime.agentId);
     await entityStore.ensureSelf();
     service = SchoolSourceFactService.create(runtime);
+    // Schema/handler parity: every input the real service accepts anywhere in
+    // this file must also pass validateToolArgs on the real action, so the
+    // declared nested contract can never be narrower than the handler's.
+    const planned = createSchoolSourceFactAction({
+      authorize: async () => true,
+    });
+    const admitted = (args: Record<string, unknown>): void => {
+      expect(validateToolArgs(planned, args).errors).toEqual([]);
+    };
+    const captureCandidates = service.captureCandidates.bind(service);
+    service.captureCandidates = async (artifact, candidates) => {
+      const result = await captureCandidates(artifact, candidates);
+      admitted({ action: "capture_candidates", artifact, candidates });
+      return result;
+    };
+    const ingestSchoolNotice = service.ingestSchoolNotice.bind(service);
+    service.ingestSchoolNotice = async (input) => {
+      const result = await ingestSchoolNotice(input);
+      admitted({ action: "ingest_notice", input });
+      return result;
+    };
   }, 180000);
   afterAll(async () => {
     await runtimeResult?.cleanup();
@@ -769,6 +794,30 @@ describe("school source facts — real PGlite", () => {
       authorize: async () => true,
       getService: () => service as unknown as SchoolSourceFactRuntimeService,
     });
+    // The planner cannot compute a digest: it sends the source text and the
+    // handler derives the hash the repository verifies.
+    const { contentSha256: _digest, ...plannedArtifact } = artifact;
+    const validation = validateToolArgs(action, {
+      action: "capture_candidates",
+      artifact: plannedArtifact,
+      candidates: [candidate],
+    });
+    expect(validation.errors).toEqual([]);
+    expect(
+      validateToolArgs(action, {
+        action: "capture_candidates",
+        artifact: { kind: "email", id: "gmail:123" },
+        candidates: [{ summary: "Field trip Friday", date: "2026-10-16" }],
+      }).errors,
+    ).toEqual(
+      expect.arrayContaining([
+        "Missing required argument 'artifact.untrustedContent'",
+        "Unexpected argument 'artifact.id'",
+        "Argument 'artifact.kind' value 'email' is not one of: voice, gmail, document, calendar, school_portal, activity_feed",
+        "Missing required argument 'candidates[0].stableFactKey'",
+        "Unexpected argument 'candidates[0].summary'",
+      ]),
+    );
     const result = await action.handler(
       runtime,
       {
@@ -779,13 +828,7 @@ describe("school source facts — real PGlite", () => {
         content: { text: "Capture this school source.", source: "test" },
       } as Memory,
       undefined,
-      {
-        parameters: {
-          action: "capture_candidates",
-          artifact,
-          candidates: [candidate],
-        },
-      },
+      { parameters: validation.args },
       undefined,
     );
     const receipt = result.effectReceipts?.[0];

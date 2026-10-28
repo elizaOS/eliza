@@ -5,8 +5,10 @@
  * goes through the canonical Worker `failureResponse` so the JSON shape
  * matches the rest of the API.
  *
- * NOTE: This module avoids `packages/lib/api/errors` helpers that assume Node-only deps;
- * the Worker bundle stays fetch-native via `failureResponse`.
+ * NOTE: This module routes failures through the canonical Worker
+ * `failureResponse` (`packages/cloud/shared/src/lib/api/cloud-worker-errors.ts`)
+ * instead of the `packages/cloud/shared/src/lib/api/errors.ts` helpers, so the
+ * JSON shape matches the rest of the API.
  */
 
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";

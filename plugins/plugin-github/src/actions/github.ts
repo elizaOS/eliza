@@ -112,7 +112,8 @@ export const githubAction: Action = {
     },
     {
       name: "repo",
-      description: "Repository in owner/name form.",
+      description:
+        "Repository in owner/name form. pr_list requires repo or author.",
       required: false,
       schema: { type: "string" },
     },
@@ -134,7 +135,8 @@ export const githubAction: Action = {
     },
     {
       name: "author",
-      description: "Optional PR author username filter for pr_list.",
+      description:
+        "PR author login filter for pr_list; @me means the token's own account. pr_list requires repo or author.",
       required: false,
       schema: { type: "string" },
     },

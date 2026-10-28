@@ -402,6 +402,109 @@ it("boots push before its lazy event bus and carries persisted reminder urgency 
   }
 }, 60_000);
 
+it("keeps Android registrations for generic FCM 404 errors and drops detailed UNREGISTERED tokens", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "notification-fcm-errors-"));
+  const agentId = randomUUID() as UUID;
+  const token = "synthetic-fcm-error-token";
+  const originalFetch = globalThis.fetch;
+  let sends = 0;
+  const { privateKey } = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    publicKeyEncoding: { type: "spki", format: "pem" },
+  });
+  const android = new FcmProvider({
+    ELIZA_FCM_SERVICE_ACCOUNT: JSON.stringify({
+      client_email: "fixture@example.invalid",
+      project_id: "missing-project",
+      private_key: privateKey,
+    }),
+  });
+  const runtime = new AgentRuntime({
+    agentId,
+    character: { name: "FCM error classification", bio: [] },
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  let push: NotificationPushService | undefined;
+  try {
+    globalThis.fetch = Object.assign(
+      async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url === "https://oauth2.googleapis.com/token") {
+          return Response.json({ access_token: "local-access-token" });
+        }
+        if (url.includes("fcm.googleapis.com")) {
+          sends += 1;
+          if (sends === 1) {
+            return Response.json(
+              {
+                error: {
+                  code: 404,
+                  message: "Requested entity was not found.",
+                  status: "NOT_FOUND",
+                },
+              },
+              { status: 404 },
+            );
+          }
+          return Response.json(
+            {
+              error: {
+                code: 404,
+                message: "Requested entity was not found.",
+                status: "NOT_FOUND",
+                details: [
+                  {
+                    "@type":
+                      "type.googleapis.com/google.firebase.fcm.v1.FcmError",
+                    errorCode: "UNREGISTERED",
+                  },
+                ],
+              },
+            },
+            { status: 404 },
+          );
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      },
+      { preconnect: originalFetch.preconnect },
+    );
+    runtime.registerDatabaseAdapter(
+      SQLiteDatabaseAdapter.create(join(directory, "agent.sqlite"), agentId),
+    );
+    await runtime.init();
+    await runtime.initialize();
+    await runtime.registerService(AgentEventService);
+    await runtime.registerService(NotificationService);
+    const notifier = (await runtime.getServiceLoadPromise(
+      ServiceType.NOTIFICATION,
+    )) as NotificationService;
+    const registry = new PushTokenRegistry(runtime);
+    await registry.register("android", token);
+    push = new NotificationPushService(runtime, {
+      registry,
+      providers: { android, ios: new ApnsProvider({}) },
+    });
+    await push.attach();
+
+    await notifier.notify({ title: "Generic FCM 404" });
+    await expect.poll(() => sends).toBe(1);
+    await expect
+      .poll(() => registry.list())
+      .toContainEqual(expect.objectContaining({ token }));
+
+    await notifier.notify({ title: "Unregistered FCM token" });
+    await expect.poll(() => sends).toBe(2);
+    await expect.poll(() => registry.list()).toEqual([]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    await push?.stop();
+    await runtime.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 60_000);
+
 it("serves the native sequence contract through real HTTP, durable migration and concurrent mutations", async () => {
   const directory = await mkdtemp(join(tmpdir(), "notification-native-page-"));
   const agentId = randomUUID() as UUID;

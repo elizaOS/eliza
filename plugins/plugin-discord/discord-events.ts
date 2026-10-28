@@ -26,6 +26,7 @@ import { isDiscordUserAddressed } from "./addressing";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import { type ChannelDebouncer, createChannelDebouncer } from "./debouncer";
 import {
+	batchMediaProperties,
 	getDiscordMessageCoalesceConfig,
 	makeCoalescedDiscordMessage,
 } from "./message-coalesce";
@@ -259,6 +260,7 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 						? `[Recent channel context]\n${contextLines.join("\n")}\n\n${anchor.content || ""}`
 						: anchor.content || "";
 				const combined = Object.create(anchor, {
+					...batchMediaProperties(messages),
 					content: { value: combinedText, writable: true, enumerable: true },
 					__discordAddressingContent: {
 						value: anchor.content,
@@ -608,6 +610,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 				},
 				"Error handling message",
 			);
+		}
+	});
+
+	// ── messageUpdate ──────────────────────────────────────────────────
+	service.client.on("messageUpdate", async (_oldMessage, newMessage) => {
+		try {
+			await service.messageManager?.handleMessageEdit(newMessage);
+		} catch (error) {
+			service.runtime.reportError("discord:message-edit", error, {
+				accountId,
+				messageId: newMessage.id,
+				channelId: newMessage.channelId,
+			});
 		}
 	});
 

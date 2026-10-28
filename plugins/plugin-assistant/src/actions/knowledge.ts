@@ -237,9 +237,10 @@ function mediaFileNameFromRef(ref: string): string | null {
 
 function contentTypeFromMime(mime: string | undefined): Media["contentType"] {
   if (!mime) return undefined;
-  if (mime.startsWith("image/")) return "image";
-  if (mime.startsWith("video/")) return "video";
-  if (mime.startsWith("audio/")) return "audio";
+  const normalized = mime.toLowerCase();
+  if (normalized.startsWith("image/")) return "image";
+  if (normalized.startsWith("video/")) return "video";
+  if (normalized.startsWith("audio/")) return "audio";
   return "document";
 }
 

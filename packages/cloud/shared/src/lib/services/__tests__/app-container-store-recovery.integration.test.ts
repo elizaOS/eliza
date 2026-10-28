@@ -10,6 +10,7 @@ import {
   type AppContainerStoreRepository,
   ContainerRepoAppContainerStore,
 } from "../app-container-store";
+import { executeContainerDelete } from "../container-job-executors";
 import { countAllocatedWorkloadsOnNodeWithDatabase } from "../docker-node-workload-queries";
 
 const ORG_ONE = "00000000-0000-0000-0000-0000000000a1";
@@ -219,5 +220,67 @@ describe("app-container persistence transactions", () => {
         network: "app-network",
       }),
     ).rejects.toMatchObject({ name: "APP_CONTAINER_ROW_MISSING" });
+  });
+
+  test("deleting a redeployed app's old generation keeps the DB ambassador the new one uses", async () => {
+    const oldId = "00000000-0000-0000-0000-0000000000d1";
+    const newId = "00000000-0000-0000-0000-0000000000d2";
+    await client.exec(`
+      INSERT INTO containers
+        (id, name, project_name, image_tag, port, organization_id, user_id, status, node_id, metadata)
+      VALUES
+        ('${oldId}', 'app-3f6c2a1e9b7d-g00000001', 'app-7', 'image:1', 3000, '${ORG_ONE}', '${USER_ID}', 'deleting', 'node-1', '{"hostContainerId":"docker-old"}'),
+        ('${newId}', 'app-3f6c2a1e9b7d-g00000002', 'app-7', 'image:2', 3000, '${ORG_ONE}', '${USER_ID}', 'running', 'node-1', '{"hostContainerId":"docker-new"}');
+    `);
+    const removed: string[] = [];
+    const provider = {
+      deleteById: async (hostContainerId: string, containerName: string) => {
+        removed.push(hostContainerId, `ambassador-of:${containerName}`);
+      },
+      deletePrimaryById: async (hostContainerId: string) => {
+        removed.push(hostContainerId);
+      },
+    };
+
+    await executeContainerDelete(
+      {
+        id: "job-1",
+        organization_id: ORG_ONE,
+        data: { containerId: oldId, organizationId: ORG_ONE },
+      } as never,
+      { provider, store } as never,
+    );
+
+    expect(removed).toEqual(["docker-old"]);
+  });
+
+  test("deleting an app's last generation also removes its DB ambassador", async () => {
+    const lastId = "00000000-0000-0000-0000-0000000000d3";
+    await client.exec(`
+      INSERT INTO containers
+        (id, name, project_name, image_tag, port, organization_id, user_id, status, node_id, metadata)
+      VALUES
+        ('${lastId}', 'app-8a8a8a8a8a8a-g00000001', 'app-8', 'image:1', 3000, '${ORG_ONE}', '${USER_ID}', 'deleting', 'node-1', '{"hostContainerId":"docker-last"}');
+    `);
+    const removed: string[] = [];
+    const provider = {
+      deleteById: async (hostContainerId: string, containerName: string) => {
+        removed.push(hostContainerId, `ambassador-of:${containerName}`);
+      },
+      deletePrimaryById: async (hostContainerId: string) => {
+        removed.push(hostContainerId);
+      },
+    };
+
+    await executeContainerDelete(
+      {
+        id: "job-2",
+        organization_id: ORG_ONE,
+        data: { containerId: lastId, organizationId: ORG_ONE },
+      } as never,
+      { provider, store } as never,
+    );
+
+    expect(removed).toEqual(["docker-last", "ambassador-of:app-8a8a8a8a8a8a-g00000001"]);
   });
 });

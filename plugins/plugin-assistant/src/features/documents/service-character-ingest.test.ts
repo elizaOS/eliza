@@ -4,6 +4,9 @@
  * AgentRuntime, model registry, and in-memory adapter.
  */
 
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Character, Memory, UUID } from "@elizaos/core";
 import { AgentRuntime, ElizaError, MemoryType, ModelType } from "@elizaos/core";
 import { createMockRuntime, MOCK_AGENT_ID } from "@elizaos/testing";
@@ -374,4 +377,150 @@ describe("DocumentService character document ingestion boot races", () => {
       getStoredMemories(runtime, DOCUMENT_FRAGMENTS_TABLE),
     ).resolves.toEqual([]);
   });
+});
+
+describe("DocumentService character document changes", () => {
+  test("drops the old document when a character's knowledge text changes", async () => {
+    const runtime = await createRealRuntime();
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async (_runtime, params: { text?: string }) =>
+        embeddingFor(params.text ?? ""),
+      "document-character-ingest-test",
+      1_000,
+    );
+
+    await new DocumentService(runtime).processCharacterDocuments([
+      "Our office is at 1 Main St.",
+    ]);
+    // The character is edited and the agent boots again.
+    await new DocumentService(runtime).processCharacterDocuments([
+      "Our office is at 2 Oak Ave.",
+    ]);
+
+    const documents = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(documents.map((document) => document.content.text)).toEqual([
+      "Our office is at 2 Oak Ave.",
+    ]);
+    const fragments = await getStoredMemories(
+      runtime,
+      DOCUMENT_FRAGMENTS_TABLE,
+    );
+    expect(
+      fragments.some((fragment) =>
+        fragment.content.text?.includes("1 Main St"),
+      ),
+    ).toBe(false);
+  }, 30_000);
+
+  async function createEmbeddingRuntime(): Promise<AgentRuntime> {
+    const runtime = await createRealRuntime();
+    runtime.registerModel(
+      ModelType.TEXT_EMBEDDING,
+      async (_runtime, params: { text?: string }) =>
+        embeddingFor(params.text ?? ""),
+      "document-character-ingest-test",
+      1_000,
+    );
+    return runtime;
+  }
+
+  function storedTexts(documents: Memory[]): Array<string | undefined> {
+    return documents.map((document) => document.content.text).sort();
+  }
+
+  const tempDirs: string[] = [];
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function makeTempDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "character-documents-"));
+    tempDirs.push(dir);
+    return dir;
+  }
+
+  test("keeps a file document when its declared path is missing at boot", async () => {
+    const runtime = await createEmbeddingRuntime();
+    const filePath = join(makeTempDir(), "handbook.md");
+    writeFileSync(filePath, "The handbook says lunch is at noon.");
+
+    await new DocumentService(runtime).processCharacterDocuments([
+      { path: filePath },
+      "Inline character fact.",
+    ]);
+    const before = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(before).toHaveLength(2);
+
+    rmSync(filePath);
+    await new DocumentService(runtime).processCharacterDocuments([
+      { path: filePath },
+      "Inline character fact.",
+    ]);
+
+    const after = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(after.map((document) => document.id).sort()).toEqual(
+      before.map((document) => document.id).sort(),
+    );
+    expect(storedTexts(after)).not.toContain(filePath);
+  }, 30_000);
+
+  test("keeps directory documents when the folder is missing or empty at boot", async () => {
+    const runtime = await createEmbeddingRuntime();
+    const directory = join(makeTempDir(), "knowledge");
+    mkdirSync(directory);
+    writeFileSync(join(directory, "a.txt"), "Folder fact one.");
+    writeFileSync(join(directory, "b.txt"), "Folder fact two.");
+
+    await new DocumentService(runtime).processCharacterDocuments([
+      { path: directory },
+    ]);
+    const before = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(before).toHaveLength(2);
+
+    // The folder is briefly empty (e.g. a volume not mounted yet).
+    rmSync(join(directory, "a.txt"));
+    rmSync(join(directory, "b.txt"));
+    await new DocumentService(runtime).processCharacterDocuments([
+      { path: directory },
+    ]);
+    expect(
+      (await getStoredMemories(runtime, DOCUMENTS_TABLE))
+        .map((document) => document.id)
+        .sort(),
+    ).toEqual(before.map((document) => document.id).sort());
+
+    // The folder is missing entirely.
+    rmSync(directory, { recursive: true, force: true });
+    await new DocumentService(runtime).processCharacterDocuments([
+      { path: directory },
+    ]);
+    const after = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(after.map((document) => document.id).sort()).toEqual(
+      before.map((document) => document.id).sort(),
+    );
+    expect(storedTexts(after)).not.toContain(directory);
+  }, 30_000);
+
+  test("treats a missing path-like plain string as a failed load, not inline text", async () => {
+    const runtime = await createEmbeddingRuntime();
+    const directory = join(makeTempDir(), "docs");
+    mkdirSync(directory);
+    writeFileSync(join(directory, "a.txt"), "Plain-string folder fact.");
+
+    await new DocumentService(runtime).processCharacterDocuments([directory]);
+    const before = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(before).toHaveLength(1);
+
+    rmSync(directory, { recursive: true, force: true });
+    await new DocumentService(runtime).processCharacterDocuments([directory]);
+
+    const after = await getStoredMemories(runtime, DOCUMENTS_TABLE);
+    expect(after.map((document) => document.id)).toEqual(
+      before.map((document) => document.id),
+    );
+    expect(storedTexts(after)).not.toContain(directory);
+  }, 30_000);
 });

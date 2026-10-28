@@ -443,7 +443,12 @@ export class LifeOpsRepository {
   }
 
   async deleteGoal(agentId: string, goalId: string): Promise<void> {
+    await this.clearGoalReferences(agentId, goalId);
     return this.goalsRepo.deleteGoal(agentId, goalId);
+  }
+
+  async clearGoalReferences(agentId: string, goalId: string): Promise<void> {
+    return this.scheduleProjections.clearGoalReferences(agentId, goalId);
   }
 
   async upsertGoalLink(link: LifeOpsGoalLink): Promise<void> {
@@ -771,6 +776,15 @@ export class LifeOpsRepository {
     ...args: Parameters<InboxCacheRepository["listCachedInboxMessages"]>
   ): ReturnType<InboxCacheRepository["listCachedInboxMessages"]> {
     return this.inboxCache.listCachedInboxMessages(...args);
+  }
+  deleteCachedInboxMessagesForGmailAccount(
+    ...args: Parameters<
+      InboxCacheRepository["deleteCachedInboxMessagesForGmailAccount"]
+    >
+  ): ReturnType<
+    InboxCacheRepository["deleteCachedInboxMessagesForGmailAccount"]
+  > {
+    return this.inboxCache.deleteCachedInboxMessagesForGmailAccount(...args);
   }
   markCachedInboxMessageRead(
     ...args: Parameters<InboxCacheRepository["markCachedInboxMessageRead"]>

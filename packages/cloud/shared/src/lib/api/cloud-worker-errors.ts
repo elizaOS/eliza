@@ -1,7 +1,7 @@
 /**
  * Canonical JSON error helpers for the Cloud API Worker (Hono).
  *
- * Shape matches `packages/lib/api/errors.ts` `ApiError.toJSON()`:
+ * Shape matches `packages/cloud/shared/src/lib/api/errors.ts` `ApiError.toJSON()`:
  * { success: false, error: <message>, code: <code>, details?: ... }
  */
 
@@ -67,10 +67,14 @@ export class ApiError extends HTTPException {
   }
 
   toJSON() {
+    const retryAfterSeconds = this.details?.retryAfterSeconds;
     return {
       success: false,
       error: this.message,
       code: this.code,
+      // Native clients read retry timing from the body only (no headers).
+      ...(typeof retryAfterSeconds === "number" &&
+        Number.isFinite(retryAfterSeconds) && { retryAfterSeconds }),
       ...(this.details && { details: this.details }),
     };
   }
@@ -302,7 +306,10 @@ export function failureResponse(c: Context, error: unknown): Response {
     }
   }
   if (error instanceof ApiError) {
-    return c.json(error.toJSON(), error.status as 400);
+    const body = error.toJSON();
+    return "retryAfterSeconds" in body
+      ? c.json(body, error.status as 400, { "Retry-After": String(body.retryAfterSeconds) })
+      : c.json(body, error.status as 400);
   }
   if (error instanceof HTTPException) {
     return c.json(

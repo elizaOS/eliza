@@ -560,6 +560,8 @@ describe("chatDbMessageToPublicShape", () => {
       chatId: "iMessage;-;+15551234567",
       timestamp: 1_700_000_000_000,
       isFromMe: false,
+      chatType: "direct",
+      guid: "guid-42",
       hasAttachments: true,
       attachmentPaths: ["/tmp/image.png"],
     });
@@ -672,7 +674,8 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
   }
 
   async function makeFixtureDb(
-    skip: (reason?: string) => void
+    skip: (reason?: string) => void,
+    appleDate: (seconds: number) => string = String
   ): Promise<{ path: string; cleanup: () => void }> {
     const dir = mkdtempSync(join(tmpdir(), "imessage-chatdb-test-"));
     const path = join(dir, "chat.db");
@@ -768,27 +771,27 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
     db.run("INSERT INTO handle (ROWID, id, service) VALUES (2, '+15559999999', 'iMessage')");
 
     db.run(
-      "INSERT INTO chat (ROWID, chat_identifier, display_name, service_name, style, last_read_message_timestamp) VALUES (1, 'iMessage;-;+15551234567', NULL, 'iMessage', 45, 2000)"
+      `INSERT INTO chat (ROWID, chat_identifier, display_name, service_name, style, last_read_message_timestamp) VALUES (1, 'iMessage;-;+15551234567', NULL, 'iMessage', 45, ${appleDate(2000)})`
     );
     db.run(
-      "INSERT INTO chat (ROWID, chat_identifier, display_name, service_name, style, last_read_message_timestamp) VALUES (2, 'iMessage;+;group-abc', 'Weekend Plans', 'iMessage', 43, 3000)"
+      `INSERT INTO chat (ROWID, chat_identifier, display_name, service_name, style, last_read_message_timestamp) VALUES (2, 'iMessage;+;group-abc', 'Weekend Plans', 'iMessage', 43, ${appleDate(3000)})`
     );
     db.run("INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (1, 1)");
     db.run("INSERT INTO chat_handle_join (chat_id, handle_id) VALUES (2, 2)");
 
     // Seconds-scale Apple date for simplicity: 1000 = 2001-01-01 +1000s
     db.run(
-      "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service, cache_has_attachments) VALUES (10, 'guid-10', 'first', 1000, 0, 1, 'iMessage', 1)"
+      `INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service, cache_has_attachments) VALUES (10, 'guid-10', 'first', ${appleDate(1000)}, 0, 1, 'iMessage', 1)`
     );
     db.run(
-      "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (11, 'guid-11', 'outbound reply', 2000, 1, 1, 'iMessage')"
+      `INSERT INTO message (ROWID, guid, text, date, date_read, is_from_me, handle_id, service) VALUES (11, 'guid-11', 'outbound reply', ${appleDate(2000)}, ${appleDate(2500)}, 1, 1, 'iMessage')`
     );
     db.run(
-      "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (12, 'guid-12', 'group hello', 3000, 0, 2, 'iMessage')"
+      `INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (12, 'guid-12', 'group hello', ${appleDate(3000)}, 0, 2, 'iMessage')`
     );
     // Null-text row with no attributedBody — decoder miss, should be skipped.
     db.run(
-      "INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (13, 'guid-13', NULL, 4000, 0, 1, 'iMessage')"
+      `INSERT INTO message (ROWID, guid, text, date, is_from_me, handle_id, service) VALUES (13, 'guid-13', NULL, ${appleDate(4000)}, 0, 1, 'iMessage')`
     );
     db.run(
       "INSERT INTO attachment (ROWID, guid, transfer_name, filename, mime_type, uti, total_bytes, is_sticker) VALUES (1, 'att-guid-1', 'photo.png', '~/Library/Messages/Attachments/aa/photo.png', 'image/png', 'public.png', 321, 0)"
@@ -822,6 +825,41 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
       // (with empty text) so the cursor can advance past it — the service
       // layer skips empty-text rows before dispatch.
       expect(rowIds).toEqual([10, 11, 12, 13]);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("reads the nanosecond Apple dates modern macOS writes", async ({ skip }) => {
+    // macOS 10.13+ stores chat.db dates as nanoseconds since 2001-01-01.
+    // Any date after 2001-04-15 is past Number.MAX_SAFE_INTEGER there.
+    const fixtureStartMs = Date.UTC(2026, 9, 18);
+    const fixtureStartSeconds = BigInt((fixtureStartMs - Date.UTC(2001, 0, 1)) / 1000);
+    const { path, cleanup } = await makeFixtureDb(skip, (seconds) =>
+      ((fixtureStartSeconds + BigInt(seconds)) * 1_000_000_000n).toString()
+    );
+    const at = (seconds: number) => fixtureStartMs + seconds * 1000;
+    try {
+      const reader = await openChatDb(path);
+      expect(reader).not.toBeNull();
+      if (!reader) return;
+
+      const rows = reader.fetchNewMessages(0, 100);
+      expect(rows.map((r) => [r.rowId, r.timestamp])).toEqual([
+        [10, at(1000)],
+        [11, at(2000)],
+        [12, at(3000)],
+        [13, at(4000)],
+      ]);
+      expect(rows.find((r) => r.rowId === 11)?.dateRead).toBe(at(2500));
+      expect(reader.listMessages({ limit: 3 }).map((r) => r.rowId)).toEqual([11, 12, 13]);
+      expect(reader.listChats().map((c) => [c.chatId, c.lastReadMessageTimestamp])).toEqual([
+        ["iMessage;+;group-abc", at(3000)],
+        ["iMessage;-;+15551234567", at(2000)],
+      ]);
+      expect(reader.getLatestOwnMessageTimestamp()).toBe(at(2000));
 
       reader.close();
     } finally {
@@ -869,6 +907,48 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
           isSticker: false,
         },
       ]);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("fails the poll read when attachment metadata cannot be read", async ({ skip }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+
+      const mutator = openDatabase(path);
+      mutator.run("DROP TABLE message_attachment_join");
+      mutator.close();
+
+      expect(() => reader.fetchNewMessages(0, 100)).toThrow(
+        expect.objectContaining({
+          code: "IMESSAGE_ATTACHMENT_READ_FAILED",
+          context: { rowId: 10 },
+        })
+      );
+
+      const tolerated = reader
+        .fetchNewMessages(0, 100, { tolerateAttachmentReadFailure: new Set([10]) })
+        .find((message) => message.rowId === 10);
+      expect(tolerated?.attachments).toEqual([]);
+      expect(tolerated?.attachmentReadFailed).toBe(true);
+
+      const recovery = openDatabase(path);
+      recovery.run(
+        "CREATE TABLE message_attachment_join (message_id INTEGER, attachment_id INTEGER)"
+      );
+      recovery.run(
+        "INSERT INTO message_attachment_join (message_id, attachment_id) VALUES (10, 1)"
+      );
+      recovery.close();
+
+      expect(reader.fetchNewMessages(0, 100)[0]?.attachments).toHaveLength(1);
 
       reader.close();
     } finally {
@@ -953,6 +1033,34 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
 
       // Max ROWID in the fixture is 13 (the null-text row), so
       // getLatestRowId must still see it — only fetchNewMessages filters it.
+      expect(reader.getLatestRowId()).toBe(13);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("getLatestRowId throws instead of returning 0 when the tip query fails", async ({ skip }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+
+      // Another connection holds an exclusive lock, as Messages.app does
+      // while it writes; the read-only reader then gets SQLITE_BUSY.
+      const writer = openDatabase(path);
+      writer.run("BEGIN EXCLUSIVE");
+      try {
+        expect(() => reader.getLatestRowId()).toThrow(
+          expect.objectContaining({ code: "IMESSAGE_CHATDB_TIP_READ_FAILED" })
+        );
+      } finally {
+        writer.run("ROLLBACK");
+        writer.close();
+      }
       expect(reader.getLatestRowId()).toBe(13);
 
       reader.close();
@@ -1099,6 +1207,23 @@ describe("normalizeContactHandle", () => {
   it("trims whitespace around the input", () => {
     expect(normalizeContactHandle("  +15551234567  ")).toBe("+15551234567");
   });
+
+  it("keys a contact phone the way the connector keys a chat.db handle", () => {
+    // chat.db stores E.164 handles; the connector keys them with
+    // formatPhoneNumber. Each contact spelling must reach that same key.
+    const cases: Array<[contact: string, chatDbHandle: string]> = [
+      ["1 (555) 123-4567", "+15551234567"], // country code without "+"
+      ["+1 (555) 123-4567", "+15551234567"], // "+" form, US
+      ["+44 20 7946 0958", "+442079460958"], // "+" form, UK
+      ["44 20 7946 0958", "+442079460958"], // UK country code without "+"
+    ];
+    for (const [contact, chatDbHandle] of cases) {
+      expect(normalizeContactHandle(contact)).toBe(formatPhoneNumber(chatDbHandle));
+    }
+    // A national number carries no country, so it cannot be mapped to an
+    // E.164 handle; it keeps its digits, as formatPhoneNumber does.
+    expect(normalizeContactHandle("(555) 987-6543")).toBe(formatPhoneNumber("5559876543"));
+  });
 });
 
 describe("parseContactsOutput", () => {
@@ -1120,6 +1245,11 @@ describe("parseContactsOutput", () => {
     expect(map.get("+15551234567")?.name).toBe("Alex Chen");
     expect(map.get("mom@example.com")?.name).toBe("Mom");
     expect(map.get("+15550000000")?.name).toBe("Dad");
+  });
+
+  it("resolves a contact stored without the + prefix by its E.164 chat.db handle", () => {
+    const map = parseContactsOutput("phone\t1 (555) 123-4567\tAlex Chen");
+    expect(map.get(normalizeContactHandle("+15551234567"))?.name).toBe("Alex Chen");
   });
 
   it("skips rows with missing handle or name", () => {

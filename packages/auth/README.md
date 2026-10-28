@@ -24,6 +24,8 @@ Use these barrels in repository consumers. Explicit old account/vault paths and
 Hosted login uses `postgres-js`; embedded login owns PGlite. Unsupported database
 drivers fail explicitly. Runtime shutdown drains webhook deliveries before closing
 its database, Redis connection and configuration-dependent vault cache.
+Without configured Redis, hosted and embedded login keep request replay receipts
+in their existing database store. A configured Redis outage does not switch stores.
 
 ## Development
 
@@ -45,14 +47,48 @@ The default tests also verify the built deployment package. The login tests use
 local OpenSSL to generate ephemeral attestation certificates and verify that
 untrusted chains cannot trigger revocation requests.
 
+## Registered application OAuth returns
+
+`GET /auth/oauth/google/app-readiness` checks tenant policy, the app's registered
+HTTPS redirect, existing Google credentials and error-return configuration. It
+returns `{ok:true, appAuth:1, tenantId, redirectUri}` without creating a challenge.
+Configure `STEWARD_OAUTH_APP_ERROR_REDIRECTS` with each exact registered HTTPS
+callback. Validated-state failures return a bounded error/state fragment.
+Unknown state cannot select an app return. Google uses the existing Cloud client.
+Each app owns its login view, branding and return handling. No product route or
+product identity is needed in the shared login service.
+
 ## Native enrollment
 
 `createNativeCloudAuth` accepts a registered application binding, encrypted pending
 storage, and host activation callbacks. Activation must call its guard immediately
 before committing. Keep storage and callbacks outside the renderer. Enrollment owns
 PKCE, acknowledgement, cancellation fencing and remote revocation receipts.
+A finished sign-in returns `{status: "authenticated", connected: true, created}`.
+`created` is Cloud's `accountCreated` from the mobile connect grant: `true` when
+this sign-in made the Cloud account, `false` when it existed. It is kept with the
+pending receipt for `resume`, and it is absent when Cloud did not send it.
 
-The stored app credential stays inference-only. A successful code `verify`/`mfa`
+Google sign-in is API-only and off by default. Configure `googleRedirectUri`
+(an https address, or loopback `http://127.0.0.1|localhost|[::1]` with its exact
+port) that the host owns and that is on the Auth tenant's redirect allowlist;
+pass `authClientId` (`/^[a-z0-9][a-z0-9_-]{2,63}$/`) to use an app client's own
+allowlist. `config` then adds `methods: ["email", "phone", "google"]`.
+`start` (`{method: "google"}`) returns `{status: "browser", sessionId, url,
+expiresAt}`: open `url` (Auth's `/auth/oauth/google/authorize` with S256 PKCE,
+`state` and `mfa=exchange`) in a browser. The verifier and state never leave the
+attempt, which lasts as long as Auth's authorize state (five minutes).
+`google-return` (`{callbackUrl}` only) takes the full return address, including
+the fragment Auth puts the one-time `code` and `state` in. It requires the exact
+configured origin, path and query; a different `state` is refused with
+`google_state_mismatch` and leaves the attempt alone. A matched return is single
+use: the host calls `POST /auth/oauth/exchange` with the verifier, then enrolls
+through the same mobile PKCE grant, acknowledgement and activation as a code
+sign-in. Auth's failure link (`?error=…&state=…`) ends the attempt with
+`google_sign_in_failed`. A second factor returns `{status: "mfa"}` for the
+existing `mfa` operation. The SDK route is `POST /cloud/native/google/return`.
+
+The stored app credential stays inference-only. A successful code `verify`/`mfa` (or `google-return`)
 also keeps that Steward session in memory as billing authority, bound to the
 activated credential. `await auth.billingAuthority()` returns `{token, expiresAt}`
 or `null`. Use it only as `Authorization: Bearer` on organization billing routes
@@ -123,3 +159,111 @@ organization against the connected credential. Cloud billing accepts personal
 sessions too; no additional token store is introduced. Cloud-tenant authority
 cannot authorize account-method routes. JWT inspection is admission only;
 Auth and Cloud retain signature and ownership validation.
+
+Hosts may opt into `activateVerified(record, guard)` instead of legacy `activate`.
+After the exact mobile credential is acknowledged, enrollment reads `/api/v1/user`
+with that credential and binds the Cloud user ID and organization ID to the API
+origin. It saves this owner with the pending receipt before activation; retries
+re-verify the same credential and refuse a changed owner. The callback receives
+`{version:1, credential, credentialId, owner:{authority,userId,organizationId}}`.
+Keep the complete record native and commit it atomically under the host owner
+lock, with the guard checked at the commit boundary. No owner fields are returned
+to the renderer. Existing consumers keep their activation callback and receipt
+format. A renderer field, personal agent ID, decoded JWT subject or credential
+fingerprint is not a verified Cloud owner. The optional native
+`VerifiedAccountCredentialStore` provides encrypted whole-record compare-and-exchange;
+hosts still need to wire it to their private process protocol and lifecycle.
+
+## Native Android sign-in
+
+`android/` is a Gradle library (`ai.eliza.auth.cloud`) for apps that sign in on
+their own native screens: email and SMS codes, the Android Google account picker,
+MFA, the mobile App Auth connect/token/ack tail, acknowledgement resume, best-effort
+replaced-key revocation and per-method readiness. A host subclasses
+`CloudSignInPlugin`, declares its Capacitor name and returns a `CloudSignInConfig`
+(App Auth client id, device and product names, Steward app client for native Google,
+admitted deployments and its installed storage names) plus its protected
+`CloudCredentialSlots`. Admit staging only in development builds. Codes, PKCE
+verifiers and Steward sessions stay native; results carry no secret. Run
+`bun run --cwd packages/auth test:native-android` (needs a JDK); it checks the
+policy and the exact plugin methods on a plain JVM, not on a device.
+
+The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
+(`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
+`NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
+`nativeSignInCodeStarted`, `nativeSignInVerified`, `nativeSignInGoogleOutcome`,
+`nativeSignInReadiness`), the failure codes the plugin rejects with and owner-facing copy
+that takes the app's and the deployment's names. An answer with an extra key, another
+deployment or a malformed time is refused as `unavailable`.
+
+## Optional Blooio phone-code delivery
+
+Twilio Verify remains the default when its existing environment is configured.
+To select Blooio explicitly for ordinary phone codes, set `SMS_PROVIDER=blooio`,
+`BLOOIO_API_KEY`, and an owned E.164 sender in `BLOOIO_FROM_NUMBER` on the login
+server. Neither value is inferred from an agent, webhook, account, or another
+provider. Missing Blooio configuration fails validation; delivery failure does
+not fall back to Twilio.
+
+Blooio only delivers the text. `PhoneAuth` still creates six-digit codes and
+retains its existing purpose-and-phone hash, five-minute expiry, atomic one-use
+verification, and send/verify abuse guards. Provider acceptance is not proof
+that the recipient received the code. No webhook, agent history, model call,
+new login token, or database migration is added. Real delivery and Cloud account
+continuity still require separate testing with the existing authorized key and
+sender after review.
+
+## Cloudflare login service
+
+`cloudflare/wrangler.toml` runs the same Bun login server in a Cloudflare
+Container. Deploy staging with `bun run --cwd packages/auth cloudflare:deploy:staging`.
+The runtime stays inactive until deployed with `--var LOGIN_ENABLED:true`.
+State-transfer endpoints remain available while inactive. Deactivating sends SIGTERM
+to a configured runtime; verify the container is stopped before restarting another
+writer. A 503 response alone is not proof that draining has finished.
+Copy the existing environment's identity, vault, signing, provider, and database
+secrets with Wrangler secret bulk input; retain their exact values so accounts,
+sessions, passkeys, and encrypted data remain compatible. Never commit that input.
+The container owns no durable files. PostgreSQL remains the authoritative store
+on Railway; use its external connection endpoint from Cloudflare. Retire only
+the application services after cutover, preserving the database services.
+
+Redis can remain on Railway. Use its authenticated external `rediss://` endpoint
+as `REDIS_URL`. For a private certificate authority, set `STEWARD_REDIS_TLS_CA`
+to its PEM certificate on the login Worker. Both shared-state and token-revocation
+connections use this trust setting and still verify the server certificate and
+hostname. No certificate file or custom image is needed. Keep the existing Redis
+database and credentials; leave the optional native state backend URLs unset.
+
+The edge overwrites forwarding headers and the container trusts one proxy hop.
+Cloud's proxy signs its edge-observed client IP with the existing shared
+`STEWARD_REQUEST_SIGNING_SECRET`; deploy this proxy before routing cross-zone
+traffic to login, preserving independent client rate-limit buckets.
+To move rate limits from Redis, set `STEWARD_RATE_LIMIT_URL` to the login Worker's
+`/internal/rate-limit` URL and
+set the same `STEWARD_RATE_LIMIT_TOKEN` secret on that Worker. Vault and proxy
+sliding-window admission then uses its durable SQLite counter store. Missing or
+failed admission never retries against Redis; transfer existing counters before
+switching the configured backend. Set `STEWARD_AGGREGATION_URL` to the Worker's
+`/internal/aggregation` URL and matching `STEWARD_AGGREGATION_TOKEN` to use its
+durable policy-event store. Transfer existing rolling-window events before
+switching; a configured store failure denies policy evaluation. For real-time
+spend telemetry, configure `/internal/spend-metrics` as `STEWARD_SPEND_METRICS_URL`
+and set matching `STEWARD_SPEND_METRICS_TOKEN`. Transfer live period totals and
+host breakdowns before switching. Vault spend enforcement remains in PostgreSQL;
+this telemetry backend does not implement the unused Redis reservation helpers.
+It also persists replay telemetry. Its authenticated `replay-import` operation
+requires `sourceQuiesced: true`, preserves original expiries, and atomically
+rejects conflicting live counters before publication.
+Point Cloud's `LOGIN_API_URL` at the verified login Worker only after login,
+refresh, logout, provider callbacks, and database readiness pass in staging.
+Preserve the original service until production acceptance and rollback checks pass.
+
+For Redis login-state transfer, pipe a JSON snapshot with `capturedAtMs` and
+`entries: [{key, value, expiresAtMs}]` into
+`bun --conditions=eliza-source packages/auth/src/server/migrate-redis-state.ts`.
+It validates without writing. Only after stopping source and destination writers,
+pass `--apply-source-quiesced` to publish atomically. Conflicting live values fail;
+expired records are skipped and existing expiration times are never extended.
+Snapshots contain secrets: keep them out of logs and Git. Other Redis records,
+including enforcement counters and telemetry, need their own transfer.

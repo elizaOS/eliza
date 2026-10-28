@@ -1,3 +1,7 @@
+import {
+  bindNativeViewHost,
+  hasNativeViewRenderer,
+} from "./native-view-renderer.ts";
 import "./artifact-share-role-resolver.ts";
 import "./waifu-chat-role-resolver.ts";
 /**
@@ -55,7 +59,11 @@ import {
   resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet/transactions";
 import { WebSocket, WebSocketServer } from "ws";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import {
+  loadElizaConfig,
+  resolveConfigWritePath,
+  saveElizaConfig,
+} from "../config/config.ts";
 import {
   createDevCloudConfigAuthorityView,
   materializeDevCloudConfigAuthorityView,
@@ -159,7 +167,10 @@ import {
 } from "./blocked-object-keys.ts";
 import { resolveRegisteredTokenRoleAccess } from "./boundary-role-resolver.ts";
 import { handleStandaloneCloudPairRoute } from "./cloud-pair-route.ts";
-import { replaceConfigInPlace } from "./config-state.ts";
+import {
+  replaceConfigInPlace,
+  setLiveElizaConfigSource,
+} from "./config-state.ts";
 import { resolveConnectorHealthIntervalMs } from "./connector-health.ts";
 import { handleContextInspectorRoute } from "./context-inspector-routes.ts";
 import { restoreConversationsFromDb as restoreConversationsFromDbImpl } from "./conversation-restore.ts";
@@ -171,9 +182,11 @@ import {
 } from "./device-action-routes.ts";
 import { flushEarlyLogs, listenForUiLogs } from "./early-logs.ts";
 import {
+  buildEphemeralAgentEventEnvelope,
   createApiEventHub,
   createEventSocketBackpressureGuard,
   createEventSocketLivenessSweep,
+  EPHEMERAL_AGENT_EVENT_STREAMS,
 } from "./event-hub.ts";
 import {
   type ApiStatusComposer,
@@ -432,7 +445,13 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
   nativeReaderWiredRuntimes.add(runtime);
   const requestingHost = (clientId: string): object => {
     const scope = getViewClientScope();
-    if (!scope || scope.clientId !== clientId) {
+    if (
+      !scope ||
+      scope.clientId !== clientId ||
+      !scope.request?.authorization?.ok ||
+      scope.request.runtime !== runtime ||
+      scope.request.signal.aborted
+    ) {
       throw new ElizaError(
         "Native browser requires the requesting view client",
         { code: "VIEW_CLIENT_REQUIRED" },
@@ -472,6 +491,14 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
             hostKey,
             broadcastWsToClientId: sendToClient,
             runtime,
+            userRoles: [getViewClientScope()!.request!.authorization!.role],
+            ownerId:
+              getViewClientScope()!.request!.authorization!.identityId ??
+              getViewClientScope()!.request!.authorization!.principal ??
+              resolveHostSessionAccessContext(
+                getViewClientScope()!.request!.authorization!,
+                runtime,
+              )?.requesterEntityId,
           },
         );
         if (!reply.success)
@@ -483,6 +510,11 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
       },
       navigate: async (clientId, url) => {
         const hostKey = requestingHost(clientId);
+        if (hasNativeViewRenderer(runtime, hostKey, clientId))
+          throw new ElizaError(
+            "Opening a new destination in this app requires its reviewed device navigation operation",
+            { code: "NATIVE_BROWSER_REVIEW_REQUIRED" },
+          );
         const [
           { getViewsBroadcastWsToClientId },
           { createShellNavigateViewWsFrame },
@@ -538,6 +570,14 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
             hostKey,
             broadcastWsToClientId: sendToClient,
             runtime,
+            userRoles: [getViewClientScope()!.request!.authorization!.role],
+            ownerId:
+              getViewClientScope()!.request!.authorization!.identityId ??
+              getViewClientScope()!.request!.authorization!.principal ??
+              resolveHostSessionAccessContext(
+                getViewClientScope()!.request!.authorization!,
+                runtime,
+              )?.requesterEntityId,
           },
         );
         if (!reply.success)
@@ -552,7 +592,7 @@ function wireNativeBrowserPageReader(runtime: AgentRuntime | null): void {
   bindReader();
 }
 // On mobile the agent bundle aliases `@elizaos/plugin-browser` to a null-stub
-// (scripts/mobile-stubs/null-plugin.ts): the module imports fine but its
+// (packages/agent/scripts/mobile-stubs/null-plugin.ts): the module imports fine but its
 // workspace functions are absent, so calling one throws an uncaught TypeError
 // that surfaces as a 500 (and a raw "X is not a function" in the /browser view).
 // The browser workspace is desktop-only, so resolve the plugin only when it
@@ -604,7 +644,10 @@ const optionalPluginSpecifiers = {
   workflow: "@elizaos/plugin-workflow/trigger-routes",
 } as const;
 const optionalPluginImports = {
-  capacitor: () => importOptionalPlugin(optionalPluginSpecifiers.capacitor),
+  // The mobile host has no node_modules. Keep this specifier visible to the
+  // bundler, as with the native browser loader above.
+  capacitor: () =>
+    import(/* @vite-ignore */ "@elizaos/plugin-native-inference/host-bridge"),
   cloud: () => importOptionalPlugin(optionalPluginSpecifiers.cloud),
   imessage: () => importOptionalPlugin(optionalPluginSpecifiers.imessage),
   mcp: () => importOptionalPlugin(optionalPluginSpecifiers.mcp),
@@ -965,6 +1008,7 @@ export interface RuntimeRestartOptions {
   disposeCurrentBeforeBuild?: boolean;
 }
 interface RequestContext {
+  getAuthenticationRuntime?: () => AgentRuntime | null;
   composeStatus?: ApiStatusComposer;
   hostRuntimeMode?: RuntimeModeSnapshot;
   restartRequiresRuntimeDisposal?: boolean;
@@ -1014,6 +1058,52 @@ function getOrCreateRuntimeOperationManager(
     strategies: { cold: coldStrategy, hot: hotStrategy },
   });
   return cachedRuntimeOperationManager;
+}
+
+/** API requests only the owner may make; reads of settings stay open. */
+function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
+  const write = method !== "GET" && method !== "HEAD";
+  const under = (base: string) =>
+    pathname === base || pathname.startsWith(`${base}/`);
+  return (
+    under("/api/memory") ||
+    under("/api/memories") ||
+    // Served by the memory handler from the same stored notes.
+    under("/api/context/quick") ||
+    // Whole-agent data: export/snapshot carry the memories and secrets,
+    // restore/import/reset replace or wipe them.
+    under("/api/snapshot") ||
+    pathname === "/api/restore" ||
+    under("/api/backups") ||
+    under("/api/agent/export") ||
+    (write &&
+      [
+        "import",
+        "reset",
+        "start",
+        "stop",
+        "restart",
+        "pause",
+        "resume",
+        "autonomy",
+      ].some((op) => under(`/api/agent/${op}`))) ||
+    // Legacy restart endpoint: exits and restarts the whole agent process.
+    (write && pathname === "/api/restart") ||
+    (write &&
+      (pathname.startsWith("/api/wallet/") ||
+        under("/api/config") ||
+        under("/api/character") ||
+        // Deleting a stored file removes the owner's attachments for good.
+        under("/api/files") ||
+        // Shell, trading, automation and computer-use permissions.
+        under("/api/permissions") ||
+        // Bot tokens and allowlists of the owner's connectors. The provider's
+        // OAuth callback is authenticated by its state/code, not the owner.
+        (under("/api/connectors") &&
+          !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
+        // Who receives the model traffic, and with which key.
+        pathname === "/api/provider/switch"))
+  );
 }
 
 // One process-wide governance gate shared across runtime (re)registrations, so a
@@ -1228,6 +1318,10 @@ async function handleRequestForViewClient(
   ctx?: RequestContext,
 ): Promise<void> {
   bindViewRequestHost(req, state);
+  const authenticationRuntime = () =>
+    ctx?.getAuthenticationRuntime
+      ? ctx.getAuthenticationRuntime()
+      : state.runtime;
   const method = req.method ?? "GET";
   let url: URL;
   try {
@@ -1297,7 +1391,7 @@ async function handleRequestForViewClient(
       else if (typeof resolveAuthorization === "function") {
         hostSessionAuthorization = await resolveAuthorization(
           req,
-          state.runtime,
+          authenticationRuntime(),
           {
             allowCookieAuth: allowHostCookieAuth,
             allowTrustedLocalBypass: !requiresDeviceIdentity(req, pathname),
@@ -1311,7 +1405,7 @@ async function handleRequestForViewClient(
         // standalone bearer schemes are evaluated by the normal server gates.
         const authorized =
           allowHostCookieAuth && typeof authorize === "function"
-            ? await authorize(req, state.runtime)
+            ? await authorize(req, authenticationRuntime())
             : false;
         // Legacy boolean-only hosts can still pass the coarse request gate, but
         // cannot claim OWNER authority for a sensitive account-selection action.
@@ -1529,6 +1623,29 @@ async function handleRequestForViewClient(
     json(res, { error: "Owner role required" }, 403);
     return;
   }
+  // A paired USER session passes the shared gate above. Wallet writes sign,
+  // broadcast or replace the owner's keys; config and character writes change
+  // what the agent runs and who it sends model traffic to; memories are the
+  // owner's private store. Require the owner before any of them dispatch.
+  // Once setup is persisted, onboarding rewrites the same owner config,
+  // credentials and character, so it is owner-only too. Before setup it stays
+  // open, like GET /api/wallet/keys.
+  if (
+    method !== "OPTIONS" &&
+    (isOwnerOnlyApiRequest(method, pathname) ||
+      (method === "POST" &&
+        pathname === "/api/first-run" &&
+        hasPersistedFirstRunState(state.config))) &&
+    !isTrajectoryOwnerRequest(
+      req,
+      method,
+      pathname,
+      await resolveHostSessionAuthorization(),
+    )
+  ) {
+    json(res, { error: "Owner role required" }, 403);
+    return;
+  }
   let automationOwnerEntityId: string | undefined;
   // Trigger definitions and the unified automation feed contain owner-private
   // prompts. Resolve a presented credential without ambient loopback promotion:
@@ -1554,7 +1671,7 @@ async function handleRequestForViewClient(
     const strictResolver = getAgentHostBridge().resolveHttpRequestAuthorization;
     const ownerAuthorization = hasPresentedCredential
       ? strictResolver
-        ? await strictResolver(req, state.runtime, {
+        ? await strictResolver(req, authenticationRuntime(), {
             allowCookieAuth: allowHostCookieAuth,
             allowTrustedLocalBypass: false,
             allowBearerAuth: true,
@@ -2499,37 +2616,24 @@ async function handleRequestForViewClient(
     }
   }
   // ═══════════════════════════════════════════════════════════════════════
-  //  ERC-8004 Registry, Agent self-status, Privy — delegated to agent-status-routes.ts
+  //  Agent self-status — delegated to agent-status-routes.ts
   // ═══════════════════════════════════════════════════════════════════════
   if (
-    (pathname === "/api/agent/self-status" ||
-      pathname.startsWith("/api/registry")) &&
+    pathname === "/api/agent/self-status" &&
     (await (async () => {
-      const { RegistryService } = await import("./registry-service.ts");
-      const getCoreWalletAddresses =
-        pathname === "/api/agent/self-status"
-          ? (await getCoreWalletApi()).getWalletAddresses
-          : null;
+      const { getWalletAddresses } = await getCoreWalletApi();
       return handleAgentStatusRoutes({
-        req,
         res,
         method,
         pathname,
         url,
-        state:
-          pathname === "/api/agent/self-status"
-            ? {
-                ...state,
-                config: createDevCloudConfigAuthorityView(state.config),
-              }
-            : state,
+        state: {
+          ...state,
+          config: createDevCloudConfigAuthorityView(state.config),
+        },
         json,
-        error,
-        readJsonBody,
         deps: {
-          getWalletAddresses: getCoreWalletAddresses
-            ? () => getCoreWalletAddresses(state.runtime?.agentId)
-            : () => ({ evmAddress: null, solanaAddress: null }),
+          getWalletAddresses: () => getWalletAddresses(state.runtime?.agentId),
           resolveWalletCapabilityStatus,
           resolveWalletRpcReadiness,
           resolveTradePermissionMode,
@@ -2550,7 +2654,6 @@ async function handleRequestForViewClient(
                 Promise.resolve(composeSummary.call(service, activeRuntime)),
             };
           },
-          RegistryService,
         },
       });
     })())
@@ -2763,8 +2866,7 @@ async function handleRequestForViewClient(
   }
   // Browser workspace routes (/api/browser-workspace/*) are served by the
   // @elizaos/app-browser plugin via Plugin.routes.
-  // Agent self-status, Privy, and ERC-8004 registry routes are now handled
-  // by handleAgentStatusRoutes above.
+  // Agent self-status is handled by handleAgentStatusRoutes above.
   // ═══════════════════════════════════════════════════════════════════════
   // BSC trade routes and wallet trade execute are handled by registered wallet
   // plugin routes when the relevant backend is installed.
@@ -3251,6 +3353,24 @@ function strictPortBindingEnabled(): boolean {
   const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes";
 }
+/**
+ * The Character view's FILL_BIO / ADD_STYLE_RULE / ADD_MESSAGE_EXAMPLE are
+ * registered per runtime. Deferred startup work only reaches the runtime that
+ * exists when the server binds, so a runtime attached later (bind-first hosts,
+ * restart, start after stop) needs its own registration.
+ */
+function registerBuiltinViewScopedActions(
+  runtime: AgentRuntime | null | undefined,
+  context: string,
+): void {
+  if (!runtime) return;
+  void registerBuiltinViews(runtime).catch((err) => {
+    logger.warn(
+      `[eliza-api] Built-in view registration failed ${context}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
 export async function startApiServer(opts?: {
   /** Compose product status fields before serialization; does not intercept transport. */
   composeStatus?: ApiStatusComposer;
@@ -3282,6 +3402,8 @@ export async function startApiServer(opts?: {
   onRestart?: (options?: RuntimeRestartOptions) => Promise<AgentRuntime | null>;
   /** Fully disposes a live runtime before the lifecycle route reports stopped. */
   onStop?: (runtime: AgentRuntime) => Promise<void>;
+  /** Host-owned session storage while services are stopped. Never used for runtime work. */
+  getAuthenticationRuntime?: () => AgentRuntime | null;
   /** A replacement shares the exact physical store and cannot overlap its predecessor. */
   restartRequiresRuntimeDisposal?: boolean;
   /** Runs after the server atomically publishes the replacement runtime. */
@@ -3391,6 +3513,7 @@ export async function startApiServer(opts?: {
   );
   logger.debug(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);
   let config: ElizaConfig;
+  const configWritePath = resolveConfigWritePath();
   try {
     config = hostConfig ?? loadElizaConfig();
   } catch (err) {
@@ -3564,7 +3687,10 @@ export async function startApiServer(opts?: {
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
   apiLap("pre-createServer (route imports + middleware setup done)");
+  const getAuthenticationRuntime =
+    opts?.getAuthenticationRuntime ?? (() => state.runtime);
   const requestContext: RequestContext = {
+    getAuthenticationRuntime,
     composeStatus: opts?.composeStatus,
     hostRuntimeMode:
       hostConfig === undefined ? undefined : resolveRuntimeMode(hostConfig),
@@ -3574,9 +3700,18 @@ export async function startApiServer(opts?: {
     onRuntimeActivated,
     onRuntimeSwapped: () => {
       bindInProcessApi();
+      registerBuiltinViewScopedActions(state.runtime, "after swap");
+      if (state.runtime)
+        state.connectorHealthMonitor?.setRuntime(state.runtime);
       bindRuntimeStreams(state.runtime);
       wireModelRegistrationBroadcast(state.runtime);
       wireNativeBrowserPageReader(state.runtime);
+      if (state.runtime) {
+        // The new runtime has no dashboard chat delivery until it is
+        // registered again, as updateRuntime does.
+        registerClientChatSendHandler(state.runtime, state);
+        wireProactiveInteractionDecider(state.runtime, state);
+      }
       void wireCoordinatorBridgesWhenReady(state, {
         wireChatBridge: wireCodingAgentChatBridge,
         wireWsBridge: wireCodingAgentWsBridge,
@@ -3646,7 +3781,11 @@ export async function startApiServer(opts?: {
       const unregisterDefault = opts?.skipListen
         ? registerInProcessApi(state.runtime, routeKernel)
         : undefined;
+      const unregisterNative = opts?.skipListen
+        ? bindNativeViewHost(state.runtime, state)
+        : undefined;
       unregisterInProcessApi = () => {
+        unregisterNative?.();
         unregisterHost();
         unregisterDefault?.();
       };
@@ -3766,7 +3905,7 @@ export async function startApiServer(opts?: {
         const generation = session.generation;
         const authorized = await isWebSocketSessionTokenAuthorized(
           session.token,
-          state.runtime,
+          getAuthenticationRuntime(),
         );
         if (
           !authorized ||
@@ -3903,6 +4042,24 @@ export async function startApiServer(opts?: {
       return;
     }
     const unsubAgentEvents = svc.subscribe((event) => {
+      if (EPHEMERAL_AGENT_EVENT_STREAMS.has(event.stream)) {
+        // Live-only (e.g. interim voice transcripts): no replay buffer, no
+        // conversation routing.
+        broadcastWs(
+          buildEphemeralAgentEventEnvelope({
+            type: "agent_event",
+            ts: event.ts,
+            runId: event.runId,
+            seq: event.seq,
+            stream: event.stream,
+            sessionKey: event.sessionKey,
+            agentId: event.agentId,
+            roomId: event.roomId,
+            payload: event.data,
+          }),
+        );
+        return;
+      }
       pushEvent({
         type: "agent_event",
         ts: event.ts,
@@ -4152,7 +4309,7 @@ export async function startApiServer(opts?: {
             if (
               await isWebSocketSessionTokenAuthorized(
                 handshakeToken,
-                state.runtime,
+                getAuthenticationRuntime(),
               )
             ) {
               markWebSocketUpgradeSessionAuthorized(request);
@@ -4370,14 +4527,24 @@ export async function startApiServer(opts?: {
       void sendInitialStatus();
       // Replay stays synchronous so newer live events cannot overtake history
       // while the optional model-readiness probe reads the local registry.
+      // Pagination stays synchronous for the same reason: every page must
+      // drain before the live subscription attaches, or a live event could
+      // be delivered ahead of the history it belongs to.
       try {
-        const replay = selectReplayEvents(
-          state.eventBuffer,
-          replayCursor,
-          DEFAULT_REPLAY_LIMIT,
-        );
-        for (const event of replay) {
-          sendWebSocket(ws, JSON.stringify(event));
+        let cursor = replayCursor;
+        const maxPages =
+          Math.ceil(state.eventBuffer.length / DEFAULT_REPLAY_LIMIT) + 1;
+        for (let page = 0; page < maxPages; page++) {
+          const result = selectReplayEvents(
+            state.eventBuffer,
+            cursor,
+            DEFAULT_REPLAY_LIMIT,
+          );
+          for (const event of result.events) {
+            sendWebSocket(ws, JSON.stringify(event));
+          }
+          if (!result.hasMore || result.nextCursor === null) break;
+          cursor = result.nextCursor;
         }
       } catch (err) {
         logger.error(
@@ -4473,7 +4640,7 @@ export async function startApiServer(opts?: {
             try {
               authorized = await isWebSocketSessionTokenAuthorized(
                 providedToken,
-                state.runtime,
+                getAuthenticationRuntime(),
               );
               if (authorized)
                 wsSessions.set(ws, {
@@ -4934,6 +5101,7 @@ export async function startApiServer(opts?: {
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
     registerRuntimeBuiltinViews(rt);
+    registerBuiltinViewScopedActions(rt, "after update");
     void assertX402RoutesValid(rt).catch((err) => {
       logger.error(
         `[x402] runtime route validation failed after update: ${err instanceof Error ? err.message : String(err)}`,
@@ -4941,6 +5109,7 @@ export async function startApiServer(opts?: {
     });
     state.runtime = rt;
     bindInProcessApi();
+    state.connectorHealthMonitor?.setRuntime(rt);
     state.chatConnectionReady = null;
     state.chatConnectionPromise = null;
     bindRuntimeStreams(rt);
@@ -5211,9 +5380,16 @@ export async function startApiServer(opts?: {
       logger.debug({ error, helper }, `[eliza-api] ${helper} failed`);
     },
   });
+  const releaseLiveConfigSource =
+    hostConfig === undefined
+      ? setLiveElizaConfigSource(() => state.config, configWritePath)
+      : undefined;
   return {
     port: listener.port,
-    close: listener.close,
+    close: async () => {
+      releaseLiveConfigSource?.();
+      await listener.close();
+    },
     updateRuntime,
     runtimeOperations,
     reloadConfigFromDisk,

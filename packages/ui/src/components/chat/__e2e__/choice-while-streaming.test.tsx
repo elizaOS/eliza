@@ -38,8 +38,9 @@ type StreamResult = Awaited<
 >;
 
 let sendChatText: (text: string) => Promise<void>;
-let sendActionMessage: (text: string) => Promise<void>;
+let sendActionMessage: (text: string) => Promise<boolean>;
 let stopChat: () => void;
+let selectedConversation: { current: string | null };
 
 function Harness() {
   const [, setMessages] = useState<ConversationMessage[]>([]);
@@ -89,6 +90,7 @@ function Harness() {
     elizaCloudConnected: false,
     pollCloudCredits: async () => true,
   };
+  selectedConversation = deps.activeConversationIdRef;
   const chat = useChatSend(deps);
   sendChatText = (text) =>
     chat.sendChatText(text, { conversationId: "conv-1" });
@@ -165,7 +167,7 @@ it("delivers a choice picked while the previous reply is still streaming", async
 it("sends an action once when it is activated twice during a stream", async () => {
   const { sentTexts, finishFirstTurn } = await startStreamingTurn();
 
-  let actions!: Promise<void[]>;
+  let actions!: Promise<boolean[]>;
   act(() => {
     actions = Promise.all([
       sendActionMessage("[action:refresh]"),
@@ -175,7 +177,7 @@ it("sends an action once when it is activated twice during a stream", async () =
 
   await finishFirstTurn();
   await act(async () => {
-    await actions;
+    expect(await actions).toEqual([true, true]);
   });
 
   expect(sentTexts).toEqual(["deploy my app", "[action:refresh]"]);
@@ -184,7 +186,7 @@ it("sends an action once when it is activated twice during a stream", async () =
 it("does not send a waiting action after Stop", async () => {
   const { sentTexts, finishFirstTurn } = await startStreamingTurn();
 
-  let action!: Promise<void>;
+  let action!: Promise<boolean>;
   act(() => {
     action = sendActionMessage("production");
   });
@@ -192,9 +194,29 @@ it("does not send a waiting action after Stop", async () => {
 
   await finishFirstTurn();
   await act(async () => {
-    await action;
+    expect(await action).toBe(false);
   });
 
+  expect(sentTexts).toEqual(["deploy my app"]);
+});
+
+it("unlocks the choice row when Stop cancels the waiting pick", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
+
+  fireEvent.click(screen.getByRole("button", { name: "Production" }));
+  expect(screen.getByRole("status").textContent).toBe("Selected: Production");
+
+  act(() => stopChat());
+
+  await waitFor(() =>
+    expect(
+      (screen.getByRole("button", { name: "Staging" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false),
+  );
+  expect(screen.queryByRole("status")).toBeNull();
+
+  await finishFirstTurn();
   expect(sentTexts).toEqual(["deploy my app"]);
 });
 
@@ -207,7 +229,7 @@ it("holds a waiting action until the cloud handoff ends", async () => {
       }),
     );
 
-  let action!: Promise<void>;
+  let action!: Promise<boolean>;
   act(() => {
     action = sendActionMessage("production");
     dispatchPhase("migrating");
@@ -221,5 +243,41 @@ it("holds a waiting action until the cloud handoff ends", async () => {
     await action;
   });
 
+  expect(sentTexts).toEqual(["deploy my app", "production"]);
+});
+
+
+it("reports an uncertain choice failure without dispatching it again", async () => {
+  const choose = vi.fn(async () => { throw new Error("delivery outcome unavailable"); });
+  render(<ChoiceWidget id="uncertain" scope="app-create" options={[{ value: "deploy", label: "Deploy" }]} onChoose={choose} />);
+  fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+  expect((await screen.findByRole("alert")).textContent).toContain("Could not confirm this choice");
+  expect((screen.getByRole("button", { name: "Deploy" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Deploy" }));
+  expect(choose).toHaveBeenCalledTimes(1);
+});
+
+
+it("does not move a queued choice into a newly selected conversation", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
+  let action!: Promise<boolean>;
+  await act(async () => { action = sendActionMessage("production"); });
+  act(() => { selectedConversation.current = "conv-2"; });
+  await finishFirstTurn();
+  expect(await action).toBe(false);
+  expect(sentTexts).toEqual(["deploy my app"]);
+});
+
+
+it("does not deduplicate identical choices from different conversations", async () => {
+  const { sentTexts, finishFirstTurn } = await startStreamingTurn();
+  let oldAction!: Promise<boolean>;
+  let newAction!: Promise<boolean>;
+  await act(async () => { oldAction = sendActionMessage("production"); });
+  act(() => { selectedConversation.current = "conv-2"; });
+  await act(async () => { newAction = sendActionMessage("production"); });
+  await finishFirstTurn();
+  expect(await oldAction).toBe(false);
+  expect(await newAction).toBe(true);
   expect(sentTexts).toEqual(["deploy my app", "production"]);
 });

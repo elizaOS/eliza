@@ -164,4 +164,37 @@ describe("GitHub write confirmation", () => {
     expect(prompts).toEqual(["comment review requires a body"]);
     expect(createReview).not.toHaveBeenCalled();
   });
+
+  it("reports assignees GitHub silently ignored instead of claiming them", async () => {
+    // GitHub answers 201 and ignores assignees the caller may not set.
+    const addAssignees = vi.fn().mockResolvedValue({
+      data: { assignees: [{ login: "alice" }] },
+    });
+    const runtime = createRuntime({
+      issues: { addAssignees },
+    } as unknown as GitHubOctokitClient);
+    const request = {
+      op: "assign",
+      repo: "a/b",
+      number: 5,
+      assignees: ["bob"],
+    };
+
+    await issueOpAction.handler(
+      runtime,
+      userTurn("assign bob"),
+      undefined,
+      request,
+    );
+    const result = await issueOpAction.handler(
+      runtime,
+      userTurn("yes"),
+      undefined,
+      request,
+    );
+
+    expect(addAssignees).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ success: false });
+    expect(result && "error" in result ? result.error : "").toContain("[bob]");
+  });
 });

@@ -243,13 +243,13 @@ const POLICY_BY_LANGUAGE: Record<UiLanguage, LocalePolicy> = {
     ],
     negationAfter: [],
     scheduleMarkers: [
-      /\b(?:hôm nay|hom nay|ngày mai|ngay mai|tối nay|toi nay|tuần tới|tuan toi|tháng tới|thang toi|năm tới|nam toi)\b/u,
-      /\b(?:thứ|thu)\s+(?:hai|ba|tư|tu|năm|nam|sáu|sau|bảy|bay|chủ nhật|chu nhat)\b/u,
-      /\b(?:lúc|luc)\s*\d{1,2}\s*(?:giờ|gio)\b/u,
-      /\b(?:trong|sau)\s+(?:\d+|một|mot|hai|ba|bốn|bon|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)\s+(?:phút|phut|giờ|gio|ngày|ngay|tuần|tuan|tháng|thang|năm|nam)\b/u,
+      /(?<![\p{L}\p{N}_])(?:hôm nay|hom nay|ngày mai|ngay mai|tối nay|toi nay|tuần tới|tuan toi|tháng tới|thang toi|năm tới|nam toi)(?![\p{L}\p{N}_])/u,
+      /(?<![\p{L}\p{N}_])(?:thứ|thu)\s+(?:hai|ba|tư|tu|năm|nam|sáu|sau|bảy|bay|chủ nhật|chu nhat)(?![\p{L}\p{N}_])/u,
+      /(?<![\p{L}\p{N}_])(?:lúc|luc)\s*\d{1,2}\s*(?:giờ|gio)(?![\p{L}\p{N}_])/u,
+      /(?<![\p{L}\p{N}_])(?:trong|sau)\s+(?:\d+|một|mot|hai|ba|bốn|bon|năm|nam|sáu|sau|bảy|bay|tám|tam|chín|chin|mười|muoi)\s+(?:phút|phut|giờ|gio|ngày|ngay|tuần|tuan|tháng|thang|năm|nam)(?![\p{L}\p{N}_])/u,
     ],
     negatedScheduleSpans: [
-      /\b(?:không|khong)\s+(?:phải|phai)\s+(?:(?:vào|vao)\s+)?(?:(?:thứ|thu)\s+(?:hai|ba|tư|tu|năm|nam|sáu|sau|bảy|bay|chủ nhật|chu nhat)|hôm nay|hom nay|ngày mai|ngay mai)\b/u,
+      /(?<![\p{L}\p{N}_])(?:không|khong)\s+(?:phải|phai)\s+(?:(?:vào|vao)\s+)?(?:(?:thứ|thu)\s+(?:hai|ba|tư|tu|năm|nam|sáu|sau|bảy|bay|chủ nhật|chu nhat)|hôm nay|hom nay|ngày mai|ngay mai)(?![\p{L}\p{N}_])/u,
     ],
   },
   tl: {

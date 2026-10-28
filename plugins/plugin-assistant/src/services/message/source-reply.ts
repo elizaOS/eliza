@@ -326,9 +326,15 @@ export function createSourceReplySnapshot(
       continue;
     const speaker =
       typeof meta?.speakerName === "string" ? meta.speakerName : undefined;
+    const attachments =
+      typeof meta?.attachmentSummary === "string"
+        ? ` ${meta.attachmentSummary}`
+        : "";
     if (
-      priorDialogueContent(raw, speaker) !== event.segment.content &&
-      priorDialogueContent(raw.trim(), speaker) !== event.segment.content
+      priorDialogueContent(`${raw}${attachments}`, speaker) !==
+        event.segment.content &&
+      priorDialogueContent(`${raw.trim()}${attachments}`, speaker) !==
+        event.segment.content
     )
       continue;
     originals.set(id, raw);
@@ -406,6 +412,22 @@ export function resolveSuppliedSourceReply(
   return createRendering(resolved, scope);
 }
 
+/** True for a string that serializes the ordered reply-parts array (complete or
+ * truncated) instead of supplying the array itself. Ordinary prose, empty strings
+ * and an omitted replyText keep their existing reply/no-reply semantics. */
+export function isSerializedReplyParts(value: unknown): boolean {
+  return (
+    typeof value === "string" &&
+    /^\s*\[\s*\{/.test(value) &&
+    /"kind"\s*:\s*"(?:text|source)"/.test(value)
+  );
+}
+
+/** Native replyText that must go through the ordered reply-parts contract. */
+export function isNativeReplyPartsCandidate(value: unknown): boolean {
+  return Array.isArray(value) || isSerializedReplyParts(value);
+}
+
 /** A quote explicitly carries its original bytes; source IDs remain runtime-only.
  * Ordinary strings and text parts never acquire literal/effect exemptions. */
 export function resolveLiteralSourceReply(
@@ -414,7 +436,16 @@ export function resolveLiteralSourceReply(
   raw: Record<string, unknown>,
   onRendering?: (rendering: SourceReplyRendering) => void,
 ): Record<string, unknown> | undefined {
-  if (!Array.isArray(raw.replyText)) return raw;
+  if (!Array.isArray(raw.replyText)) {
+    if (!isSerializedReplyParts(raw.replyText)) return raw;
+    throw new ElizaError(
+      "Native replyText must be an ordered reply-parts array, not a serialized string; no response fields were processed",
+      {
+        code: "STAGE1_INVALID_SOURCE_REPLY",
+        severity: "ephemeral",
+      },
+    );
+  }
   const ids: string[] = [];
   const parts = raw.replyText.map((part) => {
     if (

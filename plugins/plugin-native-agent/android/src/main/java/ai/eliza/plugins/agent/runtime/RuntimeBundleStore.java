@@ -141,7 +141,9 @@ public class RuntimeBundleStore {
       entries.add(entry);
     }
     for (String required : new String[]{"bundle/agent-bundle.js", "bundle/gateway/bootstrap.mjs", "bundle/gateway/local-agent-gateway.mjs"}) if (!destinations.contains(required)) throw new IOException("Incomplete runtime inventory");
-    for (String required : new String[]{"libeliza_bun.so", "libeliza_ld_musl_aarch64.so"}) if (!libraries.contains(required)) throw new IOException("Incomplete native inventory");
+    if (!libraries.contains("libeliza_bun.so") ||
+        libraries.contains("libeliza_ld_musl_aarch64.so") == libraries.contains("libeliza_ld_musl_x86_64.so"))
+      throw new IOException("Native inventory requires Bun and exactly one supported loader");
     return entries;
   }
 

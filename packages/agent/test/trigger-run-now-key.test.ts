@@ -1,5 +1,6 @@
 /**
- * "Run now" on a cron workflow trigger is its own run. The real
+ * "Run now" on a scheduled workflow trigger is its own run and keeps the
+ * scheduled run. The real
  * executeTriggerTask runs against a dispatch fake that follows the
  * WORKFLOW_DISPATCH contract: a repeated (workflowId, idempotencyKey) is a
  * duplicate and does not start a new execution.
@@ -15,9 +16,10 @@ import {
 
 afterEach(() => vi.useRealTimers());
 
-it("keeps the next scheduled run when the user runs the trigger manually", async () => {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(new Date("2026-10-12T08:00:00.000Z"));
+async function setUpTrigger(
+  input: Record<string, unknown>,
+  displayName: string,
+) {
   const tasks = new Map<string, Task>();
   const executions: string[] = [];
   const seen = new Set<string>();
@@ -54,17 +56,11 @@ it("keeps the next scheduled run when the user runs the trigger manually", async
   } as unknown as IAgentRuntime;
 
   const { draft } = normalizeTriggerDraft({
-    input: {
-      kind: "workflow",
-      workflowId: "wf-1",
-      triggerType: "cron",
-      cronExpression: "0 9 * * *",
-      timezone: "UTC",
-    },
+    input: { kind: "workflow", workflowId: "wf-1", ...input },
     fallback: {
-      displayName: "Daily report",
+      displayName,
       instructions: "",
-      triggerType: "cron",
+      triggerType: input.triggerType as "cron" | "once",
       wakeMode: "inject_now",
       enabled: true,
       createdBy: "owner",
@@ -93,6 +89,16 @@ it("keeps the next scheduled run when the user runs the trigger manually", async
       source === "manual" ? { source, force: true } : { source },
     );
   };
+  return { run, executions, stored: () => tasks.has(taskId) };
+}
+
+it("keeps the next scheduled run when the user runs the trigger manually", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-12T08:00:00.000Z"));
+  const { run, executions } = await setUpTrigger(
+    { triggerType: "cron", cronExpression: "0 9 * * *", timezone: "UTC" },
+    "Daily report",
+  );
   expect((await run("2026-10-12T09:00:05.000Z", "scheduler")).status).toBe(
     "success",
   );
@@ -110,5 +116,26 @@ it("keeps the next scheduled run when the user runs the trigger manually", async
     "2026-10-12T14:00:00.000Z",
     "2026-10-12T15:00:00.000Z",
     "2026-10-13T09:00:05.000Z",
+  ]);
+});
+
+it("keeps a one-time trigger's scheduled run after the user runs it manually", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-14T07:00:00.000Z"));
+  const { run, executions, stored } = await setUpTrigger(
+    { triggerType: "once", scheduledAtIso: "2026-10-16T09:00:00.000Z" },
+    "Friday report",
+  );
+  expect((await run("2026-10-14T08:00:00.000Z", "manual")).status).toBe(
+    "success",
+  );
+  expect(stored()).toBe(true);
+  expect((await run("2026-10-16T09:00:05.000Z", "scheduler")).status).toBe(
+    "success",
+  );
+  expect(stored()).toBe(false);
+  expect(executions).toEqual([
+    "2026-10-14T08:00:00.000Z",
+    "2026-10-16T09:00:05.000Z",
   ]);
 });

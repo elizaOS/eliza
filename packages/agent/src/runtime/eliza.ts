@@ -27,6 +27,7 @@ import {
   type Entity,
   formatError,
   type IAgentRuntime,
+  type IDatabaseAdapter,
   type LogEntry,
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
@@ -170,7 +171,9 @@ import {
 import { BLOCKING_CORE_PLUGINS, CORE_PLUGINS } from "./core-plugins.ts";
 import { maybeInjectFault } from "./crash-injection.ts";
 import {
+  isMemoryPgliteDataDir,
   isSQLiteSelected,
+  MEMORY_PGLITE_DATA_DIR,
   resolveEffectiveDbProvider,
   SQLITE_PLUGIN,
   selectDatabasePluginNames,
@@ -536,6 +539,13 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
     },
     ...buildDeferredStaticRegistrations(),
   ];
+// Cost: register lazy functions only; no module import or plugin initialization.
+// Mobile has no filesystem fallback, so configured plugins must be resolvable
+// even before the deferred registration phase has run. Reuse its exact loaders.
+for (const registration of CORE_STATIC_PLUGIN_REGISTRATIONS) {
+  const name = registration.registryName ?? registration.packageName;
+  STATIC_ELIZA_PLUGIN_LOADERS[name] ??= registration.load;
+}
 let _blockingStaticPluginsRegistered = false;
 let _deferredStaticPluginsRegistered = false;
 let _blockingStaticPluginsRegistrationPromise: Promise<void> | null = null;
@@ -1134,6 +1144,31 @@ const CLOUD_ROUTING_MODEL_ENV: ReadonlyArray<[string, string]> = [
   ["ELIZAOS_CLOUD_RESPONSE_MODEL", "responseModel"],
   ["ELIZAOS_CLOUD_MEDIA_DESCRIPTION_MODEL", "mediaDescriptionModel"],
 ];
+// Operator launch values for the Cloud role pins. applyCloudConfigToEnv
+// writes these keys into process.env, and an in-process restart would read
+// that write back as operator input, so a pin reset to Default in Settings
+// would never clear. Captured on the first Cloud config step, after the host
+// loads dotenv.
+const CLOUD_ROLE_PIN_ENV_KEYS = [
+  "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL",
+  "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
+  "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
+  "ELIZAOS_CLOUD_PLANNER_MODEL",
+] as const;
+let launchCloudRolePinSnapshot: Readonly<NodeJS.ProcessEnv> | undefined;
+function launchCloudRolePinEnv(): Readonly<NodeJS.ProcessEnv> {
+  launchCloudRolePinSnapshot ??= Object.freeze(
+    Object.fromEntries(
+      CLOUD_ROLE_PIN_ENV_KEYS.map((key) => [key, process.env[key]]),
+    ),
+  );
+  return launchCloudRolePinSnapshot;
+}
+const CLOUD_ROLE_PIN_ENV_KEY_SET = new Set<string>(CLOUD_ROLE_PIN_ENV_KEYS);
+/** @internal Test-only: forget the launch copy so each case takes its own. */
+export function resetLaunchCloudRolePinEnvForTests(): void {
+  launchCloudRolePinSnapshot = undefined;
+}
 function mergeMissingCloudRoutingModelPins(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv,
@@ -1146,9 +1181,14 @@ function mergeMissingCloudRoutingModelPins(
     | undefined;
   if (!llmText) return false;
   const patch: Record<string, string> = {};
+  const rolePinEnv = env === process.env ? launchCloudRolePinEnv() : env;
   for (const [envKey, routingField] of CLOUD_ROUTING_MODEL_ENV) {
     if (trimEnvString(llmText[routingField])) continue;
-    const value = readEffectiveEnvValue(config, envKey, env);
+    const value = readEffectiveEnvValue(
+      config,
+      envKey,
+      CLOUD_ROLE_PIN_ENV_KEY_SET.has(envKey) ? rolePinEnv : env,
+    );
     if (value) patch[routingField] = value;
   }
   if (Object.keys(patch).length === 0) return false;
@@ -1166,6 +1206,7 @@ export function ensureProvisionedCloudContainerConfig(
   config: ElizaConfig,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
+  launchCloudRolePinEnv();
   if (!isProvisionedCloudContainer(env)) {
     return false;
   }
@@ -1515,11 +1556,121 @@ const SIGNAL_SERVICE_STOP_TIMEOUT_MS = 13000;
  * PGlite manager, so restarts must close the adapter or the next runtime can
  * silently reuse the same broken manager instance.
  */
+export interface HostRuntimeStopOptions extends RuntimeStopOptions {
+  /**
+   * Stop the runtime but leave its database adapter open. An API stop uses
+   * this so the host can still verify sessions while the agent is stopped;
+   * the host later closes the adapter with {@link closeRuntimeAdapter}.
+   */
+  keepAdapterOpen?: boolean;
+}
+/** Close a runtime's database adapter, as {@link shutdownRuntime} does. */
+export async function closeRuntimeAdapter(
+  runtime: AgentRuntime,
+  context: string,
+): Promise<void> {
+  const adapter = runtime.adapter as RuntimeAdapterWithClose | undefined;
+  if (!adapter || typeof adapter.close !== "function") return;
+  try {
+    logger.debug(`[eliza] ${context}: closing database adapter`);
+    await adapter.close();
+    logger.debug(`[eliza] ${context}: database adapter closed`);
+  } catch (err) {
+    logger.warn(
+      `[eliza] ${context}: database adapter close failed: ${formatError(err)}`,
+    );
+    throw err;
+  }
+}
+
+/**
+ * Reopen only a stopped runtime's database adapter.
+ *
+ * Hosts use this after a replacement boot fails. The runtime services stay
+ * stopped, but its persistent authentication repository becomes available
+ * again so the owner can retry Start without restarting the process.
+ */
+export async function reopenRuntimeAdapter(
+  runtime: AgentRuntime,
+  context: string,
+): Promise<void> {
+  let replacement: IDatabaseAdapter | undefined;
+  try {
+    // Reopen the backend that this host actually stopped, independent of other hosts' environment.
+    const { SQLiteDatabaseAdapter } = await import("@elizaos/plugin-sqlite");
+    if (runtime.adapter instanceof SQLiteDatabaseAdapter) {
+      const sqlitePath = runtime.getSetting("SQLITE_DATABASE_PATH");
+      if (typeof sqlitePath !== "string" || !path.isAbsolute(sqlitePath)) {
+        throw new ElizaError(
+          "Cannot reopen SQLite authentication storage without an absolute path",
+          {
+            code: "SQLITE_PATH_REQUIRED",
+          },
+        );
+      }
+      replacement = SQLiteDatabaseAdapter.create(sqlitePath, runtime.agentId);
+    } else {
+      const {
+        createDatabaseAdapter,
+        PgDatabaseAdapter,
+        PgliteDatabaseAdapter,
+      } = await import("@elizaos/plugin-sql");
+      if (runtime.adapter instanceof PgliteDatabaseAdapter) {
+        const dataDir = runtime.adapter.getPgliteDataDir();
+        if (!dataDir || dataDir === ":memory:")
+          throw new ElizaError(
+            "Stopped authentication storage is not durable",
+            {
+              code: "DATABASE_ADAPTER_REOPEN_UNAVAILABLE",
+            },
+          );
+        replacement = createDatabaseAdapter({ dataDir }, runtime.agentId);
+      } else if (runtime.adapter instanceof PgDatabaseAdapter) {
+        const postgresUrl = runtime.getSetting("POSTGRES_URL");
+        if (typeof postgresUrl !== "string" || !postgresUrl.trim()) {
+          throw new ElizaError(
+            "Stopped PostgreSQL authentication storage has no connection configuration",
+            {
+              code: "DATABASE_ADAPTER_REOPEN_UNAVAILABLE",
+            },
+          );
+        }
+        replacement = createDatabaseAdapter({ postgresUrl }, runtime.agentId);
+      } else {
+        throw new ElizaError(
+          "Host must supply recovery for its database adapter",
+          {
+            code: "DATABASE_ADAPTER_REOPEN_UNAVAILABLE",
+          },
+        );
+      }
+    }
+    await replacement.initialize();
+    runtime.adapter = replacement;
+    logger.debug(`[eliza] ${context}: database adapter reopened`);
+  } catch (error) {
+    if (replacement) {
+      try {
+        await replacement.close();
+      } catch (closeError) {
+        throw new ElizaError(
+          "Database adapter reopen and cleanup both failed",
+          {
+            code: "DATABASE_ADAPTER_REOPEN_CLEANUP_FAILED",
+            cause: new AggregateError([error, closeError]),
+          },
+        );
+      }
+    }
+    throw error;
+  }
+}
 export async function shutdownRuntime(
   runtime: AgentRuntime | null | undefined,
   context: string,
-  options: RuntimeStopOptions = {},
+  hostOptions: HostRuntimeStopOptions = {},
 ): Promise<void> {
+  const { keepAdapterOpen = false, ...options } = hostOptions;
   let firstError: unknown = null;
   try {
     await stopMemorySampler();
@@ -1533,7 +1684,6 @@ export async function shutdownRuntime(
     if (firstError) throw firstError;
     return;
   }
-  const adapter = runtime.adapter as RuntimeAdapterWithClose | undefined;
   try {
     const pendingDeferredBoot = pendingDeferredBootTaskCount(runtime);
     if (pendingDeferredBoot > 0) {
@@ -1573,23 +1723,37 @@ export async function shutdownRuntime(
     );
   }
 
-  if (adapter && typeof adapter.close === "function") {
+  if (!keepAdapterOpen) {
     try {
-      logger.debug(`[eliza] ${context}: closing database adapter`);
-      await adapter.close();
-      logger.debug(`[eliza] ${context}: database adapter closed`);
+      await closeRuntimeAdapter(runtime, context);
     } catch (err) {
-      if (!firstError) {
-        firstError = err;
-      }
-      logger.warn(
-        `[eliza] ${context}: database adapter close failed: ${formatError(err)}`,
-      );
+      if (!firstError) firstError = err;
     }
   }
   if (firstError) {
     throw firstError;
   }
+}
+/**
+ * Stop a runtime that a hot reload replaced. plugin-sql reuses one database
+ * manager per data dir and agent, so the replacement can sit on the same
+ * connection as the old runtime; closing the old adapter would close it under
+ * the replacement. The replacement's own shutdown closes it later.
+ */
+export async function disposeReplacedRuntime(
+  previousRuntime: AgentRuntime,
+  activeRuntime: AgentRuntime,
+): Promise<void> {
+  const connection = (runtime: AgentRuntime) =>
+    (
+      runtime.adapter as { getRawConnection?: () => unknown } | undefined
+    )?.getRawConnection?.();
+  const shared = connection(previousRuntime);
+  await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
+    fast: true,
+    keepAdapterOpen:
+      shared !== undefined && shared === connection(activeRuntime),
+  });
 }
 interface TrajectoryLoggerControl {
   isEnabled?: () => boolean;
@@ -2170,6 +2334,7 @@ export function cloudApiKeyFingerprint(value: string | undefined): string {
  * ElizaCloud plugin can discover settings at startup.
  */
 export function applyCloudConfigToEnv(config: ElizaConfig): void {
+  launchCloudRolePinEnv();
   migrateLegacyRuntimeConfig(config as Record<string, unknown>);
   const devCloudSnapshot = applyDevCloudConfigAuthority(
     config as Record<string, unknown>,
@@ -2419,16 +2584,31 @@ function applyCloudConfigToEnvResolved(config: ElizaConfig): void {
       models?.mega ||
       readEffectiveEnvValue(config, "ELIZAOS_CLOUD_MEGA_MODEL") ||
       large;
+    // A saved Cloud route owns the role pins; only launch env and config.env
+    // can fill a pin it leaves unset.
+    const rolePinEnv = llmText ? launchCloudRolePinEnv() : process.env;
     const responseHandlerModel =
       llmText?.responseHandlerModel ||
       llmText?.shouldRespondModel ||
-      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ||
-      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL");
+      readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL",
+        rolePinEnv,
+      ) ||
+      readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL",
+        rolePinEnv,
+      );
     const actionPlannerModel =
       llmText?.actionPlannerModel ||
       llmText?.plannerModel ||
-      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ||
-      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_PLANNER_MODEL");
+      readEffectiveEnvValue(
+        config,
+        "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL",
+        rolePinEnv,
+      ) ||
+      readEffectiveEnvValue(config, "ELIZAOS_CLOUD_PLANNER_MODEL", rolePinEnv);
     process.env.SMALL_MODEL = small;
     process.env.NANO_MODEL = nano;
     process.env.MEDIUM_MODEL = medium;
@@ -2583,18 +2763,26 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     delete process.env.POSTGRES_URL;
     const configuredDataDir = db?.pglite?.dataDir?.trim();
     if (configuredDataDir) {
-      process.env.PGLITE_DATA_DIR = resolveUserPath(configuredDataDir);
+      // An in-memory setting is a PGlite URL, not a path: resolving it would
+      // create a `memory:` directory under the working directory and keep
+      // the agent's history there.
+      process.env.PGLITE_DATA_DIR = isMemoryPgliteDataDir(configuredDataDir)
+        ? MEMORY_PGLITE_DATA_DIR
+        : resolveUserPath(configuredDataDir);
       // Fall through to directory creation below instead of returning early
     }
     const envDataDir = process.env.PGLITE_DATA_DIR?.trim();
     if (!envDataDir) {
       process.env.PGLITE_DATA_DIR = resolveDefaultPgliteDataDir(config);
+    } else if (isMemoryPgliteDataDir(envDataDir)) {
+      process.env.PGLITE_DATA_DIR = MEMORY_PGLITE_DATA_DIR;
     }
     // Ensure the PGlite data directory exists before init so PGlite does
     // not silently fall back to in-memory mode on first run. Owner-only:
     // the tree holds full agent history (heals older 0755 installs too).
+    // In-memory storage has no directory and no lock file.
     const dataDir = process.env.PGLITE_DATA_DIR;
-    if (dataDir) {
+    if (dataDir && !isMemoryPgliteDataDir(dataDir)) {
       const alreadyExisted = existsSync(dataDir);
       ensurePrivateDir(dataDir);
       logger.debug(
@@ -2842,7 +3030,8 @@ export function isFatalPgliteStartupError(err: unknown): boolean {
 }
 /**
  * The PGlite data directory the runtime uses for `config`, or null when the
- * effective provider is not PGlite. Mirrors `applyDatabaseConfigToEnv`
+ * effective provider is not PGlite or PGlite runs in memory (no directory, no
+ * lock to recover, nothing to reset). Mirrors `applyDatabaseConfigToEnv`
  * precedence (`config.database.pglite.dataDir` > `PGLITE_DATA_DIR` > the
  * `<workspace>/.elizadb` default) so callers outside startup (e.g. the
  * `eliza db reset` CLI) resolve the same directory without mutating env.
@@ -2851,10 +3040,10 @@ export function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
   const provider = resolveEffectiveDbProvider(config);
   if (provider !== "pglite") return null;
   const configuredDataDir = config.database?.pglite?.dataDir?.trim();
-  if (configuredDataDir) return resolveUserPath(configuredDataDir);
   const envDataDir = process.env.PGLITE_DATA_DIR?.trim();
-  const dataDir = envDataDir || resolveDefaultPgliteDataDir(config);
-  return resolveUserPath(dataDir);
+  const dataDir =
+    configuredDataDir || envDataDir || resolveDefaultPgliteDataDir(config);
+  return isMemoryPgliteDataDir(dataDir) ? null : resolveUserPath(dataDir);
 }
 /** Call whichever init method the adapter exposes (.init or .initialize). */
 async function callAdapterInit(
@@ -4275,7 +4464,15 @@ export async function startEliza(
       const { applyVaultProfilesForAgent } = await import(
         "./vault-profile-resolver.ts"
       );
-      await applyVaultProfilesForAgent(sharedVault(), agentId);
+      const { overridden } = await applyVaultProfilesForAgent(
+        sharedVault(),
+        agentId,
+      );
+      const secrets = character.secrets;
+      for (const key of overridden) {
+        const value = process.env[key];
+        if (secrets && key in secrets && value) secrets[key] = value;
+      }
     } catch (err) {
       logger.warn(
         `[vault-profile-resolver] boot-time apply failed agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
@@ -6039,9 +6236,7 @@ export async function startEliza(
           return;
         }
         try {
-          await shutdownRuntime(previousRuntime, "hot-reload cleanup", {
-            fast: true,
-          });
+          await disposeReplacedRuntime(previousRuntime, activeRuntime);
         } catch (err) {
           // error-policy:J6 the replacement is already active; failed old-runtime
           // teardown is observable but must not roll back the healthy swap.

@@ -2,12 +2,16 @@
  * Real-code web workspace tests for command execution against JSDOM pages.
  */
 
+import { once } from "node:events";
+import { createServer } from "node:http";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   __resetBrowserWorkspaceStateForTests,
   executeBrowserWorkspaceCommand,
+  listBrowserWorkspaceTabs,
   openBrowserWorkspaceTab,
 } from "../browser-workspace.js";
+import { webWorkspaceState } from "../browser-workspace-state.js";
 
 const webEnv: NodeJS.ProcessEnv = {};
 
@@ -57,6 +61,253 @@ const longSnapshotHtml = `<!doctype html>
 describe("browser workspace web-mode real-code command flow", () => {
   beforeEach(async () => {
     await __resetBrowserWorkspaceStateForTests();
+  });
+
+  it("keeps document fragments through real HTTP loads and form redirects", async () => {
+    const requests: string[] = [];
+    const server = createServer((request, response) => {
+      requests.push(`${request.method} ${request.url}`);
+      const url = new URL(request.url ?? "/", "http://localhost");
+      if (url.pathname === "/redirect" || url.pathname === "/submit") {
+        response.writeHead(303, {
+          Location: url.searchParams.get("to") ?? "/done",
+        });
+        response.end();
+        return;
+      }
+      response.setHeader("Content-Type", "text/html");
+      response.end(`<!doctype html><title>Fragment destination</title>
+        <h1 id="details">Details</h1><h2 id="receipt">Receipt</h2>
+        <form method="post" action="/submit#receipt">
+          <button id="submit">Submit</button>
+        </form>`);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No HTTP port");
+    const base = `http://127.0.0.1:${address.port}`;
+    try {
+      for (const [path, expected] of [
+        ["/done#details", "/done#details"],
+        ["/redirect#details", "/done#details"],
+        ["/redirect?to=%2Fdone%23receipt#details", "/done#receipt"],
+        ["/redirect?to=%2Fdone%23#details", "/done#"],
+      ]) {
+        const tab = await openBrowserWorkspaceTab(
+          { url: `${base}${path}` },
+          webEnv,
+        );
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "get", selector: "title" },
+          webEnv,
+        );
+        const loaded = (await listBrowserWorkspaceTabs(webEnv)).find(
+          (entry) => entry.id === tab.id,
+        );
+        expect.soft(loaded?.url, path).toBe(`${base}${expected}`);
+      }
+      const form = await openBrowserWorkspaceTab(
+        { url: `${base}/form` },
+        webEnv,
+      );
+      const submitted = await executeBrowserWorkspaceCommand(
+        { id: form.id, subaction: "click", selector: "#submit" },
+        webEnv,
+      );
+      expect.soft(submitted.tab?.url).toBe(`${base}/done#receipt`);
+      expect(requests).toContain("POST /submit");
+      expect(requests.every((request) => !request.includes("#"))).toBe(true);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it("sends the form encoding and preserves its body across HTTP 307", async () => {
+    const submissions: { url: string; contentType: string; body: string }[] =
+      [];
+    const server = createServer(async (request, response) => {
+      if (request.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        submissions.push({
+          url: request.url ?? "",
+          contentType: request.headers["content-type"] ?? "",
+          body: Buffer.concat(chunks).toString(),
+        });
+        if (request.url === "/submit") {
+          response.writeHead(307, { Location: "/done" });
+          response.end();
+          return;
+        }
+      }
+      response.setHeader("Content-Type", "text/html");
+      response.end(`<!doctype html><title>Form encoding</title>
+        <form method="post" action="/submit" enctype="multipart/form-data">
+          <input name="query" value="hello world">
+          <input name="tag" value="one"><input name="tag" value="two">
+          <textarea name="notes">first\nsecond</textarea>
+          <input type="file" name="attachment">
+          <button id="multipart">Multipart</button>
+          <button id="plain" formenctype="text/plain">Plain</button>
+          <button id="fallback" formenctype="invalid">Fallback</button>
+        </form>`);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No HTTP port");
+    const base = `http://127.0.0.1:${address.port}`;
+    try {
+      for (const selector of ["#multipart", "#plain", "#fallback"]) {
+        submissions.length = 0;
+        const tab = await openBrowserWorkspaceTab({ url: base }, webEnv);
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "click", selector },
+          webEnv,
+        );
+        expect(submissions.map(({ url }) => url)).toEqual(["/submit", "/done"]);
+        const first = submissions[0];
+        expect(submissions[1]).toEqual({ ...first, url: "/done" });
+        if (selector === "#multipart") {
+          expect
+            .soft(first.contentType)
+            .toMatch(/^multipart\/form-data; boundary=/);
+          const parsed = await new Request(base, {
+            method: "POST",
+            headers: { "Content-Type": first.contentType },
+            body: first.body,
+          }).formData();
+          expect.soft(parsed.get("query")).toBe("hello world");
+          expect.soft(parsed.getAll("tag")).toEqual(["one", "two"]);
+          expect.soft(parsed.get("notes")).toBe("first\r\nsecond");
+          expect
+            .soft(first.body)
+            .toContain(
+              'name="attachment"; filename=""\r\nContent-Type: application/octet-stream\r\n\r\n\r\n',
+            );
+        } else if (selector === "#plain") {
+          expect.soft(first.contentType).toBe("text/plain");
+          expect
+            .soft(first.body)
+            .toBe(
+              "query=hello world\r\ntag=one\r\ntag=two\r\nnotes=first\r\nsecond\r\nattachment=\r\n",
+            );
+        } else {
+          expect(first.contentType).toMatch(
+            /^application\/x-www-form-urlencoded/,
+          );
+          expect
+            .soft(new URLSearchParams(first.body).get("attachment"))
+            .toBe("");
+        }
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it("inserts keyboard text at the selection and submits the edited values", async () => {
+    const submissions: URLSearchParams[] = [];
+    const server = createServer(async (request, response) => {
+      if (request.method === "POST") {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        submissions.push(new URLSearchParams(Buffer.concat(chunks).toString()));
+      }
+      response.setHeader("Content-Type", "text/html");
+      response.end(`<!doctype html><title>Keyboard editing</title>
+        <form method="post" action="/submit">
+          <input id="query" name="query" value="hello world">
+          <textarea id="notes" name="notes">first\nsecond</textarea>
+          <input id="locked" name="locked" value="keep me" readonly>
+          <button id="submit">Submit</button>
+        </form>`);
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw new Error("No HTTP port");
+    try {
+      for (const subaction of ["keyboardinserttext", "keyboardtype"] as const) {
+        const tab = await openBrowserWorkspaceTab(
+          { url: `http://127.0.0.1:${address.port}` },
+          webEnv,
+        );
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "focus", selector: "#query" },
+          webEnv,
+        );
+        const document = webWorkspaceState.tabs.find(
+          (entry) => entry.id === tab.id,
+        )?.dom?.window.document;
+        const query = document?.querySelector<HTMLInputElement>("#query");
+        const notes = document?.querySelector<HTMLTextAreaElement>("#notes");
+        if (!query || !notes) throw new Error("HTTP form did not load");
+        // Focus leaves the caret after prefilled text, so typing appends.
+        expect
+          .soft([query.selectionStart, query.selectionEnd])
+          .toEqual([11, 11]);
+        // Arrange an actual DOM selection; edits and submission use commands.
+        query.setSelectionRange(6, 11);
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction, value: "Korea" },
+          webEnv,
+        );
+        expect.soft(query.value).toBe("hello Korea");
+        expect
+          .soft([query.selectionStart, query.selectionEnd])
+          .toEqual([11, 11]);
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction, value: "!" },
+          webEnv,
+        );
+        expect.soft(query.value).toBe("hello Korea!");
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "focus", selector: "#notes" },
+          webEnv,
+        );
+        notes.setSelectionRange(0, 5);
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction, value: "new" },
+          webEnv,
+        );
+        expect.soft(notes.value).toBe("new\nsecond");
+        expect.soft(notes.selectionStart).toBe(3);
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "focus", selector: "#locked" },
+          webEnv,
+        );
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction, value: "overwrite" },
+          webEnv,
+        );
+        await executeBrowserWorkspaceCommand(
+          { id: tab.id, subaction: "click", selector: "#submit" },
+          webEnv,
+        );
+        const received = submissions.at(-1);
+        expect.soft(received?.get("query")).toBe("hello Korea!");
+        expect
+          .soft(received?.get("notes")?.replace(/\r\n/g, "\n"))
+          .toBe("new\nsecond");
+        expect.soft(received?.get("locked")).toBe("keep me");
+      }
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 
   it("keeps navigation metadata distinct from a subsequent page read", async () => {
@@ -489,6 +740,241 @@ describe("browser workspace web-mode real-code command flow", () => {
     expect(title.value).toBe("");
   });
 
+  it("checks form constraints before HTTP submission and honors explicit validation bypasses", async () => {
+    const submissions: Array<{ method: string; email: string | null }> = [];
+    const server = createServer(async (request, response) => {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      response.setHeader("Content-Type", "text/html");
+      if (url.pathname === "/subscribe") {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const fields =
+          request.method === "POST"
+            ? new URLSearchParams(body)
+            : url.searchParams;
+        submissions.push({
+          method: request.method ?? "GET",
+          email: fields.get("email"),
+        });
+        response.end("<h1>Subscribed</h1>");
+        return;
+      }
+      const method = url.searchParams.get("method") === "get" ? "get" : "post";
+      response.end(`<form action="/subscribe" method="${method}" ${url.searchParams.has("novalidate") ? "novalidate" : ""}>
+        <input id="email" name="email" type="email" required>
+        <input required disabled>
+        <button id="send">Subscribe</button>
+        <button id="draft" formnovalidate>Save draft</button>
+        </form><dialog open><form method="dialog">
+        <input id="reason" required><button id="close">Close</button>
+        </form></dialog>`);
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw Error("No HTTP port");
+      const origin = `http://127.0.0.1:${address.port}`;
+      for (const method of ["post", "get"] as const) {
+        const url = `${origin}/form?method=${method}`;
+        const tab = await openBrowserWorkspaceTab({ url }, webEnv);
+        const run = (
+          command: Parameters<typeof executeBrowserWorkspaceCommand>[0],
+        ) => executeBrowserWorkspaceCommand({ ...command, id: tab.id }, webEnv);
+        const submit = () =>
+          run(
+            method === "post"
+              ? { subaction: "click", selector: "#send" }
+              : { subaction: "press", selector: "#email", key: "Enter" },
+          );
+        const blocked = await submit();
+        expect(submissions).toEqual([]);
+        // The agent learns which field blocked the submission.
+        expect(blocked.value).toMatchObject({
+          submitted: false,
+          invalid: { message: expect.any(String) },
+        });
+        await run({
+          subaction: "fill",
+          selector: "#email",
+          value: "not-an-email",
+        });
+        await submit();
+        expect(submissions).toEqual([]);
+        expect(
+          (
+            await run({
+              subaction: "get",
+              selector: "#email",
+              getMode: "value",
+            })
+          ).value,
+        ).toBe("not-an-email");
+        await run({
+          subaction: "fill",
+          selector: "#email",
+          value: "person@example.test",
+        });
+        await submit();
+        expect(submissions.splice(0)).toEqual([
+          { method: method.toUpperCase(), email: "person@example.test" },
+        ]);
+      }
+      for (const formBypass of [false, true]) {
+        const tab = await openBrowserWorkspaceTab(
+          { url: `${origin}/form${formBypass ? "?novalidate" : ""}` },
+          webEnv,
+        );
+        await executeBrowserWorkspaceCommand(
+          {
+            id: tab.id,
+            subaction: "click",
+            selector: formBypass ? "#send" : "#draft",
+          },
+          webEnv,
+        );
+        expect(submissions.splice(0)).toEqual([{ method: "POST", email: "" }]);
+      }
+      const tab = await openBrowserWorkspaceTab(
+        { url: `${origin}/form` },
+        webEnv,
+      );
+      const run = (
+        command: Parameters<typeof executeBrowserWorkspaceCommand>[0],
+      ) => executeBrowserWorkspaceCommand({ ...command, id: tab.id }, webEnv);
+      await run({ subaction: "click", selector: "#close" });
+      expect(
+        (
+          await run({
+            subaction: "get",
+            selector: "dialog",
+            getMode: "attr",
+            attribute: "open",
+          })
+        ).value,
+      ).toBe("");
+      await run({ subaction: "fill", selector: "#reason", value: "Done" });
+      await run({ subaction: "click", selector: "#close" });
+      expect(
+        (
+          await run({
+            subaction: "get",
+            selector: "dialog",
+            getMode: "attr",
+            attribute: "open",
+          })
+        ).value,
+      ).toBeNull();
+      expect(submissions).toEqual([]);
+    } finally {
+      await __resetBrowserWorkspaceStateForTests();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("restores form defaults before sending a real HTTP request after reset", async () => {
+    const submitted: string[] = [];
+    const server = createServer(async (request, response) => {
+      response.setHeader("Content-Type", "text/html");
+      if (request.method === "POST") {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        submitted.push(body);
+        response.end("<h1>Saved</h1>");
+        return;
+      }
+      response.end(`<form id="edit" method="post" action="/save">
+        <input id="title" name="title" value="Original">
+        <textarea id="body" name="body">Keep this</textarea>
+        <input id="notify" name="notify" type="checkbox" checked>
+        <button id="reset-button" type="reset">Reset</button>
+        <input id="reset-input" type="reset">
+        <button id="disabled-reset" type="reset" disabled>Disabled reset</button>
+        <button id="save">Save</button>
+        </form><button id="external-reset" type="reset" form="edit">Reset externally</button>
+        <form><input id="other" value="Other form"></form>`);
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw Error("No HTTP port");
+      const url = `http://127.0.0.1:${address.port}/edit`;
+      for (const [selector, subaction] of [
+        ["#reset-button", "click"],
+        ["#reset-input", "click"],
+        ["#external-reset", "press"],
+      ] as const) {
+        const tab = await openBrowserWorkspaceTab({ url }, webEnv);
+        const run = (
+          command: Parameters<typeof executeBrowserWorkspaceCommand>[0],
+        ) => executeBrowserWorkspaceCommand({ ...command, id: tab.id }, webEnv);
+        await run({ subaction: "fill", selector: "#title", value: "Wrong" });
+        await run({
+          subaction: "fill",
+          selector: "#body",
+          value: "Discard me",
+        });
+        await run({ subaction: "type", selector: "#title", value: " draft" });
+        await run({ subaction: "uncheck", selector: "#notify" });
+        await run({
+          subaction: "fill",
+          selector: "#other",
+          value: "Keep other edit",
+        });
+        await expect(
+          run({ subaction: "click", selector: "#disabled-reset" }),
+        ).rejects.toThrow(/disabled/);
+        expect(
+          (
+            await run({
+              subaction: "get",
+              selector: "#title",
+              getMode: "value",
+            })
+          ).value,
+        ).toBe("Wrong draft");
+        await run({ subaction, selector, key: "Enter" });
+        expect(submitted).toHaveLength(0);
+        expect(
+          (
+            await run({
+              subaction: "get",
+              selector: "#title",
+              getMode: "value",
+            })
+          ).value,
+        ).toBe("Original");
+        expect(
+          (await run({ subaction: "get", selector: "#body", getMode: "value" }))
+            .value,
+        ).toBe("Keep this");
+        expect(
+          (
+            await run({
+              subaction: "get",
+              selector: "#other",
+              getMode: "value",
+            })
+          ).value,
+        ).toBe("Keep other edit");
+        await run({ subaction: "click", selector: "#save" });
+        expect(submitted.splice(0)).toEqual([
+          "title=Original&body=Keep+this&notify=on",
+        ]);
+      }
+    } finally {
+      await __resetBrowserWorkspaceStateForTests();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
   it("closes a method=dialog form without a request and sends an invalid method as GET", async () => {
     const tab = await openBrowserWorkspaceTab({ url: "about:blank" }, webEnv);
     const page = "https://example.test/confirm";
@@ -620,5 +1106,44 @@ describe("browser workspace web-mode real-code command flow", () => {
       hovered: true,
       selector: "#details-link",
     });
+  });
+});
+
+describe("browser workspace web-mode label click", () => {
+  beforeEach(async () => {
+    await __resetBrowserWorkspaceStateForTests();
+  });
+
+  it("checks the control that a clicked label names or wraps", async () => {
+    const tab = await openBrowserWorkspaceTab(
+      { show: true, url: "about:blank" },
+      webEnv,
+    );
+    const url = "https://example.test/consent";
+    await executeBrowserWorkspaceCommand(
+      {
+        id: tab.id,
+        subaction: "network",
+        networkAction: "route",
+        url,
+        responseBody: `<label>Remember me <input id="remember" type="checkbox" /></label>
+<input id="terms" type="checkbox" /><label for="terms">I agree to the terms</label>`,
+      },
+      webEnv,
+    );
+    await executeBrowserWorkspaceCommand(
+      { id: tab.id, subaction: "navigate", url },
+      webEnv,
+    );
+    for (const [text, selector] of [
+      ["Remember me", "#remember"],
+      ["I agree to the terms", "#terms"],
+    ]) {
+      const clicked = await executeBrowserWorkspaceCommand(
+        { id: tab.id, subaction: "click", text },
+        webEnv,
+      );
+      expect(clicked.value, text).toMatchObject({ checked: true, selector });
+    }
   });
 });

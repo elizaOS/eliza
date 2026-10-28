@@ -1,0 +1,1 @@
+package com.android.systemui.statusbar.phone; public interface StatusBarWindowCallback {void onStateChanged(boolean showing,boolean occluded,boolean goingAway,boolean bouncer,boolean dozing,boolean expanded,boolean dreaming,boolean communal);}

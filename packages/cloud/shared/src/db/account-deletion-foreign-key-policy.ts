@@ -24,12 +24,12 @@ export interface AccountDeletionForeignKeyDescriptor {
   onDelete: string;
 }
 /**
- * SHA-256 of the 277 sorted direct user/organization FK descriptors, each
+ * SHA-256 of the 283 sorted direct user/organization FK descriptors, each
  * serialized as `source|columns|target|targetColumns|onDelete` and joined with
  * `\n` (see `serializeDescriptor`). Recompute when the FK inventory changes.
  */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "8a9bf17aa942aa36fabd907fc66bed724e82251c6995378194b676075f374a02";
+  "643cdecde85e4c242873470ae9fc27a10ed8890a618f8c07a64fe2c1c799c4f3";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -80,6 +80,8 @@ export function listAccountDeletionForeignKeys(): AccountDeletionForeignKeyDescr
  */
 const EXTERNAL_RESOURCE_TABLES = new Set([
   "ad_accounts",
+  "inference_policy_authorities",
+  "inference_policy_mutations",
   "app_billing_application_slots",
   "app_billing_notification_endpoints",
   "app_billing_scopes",
@@ -193,6 +195,8 @@ const RETAINED_AUDIT_TABLES = new Set([
   "credit_transactions",
   "generations",
   "inference_pending_charges",
+  "inference_funding_budget_grants",
+  "inference_funding_budget_receipts",
   "jobs",
   "llm_trajectories",
   "mcp_usage",
@@ -212,6 +216,9 @@ const RETAINED_AUDIT_TABLES = new Set([
   "stripe_customer_legacy_quarantines",
   "subscription_allowance_periods",
   "subscription_allowance_transactions",
+  // Redeemed grant codes are billing evidence: the organization keeps its rows
+  // (like paid allowance history) and the redeeming user is cleared (SET NULL).
+  "subscription_grants",
   "token_redemptions",
   "usage_records",
   "user_mcps",

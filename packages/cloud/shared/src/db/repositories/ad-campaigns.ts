@@ -149,6 +149,57 @@ export class AdCampaignsRepository {
     return updated;
   }
 
+  /**
+   * Update columns and change only the named metadata keys, in one statement
+   * against the stored object, so keys another writer stored meanwhile stay.
+   */
+  async updateWithMetadataPatch(
+    id: string,
+    data: Partial<Omit<NewAdCampaign, "metadata">>,
+    metadataPatch: { set?: Record<string, unknown>; remove?: string[] },
+  ): Promise<AdCampaign | undefined> {
+    const remove = metadataPatch.remove ?? [];
+    const set = metadataPatch.set ?? {};
+    const [updated] = await db
+      .update(adCampaigns)
+      .set({
+        ...data,
+        metadata: sql`(COALESCE(${adCampaigns.metadata}, '{}'::jsonb)${
+          remove.length > 0
+            ? sql` - ARRAY[${sql.join(
+                remove.map((key) => sql`${key}`),
+                sql`, `,
+              )}]::text[]`
+            : sql``
+        }) || ${JSON.stringify(set)}::jsonb`,
+        updated_at: new Date(),
+      })
+      .where(eq(adCampaigns.id, id))
+      .returning();
+    return updated;
+  }
+
+  /**
+   * Store `value` under `key` in the metadata only when the key is absent.
+   * Returns the campaign with the value that is stored after the call: this
+   * call's value, or the one a concurrent caller stored first.
+   */
+  async setMetadataKeyIfAbsent(
+    id: string,
+    key: string,
+    value: string,
+  ): Promise<AdCampaign | undefined> {
+    const [updated] = await db
+      .update(adCampaigns)
+      .set({
+        metadata: sql`COALESCE(${adCampaigns.metadata}, '{}'::jsonb) || jsonb_build_object(${key}::text, ${value}::text)`,
+        updated_at: new Date(),
+      })
+      .where(and(eq(adCampaigns.id, id), sql`${adCampaigns.metadata} ->> ${key} IS NULL`))
+      .returning();
+    return updated ?? (await this.findById(id));
+  }
+
   async updateStatus(id: string, status: CampaignStatus): Promise<AdCampaign | undefined> {
     return this.update(id, { status });
   }

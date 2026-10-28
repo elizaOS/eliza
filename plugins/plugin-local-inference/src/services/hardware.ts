@@ -224,18 +224,35 @@ interface OpenVinoDetectionHost {
 	readdirSync?: (path: string) => string[];
 }
 
+/** A directory that exists but could not be listed — "unknown", not "empty". */
+interface DirReadFailure {
+	dir: string;
+	code: string;
+}
+
+function errnoCode(err: unknown): string {
+	const code = (err as NodeJS.ErrnoException | null | undefined)?.code;
+	return typeof code === "string" && code.length > 0 ? code : "unknown";
+}
+
 function readableEntries(
 	dir: string,
 	host: Required<Pick<OpenVinoDetectionHost, "existsSync" | "readdirSync">>,
 	prefix: string,
+	failures: DirReadFailure[],
 ): string[] {
+	// Absent directory is a legitimate "no device here" — not a failure.
 	if (!pathExists(dir, host.existsSync)) return [];
 	try {
 		return host
 			.readdirSync(dir)
 			.filter((entry) => entry.startsWith(prefix))
 			.map((entry) => `${dir}/${entry}`);
-	} catch {
+	} catch (err) {
+		// The directory is there but cannot be listed (EACCES in a container
+		// without the video group, EIO, EMFILE...). Returning [] alone would
+		// report "no Intel accelerator" for a host we simply failed to inspect.
+		failures.push({ dir, code: errnoCode(err) });
 		return [];
 	}
 }
@@ -283,10 +300,15 @@ export function detectOpenVinoDevices(
 			existsSync,
 		);
 
+	const ioFailures: DirReadFailure[] = [];
 	const renderNodes =
-		platform === "linux" ? readableEntries("/dev/dri", io, "renderD") : [];
+		platform === "linux"
+			? readableEntries("/dev/dri", io, "renderD", ioFailures)
+			: [];
 	const accelNodes =
-		platform === "linux" ? readableEntries("/dev/accel", io, "accel") : [];
+		platform === "linux"
+			? readableEntries("/dev/accel", io, "accel", ioFailures)
+			: [];
 	const intelComputeRuntimeReady =
 		platform === "linux" &&
 		hasAny(
@@ -308,6 +330,11 @@ export function detectOpenVinoDevices(
 	if (runtimeAvailable && accelNodes.length > 0) devices.push("NPU");
 
 	const warnings: string[] = [];
+	for (const failure of ioFailures) {
+		warnings.push(
+			`Could not list ${failure.dir} (${failure.code}): Intel accelerator detection is unknown on this host, not absent.`,
+		);
+	}
 	if (renderNodes.length > 0 && !intelComputeRuntimeReady) {
 		warnings.push(
 			`OpenVINO GPU needs Intel Compute Runtime packages: ${OPENVINO_LINUX_GPU_PACKAGES.join(", ")}`,

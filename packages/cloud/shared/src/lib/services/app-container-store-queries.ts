@@ -3,7 +3,7 @@
  * the process database singleton so real Postgres tests can inject an isolated DB.
  */
 
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, notInArray, sql } from "drizzle-orm";
 import type { dbWrite } from "../../db/helpers";
 import { containers } from "../../db/schemas/containers";
 import { dockerNodes, PLACEABLE_NODE_STATE } from "../../db/schemas/docker-nodes";
@@ -69,6 +69,31 @@ export function findDeletingAppContainerRows(
     .select(appContainerSelection)
     .from(containers)
     .where(and(eq(containers.organization_id, organizationId), eq(containers.status, "deleting")));
+}
+
+/**
+ * Whether another container row of the same app still exists on the node. All
+ * generations of an app share one DB ambassador on the node, so deleting one
+ * generation must keep it while another row can still use it.
+ */
+export async function hasOtherAppContainerOnNode(
+  database: AppContainerReadDatabase,
+  row: { id: string; organizationId: string; appId: string; nodeId: string },
+): Promise<boolean> {
+  const [other] = await database
+    .select({ id: containers.id })
+    .from(containers)
+    .where(
+      and(
+        eq(containers.organization_id, row.organizationId),
+        eq(containers.project_name, row.appId),
+        eq(containers.node_id, row.nodeId),
+        ne(containers.id, row.id),
+        notInArray(containers.status, ["deleted", "deleting"]),
+      ),
+    )
+    .limit(1);
+  return other !== undefined;
 }
 
 /** Atomically attributes a container to a node and reserves one available slot. */

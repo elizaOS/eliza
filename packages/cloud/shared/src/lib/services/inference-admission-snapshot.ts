@@ -57,12 +57,19 @@ export function inferenceRateLimitConfig(
     windowMs: 60_000,
     maxRequests: snapshot.rateLimits[rpmKey],
     authority: snapshot.authority,
+    ...(typeof snapshot.planKey === "string" && { planKey: snapshot.planKey }),
   };
 }
 
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
+  const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
+  if (isFundedBudgetAdmissionEnabled()) {
+    return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
+      inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
+    );
+  }
   const policy = await readOrganizationQuotaPolicy(organizationId);
   return inferenceAdmissionSnapshotFromPolicy(policy);
 }
@@ -83,6 +90,7 @@ export function inferenceAdmissionSnapshotFromPolicy(
       standardRpm: requireOrganizationRateTier(policy).standardRpm,
       strictRpm: requireOrganizationRateTier(policy).strictRpm,
     },
+    planKey: requireOrganizationRateTier(policy).tierName,
   };
 }
 
@@ -102,10 +110,13 @@ export async function inferenceAdmissionSnapshotInTransaction(
   const funding = policy.subscriptionFunded
     ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, { policy })
     : undefined;
+  const { readInferenceBudgetPolicy } = await import("./inference-funded-budget-admission");
+  const fundedBudget = await readInferenceBudgetPolicy(tx, organizationId, policy);
   return {
     ...snapshot,
     billingHold: hold.status === "held",
     ...(funding && { funding }),
+    ...(fundedBudget && { fundedBudget }),
   };
 }
 

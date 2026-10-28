@@ -15,12 +15,15 @@ import type { CustomActionDef } from "@elizaos/contracts";
 import { readJsonBody, sendJson, sendJsonError } from "@elizaos/host";
 import type { ElizaConfig } from "@elizaos/host/protocol";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { settingsAction } from "../src/actions/settings-actions.ts";
+import { setLiveElizaConfigSource } from "../src/api/config-state.ts";
 import { handleDatabaseRoute } from "../src/api/database.ts";
 import {
   handleMiscRoutes,
   type MiscRouteContext,
 } from "../src/api/misc-routes.ts";
 import { loadElizaConfig, saveElizaConfig } from "../src/config/config.ts";
+import { ElizaCharacterPersistenceService } from "../src/services/character-persistence.ts";
 
 let dir: string;
 let server: http.Server;
@@ -186,4 +189,60 @@ it("keeps a saved database provider after a full save of the live config", async
 
   expect(loadElizaConfig().database?.provider).toBe("pglite");
   expect(state.config.database?.provider).toBe("pglite");
+});
+
+it("keeps chat setting changes and character edits after a full save of the live config", async () => {
+  await startServer({
+    agents: {
+      list: [{ id: "main", default: true, name: "Ava", bio: ["old bio"] }],
+    },
+  } as ElizaConfig);
+  // startApiServer registers its in-memory config the same way.
+  const release = setLiveElizaConfigSource(() => state.config);
+  try {
+    const runtime = {
+      agentId: randomUUID(),
+      character: { name: "Ava", bio: ["new bio from chat"], settings: {} },
+      updateAgent: async () => true,
+      reportError: () => {},
+    } as never;
+    const run = (parameters: Record<string, unknown>) =>
+      settingsAction.handler?.(
+        runtime,
+        { entityId: randomUUID() } as never,
+        undefined,
+        { parameters } as never,
+        undefined,
+      );
+    await run({
+      action: "toggle_capability",
+      capability: "browser",
+      enabled: false,
+    });
+    await run({ action: "set_owner_name", name: "Dana" });
+    await run({
+      action: "update_ai_provider",
+      provider: "anthropic",
+      modelConfigs: { large: "claude-test-large" },
+    });
+    const persistence = new (
+      ElizaCharacterPersistenceService as unknown as new (
+        runtime: unknown,
+      ) => ElizaCharacterPersistenceService
+    )(runtime);
+    (persistence as unknown as { runtime: unknown }).runtime = runtime;
+    await persistence.persistCharacter({ source: "agent" } as never);
+
+    fullSaveOfLiveConfig();
+
+    const saved = loadElizaConfig() as ElizaConfig & {
+      ui?: { capabilities?: Record<string, boolean>; ownerName?: string };
+    };
+    expect(saved.ui?.capabilities?.browser).toBe(false);
+    expect(saved.ui?.ownerName).toBe("Dana");
+    expect(saved.models?.large).toBe("claude-test-large");
+    expect(saved.agents?.list?.[0]?.bio).toEqual(["new bio from chat"]);
+  } finally {
+    release();
+  }
 });

@@ -84,9 +84,16 @@ export class GoogleMeetClient {
         config: params.accessType ? { accessType: params.accessType } : undefined,
       },
     });
+    const spaceName = response.data.name?.trim();
+    if (!spaceName) {
+      throw new ElizaError("Google Meet space creation returned no provider space name.", {
+        code: "GOOGLE_MEET_CREATE_RECEIPT_MISSING",
+        severity: "fatal",
+      });
+    }
 
     return {
-      ...mapSpace(response.data, params.title),
+      ...mapSpace({ ...response.data, name: spaceName }, params.title),
       title: params.title,
       startTime: new Date().toISOString(),
       participants: [],
@@ -469,7 +476,6 @@ function mapTranscriptEntry(entry: meet_v2.Schema$TranscriptEntry): GoogleMeetTr
     startTime: entry.startTime ?? undefined,
     endTime: entry.endTime ?? undefined,
     languageCode: entry.languageCode ?? undefined,
-    confidence: 1,
   };
 }
 

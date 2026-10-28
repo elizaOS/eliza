@@ -44,10 +44,10 @@
   },
   "devDependencies": {
     "@types/node": "24.12.2",
-    "tsup": "8.5.1",
+    "tsup": "9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "5.0.3"
+    "vitest": "5.0.5"
   },
   "publishConfig": {
     "access": "public"
@@ -56,6 +56,23 @@
     "managedIntegration": {
       "promoted": true,
       "contractId": "github-connector-oauth"
+    }
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "GITHUB_USER_PAT": {
+        "type": "string",
+        "description": "Personal access token for your GitHub account. Not needed when you connect a GitHub account.",
+        "required": false,
+        "sensitive": true
+      },
+      "GITHUB_AGENT_PAT": {
+        "type": "string",
+        "description": "Optional token for a separate GitHub account that the agent acts as.",
+        "required": false,
+        "sensitive": true
+      }
     }
   }
 }

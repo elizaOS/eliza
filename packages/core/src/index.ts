@@ -7,6 +7,7 @@ export {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
 	readTaskExtractionRequestIntents,
+	readTaskExtractionUserSources,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,
@@ -66,6 +67,7 @@ export {
 	resourcesSchema,
 	type SecondarySurface,
 } from "./catalog/schema.js";
+export { getClientChatRooms } from "./client-chat-rooms.js";
 // Connection management (ensureConnection/ensureConnections) - standalone batch helpers
 export * from "./connection";
 export * from "./connectors/account-manager";
@@ -204,6 +206,8 @@ export {
 	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
 	collectCompletionContextSources,
 	completionContextSources,
+	HISTORICAL_EFFECT_TERMINALS,
+	type HistoricalEffectTerminal,
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,
@@ -219,6 +223,7 @@ export {
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
+export { createPreparedModelRequestGuard } from "./runtime/prepared-model-request";
 export {
 	projectDeferredProviders,
 	providerReviewSources,

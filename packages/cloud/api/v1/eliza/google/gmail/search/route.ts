@@ -28,6 +28,14 @@ app.get("/", async (c) => {
     const grantId = c.req.query("grantId")?.trim();
     const rawQuery = c.req.query("query") ?? null;
     const pageToken = c.req.query("pageToken");
+    const labelId = c.req.query("labelId");
+    const includeLabels = c.req.query("includeLabels");
+    if (
+      includeLabels !== undefined &&
+      includeLabels !== "true" &&
+      includeLabels !== "false"
+    )
+      return c.json({ error: "includeLabels must be true or false." }, 400);
     if (
       pageToken !== undefined &&
       (!pageToken.length || pageToken.length > 4096)
@@ -56,6 +64,8 @@ app.get("/", async (c) => {
       query,
       maxResults,
       pageToken,
+      labelId,
+      includeLabels: includeLabels === "true",
     });
     return c.json(result);
   } catch (error) {

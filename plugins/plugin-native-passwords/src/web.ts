@@ -41,6 +41,9 @@ export class ElizaPasswordsWeb
   async save(): Promise<never> {
     throw unavailable();
   }
+  async openEditor(): Promise<never> {
+    throw unavailable();
+  }
   async remove(): Promise<never> {
     throw unavailable();
   }

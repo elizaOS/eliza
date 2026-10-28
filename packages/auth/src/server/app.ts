@@ -35,6 +35,8 @@ import {
 import {
   platformAuthMiddleware,
   SmsDeliveryError,
+  SmsDestinationNotAllowedError,
+  SmsSendBudgetExceededError,
   SmsVerificationError,
 } from "./auth/index";
 import { redactedThrownDiagnostics } from "./shared/index";
@@ -47,6 +49,13 @@ export function createLoginApp(): Hono<{ Variables: AppVariables }> {
   app.onError((error, c) => {
     if (error instanceof SyntaxError)
       return c.json({ ok: false, error: "Invalid JSON" }, 400);
+    if (error instanceof SmsDestinationNotAllowedError) {
+      return c.json({ ok: false, error: error.message }, 400);
+    }
+    if (error instanceof SmsSendBudgetExceededError) {
+      c.header("Retry-After", String(error.retryAfterSecs));
+      return c.json({ ok: false, error: error.message }, 503);
+    }
     if (
       error instanceof SmsDeliveryError ||
       error instanceof SmsVerificationError

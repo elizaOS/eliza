@@ -17,6 +17,7 @@ import type {
 import { validateToolArgs } from "@elizaos/core";
 import { type MeetingSession, parseMeetingUrl } from "@elizaos/core/protocol";
 import { describe, expect, it } from "vitest";
+import { activeMeetingsProvider } from "../providers/active-meetings.js";
 import type { MeetingService } from "../service.js";
 import { getMeetingTranscriptAction } from "./get-meeting-transcript.js";
 import { joinMeetingAction } from "./join-meeting.js";
@@ -153,8 +154,18 @@ describe("LEAVE_MEETING planner parameters", () => {
       ],
       stopSession: (id: string) => {
         stopped.push(id);
+        return true;
       },
     });
+    // The sessionId description points at ACTIVE_MEETINGS, so the provider
+    // must print the id the handler matches on.
+    const provided = await activeMeetingsProvider.get(
+      runtime,
+      msg("leave that one"),
+      {} as State,
+    );
+    expect(provided.text).toContain("session sess-a,");
+    expect(provided.text).toContain("session sess-b,");
     const result = await leaveMeetingAction.handler(
       runtime,
       msg("leave that one"),

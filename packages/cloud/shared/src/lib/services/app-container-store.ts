@@ -16,6 +16,7 @@ import {
   claimAppContainerNodeSlot,
   findAppContainerRowById,
   findDeletingAppContainerRows,
+  hasOtherAppContainerOnNode,
   type ProjectableContainerRow,
   rollbackAppContainerNodeSlotClaim,
 } from "./app-container-store-queries";
@@ -117,6 +118,16 @@ export class ContainerRepoAppContainerStore implements AppContainerStore {
     // real deleting row into a terminal no-op.
     const rows = await findDeletingAppContainerRows(this.deps.writeDatabase, organizationId);
     return rows.map(mapContainerRowToAppContainerRow);
+  }
+
+  async hasOtherAppContainerOnNode(row: AppContainerRow): Promise<boolean> {
+    if (!row.nodeId) return false;
+    return hasOtherAppContainerOnNode(this.deps.writeDatabase, {
+      id: row.id,
+      organizationId: row.organizationId,
+      appId: row.appId,
+      nodeId: row.nodeId,
+    });
   }
 
   async claimNodeSlot(
