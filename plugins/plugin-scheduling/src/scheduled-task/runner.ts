@@ -2926,16 +2926,18 @@ export function createScheduledTaskRunner(
       }
       // An in-app delivery lands in the owner's chat room; the dispatcher
       // reports that room, and it is where the reply arrives. The target
-      // name ("in_app") would never match a reply's roomId.
+      // name ("in_app") would never match a reply's roomId. A room already
+      // set in the task metadata still wins inside the helper.
       const ownerChatRoomId = dispatchResult.metadata?.ownerChatRoomId;
       const pendingPromptRoomId = claimed.completionCheck
-        ? typeof ownerChatRoomId === "string" && ownerChatRoomId.length > 0
-          ? ownerChatRoomId
-          : pendingPromptRoomIdForTask(claimed, {
-              agentId: deps.agentId,
-              channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
-              target: dispatchResult.target,
-            })
+        ? pendingPromptRoomIdForTask(claimed, {
+            agentId: deps.agentId,
+            channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
+            target:
+              typeof ownerChatRoomId === "string" && ownerChatRoomId.length > 0
+                ? ownerChatRoomId
+                : dispatchResult.target,
+          })
         : null;
       if (pendingPromptRoomId) {
         claimed.metadata.pendingPromptRoomId = pendingPromptRoomId;
