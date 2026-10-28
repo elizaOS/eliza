@@ -11,7 +11,11 @@
  */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
-import { ApiError, failureResponse, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
 import { charactersService } from "@elizaos/cloud-shared/lib/services/characters";

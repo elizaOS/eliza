@@ -1,6 +1,9 @@
 // Handles cloud API training vertex models route traffic with route-local auth expectations.
 
-import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
 import type {

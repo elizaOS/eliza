@@ -1,6 +1,9 @@
 // Handles cloud API training vertex assignments route traffic with route-local auth expectations.
 
-import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   requireAdmin,
   requireAuthOrApiKeyWithOrg,

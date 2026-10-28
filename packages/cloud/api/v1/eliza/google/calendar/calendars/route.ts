@@ -1,4 +1,7 @@
-import { ApiError as PrivateOwnerApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError as PrivateOwnerApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 // Handles v1 cloud API v1 eliza google calendar calendars route traffic with route-local auth expectations.
 

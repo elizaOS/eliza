@@ -3,7 +3,10 @@
  * It validates the requested chart window before any app or earnings lookup.
  */
 
-import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appEarningsService } from "@elizaos/cloud-shared/lib/services/app-earnings";
