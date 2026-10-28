@@ -221,6 +221,21 @@ describe("createCameraSession start", () => {
     expect(h.calls).toEqual(["start:back", "stop", "start:back"]);
   });
 
+  it("a surface that hid before the preview was requested returns to off", async () => {
+    const release = deferred();
+    const h = harness({ stopPreview: () => release.promise });
+    await h.session.start();
+    const stopping = h.session.stop();
+    const starting = h.session.start();
+    h.setActive(false);
+    release.resolve();
+    await stopping;
+    expect(await starting).toEqual({ status: "stale" });
+    expect(h.session.phase).toBe("off");
+    h.setActive(true);
+    expect(await h.session.start()).toEqual({ status: "ready" });
+  });
+
   it("a failed start after a stop is stale, not an error", async () => {
     const preview = deferred();
     const h = harness({ startPreview: () => preview.promise });
@@ -330,6 +345,35 @@ describe("createCameraSession recording", () => {
     await g.session.startRecording();
     expect(await g.session.finishRecording()).toBe("failed");
     expect(g.hooks.recordingFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it("a repeated stop with no recording never calls the bridge or reports a failure", async () => {
+    const h = harness();
+    await h.session.start();
+    await h.session.startRecording();
+    expect(await h.session.finishRecording()).toBe("saved");
+    expect(await h.session.finishRecording()).toBe("failed");
+    expect(h.camera.stopRecording).toHaveBeenCalledTimes(1);
+    expect(h.hooks.recordingFailed).not.toHaveBeenCalled();
+    expect(h.hooks.recordingFinishing).toHaveBeenCalledTimes(1);
+  });
+
+  it("a throwing presentation hook never leaves the session finalizing", async () => {
+    const h = harness();
+    h.hooks.recordingFinishing.mockImplementation(() => {
+      throw new Error("render failed");
+    });
+    h.hooks.recordingFailed.mockImplementation(() => {
+      throw new Error("render failed");
+    });
+    h.hooks.recordingSaved.mockRejectedValueOnce(new Error("not in library"));
+    await h.session.start();
+    await h.session.startRecording();
+    expect(await h.session.finishRecording()).toBe("failed");
+    expect(h.session.finalizing).toBe(false);
+    expect(h.session.busy).toBe(false);
+    expect(await h.session.startRecording()).toBe("recording");
+    expect(await h.session.finishRecording()).toBe("saved");
   });
 
   it("classifies a microphone denial", async () => {

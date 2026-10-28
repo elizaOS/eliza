@@ -130,7 +130,8 @@ export interface CameraSession {
   /** One preview control change (zoom, flash, switch, focus) at a time, only while ready. */
   control(task: () => Promise<unknown>): Promise<CameraControlOutcome>;
   startRecording(): Promise<CameraRecordingStart>;
-  /** Finish the active recording; concurrent calls share one finalization. */
+  /** Finish the active recording; concurrent calls share one finalization. With no recording it
+   * reports "failed" without calling the bridge or the hooks. */
   finishRecording(): Promise<CameraRecordingOutcome>;
   /** Run one capture exclusively; it may start the preview itself. */
   exclusive<T>(
@@ -184,6 +185,14 @@ export function createCameraSession<
       // A host render failure never corrupts session state.
     }
   };
+  /** Presentation hooks never corrupt session state or reject a finalization. */
+  const notify = (hook: (() => void) | undefined) => {
+    try {
+      hook?.();
+    } catch {
+      // Same rule as `changed`.
+    }
+  };
   const current = (token: number) => token === epoch && options.active();
   /** A start is in flight or a preview is up (read through a call: awaits change it). */
   const previewOwned = () => phase === "starting" || phase === "ready";
@@ -192,9 +201,12 @@ export function createCameraSession<
 
   function finishRecording(): Promise<CameraRecordingOutcome> {
     if (finalizing) return finalizing;
+    // Nothing is recording: never ask the bridge to stop (and never report a failure) for a
+    // recording this session did not start, for example a repeated stop tap.
+    if (!recording) return Promise.resolve("failed");
     recording = false;
     const flight = (async (): Promise<CameraRecordingOutcome> => {
-      hooks.recordingFinishing?.();
+      notify(hooks.recordingFinishing);
       try {
         const receipt = await camera.stopRecording();
         if (!completeRecording(receipt))
@@ -202,7 +214,7 @@ export function createCameraSession<
         await hooks.recordingSaved?.(receipt);
         return "saved";
       } catch {
-        hooks.recordingFailed?.();
+        notify(hooks.recordingFailed);
         return "failed";
       } finally {
         finalizing = undefined;
@@ -255,7 +267,14 @@ export function createCameraSession<
     changed();
     try {
       await stopping;
-      if (!current(token)) return { status: "stale" };
+      if (!current(token)) {
+        // The surface hid before the preview was requested; nothing to release.
+        if (token === epoch) {
+          phase = "off";
+          changed();
+        }
+        return { status: "stale" };
+      }
       await camera.startPreview(options.preview());
       if (!current(token)) {
         // The preview came up after the surface closed or hid. Release it unless a newer start
