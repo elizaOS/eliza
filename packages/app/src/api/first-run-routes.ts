@@ -29,6 +29,7 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   prepareFirstRunConnectors,
+  resolveLinkedAccountsInConfig,
 } from "@elizaos/host/protocol";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import {
@@ -162,6 +163,14 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
   setTimeout(() => {
     try {
       const freshConfig = loadElizaConfig();
+      // An explicit disconnect retires this delayed setup write. Match the
+      // canonical guard used by the host's ordinary Cloud-key backfill.
+      if (
+        resolveLinkedAccountsInConfig(freshConfig)?.elizacloud?.status ===
+        "unlinked"
+      ) {
+        return;
+      }
       if (freshConfig.cloud?.apiKey) {
         return;
       }
