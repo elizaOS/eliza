@@ -3,12 +3,17 @@ package ai.eliza.plugins.system;
 /**
  * One process-local, owner-bound assistant invocation. Never accepts caller Intent extras.
  *
- * <p>A wake that arrives before any authenticated renderer binding (a cold process, or a renderer
- * that is not signed in yet) normally only opens the assistant. When the host registers a native
- * {@link OwnerAdmission}, such a wake is held for {@link #COLD_WINDOW_MS}: the first authenticated
- * binding may claim it only if the host's native owner at that binding equals the native owner
- * recorded when the wake arrived, and the take still requires the same session, no lock at arrival
- * or now, and foreground. Renderer input never fills that gap; only native owner state does.
+ * <p>Two origins may start a voice turn: {@link #LISTENER}, a wake from the same-signer image
+ * listener, and {@link #SYSTEM}, an assistant gesture (press-and-hold power, the assist gesture, a
+ * long press on Home or the navigation handle) that the platform-signed system UI launched with
+ * its identity shared. Every other launch is {@link #ASSIST}: it opens the assistant only.
+ *
+ * <p>A voice origin that arrives before any authenticated renderer binding (a cold process, or a
+ * renderer that is not signed in yet) normally only opens the assistant. When the host registers a
+ * native {@link OwnerAdmission}, such an invocation is held for {@link #COLD_WINDOW_MS}: the first
+ * authenticated binding may claim it only if the host's native owner at that binding equals the
+ * native owner recorded when it arrived, and the take still requires the same session, no lock at
+ * arrival or now, and foreground. Renderer input never fills that gap; only native owner state does.
  */
 public final class SenseInvocation {
     public static final long WINDOW_MS = 5000;
@@ -16,6 +21,12 @@ public final class SenseInvocation {
     public static final long COLD_WINDOW_MS = 15000;
     /** Absent clock: a cold wake cannot be claimed. */
     public static final long NO_CLOCK = Long.MIN_VALUE;
+    /** A wake from the same-signer image listener. */
+    public static final String LISTENER = "listener";
+    /** An assistant gesture launched by the platform-signed system UI with its identity shared. */
+    public static final String SYSTEM = "system";
+    /** Any other launch: the assistant opens and no voice turn starts. */
+    public static final String ASSIST = "assist";
 
     /**
      * The host's native, non-secret identity of the owner whose authenticated session may claim a
@@ -54,6 +65,7 @@ public final class SenseInvocation {
         // Late calls from an old WebView or mount cannot reclaim the current lease.
         if (bridge < bridgeGeneration || bridge == bridgeGeneration && generation < rendererGeneration) return;
         String waitingOwner = coldWaiting() ? coldOwner : null;
+        String waitingOrigin = origin;
         long waitingSince = arrivedAt;
         if (bridge > bridgeGeneration || generation > rendererGeneration) {
             reset(); bridgeGeneration = bridge; rendererGeneration = generation;
@@ -64,50 +76,65 @@ public final class SenseInvocation {
             bindingId = next == null ? null : owner;
             session = next;
         }
-        if (waitingOwner != null) carry(waitingOwner, waitingSince, next, now);
+        if (waitingOwner != null) carry(waitingOrigin, waitingOwner, waitingSince, next, now);
     }
 
     public synchronized void reset() { clear(); session = null; bindingId = null; }
     public synchronized void release(long bridge) { if (bridge == bridgeGeneration) reset(); }
 
     public synchronized void record(String hostPackage, String callerPackage, boolean sameSigner, long now, boolean lockedAtArrival) {
-        origin = (hostPackage + ".sense").equals(callerPackage) && sameSigner ? "listener" : "assist";
+        record(hostPackage, callerPackage, sameSigner, false, now, lockedAtArrival);
+    }
+
+    /**
+     * Records one launch of the assistant surface. {@code systemAssist} is true only when Android
+     * reported the platform-signed system UI as the caller (see
+     * {@link SenseListenerClient#recordInvocation}); a listener caller still takes precedence.
+     */
+    public synchronized void record(String hostPackage, String callerPackage, boolean sameSigner, boolean systemAssist, long now, boolean lockedAtArrival) {
+        origin = (hostPackage + ".sense").equals(callerPackage) && sameSigner ? LISTENER : systemAssist ? SYSTEM : ASSIST;
         invocationSession = session;
         arrivedAt = now;
         locked = lockedAtArrival;
         adopted = false;
-        coldOwner = "listener".equals(origin) && session == null && !lockedAtArrival ? admittedOwner() : null;
+        coldOwner = startsVoice(origin) && session == null && !lockedAtArrival ? admittedOwner() : null;
     }
 
-    /** Returns null after consumption. Unknown or changed ownership never returns listener. */
+    /** The origins that may start a voice turn. */
+    private static boolean startsVoice(String origin) { return LISTENER.equals(origin) || SYSTEM.equals(origin); }
+
+    /**
+     * Returns null after consumption. Unknown or changed ownership never returns a voice origin
+     * ({@link #LISTENER} or {@link #SYSTEM}); it returns {@link #ASSIST}.
+     */
     public synchronized String take(long bridge, int generation, String owner, String expectedSession, long now, boolean lockedNow) {
         if (bridge != bridgeGeneration || generation != rendererGeneration) return null;
         if (owner == null || !owner.equals(bindingId)) return null;
         if (origin == null) return null;
         long window = adopted ? COLD_WINDOW_MS : WINDOW_MS;
         boolean ownerUnchanged = !adopted || coldOwner != null && coldOwner.equals(admittedOwner());
-        String result = "listener".equals(origin) && session != null && session.equals(expectedSession)
+        String result = startsVoice(origin) && session != null && session.equals(expectedSession)
                 && session.equals(invocationSession) && !locked && !lockedNow && now >= arrivedAt
-                && now - arrivedAt <= window && ownerUnchanged ? "listener" : "assist";
+                && now - arrivedAt <= window && ownerUnchanged ? origin : ASSIST;
         clear();
         return result;
     }
 
-    /** A listener wake recorded before an authenticated binding, with an admitted native owner. */
+    /** A voice origin recorded before an authenticated binding, with an admitted native owner. */
     private boolean coldWaiting() {
-        return coldOwner != null && !adopted && "listener".equals(origin) && invocationSession == null && !locked;
+        return coldOwner != null && !adopted && startsVoice(origin) && invocationSession == null && !locked;
     }
 
-    /** Keep, claim or drop a waiting cold wake after a binding change. */
-    private void carry(String waitingOwner, long waitingSince, String next, long now) {
+    /** Keep, claim or drop a waiting cold invocation after a binding change; its origin is kept. */
+    private void carry(String waitingOrigin, String waitingOwner, long waitingSince, String next, long now) {
         if (now == NO_CLOCK || now < waitingSince || now - waitingSince > COLD_WINDOW_MS) { clear(); return; }
         if (next == null) {
             // Still unauthenticated (or a disposed renderer's cleanup): keep waiting.
-            origin = "listener"; invocationSession = null; arrivedAt = waitingSince; locked = false; coldOwner = waitingOwner; adopted = false;
+            origin = waitingOrigin; invocationSession = null; arrivedAt = waitingSince; locked = false; coldOwner = waitingOwner; adopted = false;
             return;
         }
         if (!waitingOwner.equals(admittedOwner())) { clear(); return; }
-        origin = "listener"; invocationSession = next; arrivedAt = waitingSince; locked = false; coldOwner = waitingOwner; adopted = true;
+        origin = waitingOrigin; invocationSession = next; arrivedAt = waitingSince; locked = false; coldOwner = waitingOwner; adopted = true;
     }
 
     private String admittedOwner() {

@@ -108,12 +108,25 @@ background state or owner change. Once an authenticated session is bound, a warm
 wake can start the existing shell voice controller. Hosts must supply live
 authority reads and re-check readiness.
 
+The invocation is `listener` for a wake from the same-signer listener, `system`
+for an assistant gesture (press-and-hold power, the assist gesture, a long press
+on Home or the navigation handle) that Android reports as launched by the
+platform-signed `com.android.systemui`, and `assist` for every other launch.
+`listener` and `system` may start a voice turn under the same session, lock,
+foreground, window and owner rules; `assist` only opens the assistant. Stock
+SystemUI does not share its identity with the assistant activity it launches, so
+on such images the caller is unknown and a power-button hold stays `assist`. An
+image that applies the shared `assist` SystemUI bundle
+(`packages/os/android/sense/systemui/assist`) shares it, and only that platform
+package can produce `system`.
+
 A wake that arrives before any authenticated binding (a cold process, or a
 renderer that is not signed in yet) only opens the assistant unless the host's
 native code registers `SenseListenerClient.admitOwner(...)` at startup. That
 admission returns a non-secret native owner identity (for example a durable
-account-binding generation, never a token). With it, a listener wake that arrived
-unlocked is held for `COLD_WINDOW_MS` (15 seconds): the first authenticated
+account-binding generation, never a token). With it, a listener wake or system
+gesture that arrived unlocked is held for `COLD_WINDOW_MS` (15 seconds), keeping
+its origin: the first authenticated
 binding claims it only if the native owner at that binding equals the owner
 recorded at arrival, and the take still requires the same session, the same
 native owner, no lock and foreground. An owner change, expiry, a later

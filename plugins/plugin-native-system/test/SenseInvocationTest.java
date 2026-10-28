@@ -123,6 +123,50 @@ public final class SenseInvocationTest {
         check(erased.take(1, 1, OWNER, A, 300, false) == null, "reset drops a held cold wake");
     }
 
+    /** A system assistant gesture (platform system UI caller) follows the listener's voice rules. */
+    private static void systemGesture(String host) {
+        SenseInvocation warm = new SenseInvocation();
+        warm.bind(1, 1, OWNER, A);
+        warm.record(host, "com.android.systemui", false, true, 100, false);
+        check(SenseInvocation.SYSTEM.equals(warm.take(1, 1, OWNER, A, 101, false)), "a bound session takes a system gesture");
+        check(warm.take(1, 1, OWNER, A, 102, false) == null, "a system gesture is consumed once");
+        warm.record(host, "com.android.systemui", false, true, 100, false);
+        check(SenseInvocation.ASSIST.equals(warm.take(1, 1, OWNER, A, 100 + SenseInvocation.WINDOW_MS + 1, false)), "a system gesture keeps the short window");
+        warm.record(host, "com.android.systemui", false, true, 100, true);
+        check(SenseInvocation.ASSIST.equals(warm.take(1, 1, OWNER, A, 101, false)), "a system gesture while locked only opens");
+        warm.record(host, "com.android.systemui", false, true, 100, false);
+        check(SenseInvocation.ASSIST.equals(warm.take(1, 1, OWNER, A, 101, true)), "locked or background at the take only opens");
+        warm.record(host, "com.android.systemui", false, true, 100, false);
+        check(SenseInvocation.ASSIST.equals(warm.take(1, 1, OWNER, B, 101, false)), "another session cannot take a system gesture");
+        warm.record(host, "com.android.systemui", false, false, 100, false);
+        check(SenseInvocation.ASSIST.equals(warm.take(1, 1, OWNER, A, 101, false)), "an unverified system UI caller only opens");
+        // The listener caller keeps its own origin even if a host marked it as a system gesture.
+        warm.record(host, host + ".sense", true, true, 100, false);
+        check(SenseInvocation.LISTENER.equals(warm.take(1, 1, OWNER, A, 101, false)), "a listener wake stays a listener wake");
+        // An account change between the gesture and the take clears it.
+        warm.record(host, "com.android.systemui", false, true, 100, false);
+        warm.bind(1, 1, OWNER, B);
+        check(warm.take(1, 1, OWNER, B, 101, false) == null, "an account change clears a system gesture");
+        // Cold start: held only with a native owner admission, and claimed with its origin kept.
+        String[] nativeOwner = {"account-1"};
+        SenseInvocation cold = new SenseInvocation();
+        cold.admit(() -> nativeOwner[0]);
+        cold.record(host, "com.android.systemui", false, true, 100, false);
+        cold.bind(1, 1, OWNER, null, 200);
+        cold.bind(1, 1, OWNER, A, 6000);
+        check(SenseInvocation.SYSTEM.equals(cold.take(1, 1, OWNER, A, 9000, false)), "the same native owner claims a cold system gesture");
+        cold = new SenseInvocation();
+        cold.admit(() -> nativeOwner[0]);
+        cold.record(host, "com.android.systemui", false, true, 100, false);
+        nativeOwner[0] = "account-2";
+        cold.bind(1, 1, OWNER, A, 200);
+        check(cold.take(1, 1, OWNER, A, 300, false) == null, "an owner change drops a cold system gesture");
+        SenseInvocation unadmitted = new SenseInvocation();
+        unadmitted.record(host, "com.android.systemui", false, true, 100, false);
+        unadmitted.bind(1, 1, OWNER, A, 200);
+        check(unadmitted.take(1, 1, OWNER, A, 300, false) == null, "without an owner admission a cold system gesture is not held");
+    }
+
     public static void main(String[] args) {
         for (String host : new String[]{"ai.elizaos.app", "ai.elizaresearch.alphaphone"}) {
             SenseInvocation state=new SenseInvocation();
@@ -163,7 +207,8 @@ public final class SenseInvocationTest {
             check("listener".equals(state.take(2,1,OWNER,A,101,false)),"old plugin bind and destroy cannot reset new plugin");
             try {state.bind(1, 1, OWNER, "credential");throw new AssertionError("invalid key");} catch (IllegalArgumentException expected) {}
             coldStart(host);
+            systemGesture(host);
         }
-        System.out.println("PASS native Sense invocation ownership and replay fences");
+        System.out.println("PASS native Sense invocation ownership and replay fences, listener and system gesture");
     }
 }

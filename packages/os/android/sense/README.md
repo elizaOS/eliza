@@ -24,11 +24,19 @@ cannot enable listening or carry audio/transcripts.
 all listed preimages and postimages, and exports `senseSystemuiPatch()` for the
 full Pixel source validator. Set `--applied-sense-patch` only when verifying a
 build copy containing this exact patch. The older microphone-ops bundle remains
-available as `senseSystemuiPatch('ops')`. Neither function writes the AOSP source.
+available as `senseSystemuiPatch('ops')`. The `assist` bundle
+(`senseSystemuiPatch('assist')`, `systemui/assist`) adds one
+`ActivityOptions.setShareIdentityEnabled(true)` to `AssistManager.startAssistActivity`,
+so the assistant activity SystemUI launches for press-and-hold power or another
+assistant gesture can read SystemUI as its caller (`Activity#getLaunchedFromPackage`)
+and `SenseListenerClient` can mark it as a `system` invocation. It grants no
+permission and changes no other launch. Without it a power-button hold opens the
+assistant without starting voice. Neither function writes the AOSP source.
 The immutable 1,715,781-byte Pixel inventory is unchanged.
 
 The patch is bound to frameworks/base 94b4c163b7dfe5ce3607f7bb8456f9573f7de57d.
-Tests apply it to the three exact pinned original files and check all nine outputs.
+Tests apply it to the three exact pinned original files and check all nine outputs;
+the assist bundle is applied to the exact pinned `AssistManager.java` fixture.
 Java fixtures exercise capture policy and SystemUI lease state, and the listener
 compiles against Android 36. SystemUI Kotlin/resources have not been compiled;
 these checks do not qualify a full tree, APK, image boot or device. All release
