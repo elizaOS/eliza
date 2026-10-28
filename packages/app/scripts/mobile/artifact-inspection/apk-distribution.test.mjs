@@ -163,6 +163,33 @@ test("malformed policies are refused", () => {
     () => apkDistributionPolicy({ exportedComponents: [] }),
     /exportedComponents/,
   );
+  assert.throws(
+    () => apkDistributionPolicy({ developmentEntries: "^res/" }),
+    /developmentEntries/,
+  );
+  assert.throws(
+    () => apkDistributionPolicy({ forbiddenEntries: 3 }),
+    /forbiddenEntries/,
+  );
+});
+
+test("a global pattern still names every matching entry", () => {
+  const { problems } = apkDistributionProblems(
+    {
+      ...clean,
+      names: [
+        ...clean.names,
+        "assets/removed/a.bin",
+        "assets/removed/b.bin",
+        "assets/removed/c.bin",
+      ],
+    },
+    { ...policy, forbiddenEntries: /^assets\/removed\//g },
+    { mode: "release" },
+  );
+  assert.deepEqual(problems, [
+    "Removed runtime entries are packaged: assets/removed/a.bin, assets/removed/b.bin, assets/removed/c.bin",
+  ]);
 });
 
 test("dex markers report development names and forbidden prefixes", () => {

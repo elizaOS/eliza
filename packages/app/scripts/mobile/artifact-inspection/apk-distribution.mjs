@@ -24,9 +24,15 @@ const DEFAULT_TEST_ONLY_NAME = /mock|fixture/i;
 const DEX_ENTRY = /^classes\d*\.dex$/;
 const isFalse = (value) => value === "0x0";
 
-function asPattern(value) {
+// Patterns are matched once per entry name: a global or sticky RegExp keeps
+// lastIndex between calls and would skip matches, so those flags are dropped.
+function asPattern(value, key) {
   if (value === undefined || value === null) return null;
-  return value instanceof RegExp ? value : new RegExp(value, "i");
+  if (value instanceof RegExp)
+    return new RegExp(value.source, value.flags.replace(/[gy]/g, ""));
+  if (typeof value !== "string" || !value)
+    throw new TypeError(`APK policy ${key} must be a pattern`);
+  return new RegExp(value, "i");
 }
 
 /** Validate and normalize a host policy; throws on malformed input. */
@@ -52,18 +58,24 @@ export function apkDistributionPolicy(policy = {}) {
     developmentClasses: list("developmentClasses"),
     developmentManifestText: list("developmentManifestText"),
     developmentEntries: Object.freeze(
-      (policy.developmentEntries ?? []).map(asPattern),
+      (() => {
+        const value = policy.developmentEntries ?? [];
+        if (!Array.isArray(value))
+          throw new TypeError("APK policy developmentEntries must be a list");
+        return value.map((item) => asPattern(item, "developmentEntries"));
+      })(),
     ),
     exportedComponents: Object.freeze({ ...exported }),
     forbiddenPermissions: list("forbiddenPermissions"),
-    forbiddenEntries: asPattern(policy.forbiddenEntries),
+    forbiddenEntries: asPattern(policy.forbiddenEntries, "forbiddenEntries"),
     forbiddenEntriesLabel:
       policy.forbiddenEntriesLabel ?? "Forbidden entries are packaged",
     forbiddenDexPrefixes: list("forbiddenDexPrefixes"),
     forbiddenDexLabel:
       policy.forbiddenDexLabel ?? "Forbidden classes are packaged",
     requiredEntries: list("requiredEntries"),
-    testOnlyName: asPattern(policy.testOnlyName) ?? DEFAULT_TEST_ONLY_NAME,
+    testOnlyName:
+      asPattern(policy.testOnlyName, "testOnlyName") ?? DEFAULT_TEST_ONLY_NAME,
     requireReleaseNetworkSecurityConfig:
       policy.requireReleaseNetworkSecurityConfig !== false,
     forbidSourceMaps: policy.forbidSourceMaps !== false,
