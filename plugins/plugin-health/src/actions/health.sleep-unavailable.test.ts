@@ -278,3 +278,59 @@ describe("HEALTH today on the connector path", () => {
     expect(reply.fallback).not.toContain("- Sleep: 0.0h");
   });
 });
+
+describe("HEALTH by_metric on the connector path", () => {
+  it("reports each provider's total instead of adding providers together", async () => {
+    // A Fitbit day total includes the run Strava also reports.
+    const sample = (provider: "strava" | "fitbit", value: number) => ({
+      id: `${provider}-distance`,
+      agentId: "agent",
+      provider,
+      grantId: `${provider}-grant`,
+      metric: "distance_meters",
+      value,
+      unit: "m",
+      startAt: "2026-05-10T00:00:00.000Z",
+      endAt: "2026-05-10T23:59:59.000Z",
+      localDate: "2026-05-10",
+      sourceExternalId: `${provider}-1`,
+      metadata: {},
+      createdAt: "2026-05-10T23:59:59.000Z",
+      updatedAt: "2026-05-10T23:59:59.000Z",
+    });
+    const harness = buildHarness({
+      async getHealthDailySummary() {
+        throw new Error("the bridge is not used on the connector path");
+      },
+      async getHealthTrend() {
+        return [];
+      },
+      async getHealthConnectorStatus() {
+        return { available: false, backend: "none" };
+      },
+      async getHealthSummary() {
+        return {
+          ...emptyConnectorSummary(),
+          providers: [
+            { provider: "strava", connected: true },
+            { provider: "fitbit", connected: true },
+          ],
+          samples: [sample("strava", 10_000), sample("fitbit", 14_000)],
+        } as unknown as LifeOpsHealthSummaryResponse;
+      },
+      async getHealthDataPoints() {
+        return [];
+      },
+    });
+
+    await harness.runOnce("by_metric", {
+      metric: "distance_meters",
+      date: "2026-05-10",
+    });
+
+    const reply = harness.rendered[0];
+    expect(reply.fallback).toContain("strava total 10000.00 m");
+    expect(reply.fallback).toContain("fitbit total 14000.00 m");
+    expect(reply.fallback).not.toContain("24000");
+  });
+});

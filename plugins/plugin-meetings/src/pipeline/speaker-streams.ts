@@ -551,8 +551,12 @@ export class SpeakerStreamManager {
         logger.debug(
           `[MeetingPipeline] Hard-cap final submit for "${buffer.speakerName}" (${totalSec.toFixed(1)}s > ${this.maxBufferDurationSec}s)`,
         );
-        buffer.capSubmittedSamples = this.unconfirmedSamples(buffer);
-        this.submitBuffer(buffer, "final");
+        // Mark the window submitted only if the submission actually went out:
+        // submitBuffer no-ops without a consumer and swallows a throwing
+        // consumer, and a stuck capSubmittedSamples wedges the buffer forever.
+        if (this.submitBuffer(buffer, "final")) {
+          buffer.capSubmittedSamples = this.unconfirmedSamples(buffer);
+        }
         return;
       }
       this.trimBuffer(buffer);
@@ -567,9 +571,9 @@ export class SpeakerStreamManager {
   private submitBuffer(
     buffer: SpeakerBuffer,
     purpose: AsrSubmissionPurpose,
-  ): void {
+  ): boolean {
     const unconfirmed = this.unconfirmedSamples(buffer);
-    if (unconfirmed === 0 || !this.onSegmentReady) return;
+    if (unconfirmed === 0 || !this.onSegmentReady) return false;
 
     const combined = new Float32Array(unconfirmed);
     let dstOffset = 0;
@@ -597,9 +601,11 @@ export class SpeakerStreamManager {
         purpose,
         buffer.generation,
       );
+      return true;
     } catch (err) {
       buffer.inFlight = false;
       logger.error({ err }, "[MeetingPipeline] onSegmentReady threw");
+      return false;
     }
   }
 

@@ -63,7 +63,7 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     "Provides Uniswap V3 liquidity pool management for EVM chains.";
 
   private publicClients: Map<number, EvmPublicClient> = new Map();
-  private walletClients: Map<number, EvmWalletClient> = new Map();
+  private walletClients: Map<string, EvmWalletClient> = new Map();
   private rpcUrls: Map<number, string> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -113,13 +113,17 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     chainId: number,
     privateKey: `0x${string}`,
   ): EvmWalletClient {
-    const cacheKey = chainId;
+    // Key by chain AND wallet: the cache is per-service (singleton), and
+    // addLiquidity/removeLiquidity take a per-call wallet, so keying by
+    // chainId alone would return a different wallet's signer (Aerodrome's
+    // getWalletClient keys by account.address for the same reason).
+    const account = privateKeyToAccount(privateKey);
+    const cacheKey = `${chainId}:${account.address}`;
     let client = this.walletClients.get(cacheKey);
     if (client) return client;
 
     const rpcUrl = this.rpcUrls.get(chainId);
     const chain = getViemChain(chainId);
-    const account = privateKeyToAccount(privateKey);
 
     client = createWalletClient({
       chain,
@@ -435,7 +439,10 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
 
       let liquidityToRemove = position.liquidity;
       if (params.percentageToRemove && params.percentageToRemove < 100) {
-        liquidityToRemove = (position.liquidity * BigInt(params.percentageToRemove)) / 100n;
+        // Basis points, rounded down: BigInt() rejects non-integers, and a
+        // fractional percentage must never remove more than requested.
+        const percentageBps = BigInt(Math.floor(params.percentageToRemove * 100));
+        liquidityToRemove = (position.liquidity * percentageBps) / 10000n;
       }
 
       const deadline = params.deadline ?? BigInt(Math.floor(Date.now() / 1000) + 1800);

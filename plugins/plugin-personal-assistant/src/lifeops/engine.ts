@@ -286,12 +286,26 @@ function buildWindowOccurrence(
     minute: endMinuteOfDay % 60,
     second: 0,
   } satisfies ZonedDateParts;
-  const scheduledAt = buildUtcDateFromLocalParts(
-    definition.timezone,
-    startLocal,
-  );
-  const dueAt = buildUtcDateFromLocalParts(definition.timezone, endLocal);
-  const relevanceStartAt = addMinutes(scheduledAt, -leadMinutes);
+  // An adaptive window moves with the owner's activity during the day. Once an
+  // occurrence has started, keep its times: reminder attempts are keyed by
+  // them, so a moved start would send the same reminder again.
+  const kept =
+    existing?.scheduledAt &&
+    existing.dueAt &&
+    new Date(existing.relevanceStartAt).getTime() <= now.getTime()
+      ? {
+          scheduledAt: new Date(existing.scheduledAt),
+          dueAt: new Date(existing.dueAt),
+          relevanceStartAt: new Date(existing.relevanceStartAt),
+        }
+      : null;
+  const scheduledAt =
+    kept?.scheduledAt ??
+    buildUtcDateFromLocalParts(definition.timezone, startLocal);
+  const dueAt =
+    kept?.dueAt ?? buildUtcDateFromLocalParts(definition.timezone, endLocal);
+  const relevanceStartAt =
+    kept?.relevanceStartAt ?? addMinutes(scheduledAt, -leadMinutes);
   const relevanceEndAt = resolveSnoozedRelevanceEndAt(
     scheduledAt,
     addMinutes(dueAt, lagMinutes),

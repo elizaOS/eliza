@@ -45,8 +45,17 @@ const invalid = () =>
     "not_accepted",
     "Review the exact Calendar operation fields.",
   );
-function query<T>(request: Request, schema: z.ZodType<T>): T {
-  if (request.body) throw invalid();
+async function query<T>(request: Request, schema: z.ZodType<T>): Promise<T> {
+  // HTTP transports may represent Content-Length: 0 as an empty stream on
+  // DELETE. Reject actual bytes, not the existence of the transport stream.
+  if (request.body) {
+    const reader = request.body.getReader();
+    try {
+      if (!(await reader.read()).done) throw invalid();
+    } finally {
+      await reader.cancel();
+    }
+  }
   const params = new URL(request.url).searchParams;
   if ([...params.keys()].length !== new Set(params.keys()).size) throw invalid();
   const parsed = schema.safeParse(Object.fromEntries(params));
@@ -133,14 +142,14 @@ export function createCalendarSyncRoutes<E extends Env>(dependencies: {
   });
   app.get("/capabilities", async (c) => {
     const identity = await dependencies.authenticate(c),
-      input = query(c.req.raw, capSchema);
+      input = await query(c.req.raw, capSchema);
     return c.json(
       await dependencies.provider.capabilities(owner(identity, input, c), input.calendarId),
     );
   });
   app.get("/event", async (c) => {
     const identity = await dependencies.authenticate(c),
-      input = query(c.req.raw, querySchema);
+      input = await query(c.req.raw, querySchema);
     return c.json({
       version: 1,
       calendarId: input.calendarId,
@@ -187,7 +196,7 @@ export function createCalendarSyncRoutes<E extends Env>(dependencies: {
   });
   app.delete("/event", async (c) => {
     const identity = await dependencies.authenticate(c),
-      input = query(c.req.raw, deleteSchema);
+      input = await query(c.req.raw, deleteSchema);
     return c.json({
       version: 1,
       calendarId: input.calendarId,

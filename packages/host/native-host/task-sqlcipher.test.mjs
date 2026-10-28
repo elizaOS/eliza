@@ -146,3 +146,145 @@ test("installed artifacts reject a different unprivileged owner before native lo
     syncBuiltinESMExports();
   }
 });
+
+test("Android-installed libraries admit only an installer-owned file the app cannot rewrite", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "cipher-android-"));
+  t.after(() => rmSync(root, { recursive: true }));
+  const libraryPath = join(root, "libeliza_task_sqlcipher.so");
+  const bytes = Buffer.alloc(20);
+  bytes.set([127, 69, 76, 70, 2, 1]);
+  bytes.writeUInt16LE(183, 18);
+  writeFileSync(libraryPath, bytes, { mode: 0o755 });
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const originalGetuid = process.getuid;
+  const originalDlopen = process.dlopen;
+  const originalFstat = fs.fstatSync;
+  let owner = 1000,
+    mode = 0o100755,
+    loads = 0;
+  process.getuid = () => 10123;
+  fs.fstatSync = (...args) =>
+    Object.assign(originalFstat(...args), { uid: owner, mode });
+  syncBuiltinESMExports();
+  const exports = Object.fromEntries(
+    [
+      "acquireLease",
+      "releaseLease",
+      "open",
+      "exec",
+      "query",
+      "queryAll",
+      "close",
+      "verify",
+    ].map((name) => [name, () => {}]),
+  );
+  process.dlopen = (addon) => {
+    loads++;
+    addon.exports = exports;
+  };
+  const load = () =>
+    loadTaskSqlCipher({
+      libraryPath,
+      sha256,
+      machine: 183,
+      libraryMode: "android-installed",
+    });
+  try {
+    // The app's own file, another app's file and a group- or world-writable file are refused.
+    for (const [uid, bits] of [
+      [10123, 0o100755],
+      [10200, 0o100755],
+      [1000, 0o100775],
+      [1000, 0o100757],
+    ]) {
+      owner = uid;
+      mode = bits;
+      assert.throws(load, { code: "TASK_STORAGE_UNAVAILABLE" });
+    }
+    process.getuid = () => 0;
+    owner = 1000;
+    mode = 0o100755;
+    assert.throws(load, { code: "TASK_STORAGE_UNAVAILABLE" });
+    assert.equal(loads, 0);
+    process.getuid = () => 10123;
+    assert.equal(load(), exports);
+    assert.equal(loads, 1);
+  } finally {
+    process.getuid = originalGetuid;
+    process.dlopen = originalDlopen;
+    fs.fstatSync = originalFstat;
+    syncBuiltinESMExports();
+  }
+});
+
+test("provider reads every row through the guarded native queryAll", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "cipher-rows-"));
+  t.after(() => rmSync(root, { recursive: true }));
+  fs.chmodSync(root, 0o700);
+  const libraryPath = join(root, "libeliza_task_sqlcipher.so");
+  const bytes = Buffer.alloc(24);
+  bytes.set([127, 69, 76, 70, 2, 1]);
+  bytes.writeUInt16LE(183, 18);
+  bytes.writeUInt32LE(7, 20);
+  writeFileSync(libraryPath, bytes, { mode: 0o755 });
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  const originalDlopen = process.dlopen;
+  const originalFstat = fs.fstatSync;
+  const uid = process.getuid();
+  fs.fstatSync = (...args) => {
+    const metadata = originalFstat(...args);
+    // Only the library is installer-owned; the database stays the caller's own.
+    return metadata.size === 24
+      ? Object.assign(metadata, { uid: uid === 1000 ? 1001 : 1000 })
+      : metadata;
+  };
+  syncBuiltinESMExports();
+  const calls = [];
+  let current = true;
+  process.dlopen = (addon) => {
+    addon.exports = {
+      acquireLease: () => ({ lease: true }),
+      releaseLease: () => {},
+      open: () => ({ handle: true }),
+      exec: () => {},
+      query: () => undefined,
+      queryAll: (...args) => {
+        calls.push(args);
+        return [{ id: 1 }, { id: 2 }];
+      },
+      close: () => {},
+      verify: () => true,
+    };
+  };
+  try {
+    const provider = createSqlCipherTaskProvider({
+      libraryPath,
+      sha256,
+      machine: 183,
+      libraryMode: "android-installed",
+      resolveKey: async () => new Uint8Array(32).fill(7),
+      checkOwner: () => {
+        if (!current) throw new Error("retired");
+      },
+    });
+    const db = await provider.open({ path: join(root, "tasks.sqlite") });
+    const statement = db.prepare("SELECT id FROM records WHERE id > ?");
+    assert.deepEqual(statement.all(0), [{ id: 1 }, { id: 2 }]);
+    assert.equal(calls[0][1], "SELECT id FROM records WHERE id > ?");
+    assert.deepEqual(calls[0][2], [0]);
+    current = false;
+    assert.throws(() => statement.all(0), {
+      code: "TASK_STORAGE_UNAVAILABLE",
+    });
+    assert.equal(calls.length, 1);
+    current = true;
+    db.close();
+    assert.throws(() => statement.all(0), {
+      code: "TASK_STORAGE_UNAVAILABLE",
+    });
+  } finally {
+    process.dlopen = originalDlopen;
+    fs.fstatSync = originalFstat;
+    syncBuiltinESMExports();
+  }
+});

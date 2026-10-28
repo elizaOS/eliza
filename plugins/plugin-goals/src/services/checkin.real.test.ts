@@ -49,44 +49,6 @@ import {
 
 const OWNER_TZ = "America/Denver";
 
-/**
- * Peer-owned PA tables the goals back-end touches, provisioned minimally in
- * this PA-free harness (same approach as goals.real.test.ts): the audit
- * table (goal writes append there) and `life_task_definitions` (deleteGoal
- * clears its `goal_id` references).
- */
-async function provisionPeerTables(
-  harness: ModelProviderTestRuntime,
-): Promise<void> {
-  await executeRawSql(
-    harness.runtime,
-    "CREATE SCHEMA IF NOT EXISTS app_lifeops",
-  );
-  await executeRawSql(
-    harness.runtime,
-    `CREATE TABLE IF NOT EXISTS app_lifeops.life_audit_events (
-       id text PRIMARY KEY,
-       agent_id text NOT NULL,
-       event_type text NOT NULL,
-       owner_type text NOT NULL,
-       owner_id text NOT NULL,
-       reason text,
-       inputs_json text,
-       decision_json text,
-       actor text NOT NULL,
-       created_at text NOT NULL
-     )`,
-  );
-  await executeRawSql(
-    harness.runtime,
-    `CREATE TABLE IF NOT EXISTS app_lifeops.life_task_definitions (
-       id text PRIMARY KEY,
-       agent_id text NOT NULL,
-       goal_id text
-     )`,
-  );
-}
-
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
@@ -113,7 +75,6 @@ async function makeHarness(
     }),
   );
   await waitForScheduledTaskRunnerService(harness.runtime);
-  await provisionPeerTables(harness);
   return harness;
 }
 
@@ -223,7 +184,7 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
     const audits = () =>
       executeRawSql(
         harness.runtime,
-        "SELECT * FROM app_lifeops.life_audit_events ORDER BY id",
+        "SELECT * FROM app_goals.life_goal_audit_events ORDER BY id",
       );
     const beforeAudits = await audits();
 
@@ -381,7 +342,7 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
 
     const auditRows = await executeRawSql(
       harness.runtime,
-      `SELECT reason FROM app_lifeops.life_audit_events
+      `SELECT reason FROM app_goals.life_goal_audit_events
         WHERE owner_id = '${goalId}'
           AND reason = 'goal check-in response recorded'`,
     );

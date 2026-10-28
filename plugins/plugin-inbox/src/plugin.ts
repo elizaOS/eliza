@@ -30,7 +30,8 @@ export const inboxPlugin: Plugin = {
   schema: inboxDbSchema,
   services: [InboxMigrationService],
   // The adapter verifies the live owner action for every read. It supports
-  // both standard MESSAGE reads and the existing INBOX fan-out, without writes.
+  // standard MESSAGE reads and INBOX fan-out. Separate host settings admit
+  // reviewed new sends and owner-scoped mailbox changes.
   init: async () => {
     const gmail = new ManagedGmailAdapter();
     if (gmail.isAvailable()) {

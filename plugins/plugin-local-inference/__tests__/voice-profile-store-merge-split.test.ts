@@ -1,9 +1,8 @@
 /**
- * Tests for VoiceProfileStore.mergeProfiles + splitProfile (the cluster
- * management operations behind the /api/voice/profiles merge/split routes).
+ * Tests for VoiceProfileStore persistence and cluster management operations.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,6 +41,23 @@ beforeEach(async () => {
 
 afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+describe("VoiceProfileStore persistence", () => {
+  it("refuses to start with a corrupt profile index", async () => {
+    await store.createProfile({
+      centroid: unit([1, 0, 0, 0]),
+      embeddingModel: MODEL,
+      confidence: 0.8,
+      durationMs: 1000,
+      entityId: "known-speaker",
+    });
+    writeFileSync(path.join(tmpRoot, "index.json"), "{", "utf8");
+
+    const restarted = new VoiceProfileStore({ rootDir: tmpRoot });
+
+    await expect(restarted.init()).rejects.toThrow();
+  });
 });
 
 describe("VoiceProfileStore.mergeProfiles", () => {

@@ -45,6 +45,7 @@ import {
 	LOCAL_INFERENCE_MODEL_TYPES,
 	LOCAL_INFERENCE_PROVIDER_ID,
 } from "./provider.js";
+import { AssignmentsUnreadableError } from "./services/assignments";
 import { withConfigFileLock } from "./services/config-file-lock";
 import { classifyDeviceTier } from "./services/device-tier.js";
 import { resolveLocalInferenceStoredPath } from "./services/paths.js";
@@ -440,13 +441,26 @@ async function removeInstalledModel(id: string): Promise<boolean> {
 		async () => (await service.uninstall(id)).removed,
 	);
 }
+// Unlike readJsonFile, only a missing file means "no policy yet". A file that
+// exists but cannot be read or parsed throws AssignmentsUnreadableError, so
+// updateAssignments never rewrites the user's slots from an empty fallback.
 async function readAssignments(): Promise<Assignments> {
-	const file = await readJsonFile<{
-		assignments?: Assignments;
-	}>(assignmentsPath(), {
-		assignments: {},
-	});
-	return sanitizeAssignments(file.assignments ?? {});
+	let file: { assignments?: Assignments } | null;
+	try {
+		file = JSON.parse(await fsp.readFile(assignmentsPath(), "utf8")) as {
+			assignments?: Assignments;
+		} | null;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+		throw new AssignmentsUnreadableError(assignmentsPath(), error);
+	}
+	return sanitizeAssignments(file?.assignments ?? {});
+}
+function sendUnreadableAssignmentsError(
+	res: http.ServerResponse,
+	error: AssignmentsUnreadableError,
+): void {
+	sendJson(res, { error: error.message, code: error.code }, 500);
 }
 async function writeAssignments(
 	assignments: Assignments,
@@ -1396,7 +1410,12 @@ export async function handleLocalInferenceRoutes(
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/assignments") {
-		sendJson(res, { assignments: await readAssignments() });
+		try {
+			sendJson(res, { assignments: await readAssignments() });
+		} catch (error) {
+			if (!(error instanceof AssignmentsUnreadableError)) throw error;
+			sendUnreadableAssignmentsError(res, error);
+		}
 		return true;
 	}
 	if (method === "POST" && pathname === "/api/local-inference/assignments") {
@@ -1423,13 +1442,20 @@ export async function handleLocalInferenceRoutes(
 		// readAssignments/writeAssignments pair here loses one of two
 		// concurrent POSTs to the stale pre-write snapshot (issue #25123's
 		// race, on the route that motivated it).
-		const assignments = await updateAssignments((current) => {
-			if (modelId) {
-				current[slot as keyof Assignments] = modelId;
-			} else {
-				delete current[slot as keyof Assignments];
-			}
-		});
+		let assignments: Assignments;
+		try {
+			assignments = await updateAssignments((current) => {
+				if (modelId) {
+					current[slot as keyof Assignments] = modelId;
+				} else {
+					delete current[slot as keyof Assignments];
+				}
+			});
+		} catch (error) {
+			if (!(error instanceof AssignmentsUnreadableError)) throw error;
+			sendUnreadableAssignmentsError(res, error);
+			return true;
+		}
 		sendJson(res, { assignments });
 		return true;
 	}

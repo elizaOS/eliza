@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { pageCommand } from "../src/commands.mjs";
+import { pageGuidance } from "../src/page-guidance.mjs";
 
 const require = createRequire(
   import.meta.resolve("@elizaos/plugin-browser/package.json"),
@@ -325,7 +326,7 @@ try {
       "beforeend",
       '<label for="full">Full name</label><input id="full" autocomplete="name" required aria-invalid="true" aria-describedby="hint" aria-errormessage="problem" value="private-name-value"><span id="hint">As shown on your bill</span><span id="problem">Enter your name</span><label>Card number <input id="card" autocomplete="cc-number" value="4242424242424242"></label><span id="pin-name">PIN</span><input id="pin" aria-labelledby="pin-name" autocomplete="current-password"><input id="agree" type="checkbox" checked aria-label="Paperless"><button id="more" type="button" aria-expanded="false" disabled>More</button>',
     );
-    document.querySelector("#full").focus();
+    document.querySelector("#full").focus({ preventScroll: true });
   });
   state = await snapshot();
   const named = (label) =>
@@ -446,6 +447,342 @@ try {
   assert.equal(await page.$eval("#phone", (node) => node.value), "5550100");
   cases.push(
     "a granted fill reaches an ordinary unlabeled field by its unique selector and never an unmarked SSN or routing field",
+  );
+  await page.evaluate(() => {
+    document.body.innerHTML = `<div id="region" aria-label="Results" style="height:120px;width:240px;overflow:auto"><div style="height:900px;width:900px">Scrollable results</div></div><div id="click-region" tabindex="0" aria-label="Scrollable choice" onclick="this.dataset.clicked='yes'" style="height:60px;overflow:auto"><div style="height:500px">Choice content</div></div>`;
+    document.body.style.height = "3000px";
+    window.scrollTo(0, 0);
+  });
+  state = await snapshot();
+  const root = state.value.elements.find((element) => element.scroll?.document);
+  assert.equal(root.targetSelector, "html");
+  assert.equal(root.scroll.y, 0);
+  assert.equal(root.scrollOnly, true);
+  assert.equal(
+    state.value.elements.find(
+      (element) => element.targetSelector === "#click-region",
+    ).scrollOnly,
+    false,
+  );
+  assert.equal(
+    (await act(state, "click", "Scrollable choice")).dispatched,
+    true,
+  );
+  assert.equal(
+    await page.$eval("#click-region", (node) => node.dataset.clicked),
+    "yes",
+  );
+  state = await snapshot();
+
+  assert.equal(
+    (await act(state, "click", "Page")).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(
+    (await act(state, "scroll", "Page", { direction: "down" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.scroll?.document).scroll.y,
+    500,
+  );
+  const originalViewport = page.viewport();
+  for (const [size, viewport] of [
+    ["desktop", { width: 800, height: 600 }],
+    ["compact", { width: 400, height: 191 }],
+  ]) {
+    await page.setViewport(viewport);
+    state = await snapshot();
+    const rootNow = state.value.elements.find(
+      (element) => element.scroll?.document,
+    );
+    const guide = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "show", id: "root-scroll", origin: new URL(page.url()).origin, snapshotId: state.id, nodeId: rootNow.id, text: "Scroll the page down", action: "scroll", expiresAt: Date.now() + 60000 })})`,
+      returnByValue: true,
+    });
+    assert.equal(guide.exceptionDetails, undefined);
+    assert.equal(guide.result.value.placement, "in-view");
+    let scrollReady = false;
+    for (let attempt = 0; attempt < 60 && !scrollReady; attempt++) {
+      const status = await cdp.send("Runtime.evaluate", {
+        contextId: executionContextId,
+        expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "action-status", id: "root-scroll", snapshotId: state.id, nodeId: rootNow.id, action: "scroll" })})`,
+        returnByValue: true,
+      });
+      scrollReady = status.result.value?.ready === true;
+      if (!scrollReady)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal(
+      scrollReady,
+      true,
+      "A whole-page scroll must have a visible preview and Cancel",
+    );
+    const scrollOut = testOutputPath("browser-page-freshness");
+    await mkdir(scrollOut, { recursive: true });
+    await page.screenshot({ path: `${scrollOut}/root-scroll-${size}.png` });
+
+    assert.equal(
+      await page.evaluate(() => scrollY),
+      500,
+      "Guidance must not reveal the whole document by scrolling to its middle",
+    );
+    await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})({kind:'hide'})`,
+    });
+  }
+  await page.setViewport(originalViewport);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  state = await snapshot();
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "down" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  const region = state.value.elements.find(
+    (element) => element.targetSelector === "#region",
+  );
+  assert.equal(region.scroll.y, 500);
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  await page.evaluate(
+    () => (document.querySelector("#region").scrollTop = 600),
+  );
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "down" })).error.kind,
+    "STALE_REF",
+  );
+  await page.evaluate(
+    () => (document.querySelector("#region").scrollTop = 900),
+  );
+  state = await snapshot();
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "down" })).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "right" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.targetSelector === "#region")
+      .scroll.x,
+    500,
+  );
+  await page.evaluate(() => {
+    const node = document.querySelector("#region");
+    node.style.direction = "rtl";
+    node.scrollLeft = 0;
+  });
+  state = await snapshot();
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "left" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.targetSelector === "#region")
+      .scroll.x,
+    -500,
+  );
+  cases.push(
+    "observed document and nested scrolling, viewport guidance, manual-scroll freshness and end-of-region refusal",
+  );
+  // The last scroll's own scroll event fires on a later frame; let it pass
+  // before the effect handler is added, or it changes the address early.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await page.evaluate(() =>
+    document
+      .querySelector("#region")
+      .addEventListener(
+        "scroll",
+        () => history.pushState({}, "", "#scroll-effect"),
+        { once: true },
+      ),
+  );
+  state = await snapshot();
+  assert.equal(
+    (
+      await act(state, "scroll", "Results", {
+        direction: "up",
+        taskPolicy: {
+          origin: new URL(page.url()).origin,
+          expiresAt: Date.now() + 60000,
+          guidanceScope: "scroll-test",
+          targets: [{ selector: "#region", action: "scroll" }],
+        },
+      })
+    ).dispatched,
+    true,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const watched = await run(
+    {
+      subaction: "snapshot",
+      taskPolicy: {
+        origin: new URL(page.url()).origin,
+        expiresAt: Date.now() + 60000,
+        guidanceScope: "scroll-test",
+        targets: [],
+      },
+    },
+    `snapshot-${++sequence}`,
+  );
+  assert.ok(
+    watched.effectViolation,
+    "A scroll handler that navigates must leave uncertainty evidence",
+  );
+  cases.push("task scrolling retains the navigation/effect watch");
+  // Click response evidence is produced in the isolated command, not by the
+  // host guessing from two unrelated page reads.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<button id="show" type="button">Show details</button><output></output><input id="entry"><span hidden id="hidden">old</span>';
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("output").textContent =
+        "Library address: 10 Maple Street";
+    };
+  });
+  const clickPolicy = {
+    origin: new URL(page.url()).origin,
+    expiresAt: Date.now() + 60000,
+    guidanceScope: "click-readback",
+    targets: [{ selector: "#show", action: "click" }],
+  };
+  const clickRead = async (scope = "click-readback") =>
+    run(
+      {
+        subaction: "snapshot",
+        taskPolicy: { ...clickPolicy, guidanceScope: scope },
+      },
+      `snapshot-${++sequence}`,
+    );
+  const perform = async () => {
+    const observed = await snapshot();
+    const ref = `${observed.id}:0:${observed.value.elements.find((element) => element.targetSelector === "#show").id}`;
+    assert.equal(
+      (
+        await act(observed, "click", "Show details", {
+          taskPolicy: clickPolicy,
+        })
+      ).dispatched,
+      true,
+    );
+    return ref;
+  };
+  const clicked = await perform();
+  assert.deepEqual((await clickRead()).clickReadback, {
+    targetRef: clicked,
+    synchronousTextChange: true,
+  });
+  assert.equal(
+    (await clickRead()).clickReadback,
+    undefined,
+    "Readback is consumed once",
+  );
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead("another-task")).clickReadback,
+    undefined,
+    "A different task cannot read the receipt",
+  );
+  assert.equal((await clickRead()).clickReadback, undefined);
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "Later unrelated text";
+  });
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Changed-again text is not the click readback",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("#entry").value = "private-field-value";
+      document.querySelector("#hidden").textContent = "hidden result";
+    };
+    document.querySelector("output").textContent =
+      "Carousel changed before the click";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Unrelated updates, hidden text and input values do not prove visible click results",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () =>
+      queueMicrotask(() => {
+        document.querySelector("output").textContent = "Asynchronous result";
+      });
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Asynchronous changes require separate outcome evidence",
+  );
+  cases.push(
+    "one-use task-bound synchronous text response excludes unrelated, hidden and edited values",
+  );
+  // A guide inside a native modal must not stale its own snapshot. A mixed
+  // insertion or ordinary page edit must still fence the observed action.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<dialog><button type="button">Modal action</button></dialog>';
+    document.querySelector("dialog").showModal();
+    window.scrollTo(0, 0);
+  });
+  for (const mutation of ["owned-only", "mixed", "attribute", "text"]) {
+    state = await snapshot();
+    const node = state.value.elements.find(
+      (element) => element.label === "Modal action",
+    );
+    assert.ok(node);
+    const shown = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "show", id: `modal-${mutation}`, origin: new URL(page.url()).origin, snapshotId: state.id, nodeId: node.id, text: "Use this control", expiresAt: Date.now() + 60000 })})`,
+      returnByValue: true,
+    });
+    assert.equal(shown.exceptionDetails, undefined);
+    assert.equal(shown.result.value.placement, "in-view");
+    const changed = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(() => {
+        const guide = globalThis.__elizaPageGuidanceV1;
+        const dialog = document.querySelector('dialog');
+        const button = dialog.querySelector('button');
+        if (${JSON.stringify(mutation)} === 'mixed') dialog.append(guide.host, document.createElement('span'));
+        if (${JSON.stringify(mutation)} === 'attribute') button.setAttribute('aria-description','Changed instruction');
+        if (${JSON.stringify(mutation)} === 'text') button.firstChild.data = 'Changed action';
+        guide.destroy();
+      })()`,
+      returnByValue: true,
+    });
+    assert.equal(changed.exceptionDetails, undefined);
+    const result = await act(state, "click", "Modal action");
+    if (mutation === "owned-only") assert.equal(result.dispatched, true);
+    else assert.equal(result.error.kind, "STALE_REF", mutation);
+    await page.evaluate(() => {
+      document.querySelector("dialog button").textContent = "Modal action";
+    });
+  }
+  cases.push(
+    "modal owned-host insertion/removal preserves refs; mixed insertion and page attribute/text edits invalidate them",
   );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });

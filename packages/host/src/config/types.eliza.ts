@@ -775,15 +775,6 @@ export type ElizaConfig = {
       }
     >;
   };
-  /** ERC-8004 agent registry and agent NFT collection configuration. */
-  registry?: {
-    /** Ethereum mainnet (or local Anvil) RPC URL. */
-    mainnetRpc?: string;
-    /** ElizaAgentRegistry contract address. */
-    registryAddress?: string;
-    /** Agent NFT collection contract address. */
-    collectionAddress?: string;
-  };
   /** Feature flags for plugin auto-enable. */
   features?: Record<
     string,

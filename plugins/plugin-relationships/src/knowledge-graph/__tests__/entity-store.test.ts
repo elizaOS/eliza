@@ -319,6 +319,17 @@ class MemoryKnowledgeGraph {
       }
       return [];
     }
+    if (/SELECT \* FROM app_lifeops\.life_relationships_v2\b/i.test(sql)) {
+      const where = parseWhereEquals(sql);
+      return this.relationships.filter(
+        (row) =>
+          row.agent_id === where.agent_id &&
+          (where.from_entity_id === undefined ||
+            row.from_entity_id === where.from_entity_id) &&
+          (where.to_entity_id === undefined ||
+            row.to_entity_id === where.to_entity_id),
+      );
+    }
     if (/SELECT e\.\* FROM app_lifeops\.life_entities e\b/i.test(sql)) {
       return this.selectEntities(sql);
     }

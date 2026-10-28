@@ -34,7 +34,9 @@ export function loadTaskSqlCipher({
     !isAbsolute(libraryPath) ||
     !/^[a-f0-9]{64}$/.test(sha256 ?? "") ||
     ![62, 183].includes(machine) ||
-    !["installed-readonly", "private-snapshot"].includes(libraryMode)
+    !["installed-readonly", "android-installed", "private-snapshot"].includes(
+      libraryMode,
+    )
   )
     throw unavailable();
   let fd, snapshotDirectory;
@@ -47,6 +49,17 @@ export function loadTaskSqlCipher({
     if (
       libraryMode === "installed-readonly" &&
       (process.getuid() === 0 || metadata.uid !== 0 || metadata.mode & 0o022)
+    )
+      throw unavailable();
+    // Android extracts an APK's native libraries as the package installer's
+    // system UID (below the first application UID, 10000), never as the app.
+    // The app cannot rewrite or chmod such a file; that installer is trusted.
+    if (
+      libraryMode === "android-installed" &&
+      (process.getuid() === 0 ||
+        metadata.uid === process.getuid() ||
+        metadata.uid >= 10000 ||
+        metadata.mode & 0o022)
     )
       throw unavailable();
     const bytes = readFileSync(fd);
@@ -82,6 +95,7 @@ export function loadTaskSqlCipher({
         "open",
         "exec",
         "query",
+        "queryAll",
         "close",
         "verify",
       ].some((name) => typeof addon.exports[name] !== "function")
@@ -220,6 +234,12 @@ export function createSqlCipherTaskProvider({
             run(...params) {
               admitted();
               const result = native.query(handle, sql, params, false);
+              admitted();
+              return result;
+            },
+            all(...params) {
+              admitted();
+              const result = native.queryAll(handle, sql, params);
               admitted();
               return result;
             },

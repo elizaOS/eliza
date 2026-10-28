@@ -89,6 +89,25 @@ describe("DiscordService.listConnectorRooms — cross-guild completeness", () =>
 		expect(targets).toEqual([]);
 	});
 
+	it("reports an unavailable selected account instead of no targets", async () => {
+		const service = serviceWithGuilds([]);
+		const context = {
+			runtime,
+			target: { source: "discord", accountId: "missing-account" },
+		} as MessageConnectorQueryContext;
+		const expected = {
+			code: "DISCORD_ACCOUNT_NOT_INITIALIZED",
+			context: { accountId: "missing-account" },
+		};
+
+		await expect(service.listConnectorRooms(context)).rejects.toMatchObject(
+			expected,
+		);
+		await expect(
+			service.resolveConnectorTargets("general", context),
+		).rejects.toMatchObject(expected);
+	});
+
 	it("still dedupes and drops non-text channels", async () => {
 		const guild = fakeGuild("300", "Guild C", 3, 3000);
 		guild.channels.cache.set("voice-1", {

@@ -60,6 +60,8 @@ Release-script tests (`test:release`) require Python 3.11+, cryptography, binuti
 complete native and release lane; portable checks do not qualify device writes.
 Browser tests additionally require a JDK, C++20 compiler and OpenSSL development
 headers/libraries on the compiler search path.
+`test:ota-publisher` also requires the exact Go version in `native/ota-trust/go.mod`;
+its signed-graph integration test fails when that toolchain is missing.
 
 The retained release tools use canonical JSON fixtures mirrored from
 [`elizaOS/os` at `735afc708eb3`](https://github.com/elizaOS/os/tree/735afc708eb3e7a76050c0c918c916bb5545b0bf/packages/os/release).

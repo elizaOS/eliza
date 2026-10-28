@@ -86,12 +86,14 @@ interface DiscordTriageCapableService {
 		target: TargetInfo,
 		content: Content,
 	): Promise<Memory | SendHandlerOutcome | undefined>;
+	getClient(): { isReady(): boolean } | null;
 }
 
 const REQUIRED_SERVICE_METHODS = [
 	"fetchConnectorMessages",
 	"listConnectorRooms",
 	"handleSendMessage",
+	"getClient",
 ] as const;
 
 function isDiscordTriageService(
@@ -214,6 +216,11 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				"Discord triage limit must be a positive safe integer",
 			);
 		}
+		// A client that is not logged in lists no rooms and reads no channel;
+		// report that as a failed source, not as an empty Discord inbox.
+		if (!service.getClient()?.isReady()) {
+			throw new Error("[DiscordTriageAdapter] Discord is not connected");
+		}
 		const channelIds = await this.resolveChannelIds(runtime, service, opts);
 		if (channelIds.length === 0) return [];
 
@@ -226,6 +233,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				? snowflakeBefore(opts.sinceMs)
 				: undefined;
 		const merged: MessageRef[] = [];
+		const failedReads: unknown[] = [];
 		for (const channelId of channelIds) {
 			// The limit counts triage candidates, not raw messages: the agent's
 			// own replies are dropped below, so a window of `limit` raw messages
@@ -253,6 +261,7 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				} catch (error) {
 					// error-policy:J4 one unreadable channel (permissions, deletion)
 					// degrades to a partial sweep instead of killing the rest of the server
+					failedReads.push(error);
 					logger.debug(
 						`[DiscordTriageAdapter] channel ${channelId} fetch failed: ${
 							error instanceof Error ? error.message : String(error)
@@ -303,6 +312,10 @@ export class DiscordTriageAdapter extends BaseMessageAdapter {
 				}
 				before = oldest.id.toString();
 			}
+		}
+		// Every channel read failed: the sweep checked nothing.
+		if (merged.length === 0 && failedReads.length === channelIds.length) {
+			throw failedReads[0];
 		}
 
 		merged.sort((a, b) => b.receivedAtMs - a.receivedAtMs);

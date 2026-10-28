@@ -7,6 +7,7 @@ import { decryptApiKey } from "../../db/crypto/api-keys";
 import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
+import { organizationCreatedBySignIn } from "../auth/new-organization";
 import { apiKeysService } from "./api-keys";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
 
@@ -33,6 +34,8 @@ export type CliAuthApiKeyRevealResult =
       apiKey: string;
       keyPrefix: string;
       expiresAt: Date | null;
+      /** True when this sign-in made the organization: it was created after the session. */
+      accountCreated: boolean;
     }
   | {
       status: "unavailable";
@@ -225,7 +228,7 @@ export class CliAuthSessionsService {
       return { status: "unavailable", reason: "not-found" };
     }
 
-    const { apiKey: apiKeyRecord, session } = state;
+    const { apiKey: apiKeyRecord, session, organizationCreatedAt } = state;
     if (session.status !== "authenticated") {
       return { status: "unavailable", reason: "not-authenticated" };
     }
@@ -292,6 +295,11 @@ export class CliAuthSessionsService {
       apiKey: plaintext,
       keyPrefix: apiKeyRecord.key_prefix,
       expiresAt: apiKeyRecord.expires_at,
+      // Both times come from the database, so no clock allowance is needed.
+      accountCreated: organizationCreatedBySignIn(
+        organizationCreatedAt,
+        new Date(session.created_at).getTime(),
+      ),
     };
   }
 

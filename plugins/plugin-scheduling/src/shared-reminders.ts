@@ -19,6 +19,7 @@ import type {
   Plugin,
 } from "@elizaos/core";
 import { parseCronExpression, stableStringify } from "@elizaos/core";
+import { computeNextFireAt } from "./scheduled-task/next-fire-at.js";
 import {
   hasScheduledTaskApplyReceipt,
   isScheduledTaskRecurring,
@@ -1875,7 +1876,7 @@ export function createSharedRemindersEdgeAction(
             ["inMinutes", "minutesFromNow"].some(
               (name) => input[name] !== undefined,
             );
-          const trigger = hasSchedulePatch
+          const patchedTrigger = hasSchedulePatch
             ? reminderTrigger(
                 input,
                 now(),
@@ -1889,6 +1890,22 @@ export function createSharedRemindersEdgeAction(
                 target.task.trigger.kind === "cron"
               ? { ...target.task.trigger, tz: timezone }
               : target.task.trigger;
+          // The replacement is a new task with no fire history. An unchanged
+          // interval starts from the original's next fire time, so a text or
+          // timezone edit does not fire at once or move the schedule.
+          const originalNextFireAt =
+            !hasSchedulePatch && patchedTrigger?.kind === "interval"
+              ? await computeNextFireAt(target.task, {
+                  now: now(),
+                  ownerFacts: {},
+                })
+              : null;
+          const trigger =
+            patchedTrigger?.kind === "interval" &&
+            originalNextFireAt &&
+            Date.parse(originalNextFireAt) > now().getTime()
+              ? { ...patchedTrigger, from: originalNextFireAt }
+              : patchedTrigger;
           if (!trigger) {
             return await actionFailure(
               textParameter(input, "cronExpression", "cron") && !timezone

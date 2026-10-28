@@ -589,6 +589,9 @@ export const tiktokProvider: SocialMediaProvider = {
               },
             }),
           },
+          // A replay after a timeout or a 5xx publishes the video twice
+          // (the URL-pull init call in this file passes the same flag).
+          { replayUnknownOutcome: false },
         );
 
         if (!initResponse.upload_url) {

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import {
   ChannelType,
   compareMemoryIds,
+  type Log,
   type Memory,
   MemoryType,
   ROLE_WRITE_AUDIT_LOG_TYPE,
@@ -406,6 +407,52 @@ describe("durable SQLite agent adapter", () => {
     expect(sameWorld?.id).toBe(componentId);
     expect(otherWorld).toBeNull();
     expect(otherSource).toBeNull();
+  });
+
+  it("rejects a duplicate component id with a typed error and keeps the stored row", async () => {
+    const adapter = await open();
+    const worldId = id();
+    const componentId = id();
+    const freshId = id();
+    await adapter.createAgents([{ id: agentId, name: "Secret agent" }]);
+    await adapter.createEntities([{ id: entityId, agentId, names: ["User"] }]);
+    await adapter.createWorlds([{ id: worldId, name: "Secrets", agentId }]);
+    const component = {
+      id: componentId,
+      entityId,
+      agentId,
+      roomId,
+      worldId,
+      sourceEntityId: agentId,
+      type: "secret",
+      createdAt: 1,
+      data: { value: "original" },
+    };
+    await expect(adapter.createComponents([component])).resolves.toEqual([
+      componentId,
+    ]);
+
+    await expect(
+      adapter.createComponents([
+        { ...component, id: freshId, data: { value: "fresh" } },
+        { ...component, data: { value: "replacement" } },
+      ]),
+    ).rejects.toMatchObject({
+      code: "COMPONENT_ALREADY_EXISTS",
+      context: { componentId },
+    });
+    await expect(
+      Promise.all([
+        adapter.createComponents([{ ...component, id: freshId }]),
+        adapter.createComponents([{ ...component, id: freshId }]),
+      ]),
+    ).rejects.toMatchObject({ code: "COMPONENT_ALREADY_EXISTS" });
+
+    const stored = await adapter.getComponentsByIds([componentId, freshId]);
+    expect(stored.map(({ id, data }) => ({ id, data }))).toEqual([
+      { id: componentId, data: { value: "original" } },
+      { id: freshId, data: { value: "original" } },
+    ]);
   });
 
   it("returns entity components from getEntitiesByIds and getEntitiesForRooms as plugin-sql does", async () => {
@@ -1764,6 +1811,80 @@ it("cache CAS has one winner, preserves null and rejects lossy values", async ()
   );
 });
 
+it("reports an existing entity id as created without overwriting another agent's row", async () => {
+  const adapter = await open();
+  const foreignId = id();
+  const otherAgentId = id();
+  const freshId = id();
+  const storage = await adapter.getConnection();
+  await storage.set("entities", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    names: ["Original"],
+    metadata: { owner: "other" },
+  });
+
+  // plugin-sql returns every requested id and treats existing rows as created.
+  expect(
+    await adapter.createEntities([
+      {
+        id: foreignId,
+        agentId,
+        names: ["Rewritten"],
+        metadata: { owner: "self" },
+      },
+      { id: freshId, agentId, names: ["Fresh"] },
+    ]),
+  ).toEqual([foreignId, freshId]);
+  expect(await storage.get("entities", foreignId)).toEqual({
+    id: foreignId,
+    agentId: otherAgentId,
+    names: ["Original"],
+    metadata: { owner: "other" },
+  });
+  expect(await storage.get("entities", freshId)).toMatchObject({
+    id: freshId,
+    agentId,
+    names: ["Fresh"],
+  });
+});
+
+it("keeps an existing memory when a create reuses its id, like plugin-sql", async () => {
+  const adapter = await open();
+  const memoryId = id();
+  await adapter.createMemories([
+    {
+      memory: {
+        ...memory("original text"),
+        id: memoryId,
+        createdAt: 1_700_000_000_000,
+        embedding: undefined,
+      },
+      tableName: "messages",
+    },
+  ]);
+
+  // plugin-sql inserts with ON CONFLICT DO NOTHING: the stored row wins and
+  // every requested id is still reported as created.
+  expect(
+    await adapter.createMemories([
+      {
+        memory: {
+          ...memory("rewritten text"),
+          id: memoryId,
+          createdAt: 1_700_000_000_500,
+          embedding: undefined,
+        },
+        tableName: "messages",
+      },
+    ]),
+  ).toEqual([memoryId]);
+
+  const [stored] = await adapter.getMemoriesByIds([memoryId], "messages");
+  expect(stored.content.text).toBe("original text");
+  expect(stored.createdAt).toBe(1_700_000_000_000);
+});
+
 it("keeps another agent's worlds out of listing, updates, and metadata swaps", async () => {
   const adapter = await open();
   const ownedId = id();
@@ -1799,6 +1920,50 @@ it("keeps another agent's worlds out of listing, updates, and metadata swaps", a
     id: foreignId,
     agentId: otherAgentId,
     name: "secret",
+  });
+});
+
+it("rejects creating a task whose id belongs to another agent", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const foreignId = id();
+  const ownedId = id();
+  const freshId = id();
+  await adapter.createTasks([{ id: ownedId, name: "a-task" }]);
+  const storage = await adapter.getConnection();
+  await storage.set("tasks", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "b-task",
+  });
+
+  await expect(
+    adapter.createTasks([
+      { id: freshId, name: "batched" },
+      { id: foreignId, name: "hijack" },
+    ]),
+  ).rejects.toMatchObject({ code: "SQLITE_TASK_ID_CONFLICT" });
+  expect(await storage.get("tasks", foreignId)).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    name: "b-task",
+  });
+  // The batch fails before any write, so the other task was not created.
+  expect(await storage.get("tasks", freshId)).toBeNull();
+
+  expect(
+    await adapter.createTasks([
+      { id: freshId, name: "new-task" },
+      { id: ownedId, name: "a-task-again" },
+    ]),
+  ).toEqual([freshId, ownedId]);
+  expect(await storage.get("tasks", freshId)).toMatchObject({
+    agentId,
+    name: "new-task",
+  });
+  expect(await storage.get("tasks", ownedId)).toMatchObject({
+    agentId,
+    name: "a-task-again",
   });
 });
 
@@ -1985,6 +2150,38 @@ it("pages newest pairing requests by UUID when the higher id is uppercase", asyn
   ]);
 });
 
+it("rejects a pairing request create that reuses a stored id", async () => {
+  const adapter = await open();
+  const pairingId = id();
+  const request = {
+    id: pairingId,
+    channel: "telegram",
+    agentId,
+    senderId: "sender",
+    code: "ORIGINAL",
+    createdAt: PAIRING_AT,
+    lastSeenAt: PAIRING_AT,
+  };
+  expect(await adapter.createPairingRequests([request])).toEqual([pairingId]);
+
+  await expect(
+    adapter.createPairingRequests([
+      { ...request, id: id(), senderId: "other", code: "OTHER" },
+      { ...request, code: "REPLACED" },
+    ]),
+  ).rejects.toMatchObject({
+    code: "PAIRING_REQUEST_ALREADY_EXISTS",
+    context: { pairingRequestId: pairingId },
+  });
+
+  const [page] = await adapter.getPairingRequests([
+    { channel: "telegram", agentId },
+  ]);
+  expect(page.requests.map(({ id, code }) => ({ id, code }))).toEqual([
+    { id: pairingId, code: "ORIGINAL" },
+  ]);
+});
+
 it("pages newest pairing allowlist entries by UUID when the higher id is uppercase", async () => {
   const adapter = await open();
   await adapter.createPairingAllowlistEntries([
@@ -2131,6 +2328,52 @@ it("returns messages from the requested world and treats limit 0 as empty", asyn
   expect(await adapter.getMemoriesByWorldId({ worldId, limit: 0 })).toEqual([]);
 });
 
+it("keeps another agent's memories when deleteAllMemories wipes a room", async () => {
+  const adapter = await open();
+  await adapter.ensureEmbeddingDimension(3);
+  const otherAgentId = id();
+  const ownedId = id();
+  const foreignId = id();
+  const nullId = id();
+  await adapter.createMemories([
+    {
+      memory: { ...memory("owned message"), id: ownedId },
+      tableName: "messages",
+    },
+  ]);
+  const storage = await adapter.getConnection();
+  await storage.set("memories", foreignId, {
+    id: foreignId,
+    agentId: otherAgentId,
+    entityId,
+    roomId,
+    tableName: "messages",
+    content: { text: "foreign message" },
+    createdAt: Date.now(),
+  });
+  await storage.set("memories", nullId, {
+    id: nullId,
+    // Legacy/migrated rows can carry a SQL NULL agent_id, which the
+    // storage layer reads back as null rather than undefined.
+    agentId: null as unknown as UUID,
+    entityId,
+    roomId,
+    tableName: "messages",
+    content: { text: "legacy null-agent message" },
+    createdAt: Date.now(),
+  });
+
+  await adapter.deleteAllMemories([roomId], "messages");
+
+  expect(await storage.get("memories", ownedId)).toBeNull();
+  expect(await storage.get("memories", nullId)).toBeNull();
+  expect(await storage.get("memories", foreignId)).toMatchObject({
+    id: foreignId,
+    agentId: otherAgentId,
+    content: { text: "foreign message" },
+  });
+});
+
 it("keeps entity name lookups inside the requested agent and honors an explicit empty page", async () => {
   const adapter = await open();
   const otherAgentId = id();
@@ -2174,4 +2417,209 @@ it("keeps entity name lookups inside the requested agent and honors an explicit 
       limit: 1,
     }),
   ).toHaveLength(1);
+});
+
+it("scopes room updates, upserts and deletes to the adapter agent", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const otherRoomId = id();
+  const otherMemoryId = id();
+  const otherEntityId = id();
+  const otherParticipantId = id();
+  const storage = await adapter.getConnection();
+
+  // A restored file can carry another agent's rooms; the reads already hide
+  // them (getRoomsByIds), so the write paths must not reach them either.
+  await storage.set("rooms", otherRoomId, {
+    id: otherRoomId,
+    agentId: otherAgentId,
+    source: "test",
+    type: ChannelType.DM,
+    metadata: {},
+    createdAt: new Date().toISOString(),
+  });
+  await storage.set("memories", otherMemoryId, {
+    id: otherMemoryId,
+    agentId: otherAgentId,
+    entityId: otherEntityId,
+    roomId: otherRoomId,
+    content: { text: "another agent's message" },
+    createdAt: Date.parse("2026-10-01T00:00:00.000Z"),
+  });
+  await storage.set("participants", otherParticipantId, {
+    id: otherParticipantId,
+    entityId: otherEntityId,
+    roomId: otherRoomId,
+  });
+
+  await adapter.createRooms([
+    { id: otherRoomId, source: "created", type: ChannelType.DM },
+  ]);
+  expect(
+    (await storage.get<{ source?: string }>("rooms", otherRoomId))?.source,
+  ).toBe("test");
+
+  await adapter.updateRooms([
+    { id: otherRoomId, source: "rewritten", type: ChannelType.GROUP },
+  ]);
+  expect(
+    (await storage.get<{ source?: string }>("rooms", otherRoomId))?.source,
+  ).toBe("test");
+
+  await adapter.upsertRooms([
+    { id: otherRoomId, source: "upserted", type: ChannelType.DM },
+  ]);
+  expect(
+    (await storage.get<{ source?: string }>("rooms", otherRoomId))?.source,
+  ).toBe("test");
+
+  // deleteRooms cascades memories, participants, components and logs on
+  // room_id, so reaching another agent's room would destroy its history.
+  await adapter.deleteRooms([otherRoomId]);
+  expect(await storage.get("rooms", otherRoomId)).toBeTruthy();
+  expect(await storage.get("memories", otherMemoryId)).toBeTruthy();
+  expect(await storage.get("participants", otherParticipantId)).toBeTruthy();
+
+  // The adapter still owns its own rooms.
+  const ownRoomId = id();
+  const ownMemoryId = id();
+  await adapter.createRooms([
+    { id: ownRoomId, agentId, source: "test", type: ChannelType.DM },
+  ]);
+  await storage.set("memories", ownMemoryId, {
+    id: ownMemoryId,
+    agentId,
+    entityId,
+    roomId: ownRoomId,
+    content: { text: "this agent's message" },
+    createdAt: Date.parse("2026-10-01T00:00:00.000Z"),
+  });
+  await adapter.updateRooms([
+    { id: ownRoomId, agentId, source: "renamed", type: ChannelType.DM },
+  ]);
+  expect(
+    (await storage.get<{ source?: string }>("rooms", ownRoomId))?.source,
+  ).toBe("renamed");
+  await adapter.upsertRooms([
+    { id: ownRoomId, agentId, source: "upserted", type: ChannelType.DM },
+  ]);
+  expect(
+    (await storage.get<{ source?: string }>("rooms", ownRoomId))?.source,
+  ).toBe("upserted");
+  await adapter.deleteRooms([ownRoomId]);
+  expect(await storage.get("rooms", ownRoomId)).toBeFalsy();
+  expect(await storage.get("memories", ownMemoryId)).toBeFalsy();
+
+  // A restored file can also carry a memory whose parent room row is gone. A
+  // missing parent cannot authorize the cascade, so it must fail closed.
+  const danglingRoomId = id();
+  const danglingMemoryId = id();
+  await storage.set("memories", danglingMemoryId, {
+    id: danglingMemoryId,
+    agentId: otherAgentId,
+    entityId: otherEntityId,
+    roomId: danglingRoomId,
+    content: { text: "another agent's orphaned message" },
+    createdAt: Date.parse("2026-10-01T00:00:00.000Z"),
+  });
+  await adapter.deleteRooms([danglingRoomId]);
+  expect(await storage.get("memories", danglingMemoryId)).toBeTruthy();
+});
+
+it("scopes log reads and mutations to the adapter agent", async () => {
+  const adapter = await open();
+  const otherAgentId = id();
+  const ownRoomId = id();
+  const otherRoomId = id();
+  const otherEntityId = id();
+  const otherLogId = id();
+
+  await adapter.createRooms([
+    { id: ownRoomId, agentId, source: "test", type: ChannelType.DM },
+  ]);
+  await adapter.createLogs([
+    {
+      body: { source: "scope-probe", metadata: { who: "this agent" } },
+      entityId,
+      roomId: ownRoomId,
+      type: "scope-probe",
+    },
+  ]);
+
+  // Simulate a restored file carrying another agent's room and log: the
+  // storage layer accepts the rows, but the adapter must not serve them,
+  // mirroring PostgreSQL's ownedLogRoomCondition.
+  const storage = await adapter.getConnection();
+  await storage.set("rooms", otherRoomId, {
+    id: otherRoomId,
+    agentId: otherAgentId,
+    source: "test",
+    type: ChannelType.DM,
+  });
+  await storage.set("logs", otherLogId, {
+    id: otherLogId,
+    entityId: otherEntityId,
+    roomId: otherRoomId,
+    type: "scope-probe",
+    body: { source: "scope-probe", metadata: { who: "other agent" } },
+    createdAt: new Date(),
+  });
+
+  expect(
+    (await adapter.getLogs({ type: "scope-probe" })).map((log) => log.body),
+  ).toEqual([{ source: "scope-probe", metadata: { who: "this agent" } }]);
+  expect(await adapter.getLogsByIds([otherLogId])).toEqual([]);
+
+  await adapter.updateLogs([
+    { id: otherLogId, updates: { type: "rewritten" } },
+  ]);
+  await adapter.deleteLogs([otherLogId]);
+
+  const survivor = await storage.get<Log>("logs", otherLogId);
+  expect(survivor?.body).toEqual({
+    source: "scope-probe",
+    metadata: { who: "other agent" },
+  });
+  expect(survivor?.type).toBe("scope-probe");
+
+  // A log naming a room with no room record stays readable and mutable.
+  // createLogs performs no room-existence check (unlike PostgreSQL, whose
+  // foreign key rejects the write), so a dangling roomId is a normal write
+  // outcome — audit logs may land before their room row exists. Reads stay
+  // fail-open here, matching the room/world convention that rows without a
+  // resolvable owner belong to this database.
+  const orphanLogId = id();
+  const missingRoomId = id();
+  await storage.set("logs", orphanLogId, {
+    id: orphanLogId,
+    entityId,
+    roomId: missingRoomId,
+    type: "scope-probe",
+    body: { source: "scope-probe", metadata: { who: "orphan" } },
+    createdAt: new Date(),
+  });
+
+  expect(
+    (await adapter.getLogs({ type: "scope-probe" }))
+      .map((log) => (log.body as { metadata: { who: string } }).metadata.who)
+      .sort(),
+  ).toEqual(["orphan", "this agent"]);
+  expect(await adapter.getLogsByIds([orphanLogId])).toHaveLength(1);
+
+  await adapter.updateLogs([
+    { id: orphanLogId, updates: { type: "rewritten" } },
+  ]);
+  expect((await adapter.getLogsByIds([orphanLogId]))[0]?.type).toBe(
+    "rewritten",
+  );
+  await adapter.deleteLogs([orphanLogId]);
+  expect(await adapter.getLogsByIds([orphanLogId])).toEqual([]);
+
+  // The adapter still manages its own logs.
+  const [ownLog] = await adapter.getLogs({ type: "scope-probe" });
+  if (!ownLog?.id) throw new Error("own log missing");
+  await adapter.updateLogs([{ id: ownLog.id, updates: { type: "rewritten" } }]);
+  expect((await adapter.getLogsByIds([ownLog.id]))[0]?.type).toBe("rewritten");
+  await adapter.deleteLogs([ownLog.id]);
+  expect(await adapter.getLogsByIds([ownLog.id])).toEqual([]);
 });

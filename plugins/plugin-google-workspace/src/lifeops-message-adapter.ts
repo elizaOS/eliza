@@ -818,12 +818,20 @@ export class GoogleGmailAdapter extends BaseMessageAdapter {
         reason: `Gmail adapter does not support ${op.kind}`,
       };
     }
-    await service.modifyGmailMessages({
+    // Trash reports a per-message failure in the receipt instead of throwing.
+    const receipt = await service.modifyGmailMessages({
       accountId,
       operation: mapped.operation,
       messageIds: [externalMessageId(messageId)],
       labelIds: mapped.labelIds,
     });
+    const failure = receipt.failures[0];
+    if (failure) {
+      return {
+        ok: false,
+        reason: `Gmail ${mapped.operation} failed for ${messageId} (status ${failure.code ?? "unknown"})`,
+      };
+    }
     if (op.kind === "mark_read" && op.read) {
       const externalId = externalMessageId(messageId);
       await emitCommittedGmailMutation(runtime, {

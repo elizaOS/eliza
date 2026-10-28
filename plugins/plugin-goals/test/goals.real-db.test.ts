@@ -6,27 +6,19 @@
  * {@link createRealTestRuntime} and materializes the goal tables the way the
  * runtime does in production: the goal CRUD reads/writes the carved
  * `app_goals.life_goal_*` tables, so we register a schema-only goals plugin
- * (`goalsDbSchema`) and let the SQL plugin's migration runner create them. The
- * goals back-end also cross-writes PA's `app_lifeops.life_audit_events` /
- * `life_task_definitions`, so we additionally call
- * `LifeOpsRepository.bootstrapSchema` to create the `app_lifeops` schema.
- *
- * The PA import is a TEST-ONLY relative import for the app_lifeops bootstrap;
- * the goals SOURCE carries no dependency on `@elizaos/plugin-personal-assistant`.
+ * (`goalsDbSchema`) and let the SQL plugin's migration runner create them,
+ * including the goal audit table. No plugin-personal-assistant table exists.
  *
  * Every assertion is an insert-then-read-back round-trip against the live DB.
  * Hermetic: no network, no credentials, no LLM (GoalsService CRUD is rule-based).
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../packages/app/test/helpers/real-runtime.ts";
-// Test-only: PA owns the app_lifeops audit/task tables + their schema bootstrap.
-// The goals plugin SOURCE never imports PA (verified by the boundary contract).
-import { LifeOpsRepository } from "../../plugin-personal-assistant/src/lifeops/repository.ts";
 import { GoalsRepository } from "../src/db/goals-repository.ts";
 import { goalsDbSchema } from "../src/db/schema.ts";
 import { executeRawSql } from "../src/db/sql.ts";
@@ -57,9 +49,7 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     });
     runtime = testResult.runtime;
     // The goals schema plugin creates app_goals.life_goal_* via the SQL
-    // migration runner; bootstrapSchema creates app_lifeops (audit + task) for
-    // the goals back-end's cross-schema audit/FK-nullout writes.
-    await LifeOpsRepository.bootstrapSchema(runtime);
+    // migration runner.
     service = createOwnerGoalsService(runtime);
     repository = new GoalsRepository(runtime);
   }, 180_000);
@@ -98,7 +88,7 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     const created = await service.createGoal({ title: "Read 12 books" });
     const rows = await executeRawSql(
       runtime,
-      `SELECT * FROM app_lifeops.life_audit_events WHERE owner_id = '${created.goal.id}'`,
+      `SELECT * FROM app_goals.life_goal_audit_events WHERE owner_id = '${created.goal.id}'`,
     );
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.some((r) => r.event_type === "goal_created")).toBe(true);
@@ -117,6 +107,51 @@ describe("GoalsService + GoalsRepository — real PGLite", () => {
     const reread = await repository.getGoal(runtime.agentId, created.goal.id);
     expect(reread?.title).toBe("Learn watercolor painting");
     expect(reread?.status).toBe("paused");
+  });
+
+  it("rejects a stale update without reverting a concurrent goal edit", async () => {
+    const created = await service.createGoal({
+      title: "Original title",
+      description: "Original description",
+    });
+    const getGoal = GoalsRepository.prototype.getGoal;
+    const spy = vi
+      .spyOn(GoalsRepository.prototype, "getGoal")
+      .mockImplementationOnce(async function (
+        this: GoalsRepository,
+        agentId,
+        goalId,
+      ) {
+        const snapshot = await getGoal.call(this, agentId, goalId);
+        await executeRawSql(
+          runtime,
+          `UPDATE app_goals.life_goal_definitions
+              SET title = 'Concurrent title',
+                  updated_at = '${new Date(
+                    Date.parse(created.goal.updatedAt) + 1_000,
+                  ).toISOString()}'
+            WHERE id = '${created.goal.id}'`,
+        );
+        return snapshot;
+      });
+
+    try {
+      await expect(
+        service.updateGoal(created.goal.id, {
+          description: "Requested description",
+        }),
+      ).rejects.toMatchObject({
+        name: "GoalsServiceError",
+        status: 409,
+        code: "GOAL_UPDATE_CONFLICT",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    const reread = await repository.getGoal(runtime.agentId, created.goal.id);
+    expect(reread?.title).toBe("Concurrent title");
+    expect(reread?.description).toBe("Original description");
   });
 
   it("short-circuits a near-duplicate active goal via dedup (real DB read)", async () => {

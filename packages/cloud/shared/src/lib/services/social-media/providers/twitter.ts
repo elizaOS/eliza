@@ -457,10 +457,18 @@ export const twitterProvider: SocialMediaProvider = {
         "/users/me",
         credentials.accessToken,
       );
-      await twitterApiRequest(`/users/${userResponse.data.id}/likes`, credentials.accessToken, {
-        method: "POST",
-        body: JSON.stringify({ tweet_id: postId }),
-      });
+      await twitterApiRequest(
+        `/users/${userResponse.data.id}/likes`,
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ tweet_id: postId }),
+        },
+        // X refuses a duplicate like, so a replay after a timeout or a 5xx
+        // replaces a delivered like with a failure the caller refunds. The
+        // create path in this file passes the same flag.
+        { replayUnknownOutcome: false },
+      );
       return { success: true };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Twitter like becomes a typed
@@ -482,10 +490,18 @@ export const twitterProvider: SocialMediaProvider = {
         "/users/me",
         credentials.accessToken,
       );
-      await twitterApiRequest(`/users/${userResponse.data.id}/retweets`, credentials.accessToken, {
-        method: "POST",
-        body: JSON.stringify({ tweet_id: postId }),
-      });
+      await twitterApiRequest(
+        `/users/${userResponse.data.id}/retweets`,
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify({ tweet_id: postId }),
+        },
+        // X refuses a duplicate retweet, so a replay after a timeout or a 5xx
+        // replaces a delivered repost with a failure the caller refunds. The
+        // create path in this file passes the same flag.
+        { replayUnknownOutcome: false },
+      );
       return { platform: "twitter", success: true, postId };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Twitter repost becomes the {success:false}

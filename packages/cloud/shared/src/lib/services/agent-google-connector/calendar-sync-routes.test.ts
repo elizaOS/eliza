@@ -206,3 +206,24 @@ test("conditional conflicts remain explicit and delete requires its own exact pr
   expect(deleted.status).toBe(200);
   expect(await deleted.json()).toMatchObject({ deleted: true, providerExactlyOnce: false });
 });
+
+test("DELETE accepts a zero-byte transport body but refuses any actual body", async () => {
+  const url =
+    "/event?" +
+    new URLSearchParams({
+      grantId: grant,
+      accountId: "google-user",
+      calendarId: "primary",
+      eventId: "id",
+      expectedEtag: '"current"',
+    });
+  const empty = fixture();
+  const accepted = await empty.app.request(url, { method: "DELETE", body: "" });
+  expect(accepted.status).toBe(200);
+  expect(empty.calls.filter((c) => c.op === "delete")).toHaveLength(1);
+  for (const body of [" ", "{}"]) {
+    const f = fixture();
+    expect((await f.app.request(url, { method: "DELETE", body })).status).toBe(400);
+    expect(f.calls).toHaveLength(0);
+  }
+});

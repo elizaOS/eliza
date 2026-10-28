@@ -313,18 +313,13 @@ export class VoiceProfileStore {
 
 	private async readIndex(): Promise<IndexFile> {
 		if (this.indexCache) return this.indexCache;
-		try {
-			const raw = await fsp.readFile(this.indexPath, "utf8");
-			const parsed = JSON.parse(raw) as IndexFile;
-			if (!parsed.entries) parsed.entries = [];
-			if (!parsed.nextLruRank) parsed.nextLruRank = 1;
-			parsed.version = 1;
-			this.indexCache = parsed;
-			return parsed;
-		} catch {
-			this.indexCache = { ...INITIAL_INDEX, entries: [] };
-			return this.indexCache;
-		}
+		const raw = await fsp.readFile(this.indexPath, "utf8");
+		const parsed = JSON.parse(raw) as IndexFile;
+		if (!parsed.entries) parsed.entries = [];
+		if (!parsed.nextLruRank) parsed.nextLruRank = 1;
+		parsed.version = 1;
+		this.indexCache = parsed;
+		return parsed;
 	}
 
 	private async writeIndex(index: IndexFile): Promise<void> {

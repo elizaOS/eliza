@@ -2,7 +2,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { messageAction } from "../features/advanced-capabilities/actions/message";
+import { promoteMessageActions } from "../features/advanced-capabilities/actions/message";
 import { postAction } from "../features/advanced-capabilities/actions/post";
 import { preferenceItems } from "../features/advanced-capabilities/evaluators/preference-items";
 import { reflectionItems } from "../features/advanced-capabilities/evaluators/reflection-items";
@@ -44,7 +44,7 @@ export const relationshipsPlugin: Plugin = {
     // actions for every subaction; the virtuals delegate to the parent's
     // handler with `subaction:` injected, so the planner can pick a specific
     // verb directly OR call the parent with custom params.
-    ...promoteSubactionsToActions(messageAction),
+    ...promoteMessageActions(),
     ...promoteSubactionsToActions(postAction),
   ],
   evaluators: [...reflectionItems, ...preferenceItems, ...skillItems],

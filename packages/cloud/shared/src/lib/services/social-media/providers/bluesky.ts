@@ -561,18 +561,26 @@ export const blueskyProvider: SocialMediaProvider = {
         session.accessJwt,
       );
 
-      await bskyApiRequest("com.atproto.repo.createRecord", session.accessJwt, {
-        method: "POST",
-        body: JSON.stringify({
-          repo: session.did,
-          collection: "app.bsky.feed.like",
-          record: {
-            $type: "app.bsky.feed.like",
-            subject: { uri: postId, cid: postResponse.thread.post.cid },
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      });
+      await bskyApiRequest(
+        "com.atproto.repo.createRecord",
+        session.accessJwt,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            repo: session.did,
+            collection: "app.bsky.feed.like",
+            record: {
+              $type: "app.bsky.feed.like",
+              subject: { uri: postId, cid: postResponse.thread.post.cid },
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        },
+        // A replay after a timeout writes a second like record under a
+        // fresh key (the create and repost calls in this file pass the
+        // same flag).
+        { replayUnknownOutcome: false },
+      );
 
       return { success: true };
     } catch (error) {
@@ -623,10 +631,22 @@ export const blueskyProvider: SocialMediaProvider = {
         { replayUnknownOutcome: false },
       );
 
+      // A 2xx body without the created record uri is not a publication
+      // receipt: the repost may exist, so the outcome stays unknown
+      // instead of reporting a success with no post id (the rule the
+      // create path in this file follows).
+      const repostUri = response?.uri;
+      if (typeof repostUri !== "string" || !repostUri) {
+        throw new UnknownPostOutcomeError(
+          "bluesky",
+          new Error("Bluesky response lacks a publication receipt"),
+        );
+      }
+
       return {
         platform: "bluesky",
         success: true,
-        postId: response.uri,
+        postId: repostUri,
       };
     } catch (error) {
       // error-policy:J1 boundary translation of the Bluesky repost call into the typed

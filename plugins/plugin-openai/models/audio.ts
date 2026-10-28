@@ -226,7 +226,7 @@ export async function handleTranscription(
     purpose: "external_llm",
     actionType: "openai.audio.transcriptions.create",
   };
-  const data = await recordLlmCall(runtime, details, async () => {
+  const transcript = await recordLlmCall(runtime, details, async () => {
     const response = await fetch(`${baseURL}/audio/transcriptions`, {
       method: "POST",
       headers: getAuthHeader(runtime),
@@ -241,11 +241,21 @@ export async function handleTranscription(
       );
     }
 
+    if (
+      extraParams.responseFormat === "text" ||
+      extraParams.responseFormat === "srt" ||
+      extraParams.responseFormat === "vtt"
+    ) {
+      const result = await response.text();
+      details.response = result;
+      return result;
+    }
+
     const result = (await response.json()) as OpenAITranscriptionResponse;
     details.response = result.text;
-    return result;
+    return result.text;
   });
-  return data.text;
+  return transcript;
 }
 
 export async function handleTextToSpeech(
@@ -332,6 +342,9 @@ export async function handleTextToSpeech(
     }
 
     const audioBuffer = await response.arrayBuffer();
+    if (audioBuffer.byteLength === 0) {
+      throw new Error("OpenAI TTS returned an empty audio response");
+    }
     details.response = `[audio bytes=${audioBuffer.byteLength} format=${format}]`;
     return audioBuffer;
   });

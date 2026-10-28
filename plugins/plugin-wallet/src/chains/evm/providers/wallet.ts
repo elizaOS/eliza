@@ -288,7 +288,9 @@ export class WalletProvider {
     const client = this.getPublicClient(chainName);
     try {
       const balance = await client.getBalance({ address: this._account.address });
-      return formatUnits(balance, 18);
+      // Native decimals are chain-specific (e.g. Tempo uses 6); viem's chain
+      // definition is authoritative.
+      return formatUnits(balance, this.getChainConfigs(chainName).nativeCurrency.decimals);
     } catch (error) {
       // error-policy:J2 context-adding rethrow; the aggregator reports the chain as unavailable
       throw new EVMError(

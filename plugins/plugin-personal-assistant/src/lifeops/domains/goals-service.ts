@@ -66,7 +66,10 @@ import {
   selectOverviewOccurrences,
 } from "../service-helpers-misc.js";
 import { summarizeOverviewSection } from "../service-helpers-occurrence.js";
-import { shouldDeliverReminderForIntensity } from "../service-helpers-reminder.js";
+import {
+  listReminderCalendarEvents,
+  shouldDeliverReminderForIntensity,
+} from "../service-helpers-reminder.js";
 import { fail, normalizeReminderUrgency } from "../service-normalize.js";
 import { addMinutes, getZonedDateParts } from "../time.js";
 import {
@@ -165,6 +168,8 @@ export class GoalsDomain {
         normalizeOwnership: (input, current) =>
           this.ctx.normalizeOwnership(input, current),
         checkinSync: () => getGoalsCheckinService(this.ctx.runtime),
+        releaseGoalReferences: (goalId) =>
+          this.ctx.repository.clearGoalReferences(this.ctx.agentId(), goalId),
       });
     }
     return this.goalsServiceInstance;
@@ -1129,9 +1134,9 @@ export class GoalsDomain {
         plansByDefinitionId.set(plan.ownerId, effectivePlan);
       }
     }
-    const calendarEvents = await this.ctx.repository.listCalendarEvents(
+    const calendarEvents = await listReminderCalendarEvents(
+      this.ctx.repository,
       this.ctx.agentId(),
-      "google",
       now.toISOString(),
       addMinutes(now, OVERVIEW_HORIZON_MINUTES).toISOString(),
     );

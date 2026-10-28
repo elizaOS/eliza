@@ -309,6 +309,28 @@ describe("LEAVE_MEETING", () => {
     expect(res.text).toContain("Zoom 1234567890");
   });
 
+  it("reports a failure when the session ended before the stop landed", async () => {
+    // A session that the host ended stays in the live map until transcript
+    // finalization evicts it. stopSession returns false for it, so the bot did
+    // not leave anything; the reply must not claim that it did.
+    const h = harness({
+      service: {
+        listSessions: () => [session({ id: "ending" })],
+        stopSession: (() => false) as MeetingService["stopSession"],
+      },
+    });
+    const res = await leaveMeetingAction.handler(
+      h.runtime,
+      msg("leave"),
+      NO_STATE,
+      {},
+      h.cb,
+    );
+    expect(res).toMatchObject({ success: false });
+    expect(res.text).toContain("already ended");
+    expect(res.text).not.toContain("Leaving");
+  });
+
   it("targets a specific meeting by URL when several are active", async () => {
     const active = [
       session({ id: "a", nativeMeetingId: "abc-defg-hij" }),

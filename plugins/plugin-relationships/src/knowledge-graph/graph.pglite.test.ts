@@ -74,6 +74,69 @@ it("preserves entity merge, edge retargeting, retirement and audit through real 
   ]);
 });
 
+it("folds a merged contact's edges into the target's edge instead of keeping a stale duplicate", async () => {
+  const entities = graph.getEntityStore();
+  const relationships = graph.getRelationshipStore();
+  await entities.ensureSelf();
+  const person = {
+    type: "person",
+    identities: [],
+    tags: [],
+    visibility: "owner_only" as const,
+    state: {},
+  };
+  await entities.upsert({ ...person, entityId: "dana", preferredName: "Dana" });
+  await entities.upsert({ ...person, entityId: "dana-2", preferredName: "D." });
+  const contact = (entityId: string, cadenceDays: number, at: string) =>
+    relationships.upsert({
+      relationshipId: `lifeops-contact-${entityId}`,
+      fromEntityId: "self",
+      toEntityId: entityId,
+      type: "contact",
+      metadata: { cadenceDays },
+      state: { lastInteractionAt: at, interactionCount: 2 },
+      evidence: [`contact:${entityId}`],
+      confidence: 1,
+      source: "import",
+    });
+  const recent = new Date(Date.now() - 86_400_000).toISOString();
+  await contact("dana", 14, recent);
+  await contact("dana-2", 7, "2026-01-01T00:00:00.000Z");
+  const between = await relationships.observe({
+    fromEntityId: "dana-2",
+    toEntityId: "dana",
+    type: "knows",
+    confidence: 0.5,
+    evidence: ["same person"],
+  });
+
+  await entities.merge("dana", ["dana-2"]);
+
+  const active = [
+    ...(await relationships.list({ fromEntityId: "dana" })),
+    ...(await relationships.list({ toEntityId: "dana" })),
+  ];
+  expect(active.map((edge) => edge.relationshipId)).toEqual([
+    "lifeops-contact-dana",
+  ]);
+  expect(active[0]).toMatchObject({
+    metadata: { cadenceDays: 14 },
+    state: { lastInteractionAt: recent, interactionCount: 4 },
+    evidence: ["contact:dana", "contact:dana-2"],
+  });
+  expect(
+    await relationships.list({ cadenceOverdueAsOf: new Date().toISOString() }),
+  ).toEqual([]);
+  expect(await relationships.get("lifeops-contact-dana-2")).toMatchObject({
+    status: "retired",
+    retiredReason: "merged_into:lifeops-contact-dana",
+  });
+  expect(await relationships.get(between.relationshipId)).toMatchObject({
+    status: "retired",
+    retiredReason: "merged_self_loop",
+  });
+});
+
 it("retains current-recipient review and identity evidence on the PostgreSQL confirmation path", async () => {
   const entities = graph.getEntityStore();
   const request = {

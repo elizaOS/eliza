@@ -206,6 +206,39 @@ describe("Room Integration Tests", () => {
       expect(stored[0]?.serverId).toBe(serverId);
     });
 
+    it("should keep a room's stored channel and name when a connection omits them", async () => {
+      const roomId = uuidv4() as UUID;
+      const entityId = uuidv4() as UUID;
+      if (!(await adapter.getEntitiesByIds([testAgentId]))?.length) {
+        await adapter.createEntities([
+          { id: testAgentId, agentId: testAgentId, names: ["Test Agent"] },
+        ]);
+      }
+
+      await _runtime.ensureRoomExists({
+        id: roomId,
+        agentId: testAgentId,
+        worldId: testWorldId,
+        source: "x",
+        type: ChannelType.DM,
+        name: "X DM with @alice",
+        channelId: "111-999",
+      });
+      await _runtime.ensureConnection({
+        entityId,
+        roomId,
+        worldId: testWorldId,
+        source: "x",
+        type: ChannelType.DM,
+        userName: "alice",
+        name: "Alice",
+      });
+
+      const retrieved = await adapter.getRoomsByIds([roomId]);
+      expect(retrieved?.[0]?.channelId).toBe("111-999");
+      expect(retrieved?.[0]?.name).toBe("X DM with @alice");
+    });
+
     it("should authorize manage_server for a room written through ensureConnection", async () => {
       const roomId = uuidv4() as UUID;
       const requesterEntityId = uuidv4() as UUID;

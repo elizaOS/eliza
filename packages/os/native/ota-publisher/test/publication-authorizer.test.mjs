@@ -414,27 +414,25 @@ test("process verifier uses private inputs, a host deadline and exact timestamp 
   }
 });
 
-// Optional end to end check against the real Go verifier and signed fixture
-// graph. It runs only with the module's exact Go toolchain on PATH.
+// The signed-graph integration test requires the trust module's exact Go
+// toolchain. The OTA publisher CI job installs it before running this suite.
 const trust = fileURLToPath(new URL("../../ota-trust/", import.meta.url));
-const goVersion = (() => {
+
+test("publishes a real signed fixture graph through the Go verifier", async () => {
   const want = /^go (\d+\.\d+\.\d+)$/m.exec(
     fs.readFileSync(path.join(trust, "go.mod"), "utf8"),
   )?.[1];
+  assert.ok(want, "The trust module must pin its Go toolchain");
   const have = spawnSync("go", ["env", "GOVERSION"], {
     encoding: "utf8",
     env: { ...process.env, GOTOOLCHAIN: "local" },
   });
-  return have.status === 0 && have.stdout.trim() === `go${want}`
-    ? false
-    : `Go ${want} is not on PATH`;
-})();
-
-test("publishes a real signed fixture graph through the Go verifier", {
-  // Requires the module's exact Go toolchain on PATH. Runs only when that Go
-  // version is available; otherwise the test is skipped with a reason.
-  skip: goVersion,
-}, async () => {
+  assert.equal(have.status, 0, `Go ${want} is required on PATH`);
+  assert.equal(
+    have.stdout.trim(),
+    `go${want}`,
+    "Use the trust module's pinned Go toolchain",
+  );
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ota-authorize-go-"));
   try {
     const env = {

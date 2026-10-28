@@ -161,6 +161,17 @@ export class ScheduleProjectionRepository {
     return rows.map(parseTaskDefinition);
   }
 
+  /** Detach task definitions from a goal that is being deleted. */
+  async clearGoalReferences(agentId: string, goalId: string): Promise<void> {
+    await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.life_task_definitions
+          SET goal_id = NULL
+        WHERE agent_id = ${sqlQuote(agentId)}
+          AND goal_id = ${sqlQuote(goalId)}`,
+    );
+  }
+
   async deleteDefinition(
     agentId: string,
     definitionId: string,
@@ -601,7 +612,7 @@ export class ScheduleProjectionRepository {
       `DELETE FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id = ${sqlQuote(definitionId)}
-          AND state IN ('pending', 'visible', 'snoozed', 'expired')
+          AND state IN ('pending', 'visible', 'snoozed')
           ${keepClause}`,
     );
   }

@@ -103,6 +103,16 @@ describe("findMeetingUrlInText — adversarial", () => {
       "abc-defg-hij",
     );
   });
+  it("ends the link at text written right after it without a space", () => {
+    for (const [text, id] of [
+      [`会议链接：${MEET}。谢谢`, "abc-defg-hij"],
+      [`请加入${MEET}，谢谢`, "abc-defg-hij"],
+      [`${MEET}에 들어가줘`, "abc-defg-hij"],
+      ["ミーティングはhttps://zoom.us/j/1234567890です", "1234567890"],
+    ]) {
+      expect(findMeetingUrlInText(text)?.nativeMeetingId, text).toBe(id);
+    }
+  });
   it("handles markdown/angle/bracket-wrapped links", () => {
     expect(findMeetingUrlInText(`(${MEET})`)?.nativeMeetingId).toBe(
       "abc-defg-hij",

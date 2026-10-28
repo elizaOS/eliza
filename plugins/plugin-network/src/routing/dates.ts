@@ -172,6 +172,32 @@ export function parseDateExpr(expr: string, now: Date): Date | null {
   if (m[5]) return nextDayOfMonth(Number(m[5]), today);
   if (m[6]) return nextDayOfMonth(Number(m[6]), today);
   if (m[8]) {
+    // "Friday, October 30", "Monday the 26th", "Thursday 10/29": the date
+    // after the weekday names the day. Without this the weekday alone won and
+    // the window ended on the next Friday, a week or more early.
+    // Tolerate comma-spacing variants: "Friday,October 30" (no space) and
+    // "Friday , October 30" (space before comma) as well as the canonical
+    // "Friday, October 30".
+    const after = rest.replace(/^\s*,?\s*/, "");
+    const dated = after !== rest ? DATE_EXPR.exec(after) : null;
+    if (
+      dated?.index === 0 &&
+      ((dated[1] && dated[2]) ||
+        (dated[3] && dated[4]) ||
+        dated[5] ||
+        dated[6] ||
+        (dated[10] && dated[11]))
+    )
+      return parseDateExpr(after, now);
+    // "Friday next week" names the Friday of the next calendar week. The bare
+    // weekday branch resolved it to this week's Friday, ending the window six
+    // days early; "next Friday" already resolved to that date.
+    if (/^,?\s+(?:of\s+)?next\s+week\b/.test(rest))
+      return nextWeekday(
+        WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase()),
+        today,
+        true,
+      );
     const w = WEEKDAYS.indexOf(m[8].slice(0, 3).toLowerCase());
     return nextWeekday(w, today, Boolean(m[7]));
   }
@@ -193,7 +219,11 @@ export interface DateWindow {
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
-const END = String.raw`(?:until|till|til|'til|thru|through|back\s+(?:on|by|in)?|by)`;
+// "back" ends a stay with a preposition or right before "the": "back on the
+// 5th" and "back the 5th" alike. authz.ts END_MARKER treats "back the" as an
+// end marker, so this must resolve it. The old `back\s+(?:on|by|in)?` needed a
+// second space after "back" whenever the preposition was left out.
+const END = String.raw`(?:until|till|til|'til|thru|through|back(?:\s+(?:on|by|in)|(?=\s+the\s))|by)`;
 
 /**
  * The start a member states for a stay ("from Monday", "starting December
@@ -227,15 +257,26 @@ export function resolveWindow(
   const today = startOfDay(now);
   const out: DateWindow = { from: null, until: null };
 
-  const range = new RegExp(String.raw`\bfrom\s+(.+?)\s+${END}\s+(.+)$`).exec(t);
+  // A range word. "to" only closes a range it can see a start for ("from
+  // Monday to Friday"): on its own it is a preposition that appears in almost
+  // every sentence ("I need to fly out Monday"), so the standalone end pattern
+  // below keeps using END alone.
+  const range = new RegExp(
+    String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`,
+  ).exec(t);
   if (range?.[1] && range[2]) {
     const from = parseDateExpr(range[1], now);
-    let until = parseDateExpr(range[2], now);
-    // "from friday until monday": the end day comes next after the start day.
-    if (from && until && until <= from) until = parseDateExpr(range[2], from);
-    out.from = iso(from);
-    out.until = iso(until);
-    if (out.until) return out;
+    // A place-to-place phrase ("from Boston to New York on Friday") has the
+    // shape of a range but states no start date. Adopting it set from to null
+    // and until to the departure day, so the member's duration never ran.
+    if (from) {
+      let until = parseDateExpr(range[2], now);
+      // "from friday until monday": the end day comes next after the start day.
+      if (until && until <= from) until = parseDateExpr(range[2], from);
+      out.from = iso(from);
+      out.until = iso(until);
+      if (out.until) return out;
+    }
   }
   const end = new RegExp(String.raw`\b${END}\s+(?:the\s+)?(.+)$`).exec(t);
   if (end) {

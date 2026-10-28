@@ -13,7 +13,10 @@ import {
   BaseMessageAdapter,
   type DraftRequest,
   type ListOptions,
+  type ManageOperation,
+  type ManageResult,
   type MessageDraftContext,
+  type MessageManageContext,
   type MessageRef,
   type MessageSendContext,
   type ReadMessageRequest,
@@ -21,6 +24,7 @@ import {
   type SearchMessagesFilters,
 } from "@elizaos/plugin-assistant";
 import { readGmailTextRange } from "@elizaos/plugin-google-workspace/gmail-text-range";
+import { managedGmailManager } from "./managed-gmail-manage.ts";
 import {
   managedGmailMessageReader,
   managedGmailReadFetcher,
@@ -48,6 +52,7 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
   private readonly fetcher = managedGmailReadFetcher();
   private readonly reader = managedGmailMessageReader();
   private readonly sender = managedGmailSender();
+  private readonly manager = managedGmailManager();
   private readonly drafts = new Map<
     string,
     {
@@ -66,13 +71,64 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
     return {
       list: true,
       search: true,
-      manage: {},
+      manage: this.manager
+        ? { archive: true, trash: true, markRead: true }
+        : {},
       send: this.sender
         ? { new: true, requiresLiveRequester: true }
         : { requiresLiveRequester: true },
       worlds: "single" as const,
       channels: "none" as const,
     };
+  }
+  protected async manageMessageImpl(
+    runtime: IAgentRuntime,
+    messageId: string,
+    operation: ManageOperation,
+    context?: MessageManageContext,
+  ): Promise<ManageResult> {
+    const requester = await owner(runtime, context?.requester);
+    if (!this.manager)
+      throw new ElizaError(
+        "Managed Gmail mailbox changes are not available on this device yet. Nothing was changed.",
+        { code: "MANAGED_GMAIL_MAILBOX_UNAVAILABLE" },
+      );
+    if (!requester.id || !requester.roomId || !requester.entityId)
+      throw unavailable("Mailbox changes need the current owner turn.");
+    const kind =
+      operation.kind === "mark_read"
+        ? operation.read
+          ? "mark-read"
+          : "mark-unread"
+        : operation.kind === "archive" || operation.kind === "trash"
+          ? operation.kind
+          : null;
+    if (!kind)
+      return {
+        ok: false,
+        reason: "This Gmail mailbox operation is not supported.",
+      };
+    const hex = createHash("sha256")
+      .update(
+        JSON.stringify([
+          runtime.agentId,
+          requester.entityId,
+          requester.roomId,
+          requester.id,
+          messageId,
+          kind,
+        ]),
+      )
+      .digest("hex")
+      .slice(0, 32)
+      .split("");
+    hex[12] = "4";
+    hex[16] = ((Number.parseInt(hex[16], 16) & 3) | 8).toString(16);
+    const h = hex.join("");
+    const requestId = `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+    const result = await this.manager({ messageId, kind, requestId });
+    await owner(runtime, requester);
+    return result;
   }
   async authorizeSend(
     runtime: IAgentRuntime,
@@ -98,7 +154,10 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
   ) {
     const caller = await owner(runtime, context?.requester);
     if (!this.sender)
-      throw unavailable("Managed Gmail sending is unavailable.");
+      throw new ElizaError(
+        "Managed Gmail sending is not available on this device yet. Nothing was sent.",
+        { code: "MANAGED_GMAIL_SEND_UNAVAILABLE" },
+      );
     if (
       draft.source !== "gmail" ||
       draft.inReplyToId ||
@@ -224,7 +283,10 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
         id: row.id,
         source: "gmail",
         externalId: row.id,
-        from: { identifier: row.senderName, displayName: row.senderName },
+        from: {
+          identifier: row.senderIdentifier ?? row.senderName,
+          displayName: row.senderName,
+        },
         to: [],
         subject: row.threadTopic,
         snippet: row.snippet,
@@ -242,11 +304,128 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
     runtime: IAgentRuntime,
     filters: SearchMessagesFilters,
   ) {
-    if (filters.tags?.length || filters.untilMs !== undefined || filters.sender)
+    if (
+      !filters.sender &&
+      !filters.tags?.length &&
+      filters.sinceMs === undefined &&
+      filters.untilMs === undefined
+    )
+      return this.messages(runtime, filters, filters.content);
+    const literal = (value: string) => {
+      if (
+        !value.trim() ||
+        [...value].some(
+          (char) =>
+            char === '"' ||
+            char === "\\" ||
+            char.charCodeAt(0) < 32 ||
+            char.charCodeAt(0) === 127,
+        )
+      )
+        throw unavailable(
+          "This Gmail filter contains unsupported quoting or control characters.",
+        );
+      return `"${value}"`;
+    };
+    const clauses: string[] = [];
+    if (filters.content) {
+      if (filters.content.includes("\\"))
+        throw unavailable(
+          "Escaped Gmail query syntax cannot be combined with structured filters.",
+        );
+      // Keep explicit OR/grouping inside the content query so added filters
+      // constrain every branch. Reject unbalanced syntax instead of widening.
+      const stack: string[] = [];
+      let quoted = false;
+      for (const char of filters.content) {
+        if (char === '"') quoted = !quoted;
+        else if (!quoted) {
+          if (char === "(" || char === "{") stack.push(char);
+          else if (char === ")" || char === "}") {
+            if (stack.pop() !== (char === ")" ? "(" : "{"))
+              throw unavailable("Unbalanced Gmail query.");
+          }
+        }
+      }
+      if (quoted || stack.length) throw unavailable("Unbalanced Gmail query.");
+      clauses.push(`(${filters.content})`);
+    } else clauses.push("in:inbox");
+    const senderId = filters.sender?.identifier,
+      senderName = filters.sender?.displayName;
+    if (senderId && !/^[^\s@]+@[^\s@]+$/.test(senderId))
       throw unavailable(
-        "Use a Gmail query for sender, label, or date-range filters.",
+        "Use an email address for sender.identifier, or put a domain in the Gmail query.",
       );
-    return this.messages(runtime, filters, filters.content);
+    if (senderId) clauses.push(`from:${literal(senderId)}`);
+    // Gmail word/phrase search cannot represent arbitrary name substrings.
+    // Keep this constraint local; a saturated candidate window fails below.
+    for (const tag of filters.tags ?? []) clauses.push(`label:${literal(tag)}`);
+    for (const value of [filters.sinceMs, filters.untilMs])
+      if (
+        value !== undefined &&
+        (!Number.isSafeInteger(value) ||
+          !Number.isFinite(new Date(value).getTime()))
+      )
+        throw unavailable("Invalid Gmail date.");
+    if (
+      filters.sinceMs !== undefined &&
+      filters.untilMs !== undefined &&
+      filters.sinceMs > filters.untilMs
+    )
+      throw unavailable("Gmail date range ends before it starts.");
+    // Native date search has second precision. Filter its boundary candidates
+    // against the requested inclusive millisecond bounds before disclosure.
+    if (filters.sinceMs !== undefined && filters.sinceMs >= 1000)
+      clauses.push(`after:${Math.floor(filters.sinceMs / 1000) - 1}`);
+    if (filters.untilMs !== undefined && filters.untilMs >= 0)
+      clauses.push(`before:${Math.floor(filters.untilMs / 1000) + 1}`);
+    const query = clauses.join(" ");
+    if (query.length > 4096) throw unavailable("Gmail query is too long.");
+    return this.messages(
+      runtime,
+      { ...filters, sinceMs: undefined },
+      query,
+    ).then((rows) => {
+      if (
+        senderId &&
+        rows.some((row) => !/^\S+@\S+$/.test(row.from.identifier))
+      )
+        throw unavailable(
+          "The Gmail host did not provide sender addresses needed to verify this filter.",
+        );
+      const selected = rows.filter((row) => {
+        if (
+          (filters.sinceMs !== undefined &&
+            row.receivedAtMs < filters.sinceMs) ||
+          (filters.untilMs !== undefined && row.receivedAtMs > filters.untilMs)
+        )
+          return false;
+        if (
+          senderId &&
+          row.from.identifier.toLowerCase() !== senderId.toLowerCase()
+        )
+          return false;
+        if (
+          senderName &&
+          !row.from.displayName
+            ?.toLowerCase()
+            .includes(senderName.toLowerCase()) &&
+          row.from.identifier.toLowerCase() !== senderName.toLowerCase()
+        )
+          return false;
+        return true;
+      });
+      if (selected.length < rows.length && rows.length >= (filters.limit ?? 25))
+        throw unavailable(
+          "The bounded Gmail search needs a narrower query to verify all filtered results.",
+        );
+      // These labels are proved by the AND-composed native query; this is the
+      // matched requested subset, not a complete label inventory.
+      return selected.map((row) => ({
+        ...row,
+        tags: [...(filters.tags ?? [])],
+      }));
+    });
   }
   protected async readMessageImpl(
     runtime: IAgentRuntime,
@@ -263,7 +442,7 @@ export class ManagedGmailAdapter extends BaseMessageAdapter {
       !request.expectedRevision
     )
       throw unavailable(
-        "Gmail continuation requires the recorded source revision.",
+        "Gmail continuation requires expectedRevision: copy control.expectedRevision from the previous read together with its reference and offset. Do not retry the same arguments without it.",
       );
     if (
       request.limit !== undefined &&

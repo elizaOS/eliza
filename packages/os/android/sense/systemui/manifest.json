@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "project": "frameworks/base",
+  "revision": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
+  "baselineLockSha256": "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3",
+  "patch": "microphone-ops.patch",
+  "patchSha256": "8cf2ae555ea9b6509d7c7bd8e83d1c03fc04572912e0ea1056940de8b9357478",
+  "files": [
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/appops/AppOpsControllerImpl.java",
+      "beforeSha256": "c78539501625d095e74ed6099e02e4852eba59abffbd57e0059f66dc9119e210",
+      "afterSha256": "873b3c8d71135c6001ed98fd2a79fc315ed47c31abb48e77ae64c28d6186b4df"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/AppOpsPrivacyItemMonitor.kt",
+      "beforeSha256": "34f29ad8b8efbcb0dabc4a92013c68ceee14faf59c102a46228bd3c9a02bb449",
+      "afterSha256": "d8325e49b4195aa33d36ece9d706e2fc3e8d645570ec8129a7c21c1328200d97"
+    }
+  ],
+  "fullTreeVerified": false,
+  "imageBuilt": false,
+  "lockAodIndicatorQualified": false
+}

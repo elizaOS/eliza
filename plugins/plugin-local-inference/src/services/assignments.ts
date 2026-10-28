@@ -44,6 +44,24 @@ export class AssignmentRejectedError extends Error {
 	}
 }
 
+/**
+ * Raised when assignments.json exists but cannot be read or parsed. Distinct
+ * from "no file yet" (an empty policy): callers must not treat an unreadable
+ * policy as an empty one, or the next read-modify-write rewrites the file from
+ * that empty map and destroys the user's other slots.
+ */
+export class AssignmentsUnreadableError extends Error {
+	readonly code = "ASSIGNMENTS_UNREADABLE" as const;
+	readonly filePath: string;
+	constructor(filePath: string, cause: unknown) {
+		super(`failed to read local inference assignments at ${filePath}`, {
+			cause,
+		});
+		this.name = "AssignmentsUnreadableError";
+		this.filePath = filePath;
+	}
+}
+
 interface AssignmentsFile {
 	version: 1;
 	assignments: ModelAssignments;
@@ -93,8 +111,15 @@ export async function readAssignments(): Promise<ModelAssignments> {
 		const parsed = JSON.parse(raw) as AssignmentsFile;
 		if (parsed?.version !== 1 || !parsed.assignments) return {};
 		return sanitizeAssignments(parsed.assignments);
-	} catch {
-		return {};
+	} catch (error) {
+		// No assignments file yet is legitimately "no policy declared", and the
+		// boot-time auto-assign path depends on that. A file that exists but
+		// cannot be read or parsed is not the same thing: returning {} there makes
+		// every caller treat "policy unreadable" as "policy empty", and the next
+		// read-modify-write (setAssignment, ensureBundledAssignment) rewrites the
+		// file from that empty map and destroys the user's other slots.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+		throw new AssignmentsUnreadableError(assignmentsPath(), error);
 	}
 }
 

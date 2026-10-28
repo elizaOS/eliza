@@ -8,7 +8,12 @@
  * Also exposes target-user matching and randomized loop-interval helpers.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  parseBooleanFromText,
+  parseBooleanValue,
+} from "@elizaos/core";
 import * as z from "zod";
 import { getSetting } from "./utils/settings";
 
@@ -254,12 +259,12 @@ export async function validateTwitterConfig(
         config.TWITTER_PERSONAL_DM_ROUTER_URL ??
         getSetting(runtime, "TWITTER_PERSONAL_DM_ROUTER_URL") ??
         "",
+      // Same parser as TWITTER_ENABLE_POST and the post client, so `1`, `yes`
+      // and `on` keep dry run on instead of posting for real.
       TWITTER_DRY_RUN: String(
-        (
-          config.TWITTER_DRY_RUN ??
-          getSetting(runtime, "TWITTER_DRY_RUN") ??
-          "false"
-        ).toLowerCase() === "true",
+        parseBooleanFromText(
+          config.TWITTER_DRY_RUN ?? getSetting(runtime, "TWITTER_DRY_RUN"),
+        ),
       ),
       TWITTER_TARGET_USERS:
         config.TWITTER_TARGET_USERS ??
@@ -272,19 +277,20 @@ export async function validateTwitterConfig(
           "false"
         ).toLowerCase() === "true",
       ),
+      // Same parser as the reply client, so both read one value the same way.
       TWITTER_ENABLE_REPLIES: String(
-        config.TWITTER_ENABLE_REPLIES !== undefined
-          ? config.TWITTER_ENABLE_REPLIES.toLowerCase() === "true"
-          : (
-              getSetting(runtime, "TWITTER_ENABLE_REPLIES") ?? "true"
-            ).toLowerCase() === "true",
+        parseBooleanValue(
+          config.TWITTER_ENABLE_REPLIES ??
+            getSetting(runtime, "TWITTER_ENABLE_REPLIES"),
+        ) ?? true,
       ),
+      // Same parser as the DM client in x.service.ts.
       TWITTER_ENABLE_DMS: String(
-        (
+        parseBooleanFromText(
           config.TWITTER_ENABLE_DMS ??
-          getSetting(runtime, "TWITTER_ENABLE_DMS") ??
-          "true"
-        ).toLowerCase() === "true",
+            getSetting(runtime, "TWITTER_ENABLE_DMS") ??
+            "true",
+        ),
       ),
       TWITTER_DM_POLICY:
         config.TWITTER_DM_POLICY ??

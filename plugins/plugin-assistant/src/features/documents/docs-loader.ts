@@ -200,9 +200,7 @@ export async function addDocumentFromFilePath({
 
   const fileBuffer = fs.readFileSync(filePath);
   const isTextBacked = isTextBackedDocumentContent(contentType, fileName);
-  const content = isTextBacked
-    ? fileBuffer.toString("utf-8")
-    : fileBuffer.toString("base64");
+  const content = fileBuffer.toString("base64");
 
   const documentOptions: AddDocumentOptions = {
     agentId,
@@ -215,6 +213,7 @@ export async function addDocumentFromFilePath({
     // it with a typed error instead of this call silently masking it.
     worldId: worldId ?? agentId,
     content,
+    contentEncoding: "base64",
     roomId: roomId ?? agentId,
     entityId: entityId ?? agentId,
     scope,

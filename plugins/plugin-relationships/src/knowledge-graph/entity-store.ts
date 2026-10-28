@@ -39,6 +39,7 @@ import {
   type GraphRecordRepository,
   graphRecordRepository,
 } from "./record-repository.ts";
+import { RelationshipStore } from "./relationship-store.ts";
 import {
   executeRawSql,
   parseJsonArray,
@@ -798,6 +799,15 @@ export class EntityStore {
       if (source) sources.push(source);
     }
     const now = isoNow();
+    // The target's own edges win when a moved edge duplicates one of them:
+    // callers address the target's edges by id (for example its contact edge).
+    const relationships = new RelationshipStore(this.runtime, this.agentId);
+    const keepIds = new Set(
+      [
+        ...(await relationships.list({ fromEntityId: targetId })),
+        ...(await relationships.list({ toEntityId: targetId })),
+      ].map((edge) => edge.relationshipId),
+    );
     const merged = mergeEntities({ target, sources, now });
     const persisted = await this.upsertInternal({
       ...merged,
@@ -845,6 +855,7 @@ export class EntityStore {
             AND entity_id = ${sqlQuote(source.entityId)}`,
       );
     }
+    await relationships.foldMergedEdges(targetId, keepIds);
     return persisted;
   }
   /**

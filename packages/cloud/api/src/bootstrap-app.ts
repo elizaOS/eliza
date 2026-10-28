@@ -489,9 +489,14 @@ export async function createApp(
     }
     const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
     const verdict = rateLimitConfigVerdict({
+      backend: c.env.CLOUD_RATE_STATE_BACKEND,
+      hasDurableBinding: Boolean(c.env.RATE_LIMIT_STATE),
       environment: env.ENVIRONMENT,
       redisRateLimiting: env.REDIS_RATE_LIMITING,
-      hasRedisClient: Boolean(buildRedisClient(c.env)),
+      hasRedisClient:
+        c.env.CLOUD_RATE_STATE_BACKEND === "cloudflare"
+          ? false
+          : Boolean(buildRedisClient(c.env)),
     });
     if (!rateLimitConfigLogged) {
       rateLimitConfigLogged = true;

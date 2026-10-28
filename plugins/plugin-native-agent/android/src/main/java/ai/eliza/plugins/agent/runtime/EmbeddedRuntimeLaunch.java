@@ -39,7 +39,8 @@ public final class EmbeddedRuntimeLaunch {
     if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) throw new IOException("Runtime directory must be real");
   }
 
-  private ProcessBuilder command(Path entrypoint, String... arguments) {
+  /** Bun on a script with the private launch environment and no agent or gateway settings. */
+  public ProcessBuilder script(Path entrypoint, String... arguments) {
     List<String> command = new ArrayList<>(Arrays.asList(
       loader.toString(),
       installed.resolve("libeliza_bun.so").toString(), "--no-env-file", "--no-install",
@@ -55,7 +56,7 @@ public final class EmbeddedRuntimeLaunch {
       Map<String,String> policy) {
     if (port < 1 || port > 65535 || token == null || token.isEmpty() || token.matches("(?s).*[\\r\\n\\x00].*"))
       throw new IllegalArgumentException("Invalid runtime endpoint authority");
-    ProcessBuilder builder = command(entrypoint, "serve");
+    ProcessBuilder builder = script(entrypoint, "serve");
     Map<String,String> env = builder.environment(); env.putAll(policy); env.putAll(base);
     env.put("ELIZA_STATE_DIR", state.toString()); env.put("ELIZA_CONFIG_PATH", config.toAbsolutePath().toString());
     env.put("ELIZA_ANDROID_APP_DATA_DIR", dataDirectory);
@@ -68,7 +69,7 @@ public final class EmbeddedRuntimeLaunch {
 
   /** Gateway credentials are supplied separately; agent environment is never copied. */
   public ProcessBuilder gateway(Path entrypoint) throws IOException {
-    ProcessBuilder builder = command(entrypoint);
+    ProcessBuilder builder = script(entrypoint);
     InstalledRuntimeLibraries.configureCanvas(installed, aliases, builder.environment());
     return builder;
   }

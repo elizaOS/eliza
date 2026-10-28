@@ -15,7 +15,12 @@ import {
   decodeSocialMediaBase64,
   downloadSocialMediaBytes,
 } from "../media-download";
-import { failedPostResult, UnknownPostOutcomeError, withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const MASTODON_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -96,6 +101,7 @@ async function mastodonApiRequest<T>(
   endpoint: string,
   accessToken: string,
   options: RequestInit = {},
+  retryOptions: Pick<RetryOptions, "unknownOutcomeOnExhaustion"> = {},
 ): Promise<T> {
   const { data } = await withRetry<T>(
     () =>
@@ -114,7 +120,7 @@ async function mastodonApiRequest<T>(
       }
       return response.json();
     },
-    { platform: "mastodon", maxRetries: 3 },
+    { platform: "mastodon", maxRetries: 3, ...retryOptions },
   );
 
   return data;
@@ -229,18 +235,29 @@ export const mastodonProvider: SocialMediaProvider = {
       };
     }
 
-    const status = await mastodonApiRequest<MastodonStatus>(
-      instanceUrl,
-      "/statuses",
-      credentials.accessToken,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-        // withRetry replays this POST after a timeout or a 5xx, when the status
-        // may already exist; one key per post lets Mastodon drop the replay.
-        headers: { "Idempotency-Key": crypto.randomUUID() },
-      },
-    );
+    // Sibling providers catch their create errors and return a
+    // failedPostResult. A throw past this method reaches the service
+    // boundary, which converts it to a plain, refundable failure — an
+    // exhausted unknown outcome (the status may exist) must stay held.
+    let status: MastodonStatus;
+    try {
+      status = await mastodonApiRequest<MastodonStatus>(
+        instanceUrl,
+        "/statuses",
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+          // withRetry replays this POST after a timeout or a 5xx, when the status
+          // may already exist; one key per post lets Mastodon drop the replay.
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+        },
+        // The last replay may have published even though it went unanswered.
+        { unknownOutcomeOnExhaustion: true },
+      );
+    } catch (error) {
+      return failedPostResult("mastodon", error);
+    }
 
     // A 2xx body without the created status id is not a publication
     // receipt: Mastodon may have published, so the outcome stays unknown
@@ -318,17 +335,44 @@ export const mastodonProvider: SocialMediaProvider = {
 
     const instanceUrl = getInstanceUrl(credentials);
 
-    const status = await mastodonApiRequest<MastodonStatus>(
-      instanceUrl,
-      `/statuses/${postId}/reblog`,
-      credentials.accessToken,
-      { method: "POST" },
-    );
+    // Sibling providers return a failedPostResult for a failed repost;
+    // a throw past this method breaks the PostResult contract.
+    let status: MastodonStatus;
+    try {
+      status = await mastodonApiRequest<MastodonStatus>(
+        instanceUrl,
+        `/statuses/${postId}/reblog`,
+        credentials.accessToken,
+        { method: "POST" },
+        // The last replay may have reblogged even though it went
+        // unanswered; the create call in this file passes the same
+        // option so an exhausted unknown outcome is held, not refunded.
+        { unknownOutcomeOnExhaustion: true },
+      );
+    } catch (error) {
+      return failedPostResult("mastodon", error);
+    }
+
+    // A 2xx body without the reblog status id is not a publication
+    // receipt: the reblog may exist, so the outcome stays unknown and
+    // the credit is held instead of reporting a success with no post
+    // id (the create path in this file applies the same rule). This
+    // method returns its result directly, so build the held result here.
+    const reblogId = status?.id;
+    if (typeof reblogId !== "string" || !reblogId.trim()) {
+      return failedPostResult(
+        "mastodon",
+        new UnknownPostOutcomeError(
+          "mastodon",
+          new Error("Mastodon response lacks a publication receipt"),
+        ),
+      );
+    }
 
     return {
       platform: "mastodon",
       success: true,
-      postId: status.id,
+      postId: reblogId,
       postUrl: status.url,
     };
   },

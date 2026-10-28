@@ -24,6 +24,129 @@ describe("managed Gmail owner boundary", () => {
     );
     vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
   });
+  it("keeps mailbox changes off by default even when the operation broker is configured", async () => {
+    vi.stubEnv(
+      "ELIZA_MANAGED_GMAIL_OPERATION_BROKER",
+      "http://127.0.0.1:5209/__alpha-owner-gmail",
+    );
+    vi.stubEnv("ELIZA_MANAGED_GMAIL_MAILBOX_CHANGES_ENABLED", "");
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const runtime = { agentId: "owned-agent" } as IAgentRuntime;
+    const requester = {
+      id: "owner-turn",
+      agentId: "owned-agent",
+      entityId: "owner",
+      roomId: "owner-room",
+    } as Memory;
+    const adapter = new ManagedGmailAdapter();
+    expect(adapter.capabilities().manage).toEqual({});
+    await expect(
+      adapter.manageMessage(
+        runtime,
+        `alpha-gmail:${"b".repeat(64)}:mail1`,
+        { kind: "trash" },
+        { requester },
+      ),
+    ).rejects.toMatchObject({ code: "MANAGED_GMAIL_MAILBOX_UNAVAILABLE" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+  it("binds mailbox changes to the trusted owner turn and preserves the operation ID on replay", async () => {
+    vi.stubEnv(
+      "ELIZA_MANAGED_GMAIL_OPERATION_BROKER",
+      "http://127.0.0.1:5209/__alpha-owner-gmail",
+    );
+    vi.stubEnv("ELIZA_MANAGED_GMAIL_MAILBOX_CHANGES_ENABLED", "1");
+    const calls: Record<string, unknown>[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      const mailbox = JSON.parse(String(init?.body)).mailbox;
+      calls.push(mailbox);
+      return Response.json({ mailbox: { ...mailbox, ok: true } });
+    });
+    const runtime = { agentId: "owned-agent" } as IAgentRuntime;
+    const requester = {
+      id: "owner-turn",
+      agentId: "owned-agent",
+      entityId: "owner",
+      roomId: "owner-room",
+    } as Memory;
+    const adapter = new ManagedGmailAdapter(),
+      messageId = `alpha-gmail:${"b".repeat(64)}:mail1`;
+    await expect(
+      adapter.manageMessage(runtime, messageId, { kind: "archive" }),
+    ).rejects.toThrow("current owner");
+    expect(calls).toHaveLength(0);
+    access.allowed = false;
+    await expect(
+      adapter.manageMessage(
+        runtime,
+        messageId,
+        { kind: "trash" },
+        { requester },
+      ),
+    ).rejects.toThrow("restricted to its owner");
+    expect(calls).toHaveLength(0);
+    access.allowed = true;
+    expect(
+      await adapter.manageMessage(
+        runtime,
+        messageId,
+        { kind: "archive" },
+        { requester },
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      await adapter.manageMessage(
+        runtime,
+        messageId,
+        { kind: "archive" },
+        { requester },
+      ),
+    ).toEqual({ ok: true });
+    expect(calls[0].requestId).toBe(calls[1].requestId);
+    await adapter.manageMessage(
+      runtime,
+      messageId,
+      { kind: "archive" },
+      { requester: { ...requester, id: "another-turn" } as Memory },
+    );
+    expect(calls[2].requestId).not.toBe(calls[0].requestId);
+    expect(
+      await adapter.manageMessage(
+        runtime,
+        messageId,
+        { kind: "label_add", label: "deferred" },
+        { requester },
+      ),
+    ).toMatchObject({ ok: false });
+    expect(calls).toHaveLength(3);
+  });
+  it("refuses Gmail drafts with a typed error and no host call when sending is not configured", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const adapter = new ManagedGmailAdapter();
+    expect(adapter.capabilities().send).toEqual({
+      requiresLiveRequester: true,
+    });
+    await expect(
+      adapter.createDraft(
+        { agentId: "owned-agent" } as IAgentRuntime,
+        {
+          source: "gmail",
+          to: [{ identifier: "self@example.invalid" }],
+          subject: "QA",
+          body: "Text",
+        },
+        {
+          requester: {
+            id: "owner-turn",
+            agentId: "owned-agent",
+            entityId: "owner",
+            roomId: "owner-room",
+          } as Memory,
+        },
+      ),
+    ).rejects.toMatchObject({ code: "MANAGED_GMAIL_SEND_UNAVAILABLE" });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
   it("prepares and dispatches only the reviewed owner draft and resolves a lost response by receipt", async () => {
     vi.stubEnv(
       "ELIZA_MANAGED_GMAIL_SEND_BROKER",
@@ -65,7 +188,10 @@ describe("managed Gmail owner boundary", () => {
       }
       return Response.json({ send: receipt() });
     });
-    const runtime = { agentId: "owned-agent" } as IAgentRuntime,
+    const runtime = {
+        agentId: "owned-agent",
+        getCache: async () => undefined,
+      } as unknown as IAgentRuntime,
       requester = {
         agentId: "owned-agent",
         entityId: "owner",
@@ -153,7 +279,10 @@ describe("managed Gmail owner boundary", () => {
         },
       });
     });
-    const runtime = { agentId: "owned-agent" } as IAgentRuntime,
+    const runtime = {
+        agentId: "owned-agent",
+        getCache: async () => undefined,
+      } as unknown as IAgentRuntime,
       requester = {
         agentId: "owned-agent",
         entityId: "owner",

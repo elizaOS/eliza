@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { apiKeys } from "../../db/schemas/api-keys";
 import type { RouteParams } from "../api/hono-next-style-params";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import {
   consumeInferenceRateLimit,
   InferenceAdmissionGateUnavailableError,
@@ -33,6 +34,15 @@ import { enforcePlanRequestLimit } from "../services/plan-request-limiter";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
 import { checkRateLimitRedis, type RateLimitResult } from "./rate-limit-redis";
+
+function durableRateStateSelected(): boolean {
+  const backend = getCloudAwareEnv().CLOUD_RATE_STATE_BACKEND;
+  return Boolean(backend && backend !== "redis");
+}
+
+function sharedRateStateEnabled(): boolean {
+  return durableRateStateSelected() || getCloudAwareEnv().REDIS_RATE_LIMITING === "true";
+}
 
 interface RateLimitConfig {
   windowMs: number; // Time window in milliseconds
@@ -87,7 +97,7 @@ function validateRateLimitConfig() {
   }
 
   if (process.env.NODE_ENV === "production") {
-    if (process.env.REDIS_RATE_LIMITING !== "true") {
+    if (!sharedRateStateEnabled()) {
       // ⚠️  IMPORTANT: On a single-server VPS, in-memory rate limiting is safe
       // because there is only one process. Multi-instance/serverless deployments
       // SHOULD configure Redis so limits are shared across instances.
@@ -255,7 +265,7 @@ export async function checkRateLimitAsync(
   resetAt: number;
   retryAfter?: number;
 }> {
-  const useRedis = process.env.REDIS_RATE_LIMITING === "true";
+  const useRedis = sharedRateStateEnabled();
   const keyGenerator = config.keyGenerator || getDefaultKey;
   const key = keyGenerator(request);
 
@@ -350,7 +360,12 @@ export async function enforceMcpOrganizationRateLimit(
   const key = mcpOrgRateLimitRedisKey(organizationId, integrationSlug);
   const result = await checkRateLimitRedis(key, windowMs, maxRequests);
   if (result.allowed) return null;
-  return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
+  return rateLimitExceededResponse(
+    result,
+    maxRequests,
+    windowMs,
+    durableRateStateSelected() ? "durable-object" : "redis",
+  );
 }
 
 /**
@@ -673,8 +688,8 @@ export async function enforceOrgRateLimit(
           }
         }
 
-        // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
-        if (process.env.REDIS_RATE_LIMITING !== "true") return null;
+        // Mirror withRateLimit: skip when no shared backend is selected (development).
+        if (!sharedRateStateEnabled()) return null;
 
         if (apiKeyCap) {
           const keyResult = await checkRateLimitRedis(
@@ -687,11 +702,11 @@ export async function enforceOrgRateLimit(
               keyResult,
               apiKeyCap.maxRequests,
               API_KEY_RATE_LIMIT_WINDOW_MS,
-              "redis",
+              durableRateStateSelected() ? "durable-object" : "redis",
             );
         }
 
-        const leaseEnabled = isHotPathCachesEnabled();
+        const leaseEnabled = !durableRateStateSelected() && isHotPathCachesEnabled();
         const leaseKey = `${organizationId}:${endpointType}`;
         const now = Date.now();
         // Read the lease even when the flag is off: a flag flip must still flush any
@@ -759,7 +774,12 @@ export async function enforceOrgRateLimit(
           orgRateLimitLeases.delete(leaseKey);
         }
         if (result.allowed) return null;
-        return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
+        return rateLimitExceededResponse(
+          result,
+          maxRequests,
+          windowMs,
+          durableRateStateSelected() ? "durable-object" : "redis",
+        );
       },
     );
   } catch (error) {
@@ -814,7 +834,7 @@ export function withRateLimit<T extends Record<string, string | string[]> = Reco
   config: RateLimitConfig,
 ) {
   return async (request: Request, context?: RouteParams<T>): Promise<Response> => {
-    const useRedis = process.env.REDIS_RATE_LIMITING === "true";
+    const useRedis = sharedRateStateEnabled();
     const keyGenerator = config.keyGenerator || getDefaultKey;
     const key = keyGenerator(request);
 
@@ -836,7 +856,11 @@ export function withRateLimit<T extends Record<string, string | string[]> = Reco
       "X-RateLimit-Limit": config.maxRequests.toString(),
       "X-RateLimit-Remaining": result.remaining.toString(),
       "X-RateLimit-Reset": new Date(result.resetAt).toISOString(),
-      "X-RateLimit-Policy": useRedis ? "redis" : "in-memory",
+      "X-RateLimit-Policy": durableRateStateSelected()
+        ? "durable-object"
+        : useRedis
+          ? "redis"
+          : "in-memory",
     };
 
     if (!result.allowed) {
@@ -844,7 +868,11 @@ export function withRateLimit<T extends Record<string, string | string[]> = Reco
         `[Rate Limit] Request blocked for key=${maskKeyForLogging(key)}, limit=${config.maxRequests}, window=${config.windowMs}ms`,
       );
 
-      const policy: "redis" | "in-memory" = useRedis ? "redis" : "in-memory";
+      const policy: RateLimitPolicy = durableRateStateSelected()
+        ? "durable-object"
+        : useRedis
+          ? "redis"
+          : "in-memory";
       return rateLimitExceededResponse(result, config.maxRequests, config.windowMs, policy);
     }
 

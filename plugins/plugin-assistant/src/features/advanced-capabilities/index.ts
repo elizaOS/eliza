@@ -20,7 +20,7 @@ import type {
   ServiceClass,
 } from "@elizaos/core";
 import { createService, promoteSubactionsToActions } from "@elizaos/core";
-import { messageAction } from "./actions/message.ts";
+import { promoteMessageActions } from "./actions/message.ts";
 import { postAction } from "./actions/post.ts";
 import { updateRoleAction } from "./actions/role.ts";
 import { roomOpAction } from "./actions/room.ts";
@@ -68,7 +68,7 @@ export const advancedActions = [
   updateRoleAction,
   searchExperiencesAction,
   manageExperienceAction,
-  ...promoteSubactionsToActions(messageAction),
+  ...promoteMessageActions(),
   ...promoteSubactionsToActions(postAction),
   // Personality actions — keep CHARACTER (legacy) alongside the new
   // PERSONALITY surface so existing callers continue to resolve.

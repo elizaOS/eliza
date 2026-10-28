@@ -91,6 +91,26 @@ test("actual SQLCipher task driver", async (t) => {
         db.prepare("PRAGMA cipher_integrity_check").get(),
         undefined,
       );
+      db.prepare("INSERT INTO records(value) VALUES (?)").run("second");
+      assert.deepEqual(
+        db.prepare("SELECT id, value FROM records ORDER BY id").all(),
+        [
+          { id: 1, value: canary },
+          { id: 2, value: "second" },
+        ],
+      );
+      assert.deepEqual(
+        db
+          .prepare("SELECT value FROM records WHERE id > ? ORDER BY id DESC")
+          .all(1),
+        [{ value: "second" }],
+      );
+      assert.deepEqual(
+        db.prepare("SELECT value FROM records WHERE id > ?").all(99),
+        [],
+      );
+      assert.throws(() => db.prepare("SELECT ?").all());
+      db.prepare("DELETE FROM records WHERE id = ?").run(2);
       const wal = await readFile(`${path}-wal`);
       assert.ok(wal.length > 32);
       await scan();

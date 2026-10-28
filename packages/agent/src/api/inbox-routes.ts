@@ -1353,14 +1353,12 @@ async function resolveStoredDiscordEntityProfile(
   if (typeof runtimeWithEntityLookup.getEntityById !== "function") {
     return null;
   }
-  try {
-    const entity = await runtimeWithEntityLookup.getEntityById(
-      entityId as UUID,
-    );
-    return readStoredDiscordEntityProfile(entity);
-  } catch {
-    return null;
-  }
+  // A null return from getEntityById means "no stored entity", which the
+  // inbox legitimately renders without a stored profile. A rejected read is
+  // a storage fault and must not be flattened into that same "no profile"
+  // shape, or the sender silently loses their name and avatar.
+  const entity = await runtimeWithEntityLookup.getEntityById(entityId as UUID);
+  return readStoredDiscordEntityProfile(entity);
 }
 async function cacheInboxDiscordAvatar(
   runtime: AgentRuntime,
@@ -2810,7 +2808,7 @@ export async function handleInboxRoute(
       return true;
     }
     try {
-      requireConfirmedSendHandlerDelivery(
+      const delivery = requireConfirmedSendHandlerDelivery(
         await runtime.sendMessageToTarget(
           {
             ...(accountRouting.accountId
@@ -2832,6 +2830,73 @@ export async function handleInboxRoute(
           },
         ),
       );
+      // Connectors such as iMessage and Slack only report the provider
+      // receipt and leave the outbound memory to the caller. Without it the
+      // reply is missing from the thread and from the agent's history.
+      const receipt = delivery.receipt;
+      if (receipt?.persistence.status === "not_attempted") {
+        const providerMessageId =
+          receipt.evidenceKind === "local-effect"
+            ? undefined
+            : delivery.providerMessageId;
+        const saved = await runtime
+          .createMemory(
+            {
+              id: createUniqueUuid(
+                runtime,
+                `${source}:inbox-reply:${receipt.providerMessageIds.join(",")}`,
+              ),
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: room.id,
+              content: {
+                text,
+                source,
+                ...(replyToMessageId ? { inReplyTo: replyToMessageId } : {}),
+              },
+              metadata: {
+                type: "message",
+                source,
+                provider: source,
+                evidenceKind: receipt.evidenceKind ?? "provider",
+                ...(receipt.evidenceKind === "local-effect"
+                  ? { localEffectIds: receipt.providerMessageIds }
+                  : { providerMessageIds: receipt.providerMessageIds }),
+                ...(providerMessageId
+                  ? { messageIdFull: providerMessageId }
+                  : {}),
+              },
+              createdAt: receipt.acceptedAt,
+            } as Memory,
+            "messages",
+          )
+          .then(
+            () => true,
+            (err: unknown) => {
+              // error-policy:J1 the provider already accepted the reply, so a
+              // local write failure must not read as a failed send.
+              runtime.reportError("inbox-reply-persistence", err, {
+                source,
+                roomId: room.id,
+              });
+              return false;
+            },
+          );
+        if (!saved) {
+          helpers.json(
+            res,
+            {
+              ok: false,
+              delivered: true,
+              code: "INBOX_REPLY_NOT_SAVED",
+              error:
+                "The reply was sent but could not be saved. Do not send it again.",
+            },
+            500,
+          );
+          return true;
+        }
+      }
       const [message] = await loadInboxMessages(
         runtime,
         1,

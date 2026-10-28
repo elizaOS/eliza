@@ -219,6 +219,65 @@ describe("mention reply is posted at most once", () => {
     expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(2);
   });
 
+  it("does not retry a reply X refuses for good, so later mentions are not held behind it", async () => {
+    const runtime = replyingRuntime();
+    const send = vi.fn(async () => {
+      throw Object.assign(
+        new Error("Reply to this conversation is not allowed"),
+        {
+          code: 403,
+        },
+      );
+    });
+    const client = createClient(runtime, send);
+    const interactions = new TwitterInteractionClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    await poll(interactions);
+    await poll(interactions);
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(1);
+    expect(client.getLatestCheckedTweetId(PROFILE_ID)).toBe(
+      BigInt(mention().id),
+    );
+  });
+
+  it("retries a reply X refused for app access, so fixing the app resumes the mention", async () => {
+    const runtime = replyingRuntime();
+    let sends = 0;
+    const send = vi.fn(async () => {
+      sends += 1;
+      if (sends === 1) {
+        throw Object.assign(new Error("Request failed with code 403"), {
+          code: 403,
+          data: {
+            title: "Client Forbidden",
+            reason: "client-not-enrolled",
+            type: "https://api.twitter.com/2/problems/client-forbidden",
+          },
+        });
+      }
+      return {
+        data: { data: { id: `20000000000000000${sends}`, text: "ok" } },
+      };
+    });
+    const client = createClient(runtime, send);
+    const interactions = new TwitterInteractionClient(
+      client,
+      runtime,
+      {} as TwitterClientState,
+    );
+
+    await poll(interactions);
+    await poll(interactions);
+
+    expect(handleMessageOf(runtime)).toHaveBeenCalledTimes(2);
+  });
+
   it("retries a reply when credentials rotate before its first chunk is sent", async () => {
     // The rotation lands after the poll acquired its session and before the
     // reply's own session is used, so no post request is ever issued.

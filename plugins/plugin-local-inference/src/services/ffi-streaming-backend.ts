@@ -136,10 +136,11 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		controller: AbortController;
 		settled: Promise<unknown>;
 	}>();
-	/** True while unload() is ending generations and freeing the session;
-	 *  generateWithUsage refuses new work so nothing starts on a session
-	 *  that is about to be released. */
-	private unloading = false;
+	/** Loads and unloads run in call order so native sessions never overlap. */
+	private lifecycleTail: Promise<void> = Promise.resolve();
+	/** Release operations that were requested but have not finished. New
+	 *  generations are refused as soon as an unload is requested. */
+	private pendingReleases = 0;
 	private readonly budgetOverride: VoiceBudget | null;
 
 	constructor(
@@ -161,8 +162,18 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		return this.loadedPath;
 	}
 
-	async load(plan: BackendPlan): Promise<void> {
-		if (this.session) await this.unload();
+	load(plan: BackendPlan): Promise<void> {
+		return this.enqueueLifecycle(() => this.acquireSession(plan));
+	}
+
+	private enqueueLifecycle(operation: () => Promise<void>): Promise<void> {
+		const scheduled = this.lifecycleTail.then(operation);
+		this.lifecycleTail = scheduled.catch(() => {});
+		return scheduled;
+	}
+
+	private async acquireSession(plan: BackendPlan): Promise<void> {
+		if (this.session) await this.releaseWithGenerationGuard();
 		// Reserve the text-target weights against the cross-model voice budget
 		// BEFORE loading (allocator contract, `voice-budget.ts`). Sized to the
 		// GGUF on disk — the mmap resident ceiling. `BudgetExhaustedError` is a
@@ -210,7 +221,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 					},
 					"[FfiStreamingBackend] drafter weights exceed the voice budget — unloading",
 				);
-				await this.unload();
+				await this.releaseWithGenerationGuard();
 				throw err;
 			}
 		}
@@ -221,7 +232,32 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		this.budgetReservations = [];
 	}
 
-	async unload(): Promise<void> {
+	unload(): Promise<void> {
+		this.pendingReleases += 1;
+		return this.enqueueLifecycle(async () => {
+			try {
+				await this.releaseCurrentSession();
+			} finally {
+				this.pendingReleases -= 1;
+			}
+		});
+	}
+
+	private async releaseWithGenerationGuard(): Promise<void> {
+		this.pendingReleases += 1;
+		try {
+			await this.releaseCurrentSession();
+		} finally {
+			this.pendingReleases -= 1;
+		}
+	}
+
+	private async releaseCurrentSession(): Promise<void> {
+		if (!this.session) {
+			this.loadedPath = null;
+			this.releaseBudgetReservations();
+			return;
+		}
 		// Await the native release BEFORE nulling our refs. If we null first and
 		// release() throws (a raw bun:ffi free can reject), this.session would be
 		// null while the runtime still holds a live session — the next load()
@@ -232,7 +268,6 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		// The native session must outlive every generation stepping on it:
 		// stop admitting new ones, cancel the running ones, and wait for them
 		// to stop before the release frees it.
-		this.unloading = true;
 		try {
 			while (this.generations.size > 0) {
 				const running = [...this.generations];
@@ -246,7 +281,6 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			this.session = null;
 			this.loadedPath = null;
 			this.releaseBudgetReservations();
-			this.unloading = false;
 		}
 	}
 
@@ -258,7 +292,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	async generateWithUsage(
 		args: GenerateArgs & { slotId?: number },
 	): Promise<LocalGenerateWithUsageResult> {
-		if (this.unloading) {
+		if (this.pendingReleases > 0) {
 			throw new ElizaError(
 				"[ffi-streaming-backend] generate() called while the model is unloading",
 				{

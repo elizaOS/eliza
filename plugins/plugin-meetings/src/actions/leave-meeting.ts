@@ -61,7 +61,18 @@ async function handler(
       `I'm in ${active.length} meetings (${list}) — which one should I leave?`,
     );
   }
-  svc.service.stopSession(target.id as UUID);
+  const label = `${MEETING_PLATFORM_LABELS[target.platform]} ${target.nativeMeetingId}`;
+  // stopSession returns false for a session that already reached a terminal
+  // status. A session that just ended stays in the live map until transcript
+  // finalization evicts it, so it can still be listed here. Report that state
+  // instead of claiming a leave that the service refused.
+  if (!svc.service.stopSession(target.id as UUID)) {
+    return reply(
+      callback,
+      false,
+      `That ${label} meeting already ended — the transcript is in the Transcripts view.`,
+    );
+  }
   return reply(
     callback,
     true,

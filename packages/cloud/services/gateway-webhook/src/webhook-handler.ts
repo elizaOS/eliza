@@ -1,3 +1,4 @@
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 /** Handles authenticated connector webhooks from verification through reply delivery. */
 
 import {
@@ -39,6 +40,7 @@ import {
   type HeldWebhookOutcome,
   holdWebhookForCutover,
 } from "./cutover-hold";
+import { deliveryReceiptStore } from "./delivery-receipts";
 import { tryConfirmIdentityLink } from "./identity-link";
 import { logger } from "./logger";
 import {
@@ -295,6 +297,7 @@ async function sendReplyWithRequiredReceipt(
     project: string;
     app?: NetworkOpenTurn["app"];
   },
+  onReplyReady?: () => void,
 ): Promise<string[] | false> {
   if (
     networkEgress &&
@@ -314,6 +317,7 @@ async function sendReplyWithRequiredReceipt(
       false,
     );
   }
+  onReplyReady?.();
   const receipt = await adapter.sendReplyWithReceipt(
     config,
     event,
@@ -337,7 +341,7 @@ async function sendReplyWithRequiredReceipt(
 
 /**
  * Direct (non-group) reply egress. A Network Twilio reply goes through the
- * Redis tombstone fence so a reopened webhook cannot send it twice; every
+ * selected receipt fence so a reopened webhook cannot send it twice; every
  * other project and platform keeps the unfenced path unchanged.
  */
 async function sendDirectReply(
@@ -350,6 +354,7 @@ async function sendDirectReply(
   deliveryHooks?: TelegramDeliveryHooks,
   mediaUrls?: readonly string[],
   networkAdmission?: { app?: NetworkOpenTurn["app"]; compliance?: true },
+  onReplyReady?: () => void,
 ): Promise<void> {
   const networkScoped =
     isNetworkProject(project) ||
@@ -361,7 +366,7 @@ async function sendDirectReply(
       : undefined;
   if (adapter.platform === "twilio" && networkScoped) {
     const outcome = await sendWithTwilioReplyFence(
-      deps.redis,
+      deliveryReceiptStore(deps.redis),
       project,
       event.messageId,
       () =>
@@ -373,6 +378,7 @@ async function sendDirectReply(
           deliveryHooks,
           mediaUrls,
           networkEgress,
+          onReplyReady,
         ),
       (error) =>
         error instanceof PlatformDeliveryError &&
@@ -395,6 +401,7 @@ async function sendDirectReply(
     deliveryHooks,
     mediaUrls,
     networkEgress,
+    onReplyReady,
   );
 }
 
@@ -1550,9 +1557,39 @@ async function processMessage(
     // Membership transitions mutate routing state only. Emitting a typing
     // action while the bot is being removed is both misleading and violates
     // the no-provider-egress membership contract.
-    const stopTyping = event.membershipChange
-      ? () => undefined
-      : beginTypingFeedback(adapter, config, event);
+    const deferPrivateBlooioTyping =
+      adapter.platform === "blooio" &&
+      event.chatType === "private" &&
+      !event.membershipChange;
+    if (deferPrivateBlooioTyping) {
+      // A read means accepted for processing, even if the model later chooses IGNORE.
+      adapter.sendReadReceipt?.(config, event).catch((error) => {
+        logger.warn("Personal Blooio read feedback failed", {
+          traceId: trace.traceId,
+          error: error instanceof Error ? error.name : "UnknownError",
+        });
+      });
+    }
+    let stopTyping =
+      event.membershipChange || deferPrivateBlooioTyping
+        ? () => undefined
+        : beginTypingFeedback(adapter, config, event);
+    let typingStarted = false;
+    const onPrivateReplyReady = deferPrivateBlooioTyping
+      ? () => {
+          if (
+            adapter.platform !== "blooio" ||
+            event.chatType !== "private" ||
+            event.membershipChange
+          )
+            throw new Error("BLOOIO_TERMINAL_DELIVERY_SCOPE_CHANGED");
+          if (typingStarted) return;
+          typingStarted = true;
+          stopTyping = beginTypingFeedback(adapter, config, event, {
+            markRead: false,
+          });
+        }
+      : undefined;
     try {
       const timing = await sendPersonalSharedReply(
         adapter,
@@ -1564,6 +1601,7 @@ async function processMessage(
         deliveryHooks,
         networkTurn,
         networkEligible,
+        onPrivateReplyReady,
       );
       logger.info("Personal Eliza connector message completed", {
         project,
@@ -1905,12 +1943,13 @@ function beginTypingFeedback(
   adapter: PlatformAdapter,
   config: WebhookConfig,
   event: ChatEvent,
+  feedback?: { markRead: boolean },
 ): () => void {
   if (adapter.platform === "telegram") {
     return startTypingRefreshLoop(adapter, config, event);
   }
   const startTyping = adapter
-    .sendTypingIndicator(config, event)
+    .sendTypingIndicator(config, event, feedback)
     .catch((err) => {
       logger.debug("sendTypingIndicator failed", {
         platform: adapter.platform,
@@ -1971,6 +2010,7 @@ async function sendPersonalSharedReply(
   deliveryHooks?: TelegramDeliveryHooks,
   networkTurn?: NetworkOpenTurn,
   networkAdmitted = false,
+  onPrivateReplyReady?: () => void,
 ): Promise<PersonalSharedDeliveryTiming> {
   const { cloudBaseUrl, getAuthHeader } = deps;
   const reauth = deps.reacquireAuthHeader ?? reacquireAuthHeader;
@@ -2260,6 +2300,17 @@ async function sendPersonalSharedReply(
     );
   }
   const replyMediaUrls = parsePersonalSharedMediaUrls(data);
+  const responded = data?.responded;
+  if (
+    (responded !== undefined && typeof responded !== "boolean") ||
+    (responded === false &&
+      (reply.length !== 0 || replyMediaUrls.length !== 0)) ||
+    (responded === true && reply.length === 0 && replyMediaUrls.length === 0)
+  ) {
+    throw new PersonalSharedPreEgressError(
+      "personal Shared chat returned contradictory response outcome",
+    );
+  }
   if (
     adapter.platform === "telegram" &&
     event.chatType === "private" &&
@@ -2284,10 +2335,52 @@ async function sendPersonalSharedReply(
   // turn with no reply text stays a no-response.
   const hasDeliverableMedia = replyMediaUrls.length > 0 && isDirectChat(event);
   if (reply.length === 0 && !hasDeliverableMedia) {
+    const acknowledgementReaction = parseImessageReaction(
+      data?.acknowledgementReaction,
+    );
+    let canAcknowledge =
+      responded === false &&
+      acknowledgementReaction !== undefined &&
+      adapter.platform === "blooio" &&
+      event.chatType === "private" &&
+      !event.membershipChange &&
+      Boolean(adapter.sendAcknowledgementReaction);
+    if (canAcknowledge && (isNetworkProject(project) || networkAdmitted)) {
+      try {
+        canAcknowledge = !(await isNetworkAddressOptedOut(
+          networkConsentLedger(deps),
+          project,
+          event.senderId,
+          networkTurn?.app,
+        ));
+      } catch (error) {
+        canAcknowledge = false;
+        logger.warn("Acknowledgement consent check unavailable", {
+          messageId: event.messageId,
+          errorName: safeObservedErrorName(error),
+        });
+      }
+    }
+    const acknowledgementStartedAt = Date.now();
+    if (canAcknowledge && acknowledgementReaction) {
+      try {
+        await adapter.sendAcknowledgementReaction?.(
+          config,
+          event,
+          acknowledgementReaction,
+        );
+      } catch (error) {
+        // Optional feedback never turns deliberate silence into a text reply or replay.
+        logger.warn("Acknowledgement adapter failed", {
+          messageId: event.messageId,
+          errorName: safeObservedErrorName(error),
+        });
+      }
+    }
     return {
       cloudMs,
       cloudAttempts: attemptResult.attempts,
-      egressMs: 0,
+      egressMs: canAcknowledge ? Date.now() - acknowledgementStartedAt : 0,
       cloudServerTiming,
     };
   }
@@ -2596,6 +2689,7 @@ async function sendPersonalSharedReply(
       deliveryHooks,
       replyMediaUrls,
       networkAdmitted ? { app: networkTurn?.app } : undefined,
+      onPrivateReplyReady,
     );
   }
   return {

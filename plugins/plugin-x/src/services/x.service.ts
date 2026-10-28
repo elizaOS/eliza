@@ -24,6 +24,9 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
+  parseBooleanValue,
+  type SendHandlerOutcome,
+  type SendHandlerReceipt,
   Service,
   type TargetInfo,
   type UUID,
@@ -38,7 +41,7 @@ import {
 import type { AuthenticatedTwitterSession } from "../client/auth.js";
 import { SearchMode, type Tweet } from "../client/index.js";
 import { materializeEnvAccountIfMissing } from "../connector-account-provider.js";
-import { TwitterDirectMessageClient } from "../direct-messages";
+import { isGroupDmEvent, TwitterDirectMessageClient } from "../direct-messages";
 import { TwitterDiscoveryClient } from "../discovery";
 import { validateTwitterConfig } from "../environment";
 import { TwitterInteractionClient } from "../interactions";
@@ -47,12 +50,13 @@ import { TwitterTimelineClient } from "../timeline";
 import type { ITwitterClient, TwitterClientState } from "../types";
 import {
   fetchMediaData,
-  splitTweetContent,
+  sendTextAsTweetThread,
   splitXDirectMessageContent,
 } from "../utils";
 import { normalizeXReceiptId } from "../utils/provider-receipt";
 import { getSetting } from "../utils/settings";
 import { getEpochMs } from "../utils/time";
+import type { Post } from "./IPostService";
 import { TwitterPostService } from "./PostService";
 
 const X_CONNECTOR_CONTEXTS = ["social", "connectors"];
@@ -297,9 +301,12 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Mentions and interactions
+    // Boolean setting, on by default: "false", "0", "no" and "off" turn it off.
     const repliesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
-        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+          process.env.TWITTER_ENABLE_REPLIES,
+      ) ?? true;
 
     if (repliesEnabled) {
       logger.info("Twitter replies/interactions are ENABLED");
@@ -342,12 +349,12 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Discovery service for autonomous content discovery
+    // An explicit value wins; an unset value follows timeline actions.
     const discoveryEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-        process.env.TWITTER_ENABLE_DISCOVERY) === "true" ||
-      (actionsEnabled &&
-        (getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-          process.env.TWITTER_ENABLE_DISCOVERY) !== "false");
+      parseBooleanValue(
+        getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+          process.env.TWITTER_ENABLE_DISCOVERY,
+      ) ?? actionsEnabled;
 
     if (discoveryEnabled) {
       logger.info("Twitter discovery service is ENABLED");
@@ -394,6 +401,17 @@ async function isStoredXGroupDmRoom(
     createUniqueUuid(runtime, `x-dm:${accountId}:${conversationId}`),
   );
   return room?.type === ChannelType.GROUP;
+}
+
+function xDmPartiallySentError(sent: {
+  messageIds: string[];
+  failure?: unknown;
+}): ElizaError {
+  return new ElizaError("X direct message was only partly sent", {
+    code: "X_DM_PARTIALLY_SENT",
+    cause: sent.failure,
+    context: { acceptedMessageIds: sent.messageIds },
+  });
 }
 
 export class XService extends Service {
@@ -777,7 +795,7 @@ export class XService extends Service {
     runtime: IAgentRuntime,
     target: TargetInfo,
     content: Content,
-  ): Promise<void> {
+  ): Promise<SendHandlerOutcome | undefined> {
     const text = typeof content.text === "string" ? content.text : "";
     if (!text.trim()) {
       throw new Error("X DM connector requires non-empty text content.");
@@ -789,7 +807,7 @@ export class XService extends Service {
         ? (metadata as Record<string, unknown>)
         : undefined;
     const accountId = this.resolveAccountId(target.accountId);
-    await this.withDmSession(accountId, async (base, session) => {
+    return this.withDmSession(accountId, async (base, session) => {
       const candidate =
         (typeof metadataRecord?.xUserId === "string"
           ? metadataRecord.xUserId
@@ -824,13 +842,14 @@ export class XService extends Service {
         candidate === target.channelId &&
         (await isStoredXGroupDmRoom(runtime, accountId, candidate))
       ) {
-        await this.sendXDirectMessage(
-          base,
-          session,
-          { conversationId: candidate },
-          text,
+        return this.dmSendOutcome(
+          await this.sendXDirectMessage(
+            base,
+            session,
+            { conversationId: candidate },
+            text,
+          ),
         );
-        return;
       }
       const recipient =
         conversationRecipient ??
@@ -840,11 +859,13 @@ export class XService extends Service {
           "X DM connector requires a resolvable recipient user id.",
         );
       }
-      await this.sendXDirectMessage(
-        base,
-        session,
-        { participantId: recipient },
-        text,
+      return this.dmSendOutcome(
+        await this.sendXDirectMessage(
+          base,
+          session,
+          { participantId: recipient },
+          text,
+        ),
       );
     });
   }
@@ -880,6 +901,7 @@ export class XService extends Service {
         text,
       );
     });
+    if (sent.failure !== undefined) throw xDmPartiallySentError(sent);
     return {
       ok: true,
       status: 201,
@@ -955,40 +977,44 @@ export class XService extends Service {
             )
           ).map(({ data, mediaType }) => ({ data, type: mediaType }))
         : [];
-      const chunks = splitTweetContent(text, X_MAX_POST_LENGTH);
-      const memories: Memory[] = [];
-      let inReplyTo = replyToTweetId;
-      for (let index = 0; index < chunks.length; index += 1) {
-        const chunk = chunks[index];
-        if (chunk === undefined) continue;
-        const post = await postService.createPost(
-          {
-            agentId: runtime.agentId,
-            roomId,
-            text: chunk,
-            ...(inReplyTo ? { inReplyTo } : {}),
-            ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
-            ...(index === 0 && media.length > 0 ? { media } : {}),
-          },
-          profile,
-        );
-        memories.push(
-          this.buildXPostMemory(runtime, {
-            id: post.id,
-            userId: post.userId,
-            username: post.username,
-            text: post.text,
-            createdAt: post.timestamp,
-            inReplyTo: post.inReplyTo,
-            roomId: post.roomId,
-            metadata: post.metadata,
-            metrics: post.metrics,
-            accountId,
-            ownUserId: profile.id,
-          }),
-        );
-        inReplyTo = post.id;
-      }
+      const posts: Post[] = [];
+      // A failure after the first chunk is public reports the accepted ids
+      // (X_THREAD_PARTIALLY_POSTED) so a retry does not post the thread again.
+      await sendTextAsTweetThread(
+        text,
+        async (chunk, previousTweetId, index) => {
+          const inReplyTo = previousTweetId ?? replyToTweetId;
+          const post = await postService.createPost(
+            {
+              agentId: runtime.agentId,
+              roomId,
+              text: chunk,
+              ...(inReplyTo ? { inReplyTo } : {}),
+              ...(index === 0 && quotedPostId ? { quotedPostId } : {}),
+              ...(index === 0 && media.length > 0 ? { media } : {}),
+            },
+            profile,
+          );
+          posts.push(post);
+          return { id: post.id };
+        },
+        X_MAX_POST_LENGTH,
+      );
+      const memories = posts.map((post) =>
+        this.buildXPostMemory(runtime, {
+          id: post.id,
+          userId: post.userId,
+          username: post.username,
+          text: post.text,
+          createdAt: post.timestamp,
+          inReplyTo: post.inReplyTo,
+          roomId: post.roomId,
+          metadata: post.metadata,
+          metrics: post.metrics,
+          accountId,
+          ownUserId: profile.id,
+        }),
+      );
       return memories;
     });
   }
@@ -1265,13 +1291,30 @@ export class XService extends Service {
     // A DM fetch failure (expired token, rate limit) propagates: callers
     // translate it at their boundary, and an empty list would read as an
     // empty inbox.
-    const messages = await this.listRecentDirectMessages(accountId);
+    //
+    // A targeted bounded read stops paging once `limit` target
+    // matches are collected: the timeline is newest-first, so
+    // those are exactly the newest `limit` conversation messages
+    // the old full-scan-then-slice returned. A targeted
+    // dates-range read (limit undefined) keeps the full scan:
+    // that is the no-bounds complete-history contract.
+    const messages = await this.listRecentDirectMessages(
+      accountId,
+      targetUserId === undefined ? limit : undefined,
+      targetUserId !== undefined && limit !== undefined
+        ? { targetUserId, count: limit }
+        : undefined,
+    );
 
-    // A conversation with the target includes the account's own replies, so
-    // match on the authenticated conversation pair, not only the sender.
+    // A stored room targets the provider conversation id, while a resolved
+    // user target names the authenticated one-to-one counterpart. Accept both
+    // forms so group rooms and the account's own replies remain readable.
     const matches = messages
       .filter(
-        (message) => !targetUserId || dmCounterpartId(message) === targetUserId,
+        (message) =>
+          !targetUserId ||
+          message.conversationId === targetUserId ||
+          dmCounterpartId(message) === targetUserId,
       )
       .map((message) =>
         this.buildXDirectMessageMemory(
@@ -1418,22 +1461,71 @@ export class XService extends Service {
     session: AuthenticatedTwitterSession,
     to: { participantId: string } | { conversationId: string },
     text: string,
-  ): Promise<{ messageId: string | null; messageIds: string[] }> {
+  ): Promise<{
+    messageId: string | null;
+    messageIds: string[];
+    /** Set when a later chunk failed after earlier chunks were sent. */
+    failure?: unknown;
+  }> {
     const messageIds: string[] = [];
+    let sentChunks = 0;
     for (const chunk of splitXDirectMessageContent(text)) {
-      this.assertDmSessionCurrent(base, session);
-      const result =
-        "conversationId" in to
-          ? await session.client.v2.sendDmInConversation(to.conversationId, {
-              text: chunk,
-            })
-          : await session.client.v2.sendDmToParticipant(to.participantId, {
-              text: chunk,
-            });
-      const messageId = normalizeXReceiptId(result.dm_event_id);
-      if (messageId) messageIds.push(messageId);
+      try {
+        this.assertDmSessionCurrent(base, session);
+        const result =
+          "conversationId" in to
+            ? await session.client.v2.sendDmInConversation(to.conversationId, {
+                text: chunk,
+              })
+            : await session.client.v2.sendDmToParticipant(to.participantId, {
+                text: chunk,
+              });
+        sentChunks += 1;
+        const messageId = normalizeXReceiptId(result.dm_event_id);
+        if (messageId) messageIds.push(messageId);
+      } catch (error) {
+        // error-policy:J2 once a chunk is in the conversation, a later
+        // failure must not look like a plain refusal: a retry would send the
+        // whole message again.
+        if (sentChunks === 0) throw error;
+        return { messageId: messageIds[0] ?? null, messageIds, failure: error };
+      }
     }
     return { messageId: messageIds[0] ?? null, messageIds };
+  }
+
+  /** The connector send outcome for a direct message sent in chunks. */
+  private dmSendOutcome(sent: {
+    messageIds: string[];
+    failure?: unknown;
+  }): SendHandlerOutcome | undefined {
+    const [first, ...rest] = sent.messageIds;
+    if (first === undefined) {
+      if (sent.failure !== undefined) throw xDmPartiallySentError(sent);
+      return undefined;
+    }
+    const receipt: SendHandlerReceipt = {
+      providerMessageIds: [first, ...rest],
+      acceptedAt: Date.now(),
+      persistence: {
+        status: "not_attempted",
+        reason: "X accepted the direct message; caller owns local persistence",
+      },
+    };
+    if (sent.failure === undefined) {
+      return { kind: "delivered", receipt, memories: [] };
+    }
+    const reason =
+      sent.failure instanceof Error
+        ? sent.failure.message
+        : String(sent.failure);
+    return {
+      kind: "partially_delivered",
+      receipt,
+      memories: [],
+      code: "X_DM_PARTIALLY_SENT",
+      message: `Some parts were sent before X refused a later part: ${reason}. Do not retry blindly.`,
+    };
   }
 
   private async withDmSession<T>(
@@ -1488,6 +1580,7 @@ export class XService extends Service {
   private async listRecentDirectMessages(
     accountId: string,
     limit?: number,
+    stop?: { targetUserId: string; count: number },
   ): Promise<
     Array<{
       id: string;
@@ -1543,6 +1636,7 @@ export class XService extends Service {
         isInbound: boolean;
         participantIds: string[];
       }> = [];
+      let stopMatches = 0;
       for await (const event of iterator) {
         if (event.event_type && event.event_type !== "MessageCreate") {
           continue;
@@ -1564,6 +1658,22 @@ export class XService extends Service {
         });
         if (limit !== undefined && messages.length >= limit) {
           break;
+        }
+        // Targeted early stop: same predicate the caller
+        // filters on, so the collected prefix is exactly what
+        // filter-then-slice would have returned.
+        if (stop) {
+          const last = messages[messages.length - 1];
+          if (
+            last &&
+            (last.conversationId === stop.targetUserId ||
+              dmCounterpartId(last) === stop.targetUserId)
+          ) {
+            stopMatches += 1;
+            if (stopMatches >= stop.count) {
+              break;
+            }
+          }
         }
       }
       this.assertDmSessionCurrent(base, session);
@@ -1679,6 +1789,12 @@ export class XService extends Service {
       ? Date.parse(message.createdAt)
       : Date.now();
     const counterpartId = dmCounterpartId(message);
+    const channelType = isGroupDmEvent({
+      dm_conversation_id: message.conversationId,
+      participant_ids: message.participantIds,
+    })
+      ? ChannelType.GROUP
+      : ChannelType.DM;
     const roomId =
       target?.roomId ??
       createUniqueUuid(
@@ -1706,7 +1822,7 @@ export class XService extends Service {
       content: {
         text: message.text,
         source: "x",
-        channelType: ChannelType.DM,
+        channelType,
       },
       metadata: {
         type: "message",
@@ -1716,7 +1832,7 @@ export class XService extends Service {
         timestamp: createdAt,
         fromBot: fromAccount,
         messageIdFull: message.id,
-        chatType: ChannelType.DM,
+        chatType: channelType,
         sender: {
           id: senderId,
           username: message.senderUsername ?? undefined,

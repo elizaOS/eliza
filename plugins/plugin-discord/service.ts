@@ -2720,7 +2720,10 @@ export class DiscordService extends Service implements IDiscordService {
 		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
-			return [];
+			throw new ElizaError("Discord account client is not initialized", {
+				code: "DISCORD_ACCOUNT_NOT_INITIALIZED",
+				context: { accountId },
+			});
 		}
 
 		const normalizedQuery = normalizeDiscordConnectorQuery(query);
@@ -2764,11 +2767,26 @@ export class DiscordService extends Service implements IDiscordService {
 								member.user.tag,
 							],
 						);
+						// Mirror the cache loop below: a zero score
+						// means no match, and must not become a
+						// 0.65 target. Without the guard every
+						// guild member became a target, so a
+						// single weak real match (0.7) fell
+						// within the 0.12 ambiguity margin of
+						// the 0.65 tail and the ambiguity branch
+						// rendered the whole membership, and a
+						// query matching nobody still resolved
+						// in a single-member guild. Real matches
+						// score 0.7 or higher, so the guard drops
+						// only the non-matching tail.
+						if (score <= 0) {
+							continue;
+						}
 						const target = this.buildConnectorUserTarget(
 							member.user,
 							guild,
 							member.displayName,
-							score || 0.65,
+							score,
 							accountId,
 						);
 						if (target) {
@@ -2871,7 +2889,10 @@ export class DiscordService extends Service implements IDiscordService {
 		const accountId = this.resolveAccountIdFromTarget(context.target, context);
 		const client = this.getClient(accountId);
 		if (!client) {
-			return [];
+			throw new ElizaError("Discord account client is not initialized", {
+				code: "DISCORD_ACCOUNT_NOT_INITIALIZED",
+				context: { accountId },
+			});
 		}
 
 		const targets: MessageConnectorTarget[] = [];
@@ -4956,7 +4977,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const worldId = createUniqueUuid(this.runtime, guild.id);
 		const entityId = this.resolveDiscordEntityId(member.id);
 
-		this.runtime.emitEvent(
+		await this.runtime.emitEvent(
 			[DiscordEventTypes.ENTITY_JOINED] as string[],
 			{
 				runtime: this.runtime,

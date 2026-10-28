@@ -6,12 +6,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { createTaskGateway } from "../../../packages/host/native-host/task-runtime-gateway.mjs";
 import {
   controls,
   deriveBillDecision,
 } from "../test/fixtures/bill-host/policy.mjs";
 import { buildTaskRuntime } from "../test/fixtures/bill-host/runtime.mjs";
 import { BillCodeCoordinator } from "./bill-code-coordinator.mjs";
+import { createBillHelperHost } from "./bill-helper-host.mjs";
+import { createBillOutcomeStore } from "./bill-outcome-store.mjs";
+import { createBillSourceStore } from "./bill-source-store.mjs";
+import { createBillTaskRoutes } from "./bill-task-routes.mjs";
 import { createConfiguredBillHelper } from "./configured-bill-helper.mjs";
 
 async function fixture(
@@ -174,6 +179,39 @@ test("evidence persists only host-projected fields with private permissions and 
     /Unconfigured/,
   );
   assert.equal((await readdir(f.args.evidenceDirectory)).length, 1);
+  await helper.close();
+});
+
+test("a host evidence codec encodes each record under its own extension", async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(
+    createConfiguredBillHelper({
+      ...f.args,
+      evidenceCodec: { extension: "sealed", encode: (text) => text },
+    }),
+    /Invalid bill evidence codec/,
+  );
+  f.args.evidenceCodec = {
+    extension: ".sealed",
+    encode: (text) => `sealed:${Buffer.from(text).toString("base64url")}`,
+  };
+  const helper = await createConfiguredBillHelper(f.args);
+  const task = { id: "task", owner: { actorId: "owner" }, goalRef: "goal" };
+  const ref = await f.options.recordEvidence(task, {}, {}, {}, "observed");
+  const [file] = await readdir(f.args.evidenceDirectory);
+  assert.equal(file, `${ref.slice("evidence:".length)}.sealed`);
+  const stored = await readFile(join(f.args.evidenceDirectory, file), "utf8");
+  assert.doesNotMatch(stored, /observed|task/);
+  assert.deepEqual(
+    JSON.parse(
+      Buffer.from(stored.slice("sealed:".length), "base64url").toString(),
+    ),
+    { taskId: "task", status: "observed" },
+  );
+  assert.equal(
+    (await stat(join(f.args.evidenceDirectory, file))).mode & 0o777,
+    0o600,
+  );
   await helper.close();
 });
 
@@ -347,7 +385,15 @@ test("registration wait rechecks account and profile before binding and is cance
     f.args.credentialGate = async () => owner;
     const helper = await createConfiguredBillHelper(f.args);
     const pending = f.options.target.bindTask({ revoked: false });
-    const result = scenario === "ready" ? pending : assert.rejects(pending);
+    const result =
+      scenario === "ready"
+        ? pending
+        : assert.rejects(
+            pending,
+            scenario === "profile"
+              ? { reason: "profile-unavailable" }
+              : () => true,
+          );
     await waiting;
     assert.equal(binds, 0);
     if (scenario === "account") owner = "replacement";
@@ -357,6 +403,106 @@ test("registration wait rechecks account and profile before binding and is cance
     if (scenario === "ready") assert.equal(await result, "bound");
     else await result;
     assert.equal(binds, scenario === "ready" ? 1 : 0);
+    await helper.close();
+  }
+});
+
+test("a configured profile that is not connected reaches the bill route as profile-unavailable", async (t) => {
+  const f = await fixture(t);
+  const bundle = join(f.root, "task-runtime.mjs");
+  buildTaskRuntime(bundle);
+  const runtimeModule = await import(pathToFileURL(bundle));
+  // The real registration wait, with another profile registered.
+  class Target extends runtimeModule.NativeSocketBrowserTarget {
+    async start() {}
+    async stop() {}
+    getProfileId() {
+      return "another-profile";
+    }
+  }
+  const origin = "https://biller.example";
+  const bill = {
+    sourceRef: "mail:bill",
+    origin,
+    company: "Power",
+    accountLabel: "Ending 1234",
+    amountMinor: 12000,
+    currency: "USD",
+    currencyDigits: 2,
+  };
+  Object.assign(f.args, {
+    runtimeModule: { ...runtimeModule, NativeSocketBrowserTarget: Target },
+    createBillHelperHost,
+    validateBillControls: () => controls,
+  });
+  f.args.hostPolicy.hostOptions = () => ({
+    deriveBillDecision,
+    authorizeGoal: async () => {},
+    billForTask: () => bill,
+    policyForTask: () => ({
+      tabId: "1",
+      origin,
+      leaseMs: 10000,
+      targets: [{ selector: "#method", action: "click" }],
+    }),
+    verify: async () => "unknown",
+  });
+  const helper = await createConfiguredBillHelper(f.args);
+  const diagnostics = [];
+  const gateway = await createTaskGateway({
+    ...helper,
+    bundlePath: bundle,
+    databasePath: join(f.root, "db"),
+    credentialGate: async () => "owner",
+    extensionFactory: (context) =>
+      createBillTaskRoutes({
+        ...context,
+        workflowFactory: helper.workflowFactory,
+        onDiagnostic: (event) => diagnostics.push(event),
+        outcomeStore: createBillOutcomeStore(context.db, context.store),
+        sourceStore: createBillSourceStore(context.db, context.store),
+        copy: {
+          existingMethodPrompt: "Use this method?",
+          existingMethodLabel: "Use method",
+          pendingChoiceMessage: "Choice pending",
+          staleChoiceMessage: "Review changed",
+        },
+      }),
+  });
+  // The fixture removes its directory first among the after hooks.
+  try {
+    const runtime = await gateway.forCurrentOwner();
+    runtime.create({
+      id: "task",
+      goalRef: "goal",
+      authorization: {
+        decisionId: "grant",
+        policyRevision: "policy",
+        state: "active",
+        decidedAt: new Date().toISOString(),
+        revokedAt: null,
+      },
+      allowedCapabilities: ["browser.click"],
+      allowedOrigins: [origin],
+    });
+    const response = await gateway.handle(
+      new Request("http://localhost/tasks/task/bill"),
+    );
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), {
+      code: "BILL_WORKFLOW_UNAVAILABLE",
+      reason: "profile-unavailable",
+    });
+    assert.deepEqual(diagnostics, [
+      {
+        route: "bill",
+        taskId: "task",
+        reasonCode: "profile-unavailable",
+        name: "Error",
+      },
+    ]);
+  } finally {
+    await gateway.close();
     await helper.close();
   }
 });

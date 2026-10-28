@@ -5,6 +5,37 @@ recording across web, iOS, and Android.
 
 See [bridge definitions](src/definitions.ts) for the native API. Native targets require their SDKs, registered bridge, and OS permissions.
 
+## Host ports
+
+[`host-ports`](src/host-ports.ts) holds the camera rules every host surface
+shares: `cameraAccessDenied` classifies only explicit denials (the bridge's
+denial codes, `NotAllowedError`/`PermissionDeniedError` or the bridge's denial
+message), and `restartAfterResume` restarts a preview stopped on a denial only
+after the camera was granted in system settings, so returning from Android's
+own dialog never asks again. `CameraHostPorts` lets a host decide where an
+explicit capture goes: a Keep storage port that receives one stable operation
+identity per capture (`keepCapture` never reports an unconfirmed save), other
+explicit hand-offs such as a scan review or a question, and a non-prompting
+access read. The shared `CameraPageView` in `@elizaos/ui` accepts these ports;
+without them a capture is only previewed. The lock-screen secure camera stays a
+system surface.
+
+## Camera session
+
+[`session`](src/session.ts) is the one preview/capture/recording lifecycle every
+camera surface drives (`CameraPageView` and other hosts' camera screens).
+`createCameraSession` takes the bridge subset, an `active()` predicate and the
+host's preview/recording options. Every start and stop bumps an epoch, so an
+answer that arrives after the surface closed never moves it forward; stops are
+chained so a new preview never races the previous release, and a preview that
+comes up after its surface closed is released. One capture, control change or
+recording start runs at a time (`exclusive`, `control`, `startRecording`).
+Stopping the surface finishes an active recording first; finalization is single
+flight and a recording is reported saved only for a complete receipt the host's
+`recordingSaved` hook accepted (the host decides where it lives). Starts are
+never retried automatically after an error; `rearm()` lets a resume grant (see
+`restartAfterResume`) start it again.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

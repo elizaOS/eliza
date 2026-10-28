@@ -37,6 +37,7 @@ for (const action of promotedNavigationActions) {
 
 export const mapsPlugin: Plugin = {
   name: "maps",
+  packageName: "@elizaos/plugin-maps",
   description:
     "Provider-neutral place search, routes, saved places, sharing, and navigation handoffs.",
   services: [MapsService],
@@ -69,6 +70,7 @@ export const mapsPlugin: Plugin = {
         "MAPS_SAVE",
         "MAPS_SHARE",
         "MAPS_NAVIGATE",
+        "MAPS_COVERAGE",
         "MAPS_NAVIGATION_START",
         "MAPS_NAVIGATION_REROUTE",
         "MAPS_NAVIGATION_STOP",

@@ -743,20 +743,25 @@ export class GoogleChatService extends Service implements IGoogleChatService {
       state.accountId
     );
 
-    logger.debug(`Message sent to ${options.space}: ${result.name}`);
+    const messageName = result.name?.trim();
+    if (!messageName) {
+      throw new GoogleChatApiError("Google Chat send returned no provider message name.", 502);
+    }
+
+    logger.debug(`Message sent to ${options.space}: ${messageName}`);
 
     if (this.runtime) {
       this.runtime.emitEvent(GoogleChatEventTypes.MESSAGE_SENT, {
         runtime: this.runtime,
         accountId: state.accountId,
-        messageName: result.name,
+        messageName,
         space: options.space,
       } as EventPayload);
     }
 
     return {
       success: true,
-      messageName: result.name,
+      messageName,
       space: options.space,
     };
   }
@@ -1081,12 +1086,7 @@ export class GoogleChatService extends Service implements IGoogleChatService {
   }
 
   private async listConnectorSpaces(accountId?: string): Promise<GoogleChatSpace[]> {
-    const state = this.getState(accountId);
-    try {
-      return await this.getSpaces(state.accountId);
-    } catch {
-      return [...state.cachedSpaces];
-    }
+    return this.getSpaces(accountId);
   }
 
   async processWebhookEvent(event: GoogleChatEvent, accountId?: string): Promise<void> {
