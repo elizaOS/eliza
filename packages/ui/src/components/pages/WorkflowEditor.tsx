@@ -580,7 +580,11 @@ function WorkflowEditorSession({
       if (!current?.id) return;
       const updated = current.active
         ? await client.deactivateWorkflowDefinition(current.id)
-        : await client.activateWorkflowDefinition(current.id);
+        : // Turn on exactly the version on screen; a workflow changed elsewhere is refused.
+          await client.activateWorkflowDefinition(
+            current.id,
+            current.versionId,
+          );
       setWorkflow(updated);
       setSavedVersion(JSON.stringify(updated));
       onSaved?.(updated);
