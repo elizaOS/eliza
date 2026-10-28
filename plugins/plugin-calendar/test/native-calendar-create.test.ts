@@ -13,6 +13,8 @@ import {
   registerCalendarActionHostAdapter,
 } from "../src/actions/calendar-handler.ts";
 
+type HostAdapter = Parameters<typeof registerCalendarActionHostAdapter>[1];
+
 const REQUEST = "Add lunch with Sam tomorrow at noon";
 const message = (text = REQUEST): Memory =>
   ({
@@ -62,7 +64,7 @@ function runtimeWith(parsed: Record<string, unknown>) {
     parsed,
   }));
   registerCalendarActionHostAdapter(runtime, {
-    runJsonModel,
+    runJsonModel: runJsonModel as unknown as HostAdapter["runJsonModel"],
     recentConversationTexts: async () => [],
   });
   return { runtime, reportError, runJsonModel };
