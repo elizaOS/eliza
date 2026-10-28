@@ -124,7 +124,10 @@ export function vettedLookup(resolve = lookupAll) {
             list.some((entry) => privateAddress(String(entry.address)))
           ) {
             callback(
-              refused("This website resolves to a private address.", "EPRIVATE"),
+              refused(
+                "This website resolves to a private address.",
+                "EPRIVATE",
+              ),
             );
             return;
           }
@@ -156,7 +159,8 @@ const DROPPED_HEADERS = new Set([
 
 function decode(body, encoding) {
   const limit = { maxOutputLength: PUBLIC_FETCH_MAX_BYTES + 1 };
-  if (encoding === "gzip" || encoding === "x-gzip") return gunzipSync(body, limit);
+  if (encoding === "gzip" || encoding === "x-gzip")
+    return gunzipSync(body, limit);
   if (encoding === "deflate") return inflateSync(body, limit);
   if (encoding === "br") return brotliDecompressSync(body, limit);
   return body;
@@ -215,7 +219,8 @@ export function publicFetch(address, init = {}, { resolve } = {}) {
         response.on("end", () => {
           try {
             const status = response.statusCode ?? 0;
-            if (status < 200 || status > 599) throw new Error("Unexpected response.");
+            if (status < 200 || status > 599)
+              throw new Error("Unexpected response.");
             const encoding = String(response.headers["content-encoding"] || "")
               .trim()
               .toLowerCase();
@@ -226,7 +231,8 @@ export function publicFetch(address, init = {}, { resolve } = {}) {
               for (const item of Array.isArray(value) ? value : [value])
                 out.append(name, item);
             }
-            const empty = [101, 204, 205, 304].includes(status) || method === "HEAD";
+            const empty =
+              [101, 204, 205, 304].includes(status) || method === "HEAD";
             done(
               new Response(empty ? null : body, {
                 status,
