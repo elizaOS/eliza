@@ -50,7 +50,7 @@ const stubs = {
   "android/net/Uri.java":
     "package android.net; public class Uri {private final String value;private Uri(String v){value=v;}public static Uri parse(String s){return new Uri(s);}public String toString(){return value;}}",
   "android/os/Build.java":
-    "package android.os; public class Build {public static class VERSION {public static int SDK_INT=36;}public static class VERSION_CODES {public static final int S=31;}}",
+    "package android.os; public class Build {public static class VERSION {public static int SDK_INT=36;}public static class VERSION_CODES {public static final int P=28,S=31;}}",
   "android/os/BatteryManager.java":
     'package android.os; public class BatteryManager {public static final String EXTRA_LEVEL="level",EXTRA_SCALE="scale",EXTRA_STATUS="status";public static final int BATTERY_STATUS_CHARGING=2,BATTERY_STATUS_FULL=5;}',
   "android/os/PowerManager.java":

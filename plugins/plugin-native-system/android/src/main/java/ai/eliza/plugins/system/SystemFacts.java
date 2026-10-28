@@ -82,6 +82,9 @@ public final class SystemFacts {
         });
         fact(out, "airplaneMode", () -> binarySwitch(Settings.Global.getInt(resolver, Settings.Global.AIRPLANE_MODE_ON)));
         fact(out, "locationEnabled", () -> {
+            // LocationManager.isLocationEnabled() is API 28; on older hosts calling it throws
+            // NoSuchMethodError, an Error that fact() would not catch, so the fact stays unknown.
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return null;
             android.location.LocationManager location = context.getSystemService(android.location.LocationManager.class);
             return location == null ? null : location.isLocationEnabled();
         });
