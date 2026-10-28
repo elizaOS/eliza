@@ -49,6 +49,20 @@ function fakeProbe(freeDiskGb: number): HardwareProbe {
 	};
 }
 
+/** Total size of the regular files under `dir`, for a fake volume's free disk. */
+function bytesUnder(dir: string): number {
+	let total = 0;
+	for (const entry of fs.readdirSync(dir, {
+		withFileTypes: true,
+		recursive: true,
+	})) {
+		if (entry.isFile()) {
+			total += fs.statSync(path.join(entry.parentPath, entry.name)).size;
+		}
+	}
+	return total;
+}
+
 function eliza1Manifest(overrides: {
 	ramBudgetMin?: number;
 	ramBudgetRecommended?: number;
@@ -1113,6 +1127,60 @@ describe("local inference downloader status", () => {
 
 		expect(job.error).toContain("Not enough disk space");
 		expect(fetchSpy).not.toHaveBeenCalled();
+	});
+
+	it("lets a retry resume a bundle when only the rest of it fits on the volume", async () => {
+		const model = ELIZA_2B_MODEL;
+		// Real bundle files are gigabytes; a 1 MiB text file keeps the bytes the
+		// first attempt leaves on disk far above the volume's 64 KiB of slack.
+		const bytes = {
+			...freshBundleBytes,
+			text: `GGUF ${"x".repeat(1024 ** 2)}`,
+		};
+		const files = new Map([
+			[
+				eliza1BundleManifestPath(),
+				eliza1Manifest({
+					shaFor: (k) => sha256(bytes[k as keyof typeof bytes]),
+				}),
+			],
+			[eliza1BundleRemotePath(CANONICAL_TEXT_PATH), bytes.text],
+			[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
+			[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
+			[eliza1BundleRemotePath(CANONICAL_VISION_PATH), bytes.vision],
+			[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
+		]);
+		// The VAD model is the last bundle file; the first attempt fails there.
+		installFetchFixture(files);
+
+		// A volume with room for the whole bundle, the 0.5 GB headroom and
+		// 64 KiB more. Whatever the downloader writes under the state dir uses
+		// that space, so the probe reports less free disk after the first attempt.
+		const bundleBytes = Math.round(
+			(model.downloadSizeGb ?? model.sizeGb) * 1024 ** 3,
+		);
+		const capacity = bundleBytes + 0.5 * 1024 ** 3 + 64 * 1024;
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () =>
+				fakeProbe((capacity - bytesUnder(root)) / 1024 ** 3),
+		});
+
+		const failed = waitForTerminal(downloader, model.id, "failed");
+		await downloader.start(model.id);
+		expect((await failed).error).not.toContain("Not enough disk space");
+		expect(
+			fs.existsSync(eliza1BundleFinalPath(root, CANONICAL_TEXT_PATH)),
+		).toBe(true);
+
+		files.set(eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad);
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		const job = await completed;
+
+		expect(job.state).toBe("completed");
+		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
+		expect(main?.sha256).toBe(sha256(bytes.text));
 	});
 });
 
