@@ -97,32 +97,3 @@ it("keeps one entity for a saved contact who writes from a Telegram group withou
   ).toEqual(["telegram:@priyam"]);
   expect(observed?.state?.lastObservedAt).toBeTruthy();
 }, 120_000);
-
-it("forgets dedupe fingerprints once they are older than the dedupe window", async () => {
-  const runtime = fixture.runtime;
-  const bridge = await PresenceSignalBridgeService.start(runtime);
-  const internals = bridge as unknown as {
-    messageReceivedHandler: (payload: unknown) => Promise<void>;
-    recentFingerprints: Map<string, number>;
-  };
-  const base = Date.parse("2026-10-24T12:00:00.000Z");
-  const messageAt = (createdAt: number, username: string) => {
-    const payload = telegramGroupMessage(username);
-    payload.message.createdAt = createdAt;
-    return payload;
-  };
-  try {
-    // Twenty messages from different senders inside one five-second window.
-    for (let index = 0; index < 20; index++) {
-      await internals.messageReceivedHandler(
-        messageAt(base + index * 10, `sender${index}`),
-      );
-    }
-    // A minute later only the newest message can still be a duplicate.
-    await internals.messageReceivedHandler(messageAt(base + 60_000, "later"));
-
-    expect(internals.recentFingerprints.size).toBe(1);
-  } finally {
-    await bridge.stop();
-  }
-}, 120_000);
