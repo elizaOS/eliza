@@ -32,6 +32,7 @@ import {
   type IAgentRuntime,
   isActiveMemoryEvidence,
   logger,
+  parseBooleanValue,
   resolvePrimaryEntityId,
   Service,
   type ServiceTypeName,
@@ -138,22 +139,14 @@ export class MemoryService extends Service {
     this.storage = provider;
 
     // Read config overrides from environment / character settings.
-    const longTermEnabled = runtime.getSetting("MEMORY_LONG_TERM_ENABLED");
     // A settings UI or config file can spell the value in any letter case
-    // ("FALSE", "False", " false "). An exact-match comparison let an
-    // explicit disable fail open and left long-term extraction running,
-    // the same shape as the triggers gate fixed in #37535.
-    if (longTermEnabled === false) {
-      this.memoryConfig.longTermExtractionEnabled = false;
-    } else if (longTermEnabled === true) {
-      this.memoryConfig.longTermExtractionEnabled = true;
-    } else if (typeof longTermEnabled === "string") {
-      const setting = longTermEnabled.trim().toLowerCase();
-      if (setting === "false") {
-        this.memoryConfig.longTermExtractionEnabled = false;
-      } else if (setting === "true") {
-        this.memoryConfig.longTermExtractionEnabled = true;
-      }
+    // ("FALSE", " false "). Parse it with the shared boolean reader so an
+    // explicit disable does not fail open, as in the triggers gate (#37535).
+    const longTermEnabled = parseBooleanValue(
+      runtime.getSetting("MEMORY_LONG_TERM_ENABLED"),
+    );
+    if (longTermEnabled !== undefined) {
+      this.memoryConfig.longTermExtractionEnabled = longTermEnabled;
     }
 
     const confidenceThreshold = runtime.getSetting(
