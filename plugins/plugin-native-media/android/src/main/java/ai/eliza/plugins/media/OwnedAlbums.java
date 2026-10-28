@@ -27,7 +27,11 @@ import org.json.JSONObject;
 public final class OwnedAlbums {
   public static final int MAX_ALBUMS = 24;
   public static final int MAX_MEMBERS = 200;
-  private static final Object LOCK = new Object();
+  /**
+   * Serializes every album write in the process (each activity's plugin instance shares it). Hosts
+   * hold it only in instrumentation tests that must stall writers or edit the preference file.
+   */
+  public static final Object LOCK = new Object();
 
   private final SharedPreferences store;
   private final OwnedMediaLibrary owned;
