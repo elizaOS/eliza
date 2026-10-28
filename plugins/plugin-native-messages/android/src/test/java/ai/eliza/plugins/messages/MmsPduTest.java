@@ -115,4 +115,13 @@ public final class MmsPduTest {
   assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(Arrays.copyOf(send, send.length - 1)));
   assertThrows(IllegalArgumentException.class, () -> MmsPdu.encodeSendRequest("op 1", Arrays.asList("+15555550100"), null, Arrays.asList(MmsPdu.Part.text("x", "t.txt"))));
  }
+
+ @Test public void declaredLengthsBeyondThePduAreRefusedWithoutWrapping() {
+  // Value-length Integer.MAX_VALUE (Length-quote, uintvar 87 FF FF FF 7F): the bound check must not overflow.
+  byte[] huge = b(0x1F, 0x87, 0xFF, 0xFF, 0xFF, 0x7F, 0xEA, 'a', 0x00);
+  assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(concat(b(0x8C, 0x84, 0x96), huge))); // Subject
+  assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(concat(b(0x8C, 0x84, 0x97), huge))); // To
+  assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(concat(b(0x8C, 0x84, 0xB0), huge))); // Unknown header, skipped by length
+  assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(concat(b(0x8C, 0x84, 0x89), huge))); // From
+ }
 }

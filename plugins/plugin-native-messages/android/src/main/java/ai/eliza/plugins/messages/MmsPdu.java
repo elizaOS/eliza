@@ -61,7 +61,8 @@ public final class MmsPdu {
   boolean more() { return i < end; }
   int peek() { need(1); return b[i] & 0xff; }
   int u8() { need(1); return b[i++] & 0xff; }
-  void need(int n) { if (n < 0 || i + n > end) throw new IllegalArgumentException("Truncated MMS PDU"); }
+  // Compared as a remainder: a declared length near Integer.MAX_VALUE must not wrap i + n past the check.
+  void need(int n) { if (n < 0 || n > end - i) throw new IllegalArgumentException("Truncated MMS PDU"); }
   byte[] bytes(int n) { need(n); byte[] out = java.util.Arrays.copyOfRange(b, i, i + n); i += n; return out; }
   long uintvar() {
    long value = 0;
