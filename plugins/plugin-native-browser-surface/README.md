@@ -289,6 +289,15 @@ from this package with a JDK on PATH or JAVA_HOME.
   It excludes private tabs and validates bookmarks. Hosts own tab and storage limits.
 - `BrowserExternalLinkPolicy` requires a user gesture and selects a safe handoff kind.
   The host constructs a fresh intent and refuses a resolved target in its own package.
+- `BrowserExternalPage` admits an explicit "open in another browser" handoff of the visible
+  HTTPS page (no credentials, not the host's own origin) to another package's enabled,
+  exported activity that handles every HTTPS link.
+- `BrowserSitePrompt` decides the site permission prompt: only a secure top-level page asks,
+  for its own origin; only the selected, shown page of a foreground host may prompt or use a
+  stored Allow; private tabs never read or store a decision; a kind the app cannot hold is
+  refused with a notice. It also gives the prompt text and the OS permissions behind each kind.
+- `BrowserSitePermissionRecord` reads and writes the sealed JSON form of
+  `BrowserSitePermissions`, oldest origin first; a damaged record grants nothing (org.json).
 - `BrowserAutofillEligibility` requires the selected, visible, committed HTTPS document
   to match the engine address. The host owns framework commit/cancel and excludes
   ineligible views from autofill.
@@ -317,6 +326,14 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   on each redirect hop, and stops that fetch when its entry, tab or site data is cleared.
   `BrowserBlobCapture` copies a page-created `blob:` file through an isolated world. The host
   passes its preference name, its "is this review still current" check and its cookie reader.
+- `BrowserExternalHandoff.intentFor(raw, ownPackage, hostSchemes)` builds the implicit intent for
+  a `mailto:`, `tel:` (dial only), `market:` or `intent:` link with no component, selector, clip
+  data, extras or grant flags; `fallback` reads a safe HTTPS `browser_fallback_url`, and
+  `browserProbe`/`genericHttps` find general browsers for an external page handoff.
+- `BrowserBookmarkStore` and `BrowserSessionStore` keep bookmarks, normal-tab history and tabs,
+  and site-permission decisions, sealed by the host's `BrowserSealedText` (for example a
+  Keystore AES-GCM frame). The host passes its own preferences file and key, so installed data
+  keeps its names. Private tabs never reach them.
 - `BrowserReadingWorld` is the isolated world for page reading. The host calls `prepare(url)`
   (or `prepareHistory`) before each load and `pageStarted(url)` from its client; only the
   prepared main-frame document, announcing a one-time nonce from the committed HTTPS origin,
@@ -324,7 +341,7 @@ Android helpers for the same hosts (they need AndroidX WebKit with
   redirect or unprepared navigation invalidates it. Without the capability `available()` is
   false and nothing is injected.
 
-Hosts retain site-permission prompts, OS permissions, sealed storage and navigation.
+Hosts retain the prompt dialog, OS permission requests, the sealing key and navigation.
 Hosts that do their own downloads recheck cookie policy at every redirect and never hand
 authenticated headers to DownloadManager, which stores and replays them. The pure policies
 perform no network requests; none of this qualifies a browser, provider or device integration.

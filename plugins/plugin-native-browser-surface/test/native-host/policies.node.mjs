@@ -25,6 +25,8 @@ const classes = [
   "BrowserFieldOrigin",
   "BrowserHttpAuthOrigin",
   "BrowserPageReading",
+  "BrowserSitePrompt",
+  "BrowserExternalPage",
 ];
 const consumers = [
   "BrowserWebPolicyTest",
@@ -33,6 +35,7 @@ const consumers = [
   "BrowserPageHandoffsTest",
   "BrowserMainFrameGateTest",
   "BrowserProfileCaptureTest",
+  "BrowserSitePromptTest",
 ];
 const bin = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
@@ -170,4 +173,62 @@ test("native and renderer page reading agree", async (t) => {
     native.map((value) => value === "true"),
     urls.map((url) => renderer.sensitiveReadingUrl(url)),
   );
+});
+
+// The sealed site-permission record needs org.json, which Android provides. ELIZA_ORG_JSON_JAR
+// names the jar; otherwise the Gradle cache copy is used when present.
+const jsonCache = path.join(
+  os.homedir(),
+  ".gradle/caches/modules-2/files-2.1/org.json/json",
+);
+function cachedJsonJar() {
+  if (!fs.existsSync(jsonCache)) return undefined;
+  for (const version of fs.readdirSync(jsonCache).sort().reverse())
+    for (const hash of fs.readdirSync(path.join(jsonCache, version))) {
+      const jar = path.join(jsonCache, version, hash, `json-${version}.jar`);
+      if (fs.existsSync(jar)) return jar;
+    }
+  return undefined;
+}
+const jsonJar = process.env.ELIZA_ORG_JSON_JAR || cachedJsonJar();
+
+test("sealed site-permission records keep order, the bound and the stored format", {
+  skip: jsonJar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+}, () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "browser-record-"));
+  try {
+    execFileSync(
+      bin("javac"),
+      [
+        "-J-Xmx128m",
+        "-cp",
+        jsonJar,
+        "-d",
+        output,
+        ...[
+          "BrowserWebOrigin",
+          "BrowserSitePermissions",
+          "BrowserSitePermissionRecord",
+        ].map((name) => path.join(source, `${name}.java`)),
+        path.join(
+          plugin,
+          "test/native-host/BrowserSitePermissionRecordTest.java",
+        ),
+      ],
+      { timeout: 60000 },
+    );
+    const result = execFileSync(
+      bin("java"),
+      [
+        "-Xmx128m",
+        "-cp",
+        `${output}${path.delimiter}${jsonJar}`,
+        "BrowserSitePermissionRecordTest",
+      ],
+      { timeout: 60000, encoding: "utf8" },
+    );
+    assert.match(result, /^\d+ assertions passed/);
+  } finally {
+    fs.rmSync(output, { recursive: true, force: true });
+  }
 });
