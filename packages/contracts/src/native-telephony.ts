@@ -590,7 +590,9 @@ async function mmsOperation(review: MmsReview): Promise<MmsSendOperation> {
     attachments.push({
       contentType: a.contentType,
       name: a.name,
-      sha256: hex(await crypto.subtle.digest("SHA-256", new Uint8Array(a.bytes))),
+      sha256: hex(
+        await crypto.subtle.digest("SHA-256", new Uint8Array(a.bytes)),
+      ),
       size: a.bytes.length,
     });
   return {
@@ -984,10 +986,15 @@ export function createTelephonyClient(
         throw invalid("message progress");
       return { rows, next: next as string | null };
     },
-    /** Change notices carry no message content; re-read a bounded page. Returns the stop function. */
+    /**
+     * Change notices carry no message content; re-read a bounded page. SMS and MMS send records
+     * report updates separately (`smsSendResult` and `mmsSendResult` read them). Returns the stop
+     * function.
+     */
     async observeMessages(
       onChange: () => void,
       onSendUpdated?: (operationId: string) => void,
+      onMmsSendUpdated?: (operationId: string) => void,
     ) {
       const bridge = native();
       if (!bridge.addListener)
@@ -995,14 +1002,30 @@ export function createTelephonyClient(
       const handles = [
         await bridge.addListener("messagesChanged", () => onChange()),
       ];
-      if (onSendUpdated)
-        handles.push(
-          await bridge.addListener("smsSendUpdated", (data) => {
-            const id = (data as { operationId?: unknown } | null)?.operationId;
-            if (typeof id === "string" && OPERATION_ID.test(id))
-              onSendUpdated(id);
-          }),
-        );
+      const operation =
+        (handler: (operationId: string) => void) => (data: unknown) => {
+          const id = (data as { operationId?: unknown } | null)?.operationId;
+          if (typeof id === "string" && OPERATION_ID.test(id)) handler(id);
+        };
+      try {
+        if (onSendUpdated)
+          handles.push(
+            await bridge.addListener(
+              "smsSendUpdated",
+              operation(onSendUpdated),
+            ),
+          );
+        if (onMmsSendUpdated)
+          handles.push(
+            await bridge.addListener(
+              "mmsSendUpdated",
+              operation(onMmsSendUpdated),
+            ),
+          );
+      } catch (error) {
+        for (const handle of handles) await handle.remove();
+        throw error;
+      }
       try {
         await bridge.observeMessages({ enabled: true });
       } catch (error) {

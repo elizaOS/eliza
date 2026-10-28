@@ -485,17 +485,31 @@ test("change notices carry no content and stop cleanly", async () => {
   const client = createTelephonyClient(plugin, true);
   let changes = 0;
   const updated: string[] = [];
+  const mms: string[] = [];
   const stop = await client.observeMessages(
     () => changes++,
     (id) => updated.push(id),
+    (id) => mms.push(id),
+  );
+  assert.deepEqual(
+    listeners.map(([event]) => event),
+    ["messagesChanged", "smsSendUpdated", "mmsSendUpdated"],
   );
   for (const [event, listener] of listeners)
     listener(
-      event === "messagesChanged" ? { sequence: 1 } : { operationId: "op-1" },
+      event === "messagesChanged"
+        ? { sequence: 1 }
+        : { operationId: event === "mmsSendUpdated" ? "mms-1" : "op-1" },
     );
   listeners[1][1]({ operationId: "bad id!" });
+  listeners[2][1]({ operationId: "bad id!" });
   assert.equal(changes, 1);
   assert.deepEqual(updated, ["op-1"]);
+  assert.deepEqual(
+    mms,
+    ["mms-1"],
+    "MMS send updates reach only the MMS handler",
+  );
   await stop();
   assert.deepEqual(
     calls.filter(([m]) => m === "observeMessages").map(([, o]) => o),
