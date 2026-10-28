@@ -101,12 +101,28 @@ function verifyNativeStaging(output, launcher, evidence) {
   );
   if (JSON.stringify(recorded) !== JSON.stringify(evidence))
     throw new Error("Native staging receipt differs");
+  const names = new Set();
   for (const library of evidence.libraries) {
+    const name =
+      typeof library.path === "string" ? path.posix.basename(library.path) : "";
+    const mode = [
+      "libeliza_bun.so",
+      "libeliza_ld_musl_aarch64.so",
+      "libeliza_ld_musl_aarch64_real.so",
+    ].includes(name)
+      ? "0755"
+      : "0644";
     if (
       !/^native-arm64\/lib[A-Za-z0-9_.+-]+\.so$/.test(library.path) ||
-      !/^[a-f0-9]{64}$/.test(library.sha256)
+      !/^[a-f0-9]{64}$/.test(library.sha256) ||
+      names.has(name) ||
+      library.apkEntry !== `lib/arm64-v8a/${name}` ||
+      library.installPath !==
+        `/product/app/${launcher.moduleName}/lib/arm64/${name}` ||
+      library.mode !== mode
     )
       throw new Error("Invalid native staging entry");
+    names.add(name);
     const file = path.join(output, library.path);
     if (
       !fs.lstatSync(file).isFile() ||
@@ -115,6 +131,16 @@ function verifyNativeStaging(output, launcher, evidence) {
     )
       throw new Error("Native staged bytes differ");
   }
+  const expected = evidence.libraries
+    .map(
+      (library) =>
+        `[${library.installPath.slice(1)}]\nmode: ${library.mode}\nuser: AID_ROOT\ngroup: AID_ROOT\ncaps: 0\n\n`,
+    )
+    .join("");
+  if (fs.readFileSync(path.join(output, "config.fs"), "utf8") !== expected)
+    throw new Error(
+      "Native filesystem configuration differs from admitted libraries",
+    );
   return true;
 }
 
