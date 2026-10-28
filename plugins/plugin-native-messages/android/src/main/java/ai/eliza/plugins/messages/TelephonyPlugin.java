@@ -79,7 +79,11 @@ public abstract class TelephonyPlugin extends Plugin {
  };
  private final android.os.Handler main = new android.os.Handler(android.os.Looper.getMainLooper());
  private final SmsTelephony.Listener sendListener = operationId -> main.post(() -> {
-  if (admitted() && unlockedForeground()) { JSObject value = new JSObject(); value.put("operationId", operationId); notifyListeners("smsSendUpdated", value); }
+  if (!admitted() || !unlockedForeground()) return;
+  boolean mms = false;
+  try { SmsSendJournal.Record record = SmsTelephony.journal(getContext(), config).get(operationId); mms = record != null && record.group; }
+  catch (Exception unreadable) { /* The notice still goes out; the renderer reads the result by ID. */ }
+  JSObject value = new JSObject(); value.put("operationId", operationId); notifyListeners(mms ? "mmsSendUpdated" : "smsSendUpdated", value);
  });
 
  @Override public void load() {
@@ -181,6 +185,9 @@ public abstract class TelephonyPlugin extends Plugin {
   // confirm the reviewed SIM is active. Otherwise the SMS app handoff is the only path.
   boolean direct = telephony != null && telephony.isSmsCapable() && sendSms == PermissionState.GRANTED && phoneState == PermissionState.GRANTED;
   value.put("sendMode", direct ? "direct" : "handoff");
+  // Reviewed MMS (group messages and attachments): direct sends, the host's MMS file provider and the
+  // SMS role, because Android stores nothing a default SMS app sends. The carrier is checked per send.
+  value.put("mmsSend", direct && config != null && config.mmsFileAuthority != null && MmsStore.isDefaultSmsApp(getContext()));
   JSObject roleStates = new JSObject();
   roleStates.put("dialer", roleState(roles, RoleManager.ROLE_DIALER, eligibleFor(RoleManager.ROLE_DIALER)));
   roleStates.put("sms", roleState(roles, RoleManager.ROLE_SMS, eligibleFor(RoleManager.ROLE_SMS)));
@@ -547,7 +554,7 @@ public abstract class TelephonyPlugin extends Plugin {
   if (refused(call)) return;
   try {
    JSArray rows = new JSArray();
-   for (SmsSendJournal.Record record : SmsTelephony.journal(getContext(), config).recent(SmsSendJournal.MAX_RECORDS)) rows.put(SmsTelephony.result(record));
+   for (SmsSendJournal.Record record : SmsTelephony.journal(getContext(), config).recent(SmsSendJournal.MAX_RECORDS)) if (!record.group) rows.put(SmsTelephony.result(record));
    JSObject result = new JSObject(); result.put("receipts", rows); call.resolve(result);
   } catch (Exception unreadable) { call.reject("The send history could not be read.", "unavailable"); }
  }
@@ -559,7 +566,170 @@ public abstract class TelephonyPlugin extends Plugin {
   if (operationId == null || !SmsSendJournal.OPERATION.matcher(operationId).matches()) { call.reject("Invalid send", "invalid"); return; }
   try {
    SmsSendJournal.Record record = SmsTelephony.journal(getContext(), config).get(operationId);
-   if (record == null) call.reject("No send with this ID", "not-found"); else call.resolve(SmsTelephony.result(record));
+   if (record == null || record.group) call.reject("No send with this ID", "not-found"); else call.resolve(SmsTelephony.result(record));
+  } catch (Exception unreadable) { call.reject("The send record could not be read.", "unavailable"); }
+ }
+
+ // ---- Reviewed native MMS (mms.send.v1) ----------------------------------------------------------
+
+ /** Why a reviewed MMS is not permitted now, or null. Nothing is sent when this is non-null. */
+ private String mmsBlocker(int subscriptionId) {
+  String sms = sendBlocker(subscriptionId);
+  if (sms != null) return sms;
+  if (config.mmsFileAuthority == null) return "This app cannot send group messages or pictures.";
+  if (!MmsStore.isDefaultSmsApp(getContext())) return "Make this app your SMS app to send group messages and pictures.";
+  try {
+   android.os.Bundle carrier = SmsTelephony.manager(getContext(), subscriptionId).getCarrierConfigValues();
+   if (carrier != null && !carrier.getBoolean(android.telephony.SmsManager.MMS_CONFIG_MMS_ENABLED, true)) return "This SIM's carrier does not allow MMS.";
+  } catch (RuntimeException unreadable) { return "This SIM's MMS settings could not be read."; }
+  return null;
+ }
+ private int mmsMaxBytes(int subscriptionId) {
+  try {
+   android.os.Bundle carrier = SmsTelephony.manager(getContext(), subscriptionId).getCarrierConfigValues();
+   int max = carrier == null ? 0 : carrier.getInt(android.telephony.SmsManager.MMS_CONFIG_MAX_MESSAGE_SIZE, 0);
+   return max > 0 ? Math.min(max, SmsSendJournal.MAX_MMS_BYTES + 64 * 1024) : 300 * 1024;
+  } catch (RuntimeException unreadable) { return 300 * 1024; }
+ }
+ /** The bound attachments and their exact bytes; null when a field, the size or the SHA-256 does not match. */
+ private static Object[] attachments(JSArray raw) {
+  if (raw == null || raw.length() > SmsSendJournal.MAX_MMS_ATTACHMENTS) return null;
+  SmsSendJournal.Attachment[] bound = new SmsSendJournal.Attachment[raw.length()];
+  byte[][] data = new byte[raw.length()][];
+  for (int i = 0; i < bound.length; i++) {
+   JSONObject a = raw.optJSONObject(i);
+   if (a == null || a.length() != 5) return null;
+   String type = a.optString("contentType", null), name = a.optString("name", null), sha = a.optString("sha256", null), encoded = a.optString("data", null);
+   Object size = a.opt("size");
+   if (type == null || name == null || sha == null || encoded == null || !(size instanceof Integer) || encoded.length() > (SmsSendJournal.MAX_MMS_BYTES / 3 + 1) * 4) return null;
+   try { data[i] = java.util.Base64.getDecoder().decode(encoded); } catch (IllegalArgumentException invalid) { return null; }
+   if (data[i].length != (Integer) size || !sha.equals(sha256(data[i]))) return null;
+   bound[i] = new SmsSendJournal.Attachment(type, name, sha, (Integer) size);
+  }
+  return new Object[] { bound, data };
+ }
+ private static String sha256(byte[] bytes) {
+  try {
+   byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(bytes);
+   StringBuilder hex = new StringBuilder(64);
+   for (byte b : digest) hex.append(Character.forDigit((b >> 4) & 15, 16)).append(Character.forDigit(b & 15, 16));
+   return hex.toString();
+  } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+ }
+
+ /**
+  * Sends one reviewed MMS to every recipient (a group conversation when there are several), with the
+  * text and image attachments the native dialog shows again. The operation ID is the caller's
+  * idempotency key: a repeat returns its journaled `MmsSendResult` and never sends again. Declining
+  * records "cancelled". "sent" is the carrier's send confirmation; MMS delivery is never claimed.
+  */
+ @PluginMethod public void sendMms(PluginCall call) {
+  if (refused(call)) return;
+  main.post(() -> reviewMmsOnMain(call));
+ }
+ private void reviewMmsOnMain(PluginCall call) {
+  if (refused(call)) return;
+  String operationId = call.getString("operationId"), body = call.getString("body");
+  String[] recipients = numbers(call.getArray("recipients"));
+  Object rawSubscription = call.getData().opt("subscriptionId");
+  int subscriptionId = rawSubscription instanceof Integer ? (Integer) rawSubscription : -1;
+  Object[] bound = attachments(call.getArray("attachments"));
+  if (bound == null) { call.reject("Invalid reviewed message", "invalid"); return; }
+  final SmsSendJournal.Attachment[] attachments = (SmsSendJournal.Attachment[]) bound[0];
+  final byte[][] data = (byte[][]) bound[1];
+  try { SmsSendJournal.validateMms(operationId, recipients, body, attachments, subscriptionId); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
+  final SmsSendJournal journal;
+  final SmsSendJournal.Record existing;
+  try {
+   journal = SmsTelephony.journal(getContext(), config);
+   existing = journal.existing(operationId, SmsSendJournal.sha256(SmsSendJournal.mmsBindingText(recipients, body, attachments, subscriptionId)));
+  } catch (SmsSendJournal.Expired expired) { call.reject("This request is too old to read back. Nothing was sent again.", "expired"); return; }
+  catch (IllegalStateException reused) { call.reject("This request was already used for a different message. Nothing was sent.", "invalid"); return; }
+  catch (Exception unreadable) { call.reject("The send record could not be read. Nothing was sent.", "unavailable"); return; }
+  if (existing != null) { call.resolve(SmsTelephony.result(existing)); return; }
+  if (review != null) { call.reject("Another message is waiting for review", "busy"); return; }
+  final long now = System.currentTimeMillis(), boot = SmsTelephony.boot(getContext());
+  final String[] to = recipients; final int sub = subscriptionId;
+  if (mmsBlocker(sub) != null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
+  final List<MmsPdu.Part> parts = SmsTelephony.mmsParts(body, attachments, data);
+  final byte[] pdu;
+  try { pdu = MmsPdu.encodeSendRequest(SmsTelephony.mmsTransaction(operationId), java.util.Arrays.asList(recipients), null, parts); }
+  catch (IllegalArgumentException invalid) { call.reject("Invalid reviewed message", "invalid"); return; }
+  if (pdu.length > mmsMaxBytes(sub)) { call.reject("This message is larger than the carrier allows. Remove or shrink an attachment and review again.", "too-large"); return; }
+  SubscriptionInfo sim = activeSubscription(sub);
+  if (sim == null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
+  StringBuilder message = new StringBuilder();
+  message.append("To: ").append(String.join(", ", recipients)).append('\n');
+  message.append("From: SIM ").append(sim.getSimSlotIndex() + 1).append(" · ").append(clip(sim.getDisplayName())).append(" (").append(clip(sim.getCarrierName())).append(")\n");
+  if (recipients.length > 1) message.append("One group message: every recipient sees all the others and replies go to the group.\n");
+  for (SmsSendJournal.Attachment a : attachments) message.append("Attachment: ").append(a.name).append(" (").append((a.size + 1023) / 1024).append(" KB)\n");
+  message.append("Sent as MMS. Carrier and data charges may apply.");
+  if (!body.isEmpty()) message.append("\n\n").append(body);
+  final int reviewedSlot = sim.getSimSlotIndex(), reviewedCarrier = sim.getCarrierId();
+  reviewCall = call;
+  reviewCancelled = () -> decideMms(call, journal, operationId, to, body, attachments, sub, "cancelled", now, boot);
+  try {
+   android.widget.LinearLayout previews = new android.widget.LinearLayout(getActivity());
+   previews.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+   int edge = Math.round(72 * getActivity().getResources().getDisplayMetrics().density);
+   for (int i = 0; i < data.length; i++) {
+    android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+    bounds.inJustDecodeBounds = true;
+    android.graphics.BitmapFactory.decodeByteArray(data[i], 0, data[i].length, bounds);
+    android.graphics.BitmapFactory.Options scaled = new android.graphics.BitmapFactory.Options();
+    scaled.inSampleSize = 1;
+    while (bounds.outWidth / (scaled.inSampleSize * 2) >= edge && bounds.outHeight / (scaled.inSampleSize * 2) >= edge) scaled.inSampleSize *= 2;
+    android.graphics.Bitmap thumb = android.graphics.BitmapFactory.decodeByteArray(data[i], 0, data[i].length, scaled);
+    if (thumb == null) continue;
+    android.widget.ImageView view = new android.widget.ImageView(getActivity());
+    view.setImageBitmap(thumb); view.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+    view.setContentDescription("Attachment " + attachments[i].name);
+    android.widget.LinearLayout.LayoutParams size = new android.widget.LinearLayout.LayoutParams(edge, edge);
+    size.setMargins(edge / 6, edge / 6, 0, 0);
+    previews.addView(view, size);
+   }
+   android.app.AlertDialog.Builder builder = new android.app.AlertDialog.Builder(getActivity())
+    .setTitle(recipients.length > 1 ? "Send group message to " + recipients.length + " people?" : "Send multimedia message?")
+    .setMessage(message.toString())
+    .setNegativeButton("Cancel", null)
+    .setPositiveButton("Send", (dialog, which) -> {
+     if (reviewCall != call) return;
+     review = null; reviewCall = null; reviewCancelled = null;
+     if (!admitted() || !unlockedForeground() || mmsBlocker(sub) != null) { decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot); return; }
+     final SmsTelephony.DispatchGuard guard = () -> {
+      SubscriptionInfo current = activeSubscription(sub);
+      if (!admitted() || mmsBlocker(sub) != null || current == null || current.getSimSlotIndex() != reviewedSlot || current.getCarrierId() != reviewedCarrier) throw new IllegalStateException("Reviewed SIM or access changed");
+     };
+     try { call.resolve(SmsTelephony.result(SmsTelephony.dispatchMms(getContext(), config, journal, operationId, to, body, attachments, pdu, parts, sub, guard))); }
+     catch (Exception unrecorded) {
+      SmsSendJournal.Record record = journal.get(operationId);
+      if (record != null) call.resolve(SmsTelephony.result(record));
+      else decideMms(call, journal, operationId, to, body, attachments, sub, "denied", now, boot);
+     }
+    });
+   if (previews.getChildCount() > 0) builder.setView(previews);
+   review = builder.create();
+   review.setOnDismissListener(dialog -> { if (reviewCall == call) cancelReview(); });
+   if (review.getWindow() != null) review.getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE);
+   review.show();
+   android.widget.Button send = review.getButton(android.content.DialogInterface.BUTTON_POSITIVE);
+   if (send != null) send.setFilterTouchesWhenObscured(true);
+  } catch (RuntimeException gone) { review = null; reviewCall = null; reviewCancelled = null; call.reject(CLOSED); }
+ }
+ private void decideMms(PluginCall call, SmsSendJournal journal, String operationId, String[] recipients, String body, SmsSendJournal.Attachment[] attachments, int subscriptionId, String decision, long now, long boot) {
+  try { call.resolve(SmsTelephony.result(journal.decideMms(operationId, recipients, body, attachments, subscriptionId, decision, now, boot))); }
+  catch (Exception unrecorded) { call.reject("Nothing was sent.", "unavailable"); }
+ }
+
+ /** The journaled result of a reviewed MMS. Reading never sends. */
+ @PluginMethod public void mmsSendResult(PluginCall call) {
+  if (refused(call)) return;
+  String operationId = call.getString("operationId", "");
+  if (operationId == null || !SmsSendJournal.OPERATION.matcher(operationId).matches()) { call.reject("Invalid send", "invalid"); return; }
+  try {
+   SmsSendJournal.Record record = SmsTelephony.journal(getContext(), config).get(operationId);
+   if (record == null || !record.group) call.reject("No send with this ID", "not-found"); else call.resolve(SmsTelephony.result(record));
   } catch (Exception unreadable) { call.reject("The send record could not be read.", "unavailable"); }
  }
 

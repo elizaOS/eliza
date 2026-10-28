@@ -11,6 +11,19 @@
  * accepted the request, `sent` requires every sent callback, `delivered` every delivery report, and a
  * repeated operation ID reads its record and never sends again.
  */
+
+import {
+  mmsBindingText as contractMmsBindingText,
+  MMS_ATTACHMENT_TYPES,
+  MMS_MAX_ATTACHMENTS,
+  MMS_MAX_BODY,
+  MMS_MAX_RECIPIENTS,
+  MMS_MAX_TOTAL_BYTES,
+  type MmsAttachmentBinding,
+  type MmsAttachmentType,
+  type MmsSendOperation,
+  validateMmsResult,
+} from "./mms-send.ts";
 import {
   smsBindingText as contractBindingText,
   type SmsSendOperation,
@@ -18,6 +31,7 @@ import {
   validateSmsResult,
 } from "./sms-send.ts";
 
+export type { MmsSendResult } from "./mms-send.ts";
 export type { SmsSendResult } from "./sms-send.ts";
 
 /** The native method whose presence in the injected plugin headers marks the admitted profile. */
@@ -75,6 +89,9 @@ export interface TelephonyStatus {
   };
   /** `direct`: the host may send after its native review (SEND_SMS held, SIM readable). Otherwise only the SMS app handoff. */
   sendMode: "direct" | "handoff";
+  /** The host can send a reviewed MMS (group messages and attachments) now: direct sends, the SMS
+   * role (Android stores nothing for a default SMS app) and an MMS-capable carrier. Absent means false. */
+  mmsSend: boolean;
   roles: Record<TelephonyRole, TelephonyRoleState>;
   /** Package Android uses today; null when none or unknown. */
   defaultDialer: string | null;
@@ -137,10 +154,19 @@ export interface TelephonyNativePlugin {
     subscriptionId: number;
   }): Promise<unknown>;
   cancelSmsReview(options: { operationId: string }): Promise<unknown>;
+  /** One reviewed MMS to every recipient. `data` is base64 of the exact bytes bound by `sha256`. */
+  sendMms?(options: {
+    operationId: string;
+    recipients: string[];
+    body: string;
+    attachments: (MmsAttachmentBinding & { data: string })[];
+    subscriptionId: number;
+  }): Promise<unknown>;
+  mmsSendResult?(options: { operationId: string }): Promise<unknown>;
   smsSendHistory(): Promise<unknown>;
   smsSendResult(options: { operationId: string }): Promise<unknown>;
   addListener?(
-    event: "messagesChanged" | "smsSendUpdated",
+    event: "messagesChanged" | "smsSendUpdated" | "mmsSendUpdated",
     listener: (data: unknown) => void,
   ): Promise<{ remove(): Promise<void> | void }>;
 }
@@ -265,6 +291,9 @@ export function parseTelephonyStatus(value: unknown): TelephonyStatus {
       throw invalid("default SMS subscription");
     defaultSmsSubscriptionId = marked[0].id;
   }
+  const mmsSend =
+    data.mmsSend === undefined ? false : bool(data.mmsSend, "MMS send");
+  if (mmsSend && data.sendMode !== "direct") throw invalid("MMS send");
   return {
     version: 2,
     voiceCapable: bool(data.voiceCapable, "voice capability"),
@@ -276,6 +305,7 @@ export function parseTelephonyStatus(value: unknown): TelephonyStatus {
       sendSms,
     },
     sendMode: data.sendMode,
+    mmsSend,
     roles: { dialer: role("dialer"), sms: role("sms") },
     defaultDialer: nullableText(data.defaultDialer, "default dialer"),
     defaultSms: nullableText(data.defaultSms, "default SMS app"),
@@ -451,6 +481,142 @@ export function advanceSmsState(
  * again, and then only as a new explicit review. */
 export function smsMayBeReviewedAgain(state: SmsSendState): boolean {
   return state === "reviewed" || state === "failed";
+}
+
+/** One attachment of an MMS draft: the exact bytes the owner picked. */
+export interface MmsAttachmentDraft {
+  contentType: string;
+  name: string;
+  bytes: Uint8Array;
+}
+/** The reviewed content of one outgoing MMS (a group conversation when there are several recipients). */
+export interface MmsReview {
+  recipients: string[];
+  body: string;
+  attachments: {
+    contentType: MmsAttachmentType;
+    name: string;
+    bytes: Uint8Array;
+  }[];
+  subscriptionId: number;
+}
+export type MmsReviewProblem =
+  | SmsReviewProblem
+  | "empty-message"
+  | "too-many-attachments"
+  | "attachment-type"
+  | "attachment-name"
+  | "attachment-empty"
+  | "too-large"
+  | "mms-unavailable";
+const MMS_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+/**
+ * Validates an MMS draft for a direct send against the current status. Group messages and
+ * attachments always go as one MMS; the same SIM rules as `reviewSms` direct sends apply.
+ */
+export function reviewMms(
+  draft: {
+    recipients: unknown[];
+    body: unknown;
+    attachments?: readonly MmsAttachmentDraft[];
+    subscriptionId?: unknown;
+  },
+  status: TelephonyStatus,
+): { review: MmsReview } | { problem: MmsReviewProblem } {
+  if (!status.mmsSend) return { problem: "mms-unavailable" };
+  if (!Array.isArray(draft.recipients) || !draft.recipients.length)
+    return { problem: "no-recipient" };
+  if (draft.recipients.length > MMS_MAX_RECIPIENTS)
+    return { problem: "too-many-recipients" };
+  const recipients: string[] = [];
+  for (const raw of draft.recipients) {
+    const number = normalizePhoneNumber(raw);
+    if (!number) return { problem: "invalid-recipient" };
+    if (!recipients.includes(number)) recipients.push(number);
+  }
+  const body = typeof draft.body === "string" ? draft.body : "";
+  if (body.length > MMS_MAX_BODY) return { problem: "body-too-long" };
+  if (body.includes("\0") || LONE_SURROGATE.test(body))
+    return { problem: "invalid-body" };
+  const attachments = draft.attachments ?? [];
+  if (attachments.length > MMS_MAX_ATTACHMENTS)
+    return { problem: "too-many-attachments" };
+  let total = 0;
+  const names = new Set<string>();
+  for (const a of attachments) {
+    if (!MMS_ATTACHMENT_TYPES.includes(a.contentType as MmsAttachmentType))
+      return { problem: "attachment-type" };
+    if (!MMS_NAME.test(a.name) || names.has(a.name))
+      return { problem: "attachment-name" };
+    if (!(a.bytes instanceof Uint8Array) || !a.bytes.length)
+      return { problem: "attachment-empty" };
+    names.add(a.name);
+    total += a.bytes.length;
+  }
+  if (total > MMS_MAX_TOTAL_BYTES) return { problem: "too-large" };
+  if (!body.trim() && !attachments.length) return { problem: "empty-message" };
+  const active = status.subscriptions;
+  if (!active) return { problem: "sim-unknown" };
+  const chosen =
+    draft.subscriptionId !== undefined && draft.subscriptionId !== null;
+  let subscriptionId: number;
+  if (chosen) {
+    if (!active.some((sim) => sim.id === draft.subscriptionId))
+      return { problem: "sim-unknown" };
+    subscriptionId = draft.subscriptionId as number;
+  } else if (active.length !== 1)
+    return { problem: active.length ? "sim-required" : "sim-unknown" };
+  else subscriptionId = active[0].id;
+  return {
+    review: {
+      recipients,
+      body,
+      attachments: attachments.map((a) => ({
+        contentType: a.contentType as MmsAttachmentType,
+        name: a.name,
+        bytes: a.bytes,
+      })),
+      subscriptionId,
+    },
+  };
+}
+const hex = (digest: ArrayBuffer) =>
+  Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+async function mmsOperation(review: MmsReview): Promise<MmsSendOperation> {
+  const attachments: MmsAttachmentBinding[] = [];
+  for (const a of review.attachments)
+    attachments.push({
+      contentType: a.contentType,
+      name: a.name,
+      sha256: hex(await crypto.subtle.digest("SHA-256", new Uint8Array(a.bytes))),
+      size: a.bytes.length,
+    });
+  return {
+    type: "mms_send",
+    recipients: review.recipients,
+    body: review.body,
+    attachments,
+    subscriptionId: review.subscriptionId,
+  };
+}
+/** The shared `mms.send.v1` binding of a review and its UTF-8 SHA-256, as the native journal computes them. */
+export async function mmsBinding(
+  review: MmsReview,
+): Promise<{ operation: MmsSendOperation; text: string; hash: string }> {
+  const operation = await mmsOperation(review);
+  const text = contractMmsBindingText(operation);
+  const hash = hex(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)),
+  );
+  return { operation, text, hash };
+}
+function base64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
 }
 
 export type MessageDirection = "incoming" | "outgoing";
@@ -894,6 +1060,51 @@ export function createTelephonyClient(
           subscriptionId: review.subscriptionId,
         }),
         bound,
+        operationId,
+        hash,
+      );
+    },
+    /** A reviewed native MMS: one message to every recipient, with the text and attachments the
+     * host's native dialog shows again. Reusing an operation ID returns its record and never sends
+     * twice. MMS delivery is never claimed; "sent" is the carrier's send confirmation. */
+    async sendMms(review: MmsReview, operationId: string) {
+      const bridge = native();
+      if (!bridge.sendMms)
+        throw new TelephonyUnavailable(
+          "This phone cannot send MMS from Messages.",
+        );
+      if (!OPERATION_ID.test(operationId))
+        throw new RangeError("Invalid operation ID");
+      const { operation: bound, hash } = await mmsBinding(review);
+      return validateMmsResult(
+        bound,
+        await bridge.sendMms({
+          operationId,
+          recipients: bound.recipients,
+          body: bound.body,
+          attachments: bound.attachments.map((a, index) => ({
+            ...a,
+            data: base64(review.attachments[index].bytes),
+          })),
+          subscriptionId: bound.subscriptionId,
+        }),
+        operationId,
+        hash,
+      );
+    },
+    /** Reads the journaled MMS result; never sends. */
+    async mmsSendResult(review: MmsReview, operationId: string) {
+      const bridge = native();
+      if (!bridge.mmsSendResult)
+        throw new TelephonyUnavailable(
+          "This phone cannot send MMS from Messages.",
+        );
+      if (!OPERATION_ID.test(operationId))
+        throw new RangeError("Invalid operation ID");
+      const { operation: bound, hash } = await mmsBinding(review);
+      return validateMmsResult(
+        bound,
+        await bridge.mmsSendResult({ operationId }),
         operationId,
         hash,
       );

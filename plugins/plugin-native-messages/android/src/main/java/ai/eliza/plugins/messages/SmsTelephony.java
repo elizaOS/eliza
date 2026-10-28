@@ -166,6 +166,68 @@ public final class SmsTelephony {
   return record;
  }
 
+ /** The PDU transaction ID of a reviewed MMS: derived from the operation ID, within the PDU's bound. */
+ static String mmsTransaction(String operationId) { return "eliza-" + SmsSendJournal.sha256(operationId).substring(0, 32); }
+
+ /** The body parts of a reviewed MMS: the text (when there is any), then each attachment in review order. */
+ static List<MmsPdu.Part> mmsParts(String body, SmsSendJournal.Attachment[] attachments, byte[][] data) {
+  List<MmsPdu.Part> parts = new ArrayList<>();
+  if (!body.isEmpty()) parts.add(MmsPdu.Part.text(body, "text_0.txt"));
+  for (int i = 0; i < attachments.length; i++)
+   parts.add(new MmsPdu.Part(attachments[i].contentType, null, attachments[i].name, "<" + attachments[i].name + ">", attachments[i].name, data[i]));
+  return parts;
+ }
+
+ /** The intent extra naming the PDU file of a reviewed MMS send in its sent callback. */
+ static final String EXTRA_MMS_FILE = "eliza.mms.sendFile";
+
+ /**
+  * Journals the reviewed MMS, stores the default SMS app's own outbox row, then hands the encoded
+  * M-Send.req to the platform MMS service through the host's {@link MmsFileProvider}. A platform call
+  * that throws ends the dispatch as unknown; nothing is attempted again automatically. The PDU file is
+  * removed by the sent callback (or here when the platform never took it).
+  */
+ static SmsSendJournal.Record dispatchMms(Context context, SmsTelephonyConfiguration config, SmsSendJournal journal, String operationId, String[] recipients, String body,
+   SmsSendJournal.Attachment[] attachments, byte[] pdu, List<MmsPdu.Part> parts, int subscriptionId, DispatchGuard guard) throws IOException {
+  if (config.mmsFileAuthority == null) throw new IllegalStateException("MMS files are not configured");
+  guard.check();
+  SmsManager manager = manager(context, subscriptionId);
+  String name = MmsStore.newFileName();
+  java.nio.file.Files.write(MmsStore.file(context, name).toPath(), pdu);
+  SmsSendJournal.Record record;
+  try { record = journal.beginMmsDispatch(operationId, recipients, body, attachments, subscriptionId, System.currentTimeMillis(), boot(context)); }
+  catch (IOException | RuntimeException refused) { MmsStore.delete(context, name); throw refused; }
+  boolean returned = true, handed = false;
+  try {
+   guard.check();
+   if (MmsStore.isDefaultSmsApp(context)) {
+    try { journal.providerRow(operationId, 0, MmsStore.persistOutgoingMms(context, recipients, parts, mmsTransaction(operationId), subscriptionId, record.createdAt)); }
+    catch (IOException | RuntimeException refused) { android.util.Log.w("SmsTelephony", "Outgoing MMS was not stored in the provider"); }
+   }
+   Intent intent = new Intent(config.sentAction).setClass(context, config.receiverClass).setPackage(context.getPackageName())
+    .setData(Uri.fromParts(config.callbackScheme, operationId + "/mms", null))
+    .putExtra(config.operationExtra, operationId).putExtra(config.indexExtra, 0).putExtra(EXTRA_MMS_FILE, name);
+   PendingIntent sent = PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_ONE_SHOT);
+   manager.sendMultimediaMessage(context, MmsStore.fileUri(config.mmsFileAuthority, name), null, null, sent);
+   handed = true;
+  } catch (RuntimeException failed) {
+   returned = false;
+  } finally {
+   if (!handed) MmsStore.delete(context, name);
+   journal.endDispatch(operationId, returned);
+  }
+  return record;
+ }
+
+ /** True unless the carrier's M-Send.conf names a failure. An absent or unreadable confirmation adds nothing. */
+ static boolean sendConfirmed(byte[] conf) {
+  if (conf == null || conf.length == 0) return true;
+  try {
+   MmsPdu.Message message = MmsPdu.parse(conf);
+   return message.type != MmsPdu.SEND_CONF || message.responseStatus < 0 || message.responseStatus == MmsPdu.RESPONSE_OK;
+  } catch (RuntimeException unreadable) { return true; }
+ }
+
  /**
   * The default SMS app's own outbox row for one recipient, recorded in the journal before the platform
   * call so that recipient's sent callbacks find it. A refused write never stops the reviewed send, and
@@ -184,13 +246,26 @@ public final class SmsTelephony {
  private static void settleOwnRow(Context context, SmsSendJournal journal, String operationId, int index) {
   long[] settled = journal.settledRow(operationId, index);
   if (settled == null || !MmsStore.isDefaultSmsApp(context)) return;
-  try { MmsStore.settleOutgoingSms(context, settled[0], (int) settled[1]); }
+  SmsSendJournal.Record record = journal.get(operationId);
+  try {
+   if (record != null && record.group) MmsStore.settleOutgoingMms(context, settled[0], settled[1] == SmsSendJournal.TYPE_SENT);
+   else MmsStore.settleOutgoingSms(context, settled[0], (int) settled[1]);
+  }
   catch (RuntimeException unwritable) { /* The journal keeps the evidence; the row stays queued. */ }
  }
 
- /** The shared contract's `SmsSendResult`, exactly its fields. */
+ /** The shared contract's `SmsSendResult`, or `MmsSendResult` for an MMS record: exactly its fields. */
  public static JSObject result(SmsSendJournal.Record record) {
   JSObject value = new JSObject();
+  if (record.group) {
+   value.put("kind", "mms-send");
+   value.put("operationId", record.operationId);
+   value.put("subscriptionId", record.subscriptionId);
+   value.put("bindingHash", record.bindingHash);
+   value.put("status", record.status());
+   value.put("createdAt", record.createdAt);
+   return value;
+  }
   value.put("kind", "sms-send");
   value.put("operationId", record.operationId);
   value.put("subscriptionId", record.subscriptionId);
@@ -222,13 +297,18 @@ public final class SmsTelephony {
   boolean sent = config.sentAction.equals(action), delivered = config.deliveredAction.equals(action);
   if ((!sent && !delivered) || operation == null || !SmsSendJournal.OPERATION.matcher(operation).matches() || index < 0) return;
   final boolean ok = receiver.getResultCode() == Activity.RESULT_OK;
+  final String mmsFile = sent ? intent.getStringExtra(EXTRA_MMS_FILE) : null;
+  final boolean confirmed = mmsFile == null || sendConfirmed(intent.getByteArrayExtra(SmsManager.EXTRA_MMS_DATA));
   final Context app = context.getApplicationContext();
   final BroadcastReceiver.PendingResult pending = receiver.goAsync();
   try {
    WORK.execute(() -> {
     try {
      SmsSendJournal journal = journal(app, config);
-     boolean changed = sent ? journal.sentResult(operation, index, ok) : journal.deliveryReported(operation, index);
+     SmsSendJournal.Record target = journal.get(operation);
+     // An MMS callback settles only an MMS record, and an SMS callback only an SMS record.
+     if (target != null && target.group != (mmsFile != null)) return;
+     boolean changed = sent ? journal.sentResult(operation, index, ok && confirmed) : journal.deliveryReported(operation, index);
      if (sent) settleOwnRow(app, journal, operation, index);
      Set<String> reconciled = reconcile(app, config);
      if (changed || reconciled.contains(operation)) updated(operation);
@@ -236,10 +316,11 @@ public final class SmsTelephony {
     } catch (Exception unrecorded) {
      // The journal keeps its last durable evidence; the send stays unconfirmed rather than guessed.
     } finally {
+     if (mmsFile != null) MmsStore.delete(app, mmsFile);
      if (pending != null) pending.finish();
     }
    });
-  } catch (java.util.concurrent.RejectedExecutionException closed) { if (pending != null) pending.finish(); }
+  } catch (java.util.concurrent.RejectedExecutionException closed) { if (mmsFile != null) MmsStore.delete(app, mmsFile); if (pending != null) pending.finish(); }
  }
 
  /** Startup and observer reconciliation on {@link #WORK}; publishes changed operations to the listener. */
@@ -263,6 +344,7 @@ public final class SmsTelephony {
    Set<Long> claimed = new HashSet<>();
    for (SmsSendJournal.Record r : journal.recent(SmsSendJournal.MAX_RECORDS)) for (long row : r.providerRow) if (row > 0) claimed.add(row);
    for (SmsSendJournal.Record record : journal.open(boot(context), System.currentTimeMillis())) {
+    if (record.group) continue; // MMS rows are recorded at dispatch; no delivery is read for them.
     for (int recipient = 0; recipient < record.recipients.length; recipient++) {
      int first = record.firstPart(recipient), count = record.partsPerRecipient[recipient];
      boolean allSent = true, reported = false;

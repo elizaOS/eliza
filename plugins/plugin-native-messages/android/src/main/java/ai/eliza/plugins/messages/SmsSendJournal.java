@@ -35,9 +35,15 @@ import java.util.regex.Pattern;
  * filter is refused and never sent again. The filter has no false negatives; a false positive only
  * refuses one fresh ID (the caller starts a new review with a new ID), so storage stays bounded and
  * sending is never permanently locked out.
+ *
+ * Reviewed MMS sends (`mms.send.v1`, {@code @elizaos/contracts/mms-send}) share the journal and its
+ * operation-ID space as "group" records: one message to every recipient, one dispatch unit, one
+ * provider row. Their binding covers the text and each attachment's type, name, SHA-256 and size;
+ * neither text nor attachment bytes are stored. "sent" is the carrier's send confirmation; MMS
+ * delivery is never claimed.
  */
 public final class SmsSendJournal {
- public static final int MAX_RECIPIENTS = 5, MAX_BODY = 1600, MAX_PARTS_PER_RECIPIENT = 10, MAX_RECORDS = 200, MAX_TOMBSTONES = 1000;
+ public static final int MAX_RECIPIENTS = 5, MAX_MMS_RECIPIENTS = 10, MAX_MMS_ATTACHMENTS = 5, MAX_MMS_BYTES = 1024 * 1024, MAX_BODY = 1600, MAX_PARTS_PER_RECIPIENT = 10, MAX_RECORDS = 200, MAX_TOMBSTONES = 1000;
  /**
   * Retired-ID filter: 2^20 bits (128 KiB), 8 probes from SHA-256 of the ID. At 20,000 retired IDs a
   * fresh ID is refused with probability about 1e-6; at 100,000 about 0.3%. Never a false negative.
@@ -61,6 +67,8 @@ public final class SmsSendJournal {
   final String bodyHash;
   public final int subscriptionId;
   public final long createdAt;
+  /** A reviewed MMS: one message to every recipient (one dispatch unit and provider row). */
+  public final boolean group;
   final long boot;
   final String[] recipients;
   /** Terminal decision before any dispatch: cancelled or denied. Null otherwise. */
@@ -72,10 +80,15 @@ public final class SmsSendJournal {
   boolean[] reported;
   long[] providerRow;
   Record(String operationId, int subscriptionId, String bindingHash, String bodyHash, String[] recipients, long createdAt, long boot) {
-   this.operationId = operationId; this.subscriptionId = subscriptionId; this.bindingHash = bindingHash; this.bodyHash = bodyHash;
-   this.recipients = recipients; this.createdAt = createdAt; this.boot = boot;
-   partsPerRecipient = new int[0]; sent = new char[0]; delivery = new char[0]; reported = new boolean[0]; providerRow = new long[recipients.length];
+   this(operationId, subscriptionId, bindingHash, bodyHash, recipients, createdAt, boot, false);
   }
+  Record(String operationId, int subscriptionId, String bindingHash, String bodyHash, String[] recipients, long createdAt, long boot, boolean group) {
+   this.operationId = operationId; this.subscriptionId = subscriptionId; this.bindingHash = bindingHash; this.bodyHash = bodyHash;
+   this.recipients = recipients; this.createdAt = createdAt; this.boot = boot; this.group = group;
+   partsPerRecipient = new int[0]; sent = new char[0]; delivery = new char[0]; reported = new boolean[0]; providerRow = new long[group ? 1 : recipients.length];
+  }
+  /** Dispatch units: one per recipient for SMS, one for an MMS. */
+  int units() { return group ? 1 : recipients.length; }
   int parts() { return sent.length; }
   int recipientOf(int index) { int seen = 0; for (int r = 0; r < partsPerRecipient.length; r++) { seen += partsPerRecipient[r]; if (index < seen) return r; } throw new IndexOutOfBoundsException(); }
   int partOf(int index) { int seen = 0; for (int r = 0; r < partsPerRecipient.length; r++) { if (index < seen + partsPerRecipient[r]) return index - seen; seen += partsPerRecipient[r]; } throw new IndexOutOfBoundsException(); }
@@ -90,7 +103,7 @@ public final class SmsSendJournal {
     if (delivery[i] != SUCCESS) allDelivered = false;
    }
    if (anyFailed) return "failed";
-   if (allSent && partsPerRecipient.length == recipients.length) return allDelivered ? "delivered" : "sent";
+   if (allSent && partsPerRecipient.length == units()) return allDelivered && !group ? "delivered" : "sent";
    if (unknown || dispatching) return "unknown";
    return submitted ? "submitted" : "unknown";
   }
@@ -101,6 +114,8 @@ public final class SmsSendJournal {
   boolean open(long currentBoot, long now) {
    if (decision != null || now - createdAt > MAX_OPEN_MS) return false;
    boolean sameBoot = boot == currentBoot;
+   // No MMS delivery evidence is awaited: only the send confirmation, within this boot.
+   if (group) return sameBoot && parts() > 0 && sent[0] == UNKNOWN;
    for (int i = 0; i < parts(); i++) {
     if (sent[i] == UNKNOWN && sameBoot) return true;
     if (sent[i] == SUCCESS && delivery[i] == UNKNOWN && (sameBoot || reported[i])) return true;
@@ -171,6 +186,56 @@ public final class SmsSendJournal {
   for (int i = 0; i < recipients.length; i++) { if (i > 0) out.append(','); json(out, recipients[i]); }
   return out.append("],\"subscriptionId\":").append(subscriptionId).append(",\"type\":\"sms_send\"}").toString();
  }
+ /** One bound MMS attachment: the exact bytes are identified by SHA-256 and size. */
+ public static final class Attachment {
+  public final String contentType, name, sha256; public final int size;
+  public Attachment(String contentType, String name, String sha256, int size) { this.contentType = contentType; this.name = name; this.sha256 = sha256; this.size = size; }
+ }
+ public static final java.util.List<String> MMS_TYPES = java.util.Arrays.asList("image/jpeg", "image/png", "image/gif");
+ private static final Pattern ATTACHMENT_NAME = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$");
+ /** Throws IllegalArgumentException unless the request matches `validateMmsSend` in the shared contract. */
+ public static void validateMms(String operationId, String[] recipients, String body, Attachment[] attachments, int subscriptionId) {
+  if (operationId == null || !OPERATION.matcher(operationId).matches()) throw new IllegalArgumentException("operation");
+  if (recipients == null || recipients.length < 1 || recipients.length > MAX_MMS_RECIPIENTS) throw new IllegalArgumentException("recipients");
+  for (int i = 0; i < recipients.length; i++) {
+   if (recipients[i] == null || !NUMBER.matcher(recipients[i]).matches()) throw new IllegalArgumentException("recipient");
+   for (int j = 0; j < i; j++) if (recipients[j].equals(recipients[i])) throw new IllegalArgumentException("duplicate recipient");
+  }
+  if (body == null || body.length() > MAX_BODY || body.indexOf('\0') >= 0) throw new IllegalArgumentException("body");
+  for (int i = 0; i < body.length(); i++) {
+   char c = body.charAt(i);
+   if (Character.isHighSurrogate(c)) { if (i + 1 >= body.length() || !Character.isLowSurrogate(body.charAt(i + 1))) throw new IllegalArgumentException("body"); i++; }
+   else if (Character.isLowSurrogate(c)) throw new IllegalArgumentException("body");
+  }
+  if (attachments == null || attachments.length > MAX_MMS_ATTACHMENTS) throw new IllegalArgumentException("attachments");
+  long total = 0;
+  for (int i = 0; i < attachments.length; i++) {
+   Attachment a = attachments[i];
+   if (a == null || !MMS_TYPES.contains(a.contentType) || a.name == null || !ATTACHMENT_NAME.matcher(a.name).matches()
+     || a.sha256 == null || !a.sha256.matches("[0-9a-f]{64}") || a.size < 1 || a.size > MAX_MMS_BYTES) throw new IllegalArgumentException("attachment");
+   for (int j = 0; j < i; j++) if (attachments[j].name.equals(a.name)) throw new IllegalArgumentException("duplicate attachment");
+   total += a.size;
+  }
+  if (total > MAX_MMS_BYTES) throw new IllegalArgumentException("size");
+  if (body.isEmpty() && attachments.length == 0) throw new IllegalArgumentException("empty");
+  if (subscriptionId < 0) throw new IllegalArgumentException("subscription");
+ }
+ /** Byte-for-byte `mmsBindingText` of the shared contract. */
+ public static String mmsBindingText(String[] recipients, String body, Attachment[] attachments, int subscriptionId) {
+  StringBuilder out = new StringBuilder("{\"attachments\":[");
+  for (int i = 0; i < attachments.length; i++) {
+   if (i > 0) out.append(',');
+   out.append("{\"contentType\":"); json(out, attachments[i].contentType);
+   out.append(",\"name\":"); json(out, attachments[i].name);
+   out.append(",\"sha256\":"); json(out, attachments[i].sha256);
+   out.append(",\"size\":").append(attachments[i].size).append('}');
+  }
+  out.append("],\"body\":");
+  json(out, body);
+  out.append(",\"recipients\":[");
+  for (int i = 0; i < recipients.length; i++) { if (i > 0) out.append(','); json(out, recipients[i]); }
+  return out.append("],\"subscriptionId\":").append(subscriptionId).append(",\"type\":\"mms_send\"}").toString();
+ }
  private static void json(StringBuilder out, String value) {
   out.append('"');
   for (int i = 0; i < value.length(); i++) {
@@ -220,6 +285,27 @@ public final class SmsSendJournal {
   persistNew(record);
   return record;
  }
+ /** An MMS outcome reached without any platform call: the owner cancelled or Android refused it. */
+ synchronized Record decideMms(String operationId, String[] recipients, String body, Attachment[] attachments, int subscriptionId, String decision, long now, long boot) throws IOException {
+  if (!"cancelled".equals(decision) && !"denied".equals(decision)) throw new IllegalArgumentException("decision");
+  Record record = createMms(operationId, recipients, body, attachments, subscriptionId, now, boot);
+  record.decision = decision;
+  persistNew(record);
+  return record;
+ }
+ /** Persists the reviewed MMS before the platform call, so an interrupted dispatch reads "unknown" and is never repeated. */
+ synchronized Record beginMmsDispatch(String operationId, String[] recipients, String body, Attachment[] attachments, int subscriptionId, long now, long boot) throws IOException {
+  Record record = createMms(operationId, recipients, body, attachments, subscriptionId, now, boot);
+  record.partsPerRecipient = new int[] { 1 };
+  record.sent = new char[] { UNKNOWN }; record.delivery = new char[] { UNKNOWN }; record.reported = new boolean[1];
+  record.dispatching = true;
+  persistNew(record);
+  return record;
+ }
+ private Record createMms(String operationId, String[] recipients, String body, Attachment[] attachments, int subscriptionId, long now, long boot) {
+  validateMms(operationId, recipients, body, attachments, subscriptionId);
+  return insert(new Record(operationId, subscriptionId, sha256(mmsBindingText(recipients, body, attachments, subscriptionId)), sha256(body), recipients.clone(), now, boot, true), boot, now);
+ }
 
  /** Persists the reviewed send before the first platform call, so an interrupted dispatch reads "unknown" and is never repeated. */
  synchronized Record beginDispatch(String operationId, String[] recipients, String body, int subscriptionId, int[] partsPerRecipient, long now, long boot) throws IOException {
@@ -240,9 +326,12 @@ public final class SmsSendJournal {
  }
  private Record create(String operationId, String[] recipients, String body, int subscriptionId, long now, long boot) {
   validate(operationId, recipients, body, subscriptionId);
+  return insert(new Record(operationId, subscriptionId, sha256(bindingText(recipients, body, subscriptionId)), sha256(body), recipients.clone(), now, boot), boot, now);
+ }
+ private Record insert(Record record, long boot, long now) {
+  String operationId = record.operationId;
   if (records.containsKey(operationId) || tombstones.containsKey(operationId) || isRetired(operationId)) throw new IllegalStateException("operation exists");
   prune(boot, now);
-  Record record = new Record(operationId, subscriptionId, sha256(bindingText(recipients, body, subscriptionId)), sha256(body), recipients.clone(), now, boot);
   records.put(operationId, record);
   return record;
  }
@@ -277,7 +366,7 @@ public final class SmsSendJournal {
  /** The provider row the platform wrote for this recipient's message (matched by address, time and body hash). */
  synchronized void providerRow(String operationId, int recipient, long row) throws IOException {
   Record record = records.get(operationId);
-  if (record == null || recipient < 0 || recipient >= record.recipients.length || row <= 0 || record.providerRow[recipient] != 0) return;
+  if (record == null || recipient < 0 || recipient >= record.providerRow.length || row <= 0 || record.providerRow[recipient] != 0) return;
   record.providerRow[recipient] = row;
   save();
  }
@@ -314,7 +403,7 @@ public final class SmsSendJournal {
   */
  synchronized boolean providerStatus(String operationId, int recipient, int status) throws IOException {
   Record record = records.get(operationId);
-  if (record == null || recipient < 0 || recipient >= record.partsPerRecipient.length || record.partsPerRecipient[recipient] != 1) return false;
+  if (record == null || record.group || recipient < 0 || recipient >= record.partsPerRecipient.length || record.partsPerRecipient[recipient] != 1) return false;
   char outcome = status == STATUS_COMPLETE ? SUCCESS : status >= STATUS_FAILED ? FAILED : UNKNOWN;
   if (outcome == UNKNOWN) return false;
   boolean changed = false;
@@ -401,7 +490,7 @@ public final class SmsSendJournal {
  /** Matching by content is unsafe when another operation could own the provider row. */
  synchronized boolean ambiguousProviderOwner(Record record, int recipient, long window) {
   for (Record other : records.values()) {
-   if (other == record || other.decision != null || other.subscriptionId != record.subscriptionId || !other.bodyHash.equals(record.bodyHash) || Math.abs(other.createdAt - record.createdAt) > window) continue;
+   if (other == record || other.group || other.decision != null || other.subscriptionId != record.subscriptionId || !other.bodyHash.equals(record.bodyHash) || Math.abs(other.createdAt - record.createdAt) > window) continue;
    for (String address : other.recipients) if (address.equals(record.recipients[recipient])) return true;
   }
   // Pruned operations keep no address metadata, so they cannot be excluded for a record created within
@@ -423,7 +512,7 @@ public final class SmsSendJournal {
  // ---- Storage: one line per record, atomically replaced ---------------------------------------
 
  static String encode(Record r) {
-  StringBuilder line = new StringBuilder("v1|").append(r.operationId).append('|').append(r.subscriptionId).append('|').append(r.bindingHash).append('|').append(r.bodyHash)
+  StringBuilder line = new StringBuilder(r.group ? "m1|" : "v1|").append(r.operationId).append('|').append(r.subscriptionId).append('|').append(r.bindingHash).append('|').append(r.bodyHash)
    .append('|').append(r.createdAt).append('|').append(r.boot).append('|').append(String.join(",", r.recipients)).append('|').append(r.decision == null ? "-" : r.decision)
    .append('|').append(r.dispatching ? 1 : 0).append(r.submitted ? 1 : 0).append(r.unknown ? 1 : 0).append('|');
   for (int i = 0; i < r.partsPerRecipient.length; i++) { if (i > 0) line.append(','); line.append(r.partsPerRecipient[i]); }
@@ -435,9 +524,11 @@ public final class SmsSendJournal {
  }
  static Record decode(String line) {
   String[] f = line.split("\\|", -1);
-  if (f.length != 15 || !"v1".equals(f[0])) throw new IllegalArgumentException("record");
+  if (f.length != 15 || !("v1".equals(f[0]) || "m1".equals(f[0]))) throw new IllegalArgumentException("record");
+  boolean group = "m1".equals(f[0]);
   String[] recipients = f[7].split(",", -1);
-  Record r = new Record(f[1], Integer.parseInt(f[2]), f[3], f[4], recipients, Long.parseLong(f[5]), Long.parseLong(f[6]));
+  if (recipients.length > (group ? MAX_MMS_RECIPIENTS : MAX_RECIPIENTS)) throw new IllegalArgumentException("record");
+  Record r = new Record(f[1], Integer.parseInt(f[2]), f[3], f[4], recipients, Long.parseLong(f[5]), Long.parseLong(f[6]), group);
   if (!OPERATION.matcher(r.operationId).matches() || !r.bindingHash.matches("[0-9a-f]{64}") || !r.bodyHash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("record");
   for (String number : recipients) if (!NUMBER.matcher(number).matches()) throw new IllegalArgumentException("record");
   r.decision = "-".equals(f[8]) ? null : f[8];
@@ -450,10 +541,11 @@ public final class SmsSendJournal {
   r.reported = new boolean[r.sent.length];
   if (!"-".equals(f[13])) { if (f[13].length() != r.sent.length) throw new IllegalArgumentException("record"); for (int i = 0; i < r.reported.length; i++) r.reported[i] = f[13].charAt(i) == '1'; }
   int total = 0; for (int count : r.partsPerRecipient) total += count;
-  if (total != r.sent.length || r.delivery.length != r.sent.length || (r.partsPerRecipient.length != 0 && r.partsPerRecipient.length != recipients.length)) throw new IllegalArgumentException("record");
+  if (total != r.sent.length || r.delivery.length != r.sent.length || (r.partsPerRecipient.length != 0 && r.partsPerRecipient.length != r.units())) throw new IllegalArgumentException("record");
+  if (group && total > 1) throw new IllegalArgumentException("record");
   for (int i = 0; i < r.sent.length; i++) if ("usf".indexOf(r.sent[i]) < 0 || "usf".indexOf(r.delivery[i]) < 0) throw new IllegalArgumentException("record");
   String[] rows = f[14].split(",", -1);
-  if (rows.length != recipients.length) throw new IllegalArgumentException("record");
+  if (rows.length != r.providerRow.length) throw new IllegalArgumentException("record");
   for (int i = 0; i < rows.length; i++) r.providerRow[i] = Long.parseLong(rows[i]);
   return r;
  }

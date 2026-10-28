@@ -23,6 +23,8 @@ public final class SmsTelephonyConfiguration {
  public final Class<? extends BroadcastReceiver> receiverClass;
  public final Admission admission;
  public final JournalStoreFactory store;
+ /** Authority of the host's {@link MmsFileProvider}; null when this host does not send MMS. */
+ public final String mmsFileAuthority;
 
  /**
   * @param legacyJournalFile a plaintext journal in {@code noBackupFilesDir} written by an earlier host
@@ -46,6 +48,21 @@ public final class SmsTelephonyConfiguration {
   this.receiverClass = java.util.Objects.requireNonNull(receiverClass);
   this.admission = java.util.Objects.requireNonNull(admission);
   this.store = java.util.Objects.requireNonNull(store);
+  this.mmsFileAuthority = null;
+ }
+ /**
+  * The same identity plus the authority of the host's {@link MmsFileProvider}, which reviewed MMS sends
+  * ({@code mms.send.v1}) hand to the platform MMS service. Without it MMS sends are unavailable.
+  */
+ public SmsTelephonyConfiguration withMmsFiles(String mmsFileAuthority) {
+  return new SmsTelephonyConfiguration(this, text(mmsFileAuthority, "[A-Za-z0-9_.-]{1,200}"));
+ }
+ private SmsTelephonyConfiguration(SmsTelephonyConfiguration base, String mmsFileAuthority) {
+  journalSlot = base.journalSlot; legacyJournalFile = base.legacyJournalFile; retiredNamespace = base.retiredNamespace;
+  sentAction = base.sentAction; deliveredAction = base.deliveredAction; callbackScheme = base.callbackScheme;
+  operationExtra = base.operationExtra; indexExtra = base.indexExtra; imageFeature = base.imageFeature;
+  receiverClass = base.receiverClass; admission = base.admission; store = base.store;
+  this.mmsFileAuthority = mmsFileAuthority;
  }
  private static String text(String value, String pattern) {
   if (value == null || !value.matches(pattern)) throw new IllegalArgumentException("Invalid SMS telephony configuration");

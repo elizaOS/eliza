@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -181,6 +182,50 @@ public final class MmsStore {
   }
   return row;
  }
+ /**
+  * The default SMS app's own row of a reviewed MMS send (Android stores nothing for it): an outbox
+  * M-Send.req in the conversation of all recipients, with its addresses and parts. Settled by the send
+  * confirmation ({@link #settleOutgoingMms}).
+  */
+ public static long persistOutgoingMms(Context context, String[] recipients, List<MmsPdu.Part> parts, String transactionId, int subscriptionId, long createdAtMillis) throws IOException {
+  ContentResolver resolver = context.getContentResolver();
+  long thread = Telephony.Threads.getOrCreateThreadId(context, new LinkedHashSet<>(java.util.Arrays.asList(recipients)));
+  ContentValues values = new ContentValues();
+  values.put(Telephony.Mms.THREAD_ID, thread);
+  values.put(Telephony.Mms.DATE, createdAtMillis / 1000);
+  values.put(Telephony.Mms.DATE_SENT, createdAtMillis / 1000);
+  values.put(Telephony.Mms.MESSAGE_BOX, Telephony.Mms.MESSAGE_BOX_OUTBOX);
+  values.put(Telephony.Mms.READ, 1);
+  values.put(Telephony.Mms.SEEN, 1);
+  values.put(Telephony.Mms.MESSAGE_TYPE, MmsPdu.SEND_REQ);
+  values.put(Telephony.Mms.MMS_VERSION, MmsPdu.VERSION_1_2);
+  values.put(Telephony.Mms.TRANSACTION_ID, transactionId);
+  values.put(Telephony.Mms.CONTENT_TYPE, "application/vnd.wap.multipart.related");
+  values.put(Telephony.Mms.MESSAGE_CLASS, "personal");
+  boolean textOnly = true;
+  for (MmsPdu.Part part : parts) if (!part.isText()) textOnly = false;
+  values.put(Telephony.Mms.TEXT_ONLY, textOnly ? 1 : 0);
+  if (subscriptionId >= 0) values.put(Telephony.Mms.SUBSCRIPTION_ID, subscriptionId);
+  Uri row = resolver.insert(Telephony.Mms.Outbox.CONTENT_URI, values);
+  if (row == null) throw new IllegalStateException("MMS provider refused the message");
+  String id = row.getLastPathSegment();
+  try {
+   address(resolver, id, "insert-address-token", ADDRESS_FROM);
+   for (String address : recipients) address(resolver, id, address, ADDRESS_TO);
+   for (MmsPdu.Part part : parts) part(resolver, id, part);
+  } catch (IOException | RuntimeException failed) {
+   resolver.delete(row, null, null);
+   throw failed;
+  }
+  return Long.parseLong(id);
+ }
+ /** Moves the default SMS app's own outgoing MMS out of the outbox: sent (2) or failed (5). */
+ public static boolean settleOutgoingMms(Context context, long row, boolean sent) {
+  ContentValues values = new ContentValues();
+  values.put(Telephony.Mms.MESSAGE_BOX, sent ? Telephony.Mms.MESSAGE_BOX_SENT : Telephony.Mms.MESSAGE_BOX_FAILED);
+  return context.getContentResolver().update(ContentUris.withAppendedId(Telephony.Mms.CONTENT_URI, row), values,
+   Telephony.Mms.MESSAGE_BOX + " = ?", new String[] { Integer.toString(Telephony.Mms.MESSAGE_BOX_OUTBOX) }) == 1;
+ }
  private static void address(ContentResolver resolver, String id, String address, int type) {
   ContentValues values = new ContentValues();
   values.put(Telephony.Mms.Addr.ADDRESS, address);
@@ -219,7 +264,8 @@ public final class MmsStore {
   if (!validFileName(name)) throw new IllegalArgumentException("Invalid MMS file");
   return new File(directory(context), name);
  }
- static Uri fileUri(SmsRoleConfiguration config, String name) { return new Uri.Builder().scheme("content").authority(config.mmsFileAuthority).appendPath(name).build(); }
+ static Uri fileUri(SmsRoleConfiguration config, String name) { return fileUri(config.mmsFileAuthority, name); }
+ static Uri fileUri(String authority, String name) { return new Uri.Builder().scheme("content").authority(authority).appendPath(name).build(); }
  static void delete(Context context, String name) { if (validFileName(name)) { File file = new File(directory(context), name); if (file.exists() && !file.delete()) android.util.Log.w("MmsStore", "MMS file not removed"); } }
 
  // ---- Notices ---------------------------------------------------------------------------------

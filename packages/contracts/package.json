@@ -52,6 +52,12 @@
       "import": "./dist/sms-send.js",
       "default": "./dist/sms-send.js"
     },
+    "./mms-send": {
+      "eliza-source": "./src/mms-send.ts",
+      "types": "./dist/mms-send.d.ts",
+      "import": "./dist/mms-send.js",
+      "default": "./dist/mms-send.js"
+    },
     "./native-telephony": {
       "eliza-source": "./src/native-telephony.ts",
       "types": "./dist/native-telephony.d.ts",

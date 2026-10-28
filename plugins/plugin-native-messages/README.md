@@ -61,7 +61,21 @@ native admission proves the install is its image. Renderers use
   callback actions, data scheme and receiver are migration-sensitive. A host
   keeps the values it already shipped.
 
-`android/src/test` holds JVM tests for the journal, cursor and provider mapping.
+- Reviewed MMS (`mms.send.v1`, `@elizaos/contracts/mms-send`): one message to
+  every recipient (a group conversation) with optional text and up to five
+  JPEG/PNG/GIF attachments. The binding covers the text and each attachment's
+  type, name, SHA-256 and size; the native side recomputes them from the bytes
+  before review, and the dialog shows recipients, SIM, attachment previews and
+  text. MMS records share the journal and its operation-ID space; nothing but
+  hashes is stored. It needs the SMS role (Android stores nothing a default SMS
+  app sends), the host's `MmsFileProvider` named through
+  `SmsTelephonyConfiguration.withMmsFiles(authority)`, and an MMS-enabled
+  carrier; a PDU over the carrier's size limit is refused before review.
+  "sent" is the carrier's send confirmation (M-Send.conf Ok); MMS delivery is
+  never claimed. `status().mmsSend` reports whether the path is available.
+
+`android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor
+and provider mapping.
 Real SIMs, carrier delivery reports and role grants need device qualification.
 
 ## Default SMS app (SMS role)
