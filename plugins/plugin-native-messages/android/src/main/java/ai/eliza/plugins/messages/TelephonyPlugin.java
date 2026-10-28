@@ -256,7 +256,14 @@ public abstract class TelephonyPlugin extends Plugin {
   * Runs a read that needs the permission alias, cancelled on background, lock, screen-off and
   * permission change, and fenced again on the main thread before the result is published.
   */
- protected final void fencedRead(PluginCall call, String alias, String noun, Read read) {
+ protected final void fencedRead(PluginCall call, String alias, String noun, Read read) { fenced(call, alias, noun, read, true); }
+ /**
+  * Runs a provider write under the same entry fence as {@link #fencedRead}, then reports its
+  * outcome even if access changed while it ran. The write cannot be undone, so rejecting
+  * afterwards would claim nothing changed when something did. The outcome must carry no content.
+  */
+ protected final void fencedWrite(PluginCall call, String alias, String noun, Read write) { fenced(call, alias, noun, write, false); }
+ private void fenced(PluginCall call, String alias, String noun, Read read, boolean fenceResult) {
   if (getPermissionState(alias) != PermissionState.GRANTED) { call.reject(noun + " access is not granted", "permission-required"); return; }
   final long access = generation.get();
   final android.os.CancellationSignal cancel = new android.os.CancellationSignal(); reads.add(cancel);
@@ -266,7 +273,7 @@ public abstract class TelephonyPlugin extends Plugin {
      if (!current(access, cancel, alias)) throw new SecurityException();
      JSObject value = read.read(cancel);
      main.post(() -> {
-      if (!current(access, cancel, alias)) call.reject(noun + " access changed. Refresh after unlocking.", "unavailable");
+      if (fenceResult && !current(access, cancel, alias)) call.reject(noun + " access changed. Refresh after unlocking.", "unavailable");
       else call.resolve(value);
      });
     } catch (Exception unreadable) { call.reject(noun + " could not be read. Check access and refresh.", "unavailable"); }
@@ -367,7 +374,9 @@ public abstract class TelephonyPlugin extends Plugin {
   if (refused(call)) return;
   long thread = SmsRecords.threadRow(call.getString("threadId", "")), through = date(call, "throughDate");
   if (thread < 1 || through <= 0) { call.reject("Invalid conversation", "invalid"); return; }
-  fencedRead(call, "sms", "Messages", cancel -> {
+  // A write: the entry fence still refuses it when locked, backgrounded or not granted, but once
+  // rows are marked read the count is reported (it carries no message content).
+  fencedWrite(call, "sms", "Messages", cancel -> {
    JSObject value = new JSObject();
    boolean holder = MmsStore.isDefaultSmsApp(getContext());
    value.put("defaultSmsApp", holder);

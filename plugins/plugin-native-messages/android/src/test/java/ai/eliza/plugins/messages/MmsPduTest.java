@@ -138,4 +138,13 @@ public final class MmsPduTest {
   assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(concat(b(0x8C, 0x84, 0xB0), huge))); // Unknown header, skipped by length
   assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(concat(b(0x8C, 0x84, 0x89), huge))); // From
  }
+
+ @Test public void aValueLengthShorterThanItsCharsetIsRefusedAsMalformed() {
+  // Value-length 0 followed by the UTF-8 charset short-integer: the charset runs past the value.
+  byte[] subject = concat(b(0x8C, 0x84, 0x96), b(0x00, 0xEA), text("tail"));
+  assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(subject));
+  // A long-integer charset (length 2) inside a value-length of 1 is refused the same way.
+  byte[] longCharset = concat(b(0x8C, 0x84, 0x96), b(0x01, 0x02, 0x00, 0x6A), text("tail"));
+  assertThrows(IllegalArgumentException.class, () -> MmsPdu.parse(longCharset));
+ }
 }

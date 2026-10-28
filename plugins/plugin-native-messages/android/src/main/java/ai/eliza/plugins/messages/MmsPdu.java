@@ -98,6 +98,8 @@ public final class MmsPdu {
    if (c < 31 || c == 31) {
     int length = valueLength(), stop = i + length; need(length);
     int mib = (int) integer();
+    // A value-length shorter than its own charset must not let the text run backwards.
+    if (i > stop) throw new IllegalArgumentException("Invalid MMS encoded string");
     int start = i; if (i < stop && (b[i] & 0xff) == 0x7f) start = ++i;
     int text = stop; for (int k = start; k < stop; k++) if (b[k] == 0) { text = k; break; }
     String value = new String(b, start, text - start, charsetFor(mib));
