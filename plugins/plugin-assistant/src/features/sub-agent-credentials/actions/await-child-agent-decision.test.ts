@@ -77,7 +77,8 @@ describe("AWAIT_CHILD_AGENT_DECISION", () => {
     });
   });
 
-  test("validate fails without childSessionId", async () => {
+  test("validate passes without arguments when the bus is registered", async () => {
+    // The planner tool surface calls validate with no options.
     const bus: SubAgentChildDecisionBus = { awaitDecision: vi.fn() };
     const ok = await awaitChildAgentDecisionAction.validate(
       createRuntime({
@@ -85,8 +86,31 @@ describe("AWAIT_CHILD_AGENT_DECISION", () => {
       }) as never,
       message() as never,
       undefined,
-      { parameters: {} } as never,
+    );
+    expect(ok).toBe(true);
+  });
+
+  test("validate fails when the bus is missing", async () => {
+    const ok = await awaitChildAgentDecisionAction.validate(
+      createRuntime({}) as never,
+      message() as never,
+      undefined,
     );
     expect(ok).toBe(false);
+  });
+
+  test("handler names the missing childSessionId", async () => {
+    const bus: SubAgentChildDecisionBus = { awaitDecision: vi.fn() };
+    const result = await awaitChildAgentDecisionAction.handler(
+      createRuntime({
+        [SUB_AGENT_CHILD_DECISION_BUS_SERVICE]: bus,
+      }) as never,
+      message() as never,
+      undefined,
+      { parameters: {} } as never,
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toBe("Missing required parameter: childSessionId");
+    expect(bus.awaitDecision).not.toHaveBeenCalled();
   });
 });

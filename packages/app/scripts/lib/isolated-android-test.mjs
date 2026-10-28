@@ -7,7 +7,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { promisify } from "node:util";
+import { isDeepStrictEqual, promisify } from "node:util";
 
 const executeFile = promisify(execFile);
 
@@ -32,6 +32,10 @@ import {
 const sha256 = (file) =>
   createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const packagePattern = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+// Written into every development-device report so it is never cited as stronger evidence.
+export const DEVELOPMENT_DEVICE_NOTE =
+  "Development device evidence on an owner-approved physical device that is not reset. Not release hardware, a product image, or device or user acceptance. Where caller evidence text says emulator, it means this device.";
 
 export async function runIsolatedAndroidTest({
   serial,
@@ -48,6 +52,8 @@ export async function runIsolatedAndroidTest({
   expectedTests = 1,
   requiredAbi,
   expectedAvdName,
+  expectedCuttlefish,
+  developmentDevice,
   androidUser,
   deviceLease,
   signal,
@@ -57,6 +63,8 @@ export async function runIsolatedAndroidTest({
   companionApks = [],
   directory,
   evidence,
+  appEvidence,
+  wake = false,
   runnerArgs = [],
   upgradeRunnerArgs = [],
   beforeUpgrade,
@@ -67,7 +75,68 @@ export async function runIsolatedAndroidTest({
   collectVariant,
   cleanupVariant,
 }) {
-  assert.match(serial ?? "", /^emulator-\d+$/);
+  // A TCP endpoint is never ownership. Hosts explicitly acknowledge a disposable
+  // instance and pin its serial property and full image fingerprint.
+  // Pins are frozen: hooks and the report share them, and a hook cannot move them.
+  const cuttlefish = expectedCuttlefish
+    ? Object.freeze({ ...expectedCuttlefish })
+    : null;
+  // A physical device is not disposable: the owner approves it for the run and
+  // pins its model and full build fingerprint. Its adb serial is its ro.serialno.
+  const device = developmentDevice
+    ? Object.freeze({ ...developmentDevice, serialNumber: serial })
+    : null;
+  if (device) {
+    assert.equal(
+      expectedAvdName,
+      undefined,
+      "Choose AVD, Cuttlefish or development device admission",
+    );
+    assert.equal(
+      cuttlefish,
+      null,
+      "Choose AVD, Cuttlefish or development device admission",
+    );
+    assert.match(
+      serial ?? "",
+      /^[A-Za-z0-9]{6,32}$/,
+      "A development device serial is its ro.serialno",
+    );
+    assert.equal(
+      device.ownerApproved,
+      true,
+      "Owner-approved development device required",
+    );
+    assert.match(device.model ?? "", /^[A-Za-z0-9_. -]{2,64}$/);
+    assert.match(device.fingerprint ?? "", /^[A-Za-z0-9_./:+-]+$/);
+    assert.ok(
+      device.fingerprint.includes("/"),
+      "Exact build fingerprint required",
+    );
+    assert.equal(androidUser, 0, "A development device requires owner user 0");
+  } else if (cuttlefish) {
+    assert.equal(
+      expectedAvdName,
+      undefined,
+      "Choose AVD or Cuttlefish admission",
+    );
+    assert.match(serial ?? "", /^127\.0\.0\.1:[1-9][0-9]{0,4}$/);
+    assert.ok(Number(serial.split(":")[1]) <= 65535);
+    assert.equal(
+      cuttlefish.callerOwned,
+      true,
+      "Caller-owned disposable Cuttlefish required",
+    );
+    assert.match(cuttlefish.serialNumber ?? "", /^[A-Za-z0-9_.-]+$/);
+    assert.match(cuttlefish.fingerprint ?? "", /^[A-Za-z0-9_./:+-]+$/);
+    assert.ok(
+      cuttlefish.fingerprint.includes("/"),
+      "Exact image fingerprint required",
+    );
+    assert.equal(androidUser, 0, "Cuttlefish currently requires owner user 0");
+  } else assert.match(serial ?? "", /^emulator-\d+$/);
+  const pinned = cuttlefish ?? device;
+  const pinnedLabel = cuttlefish ? "Cuttlefish" : "Development device";
   const runnerEvidenceFor = (additionalRunners) => {
     assert.ok(
       Array.isArray(additionalRunners),
@@ -117,7 +186,7 @@ export async function runIsolatedAndroidTest({
   assert.notEqual(packageName, testPackage);
   assert.ok(
     ["arm64-v8a", "x86_64"].includes(requiredAbi),
-    "Explicit emulator ABI required",
+    "Explicit ABI required",
   );
   assert.ok(
     Number.isSafeInteger(expectedTests) && expectedTests >= classes.length,
@@ -126,7 +195,7 @@ export async function runIsolatedAndroidTest({
     Number.isSafeInteger(androidUser) && androidUser >= 0,
     "Explicit Android user required",
   );
-  assert.match(expectedAvdName ?? "", /^[A-Za-z0-9_.-]+$/);
+  if (!pinned) assert.match(expectedAvdName ?? "", /^[A-Za-z0-9_.-]+$/);
   for (const deadline of [
     commandTimeoutMs,
     instrumentationTimeoutMs,
@@ -160,6 +229,31 @@ export async function runIsolatedAndroidTest({
     path.isAbsolute(directory),
     "Explicit absolute report directory required",
   );
+  // App-private files are read with run-as after instrumentation. Names are
+  // shell-safe and cannot leave the declared app-relative directory.
+  const appFiles = appEvidence && {
+    directory: appEvidence.directory,
+    json: [...(appEvidence.json ?? [])],
+    png: [...(appEvidence.png ?? [])],
+  };
+  if (appFiles) {
+    assert.match(
+      appFiles.directory ?? "",
+      /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/,
+      "App-relative evidence directory required",
+    );
+    for (const name of appFiles.json)
+      assert.match(
+        name,
+        /^[A-Za-z0-9_.-]+\.json$/,
+        "Invalid JSON evidence name",
+      );
+    for (const name of appFiles.png)
+      assert.match(name, /^[A-Za-z0-9_.-]+\.png$/, "Invalid PNG evidence name");
+    const names = [...appFiles.json, ...appFiles.png];
+    assert.ok(names.length > 0, "At least one evidence file required");
+    assert.equal(new Set(names).size, names.length, "Duplicate evidence file");
+  }
   const validateRunnerArgs = (runnerArgs) => {
     assert.ok(Array.isArray(runnerArgs) && runnerArgs.length % 3 === 0);
     for (let i = 0; i < runnerArgs.length; i += 3) {
@@ -318,7 +412,7 @@ export async function runIsolatedAndroidTest({
   }
   // Cleanup runs independently of an aborted operation signal and has its own caller deadline.
   let cleaning = false;
-  const run = async (...args) =>
+  const rawRun = async (...args) =>
     (
       await executeFile(adb, ["-s", serial, ...args], {
         env,
@@ -332,6 +426,53 @@ export async function runIsolatedAndroidTest({
         maxBuffer: 4 * 1024 ** 2,
       })
     ).stdout;
+  let pinnedBootId;
+  const assertPinnedInstance = async () => {
+    assert.equal(
+      (await rawRun("shell", "getprop", "ro.build.fingerprint")).trim(),
+      pinned.fingerprint,
+      `${pinnedLabel} fingerprint changed`,
+    );
+    assert.equal(
+      (await rawRun("shell", "getprop", "ro.serialno")).trim(),
+      pinned.serialNumber,
+      `${pinnedLabel} instance changed`,
+    );
+    assert.equal(
+      (await rawRun("shell", "am", "get-current-user")).trim(),
+      "0",
+      `${pinnedLabel} foreground user changed`,
+    );
+    const bootId = (
+      await rawRun("shell", "cat", "/proc/sys/kernel/random/boot_id")
+    ).trim();
+    assert.match(bootId, /^[a-f0-9-]{36}$/);
+    if (pinnedBootId)
+      assert.equal(
+        bootId,
+        pinnedBootId,
+        `${pinnedLabel} boot changed; retain installations for explicit recovery`,
+      );
+    else pinnedBootId = bootId;
+  };
+  // Recheck on every command, including callback commands and cancellation cleanup.
+  // A reconnect/reboot must not uninstall packages from a different instance.
+  const run = async (...args) => {
+    if (pinnedBootId) await assertPinnedInstance();
+    return rawRun(...args);
+  };
+  const browserRole = async () =>
+    (
+      await run(
+        "shell",
+        "cmd",
+        "role",
+        "get-role-holders",
+        "--user",
+        "0",
+        "android.app.role.BROWSER",
+      )
+    ).trim();
   const home = async () =>
     (
       await run(
@@ -346,6 +487,39 @@ export async function runIsolatedAndroidTest({
         "android.intent.category.HOME",
       )
     ).trim();
+  // Settings a test can change on a device that is not reset after the run.
+  // Wi-Fi and media volume are read live; the settings table can lag them.
+  const deviceSettings = async () => {
+    const values = {};
+    for (const [namespace, key] of [
+      ["system", "font_scale"],
+      ["system", "screen_off_timeout"],
+      ["global", "airplane_mode_on"],
+      ["global", "mobile_data"],
+    ])
+      values[key] = (
+        await run("shell", "settings", "get", namespace, key)
+      ).trim();
+    const wifi = /Wifi is (enabled|disabled)/.exec(
+      await run("shell", "cmd", "wifi", "status"),
+    );
+    assert.ok(wifi, "Wi-Fi state unreadable");
+    values.wifi = wifi[1];
+    const volume = /volume is (\d+)/.exec(
+      await run(
+        "shell",
+        "cmd",
+        "media_session",
+        "volume",
+        "--stream",
+        "3",
+        "--get",
+      ),
+    );
+    assert.ok(volume, "Media volume unreadable");
+    values.media_volume = volume[1];
+    return values;
+  };
   const packages = async () =>
     (await run("shell", "pm", "list", "packages", "-u", "--user", "all")).split(
       /\r?\n/,
@@ -354,6 +528,56 @@ export async function runIsolatedAndroidTest({
     (await packages()).some((line) =>
       packageNames.some((name) => line === `package:${name}`),
     );
+  // Binary-safe read of one declared file from the installed app's sandbox.
+  const readAppFile = async (name) => {
+    if (pinnedBootId) await assertPinnedInstance();
+    return (
+      await executeFile(
+        adb,
+        [
+          "-s",
+          serial,
+          "exec-out",
+          "run-as",
+          packageName,
+          "--user",
+          String(androidUser),
+          "cat",
+          `${appFiles.directory}/${name}`,
+        ],
+        {
+          env,
+          encoding: "buffer",
+          signal,
+          timeout: commandTimeoutMs,
+          maxBuffer: 64 * 1024 ** 2,
+        },
+      )
+    ).stdout;
+  };
+  const collectAppEvidence = async (variantName, record) => {
+    const collected = { files: {}, json: {} };
+    record.appEvidence = [];
+    for (const name of [...appFiles.json, ...appFiles.png]) {
+      const bytes = await readAppFile(name);
+      if (name.endsWith(".json"))
+        collected.json[name] = JSON.parse(bytes.toString("utf8"));
+      else
+        assert.ok(
+          bytes.subarray(0, 8).equals(PNG_SIGNATURE),
+          `${name} is not a PNG`,
+        );
+      const local = path.join(directory, `${variantName}-${name}`);
+      fs.writeFileSync(local, bytes);
+      collected.files[name] = local;
+      record.appEvidence.push({
+        name,
+        file: path.basename(local),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      });
+    }
+    return collected;
+  };
   // The canonical lease still reclaims dead PIDs. It must not expire under a live caller's work.
   const deviceKey = `android:${serial}`;
   const stateDir = deviceLeaseStateDir(env);
@@ -391,20 +615,33 @@ export async function runIsolatedAndroidTest({
     testPackage,
     companions,
     expectedAvdName,
+    ...(cuttlefish ? { expectedCuttlefish: cuttlefish } : {}),
+    ...(device
+      ? {
+          evidenceClass: "development-device",
+          note: DEVELOPMENT_DEVICE_NOTE,
+          developmentDevice: device,
+        }
+      : {}),
     requiredAbi,
     androidUser,
     testClasses: classes,
     expectedTests,
     evidence,
+    ...(appFiles ? { appEvidence: appFiles } : {}),
+    ...(wake ? { wake } : {}),
     variants: [],
   };
   let admitted = false,
     campaignFinished = false,
     previousHome,
+    previousBrowser,
+    previousSettings,
     failure,
     activeContext,
     scenarioCleanupFailure;
   const owned = new Map();
+  const unacknowledgedInstalls = new Map();
   const installedHash = async (name, command = run) => {
     const lines = (
       await command("shell", "pm", "path", "--user", String(androidUser), name)
@@ -453,6 +690,9 @@ export async function runIsolatedAndroidTest({
         "Installed APK changed before replacement",
       );
     owned.set(name, expectedHash);
+    // Killing the host adb process does not cancel Android's package session.
+    // An absent package during cleanup can still finish installing afterward.
+    unacknowledgedInstalls.set(name, expectedHash);
     assert.match(
       await run(
         "install",
@@ -464,6 +704,7 @@ export async function runIsolatedAndroidTest({
       ),
       /^Success\s*$/m,
     );
+    unacknowledgedInstalls.delete(name);
     assert.equal(
       await installedHash(name),
       expectedHash,
@@ -471,20 +712,59 @@ export async function runIsolatedAndroidTest({
     );
   };
   try {
-    assert.equal(
-      (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
-      "1",
-      "Disposable emulator required",
-    );
+    if (cuttlefish) {
+      assert.match(
+        (await rawRun("shell", "getprop", "ro.product.device")).trim(),
+        /^vsoc_[A-Za-z0-9_]+$/,
+        "Cuttlefish vsoc device required",
+      );
+      assert.equal(
+        (await rawRun("shell", "getprop", "sys.boot_completed")).trim(),
+        "1",
+        "Cuttlefish boot incomplete",
+      );
+      await assertPinnedInstance();
+      report.bootId = pinnedBootId;
+      previousBrowser = await browserRole();
+      report.originalBrowser = previousBrowser;
+    } else if (device) {
+      assert.notEqual(
+        (await rawRun("shell", "getprop", "ro.kernel.qemu")).trim(),
+        "1",
+        "An emulator is not a development device",
+      );
+      assert.equal(
+        (await rawRun("shell", "getprop", "ro.product.model")).trim(),
+        device.model,
+        "Development device model differs",
+      );
+      assert.equal(
+        (await rawRun("shell", "getprop", "sys.boot_completed")).trim(),
+        "1",
+        "Development device boot incomplete",
+      );
+      await assertPinnedInstance();
+      report.bootId = pinnedBootId;
+      previousBrowser = await browserRole();
+      report.originalBrowser = previousBrowser;
+      previousSettings = await deviceSettings();
+      report.originalSettings = previousSettings;
+    } else {
+      assert.equal(
+        (await run("shell", "getprop", "ro.kernel.qemu")).trim(),
+        "1",
+        "Disposable emulator required",
+      );
+      assert.equal(
+        (await run("emu", "avd", "name")).split(/\r?\n/)[0],
+        expectedAvdName,
+        "Selected emulator is not the caller-owned fixture AVD",
+      );
+    }
     assert.equal(
       (await run("shell", "getprop", "ro.product.cpu.abi")).trim(),
       requiredAbi,
-      "Emulator ABI mismatch",
-    );
-    assert.equal(
-      (await run("emu", "avd", "name")).split(/\r?\n/)[0],
-      expectedAvdName,
-      "Selected emulator is not the caller-owned fixture AVD",
+      "Device ABI mismatch",
     );
     report.selinux = (await run("shell", "getenforce")).trim();
     assert.equal(
@@ -497,6 +777,7 @@ export async function runIsolatedAndroidTest({
       "App or retained package data already exists; refusing replacement",
     );
     previousHome = await home();
+    report.originalHome = previousHome;
     fs.mkdirSync(directory, { recursive: true });
     admitted = true;
     for (const [index, variant] of variants.entries()) {
@@ -525,6 +806,7 @@ export async function runIsolatedAndroidTest({
         run,
         deviceLease: lease,
         record,
+        ...(device ? { developmentDevice: device } : {}),
       };
       // This caller hook is read-only admission; a rejection must not invoke cleanup.
       await preflightVariant?.(context);
@@ -719,6 +1001,7 @@ export async function runIsolatedAndroidTest({
             assert.ok(!settled, "Instrumentation exited before interruption");
             effectIssued = true;
           }
+          if (pinnedBootId) await assertPinnedInstance();
           return (
             await executeFile(adb, ["-s", serial, ...args], {
               env,
@@ -814,6 +1097,10 @@ export async function runIsolatedAndroidTest({
           phaseActive = false;
         }
       };
+      if (wake) {
+        await run("shell", "input", "keyevent", "KEYCODE_WAKEUP");
+        await run("shell", "wm", "dismiss-keyguard");
+      }
       await prepareVariant?.(context);
       signal?.throwIfAborted();
       record.instrumentation = await instrument(
@@ -842,6 +1129,8 @@ export async function runIsolatedAndroidTest({
           "candidate",
         );
       }
+      if (appFiles)
+        context.appEvidence = await collectAppEvidence(variant.name, record);
       await collectVariant?.(context);
       assert.equal(
         pendingInterruptionRecovery,
@@ -869,6 +1158,18 @@ export async function runIsolatedAndroidTest({
       assert.ok(!(await installed()), "Variant package cleanup failed");
       owned.clear();
       assert.equal(await home(), previousHome, "Default HOME changed");
+      if (pinned)
+        assert.equal(
+          await browserRole(),
+          previousBrowser,
+          "Default browser changed",
+        );
+      if (device)
+        assert.deepEqual(
+          await deviceSettings(),
+          previousSettings,
+          "Device settings changed",
+        );
     }
     report.verifiedAt = new Date().toISOString();
   } catch (error) {
@@ -880,6 +1181,17 @@ export async function runIsolatedAndroidTest({
       if (admitted) {
         // Only identities absent from all users at admission are owned by this run.
         report.cleanupErrors = [];
+        if (unacknowledgedInstalls.size) {
+          report.unacknowledgedInstalls = [...unacknowledgedInstalls].map(
+            ([packageName, expectedSha256]) => ({
+              packageName,
+              expectedSha256,
+            }),
+          );
+          report.cleanupErrors.push(
+            "An install was not acknowledged; the device may still commit it. Explicit fixture recovery is required.",
+          );
+        }
         try {
           await restoreScenario();
         } catch {
@@ -927,11 +1239,21 @@ export async function runIsolatedAndroidTest({
             }
           }
         try {
-          report.cleaned = !(await installed());
+          report.cleaned =
+            !(await installed()) && unacknowledgedInstalls.size === 0;
           report.homeUnchanged = (await home()) === previousHome;
+          if (pinned)
+            report.browserUnchanged = (await browserRole()) === previousBrowser;
+          if (device)
+            report.settingsUnchanged = isDeepStrictEqual(
+              await deviceSettings(),
+              previousSettings,
+            );
         } catch {
           report.cleaned = false;
           report.homeUnchanged = false;
+          if (pinned) report.browserUnchanged = false;
+          if (device) report.settingsUnchanged = false;
         }
         fs.writeFileSync(
           path.join(directory, "verification.json"),
@@ -940,6 +1262,8 @@ export async function runIsolatedAndroidTest({
         if (
           !report.cleaned ||
           !report.homeUnchanged ||
+          (pinned && !report.browserUnchanged) ||
+          (device && !report.settingsUnchanged) ||
           report.cleanupErrors.length
         )
           failure ??= new Error(

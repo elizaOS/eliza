@@ -343,10 +343,10 @@ export function renderRow(id, value) {
   );
 }
 
-// Mirrors the terminal-footer shape enforced by
-// packages/eliza-computer/src/lib/leaderboard.ts (markerFooterError /
-// terminalAttributionBlock), so this tool's own appends never land AFTER the
-// marker the validator requires to be the body's final source content.
+// Mirrors the trailing-footer shape this tool's own validator requires (see
+// findTrailingAttributionFooterStart below: marker line last, lane signature and
+// attribution labels above it), so this tool's own appends never land AFTER
+// the marker the validator requires to be the body's final source content.
 // Kept intentionally simpler than the validator (no fence/blockquote
 // awareness) since these patterns only need to recognize the footer shape
 // contribute-to-eliza/SKILL.md instructs contributors to append, not every

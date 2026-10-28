@@ -5,6 +5,7 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
+  ElizaError,
   type EvaluatorProcessorContext,
   isActiveMemoryEvidence,
   type Memory,
@@ -486,6 +487,72 @@ describe("durable background memory", () => {
       content: message.content,
     });
   });
+
+  it.each(["provider error", "native result"])(
+    "stops a memory job whose input exhausts the model output limit (%s)",
+    async (shape) => {
+      const { runtime, service, message } = await setup();
+      const process = vi.fn(async () => undefined);
+      runtime.registerEvaluator(evaluator(process));
+      // The provider failure recorded live: reasoning consumed the whole
+      // uncapped completion and the provider reported a length stop.
+      const truncated = new ElizaError(
+        "[cerebras] Model output did not complete successfully (length).",
+        {
+          code: "MODEL_OUTPUT_INCOMPLETE",
+          context: {
+            finishReason: "length",
+            maxTokens: null,
+            usage: { completionTokens: 40_000, reasoningTokens: 39_997 },
+          },
+        },
+      );
+      let attempts = 0;
+      let complete = false;
+      runtime.useModel = vi.fn(async () => {
+        attempts++;
+        if (complete) return '{"memory":{"ok":true}}';
+        if (shape === "provider error") throw truncated;
+        return { text: "", toolCalls: [], finishReason: "length" };
+      }) as AgentRuntime["useModel"];
+      const now = Date.now() + 10_000;
+      const scheduler = new TaskService(runtime, {
+        now: () => now,
+        setInterval: () => {
+          throw new Error("Test drives public scheduler ticks");
+        },
+        clearInterval: () => undefined,
+      });
+      await service.enqueue(message, state, { phase: "post_turn" });
+      const initial = await job(runtime);
+      // At temperature 0 the identical input truncates again: the job is
+      // finished instead of re-buying the same output on later ticks.
+      await scheduler.executeTaskById(initial.id);
+      expect(attempts).toBe(1);
+      expect(await runtime.getTask(initial.id)).toBeNull();
+      expect(process).not.toHaveBeenCalled();
+
+      // The evidence stayed pending: once the input changes it is extracted.
+      complete = true;
+      const later: Memory = {
+        ...message,
+        id: "00000000-0000-4000-8000-000000000009",
+        content: { text: "I moved to Paris.", channelType: ChannelType.DM },
+        createdAt: 20,
+      };
+      await runtime.upsertMemory(later, "messages");
+      await service.enqueue(later, state, { phase: "post_turn" });
+      await scheduler.executeTaskById((await job(runtime)).id);
+      expect(attempts).toBe(2);
+      expect(process).toHaveBeenCalledTimes(1);
+      const [[processed]] = process.mock.calls as unknown as [
+        [EvaluatorProcessorContext],
+      ];
+      expect(
+        processed.options.extraction?.messages.map((row) => row.id),
+      ).toEqual([message.id, later.id]);
+    },
+  );
 
   it.each(["headers", "cooldown"])(
     "waits for %s retry deadlines across scheduler restart and delivery replay",
@@ -2520,5 +2587,40 @@ describe("durable background memory", () => {
     expect(await runtime.getTask(first.id)).toBeNull();
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
     expect(process).toHaveBeenCalledTimes(1);
+  });
+  it("composes background provider state without the stored turn's closed trajectory step", async () => {
+    const { runtime, service, message } = await setup();
+    const owned = {
+      ...message,
+      metadata: {
+        type: "message",
+        trajectoryStepId: "closed-step",
+        trajectoryId: "closed-trajectory",
+      },
+    } as Memory;
+    await runtime.upsertMemory(owned, "messages");
+    runtime.registerEvaluator({
+      ...evaluator(),
+      providers: ["CONVERSATION_PROXIMITY"],
+    });
+    runtime.useModel = vi.fn(
+      async () => '{"memory":{"ok":true}}',
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(owned, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+
+    const composed = vi
+      .mocked(runtime.composeState)
+      .mock.calls.map(([composedMessage]) => composedMessage.metadata);
+    expect(composed).not.toHaveLength(0);
+    for (const metadata of composed) {
+      expect(metadata).not.toHaveProperty("trajectoryStepId");
+      expect(metadata).not.toHaveProperty("trajectoryId");
+    }
+    // The stored row keeps its provenance.
+    expect(
+      (await runtime.getMemoryById(owned.id as NonNullable<Memory["id"]>))
+        ?.metadata,
+    ).toMatchObject({ trajectoryStepId: "closed-step" });
   });
 });

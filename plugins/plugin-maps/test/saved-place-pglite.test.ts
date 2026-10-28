@@ -323,4 +323,28 @@ describe("saved-place durable CAS on PGlite", () => {
     expect(state?.operations).toHaveLength(MAX_SAVED_PLACES_PER_OWNER);
     expect(state?.revision).toBe(MAX_SAVED_PLACES_PER_OWNER - 1);
   });
+
+  it("saves a label the place had before when no idempotency key is given", async () => {
+    const service = new MapsService(harness.runtime);
+    const owner = "66666666-6666-4666-a666-666666666666";
+    const save = (label: string) =>
+      service.savePlace({
+        ownerEntityId: owner,
+        roomId: ROOM_ID,
+        place,
+        label,
+      });
+
+    await save("Work");
+    await save("Office");
+    const back = await save("Work");
+
+    expect(back.replayed).toBe(false);
+    expect(back.savedPlace.label).toBe("Work");
+    expect(
+      (await service.listSavedPlaces(owner)).map((saved) => saved.label),
+    ).toEqual(["Work"]);
+    // Repeating the current state is still a replay.
+    expect((await save("Work")).replayed).toBe(true);
+  });
 });

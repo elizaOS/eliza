@@ -170,6 +170,65 @@ function normalizeYouTubeVideoId(value: string): string | undefined {
   return /^[a-zA-Z0-9_-]{11}$/.test(id) ? id : undefined;
 }
 
+/**
+ * Google Ads reads campaign dates and `segments.date` in the serving
+ * customer's time zone, so every day boundary is computed in that zone. The
+ * field is immutable on the customer, so one lookup per customer is enough.
+ */
+const googleCustomerTimeZones = new Map<string, Promise<string>>();
+
+function googleCustomerTimeZone(accessToken: string, customerId: string): Promise<string> {
+  let pending = googleCustomerTimeZones.get(customerId);
+  if (!pending) {
+    pending = googleAdsRequest<GoogleAdsSearchStreamResponse<{ customer: { timeZone?: string } }>>(
+      "/googleAds:searchStream",
+      accessToken,
+      customerId,
+      {
+        method: "POST",
+        body: JSON.stringify({ query: "SELECT customer.time_zone FROM customer LIMIT 1" }),
+      },
+    ).then((response) => {
+      const timeZone = firstGoogleAdsSearchResult(response)?.customer.timeZone;
+      if (!timeZone) {
+        throw new Error(`Google Ads customer ${customerId} reports no time zone`);
+      }
+      return timeZone;
+    });
+    googleCustomerTimeZones.set(customerId, pending);
+    pending.catch(() => googleCustomerTimeZones.delete(customerId));
+  }
+  return pending;
+}
+
+/** Calendar day of `date` in `timeZone` as `YYYY-MM-DD`. */
+function googleAccountDay(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+/** Campaign `start_date_time`/`end_date_time` at daily granularity (Google Ads API v23+). */
+function googleCampaignDateTimes(
+  input: { startDate?: Date; endDate?: Date },
+  timeZone: string,
+): { startDateTime?: string; endDateTime?: string } {
+  return {
+    ...(input.startDate
+      ? { startDateTime: `${googleAccountDay(input.startDate, timeZone)} 00:00:00` }
+      : {}),
+    ...(input.endDate
+      ? { endDateTime: `${googleAccountDay(input.endDate, timeZone)} 23:59:59` }
+      : {}),
+  };
+}
+
 function firstGoogleAdsSearchResult<T>(response: GoogleAdsSearchStreamResponse<T>): T | undefined {
   if (Array.isArray(response)) {
     for (const batch of response) {
@@ -356,6 +415,13 @@ export const googleAdsProvider: AdProvider = {
     });
 
     const channelConfig = mapObjectiveToGoogleAds(input.objective);
+    const campaignDates =
+      input.startDate || input.endDate
+        ? googleCampaignDateTimes(
+            input,
+            await googleCustomerTimeZone(credentials.accessToken, accountId),
+          )
+        : {};
 
     // Create campaign budget first
     const budgetMutateResponse = await googleAdsRequest<{
@@ -400,12 +466,7 @@ export const googleAdsProvider: AdProvider = {
               status: "PAUSED",
               campaignBudget: budgetResourceName,
               ...mapBidControlsToGoogleCampaign(input),
-              startDate: input.startDate
-                ? input.startDate.toISOString().split("T")[0].replace(/-/g, "")
-                : undefined,
-              endDate: input.endDate
-                ? input.endDate.toISOString().split("T")[0].replace(/-/g, "")
-                : undefined,
+              ...campaignDates,
             },
           },
         ],
@@ -452,14 +513,12 @@ export const googleAdsProvider: AdProvider = {
       updateMask.push("name");
     }
 
-    if (input.startDate) {
-      updateFields.startDate = input.startDate.toISOString().split("T")[0].replace(/-/g, "");
-      updateMask.push("startDate");
-    }
-
-    if (input.endDate) {
-      updateFields.endDate = input.endDate.toISOString().split("T")[0].replace(/-/g, "");
-      updateMask.push("endDate");
+    if (input.startDate || input.endDate) {
+      const timeZone = await googleCustomerTimeZone(credentials.accessToken, accountId);
+      for (const [field, value] of Object.entries(googleCampaignDateTimes(input, timeZone))) {
+        updateFields[field] = value;
+        updateMask.push(field);
+      }
     }
 
     await googleAdsRequest("/campaigns:mutate", credentials.accessToken, accountId, {
@@ -966,6 +1025,7 @@ export const googleAdsProvider: AdProvider = {
 
     const startDate = dateRange?.start || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = dateRange?.end || new Date();
+    const timeZone = await googleCustomerTimeZone(credentials.accessToken, accountId);
 
     const query = `
       SELECT
@@ -976,11 +1036,11 @@ export const googleAdsProvider: AdProvider = {
         metrics.conversions
       FROM campaign
       WHERE campaign.id = '${campaignId}'
-        AND segments.date BETWEEN '${startDate.toISOString().split("T")[0]}' AND '${endDate.toISOString().split("T")[0]}'
+        AND segments.date BETWEEN '${googleAccountDay(startDate, timeZone)}' AND '${googleAccountDay(endDate, timeZone)}'
     `;
 
-    const response = await googleAdsRequest<{
-      results: Array<{
+    const response = await googleAdsRequest<
+      GoogleAdsSearchStreamResponse<{
         campaign: { id: string };
         metrics: {
           impressions: string;
@@ -988,13 +1048,13 @@ export const googleAdsProvider: AdProvider = {
           costMicros: string;
           conversions: string;
         };
-      }>;
-    }>("/googleAds:searchStream", credentials.accessToken, accountId, {
+      }>
+    >("/googleAds:searchStream", credentials.accessToken, accountId, {
       method: "POST",
       body: JSON.stringify({ query }),
     });
 
-    const result = response.results?.[0];
+    const result = firstGoogleAdsSearchResult(response);
     if (!result) {
       return {
         success: true,
@@ -1006,7 +1066,9 @@ export const googleAdsProvider: AdProvider = {
       spend: parseInt(result.metrics.costMicros || "0") / 1_000_000,
       impressions: parseInt(result.metrics.impressions || "0"),
       clicks: parseInt(result.metrics.clicks || "0"),
-      conversions: parseInt(result.metrics.conversions || "0"),
+      // Keep the existing integer-count contract: updateMetrics persists this
+      // value in ad_campaigns.total_conversions (an integer column).
+      conversions: Number.parseInt(result.metrics.conversions || "0", 10),
     };
 
     return { success: true, metrics };

@@ -300,7 +300,7 @@ export class BirdeyeService extends Service {
     const BATCH_SIZE = 20; // max birdeye allows
     const TOTAL = options?.total ?? 100;
     const OFFSETS = Array.from(
-      { length: TOTAL / BATCH_SIZE },
+      { length: Math.ceil(TOTAL / BATCH_SIZE) },
       (_, i) => i * BATCH_SIZE,
     );
 
@@ -362,7 +362,7 @@ export class BirdeyeService extends Service {
         byKey.set(key, t);
       }
     }
-    const merged = Array.from(byKey.values());
+    const merged = Array.from(byKey.values()).slice(0, TOTAL);
 
     // Save to cache (ignore cache errors; don’t block the return path)
     const output = { data: merged, setAt: Date.now() };
@@ -474,7 +474,7 @@ export class BirdeyeService extends Service {
     options: GetCacheTimedOptions = {},
   ): Promise<TokenTradeDataSingleResponse | false> {
     const key = `birdeye_tokenTradeData_${chain}_${tokenAddress}_${frames}`;
-    const tsInMs = options.tsInMs ?? CACHE_DEFAULTS.TOKEN_TRADE_DATA_TTL;
+    const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan =
       options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_TRADE_DATA_TTL;
 
@@ -668,7 +668,7 @@ export class BirdeyeService extends Service {
     options: GetCacheTimedOptions = {},
   ): Promise<TokenSecurityResponse | false> {
     const key = `birdeye_tokenSecurityData_${chain}_${tokenAddress}`;
-    const tsInMs = options.tsInMs ?? CACHE_DEFAULTS.TOKEN_SECURITY_DATA_TTL;
+    const tsInMs = options.tsInMs ?? Date.now();
     const notOlderThan =
       options.notOlderThan ?? CACHE_DEFAULTS.TOKEN_SECURITY_DATA_TTL;
 

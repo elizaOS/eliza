@@ -251,9 +251,12 @@ function convertLinks(text: string, codeSink: string[]): string {
   // The URL group tolerates one level of balanced parentheses, as the
   // Telegram converter does: a plain [^)]+ capture cuts a Wikipedia-style
   // URL at its inner closing paren and leaves a malformed link token.
+  // The leading alternation keeps inline-code spans literal: a Markdown link
+  // example inside backticks must not become a Slack link token.
   return text.replace(
-    /\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
-    (_, linkText, url) => {
+    /(`[^`\n]+`)|\[([^\]]+)\]\(((?:[^()]|\([^()]*\))+)\)/g,
+    (match, inlineCode, linkText, url) => {
+      if (inlineCode) return match;
       const trimmedUrl = url.trim();
       const trimmedText = linkText.trim();
       // If link text matches URL, just use URL
@@ -281,6 +284,22 @@ function convertLinks(text: string, codeSink: string[]): string {
  * Holds inline code spans aside like fenced bodies, so the style passes leave
  * `a*b*c` and `**kwargs` as written. A span never takes in a held sentinel.
  */
+/**
+ * Holds a bare URL aside as a Slack link token, like convertLinks does for
+ * [text](url), so the style passes cannot rewrite `*` or `_` in it
+ * (`https://example.com/a*b*c` was sent as `a_b_c`, a different address).
+ * Balanced parentheses and `|` (sent as %7C) stay in the URL; trailing
+ * punctuation and emphasis closers do not. A URL already inside a `<...>`
+ * token is left alone.
+ */
+function convertBareUrls(text: string, codeSink: string[]): string {
+  return text.replace(
+    /(?<![<|\w])https?:\/\/(?:[^\s<>()]|\([^\s()]*\))*(?:[^\s<>().,;:!?*_~'"]|\([^\s()]*\))/g,
+    (url) =>
+      holdAside(guardLinkToken(`<${escapeSlackLinkUrl(url)}>`), codeSink),
+  );
+}
+
 function convertInlineCode(text: string, codeSink: string[]): string {
   return text.replace(new RegExp(`\`[^\`\n${CODE_DELIM}]+\``, "g"), (span) =>
     holdAside(escapeSlackMrkdwnSegment(span), codeSink),
@@ -342,6 +361,7 @@ export function markdownToSlackMrkdwn(markdown: string): string {
   let result = convertCodeBlocks(stripSentinelDelimiters(markdown), codeSink);
   result = convertLinks(result, codeSink);
   result = convertInlineCode(result, codeSink);
+  result = convertBareUrls(result, codeSink);
   result = convertHeadings(result);
   result = convertBold(result);
   result = convertItalic(result);

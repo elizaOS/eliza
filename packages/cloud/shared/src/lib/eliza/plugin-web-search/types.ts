@@ -5,6 +5,15 @@ export interface IWebSearchService extends Service {
   search(query: string, options?: SearchOptions): Promise<SearchResponse>;
 }
 
+/**
+ * Website reputation of a result address. `not_listed` only means no current
+ * threat list contains it; nothing here means the site is safe.
+ */
+export type SearchResultReputation =
+  | { status: "listed"; sources: string[]; categories: string[]; warning: string }
+  | { status: "not_listed"; label: "No known threat" }
+  | { status: "unavailable" };
+
 export type SearchResult = {
   title: string;
   url: string;
@@ -12,7 +21,10 @@ export type SearchResult = {
   rawContent?: string;
   score: number;
   publishedDate?: string;
+  reputation?: SearchResultReputation;
 };
+
+export type SearchReputationWarning = { url: string; host: string; warning: string };
 
 export type SearchImage = {
   url: string;
@@ -34,6 +46,8 @@ export type SearchResponse = {
     totalTokens: number;
   };
   cost?: number;
+  /** Listed addresses that appear in the synthesized answer text. */
+  reputationWarnings?: SearchReputationWarning[];
 };
 
 export interface SearchOptions {

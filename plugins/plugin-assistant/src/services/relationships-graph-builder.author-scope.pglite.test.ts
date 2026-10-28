@@ -238,4 +238,69 @@ describe("relationships graph author scope", () => {
       ["Alice semantic fact", "Alice alternate semantic fact"].sort(),
     );
   });
+
+  it("lists only the person's own messages as relevant memories", async () => {
+    const runtime = await createRuntime(runtimes);
+    const agentId = runtime.agentId;
+    const alice = uuidv4() as UUID;
+    const bob = uuidv4() as UUID;
+    const worldId = uuidv4() as UUID;
+    const aliceRoom = uuidv4() as UUID;
+    const bobRoom = uuidv4() as UUID;
+    await runtime.createEntities([
+      { id: alice, agentId, names: ["alice"], metadata: {} },
+      { id: bob, agentId, names: ["bob"], metadata: {} },
+    ]);
+    await runtime.createWorld({
+      id: worldId,
+      name: "World",
+      agentId,
+      messageServerId: worldId,
+    });
+    await runtime.createRooms([
+      {
+        id: aliceRoom,
+        name: "Alice DM",
+        agentId,
+        worldId,
+        source: "discord",
+        type: ChannelType.DM,
+      },
+      {
+        id: bobRoom,
+        name: "Bob DM",
+        agentId,
+        worldId,
+        source: "discord",
+        type: ChannelType.DM,
+      },
+    ]);
+    await runtime.createRoomParticipants([alice], aliceRoom);
+    await runtime.createRoomParticipants([bob], bobRoom);
+    const message = (entityId: UUID, roomId: UUID, text: string) =>
+      runtime.createMemory(
+        { entityId, agentId, roomId, content: { text } },
+        "messages",
+      );
+    await message(alice, aliceRoom, "hi there");
+    await message(bob, bobRoom, "my bank PIN is 4512, keep it secret");
+    await message(agentId, bobRoom, "noted, Bob");
+
+    const service = createNativeRelationshipsGraphService(runtime, {
+      async searchContacts() {
+        return [{ entityId: alice }, { entityId: bob }];
+      },
+      async getContact(entityId: UUID) {
+        return { entityId };
+      },
+      async getCandidateMerges() {
+        return [];
+      },
+    });
+    const detail = await service.getPersonDetail(alice);
+
+    expect(detail?.relevantMemories.map((memory) => memory.text)).toEqual([
+      "hi there",
+    ]);
+  });
 });

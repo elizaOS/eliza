@@ -83,6 +83,10 @@ export interface ElizaPasswordsPlugin {
   lock(): Promise<{ locked: true }>;
   list(): Promise<{ entries: PasswordEntrySummary[] }>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
+  /** Native protected creation form. No secret or draft is supplied through the bridge. */
+  openEditor(): Promise<
+    { status: "saved"; id: string } | { status: "cancelled" }
+  >;
   remove(input: { id: string }): Promise<{ removed: true }>;
   /**
    * Deletes the vault only when it can never be decrypted again (its key was lost or

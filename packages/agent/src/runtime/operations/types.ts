@@ -139,8 +139,12 @@ export interface OperationPhase {
 
 export interface RuntimeOperation {
   id: string;
-  /** Local executor identity; absent on records written before ownership tracking. */
-  processOwner?: { hostname: string; pid: number };
+  /**
+   * Local executor identity; absent on records written before ownership
+   * tracking. `incarnation` is unique per process, so a later process that
+   * reuses the PID is not mistaken for the owner; absent on older records.
+   */
+  processOwner?: { hostname: string; pid: number; incarnation?: string };
   kind: OperationKind;
   intent: OperationIntent;
   tier: ReloadTier;

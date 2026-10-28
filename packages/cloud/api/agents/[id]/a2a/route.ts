@@ -94,9 +94,9 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
     image: character.avatar_url || `${baseUrl}/default-avatar.png`,
     version: "1.0.0",
     capabilities: {
-      streaming: true,
+      streaming: false,
       pushNotifications: false,
-      stateTransitionHistory: true,
+      stateTransitionHistory: false,
     },
     authentication: {
       schemes: [
@@ -115,15 +115,6 @@ export function generateAgentCard(character: UserCharacter, baseUrl: string) {
           type: "token-based" as const,
           inputCostPer1k: 0.005,
           outputCostPer1k: 0.015,
-        },
-      },
-      {
-        id: "generate_image",
-        name: "Image Generation",
-        description: `Generate images as ${character.name}`,
-        pricing: {
-          type: "fixed" as const,
-          amount: 0.05,
         },
       },
     ],

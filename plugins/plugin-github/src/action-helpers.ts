@@ -231,15 +231,26 @@ export function getServiceOrNull(runtime: IAgentRuntime): GitHubService | null {
   return runtime.getService<GitHubService>(GITHUB_SERVICE_TYPE);
 }
 
-export function buildResolvedClient(
+/**
+ * Resolve the client for a selection from the current account list. Pass
+ * `refresh: "on-miss"` from `validate`, which runs on every message: it only
+ * re-reads accounts when none matches, so a newly connected account is found.
+ */
+export async function buildResolvedClient(
   runtime: IAgentRuntime,
   selection: GitHubIdentity | GitHubAccountSelection,
-): ResolvedClient | { error: string } {
-  if (!getServiceOrNull(runtime)) {
+  opts: { refresh?: "always" | "on-miss" } = {},
+): Promise<ResolvedClient | { error: string }> {
+  const service = getServiceOrNull(runtime);
+  if (!service) {
     return { error: "GitHub service not available" };
   }
   const resolvedSelection =
     typeof selection === "string" ? { role: selection } : selection;
+  if (opts.refresh !== "on-miss" || !getClient(runtime, resolvedSelection)) {
+    // Services that only implement `IGitHubService` resolve from their own state.
+    await service.refreshAccounts?.();
+  }
   const client = getClient(runtime, resolvedSelection);
   if (!client) {
     return { error: needsClientError(resolvedSelection) };

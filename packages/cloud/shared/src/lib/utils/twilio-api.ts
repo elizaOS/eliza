@@ -270,16 +270,33 @@ export function isValidMediaUrl(url: string): boolean {
  * Only returns URLs from trusted domains to prevent SSRF.
  */
 export function extractMediaUrls(event: TwilioWebhookEvent): string[] {
-  const urls: string[] = [];
+  return extractMedia(event).map((media) => media.url);
+}
+
+/**
+ * Extract media URLs with the MIME type Twilio reports for each
+ * (`MediaContentType<N>`), so audio, video and documents are not treated as
+ * images. Only returns URLs from trusted domains to prevent SSRF.
+ */
+export function extractMedia(
+  event: TwilioWebhookEvent,
+): Array<{ url: string; contentType?: string }> {
+  const media: Array<{ url: string; contentType?: string }> = [];
   const numMedia = Number.parseInt(event.NumMedia || "0", 10);
+  const fields = event as unknown as Record<string, unknown>;
 
   for (let i = 0; i < numMedia; i++) {
-    const urlKey = `MediaUrl${i}` as keyof TwilioWebhookEvent;
-    const url = event[urlKey];
+    const url = fields[`MediaUrl${i}`];
     if (url && typeof url === "string" && isValidMediaUrl(url)) {
-      urls.push(url);
+      const contentType = fields[`MediaContentType${i}`];
+      media.push({
+        url,
+        ...(typeof contentType === "string" && contentType.trim()
+          ? { contentType: contentType.trim() }
+          : {}),
+      });
     }
   }
 
-  return urls;
+  return media;
 }

@@ -11,7 +11,7 @@
  */
 import os from "node:os";
 import path from "node:path";
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { AppControlCoordinator } from "../app-control/coordinator.js";
 import {
   guardedPhysicalPointer,
@@ -342,6 +342,23 @@ export function parseComputerUseActionTimeoutMs(
     return undefined;
   }
   return parsed;
+}
+
+/** Parse an explicit sandbox TCP port; only an unset value uses the default. */
+export function parseSandboxRpcPort(
+  raw: string | undefined,
+): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  const port = Number(raw);
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
+    throw new ElizaError(
+      "Sandbox RPC port must be an integer from 1 to 65535",
+      {
+        code: "INVALID_SANDBOX_RPC_PORT",
+      },
+    );
+  }
+  return port;
 }
 
 export class ComputerUseService extends Service {
@@ -1327,7 +1344,7 @@ export class ComputerUseService extends Service {
     if (!som) return null;
     try {
       const cap = await captureDisplay(displayId);
-      const { marks, overlayPngBase64 } = await som.describe({
+      const { marks, overlayPngBase64, ocrError } = await som.describe({
         displayId: String(cap.display.id),
         sourceX: 0,
         sourceY: 0,
@@ -1358,9 +1375,12 @@ export class ComputerUseService extends Service {
           setOfMarks: {
             marks,
             ...(overlayPngBase64 ? { overlay: overlayPngBase64 } : {}),
+            ...(ocrError ? { ocrError } : {}),
           },
         },
-        message: `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
+        message: ocrError
+          ? `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}; OCR failed (${ocrError}), so no text marks.`
+          : `Set-of-Marks detected ${elements.length} numbered element(s) on display ${cap.display.id}.`,
       });
     } catch (error) {
       // error-policy:J1 action boundary — SoM failure surfaces as a clear
@@ -2322,6 +2342,14 @@ export class ComputerUseService extends Service {
         this.requireWindowTarget(params);
         this.requireNumber(params.x, "x is required for set_bounds");
         this.requireNumber(params.y, "y is required for set_bounds");
+        // The platform window backends apply a size only when both dimensions
+        // are present, so one alone would move the window and report success
+        // without resizing it.
+        if ((params.width === undefined) !== (params.height === undefined)) {
+          throw new Error(
+            "set_bounds needs width and height together to resize; give both or neither",
+          );
+        }
         return;
       case "get_application_windows":
         this.requireApplicationQuery(params);
@@ -2996,14 +3024,13 @@ export class ComputerUseService extends Service {
       const rpcPortRaw =
         getSetting("COMPUTERUSE_SANDBOX_RPC_PORT") ??
         getSetting("COMPUTER_USE_SANDBOX_RPC_PORT");
-      const rpcPort = rpcPortRaw ? Number(rpcPortRaw) : undefined;
+      // Reject invalid explicit settings before selecting a sandbox endpoint.
+      const rpcPort = parseSandboxRpcPort(rpcPortRaw);
       const options =
-        rpcUrl || (rpcPort !== undefined && Number.isFinite(rpcPort))
+        rpcUrl || rpcPort !== undefined
           ? {
               ...(rpcUrl ? { rpcUrl } : {}),
-              ...(rpcPort !== undefined && Number.isFinite(rpcPort)
-                ? { rpcPort }
-                : {}),
+              ...(rpcPort !== undefined ? { rpcPort } : {}),
             }
           : undefined;
       // docker + qemu require an image; wsb (Windows Sandbox) is imageless.

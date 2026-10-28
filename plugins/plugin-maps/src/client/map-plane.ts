@@ -8,12 +8,20 @@ import {
 } from "maplibre-gl";
 import type { Coordinate, Route } from "./contracts.ts";
 export type RegionalMap = {
+  kind?: "regional";
   base: string;
   providerId?: string;
   region: string;
   bounds: [number, number, number, number];
   attribution: string;
 };
+/** Explicit public imagery chosen by the host; no search or location capability. */
+export interface GlobalBasemap {
+  kind: "global";
+  styleUrl: string;
+  attribution: string;
+}
+export type MapBasemap = RegionalMap | GlobalBasemap;
 /** A search result or other candidate drawn on the map; tapping reports its id. */
 export type MapPin = Readonly<{
   id: string;
@@ -40,17 +48,26 @@ export interface MapPlaneOptions {
   accent: string;
   protocol: string;
   routePadding: { top: number; bottom: number; left: number; right: number };
+  /** Selection camera space is independent of route fitting. */
+  selectionPadding?: () => {
+    top: number;
+    bottom: number;
+    left: number;
+    right: number;
+  };
   nativeRegion(base: string): boolean;
   nativeRequest(
     path: string,
     signal: AbortSignal,
   ): Promise<{ status: number; bytes: Uint8Array<ArrayBuffer> }>;
 }
-/** Renderer only: no geolocation, third-party style, glyph, sprite or search calls. */
+/** Renderer only: regional transport or explicit public imagery; no search or geolocation. */
 export class MapPlane {
   private map: MapLibre;
+  private readonly globalBasemap: boolean;
   private marker?: Marker;
   private lastSelection = "";
+  private selectionLayout = "";
   private lastRoute = "";
   private requested?: Coordinate;
   private requestedRoute?: Route | null;
@@ -61,144 +78,176 @@ export class MapPlane {
   private following = false;
   constructor(
     container: HTMLElement,
-    region: RegionalMap,
+    region: MapBasemap,
     onError: () => void,
     colors: Record<string, string>,
     private options: MapPlaneOptions,
   ) {
+    const global = region.kind === "global";
+    const styleUrl = global ? new URL(region.styleUrl) : undefined;
+    if (
+      styleUrl &&
+      (styleUrl.protocol !== "https:" || styleUrl.username || styleUrl.password)
+    )
+      throw new Error(
+        "Global basemap requires an HTTPS style without credentials",
+      );
+    this.globalBasemap = global;
+    const [w, s, e, n] = global ? [-180, -85, 180, 85] : region.bounds;
     setWorkerUrl(options.workerUrl);
     setWorkerCount(1);
-    addProtocol(options.protocol, async (request, abort) => {
-      // WebView's custom-scheme URL parser can put the authority in pathname.
-      // Match the complete wire format instead; never accept another target or query.
-      const tile =
-        /^[a-z][a-z0-9+.-]*:\/\/tiles\/([0-9]{1,2})\/([0-9]{1,6})\/([0-9]{1,6})\.pbf$/.exec(
-          request.url,
+    if (!global)
+      addProtocol(options.protocol, async (request, abort) => {
+        // WebView's custom-scheme URL parser can put the authority in pathname.
+        // Match the complete wire format instead; never accept another target or query.
+        const tile =
+          /^[a-z][a-z0-9+.-]*:\/\/tiles\/([0-9]{1,2})\/([0-9]{1,6})\/([0-9]{1,6})\.pbf$/.exec(
+            request.url,
+          );
+        if (!tile) throw new Error("Invalid regional tile");
+        const [, z, x, y] = tile;
+        const zoom = Number(z),
+          column = Number(x),
+          row = Number(y);
+        if (zoom > 14 || column >= 2 ** zoom || row >= 2 ** zoom)
+          throw new Error("Invalid regional tile");
+        const result = await options.nativeRequest(
+          `/tiles/${zoom}/${column}/${row}.pbf`,
+          abort.signal,
         );
-      if (!tile) throw new Error("Invalid regional tile");
-      const [, z, x, y] = tile;
-      const zoom = Number(z),
-        column = Number(x),
-        row = Number(y);
-      if (zoom > 14 || column >= 2 ** zoom || row >= 2 ** zoom)
-        throw new Error("Invalid regional tile");
-      const result = await options.nativeRequest(
-        `/tiles/${zoom}/${column}/${row}.pbf`,
-        abort.signal,
-      );
-      if (result.status !== 200 && result.status !== 204)
-        throw new Error("Regional tile unavailable");
-      return { data: result.bytes.buffer };
-    });
+        if (result.status !== 200 && result.status !== 204)
+          throw new Error("Regional tile unavailable");
+        return { data: result.bytes.buffer };
+      });
 
-    const [w, s, e, n] = region.bounds;
     this.map = new MapLibre({
       container,
-      center: [(w + e) / 2, (s + n) / 2],
-      zoom: 14,
-      minZoom: 11,
+      center: global ? [0, 20] : [(w + e) / 2, (s + n) / 2],
+      zoom: global ? 2 : 14,
+      minZoom: global ? 0 : 11,
       maxZoom: 18,
-      maxBounds: [
-        [w - 0.01, s - 0.01],
-        [e + 0.01, n + 0.01],
-      ],
+      maxBounds: global
+        ? undefined
+        : [
+            [w - 0.01, s - 0.01],
+            [e + 0.01, n + 0.01],
+          ],
       attributionControl: false,
-      style: {
-        version: 8,
-        "font-faces": { "Map Labels": options.fontUrl },
-        sources: {
-          regional: {
-            type: "vector",
-            tiles: [
-              options.nativeRegion(region.base)
-                ? options.protocol + "://tiles/{z}/{x}/{y}.pbf"
-                : region.base + "/tiles/{z}/{x}/{y}.pbf",
+      transformRequest: styleUrl
+        ? (url) => {
+            const resource = new URL(url, styleUrl);
+            if (
+              resource.origin !== styleUrl.origin ||
+              resource.username ||
+              resource.password
+            )
+              throw new Error("Global basemap resource origin changed");
+            return { url: resource.href };
+          }
+        : undefined,
+      style: global
+        ? region.styleUrl
+        : {
+            version: 8,
+            "font-faces": { "Map Labels": options.fontUrl },
+            sources: {
+              regional: {
+                type: "vector",
+                tiles: [
+                  options.nativeRegion(region.base)
+                    ? options.protocol + "://tiles/{z}/{x}/{y}.pbf"
+                    : region.base + "/tiles/{z}/{x}/{y}.pbf",
+                ],
+                maxzoom: 14,
+                bounds: [w, s, e, n],
+              },
+            },
+            layers: [
+              {
+                id: "land",
+                type: "background",
+                paint: { "background-color": colors.land },
+              },
+              {
+                id: "water",
+                type: "fill",
+                source: "regional",
+                "source-layer": "water",
+                paint: { "fill-color": colors.water },
+              },
+              {
+                id: "park",
+                type: "fill",
+                source: "regional",
+                "source-layer": "landcover",
+                paint: { "fill-color": colors.park, "fill-opacity": 0.6 },
+              },
+              {
+                id: "buildings",
+                type: "fill",
+                source: "regional",
+                "source-layer": "building",
+                paint: { "fill-color": colors.rwy, "fill-opacity": 0.55 },
+              },
+              {
+                id: "road-outline",
+                type: "line",
+                source: "regional",
+                "source-layer": "transportation",
+                paint: { "line-color": colors.fwyE, "line-width": 6 },
+              },
+              {
+                id: "roads",
+                type: "line",
+                source: "regional",
+                "source-layer": "transportation",
+                paint: { "line-color": colors.major, "line-width": 3 },
+              },
+              {
+                id: "street-names",
+                type: "symbol",
+                source: "regional",
+                "source-layer": "transportation_name",
+                layout: {
+                  "symbol-placement": "line",
+                  "text-field": ["get", "name"],
+                  "text-font": ["Map Labels"],
+                  "text-size": 11,
+                },
+                paint: {
+                  "text-color": colors.label,
+                  "text-halo-color": colors.land,
+                  "text-halo-width": 1,
+                },
+              },
+              {
+                id: "place-names",
+                type: "symbol",
+                source: "regional",
+                "source-layer": "place",
+                layout: {
+                  "text-field": ["get", "name"],
+                  "text-font": ["Map Labels"],
+                  "text-size": 13,
+                },
+                paint: {
+                  "text-color": colors.label,
+                  "text-halo-color": colors.land,
+                  "text-halo-width": 1,
+                },
+              },
             ],
-            maxzoom: 14,
-            bounds: region.bounds,
           },
-        },
-        layers: [
-          {
-            id: "land",
-            type: "background",
-            paint: { "background-color": colors.land },
-          },
-          {
-            id: "water",
-            type: "fill",
-            source: "regional",
-            "source-layer": "water",
-            paint: { "fill-color": colors.water },
-          },
-          {
-            id: "park",
-            type: "fill",
-            source: "regional",
-            "source-layer": "landcover",
-            paint: { "fill-color": colors.park, "fill-opacity": 0.6 },
-          },
-          {
-            id: "buildings",
-            type: "fill",
-            source: "regional",
-            "source-layer": "building",
-            paint: { "fill-color": colors.rwy, "fill-opacity": 0.55 },
-          },
-          {
-            id: "road-outline",
-            type: "line",
-            source: "regional",
-            "source-layer": "transportation",
-            paint: { "line-color": colors.fwyE, "line-width": 6 },
-          },
-          {
-            id: "roads",
-            type: "line",
-            source: "regional",
-            "source-layer": "transportation",
-            paint: { "line-color": colors.major, "line-width": 3 },
-          },
-          {
-            id: "street-names",
-            type: "symbol",
-            source: "regional",
-            "source-layer": "transportation_name",
-            layout: {
-              "symbol-placement": "line",
-              "text-field": ["get", "name"],
-              "text-font": ["Map Labels"],
-              "text-size": 11,
-            },
-            paint: {
-              "text-color": colors.label,
-              "text-halo-color": colors.land,
-              "text-halo-width": 1,
-            },
-          },
-          {
-            id: "place-names",
-            type: "symbol",
-            source: "regional",
-            "source-layer": "place",
-            layout: {
-              "text-field": ["get", "name"],
-              "text-font": ["Map Labels"],
-              "text-size": 13,
-            },
-            paint: {
-              "text-color": colors.label,
-              "text-halo-color": colors.land,
-              "text-halo-width": 1,
-            },
-          },
-        ],
-      },
     });
     this.map.on("idle", () => {
+      container.dataset.mapZoom = String(this.map.getZoom());
       container.dataset.mapFeatureCount = String(
-        this.map.queryRenderedFeatures({ layers: ["roads"] }).length,
+        this.map.queryRenderedFeatures(
+          global ? undefined : { layers: ["roads"] },
+        ).length,
       );
+      if (this.options.selectionPadding && this.map.isStyleLoaded())
+        this.updateSelectionCamera(false);
     });
     this.map.on("error", (event) => {
       const message = String(event.error?.message || "");
@@ -289,6 +338,39 @@ export class MapPlane {
       });
     this.lastPosition = key;
   }
+  /** Reflow the selected place when host sheets move, without taking a route's camera. */
+  private updateSelectionCamera(newSelection: boolean) {
+    const selected = this.requested;
+    const padding = this.options.selectionPadding?.();
+    const layout = padding
+      ? [padding.top, padding.bottom, padding.left, padding.right]
+          .map(Math.round)
+          .join(",")
+      : "";
+    const layoutChanged = layout !== this.selectionLayout;
+    this.selectionLayout = layout;
+    if (
+      !selected ||
+      this.requestedOverlay.follow ||
+      (!newSelection && (!layoutChanged || this.requestedRoute))
+    )
+      return;
+    if (this.globalBasemap)
+      this.map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    this.map.easeTo({
+      center: [selected.longitude, selected.latitude],
+      ...(newSelection && this.globalBasemap ? { zoom: 14 } : {}),
+      ...(padding
+        ? {
+            offset: [
+              (padding.left - padding.right) / 2,
+              (padding.top - padding.bottom) / 2,
+            ] as [number, number],
+          }
+        : {}),
+      duration: 350,
+    });
+  }
   update(
     selected?: Coordinate,
     route?: Route | null,
@@ -305,7 +387,8 @@ export class MapPlane {
       this.map.easeTo({ bearing: 0, duration: 350 });
     this.following = !!overlay.follow;
     const key = selected ? `${selected.longitude},${selected.latitude}` : "";
-    if (key !== this.lastSelection) {
+    const selectionChanged = key !== this.lastSelection;
+    if (selectionChanged) {
       this.lastSelection = key;
       this.marker?.remove();
       this.marker = undefined;
@@ -313,13 +396,9 @@ export class MapPlane {
         this.marker = new Marker({ color: this.options.accent })
           .setLngLat([selected.longitude, selected.latitude])
           .addTo(this.map);
-        if (!overlay.follow)
-          this.map.easeTo({
-            center: [selected.longitude, selected.latitude],
-            duration: 350,
-          });
       }
     }
+    this.updateSelectionCamera(selectionChanged);
     const routeKey = route?.id || "";
     if (routeKey === this.lastRoute) return;
     this.lastRoute = routeKey;

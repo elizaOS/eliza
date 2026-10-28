@@ -80,6 +80,8 @@ async function handler(
 export const getMeetingTranscriptAction: Action = {
   name: "GET_MEETING_TRANSCRIPT",
   similes: ["MEETING_NOTES", "SHOW_MEETING_TRANSCRIPT"],
+  // Same gate as JOIN_MEETING: the owner's meetings are the owner's.
+  roleGate: { minRole: "OWNER" },
   description:
     "Retrieve the live or final transcript of a meeting the notetaker bot attended.",
   validate: async (runtime) => {

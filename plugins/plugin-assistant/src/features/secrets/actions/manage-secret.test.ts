@@ -67,7 +67,7 @@ describe("SECRETS umbrella action", () => {
       required: true,
       schema: {
         type: "string",
-        enum: ["get", "set", "delete", "list", "check", "mirror", "request"],
+        enum: ["get", "set", "delete", "list", "check", "request"],
       },
     });
   });
@@ -107,7 +107,7 @@ describe("SECRETS umbrella action", () => {
     ).toBe(true);
   });
 
-  test.each(["get", "set", "delete", "list", "check", "mirror"])(
+  test.each(["get", "set", "delete", "list", "check"])(
     "rejects action=%s in a public channel",
     async (action) => {
       expect(await validate({ action }, ChannelType.GROUP)).toBe(false);
@@ -200,7 +200,6 @@ describe("SECRETS umbrella action", () => {
     ["delete", "delete"],
     ["list", "list"],
     ["check", "check"],
-    ["mirror", "mirror"],
     ["request", "request"],
   ])("dispatches %s to the real %s handler", async (input, expected) => {
     const result = await handle({ action: input, key: "OPENAI_API_KEY" });
@@ -209,6 +208,20 @@ describe("SECRETS umbrella action", () => {
       actionName: "SECRETS",
       action: expected,
     });
+  });
+
+  test("the declared schema rejects the removed mirror operation", () => {
+    // No registered service implements a vault write, so mirror is not offered.
+    const validation = validateToolArgs(secretsAction, {
+      action: "mirror",
+      key: "OPENAI_API_KEY",
+      vaultName: "vault",
+    });
+
+    expect(validation.errors).toEqual([
+      "Unexpected argument 'vaultName'",
+      "Argument 'action' value 'mirror' is not one of: get, set, delete, list, check, request",
+    ]);
   });
 
   test("the declared schema accepts a key array for check", () => {

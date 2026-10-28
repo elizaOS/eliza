@@ -6,10 +6,17 @@
 
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { coordinateNetworkDelivery } from "@elizaos/cloud-shared/lib/services/shared-runtime/conversation-coordinator";
+import {
+  type NetworkAdmissionEnvelope,
+  networkAccountMatchesPolicy,
+  verifyNetworkServiceDeliveryEnvelope,
+} from "@elizaos/cloud-shared/lib/services/shared-runtime/network-shared-admission";
+import { personalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-identity";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
-import type {
-  DeliverRequest,
-  DeliverResponse,
+import {
+  type DeliverRequest,
+  type DeliverResponse,
+  parseApprovedRelayPhotos,
 } from "@elizaos/plugin-network/contract";
 import { svcVerify } from "@elizaos/plugin-network/svc-auth";
 import { type Context, Hono } from "hono";
@@ -40,10 +47,45 @@ function parseDeliver(raw: unknown, id: string): DeliverRequest | undefined {
   )
     return undefined;
   if (d.memberId !== null && typeof d.memberId !== "string") return undefined;
+  if (d.approvedPhotos !== undefined) {
+    const photos = parseApprovedRelayPhotos(d.approvedPhotos);
+    // This public consumer has no QA route-policy authority. Do not fall back to default custody.
+    if (
+      !photos ||
+      Object.keys(d).some(
+        (k) =>
+          ![
+            "id",
+            "to",
+            "from",
+            "text",
+            "app",
+            "memberId",
+            "channel",
+            "kind",
+            "approvedPhotos",
+          ].includes(k),
+      ) ||
+      d.kind !== "relay" ||
+      d.channel === "twilio" ||
+      typeof d.memberId !== "string" ||
+      "networkAuthority" in d ||
+      "networkParentTurn" in d ||
+      "policyReply" in d ||
+      photos.some(
+        (p) =>
+          p.app !== d.app ||
+          p.recipientMemberId !== d.memberId ||
+          `relay:${p.itemId}` !== d.id,
+      )
+    )
+      return undefined;
+    return { ...d, approvedPhotos: photos } as unknown as DeliverRequest;
+  }
   return d as unknown as DeliverRequest;
 }
 
-type Status = 200 | 202 | 400 | 401 | 422 | 502 | 503;
+type Status = 200 | 202 | 400 | 401 | 403 | 422 | 502 | 503;
 
 export async function handleNetworkDelivery(
   c: Context<AppEnv>,
@@ -87,6 +129,24 @@ export async function handleNetworkDelivery(
       503,
     );
   }
+  const canonicalEnvelope: NetworkAdmissionEnvelope | undefined =
+    c.env.NETWORK_OWNED_INGRESS_POLICY !== undefined
+      ? {
+          originalBody: body,
+          path: new URL(c.req.url).pathname,
+          signatureHeaders: Object.fromEntries(
+            ["x-ntwrk-svc-ts", "x-ntwrk-svc-id", "x-ntwrk-svc-sig"].map((k) => [
+              k,
+              c.req.raw.headers.get(k) ?? "",
+            ]),
+          ),
+        }
+      : undefined;
+  const canonical = canonicalEnvelope
+    ? await verifyNetworkServiceDeliveryEnvelope(canonicalEnvelope, c.env)
+    : undefined;
+  if (canonicalEnvelope && !canonical)
+    return out({ ok: false, error: "invalid", retryable: false }, 403);
   const namespace = c.env.SHARED_RUNTIME_CONVERSATIONS;
   if (!namespace)
     return out({ ok: false, error: "unknown", retryable: true }, 503);
@@ -99,9 +159,37 @@ export async function handleNetworkDelivery(
     return reconcileOnly
       ? out({ ok: false, error: "unknown", retryable: false }, 202)
       : out({ ok: false, error: "rejected", retryable: false }, 422);
+  if (canonical) {
+    const agentId = personalSharedAgentId({
+      userId: user.id,
+      organizationId: user.organization_id,
+    });
+    if (
+      user.phone_number !== delivery.to ||
+      !user.phone_verified ||
+      !user.is_active ||
+      user.deleted_at ||
+      !user.organization?.is_active ||
+      !networkAccountMatchesPolicy(
+        {
+          userId: user.id,
+          organizationId: user.organization_id,
+          agentId,
+          roomId: agentId,
+        },
+        canonical.policy,
+      )
+    )
+      return reconcileOnly
+        ? out({ ok: false, error: "unknown", retryable: false }, 202)
+        : out({ ok: false, error: "rejected", retryable: false }, 422);
+  }
   return await coordinateNetworkDelivery(
     {
-      project: "network",
+      project: canonical?.policy.project ?? "network",
+      ...(canonical
+        ? { connectorAccountId: canonical.policy.connectorAccountId }
+        : {}),
       app: delivery.app,
       userId: user.id,
       organizationId: user.organization_id,
@@ -109,8 +197,17 @@ export async function handleNetworkDelivery(
       platform: delivery.channel ?? "blooio",
       idempotencyKey: `network:svc:${delivery.id}`,
       text: delivery.text,
+      ...(delivery.approvedPhotos
+        ? { approvedPhotos: delivery.approvedPhotos }
+        : {}),
     },
-    { namespace, ...(reconcileOnly ? { reconcileOnly: true as const } : {}) },
+    {
+      namespace,
+      ...(canonicalEnvelope
+        ? { trustedNetworkServiceDelivery: canonicalEnvelope }
+        : {}),
+      ...(reconcileOnly ? { reconcileOnly: true as const } : {}),
+    },
   );
 }
 

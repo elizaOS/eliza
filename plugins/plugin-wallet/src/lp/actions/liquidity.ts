@@ -356,9 +356,11 @@ function amountLabel(amount: LpActionParams["amount"]): string | undefined {
 // single-sourced write subactions (open/close/reposition here).
 function lpGateParams(params: LpActionParams): WalletFinancialWriteParams {
   const range = getRangeParam(params);
+  const { chain, chainId } = resolveChain(params);
   return {
     subaction: params.subaction as string,
-    chain: resolveChain(params).chain,
+    chain,
+    chainId,
     amount: amountLabel(getAmountParam(params)),
     pool: getPoolParam(params),
     position: getPositionParam(params),
@@ -373,11 +375,16 @@ function lpGateParams(params: LpActionParams): WalletFinancialWriteParams {
   };
 }
 
-function getEvmWallet(runtime: IAgentRuntime) {
+function requireEvmPrivateKey(runtime: IAgentRuntime): string {
   const rawPrivateKey = runtime.getSetting("EVM_PRIVATE_KEY");
   if (!rawPrivateKey || typeof rawPrivateKey !== "string") {
     throw new Error("EVM_PRIVATE_KEY is required for EVM LP operations.");
   }
+  return rawPrivateKey;
+}
+
+function getEvmWallet(runtime: IAgentRuntime) {
+  const rawPrivateKey = requireEvmPrivateKey(runtime);
   // Accept the uppercase 0X prefix too, mirroring resolveEvmPrivateKey:
   // "0X…" used to become "0x0X…", which privateKeyToAccount rejects.
   const privateKey = /^0[xX]/.test(rawPrivateKey)
@@ -410,7 +417,7 @@ async function requireProfile(
   const profile = await profileService.getProfile(userId);
   if (!profile) {
     throw new Error(
-      "No LP profile found. Use subaction=onboard before managing Solana LP positions.",
+      "No LP profile found. Use action=onboard before managing Solana LP positions.",
     );
   }
   return { vault, profileService, profile };
@@ -607,6 +614,106 @@ function lpWriteRejection(
   return undefined;
 }
 
+/**
+ * Signer precondition for open/close/reposition, run before the confirmation
+ * gate so the user is never asked to confirm a write that has no signer.
+ * Throws the same errors `operationAuth` does. It only looks the signer up:
+ * key derivation and vault decryption stay after the confirmation.
+ */
+async function requireLpWriteSigner(
+  runtime: IAgentRuntime,
+  userId: string,
+  params: LpActionParams,
+): Promise<void> {
+  const subaction = params.subaction;
+  if (
+    subaction !== "open" &&
+    subaction !== "close" &&
+    subaction !== "reposition"
+  ) {
+    return;
+  }
+  if (resolveChain(params).chain === "evm") {
+    requireEvmPrivateKey(runtime);
+    return;
+  }
+  await requireProfile(runtime, userId);
+}
+
+const EVM_TOKEN_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
+const SOLANA_MINT_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+/**
+ * Request-shape rejections for list_pools/list_positions/get_position: the
+ * requests a provider answers with an empty result because it cannot run
+ * them. Mirrors the provider checks in `LpManagementService`.
+ */
+function lpReadRejection(
+  lp: LpManagementService,
+  params: LpActionParams,
+): string | undefined {
+  const subaction = params.subaction;
+  if (
+    subaction !== "list_pools" &&
+    subaction !== "list_positions" &&
+    subaction !== "get_position"
+  ) {
+    return undefined;
+  }
+  const route = baseRoute(params);
+
+  if (subaction === "list_pools") {
+    if (route.dex) {
+      const protocol = lp.resolveProtocol(route);
+      if (protocol.unsupportedReads?.includes(subaction)) {
+        return `LP ${subaction} is unavailable for ${protocol.dex} on ${protocol.chain}.`;
+      }
+    }
+    const tokens = [params.tokenA, params.tokenB].filter(
+      (token): token is string => Boolean(token),
+    );
+    for (const token of tokens) {
+      const evm = EVM_TOKEN_ADDRESS.test(token);
+      const solana = SOLANA_MINT_ADDRESS.test(token);
+      if (
+        route.chain === "evm" ? !evm : route.chain ? !solana : !evm && !solana
+      ) {
+        return `LP list_pools filters by token contract address (EVM) or mint address (Solana), not by symbol; got ${token}.`;
+      }
+    }
+    // Every provider filters only on a complete pair.
+    if (tokens.length === 1) {
+      return "LP list_pools filters by a token pair. Pass both tokenA and tokenB, or neither.";
+    }
+    // The EVM adapters look a pool up from its pair; they cannot enumerate.
+    if (route.chain === "evm" && tokens.length === 0) {
+      return "LP list_pools on an EVM chain needs tokenA and tokenB, the token contract addresses of the pair.";
+    }
+    return undefined;
+  }
+
+  if (route.chain === "evm" && !route.chainId) {
+    return `LP ${subaction} on an EVM chain needs chainId.`;
+  }
+  if (subaction === "get_position") {
+    // operationAuth routes every non-EVM read through the Solana vault.
+    const protocol = lp.resolveProtocol({
+      ...route,
+      chain: route.chain ?? "solana",
+    });
+    if (protocol.unsupportedReads?.includes(subaction)) {
+      return `LP ${subaction} is unavailable for ${protocol.dex} on ${protocol.chain}.`;
+    }
+    const pool = getPoolParam(params);
+    if (route.chain === "evm") {
+      if (!pool) return "LP get_position on an EVM chain needs pool.";
+    } else if (!pool && !getPositionParam(params)) {
+      return "LP get_position needs position or pool.";
+    }
+  }
+  return undefined;
+}
+
 async function handleLpOperation(
   runtime: IAgentRuntime,
   lp: LpManagementService,
@@ -773,7 +880,7 @@ export const liquidityAction: Action = {
   // above reads without leaving the parent LIQUIDITY path open.
   roleGate: { minRole: "ADMIN" },
   description:
-    "Single LP/liquidity management action. action=onboard|list_pools|open|close|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted. open and close run on meteora, uniswap, aerodrome, and pancakeswap. No DEX can move the range of an open position.",
+    "Single LP/liquidity management action. action=onboard|list_pools|open|close|list_positions|get_position|set_preferences. dex=meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted. list_positions and get_position read the Solana LP vault unless chain=evm or an EVM dex is given; every EVM call except list_pools needs chainId. open and close need a signer first: action=onboard on Solana, a configured EVM key on EVM. No DEX can move the range of an open position.",
   descriptionCompressed:
     "Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
   parameters: [
@@ -804,7 +911,7 @@ export const liquidityAction: Action = {
     {
       name: "chain",
       description:
-        "Chain for the LP operation. evm writes (open, close) also need chainId.",
+        "Chain for the LP operation. evm open, close, list_positions and get_position also need chainId.",
       required: false,
       schema: { type: "string", enum: ["solana", "evm"] },
     },
@@ -817,7 +924,7 @@ export const liquidityAction: Action = {
     {
       name: "pool",
       description:
-        "Pool id/address. Required for open, and for close on EVM; Solana close accepts pool or position.",
+        "Pool id/address. Required for open, and for close and get_position on EVM; Solana close and get_position accept pool or position.",
       required: false,
       schema: { type: "string" },
     },
@@ -859,20 +966,21 @@ export const liquidityAction: Action = {
     {
       name: "tokenA",
       description:
-        "First token filter for list_pools. open does not pick a pool from tokens; pass pool.",
+        "First token of the list_pools pair filter: a token contract address (EVM) or mint address (Solana), not a symbol. Pass tokenA and tokenB together; EVM list_pools needs both. open does not pick a pool from tokens; pass pool.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "tokenB",
-      description: "Second token filter for list_pools.",
+      description:
+        "Second token of the list_pools pair filter, in the same address form as tokenA.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "chainId",
       description:
-        "Numeric EVM chain id. Required for open and close when chain is evm.",
+        "Numeric EVM chain id. Required for open, close, list_positions and get_position when chain is evm.",
       required: false,
       schema: { type: "number" },
     },
@@ -983,7 +1091,17 @@ export const liquidityAction: Action = {
     _runtime: IAgentRuntime,
     message: Memory,
     state?: State,
+    handlerParams?: unknown,
   ): Promise<boolean> => {
+    // The runtime validates after schema validation and passes the planner
+    // arguments under `options.parameters`; direct callers pass them flat.
+    const options = handlerParams as Record<string, unknown> | undefined;
+    const planned = options?.parameters;
+    const args =
+      planned && typeof planned === "object"
+        ? (planned as Record<string, unknown>)
+        : options;
+    if (args?.action || args?.subaction || args?.op) return true;
     if (!message.content) return false;
     if ((message.content as LpActionParams & { action?: string }).action)
       return true;
@@ -1054,10 +1172,12 @@ export const liquidityAction: Action = {
         };
       }
 
-      const rejection = lpWriteRejection(lp, params);
+      const rejection =
+        lpWriteRejection(lp, params) ?? lpReadRejection(lp, params);
       if (rejection) {
         return { success: false, text: rejection };
       }
+      await requireLpWriteSigner(runtime, userId, params);
 
       // GHSA-rqm7-f4jc-84x3: open/close/reposition pend for user confirmation
       // before any key derivation or DEX call, through the same gate and

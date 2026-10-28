@@ -2199,7 +2199,7 @@ export async function buildRegisterAgentWithStewardRequest(
   const platformKey = resolveStewardPlatformKey();
   const agentBody = JSON.stringify({ id: agentId, name: agentName });
   // Steward caps agent-token expiry at 7d (validated in
-  // packages/api/src/routes/platform.ts — "expiresIn must be a duration up
+  // packages/auth/src/server/api/routes/platform.ts — "expiresIn must be a duration up
   // to 7d using s, m, h, or d"). The daemon refreshes agent JWTs via the
   // STEWARD_REFRESH_URL flow before they expire, so a 7d ceiling is fine.
   const tokenBody = JSON.stringify({ expiresIn: "7d" });

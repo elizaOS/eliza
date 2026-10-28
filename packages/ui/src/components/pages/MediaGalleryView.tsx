@@ -132,7 +132,14 @@ function isMediaType(value: string): value is MediaType {
 }
 
 /** Extract media URLs from arbitrary row data by scanning all string values. */
-function extractMediaFromRows(
+/**
+ * Derived search copies of other columns. `memories.message_search_document`
+ * is a lowercased copy of message text plus attachment titles and URLs, so
+ * scanning it yields bare names, split titles and lowercased URLs.
+ */
+const DERIVED_SEARCH_COLUMNS = new Set(["message_search_document"]);
+
+export function extractMediaFromRows(
   rows: Record<string, unknown>[],
   tableName: string,
   seen = new Set<string>(),
@@ -143,11 +150,19 @@ function extractMediaFromRows(
     const createdAt = String(
       row.createdAt ?? row.created_at ?? row.timestamp ?? "",
     );
-    for (const val of Object.values(row)) {
-      if (typeof val !== "string") continue;
-
-      // Try parsing as JSON content field (elizaOS memories store JSON in content)
-      const urls = extractUrlsFromValue(val);
+    for (const [column, val] of Object.entries(row)) {
+      if (DERIVED_SEARCH_COLUMNS.has(column)) continue;
+      // jsonb columns (memories.content) arrive as objects, not strings.
+      let urls: string[];
+      if (typeof val === "string") {
+        urls = extractUrlsFromValue(val);
+      } else if (val && typeof val === "object") {
+        const found = new Set<string>();
+        collectStrings(val, found);
+        urls = Array.from(found);
+      } else {
+        continue;
+      }
       for (const url of urls) {
         const mediaType = classifyUrl(url);
         if (mediaType && !seen.has(url)) {
@@ -203,9 +218,35 @@ function extractUrlsFromValue(val: string): string[] {
   return Array.from(urls);
 }
 
+const PROSE_URL_RE = /https?:\/\/[^\s"'<>]+/gi;
+const MEDIA_PATH_PREFIX = /^(?:file:|\/|\.\/|\.\.\/)/i;
+
+/** A leaf that is one media URL or path. Paths may contain spaces; URLs not. */
+function isWholeMediaLeaf(value: string): boolean {
+  if (
+    DATA_URI_IMG.test(value) ||
+    DATA_URI_VID.test(value) ||
+    DATA_URI_AUD.test(value)
+  ) {
+    return true;
+  }
+  if (!classifyUrl(value) || !MEDIA_URL_PREFIX.test(value)) return false;
+  return MEDIA_PATH_PREFIX.test(value) || !/\s/.test(value);
+}
+
 function collectStrings(obj: unknown, out: Set<string>) {
   if (typeof obj === "string") {
-    if (looksLikePotentialMediaUrl(obj)) out.add(obj.trim());
+    const value = obj.trim();
+    if (isWholeMediaLeaf(value)) {
+      out.add(value);
+    } else if (value.startsWith("{") || value.startsWith("[")) {
+      for (const url of extractUrlsFromValue(value)) out.add(url);
+    } else {
+      // Prose: only absolute http(s) URLs, never bare file-name tokens.
+      for (const match of value.match(PROSE_URL_RE) ?? []) {
+        out.add(match.replace(/[)\]},;.!?]+$/, ""));
+      }
+    }
     return;
   }
   if (Array.isArray(obj)) {

@@ -129,8 +129,20 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     binding is unchanged. Until the JS Kokoro path adopts the allocation
  *     entries it intentionally keeps using the v14 caller-buffer functions;
  *     v14 libraries therefore remain valid at that degraded capability.
+ * v17: Paradee-8M TTS with native misaki G2P
+ *     (`eliza_inference_paradee_supported/load/sample_rate/g2p_kind/phonemize/
+ *     synthesize_alloc/synthesize_phonemes_alloc`, PCM released with
+ *     `eliza_inference_free_pcm`), plus `eliza_inference_asr_supported` and
+ *     `eliza_inference_asr_cancel`. `cancel_tts` now also stops Kokoro and
+ *     Paradee. The family is bound by its own dlopen, so a v16 library is
+ *     accepted only when every v17 symbol is absent; the Paradee and ASR
+ *     probes then report false.
+ * v18: additive LLM context-capacity query; voice uses the unchanged v17
+ *     surface, so libraries reporting v17 remain compatible.
+ * v19: additive Paradee chunk streaming. This voice binding retains its
+ *     existing allocation interface, which is unchanged from v18.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 16 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 19 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -233,6 +245,28 @@ export function decodeCompleteFfiText(
  */
 export const ELIZA_KOKORO_G2P_ASCII = 0;
 export const ELIZA_KOKORO_G2P_ESPEAK = 1;
+
+/**
+ * Paradee misaki out-of-vocabulary fallback (ABI v17). Mirrors
+ * `ELIZA_PARADEE_G2P_*` in `eliza-inference-ffi.h`.
+ */
+export const ELIZA_PARADEE_G2P_LEXICON_ONLY = 0;
+export const ELIZA_PARADEE_G2P_RULES = 1;
+export const ELIZA_PARADEE_G2P_ESPEAK = 2;
+
+/** Every symbol added by ABI v17. Bound together by one optional dlopen. */
+export const ELIZA_INFERENCE_V17_SYMBOLS = [
+	"eliza_inference_paradee_supported",
+	"eliza_inference_paradee_load",
+	"eliza_inference_paradee_sample_rate",
+	"eliza_inference_paradee_g2p_kind",
+	"eliza_inference_paradee_phonemize",
+	"eliza_inference_paradee_synthesize_alloc",
+	"eliza_inference_paradee_synthesize_phonemes_alloc",
+	"eliza_inference_free_pcm",
+	"eliza_inference_asr_supported",
+	"eliza_inference_asr_cancel",
+] as const;
 
 /**
  * WeSpeaker ResNet34-LM embedding dimension. The native
@@ -883,6 +917,57 @@ export interface ElizaInferenceFfi {
 		maxSamples: number;
 	}): Float32Array;
 
+	/* ---- Paradee-8M TTS + native misaki G2P (ABI v17) ------------ */
+
+	/** True when this build linked paradee_lib + misaki_g2p. False before v17. */
+	paradeeSupported?(): boolean;
+	/** Load the Paradee GGUF and misaki lexicon into `ctx` (same paths: no-op). */
+	paradeeLoad?(args: {
+		ctx: ElizaInferenceContextHandle;
+		ggufPath: string;
+		lexiconPath: string;
+		/** eSpeak NG data directory for OOV words; omit for the rules fallback. */
+		espeakDataDir?: string | null;
+	}): void;
+	/** Sample rate of the loaded Paradee model (24000 for v1.0). */
+	paradeeSampleRate?(ctx: ElizaInferenceContextHandle): number;
+	/** How the loaded lexicon phonemizes out-of-vocabulary words. */
+	paradeeG2pKind?(
+		ctx: ElizaInferenceContextHandle,
+	): "lexicon-only" | "rules" | "espeak" | "unknown";
+	/** Native misaki G2P only: English text in, misaki phonemes out. */
+	paradeePhonemize?(args: {
+		ctx: ElizaInferenceContextHandle;
+		text: string;
+	}): string;
+	/**
+	 * Text to PCM at `paradeeSampleRate`. The library sizes the buffer, so the
+	 * result is the complete utterance. `cancelled` is true when
+	 * `cancelTts` stopped the call; `pcm` is then empty.
+	 */
+	paradeeSynthesize?(args: {
+		ctx: ElizaInferenceContextHandle;
+		text: string;
+		speed?: number;
+	}): { pcm: Float32Array; cancelled: boolean };
+	/** Same as `paradeeSynthesize`, from a misaki phoneme string. */
+	paradeeSynthesizePhonemes?(args: {
+		ctx: ElizaInferenceContextHandle;
+		phonemes: string;
+		speed?: number;
+	}): { pcm: Float32Array; cancelled: boolean };
+
+	/* ---- ASR probe + cancel (ABI v17) ----------------------------- */
+
+	/** True when this build has the batch ASR path and `asrCancel`. */
+	asrSupported?(): boolean;
+	/**
+	 * Cancel the `asrTranscribe` / `asrTranscribeTimed` call in flight on
+	 * `ctx` from another thread. That call then throws. Cancelling nothing is
+	 * not an error.
+	 */
+	asrCancel?(ctx: ElizaInferenceContextHandle): void;
+
 	/** Best-effort dispose for the binding itself (closes the dlopen handle). */
 	close(): void;
 }
@@ -1257,6 +1342,53 @@ interface BunFfiSymbols {
 
 interface BunFfiLib {
 	symbols: BunFfiSymbols;
+	close(): void;
+}
+
+/** ABI v17 family, bound by its own dlopen (see `bindWithBunFfi`). */
+interface BunFfiV17Symbols {
+	eliza_inference_paradee_supported: () => number;
+	eliza_inference_paradee_load: (
+		ctx: bigint,
+		ggufPath: unknown,
+		lexiconPath: unknown,
+		espeakDataDir: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_paradee_sample_rate: (ctx: bigint) => number;
+	eliza_inference_paradee_g2p_kind: (ctx: bigint) => number;
+	eliza_inference_paradee_phonemize: (
+		ctx: bigint,
+		text: unknown,
+		textLen: bigint,
+		outUtf8: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_paradee_synthesize_alloc: (
+		ctx: bigint,
+		text: unknown,
+		textLen: bigint,
+		speed: number,
+		outPcm: unknown,
+		outSamples: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_paradee_synthesize_phonemes_alloc: (
+		ctx: bigint,
+		phonemes: unknown,
+		phonemesLen: bigint,
+		speed: number,
+		outPcm: unknown,
+		outSamples: unknown,
+		outErr: unknown,
+	) => number;
+	eliza_inference_free_pcm: (pcm: bigint) => void;
+	eliza_inference_asr_supported: () => number;
+	eliza_inference_asr_cancel: (ctx: bigint, outErr: unknown) => number;
+}
+
+interface BunFfiV17Lib {
+	symbols: BunFfiV17Symbols;
 	close(): void;
 }
 
@@ -2089,6 +2221,43 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		);
 	}
 	const loadedLib = lib;
+	// ABI v17 (Paradee + ASR probe/cancel) is one additive family bound by its
+	// own dlopen of the same image instead of another rung in the cascade
+	// above. dlopen fails when any symbol is absent, which is the v16 case.
+	const v17Lib = (() => {
+		try {
+			return ffi.dlopen(dylibPath, {
+				eliza_inference_paradee_supported: { args: [], returns: T.i32 },
+				eliza_inference_paradee_load: {
+					// ctx, gguf_path, lexicon_path, espeak_data_dir, out_error
+					args: [T.ptr, T.ptr, T.ptr, T.ptr, T.ptr],
+					returns: T.i32,
+				},
+				eliza_inference_paradee_sample_rate: { args: [T.ptr], returns: T.i32 },
+				eliza_inference_paradee_g2p_kind: { args: [T.ptr], returns: T.i32 },
+				eliza_inference_paradee_phonemize: {
+					// ctx, text, text_len, out_utf8, out_error
+					args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr],
+					returns: T.i32,
+				},
+				eliza_inference_paradee_synthesize_alloc: {
+					// ctx, text, text_len, speed, out_pcm, out_samples, out_error
+					args: [T.ptr, T.ptr, T.usize, T.f32, T.ptr, T.ptr, T.ptr],
+					returns: T.i32,
+				},
+				eliza_inference_paradee_synthesize_phonemes_alloc: {
+					args: [T.ptr, T.ptr, T.usize, T.f32, T.ptr, T.ptr, T.ptr],
+					returns: T.i32,
+				},
+				eliza_inference_free_pcm: { args: [T.usize], returns: T.void },
+				eliza_inference_asr_supported: { args: [], returns: T.i32 },
+				eliza_inference_asr_cancel: { args: [T.ptr, T.ptr], returns: T.i32 },
+			}) as unknown as BunFfiV17Lib;
+		} catch {
+			return null;
+		}
+	})();
+	const v17SymbolsAvailable = v17Lib !== null;
 
 	// ABI compatibility is explicit and capability-aware. Older additive
 	// surfaces are accepted only when the symbols introduced later are absent,
@@ -2119,7 +2288,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// additionally lacks the v9 text-modality symbols (embeddings, vision,
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
-		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		(reported === String(ELIZA_INFERENCE_ABI_VERSION) && v17SymbolsAvailable) ||
+		(reported === "18" && v17SymbolsAvailable) ||
+		(reported === "17" && v17SymbolsAvailable) ||
+		(reported === "16" && !v17SymbolsAvailable) ||
 		(reported === "15" && !embeddingOptionsSymbolsAvailable) ||
 		// ABI v15 only adds optional exact-size Kokoro PCM allocation symbols.
 		// The binding still uses the unchanged v14 caller-owned-buffer surface,
@@ -2148,6 +2320,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			!diarizSymbolsAvailable &&
 			!referenceEncodeSymbolsAvailable);
 	if (!abiOk) {
+		v17Lib?.close();
 		loadedLib.close();
 		throw new VoiceLifecycleError(
 			"kernel-missing",
@@ -3596,10 +3769,187 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			return outPcm.slice(0, Math.min(rc, maxSamples));
 		},
 
+		/* ---- Paradee-8M TTS + native misaki G2P (ABI v17) -------- */
+
+		paradeeSupported(): boolean {
+			return v17Lib?.symbols.eliza_inference_paradee_supported() === 1;
+		},
+
+		paradeeLoad({ ctx, ggufPath, lexiconPath, espeakDataDir }) {
+			const v17 = requireV17("eliza_inference_paradee_load");
+			const err = makeOutErr();
+			const ggufArg = cstr(ggufPath);
+			const lexiconArg = cstr(lexiconPath);
+			const espeakArg = cstr(espeakDataDir ?? null);
+			const rc = v17.eliza_inference_paradee_load(
+				ctx,
+				ggufArg.ptr,
+				lexiconArg.ptr,
+				espeakArg.ptr,
+				err.ptr,
+			);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_paradee_load rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+		},
+
+		paradeeSampleRate(ctx): number {
+			const rc = requireV17(
+				"eliza_inference_paradee_sample_rate",
+			).eliza_inference_paradee_sample_rate(ctx);
+			if (rc < 0) {
+				throw new VoiceLifecycleError(
+					failureCode(rc),
+					`[ffi-bindings] eliza_inference_paradee_sample_rate rc=${rc} (no Paradee model loaded on this ctx)`,
+				);
+			}
+			return rc;
+		},
+
+		paradeeG2pKind(ctx) {
+			if (!v17Lib) return "unknown";
+			const rc = v17Lib.symbols.eliza_inference_paradee_g2p_kind(ctx);
+			if (rc === ELIZA_PARADEE_G2P_LEXICON_ONLY) return "lexicon-only";
+			if (rc === ELIZA_PARADEE_G2P_RULES) return "rules";
+			if (rc === ELIZA_PARADEE_G2P_ESPEAK) return "espeak";
+			return "unknown";
+		},
+
+		paradeePhonemize({ ctx, text }): string {
+			const v17 = requireV17("eliza_inference_paradee_phonemize");
+			const err = makeOutErr();
+			const out = new BigUint64Array(1);
+			const textArg = cstr(text);
+			const rc = v17.eliza_inference_paradee_phonemize(
+				ctx,
+				textArg.ptr,
+				BigInt(textArg.bytes),
+				ffi.ptr(out),
+				err.ptr,
+			);
+			const owned = out[0] ?? 0n;
+			if (rc < 0) {
+				if (owned !== 0n) loadedLib.symbols.eliza_inference_free_string(owned);
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_paradee_phonemize rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			if (owned === 0n) return "";
+			try {
+				// Empty phoneme string: nothing to copy, but the buffer is still freed.
+				if (rc === 0) return "";
+				return Buffer.from(ffi.toArrayBuffer(owned, 0, rc)).toString("utf8");
+			} finally {
+				loadedLib.symbols.eliza_inference_free_string(owned);
+			}
+		},
+
+		paradeeSynthesize({ ctx, text, speed }) {
+			return paradeeSynthesizeOwned(
+				"eliza_inference_paradee_synthesize_alloc",
+				ctx,
+				text,
+				speed,
+			);
+		},
+
+		paradeeSynthesizePhonemes({ ctx, phonemes, speed }) {
+			return paradeeSynthesizeOwned(
+				"eliza_inference_paradee_synthesize_phonemes_alloc",
+				ctx,
+				phonemes,
+				speed,
+			);
+		},
+
+		/* ---- ASR probe + cancel (ABI v17) ------------------------- */
+
+		asrSupported(): boolean {
+			return v17Lib?.symbols.eliza_inference_asr_supported() === 1;
+		},
+
+		asrCancel(ctx) {
+			const err = makeOutErr();
+			const rc = requireV17(
+				"eliza_inference_asr_cancel",
+			).eliza_inference_asr_cancel(ctx, err.ptr);
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ??
+					`[ffi-bindings] eliza_inference_asr_cancel rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+		},
+
 		close(): void {
+			v17Lib?.close();
 			loadedLib.close();
 		},
 	};
+
+	function requireV17(symbol: string): BunFfiV17Symbols {
+		if (!v17Lib) {
+			throw new VoiceLifecycleError(
+				"kernel-missing",
+				`[ffi-bindings] ${symbol} is not exported by this build (pre-v17)`,
+			);
+		}
+		return v17Lib.symbols;
+	}
+
+	/** Shared body of the two library-owned Paradee PCM entries. */
+	function paradeeSynthesizeOwned(
+		symbol:
+			| "eliza_inference_paradee_synthesize_alloc"
+			| "eliza_inference_paradee_synthesize_phonemes_alloc",
+		ctx: ElizaInferenceContextHandle,
+		input: string,
+		speed: number | undefined,
+	): { pcm: Float32Array; cancelled: boolean } {
+		const v17 = requireV17(symbol);
+		const err = makeOutErr();
+		const outPcm = new BigUint64Array(1);
+		const outSamples = new BigUint64Array(1);
+		const inputArg = cstr(input);
+		const rc = v17[symbol](
+			ctx,
+			inputArg.ptr,
+			BigInt(inputArg.bytes),
+			speed ?? 1.0,
+			ffi.ptr(outPcm),
+			ffi.ptr(outSamples),
+			err.ptr,
+		);
+		const owned = outPcm[0] ?? 0n;
+		try {
+			if (rc === ELIZA_ERR_CANCELLED) {
+				takeError(err.buf);
+				return { pcm: new Float32Array(0), cancelled: true };
+			}
+			if (rc !== ELIZA_OK) {
+				const message =
+					takeError(err.buf) ?? `[ffi-bindings] ${symbol} rc=${rc}`;
+				throw new VoiceLifecycleError(failureCode(rc), message);
+			}
+			const samples = Number(outSamples[0] ?? 0n);
+			if (samples === 0 || owned === 0n) {
+				return { pcm: new Float32Array(0), cancelled: false };
+			}
+			// Copy out before the library buffer is released below.
+			return {
+				pcm: new Float32Array(
+					ffi.toArrayBuffer(owned, 0, samples * 4).slice(0),
+				),
+				cancelled: false,
+			};
+		} finally {
+			if (owned !== 0n) v17.eliza_inference_free_pcm(owned);
+		}
+	}
 
 	/**
 	 * Convert a Bun-FFI pointer value (`unknown` per the lazy types) to the

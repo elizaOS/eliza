@@ -40,7 +40,6 @@ import type {
 } from "../api/client-types-chat";
 import type {
   CodingAgentSession,
-  RegistryStatus,
   WhitelistStatus,
 } from "../api/client-types-cloud";
 import type {
@@ -415,11 +414,6 @@ export interface AppState {
   walletPrimaryRestarting: Partial<Record<WalletChainKind, boolean>>;
   walletPrimaryPending: Partial<Record<WalletChainKind, boolean>>;
   cloudRefreshing: boolean;
-  // ERC-8004 Registry
-  registryStatus: RegistryStatus | null;
-  registryLoading: boolean;
-  registryRegistering: boolean;
-  registryError: string | null;
   // Drop / Mint
   dropStatus: DropStatus | null;
   dropLoading: boolean;
@@ -705,7 +699,7 @@ export interface AppActions {
   sendActionMessage: (
     text: string,
     options?: { metadata?: Record<string, unknown> },
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   /** Send a chat message with optional metadata (e.g. task creation intent). */
   sendChatText: (
     rawInput: string,
@@ -786,10 +780,7 @@ export interface AppActions {
   ) => Promise<void>;
   refreshCloudWallets: () => Promise<void>;
   handleExportKeys: () => Promise<void>;
-  // Registry / Drop
-  loadRegistryStatus: () => Promise<void>;
-  registerOnChain: () => Promise<void>;
-  syncRegistryProfile: () => Promise<void>;
+  // Drop
   loadDropStatus: () => Promise<void>;
   mintFromDrop: (shiny: boolean) => Promise<void>;
   loadWhitelistStatus: () => Promise<void>;

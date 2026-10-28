@@ -165,7 +165,8 @@ export class RaydiumService extends Service {
   async getTokenPrice(
     tokenMint: string,
     quoteMint: string = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-    inputDecimals: number = 6
+    inputDecimals: number = 6,
+    quoteDecimals: number = 6
   ): Promise<number> {
     try {
       const baseAmount = 10 ** inputDecimals;
@@ -175,7 +176,9 @@ export class RaydiumService extends Service {
         amount: baseAmount,
         slippageBps: 50,
       });
-      return Number(quote.outAmount) / 10 ** inputDecimals;
+      // outAmount is denominated in the OUTPUT token's base units, so it must
+      // be divided by the quote token's decimals, not the input's.
+      return Number(quote.outAmount) / 10 ** quoteDecimals;
     } catch (error) {
       logger.error(`Failed to get token price: ${formatUnknownError(error)}`);
       return 0;

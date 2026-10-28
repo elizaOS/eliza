@@ -433,16 +433,7 @@ export class HetznerContainersClient {
     const meta = readMetadata(row);
     if (meta) {
       await this.execOnNode(meta, async (ssh) => {
-        // error-policy:J6 best-effort graceful stop; the authoritative teardown
-        // is the un-caught `docker rm -f` below, whose failure DOES propagate.
-        await ssh
-          .exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000)
-          .catch((err) => {
-            logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
+        await this.removeContainerRuntime(ssh, meta);
 
         if (!row.hcloud_volume_id && options.purgeVolume && meta.volumePath) {
           if (
@@ -548,29 +539,15 @@ export class HetznerContainersClient {
         `container ${containerId} is missing valid Hetzner provider metadata`,
       );
     }
-    let alreadyAbsent = false;
-    await this.execOnNode(meta, async (ssh) => {
-      // error-policy:J6 graceful stop is best effort; rm -f is the provider
-      // absence proof and its failure propagates to durable recovery.
-      await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000).catch((err) => {
-        logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
-          error: err instanceof Error ? err.message : String(err),
-        });
+    const alreadyAbsent = await this.execOnNode(meta, (ssh) =>
+      this.removeContainerRuntime(ssh, meta),
+    );
+    if (alreadyAbsent) {
+      logger.info("[hetzner-client] billing stop confirmed runtime already absent", {
+        containerId,
+        containerName: meta.containerName,
       });
-      try {
-        await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!isContainerAbsentMessage(message) || !message.includes(meta.containerName)) {
-          throw error;
-        }
-        logger.info("[hetzner-client] billing stop confirmed runtime already absent", {
-          containerId,
-          containerName: meta.containerName,
-        });
-        alreadyAbsent = true;
-      }
-    });
+    }
     return { nodeId: meta.nodeId, alreadyAbsent };
   }
 
@@ -598,16 +575,7 @@ export class HetznerContainersClient {
     const meta = readMetadata(row);
     if (meta) {
       await this.execOnNode(meta, async (ssh) => {
-        // error-policy:J6 best-effort graceful stop; the authoritative teardown
-        // is the un-caught `docker rm -f` below, whose failure DOES propagate.
-        await ssh
-          .exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000)
-          .catch((err) => {
-            logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-        await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
+        await this.removeContainerRuntime(ssh, meta);
 
         // Local host volume deletion runs only when there is no Hetzner Cloud
         // volume backing this path (hcloud volumes are managed separately below).
@@ -687,6 +655,9 @@ export class HetznerContainersClient {
       }
     }
 
+    // The runtime is gone: charge what it ran since the last daily bill
+    // before the row (and with it the cron's view of the container) is removed.
+    await containersRepository.settleAccruedCompute(containerId, organizationId, new Date());
     await containersRepository.delete(containerId, organizationId);
   }
 
@@ -756,17 +727,7 @@ export class HetznerContainersClient {
     );
 
     await this.execOnNode(meta, async (ssh) => {
-      // error-policy:J6 best-effort stop before the authoritative rm -f below;
-      // a stop failure is logged, not thrown, because rm -f performs the real
-      // teardown and its failure DOES propagate.
-      await ssh
-        .exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000)
-        .catch((stopErr) =>
-          logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
-            error: stopErr instanceof Error ? stopErr.message : String(stopErr),
-          }),
-        );
-      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
+      await this.removeContainerRuntime(ssh, meta);
 
       await ssh.exec(buildEnsureNetworkCmd(DEFAULT_NODE_NETWORK), 30_000);
       await ssh.execStdin(createTransport.command, createTransport.input, 60_000);
@@ -1027,6 +988,34 @@ export class HetznerContainersClient {
       );
     }
     return { row, meta };
+  }
+
+  /**
+   * Stop and remove a container on its node. The graceful stop is best effort;
+   * `docker rm -f` is the teardown whose failure propagates, except that a
+   * container the daemon no longer knows (an earlier stop already removed it,
+   * while the row still names it) counts as removed. Returns whether it was
+   * already absent.
+   */
+  private async removeContainerRuntime(
+    ssh: DockerSSHClient,
+    meta: HetznerContainerMetadata,
+  ): Promise<boolean> {
+    await ssh.exec(`docker stop -t 10 ${shellQuote(meta.containerName)}`, 30_000).catch((err) => {
+      logger.warn(`[hetzner-client] docker stop failed for ${meta.containerName}`, {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+    try {
+      await ssh.exec(`docker rm -f ${shellQuote(meta.containerName)}`, 30_000);
+      return false;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isContainerAbsentMessage(message) || !message.includes(meta.containerName)) {
+        throw error;
+      }
+      return true;
+    }
   }
 
   private async execOnNode<T>(

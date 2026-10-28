@@ -140,6 +140,18 @@ afterAll(async () => {
 const quote = () => create({ ...f.input, targetPlanKey: "plus_monthly" }, async () => {});
 test("saves the lower review in shared immutable storage without scheduling or changing allowance", async () => {
   const q = await quote();
+  expect(q.review.allowanceTerms).toEqual({
+    fundingClass: "allowance_eligible",
+    rollover: false,
+    expiresAt: "billing_period_end",
+  });
+  const stored = await client
+    .getPgliteClientForTests()
+    .query<{ terms: unknown }>(
+      "SELECT review->'allowanceTerms' AS terms FROM organization_plan_change_quotes WHERE id=$1",
+      [q.id],
+    );
+  expect(stored.rows[0]?.terms).toEqual(q.review.allowanceTerms);
   expect(q.review.kind).toBe("downgrade_estimate");
   expect(q.review.amountDueNowCents).toBe(0);
   expect(q.review.effectiveAt).toBe(f.source.current_period_end.toISOString());

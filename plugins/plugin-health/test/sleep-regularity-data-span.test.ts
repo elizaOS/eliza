@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { computeSleepRegularity } from "../src/sleep/sleep-regularity.js";
+import {
+  computePersonalBaseline,
+  computeSleepRegularity,
+} from "../src/sleep/sleep-regularity.js";
 
 const nowMs = Date.parse("2026-10-10T12:00:00Z");
 
@@ -42,5 +45,18 @@ describe("computeSleepRegularity data span", () => {
       nowMs,
     });
     expect(result.regularityClass).toBe("very_regular");
+  });
+
+  it("leaves out nights older than the window", () => {
+    // The last 28 nights start at 23:00; the 32 nights before them at 03:00.
+    const recent = nights(Array(28).fill(0));
+    const history = [...recent, ...nights(Array(60).fill(240)).slice(28)];
+    const args = { timezone: "UTC", nowMs, windowDays: 28 };
+    expect(computeSleepRegularity({ ...args, episodes: history })).toEqual(
+      computeSleepRegularity({ ...args, episodes: recent }),
+    );
+    expect(computePersonalBaseline({ ...args, episodes: history })).toEqual(
+      computePersonalBaseline({ ...args, episodes: recent }),
+    );
   });
 });

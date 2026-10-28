@@ -186,6 +186,33 @@ describe("TASKS stop_agent / cancel default target", () => {
   }
 });
 
+describe("TASKS control / share default target", () => {
+  it("control stop without a session id ends the running sub-agent", async () => {
+    await withRunningAndFinished("control-stop", async (ctx) => {
+      const result = await runTasks(ctx.runtime, {
+        action: "control",
+        controlAction: "stop",
+      });
+
+      expect(result?.success).toBe(true);
+      expect((await ctx.service.getSession(ctx.runningId))?.status).toBe(
+        "stopped",
+      );
+    });
+  }, 20_000);
+
+  it("share without a session id reports the running sub-agent", async () => {
+    await withRunningAndFinished("share", async (ctx) => {
+      const result = await runTasks(ctx.runtime, { action: "share" });
+
+      expect(result?.success).toBe(true);
+      expect(
+        (result?.data as { sessionId?: string } | undefined)?.sessionId,
+      ).toBe(ctx.runningId);
+    });
+  }, 20_000);
+});
+
 /**
  * Two sub-agents run at once. The older one belongs to a durable task; the
  * newer one does not. A task id must select the older one.
@@ -447,6 +474,108 @@ describe("TASKS control resume with an instruction and no running session", () =
   }, 20_000);
 });
 
+describe("resumeTask after a failed re-engage spawn", () => {
+  it("keeps the re-engage for the next resume", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const live = async (taskId: string) =>
+      (await store.getTask(taskId))?.sessions.filter(
+        (s) => s.status !== "stopped",
+      ) ?? [];
+    try {
+      const task = await store.createTask({
+        title: "Interrupted task",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      const taskId = task.task.id;
+      await tasks.spawnAgentForTask(taskId);
+      await tasks.pauseTask(taskId);
+      expect(await live(taskId)).toEqual([]);
+
+      // The coding CLI cannot start a session (for example, it lost its login).
+      await writeFile(
+        cliPath,
+        '#!/usr/bin/env node\nprocess.stderr.write("not authenticated\\n");\nprocess.exit(1);\n',
+      );
+      await expect(tasks.resumeTask(taskId)).rejects.toThrow();
+      expect(await live(taskId)).toEqual([]);
+
+      // After the CLI works again, resume must start the interrupted work.
+      await writeFile(cliPath, FAKE_ACPX);
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+      expect(
+        (await store.getTask(taskId))?.task.metadata?.pausedWithActiveWork,
+      ).toBeUndefined();
+
+      // A completed re-engage is not repeated by another resume.
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+    } finally {
+      await service.stop();
+    }
+  }, 30_000);
+});
+
+describe("postUserMessage to a paused task", () => {
+  it("records the message without starting a worker before resume", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const live = async (taskId: string) =>
+      (await store.getTask(taskId))?.sessions.filter(
+        (s) => s.status !== "stopped",
+      ) ?? [];
+    try {
+      const task = await store.createTask({
+        title: "Paused with a message",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      const taskId = task.task.id;
+      await tasks.spawnAgentForTask(taskId);
+      await tasks.pauseTask(taskId);
+
+      const result = await tasks.postUserMessage(
+        taskId,
+        "also update the README",
+      );
+      expect(result?.recorded).toBe(true);
+      expect(result?.forwardedTo).toEqual([]);
+      expect(result?.failedTo.map((failure) => failure.sessionId)).toEqual([
+        "(paused)",
+      ]);
+      expect(await live(taskId)).toEqual([]);
+
+      // Resume starts exactly one worker for the interrupted work.
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+    } finally {
+      await service.stop();
+    }
+  }, 30_000);
+});
+
 describe("TASKS history with a task id", () => {
   async function withTwoTasks(
     body: (ctx: {
@@ -509,6 +638,108 @@ describe("TASKS history with a task id", () => {
       expect(result?.text).not.toContain("Newest task");
     });
   });
+});
+
+describe("TASKS history with the archived status", () => {
+  async function withArchivedTask(
+    body: (ctx: {
+      runtime: IAgentRuntime;
+      archivedId: string;
+    }) => Promise<void>,
+  ): Promise<void> {
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => undefined,
+      () => tasks,
+    );
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const base = {
+      goal: "finish the build",
+      acceptanceCriteria: [],
+      roomId: "target-room",
+      worldId: "target-world",
+    };
+    const archived = await store.createTask({ ...base, title: "Shelved task" });
+    await store.createTask({ ...base, title: "Live task" });
+    await tasks.archiveTask(archived.task.id);
+    await body({ runtime, archivedId: archived.task.id });
+  }
+
+  for (const extra of [{}, { includeArchived: false }]) {
+    it(`statuses=[archived] with ${JSON.stringify(extra)} lists the archived task`, async () => {
+      await withArchivedTask(async (ctx) => {
+        const args = { action: "history", statuses: ["archived"], ...extra };
+        expect(validateToolArgs(tasksAction, args).errors).toEqual([]);
+
+        const result = await runTasks(ctx.runtime, args);
+
+        expect(result?.success).toBe(true);
+        expect(result?.text).toContain("Shelved task");
+        expect(result?.data).toMatchObject({
+          count: 1,
+          taskIds: [ctx.archivedId],
+        });
+      });
+    });
+  }
+
+  it("history without the archived status still hides archived tasks", async () => {
+    await withArchivedTask(async (ctx) => {
+      const result = await runTasks(ctx.runtime, { action: "history" });
+
+      expect(result?.success).toBe(true);
+      expect(result?.text).toContain("Live task");
+      expect(result?.text).not.toContain("Shelved task");
+    });
+  });
+});
+
+describe("TASKS create with lane ordering and no lane planner", () => {
+  async function createWith(extra: Record<string, unknown>) {
+    let service: AcpService | undefined;
+    const runtime = runtimeWith(() => service);
+    service = new AcpService(runtime);
+    await service.start();
+    try {
+      const parameters = {
+        action: "create",
+        agents:
+          "build the REST API in src/api | write integration tests against the API in test/api",
+        workdir,
+        ...extra,
+      };
+      expect(validateToolArgs(tasksAction, parameters).errors).toEqual([]);
+      const result = await tasksAction.handler(
+        runtime,
+        {
+          content: {
+            text: "Build the REST API in src/api, then write integration tests against it in test/api.",
+            source: "chat",
+          },
+        } as unknown as Memory,
+        undefined,
+        { parameters },
+        async () => [],
+      );
+      return { result, sessions: await service.listSessions() };
+    } finally {
+      await service.stop();
+    }
+  }
+
+  it.each([[{ dependencies: { "lane-2": ["lane-1"] } }], [{ maxParallel: 1 }]])(
+    "%o starts nothing and says why",
+    async (extra) => {
+      const { result, sessions } = await createWith(extra);
+
+      expect(result).toMatchObject({
+        success: false,
+        error: "LANE_PLANNER_UNAVAILABLE",
+      });
+      expect(sessions).toEqual([]);
+    },
+  );
 });
 
 describe("TASKS manage_issues bulk create on an external message", () => {
@@ -620,5 +851,80 @@ describe("TASKS object parameters accept the shapes the handler reads", () => {
     expect(
       child("TASKS_SEND").parameters?.map((parameter) => parameter.name),
     ).not.toContain("metadata");
+  });
+});
+
+// Native ACP agent whose prompt turns hang until session/cancel.
+const HANG_NATIVE_AGENT = `import { createInterface } from "node:readline";
+const pending = new Map();
+let n = 0;
+const send = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+createInterface({ input: process.stdin }).on("line", (line) => {
+  const msg = JSON.parse(line);
+  if (msg.method === "initialize") return send({ id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+  if (msg.method === "session/new") return send({ id: msg.id, result: { sessionId: "s" + ++n } });
+  if (msg.method === "session/prompt") return void pending.set(msg.params.sessionId, msg.id);
+  if (msg.method === "session/cancel") {
+    const id = pending.get(msg.params.sessionId);
+    pending.delete(msg.params.sessionId);
+    if (id !== undefined) send({ id, result: { stopReason: "cancelled" } });
+    return;
+  }
+  if (msg.id !== undefined && msg.method) send({ id: msg.id, result: {} });
+});
+`;
+
+describe("TASKS cancel on the native transport", () => {
+  it("cancels every task when one sub-agent is waiting between turns", async () => {
+    const agentPath = path.join(workdir, "hang-acp-agent.mjs");
+    await writeFile(agentPath, HANG_NATIVE_AGENT);
+    let service: AcpService | undefined;
+    const values: Record<string, string> = {
+      ELIZA_ACP_TRANSPORT: "native",
+      ELIZA_ACP_NO_TERMINAL: "true",
+      ELIZA_ELIZAOS_ACP_COMMAND: `node ${agentPath}`,
+    };
+    const runtime = {
+      ...runtimeWith(() => service),
+      getSetting: (key: string) => values[key],
+    } as IAgentRuntime;
+    service = new AcpService(runtime);
+    await service.start();
+    try {
+      const idle = await service.spawnSession({
+        agentType: "elizaos",
+        workdir,
+        approvalPreset: "permissive",
+      });
+      const busy = await service.spawnSession({
+        agentType: "elizaos",
+        workdir,
+        approvalPreset: "permissive",
+      });
+      const turn = service.sendPrompt(busy.sessionId, "long build");
+      await waitForStatus(service, busy.sessionId, "busy");
+
+      const result = await tasksAction.handler(
+        runtime,
+        {
+          id: "00000000-0000-4000-8000-0000000000aa",
+          entityId: "00000000-0000-4000-8000-0000000000bb",
+          roomId: "00000000-0000-4000-8000-0000000000cc",
+          content: { text: "cancel all tasks" },
+        } as unknown as Memory,
+        undefined,
+        { parameters: { action: "cancel", all: true } },
+        async () => [],
+      );
+      turn.catch(() => undefined);
+
+      expect({
+        success: result?.success,
+        idle: (await service.getSession(idle.sessionId))?.status,
+        busy: (await service.getSession(busy.sessionId))?.status,
+      }).toEqual({ success: true, idle: "stopped", busy: "cancelled" });
+    } finally {
+      await service.stop();
+    }
   });
 });

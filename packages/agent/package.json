@@ -237,6 +237,12 @@
       "types": "./dist/services/sqlite-message-interaction-session-store.d.ts",
       "import": "./dist/services/sqlite-message-interaction-session-store.js",
       "default": "./dist/services/sqlite-message-interaction-session-store.js"
+    },
+    "./actions/views": {
+      "eliza-source": "./src/actions/views.ts",
+      "types": "./dist/actions/views.d.ts",
+      "import": "./dist/actions/views.js",
+      "default": "./dist/actions/views.js"
     }
   },
   "publishConfig": {
@@ -266,6 +272,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-imessage": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
+    "@elizaos/plugin-maps": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
     "@elizaos/plugin-native-filesystem": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
@@ -280,14 +287,14 @@
     "@elizaos/plugin-workflow": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "esbuild": "^0.28.0",
     "ethers": "^6.16.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.11",
     "isomorphic-git": "^1.42.2",
     "jpeg-js": "^0.4.4",
     "json5": "^2.2.3",
-    "pg": "^8.23.0",
+    "pg": "^8.23.1",
     "pngjs": "^7.0.0",
     "ws": "^8.21.3",
     "zod": "^4.6.5",
@@ -297,7 +304,7 @@
     "@elizaos/plugin-relationships": "workspace:*",
     "@elizaos/plugin-sqlite": "workspace:*",
     "@elizaos/plugin-embeddings": "workspace:*",
-    "react": "^19.0.0",
+    "react": "^19.3.1",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*"
@@ -338,10 +345,10 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "ai": "^6.0.134",
     "bun-types": "1.4.2",
-    "resolve.exports": "2.0.3",
+    "resolve.exports": "2.0.4",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.3",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*"
   },
   "elizaos": {

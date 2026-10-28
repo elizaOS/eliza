@@ -10,7 +10,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, ModelType, Service, ServiceType } from "@elizaos/core";
-import { getDocumentProxy, getResolvedPDFJS, renderPageAsImage } from "unpdf";
+import { extractText, getDocumentProxy, getResolvedPDFJS, renderPageAsImage } from "unpdf";
 import type {
   PdfCompleteDocument,
   PdfCompleteExtractionOptions,
@@ -27,6 +27,7 @@ import { parsePdfSpecDate } from "./pdf-date.js";
 
 type PdfTextItem = {
   str: string;
+  hasEOL?: boolean;
   transform?: unknown;
   width?: unknown;
   height?: unknown;
@@ -51,7 +52,7 @@ function isTextItem(item: unknown): item is PdfTextItem {
   );
 }
 
-function collectTextStrings(items: unknown): string[] {
+function collectTextStrings(items: unknown, lineSeparator = ""): string[] {
   if (!Array.isArray(items)) {
     throw new TypeError("PDF text content items must be an array");
   }
@@ -59,7 +60,7 @@ function collectTextStrings(items: unknown): string[] {
   const textItems: string[] = [];
   for (const item of items) {
     if (isTextItem(item)) {
-      textItems.push(item.str);
+      textItems.push(item.str + (item.hasEOL ? lineSeparator : ""));
     }
   }
   return textItems;
@@ -279,6 +280,7 @@ export class PdfService extends Service {
         );
         const isParserBlank = nativeText.length === 0 && operatorList.fnArray.length === 0;
         let ocrText: string | null = null;
+        let ocrRan = false;
         await assertActive();
         const rendered = await renderPageAsImage(pdf, pageNumber, {
           canvasImport: () => import("@napi-rs/canvas"),
@@ -295,6 +297,7 @@ export class PdfService extends Service {
         if (options.ocrPage) {
           ocrText = this.cleanUpContent(await options.ocrPage({ pageNumber, pngBytes }));
           if (!ocrText) ocrText = null;
+          ocrRan = true;
         }
         await assertActive();
         const response = await this.runtime
@@ -336,12 +339,15 @@ export class PdfService extends Service {
           throw new Error("IMAGE_DESCRIPTION returned an empty page transcription");
         }
         const visionReportsBlank = visionText === "[BLANK PAGE]";
-        if (visionReportsBlank && (!isParserBlank || ocrText)) {
+        // A scanned blank page still draws an image, so the parser cannot
+        // confirm it. OCR that ran and read nothing is the second check.
+        const isVerifiedBlank =
+          visionReportsBlank && !nativeText && !ocrText && (isParserBlank || ocrRan);
+        if (visionReportsBlank && !isVerifiedBlank) {
           throw new Error(
             "IMAGE_DESCRIPTION reported a blank page that conflicts with native or OCR evidence"
           );
         }
-        const isVerifiedBlank = isParserBlank && !ocrText && visionReportsBlank;
 
         const text = [
           nativeText,
@@ -390,19 +396,16 @@ export class PdfService extends Service {
   async convertPdfToText(pdfBuffer: Buffer | Uint8Array): Promise<string> {
     const uint8Array = validatePdfInput(pdfBuffer);
     const pdf = await getDocumentProxy(uint8Array);
-    const numPages = requirePdfPageCount(pdf.numPages);
-
-    const textPages: string[] = [];
-
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      const page = await pdf.getPage(pageNum);
-      const textContent = await page.getTextContent();
-      const pageText = collectTextStrings(textContent.items).join(" ");
-      textPages.push(pageText);
+    try {
+      // Keep the existing page-count boundary validation before extraction.
+      requirePdfPageCount(pdf.numPages);
+      // PDF text items are font runs, not words. Reuse the parser's spacing
+      // and line-break handling; older unpdf merged mode collapses newlines.
+      const { text } = await extractText(pdf, { mergePages: false });
+      return this.cleanUpContent(text.join("\n"));
+    } finally {
+      await pdf.loadingTask.destroy();
     }
-
-    const rawText = textPages.join("\n");
-    return this.cleanUpContent(rawText);
   }
 
   async convertPdfToPositionedText(
@@ -465,9 +468,10 @@ export class PdfService extends Service {
       for (let pageNum = startPage; pageNum <= endPage; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const textContent = await page.getTextContent();
-        const pageText = collectTextStrings(textContent.items).join(
+        const pageText = collectTextStrings(
+          textContent.items,
           options.preserveWhitespace ? "" : " "
-        );
+        ).join("");
         textPages.push(pageText);
       }
 

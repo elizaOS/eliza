@@ -56,7 +56,7 @@ import type {
   UpdateCreativeInput,
   UploadMediaInput,
 } from "./types";
-import { AD_CREDIT_RATES, calculateSpendCredits } from "./types";
+import { AD_CREDIT_RATES, calculateSpendCredits, MIN_CAMPAIGN_BUDGET_AMOUNT } from "./types";
 
 export * from "./schemas";
 export * from "./types";
@@ -81,6 +81,14 @@ function safeDiv(numerator: number, denominator: number, multiplier = 1): number
 
 function roundMetric(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function assertCampaignBudgetSupported(budgetAmount: number, budgetCredits: number): void {
+  if (budgetAmount < MIN_CAMPAIGN_BUDGET_AMOUNT || budgetCredits < MIN_CAMPAIGN_BUDGET_AMOUNT) {
+    throw ValidationError(
+      `Campaign budget must be at least ${MIN_CAMPAIGN_BUDGET_AMOUNT.toFixed(2)} USD`,
+    );
+  }
 }
 
 function randomReportToken(): string {
@@ -458,14 +466,15 @@ class AdvertisingService {
       return { campaign, secret: existing };
     }
 
-    const secret = this.newAttributionSecret();
-    const updated = await adCampaignsRepository.update(campaign.id, {
-      metadata: {
-        ...(campaign.metadata ?? {}),
-        attribution_token_secret: secret,
-      },
-    });
-    if (!updated) {
+    // Set only if absent, in one statement: concurrent first requests agree on
+    // one secret, and no other metadata key is rewritten from this copy.
+    const updated = await adCampaignsRepository.setMetadataKeyIfAbsent(
+      campaign.id,
+      "attribution_token_secret",
+      this.newAttributionSecret(),
+    );
+    const secret = updated?.metadata?.attribution_token_secret;
+    if (!updated || !secret) {
       throw new Error("Campaign not found");
     }
     return { campaign: updated, secret };
@@ -1079,6 +1088,7 @@ class AdvertisingService {
       dayparting,
     };
     const budgetCredits = calculateSpendCredits(account.platform, input.budgetAmount);
+    assertCampaignBudgetSupported(input.budgetAmount, budgetCredits);
     const campaignSpendCap = this.normalizeSpendCapCredits(input.spendCapCredits);
     this.assertCampaignSpendCapAllowsAllocation({
       spendCapCredits: campaignSpendCap,
@@ -1284,7 +1294,7 @@ class AdvertisingService {
   ): Promise<AdCampaign> {
     // No ad-platform adapter applies bid-control changes to a live campaign
     // (Meta bid controls live on the ad set created with the campaign;
-    // Google/TikTok updates only push name/budget/dates). Reject explicitly
+    // Google updates only push name/budget/dates, TikTok name/budget). Reject explicitly
     // instead of persisting local metadata the platform never receives.
     if (input.bidStrategy !== undefined || input.optimizationGoal !== undefined) {
       throw ValidationError(
@@ -1337,18 +1347,19 @@ class AdvertisingService {
     }
 
     if (!campaign.external_campaign_id) {
-      const metadata = {
-        ...campaign.metadata,
-        ...(dayparting ? { dayparting } : {}),
-      };
-      if (input.dayparting === null) {
-        delete metadata.dayparting;
-      }
-      const updated = await adCampaignsRepository.update(campaignId, {
-        metadata,
-        spend_cap_credits:
-          input.spendCapCredits === undefined ? undefined : requestedCampaignSpendCap,
-      });
+      // Only the dayparting key changes; the rest of the stored metadata (the
+      // attribution secret among it) is not rewritten from this copy.
+      const updated = await adCampaignsRepository.updateWithMetadataPatch(
+        campaignId,
+        {
+          spend_cap_credits:
+            input.spendCapCredits === undefined ? undefined : requestedCampaignSpendCap,
+        },
+        {
+          set: dayparting ? { dayparting } : undefined,
+          remove: input.dayparting === null ? ["dayparting"] : undefined,
+        },
+      );
       if (!updated) {
         throw new Error("Campaign not found");
       }
@@ -1390,6 +1401,7 @@ class AdvertisingService {
     let budgetCreditDelta = 0;
     if (input.budgetAmount !== undefined) {
       newCreditsAllocated = calculateSpendCredits(account.platform, input.budgetAmount);
+      assertCampaignBudgetSupported(input.budgetAmount, newCreditsAllocated);
       this.assertCampaignSpendCapAllowsAllocation({
         spendCapCredits: requestedCampaignSpendCap,
         newCampaignCredits: newCreditsAllocated,
@@ -1872,23 +1884,32 @@ class AdvertisingService {
     const credentials = await this.getCredentials(account);
     const provider = this.getProvider(account.platform);
 
+    // Without a caller window this is the campaign's lifetime: the window the
+    // spend accounting (credits_spent, delete refund) relies on. Adapters fall
+    // back to a recent window when they get none, so the lifetime is explicit:
+    // from the campaign's creation until now. Not the scheduled start: a user
+    // can move that later, and spend from before it must still count.
+    const lifetime = dateRange === undefined;
     const result = await provider.getCampaignMetrics(
       credentials,
       campaign.external_campaign_id,
-      dateRange,
+      dateRange ?? { start: campaign.created_at, end: new Date() },
     );
 
     if (!result.success || !result.metrics) {
       throw new Error(result.error || "Failed to get metrics");
     }
 
-    // Update stored metrics
-    await adCampaignsRepository.updateMetrics(campaignId, {
-      totalSpend: String(result.metrics.spend),
-      totalImpressions: result.metrics.impressions,
-      totalClicks: result.metrics.clicks,
-      totalConversions: result.metrics.conversions,
-    });
+    // The stored totals are lifetime figures; a windowed read must not
+    // overwrite them with one window's numbers.
+    if (lifetime) {
+      await adCampaignsRepository.updateMetrics(campaignId, {
+        totalSpend: String(result.metrics.spend),
+        totalImpressions: result.metrics.impressions,
+        totalClicks: result.metrics.clicks,
+        totalConversions: result.metrics.conversions,
+      });
+    }
 
     const firstParty = await adConversionsRepository.getCampaignRollup(campaignId, dateRange);
 
@@ -2196,7 +2217,11 @@ class AdvertisingService {
           credentials,
           account.external_account_id,
           campaign.external_campaign_id,
-          preparedInput,
+          {
+            ...preparedInput,
+            campaignStartDate: campaign.start_date ?? undefined,
+            campaignEndDate: campaign.end_date ?? undefined,
+          },
         );
 
         if (result.success && result.externalCreativeId) {

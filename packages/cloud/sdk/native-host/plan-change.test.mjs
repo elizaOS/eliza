@@ -51,6 +51,12 @@ function quote(action = "upgrade", now = Date.now()) {
       currentPeriodEnd: end,
       targetBaseAmountCents: 1000,
       targetAllowanceUsd: "10.000000",
+      allowanceTerms: {
+        fundingClass: "allowance_eligible",
+        rollover: false,
+        expiresAt: "billing_period_end",
+        providerSecret: "hidden",
+      },
       recurringEstimate: invoice(),
       observedAt: new Date(now).toISOString(),
       expiresAt: new Date(now + 60000).toISOString(),
@@ -136,6 +142,21 @@ for (const action of ["upgrade", "downgrade"])
     assert.equal(result.quoteId, quoteId);
     assert.equal(result.review.targetPlanKey, v.review.targetPlanKey);
     assert.equal(result.review.recurringEstimate.discountCents, 100);
+    assert.deepEqual(result.review.allowanceTerms, {
+      fundingClass: "allowance_eligible",
+      rollover: false,
+      expiresAt: "billing_period_end",
+    });
+    const historical = structuredClone(v);
+    delete historical.review.allowanceTerms;
+    assert.equal(
+      Object.hasOwn(
+        projectPlanChangeQuote(historical, action, policy, now).review,
+        "allowanceTerms",
+      ),
+      false,
+      "Historical quotes get no invented terms",
+    );
     assert.ok(!JSON.stringify(result).includes("hidden"));
     for (const change of [
       { subscriptionId: "bad" },
@@ -144,6 +165,10 @@ for (const action of ["upgrade", "downgrade"])
       { expectedSubscriptionRevision: "9007199254740992" },
       { currency: "eur" },
       { targetAllowanceUsd: "1.2" },
+      { allowanceTerms: null },
+      { allowanceTerms: { ...v.review.allowanceTerms, rollover: true } },
+      { allowanceTerms: { ...v.review.allowanceTerms, expiresAt: "never" } },
+      { allowanceTerms: { ...v.review.allowanceTerms, fundingClass: "cash" } },
       { expiresAt: new Date(now - 1).toISOString() },
       { expiresAt: new Date(now + 60001).toISOString() },
       { observedAt: new Date(now + 6000).toISOString() },
@@ -427,6 +452,11 @@ test("real native broker uses private sessions, stable intents and read-only res
     });
     assert.equal(result.status, 200);
     assert.equal(result.cache, "no-store");
+    assert.deepEqual(result.data.review.allowanceTerms, {
+      fundingClass: "allowance_eligible",
+      rollover: false,
+      expiresAt: "billing_period_end",
+    });
     assert.ok(!JSON.stringify(result).includes("hidden"));
   }
   badEnvelope = true;

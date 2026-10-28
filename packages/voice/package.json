@@ -22,11 +22,29 @@
       "import": "./dist/turn.js",
       "default": "./dist/turn.js"
     },
-    "./browser-speech": {
-      "eliza-source": "./src/browser-speech/index.ts",
-      "types": "./dist/browser-speech/index.d.ts",
-      "import": "./dist/browser-speech/index.js",
-      "default": "./dist/browser-speech/index.js"
+    "./assistant-session": {
+      "eliza-source": "./src/voice-assistant-session.ts",
+      "types": "./dist/voice-assistant-session.d.ts",
+      "import": "./dist/voice-assistant-session.js",
+      "default": "./dist/voice-assistant-session.js"
+    },
+    "./live-session": {
+      "eliza-source": "./src/live-voice-session.ts",
+      "types": "./dist/live-voice-session.d.ts",
+      "import": "./dist/live-voice-session.js",
+      "default": "./dist/live-voice-session.js"
+    },
+    "./turn-routes": {
+      "eliza-source": "./src/voice-turn-routes.ts",
+      "types": "./dist/voice-turn-routes.d.ts",
+      "import": "./dist/voice-turn-routes.js",
+      "default": "./dist/voice-turn-routes.js"
+    },
+    "./turn-timing": {
+      "eliza-source": "./src/voice-turn-timing.ts",
+      "types": "./dist/voice-turn-timing.d.ts",
+      "import": "./dist/voice-turn-timing.js",
+      "default": "./dist/voice-turn-timing.js"
     },
     "./browser-capture": {
       "eliza-source": "./src/browser-capture/index.ts",
@@ -41,6 +59,7 @@
     "lint:check": "bunx @biomejs/biome check src test package.json",
     "lint": "bunx @biomejs/biome check --write src test package.json",
     "prepublishOnly": "bun run build",
+    "test": "vitest run",
     "test:browser:consumer": "node test/consumer.mjs"
   },
   "dependencies": {
@@ -50,7 +69,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"

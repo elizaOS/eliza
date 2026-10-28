@@ -310,3 +310,216 @@ it("retries a turn that failed before it was saved with its original reply and k
     "Replying to Eliza",
   );
 });
+
+const PHOTO_BYTES = "photo-bytes";
+const STORED_PHOTO_URL = `/api/media/${"a".repeat(64)}.png`;
+const PHOTO_HISTORY: ConversationMessage[] = [
+  {
+    id: "m-user-photo",
+    role: "user",
+    text: "what is this?",
+    timestamp: 1,
+    attachments: [
+      {
+        id: "abc",
+        url: STORED_PHOTO_URL,
+        title: "photo.png",
+        mimeType: "image/png",
+        contentType: "image",
+      },
+    ],
+  },
+  {
+    id: "m-agent-photo",
+    role: "assistant",
+    text: "",
+    timestamp: 2,
+    failureKind: "provider_issue",
+  },
+];
+const PHOTO_UPLOAD = [
+  { data: btoa(PHOTO_BYTES), mimeType: "image/png", name: "photo.png" },
+];
+
+/** Captures the upload payload each replayed turn sends to the server. */
+function mockServerImages() {
+  mockServer();
+  const sentImages: unknown[] = [];
+  vi.spyOn(client, "sendConversationMessageStream").mockImplementation(
+    async (_conversationId, _text, _onToken, _channelType, _signal, images) => {
+      sentImages.push(images);
+      return {
+        agentName: "Eliza",
+        text: "ok",
+        completed: true,
+      } as StreamResult;
+    },
+  );
+  return sentImages;
+}
+
+function mockStoredMedia() {
+  return vi.spyOn(client, "rawRequest").mockImplementation(
+    async () =>
+      ({
+        blob: async () => new Blob([PHOTO_BYTES], { type: "image/png" }),
+      }) as Response,
+  );
+}
+
+it("sends the stored image again when a failed turn is retried", async () => {
+  const sentImages = mockServerImages();
+  const media = mockStoredMedia();
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+
+  await act(async () => {
+    await chat.handleChatRetry("m-agent-photo");
+  });
+
+  await waitFor(() => expect(sentImages).toEqual([PHOTO_UPLOAD]));
+  expect(media).toHaveBeenCalledWith(STORED_PHOTO_URL);
+});
+
+it("sends the stored image again when the turn text is edited", async () => {
+  const sentImages = mockServerImages();
+  mockStoredMedia();
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+
+  let edited!: boolean;
+  await act(async () => {
+    edited = await chat.handleChatEdit("m-user-photo", "what breed is this?");
+  });
+
+  expect(edited).toBe(true);
+  await waitFor(() => expect(sentImages).toEqual([PHOTO_UPLOAD]));
+});
+
+it("keeps the stored turn when its image cannot be read for an edit", async () => {
+  const sentImages = mockServerImages();
+  vi.spyOn(client, "rawRequest").mockRejectedValue(new Error("gone"));
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+
+  let edited!: boolean;
+  await act(async () => {
+    edited = await chat.handleChatEdit("m-user-photo", "what breed is this?");
+  });
+
+  expect(edited).toBe(false);
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+  expect(harnessMessagesRef.current).toEqual(PHOTO_HISTORY);
+});
+
+it("does not read a scheme-relative attachment URL with the API credential", async () => {
+  const sentImages = mockServerImages();
+  const media = mockStoredMedia();
+  const history: ConversationMessage[] = [
+    {
+      ...PHOTO_HISTORY[0],
+      attachments: [
+        { id: "abc", url: "//media.example/abc.png", mimeType: "image/png" },
+      ],
+    },
+    PHOTO_HISTORY[1],
+  ];
+  render(<Harness history={history} armed={null} />);
+
+  await act(async () => {
+    await chat.handleChatRetry("m-agent-photo");
+  });
+
+  expect(media).not.toHaveBeenCalled();
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+  expect(harnessMessagesRef.current).toEqual(history);
+});
+
+it("does not read another same-origin API path with the API credential", async () => {
+  const sentImages = mockServerImages();
+  const media = mockStoredMedia();
+  const history: ConversationMessage[] = [
+    {
+      ...PHOTO_HISTORY[0],
+      attachments: [
+        { id: "config", url: "/api/config", mimeType: "image/png" },
+      ],
+    },
+    PHOTO_HISTORY[1],
+  ];
+  render(<Harness history={history} armed={null} />);
+
+  await act(async () => {
+    await chat.handleChatRetry("m-agent-photo");
+  });
+
+  expect(media).not.toHaveBeenCalled();
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+  expect(harnessMessagesRef.current).toEqual(history);
+});
+
+
+it("refuses an oversized stored image before truncation instead of recompressing it", async () => {
+  const sentImages = mockServerImages();
+  vi.spyOn(client, "rawRequest").mockResolvedValue({ blob: async () => new Blob([new Uint8Array(4 * 1024 * 1024)], { type: "image/png" }) } as Response);
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+  await act(async () => { await chat.handleChatRetry("m-agent-photo"); });
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+  expect(harnessMessagesRef.current).toEqual(PHOTO_HISTORY);
+});
+
+it("does not replay stale attachments when the source message changes during the read", async () => {
+  const sentImages = mockServerImages();
+  let finish!: (response: Response) => void;
+  vi.spyOn(client, "rawRequest").mockImplementation(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+  await act(async () => {
+    const replay = chat.handleChatRetry("m-agent-photo");
+    harnessMessagesRef.current = [{ ...PHOTO_HISTORY[0], text: "a newer version" }, PHOTO_HISTORY[1]];
+    finish({ blob: async () => new Blob([PHOTO_BYTES], { type: "image/png" }) } as Response);
+    await replay;
+  });
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+});
+
+it("does not replay a turn that recovered while its attachment was loading", async () => {
+  const sentImages = mockServerImages();
+  let finishRead!: (response: Response) => void;
+  vi.spyOn(client, "rawRequest").mockImplementation(
+    () => new Promise<Response>((resolve) => { finishRead = resolve; }),
+  );
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+  await act(async () => {
+    const retry = chat.handleChatRetry("m-agent-photo");
+    harnessMessagesRef.current = [
+      PHOTO_HISTORY[0],
+      { ...PHOTO_HISTORY[1], text: "Recovered answer", failureKind: undefined },
+    ];
+    finishRead({ blob: async () => new Blob([PHOTO_BYTES], { type: "image/png" }) } as Response);
+    await retry;
+  });
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+});
+
+it("does not edit a turn whose attachments changed while loading", async () => {
+  const sentImages = mockServerImages();
+  let finishRead!: (response: Response) => void;
+  vi.spyOn(client, "rawRequest").mockImplementation(
+    () => new Promise<Response>((resolve) => { finishRead = resolve; }),
+  );
+  render(<Harness history={PHOTO_HISTORY} armed={null} />);
+  await act(async () => {
+    const edit = chat.handleChatEdit("m-user-photo", "different question");
+    harnessMessagesRef.current = [
+      { ...PHOTO_HISTORY[0], attachments: [] },
+      PHOTO_HISTORY[1],
+    ];
+    finishRead({ blob: async () => new Blob([PHOTO_BYTES], { type: "image/png" }) } as Response);
+    expect(await edit).toBe(false);
+  });
+  expect(client.truncateConversationMessages).not.toHaveBeenCalled();
+  expect(sentImages).toEqual([]);
+});

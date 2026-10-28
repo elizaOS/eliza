@@ -239,11 +239,14 @@ export class ScheduledTaskRepository {
        * or whose `next_fire_at IS NULL` (the latter so event/manual/after_task
        * triggers — which deliberately have no wall-clock fire time but may
        * still need a tick pass for completion-timeout handling — remain
-       * visible). The partial index `idx_life_scheduled_tasks_due` is used
-       * when this filter is combined with a status list of
-       * `('scheduled', 'fired')`.
+       * visible). The partial index `idx_life_scheduled_tasks_due` supports
+       * this filter with eligible statuses. Enabling owner-local cron
+       * re-evaluation adds a JSON predicate that can require a scan of the
+       * agent's rows; it does not preserve an indexed-only query plan.
        */
       dueAtOrBeforeIso?: string;
+      /** Admit all owner-local cron rows despite future indices; may widen the scan. */
+      reevaluateOwnerLocalCron?: boolean;
       /**
        * Restrict to rows with `next_fire_at IS NOT NULL`. Used by tests
        * that want to validate the index slice without the NULL escape hatch.
@@ -283,8 +286,11 @@ export class ScheduledTaskRepository {
     }
     if (typeof filter?.dueAtOrBeforeIso === "string") {
       const at = sqlQuote(filter.dueAtOrBeforeIso);
+      const ownerLocalCron = filter.reevaluateOwnerLocalCron
+        ? " OR (trigger_json::jsonb ->> 'kind' = 'cron' AND trigger_json::jsonb ->> 'tz' = 'owner_local')"
+        : "";
       clauses.push(
-        `(next_fire_at IS NULL OR next_fire_at <= ${at}::timestamptz)`,
+        `(next_fire_at IS NULL OR next_fire_at <= ${at}::timestamptz${ownerLocalCron})`,
       );
     }
     if (filter?.requireNextFireAt === true) {

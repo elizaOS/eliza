@@ -142,14 +142,6 @@
       "help": "Voice profile to use for text-to-speech output.",
       "advanced": false
     },
-    "ELIZAOS_CLOUD_TTS_INSTRUCTIONS": {
-      "type": "textarea",
-      "required": false,
-      "sensitive": false,
-      "label": "Cloud Tts Instructions",
-      "help": "Optional instructions to control the style or behavior of the text-to-speech request.",
-      "advanced": false
-    },
     "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY": {
       "type": "boolean",
       "required": false,

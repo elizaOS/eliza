@@ -104,10 +104,10 @@ const SCHEDULED_DISPATCH_RENDER_FIRED_AT_MARKER = "\n\nFired at:";
 const SCHEDULED_DISPATCH_TITLE_PROMPT_PREFIX =
   "You are the owner's personal assistant. Write a concise notification title for the scheduled message below.";
 const SCHEDULED_DISPATCH_TITLE_BODY_MARKER = "\nMessage body:\n";
-// `EvaluatorService` (packages/core/src/services/evaluator.ts) runs every active
-// post-turn evaluator in one merged TEXT_SMALL call after EVERY turn. It is
-// runtime-wide background work, not scenario-specific: the prompt header below
-// is emitted verbatim by `renderSharedContext`.
+// `EvaluatorService` (plugins/plugin-assistant/src/services/evaluator.ts) runs
+// every active post-turn evaluator in one merged TEXT_SMALL call after EVERY
+// turn. It is runtime-wide background work, not scenario-specific: the prompt
+// header below is emitted verbatim by `renderSharedContext`.
 const POST_TURN_EVALUATION_PROMPT_PREFIX = "# Task: Post-turn evaluation";
 
 async function createScenarioKnowledgeGraphPlugin(): Promise<Plugin> {

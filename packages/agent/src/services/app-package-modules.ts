@@ -95,7 +95,7 @@ function sanitiseInstalledPackageDirName(packageName: string): string {
 }
 /**
  * Directory where the plugin-installer writes dynamically-installed plugins.
- * Matches `packages/app/src/services/plugin-installer.ts::pluginsBaseDir`.
+ * Matches `packages/agent/src/services/plugin-installer.ts::pluginsBaseDir`.
  */
 function installedPluginsBaseDir(): string {
   return path.join(resolveStateDir(), "plugins", "installed");

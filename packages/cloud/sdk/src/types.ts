@@ -118,14 +118,32 @@ export interface CliLoginPollResponse {
   keyPrefix?: string;
   expiresAt?: string;
   userId?: string;
+  /** With `apiKey`: true when this sign-in made the account, false when it existed. */
+  accountCreated?: boolean;
   error?: string;
 }
 
+/** The 200 body of `POST /api/v1/eliza/agents/:agentId/pairing-token`: the agent runs and a token was issued. */
 export interface PairingTokenResponse {
   token: string;
   redirectUrl: string;
   expiresIn: number;
 }
+
+/** The 202 body of the same route: the agent is not running; a resume was requested. */
+export interface PairingTokenStarting {
+  agentId: string;
+  status: string;
+  jobId?: string;
+  alreadyInProgress: boolean;
+  /** How long the route asks the caller to wait before asking again. */
+  retryAfterMs: number;
+  message?: string;
+}
+
+export type PairingTokenResult =
+  | ({ kind: "ready" } & PairingTokenResponse)
+  | ({ kind: "starting" } & PairingTokenStarting);
 
 export interface AuthPairResponse {
   message: string;
@@ -1073,27 +1091,111 @@ export interface CreateAgentRequest {
   autoProvision?: boolean;
 }
 
+/**
+ * Body for `PATCH /api/v1/eliza/agents/:agentId` edits: the route's edit schema
+ * reads only these two fields and drops any other key.
+ */
+export type UpdateAgentRequest = Partial<
+  Pick<CreateAgentRequest, "agentName" | "agentConfig">
+>;
+
+/** Body for `PATCH /api/v1/eliza/agents/:agentId/environment`; a `null` value removes that variable. */
+export interface UpdateAgentEnvironmentRequest {
+  environmentVars: Record<string, string | null>;
+}
+
+export interface UpdateAgentEnvironmentResponse {
+  success: boolean;
+  data?: {
+    agentId: string;
+    updatedKeys: string[];
+    removedKeys: string[];
+    status: string;
+    executionTier: string;
+    needsRestart: boolean;
+  };
+  error?: string;
+}
+
+/** Path that served an agent without a fresh dedicated server. */
+export type AgentServedSource =
+  | "shared_runtime"
+  | "warm_pool"
+  | "warm_pool_recovery";
+
+/** Body of `POST /api/v1/eliza/agents`; every agent field lives under `data`. */
 export interface CreateAgentResponse {
   success: boolean;
+  /**
+   * False when the organization already had this agent and it was returned
+   * as is. Absent on the bodies served from the warm pool.
+   */
+  created?: boolean;
+  /** Set when the agent did not get its own fresh server: the shared runtime or the warm pool served it. */
+  source?: AgentServedSource;
+  message?: string;
   data?: {
     id: string;
     agentId?: string;
     agentName: string | null;
-    status: import("./types.cloud-api.js").AgentSandboxStatus;
+    /** The sandbox status, or the provisioning job's status on the 202 body. */
+    status:
+      | import("./types.cloud-api.js").AgentSandboxStatus
+      | JobStatus["status"];
     executionTier?: string;
     jobId?: string;
+    estimatedCompletionAt?: string | null;
     createdAt?: string;
+    /** The agent's REST base when it runs on the shared runtime or the warm pool. */
+    webUiUrl?: string | null;
   };
-  id?: string;
-  agentId?: string;
-  jobId?: string;
-  executionTier?: string;
+  /** Present on the 202 body when a provisioning job was enqueued. */
+  polling?: {
+    endpoint: string;
+    intervalMs: number;
+    expectedDurationMs?: number;
+  };
 }
 
-export interface AgentLifecycleResponse extends Record<string, unknown> {
-  success?: boolean;
-  data?: JsonObject;
-  jobId?: string;
+/**
+ * Body of the agent delete, provision, suspend and resume routes. When a
+ * job was enqueued, `data.jobId` is the job to poll and `polling.endpoint`
+ * names the job route. Provision answers without a job when the agent is
+ * already available (shared runtime, warm pool): then `data.id`,
+ * `data.agentName`, `data.status` and `data.webUiUrl` describe the agent and
+ * `source` says which path served it.
+ */
+export interface AgentLifecycleResponse {
+  success: boolean;
+  /** False when an identical job was already in progress. */
+  created?: boolean;
+  alreadyInProgress?: boolean;
+  message?: string;
+  /** Provision, resume and delete of an agent the shared runtime or warm pool serves. */
+  source?: AgentServedSource;
+  /** Delete of a shared-runtime agent: the row was removed at once, no job. */
+  deleted?: boolean;
+  /** The 2xx body; a non-2xx body is `{ success: false, error }` and the client throws it. */
+  data: {
+    /** The agent id on the job-enqueuing bodies. */
+    agentId?: string;
+    /** The agent id on provision's immediate bodies. */
+    id?: string;
+    agentName?: string | null;
+    action?: string;
+    jobId?: string;
+    status?: string;
+    previousStatus?: string;
+    executionTier?: string;
+    estimatedCompletionAt?: string | null;
+    webUiUrl?: string | null;
+    message?: string;
+  };
+  polling?: {
+    endpoint: string;
+    intervalMs: number;
+    expectedDurationMs?: number;
+  };
 }
 
 export type SnapshotType = "manual" | "auto" | "pre-eviction";
@@ -1164,11 +1266,28 @@ export interface PollGatewayRelayResponse {
   };
 }
 
+/** One row of `GET /api/v1/jobs/:jobId`, as the route serializes it. */
 export interface JobStatus {
   id: string;
+  type: string;
   status: "pending" | "in_progress" | "completed" | "failed" | string;
   result?: JsonValue;
-  error?: string;
+  error?: string | null;
+  attempts: number;
+  maxAttempts: number;
+  estimatedCompletionAt: string | null;
+  scheduledFor: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The envelope `GET /api/v1/jobs/:jobId` returns; `polling` tells a client whether to keep asking. */
+export interface JobStatusResponse {
+  success: true;
+  data: JobStatus;
+  polling: { intervalMs?: number; shouldContinue: boolean };
 }
 
 export interface ApiKeySummary {

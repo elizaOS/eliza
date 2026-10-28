@@ -118,6 +118,29 @@ describe("GITHUB_PR list author filter", () => {
       throw new Error("expected a successful list result");
     }
   });
+  it("rejects a list with neither repo nor author before any API call", async () => {
+    const pullsList = vi.fn();
+    const search = vi.fn();
+    const octokit = {
+      pulls: { list: pullsList },
+      search: { issuesAndPullRequests: search },
+    } as unknown as GitHubOctokitClient;
+
+    const result = await prOpAction.handler(
+      createRuntime(octokit),
+      {} as never,
+      undefined,
+      { op: "list" },
+    );
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain("requires repo (owner/name) or author");
+    }
+    expect(search).not.toHaveBeenCalled();
+    expect(pullsList).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])(
     "reads every page (author filter: %s)",
     async (author) => {

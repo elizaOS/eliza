@@ -23,7 +23,13 @@ const CREDENTIAL_CHECK_TIMEOUT_MS = 1_500;
 const LIFECYCLE_MUTATION_TIMEOUT_MS = 10_000;
 
 export type InferenceCredentialCheck =
-  | { kind: "api_key"; credentialId: string; userId: string }
+  | {
+      kind: "api_key";
+      credentialId: string;
+      userId: string;
+      rateLimit?: number;
+      expiresAt?: number | null;
+    }
   | { kind: "steward_session"; userId: string; stewardUserId: string; issuedAt: number };
 
 export type InferenceSubjectDisableReason = "account" | "moderation" | "membership";

@@ -5,6 +5,10 @@ import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import {
+  CampaignBidStrategySchema,
+  CampaignOptimizationGoalSchema,
+} from "@elizaos/cloud-shared/lib/services/advertising/schemas";
+import {
   appPromotionService,
   type PromotionConfig,
 } from "@elizaos/cloud-shared/lib/services/app-promotion";
@@ -86,6 +90,8 @@ const PromotionConfigSchema = z.object({
       duration: z.number().int().positive().max(365).optional(),
       targetLocations: z.array(z.string().length(2)).max(50).optional(),
       audienceSegmentId: z.string().uuid().optional(),
+      bidStrategy: CampaignBidStrategySchema.optional(),
+      optimizationGoal: CampaignOptimizationGoalSchema.optional(),
     })
     .optional(),
   twitterAutomation: z

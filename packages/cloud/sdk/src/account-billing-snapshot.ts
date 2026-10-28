@@ -414,11 +414,42 @@ export interface OrganizationSubscriptionSnapshot {
   }>;
 }
 
+/**
+ * The organization's active Cloud subscription grant (a redeemed grant code),
+ * read from the primary database. Free-through and allowance facts only: it
+ * creates no payment method, invoice or renewal. Serving still follows the
+ * organization policy (an effective paid plan keeps precedence).
+ */
+export interface SubscriptionGrantSnapshot {
+  grantId: string;
+  planKey: "plus_monthly" | "pro_monthly";
+  catalogVersion: string;
+  startsAt: string;
+  /** Exclusive end of the grant window; null is a lifetime grant. */
+  endsAt: string | null;
+  /** True while an effective paid subscription serves instead of the grant. */
+  paidPlanTakesPrecedence: boolean;
+  /** The grant's non-rollover bucket for the month containing the snapshot clock. */
+  allowance: Observed<{
+    periodStart: string;
+    periodEnd: string;
+    state: "open" | "expired" | "clawed_back" | "closed";
+    granted: string;
+    unreserved: string;
+    currency: "USD";
+  }>;
+}
+
 export interface AccountBillingSnapshotV2 {
   snapshotStartedAt: string;
   snapshotCompletedAt: string;
   balance: Observed<AccountBalanceSnapshot>;
   subscription: Observed<OrganizationSubscriptionSnapshot>;
+  /**
+   * Additive: absent from Clouds that predate grant readback, which clients
+   * must treat as unknown rather than as "no grant".
+   */
+  grant?: Observed<SubscriptionGrantSnapshot>;
   paymentMethodPresence: Observed<PaymentMethodPresenceSnapshot>;
   billingReadiness: Observed<BillingReadinessSnapshot>;
   autoTopUp: AutoTopUpSnapshot;

@@ -8,6 +8,7 @@
 import {
   type LifeOpsEntityAttribute as EntityAttribute,
   type LifeOpsEntityIdentity as EntityIdentity,
+  normalizeEntityIdentityHandle,
   SELF_ENTITY_ID,
 } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -317,6 +318,17 @@ class MemoryKnowledgeGraph {
         }
       }
       return [];
+    }
+    if (/SELECT \* FROM app_lifeops\.life_relationships_v2\b/i.test(sql)) {
+      const where = parseWhereEquals(sql);
+      return this.relationships.filter(
+        (row) =>
+          row.agent_id === where.agent_id &&
+          (where.from_entity_id === undefined ||
+            row.from_entity_id === where.from_entity_id) &&
+          (where.to_entity_id === undefined ||
+            row.to_entity_id === where.to_entity_id),
+      );
     }
     if (/SELECT e\.\* FROM app_lifeops\.life_entities e\b/i.test(sql)) {
       return this.selectEntities(sql);
@@ -792,6 +804,105 @@ describe("EntityStore", () => {
     );
     expect(result.entity.state.lastObservedAt).toBe(T1);
   });
+  it("matches a saved formatted phone number with the E.164 handle a connector observes", async () => {
+    const { store } = createHarness();
+    await store.upsert({
+      entityId: "ent-coparent",
+      type: "person",
+      preferredName: "Sam",
+      identities: [
+        identity({
+          platform: "imessage",
+          handle: "+1 (415) 555-0134",
+          evidence: ["contact"],
+          confidence: 1,
+        }),
+      ],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+    vi.setSystemTime(new Date(T1));
+    const result = await store.observeIdentity({
+      platform: "imessage",
+      handle: "+14155550134",
+      evidence: ["message"],
+      confidence: AUTO_MERGE_CONFIDENCE_THRESHOLD,
+    });
+    expect(result.conflict).toBeUndefined();
+    expect(result.entity.entityId).toBe("ent-coparent");
+    expect(result.entity.identities).toHaveLength(1);
+    expect(result.entity.state.lastObservedAt).toBe(T1);
+  });
+
+  it("keeps digit handles without a leading + apart on a non-phone platform", async () => {
+    const { store } = createHarness();
+    await store.upsert({
+      entityId: "ent-dotted",
+      type: "person",
+      preferredName: "Dotted",
+      identities: [
+        identity({
+          platform: "discord",
+          handle: "1.2.3.4.5",
+          evidence: ["contact"],
+          confidence: 1,
+        }),
+      ],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+    const result = await store.observeIdentity({
+      platform: "discord",
+      handle: "12345",
+      evidence: ["message"],
+      confidence: AUTO_MERGE_CONFIDENCE_THRESHOLD,
+    });
+    expect(result.conflict).toBeUndefined();
+    expect(result.entity.entityId).not.toBe("ent-dotted");
+    expect(normalizeEntityIdentityHandle("website", "192.168.1.1")).toBe(
+      "192.168.1.1",
+    );
+  });
+
+  it("matches a saved @handle with an observation that carries no @ prefix", async () => {
+    const { store } = createHarness();
+    await store.upsert({
+      entityId: "ent-alice",
+      type: "person",
+      preferredName: "Alice",
+      identities: [
+        identity({
+          platform: "telegram",
+          handle: "@alice",
+          evidence: ["contact"],
+          confidence: 1,
+        }),
+      ],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+    vi.setSystemTime(new Date(T1));
+    const result = await store.observeIdentity({
+      platform: "telegram",
+      handle: "alice",
+      evidence: ["message"],
+      confidence: AUTO_MERGE_CONFIDENCE_THRESHOLD,
+    });
+    expect(result.conflict).toBeUndefined();
+    expect(result.mergedFrom).toEqual(["ent-alice"]);
+    expect(result.entity.entityId).toBe("ent-alice");
+    // One identity, folded, not a second row for the bare handle.
+    expect(result.entity.identities).toHaveLength(1);
+    expect(result.entity.identities[0]?.evidence).toEqual([
+      "contact",
+      "message",
+    ]);
+    expect(result.entity.state.lastObservedAt).toBe(T1);
+  });
+
   it("returns a conflict for a single low-confidence candidate without writing the observation", async () => {
     const { store } = createHarness();
     await store.upsert({
@@ -892,6 +1003,36 @@ describe("EntityStore", () => {
       evidence: [],
     });
   });
+  it("resolves a saved @handle from a bare-handle query with the matched confidence and verified flag", async () => {
+    const { store } = createHarness();
+    await store.upsert({
+      entityId: "ent-priya",
+      type: "person",
+      preferredName: "Priya",
+      identities: [
+        identity({
+          platform: "telegram",
+          handle: "@priyam",
+          confidence: 0.9,
+          verified: true,
+          evidence: ["contact"],
+        }),
+      ],
+      tags: [],
+      visibility: "owner_agent_admin",
+      state: {},
+    });
+    const candidates = await store.resolve({
+      identity: { platform: "telegram", handle: "priyam" },
+    });
+    expect(candidates.map((row) => row.entity.entityId)).toEqual(["ent-priya"]);
+    expect(candidates[0]).toMatchObject({
+      confidence: 0.9,
+      evidence: ["contact"],
+      safeToSend: true,
+    });
+  });
+
   it("resolves identity matches case-insensitively, ranks by identity confidence, and uses the matched verified flag for safeToSend", async () => {
     const { store } = createHarness();
     await store.upsert({

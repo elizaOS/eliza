@@ -9,18 +9,49 @@ import { NativeHostError } from "./errors.mjs";
 
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const mainPath = "android/app/src/main";
-export function assertArm64Library(bytes) {
+const targets = {
+  "arm64-v8a": {
+    target: "linux-arm64-musl",
+    machine: 183,
+    architecture: "AArch64",
+  },
+  x86_64: { target: "linux-x64-musl", machine: 62, architecture: "x86-64" },
+};
+const selectTarget = (targetAbi) => {
+  if (!Object.hasOwn(targets, targetAbi))
+    throw new NativeHostError("Unsupported Android document ABI");
+  return targets[targetAbi];
+};
+const nativePath = (targetAbi) => `jniLibs/${targetAbi}/libeliza_canvas.so`;
+const isDocumentLibrary = (name) =>
+  /^lib\/[^/]+\/libeliza_canvas\.so$/.test(name);
+const stagedLibraries = (main) => {
+  const root = path.join(main, "jniLibs");
+  return fs.existsSync(root)
+    ? fs
+        .readdirSync(root)
+        .filter((abi) =>
+          fs.existsSync(path.join(root, abi, "libeliza_canvas.so")),
+        )
+        .map(nativePath)
+    : [];
+};
+export function assertAndroidDocumentLibrary(bytes, targetAbi = "arm64-v8a") {
+  const target = selectTarget(targetAbi);
   if (
     bytes.length < 64 ||
     bytes.subarray(0, 4).toString("hex") !== "7f454c46" ||
     bytes[4] !== 2 ||
     bytes[5] !== 1 ||
     bytes.readUInt16LE(16) !== 3 ||
-    bytes.readUInt16LE(18) !== 183
+    bytes.readUInt16LE(18) !== target.machine
   )
     throw new NativeHostError(
-      "Document library must be an ELF64 little-endian AArch64 shared object",
+      `Document library must be an ELF64 little-endian ${target.architecture} shared object`,
     );
+}
+export function assertArm64Library(bytes) {
+  return assertAndroidDocumentLibrary(bytes);
 }
 export function extractVerifiedPackage(archive, integrity, destination) {
   const bytes = fs.readFileSync(archive);
@@ -62,7 +93,11 @@ export function extractVerifiedPackage(archive, integrity, destination) {
     })
     .end(bytes);
 }
-export function verifyAndroidDocuments(output) {
+export function verifyAndroidDocuments(
+  output,
+  { targetAbi = "arm64-v8a" } = {},
+) {
+  const target = selectTarget(targetAbi);
   const main = path.join(output, mainPath);
   const file = path.join(
     main,
@@ -73,7 +108,7 @@ export function verifyAndroidDocuments(output) {
       fs.existsSync(
         path.join(main, "assets/agent/gateway/document-services.mjs"),
       ) ||
-      fs.existsSync(path.join(main, "jniLibs/arm64-v8a/libeliza_canvas.so"))
+      stagedLibraries(main).length > 0
     )
       throw new NativeHostError("Document runtime manifest missing");
     return null;
@@ -81,7 +116,7 @@ export function verifyAndroidDocuments(output) {
   const manifest = JSON.parse(fs.readFileSync(file));
   if (
     manifest.schemaVersion !== 1 ||
-    manifest.target !== "linux-arm64-musl" ||
+    manifest.target !== target.target ||
     !/^[a-f0-9]{40}$/.test(manifest.sourceCommit) ||
     !Array.isArray(manifest.files) ||
     manifest.files.length === 0
@@ -91,7 +126,10 @@ export function verifyAndroidDocuments(output) {
   for (const item of manifest.files) {
     if (
       typeof item.path !== "string" ||
-      !/^(assets\/agent\/gateway\/|jniLibs\/arm64-v8a\/)/.test(item.path) ||
+      !(
+        item.path.startsWith("assets/agent/gateway/") ||
+        item.path === nativePath(targetAbi)
+      ) ||
       item.path.split("/").some((p) => !p || p === "." || p === "..") ||
       names.has(item.path)
     )
@@ -108,7 +146,7 @@ export function verifyAndroidDocuments(output) {
     "assets/agent/gateway/document-services.mjs",
     "assets/agent/gateway/document-services.mjs.json",
     "assets/agent/gateway/node_modules/@napi-rs/canvas/package.json",
-    "jniLibs/arm64-v8a/libeliza_canvas.so",
+    nativePath(targetAbi),
   ])
     if (!names.has(required))
       throw new NativeHostError("Incomplete document runtime manifest");
@@ -126,8 +164,11 @@ export function verifyAndroidDocuments(output) {
     }
   };
   inspect(canvasRoot);
-  assertArm64Library(
-    fs.readFileSync(path.join(main, "jniLibs/arm64-v8a/libeliza_canvas.so")),
+  if (stagedLibraries(main).some((name) => name !== nativePath(targetAbi)))
+    throw new NativeHostError("Mixed Android document ABIs");
+  assertAndroidDocumentLibrary(
+    fs.readFileSync(path.join(main, nativePath(targetAbi))),
+    targetAbi,
   );
   const provenance = JSON.parse(
     fs.readFileSync(
@@ -149,10 +190,23 @@ export function verifyAndroidDocuments(output) {
 export async function stageAndroidDocuments(
   output,
   source,
-  { sourceCommit, canvasVersion, lockedPackages, signal },
+  {
+    sourceCommit,
+    canvasVersion,
+    lockedPackages,
+    signal,
+    targetAbi = "arm64-v8a",
+  },
 ) {
   signal?.throwIfAborted();
+  const target = selectTarget(targetAbi);
   output = fs.realpathSync(output);
+  if (
+    stagedLibraries(path.join(output, mainPath)).some(
+      (name) => name !== nativePath(targetAbi),
+    )
+  )
+    throw new NativeHostError("Mixed Android document ABIs");
   const temporary = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-android-documents-"),
   );
@@ -167,7 +221,7 @@ export async function stageAndroidDocuments(
     const packages = {};
     for (const name of [
       "@napi-rs/canvas",
-      "@napi-rs/canvas-linux-arm64-musl",
+      `@napi-rs/canvas-${target.target}`,
     ]) {
       const entry = lockedPackages[name];
       if (
@@ -211,19 +265,16 @@ export async function stageAndroidDocuments(
     });
     const nativePackage = path.join(
       gateway,
-      "node_modules/@napi-rs/canvas-linux-arm64-musl",
+      `node_modules/@napi-rs/canvas-${target.target}`,
     );
     const binary = fs.readFileSync(
-      path.join(nativePackage, "skia.linux-arm64-musl.node"),
+      path.join(nativePackage, `skia.${target.target}.node`),
     );
-    assertArm64Library(binary);
+    assertAndroidDocumentLibrary(binary, targetAbi);
     // Native code belongs in the APK's installed executable library directory.
     fs.rmSync(nativePackage, { recursive: true });
-    fs.mkdirSync(path.join(main, "jniLibs/arm64-v8a"), { recursive: true });
-    fs.writeFileSync(
-      path.join(main, "jniLibs/arm64-v8a/libeliza_canvas.so"),
-      binary,
-    );
+    fs.mkdirSync(path.join(main, "jniLibs", targetAbi), { recursive: true });
+    fs.writeFileSync(path.join(main, nativePath(targetAbi)), binary);
     const files = [];
     const visit = (dir) => {
       for (const name of fs.readdirSync(dir)) {
@@ -239,7 +290,7 @@ export async function stageAndroidDocuments(
     visit(main);
     const manifest = {
       schemaVersion: 1,
-      target: "linux-arm64-musl",
+      target: target.target,
       sourceCommit: provenance.sourceCommit,
       packages,
       patches: { nativeLibraryDlopen: digest(fs.readFileSync(canvasPatch)) },
@@ -273,7 +324,7 @@ export async function stageAndroidDocuments(
       { recursive: true, force: true },
     );
     fs.cpSync(main, path.join(output, mainPath), { recursive: true });
-    verifyAndroidDocuments(output);
+    verifyAndroidDocuments(output, { targetAbi });
     return manifest;
   } finally {
     fs.rmSync(temporary, { recursive: true, force: true });
@@ -281,12 +332,17 @@ export async function stageAndroidDocuments(
 }
 
 /** Verify the document component after APK packaging has remapped jniLibs to lib. */
-export function verifyPackagedAndroidDocuments(entries, readEntry) {
+export function verifyPackagedAndroidDocuments(
+  entries,
+  readEntry,
+  { targetAbi = "arm64-v8a" } = {},
+) {
+  const target = selectTarget(targetAbi);
   const manifestName = "assets/agent/gateway/document-services.manifest.json";
-  const library = "lib/arm64-v8a/libeliza_canvas.so";
+  const library = `lib/${targetAbi}/libeliza_canvas.so`;
   const service = "assets/agent/gateway/document-services.mjs";
   if (!entries.includes(manifestName)) {
-    if (entries.includes(library) || entries.includes(service))
+    if (entries.some(isDocumentLibrary) || entries.includes(service))
       throw new NativeHostError("APK document runtime lacks its manifest");
     return null;
   }
@@ -300,7 +356,7 @@ export function verifyPackagedAndroidDocuments(entries, readEntry) {
   }
   if (
     manifest.schemaVersion !== 1 ||
-    manifest.target !== "linux-arm64-musl" ||
+    manifest.target !== target.target ||
     !/^[a-f0-9]{40}$/.test(manifest.sourceCommit) ||
     !Array.isArray(manifest.files)
   )
@@ -309,7 +365,10 @@ export function verifyPackagedAndroidDocuments(entries, readEntry) {
   for (const item of manifest.files) {
     if (
       typeof item.path !== "string" ||
-      !/^(assets\/agent\/gateway\/|jniLibs\/arm64-v8a\/)/.test(item.path) ||
+      !(
+        item.path.startsWith("assets/agent/gateway/") ||
+        item.path === nativePath(targetAbi)
+      ) ||
       item.path.includes("\\") ||
       item.path
         .split("/")
@@ -329,7 +388,7 @@ export function verifyPackagedAndroidDocuments(entries, readEntry) {
     service,
     `${service}.json`,
     "assets/agent/gateway/node_modules/@napi-rs/canvas/package.json",
-    "jniLibs/arm64-v8a/libeliza_canvas.so",
+    nativePath(targetAbi),
   ])
     if (!selected.has(name))
       throw new NativeHostError("Incomplete APK document runtime");
@@ -341,7 +400,9 @@ export function verifyPackagedAndroidDocuments(entries, readEntry) {
     )
       throw new NativeHostError("Unlisted APK document runtime file");
   }
-  assertArm64Library(readEntry(library));
+  if (entries.some((name) => isDocumentLibrary(name) && name !== library))
+    throw new NativeHostError("Mixed APK document ABIs");
+  assertAndroidDocumentLibrary(readEntry(library), targetAbi);
   return {
     sourceCommit: manifest.sourceCommit,
     target: manifest.target,

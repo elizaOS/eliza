@@ -143,11 +143,18 @@ async function runMintLegOperation(
     return { kind: "not-initiated" };
   }
 
-  if (!hasHydratableStewardToken()) {
-    // No session exists here to share. Login stays on the host the user
-    // started on (#19214): return straight to the paired app origin's own
-    // login with the sanitized destination, never this origin's /login.
-    return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
+  const phoneEntry = returnTo === "/network/sign-in";
+  const finalReturnTo = phoneEntry ? "/join" : returnTo;
+  if (phoneEntry || !hasHydratableStewardToken()) {
+    // Bare Network entry requires fresh phone verification, even with a
+    // cached account. Login stays on the host the user started on (#19214):
+    // use the paired app's entry, never this origin's /login.
+    return {
+      kind: "redirect",
+      url: phoneEntry
+        ? `${appOrigin}/network/sign-in?returnTo=${encodeURIComponent(finalReturnTo)}`
+        : appLoginUrl(appOrigin, returnTo),
+    };
   }
 
   const mintingToken = readStoredStewardToken();
@@ -173,7 +180,12 @@ async function runMintLegOperation(
       burnMintedCodeOnce();
       return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };
     }
-    const url = buildBridgeExchangeUrl(hostname, result.code, state, returnTo);
+    const url = buildBridgeExchangeUrl(
+      hostname,
+      result.code,
+      state,
+      finalReturnTo,
+    );
     if (!url) {
       burnMintedCodeOnce();
       return { kind: "redirect", url: appLoginUrl(appOrigin, returnTo) };

@@ -54,4 +54,32 @@ describe("cloud disconnect", () => {
       process.env = savedEnv;
     }
   });
+
+  it("clears the key from settings.secrets and from the saved agent settings after a boot", async () => {
+    const savedEnv = { ...process.env };
+    for (const k of Object.keys(process.env)) if (k.startsWith("ELIZAOS_CLOUD") || k.startsWith("ELIZA_DEV_CLOUD")) delete process.env[k];
+    try {
+      // After initialize, character.secrets and settings.secrets are one
+      // object holding the saved Cloud key.
+      const merged = { ELIZAOS_CLOUD_API_KEY: "eliza_OLD", ELIZAOS_CLOUD_ENABLED: "true", OTHER: "x" };
+      const runtime = new AgentRuntime({ character: { name: "t", bio: [], secrets: merged, settings: { secrets: merged } } as never });
+      const saved: Array<Record<string, unknown>> = [];
+      (runtime as unknown as { updateAgent: unknown }).updateAgent = async (_id: string, agent: Record<string, unknown>) => {
+        saved.push(agent);
+        return true;
+      };
+      const state = { config: {} as never, cloudManager: null, runtime, services: { saveElizaConfig: () => {} } };
+      expect(getApiKey(runtime)).toBe("eliza_OLD");
+
+      const b = res();
+      await handleCloudRoute(req("POST", "/api/cloud/disconnect"), b.r, "/api/cloud/disconnect", "POST", state);
+      expect(b.out.status).toBe(200);
+      expect(getApiKey(runtime)).toBeUndefined();
+      const settings = saved.at(-1)?.settings as { secrets?: Record<string, unknown> } | undefined;
+      expect(settings?.secrets?.ELIZAOS_CLOUD_API_KEY).toBeNull();
+      expect(settings?.secrets?.OTHER).toBe("x");
+    } finally {
+      process.env = savedEnv;
+    }
+  });
 });

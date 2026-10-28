@@ -333,6 +333,33 @@ describe("github device sign-in routes (real dispatch)", () => {
     expect(expired.json).toEqual({ status: "expired" });
   });
 
+  it("reports a locally expired flow as a terminal expired outcome", async () => {
+    const base = await startServer(
+      makeRuntime({ agentId: "agent-a", oauthClientId: "client-1" }),
+    );
+    const stub = stubGitHub({
+      deviceCode: () =>
+        jsonResponse({
+          device_code: "short-lived-device-code",
+          user_code: "ABCD-EFGH",
+          verification_uri: "https://github.com/login/device",
+          expires_in: 0.01,
+          interval: 5,
+        }),
+      token: () => jsonResponse({ error: "authorization_pending" }),
+    });
+    const started = await postJson(base, "/api/github/device/start", {});
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const expired = await postJson(base, "/api/github/device/poll", {
+      flowId: started.json.flowId,
+    });
+
+    expect(expired.status).toBe(200);
+    expect(expired.json).toEqual({ status: "expired" });
+    expect(stub.calls).toEqual([DEVICE_CODE_URL]);
+  });
+
   it("rejects a poll with a missing flowId (400) and an unknown flowId (404)", async () => {
     const base = await startServer(
       makeRuntime({ agentId: "agent-a", oauthClientId: "client-1" }),

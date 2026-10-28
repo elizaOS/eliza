@@ -12,7 +12,30 @@
       "import": "./dist/esm/index.js",
       "require": "./dist/plugin.cjs.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./launcher": {
+      "eliza-source": "./src/client/launcher.ts",
+      "types": "./dist/esm/client/launcher.d.ts",
+      "import": "./dist/esm/client/launcher.js"
+    },
+    "./sense": {
+      "eliza-source": "./src/sense-bridge.ts",
+      "types": "./dist/esm/sense-bridge.d.ts",
+      "import": "./dist/esm/sense-bridge.js",
+      "default": "./dist/esm/sense-bridge.js"
+    },
+    "./reset": {
+      "eliza-source": "./src/reset.ts",
+      "types": "./dist/esm/reset.d.ts",
+      "import": "./dist/esm/reset.js",
+      "default": "./dist/esm/reset.js"
+    },
+    "./settings": {
+      "eliza-source": "./src/settings.ts",
+      "types": "./dist/esm/settings.d.ts",
+      "import": "./dist/esm/settings.js",
+      "default": "./dist/esm/settings.js"
+    }
   },
   "files": [
     "android/src/main/",
@@ -29,7 +52,8 @@
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
-    "format:check": "bunx @biomejs/biome format ."
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "node --test test/*.test.mjs"
   },
   "license": "MIT",
   "capacitor": {
@@ -39,10 +63,10 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.64.0",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@types/ws": "^8.18.1"
   },
   "peerDependencies": {

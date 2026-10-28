@@ -6,6 +6,12 @@
 
 export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
   {
+    "@elizaos/plugin-personal-assistant": () =>
+      import("@elizaos/plugin-personal-assistant/plugin"),
+    "@elizaos/plugin-personal-assistant/reminders-plugin": () =>
+      import("@elizaos/plugin-personal-assistant/reminders-plugin"),
+    "@elizaos/plugin-reminders": () => import("@elizaos/plugin-reminders"),
+    "@elizaos/plugin-goals": () => import("@elizaos/plugin-goals"),
     "@elizaos/plugin-agent-orchestrator": () =>
       import("@elizaos/plugin-agent-orchestrator"),
     "@elizaos/plugin-agent-orchestrator/ui": () =>
@@ -24,6 +30,7 @@ export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.
       // @ts-ignore: not every sibling package resolves optional plugin declarations before they are built.
       import("@elizaos/plugin-inbox"),
+    "@elizaos/plugin-maps": () => import("@elizaos/plugin-maps/plugin"),
     "@elizaos/plugin-notes": () => import("@elizaos/plugin-notes"),
     "@elizaos/plugin-todos": () =>
       // biome-ignore lint/suspicious/noTsIgnore: optional literal imports may be unbuilt in sibling source typechecks.

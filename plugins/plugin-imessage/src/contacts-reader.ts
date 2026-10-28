@@ -27,6 +27,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
+import { formatPhoneNumber } from "./types.js";
 
 const NATIVE_DYLIB_CANDIDATES = [
   process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
@@ -198,10 +199,13 @@ export function normalizeContactHandle(raw: string): string {
     return trimmed.toLowerCase();
   }
 
-  // Phone: strip formatting characters, preserve leading +
+  // Phone: the same key the connector derives for a chat.db handle
+  // (formatPhoneNumber), so a contact written as "1 (555) 123-4567" is found
+  // by the E.164 handle "+15551234567". A leading "+" is kept; a number of
+  // more than ten digits without one gets it, as the connector does.
   const hasPlus = trimmed.startsWith("+");
   const digitsOnly = trimmed.replace(/[^\d]/g, "");
-  return hasPlus ? `+${digitsOnly}` : digitsOnly;
+  return formatPhoneNumber(hasPlus ? `+${digitsOnly}` : digitsOnly);
 }
 
 /**

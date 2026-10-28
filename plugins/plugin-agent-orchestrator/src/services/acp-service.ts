@@ -3264,6 +3264,15 @@ export class AcpService extends Service {
     if (
       ["stopped", "errored", "completed", "cancelled"].includes(session.status)
     ) {
+      // A cancelled or failed native task keeps its status, but nothing else
+      // closes its agent subprocess.
+      await this.stopNativeClient(sessionId).catch((err: unknown) => {
+        // error-policy:J6 best-effort teardown, as for closeSession below.
+        this.log("warn", "initial task agent close failed", {
+          sessionId,
+          error: errorMessage(err),
+        });
+      });
       return;
     }
     await this.closeSession(sessionId).catch((err: unknown) => {
@@ -6053,6 +6062,10 @@ export class AcpService extends Service {
 
   private setting(key: string): string | undefined {
     const fromRuntime = this.runtime.getSetting(key);
+    // getSetting returns a saved "true"/"false" as a boolean. Keep it, or a
+    // switch saved in Settings or the character file falls back to env.
+    if (typeof fromRuntime === "boolean" || typeof fromRuntime === "number")
+      return String(fromRuntime);
     if (typeof fromRuntime === "string" && fromRuntime.length > 0)
       return fromRuntime;
     const fromEnv = process.env[key];

@@ -1,3 +1,5 @@
+import type { CloudflareClefBinding } from "../lib/providers/cloudflare-clef";
+import type { CloudflareSpeechBinding } from "../lib/providers/cloudflare-speech";
 /**
  * Hono + Cloudflare Workers context types for the Cloud API.
  *
@@ -24,6 +26,16 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  CLOUD_HF_EGRESS_BACKEND?: string;
+  HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_VOICE_USAGE_BACKEND?: string;
+  VOICE_USAGE_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_RATE_STATE_BACKEND?: string;
+  RATE_LIMIT_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_A2A_STATE_BACKEND?: string;
+  A2A_TASK_STATE?: RuntimeDurableObjectNamespace;
+  CLOUD_AUTH_STATE_BACKEND?: string;
+  AUTHENTICATION_STATE?: RuntimeDurableObjectNamespace;
   /** Explicit per-turn Network context; absent disables the integration. */
   NETWORK_SHARED_ENABLED?: string;
   /** Private server-owned Network HTTP service binding; no public fetch fallback. */
@@ -31,6 +43,13 @@ export interface Bindings {
   NETWORK_MEMBERSHIP_SERVER_TOKEN?: string;
   /** Default off. Enable only after legacy Network history inventory/migration and staging qualification. */
   NETWORK_PERSONAL_CONTINUITY_ENABLED?: string;
+  /** Exact server-owned canonical Shared ingress scope; absent refuses supplied Network envelopes. */
+  NETWORK_OWNED_INGRESS_POLICY?: string;
+  /** Canonical service endpoint and shared server signing key; never client-visible. */
+  NETWORK_SERVICE_URL?: string;
+  SERVICE_TURN_SECRET?: string;
+  NETWORK_RELAY_ENABLED?: string;
+  NETWORK_AGENT_VOICE?: string;
   /** Default off. Destination-bound phone handoff is admitted only in staging. */
   NETWORK_SITE_AUTH_ENABLED?: string;
   /** One exact loopback Network site origin for staging qualification. */
@@ -84,10 +103,22 @@ export interface Bindings {
   AUTO_TOP_UP_DURABLE_ENABLED?: string;
   /** Registered active and approved `apps.id` for the native Cloud client. */
   ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  /** Public deployment name and plain-text Terms/Privacy documents; never a secret. */
+  CLOUD_PUBLIC_SERVICE_JSON?: string;
+  /** Split deployment-owned public text; each binding fits the Worker limit. */
+  CLOUD_PUBLIC_SERVICE_NAME?: string;
+  CLOUD_PUBLIC_SERVICE_TERMS_JSON?: string;
+  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON?: string;
   /** Global mobile app-auth lifecycle kill switch; only "true" enables it. */
   ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
   /** Server-owned registrations for independently branded native clients. */
   ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON?: string;
+  /**
+   * Digital Asset Links statements served at `/.well-known/assetlinks.json`:
+   * a JSON array of `{ package_name, sha256_cert_fingerprints[], relations? }`.
+   * Malformed config is served as `[]`.
+   */
+  ELIZA_ANDROID_ASSET_LINKS_JSON?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;
@@ -162,7 +193,11 @@ export interface Bindings {
 
   // ---- Cloudflare Registrar/DNS ----
   /** Native Workers AI binding for the canonical BGE CLS embedding representation. */
-  AI?: CloudflareEmbeddingBinding;
+  AI?: CloudflareEmbeddingBinding & CloudflareSpeechBinding & CloudflareClefBinding;
+  /** "true" turns on POST /api/v1/decisions (Clef through the AI binding). */
+  CLEF_DECISIONS_ENABLED?: string;
+  /** "clef-flash" (default) or "clef". */
+  CLEF_DECISION_MODEL?: string;
   CLOUDFLARE_ACCOUNT_ID?: string;
   /** Workers AI credential for the canonical BGE embedding model. */
   CLOUDFLARE_EMBEDDING_API_TOKEN?: string;
@@ -646,6 +681,9 @@ export interface Bindings {
   INFERENCE_AUTH_CACHE_ENABLED?: string;
   /** Strong Durable Object boundary required before positive auth caching can activate. */
   INFERENCE_STRONG_REVOCATION_ENABLED?: string;
+  /** Delegated, primary-backed inference budgets; enroll organizations only after validation. */
+  INFERENCE_FUNDED_BUDGET_ADMISSION?: string;
+  INFERENCE_FUNDING_BUDGET_SEAL_SECRET?: string;
   /**
    * "true" serves warm Worker admission from the published admission snapshot:
    * no policy or dispatch-policy transaction runs before provider dispatch. The
@@ -707,6 +745,12 @@ export interface Variables {
   apiKeyId?: string;
   /** Registered app that issued a mobile lifecycle credential. */
   apiKeySourceAppId?: string;
+  /**
+   * The Steward session of this request made the Cloud user's organization: this
+   * request created it, or it was created after the session was issued. Set
+   * server-side only, so retries of one sign-in get the same answer.
+   */
+  stewardAccountCreated?: true;
 }
 
 export type AppEnv = {

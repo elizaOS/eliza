@@ -14,7 +14,7 @@ app.get("/", (c) =>
     version: "2.0.0",
     description:
       "Real-time cryptocurrency prices, market data, and trending coins powered by CoinGecko API. Free to use.",
-    transport: ["http", "sse"],
+    transport: ["http"],
     endpoint: "/api/mcps/crypto/mcp",
     tools: [
       {
@@ -26,7 +26,7 @@ app.get("/", (c) =>
       {
         name: "get_market_data",
         description:
-          "Get comprehensive market data including price, volume, supply, ATH/ATL",
+          "Get comprehensive market data including price, market cap, and volume",
         price: "Free",
         example: { coin: "ethereum" },
       },
@@ -52,11 +52,8 @@ app.get("/", (c) =>
       "Current prices in any fiat currency",
       "24h price changes and trends",
       "Market cap and volume data",
-      "Circulating and total supply",
-      "All-time high/low tracking",
       "Trending coins by search popularity",
       "Support for thousands of coins",
-      "Symbol and name lookups",
     ],
     status: "live",
   }),

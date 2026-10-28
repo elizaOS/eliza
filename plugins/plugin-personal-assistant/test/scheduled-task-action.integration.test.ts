@@ -390,6 +390,12 @@ describe("SCHEDULED_TASK action", () => {
       },
     );
     expect(result.success, JSON.stringify(result)).toBe(true);
+    // The supplied Discord destination is not applied, and the result says so.
+    expect(result.data).toMatchObject({
+      outputIgnored: true,
+      boundOutput: { destination: "channel", target: "telegram:owner-chat-42" },
+    });
+    expect(result.text).toContain("telegram chat");
     const task = (result.data as { task?: ScheduledTask } | undefined)?.task;
     expect(task?.output).toEqual({
       destination: "channel",
@@ -429,6 +435,34 @@ describe("SCHEDULED_TASK action", () => {
       },
     );
     expect(poisonedUpdate.success).toBe(true);
+    expect(poisonedUpdate.data).toMatchObject({ outputIgnored: true });
+    expect(poisonedUpdate.text).toContain("telegram chat");
+
+    // A patch whose only change is the pinned destination changes nothing.
+    for (const output of [
+      { destination: "channel", target: "discord:public-room" },
+      {},
+      null,
+    ]) {
+      const outputOnlyUpdate = await executePlannedToolCall(
+        runtime,
+        { message, userRoles: ["OWNER"], activeContexts: ["tasks"] },
+        {
+          name: "SCHEDULED_TASKS",
+          params: {
+            action: "update",
+            taskId: task?.taskId,
+            patch: {
+              output,
+            },
+          },
+        },
+      );
+      expect(outputOnlyUpdate.success).toBe(false);
+      expect(outputOnlyUpdate.data).toMatchObject({
+        error: "OUTPUT_BOUND_TO_CHAT",
+      });
+    }
     const protectedTask = (await runner.list()).find(
       (candidate) => candidate.taskId === task?.taskId,
     );

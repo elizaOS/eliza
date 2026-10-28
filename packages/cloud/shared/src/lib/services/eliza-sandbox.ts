@@ -869,6 +869,38 @@ export class ElizaSandboxService {
     // the materialization paths (provision / fleet upgrade / runtime
     // bootstrap) decrypt, so the running agent still sees real values.
     const encryptedEnvironment = await encryptAgentEnvVarsForStorage(orgId, environmentVars);
+    return await this.writeAgentEnvironment(agentId, orgId, () => encryptedEnvironment);
+  }
+
+  /**
+   * Set (string) or remove (`null`) the named variables and keep every other
+   * one. The change is applied to the row as stored under the lifecycle lock,
+   * so a concurrent writer's variables (another patch, a managed-key rotation)
+   * are not overwritten with an older copy.
+   */
+  async patchAgentEnvironment(
+    agentId: string,
+    orgId: string,
+    patch: Record<string, string | null>,
+  ): Promise<AgentSandbox | undefined> {
+    const setValues = Object.fromEntries(
+      Object.entries(patch).filter((entry): entry is [string, string] => entry[1] !== null),
+    );
+    const encryptedSet = await encryptAgentEnvVarsForStorage(orgId, setValues);
+    return await this.writeAgentEnvironment(agentId, orgId, (stored) => {
+      const next = { ...stored, ...encryptedSet };
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === null) delete next[key];
+      }
+      return next;
+    });
+  }
+
+  private async writeAgentEnvironment(
+    agentId: string,
+    orgId: string,
+    resolve: (stored: Record<string, string>) => Record<string, string>,
+  ): Promise<AgentSandbox | undefined> {
     const updated = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -876,10 +908,14 @@ export class ElizaSandboxService {
       if (rec.deletion_attempt_id) {
         throw new ApiError(409, "session_not_ready", "Agent deletion is in progress");
       }
+      const stored =
+        rec.environment_vars && typeof rec.environment_vars === "object"
+          ? (rec.environment_vars as Record<string, string>)
+          : {};
       const [row] = await tx
         .update(agentSandboxes)
         .set({
-          environment_vars: encryptedEnvironment,
+          environment_vars: resolve(stored),
           environment_revision: sql`${agentSandboxes.environment_revision} + 1`,
           warm_claim_credential_state: sql`
             CASE

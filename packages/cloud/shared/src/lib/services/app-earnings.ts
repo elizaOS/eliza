@@ -161,7 +161,7 @@ export class AppEarningsService {
       offset?: number;
       type?: "inference_markup" | "purchase_share" | "withdrawal" | "adjustment";
     },
-  ): Promise<AppEarningsTransaction[]> {
+  ): Promise<{ transactions: AppEarningsTransaction[]; hasMore: boolean }> {
     // An omitted or non-finite limit is the default page of 50. An explicit
     // finite limit, including 0, is a page — `limit || 50` treated 0 as missing,
     // and `Math.max(0, NaN)` is `NaN`.

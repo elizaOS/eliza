@@ -154,6 +154,7 @@ function makeDefaultApplyProviderEnv(
     const previous = structuredClone(config);
     await applyFirstRunConnectionConfig(config, connection);
     saveElizaConfig(config);
+    runtime.setSetting("ELIZA_BRAIN_PROVIDER", null);
     reconcileDirectTextModelSettings(runtime, previous, config);
   };
 }

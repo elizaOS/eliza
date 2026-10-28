@@ -7,7 +7,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { dbRead, dbWrite } from "../../db/client";
+import { type DbTransaction, dbRead, dbWrite } from "../../db/client";
 import { apiKeysRepository } from "../../db/repositories";
 import {
   type AdminUser,
@@ -25,6 +25,7 @@ import {
   invalidateInferenceSessionAuthContexts,
 } from "./inference-auth-cache";
 import { setInferenceSubjectActive } from "./inference-credential-revocation";
+import { withInferenceUserPolicyMutation } from "./inference-policy-fence";
 import { invalidateOutboundMessageStanding } from "./outbound-message-standing";
 
 /**
@@ -405,18 +406,20 @@ class AdminService {
         }
       }
 
-      await dbWrite
-        .update(userModerationStatus)
-        .set({
-          totalViolations: newTotalViolations,
-          warningCount: newWarningCount,
-          riskScore: newRiskScore,
-          status: newStatus,
-          lastViolationAt: now,
-          lastWarningAt: action === "warned" ? now : existing.lastWarningAt,
-          updatedAt: now,
-        })
-        .where(eq(userModerationStatus.userId, userId));
+      await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+        await tx
+          .update(userModerationStatus)
+          .set({
+            totalViolations: newTotalViolations,
+            warningCount: newWarningCount,
+            riskScore: newRiskScore,
+            status: newStatus,
+            lastViolationAt: now,
+            lastWarningAt: action === "warned" ? now : existing.lastWarningAt,
+            updatedAt: now,
+          })
+          .where(eq(userModerationStatus.userId, userId));
+      });
 
       // #9899: if this violation crosses the user into a blocking state
       // (banned or >=5 violations — see shouldBlockUser), drop their cached
@@ -427,14 +430,16 @@ class AdminService {
         await invalidateUserInferenceContext(userId);
       }
     } else {
-      await dbWrite.insert(userModerationStatus).values({
-        userId,
-        status: "clean",
-        totalViolations: 1,
-        warningCount: action === "warned" || action === "flagged_for_ban" ? 1 : 0,
-        riskScore: 20,
-        lastViolationAt: now,
-        lastWarningAt: action === "warned" ? now : null,
+      await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+        await tx.insert(userModerationStatus).values({
+          userId,
+          status: "clean",
+          totalViolations: 1,
+          warningCount: action === "warned" || action === "flagged_for_ban" ? 1 : 0,
+          riskScore: 20,
+          lastViolationAt: now,
+          lastWarningAt: action === "warned" ? now : null,
+        });
       });
     }
   }
@@ -468,16 +473,19 @@ class AdminService {
   }
 
   /** Reads moderation standing from the primary for authorization decisions. */
-  async getUserModerationStatusConsistent(userId: string): Promise<UserModerationStatus | null> {
-    const result = await dbWrite.query.userModerationStatus.findFirst({
+  async getUserModerationStatusConsistent(
+    userId: string,
+    tx?: DbTransaction,
+  ): Promise<UserModerationStatus | null> {
+    const result = await (tx ?? dbWrite).query.userModerationStatus.findFirst({
       where: eq(userModerationStatus.userId, userId),
     });
     return result ?? null;
   }
 
   /** Checks blocking standing without accepting replica lag. */
-  async shouldBlockUserConsistent(userId: string): Promise<boolean> {
-    const status = await this.getUserModerationStatusConsistent(userId);
+  async shouldBlockUserConsistent(userId: string, tx?: DbTransaction): Promise<boolean> {
+    const status = await this.getUserModerationStatusConsistent(userId, tx);
     if (!status) return false;
 
     return status.status === "banned" || status.totalViolations >= 5;
@@ -494,23 +502,27 @@ class AdminService {
   }): Promise<void> {
     const { userId, status, adminUserId, reason } = params;
 
-    await dbWrite
-      .update(userModerationStatus)
-      .set({
-        status,
-        updatedAt: new Date(),
-      })
-      .where(eq(userModerationStatus.userId, userId));
+    await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+      await tx
+        .update(userModerationStatus)
+        .set({
+          status,
+          updatedAt: new Date(),
+        })
+        .where(eq(userModerationStatus.userId, userId));
+    });
 
     // Also insert a record if it doesn't exist
     const existing = await this.getUserModerationStatus(userId);
     if (!existing) {
-      await dbWrite.insert(userModerationStatus).values({
-        userId,
-        status,
-        totalViolations: 0,
-        warningCount: 0,
-        riskScore: status === "scammer" ? 100 : 80,
+      await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+        await tx.insert(userModerationStatus).values({
+          userId,
+          status,
+          totalViolations: 0,
+          warningCount: 0,
+          riskScore: status === "scammer" ? 100 : 80,
+        });
       });
     }
 
@@ -539,27 +551,31 @@ class AdminService {
     }
 
     if (existing) {
-      await dbWrite
-        .update(userModerationStatus)
-        .set({
+      await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+        await tx
+          .update(userModerationStatus)
+          .set({
+            status: "banned",
+            bannedBy: adminUserId,
+            bannedAt: now,
+            banReason: reason,
+            riskScore: 100,
+            updatedAt: now,
+          })
+          .where(eq(userModerationStatus.userId, userId));
+      });
+    } else {
+      await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+        await tx.insert(userModerationStatus).values({
+          userId,
           status: "banned",
+          totalViolations: 0,
+          warningCount: 0,
+          riskScore: 100,
           bannedBy: adminUserId,
           bannedAt: now,
           banReason: reason,
-          riskScore: 100,
-          updatedAt: now,
-        })
-        .where(eq(userModerationStatus.userId, userId));
-    } else {
-      await dbWrite.insert(userModerationStatus).values({
-        userId,
-        status: "banned",
-        totalViolations: 0,
-        warningCount: 0,
-        riskScore: 100,
-        bannedBy: adminUserId,
-        bannedAt: now,
-        banReason: reason,
+        });
       });
     }
 
@@ -573,19 +589,21 @@ class AdminService {
    * Unban a user
    */
   async unbanUser(userId: string, adminUserId: string): Promise<void> {
-    await dbWrite
-      .update(userModerationStatus)
-      .set({
-        status: "clean",
-        bannedBy: null,
-        bannedAt: null,
-        banReason: null,
-        riskScore: 0,
-        totalViolations: 0,
-        warningCount: 0,
-        updatedAt: new Date(),
-      })
-      .where(eq(userModerationStatus.userId, userId));
+    await withInferenceUserPolicyMutation(userId, [], async (tx) => {
+      await tx
+        .update(userModerationStatus)
+        .set({
+          status: "clean",
+          bannedBy: null,
+          bannedAt: null,
+          banReason: null,
+          riskScore: 0,
+          totalViolations: 0,
+          warningCount: 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(userModerationStatus.userId, userId));
+    });
 
     const user = await dbWrite.query.users.findFirst({
       where: eq(users.id, userId),

@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/capacitor-owned-media",
   "version": "2.0.3-beta.7",
-  "description": "Android owned-media primitives for Eliza hosts: photo edit copies, filters and explicitly kept captures in the host's own MediaStore items.",
+  "description": "Android media primitives for Eliza hosts: owned photo/video edit copies and captures, the full permitted photo library with revision fences and reviewed changes, exact-byte selections, selected-document grants, chosen folder trees and device-local recordings.",
   "files": [
     "android/src/main/",
     "android/build.gradle"

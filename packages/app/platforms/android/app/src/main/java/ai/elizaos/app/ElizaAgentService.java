@@ -223,6 +223,7 @@ public class ElizaAgentService extends Service {
     private static final long AGENT_BOOT_GRACE_MS = 120_000L;
 
     private final Object processLock = new Object();
+    private volatile long recoveryMaintenanceEpoch;
     private final Object notificationLock = new Object();
     private Process agentProcess;
     private IpcStartupRecovery ipcRecovery;
@@ -250,6 +251,9 @@ public class ElizaAgentService extends Service {
     private static volatile String currentLocalAgentToken;
     private static volatile String currentTerminalRunToken;
     private static volatile ElizaAgentService activeInstance;
+    // Ordered cross-instance starts and releases. All waits stay off Android's main thread.
+    private static volatile java.util.concurrent.CompletableFuture<Void> serviceLifecycleCompletion =
+        java.util.concurrent.CompletableFuture.completedFuture(null);
     private static final String CREDENTIAL_SHUTDOWN_EPOCH = "credentialShutdownEpoch";
     private static long credentialShutdownEpoch;
     private static boolean credentialShutdownConfirmed;
@@ -299,6 +303,35 @@ public class ElizaAgentService extends Service {
      * the dashboard at the pairing screen. Fall back to the recovery file that
      * {@link #writeLocalAgentTokenFile} persists, and cache it for this process.
      */
+    @FunctionalInterface public interface RecoveryOperation { JSONObject run() throws JSONException; }
+    @FunctionalInterface public interface RecoveryAuthority { JSONObject run(RecoveryOperation operation) throws JSONException; }
+
+    /** Explicit evidence review; no process is stopped or started by either operation.
+     * Host authority is acquired AFTER processLock, matching runtime environment callbacks. */
+    public static JSONObject reviewIpcRecovery(RecoveryAuthority authority) throws JSONException {
+        ElizaAgentService instance=activeInstance;
+        if(instance==null || authority==null)return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+        synchronized(instance.processLock) {
+            if(!instance.canReviewIpcRecovery())return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+            return authority.run(() -> instance.ipcRecovery.reviewRetained());
+        }
+    }
+    public static JSONObject archiveIpcRecovery(String reviewToken,RecoveryAuthority authority) throws JSONException {
+        ElizaAgentService instance=activeInstance;
+        if(instance==null || authority==null)return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+        synchronized(instance.processLock) {
+            if(!instance.canReviewIpcRecovery())return IpcStartupRecovery.recoveryResult("unavailable",0,0,"unsupported-state");
+            // A start queued before or during maintenance must not silently run afterward.
+            instance.recoveryMaintenanceEpoch++;
+            try {return authority.run(() -> instance.ipcRecovery.archiveRetained(reviewToken));}
+            finally {instance.recoveryMaintenanceEpoch++;}
+        }
+    }
+    private boolean canReviewIpcRecovery() {
+        return IpcStartupRecovery.RETENTION_LIMIT.equals(currentStatus) && !shuttingDown && ipcRecovery!=null &&
+            (startWorker==null || !startWorker.isAlive()) && (agentProcess==null || !agentProcess.isAlive());
+    }
+
     public static JSONObject getLocalAgentBootState(Context context) throws JSONException {
         initializeLocalAgentTransport(context);
         ElizaAgentService instance = activeInstance;
@@ -325,8 +358,20 @@ public class ElizaAgentService extends Service {
             ? Math.max(0L, System.currentTimeMillis() - launchStartedAtMs)
             : -1L;
 
+        return projectLocalAgentBootState(status, socketListening,
+            instance != null || !serviceLifecycleCompletion.isDone(),
+            hasStartWorker, detached, ageMs, attempts);
+    }
+
+    /** Pure boot admission: an identity refusal cannot be hidden by a live old socket. */
+    static JSONObject projectLocalAgentBootState(String status, boolean socketListening,
+        boolean serviceActive, boolean hasStartWorker, boolean detached,
+        long ageMs, int attempts) throws JSONException {
         JSONObject result = new JSONObject();
-        if (socketListening) {
+        if ("runtime-identity-unavailable".equals(status)) {
+            result.put("state", "dead");
+            result.put("reason", status);
+        } else if (socketListening) {
             result.put("state", "listening");
             result.put("reason", "request socket is accepting connections");
         } else if ("restarting".equals(status)) {
@@ -352,7 +397,7 @@ public class ElizaAgentService extends Service {
             result.put("ageMs", ageMs);
         }
         result.put("socketListening", socketListening);
-        result.put("serviceActive", instance != null);
+        result.put("serviceActive", serviceActive);
         return result;
     }
 
@@ -641,6 +686,164 @@ public class ElizaAgentService extends Service {
         } catch (JSONException ignored) {
             // A complete event with no error is the worst case if JSON fails.
             onEvent.accept("{\"type\":\"complete\"}");
+        }
+    }
+
+    /** Idle budget for an event feed; the agent sends a keepalive every 15 s. */
+    static final int LOCAL_EVENT_IDLE_TIMEOUT_MS = 45_000;
+    private static final int LOCAL_EVENT_CONNECT_TIMEOUT_MS = 10_000;
+    private static final int LOCAL_EVENT_STREAM_LIMIT = 16;
+    private static final java.util.regex.Pattern LOCAL_EVENT_STREAM_NAME =
+        java.util.regex.Pattern.compile("^[a-z0-9][a-z0-9_.:-]{0,63}$");
+
+    /**
+     * Live agent-event feed over the private IPC ({@code events_subscribe}).
+     *
+     * The port-free app has no WebSocket, so this is how WS-only
+     * {@code agent_event} envelopes (e.g. the ephemeral {@code voice-transcript}
+     * stream: speech-start | partial | final | error) reach it. {@code requestJson}
+     * is {@code {"streams":["voice-transcript", ...]}} (required exact-match
+     * filter, 1-16 names). Blocks the calling thread until the feed ends and
+     * reports, in order:
+     *   {"type":"subscribed","streams":[..]}                        (once, first)
+     *   {"type":"event","event":{agent_event envelope}}             (per event)
+     *   {"type":"dropped","count":n}                                (agent skipped an oversized event)
+     *   {"type":"end"}  or  {"type":"end","error":".."}              (terminal, exactly once)
+     *
+     * Live only: nothing is replayed, so after an {@code end} with an error the
+     * caller resubscribes and treats any in-progress turn as unknown. Event
+     * payloads are never logged here. {@link LocalStreamHandle#cancel} ends the
+     * feed with a plain {@code end}.
+     */
+    public static void subscribeLocalAgentEvents(
+        String requestJson,
+        java.util.function.Consumer<String> onEvent,
+        LocalStreamHandle handle
+    ) {
+        try {
+            JSONObject payload = buildEventSubscriptionPayload(requestJson, currentLocalAgentToken);
+            handle.check();
+            subscribeOverSocket(payload, onEvent, handle);
+        } catch (Exception error) {
+            boolean cancelled;
+            try { handle.check(); cancelled = false; } catch (IOException closed) { cancelled = true; }
+            emitEventEnd(onEvent, cancelled ? null
+                : (error.getMessage() == null ? "Local agent event feed failed" : error.getMessage()));
+        }
+    }
+
+    /** Validate the stream filter and build the {@code events_subscribe} payload. */
+    static JSONObject buildEventSubscriptionPayload(String requestJson, String token) throws JSONException {
+        JSONObject request = requestJson == null || requestJson.trim().isEmpty()
+            ? new JSONObject()
+            : new JSONObject(requestJson);
+        org.json.JSONArray raw = request.optJSONArray("streams");
+        if (raw == null || raw.length() == 0 || raw.length() > LOCAL_EVENT_STREAM_LIMIT) {
+            throw new IllegalArgumentException("Event subscription requires 1-16 stream names");
+        }
+        java.util.LinkedHashSet<String> unique = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < raw.length(); i++) {
+            Object value = raw.opt(i);
+            if (!(value instanceof String) || !LOCAL_EVENT_STREAM_NAME.matcher((String) value).matches()) {
+                throw new IllegalArgumentException("Invalid event stream name");
+            }
+            unique.add((String) value);
+        }
+        org.json.JSONArray streams = new org.json.JSONArray();
+        for (String name : unique) streams.put(name);
+        JSONObject headers = new JSONObject();
+        if (token != null && !token.trim().isEmpty()) {
+            headers.put("Authorization", "Bearer " + token.trim());
+        }
+        if (unique.contains("view-interact")) {
+            String clientId=request.optString("clientId","");
+            if(unique.size()!=1||!clientId.matches("[A-Za-z0-9._-]{1,128}"))throw new IllegalArgumentException("Targeted renderer identity is required");
+            headers.put("X-ElizaOS-Client-Id",clientId);
+        } else if(request.has("clientId"))throw new IllegalArgumentException("Unexpected renderer identity");
+        return new JSONObject().put("streams", streams).put("headers", headers);
+    }
+
+    /**
+     * Translate one agent subscription frame into the caller envelope.
+     * Returns null for frames the caller never sees (keepalive, unknown).
+     * A returned {@code end} envelope is terminal.
+     */
+    static JSONObject translateEventSubscriptionFrame(String line) throws JSONException {
+        JSONObject frame = new JSONObject(line);
+        String event = frame.optString("event", "");
+        switch (event) {
+            case "subscribed": {
+                org.json.JSONArray streams = frame.optJSONArray("streams");
+                return new JSONObject().put("type", "subscribed")
+                    .put("streams", streams == null ? new org.json.JSONArray() : streams);
+            }
+            case "agent_event": {
+                JSONObject data = frame.optJSONObject("data");
+                if (data == null || !"agent_event".equals(data.optString("type"))) {
+                    throw new JSONException("Invalid agent event frame");
+                }
+                return new JSONObject().put("type", "event").put("event", data);
+            }
+            case "dropped":
+                return new JSONObject().put("type", "dropped").put("count", frame.optInt("count"));
+            case "error":
+                return new JSONObject().put("type", "end")
+                    .put("error", frame.optString("error", "Local agent refused event feed"));
+            default:
+                return null;
+        }
+    }
+
+    private static void subscribeOverSocket(
+        JSONObject payload,
+        java.util.function.Consumer<String> onEvent,
+        LocalStreamHandle handle
+    ) throws IOException, JSONException {
+        JSONObject frame = new JSONObject()
+            .put("id", nextFrameId())
+            .put("method", "events_subscribe")
+            .put("payload", payload);
+        LocalSocket socket = connectLocalAgentSocket(
+            SystemClock.elapsedRealtime() + LOCAL_EVENT_CONNECT_TIMEOUT_MS, handle);
+        try {
+            handle.attach(socket);
+            writeFrameLine(socket.getOutputStream(), frame);
+            InputStream in = socket.getInputStream();
+            boolean subscribed = false;
+            while (true) {
+                // Rolling idle deadline: any frame (keepalives included) renews it.
+                long idleDeadline = SystemClock.elapsedRealtime() + LOCAL_EVENT_IDLE_TIMEOUT_MS;
+                String line = readFrameLine(socket, in, idleDeadline);
+                if (line == null) break;
+                if (line.isEmpty()) continue;
+                JSONObject envelope = translateEventSubscriptionFrame(line);
+                if (envelope == null) continue;
+                String type = envelope.optString("type");
+                if ("end".equals(type)) {
+                    onEvent.accept(envelope.toString());
+                    return;
+                }
+                if ("subscribed".equals(type)) {
+                    if (subscribed) throw new IOException("Duplicate event subscription ack");
+                    subscribed = true;
+                } else if (!subscribed) {
+                    throw new IOException("Agent event before subscription ack");
+                }
+                onEvent.accept(envelope.toString());
+            }
+            throw new IOException("Local agent event feed ended; resubscribe (no replay)");
+        } finally {
+            closeQuietly(socket);
+        }
+    }
+
+    private static void emitEventEnd(java.util.function.Consumer<String> onEvent, String error) {
+        try {
+            JSONObject end = new JSONObject().put("type", "end");
+            if (error != null) end.put("error", error);
+            onEvent.accept(end.toString());
+        } catch (JSONException ignored) {
+            onEvent.accept("{\"type\":\"end\"}");
         }
     }
 
@@ -1015,22 +1218,13 @@ public class ElizaAgentService extends Service {
             bionicInferenceServer = null;
         }
         final boolean strictCredentialStop = requestedStop && admittedCredentialShutdownEpoch >= 0;
-        if (requestedStop) {
-            // A refusal must not escape onDestroy: Android rethrows it and kills the app.
-            if (!strictCredentialStop) stopAgentProcessOrPreserve(true);
-        } else {
-            // AMS tore this record down without an explicit stop request (an
-            // ANR'd duplicate record whose startForeground never got processed
-            // on a blocked main thread, LMK pressure, task removal). The
-            // detached agent outlives its launching service BY DESIGN — leave
-            // it running so the next service instance adopts it via
-            // isLoopbackAgentListening(). Calling stopAgentProcess() here
-            // pkills the agent by path: observed on the emulator e2e, an
-            // in-flight start worker (asset refresh holding processLock for
-            // ~33s) launched the agent and this destroy path then killed it
-            // 1s later; the Android-15 background FGS-start denial meant
-            // nothing ever restarted it and local mode stayed dead until the
-            // next manual app launch.
+        final java.util.concurrent.CompletableFuture<Void> previousRelease, release =
+            new java.util.concurrent.CompletableFuture<>();
+        synchronized (ElizaAgentService.class) {
+            previousRelease = serviceLifecycleCompletion;
+            serviceLifecycleCompletion = release;
+        }
+        if (!requestedStop) {
             appendDiagnosticEvent("service-destroy-preserved-agent", details);
             Log.i(TAG, "Service destroyed without a stop request; leaving the agent process running for adoption.");
         }
@@ -1038,30 +1232,37 @@ public class ElizaAgentService extends Service {
         if (mgr != null) {
             mgr.cancel(NOTIFICATION_ID);
         }
-        if (activeInstance == this) {
-            activeInstance = null;
-        }
-        // Reuse the existing release worker: strict inventory/exit waits must not block Android's main thread.
-        new Thread(() -> {
+        // Chain release workers without waiting on Android's main thread. Each completes only
+        // its own fence; an older instance cannot release a newer instance's startup gate.
+        previousRelease.whenComplete((ignored, priorError) -> new Thread(() -> {
             boolean confirmed = false;
-            synchronized (processLock) {
-                if (strictCredentialStop) confirmed = stopAgentProcessForCredentialChange();
-                if (ipcRecovery != null) {
-                    try { ipcRecovery.close(); }
-                    catch (IOException error) {
-                        confirmed = false;
-                        Log.w(TAG, "IPC supervisor close failed", error);
+            try {
+                synchronized (processLock) {
+                    if (requestedStop) confirmed = strictCredentialStop
+                        ? stopAgentProcessForCredentialChange() : stopAgentProcessOrPreserve(true);
+                    if (ipcRecovery != null) {
+                        try { ipcRecovery.close(); }
+                        catch (IOException error) {
+                            confirmed = false;
+                            Log.w(TAG, "IPC supervisor close failed", error);
+                        }
+                        ipcRecovery = null;
                     }
-                    ipcRecovery = null;
                 }
-            }
-            synchronized (ElizaAgentService.class) {
-                if (admittedCredentialShutdownEpoch == credentialShutdownEpoch) {
-                    credentialShutdownConfirmed = strictCredentialStop && confirmed && activeInstance == null;
-                    credentialShutdownPending = false;
+                synchronized (ElizaAgentService.class) {
+                    if (activeInstance == this && (!requestedStop || confirmed)) activeInstance = null;
+                    if (admittedCredentialShutdownEpoch == credentialShutdownEpoch) {
+                        credentialShutdownConfirmed = strictCredentialStop && confirmed && activeInstance == null;
+                        credentialShutdownPending = false;
+                    }
                 }
+            } finally {
+                // Completion means no teardown work can still launch or signal a process.
+                // It is not an absence proof: failed stops keep owner state and normal startup
+                // must still pass the unchanged IPC/process inventory checks.
+                release.complete(null);
             }
-        }, "ipc-supervisor-release").start();
+        }, "ipc-supervisor-release").start());
         super.onDestroy();
     }
 
@@ -1390,8 +1591,8 @@ public class ElizaAgentService extends Service {
 
     /**
      * Whether an on-disk extraction can actually boot: bundle + launch.sh +
-     * bun + a musl loader all present and non-empty. Mirrors the guards in
-     * {@link #startAgentProcess()}, so a "valid extraction" is exactly one that
+     * bun + its target-specific loader (musl only) all present and non-empty. Mirrors the guards in
+     * {@link #startAgentProcess(boolean)}, so a "valid extraction" is exactly one that
      * would pass them.
      */
     private boolean extractionIsBootable(File root, String abi) {
@@ -1408,7 +1609,9 @@ public class ElizaAgentService extends Service {
         if (!bun.isFile() || bun.length() <= 0) {
             return false;
         }
-        return findMuslLoader(abiDir) != null;
+        try {
+            return AndroidBunTarget.ANDROID.equals(runtimeBunTarget(abi)) || findMuslLoader(abiDir) != null;
+        } catch (IOException invalidTarget) { return false; }
     }
 
     /**
@@ -1441,13 +1644,6 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(stagingRoot, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(stagingRoot, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(stagingRoot, "pglite.data"));
-        // Legacy ONNX Runtime Web sidecars used by the removed Android Kokoro
-        // TTS path. Current AOSP TTS uses fused OmniVoice, so fresh bundles do
-        // not ship these files; keep extraction best-effort for older APKs.
-        copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
-            new File(stagingRoot, "ort-wasm-simd-threaded.mjs"));
-        copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
-            new File(stagingRoot, "ort-wasm-simd-threaded.wasm"));
         copyAssetIfPresent(assets, "agent/plugins-manifest.json",
             new File(stagingRoot, "plugins-manifest.json"));
 
@@ -1736,6 +1932,61 @@ public class ElizaAgentService extends Service {
         }
     }
 
+    private String runtimeBunTarget(String abi) throws IOException {
+        try (InputStream in = getAssets().open("agent/android-agent-runtime-provenance.json")) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buffer = new byte[4096]; int count;
+            while ((count = in.read(buffer)) != -1) {
+                if (out.size() + count > 1024 * 1024) throw new IOException("Runtime provenance exceeds bound");
+                out.write(buffer, 0, count);
+            }
+            return AndroidBunTarget.fromManifest(new JSONObject(out.toString("UTF-8")), abi);
+        } catch (java.io.FileNotFoundException legacyApk) {
+            return AndroidBunTarget.MUSL;
+        } catch (JSONException invalid) { throw new IOException("Invalid runtime provenance", invalid); }
+    }
+
+    private static final class RuntimeLaunchPaths {
+        final String target, loaderName;
+        final File bun, launchExecutable, processExecutable;
+        RuntimeLaunchPaths(String target, String loaderName, File bun, File launchExecutable, File processExecutable) {
+            this.target=target; this.loaderName=loaderName; this.bun=bun;
+            this.launchExecutable=launchExecutable; this.processExecutable=processExecutable;
+        }
+    }
+
+    /** One selection contract for startup, recovery, adoption and stop. */
+    private RuntimeLaunchPaths runtimeLaunchPaths(String abi) throws IOException {
+        String target=runtimeBunTarget(abi);
+        File dir=agentAbiDir(abi);
+        File bun=preferPackagedExecutable(new File(dir,BUN_BINARY),"libeliza_bun.so").getCanonicalFile();
+        if (AndroidBunTarget.ANDROID.equals(target))
+            return new RuntimeLaunchPaths(target,"",bun,bun,bun);
+        String name=findMuslLoader(dir);
+        if (name==null) throw new IOException("Resident musl loader unavailable");
+        File loader=new File(dir,name), executable=loader;
+        String packaged=packagedMuslLoaderName(abi);
+        if(packaged!=null) {
+            loader=preferPackagedExecutable(loader,packaged);
+            File real=new File(nativeLibraryDir(),packaged.replace(".so","_real.so"));
+            executable=real.isFile()?real:loader;
+        }
+        return new RuntimeLaunchPaths(target,name,bun,loader.getCanonicalFile(),executable.getCanonicalFile());
+    }
+
+    private void verifyAdoptedRuntimeDeployment() throws Exception {
+        String abi=resolveRuntimeAbi();RuntimeLaunchPaths paths=runtimeLaunchPaths(abi);
+        LocalSocket socket=new LocalSocket();
+        try {
+            socket.connect(new LocalSocketAddress(localSocketPath(),LocalSocketAddress.Namespace.FILESYSTEM));
+            requireTrustedLocalAgentPeer(socket);
+            android.net.Credentials peer=socket.getPeerCredentials();
+            WorkflowSurvivorInventory.verifyResidentPeer(peer.getPid(),peer.getUid(),paths.bun,paths.processExecutable,
+                new File(agentRoot(),AGENT_BUNDLE_NAME).getCanonicalFile(),
+                android.os.SystemClock.elapsedRealtime()+PROCESS_TERMINATE_GRACE_MS);
+        } finally { closeQuietly(socket); }
+    }
+
     /** Walk agent/{abi}/ for the musl loader; name varies by ABI. */
     private String findMuslLoader(File abiDir) {
         File[] files = abiDir.listFiles();
@@ -1914,15 +2165,15 @@ public class ElizaAgentService extends Service {
 
     /**
      * Start the in-process bionic inference host whenever the fused native lib
-     * AND a local voice bundle (kokoro) are present — independent of the LLM
+     * AND the local Paradee voice ({@code tts/paradee/}) are present — independent of the LLM
      * runtime mode and of whether the agent process spawns fresh or adopts a
      * surviving one.
      *
-     * <p>Previously the host was started ONLY inside {@link #startAgentProcess()}'s
+     * <p>Previously the host was started ONLY inside {@link #startAgentProcess(boolean)}'s
      * fresh-spawn {@code delegateToBionicHost} block, so after a process restart
      * that adopts a surviving agent (or when the agent runs cloud-routed) the
-     * host never bound its abstract UDS, and {@code TalkMode}'s local Kokoro TTS
-     * silently fell back to the system (Google) TTS. The voice host serves Kokoro
+     * host never bound its abstract UDS, and {@code TalkMode}'s local Paradee TTS
+     * silently fell back to the system (Google) TTS. The voice host serves Paradee
      * from {@code libelizainference} + the staged bundle and needs no LLM, so its
      * lifecycle is decoupled from agent inference here.
      *
@@ -1931,6 +2182,13 @@ public class ElizaAgentService extends Service {
      * additive: worst case the host stays down and TalkMode falls back to system
      * TTS exactly as before — it cannot affect agent startup.
      */
+    private File prepareVoiceBundle() throws IOException {
+        if (ai.eliza.voice.VoiceBundleAssets.isPackaged(this)) {
+            return ai.eliza.voice.VoiceBundleAssets.install(this).root;
+        }
+        return ai.eliza.voice.VoiceBundleAssets.bundleRoot(this);
+    }
+
     private synchronized void ensureBionicVoiceHost() {
         if (bionicInferenceServer != null) {
             return;
@@ -1939,30 +2197,32 @@ public class ElizaAgentService extends Service {
         if (!fusedLib.isFile() && !hasPackagedNativeLibrary("elizainference")) {
             return;
         }
-        File kokoroVoice = new File(getFilesDir(), "eliza-1/bundle/tts/kokoro");
-        if (!kokoroVoice.isDirectory()) {
-            return;
-        }
         try {
-            String defaultBundleDir =
-                new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
+            // This worker runs before the live-runtime adoption check as well
+            // as a fresh spawn. No model copying runs on the service main thread.
+            File bundleRoot = prepareVoiceBundle();
+            File paradeeModel = new File(bundleRoot,
+                ElizaBionicInferenceServer.PARADEE_DIR + "/" + ElizaBionicInferenceServer.PARADEE_MODEL);
+            if (!paradeeModel.isFile()) return;
+            String defaultBundleDir = bundleRoot.getAbsolutePath();
             ElizaBionicInferenceServer host = newBionicInferenceServer(defaultBundleDir);
             host.start();
             bionicInferenceServer = host;
             Log.i(TAG, "ensureBionicVoiceHost: local voice host started"
-                + " (kokoro bundle present, independent of LLM mode)");
+                + " (Paradee voice present, independent of LLM mode)");
         } catch (Throwable t) {
             Log.w(TAG, "ensureBionicVoiceHost: could not start local voice host", t);
         }
     }
 
     private void requestAgentStart(boolean restartFirst) {
+        long requestedRecoveryEpoch=recoveryMaintenanceEpoch;
         try { invalidateCredentialShutdown(); }
         catch (IllegalStateException retiring) { currentStatus = "stopping"; return; }
-        // Bring up the local-voice (Kokoro TTS) bionic host on every service
+        // Bring up the local-voice (Paradee TTS) bionic host on every service
         // start, before the agent-already-running guards below — so it binds
         // even when the agent is adopted rather than freshly spawned.
-        ensureBionicVoiceHost();
+        // Host startup is serialized below with explicit recovery maintenance.
 
         // Android may redeliver the sticky service start while a cold boot is
         // still extracting assets. That worker holds processLock, so waiting
@@ -1973,6 +2233,7 @@ public class ElizaAgentService extends Service {
             return;
         }
         synchronized (processLock) {
+            if(requestedRecoveryEpoch!=recoveryMaintenanceEpoch)return;
             if (!restartFirst && agentProcess != null && agentProcess.isAlive()) {
                 return;
             }
@@ -1985,27 +2246,47 @@ public class ElizaAgentService extends Service {
             }
             currentStatus = restartFirst ? "restarting" : "starting";
             updateNotification();
+            final java.util.concurrent.CompletableFuture<Void> previousLifecycle, lifecycle =
+                new java.util.concurrent.CompletableFuture<>();
+            synchronized (ElizaAgentService.class) {
+                previousLifecycle = serviceLifecycleCompletion;
+                serviceLifecycleCompletion = lifecycle;
+            }
             startWorker = new Thread(() -> {
                 try {
-                    if (restartFirst && !stopAgentProcessOrPreserve(false)) {
-                        // The prior resident still owns the runtime; never start a second one.
-                        currentStatus = "stop-failed";
+                    try {
+                        previousLifecycle.get(PROCESS_TERMINATE_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        currentStatus = "stopping";
+                        updateNotification();
+                        return;
+                    } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException unsettled) {
+                        currentStatus = "stopping";
                         updateNotification();
                         return;
                     }
-                    startAgentProcess(!restartFirst);
+                    synchronized (processLock) {
+                        if (shuttingDown || requestedRecoveryEpoch != recoveryMaintenanceEpoch) return;
+                        ensureBionicVoiceHost();
+                        if (restartFirst && !stopAgentProcessOrPreserve(false)) {
+                            // The prior resident still owns the runtime; never start a second one.
+                            currentStatus = "stop-failed";
+                            updateNotification();
+                            return;
+                        }
+                        startAgentProcess(!restartFirst);
+                    }
                 } finally {
                     synchronized (processLock) {
                         startWorker = null;
                     }
+                    // A cancelled/timed-out reservation never releases a still-running predecessor.
+                    previousLifecycle.whenComplete((ignored, error) -> lifecycle.complete(null));
                 }
             }, "ElizaAgent-start");
             startWorker.start();
         }
-    }
-
-    private void startAgentProcess() {
-        startAgentProcess(true);
     }
 
     private void startAgentProcess(boolean allowAdoption) {
@@ -2036,6 +2317,13 @@ public class ElizaAgentService extends Service {
             // comment above describes). Mark the instance detached on adopt so
             // an explicit ACTION_STOP still tears the adopted agent down.
             if (allowAdoption && isLocalAgentSocketListening()) {
+                try { verifyAdoptedRuntimeDeployment(); }
+                catch (Exception unproven) {
+                    currentStatus="runtime-identity-unavailable";
+                    appendDiagnosticEvent("runtime-adoption-refused", null);
+                    updateNotification();
+                    return; // Preserve the prior owner; never launch a second resident.
+                }
                 detachedAgentMode = true;
                 restoreAdoptedRuntimeOwnership();
                 if (!"running".equals(currentStatus)) {
@@ -2129,8 +2417,13 @@ public class ElizaAgentService extends Service {
             File abiDir = agentAbiDir(abi);
             File bundle = new File(root, AGENT_BUNDLE_NAME);
             File launchScript = new File(root, AGENT_LAUNCH_SCRIPT);
-            File bun = new File(abiDir, BUN_BINARY);
-            String loaderName = findMuslLoader(abiDir);
+            final RuntimeLaunchPaths launchPaths;
+            try { launchPaths=runtimeLaunchPaths(abi); }
+            catch (IOException invalidTarget) {
+                currentStatus="runtime-identity-unavailable"; updateNotification(); return;
+            }
+            File bun = launchPaths.bun;
+            String loaderName = launchPaths.loaderName;
 
             if (!bundle.exists()) {
                 Log.e(TAG, "Agent bundle missing at " + bundle);
@@ -2150,25 +2443,14 @@ public class ElizaAgentService extends Service {
                 updateNotification();
                 return;
             }
-            if (loaderName == null) {
-                Log.e(TAG, "musl loader missing under " + abiDir);
-                currentStatus = "missing-loader";
-                updateNotification();
-                return;
-            }
-            File loader = new File(abiDir, loaderName);
-            String packagedLoaderName = packagedMuslLoaderName(abi);
-            if (packagedLoaderName != null) {
-                loader = preferPackagedExecutable(loader, packagedLoaderName);
-            }
-            bun = preferPackagedExecutable(bun, "libeliza_bun.so");
+            File loader = launchPaths.launchExecutable;
 
             // Re-validate the soname symlinks against THIS install's
             // nativeLibraryDir on every spawn: a package update mints a new
             // /data/app/~~<random>/ dir and dangles absolute links staged by
             // the previous install, which kills bun ~1s into exec with no
             // visible error (stdio is on /dev/null).
-            ensureRuntimeLibraryLinks(abiDir);
+            if (AndroidBunTarget.MUSL.equals(launchPaths.target)) ensureRuntimeLibraryLinks(abiDir);
 
             final String canonicalRoot, canonicalAbiDir, canonicalNativeDir, canonicalLoader, canonicalBun;
             try {
@@ -2187,10 +2469,7 @@ public class ElizaAgentService extends Service {
             // Serialize recovery across native supervisors, preserving every unproven owner.
             try {
                 if (ipcRecovery == null) ipcRecovery = IpcStartupRecovery.acquire(getFilesDir());
-                File workerExecutable = packagedLoaderName == null ? loader :
-                    new File(getApplicationInfo().nativeLibraryDir, packagedLoaderName.replace(".so", "_real.so"));
-                if (!workerExecutable.isFile()) workerExecutable = loader;
-                ipcRecovery.recover(bun, workerExecutable);
+                ipcRecovery.recover(bun, launchPaths.processExecutable);
             } catch (IOException recoveryError) {
                 currentStatus = recoveryError.getMessage() != null && recoveryError.getMessage().contains(IpcStartupRecovery.RETENTION_LIMIT)
                         ? IpcStartupRecovery.RETENTION_LIMIT : "ipc-recovery-required";
@@ -2274,6 +2553,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("AGENT_ROOT", canonicalRoot);
             agentEnv.put("RUNTIME_DIR", canonicalAbiDir);
             agentEnv.put("DEVICE_DIR", canonicalAbiDir);
+            agentEnv.put("ELIZA_ANDROID_BUN_TARGET", launchPaths.target);
             agentEnv.put("LD_NAME", loaderName);
             agentEnv.put("LD_PATH", canonicalLoader);
             agentEnv.put("BUN_PATH", canonicalBun);
@@ -2312,6 +2592,8 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_LOCAL_AGENT_TRANSPORT","filesystem-v1");
             initializeLocalAgentTransport(this);
             agentEnv.put("ELIZA_LOCAL_AGENT_SOCKET_PATH",privateSocketPath);
+            // Android has no /etc/localtime for the Bun child process.
+            agentEnv.put("TZ", java.util.TimeZone.getDefault().getID());
             // Context can expose files/ via /data/data while getDataDir() uses
             // /data/user/0. Export both identity paths in the same namespace.
             agentEnv.put("ELIZA_STATE_DIR", canonicalStateDir);
@@ -2395,7 +2677,9 @@ public class ElizaAgentService extends Service {
             // nothing. Skip the whole augmentation path when the
             // embedding handler is in the disabled state.
             if (!env.containsKey("ELIZA_DOCUMENT_AUGMENTATION_DISABLED")
-                    && !"1".equals(env.get("ELIZA_LOCAL_EMBEDDING_ENABLED"))) {
+                    && !agentEnv.containsKey("ELIZA_DOCUMENT_AUGMENTATION_DISABLED")
+                    && !"1".equals(agentEnv.getOrDefault("ELIZA_LOCAL_EMBEDDING_ENABLED",
+                        env.get("ELIZA_LOCAL_EMBEDDING_ENABLED")))) {
                 agentEnv.put("ELIZA_DOCUMENT_AUGMENTATION_DISABLED", "1");
             }
             // Skip the auto-download of recommended GGUF models that
@@ -2516,11 +2800,6 @@ public class ElizaAgentService extends Service {
                 // Stand up the in-process GPU inference server BEFORE the agent
                 // spawns so the abstract socket is already bound when the agent's
                 // BionicHostLoader first connects. Idempotent across restarts.
-                if (bionicInferenceServer == null) {
-                    String defaultBundleDir =
-                        new File(getFilesDir(), "eliza-1/bundle").getAbsolutePath();
-                    bionicInferenceServer = newBionicInferenceServer(defaultBundleDir);
-                }
                 // Guard the start: a failure here (e.g. the fused-voice native
                 // libs failing to dlopen) must NOT leave the delegation env set,
                 // or the musl agent registers dead "(via bionic-host)" handlers
@@ -2529,6 +2808,11 @@ public class ElizaAgentService extends Service {
                 // the non-delegated inference path below. UnsatisfiedLinkError is
                 // an Error, not an Exception, so catch Throwable here.
                 try {
+                    if (bionicInferenceServer == null) {
+                        // A failed earlier install must not be bypassed by this fallback.
+                        String defaultBundleDir = prepareVoiceBundle().getAbsolutePath();
+                        bionicInferenceServer = newBionicInferenceServer(defaultBundleDir);
+                    }
                     bionicInferenceServer.start();
                 } catch (Throwable startError) {
                     Log.e(TAG, "ElizaBionicInferenceServer.start() failed; disabling "
@@ -2568,17 +2852,6 @@ public class ElizaAgentService extends Service {
                 }
                 if (!env.containsKey("ELIZA_MOBILE_LOCAL_DIRECT_REPLY")) {
                     agentEnv.put("ELIZA_MOBILE_LOCAL_DIRECT_REPLY", "1");
-                }
-                if (!env.containsKey("ELIZA_KOKORO_PREWARM")) {
-                    agentEnv.put("ELIZA_KOKORO_PREWARM", "1");
-                }
-                if (!env.containsKey("ELIZA_KOKORO_PREWARM_DELAY_MS")) {
-                    // Kokoro's first on-device ORT/WASM synthesis can be
-                    // CPU-bound for tens of seconds. Keep the warmup opt-in,
-                    // but schedule it well after the local HTTP server should
-                    // be listening so app readiness is not blocked by audio
-                    // cache priming.
-                    agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
                 }
                 // MTP (multi-token / speculative decode) is compiled into the
                 // single fused libelizainference.so (the eliza_mtp::Engine over
@@ -2912,6 +3185,7 @@ public class ElizaAgentService extends Service {
                 pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
             }
 
+            if (shuttingDown) return;
             Process started;
             try {
                 started = pb.start();
@@ -3027,27 +3301,12 @@ public class ElizaAgentService extends Service {
             outPump = stdoutPump;
             errPump = stderrPump;
             wasDetached = detachedAgentMode;
-            if (wasDetached || confirmTermination) {
-                // Keep ownership and credentials retryable until termination is
-                // confirmed. Serialize this with adoption/start under the same lock.
+            final long stopDeadline = android.os.SystemClock.elapsedRealtime() + PROCESS_TERMINATE_GRACE_MS;
+            // Reap the owned launcher before inventory: its detached child may still be forking.
+            if (toStop != null) {
+                ai.eliza.plugins.agent.runtime.NativeProcessSupervisor.terminate(toStop, Math.max(0L, stopDeadline - android.os.SystemClock.elapsedRealtime()));
                 try {
-                    stopDetachedAgentProcess();
-                } catch (IllegalStateException unresolved) {
-                    if (!confirmTermination) throw unresolved;
-                    try {
-                        // First launch may have no extracted loader. Absence needs the
-                        // existing full-UID inventory proof, never a closed socket alone.
-                        IpcStartupRecovery.requireSoleUidProcess();
-                    } catch (Exception unproven) {
-                        unresolved.addSuppressed(unproven);
-                        throw unresolved;
-                    }
-                }
-            }
-            if (confirmTermination && toStop != null) {
-                ai.eliza.plugins.agent.runtime.NativeProcessSupervisor.terminate(toStop, PROCESS_TERMINATE_GRACE_MS);
-                try {
-                    if (!toStop.waitFor(PROCESS_TERMINATE_GRACE_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    if (!toStop.waitFor(Math.max(0L, stopDeadline - android.os.SystemClock.elapsedRealtime()), java.util.concurrent.TimeUnit.MILLISECONDS)
                             || toStop.isAlive()) {
                         throw new IllegalStateException("Direct child shutdown unconfirmed");
                     }
@@ -3056,10 +3315,27 @@ public class ElizaAgentService extends Service {
                     throw new IllegalStateException("Direct child shutdown interrupted", interrupted);
                 }
             }
+            {
+                // A cold service may never have adopted the detached launch it must stop.
+                // Keep ownership and credentials retryable until termination is
+                // confirmed. Serialize this with adoption/start under the same lock.
+                try {
+                    stopDetachedAgentProcess(stopDeadline);
+                } catch (IllegalStateException unresolved) {
+                    try {
+                        // First launch may have no extracted loader. Absence needs the
+                        // existing full-UID inventory proof, never a closed socket alone.
+                        IpcStartupRecovery.requireSoleUidProcess(stopDeadline);
+                    } catch (Exception unproven) {
+                        unresolved.addSuppressed(unproven);
+                        throw unresolved;
+                    }
+                }
+            }
             if (confirmTermination) {
                 try {
                     // Resident stop preserves workflow siblings. None may retain the old credential environment.
-                    IpcStartupRecovery.requireSoleUidProcess();
+                    IpcStartupRecovery.requireSoleUidProcess(stopDeadline);
                 } catch (Exception unproven) {
                     throw new IllegalStateException("Credential consumers remain or inventory is unproven", unproven);
                 }
@@ -3086,9 +3362,6 @@ public class ElizaAgentService extends Service {
             return;
         }
         Log.i(TAG, "Stopping agent process (pid=" + safePid(toStop) + ").");
-        if (!confirmTermination && ai.eliza.plugins.agent.runtime.NativeProcessSupervisor.terminate(toStop, PROCESS_TERMINATE_GRACE_MS)) {
-            Log.w(TAG, "Agent did not exit on SIGTERM — sent SIGKILL.");
-        }
         if (outPump != null) outPump.interrupt();
         if (errPump != null) errPump.interrupt();
     }
@@ -3120,28 +3393,33 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private void stopDetachedAgentProcess() {
+    private void stopDetachedAgentProcess(long deadline) {
         String abi = resolveRuntimeAbi();
         File abiDir = agentAbiDir(abi);
         File bun = preferPackagedExecutable(new File(abiDir, BUN_BINARY), "libeliza_bun.so");
         File bundle = new File(agentRoot(), AGENT_BUNDLE_NAME);
         try {
-            // Mirror startup's executable selection, including unwrapped and
-            // extracted loaders and all supported ABIs.
-            String loaderName = findMuslLoader(abiDir);
-            if (loaderName == null) throw new IOException("Resident loader unavailable");
-            File loader = new File(abiDir, loaderName);
-            String packagedLoaderName = packagedMuslLoaderName(abi);
-            if (packagedLoaderName != null) {
-                loader = preferPackagedExecutable(loader, packagedLoaderName);
-                File realLoader = new File(nativeLibraryDir(),
-                    packagedLoaderName.replace(".so", "_real.so"));
-                if (realLoader.isFile()) loader = realLoader;
-            }
+            RuntimeLaunchPaths paths=runtimeLaunchPaths(abi);
+            File loader=paths.processExecutable;
             // Startup launches with canonical paths, and getFilesDir() is usually
             // the /data/user/0 alias of /data/data, so match canonically.
-            WorkflowSurvivorInventory.stopResident(
-                bun.getCanonicalFile(), loader.getCanonicalFile(), bundle.getCanonicalFile());
+            try (WorkflowSurvivorInventory.ExecutableDigests observation = WorkflowSurvivorInventory.executableDigests()) {
+            while (true) {
+                WorkflowSurvivorInventory.stopResident(
+                    bun.getCanonicalFile(), loader.getCanonicalFile(), bundle.getCanonicalFile(), deadline, observation);
+                try {
+                    // A detached launch shell may fork after an earlier inventory saw no resident.
+                    // Only authenticated workflow siblings may remain when ownership is released.
+                    WorkflowSurvivorInventory.requireClassified(
+                        getFilesDir(), new File(agentStateDir(), "smthrs"), bun.getCanonicalFile(), loader.getCanonicalFile(), deadline, observation);
+                    break;
+                } catch (IOException unsettled) {
+                    if (android.os.SystemClock.elapsedRealtime() >= deadline) throw unsettled;
+                    android.os.SystemClock.sleep(Math.min(50L,
+                        Math.max(0L, deadline - android.os.SystemClock.elapsedRealtime())));
+                }
+            }
+            }
         } catch (Exception error) {
             // Never fall back to path-wide signals: those also kill admitted workers.
             Log.w(TAG, "Resident stop identity unproven; preserving processes", error);
@@ -3163,7 +3441,7 @@ public class ElizaAgentService extends Service {
 
     /**
      * Persist the detached-agent launch timestamp so the cold-boot guard in
-     * {@link #startAgentProcess()} survives service-instance churn (AMS
+     * {@link #startAgentProcess(boolean)} survives service-instance churn (AMS
      * record teardown, process restart). 0 clears the stamp; written on every
      * launch and cleared by {@link #stopAgentProcess(boolean)} (explicit stops
      * and restart-first restarts).
@@ -3795,7 +4073,7 @@ public class ElizaAgentService extends Service {
                 return;
             }
             if (shuttingDown) return;
-            startAgentProcess(!requireFreshProcess);
+            requestAgentStart(requireFreshProcess);
         }, "ElizaAgent-restart").start();
     }
 

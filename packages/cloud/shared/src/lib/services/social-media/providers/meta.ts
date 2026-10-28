@@ -14,7 +14,13 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const GRAPH_API_BASE = "https://graph.facebook.com/v19.0";
 
@@ -71,6 +77,7 @@ async function graphApiRequest<T>(
   endpoint: string,
   accessToken: string,
   options: RequestInit = {},
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const url = new URL(endpoint.startsWith("http") ? endpoint : `${GRAPH_API_BASE}${endpoint}`);
   if ((options.method ?? "GET").toUpperCase() === "GET") {
@@ -85,10 +92,11 @@ async function graphApiRequest<T>(
       }),
     async (response) => {
       const json = (await response.json()) as T;
-      if ((json as GraphApiError).error) throw new Error((json as GraphApiError).error!.message);
+      if ((json as GraphApiError).error)
+        throw new SocialApiRejectionError((json as GraphApiError).error!.message);
       return json;
     },
-    { platform: "facebook", maxRetries: 3 },
+    { platform: "facebook", maxRetries: 3, ...retry },
   );
 
   return data;
@@ -141,6 +149,7 @@ async function createFacebookPost(
         `/${pageId}/photos?${searchParams}`,
         credentials.accessToken,
         { method: "POST" },
+        { replayUnknownOutcome: false },
       );
     }
     // Video post
@@ -160,6 +169,7 @@ async function createFacebookPost(
         `/${pageId}/videos?${searchParams}`,
         credentials.accessToken,
         { method: "POST" },
+        { replayUnknownOutcome: false },
       );
     }
     // Link post
@@ -174,6 +184,7 @@ async function createFacebookPost(
         `/${pageId}/feed?${params}`,
         credentials.accessToken,
         { method: "POST" },
+        { replayUnknownOutcome: false },
       );
     }
     // Text post
@@ -187,24 +198,33 @@ async function createFacebookPost(
         `/${pageId}/feed?${params}`,
         credentials.accessToken,
         { method: "POST" },
+        { replayUnknownOutcome: false },
+      );
+    }
+
+    // A 2xx body without the created post id is not a publication
+    // receipt: Facebook may have published, so the outcome stays unknown
+    // and the credit is held instead of reporting a success at an
+    // undefined URL (the slack/telegram rule).
+    const postId = postData?.id;
+    if (typeof postId !== "string" || !postId.trim()) {
+      throw new UnknownPostOutcomeError(
+        "facebook",
+        new Error("Facebook response lacks a publication receipt"),
       );
     }
 
     return {
       platform: "facebook",
       success: true,
-      postId: postData.id,
-      postUrl: `https://facebook.com/${postData.id}`,
+      postId,
+      postUrl: `https://facebook.com/${postId}`,
     };
   } catch (error) {
     // error-policy:J1 boundary translation — a failed Graph API post becomes a typed
     // {success:false} PostResult the caller inspects, not a swallowed error.
     logger.error("[Facebook] Post failed", { error });
-    return {
-      platform: "facebook",
-      success: false,
-      error: extractErrorMessage(error),
-    };
+    return failedPostResult("facebook", error);
   }
 }
 
@@ -289,13 +309,25 @@ async function createInstagramPost(
         `/${accountId}/media_publish?${publishParams}`,
         credentials.accessToken,
         { method: "POST" },
+        { replayUnknownOutcome: false },
       );
+
+      // A 2xx body without the published media id is not a publication
+      // receipt: Instagram may have published, so the outcome stays
+      // unknown and the credit is held (the slack/telegram rule).
+      const postId = post?.id;
+      if (typeof postId !== "string" || !postId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "instagram",
+          new Error("Instagram response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "instagram",
         success: true,
-        postId: post.id,
-        postUrl: `https://instagram.com/p/${post.id}`,
+        postId,
+        postUrl: `https://instagram.com/p/${postId}`,
       };
     }
 
@@ -349,23 +381,31 @@ async function createInstagramPost(
       `/${accountId}/media_publish?${publishParams}`,
       credentials.accessToken,
       { method: "POST" },
+      { replayUnknownOutcome: false },
     );
+
+    // A 2xx body without the published media id is not a publication
+    // receipt: Instagram may have published, so the outcome stays
+    // unknown and the credit is held (the slack/telegram rule).
+    const postId = post?.id;
+    if (typeof postId !== "string" || !postId.trim()) {
+      throw new UnknownPostOutcomeError(
+        "instagram",
+        new Error("Instagram response lacks a publication receipt"),
+      );
+    }
 
     return {
       platform: "instagram",
       success: true,
-      postId: post.id,
-      postUrl: `https://instagram.com/p/${post.id}`,
+      postId,
+      postUrl: `https://instagram.com/p/${postId}`,
     };
   } catch (error) {
     // error-policy:J1 boundary translation — a failed Graph API post becomes a typed
     // {success:false} PostResult the caller inspects, not a swallowed error.
     logger.error("[Instagram] Post failed", { error });
-    return {
-      platform: "instagram",
-      success: false,
-      error: extractErrorMessage(error),
-    };
+    return failedPostResult("instagram", error);
   }
 }
 
@@ -574,21 +614,30 @@ export const metaProvider: SocialMediaProvider = {
         `/${postId}/comments?${params}`,
         credentials.accessToken,
         { method: "POST" },
+        { replayUnknownOutcome: false },
       );
+
+      // A 2xx body without the created comment id is not a publication
+      // receipt: Facebook may have published the comment, so the outcome
+      // stays unknown and the credit is held instead of reporting a
+      // success with no post id (the slack/telegram rule).
+      const commentId = response?.id;
+      if (typeof commentId !== "string" || !commentId) {
+        throw new UnknownPostOutcomeError(
+          "facebook",
+          new Error("Facebook response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "facebook",
         success: true,
-        postId: response.id,
+        postId: commentId,
       };
     } catch (error) {
       // error-policy:J1 boundary translation — a failed Graph API comment becomes a typed
       // {success:false} PostResult the caller inspects, not a swallowed error.
-      return {
-        platform: "facebook",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("facebook", error);
     }
   },
 
@@ -602,6 +651,10 @@ export const metaProvider: SocialMediaProvider = {
         `/${postId}/likes?access_token=${credentials.accessToken}`,
         credentials.accessToken,
         { method: "POST" },
+        // A like is a create: a replay after a lost response sends the
+        // create again, the same rule the create and reply calls in
+        // this file follow.
+        { replayUnknownOutcome: false },
       );
 
       return { success: true };

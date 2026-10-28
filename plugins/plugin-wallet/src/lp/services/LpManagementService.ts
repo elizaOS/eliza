@@ -86,6 +86,8 @@ export interface LpProtocolProvider {
   supportedChainIds?: number[];
   /** Writes the DEX adapter cannot perform. Refused before the user confirms. */
   unsupportedWrites?: ReadonlyArray<"open" | "close">;
+  /** Reads the DEX adapter cannot perform. Refused instead of answered as empty. */
+  unsupportedReads?: ReadonlyArray<"list_pools" | "get_position">;
   /** True when openPosition applies range ticks. A range is refused otherwise. */
   appliesRange?: boolean;
   /** True when closePosition removes the given LP token amount. A close amount is refused otherwise. */
@@ -279,6 +281,7 @@ export class LpManagementService extends Service implements ILpService {
       return [];
     }
 
+    const failures: unknown[] = [];
     const poolLists = await Promise.all(
       protocols.map(async (protocol) => {
         try {
@@ -288,12 +291,16 @@ export class LpManagementService extends Service implements ILpService {
             `[LpManagementService] Failed to list pools for ${protocol.chain}:${protocol.dex}`,
             error instanceof Error ? error.message : String(error),
           );
+          failures.push(error);
           return [];
         }
       }),
     );
 
-    return poolLists.flat();
+    const pools = poolLists.flat();
+    // A failed lookup is not an empty pool list.
+    if (pools.length === 0 && failures.length > 0) throw failures[0];
+    return pools;
   }
 
   async openPosition(
@@ -331,6 +338,9 @@ export class LpManagementService extends Service implements ILpService {
     params: LpPositionOperationParams = {},
   ): Promise<LpPositionDetails[]> {
     const protocols = this.matchingProtocols(params);
+    if (protocols.length === 0 && (params.dex || params.chainId)) {
+      throw new NoMatchingLpProtocolError(params);
+    }
     const positionLists = await Promise.all(
       protocols.map((protocol) => protocol.listPositions?.(params) ?? []),
     );
@@ -487,6 +497,13 @@ export function createSolanaLpProtocolProvider({
   if (typeof service.removeLiquidity !== "function") {
     unsupportedWrites.push("close");
   }
+  const unsupportedReads: Array<"list_pools" | "get_position"> = [];
+  if (typeof service.getPools !== "function") {
+    unsupportedReads.push("list_pools");
+  }
+  if (typeof service.getLpPositionDetails !== "function") {
+    unsupportedReads.push("get_position");
+  }
   const provider: LpProtocolProvider = {
     id: `solana:${normalizedDex}`,
     chain: "solana",
@@ -494,6 +511,7 @@ export function createSolanaLpProtocolProvider({
     label,
     service,
     unsupportedWrites,
+    unsupportedReads,
     supportsRequest: (request) =>
       (!request.chain || normalizeChain(request.chain) === "solana") &&
       (!request.dex || normalizeDex(request.dex) === normalizedDex),

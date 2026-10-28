@@ -51,6 +51,7 @@ import {
 } from "../config/dev-cloud-env-authority.ts";
 import type { RuntimeOperationManager } from "../runtime/operations/types.ts";
 import { isVaultRef } from "../runtime/operations/vault-bridge.ts";
+import { reconcileConfigEnvSettings } from "../runtime/runtime-settings.ts";
 import { hasCloudTextHandlerRegistered } from "./agent-model.ts";
 import {
   buildModelCatalog,
@@ -832,6 +833,7 @@ export async function handleModelConfigRoutes(
     const catalog = ctx.catalog ?? buildModelCatalog();
     if (body.target === "coding") {
       const writes = resolveCodingWrites(catalog, body);
+      const previousConfig = structuredClone(state.config);
       const conflicts: string[] = [];
       for (const write of writes) {
         if (
@@ -841,11 +843,14 @@ export async function handleModelConfigRoutes(
         }
       }
       ctx.saveElizaConfig(state.config);
+      // No restart: the orchestrator reads runtime settings before the config
+      // file, so the runtime copy the old config owned must move with it.
+      if (state.runtime) {
+        reconcileConfigEnvSettings(state.runtime, previousConfig, state.config);
+      }
       logger.info(
         `[ModelConfigRoutes] coding model config applied: ${writes.map((w) => `${w.key}=${w.value}`).join(" ")}`,
       );
-      // No restart: the orchestrator re-reads the config env section on every
-      // sub-agent spawn (readConfigEnvKey), so the write is live immediately.
       json(res, {
         applied: true,
         restart: false,

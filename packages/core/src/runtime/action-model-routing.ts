@@ -341,6 +341,7 @@ export async function executeChainWithFallback<TResult>(
 		);
 	}
 	let lastError: unknown;
+	let sawFailure = false;
 	for (let i = 0; i < chain.length; i++) {
 		const resolved = chain[i];
 		if (!resolved) {
@@ -354,6 +355,7 @@ export async function executeChainWithFallback<TResult>(
 				lastError = new Error(
 					`Low-confidence result from ${resolved.modelType} (provider=${resolved.provider}); escalating`,
 				);
+				sawFailure = true;
 				continue;
 			}
 			return result;
@@ -362,10 +364,14 @@ export async function executeChainWithFallback<TResult>(
 			// attempt. Cancellation, admission and invalid results stay terminal.
 			if (!isModelProviderFallbackError(err, resolved.modelType)) throw err;
 			lastError = err;
+			sawFailure = true;
 			// Continue to the next step in the chain.
 		}
 	}
-	if (lastError instanceof Error) {
+	// Providers throw a mix of Error instances and bare { status, error }
+	// objects: re-raise whatever the terminal step threw. Only a chain with no
+	// failure at all (empty or all-unresolved slots) reaches the generic error.
+	if (sawFailure) {
 		throw lastError;
 	}
 	throw new Error(

@@ -11,7 +11,13 @@
  */
 
 import { PostRelationshipLinkRequestSchema } from "@elizaos/contracts";
-import { ElizaError, type IAgentRuntime, type UUID } from "@elizaos/core";
+import {
+  compareMemoryIds,
+  ElizaError,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/host/protocol";
 
 import {
@@ -145,6 +151,85 @@ function asEvidenceRecord(value: unknown): RelationshipsMergeProposalEvidence {
     ) as RelationshipsMergeProposalEvidence;
   } catch {
     return {};
+  }
+}
+
+const ACTIVITY_FACT_PAGE_ROWS = 200;
+const ACTIVITY_FACT_MAX_SCAN_ROWS = 5000;
+
+/**
+ * Every fact feeds the activity timeline, which is sorted and paged after the
+ * merge with people and edges. The facts are read in keyset pages until the
+ * table is exhausted; a store larger than the scan budget is refused
+ * explicitly, never trimmed to a window that the paging then reports as
+ * complete.
+ */
+async function listActivityFacts(runtime: IAgentRuntime): Promise<Memory[]> {
+  const facts: Memory[] = [];
+  let cursor: { createdAt: number; id: UUID } | undefined;
+  for (;;) {
+    const remaining = ACTIVITY_FACT_MAX_SCAN_ROWS - facts.length;
+    if (remaining <= 0) {
+      const page = await runtime.getMemories({
+        agentId: runtime.agentId,
+        tableName: "facts",
+        limit: 1,
+        cursor,
+        includeEmbedding: false,
+        orderDirection: "desc",
+      });
+      if (page.length === 0) return facts;
+      throw new ElizaError(
+        "Relationships activity exceeded its bounded fact scan before completing the timeline",
+        {
+          code: "RELATIONSHIPS_ACTIVITY_SCAN_LIMIT",
+          context: {
+            scannedRows: facts.length,
+            maxScannedRows: ACTIVITY_FACT_MAX_SCAN_ROWS,
+          },
+        },
+      );
+    }
+    const queryLimit = Math.min(ACTIVITY_FACT_PAGE_ROWS, remaining);
+    const page = await runtime.getMemories({
+      agentId: runtime.agentId,
+      tableName: "facts",
+      limit: queryLimit,
+      cursor,
+      includeEmbedding: false,
+      orderDirection: "desc",
+    });
+    for (const fact of page) {
+      if (!fact.id) {
+        throw new ElizaError(
+          "A paged fact row did not contain the required id",
+          {
+            code: "RELATIONSHIPS_ACTIVITY_CURSOR_MISSING_ID",
+          },
+        );
+      }
+      const next = {
+        createdAt: typeof fact.createdAt === "number" ? fact.createdAt : 0,
+        id: fact.id,
+      };
+      if (
+        cursor &&
+        (next.createdAt > cursor.createdAt ||
+          (next.createdAt === cursor.createdAt &&
+            compareMemoryIds(next.id, cursor.id) >= 0))
+      ) {
+        throw new ElizaError(
+          "Memory adapter did not advance the requested keyset cursor",
+          {
+            code: "RELATIONSHIPS_ACTIVITY_CURSOR_NO_PROGRESS",
+            context: { cursorId: cursor.id, returnedId: next.id },
+          },
+        );
+      }
+      cursor = next;
+      facts.push(fact);
+    }
+    if (page.length < queryLimit) return facts;
   }
 }
 
@@ -396,11 +481,7 @@ export async function handleRelationshipsRoutes(
     }
 
     if (runtime) {
-      const recentFacts = await runtime.getMemories({
-        agentId: runtime.agentId,
-        tableName: "facts",
-        limit: 200,
-      });
+      const recentFacts = await listActivityFacts(runtime);
       for (const fact of recentFacts) {
         const text =
           typeof fact.content.text === "string" ? fact.content.text.trim() : "";

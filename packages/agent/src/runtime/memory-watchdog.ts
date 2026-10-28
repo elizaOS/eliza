@@ -10,8 +10,7 @@
  * `run-node.ts` supervisor relaunches. It never calls `process.exit` itself and
  * never introduces a second restart mechanism.
  *
- * Opt-in and thresholds are env-configured (documented in
- * `packages/agent/CLAUDE.md`):
+ * Opt-in and thresholds are env-configured:
  *
  * | Env var                              | Default | Meaning                                   |
  * | ------------------------------------ | ------- | ----------------------------------------- |

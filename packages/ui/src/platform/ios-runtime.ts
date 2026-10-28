@@ -1,4 +1,5 @@
 import { ElizaError } from "@elizaos/core/protocol";
+import { currentOwnedElizaPagesOrigin } from "../utils/cloud-agent-base";
 
 export const DEFAULT_ELIZA_CLOUD_BASE = "https://eliza.app";
 
@@ -69,6 +70,7 @@ function mobileEnvKeys(
 
 export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
+    currentOwnedElizaPagesOrigin() ??
     readString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
     DEFAULT_ELIZA_CLOUD_BASE
   ).replace(/\/+$/, "");

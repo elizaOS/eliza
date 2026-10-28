@@ -31,8 +31,17 @@ export const todosTable = todosSchema.table(
     parentTodoId: uuid("parent_todo_id"),
     parentTrajectoryStepId: text("parent_trajectory_step_id"),
     metadata: jsonb("metadata").default("{}").notNull(),
-    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
-    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
+    // Both timestamps are stored as a UTC wall clock. The store writes a JS
+    // `Date` for `updatedAt` and `completedAt`, which Postgres receives as a
+    // UTC ISO string, so the column default must use the same clock. A bare
+    // `now()` keeps the server session's local wall clock and puts rows from
+    // the default hours away from rows the store writes.
+    createdAt: timestamp("created_at")
+      .default(sql`(now() AT TIME ZONE 'UTC')`)
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .default(sql`(now() AT TIME ZONE 'UTC')`)
+      .notNull(),
     completedAt: timestamp("completed_at"),
   },
   (table) => ({

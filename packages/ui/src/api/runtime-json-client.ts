@@ -23,16 +23,30 @@ export interface RuntimeJsonBridge {
     path: string;
     method: "GET" | "POST";
     body?: unknown;
+    /**
+     * Opaque request ID that a wrapping bridge adds for native host logs.
+     * The client never sets it. It must not carry content or credentials.
+     */
+    correlation?: string;
   }): Promise<RuntimeJsonResponse>;
 }
 export class RuntimeRequestError extends Error {
   readonly status: number;
   readonly code?: string;
-  constructor(message: string, status: number, code?: string) {
+  /** Seconds to wait before trying again, only when the runtime reported it. */
+  readonly retryAfter?: number;
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    retryAfter?: number,
+  ) {
     super(message);
     this.name = "RuntimeRequestError";
     this.status = status;
     this.code = code;
+    if (Number.isSafeInteger(retryAfter) && (retryAfter as number) >= 0)
+      this.retryAfter = retryAfter;
   }
 }
 export function createRuntimeJsonClient(options: {
@@ -126,11 +140,18 @@ export function createRuntimeJsonClient(options: {
   };
   const result = <T>(response: RuntimeJsonResponse): T => {
     if (response.status < 200 || response.status >= 300) {
-      const data = response.data as { error?: unknown; code?: unknown } | null;
+      const data = response.data as {
+        error?: unknown;
+        code?: unknown;
+        retryAfter?: unknown;
+      } | null;
       throw new RuntimeRequestError(
         typeof data?.error === "string" ? data.error : options.messages.request,
         response.status,
         typeof data?.code === "string" ? data.code : undefined,
+        response.status === 429 && typeof data?.retryAfter === "number"
+          ? data.retryAfter
+          : undefined,
       );
     }
     return response.data as T;

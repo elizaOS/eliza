@@ -10,6 +10,10 @@ export const TRIGGER_SCHEMA_VERSION = 1 as const;
 
 export type TriggerType = "interval" | "once" | "cron" | "event";
 export type TriggerWakeMode = "inject_now" | "next_autonomy_cycle";
+/**
+ * `skipped` is persisted for a scheduled occurrence that was recorded as missed
+ * under powered-on scheduling: nothing ran (see `missedOccurrenceAt`).
+ */
 export type TriggerLastStatus = "success" | "error" | "skipped";
 
 /**
@@ -35,6 +39,12 @@ interface TriggerConfigBase {
 	timezone?: string;
 	intervalMs?: number;
 	scheduledAtIso?: string;
+	/**
+	 * Original relative delay for a delay-derived once trigger (set at create
+	 * only). Kept so the dedupe key can reuse the same relative scheme across
+	 * create/update instead of flipping to the absolute timestamp.
+	 */
+	delayMs?: number;
 	cronExpression?: string;
 	eventKind?: string;
 	/** Deep-subset payload match for event triggers. */
@@ -77,4 +87,9 @@ export interface TriggerRunRecord {
 	latencyMs: number;
 	source: "scheduler" | "manual" | "event";
 	eventKind?: string;
+	/**
+	 * Scheduled instant (epoch ms) of an occurrence recorded as missed because
+	 * it came due while the agent was not running. Nothing ran for this record.
+	 */
+	missedOccurrenceAt?: number;
 }

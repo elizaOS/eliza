@@ -101,6 +101,12 @@ public final class RuntimeBundleStoreTest {
       new String(correct, StandardCharsets.UTF_8) + new String(correct, StandardCharsets.UTF_8).split("\n")[1] + "\n"}) {
       rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), text.getBytes(StandardCharsets.UTF_8), source(next), hostile.resolve("native"), SYNC));
     }
+    String mixedName = "libeliza_ld_musl_x86_64.so";
+    byte[] mixedBytes = mixedName.getBytes(StandardCharsets.UTF_8);
+    Files.write(hostile.resolve("native").resolve(mixedName), mixedBytes);
+    String mixedInventory = new String(correct, StandardCharsets.UTF_8) + "native\t" + mixedBytes.length + "\t" + hash(mixedBytes) + "\t" + mixedName + "\t-\n";
+    rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), mixedInventory.getBytes(StandardCharsets.UTF_8), source(next), hostile.resolve("native"), SYNC));
+    Files.delete(hostile.resolve("native").resolve(mixedName));
     Map<String, byte[]> missing = new TreeMap<>(next); missing.remove("gateway/bootstrap.mjs");
     rejects(() -> RuntimeBundleStore.prepare(hostile.resolve("versions"), correct, source(missing), hostile.resolve("native"), SYNC));
     Map<String, byte[]> bad = new TreeMap<>(next); bad.put("agent-bundle.js", "wrong bytes".getBytes(StandardCharsets.UTF_8));

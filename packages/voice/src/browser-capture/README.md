@@ -1,6 +1,7 @@
 # Browser voice capture
 
-Generic recording and PCM conversion for browser hosts, used with `../browser-speech`.
+Generic recording and PCM conversion for browser hosts. This package has no recognizer: the
+host sends the WAV to its own speech service, such as a local agent's ASR route.
 
 - `BrowserAudioCapture` runs one MediaRecorder session at a time. Each session owns its
   microphone stream, deadline timer and stop promise, so cancelling or replacing a recording

@@ -66,12 +66,38 @@ public final class ConsumerReadAccessTest {
         assertEquals("Owned body", event.getString("body")); assertFalse(event.getBoolean("recurring"));
       }
       assertEquals(2101, count); assertTrue(last);
+      // Journaled creations carry their creation id; foreign or malformed custom fields do not.
+      String prefix = "example-calendar://creation/", creation = UUID.randomUUID().toString();
+      String[][] tagged = {{context.getPackageName(), prefix + creation}, {"other.package", prefix + UUID.randomUUID()},
+        {context.getPackageName(), prefix + "not-a-uuid"}, {context.getPackageName(), "other://creation/" + UUID.randomUUID()}};
+      long[] taggedIds = new long[tagged.length];
+      for (int i = 0; i < tagged.length; i++) {
+        ContentValues event = new ContentValues();
+        event.put("calendar_id", id); event.put("title", "Tagged fixture " + i);
+        event.put("dtstart", begin + i * 60000L); event.put("dtend", begin + i * 60000L + 30000); event.put("eventTimezone", "UTC");
+        event.put(CalendarContract.Events.CUSTOM_APP_PACKAGE, tagged[i][0]); event.put(CalendarContract.Events.CUSTOM_APP_URI, tagged[i][1]);
+        taggedIds[i] = ContentUris.parseId(context.getContentResolver().insert(CalendarContract.Events.CONTENT_URI, event));
+      }
+      JSONArray linked = new CalendarReadAccess(context.getContentResolver(), context.getPackageName(), prefix).events(begin, end);
+      int withCreation = 0;
+      for (int i = 0; i < linked.length(); i++) {
+        JSONObject event = linked.getJSONObject(i);
+        if (!event.has("creationId")) continue;
+        withCreation++;
+        assertEquals(Long.toString(taggedIds[0]), event.getString("id")); assertEquals(creation, event.getString("creationId"));
+      }
+      assertEquals(1, withCreation);
+      JSONArray plain = reader.events(begin, end);
+      for (int i = 0; i < plain.length(); i++) assertFalse(plain.getJSONObject(i).has("creationId"));
+      try { new CalendarReadAccess(context.getContentResolver(), context.getPackageName(), null); fail("Half a creation identity accepted"); }
+      catch (IllegalArgumentException expected) { }
       Intent review = CalendarReadAccess.reviewNewEvent("  Review only  ", begin, begin + 60000, "Desk");
       assertEquals(Intent.ACTION_INSERT, review.getAction()); assertEquals(CalendarContract.Events.CONTENT_URI, review.getData());
       assertEquals("Review only", review.getStringExtra(CalendarContract.Events.TITLE));
       assertEquals(begin, review.getLongExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, -1));
       assertEquals("Desk", review.getStringExtra(CalendarContract.Events.EVENT_LOCATION));
-      assertEquals(events.toString(), reader.events(begin, end).toString());
+      // The tagged fixtures were added after the first read.
+      assertEquals(plain.toString(), reader.events(begin, end).toString());
       try { reader.events(end, begin); fail("Invalid range accepted"); } catch (IllegalArgumentException expected) { }
       try { CalendarReadAccess.reviewNewEvent(" ", begin, end, null); fail("Empty title accepted"); } catch (IllegalArgumentException expected) { }
     } finally {

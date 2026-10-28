@@ -82,6 +82,42 @@ export interface AgentStreamCompleteEvent {
   error?: string | null;
 }
 
+/** WS-shaped `agent_event` envelope delivered over the private Android IPC. */
+export interface AgentEventEnvelope {
+  type: "agent_event";
+  version: 1;
+  /** `eph-<n>` for ephemeral streams, `ipc-<n>` otherwise. Never a replay cursor. */
+  eventId: string;
+  ts: number;
+  runId: string;
+  seq: number;
+  stream: string;
+  sessionKey?: string;
+  agentId?: string;
+  roomId?: string;
+  payload: Record<string, unknown>;
+  /** Set for live-only streams (e.g. `voice-transcript`): never persist or log. */
+  ephemeral?: true;
+}
+
+export interface AgentEventSubscribeOptions {
+  /** Exact-match stream filter, 1-16 names (`[a-z0-9][a-z0-9_.:-]{0,63}`). */
+  streams: string[];
+  /** Caller-chosen id (8-64 of `[A-Za-z0-9-]`) so events can be matched before the call resolves. */
+  subscriptionId?: string;
+}
+
+/**
+ * `agentEvent` Capacitor event. A feed reports `subscribed` once, then
+ * `event` / `dropped` in order, then exactly one terminal `end` (`error` set
+ * unless the caller unsubscribed). Live only: there is no replay after `end`.
+ */
+export type AgentEventFeedEvent =
+  | { subscriptionId: string; type: "subscribed"; streams: string[] }
+  | { subscriptionId: string; type: "event"; event: AgentEventEnvelope }
+  | { subscriptionId: string; type: "dropped"; count: number }
+  | { subscriptionId: string; type: "end"; error?: string };
+
 export interface AgentPlugin {
   /** Start the agent runtime. Resolves when it's ready. */
   start(options?: AgentStartOptions): Promise<AgentStatus>;
@@ -123,6 +159,26 @@ export interface AgentPlugin {
    */
   requestStream?(options: AgentRequestOptions): Promise<AgentStreamHandle>;
 
+  /**
+   * Live agent-event feed over the private Android IPC — the port-free
+   * substitute for the WS `agent_event` broadcast (e.g. ephemeral
+   * `voice-transcript` partials). Resolves with the `subscriptionId`; events
+   * arrive as `agentEvent`. Absent where the platform has no IPC feed; use
+   * `subscribeAgentEvents` from this package rather than calling it directly.
+   */
+  subscribeEvents?(
+    options: AgentEventSubscribeOptions,
+  ): Promise<{ subscriptionId: string }>;
+
+  /** End a feed started by {@link subscribeEvents}; resolves `ok:false` if unknown. */
+  unsubscribeEvents?(options: {
+    subscriptionId: string;
+  }): Promise<{ ok: boolean }>;
+
+  addListener?(
+    eventName: "agentEvent",
+    listener: (event: AgentEventFeedEvent) => void,
+  ): Promise<AgentPluginListenerHandle> | AgentPluginListenerHandle;
   addListener?(
     eventName: "agentStreamResponse",
     listener: (event: AgentStreamResponseEvent) => void,

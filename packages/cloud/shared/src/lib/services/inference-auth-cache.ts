@@ -8,8 +8,8 @@
  *
  * Inference auth-context entries collapse auth + org + moderation into a
  * single cache read for API-key or Steward-session inference. The feature is
- * default-off until a strongly consistent revocation boundary exists (see
- * `packages/cloud/api/docs/inference-hot-path.md`). Its data-shape rules are:
+ * default-off until a strongly consistent revocation boundary exists. Its
+ * data-shape rules are:
  *   1. A positive entry is ONLY ever written for a FULLY-authorized credential
  *      (active user + active org + not suspended + org present). Explicit
  *      negative entries contain only a bounded 401/403 decision, never identity
@@ -28,6 +28,7 @@ import {
 } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import { isInferenceBudgetPolicy } from "./inference-funded-budget-admission";
 import {
   isOrganizationPolicyStamp,
   sameOrganizationPolicyStamp,
@@ -39,6 +40,8 @@ export const INFERENCE_AUTH_CONTEXT_VERSION = 4 as const;
 
 /** Admission state co-located with identity so a warm Worker performs one KV read. */
 export interface InferenceAdmissionSnapshot {
+  /** Primary-issued delegation; the DO fences every use against its current epoch. */
+  fundedBudget?: import("./inference-funded-budget-admission").InferenceBudgetPolicy;
   authority: OrganizationPolicyStamp;
   /** Paid-plan funding authority captured with the combined admission decision. */
   subscriptionFunded: boolean;
@@ -53,6 +56,8 @@ export interface InferenceAdmissionSnapshot {
     standardRpm: number;
     strictRpm: number;
   };
+  /** Granted plan key (or `custom` under an override) for the plan request buckets. */
+  planKey?: string;
   /**
    * Payment-reversal hold state read under the publishing policy lock. Only an
    * explicit `false` lets the snapshot admission lane skip the primary read.
@@ -78,6 +83,8 @@ export interface InferenceAuthContext {
   userId: string;
   orgId: string;
   apiKeyId: string;
+  apiKeyRateLimit?: number;
+  apiKeyExpiresAt?: number | null;
   /** Full sha256(presented key) - equals the stored api_keys.key_hash. */
   keyHash: string;
   /** Owning app for an app-minted key; null for an ordinary org key. */
@@ -149,6 +156,7 @@ export function isInferenceAdmissionSnapshot(value: unknown): value is Inference
   const rateLimits = candidate.rateLimits;
   return (
     isOrganizationPolicyStamp(candidate.authority) &&
+    (candidate.fundedBudget === undefined || isInferenceBudgetPolicy(candidate.fundedBudget)) &&
     typeof candidate.subscriptionFunded === "boolean" &&
     Boolean(balance) &&
     typeof balance?.balanceUsd === "number" &&
@@ -257,8 +265,17 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
     v.userId.length > 0 &&
     typeof v.orgId === "string" &&
     v.orgId.length > 0 &&
+    (v.admission === undefined ||
+      !isInferenceAdmissionSnapshot(v.admission) ||
+      v.admission.fundedBudget === undefined ||
+      v.admission.fundedBudget.organizationId === v.orgId) &&
     typeof v.apiKeyId === "string" &&
     v.apiKeyId.length > 0 &&
+    (v.apiKeyRateLimit === undefined ||
+      (Number.isSafeInteger(v.apiKeyRateLimit) && Number(v.apiKeyRateLimit) > 0)) &&
+    (v.apiKeyExpiresAt === undefined ||
+      v.apiKeyExpiresAt === null ||
+      (Number.isSafeInteger(v.apiKeyExpiresAt) && Number(v.apiKeyExpiresAt) > 0)) &&
     typeof v.keyHash === "string" &&
     /^[0-9a-f]{64}$/.test(v.keyHash) &&
     (v.appScopeId === null || (typeof v.appScopeId === "string" && v.appScopeId.length > 0)) &&
@@ -356,6 +373,10 @@ async function cachedPolicyIsCurrent(
   snapshot: InferenceAdmissionSnapshot | undefined,
 ): Promise<boolean> {
   if (!isInferenceAdmissionSnapshot(snapshot)) return false;
+  if (snapshot.fundedBudget?.enabled) {
+    const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
+    if (isFundedBudgetAdmissionEnabled()) return true;
+  }
   const { isSnapshotAdmissionEnabled } = await import("./inference-billing-deferred");
   if (isSnapshotAdmissionEnabled()) {
     // Snapshot admission keeps the primary off the warm path. The organization

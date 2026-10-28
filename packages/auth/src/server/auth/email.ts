@@ -30,6 +30,9 @@ import { TokenStore } from "./token-store";
 // Config
 // ---------------------------------------------------------------------------
 
+/** How an email sign-in challenge is delivered. */
+export type EmailLoginDelivery = "link_and_code" | "code";
+
 export interface EmailAuthConfig {
   /** Sender address, e.g. "login@eliza.app" */
   from: string;
@@ -116,6 +119,13 @@ function hashToken(token: string): string {
 
 function keyedHash(secret: string, value: string): string {
   return createHmac("sha256", secret).update(value).digest("hex");
+}
+
+/** Constant-time equality for two hex digests. */
+function hexDigestsEqual(actual: string, expected: string): boolean {
+  const a = Buffer.from(actual, "hex");
+  const b = Buffer.from(expected, "hex");
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
 }
 
 function buildMagicLink(
@@ -762,7 +772,16 @@ export class EmailAuth {
    */
   async sendMagicLink(
     email: string,
-    context: { tenantId?: string } = {},
+    context: {
+      tenantId?: string;
+      /**
+       * `"code"` sends only the six-digit code, rendered with the sign-in code
+       * template, and issues no link token, so nothing in the email can sign
+       * in a browser. Native apps use it so the user never leaves the app.
+       * The default sends both the magic link and the code.
+       */
+      delivery?: EmailLoginDelivery;
+    } = {},
   ): Promise<{
     tokenHash: string;
     expiresAt: Date;
@@ -817,20 +836,27 @@ export class EmailAuth {
     }
 
     // Build and send the email
-    const magicLink = buildMagicLink(
-      this.baseUrl,
-      this.callbackPath,
-      token,
-      email,
-      context.tenantId,
-    );
-    const rendered = this.templateRenderer(this.templateId, {
-      magicLink,
-      email,
-      code,
-      expiresInMinutes: Math.floor(ttlMs / (60 * 1000)),
-      tenantName: this.brandName,
-    });
+    const codeOnly = context.delivery === "code";
+    const rendered = codeOnly
+      ? this.otpTemplateRenderer(this.templateId, {
+          email,
+          code,
+          brandName: this.brandName || "elizaOS",
+          expiresInMinutes: Math.floor(ttlMs / (60 * 1000)),
+        })
+      : this.templateRenderer(this.templateId, {
+          magicLink: buildMagicLink(
+            this.baseUrl,
+            this.callbackPath,
+            token,
+            email,
+            context.tenantId,
+          ),
+          email,
+          code,
+          expiresInMinutes: Math.floor(ttlMs / (60 * 1000)),
+          tenantName: this.brandName,
+        });
     const subject = this.subjectOverride || rendered.subject;
     const body = rendered.text;
     const html = rendered.html;
@@ -897,11 +923,17 @@ export class EmailAuth {
             } satisfies EmailLoginStatusRecord),
             expiresAt: expiresAt.getTime(),
           },
-          {
-            key: emailLoginLinkAliasKey(tokenHash),
-            value: challengeId,
-            expiresAt: expiresAt.getTime(),
-          },
+          // A code-only challenge publishes no link alias: the token was
+          // never sent and can never be redeemed.
+          ...(codeOnly
+            ? []
+            : [
+                {
+                  key: emailLoginLinkAliasKey(tokenHash),
+                  value: challengeId,
+                  expiresAt: expiresAt.getTime(),
+                },
+              ]),
           {
             key: emailLoginCodeAliasKey(codeVerifier),
             value: challengeId,
@@ -1250,7 +1282,10 @@ export class EmailAuth {
     if (
       !normalizedEmail ||
       (payload.tenantId ?? undefined) !== (resolvedTenantId ?? undefined) ||
-      payload.emailHash !== this.emailHash(normalizedEmail, resolvedTenantId)
+      !hexDigestsEqual(
+        this.emailHash(normalizedEmail, resolvedTenantId),
+        payload.emailHash,
+      )
     ) {
       return { email: "", valid: false };
     }
@@ -1310,7 +1345,7 @@ export class EmailAuth {
     if (
       payload?.status !== "active" ||
       (payload.tenantId ?? undefined) !== (tenantId ?? undefined) ||
-      payload.emailHash !== this.emailHash(email, tenantId)
+      !hexDigestsEqual(this.emailHash(email, tenantId), payload.emailHash)
     ) {
       return { email: "", valid: false };
     }

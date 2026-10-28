@@ -1115,8 +1115,6 @@ class TalkModePlugin : Plugin() {
                             put("interrupted", true)
                             put("usedSystemTts", false)
                         })
-                    } else if (e is KokoroPhonemizationException) {
-                        call.reject(e.message, "LOCAL_TTS_PHONEMIZATION_FAILED", e)
                     } else {
                         // The on-device OmniVoice TTS assets aren't always staged
                         // (it 502s "TEXT_TO_SPEECH not available"). Rather than go
@@ -1298,11 +1296,11 @@ class TalkModePlugin : Plugin() {
         directive: JSObject?
     ) = withContext(Dispatchers.IO) {
         pcmStopRequested.set(false)
-        // Prefer the in-process fused Kokoro voice via the bionic inference host.
+        // Prefer the in-process fused Paradee voice via the bionic inference host.
         // Only if that host is unreachable do we fall through to the embedded
         // agent's abstract UDS request bridge. Android production binds no TCP
         // listener, so local voice must never dial loopback port 31337.
-        if (streamAndPlayBionicKokoroTts(text, directive)) {
+        if (streamAndPlayBionicParadeeTts(text, directive)) {
             return@withContext
         }
         val wavBytes = requestLocalAgentTtsBytes(
@@ -1342,15 +1340,14 @@ class TalkModePlugin : Plugin() {
     }
 
     /**
-     * Synthesize + play with the fused Kokoro-82M head in the bionic inference
-     * host (ElizaBionicInferenceServer, op "tts") over its abstract-namespace
-     * UDS. The host loads the same libelizainference that runs GPU text and
-     * synthesizes Kokoro PCM in-process. The authenticated local agent first
-     * runs the bundled eSpeak phonemizer; the bionic library consumes its IPA.
-     * Phonemization failures are explicit. Returns true on success; false if
-     * the host is unreachable so the caller can fall through.
+     * Synthesize + play with Paradee-8M in the bionic inference host
+     * (ElizaBionicInferenceServer, op "tts") over its abstract-namespace UDS.
+     * The host loads the same libelizainference that runs GPU text; it turns
+     * the text into misaki phonemes natively and synthesizes 24 kHz PCM
+     * in-process, so no agent-side phonemizer is involved. Returns true on
+     * success; false if the host is unreachable so the caller can fall through.
      */
-    private suspend fun streamAndPlayBionicKokoroTts(
+    private suspend fun streamAndPlayBionicParadeeTts(
         text: String,
         directive: JSObject?
     ): Boolean = withContext(Dispatchers.IO) {
@@ -1359,7 +1356,7 @@ class TalkModePlugin : Plugin() {
         val speed = (directive?.optDouble("speed", 1.0) ?: 1.0).toFloat()
         val sock = LocalSocket()
         // Registered before connect so stopSpeakingInternal() can close it
-        // during connect, phonemization, or the synthesis read.
+        // during connect or the synthesis read.
         activeBionicTtsSocket = sock
         try {
             sock.connect(
@@ -1371,35 +1368,14 @@ class TalkModePlugin : Plugin() {
             // host: report it handled so no fallback voice starts.
             if (pcmStopRequested.get()) return@withContext true
             ensureActive()
-            Log.d(TAG, "bionic Kokoro TTS host unreachable: ${e.message}")
+            Log.d(TAG, "bionic Paradee TTS host unreachable: ${e.message}")
             return@withContext false
         }
         try {
-            val phonemization = try {
-                val bytes = requestLocalAgentTtsBytes(
-                    JSONObject().apply {
-                        put("text", trimmed)
-                        put("language", directive.stringOrNull("language") ?: "en-US")
-                    }.toString(),
-                    phonemizeOnly = true
-                )
-                JSONObject(String(bytes, Charsets.UTF_8)).also {
-                    if (it.getString("ipa").isBlank() || it.getString("phonemizer") != "phonemizer" ||
-                        it.getString("language") != "en-US") {
-                        throw IllegalStateException("Local agent returned invalid Kokoro phonemization")
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                throw KokoroPhonemizationException(e)
-            }
-            val ipa = phonemization.getString("ipa")
             sock.soTimeout = 180_000
             val req = JSONObject().apply {
                 put("op", "tts")
-                put("ipa", ipa)
-                put("language", phonemization.getString("language"))
+                put("language", directive.stringOrNull("language") ?: "en-US")
                 put("text", trimmed)
                 put("speed", speed.toDouble())
             }.toString().toByteArray(Charsets.UTF_8)
@@ -1450,7 +1426,7 @@ class TalkModePlugin : Plugin() {
             )
             drainPcmTrack(track, framesWritten, sampleRate)
             if (!pcmStopRequested.get()) track.stop()
-            Log.d(TAG, "bionic Kokoro TTS played $nSamples samples @ $sampleRate Hz")
+            Log.d(TAG, "bionic Paradee TTS played $nSamples samples @ $sampleRate Hz")
             true
         } finally {
             cleanupPcmTrack()
@@ -1464,9 +1440,6 @@ class TalkModePlugin : Plugin() {
         }
         try { sock.close() } catch (_: Exception) {}
     }
-
-    private class KokoroPhonemizationException(cause: Exception) :
-        Exception("Local Kokoro phonemization failed: ${cause.message}", cause)
 
     private fun requestLocalAgentTtsBytes(payload: String, phonemizeOnly: Boolean = false): ByteArray {
         val tokenFile = File(context.filesDir, "auth/local-agent-token")

@@ -32,7 +32,7 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json({ success: false, error: "Character not found" }, 404);
     }
@@ -71,7 +71,7 @@ app.put("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
 
-    const character = await charactersService.getByIdForUser(id, user.id);
+    const character = await charactersService.getByIdForUser(id, user);
     if (!character) {
       return c.json(
         { success: false, error: "Character not found or access denied" },

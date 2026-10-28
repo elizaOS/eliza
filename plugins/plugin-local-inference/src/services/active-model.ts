@@ -1412,7 +1412,12 @@ export class ActiveModelCoordinator {
 						`[local-inference] Failed to switch to "${installed.id}" (${failure}); restored previously-active model "${previous.installed.id}".`,
 					);
 					this.emit();
-					return this.snapshot();
+					// The previous model is ready again, but the requested switch
+					// failed: the caller must not report it as activated.
+					return {
+						...this.snapshot(),
+						error: `Could not switch to "${installed.id}" (${failure}); "${previous.installed.id}" is still active.`,
+					};
 				} catch (restoreErr) {
 					const restoreFailure =
 						restoreErr instanceof Error
@@ -1432,7 +1437,10 @@ export class ActiveModelCoordinator {
 					`[local-inference] Refused to switch to "${installed.id}" before unloading the active model "${previous.installed.id}" (${failure}).`,
 				);
 				this.emit();
-				return this.snapshot();
+				return {
+					...this.snapshot(),
+					error: `Could not switch to "${installed.id}" (${failure}); "${previous.installed.id}" is still active.`,
+				};
 			}
 			// No prior model to restore (or restore also failed): report honestly
 			// that nothing is loaded rather than attributing a phantom id.

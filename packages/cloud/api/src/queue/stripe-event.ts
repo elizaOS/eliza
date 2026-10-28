@@ -1524,8 +1524,15 @@ async function handlePaymentIntentSucceeded(
   }
 
   const affiliateFeeStr = paymentIntent.metadata?.affiliate_fee_amount;
+  // Number.parseFloat stops at the first non-digit ("25junk" -> 25), so a
+  // malformed metadata value was silently honored as a deliberate fee amount
+  // instead of being rejected. Require the whole trimmed value to be decimal,
+  // mirroring parseAndValidateCredits above.
+  const affiliateFeeTrimmed = affiliateFeeStr?.trim() ?? "";
   const affiliateFeeAmount = affiliateFeeStr
-    ? Number.parseFloat(affiliateFeeStr)
+    ? /^\+?\d+(?:\.\d+)?$/.test(affiliateFeeTrimmed)
+      ? Number(affiliateFeeTrimmed)
+      : Number.NaN
     : 0;
   const affiliateOwnerId = paymentIntent.metadata?.affiliate_owner_id;
   const affiliateCodeId = paymentIntent.metadata?.affiliate_code_id;
@@ -1776,6 +1783,53 @@ function chargePaymentIntentId(charge: Stripe.Charge): string | undefined {
 }
 
 /**
+ * Whether this payment intent belongs to a top-up whose credit grant has not
+ * committed yet: a paid Checkout session for an unsettled order or a legacy
+ * custom-amount purchase, a succeeded auto top-up payment intent, or
+ * a succeeded one-time payment intent. Payments that never grant credits
+ * (retired mini-app purchases, subscription invoices) report false.
+ */
+async function topUpGrantPending(paymentIntentId: string): Promise<boolean> {
+  const stripe = requireStripe();
+  const sessions = await stripe.checkout.sessions.list({
+    payment_intent: paymentIntentId,
+    limit: 1,
+  });
+  const session = sessions.data[0];
+  if (session) {
+    if (session.mode !== "payment" || session.payment_status !== "paid")
+      return false;
+    if (retiredMiniappPayment(session.metadata)) return false;
+    const orderId = session.metadata?.checkout_order_id;
+    if (orderId) {
+      const order = await stripeCheckoutOrdersService.get(orderId);
+      return (
+        order !== null &&
+        order.status !== "settled" &&
+        order.status !== "failed"
+      );
+    }
+    // Of the legacy session shapes only `custom_amount` still settles a grant;
+    // a legacy `credit_pack` session is quarantined by `settleLegacy` and
+    // never grants, so its reversal has nothing to wait for.
+    return (
+      session.metadata?.type === "custom_amount" &&
+      !!session.metadata?.organization_id
+    );
+  }
+  const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+  if (paymentIntent.status !== "succeeded") return false;
+  if (retiredMiniappPayment(paymentIntent.metadata)) return false;
+  // A succeeded auto top-up intent is credited by `payment_intent.succeeded`;
+  // a canceled attempt never reaches a succeeded intent.
+  if (paymentIntent.metadata?.auto_top_up_attempt_id) return true;
+  return (
+    paymentIntent.metadata?.type === "one_time" &&
+    !!paymentIntent.metadata?.organization_id
+  );
+}
+
+/**
  * Claw back org credits for the portion of a top-up charge that Stripe reversed.
  * Durable pack orders and fee-inclusive auto top-ups claw back the exact granted
  * credits in proportion to the reversed provider charge; legacy balance top-ups
@@ -1790,17 +1844,33 @@ async function clawbackForReversal(params: {
   paymentIntentId: string | undefined;
   usdReversed: number;
   idempotencyKey: string;
+  /** Prefix shared by the idempotency keys whose amounts `usdReversed` accumulates. */
+  reversalSeries: string;
   source: string;
   reference: string;
 }): Promise<void> {
-  const { paymentIntentId, usdReversed, idempotencyKey, source, reference } =
-    params;
+  const {
+    paymentIntentId,
+    usdReversed,
+    idempotencyKey,
+    reversalSeries,
+    source,
+    reference,
+  } = params;
   if (!paymentIntentId || usdReversed <= 0) return;
 
   // Only top-ups that actually granted org credits are clawable.
   const grant =
     await creditsService.getTransactionByStripePaymentIntent(paymentIntentId);
   if (!grant) {
+    if (await topUpGrantPending(paymentIntentId)) {
+      // Stripe does not guarantee event ordering: the reversal can arrive
+      // before the event that grants the credits. Retry until the grant
+      // commits instead of acknowledging and leaving the refunded credits.
+      throw new Error(
+        `Credit grant for PI ${paymentIntentId} is not yet available for ${source} ${reference}`,
+      );
+    }
     logger.info(
       `[Stripe Queue] ${source} ${reference}: no credit grant for PI ${paymentIntentId}; nothing to claw back`,
     );
@@ -1840,10 +1910,27 @@ async function clawbackForReversal(params: {
         )
       : minBigInt(reversedMicros, grantAmountMicros);
   const cappedUsdReversed = Number(targetMicros) / 1_000_000;
+  if (
+    autoTopUpCharge &&
+    (parseCreditMicros(autoTopUpCharge.affiliateMarkupUsd) ?? 0n) > 0n &&
+    chargeAmountCents &&
+    chargeAmountCents > 0n
+  ) {
+    // The charge also paid the affiliate fee as payable earnings; take back
+    // the same share of it, or a refunded or disputed charge still pays out.
+    await redeemableEarningsService.reverseAutoTopUpAffiliateFee({
+      paymentIntentId,
+      reversedCents,
+      chargeCents: chargeAmountCents,
+      reversalSeries,
+      idempotencyKey,
+    });
+  }
   const result = await creditsService.clawbackCredits({
     organizationId: grant.organization_id,
     amount: cappedUsdReversed,
     cumulativeTargetAmount: cappedUsdReversed,
+    reversalSeries,
     originalPaymentIntentId: paymentIntentId,
     description: `Stripe ${source} clawback — ${reference}`,
     stripePaymentIntentId: idempotencyKey,
@@ -1894,6 +1981,9 @@ async function handleChargeRefunded(event: Stripe.Event): Promise<void> {
     // Key on the cumulative amount so each new partial-refund total is a distinct
     // idempotent clawback, while a re-delivery of the same state is a no-op.
     idempotencyKey: `stripe:refund:${charge.id}:${charge.amount_refunded}`,
+    // `amount_refunded` accumulates refunds only; a dispute on the same charge
+    // states its own amount.
+    reversalSeries: `stripe:refund:${charge.id}:`,
     source: "charge.refunded",
     reference: `charge ${charge.id}`,
   });
@@ -1915,6 +2005,7 @@ async function handleChargeDisputeFundsWithdrawn(
     paymentIntentId,
     usdReversed: (dispute.amount ?? 0) / 100,
     idempotencyKey: `stripe:dispute:${dispute.id}`,
+    reversalSeries: `stripe:dispute:${dispute.id}`,
     source: "charge.dispute.funds_withdrawn",
     reference: `dispute ${dispute.id}${chargeId ? ` (charge ${chargeId})` : ""}`,
   });
@@ -1965,6 +2056,14 @@ async function handleChargeDisputeFundsReinstated(
     throw new Error(
       `Dispute clawback is not yet available for reinstatement ${reference}`,
     );
+  }
+
+  if (paymentIntentId) {
+    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee({
+      paymentIntentId,
+      reversalSeries: clawbackKey,
+      reinstatementKey: `${clawbackKey}:reinstated`,
+    });
   }
 
   // Stripe returned the disputed funds, so the unrecovered shortfall is no
@@ -2022,6 +2121,12 @@ async function handleChargeDisputeFundsReinstated(
       `[Stripe Queue] ${source} ${reference}: no applied clawback amount to reinstate`,
       { clawbackAmount: clawback.amount, disputeAmount: dispute.amount },
     );
+    await reapplyRefundAfterReinstatement(
+      dispute,
+      paymentIntentId,
+      source,
+      reference,
+    );
     await settleShortfallsAfterCredit(clawback.organization_id, source);
     return;
   }
@@ -2044,7 +2149,44 @@ async function handleChargeDisputeFundsReinstated(
   logger.info(
     `[Stripe Queue] Reinstated $${reinstatedUsd.toFixed(2)} to org ${clawback.organization_id} for ${source} ${reference} (new balance $${result.newBalance.toFixed(2)})`,
   );
+  await reapplyRefundAfterReinstatement(
+    dispute,
+    paymentIntentId,
+    source,
+    reference,
+  );
   await settleShortfallsAfterCredit(clawback.organization_id, source);
+}
+
+/**
+ * A refund of the same charge that landed while the dispute was open took
+ * nothing back, because the dispute had already reversed the grant and the
+ * affiliate fee (one charge reverses them once across its series). Winning the
+ * dispute returns that share, but the refund still stands: apply the charge's
+ * current cumulative refund again, with the same key and series as
+ * `charge.refunded`, so the refund keeps its reversal.
+ */
+async function reapplyRefundAfterReinstatement(
+  dispute: Stripe.Dispute,
+  paymentIntentId: string | undefined,
+  source: string,
+  reference: string,
+): Promise<void> {
+  if (!paymentIntentId || !dispute.charge) return;
+  const charge =
+    typeof dispute.charge === "string"
+      ? await requireStripe().charges.retrieve(dispute.charge)
+      : dispute.charge;
+  const refundedCents = charge.amount_refunded ?? 0;
+  if (refundedCents <= 0) return;
+  await clawbackForReversal({
+    paymentIntentId,
+    usdReversed: refundedCents / 100,
+    idempotencyKey: `stripe:refund:${charge.id}:${refundedCents}`,
+    reversalSeries: `stripe:refund:${charge.id}:`,
+    source,
+    reference,
+  });
 }
 
 /**

@@ -1,6 +1,9 @@
 /** Applies the app billing migration extension to isolated subscription repository test databases. */
 import { readFile } from "node:fs/promises";
-import { installBillingCommandEvidenceTestColumns } from "../../testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 
 export async function applyAppBillingTestMigrations(
   execute: (statement: string) => Promise<unknown>,
@@ -59,4 +62,40 @@ export async function applyAppBillingTestMigrations(
   const column = upgradeDispatch.split("--> statement-breakpoint")[0]!;
   await execute(column.replace("ADD COLUMN", "ADD COLUMN IF NOT EXISTS"));
   await installBillingCommandEvidenceTestColumns(execute);
+  await installSubscriptionGrantTestSchema(execute);
+  // The pilot allowance migrations must follow the 0542 grant installer above:
+  // 0543 references the promo_grant_id column and invoice-check constraint it
+  // leaves behind, and the allowance repository now selects pilot_redemption_id
+  // on every read. Mirrors records-test-harness.ts (merged #36192).
+  // ADD COLUMN is made IF NOT EXISTS because the organization-policy fixture
+  // (installed before this helper by the authority/cancellation suites) already
+  // adds pilot_redemption_id as a plain column via the billing-scope fixture;
+  // the raw 0543 ALTER then failed with 42701 in the Subscription authority
+  // PostgreSQL job. The remaining 0543 statements still apply in full.
+  for (const tag of [
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0543_app_pilot_allowance",
+  ]) {
+    const migration = await readFile(new URL(`../migrations/${tag}.sql`, import.meta.url), "utf8");
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim())
+        await execute(
+          statement
+            .replaceAll('"public".', "")
+            .replace(/ADD COLUMN(?! IF NOT EXISTS)/, "ADD COLUMN IF NOT EXISTS"),
+        );
+  }
+  // 0543 guards app_pilot_activations with a BEFORE UPDATE OR DELETE OR
+  // TRUNCATE statement trigger. In a real database the TRUNCATE arm is part
+  // of the append-only contract and stays. These fixture databases are
+  // reset between tests with TRUNCATE ... organizations CASCADE, which
+  // reaches app_pilot_activations through apps -> app_pilot_campaigns ->
+  // app_pilot_redemptions and aborts every reset with 23514. Recreate the
+  // trigger in this fixture without the TRUNCATE arm only: UPDATE and
+  // DELETE stay append-only, and test resets can empty the table.
+  await execute(`DROP TRIGGER app_pilot_activations_immutable ON app_pilot_activations`);
+  await execute(
+    `CREATE TRIGGER app_pilot_activations_immutable BEFORE UPDATE OR DELETE ON app_pilot_activations FOR EACH STATEMENT EXECUTE FUNCTION reject_subscription_append_only_mutation()`,
+  );
 }

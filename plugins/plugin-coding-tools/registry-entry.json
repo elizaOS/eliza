@@ -34,16 +34,6 @@
       "min": 100,
       "max": 600000,
       "unit": "ms"
-    },
-    "CODING_TOOLS_SHELL_BG_BUDGET_MS": {
-      "type": "number",
-      "required": false,
-      "sensitive": false,
-      "label": "Foreground budget",
-      "help": "Shell invocations exceeding this auto-background and return a task_id.",
-      "advanced": true,
-      "min": 1000,
-      "unit": "ms"
     }
   },
   "render": {

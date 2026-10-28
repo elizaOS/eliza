@@ -128,6 +128,8 @@ async function handleMobileConnect(
       codeType: "mobile_app_auth_code",
       expiresAt: authCode.expiresAt,
       expiresIn: authCode.expiresIn,
+      // True when this sign-in made the Cloud account; false when it existed.
+      accountCreated: c.get("stewardAccountCreated") === true,
     });
   });
 }

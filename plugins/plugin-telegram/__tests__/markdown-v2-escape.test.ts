@@ -25,3 +25,49 @@ describe("convertMarkdownToTelegram mid-line '>'", () => {
     );
   });
 });
+
+describe("convertMarkdownToTelegram incomplete code blocks", () => {
+  it("retains code content and emits a closed Telegram code entity", () => {
+    expect(convertMarkdownToTelegram("```python\n# comment\nx ** 2")).toBe(
+      "```python\n# comment\nx ** 2```",
+    );
+    expect(convertMarkdownToTelegram("```\nline\n")).toBe("```\nline\n```");
+    expect(convertMarkdownToTelegram("```js\r\nconst x = `hi`;")).toBe(
+      "```js\nconst x = \\`hi\\`;```",
+    );
+    expect(convertMarkdownToTelegram("```py\n# comment\n```")).toBe(
+      "```py\n# comment\n```",
+    );
+    expect(convertMarkdownToTelegram("**Heading**\n```sh\necho text")).toBe(
+      "*Heading*\n```sh\necho text```",
+    );
+    expect(convertMarkdownToTelegram("```js\na\n```\n```py\n# b")).toBe(
+      "```js\na\n```\n```py\n# b```",
+    );
+  });
+});
+
+describe("convertMarkdownToTelegram bare URLs", () => {
+  it("keeps underscores and asterisks inside a URL as part of the URL", () => {
+    expect(
+      convertMarkdownToTelegram("Go to https://example.com/_private_/page now"),
+    ).toBe("Go to https://example\\.com/\\_private\\_/page now");
+    expect(
+      convertMarkdownToTelegram("Raw https://example.com/a*b*c link"),
+    ).toBe("Raw https://example\\.com/a\\*b\\*c link");
+  });
+
+  it("leaves emphasis and punctuation around a URL outside it", () => {
+    expect(convertMarkdownToTelegram("*see https://example.com/x*")).toBe(
+      "_see https://example\\.com/x_",
+    );
+    expect(convertMarkdownToTelegram("Read https://example.com/a_b.")).toBe(
+      "Read https://example\\.com/a\\_b\\.",
+    );
+    expect(
+      convertMarkdownToTelegram(
+        "Wiki https://en.wikipedia.org/wiki/Test_(x) ok",
+      ),
+    ).toBe("Wiki https://en\\.wikipedia\\.org/wiki/Test\\_\\(x\\) ok");
+  });
+});

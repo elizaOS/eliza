@@ -6,6 +6,7 @@ import {
   splitTelegramText,
   TELEGRAM_MESSAGE_MAX_LENGTH,
 } from "../src/standalone/handler";
+import { convertMarkdownToTelegram } from "../src/utils";
 
 const LIMIT = TELEGRAM_MESSAGE_MAX_LENGTH;
 const SKIN_TONE_THUMB = "\u{1F44D}\u{1F3FD}";
@@ -61,5 +62,29 @@ describe.each(splitters)("%s grapheme-safe cut", (_name, split) => {
       expect(part.length).toBeLessThanOrEqual(LIMIT);
     }
     expect(parts.join("")).toBe(text);
+  });
+});
+
+describe("MessageManager.splitMessage code block across chunks", () => {
+  it("reopens the code block in the next chunk", () => {
+    const code = Array.from(
+      { length: 12 },
+      (_, i) => `# step ${i} **important**\necho ${i}`,
+    ).join("\n");
+    const text = `${"word ".repeat(790)}\n\`\`\`bash\n${code}\n\`\`\`\nAfter the code, see the docs.`;
+    const parts = splitMessage(text);
+
+    expect(parts).toHaveLength(2);
+    for (const part of parts) {
+      expect(convertMarkdownToTelegram(part).length).toBeLessThanOrEqual(LIMIT);
+    }
+    // The second chunk starts inside the block, so it carries the opener.
+    expect(parts[1].startsWith("```bash\n")).toBe(true);
+    // Dropping the repeated opener gives back the original text.
+    expect(`${parts[0]}${parts[1].slice("```bash".length)}`).toBe(text);
+    const second = convertMarkdownToTelegram(parts[1]);
+    // Code lines keep `#` and `**`; the prose after the block is not code.
+    expect(second).toContain("# step 11 **important**");
+    expect(second.endsWith("```\nAfter the code, see the docs\\.")).toBe(true);
   });
 });

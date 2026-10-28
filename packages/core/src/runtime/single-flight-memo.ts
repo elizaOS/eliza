@@ -49,7 +49,7 @@ export class SingleFlightMemo<V, Meta = undefined> {
 				this.entries.delete(key);
 			}
 		});
-		if (this.entries.size >= this.maxEntries) {
+		if (!this.entries.has(key) && this.entries.size >= this.maxEntries) {
 			const oldest = this.entries.keys().next().value;
 			if (oldest !== undefined) this.entries.delete(oldest);
 		}

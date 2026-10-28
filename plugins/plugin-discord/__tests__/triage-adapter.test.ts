@@ -67,6 +67,7 @@ interface FakeServiceOptions {
 	messagesByChannel?: Record<string, Memory[]>;
 	failChannels?: Set<string>;
 	sentMemory?: Memory;
+	ready?: boolean;
 }
 
 function createFakeDiscordService(opts: FakeServiceOptions = {}) {
@@ -97,6 +98,9 @@ function createFakeDiscordService(opts: FakeServiceOptions = {}) {
 		): Promise<Memory | undefined> {
 			sends.push({ target, content });
 			return opts.sentMemory;
+		},
+		getClient() {
+			return { isReady: () => opts.ready ?? true };
 		},
 	};
 	return service;
@@ -379,6 +383,23 @@ describe("DiscordTriageAdapter", () => {
 		expect(refs.map((r) => r.externalId)).toEqual(["42"]);
 	});
 
+	it("fails the source instead of returning [] when Discord is not connected", async () => {
+		const service = createFakeDiscordService({ ready: false });
+		await expect(
+			new DiscordTriageAdapter().listMessages(createRuntime(service), {}),
+		).rejects.toThrow("Discord is not connected");
+	});
+
+	it("fails the source when every channel read fails", async () => {
+		const service = createFakeDiscordService({
+			channels: [{ channelId: "locked" }, { channelId: "gone" }],
+			failChannels: new Set(["locked", "gone"]),
+		});
+		await expect(
+			new DiscordTriageAdapter().listMessages(createRuntime(service), {}),
+		).rejects.toThrow("Missing Access on channel locked");
+	});
+
 	it("uses explicit channelIds without discovering rooms", async () => {
 		const service = createFakeDiscordService({
 			channels: [{ channelId: "should-not-be-used" }],
@@ -435,6 +456,7 @@ describe("DiscordTriageAdapter", () => {
 		expect(service.sends).toHaveLength(1);
 		expect(service.sends[0].target.channelId).toBe("c1");
 		expect(service.sends[0].content.text).toBe("on it — will take a look");
+		expect(service.sends[0].content.replyToExternalMessageId).toBe("88");
 	});
 
 	it("rejects drafts that resolve no channel", async () => {

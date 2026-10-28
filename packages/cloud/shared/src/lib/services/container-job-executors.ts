@@ -47,6 +47,8 @@ export interface AppContainerRow {
 export interface AppContainerStore {
   getById(containerId: string): Promise<AppContainerRow | null>;
   findDeletingByOrganization(organizationId: string): Promise<AppContainerRow[]>;
+  /** True while another row of the same app still exists on the row's node. */
+  hasOtherAppContainerOnNode(row: AppContainerRow): Promise<boolean>;
   claimNodeSlot(
     containerId: string,
     organizationId: string,
@@ -431,7 +433,13 @@ export async function executeContainerDelete(
   for (const { id, organizationId, row } of targets) {
     if (row?.hostContainerId) {
       try {
-        await deps.provider.deleteById(row.hostContainerId, row.containerName);
+        // A redeploy's new generation shares this app's DB ambassador; keep it
+        // while another row of the app is on the node.
+        if (row.nodeId && (await deps.store.hasOtherAppContainerOnNode(row))) {
+          await deps.provider.deletePrimaryById(row.hostContainerId);
+        } else {
+          await deps.provider.deleteById(row.hostContainerId, row.containerName);
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!/no such (object|container)/i.test(message)) throw error;

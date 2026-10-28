@@ -21,7 +21,7 @@ import { LIFEOPS_REMINDER_CHANNELS } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import { toWellFormedUnicode } from "@elizaos/core";
 import { DEFAULT_REMINDER_STEPS, isValidTimeZone } from "./defaults.js";
-import { DAY_MINUTES, MAX_OVERVIEW_OCCURRENCES } from "./service-constants.js";
+import { DAY_MINUTES } from "./service-constants.js";
 import {
   fail,
   normalizeEnumValue,
@@ -373,16 +373,9 @@ export function selectOverviewOccurrences(
   const pending = sortOverviewOccurrences(
     occurrences.filter((occurrence) => occurrence.state === "pending"),
   );
-  const next: LifeOpsOccurrenceView[] = [];
-  for (const occurrence of visible) {
-    if (next.length >= MAX_OVERVIEW_OCCURRENCES) break;
-    next.push(occurrence);
-  }
-  for (const occurrence of pending) {
-    if (next.length >= MAX_OVERVIEW_OCCURRENCES) break;
-    next.push(occurrence);
-  }
-  return next;
+  // Every occurrence in the overview horizon is kept: the summary counts, the
+  // todo projection and the model context are all built from this list.
+  return [...visible, ...pending];
 }
 
 export function buildActiveReminders(
@@ -443,6 +436,14 @@ export function buildActiveReminders(
   return reminders;
 }
 
+export function ownerDeclinedEvent(event: LifeOpsCalendarEvent): boolean {
+  return event.attendees.some(
+    (attendee) =>
+      attendee.self &&
+      attendee.responseStatus?.trim().toLowerCase() === "declined",
+  );
+}
+
 export function buildActiveCalendarEventReminders(
   events: LifeOpsCalendarEvent[],
   plansByEventId: Map<string, LifeOpsReminderPlan>,
@@ -453,7 +454,14 @@ export function buildActiveCalendarEventReminders(
   for (const event of events) {
     const plan = plansByEventId.get(event.id);
     if (!plan) continue;
-    if (event.status === "cancelled") {
+    // All-day events have no start time to remind before. An event the owner
+    // declined is not attended (the scheduler skips it too), so it gets no
+    // reminder in the overview either.
+    if (
+      event.status === "cancelled" ||
+      event.isAllDay ||
+      ownerDeclinedEvent(event)
+    ) {
       continue;
     }
     const startAt = new Date(event.startAt);
@@ -730,7 +738,7 @@ export function normalizeGeneratedLifeOpsAssistantText(
   stripPrefixes: RegExp[] = [],
 ): string | null {
   let cleaned = value
-    .replace(/<think>[\s\S]*?<\/think>/gi, " ")
+    .replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, " ")
     .replace(/^["'`]+|["'`]+$/g, "")
     .replace(/\s+/g, " ")
     .trim();

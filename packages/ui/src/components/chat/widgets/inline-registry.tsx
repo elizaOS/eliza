@@ -32,7 +32,10 @@ export interface InlineWidgetContext {
   /** Trusted message origin, supplied by the persisted message DTO. */
   producerScope?: string;
   /** Send a value back through the action-message pipeline (a choice pick). */
-  sendAction: (value: string, metadata?: Record<string, unknown>) => void;
+  sendAction: (
+    value: string,
+    metadata?: Record<string, unknown>,
+  ) => void | Promise<boolean>;
   /** Passive view-switch suggestion (a followup `navigate` chip). */
   navigate: (payload: string) => void;
   /** Prefill the composer draft (a followup `prompt` chip). */

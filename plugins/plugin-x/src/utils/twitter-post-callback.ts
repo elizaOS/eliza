@@ -99,18 +99,35 @@ export function createTwitterPostCallback({
           runtime.logger.info("[Twitter] Skipping duplicate generated tweet");
           return [];
         }
-        const deliveredMemories = await sendChunkedTweet(
-          client,
-          content,
-          roomId,
-          session.profile.username,
-        );
+        let deliveredMemories: Memory[];
+        try {
+          deliveredMemories = await sendChunkedTweet(
+            client,
+            content,
+            roomId,
+            session.profile.username,
+          );
+        } catch (error) {
+          // Part of the post may already be public (a thread that failed
+          // after its first post, or a post X accepted without a usable
+          // receipt). Report it as posted so a retry does not generate and
+          // post a second one.
+          if (
+            error instanceof ElizaError &&
+            (error.code === "X_THREAD_PARTIALLY_POSTED" ||
+              error.code === "X_POST_RESPONSE_INVALID")
+          ) {
+            onPosted?.();
+          }
+          throw error;
+        }
         const firstTweetId =
           typeof deliveredMemories[0]?.metadata === "object"
             ? (deliveredMemories[0].metadata as { messageIdFull?: string })
                 .messageIdFull
             : undefined;
         if (!firstTweetId) {
+          onPosted?.();
           throw new ElizaError("X thread delivery returned no usable receipt", {
             code: "X_POST_RESPONSE_INVALID",
           });

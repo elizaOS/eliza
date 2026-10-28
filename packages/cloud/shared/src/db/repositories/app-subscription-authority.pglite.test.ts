@@ -7,7 +7,10 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
 import { loadCanonicalMigrations } from "../../../../scripts/admin/canonical-migration-ledger";
-import { installBillingCommandEvidenceTestColumns } from "../../testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 
 const postgresUrl = process.env.APP_BILLING_TEST_POSTGRES_URL;
 const schema = `app_billing_${randomUUID().replaceAll("-", "_")}`;
@@ -26,6 +29,8 @@ let client: {
 let close: typeof import("../client").closeDatabaseConnectionsForTests;
 let repository: import("./app-subscription-authority").AppSubscriptionAuthorityRepository;
 const org = randomUUID();
+const promotionalOrg = randomUUID();
+const promotionalPeriod = randomUUID();
 const user = randomUUID();
 const merchant = randomUUID();
 const appA = randomUUID();
@@ -106,6 +111,30 @@ beforeAll(async () => {
     throw new Error("Invoice authority migration is absent from the canonical ledger");
   invoiceAuthorityMigration = authority.statements;
   for (const statement of invoiceAuthorityMigration) await client.exec(statement);
+  const pilotMigration = canonical.find(
+    (migration) => migration.entry.tag === "0541_app_pilot_redemptions",
+  );
+  if (!pilotMigration) throw new Error("Pilot migration is absent from the canonical ledger");
+  for (const statement of pilotMigration.statements) await client.exec(statement);
+  await installSubscriptionGrantTestSchema((statement) => client.exec(statement));
+  // Keep a real existing promotional bucket across the pilot migration.
+  await client.query("INSERT INTO organizations(id) VALUES($1)", [promotionalOrg]);
+  await client.query(
+    `WITH code AS (
+      INSERT INTO subscription_grant_codes(code_hash,max_redemptions) VALUES($1,1) RETURNING id
+    ), grant_row AS (
+      INSERT INTO subscription_grants(organization_id,code_id,family,plan_key,catalog_version,idempotency_key,starts_at,ends_at)
+      SELECT $2,id,'alpha_phone','plus_monthly','v1','pilot-migration-coexistence',now(),now()+interval '1 month' FROM code RETURNING id
+    )
+    INSERT INTO subscription_allowance_periods(id,organization_id,provider,provider_environment,grant_source,promo_grant_id,plan_key,catalog_version,period_start,period_end,expires_at,granted_amount,available_amount)
+    SELECT $3,$2,'eliza','test','promo_grant',id,'plus_monthly','v1',now(),now()+interval '1 month',now()+interval '1 month',25,25 FROM grant_row`,
+    ["b".repeat(64), promotionalOrg, promotionalPeriod],
+  );
+  const pilotAllowance = canonical.find(
+    (migration) => migration.entry.tag === "0543_app_pilot_allowance",
+  );
+  if (!pilotAllowance) throw new Error("Pilot allowance migration is missing");
+  for (const statement of pilotAllowance.statements) await client.exec(statement);
   await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
 
   await client.query(
@@ -162,6 +191,20 @@ async function prepare(appId: string, planRevisionId: string, key = randomUUID()
   });
   return { account, scope, command };
 }
+
+test("pilot migration preserves an existing promotional allowance and rejects mixed source authority", async () => {
+  const result = await client.query(
+    "UPDATE subscription_allowance_periods SET available_amount=24,settled_amount=1 WHERE id=$1 RETURNING grant_source,pilot_redemption_id",
+    [promotionalPeriod],
+  );
+  expect(result.rows).toEqual([{ grant_source: "promo_grant", pilot_redemption_id: null }]);
+  await expect(
+    client.query(
+      "UPDATE subscription_allowance_periods SET provider='pilot',grant_source='pilot' WHERE id=$1",
+      [promotionalPeriod],
+    ),
+  ).rejects.toThrow();
+});
 
 describe("generic app subscription authority", () => {
   test("migration preserves infrastructure money and customer ownership", async () => {
@@ -640,6 +683,10 @@ describe("atomic app subscription finalization", () => {
     if (!predecessor) throw new Error("Historical invoice constraint is missing");
     await client.exec("BEGIN");
     try {
+      // This historical migration predates promotional grants. Isolate its fixture rows.
+      await client.query("DELETE FROM subscription_allowance_periods WHERE id=$1", [
+        promotionalPeriod,
+      ]);
       await client.exec(
         "ALTER TABLE subscription_allowance_periods DROP CONSTRAINT subscription_allowance_periods_invoice_id_check",
       );
@@ -661,8 +708,17 @@ describe("atomic app subscription finalization", () => {
         result.allowance!.id,
       ]);
     const before = await rows();
-    for (const statement of invoiceAuthorityMigration) await client.exec(statement);
-    expect(await rows()).toEqual(before);
+    await client.exec("BEGIN");
+    try {
+      await client.query("DELETE FROM subscription_allowance_periods WHERE id=$1", [
+        promotionalPeriod,
+      ]);
+      for (const statement of invoiceAuthorityMigration) await client.exec(statement);
+      expect(await rows()).toEqual(before);
+    } finally {
+      // Restore the current constraint and promotional fixture after testing historical DDL.
+      await client.exec("ROLLBACK");
+    }
   });
   test("late outbox failure rolls back subscription, grant, projection and command result together", async () => {
     const { appSubscriptionFinalizer } = await import("./app-subscription-finalizer");
@@ -1134,4 +1190,309 @@ test("seller tenant predicates preserve cross-organization buyers and reject for
     [account.id],
   );
   await expect(appBillingQueries.snapshot(identity)).rejects.toThrow("membership");
+});
+
+describe("sponsored pilot admission ledger", () => {
+  async function pilotAccount() {
+    const actor = randomUUID();
+    await client.query("INSERT INTO users(id) VALUES ($1)", [actor]);
+    const account = await repository.createAccount({
+      appId: appA,
+      externalAccountKey: randomUUID(),
+      displayName: "Pilot",
+      principalUserId: actor,
+    });
+    const scope = await repository.resolveScope({
+      appId: appA,
+      billingAccountId: account.id,
+      productFamilyKey: "main",
+      merchantId: merchant,
+      actorUserId: actor,
+    });
+    return { actor, account, scope };
+  }
+  async function campaign(
+    maximum = 2,
+    opens = "now() - interval '1 day'",
+    closes = "now() + interval '1 day'",
+    appId: string = appA,
+    planId: string = planA,
+  ) {
+    const { appPilotCodeDigest } = await import("./app-pilot-redemptions");
+    const code = randomUUID().replaceAll("-", "");
+    const id = randomUUID();
+    await client.query(
+      `INSERT INTO app_pilot_campaigns(id, app_id, plan_revision_id, livemode, code_digest, maximum_redemptions, opens_at, closes_at) VALUES ($1,$2,$3,false,$4,$5,${opens},${closes})`,
+      [id, appId, planId, appPilotCodeDigest(code), maximum],
+    );
+    return { id, code };
+  }
+  async function invite(campaignId: string, principal: string) {
+    await client.query(
+      "INSERT INTO app_pilot_invitations(campaign_id,eligibility_principal_id) VALUES ($1,$2)",
+      [campaignId, principal],
+    );
+  }
+  async function redeem(account: Awaited<ReturnType<typeof pilotAccount>>, code: string) {
+    return (await import("./app-pilot-redemptions")).appPilotRedemptionsRepository.redeem({
+      appId: appA,
+      livemode: false,
+      scopeId: account.scope.scopeId,
+      actorUserId: account.actor,
+      code,
+    });
+  }
+  test("real database redemption survives lost-response retry, campaign revocation and immutable-history checks", async () => {
+    const account = await pilotAccount();
+    const offer = await campaign(1);
+    await invite(offer.id, account.scope.eligibilityPrincipalId);
+    const first = await redeem(account, offer.code);
+    expect(first.replayed).toBe(false);
+    const retry = await redeem(account, offer.code);
+    expect(retry).toEqual({ redemption: first.redemption, replayed: true });
+    await client.query("UPDATE app_pilot_campaigns SET revoked_at=clock_timestamp() WHERE id=$1", [
+      offer.id,
+    ]);
+    expect((await redeem(account, offer.code)).redemption).toEqual(first.redemption);
+    await expect(
+      client.query(
+        "UPDATE app_pilot_redemptions SET ends_at=ends_at + interval '1 month' WHERE id=$1",
+        [first.redemption.id],
+      ),
+    ).rejects.toThrow();
+    await expect(
+      client.query("DELETE FROM app_pilot_redemptions WHERE id=$1", [first.redemption.id]),
+    ).rejects.toThrow();
+    await expect(
+      client.query("UPDATE app_pilot_campaigns SET revoked_at=NULL WHERE id=$1", [offer.id]),
+    ).rejects.toThrow();
+    const otherOffer = await campaign();
+    await invite(otherOffer.id, account.scope.eligibilityPrincipalId);
+    await expect(redeem(account, otherOffer.code)).rejects.toThrow("already been used");
+    const second = await pilotAccount();
+    await invite(offer.id, second.scope.eligibilityPrincipalId);
+    await expect(redeem(second, offer.code)).rejects.toThrow("expired, revoked or full");
+    expect(
+      (
+        await client.query(
+          "SELECT count(*)::integer AS n FROM billing_subscriptions WHERE billing_scope_id=$1",
+          [account.scope.scopeId],
+        )
+      ).rows,
+    ).toEqual([{ n: 0 }]);
+    expect(
+      (
+        await client.query(
+          "SELECT count(*)::integer AS n FROM subscription_allowance_periods WHERE billing_scope_id=$1",
+          [account.scope.scopeId],
+        )
+      ).rows,
+    ).toEqual([{ n: 6 }]);
+  });
+  test("publication failure rolls back redemption, allowance and campaign capacity together", async () => {
+    const account = await pilotAccount();
+    const offer = await campaign(1);
+    await invite(offer.id, account.scope.eligibilityPrincipalId);
+    await client.exec(
+      "CREATE FUNCTION reject_pilot_activation_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'controlled activation failure'; END $$; CREATE TRIGGER reject_pilot_activation_test BEFORE INSERT ON app_pilot_activations FOR EACH ROW EXECUTE FUNCTION reject_pilot_activation_test()",
+    );
+    try {
+      await expect(redeem(account, offer.code)).rejects.toThrow();
+      expect(
+        (
+          await client.query(
+            "SELECT count(*)::integer n FROM app_pilot_redemptions WHERE campaign_id=$1",
+            [offer.id],
+          )
+        ).rows,
+      ).toEqual([{ n: 0 }]);
+      expect(
+        (
+          await client.query(
+            "SELECT count(*)::integer n FROM subscription_allowance_periods WHERE billing_scope_id=$1",
+            [account.scope.scopeId],
+          )
+        ).rows,
+      ).toEqual([{ n: 0 }]);
+    } finally {
+      await client.exec(
+        "DROP TRIGGER reject_pilot_activation_test ON app_pilot_activations; DROP FUNCTION reject_pilot_activation_test()",
+      );
+    }
+    expect((await redeem(account, offer.code)).replayed).toBe(false);
+  });
+  test("another billing account for the same principal cannot restart the pilot", async () => {
+    const first = await pilotAccount();
+    const offer = await campaign();
+    await invite(offer.id, first.scope.eligibilityPrincipalId);
+    await redeem(first, offer.code);
+    const account = await repository.createAccount({
+      appId: appA,
+      externalAccountKey: randomUUID(),
+      displayName: "Second account",
+      principalUserId: first.actor,
+    });
+    const scope = await repository.resolveScope({
+      appId: appA,
+      billingAccountId: account.id,
+      productFamilyKey: "main",
+      merchantId: merchant,
+      actorUserId: first.actor,
+    });
+    await expect(redeem({ actor: first.actor, account, scope }, offer.code)).rejects.toThrow(
+      "already been used",
+    );
+  });
+  test("existing provider subscription is retained and cannot receive a second pilot obligation", async () => {
+    const fixture = await providerTrialFixture();
+    await (await import("./app-subscription-finalizer")).appSubscriptionFinalizer.applyObservation(
+      fixture.input,
+    );
+    const [scope] = (
+      await client.query(
+        "SELECT s.app_id, a.eligibility_principal_id FROM app_billing_scopes s JOIN app_billing_accounts a ON a.id=s.billing_account_id WHERE s.id=$1",
+        [fixture.input.scopeId],
+      )
+    ).rows as { app_id: string; eligibility_principal_id: string }[];
+    const offer = await campaign(
+      2,
+      undefined,
+      undefined,
+      scope!.app_id,
+      fixture.input.planRevisionId,
+    );
+    await invite(offer.id, scope!.eligibility_principal_id);
+    await expect(
+      (await import("./app-pilot-redemptions")).appPilotRedemptionsRepository.redeem({
+        appId: scope!.app_id,
+        livemode: false,
+        scopeId: fixture.input.scopeId,
+        actorUserId: user,
+        code: offer.code,
+      }),
+    ).rejects.toThrow("Existing billing");
+  });
+  test("invitation, environment, account membership and campaign time are required", async () => {
+    const account = await pilotAccount();
+    const offer = await campaign();
+    await expect(redeem(account, offer.code)).rejects.toThrow("invitation");
+    await invite(offer.id, account.scope.eligibilityPrincipalId);
+    const repo = (await import("./app-pilot-redemptions")).appPilotRedemptionsRepository;
+    const input = {
+      appId: appA,
+      livemode: false,
+      scopeId: account.scope.scopeId,
+      actorUserId: account.actor,
+      code: offer.code,
+    };
+    await expect(repo.redeem({ ...input, livemode: true })).rejects.toThrow("environment");
+    await expect(repo.redeem({ ...input, appId: appB })).rejects.toThrow("environment");
+    await expect(repo.redeem({ ...input, actorUserId: user })).rejects.toThrow("administrator");
+    await expect(redeem(account, "not-a-code")).rejects.toThrow("code");
+    await expect(redeem(account, randomUUID().replaceAll("-", ""))).rejects.toThrow("code");
+    await client.query(
+      "UPDATE app_pilot_invitations SET revoked_at=clock_timestamp() WHERE campaign_id=$1",
+      [offer.id],
+    );
+    await expect(redeem(account, offer.code)).rejects.toThrow("invitation");
+    for (const dates of [
+      ["now() - interval '2 days'", "now() - interval '1 day'"],
+      ["now() + interval '1 day'", "now() + interval '2 days'"],
+    ]) {
+      const timed = await campaign(1, dates[0], dates[1]);
+      await invite(timed.id, account.scope.eligibilityPrincipalId);
+      await expect(redeem(account, timed.code)).rejects.toThrow("expired, revoked or full");
+    }
+  });
+  test("parallel accounts cannot exceed the cap and retries do not consume another place", async () => {
+    const a = await pilotAccount();
+    const b = await pilotAccount();
+    const offer = await campaign(1);
+    await invite(offer.id, a.scope.eligibilityPrincipalId);
+    await invite(offer.id, b.scope.eligibilityPrincipalId);
+    const attempts = await Promise.allSettled([redeem(a, offer.code), redeem(b, offer.code)]);
+    expect(attempts.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(attempts.filter((result) => result.status === "rejected")).toHaveLength(1);
+    const winner = attempts[0]?.status === "fulfilled" ? a : b;
+    const retries = await Promise.all([redeem(winner, offer.code), redeem(winner, offer.code)]);
+    expect(retries.every((result) => result.replayed)).toBe(true);
+    expect(retries[0]?.redemption.id).toBe(retries[1]?.redemption.id);
+  });
+  test("unresolved checkout prevents pilot admission without changing the checkout", async () => {
+    const account = await pilotAccount();
+    const offer = await campaign();
+    await invite(offer.id, account.scope.eligibilityPrincipalId);
+    const command = await repository.prepareCommand({
+      scopeId: account.scope.scopeId,
+      actorUserId: account.actor,
+      kind: "checkout",
+      payload: { version: 1, domain: "buyer", action: "trial", planRevisionId: planA, quantity: 1 },
+      targetPlanRevisionId: planA,
+      quantity: 1,
+      idempotencyKey: randomUUID(),
+      requestDigest: digest,
+      expectedSubscriptionRevision: null,
+    });
+    await expect(redeem(account, offer.code)).rejects.toThrow("Existing billing");
+    expect(
+      (
+        await client.query("SELECT status FROM billing_subscription_commands WHERE id=$1", [
+          command.id,
+        ])
+      ).rows,
+    ).toEqual([{ status: "PREPARED" }]);
+  });
+  test.skipIf(!postgresUrl)(
+    "pilot campaign expiry uses the clock after a blocking campaign lock",
+    async () => {
+      const account = await pilotAccount();
+      const offer = await campaign(1, "now() - interval '1 day'", "now() + interval '1 second'");
+      await invite(offer.id, account.scope.eligibilityPrincipalId);
+      const blocker = new Client({ connectionString: postgresUrl });
+      await blocker.connect();
+      await blocker.query(`SET search_path TO ${schema},public`);
+      await blocker.query("BEGIN");
+      await blocker.query("SELECT id FROM app_pilot_campaigns WHERE id=$1 FOR UPDATE", [offer.id]);
+      const pending = redeem(account, offer.code).then(
+        () => null,
+        (error) => error,
+      );
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await blocker.query("COMMIT");
+        expect((await pending)?.message).toContain("expired, revoked or full");
+        expect(
+          (
+            await client.query(
+              "SELECT count(*)::integer AS n FROM app_pilot_redemptions WHERE campaign_id=$1",
+              [offer.id],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+      } finally {
+        await blocker.query("ROLLBACK");
+        await blocker.end();
+      }
+    },
+  );
+  test("UTC six calendar months clamps leap and non-leap month ends independently of session timezone", async () => {
+    await client.exec("SET TIME ZONE 'America/Los_Angeles'");
+    try {
+      for (const [start, end] of [
+        ["2023-08-31T23:59:59.123Z", "2024-02-29T23:59:59.123Z"],
+        ["2024-08-31T05:00:00.000Z", "2025-02-28T05:00:00.000Z"],
+        ["2024-02-29T12:00:00.000Z", "2024-08-29T12:00:00.000Z"],
+      ]) {
+        const rows = (
+          await client.query(
+            "SELECT (($1::timestamptz AT TIME ZONE 'UTC') + interval '6 months') AT TIME ZONE 'UTC' AS ends_at",
+            [start],
+          )
+        ).rows as { ends_at: Date | string }[];
+        expect(new Date(rows[0]!.ends_at).toISOString()).toBe(end);
+      }
+    } finally {
+      await client.exec("SET TIME ZONE 'UTC'");
+    }
+  });
 });

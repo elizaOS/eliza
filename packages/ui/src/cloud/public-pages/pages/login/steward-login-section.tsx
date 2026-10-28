@@ -34,6 +34,7 @@ import {
   hasStewardAuthedCookie,
   peekStewardOAuthState,
   readStoredStewardToken,
+  STEWARD_SESSION_CHANGE_EVENT,
   type StewardOAuthProvider,
   StewardSessionError,
   writeStoredStewardToken,
@@ -89,7 +90,6 @@ import {
 import { getErrorMessage } from "../../lib/error-message";
 import {
   consumePendingOAuthReturnTo,
-  defaultLoginReturnTo,
   resolveLoginReturnTo,
   storePendingOAuthReturnTo,
 } from "../../lib/login-return-to";
@@ -180,6 +180,20 @@ type AuthStep =
   | "otp-entry"
   | "external-success"
   | "success";
+interface PhoneSignInAttempt {
+  controller: AbortController;
+  initialToken: string | null;
+  publishingToken?: string;
+}
+
+function phoneAttemptIsActive(attempt?: PhoneSignInAttempt | null): boolean {
+  if (!attempt) return true;
+  const token = readStoredStewardToken();
+  if (token !== attempt.initialToken && token !== attempt.publishingToken)
+    attempt.controller.abort();
+  return !attempt.controller.signal.aborted;
+}
+
 type EmailCheckState =
   | "pending"
   | "approved"
@@ -191,7 +205,7 @@ async function persistStewardToken(token: string): Promise<void> {
   await writeStoredStewardToken(token);
   if (readStoredStewardToken() !== token) {
     throw new Error(
-      "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
+      "Sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
   clearSsoLoggedOut();
@@ -343,7 +357,7 @@ function describeCodeExchangeError(error: unknown, t: LoginTranslator): string {
         "That sign-in link expired or was already used. Please sign in again below.",
     });
   }
-  return getErrorMessage(error, "Could not complete Eliza Cloud sign-in.");
+  return getErrorMessage(error, "Could not complete sign-in.");
 }
 
 function getCallbackReasonMessage(
@@ -653,7 +667,10 @@ export default function StewardLoginSection({
     return {
       auth: privateAuth(stewardApiUrl, STEWARD_TENANT_ID),
       phoneAuth: privateAuth(
-        resolveStewardAuthEndpoint("/steward/cloud-owner-phone"),
+        new URL(
+          resolveStewardAuthEndpoint("/steward/cloud-owner-phone"),
+          typeof window === "undefined" ? undefined : window.location.origin,
+        ).href,
       ),
     };
   }, [stewardApiUrl]);
@@ -753,6 +770,7 @@ export default function StewardLoginSection({
   // explicitly selected identity with a previously stored Cloud session.
   const callbackOwnsSessionRef = useRef(completingCallback);
   const callbackHandledRef = useRef(false);
+  const phoneAttemptRef = useRef<PhoneSignInAttempt | null>(null);
   const [providersLoaded, setProvidersLoaded] = useState(
     () =>
       PLAYWRIGHT_TEST_AUTH_ENABLED ||
@@ -812,6 +830,42 @@ export default function StewardLoginSection({
         showPasskey ||
         hasIdentityProviders ||
         LOCAL_DEDICATED_TEST_SIGN_IN_ENABLED);
+
+  // Like the email challenge key, the route and tuple own this attempt.
+  const phoneAttemptScope = phoneOnly ? `${pathname}?${searchParams}` : null;
+  useEffect(() => {
+    if (phoneAttemptScope === null) return;
+    const retireChangedSession = (event: Event) => {
+      const attempt = phoneAttemptRef.current;
+      if (
+        event.type === STEWARD_SESSION_CHANGE_EVENT &&
+        (event as CustomEvent<{ state?: unknown }>).detail?.state === "cleared"
+      ) {
+        attempt?.controller.abort();
+      } else {
+        phoneAttemptIsActive(attempt);
+      }
+      if (
+        attempt &&
+        phoneAttemptRef.current === attempt &&
+        attempt.controller.signal.aborted
+      )
+        setLoading(null);
+    };
+    window.addEventListener(STEWARD_SESSION_CHANGE_EVENT, retireChangedSession);
+    window.addEventListener("steward-token-sync", retireChangedSession);
+    window.addEventListener("storage", retireChangedSession);
+    return () => {
+      window.removeEventListener(
+        STEWARD_SESSION_CHANGE_EVENT,
+        retireChangedSession,
+      );
+      window.removeEventListener("steward-token-sync", retireChangedSession);
+      window.removeEventListener("storage", retireChangedSession);
+      phoneAttemptRef.current?.controller.abort();
+      phoneAttemptRef.current = null;
+    };
+  }, [phoneAttemptScope]);
 
   const abortSharedEmailSessionRecovery = useCallback(() => {
     const pending = sharedSessionRecoveryRef.current;
@@ -1079,7 +1133,7 @@ export default function StewardLoginSection({
         setAccountSwitchError(
           getErrorMessage(
             accountSwitchError,
-            "Could not end the previous Eliza Cloud session",
+            "Could not end the previous sign-in session",
           ),
         );
       });
@@ -1366,23 +1420,43 @@ export default function StewardLoginSection({
     token: string,
     refreshToken?: string | null,
     options?: { verifiedPhone: string },
+    phoneAttempt?: PhoneSignInAttempt | null,
   ) {
     const network = phoneOnly
       ? parseNetworkSiteHandoff(searchParams, window.location.hostname)
       : null;
     if (network && !options?.verifiedPhone)
       throw new Error("Network sign-in requires phone verification.");
+    if (!phoneAttemptIsActive(phoneAttempt)) return;
     setPasskeyEmailGrant(null);
     setShowPasskeyEnrollmentRecovery(false);
+    if (phoneAttempt) phoneAttempt.publishingToken = token;
     if (options) {
-      await syncStewardSessionCookie(token, refreshToken, options);
+      await syncStewardSessionCookie(
+        token,
+        refreshToken,
+        phoneAttempt
+          ? {
+              ...options,
+              signal: phoneAttempt.controller.signal,
+              expectedToken: phoneAttempt.initialToken,
+            }
+          : options,
+      );
     } else {
       await syncStewardSessionCookie(token, refreshToken);
     }
+    if (!phoneAttemptIsActive(phoneAttempt)) return;
     // Publish the browser token only after the authoritative Cloud sync wins.
     // Otherwise StewardProviderRuntime can race a second unhinted sync against
     // phone-account promotion.
-    await persistStewardToken(token);
+    if (phoneAttempt) {
+      if (readStoredStewardToken() !== token) return;
+      clearSsoLoggedOut();
+    } else {
+      await persistStewardToken(token);
+    }
+    if (!phoneAttemptIsActive(phoneAttempt)) return;
     if (network) {
       let code: string | null = null;
       try {
@@ -1397,6 +1471,7 @@ export default function StewardLoginSection({
             "Could not continue to The Network. Start again from the Network site.",
           );
         code = minted.code;
+        if (!phoneAttemptIsActive(phoneAttempt)) return;
         if (readStoredStewardToken() !== token)
           throw new Error(
             "The signed-in account changed. Start again from The Network.",
@@ -1418,7 +1493,7 @@ export default function StewardLoginSection({
     toast.success("Signed in!");
     setRedirectTo(
       phoneOnly
-        ? defaultLoginReturnTo()
+        ? resolveLoginReturnTo(searchParams)
         : resolveLoginReturnTo(searchParams, consumePendingOAuthReturnTo()),
     );
     setStep("success");
@@ -1704,6 +1779,17 @@ export default function StewardLoginSection({
     }
   }
 
+  function beginPhoneAttempt(): PhoneSignInAttempt | null {
+    if (!phoneOnly) return null;
+    phoneAttemptRef.current?.controller.abort();
+    const attempt: PhoneSignInAttempt = {
+      controller: new AbortController(),
+      initialToken: readStoredStewardToken(),
+    };
+    phoneAttemptRef.current = attempt;
+    return attempt;
+  }
+
   async function handleSendSms() {
     if (loading !== null) return;
     try {
@@ -1731,23 +1817,26 @@ export default function StewardLoginSection({
       return;
     }
 
+    const attempt = beginPhoneAttempt();
     setLoading("sms");
     setError(null);
     setFieldError(null);
     try {
       await phoneAuth.sendSmsOtp(normalizedPhone);
+      if (!phoneAttemptIsActive(attempt)) return;
       setPhone(normalizedPhone);
       setSmsCode("");
       setResendAvailableAt(Date.now() + AUTH_CODE_RESEND_COOLDOWN_MS);
       setResendRemainingSeconds(AUTH_CODE_RESEND_COOLDOWN_MS / 1000);
       setStep("sms-code");
     } catch (smsError) {
+      if (!phoneAttemptIsActive(attempt)) return;
       // error-policy:J4 Steward transport failures remain a visible login error.
       setError(
         getErrorMessage(smsError, "Couldn't send a text code. Try again."),
       );
     } finally {
-      setLoading(null);
+      if (phoneAttemptIsActive(attempt)) setLoading(null);
     }
   }
 
@@ -1759,24 +1848,30 @@ export default function StewardLoginSection({
       return;
     }
 
+    const attempt = beginPhoneAttempt();
     setLoading("sms");
     setError(null);
     try {
-      const result = requireCompletedAuth(
-        await phoneAuth.verifySmsOtp(phone, code),
+      const verified = await phoneAuth.verifySmsOtp(phone, code);
+      if (!phoneAttemptIsActive(attempt)) return;
+      const result = requireCompletedAuth(verified);
+      await handleSuccess(
+        result.token,
+        result.refreshToken,
+        { verifiedPhone: phone },
+        attempt,
       );
-      await handleSuccess(result.token, result.refreshToken, {
-        verifiedPhone: phone,
-      });
     } catch (smsError) {
+      if (!phoneAttemptIsActive(attempt)) return;
       // error-policy:J4 Rejected or failed SMS verification stays recoverable.
       setError(getErrorMessage(smsError, "That code didn't work. Try again."));
     } finally {
-      setLoading(null);
+      if (phoneAttemptIsActive(attempt)) setLoading(null);
     }
   }
 
   function cancelSmsLogin() {
+    phoneAttemptRef.current?.controller.abort();
     setStep("idle");
     setSmsCode("");
     setError(null);
@@ -2019,7 +2114,7 @@ export default function StewardLoginSection({
                   defaultValue: "Opening your assistant…",
                 })
               : t("cloud.login.redirecting", {
-                  defaultValue: "Redirecting to Eliza...",
+                  defaultValue: "Redirecting to {{appName}}...",
                 })}
           </p>
         </div>
@@ -2606,7 +2701,7 @@ export default function StewardLoginSection({
             <p className="text-xs leading-relaxed text-muted">
               {t("cloud.login.providerDiscovery.message", {
                 defaultValue:
-                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+                  "Retry to load the sign-in methods enabled for this {{cloudName}} account.",
               })}
             </p>
           </div>
@@ -2782,7 +2877,7 @@ export default function StewardLoginSection({
             <p>
               {t("cloud.login.providerDiscovery.message", {
                 defaultValue:
-                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+                  "Retry to load the sign-in methods enabled for this {{cloudName}} account.",
               })}
             </p>
             <Button

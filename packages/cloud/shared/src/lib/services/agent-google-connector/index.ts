@@ -15,6 +15,7 @@ export {
   sendManagedGoogleReply,
 } from "./gmail";
 export { readManagedGoogleGmailAttachment } from "./gmail-attachments";
+export { fetchManagedGoogleGmailHistory, type GmailHistoryPage } from "./gmail-history";
 export {
   type AgentGoogleCapability,
   AgentGoogleConnectorError,

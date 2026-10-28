@@ -25,7 +25,7 @@ import {
   type TwitterProfile,
 } from "./base";
 import type { Client, Tweet } from "./client/index";
-import { parseTwitterInterval } from "./environment";
+import { parseTwitterCount, parseTwitterInterval } from "./environment";
 import {
   quoteTweetTemplate,
   replyTweetTemplate,
@@ -106,6 +106,26 @@ function isSessionRotation(error: unknown): boolean {
     error instanceof ElizaError &&
     ["X_AUTH_NOT_INITIALIZED", "X_AUTH_SESSION_ROTATED"].includes(error.code)
   );
+}
+/**
+ * Whether X may already have published part of a failed write. The quote and
+ * reply handlers wrap provider failures, so the partial-thread and
+ * indeterminate-receipt codes are found anywhere along the cause chain.
+ */
+function mayHavePublished(error: unknown): boolean {
+  for (let e: unknown = error; e instanceof Error; e = e.cause) {
+    if (
+      e instanceof ElizaError &&
+      (e.code === "X_THREAD_PARTIALLY_POSTED" ||
+        e.code === "X_POST_RECEIPT_INDETERMINATE" ||
+        // X accepted the write but returned no usable receipt (the
+        // startup-post callback treats this as already public).
+        e.code === "X_POST_RESPONSE_INVALID")
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 /**
  * Collect the image URLs that represent a tweet's media. Photos contribute
@@ -305,10 +325,9 @@ export class TwitterTimelineClient {
     const tweets = await this.getTimelineForProfile(20, profile);
     logger.info(`Fetched ${tweets.length} tweets from timeline`);
     // Use max engagements per run from environment
-    const maxActionsPerCycle = parseInt(
-      (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ||
-        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN ||
-        "10",
+    const maxActionsPerCycle = parseTwitterCount(
+      (getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") as string) ??
+        process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
     );
     const tweetDecisions: TweetDecision[] = [];
@@ -493,6 +512,13 @@ Choose any combination of [LIKE], [RETWEET], [QUOTE], and [REPLY] that are appro
         }
         results.push({ tweetId: tweet.id, actionResponse, executedActions });
       } catch (error) {
+        // An earlier action (a like, a quote) or a partly posted thread may
+        // already be public. Mark the tweet processed so the next cycle does
+        // not ask the model again and repeat it; X has no idempotency key for
+        // these writes. A failure that published nothing is retried.
+        if (executedActions.length > 0 || mayHavePublished(error)) {
+          await createMemorySafe(this.runtime, tweetMemory, "messages");
+        }
         if (isSessionRotation(error)) throw error;
         // error-policy:J2 The scheduled-loop boundary reports the failed cycle;
         // retain the tweet identity instead of fabricating a partial success.

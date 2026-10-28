@@ -57,7 +57,6 @@ const sfxRequestSchema = z.object({
   promptInfluence: z.coerce.number().min(0).max(1).optional(),
   seed: z.coerce.number().int().min(0).max(2_147_483_647).optional(),
   outputFormat: z.string().trim().max(64).optional(),
-  extraInput: z.record(z.string(), z.unknown()).optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -240,7 +239,6 @@ app.post("/", async (c) => {
       promptInfluence: request.promptInfluence,
       seed: request.seed,
       outputFormat: request.outputFormat,
-      extraInput: request.extraInput,
       apiKeys: {
         FAL_KEY: envString(c.env, "FAL_KEY"),
         FAL_API_KEY: envString(c.env, "FAL_API_KEY"),

@@ -1,4 +1,7 @@
-import { installBillingCommandEvidenceTestColumns } from "@elizaos/cloud-shared/testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "@elizaos/cloud-shared/testing";
 /** Starts isolated PostgreSQL and signed-session records routes with real billing repositories and controlled Stripe HTTP. */
 
 import { randomUUID } from "node:crypto";
@@ -150,6 +153,29 @@ export async function setupRecordsTest() {
   await installBillingCommandEvidenceTestColumns((statement) =>
     db.query(statement),
   );
+  await installSubscriptionGrantTestSchema((statement) => db.query(statement));
+  // The pilot allowance migrations must follow the 0542 grant installer above:
+  // 0543 references the promo_grant_id column and invoice-check constraint it
+  // leaves behind, and the allowance repository now selects pilot_redemption_id
+  // on every read. Mirrors app-subscription-authority.pglite.test.ts.
+  for (const tag of [
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0543_app_pilot_allowance",
+  ]) {
+    const migration = await readFile(
+      new URL(
+        `../../db/migrations/${tag}.sql`,
+        import.meta.resolve(
+          "@elizaos/cloud-shared/lib/services/generic-billing-runtime",
+        ),
+      ),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim())
+        await db.query(statement.replaceAll('"public".', ""));
+  }
   await db.query(
     "INSERT INTO organizations(id,name,slug,stripe_customer_id) VALUES($1,'Developer','records-developer','cus_infrastructure')",
     [org],

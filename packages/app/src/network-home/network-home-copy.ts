@@ -5,13 +5,13 @@
  * docs/design/eliza-conversation-layer.md, AGENTS.md, sites/PRODUCT.md, and
  * the one-time notice `ELIZA_NOTICE` in packages/network/src/copy.ts.
  *
- * DRAFT: the founder must approve the wording before this ships. The page is
- * mounted only when `VITE_NETWORK_HOME=1` is set at build time (see
- * ./network-home-flag.ts), so nothing changes for eliza.app visitors until
- * then. Do not flip the status here; flip it when the founder says yes.
+ * APPROVED by the founder on 2026-10-11 (eliza-research/thenetwork#22). A
+ * change to the wording needs a new approval. The page is still mounted only
+ * when `VITE_NETWORK_HOME=1` is set at build time (see ./network-home-flag.ts),
+ * with rollout coordinated with the gateway NETWORK_TAKEOVER flag.
  */
 
-export const NETWORK_HOME_COPY_STATUS: "DRAFT" | "APPROVED" = "DRAFT";
+export const NETWORK_HOME_COPY_STATUS: "DRAFT" | "APPROVED" = "APPROVED";
 
 /** The shared iMessage/SMS line (PRODUCTION_BLOOIO_SENDER_NUMBERS). */
 export const NETWORK_LINE_E164 = "+18087881821";

@@ -36,8 +36,7 @@ import { users } from "./users";
  *                     terminal and auditable instead of being fabricated into a
  *                     debit amount.
  *
- * See `packages/cloud/api/docs/inference-hot-path.md` and
- * `lib/services/inference-billing-ledger.ts`.
+ * See `lib/services/inference-billing-ledger.ts`.
  */
 export const inferencePendingCharges = pgTable(
   "inference_pending_charges",

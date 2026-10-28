@@ -17,13 +17,14 @@ import "./renderer-build-stamp";
 import * as React from "react";
 import { lazy, Suspense, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { APP_BRANDING_BASE } from "./app-config";
 import { renderBootFailure } from "./boot-failure";
 import { NETWORK_HOME_ENABLED } from "./network-home/network-home-flag";
 import { seedPublicWebBootConfig } from "./public-web-boot-config";
 import { registerViewServiceWorker } from "./sw-registration";
 
 const ManagedCloudPage = lazy(() => loadManagedCloudPage());
-// The Network home page (DRAFT copy); only in builds with VITE_NETWORK_HOME=1.
+// The Network home page (founder-approved copy); only in builds with VITE_NETWORK_HOME=1.
 const NetworkHomePage = NETWORK_HOME_ENABLED
   ? lazy(() => import("./network-home/NetworkHomePage"))
   : null;
@@ -61,7 +62,7 @@ function FullAppHandoff(): React.JSX.Element {
       aria-live="polite"
       className="flex min-h-dvh items-center justify-center bg-black text-sm text-white/60"
     >
-      Loading Eliza…
+      Loading {APP_BRANDING_BASE.appName}…
     </main>
   );
 }
@@ -79,6 +80,7 @@ function mountPublicWebEntry(): void {
       <React.StrictMode>
         <Suspense fallback={null}>
           <CloudRouterShell
+            branding={APP_BRANDING_BASE}
             appElement={<FullAppHandoff />}
             cloudManagementElement={<ManagedCloudPage />}
             marketingHomeElement={

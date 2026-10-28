@@ -428,7 +428,11 @@ export class AgentRemoteBrowserController {
         const response = record(result.result);
         if (response.status !== 200 || typeof response.body !== "string")
           throw failure("Remote browser result is malformed.");
-        return JSON.parse(response.body);
+        try {
+          return JSON.parse(response.body);
+        } catch {
+          throw failure("Remote browser result is malformed.");
+        }
       }
       if (
         ["execution_ambiguous", "expired", "cancelled", "failed"].includes(

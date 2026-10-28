@@ -14,6 +14,7 @@ import {
   createMessageMemory,
   type Memory,
   type UUID,
+  validateToolArgs,
 } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -49,7 +50,19 @@ describe("HOUSEHOLD_FOOD action — real PGlite production wiring", () => {
       content: { text: "Plan dinner for the family.", source: "client_chat" },
     });
   }
+  /** The planner path: validateToolArgs on the real action, then the handler. */
   async function run(
+    subaction: string,
+    params: Record<string, unknown>,
+  ): Promise<ActionResult> {
+    const validation = validateToolArgs(action, {
+      action: subaction,
+      ...params,
+    });
+    expect(validation.errors).toEqual([]);
+    return invoke(subaction, params);
+  }
+  async function invoke(
     subaction: string,
     params: Record<string, unknown>,
   ): Promise<ActionResult> {
@@ -188,7 +201,7 @@ describe("HOUSEHOLD_FOOD action — real PGlite production wiring", () => {
   });
   it("rejects malformed planner JSON with a typed contract error", async () => {
     await expect(
-      run("put_constraint", {
+      invoke("put_constraint", {
         constraint: {
           id: "bad-constraint",
           householdId,
@@ -203,6 +216,46 @@ describe("HOUSEHOLD_FOOD action — real PGlite production wiring", () => {
         expectedVersion: 0,
       }),
     ).rejects.toMatchObject({ code: "FOOD_INVALID_CONTRACT" });
+  });
+  it("reports every missing nested field and the allowed enum values before the handler", () => {
+    const constraint = validateToolArgs(action, {
+      action: "put_constraint",
+      expectedVersion: 0,
+      constraint: {
+        kind: "allergy",
+        excludedTags: ["peanut"],
+        subjectEntityId: childEntityId,
+        label: "Peanut allergy",
+        provenance: { ...provenance("owner"), kind: "owner_statement" },
+      },
+    });
+    expect(constraint.valid).toBe(false);
+    expect(constraint.errors).toEqual([
+      "Missing required argument 'constraint.id'",
+      "Missing required argument 'constraint.householdId'",
+      "Missing required argument 'constraint.version'",
+      "Missing required argument 'constraint.active'",
+      "Unexpected argument 'constraint.subjectEntityId'",
+      "Argument 'constraint.kind' value 'allergy' is not one of: allergen_exclusion, cross_contact_exclusion, medical_diet, age_safety, religious_diet, ethical_diet",
+      "Argument 'constraint.provenance.kind' value 'owner_statement' is not one of: user_confirmed, receipt, order, consumption_inference, document, connector",
+    ]);
+    const meal = validateToolArgs(action, {
+      action: "evaluate_meal",
+      householdId,
+      plannedFor: "2027-04-02T23:30:00.000Z",
+      meal: {
+        title: "Bean tacos",
+        ingredients: [{ name: "milk", quantity: 1, unit: "gallon" }],
+      },
+      participants: [{ entityId: childEntityId }],
+    });
+    expect(meal.errors).toContain("Missing required argument 'meal.mealId'");
+    expect(meal.errors).toContain(
+      "Argument 'meal.ingredients[0].unit' value 'gallon' is not one of: serving, each, package, can, bunch, head, g, kg, oz, lb, ml, l, cup, tbsp, tsp",
+    );
+    expect(meal.errors).toContain(
+      "Missing required argument 'participants[0].attendanceProvenance'",
+    );
   });
   it("drives the full authoring surface through the production service", async () => {
     const profile = await run("put_household_profile", {

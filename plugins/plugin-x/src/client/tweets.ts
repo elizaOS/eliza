@@ -341,6 +341,7 @@ export async function fetchTweets(
         "entities",
         "public_metrics",
         "attachments",
+        "note_tweet",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
@@ -389,6 +390,7 @@ export async function fetchTweetsAndReplies(
         "entities",
         "public_metrics",
         "attachments",
+        "note_tweet",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
@@ -469,13 +471,18 @@ export async function createCreateTweetRequestV2(
   return await getTweetV2(tweetResponse.data.id, auth, optionsConfig);
 }
 
+/** X returns posts over 280 characters truncated in `text`; the full body is in `note_tweet.text`. */
+export function fullTweetText(tweet: TweetV2): string {
+  return tweet.note_tweet?.text ?? tweet.text ?? "";
+}
+
 export function parseTweetV2ToV1(
   tweetV2: TweetV2,
   includes?: ApiV2Includes,
 ): Tweet {
   const parsedTweet: Tweet = {
     id: tweetV2.id,
-    text: tweetV2.text ?? "",
+    text: fullTweetText(tweetV2),
     hashtags: tweetV2.entities?.hashtags?.map((tag) => tag.tag) ?? [],
     mentions:
       tweetV2.entities?.mentions?.map((mention) => ({
@@ -522,22 +529,30 @@ export function parseTweetV2ToV1(
 
   // Process Polls
   if (includes?.polls?.length) {
-    const poll = includes.polls[0];
-    parsedTweet.poll = {
-      id: poll.id,
-      end_datetime: poll.end_datetime,
-      options: poll.options.map((option) => ({
-        position: option.position,
-        label: option.label,
-        votes: option.votes,
-      })),
-      voting_status: poll.voting_status,
-    };
+    const pollId = tweetV2.attachments?.poll_ids?.[0];
+    const poll = pollId
+      ? includes.polls.find((p) => p.id === pollId)
+      : undefined;
+    if (poll) {
+      parsedTweet.poll = {
+        id: poll.id,
+        end_datetime: poll.end_datetime,
+        options: poll.options.map((option) => ({
+          position: option.position,
+          label: option.label,
+          votes: option.votes,
+        })),
+        voting_status: poll.voting_status,
+      };
+    }
   }
 
   // Process Media (photos and videos)
-  if (includes?.media?.length) {
+  // includes.media is response-scoped; only attach media this tweet references.
+  const mediaKeys = new Set(tweetV2.attachments?.media_keys ?? []);
+  if (includes?.media?.length && mediaKeys.size > 0) {
     includes.media.forEach((media: MediaObjectV2) => {
+      if (!mediaKeys.has(media.media_key)) return;
       if (media.type === "photo") {
         parsedTweet.photos.push({
           id: media.media_key,
@@ -655,7 +670,7 @@ export async function fetchListTweets(
 
   try {
     const response = await client.v2.listTweets(listId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_USER_TWEETS_MIN_RESULTS),
       "tweet.fields": [
         "id",
         "text",
@@ -665,6 +680,7 @@ export async function fetchListTweets(
         "entities",
         "public_metrics",
         "attachments",
+        "note_tweet",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
@@ -924,7 +940,7 @@ export async function fetchLikedTweets(
 
   try {
     const response = await client.v2.userLikedTweets(userId, {
-      max_results: Math.min(maxTweets, 100),
+      max_results: maxResultsFor(maxTweets, X_USER_TWEETS_MIN_RESULTS),
       "tweet.fields": [
         "id",
         "text",
@@ -934,6 +950,7 @@ export async function fetchLikedTweets(
         "entities",
         "public_metrics",
         "attachments",
+        "note_tweet",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],
@@ -1044,6 +1061,7 @@ export async function getTweet(
         "public_metrics",
         "attachments",
         "conversation_id",
+        "note_tweet",
       ],
       "user.fields": ["id", "name", "username", "profile_image_url"],
       "media.fields": ["url", "preview_image_url", "type"],

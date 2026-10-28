@@ -88,6 +88,13 @@ interface SpeakerBuffer {
   lastAudioTimestampMs: number;
   /** Whether a final idle/flush submission was already made. */
   idleSubmitted: boolean;
+  /**
+   * Samples sent in a hard-cap final submission (0 = none). Its result is
+   * emitted and only these samples are dropped; audio fed meanwhile stays.
+   */
+  capSubmittedSamples: number;
+  /** A flush arrived while the hard-cap submission was in flight. */
+  flushAfterCap: boolean;
   /** Bumped on full reset — stale in-flight results are discarded. */
   generation: number;
   /** Last confirmed text — ASR prompt for context continuity + dedup. */
@@ -154,6 +161,8 @@ export class SpeakerStreamManager {
       sequenceNumber: 0,
       lastAudioTimestampMs: now,
       idleSubmitted: false,
+      capSubmittedSamples: 0,
+      flushAfterCap: false,
       generation: 0,
       lastConfirmedText: "",
     });
@@ -215,6 +224,27 @@ export class SpeakerStreamManager {
     if (submitGen !== undefined && submitGen < buffer.generation) return;
 
     buffer.inFlight = false;
+
+    // Hard-cap final submission: emit what it heard, then drop exactly the
+    // submitted audio and keep transcribing whatever arrived since.
+    if (buffer.capSubmittedSamples > 0) {
+      const submitted = buffer.capSubmittedSamples;
+      buffer.capSubmittedSamples = 0;
+      const text = transcript?.trim() ?? "";
+      if (text)
+        this.emitSegment(buffer, text, this.absoluteWords(buffer, segments));
+      buffer.windowStartMs += Math.floor((submitted / this.sampleRate) * 1000);
+      buffer.confirmedSamples = submitted;
+      this.trimBuffer(buffer);
+      buffer.lastTranscript = "";
+      buffer.confirmCount = 0;
+      buffer.lastWords = [];
+      if (buffer.flushAfterCap) {
+        buffer.flushAfterCap = false;
+        void this.flushSpeaker(speakerKey);
+      }
+      return;
+    }
 
     if (!transcript || transcript.trim().length === 0) {
       if (buffer.idleSubmitted) this.fullReset(buffer);
@@ -417,6 +447,13 @@ export class SpeakerStreamManager {
     const buffer = this.buffers.get(speakerKey);
     if (!buffer) return;
 
+    // A hard-cap submission carries speech nothing else has transcribed; a
+    // reset now would discard its result as stale. Flush once it lands.
+    if (buffer.inFlight && buffer.capSubmittedSamples > 0) {
+      buffer.flushAfterCap = true;
+      return;
+    }
+
     if (buffer.lastTranscript) {
       this.emitSegment(buffer, buffer.lastTranscript, []);
       this.fullReset(buffer);
@@ -506,8 +543,20 @@ export class SpeakerStreamManager {
             `[MeetingPipeline] Hard-cap force-flush for "${buffer.speakerName}" (${totalSec.toFixed(1)}s > ${this.maxBufferDurationSec}s)`,
           );
           this.emitSegment(buffer, buffer.lastTranscript, []);
+          this.fullReset(buffer);
+          return;
         }
-        this.fullReset(buffer);
+        // No interim transcript (cloud ASR transcribes only final windows):
+        // transcribe the window once instead of discarding the speech.
+        logger.debug(
+          `[MeetingPipeline] Hard-cap final submit for "${buffer.speakerName}" (${totalSec.toFixed(1)}s > ${this.maxBufferDurationSec}s)`,
+        );
+        // Mark the window submitted only if the submission actually went out:
+        // submitBuffer no-ops without a consumer and swallows a throwing
+        // consumer, and a stuck capSubmittedSamples wedges the buffer forever.
+        if (this.submitBuffer(buffer, "final")) {
+          buffer.capSubmittedSamples = this.unconfirmedSamples(buffer);
+        }
         return;
       }
       this.trimBuffer(buffer);
@@ -522,9 +571,9 @@ export class SpeakerStreamManager {
   private submitBuffer(
     buffer: SpeakerBuffer,
     purpose: AsrSubmissionPurpose,
-  ): void {
+  ): boolean {
     const unconfirmed = this.unconfirmedSamples(buffer);
-    if (unconfirmed === 0 || !this.onSegmentReady) return;
+    if (unconfirmed === 0 || !this.onSegmentReady) return false;
 
     const combined = new Float32Array(unconfirmed);
     let dstOffset = 0;
@@ -552,9 +601,11 @@ export class SpeakerStreamManager {
         purpose,
         buffer.generation,
       );
+      return true;
     } catch (err) {
       buffer.inFlight = false;
       logger.error({ err }, "[MeetingPipeline] onSegmentReady threw");
+      return false;
     }
   }
 
@@ -652,6 +703,8 @@ export class SpeakerStreamManager {
     buffer.windowStartMs = this.now();
     buffer.lastAudioTimestampMs = this.now();
     buffer.idleSubmitted = false;
+    buffer.capSubmittedSamples = 0;
+    buffer.flushAfterCap = false;
     buffer.generation++;
   }
 }

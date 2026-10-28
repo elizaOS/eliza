@@ -15,6 +15,7 @@ public final class NoticeDelivery {
   /** Approval notices use their own high-importance channel, which the owner can mute separately. */
   default boolean approvalsAllowed(){return allowed();}
   default void postApproval(String id,String title,String body,long timeoutMs)throws Exception{throw new UnsupportedOperationException("Approval notices unavailable");}
+  default void postApprovalQuiet(String id,String title,String body,long timeoutMs)throws Exception{throw new UnsupportedOperationException("Quiet approval notices unavailable");}
   default void cancel(String id){}
  }
  /** Immutable host inputs. Keep deployed slot names when adopting the shared ledger. */
@@ -42,7 +43,7 @@ public final class NoticeDelivery {
  }
  private JSONObject ledger()throws Exception{String raw=storage.read(config.noticeSlot);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>512)throw new IllegalStateException("Notification receipt capacity exceeded");return ledger;}
  private String retained(JSONObject ledger,JSONObject record,String id,String binding,String digest,String title,String body)throws Exception{
-  if(record.length()!=3||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown").contains(record.getString("status")))throw new IllegalStateException("Notification receipt mismatch");
+  if(record.length()!=3||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Notification receipt mismatch");
   if(Set.of("applying","unknown").contains(record.getString("status"))){String status=poster.matches(id,title,body)?"succeeded":"unknown";if(!status.equals(record.getString("status"))){record.put("status",status);storage.write(config.noticeSlot,ledger.toString());}}
   return record.getString("status");
  }
@@ -60,7 +61,7 @@ public final class NoticeDelivery {
  }}
  private JSONObject approvals()throws Exception{String raw=storage.read(config.approvalSlot);JSONObject ledger=raw==null?new JSONObject():new JSONObject(raw);if(ledger.length()>256)throw new IllegalStateException("Approval notice capacity exceeded");return ledger;}
  private static void approvalRecord(JSONObject record,String binding,String digest)throws Exception{
-  if(record.length()!=4||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn").contains(record.getString("status")))throw new IllegalStateException("Approval notice receipt mismatch");
+  if(record.length()!=4||!binding.equals(record.getString("binding"))||!digest.equals(record.getString("digest"))||!Set.of("applying","succeeded","failed","unknown","withdrawn","suspended").contains(record.getString("status")))throw new IllegalStateException("Approval notice receipt mismatch");
   Object at=record.get("expiresAt");if(!(at instanceof Integer||at instanceof Long))throw new IllegalStateException("Approval notice receipt mismatch");
  }
  /** One redacted notice per pending phone-step approval ID, posted at most once and never after a decision withdrew it. */
@@ -82,6 +83,40 @@ public final class NoticeDelivery {
   storage.write(config.approvalSlot,ledger.toString()); // A committed intent precedes every OS effect.
   if(record.getString("status").equals("failed"))return "failed";
   try{poster.postApproval(id,config.approvalTitle,config.approvalBody,timeout);record.put("status",poster.matches(id,config.approvalTitle,config.approvalBody)?"succeeded":"unknown");}
+  catch(Exception failure){record.put("status","unknown");}
+  storage.write(config.approvalSlot,ledger.toString());return record.getString("status");
+ }}
+ /** Privacy withdrawal of a result notice is terminal; retained history is not changed. */
+ public void withdraw(String id)throws Exception{synchronized(LOCK){
+  JSONObject ledger=ledger(),record=ledger.optJSONObject(id);
+  if(record!=null){record.put("status","withdrawn");storage.write(config.noticeSlot,ledger.toString());}
+  poster.cancel(id);
+ }}
+ /** Suspend only a confirmed, still-visible approval. Unknown/dismissed notices remain terminal.
+  * The host must separately revalidate the pending operation before calling resumeApproval. */
+ public boolean suspendApproval(String id,long now)throws Exception{synchronized(LOCK){
+  if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
+  JSONObject ledger=approvals(),record=ledger.optJSONObject(id);boolean resumable=false;
+  if(record!=null){
+   String status=record.getString("status");
+   resumable=record.getLong("expiresAt")>now&&(status.equals("suspended")||status.equals("succeeded")&&poster.matches(id,config.approvalTitle,config.approvalBody));
+   record.put("status",resumable?"suspended":"withdrawn");storage.write(config.approvalSlot,ledger.toString());
+  }
+  poster.cancel(id);return resumable;
+ }}
+ /** Explicit host-revalidated quiet repost; immutable identity and expiry still have to match.
+  * Committing applying before dispatch preserves uncertainty rather than replay after a crash. */
+ public String resumeApproval(String id,String binding,long expiresAt,long now)throws Exception{synchronized(LOCK){
+  if(!approvalId(id))throw new IllegalArgumentException("Invalid approval notice identity");
+  String digest=identity(id,binding,config.approvalTitle,config.approvalBody);long timeout=approvalTimeout(expiresAt,now);
+  JSONObject ledger=approvals(),record=ledger.optJSONObject(id);
+  if(record==null)return "withdrawn";
+  if(!"suspended".equals(record.optString("status")))return publishApproval(id,binding,expiresAt,now);
+  approvalRecord(record,binding,digest);if(expiresAt!=record.getLong("expiresAt"))throw new IllegalStateException("Approval notice expiry changed");
+  if(timeout<=0){withdrawApproval(id,now);return "expired";}
+  if(!poster.approvalsAllowed())return "suspended";
+  record.put("status","applying");storage.write(config.approvalSlot,ledger.toString());
+  try{poster.postApprovalQuiet(id,config.approvalTitle,config.approvalBody,timeout);record.put("status",poster.matches(id,config.approvalTitle,config.approvalBody)?"succeeded":"unknown");}
   catch(Exception failure){record.put("status","unknown");}
   storage.write(config.approvalSlot,ledger.toString());return record.getString("status");
  }}

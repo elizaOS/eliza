@@ -1,7 +1,7 @@
 /**
  * eliza.app home page once Eliza is The Network's agent. Mounted as the
  * CloudRouterShell `marketingHomeElement` only when NETWORK_HOME_ENABLED
- * (VITE_NETWORK_HOME=1); the wording is a DRAFT pending founder approval.
+ * (VITE_NETWORK_HOME=1); the founder approved the wording on 2026-10-11.
  */
 import { useEffect } from "react";
 import {

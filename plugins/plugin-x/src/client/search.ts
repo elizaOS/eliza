@@ -8,7 +8,7 @@ import type { QueryTweetsResponse } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
 import { maxResultsFor, X_RECENT_SEARCH_MIN_RESULTS } from "./request-limits";
-import type { Tweet } from "./tweets";
+import { fullTweetText, type Tweet } from "./tweets";
 
 /**
  * The categories that can be used in Twitter searches.
@@ -48,6 +48,7 @@ const SEARCH_TWEET_QUERY: Partial<Tweetv2SearchParams> = {
     "entities",
     "public_metrics",
     "attachments",
+    "note_tweet",
   ],
   "user.fields": ["id", "name", "username", "profile_image_url"],
   "media.fields": ["url", "preview_image_url", "type"],
@@ -90,7 +91,7 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
 
   return {
     id: tweet.id,
-    text: tweet.text || "",
+    text: fullTweetText(tweet),
     timestamp: tweet.created_at
       ? new Date(tweet.created_at).getTime()
       : Date.now(),
@@ -110,7 +111,7 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
     inReplyToStatus: inReplyToStatus
       ? {
           id: inReplyToStatus.id,
-          text: inReplyToStatus.text || "",
+          text: fullTweetText(inReplyToStatus),
           userId: inReplyToStatus.author_id || "",
           name: inReplyToAuthor?.name || "",
           username: inReplyToAuthor?.username || "",

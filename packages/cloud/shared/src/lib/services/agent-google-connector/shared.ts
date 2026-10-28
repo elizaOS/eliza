@@ -7,6 +7,7 @@ import { platformCredentials } from "../../../db/schemas/platform-credentials";
 import { boundedProviderFetch } from "../../utils/bounded-provider-fetch";
 import type { GmailMessageLink } from "../../utils/gmail-mime-text";
 import { googleFetchWithToken } from "../../utils/google-mcp-shared";
+import { NO_FOLLOW_REDIRECT, withoutRedirects } from "../../utils/no-redirect-fetch";
 import { oauthService } from "../oauth";
 import { getPreferredActiveConnection } from "../oauth/oauth-service";
 import { getProvider, isProviderConfigured } from "../oauth/provider-registry";
@@ -111,13 +112,21 @@ export interface ManagedGoogleGmailReadResult {
   attachments?: GoogleGmailAttachment[];
   message: ManagedGoogleGmailMessage;
   bodyText: string;
+  bodyHtml: string | null;
+  bodyHtmlStatus: "available" | "none" | "too-large" | "owner-only";
   /** Inert http(s) anchors from the HTML parts; clients review them before opening. */
   links?: GmailMessageLink[];
 }
 
 export interface ManagedGoogleGmailSearchResult {
+  supportsSpamTrash: boolean;
   nextPageToken?: string | null;
   messages: ManagedGoogleGmailMessage[];
+  /**
+   * Gmail mailbox historyId read before a search page. When two pages of one
+   * search report different values, the mailbox changed between them.
+   */
+  mailboxHistoryId?: string;
   syncedAt: string;
 }
 
@@ -422,10 +431,16 @@ export async function googleFetch(
         args.url,
         {
           ...args.options,
-          redirect: "error",
+          redirect: NO_FOLLOW_REDIRECT,
           headers: { ...args.options?.headers, Authorization: `Bearer ${accessToken}` },
         },
-        { provider: "google", timeoutMs: 30000, maxResponseBytes: args.maxResponseBytes },
+        {
+          provider: "google",
+          timeoutMs: 30000,
+          maxResponseBytes: args.maxResponseBytes,
+          // Never follow a redirect with the bearer token: a 3xx rejects (502).
+          fetchImpl: withoutRedirects(),
+        },
       );
       if (!response.ok) fail(502, "Google request failed.");
       return response;

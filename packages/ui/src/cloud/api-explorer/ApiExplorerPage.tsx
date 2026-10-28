@@ -14,6 +14,7 @@ import {
   API_ENDPOINTS,
   type ApiEndpoint,
   type EndpointPricing,
+  formatEndpointPrice,
   generateOpenAPISpec,
   generateOpenAPIYAML,
   getAvailableCategories,
@@ -104,15 +105,6 @@ function getMethodColor(method: string) {
   }
 }
 
-function formatPrice(pricing: ApiEndpoint["pricing"]) {
-  if (!pricing) return null;
-  if (pricing.isFree) return "Free";
-  if (pricing.isVariable && pricing.estimatedRange) {
-    return `$${pricing.estimatedRange.min.toFixed(3)} - $${pricing.estimatedRange.max.toFixed(2)}`;
-  }
-  return `$${pricing.cost.toFixed(pricing.cost < 0.01 ? 4 : 2)}`;
-}
-
 function getPricingIcon(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return null;
   if (pricing.isFree)
@@ -150,7 +142,7 @@ export function ApiExplorerSurface() {
   useDocumentTitle("API Explorer");
 
   const [activeTab, setActiveTab] = useState<TabValue>("endpoints");
-  const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint | null>(
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
@@ -174,6 +166,10 @@ export function ApiExplorerSurface() {
     ...endpoint,
     pricing: livePricing[endpoint.id] ?? endpoint.pricing,
   }));
+  const selectedEndpoint =
+    endpointsWithLivePricing.find(
+      (endpoint) => endpoint.id === selectedEndpointId,
+    ) ?? null;
   const filteredEndpoints = endpointsWithLivePricing.filter((endpoint) => {
     const categoryMatches =
       selectedCategory === "All" || endpoint.category === selectedCategory;
@@ -264,7 +260,7 @@ export function ApiExplorerSurface() {
               <Button
                 variant="ghostMuted"
                 type="button"
-                onClick={() => setSelectedEndpoint(null)}
+                onClick={() => setSelectedEndpointId(null)}
               >
                 <ChevronLeft className="size-4" />
                 Back to endpoints
@@ -278,7 +274,7 @@ export function ApiExplorerSurface() {
                     )}
                   >
                     {getPricingIcon(selectedEndpoint.pricing)}
-                    <span>{formatPrice(selectedEndpoint.pricing)}</span>
+                    <span>{formatEndpointPrice(selectedEndpoint.pricing)}</span>
                     {!selectedEndpoint.pricing.isFree && (
                       <span className="opacity-70">
                         /{selectedEndpoint.pricing.unit}
@@ -428,7 +424,7 @@ export function ApiExplorerSurface() {
                   <EndpointCard
                     key={endpoint.id}
                     endpoint={endpoint}
-                    onSelect={setSelectedEndpoint}
+                    onSelect={(endpoint) => setSelectedEndpointId(endpoint.id)}
                     getMethodColor={getMethodColor}
                     getCategoryIcon={getCategoryIcon}
                   />

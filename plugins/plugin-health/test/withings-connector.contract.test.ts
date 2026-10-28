@@ -240,4 +240,32 @@ describe("Withings connector — recorded real API contract", () => {
       }
     }
   });
+
+  it("files a weigh-in under the user's local day from the measures timezone", async () => {
+    // 2026-10-14T22:30:00Z is 07:30 on 2026-10-15 in Tokyo.
+    const measures = structuredClone(recorded.measures) as {
+      body: { timezone: string; measuregrps: Array<{ date: number }> };
+    };
+    measures.body.timezone = "Asia/Tokyo";
+    const tokyoMorning = Date.parse("2026-10-14T22:30:00Z") / 1000;
+    for (const group of measures.body.measuregrps) group.date = tokyoMorning;
+    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/v2/measure")) return jsonResponse(recorded.activity);
+      if (url.includes("/v2/sleep")) return jsonResponse(recorded.sleep);
+      if (url.includes("/measure")) return jsonResponse(measures);
+      throw new Error(`unexpected Withings fetch: ${url}`);
+    });
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-withings",
+      startDate: "2026-10-14",
+      endDate: "2026-10-15",
+    });
+
+    const weight = payload.samples.find((s) => s.metric === "weight_kg");
+    expect(weight?.startAt).toBe("2026-10-14T22:30:00.000Z");
+    expect(weight?.localDate).toBe("2026-10-15");
+  });
 });

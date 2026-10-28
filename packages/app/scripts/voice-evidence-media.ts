@@ -1298,7 +1298,7 @@ export function assertLiveMatrixReport(matrix, head, expectedSession) {
     matrix?.summary?.skip !== 0 ||
     !Array.isArray(matrix?.cells) ||
     matrix.cells.length !== 1 ||
-    matrix.cells[0]?.id !== "web.live.railway-roundtrip" ||
+    matrix.cells[0]?.id !== "web.live.cloudflare-roundtrip" ||
     matrix.cells[0]?.platform !== "web" ||
     matrix.cells[0]?.status !== "pass" ||
     matrix.cells[0]?.probe?.available !== true ||
@@ -1308,7 +1308,7 @@ export function assertLiveMatrixReport(matrix, head, expectedSession) {
     matrix.cells[0]?.execution?.code !== "COMMAND_PASSED"
   ) {
     throw new Error(
-      "Live matrix report is not the revision- and session-bound Railway cell pass.",
+      "Live matrix report is not the revision- and session-bound Cloudflare cell pass.",
     );
   }
 }

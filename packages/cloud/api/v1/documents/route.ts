@@ -14,6 +14,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import {
+  countDocumentRecords,
   createDocumentRecord,
   listDocumentRecords,
   resolveDocumentScope,
@@ -44,13 +45,12 @@ app.get("/", async (c) => {
 
     const limit = parseClampedLimit(c.req.query("limit"), 100, 200);
     const offset = parseClampedOffset(c.req.query("offset"), 0);
-    const documents = await listDocumentRecords(scope, limit, offset);
+    const [documents, total] = await Promise.all([
+      listDocumentRecords(scope, limit, offset),
+      countDocumentRecords(scope),
+    ]);
 
-    return c.json({
-      success: true,
-      documents,
-      total: documents.length,
-    });
+    return c.json({ success: true, documents, total });
   } catch (error) {
     logger.error("[DocumentsRoute] Failed to list documents", {
       error:

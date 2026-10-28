@@ -470,7 +470,7 @@ export async function getDiscordDesktopCdpStatus(
       fetchJson<unknown[]>(
         `${baseUrl}/json/list`,
         DISCORD_DESKTOP_FETCH_TIMEOUT_MS,
-      ).catch(() => []),
+      ),
     ]);
     const targets = rawTargets
       .map((target) => normalizeCdpTarget(target))

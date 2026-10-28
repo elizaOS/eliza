@@ -57,6 +57,7 @@
 //   uniformly.
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -313,20 +314,137 @@ export function buildLoaderWrapForAbi({
   return out;
 }
 
-/**
- * Locate compiled shim artifacts for a given ABI under the cache dir.
- * Returns absolute paths when both the shim and the loader-wrap exist;
- * `null` when either is missing (callers should fall back to the
- * legacy no-shim path on that ABI).
- */
-export function locateCompiledShim({ cacheDir, abi }) {
+const BUILD_RECEIPT = "build-receipt.json";
+const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/** Cache identity includes the recipe and toolchain policy, not just C timestamps. */
+function sourceIdentity(abi, zigVersion) {
+  const target = SHIM_ABI_TARGETS.find((t) => t.androidAbi === abi);
+  if (!target) throw new Error(`Unknown shim ABI: ${abi}`);
+  const sources = Object.fromEntries(
+    [
+      `seccomp-shim/${target.shimSource}`,
+      "seccomp-shim/preserve-sigsys.h",
+      "seccomp-shim/loader-wrap.c",
+      "compile-shim.ts",
+      "zig-toolchain.ts",
+      "compile-libllama-paths.ts",
+    ].map((name) => [name, sha256(fs.readFileSync(path.join(here, name)))]),
+  );
+  return {
+    schemaVersion: 1,
+    abi,
+    target: target.zigTarget,
+    zigVersion,
+    sources,
+  };
+}
+
+/** Only a completed pair built from these source bytes is reusable. Legacy caches rebuild. */
+export function locateCompiledShim({ cacheDir, abi, zigVersion = "0.13.0" }) {
   const target = SHIM_ABI_TARGETS.find((t) => t.androidAbi === abi);
   if (!target) return null;
   const abiCacheDir = path.join(cacheDir, abi);
   const shim = path.join(abiCacheDir, "libsigsys-handler.so");
   const wrap = path.join(abiCacheDir, target.realLoaderName);
-  if (!fs.existsSync(shim) || !fs.existsSync(wrap)) return null;
-  return { shim, wrap, realLoaderName: target.realLoaderName };
+  try {
+    const receipt = JSON.parse(
+      fs.readFileSync(path.join(abiCacheDir, BUILD_RECEIPT), "utf8"),
+    );
+    if (
+      JSON.stringify(receipt.identity) !==
+      JSON.stringify(sourceIdentity(abi, zigVersion))
+    )
+      return null;
+    const shimBytes = fs.readFileSync(shim);
+    const wrapBytes = fs.readFileSync(wrap);
+    if (
+      !shimBytes.length ||
+      !wrapBytes.length ||
+      receipt.outputs?.shim !== sha256(shimBytes) ||
+      receipt.outputs?.wrap !== sha256(wrapBytes)
+    )
+      return null;
+    // Staging must use this admitted snapshot: another worktree can rebuild
+    // the shared cache after validation, before the caller consumes it.
+    return {
+      shim,
+      wrap,
+      shimBytes,
+      wrapBytes,
+      realLoaderName: target.realLoaderName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Compile both outputs before publishing their source-bound receipt. Never bless existing files. */
+export function buildCompiledShim({
+  cacheDir,
+  abi,
+  zigVersion,
+  zigBin = "zig",
+  log = console.log,
+  spawn = run,
+}) {
+  const identity = sourceIdentity(abi, zigVersion);
+  assertZigPinForTargets({
+    version: zigVersion,
+    zigTriples: [identity.target],
+  });
+  const directory = path.join(cacheDir, abi);
+  fs.mkdirSync(directory, { recursive: true });
+  const receiptPath = path.join(directory, BUILD_RECEIPT);
+  fs.rmSync(receiptPath, { force: true });
+  const staging = fs.mkdtempSync(path.join(cacheDir, `.build-${abi}-`));
+  try {
+    const shim = buildSigsysShimForAbi({
+      cacheDir: staging,
+      abi,
+      shimSourcePath: undefined,
+      zigBin,
+      log,
+      spawn,
+    });
+    const wrap = buildLoaderWrapForAbi({
+      cacheDir: staging,
+      abi,
+      zigBin,
+      log,
+      spawn,
+    });
+    if (
+      JSON.stringify(identity) !==
+      JSON.stringify(sourceIdentity(abi, zigVersion))
+    )
+      throw new Error(
+        "SIGSYS sources changed during compilation; rebuild required",
+      );
+    const receipt = {
+      identity,
+      outputs: {
+        shim: sha256(fs.readFileSync(shim)),
+        wrap: sha256(fs.readFileSync(wrap)),
+      },
+    };
+    const finalShim = path.join(directory, path.basename(shim));
+    const finalWrap = path.join(directory, path.basename(wrap));
+    fs.copyFileSync(shim, finalShim);
+    fs.copyFileSync(wrap, finalWrap);
+    const temporary = `${receiptPath}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(temporary, `${JSON.stringify(receipt)}\n`, {
+        flag: "wx",
+      });
+      fs.renameSync(temporary, receiptPath);
+    } finally {
+      fs.rmSync(temporary, { force: true });
+    }
+    return { shim: finalShim, wrap: finalWrap };
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -352,16 +470,19 @@ export async function main(argv = process.argv.slice(2)) {
 
   for (const abi of args.abis) {
     if (args.skipIfPresent) {
-      const located = locateCompiledShim({ cacheDir: args.cacheDir, abi });
+      const located = locateCompiledShim({
+        cacheDir: args.cacheDir,
+        abi,
+        zigVersion,
+      });
       if (located) {
         console.log(
-          `[compile-shim] ${abi}: already present at ${located.shim} + ${located.wrap}; skipping.`,
+          `[compile-shim] ${abi}: current source build at ${located.shim} + ${located.wrap}; skipping.`,
         );
         continue;
       }
     }
-    buildSigsysShimForAbi({ cacheDir: args.cacheDir, abi });
-    buildLoaderWrapForAbi({ cacheDir: args.cacheDir, abi });
+    buildCompiledShim({ cacheDir: args.cacheDir, abi, zigVersion });
   }
   console.log(
     `[compile-shim] Built SIGSYS shim + loader-wrap for ${args.abis.join(", ")}.`,

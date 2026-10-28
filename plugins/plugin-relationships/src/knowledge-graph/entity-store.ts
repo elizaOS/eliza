@@ -17,6 +17,8 @@ import {
   type LifeOpsEntityState as EntityState,
   type LifeOpsEntityVisibility as EntityVisibility,
   normalizeEntityConnectorAccountId,
+  normalizeEntityIdentityHandle,
+  normalizeEntityIdentityPlatform,
   SELF_ENTITY_ID,
 } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -37,6 +39,7 @@ import {
   type GraphRecordRepository,
   graphRecordRepository,
 } from "./record-repository.ts";
+import { RelationshipStore } from "./relationship-store.ts";
 import {
   executeRawSql,
   parseJsonArray,
@@ -596,18 +599,27 @@ export class EntityStore {
     }
     let entities = await this.listOperation(filters);
     if (query.identity) {
-      const platformKey = query.identity.platform.toLowerCase();
-      const handleKey = query.identity.handle.toLowerCase();
+      const platformKey = normalizeEntityIdentityPlatform(
+        query.identity.platform,
+      );
+      const handleKey = normalizeEntityIdentityHandle(
+        query.identity.platform,
+        query.identity.handle,
+      );
       const accountKey = normalizeEntityConnectorAccountId(
         query.identity.connectorAccountId,
       );
       entities = entities.filter((entity) =>
         entity.identities.some(
           (identity) =>
-            identity.platform.toLowerCase() === platformKey &&
+            normalizeEntityIdentityPlatform(identity.platform) ===
+              platformKey &&
             normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
               accountKey &&
-            identity.handle.toLowerCase() === handleKey,
+            normalizeEntityIdentityHandle(
+              identity.platform,
+              identity.handle,
+            ) === handleKey,
         ),
       );
     }
@@ -617,16 +629,27 @@ export class EntityStore {
         let confidence = 0;
         let safeToSend = false;
         if (query.identity) {
+          const queryIdentity = query.identity;
+          const platformKey = normalizeEntityIdentityPlatform(
+            queryIdentity.platform,
+          );
+          const handleKey = normalizeEntityIdentityHandle(
+            queryIdentity.platform,
+            queryIdentity.handle,
+          );
+          const accountKey = normalizeEntityConnectorAccountId(
+            queryIdentity.connectorAccountId,
+          );
           const match = entity.identities.find(
             (identity) =>
-              identity.platform.toLowerCase() ===
-                query.identity?.platform.toLowerCase() &&
+              normalizeEntityIdentityPlatform(identity.platform) ===
+                platformKey &&
               normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
-                normalizeEntityConnectorAccountId(
-                  query.identity.connectorAccountId,
-                ) &&
-              identity.handle.toLowerCase() ===
-                query.identity.handle.toLowerCase(),
+                accountKey &&
+              normalizeEntityIdentityHandle(
+                identity.platform,
+                identity.handle,
+              ) === handleKey,
           );
           if (match) {
             confidence = match.confidence;
@@ -776,6 +799,15 @@ export class EntityStore {
       if (source) sources.push(source);
     }
     const now = isoNow();
+    // The target's own edges win when a moved edge duplicates one of them:
+    // callers address the target's edges by id (for example its contact edge).
+    const relationships = new RelationshipStore(this.runtime, this.agentId);
+    const keepIds = new Set(
+      [
+        ...(await relationships.list({ fromEntityId: targetId })),
+        ...(await relationships.list({ toEntityId: targetId })),
+      ].map((edge) => edge.relationshipId),
+    );
     const merged = mergeEntities({ target, sources, now });
     const persisted = await this.upsertInternal({
       ...merged,
@@ -823,6 +855,7 @@ export class EntityStore {
             AND entity_id = ${sqlQuote(source.entityId)}`,
       );
     }
+    await relationships.foldMergedEdges(targetId, keepIds);
     return persisted;
   }
   /**

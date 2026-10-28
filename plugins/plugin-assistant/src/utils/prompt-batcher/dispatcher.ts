@@ -173,19 +173,17 @@ export class PromptDispatcher {
           const tokenLimit = this._packingTokenLimit(priority);
           let current: ResolvedSection[] = [];
           let tokenCount = 0;
-          let fieldCount = 0;
 
           for (const item of packable) {
             const nextTokens = tokenCount + item.estimatedTokens;
-            const nextFieldCount = fieldCount + item.schemaFieldCount;
             const exceedsTokens = nextTokens > tokenLimit;
-            const exceedsFields =
-              nextFieldCount > this.settings.maxSectionsPerCall;
+            const exceedsSections =
+              current.length + 1 > this.settings.maxSectionsPerCall;
             const exceedsPromptSafety = nextTokens > 8192;
 
             if (
               current.length > 0 &&
-              (exceedsTokens || exceedsFields || exceedsPromptSafety)
+              (exceedsTokens || exceedsSections || exceedsPromptSafety)
             ) {
               callPlans.push({
                 sections: current,
@@ -195,12 +193,10 @@ export class PromptDispatcher {
               });
               current = [];
               tokenCount = 0;
-              fieldCount = 0;
             }
 
             current.push(item);
             tokenCount += item.estimatedTokens;
-            fieldCount += item.schemaFieldCount;
           }
 
           if (current.length > 0) {

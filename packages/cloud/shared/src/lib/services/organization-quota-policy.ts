@@ -1,14 +1,18 @@
 /** Resolves organization policy from one primary transaction for observation, inference and resource admission. */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { type DbTransaction, dbWrite } from "../../db/client";
-import { readPrimaryOrganizationSubscription } from "../../db/repositories/account-billing-snapshot-subscription";
+import { readPrimaryOrganizationSubscriptionSource } from "../../db/repositories/account-billing-snapshot-subscription";
+import { readConfiguredCancellationAuthority } from "../../db/repositories/configured-schedule-cancellation-authority";
 import {
   deriveSubscriptionEntitlementValues,
   SUBSCRIPTION_FREE_ENTITLEMENT_VALUES,
 } from "../../db/repositories/subscription-entitlements";
 import {
-  billingSubscriptionRevisions,
+  grantEntitlementPlanValues,
+  readActiveSubscriptionGrant,
+} from "../../db/repositories/subscription-grants";
+import {
   billingSubscriptions,
   organizationSubscriptionAuthorities,
 } from "../../db/schemas/billing-subscriptions";
@@ -16,7 +20,12 @@ import { creditTransactions } from "../../db/schemas/credit-transactions";
 import { orgRateLimitOverrides } from "../../db/schemas/org-rate-limit-overrides";
 import { orgStorageQuota } from "../../db/schemas/org-storage-quota";
 import { organizationConfig } from "../../db/schemas/organization-config";
+import {
+  type OrganizationEntitlement,
+  organizationEntitlements,
+} from "../../db/schemas/organization-entitlements";
 import { organizations } from "../../db/schemas/organizations";
+import { subscriptionGrants } from "../../db/schemas/subscription-grants";
 import { getMaxNonTerminalAgentsForOrg } from "../constants/agent-sandbox-quota";
 import { getMaxAppsPerOrg } from "../constants/app-quota";
 import { resolveMaxCloudCharactersForOrg } from "../constants/cloud-character-quota";
@@ -35,8 +44,10 @@ import { withSubscriptionPaymentGrace } from "./subscription-payment-grace";
 
 export interface OrganizationPolicyStamp {
   generation: string;
-  source: "legacy" | "subscription";
+  source: "legacy" | "subscription" | "promo_grant";
   sourceSubscriptionId: string | null;
+  /** The redeemed subscription grant serving a `promo_grant` policy. */
+  sourceGrantId?: string | null;
   sourceRevision: string | null;
   projectionRevision: string | null;
   catalogVersion: string | null;
@@ -195,188 +206,44 @@ const purchasedCreditTierAmount = sql`CASE
   ELSE 0
 END`;
 
-export async function readOrganizationQuotaPolicyInTransaction(
-  tx: DbTransaction,
+type GrantedPlanValues = Pick<
+  OrganizationEntitlement,
+  | "plan_key"
+  | "catalog_version"
+  | "completions_rpm"
+  | "embeddings_rpm"
+  | "standard_rpm"
+  | "strict_rpm"
+  | "cloud_characters_ceiling"
+  | "agent_sandboxes_ceiling"
+  | "containers_ceiling"
+  | "storage_gib_ceiling"
+  | "apps_ceiling"
+>;
+
+/** Plan-shaped policy shared by paid subscriptions and subscription grants. */
+function entitlementShapedPolicy(
   organizationId: string,
-  observedAt?: Date,
-): Promise<OrganizationQuotaPolicy> {
-  // These rows are unique per organization. One statement keeps the policy
-  // inputs together without paying a separate database round trip for each.
-  const [inputs] = await tx
-    .select({
-      // Legacy policy has no expiry boundary to recheck after further reads.
-      // Observe its database clock with the policy inputs, not another round trip.
-      legacyObservedAt: sql<Date>`clock_timestamp()`,
-      org: {
-        balance: organizations.credit_balance,
-        revision: sql<string>`${organizations.balance_revision}::text`,
-        settings: organizations.settings,
-      },
-      association: organizationSubscriptionAuthorities,
-      override: {
-        // The row can exist with null RPM fields; retain its non-null join identity.
-        id: orgRateLimitOverrides.id,
-        completions_rpm: orgRateLimitOverrides.completions_rpm,
-        embeddings_rpm: orgRateLimitOverrides.embeddings_rpm,
-        standard_rpm: orgRateLimitOverrides.standard_rpm,
-        strict_rpm: orgRateLimitOverrides.strict_rpm,
-      },
-      config: { settings: organizationConfig.settings },
-      storage: {
-        bytes_limit: orgStorageQuota.bytes_limit,
-        limit_override_authorized: orgStorageQuota.limit_override_authorized,
-      },
-      // Correlated selectors preserve one policy row per organization. The
-      // legacy branch still rejects any persisted subscription, including a
-      // terminal one, and sums only net purchased credits (#23019).
-      legacyHasSubscription: sql<
-        boolean | null
-      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN EXISTS (
-        SELECT 1 FROM ${billingSubscriptions}
-        WHERE ${billingSubscriptions.organization_id} = ${organizations.id}
-      ) END`,
-      legacyCreditTotal: sql<
-        string | null
-      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN (
-        SELECT GREATEST(COALESCE(SUM(${purchasedCreditTierAmount}), 0), 0)::text
-        FROM ${creditTransactions}
-        WHERE ${creditTransactions.organization_id} = ${organizations.id}
-      ) END`,
-    })
-    .from(organizations)
-    .leftJoin(
-      organizationSubscriptionAuthorities,
-      eq(organizationSubscriptionAuthorities.organization_id, organizations.id),
-    )
-    .leftJoin(orgRateLimitOverrides, eq(orgRateLimitOverrides.organization_id, organizations.id))
-    .leftJoin(organizationConfig, eq(organizationConfig.organization_id, organizations.id))
-    .leftJoin(orgStorageQuota, eq(orgStorageQuota.organization_id, organizations.id))
-    .where(eq(organizations.id, organizationId));
-  if (!inputs || !inputs.association || inputs.association.state === "unavailable")
-    return unavailable(organizationId, "missing_account_authority");
-  const { org, association, override, config, storage } = inputs;
-  const balance = Number(org.balance);
-  const validBalance =
-    typeof org.balance === "string" &&
-    /^[+-]?(?:\d+|\d*\.\d+)$/.test(org.balance.trim()) &&
-    Number.isFinite(balance);
-  const base = {
-    overrides: {
-      completionsRpm: override?.completions_rpm ?? null,
-      embeddingsRpm: override?.embeddings_rpm ?? null,
-      standardRpm: override?.standard_rpm ?? null,
-      strictRpm: override?.strict_rpm ?? null,
-    },
-    balance: validBalance
-      ? { status: "available" as const, value: { balanceUsd: balance, revision: org.revision } }
-      : { status: "unavailable" as const, code: "invalid_balance" },
-  };
-  if (association.state === "none") {
-    if (inputs.legacyHasSubscription !== false)
-      return unavailable(organizationId, "legacy_association_conflict");
-    if (inputs.legacyCreditTotal === null)
-      return unavailable(organizationId, "missing_legacy_selector");
-    const creditTotal = inputs.legacyCreditTotal;
-    const now = observedAt ?? new Date(inputs.legacyObservedAt);
-    return {
-      ...base,
-      observedAt: now.toISOString(),
-      authority: {
-        generation: association.policy_generation.toString(),
-        source: "legacy",
-        sourceSubscriptionId: null,
-        sourceRevision: null,
-        projectionRevision: null,
-        catalogVersion: null,
-        effectiveFrom: new Date(0).toISOString(),
-        effectiveUntil: null,
-      },
-      tier: observe(
-        () =>
-          resolveOrgTierFromSourceValues(organizationId, creditTotal, override ?? undefined)
-            .tierData,
-      ),
-      tierSourceCreditTotal: creditTotal,
-      subscriptionFunded: false,
-      limits: {
-        characters: resource(() =>
-          limit(
-            resolveMaxCloudCharactersForOrg(validBalance ? balance : Number.NaN, org.settings)
-              .limit,
-            resolveMaxCloudCharactersForOrg(validBalance ? balance : Number.NaN, org.settings)
-              .source,
-          ),
-        ),
-        nonEagerSandboxes: limit(getMaxNonTerminalAgentsForOrg(undefined), "default_free_tier"),
-        sandboxes: resource(() =>
-          limit(
-            getMaxNonTerminalAgentsForOrg(validBalance ? balance : Number.NaN),
-            "legacy-sandbox-policy",
-          ),
-        ),
-        containers: resource(() =>
-          limit(
-            resolveMaxContainersForOrg(validBalance ? balance : Number.NaN, config?.settings).limit,
-            "legacy-container-policy",
-          ),
-        ),
-        apps: resource(() => limit(getMaxAppsPerOrg(), "legacy-app-policy")),
-        storage: limit(storage?.bytes_limit ?? 5n * 1024n * 1024n * 1024n, "legacy-storage-policy"),
-        apiKeys: limit(API_KEY_CEILINGS.free, "pay-as-you-go-policy"),
-      },
-    };
-  }
-  const current = await readPrimaryOrganizationSubscription(tx, organizationId);
-  if (current.state !== "current")
-    return unavailable(organizationId, "subscription_source_mismatch");
-  const entitlement = current.entitlement;
-  const [revision] = await tx
-    .select()
-    .from(billingSubscriptionRevisions)
-    .where(
-      and(
-        eq(billingSubscriptionRevisions.subscription_id, current.subscription.id),
-        eq(billingSubscriptionRevisions.organization_id, organizationId),
-        eq(billingSubscriptionRevisions.revision, current.subscription.lifecycle_revision),
-      ),
-    );
-  if (!revision) return unavailable(organizationId, "subscription_revision_unavailable");
-  const expected = deriveSubscriptionEntitlementValues(revision);
-  for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
-    const actualValue = entitlement[key];
-    const expectedValue = expected[key];
-    if (
-      actualValue instanceof Date && expectedValue instanceof Date
-        ? actualValue.getTime() !== expectedValue.getTime()
-        : actualValue !== expectedValue
-    )
-      return unavailable(organizationId, "subscription_projection_conflict");
-  }
-  const [clock] = await tx
-    .select({ now: sql<Date>`clock_timestamp()` })
-    .from(organizations)
-    .where(eq(organizations.id, organizationId));
-  if (!clock) return unavailable(organizationId, "missing_database_clock");
-  const now = observedAt ?? new Date(clock.now);
-  if (now < entitlement.effective_from)
-    return unavailable(organizationId, "entitlement_not_effective");
-  // Stripe settles renewals shortly after the stored period end, so an active
-  // paid projection keeps access through the shared payment grace. Past that
-  // boundary, or in a non-effective dunning state, the organization is served
-  // as the free tier rather than failing every policy read.
-  const paidUntil =
-    entitlement.effective_until !== null && entitlement.state === "active"
-      ? withSubscriptionPaymentGrace(entitlement.effective_until)
-      : entitlement.effective_until;
-  const lapsed = !entitlement.entitlement_effective || (paidUntil !== null && now >= paidUntil);
-  const granted = lapsed
-    ? { ...entitlement, ...SUBSCRIPTION_FREE_ENTITLEMENT_VALUES }
-    : entitlement;
-  const grantedFrom =
-    lapsed && entitlement.entitlement_effective && paidUntil !== null
-      ? paidUntil
-      : entitlement.effective_from;
-  const grantedUntil = lapsed ? null : paidUntil;
+  input: {
+    base: Pick<OrganizationQuotaPolicy, "overrides" | "balance">;
+    org: { settings: Parameters<typeof resolveMaxCloudCharactersForOrg>[1] };
+    config: { settings: Parameters<typeof resolveMaxContainersForOrg>[1] } | null | undefined;
+    storage: { bytes_limit: bigint; limit_override_authorized: boolean } | null | undefined;
+    override:
+      | {
+          completions_rpm: number | null;
+          embeddings_rpm: number | null;
+          standard_rpm: number | null;
+          strict_rpm: number | null;
+        }
+      | null
+      | undefined;
+    granted: GrantedPlanValues;
+    authority: OrganizationPolicyStamp;
+    now: Date;
+  },
+): OrganizationQuotaPolicy {
+  const { base, org, config, storage, override, granted, authority, now } = input;
   const characterOverride = observe(() => resolveMaxCloudCharactersForOrg(0, org.settings));
   const containerOverride = observe(() => resolveMaxContainersForOrg(0, config?.settings));
   const tier: OrgTierData = {
@@ -396,24 +263,10 @@ export async function readOrganizationQuotaPolicyInTransaction(
     ].some((value) => value !== null)
   )
     tier.tierName = "custom";
-  const [stored] = await tx
-    .select({ generation: organizationSubscriptionAuthorities.policy_generation })
-    .from(organizationSubscriptionAuthorities)
-    .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId));
-  if (!stored) return unavailable(organizationId, "missing_policy_generation");
   return {
     ...base,
     observedAt: now.toISOString(),
-    authority: {
-      generation: stored.generation.toString(),
-      source: "subscription",
-      sourceSubscriptionId: current.subscription.id,
-      sourceRevision: String(current.subscription.lifecycle_revision),
-      projectionRevision: String(entitlement.projection_revision),
-      catalogVersion: entitlement.catalog_version,
-      effectiveFrom: grantedFrom.toISOString(),
-      effectiveUntil: grantedUntil?.toISOString() ?? null,
-    },
+    authority,
     tier: observe(() => {
       if (
         ![tier.completionsRpm, tier.embeddingsRpm, tier.standardRpm, tier.strictRpm].every(
@@ -464,6 +317,302 @@ export async function readOrganizationQuotaPolicyInTransaction(
       apiKeys: subscriptionApiKeyLimit(granted.plan_key, granted.catalog_version),
     },
   };
+}
+export async function readOrganizationQuotaPolicyInTransaction(
+  tx: DbTransaction,
+  organizationId: string,
+  observedAt?: Date,
+): Promise<OrganizationQuotaPolicy> {
+  // These rows are unique per organization. One statement keeps the policy
+  // inputs together without paying a separate database round trip for each.
+  const [inputs] = await tx
+    .select({
+      // Legacy policy has no expiry boundary to recheck after further reads.
+      // Observe its database clock with the policy inputs, not another round trip.
+      legacyObservedAt: sql<Date>`clock_timestamp()`,
+      org: {
+        balance: organizations.credit_balance,
+        revision: sql<string>`${organizations.balance_revision}::text`,
+        settings: organizations.settings,
+      },
+      association: organizationSubscriptionAuthorities,
+      override: {
+        // The row can exist with null RPM fields; retain its non-null join identity.
+        id: orgRateLimitOverrides.id,
+        completions_rpm: orgRateLimitOverrides.completions_rpm,
+        embeddings_rpm: orgRateLimitOverrides.embeddings_rpm,
+        standard_rpm: orgRateLimitOverrides.standard_rpm,
+        strict_rpm: orgRateLimitOverrides.strict_rpm,
+      },
+      config: { settings: organizationConfig.settings },
+      storage: {
+        bytes_limit: orgStorageQuota.bytes_limit,
+        limit_override_authorized: orgStorageQuota.limit_override_authorized,
+      },
+      // The organization projection carries a subscription grant only for an
+      // organization without Stripe subscription authority.
+      grantProjection: {
+        source_grant_id: organizationEntitlements.source_grant_id,
+        projection_revision: organizationEntitlements.projection_revision,
+        effective_from: organizationEntitlements.effective_from,
+        effective_until: organizationEntitlements.effective_until,
+      },
+      // Correlated selectors preserve one policy row per organization. The
+      // legacy branch still rejects any persisted subscription, including a
+      // terminal one, and sums only net purchased credits (#23019).
+      legacyHasSubscription: sql<
+        boolean | null
+      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN EXISTS (
+        SELECT 1 FROM ${billingSubscriptions}
+        WHERE ${billingSubscriptions.organization_id} = ${organizations.id}
+      ) END`,
+      legacyCreditTotal: sql<
+        string | null
+      >`CASE WHEN ${organizationSubscriptionAuthorities.state} = 'none' THEN (
+        SELECT GREATEST(COALESCE(SUM(${purchasedCreditTierAmount}), 0), 0)::text
+        FROM ${creditTransactions}
+        WHERE ${creditTransactions.organization_id} = ${organizations.id}
+      ) END`,
+    })
+    .from(organizations)
+    .leftJoin(
+      organizationSubscriptionAuthorities,
+      eq(organizationSubscriptionAuthorities.organization_id, organizations.id),
+    )
+    .leftJoin(orgRateLimitOverrides, eq(orgRateLimitOverrides.organization_id, organizations.id))
+    .leftJoin(organizationConfig, eq(organizationConfig.organization_id, organizations.id))
+    .leftJoin(orgStorageQuota, eq(orgStorageQuota.organization_id, organizations.id))
+    .leftJoin(
+      organizationEntitlements,
+      and(
+        eq(organizationEntitlements.organization_id, organizations.id),
+        isNull(organizationEntitlements.billing_scope_id),
+      ),
+    )
+    .where(eq(organizations.id, organizationId));
+  if (!inputs || !inputs.association || inputs.association.state === "unavailable")
+    return unavailable(organizationId, "missing_account_authority");
+  const { org, association, override, config, storage } = inputs;
+  const balance = Number(org.balance);
+  const validBalance =
+    typeof org.balance === "string" &&
+    /^[+-]?(?:\d+|\d*\.\d+)$/.test(org.balance.trim()) &&
+    Number.isFinite(balance);
+  const base = {
+    overrides: {
+      completionsRpm: override?.completions_rpm ?? null,
+      embeddingsRpm: override?.embeddings_rpm ?? null,
+      standardRpm: override?.standard_rpm ?? null,
+      strictRpm: override?.strict_rpm ?? null,
+    },
+    balance: validBalance
+      ? { status: "available" as const, value: { balanceUsd: balance, revision: org.revision } }
+      : { status: "unavailable" as const, code: "invalid_balance" },
+  };
+  if (association.state === "none") {
+    if (inputs.legacyHasSubscription !== false)
+      return unavailable(organizationId, "legacy_association_conflict");
+    if (inputs.legacyCreditTotal === null)
+      return unavailable(organizationId, "missing_legacy_selector");
+    const creditTotal = inputs.legacyCreditTotal;
+    const now = observedAt ?? new Date(inputs.legacyObservedAt);
+    const projection = inputs.grantProjection;
+    if (
+      projection?.source_grant_id &&
+      projection.effective_from <= now &&
+      (projection.effective_until === null || now < projection.effective_until)
+    ) {
+      const [grant] = await tx
+        .select()
+        .from(subscriptionGrants)
+        .where(
+          and(
+            eq(subscriptionGrants.id, projection.source_grant_id),
+            eq(subscriptionGrants.organization_id, organizationId),
+          ),
+        );
+      if (
+        !grant ||
+        grant.starts_at.getTime() !== projection.effective_from.getTime() ||
+        (grant.ends_at?.getTime() ?? null) !== (projection.effective_until?.getTime() ?? null)
+      )
+        return unavailable(organizationId, "grant_projection_conflict");
+      // A revoked grant stops serving at once, even before its projection is rewritten.
+      if (grant.revoked_at === null)
+        return entitlementShapedPolicy(organizationId, {
+          base,
+          org,
+          config,
+          storage,
+          override,
+          granted: grantEntitlementPlanValues(grant),
+          authority: {
+            generation: association.policy_generation.toString(),
+            source: "promo_grant",
+            sourceSubscriptionId: null,
+            sourceRevision: null,
+            projectionRevision: String(projection.projection_revision),
+            catalogVersion: grant.catalog_version,
+            sourceGrantId: grant.id,
+            effectiveFrom: grant.starts_at.toISOString(),
+            effectiveUntil: grant.ends_at?.toISOString() ?? null,
+          },
+          now,
+        });
+    }
+    return {
+      ...base,
+      observedAt: now.toISOString(),
+      authority: {
+        generation: association.policy_generation.toString(),
+        source: "legacy",
+        sourceSubscriptionId: null,
+        sourceRevision: null,
+        projectionRevision: null,
+        catalogVersion: null,
+        effectiveFrom: new Date(0).toISOString(),
+        effectiveUntil: null,
+      },
+      tier: observe(
+        () =>
+          resolveOrgTierFromSourceValues(organizationId, creditTotal, override ?? undefined)
+            .tierData,
+      ),
+      tierSourceCreditTotal: creditTotal,
+      subscriptionFunded: false,
+      limits: {
+        characters: resource(() =>
+          limit(
+            resolveMaxCloudCharactersForOrg(validBalance ? balance : Number.NaN, org.settings)
+              .limit,
+            resolveMaxCloudCharactersForOrg(validBalance ? balance : Number.NaN, org.settings)
+              .source,
+          ),
+        ),
+        nonEagerSandboxes: limit(getMaxNonTerminalAgentsForOrg(undefined), "default_free_tier"),
+        sandboxes: resource(() =>
+          limit(
+            getMaxNonTerminalAgentsForOrg(validBalance ? balance : Number.NaN),
+            "legacy-sandbox-policy",
+          ),
+        ),
+        containers: resource(() =>
+          limit(
+            resolveMaxContainersForOrg(validBalance ? balance : Number.NaN, config?.settings).limit,
+            "legacy-container-policy",
+          ),
+        ),
+        apps: resource(() => limit(getMaxAppsPerOrg(), "legacy-app-policy")),
+        storage: limit(storage?.bytes_limit ?? 5n * 1024n * 1024n * 1024n, "legacy-storage-policy"),
+        apiKeys: limit(API_KEY_CEILINGS.free, "pay-as-you-go-policy"),
+      },
+    };
+  }
+  const current = await readPrimaryOrganizationSubscriptionSource(tx, organizationId);
+  if (current.state !== "current")
+    return unavailable(organizationId, "subscription_source_mismatch");
+  // A published pending plan must retain its original configured schedule proof.
+  const hasPendingSchedule = current.subscription.pending_plan_key !== null;
+  if (hasPendingSchedule) await readConfiguredCancellationAuthority(tx, current.subscription);
+  const entitlement = current.entitlement;
+  const expected = deriveSubscriptionEntitlementValues(current.revision);
+  for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
+    const actualValue = entitlement[key];
+    const expectedValue = expected[key];
+    if (
+      actualValue instanceof Date && expectedValue instanceof Date
+        ? actualValue.getTime() !== expectedValue.getTime()
+        : actualValue !== expectedValue
+    )
+      return unavailable(organizationId, "subscription_projection_conflict");
+  }
+  let now = observedAt ?? current.observedAt;
+  if (hasPendingSchedule && observedAt === undefined) {
+    // Observe expiry after the additional proof reads, as the full reader did.
+    const [clock] = await tx
+      .select({ now: sql<Date>`clock_timestamp()` })
+      .from(organizations)
+      .where(eq(organizations.id, organizationId));
+    if (!clock) return unavailable(organizationId, "missing_database_clock");
+    now = new Date(clock.now);
+  }
+  if (now < entitlement.effective_from)
+    return unavailable(organizationId, "entitlement_not_effective");
+  // Stripe settles renewals shortly after the stored period end, so an active
+  // paid projection keeps access through the shared payment grace. Past that
+  // boundary, or in a non-effective dunning state, the organization is served
+  // as the free tier rather than failing every policy read.
+  const paidUntil =
+    entitlement.effective_until !== null && entitlement.state === "active"
+      ? withSubscriptionPaymentGrace(entitlement.effective_until)
+      : entitlement.effective_until;
+  const lapsed = !entitlement.entitlement_effective || (paidUntil !== null && now >= paidUntil);
+  const granted = lapsed
+    ? { ...entitlement, ...SUBSCRIPTION_FREE_ENTITLEMENT_VALUES }
+    : entitlement;
+  const grantedFrom =
+    lapsed && entitlement.entitlement_effective && paidUntil !== null
+      ? paidUntil
+      : entitlement.effective_from;
+  const grantedUntil = lapsed ? null : paidUntil;
+  // A grant serves an organization whose subscription does not serve a paid
+  // plan now: a lapsed period, a non-effective dunning state, or a canceled or
+  // incomplete_expired subscription (projected as free). An effective paid
+  // subscription keeps precedence.
+  const servedFree = lapsed || entitlement.plan_key === "free";
+  const promo = servedFree ? await readActiveSubscriptionGrant(tx, organizationId, now) : undefined;
+  // The source statement observes its policy generation and database clock
+  // together. A free projection reobserves generation after grant discovery.
+  const [stored] = servedFree
+    ? await tx
+        .select({ generation: organizationSubscriptionAuthorities.policy_generation })
+        .from(organizationSubscriptionAuthorities)
+        .where(eq(organizationSubscriptionAuthorities.organization_id, organizationId))
+    : [{ generation: current.generation }];
+  if (!stored) return unavailable(organizationId, "missing_policy_generation");
+  if (promo)
+    return entitlementShapedPolicy(organizationId, {
+      base,
+      org,
+      config,
+      storage,
+      override,
+      granted: grantEntitlementPlanValues(promo),
+      authority: {
+        generation: stored.generation.toString(),
+        source: "promo_grant",
+        sourceSubscriptionId: null,
+        sourceRevision: null,
+        projectionRevision: String(entitlement.projection_revision),
+        catalogVersion: promo.catalog_version,
+        sourceGrantId: promo.id,
+        effectiveFrom: (promo.starts_at > grantedFrom
+          ? promo.starts_at
+          : grantedFrom
+        ).toISOString(),
+        effectiveUntil: promo.ends_at?.toISOString() ?? null,
+      },
+      now,
+    });
+  return entitlementShapedPolicy(organizationId, {
+    base,
+    org,
+    config,
+    storage,
+    override,
+    granted,
+    authority: {
+      generation: stored.generation.toString(),
+      source: "subscription",
+      sourceSubscriptionId: current.subscription.id,
+      sourceRevision: String(current.subscription.lifecycle_revision),
+      projectionRevision: String(entitlement.projection_revision),
+      catalogVersion: entitlement.catalog_version,
+      effectiveFrom: grantedFrom.toISOString(),
+      effectiveUntil: grantedUntil?.toISOString() ?? null,
+    },
+    now,
+  });
 }
 export async function readOrganizationQuotaPolicy(
   organizationId: string,

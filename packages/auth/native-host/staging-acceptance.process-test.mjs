@@ -83,3 +83,38 @@ test("actual fixture passes single-use session PKCE against the staging exchange
     physicalDeviceVerified: false,
   });
 });
+
+for (const [mode, phase, status, code] of [
+  ["ineligible", "session-pkce-mint", 403, "subject_not_eligible"],
+  ["unexpected", "session-pkce-mint", 503, "unrecognized_response"],
+  [
+    "exchange-unavailable",
+    "session-pkce-exchange",
+    503,
+    "exchange_unavailable",
+  ],
+]) {
+  test(`actual fixture records ${mode} without response secrets`, () => {
+    rmSync(output, { force: true });
+    const result = spawnSync(
+      "node",
+      ["--import", "tsx", "--import", preload, script],
+      {
+        cwd: repoRoot,
+        env: { ...protectedRun, TEST_SESSION_FAILURE_MODE: mode },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    const serialized = readFileSync(output, "utf8");
+    const receipt = JSON.parse(serialized);
+    assert.equal(receipt.failedStep, phase);
+    assert.deepEqual(receipt.failedResponse, { status, code });
+    assert.equal(receipt.status, "failed");
+    const exposed = `${result.stdout}${result.stderr}${serialized}`;
+    assert.ok(!exposed.includes(fixtureKey));
+    assert.ok(!exposed.includes("private-fixture-token"));
+    assert.equal(result.stderr, "");
+  });
+}

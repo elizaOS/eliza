@@ -15,6 +15,8 @@ import {
   type KnowledgeGraphEntity as Entity,
   type EntityIdentity,
   normalizeEntityConnectorAccountId,
+  normalizeEntityIdentityHandle,
+  normalizeEntityIdentityPlatform,
 } from "@elizaos/contracts";
 
 /**
@@ -48,18 +50,19 @@ export function findIdentityMatches(
   entities: Entity[],
   match: IdentityMatchInput,
 ): Entity[] {
-  const platformKey = match.platform.toLowerCase();
-  const handleKey = match.handle.toLowerCase();
+  const platformKey = normalizeEntityIdentityPlatform(match.platform);
+  const handleKey = normalizeEntityIdentityHandle(match.platform, match.handle);
   const accountKey = normalizeEntityConnectorAccountId(
     match.connectorAccountId,
   );
   return entities.filter((entity) =>
     entity.identities.some(
       (identity) =>
-        identity.platform.toLowerCase() === platformKey &&
+        normalizeEntityIdentityPlatform(identity.platform) === platformKey &&
         normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
           accountKey &&
-        identity.handle.toLowerCase() === handleKey,
+        normalizeEntityIdentityHandle(identity.platform, identity.handle) ===
+          handleKey,
     ),
   );
 }
@@ -117,15 +120,16 @@ export function foldIdentity(
   existing: EntityIdentity[],
   next: EntityIdentity,
 ): EntityIdentity[] {
-  const platformKey = next.platform.toLowerCase();
-  const handleKey = next.handle.toLowerCase();
+  const platformKey = normalizeEntityIdentityPlatform(next.platform);
+  const handleKey = normalizeEntityIdentityHandle(next.platform, next.handle);
   const accountKey = normalizeEntityConnectorAccountId(next.connectorAccountId);
   const matchIndex = existing.findIndex(
     (identity) =>
-      identity.platform.toLowerCase() === platformKey &&
+      normalizeEntityIdentityPlatform(identity.platform) === platformKey &&
       normalizeEntityConnectorAccountId(identity.connectorAccountId) ===
         accountKey &&
-      identity.handle.toLowerCase() === handleKey,
+      normalizeEntityIdentityHandle(identity.platform, identity.handle) ===
+        handleKey,
   );
 
   if (matchIndex < 0) {

@@ -20,7 +20,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const maxArtifactBytes int64 = 1024 * 1024 * 1024
+// An APK that carries on-device speech models is larger than 1 GiB.
+const maxArtifactBytes int64 = 2 * 1024 * 1024 * 1024
 
 var errArtifactIntegrity = errors.New("artifact integrity mismatch")
 

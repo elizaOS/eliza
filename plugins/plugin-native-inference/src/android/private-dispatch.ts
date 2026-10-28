@@ -1,4 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { readAliasedEnv } from "@elizaos/host/protocol";
 import { createStdioBridge } from "../shared/stdio-bridge.ts";
 import {
   type AndroidCoreRouteDeps,
@@ -7,6 +8,10 @@ import {
   dispatchBufferedRequest,
   dispatchStreamingRequest,
 } from "./dispatch.ts";
+import {
+  resolveAgentEventBus,
+  serveAgentEventSubscription,
+} from "./event-subscription.ts";
 import { startPrivateServer } from "./private-ipc.ts";
 /** Transport closure does not promise dispatcher cancellation or effect rollback. */
 export function startLocalAgentServer(
@@ -40,5 +45,24 @@ export function startLocalAgentServer(
     },
     env,
     policy,
+    {
+      // Live agent events (e.g. ephemeral `voice-transcript`) for the
+      // port-free app; see event-subscription.ts for the wire contract.
+      subscribe: (frame, connection) =>
+        serveAgentEventSubscription({
+          frame,
+          connection,
+          bus: resolveAgentEventBus(runtime),
+          registerRenderer: coreRoutes?.registerNativeViewRenderer
+            ? (clientId, send) =>
+                coreRoutes.registerNativeViewRenderer!(runtime, clientId, send)
+            : undefined,
+          expectedToken:
+            env === process.env
+              ? readAliasedEnv("ELIZA_API_TOKEN")
+              : env.ELIZA_API_TOKEN,
+          ephemeralStreams: coreRoutes?.ephemeralAgentEventStreams,
+        }),
+    },
   );
 }

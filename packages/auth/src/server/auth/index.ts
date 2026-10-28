@@ -26,6 +26,7 @@ export * from "./revocation";
 export * from "./saml";
 export * from "./session";
 export * from "./siwe-guard";
+export * from "./sms-destination";
 export * from "./sms-provider";
 export * from "./store-backends";
 export * from "./telegram";

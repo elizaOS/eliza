@@ -35,7 +35,6 @@ export const listOverdueFollowupsAction: Action = {
     "LIST_FOLLOWUPS",
     "FOLLOWUP_LIST",
     // PRD action-catalog alias.
-    // See packages/docs/action-prd-map.md.
     "FOLLOWUP_LIST_OVERDUE",
   ],
   description:

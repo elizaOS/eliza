@@ -4,11 +4,17 @@ import android.content.BroadcastReceiver;
 /** All fields are migration-sensitive except human-readable labels. No request can override them. */
 public final class ReminderConfiguration {
  public final String notificationTagPrefix;
+ /** Null disables the optional reviewed-question action. */
+ public final String questionActionLabel;
  public final String envelopeName,legacyName,tapSlot,channelId,channelName,channelDescription,publicTitle;
  public final String remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra;
  public final Class<? extends BroadcastReceiver> receiverClass;
  public final Class<? extends Activity> activityClass;
  public ReminderConfiguration(String envelopeName,String legacyName,String tapSlot,String channelId,String channelName,String channelDescription,String publicTitle,String remindAction,String decisionAction,String openAction,String alarmUriPrefix,String decisionUriPrefix,String tapUriPrefix,String idExtra,String occurrenceExtra,String decisionExtra,String notificationTagPrefix,Class<? extends BroadcastReceiver> receiverClass,Class<? extends Activity> activityClass){
+  this(envelopeName,legacyName,tapSlot,channelId,channelName,channelDescription,publicTitle,remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra,notificationTagPrefix,receiverClass,activityClass,null);
+ }
+ public ReminderConfiguration(String envelopeName,String legacyName,String tapSlot,String channelId,String channelName,String channelDescription,String publicTitle,String remindAction,String decisionAction,String openAction,String alarmUriPrefix,String decisionUriPrefix,String tapUriPrefix,String idExtra,String occurrenceExtra,String decisionExtra,String notificationTagPrefix,Class<? extends BroadcastReceiver> receiverClass,Class<? extends Activity> activityClass,String questionActionLabel){
+  this.questionActionLabel=questionActionLabel==null?null:text(questionActionLabel);
   if(notificationTagPrefix==null||!notificationTagPrefix.matches("(?:[A-Za-z0-9_-]{1,100}:)?"))throw new IllegalArgumentException("Notification tag prefix must be empty or a namespace ending in colon");
   this.notificationTagPrefix=notificationTagPrefix;
   this.envelopeName=preference(envelopeName);this.legacyName=preference(legacyName);if(envelopeName.equals(legacyName)||bootMarkerName().equals(legacyName))throw new IllegalArgumentException("Distinct preference stores required");this.tapSlot=text(tapSlot);this.channelId=text(channelId);this.channelName=text(channelName);this.channelDescription=text(channelDescription);this.publicTitle=text(publicTitle);
@@ -23,5 +29,5 @@ public final class ReminderConfiguration {
  /** Derived high-importance channel for due reminders; the configured channel remains for compatibility. */
  public String dueChannelId(){return channelId+"-due";}
  String bootMarkerName(){return envelopeName+"_restored_boot";}
- String fingerprint(){return new org.json.JSONArray(java.util.Arrays.asList(notificationTagPrefix,envelopeName,legacyName,tapSlot,channelId,channelName,channelDescription,publicTitle,remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra,receiverClass.getName(),activityClass.getName())).toString();}
+ String fingerprint(){return new org.json.JSONArray(java.util.Arrays.asList(notificationTagPrefix,envelopeName,legacyName,tapSlot,channelId,channelName,channelDescription,publicTitle,remindAction,decisionAction,openAction,alarmUriPrefix,decisionUriPrefix,tapUriPrefix,idExtra,occurrenceExtra,decisionExtra,receiverClass.getName(),activityClass.getName(),questionActionLabel)).toString();}
 }

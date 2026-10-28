@@ -86,6 +86,7 @@ async function persistedConfig() {
   return JSON.parse(await readFile(configPath, "utf8")) as {
     connectors?: { telegram?: Record<string, unknown> };
     ui?: Record<string, unknown>;
+    agents?: { defaults?: { escalation?: { channels?: string[] } } };
   };
 }
 
@@ -98,11 +99,19 @@ it("keeps the Telegram token saved from the setup panel when settings are saved 
     fakeBotToken,
   );
 
+  // Setup also registers Telegram as an escalation channel for the owner.
+  expect(
+    (await persistedConfig()).agents?.defaults?.escalation?.channels ?? [],
+  ).toContain("telegram");
+
   const settings = await call("PUT", "/api/config", { ui: { theme: "dark" } });
   expect(settings.status, await settings.clone().text()).toBe(200);
 
   const saved = await persistedConfig();
   expect(saved.ui?.theme).toBe("dark");
+  expect(saved.agents?.defaults?.escalation?.channels ?? []).toContain(
+    "telegram",
+  );
   expect(saved.connectors?.telegram).toMatchObject({
     botToken: fakeBotToken,
     enabled: true,

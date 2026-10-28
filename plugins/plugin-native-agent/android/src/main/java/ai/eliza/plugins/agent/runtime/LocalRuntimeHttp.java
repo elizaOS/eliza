@@ -49,7 +49,7 @@ public final class LocalRuntimeHttp {
     StringBuilder lines = new StringBuilder(); Set<String> seen = new HashSet<>();
     for (Map.Entry<String, String> header : headers.entrySet()) {
       String name = header.getKey(), value = header.getValue();
-      if (name == null || !name.matches("[A-Za-z0-9-]{1,64}") || value == null || value.isEmpty() || value.length() > 256
+      if (name == null || !name.matches("[A-Za-z0-9-]{1,64}") || value == null || value.isEmpty() || value.length() > 512
           || value.charAt(0) == ' ' || value.charAt(value.length() - 1) == ' ' || value.chars().anyMatch(c -> c < 32 || c >= 127)
           || OWNED_HEADERS.contains(name.toLowerCase(Locale.ROOT)) || !seen.add(name.toLowerCase(Locale.ROOT)))
         throw new IOException("Invalid runtime request framing");

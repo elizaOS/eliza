@@ -93,8 +93,20 @@ function decodeJwt(
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const payload = parts[1] ?? "";
-    const decoded = atob(payload);
-    return JSON.parse(decoded) as Record<
+    // base64url -> base64: atob rejects the JWT -/_ alphabet, so a valid
+    // token whose payload encoding contains them would throw here and be
+    // misread as "no usable account id".
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(
+      base64.length + ((4 - (base64.length % 4)) % 4),
+      "=",
+    );
+    // atob yields one char per BYTE (latin1); JWT payloads are UTF-8 JSON
+    // (RFC 7519 S3), so decode the bytes as UTF-8 instead of JSON.parse-ing
+    // the latin1 string, which mojibakes non-ASCII claims.
+    const bytes = Uint8Array.from(atob(padded), (ch) => ch.charCodeAt(0));
+    const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return JSON.parse(json) as Record<
       string,
       Record<string, string> | undefined
     >;

@@ -472,8 +472,14 @@ export class BridgeAction {
         );
       }
 
-      const mainTxHash = sourceSteps[0]?.execution?.process?.find(
-        (p) => p.txHash,
+      // The first process with a hash can be the ERC-20 approval
+      // (TOKEN_ALLOWANCE): Li.Fi's status API does not know that transaction,
+      // so polling it would time out after a bridge that completed.
+      const sourceProcesses = sourceSteps[0]?.execution?.process ?? [];
+      const mainTxHash = (
+        sourceProcesses.find((p) => p.type === "CROSS_CHAIN" && p.txHash) ??
+        sourceProcesses.find((p) => p.type === "SWAP" && p.txHash) ??
+        sourceProcesses.find((p) => p.txHash)
       )?.txHash;
 
       if (!mainTxHash) {

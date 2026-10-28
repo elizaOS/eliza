@@ -7,7 +7,13 @@
  * client against a loopback Messages API server capturing raw request bytes.
  */
 import { createServer, type Server } from "node:http";
-import { type ElizaError, type IAgentRuntime, MAX_WELL_FORMED_VISITS } from "@elizaos/core";
+import {
+  AgentRuntime,
+  type ElizaError,
+  EventType,
+  type IAgentRuntime,
+  MAX_WELL_FORMED_VISITS,
+} from "@elizaos/core";
 import { jsonSchema } from "ai";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextSmall } from "../models/text";
@@ -106,6 +112,37 @@ beforeEach(() => {
   captured.length = 0;
   vi.stubEnv("ANTHROPIC_AUTH_MODE", "apikey");
   vi.stubEnv("ELIZA_TRAJECTORY_STRICT", undefined);
+});
+
+describe("Anthropic model usage events", () => {
+  it("reports a MODEL_USED listener failure without failing the served response", async () => {
+    const runtime = new AgentRuntime({
+      character: { name: "Anthropic event test", bio: [] },
+      logLevel: "fatal",
+      settings: {
+        ANTHROPIC_API_KEY: "test-key",
+        ANTHROPIC_AUTH_MODE: "apikey",
+        ANTHROPIC_BASE_URL: baseUrl,
+        ANTHROPIC_SMALL_MODEL: "claude-test",
+      },
+    });
+    runtime.registerDatabaseAdapter({
+      createLogs: async () => undefined,
+    } as never);
+    runtime.registerEvent(EventType.MODEL_USED, async () => {
+      throw new Error("MODEL_USED listener failed");
+    });
+
+    await expect(handleTextSmall(runtime, { prompt: "Reply briefly." })).resolves.toBe("ok");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(runtime.getRecentReportedErrors()).toContainEqual(
+      expect.objectContaining({
+        scope: "AnthropicModelUsage.emitEvent",
+        message: "MODEL_USED listener failed",
+      })
+    );
+  });
 });
 
 describe("#18025: Anthropic request bodies are well-formed strict JSON", () => {

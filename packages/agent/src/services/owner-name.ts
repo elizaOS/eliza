@@ -7,6 +7,7 @@
  */
 
 import { ElizaError, toWellFormedUnicode } from "@elizaos/core";
+import { mirrorSavedConfigToLive } from "../api/config-state.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,13 +50,15 @@ export async function persistConfiguredOwnerName(
   try {
     const config = loadElizaConfig() as Record<string, unknown>;
     const ui = isRecord(config.ui) ? config.ui : {};
-    saveElizaConfig({
+    const next = {
       ...config,
       ui: {
         ...ui,
         ownerName: normalized,
       },
-    });
+    } as Parameters<typeof saveElizaConfig>[0];
+    saveElizaConfig(next);
+    mirrorSavedConfigToLive(next);
     return true;
   } catch (cause) {
     // error-policy:J2 Preserve a failed commit for the calling action boundary.

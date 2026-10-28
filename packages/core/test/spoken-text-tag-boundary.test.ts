@@ -23,4 +23,16 @@ describe("sanitizeSpeechText hidden tag names", () => {
 		expect(sanitizeSpeechText("a <tool_call>{}</tool_call> b")).toBe("a b");
 		expect(sanitizeSpeechText("a <thinking>open")).toBe("a");
 	});
+
+	it("drops a code fence that is still open at the end of the reply", () => {
+		expect(
+			sanitizeSpeechText("Run this:\n```bash\nrm -rf build/ && echo done"),
+		).toBe("Run this:");
+		expect(sanitizeSpeechText("Here you go:\n```python\nprint('hi')")).toBe(
+			"Here you go:",
+		);
+		expect(sanitizeSpeechText("Before ```js\nx()\n``` after ```sh\nls")).toBe(
+			"Before after",
+		);
+	});
 });

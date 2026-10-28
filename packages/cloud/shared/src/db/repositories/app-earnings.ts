@@ -87,21 +87,29 @@ export class AppEarningsRepository {
 
   /**
    * Lists earnings transactions for an app, newest first, optionally filtered by type.
+   *
+   * Rows written by one settlement share a `created_at`, so the order breaks
+   * ties on `id` to keep offset pages stable. One row past the page is read
+   * so `hasMore` reflects the rows that remain, not the page size.
    */
   async listTransactions(
     appId: string,
     limit: number = 50,
     offset: number = 0,
     type?: string,
-  ): Promise<AppEarningsTransaction[]> {
-    return await dbRead.query.appEarningsTransactions.findMany({
+  ): Promise<{ transactions: AppEarningsTransaction[]; hasMore: boolean }> {
+    // `limit: 0` is the documented empty page; it asks for nothing and so has
+    // nothing more.
+    if (limit === 0) return { transactions: [], hasMore: false };
+    const rows = await dbRead.query.appEarningsTransactions.findMany({
       where: type
         ? and(eq(appEarningsTransactions.app_id, appId), eq(appEarningsTransactions.type, type))
         : eq(appEarningsTransactions.app_id, appId),
-      orderBy: [desc(appEarningsTransactions.created_at)],
-      limit,
+      orderBy: [desc(appEarningsTransactions.created_at), desc(appEarningsTransactions.id)],
+      limit: limit + 1,
       offset,
     });
+    return { transactions: rows.slice(0, limit), hasMore: rows.length > limit };
   }
 
   /**

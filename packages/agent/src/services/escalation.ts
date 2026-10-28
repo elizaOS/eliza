@@ -9,6 +9,7 @@
  * per channel. `registerEscalationChannel` appends newly paired channels to the
  * escalation order in eliza.json.
  */
+
 import {
   createSerialise,
   ElizaError,
@@ -27,6 +28,7 @@ import type {
   OwnerContactEntry,
   OwnerContactsConfig,
 } from "@elizaos/host/protocol";
+import { mirrorSavedConfigToLive } from "../api/config-state.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import {
   loadOwnerContactRoutingHints,
@@ -47,7 +49,13 @@ export interface EscalationState {
   systemNotice?: SystemNotice;
   /** Kept separately so typed system copy never consumes an ordinary alert. */
   ordinaryText?: string;
+  /** Retries taken so far; independent of which channel delivered. */
   currentStep: number;
+  /**
+   * Rotation index where the next retry starts. Absent on state persisted
+   * before it existed, in which case the legacy `currentStep + 1` applies.
+   */
+  nextChannelIndex?: number;
   channelsSent: string[];
   startedAt: number;
   lastSentAt: number;
@@ -307,6 +315,9 @@ export function registerEscalationChannel(channelName: string): boolean {
     escalation.channels = existing;
 
     saveElizaConfig(cfg);
+    // The next settings save writes the API server's in-memory config; mirror
+    // the new channel into it, or that save erases the channel again.
+    mirrorSavedConfigToLive(cfg);
     logger.info(
       `[escalation] Registered channel "${trimmed}" -- escalation order: [${existing.join(", ")}]`,
     );
@@ -496,20 +507,24 @@ async function ownerRespondedSince(
     const rooms = await runtime.getRoomsForParticipant(entityId as UUID);
     if (rooms.length === 0) continue;
 
-    const messages = await runtime.getMemoriesByRoomIds({
-      roomIds: rooms as UUID[],
-      tableName: "messages",
-      limit: 20,
-    });
-    if (
-      messages.some(
-        (message) =>
-          message.entityId === entityId &&
-          message.createdAt != null &&
-          message.createdAt > sinceTimestamp,
+    // Filter by author before the limit, one room at a time. The bulk
+    // fetch caps at 20 messages across all rooms, so traffic in other
+    // rooms can crowd out the owner's reply entirely.
+    for (const roomId of rooms) {
+      const messages = await runtime.getMemories({
+        roomId: roomId as UUID,
+        tableName: "messages",
+        authorEntityIds: [entityId as UUID],
+        limit: 1,
+      });
+      if (
+        messages.some(
+          (message) =>
+            message.createdAt != null && message.createdAt > sinceTimestamp,
+        )
       )
-    )
-      return true;
+        return true;
+    }
   }
 
   return false;
@@ -547,6 +562,42 @@ function scheduleCheck(
   timersFor(agentId).set(escalationId, timer);
 }
 
+/**
+ * Try each channel once in rotation order starting at `startIndex`, stopping at
+ * the first confirmed delivery. Returns the delivering channel's index, or
+ * null when no channel delivered.
+ */
+async function deliverFromChannel(
+  runtime: IAgentRuntime,
+  state: EscalationState,
+  channels: readonly string[],
+  startIndex: number,
+  ownerContacts: OwnerContactsConfig,
+  routingHints: Record<string, OwnerContactRoutingHint>,
+  ownerEntityId: string | null,
+): Promise<number | null> {
+  for (let offset = 0; offset < channels.length; offset++) {
+    const index = (startIndex + offset) % channels.length;
+    const channel = channels[index];
+    if (!channel) continue;
+    const sent = await sendToChannel(
+      runtime,
+      channel,
+      state.text,
+      ownerContacts,
+      routingHints,
+      ownerEntityId,
+      state.systemNotice,
+      state.ordinaryText,
+    );
+    if (sent) {
+      state.channelsSent.push(channel);
+      return index;
+    }
+  }
+  return null;
+}
+
 let idCounter = 0;
 
 // biome-ignore lint/complexity/noStaticOnlyClass: module-style service API is intentional here
@@ -574,7 +625,15 @@ export class EscalationService {
         severity: "ephemeral",
       });
     }
-    const existing = await EscalationService.getActiveEscalation(runtime);
+    let existing = await EscalationService.getActiveEscalation(runtime);
+    // Merging defers the new text to the next retry check. That check resolves
+    // on any owner message since the last send, or when no retry is left, so
+    // an escalation in either state would swallow the new alert unsent. Close
+    // it and start a fresh escalation, which delivers now.
+    if (existing && (await EscalationService.isSpent(runtime, existing))) {
+      await EscalationService.resolve(existing.id, runtime);
+      existing = null;
+    }
     if (existing) {
       const resumeWaitMs = pendingTimers
         .get(agentIdOf(runtime))
@@ -657,23 +716,18 @@ export class EscalationService {
     // whose send throws (dashboard with no conversation, missing handler) is
     // not a delivery, and waiting a full retry interval to try the next one
     // just delays the owner hearing about an already-urgent condition.
-    for (const [index, channel] of channels.entries()) {
-      const sent = await sendToChannel(
-        runtime,
-        channel,
-        state.text,
-        ownerContacts,
-        routingHints,
-        ownerEntityId,
-        state.systemNotice,
-        state.ordinaryText,
-      );
-      if (sent) {
-        state.channelsSent.push(channel);
-        state.currentStep = index;
-        break;
-      }
-    }
+    // Delivery does not consume the retry budget, and the first retry moves on
+    // from the channel that delivered rather than from the attempt count.
+    const deliveredIndex = await deliverFromChannel(
+      runtime,
+      state,
+      channels,
+      0,
+      ownerContacts,
+      routingHints,
+      ownerEntityId,
+    );
+    state.nextChannelIndex = deliveredIndex === null ? 0 : deliveredIndex + 1;
 
     // Even a single attempt needs a final acknowledgment/exhaustion check.
     scheduleCheck(runtime, escalationId, waitMs);
@@ -747,22 +801,27 @@ export class EscalationService {
     }
 
     state.currentStep = nextStep;
-    const nextChannelIndex = state.currentStep % channels.length;
-    const nextChannel = channels[nextChannelIndex];
-    if (nextChannel) {
-      const sent = await sendToChannel(
+    if (channels.length > 0) {
+      const cursor = state.nextChannelIndex;
+      const startIndex =
+        typeof cursor === "number" && Number.isInteger(cursor) && cursor >= 0
+          ? cursor
+          : state.currentStep;
+      // A retry falls through failed channels like initial delivery does, so
+      // channels that cannot deliver never consume a retry interval on their own.
+      const deliveredIndex = await deliverFromChannel(
         runtime,
-        nextChannel,
-        state.text,
+        state,
+        channels,
+        startIndex,
         ownerContacts,
         routingHints,
         ownerEntityId,
-        state.systemNotice,
-        state.ordinaryText,
       );
-      if (sent) {
-        state.channelsSent.push(nextChannel);
-      }
+      state.nextChannelIndex =
+        deliveredIndex === null
+          ? startIndex % channels.length
+          : deliveredIndex + 1;
       state.lastSentAt = Date.now();
     }
 
@@ -785,6 +844,26 @@ export class EscalationService {
     if (!agentId) return Promise.resolve();
     return transition(agentId, () =>
       EscalationService.resolve(escalationId, runtime),
+    );
+  }
+
+  /** True when the next check would resolve without sending again. */
+  private static async isSpent(
+    runtime: IAgentRuntime,
+    state: EscalationState,
+  ): Promise<boolean> {
+    const { config, ownerContacts } = loadEscalationSettings();
+    if (state.currentStep + 1 >= resolveMaxRetries(config)) return true;
+    const routingHints = await loadOwnerContactRoutingHints(
+      runtime,
+      ownerContacts,
+    );
+    return ownerRespondedSince(
+      runtime,
+      ownerContacts,
+      routingHints,
+      await resolveOwnerEntityId(runtime),
+      state.lastSentAt,
     );
   }
 

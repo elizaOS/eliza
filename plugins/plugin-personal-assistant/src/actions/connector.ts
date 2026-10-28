@@ -1353,7 +1353,6 @@ export const connectorAction: Action & {
     "SERVICE_STATUS",
     // PRD action-catalog alias. NotificationIntent endpoint resolution maps
     // to CONNECTOR.list + CONNECTOR.status (the registered endpoints).
-    // See packages/docs/action-prd-map.md.
     "NOTIFICATION_RESOLVE_ENDPOINTS",
   ],
   tags: [
@@ -1514,6 +1513,28 @@ export const connectorAction: Action & {
       };
     }
 
+    // The Google domain refuses every non-local mode (assertLocalMode). Name
+    // the argument here, before the disconnect confirmation, so connect does
+    // not collapse it into a generic failure and the owner is not asked to
+    // confirm a call that can only be refused.
+    if (
+      connector === "google" &&
+      params.mode !== undefined &&
+      params.mode !== "local"
+    ) {
+      return {
+        success: false,
+        text: `[${ACTION_NAME}] google does not support mode "${params.mode}"; omit mode or set it to "local".`,
+        data: {
+          actionName: ACTION_NAME,
+          connector,
+          subaction,
+          error: "GOOGLE_MODE_UNSUPPORTED",
+          mode: params.mode,
+        },
+      };
+    }
+
     // F33: `disconnect` revokes a live grant — destructive and not instantly
     // reversible (re-auth may need the owner's device). Require an explicit
     // confirmation cue in the owner's own message: the bare ask gets a
@@ -1593,7 +1614,7 @@ export const connectorAction: Action & {
     {
       name: "mode",
       description:
-        "local | cloud_managed | remote. Default connector-specific.",
+        "local | cloud_managed | remote. Default connector-specific. google accepts only local: omit it for google.",
       required: false,
       schema: {
         type: "string" as const,

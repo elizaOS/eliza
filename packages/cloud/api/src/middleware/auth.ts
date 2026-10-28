@@ -1,6 +1,6 @@
 /**
  * Global auth middleware — Hono auth gate. Steward cookie/session resolution
- * lives in `getCurrentUser` (`packages/lib/auth/workers-hono-auth.ts`).
+ * lives in `getCurrentUser` (`packages/cloud/shared/src/lib/auth/workers-hono-auth.ts`).
  *
  * Behavior:
  *   - Public paths pass through with no auth.
@@ -240,6 +240,14 @@ export function isPublicPath(pathname: string, method = "GET"): boolean {
     (method === "GET" || method === "HEAD") &&
     (pathname === "/api/v1/subscriptions/plans" ||
       pathname === "/api/v1/subscriptions/plans/")
+  ) {
+    return true;
+  }
+  // Public ES256 verification keys for subscription entitlements; no account state.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    (pathname === "/api/v1/subscription/entitlement-keys" ||
+      pathname === "/api/v1/subscription/entitlement-keys/")
   ) {
     return true;
   }

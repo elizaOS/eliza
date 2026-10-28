@@ -58,6 +58,7 @@ export async function replayFundedRenewalInTransaction(
     period.billing_scope_id !== null ||
     period.merchant_key !== "platform" ||
     period.grant_source !== "paid_invoice" ||
+    period.subscription_revision === null ||
     period.subscription_revision > source.lifecycle_revision
   )
     renewalUnavailable("funded_invoice_identity_mismatch");

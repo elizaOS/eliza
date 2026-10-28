@@ -41,50 +41,13 @@ import { executeRawSql } from "../db/sql.ts";
 import { createOwnerGoalsService } from "../goals-runtime.ts";
 import { goalsPlugin } from "../plugin.ts";
 import {
+  checkinIdempotencyKey,
   GOAL_CHECKIN_CREATED_BY,
   type GoalCheckinLogEntry,
   getGoalsCheckinService,
 } from "./checkin.ts";
 
 const OWNER_TZ = "America/Denver";
-
-/**
- * Peer-owned PA tables the goals back-end touches, provisioned minimally in
- * this PA-free harness (same approach as goals.real.test.ts): the audit
- * table (goal writes append there) and `life_task_definitions` (deleteGoal
- * clears its `goal_id` references).
- */
-async function provisionPeerTables(
-  harness: ModelProviderTestRuntime,
-): Promise<void> {
-  await executeRawSql(
-    harness.runtime,
-    "CREATE SCHEMA IF NOT EXISTS app_lifeops",
-  );
-  await executeRawSql(
-    harness.runtime,
-    `CREATE TABLE IF NOT EXISTS app_lifeops.life_audit_events (
-       id text PRIMARY KEY,
-       agent_id text NOT NULL,
-       event_type text NOT NULL,
-       owner_type text NOT NULL,
-       owner_id text NOT NULL,
-       reason text,
-       inputs_json text,
-       decision_json text,
-       actor text NOT NULL,
-       created_at text NOT NULL
-     )`,
-  );
-  await executeRawSql(
-    harness.runtime,
-    `CREATE TABLE IF NOT EXISTS app_lifeops.life_task_definitions (
-       id text PRIMARY KEY,
-       agent_id text NOT NULL,
-       goal_id text
-     )`,
-  );
-}
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -112,7 +75,6 @@ async function makeHarness(
     }),
   );
   await waitForScheduledTaskRunnerService(harness.runtime);
-  await provisionPeerTables(harness);
   return harness;
 }
 
@@ -139,6 +101,73 @@ function denverHourOf(iso: string): string {
   }).format(new Date(iso));
 }
 
+/**
+ * Fire a goal's only check-in at its first due occurrence and answer it. The
+ * recurring task is then parked as `completed` until the spine fires it again
+ * at the next occurrence.
+ */
+async function fireAndAnswerCheckin(
+  harness: ModelProviderTestRuntime,
+  goalId: string,
+): Promise<{ task: ScheduledTask; occurrenceAtIso: string }> {
+  if (!harness.runtime.hasService(NotificationService.serviceType)) {
+    await harness.runtime.registerService(NotificationService);
+    await harness.runtime.getServiceLoadPromise(
+      NotificationService.serviceType,
+    );
+  }
+  const [task] = await listGoalCheckinTasks(harness, goalId);
+  const decision = await isScheduledTaskDue(task, {
+    now: new Date(
+      Date.parse(task.metadata?.createdAtIso as string) + 48 * 60 * 60 * 1000,
+    ),
+    ownerFacts: { timezone: OWNER_TZ },
+  });
+  const occurrenceAtIso = decision.occurrenceAtIso as string;
+  harness.fixtures.register(
+    {
+      name: `goal-checkin-body-${goalId}`,
+      match: {
+        modelType: ModelType.TEXT_SMALL,
+        prompt: /A scheduled task just fired/,
+      },
+      response: "How is this goal going?",
+      times: 1,
+    },
+    {
+      name: `goal-checkin-title-${goalId}`,
+      match: {
+        modelType: ModelType.TEXT_SMALL,
+        prompt: /Write a concise notification title/,
+      },
+      response: "Goal check-in",
+      times: 1,
+    },
+  );
+  await getScheduledTaskRunner(harness.runtime, {
+    agentId: harness.runtime.agentId,
+    now: () => new Date(occurrenceAtIso),
+  }).fire(task.taskId);
+  const checkin = getGoalsCheckinService(harness.runtime);
+  if (!checkin) throw new Error("GoalsCheckinService is not registered");
+  await checkin.recordCheckinResponse({
+    goalId,
+    note: "going well",
+    progress: "on_track",
+  });
+  const [answered] = await listGoalCheckinTasks(harness, goalId);
+  expect(answered.state.status).toBe("completed");
+  return { task: answered, occurrenceAtIso };
+}
+
+/** The spine's due decision at the same owner-local hour one day later. */
+function dueNextDay(task: ScheduledTask, occurrenceAtIso: string) {
+  return isScheduledTaskDue(task, {
+    now: new Date(Date.parse(occurrenceAtIso) + 24 * 60 * 60 * 1000),
+    ownerFacts: { timezone: OWNER_TZ },
+  });
+}
+
 describe("goals check-ins on the scheduling spine (deterministic model-provider runtime)", () => {
   it("rejects an empty owner update without changing the goal, audit or check-in, and preserves explicit clears", async () => {
     const harness = await makeHarness();
@@ -155,7 +184,7 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
     const audits = () =>
       executeRawSql(
         harness.runtime,
-        "SELECT * FROM app_lifeops.life_audit_events ORDER BY id",
+        "SELECT * FROM app_goals.life_goal_audit_events ORDER BY id",
       );
     const beforeAudits = await audits();
 
@@ -313,7 +342,7 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
 
     const auditRows = await executeRawSql(
       harness.runtime,
-      `SELECT reason FROM app_lifeops.life_audit_events
+      `SELECT reason FROM app_goals.life_goal_audit_events
         WHERE owner_id = '${goalId}'
           AND reason = 'goal check-in response recorded'`,
     );
@@ -436,5 +465,78 @@ describe("goals check-ins on the scheduling spine (deterministic model-provider 
 
     const [after] = await listGoalCheckinTasks(harness, record.goal.id);
     expect(after.state.status).toBe("dismissed");
+  });
+
+  it("stops an answered daily check-in when its goal is deleted", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Run a marathon",
+      cadence: { kind: "daily", windows: ["morning"] },
+    });
+    const { occurrenceAtIso } = await fireAndAnswerCheckin(
+      harness,
+      record.goal.id,
+    );
+
+    await goals.deleteGoal(record.goal.id);
+
+    const [after] = await listGoalCheckinTasks(harness, record.goal.id);
+    expect(after.state.status).toBe("dismissed");
+    expect(await dueNextDay(after, occurrenceAtIso)).toMatchObject({
+      due: false,
+      reason: "dismissed",
+    });
+  });
+
+  it("stops an answered daily check-in while its goal is paused and resumes it when the goal is active again", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Practice piano",
+      cadence: { kind: "daily", windows: ["evening"] },
+    });
+    const goalId = record.goal.id;
+    const { occurrenceAtIso } = await fireAndAnswerCheckin(harness, goalId);
+
+    await goals.updateGoal(goalId, { status: "paused" });
+
+    const paused = await listGoalCheckinTasks(harness, goalId);
+    expect(paused.map((task) => task.state.status)).toEqual(["dismissed"]);
+    expect(await dueNextDay(paused[0], occurrenceAtIso)).toMatchObject({
+      due: false,
+      reason: "dismissed",
+    });
+
+    await goals.updateGoal(goalId, { status: "active" });
+
+    const live = (await listGoalCheckinTasks(harness, goalId)).filter(
+      (task) => task.state.status !== "dismissed",
+    );
+    expect(live.map((task) => task.idempotencyKey)).toEqual([
+      `${checkinIdempotencyKey(goalId, "daily")}:resumed:1`,
+    ]);
+  });
+
+  it("replaces an answered daily check-in when the goal moves to a weekly cadence", async () => {
+    const harness = await makeHarness();
+    const goals = createOwnerGoalsService(harness.runtime);
+    const record = await goals.createGoal({
+      title: "Read twelve books",
+      cadence: { kind: "daily", windows: ["morning"] },
+    });
+    const goalId = record.goal.id;
+    await fireAndAnswerCheckin(harness, goalId);
+
+    await goals.updateGoal(goalId, {
+      cadence: { kind: "weekly", weekdays: [1], windows: ["evening"] },
+    });
+
+    const live = (await listGoalCheckinTasks(harness, goalId)).filter(
+      (task) => task.state.status !== "dismissed",
+    );
+    expect(live.map((task) => task.trigger)).toEqual([
+      { kind: "cron", expression: "0 18 * * 1", tz: OWNER_LOCAL_TZ },
+    ]);
   });
 });

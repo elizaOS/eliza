@@ -1,3 +1,4 @@
+import { createManagedCalendarMutationPort } from "../mutations/managed.js";
 /**
  * The calendar domain service — the single owner of calendar reads and
  * mutations across Google, Microsoft, Apple, and guarded ICS/webcal sources.
@@ -117,6 +118,7 @@ import {
   expandIcsCalendarEvents,
   icsCalendarSummary,
   lifeOpsCalendarEventFromIcs,
+  newestIcsEventPerIdentity,
   publicIcsCalendarSource,
 } from "../ics/source.js";
 import {
@@ -203,6 +205,7 @@ import {
   MicrosoftGraphDeltaExpiredError,
   type MicrosoftGraphEvent,
 } from "../microsoft/index.js";
+import { managedCalendarDeleteEnabled } from "../mutations/managed-gate.js";
 import type { CalendarAvailabilitySource } from "./availability.js";
 import {
   CalendarRepository,
@@ -234,6 +237,11 @@ import {
   LinkedCalendarRepository,
   type LinkedCalendarSemanticEvent,
 } from "./linked-calendar-sync.js";
+import {
+  createManagedCalendarRead,
+  managedCalendarPlaceholder,
+} from "./managed-calendar-read.js";
+import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
 
 type AggregatedCalendarFeedSource = {
   calendar: Pick<
@@ -425,6 +433,47 @@ export function allDayEventIntersectsLocalWindow(
     localDayStartMs(endDateExclusive, timeZone) > windowStart &&
     localDayStartMs(startDate, timeZone) < windowEnd
   );
+}
+
+/**
+ * EventKit reads an all-day date as the local day of the instant it is given
+ * and stores all-day events as local midnight to 23:59:59 on the last day.
+ * UTC midnight is the previous local day west of UTC, so Apple gets the
+ * owner-zone instants of the requested dates.
+ */
+function appleCalendarRange(range: {
+  startAt: string;
+  endAt: string;
+  timeZone: string;
+  isAllDay: boolean;
+  startDate?: string;
+  endDateExclusive?: string;
+}): { startAt: string; endAt: string; timeZone: string } {
+  if (!range.isAllDay || !range.startDate || !range.endDateExclusive) {
+    return {
+      startAt: range.startAt,
+      endAt: range.endAt,
+      timeZone: range.timeZone,
+    };
+  }
+  const localMidnight = (date: string) => {
+    const [year, month, day] = date.split("-").map(Number);
+    return buildUtcDateFromLocalParts(range.timeZone, {
+      year,
+      month,
+      day,
+      hour: 0,
+      minute: 0,
+      second: 0,
+    });
+  };
+  return {
+    startAt: localMidnight(range.startDate).toISOString(),
+    endAt: new Date(
+      localMidnight(range.endDateExclusive).getTime() - 1_000,
+    ).toISOString(),
+    timeZone: range.timeZone,
+  };
 }
 
 function isGoogleCalendarDisconnected(error: unknown): boolean {
@@ -1341,6 +1390,10 @@ export class CalendarService extends Service {
     "Built-in Eliza, Google, Microsoft, Apple, and guarded ICS calendar feeds, event management, guest free/busy, and next-event context for Eliza agents.";
 
   private readonly repo: CalendarRepository;
+  private readonly managedCalendar = createManagedCalendarRead(
+    process.env,
+    fetch,
+  );
   private gate: CalendarHostGate;
   private microsoftPort: MicrosoftGraphCalendarPort;
   private readonly googleWatch: GoogleCalendarWatchLifecycle;
@@ -1403,6 +1456,9 @@ export class CalendarService extends Service {
           ? [{ email: attendee.email, optional: attendee.optional === true }]
           : [],
       ),
+      ...(event.recurrence?.length
+        ? { recurrence: [...event.recurrence] }
+        : {}),
     };
   }
 
@@ -1429,6 +1485,12 @@ export class CalendarService extends Service {
         };
       },
       applyProviderEvent: async (eventId, providerEvent, expectedRevision) => {
+        if (providerEvent.recurrence?.length)
+          throw new CalendarServiceError(
+            409,
+            "The built-in calendar cannot represent this recurring series. Review the linked event before syncing.",
+            "LINKED_CALENDAR_RECURRENCE_UNSUPPORTED",
+          );
         const existing = await this.resolveElizaCalendarEvent({ eventId });
         if (Number(existing.metadata.version) !== expectedRevision) {
           throw new CalendarServiceError(
@@ -1498,8 +1560,20 @@ export class CalendarService extends Service {
   }
 
   private linkedReconciler(
+    connectorAccountId: string,
     onProviderMutation?: () => void,
   ): LinkedCalendarReconciler {
+    if (this.managedCalendar?.acceptsGrantId(connectorAccountId)) {
+      return new LinkedCalendarReconciler(
+        this.linkedRepo,
+        this.linkedLocalPort(),
+        new ManagedLinkedCalendarProviderPort(
+          this.managedCalendar,
+          managedCalendarDeleteEnabled(process.env),
+        ),
+        onProviderMutation,
+      );
+    }
     const google = this.runtime.getService("google");
     if (!google || typeof google !== "object") {
       throw new CalendarServiceError(
@@ -1522,6 +1596,17 @@ export class CalendarService extends Service {
   } | null> {
     const control = await this.linkedControl.read();
     if (control.paused || !control.destination) return null;
+    if (
+      this.managedCalendar?.acceptsGrantId(
+        control.destination.connectorAccountId,
+      )
+    ) {
+      await this.verifyLinkedDestination(
+        new URL("http://localhost/api/lifeops/calendar/linked/automatic-sync"),
+        control.destination,
+      );
+      return control.destination;
+    }
     const accounts = await this.gate.getGoogleConnectorAccounts(
       new URL("http://localhost/api/lifeops/calendar/linked/automatic-sync"),
       "owner",
@@ -1553,7 +1638,7 @@ export class CalendarService extends Service {
     if (control.paused || control.dispatch) return "paused" as const;
     if (!(await this.activeLinkedCalendarTarget())) return "paused" as const;
     let providerMutationAttempted = false;
-    const reconciler = this.linkedReconciler(() => {
+    const reconciler = this.linkedReconciler(record.connectorAccountId, () => {
       providerMutationAttempted = true;
     });
     const token = await this.linkedControl.acquireDispatch(
@@ -1756,6 +1841,40 @@ export class CalendarService extends Service {
     requestUrl: URL,
     destination: NonNullable<LifeOpsLinkedCalendarControl["destination"]>,
   ): Promise<void> {
+    if (this.managedCalendar?.acceptsGrantId(destination.connectorAccountId)) {
+      const sources = await this.managedCalendar.sources();
+      if (
+        !sources.some(
+          (calendar) =>
+            calendar.provider === "google" &&
+            calendar.side === "owner" &&
+            calendar.grantId === destination.connectorAccountId &&
+            calendar.connectorAccountId === destination.connectorAccountId &&
+            calendar.calendarId === destination.providerCalendarId &&
+            ["owner", "writer"].includes(calendar.accessRole ?? ""),
+        )
+      ) {
+        throw new CalendarServiceError(
+          409,
+          "The selected managed Calendar is unavailable or not writable.",
+          "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+        );
+      }
+      try {
+        await this.managedCalendar.writeCapabilities(
+          destination.connectorAccountId,
+          destination.providerCalendarId,
+        );
+      } catch (cause) {
+        throw new CalendarServiceError(
+          409,
+          "The selected managed Calendar needs verified read and write access.",
+          "LINKED_CALENDAR_DESTINATION_UNAVAILABLE",
+          { cause },
+        );
+      }
+      return;
+    }
     const accounts = await this.gate.getGoogleConnectorAccounts(
       requestUrl,
       "owner",
@@ -1956,7 +2075,11 @@ export class CalendarService extends Service {
               "LINKED_CALENDAR_RECOVERY_IDENTITY_MISMATCH",
             );
           }
-          if (!(await this.linkedReconciler().recoverDispatch(record))) {
+          if (
+            !(await this.linkedReconciler(
+              record.connectorAccountId,
+            ).recoverDispatch(record))
+          ) {
             throw new CalendarServiceError(
               409,
               "The provider outcome is still uncertain or the events differ. Sync remains paused; no provider write was retried.",
@@ -3403,7 +3526,7 @@ export class CalendarService extends Service {
           "ICS_FEED_PARSE_ERROR",
         );
       }
-      const events = parsed.events.map((event) =>
+      const events = newestIcsEventPerIdentity(parsed.events).map((event) =>
         lifeOpsCalendarEventFromIcs({
           event,
           source: lease.source,
@@ -3832,6 +3955,35 @@ export class CalendarService extends Service {
           )
           .map(icsCalendarSummary),
       );
+    }
+    if (
+      this.managedCalendar?.acceptsGrantId(request?.grantId) &&
+      side !== "agent" &&
+      (!mode || mode === "cloud_managed")
+    ) {
+      try {
+        const managed = await this.managedCalendar.sources();
+        summaries.push(
+          ...managed.filter(
+            (calendar) =>
+              !request?.grantId || calendar.grantId === request.grantId,
+          ),
+        );
+      } catch (error) {
+        const calendar = managedCalendarPlaceholder(request?.grantId);
+        const sourceError = calendarSourceError(error);
+        this.runtime.reportError("calendar:list-managed-source", error, {
+          source: calendarSourceKey(calendar),
+        });
+        failures.push(
+          calendarSourceHealth({
+            calendar,
+            status: "error",
+            syncedAt: null,
+            error: sourceError,
+          }),
+        );
+      }
     }
     const preferences = await ensureCalendarFeedIncludes(
       this.runtime,
@@ -5546,6 +5698,33 @@ export class CalendarService extends Service {
       calendar: LifeOpsCalendarSummary;
     })[] = [];
     for (const calendar of calendars) {
+      if (this.managedCalendar?.owns(calendar)) {
+        let feed: LifeOpsCalendarFeed;
+        try {
+          feed = await this.managedCalendar.feed(
+            calendar,
+            timeMin,
+            timeMax,
+            timeZone,
+            this.agentId(),
+          );
+        } catch (error) {
+          const sourceError = calendarSourceError(error);
+          this.runtime.reportError("calendar:feed-managed-source", error, {
+            source: calendarSourceKey(calendar),
+            timeMin,
+            timeMax,
+          });
+          feed = this.unavailableCalendarFeed({
+            calendar,
+            timeMin,
+            timeMax,
+            error: sourceError,
+          });
+        }
+        sources.push({ calendar, feed });
+        continue;
+      }
       if (calendar.provider === ELIZA_CALENDAR_PROVIDER) {
         sources.push({
           calendar,
@@ -5850,6 +6029,30 @@ export class CalendarService extends Service {
     const calendarId = normalizeCalendarId(request.calendarId);
     const recurrence = normalizeRecurrence(request.recurrence);
     const range = resolveCalendarEventRange(request, now);
+    const managed = createManagedCalendarMutationPort(
+      process.env,
+      fetch,
+      this.agentId(),
+    );
+    if (request.grantId && managed?.owns(request.grantId)) {
+      if (side && side !== "owner")
+        throw new CalendarServiceError(
+          403,
+          "Select the owner Calendar.",
+          "CALENDAR_MANAGED_OWNER_REQUIRED",
+        );
+      await managed.capabilities(request.grantId, calendarId);
+      return {
+        ...request,
+        side: "owner",
+        grantId: request.grantId,
+        calendarId,
+        startAt: range.startAt,
+        endAt: range.endAt,
+        timeZone: range.timeZone,
+        ...(recurrence ? { recurrence } : {}),
+      };
+    }
     if (!request.grantId || isElizaCalendarGrant(request.grantId)) {
       assertCalendarRecordsAllowed();
       if (calendarId !== ELIZA_CALENDAR_ID) {
@@ -6375,11 +6578,11 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("create");
       }
       await this.requireReceiptAwareAppleCreate(options);
-      return this.createAppleCalendarEvent(request, calendarId, {
-        startAt,
-        endAt,
-        timeZone,
-      });
+      return this.createAppleCalendarEvent(
+        request,
+        calendarId,
+        appleCalendarRange(range),
+      );
     }
 
     let grant: LifeOpsConnectorGrant;
@@ -6400,11 +6603,11 @@ export class CalendarService extends Service {
         failAppleRecurrenceUnsupported("create");
       }
       await this.requireReceiptAwareAppleCreate(options);
-      return this.createAppleCalendarEvent(request, calendarId, {
-        startAt,
-        endAt,
-        timeZone,
-      });
+      return this.createAppleCalendarEvent(
+        request,
+        calendarId,
+        appleCalendarRange(range),
+      );
     }
     const createEvent = requireGoogleServiceMethod(this.runtime, "createEvent");
     let googleEvent: GoogleCalendarEvent;
@@ -6836,7 +7039,12 @@ export class CalendarService extends Service {
       if (recurrence || recurrenceScope) {
         failAppleRecurrenceUnsupported("update");
       }
-      return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+      return this.updateAppleCalendarEvent(
+        request.eventId,
+        allDayRange
+          ? { ...nativePatch, ...appleCalendarRange(allDayRange) }
+          : nativePatch,
+      );
     }
 
     let grant: LifeOpsConnectorGrant;
@@ -6859,7 +7067,12 @@ export class CalendarService extends Service {
       if (recurrence || recurrenceScope) {
         failAppleRecurrenceUnsupported("update");
       }
-      return this.updateAppleCalendarEvent(request.eventId, nativePatch);
+      return this.updateAppleCalendarEvent(
+        request.eventId,
+        allDayRange
+          ? { ...nativePatch, ...appleCalendarRange(allDayRange) }
+          : nativePatch,
+      );
     }
     if (recurrenceScope === "this_and_following") {
       return this.updateGoogleThisAndFollowing({
@@ -6881,6 +7094,40 @@ export class CalendarService extends Service {
         eventId: targetEventId,
       });
     }
+    const requestedStartAt = request.startAt
+      ? normalizeCalendarDateTimeInTimeZone(
+          request.startAt,
+          "startAt",
+          parseTimeZone,
+          "reject",
+        )
+      : undefined;
+    const requestedEndAt = request.endAt
+      ? normalizeCalendarDateTimeInTimeZone(
+          request.endAt,
+          "endAt",
+          parseTimeZone,
+          "reject",
+        )
+      : undefined;
+    // The times are the picked occurrence's new times. Written as-is onto the
+    // master they would move the series start to that occurrence's date and
+    // drop every earlier occurrence, so apply them as a wall-clock shift of
+    // the master's own start instead.
+    const seriesTimes =
+      !allDayRange &&
+      targetEventId !== request.eventId &&
+      (requestedStartAt || requestedEndAt)
+        ? await this.shiftSeriesMasterTimes({
+            grant,
+            calendarId: request.calendarId,
+            occurrenceEventId: request.eventId,
+            masterEventId: targetEventId,
+            startAt: requestedStartAt,
+            endAt: requestedEndAt,
+            replacesRecurrence: recurrence !== undefined,
+          })
+        : null;
     const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
     let googleEvent: GoogleCalendarEvent;
     try {
@@ -6894,26 +7141,12 @@ export class CalendarService extends Service {
           description: request.description,
           location: request.location,
           startAt:
-            allDayRange?.startDate ??
-            (request.startAt
-              ? normalizeCalendarDateTimeInTimeZone(
-                  request.startAt,
-                  "startAt",
-                  parseTimeZone,
-                  "reject",
-                )
-              : undefined),
+            allDayRange?.startDate ?? seriesTimes?.startAt ?? requestedStartAt,
           endAt:
             allDayRange?.endDateExclusive ??
-            (request.endAt
-              ? normalizeCalendarDateTimeInTimeZone(
-                  request.endAt,
-                  "endAt",
-                  parseTimeZone,
-                  "reject",
-                )
-              : undefined),
-          timeZone,
+            seriesTimes?.endAt ??
+            requestedEndAt,
+          timeZone: seriesTimes?.timeZone ?? timeZone,
           attendees:
             request.attendees === undefined
               ? undefined
@@ -7634,6 +7867,30 @@ export class CalendarService extends Service {
       recurrenceScope?: LifeOpsCalendarRecurrenceScope | null;
     },
   ): Promise<LifeOpsCalendarEvent> {
+    const managed = createManagedCalendarMutationPort(
+      process.env,
+      fetch,
+      this.agentId(),
+    );
+    if (request.grantId && managed?.owns(request.grantId)) {
+      if (request.side && request.side !== "owner")
+        throw new CalendarServiceError(
+          403,
+          "Select the owner Calendar.",
+          "CALENDAR_MANAGED_OWNER_REQUIRED",
+        );
+      if (request.recurrenceScope && request.recurrenceScope !== "instance")
+        throw new CalendarServiceError(
+          409,
+          "Review recurring-series changes in Calendar.",
+          "CALENDAR_MANAGED_SERIES_REVIEW_REQUIRED",
+        );
+      return managed.target(
+        request.grantId,
+        normalizeCalendarId(request.calendarId),
+        request.eventId,
+      );
+    }
     // Composite local identities are not external provider IDs. Reject a
     // dropped/wrong agent prefix (including UI element IDs) instead of sending
     // it to Google or silently rebinding it to a different local event.
@@ -7798,7 +8055,120 @@ export class CalendarService extends Service {
       { externalId: event.externalId },
       "calendar_event_updated",
     );
+    if (request.responseStatus === "declined") {
+      // A decline must stop auto-join at once, not at the next feed sync.
+      await reconcileMeetingAutoJoin({
+        runtime: this.runtime,
+        agentId: this.agentId(),
+        events: [event],
+      });
+    }
     return event;
+  }
+
+  /**
+   * Map new times for one occurrence onto its series master: the master keeps
+   * its own start date and moves by the same wall-clock shift, so "move all to
+   * 3pm" changes every occurrence, earlier ones included. The new duration
+   * applies to the whole series. A shift to another day is refused when the
+   * rule pins days (BYDAY etc.) and is not replaced in the same request: the
+   * moved start would no longer match the rule.
+   */
+  private async shiftSeriesMasterTimes(args: {
+    grant: LifeOpsConnectorGrant;
+    calendarId?: string | null;
+    occurrenceEventId: string;
+    masterEventId: string;
+    startAt?: string;
+    endAt?: string;
+    replacesRecurrence: boolean;
+  }): Promise<{ startAt: string; endAt: string; timeZone: string }> {
+    const getEvent = requireGoogleServiceMethod(this.runtime, "getEvent");
+    const accountId = accountIdForGrant(args.grant);
+    const calendarId = args.calendarId ?? undefined;
+    const read = async (eventId: string) =>
+      lifeOpsCalendarEventFromGoogle({
+        event: await getEvent({ accountId, calendarId, eventId }),
+        grant: args.grant,
+        agentId: this.agentId(),
+      });
+    const occurrence = await read(args.occurrenceEventId);
+    const master = await read(args.masterEventId);
+    const timeZone = master.timezone ?? occurrence.timezone;
+    if (!timeZone) {
+      fail(
+        502,
+        "Google Calendar did not return the IANA timezone required to move the whole series.",
+        "CALENDAR_RECURRENCE_SERIES_TIMEZONE_MISSING",
+      );
+    }
+    // Wall-clock instant: the zone's local time read as if it were UTC.
+    const wallMs = (iso: string) => {
+      const parts = getZonedDateParts(new Date(iso), timeZone);
+      return Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        parts.second,
+      );
+    };
+    const fromWallMs = (ms: number) => {
+      const wall = new Date(ms);
+      return buildUtcDateFromLocalParts(timeZone, {
+        year: wall.getUTCFullYear(),
+        month: wall.getUTCMonth() + 1,
+        day: wall.getUTCDate(),
+        hour: wall.getUTCHours(),
+        minute: wall.getUTCMinutes(),
+        second: wall.getUTCSeconds(),
+      }).toISOString();
+    };
+    // Measure the shift from the occurrence's slot in the series, so a moved
+    // exception still maps "all to 3pm" onto 3pm.
+    const occurrenceSlot =
+      recurrenceOriginalStartAtFrom(occurrence) ?? occurrence.startAt;
+    const shiftMs = args.startAt
+      ? wallMs(args.startAt) - wallMs(occurrenceSlot)
+      : 0;
+    // A new end time is measured from the start the series lands on: the
+    // new start, or with no new start the occurrence's slot (the master start
+    // is not moved), so the end lands at the time the owner chose.
+    const newDurationMs = args.endAt
+      ? Date.parse(args.endAt) - Date.parse(args.startAt ?? occurrenceSlot)
+      : Date.parse(master.endAt) - Date.parse(master.startAt);
+    if (!(newDurationMs > 0)) {
+      fail(
+        400,
+        "The new end time must be after the occurrence's start.",
+        "CALENDAR_RECURRENCE_SERIES_INVALID_RANGE",
+      );
+    }
+    const dayMs = 24 * 60 * 60 * 1000;
+    const wallDay = (ms: number) => Math.floor(ms / dayMs);
+    if (
+      !args.replacesRecurrence &&
+      wallDay(wallMs(master.startAt) + shiftMs) !==
+        wallDay(wallMs(master.startAt)) &&
+      (recurrenceLinesFrom(master) ?? []).some((line) =>
+        /;(BYDAY|BYMONTHDAY|BYYEARDAY|BYWEEKNO|BYSETPOS)=/i.test(
+          `;${line.split(":").pop()}`,
+        ),
+      )
+    ) {
+      fail(
+        409,
+        "Moving every occurrence of this series to another day needs its recurrence rule changed too (the rule names the days).",
+        "CALENDAR_RECURRENCE_SERIES_DAY_CHANGE_NEEDS_RULE",
+      );
+    }
+    const masterStart = fromWallMs(wallMs(master.startAt) + shiftMs);
+    return {
+      startAt: masterStart,
+      endAt: new Date(Date.parse(masterStart) + newDurationMs).toISOString(),
+      timeZone,
+    };
   }
 
   /**

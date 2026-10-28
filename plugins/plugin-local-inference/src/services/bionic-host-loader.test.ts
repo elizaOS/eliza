@@ -57,6 +57,29 @@ const SOCK = `eliza-bionic-test-${process.pid}`;
 const describeLinuxOnly =
 	process.platform === "linux" ? describe : describe.skip;
 
+/** A GGUF v3 header whose only entry is `general.architecture = parakeet-tdt` (Phonon-2). */
+function parakeetGgufHeader(): Buffer {
+	const str = (value: string) => {
+		const bytes = Buffer.from(value, "utf8");
+		const length = Buffer.alloc(8);
+		length.writeBigUInt64LE(BigInt(bytes.length));
+		return Buffer.concat([length, bytes]);
+	};
+	const head = Buffer.alloc(24);
+	head.write("GGUF", 0, "ascii");
+	head.writeUInt32LE(3, 4);
+	head.writeBigUInt64LE(0n, 8);
+	head.writeBigUInt64LE(1n, 16);
+	const stringType = Buffer.alloc(4);
+	stringType.writeUInt32LE(8);
+	return Buffer.concat([
+		head,
+		str("general.architecture"),
+		stringType,
+		str("parakeet-tdt"),
+	]);
+}
+
 function makeBundleModelPath(manifest: unknown = {}): string {
 	const bundleRoot = fs.mkdtempSync(
 		path.join(os.tmpdir(), "eliza-bionic-bundle-"),
@@ -64,10 +87,9 @@ function makeBundleModelPath(manifest: unknown = {}): string {
 	tempDirs.push(bundleRoot);
 	fs.mkdirSync(path.join(bundleRoot, "text"), { recursive: true });
 	fs.mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
-	fs.writeFileSync(path.join(bundleRoot, "asr", "gemma-asr.gguf"), "asr");
 	fs.writeFileSync(
-		path.join(bundleRoot, "asr", "gemma-asr-mmproj.gguf"),
-		"asr-projector",
+		path.join(bundleRoot, "asr", "phonon-2-fv5.gguf"),
+		parakeetGgufHeader(),
 	);
 	fs.writeFileSync(
 		path.join(bundleRoot, "eliza-1.manifest.json"),
@@ -141,7 +163,7 @@ describe("deriveBundleDir", () => {
 
 		await expect(
 			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
-		).rejects.toThrow(/requires an active Gemma ASR-capable bundle/);
+		).rejects.toThrow(/requires an active bundle with an asr\/ model/);
 	});
 });
 
@@ -304,6 +326,150 @@ describeLinuxOnly("BionicHostLoader (real abstract-UDS)", () => {
 		await expect(
 			loader.transcribe({ pcmBase64: "AAAA", sampleRate: 16000 }),
 		).rejects.toThrow(/no asr weights staged/);
+	});
+});
+
+/**
+ * A host that answers op="tts_cancel" / "asr_cancel" right away and holds
+ * every other request open until a cancel arrives, then answers it with
+ * ELIZA_ERR_CANCELLED-shaped {ok:false}.
+ */
+function startCancellableHost(
+	name: string,
+	seen: Array<Record<string, unknown>>,
+): net.Server {
+	const held: net.Socket[] = [];
+	const server = net.createServer((sock) => {
+		let buf = Buffer.alloc(0);
+		sock.on("data", (d) => {
+			buf = Buffer.concat([buf, d]);
+			if (buf.length < 4) return;
+			const expected = buf.readUInt32BE(0);
+			if (buf.length < 4 + expected) return;
+			const req = JSON.parse(buf.subarray(4, 4 + expected).toString("utf8"));
+			seen.push(req);
+			if (String(req.op).endsWith("_cancel")) {
+				sock.write(frame(JSON.stringify({ ok: true })));
+				for (const other of held.splice(0)) {
+					other.write(
+						frame(
+							JSON.stringify({
+								ok: false,
+								cancelled: true,
+								error: "cancelled",
+							}),
+						),
+					);
+				}
+				return;
+			}
+			held.push(sock);
+		});
+	});
+	server.listen({ path: `\0${name}` });
+	return server;
+}
+
+describeLinuxOnly("BionicHostLoader voice ops (real abstract-UDS)", () => {
+	function pcmBase64(values: number[]): string {
+		const buf = Buffer.alloc(values.length * 4);
+		for (const [i, v] of values.entries()) buf.writeFloatLE(v, i * 4);
+		return buf.toString("base64");
+	}
+
+	it("synthesize sends op=tts {text} and decodes the fp32 PCM", async () => {
+		let seen: Record<string, unknown> | null = null;
+		host = startHost(SOCK, (req) => {
+			seen = req;
+			return JSON.stringify({
+				ok: true,
+				sampleRate: 24000,
+				samples: 3,
+				pcmBase64: pcmBase64([0, 0.5, -0.25]),
+			});
+		});
+		const loader = new BionicHostLoader(SOCK);
+		const modelPath = makeBundleModelPath();
+		await loader.loadModel({ modelPath });
+		const out = await loader.synthesize({ text: "  Hello there.  " });
+		expect(out.sampleRate).toBe(24000);
+		expect(Array.from(out.pcm)).toEqual([0, 0.5, -0.25]);
+		expect(seen).toEqual({
+			op: "tts",
+			bundleDir: path.dirname(path.dirname(modelPath)),
+			text: "Hello there.",
+			language: "en-US",
+			speed: 1,
+		});
+	});
+
+	it("synthesize rejects malformed PCM and host errors", async () => {
+		host = startHost(SOCK, (req) =>
+			JSON.stringify(
+				req.text === "bad"
+					? { ok: true, sampleRate: 24000, samples: 2, pcmBase64: "AAAAAAA=" }
+					: { ok: false, error: "tts: Paradee GGUF + lexicon not found" },
+			),
+		);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
+		await expect(loader.synthesize({ text: "bad" })).rejects.toThrow(
+			/PCM bytes/,
+		);
+		await expect(loader.synthesize({ text: "ok" })).rejects.toThrow(
+			/lexicon not found/,
+		);
+		await expect(loader.synthesize({ text: "   " })).rejects.toThrow(
+			/non-empty/,
+		);
+	});
+
+	it("aborting synthesize sends op=tts_cancel and rejects with the reason", async () => {
+		const seen: Array<Record<string, unknown>> = [];
+		host = startCancellableHost(SOCK, seen);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
+		const controller = new AbortController();
+		const pending = loader.synthesize({
+			text: "A long reply.",
+			signal: controller.signal,
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		controller.abort(new Error("barge-in"));
+		await expect(pending).rejects.toThrow("barge-in");
+		await new Promise((r) => setTimeout(r, 50));
+		expect(seen.map((r) => r.op)).toEqual(["tts", "tts_cancel"]);
+	});
+
+	it("aborting transcribe sends op=asr_cancel", async () => {
+		const seen: Array<Record<string, unknown>> = [];
+		host = startCancellableHost(SOCK, seen);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
+		const controller = new AbortController();
+		const pending = loader.transcribe({
+			pcmBase64: "AAAA",
+			sampleRate: 16000,
+			signal: controller.signal,
+		});
+		await new Promise((r) => setTimeout(r, 50));
+		controller.abort();
+		await expect(pending).rejects.toBe(controller.signal.reason);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(seen.map((r) => r.op)).toEqual(["asr", "asr_cancel"]);
+	});
+
+	it("an already-aborted signal never reaches the host", async () => {
+		const seen: Array<Record<string, unknown>> = [];
+		host = startCancellableHost(SOCK, seen);
+		const loader = new BionicHostLoader(SOCK);
+		await loader.loadModel({ modelPath: makeBundleModelPath() });
+		const controller = new AbortController();
+		controller.abort();
+		await expect(
+			loader.synthesize({ text: "x", signal: controller.signal }),
+		).rejects.toBe(controller.signal.reason);
+		expect(seen).toEqual([]);
 	});
 });
 
@@ -638,3 +804,12 @@ describeEncoderTransport(
 		});
 	},
 );
+
+describe("BionicHostLoader.synthesize without an active bundle", () => {
+	it("refuses before contacting the host instead of using the host default bundle", async () => {
+		const loader = new BionicHostLoader(`eliza-test-no-host-${process.pid}`);
+		await expect(loader.synthesize({ text: "Hello." })).rejects.toThrow(
+			/requires an active bundle/,
+		);
+	});
+});

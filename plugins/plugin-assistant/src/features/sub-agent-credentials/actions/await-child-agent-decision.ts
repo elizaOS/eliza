@@ -46,6 +46,8 @@ function getBus(runtime: IAgentRuntime): SubAgentChildDecisionBus | null {
 
 export const awaitChildAgentDecisionAction: Action = {
   name: "AWAIT_CHILD_AGENT_DECISION",
+  roleGate: { minRole: "OWNER" },
+  contexts: ["code", "agent_internal"],
   description:
     "Wait for the named child coding agent to emit a decision line on its DECISION channel.",
   descriptionCompressed:
@@ -72,19 +74,10 @@ export const awaitChildAgentDecisionAction: Action = {
     },
   ],
 
-  validate: async (
-    runtime: IAgentRuntime,
-    _message: Memory,
-    _state?: State,
-    options?: HandlerOptions,
-  ): Promise<boolean> => {
-    if (!getBus(runtime)) return false;
-    const params = readParams(options);
-    return (
-      typeof params.childSessionId === "string" &&
-      params.childSessionId.length > 0
-    );
-  },
+  // Availability only: the planner tool surface calls validate without
+  // arguments. The schema and the handler check the arguments.
+  validate: async (runtime: IAgentRuntime): Promise<boolean> =>
+    getBus(runtime) !== null,
 
   handler: async (
     runtime: IAgentRuntime,

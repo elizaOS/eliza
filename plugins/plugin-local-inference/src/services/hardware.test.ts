@@ -100,6 +100,41 @@ describe("detectOpenVinoDevices", () => {
 		expect(probe.npu.accelNodes).toEqual([]);
 		expect(probe.recommendedAsrDevice).toBeNull();
 	});
+
+	it("reports an unreadable /dev/dri as unknown, not as an Intel-GPU-free host", () => {
+		const denied = Object.assign(
+			new Error("EACCES: permission denied, scandir '/dev/dri'"),
+			{ code: "EACCES" },
+		);
+		const probe = detectOpenVinoDevices({
+			platform: "linux",
+			env: { OpenVINO_DIR: "/opt/intel/openvino_2026/runtime/cmake" },
+			existsSync: (path: string) => path === "/dev/dri",
+			readdirSync: () => {
+				throw denied;
+			},
+		});
+
+		// Probing stays best-effort: no throw, no invented render nodes.
+		expect(probe.gpu.renderNodes).toEqual([]);
+		expect(probe.devices).toEqual(["CPU"]);
+		// ...but the failure must be distinguishable from "no render nodes here".
+		expect(
+			probe.warnings.some(
+				(w) => w.includes("/dev/dri") && w.includes("EACCES"),
+			),
+		).toBe(true);
+
+		const absent = detectOpenVinoDevices({
+			platform: "linux",
+			env: { OpenVINO_DIR: "/opt/intel/openvino_2026/runtime/cmake" },
+			existsSync: () => false,
+			readdirSync: () => {
+				throw new Error("readdir must not run for an absent directory");
+			},
+		});
+		expect(absent.warnings).toEqual([]);
+	});
 });
 
 describe("detectCpuFeatures", () => {

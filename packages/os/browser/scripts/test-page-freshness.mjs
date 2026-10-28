@@ -5,6 +5,7 @@ import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 import { pageCommand } from "../src/commands.mjs";
+import { pageGuidance } from "../src/page-guidance.mjs";
 
 const require = createRequire(
   import.meta.resolve("@elizaos/plugin-browser/package.json"),
@@ -325,7 +326,7 @@ try {
       "beforeend",
       '<label for="full">Full name</label><input id="full" autocomplete="name" required aria-invalid="true" aria-describedby="hint" aria-errormessage="problem" value="private-name-value"><span id="hint">As shown on your bill</span><span id="problem">Enter your name</span><label>Card number <input id="card" autocomplete="cc-number" value="4242424242424242"></label><span id="pin-name">PIN</span><input id="pin" aria-labelledby="pin-name" autocomplete="current-password"><input id="agree" type="checkbox" checked aria-label="Paperless"><button id="more" type="button" aria-expanded="false" disabled>More</button>',
     );
-    document.querySelector("#full").focus();
+    document.querySelector("#full").focus({ preventScroll: true });
   });
   state = await snapshot();
   const named = (label) =>
@@ -357,6 +358,431 @@ try {
   assert.ok(!JSON.stringify(state.value).includes("4242424242424242"));
   cases.push(
     "snapshots name fields from labels and report focus, state, field help and secret-field markers without values",
+  );
+  // Controls with no usable name are still listed and located from the DOM:
+  // nearby text, placeholder, title, image text, field name, form, group and
+  // position. Unmarked secret fields are classified by their words.
+  await page.evaluate(() => {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      '<form id="contact" aria-label="Contact details"><fieldset><legend>Where we reach you</legend><span>Phone</span><input id="phone" name="phone"><input name="zip" placeholder="ZIP code"></fieldset><input name="ssn"><input id="routingNumber"><label>Social Security number <input id="ss2"></label><label>PIN code <input id="pincode" name="postal_code"></label><button>Save</button></form><table><tr><td>Water bill</td><td><button type="button" class="row-pay">Open</button></td></tr><tr><td>Gas bill</td><td><button type="button" class="row-pay">Open</button></td></tr></table><div id="icon" style="cursor:pointer;width:20px;height:20px" onclick="document.querySelector(\'#count\').textContent=\'icon\'"><svg width="10" height="10"><title>Help</title></svg></div><span id="tip" title="Search the site" tabindex="0" style="display:inline-block;width:10px;height:10px"></span>',
+    );
+  });
+  state = await snapshot();
+  const by = (selector) =>
+    state.value.elements.find((element) => element.targetSelector === selector);
+  assert.equal(by("#phone").label, "");
+  assert.equal(by("#phone").nearbyText, "Phone");
+  assert.deepEqual(by("#phone").form, {
+    index: 0,
+    name: "Contact details",
+  });
+  assert.equal(by("#phone").group, "Where we reach you");
+  assert.equal(by('input[name="zip"]').placeholder, "ZIP code");
+  assert.equal(by('input[name="zip"]').fieldName, "zip");
+  assert.equal(by('input[name="ssn"]').sensitive, "government-id");
+  assert.equal(by("#routingNumber").sensitive, "bank-account");
+  assert.equal(by("#ss2").sensitive, "government-id");
+  assert.equal(by("#phone").sensitive, null);
+  // An Indian "PIN code" postal field is an address field, not a password.
+  assert.equal(by("#pincode").sensitive, null);
+  const save = state.value.elements.find((element) => element.label === "Save");
+  assert.equal(save.submits, true);
+  assert.equal(by("#go").submits, false);
+  const rows = state.value.elements.filter(
+    (element) => element.label === "Open",
+  );
+  assert.deepEqual(
+    rows.map((element) => element.nearbyText),
+    ["Water bill", "Gas bill"],
+  );
+  assert.equal(new Set(rows.map((element) => element.targetSelector)).size, 2);
+  for (const row of rows)
+    assert.equal(
+      await page.$$eval(row.targetSelector, (nodes) => nodes.length),
+      1,
+    );
+  assert.equal(by("#icon").pressable, "click-handler");
+  assert.equal(by("#icon").imageText, "Help");
+  assert.equal(by("#tip").pressable, "tab-stop");
+  assert.equal(by("#tip").title, "Search the site");
+  // The page is 3000 pixels tall: the first button is on screen, the new
+  // controls at its end are below it.
+  assert.equal(by("#go").inViewport, true);
+  assert.equal(by("#icon").inViewport, false);
+  assert.ok(by("#icon").bounds.width > 0);
+  cases.push(
+    "unlabeled controls are listed with nearby text, placeholder, title, image text, field name, form, group, position and a unique selector; unmarked SSN and bank fields are secret",
+  );
+  // An unmarked secret field is never filled by a task, even when granted.
+  const grant = {
+    origin: new URL(page.url()).origin,
+    expiresAt: Date.now() + 60000,
+    targets: [
+      { selector: 'input[name="ssn"]', action: "fill" },
+      { selector: "#routingNumber", action: "fill" },
+      { selector: "#phone", action: "fill" },
+    ],
+  };
+  const fillAt = async (selector, text) => {
+    state = await snapshot();
+    return run({
+      subaction: "fill",
+      snapshotId: state.id,
+      nodeId: by(selector).id,
+      text,
+      taskPolicy: grant,
+    });
+  };
+  assert.equal(
+    (await fillAt('input[name="ssn"]', "123-45-6789")).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(
+    (await fillAt("#routingNumber", "021000021")).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(await page.$eval('input[name="ssn"]', (node) => node.value), "");
+  assert.equal((await fillAt("#phone", "5550100")).dispatched, true);
+  assert.equal(await page.$eval("#phone", (node) => node.value), "5550100");
+  cases.push(
+    "a granted fill reaches an ordinary unlabeled field by its unique selector and never an unmarked SSN or routing field",
+  );
+  await page.evaluate(() => {
+    document.body.innerHTML = `<div id="region" aria-label="Results" style="height:120px;width:240px;overflow:auto"><div style="height:900px;width:900px">Scrollable results</div></div><div id="click-region" tabindex="0" aria-label="Scrollable choice" onclick="this.dataset.clicked='yes'" style="height:60px;overflow:auto"><div style="height:500px">Choice content</div></div>`;
+    document.body.style.height = "3000px";
+    window.scrollTo(0, 0);
+  });
+  state = await snapshot();
+  const root = state.value.elements.find((element) => element.scroll?.document);
+  assert.equal(root.targetSelector, "html");
+  assert.equal(root.scroll.y, 0);
+  assert.equal(root.scrollOnly, true);
+  assert.equal(
+    state.value.elements.find(
+      (element) => element.targetSelector === "#click-region",
+    ).scrollOnly,
+    false,
+  );
+  assert.equal(
+    (await act(state, "click", "Scrollable choice")).dispatched,
+    true,
+  );
+  assert.equal(
+    await page.$eval("#click-region", (node) => node.dataset.clicked),
+    "yes",
+  );
+  state = await snapshot();
+
+  assert.equal(
+    (await act(state, "click", "Page")).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(
+    (await act(state, "scroll", "Page", { direction: "down" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.scroll?.document).scroll.y,
+    500,
+  );
+  const originalViewport = page.viewport();
+  for (const [size, viewport] of [
+    ["desktop", { width: 800, height: 600 }],
+    ["compact", { width: 400, height: 191 }],
+  ]) {
+    await page.setViewport(viewport);
+    state = await snapshot();
+    const rootNow = state.value.elements.find(
+      (element) => element.scroll?.document,
+    );
+    const guide = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "show", id: "root-scroll", origin: new URL(page.url()).origin, snapshotId: state.id, nodeId: rootNow.id, text: "Scroll the page down", action: "scroll", expiresAt: Date.now() + 60000 })})`,
+      returnByValue: true,
+    });
+    assert.equal(guide.exceptionDetails, undefined);
+    assert.equal(guide.result.value.placement, "in-view");
+    let scrollReady = false;
+    for (let attempt = 0; attempt < 60 && !scrollReady; attempt++) {
+      const status = await cdp.send("Runtime.evaluate", {
+        contextId: executionContextId,
+        expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "action-status", id: "root-scroll", snapshotId: state.id, nodeId: rootNow.id, action: "scroll" })})`,
+        returnByValue: true,
+      });
+      scrollReady = status.result.value?.ready === true;
+      if (!scrollReady)
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    assert.equal(
+      scrollReady,
+      true,
+      "A whole-page scroll must have a visible preview and Cancel",
+    );
+    const scrollOut = testOutputPath("browser-page-freshness");
+    await mkdir(scrollOut, { recursive: true });
+    await page.screenshot({ path: `${scrollOut}/root-scroll-${size}.png` });
+
+    assert.equal(
+      await page.evaluate(() => scrollY),
+      500,
+      "Guidance must not reveal the whole document by scrolling to its middle",
+    );
+    await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})({kind:'hide'})`,
+    });
+  }
+  await page.setViewport(originalViewport);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  state = await snapshot();
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "down" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  const region = state.value.elements.find(
+    (element) => element.targetSelector === "#region",
+  );
+  assert.equal(region.scroll.y, 500);
+  assert.equal(await page.evaluate(() => scrollY), 0);
+  await page.evaluate(
+    () => (document.querySelector("#region").scrollTop = 600),
+  );
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "down" })).error.kind,
+    "STALE_REF",
+  );
+  await page.evaluate(
+    () => (document.querySelector("#region").scrollTop = 900),
+  );
+  state = await snapshot();
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "down" })).error.kind,
+    "POLICY_BLOCKED",
+  );
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "right" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.targetSelector === "#region")
+      .scroll.x,
+    500,
+  );
+  await page.evaluate(() => {
+    const node = document.querySelector("#region");
+    node.style.direction = "rtl";
+    node.scrollLeft = 0;
+  });
+  state = await snapshot();
+  assert.equal(
+    (await act(state, "scroll", "Results", { direction: "left" })).dispatched,
+    true,
+  );
+  state = await snapshot();
+  assert.equal(
+    state.value.elements.find((element) => element.targetSelector === "#region")
+      .scroll.x,
+    -500,
+  );
+  cases.push(
+    "observed document and nested scrolling, viewport guidance, manual-scroll freshness and end-of-region refusal",
+  );
+  // The last scroll's own scroll event fires on a later frame; let it pass
+  // before the effect handler is added, or it changes the address early.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await page.evaluate(() =>
+    document
+      .querySelector("#region")
+      .addEventListener(
+        "scroll",
+        () => history.pushState({}, "", "#scroll-effect"),
+        { once: true },
+      ),
+  );
+  state = await snapshot();
+  assert.equal(
+    (
+      await act(state, "scroll", "Results", {
+        direction: "up",
+        taskPolicy: {
+          origin: new URL(page.url()).origin,
+          expiresAt: Date.now() + 60000,
+          guidanceScope: "scroll-test",
+          targets: [{ selector: "#region", action: "scroll" }],
+        },
+      })
+    ).dispatched,
+    true,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  const watched = await run(
+    {
+      subaction: "snapshot",
+      taskPolicy: {
+        origin: new URL(page.url()).origin,
+        expiresAt: Date.now() + 60000,
+        guidanceScope: "scroll-test",
+        targets: [],
+      },
+    },
+    `snapshot-${++sequence}`,
+  );
+  assert.ok(
+    watched.effectViolation,
+    "A scroll handler that navigates must leave uncertainty evidence",
+  );
+  cases.push("task scrolling retains the navigation/effect watch");
+  // Click response evidence is produced in the isolated command, not by the
+  // host guessing from two unrelated page reads.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<button id="show" type="button">Show details</button><output></output><input id="entry"><span hidden id="hidden">old</span>';
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("output").textContent =
+        "Library address: 10 Maple Street";
+    };
+  });
+  const clickPolicy = {
+    origin: new URL(page.url()).origin,
+    expiresAt: Date.now() + 60000,
+    guidanceScope: "click-readback",
+    targets: [{ selector: "#show", action: "click" }],
+  };
+  const clickRead = async (scope = "click-readback") =>
+    run(
+      {
+        subaction: "snapshot",
+        taskPolicy: { ...clickPolicy, guidanceScope: scope },
+      },
+      `snapshot-${++sequence}`,
+    );
+  const perform = async () => {
+    const observed = await snapshot();
+    const ref = `${observed.id}:0:${observed.value.elements.find((element) => element.targetSelector === "#show").id}`;
+    assert.equal(
+      (
+        await act(observed, "click", "Show details", {
+          taskPolicy: clickPolicy,
+        })
+      ).dispatched,
+      true,
+    );
+    return ref;
+  };
+  const clicked = await perform();
+  assert.deepEqual((await clickRead()).clickReadback, {
+    targetRef: clicked,
+    synchronousTextChange: true,
+  });
+  assert.equal(
+    (await clickRead()).clickReadback,
+    undefined,
+    "Readback is consumed once",
+  );
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead("another-task")).clickReadback,
+    undefined,
+    "A different task cannot read the receipt",
+  );
+  assert.equal((await clickRead()).clickReadback, undefined);
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "Later unrelated text";
+  });
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Changed-again text is not the click readback",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("#entry").value = "private-field-value";
+      document.querySelector("#hidden").textContent = "hidden result";
+    };
+    document.querySelector("output").textContent =
+      "Carousel changed before the click";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Unrelated updates, hidden text and input values do not prove visible click results",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () =>
+      queueMicrotask(() => {
+        document.querySelector("output").textContent = "Asynchronous result";
+      });
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Asynchronous changes require separate outcome evidence",
+  );
+  cases.push(
+    "one-use task-bound synchronous text response excludes unrelated, hidden and edited values",
+  );
+  // A guide inside a native modal must not stale its own snapshot. A mixed
+  // insertion or ordinary page edit must still fence the observed action.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<dialog><button type="button">Modal action</button></dialog>';
+    document.querySelector("dialog").showModal();
+    window.scrollTo(0, 0);
+  });
+  for (const mutation of ["owned-only", "mixed", "attribute", "text"]) {
+    state = await snapshot();
+    const node = state.value.elements.find(
+      (element) => element.label === "Modal action",
+    );
+    assert.ok(node);
+    const shown = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "show", id: `modal-${mutation}`, origin: new URL(page.url()).origin, snapshotId: state.id, nodeId: node.id, text: "Use this control", expiresAt: Date.now() + 60000 })})`,
+      returnByValue: true,
+    });
+    assert.equal(shown.exceptionDetails, undefined);
+    assert.equal(shown.result.value.placement, "in-view");
+    const changed = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(() => {
+        const guide = globalThis.__elizaPageGuidanceV1;
+        const dialog = document.querySelector('dialog');
+        const button = dialog.querySelector('button');
+        if (${JSON.stringify(mutation)} === 'mixed') dialog.append(guide.host, document.createElement('span'));
+        if (${JSON.stringify(mutation)} === 'attribute') button.setAttribute('aria-description','Changed instruction');
+        if (${JSON.stringify(mutation)} === 'text') button.firstChild.data = 'Changed action';
+        guide.destroy();
+      })()`,
+      returnByValue: true,
+    });
+    assert.equal(changed.exceptionDetails, undefined);
+    const result = await act(state, "click", "Modal action");
+    if (mutation === "owned-only") assert.equal(result.dispatched, true);
+    else assert.equal(result.error.kind, "STALE_REF", mutation);
+    await page.evaluate(() => {
+      document.querySelector("dialog button").textContent = "Modal action";
+    });
+  }
+  cases.push(
+    "modal owned-host insertion/removal preserves refs; mixed insertion and page attribute/text edits invalidate them",
   );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });

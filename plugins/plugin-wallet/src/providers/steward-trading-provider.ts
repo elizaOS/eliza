@@ -100,7 +100,7 @@ export const stewardTradingProvider: Provider = {
 
     const lines = accounts.map((account) =>
       account.status === "active"
-        ? `- ${account.venue}: active (${account.accountId})`
+        ? `- ${account.venue}: active (${account.accountId}), sessionId ${account.sessionId}`
         : `- ${account.venue}: ${account.status}`,
     );
     return {

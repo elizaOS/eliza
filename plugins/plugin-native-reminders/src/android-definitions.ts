@@ -179,8 +179,13 @@ export type AndroidReminderScheduleResult =
       message: string;
     };
 export type AndroidReminderPendingTap =
-  | { token: string; target: AndroidReminderTarget; retained: boolean }
-  | { token?: never; target?: never; retained?: never };
+  | {
+      token: string;
+      target: AndroidReminderTarget;
+      retained: boolean;
+      question?: boolean;
+    }
+  | { token?: never; target?: never; retained?: never; question?: never };
 /** Methods may reject; resolved unknown/failure statuses are not successful operations. */
 export interface AndroidRemindersPlugin {
   scheduleReminder(
@@ -239,6 +244,8 @@ export interface AndroidRemindersPlugin {
   }>;
   pendingReminderTap(): Promise<AndroidReminderPendingTap>;
   consumeReminderTap(options: { token: string }): Promise<void>;
+  /** Cancel question review without consuming the notice; the same Ask action remains reusable. */
+  releaseReminderQuestion(options: { token: string }): Promise<void>;
   dismissReminderTap(options: { token: string }): Promise<void>;
   addListener(
     eventName: "appResumed" | "pendingReminderTap",

@@ -21,6 +21,8 @@ export interface FakeRuntimeOptions {
   noRelationships?: boolean;
 }
 
+export const FAKE_AGENT_ID = "00000000-0000-0000-0000-000000000001" as UUID;
+
 function key(platform: string, identifier: string): string {
   return `${platform.toLowerCase()}|${identifier.toLowerCase()}`;
 }
@@ -62,8 +64,10 @@ export function createFakeRuntime(
   }
 
   const runtime = {
+    agentId: FAKE_AGENT_ID,
     getService: (name: string) => services.get(name) ?? null,
-  } as IAgentRuntime;
+    getSetting: () => null,
+  } as unknown as IAgentRuntime;
 
   return runtime;
 }

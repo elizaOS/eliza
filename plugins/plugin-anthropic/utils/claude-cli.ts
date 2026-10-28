@@ -66,7 +66,6 @@ function buildCliArgs(
   prompt: string,
   modelName: string,
   systemPrompt: string | undefined,
-  maxTokens: number | undefined,
   streaming: boolean
 ): string[] {
   const args = [
@@ -79,7 +78,6 @@ function buildCliArgs(
     streaming ? "stream-json" : "json",
   ];
   if (streaming) args.push("--verbose", "--include-partial-messages");
-  if (maxTokens != null) args.push("--max-tokens", String(maxTokens));
   if (systemPrompt) args.push("--system-prompt", systemPrompt);
   return args;
 }
@@ -94,6 +92,16 @@ function parseUsage(
     completionTokens: entry.outputTokens,
     totalTokens: entry.inputTokens + entry.outputTokens,
   };
+}
+
+/**
+ * The `claude` CLI has no output-token flag; it reads its output cap from
+ * `CLAUDE_CODE_MAX_OUTPUT_TOKENS`.
+ */
+function buildCliEnv(maxTokens: number | undefined): Record<string, string | undefined> {
+  return maxTokens == null
+    ? process.env
+    : { ...process.env, CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(maxTokens) };
 }
 
 /** Wall-clock bound for one `claude -p` child. Real generations stay under this. */
@@ -169,7 +177,14 @@ function getBunRuntime() {
   const bunRuntime = (
     globalThis as typeof globalThis & {
       Bun?: {
-        spawn(args: string[], options: { stdout: "pipe"; stderr: "pipe" }): ClaudeCliProcess;
+        spawn(
+          args: string[],
+          options: {
+            stdout: "pipe";
+            stderr: "pipe";
+            env: Record<string, string | undefined>;
+          }
+        ): ClaudeCliProcess;
       };
     }
   ).Bun;
@@ -263,7 +278,6 @@ export async function generateViaCli(
     prompt,
     modelName,
     systemPrompt ?? buildCanonicalSystemPrompt({ character: runtime.character }),
-    maxTokens,
     false
   );
   logger.debug(`[Anthropic CLI] ${modelType} → ${modelName}`);
@@ -275,7 +289,11 @@ export async function generateViaCli(
     outputReserveTokens: maxTokens,
   });
   preparedRequest.assertBeforeAttempt();
-  const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
+  const proc = getBunRuntime().spawn(args, {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: buildCliEnv(maxTokens),
+  });
   const { output, stderr, exitCode } = await collectClaudeCliOutput(proc);
 
   if (exitCode !== 0) {
@@ -338,7 +356,6 @@ export function streamViaCli(
     prompt,
     modelName,
     systemPrompt ?? buildCanonicalSystemPrompt({ character: runtime.character }),
-    maxTokens,
     true
   );
   logger.debug(`[Anthropic CLI] streaming ${modelType} → ${modelName}`);
@@ -350,7 +367,11 @@ export function streamViaCli(
     outputReserveTokens: maxTokens,
   });
   preparedRequest.assertBeforeAttempt();
-  const proc = getBunRuntime().spawn(args, { stdout: "pipe", stderr: "pipe" });
+  const proc = getBunRuntime().spawn(args, {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: buildCliEnv(maxTokens),
+  });
   const deadline = createClaudeCliDeadline(proc, CLAUDE_CLI_TIMEOUT_MS);
   const stderrOutcome = settle(
     readClaudeCliStreamBudget(proc.stderr, CLAUDE_CLI_MAX_STDIO_BYTES, "stderr")

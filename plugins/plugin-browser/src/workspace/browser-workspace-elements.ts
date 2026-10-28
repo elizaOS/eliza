@@ -190,7 +190,14 @@ export function getBrowserWorkspaceElementSearchTexts(
   const labelText =
     element.id && element.ownerDocument
       ? Array.from(
-          element.ownerDocument.querySelectorAll(`label[for="${element.id}"]`),
+          element.ownerDocument.querySelectorAll(
+            // The id is page-controlled. An unquoted interpolation of an id
+            // that contains a quote (legal HTML, e.g. `phone"work`) makes the
+            // selector invalid, and querySelectorAll then throws SyntaxError,
+            // aborting the whole role/label search. Quote it with the same
+            // helper this file uses for its other attribute selectors.
+            `label[for=${buildBrowserWorkspaceCssStringLiteral(element.id)}]`,
+          ),
         )
           .map((label) => label.textContent)
           .join(" ")
@@ -245,11 +252,12 @@ export function isBrowserWorkspaceElementVisible(element: Element): boolean {
   return true;
 }
 
-export function findBrowserWorkspaceElementByLabel(
+export function findAllBrowserWorkspaceElementsByLabel(
   document: Document,
   labelText: string,
   exact = false,
-): Element | null {
+): Element[] {
+  const found: Element[] = [];
   const labels = Array.from(document.querySelectorAll("label"));
   for (const label of labels) {
     if (
@@ -262,16 +270,28 @@ export function findBrowserWorkspaceElementByLabel(
     if (forId) {
       const explicit = document.getElementById(forId);
       if (explicit) {
-        return explicit;
+        found.push(explicit);
+        continue;
       }
     }
 
     const nested = label.querySelector("input, textarea, select, button");
     if (nested) {
-      return nested;
+      found.push(nested);
     }
   }
-  return null;
+  return [...new Set(found)];
+}
+
+export function findBrowserWorkspaceElementByLabel(
+  document: Document,
+  labelText: string,
+  exact = false,
+): Element | null {
+  return (
+    findAllBrowserWorkspaceElementsByLabel(document, labelText, exact)[0] ??
+    null
+  );
 }
 
 export function getBrowserWorkspaceNativeRole(element: Element): string | null {
@@ -301,17 +321,18 @@ export function getBrowserWorkspaceNativeRole(element: Element): string | null {
   return null;
 }
 
-export function findBrowserWorkspaceElementByRole(
+export function findAllBrowserWorkspaceElementsByRole(
   document: Document,
   role: string,
   name?: string,
   exact = false,
-): Element | null {
+): Element[] {
   const wantedRole = role.trim().toLowerCase();
   if (!wantedRole) {
-    return null;
+    return [];
   }
 
+  const found: Element[] = [];
   const candidates = Array.from(
     document.querySelectorAll(
       "a, button, input, textarea, select, option, form, h1, h2, h3, h4, h5, h6, [role], [data-testid]",
@@ -322,16 +343,29 @@ export function findBrowserWorkspaceElementByRole(
       continue;
     }
     if (!name?.trim()) {
-      return candidate;
+      found.push(candidate);
+      continue;
     }
     const haystacks = getBrowserWorkspaceElementSearchTexts(candidate);
     if (
       haystacks.some((value) => browserWorkspaceTextMatches(value, name, exact))
     ) {
-      return candidate;
+      found.push(candidate);
     }
   }
-  return null;
+  return found;
+}
+
+export function findBrowserWorkspaceElementByRole(
+  document: Document,
+  role: string,
+  name?: string,
+  exact = false,
+): Element | null {
+  return (
+    findAllBrowserWorkspaceElementsByRole(document, role, name, exact)[0] ??
+    null
+  );
 }
 
 export function trimBrowserWorkspaceQuotedValue(value: string): string {
@@ -471,13 +505,14 @@ export function queryAllBrowserWorkspaceSelector(
   }
 }
 
-export function findBrowserWorkspaceElementByText(
+export function findAllBrowserWorkspaceElementsByText(
   document: Document,
   needle: string,
-): Element | null {
+  exact = false,
+): Element[] {
   const wanted = normalizeBrowserWorkspaceText(needle).toLowerCase();
   if (!wanted) {
-    return null;
+    return [];
   }
 
   const candidates = Array.from(
@@ -486,7 +521,7 @@ export function findBrowserWorkspaceElementByText(
     ),
   );
 
-  for (const element of candidates) {
+  const matches = candidates.filter((element) => {
     const haystacks = [
       element.textContent,
       element.getAttribute("aria-label"),
@@ -500,12 +535,28 @@ export function findBrowserWorkspaceElementByText(
       .filter(Boolean)
       .map((value) => value.toLowerCase());
 
-    if (haystacks.some((value) => value.includes(wanted))) {
-      return element;
-    }
-  }
+    return haystacks.some((value) =>
+      exact ? value === wanted : value.includes(wanted),
+    );
+  });
+  // A wrapper (a [data-testid] section, a heading, a label) contains the text
+  // of the link or button inside it and comes first in document order. Keep the
+  // inner control so a click by text reaches it, not the wrapper.
+  return matches.filter(
+    (element) =>
+      element.matches(BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR) ||
+      !matches.some((other) => other !== element && element.contains(other)),
+  );
+}
 
-  return null;
+const BROWSER_WORKSPACE_TEXT_CONTROL_SELECTOR =
+  "a, button, input, textarea, select, option, [role='button']";
+
+export function findBrowserWorkspaceElementByText(
+  document: Document,
+  needle: string,
+): Element | null {
+  return findAllBrowserWorkspaceElementsByText(document, needle)[0] ?? null;
 }
 
 export function resolveBrowserWorkspaceFindElement(
@@ -597,6 +648,107 @@ export function resolveBrowserWorkspaceFindElement(
       );
     default:
       return null;
+  }
+}
+
+/**
+ * Plural variant of {@link resolveBrowserWorkspaceFindElement}: every element
+ * a semantic find command matches, in document order. `get`/`count` uses this
+ * so semantic selectors report the true match count instead of capping at one.
+ */
+export function resolveBrowserWorkspaceFindElements(
+  document: Document,
+  command: BrowserWorkspaceCommand,
+): Element[] {
+  switch (command.findBy) {
+    case "alt":
+      return command.text?.trim()
+        ? Array.from(document.querySelectorAll("[alt]")).filter((element) =>
+            browserWorkspaceTextMatches(
+              element.getAttribute("alt") ?? "",
+              command.text ?? "",
+              command.exact,
+            ),
+          )
+        : [];
+    case "first": {
+      const element = command.selector?.trim()
+        ? queryBrowserWorkspaceSelector(document, command.selector)
+        : null;
+      return element ? [element] : [];
+    }
+    case "label":
+      return command.text?.trim()
+        ? findAllBrowserWorkspaceElementsByLabel(
+            document,
+            command.text,
+            command.exact,
+          )
+        : [];
+    case "last": {
+      const element = command.selector?.trim()
+        ? (queryAllBrowserWorkspaceSelector(document, command.selector).at(
+            -1,
+          ) ?? null)
+        : null;
+      return element ? [element] : [];
+    }
+    case "nth": {
+      const element =
+        command.selector?.trim() &&
+        typeof command.index === "number" &&
+        Number.isInteger(command.index)
+          ? (queryAllBrowserWorkspaceSelector(document, command.selector).at(
+              command.index,
+            ) ?? null)
+          : null;
+      return element ? [element] : [];
+    }
+    case "placeholder":
+      return command.text?.trim()
+        ? Array.from(document.querySelectorAll("[placeholder]")).filter(
+            (element) =>
+              browserWorkspaceTextMatches(
+                element.getAttribute("placeholder") ?? "",
+                command.text ?? "",
+                command.exact,
+              ),
+          )
+        : [];
+    case "role":
+      return command.role?.trim()
+        ? findAllBrowserWorkspaceElementsByRole(
+            document,
+            command.role,
+            command.name,
+            command.exact,
+          )
+        : [];
+    case "testid":
+      return command.text?.trim()
+        ? Array.from(document.querySelectorAll("[data-testid]")).filter(
+            (element) => element.getAttribute("data-testid") === command.text,
+          )
+        : [];
+    case "text":
+      return command.text?.trim()
+        ? findAllBrowserWorkspaceElementsByText(
+            document,
+            command.text,
+            command.exact,
+          )
+        : [];
+    case "title":
+      return Array.from(document.querySelectorAll("[title]")).filter(
+        (element) =>
+          browserWorkspaceTextMatches(
+            element.getAttribute("title") ?? "",
+            command.text ?? "",
+            command.exact,
+          ),
+      );
+    default:
+      return [];
   }
 }
 

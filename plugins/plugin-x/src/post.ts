@@ -104,19 +104,10 @@ export class TwitterPostClient {
     logger.log("Starting Twitter post client...");
     this.isRunning = true;
 
+    // Each iteration waits one post interval and then posts. A start (also
+    // the in-process restart that a settings save runs) therefore posts at
+    // once only when TWITTER_POST_IMMEDIATELY asks for it, below.
     const generateNewTweetLoop = async () => {
-      if (!this.isRunning) {
-        logger.log("Twitter post client stopped, exiting loop");
-        return;
-      }
-
-      await this.generateNewTweet();
-
-      if (!this.isRunning) {
-        logger.log("Twitter post client stopped after tweet, exiting loop");
-        return;
-      }
-
       // Get random post interval in minutes
       const postIntervalMinutes = getRandomInterval(this.runtime, "post");
 
@@ -127,8 +118,14 @@ export class TwitterPostClient {
         `Next tweet scheduled in ${postIntervalMinutes.toFixed(1)} minutes`,
       );
 
-      // Wait for the interval AFTER generating the tweet
       await new Promise((resolve) => setTimeout(resolve, interval));
+
+      if (!this.isRunning) {
+        logger.log("Twitter post client stopped, exiting loop");
+        return;
+      }
+
+      await this.generateNewTweet();
 
       if (this.isRunning) {
         // Schedule the next iteration
@@ -211,6 +208,7 @@ export class TwitterPostClient {
     }
 
     this.isPosting = true;
+    let posted = false;
 
     try {
       // Create the timeline room ID for storing the post
@@ -222,7 +220,6 @@ export class TwitterPostClient {
       const worldId = createUniqueUuid(this.runtime, userId) as UUID;
       const roomId = createUniqueUuid(this.runtime, `${userId}-home`) as UUID;
       const username = profile.username;
-      let posted = false;
 
       const callback = createTwitterPostCallback({
         client: this.client,
@@ -249,7 +246,9 @@ export class TwitterPostClient {
       return posted;
     } catch (error) {
       logger.error("Error generating tweet:", errorMessage(error));
-      return false;
+      // A post that is already public counts as posted, so the startup retry
+      // loop does not post another one.
+      return posted;
     } finally {
       this.isPosting = false;
     }

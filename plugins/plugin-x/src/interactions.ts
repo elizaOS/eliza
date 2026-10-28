@@ -18,6 +18,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseBooleanValue,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -32,6 +33,7 @@ import type { Tweet as ClientTweet } from "./client/tweets";
 import {
   getRandomInterval,
   getTargetUsers,
+  parseTwitterCount,
   shouldTargetUser,
 } from "./environment";
 import { quoteTweetTemplate, twitterActionTemplate } from "./templates";
@@ -51,6 +53,10 @@ import {
   sendChunkedTweet,
   sendTextAsTweetThread,
 } from "./utils";
+import {
+  isExplicitTwitterRejection,
+  isPermanentTwitterRejection,
+} from "./utils/error-handler";
 import { describeTweetPhotos } from "./utils/image-descriptions";
 import {
   buildTwitterMessageMetadata,
@@ -113,15 +119,6 @@ export function normalizeTweet(tweet: ClientTweet): ProcessableTweet | null {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
-function normalizePositiveInteger(value: unknown, fallback: number): number {
-  const parsed =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number.parseInt(value, 10)
-        : Number.NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
-}
 /**
  * Template for generating dialog and actions for a Twitter message handler.
  *
@@ -163,6 +160,11 @@ export const messageHandlerTemplate = `
  *
  * @extends ClientBase
  */
+/** Durable per-mention reply state: egress_started, delivered or indeterminate. */
+function mentionReplySettledKey(accountId: string, tweetId: string): string {
+  return `x:mention-reply:${accountId}:${tweetId}`;
+}
+
 export class TwitterInteractionClient {
   client: ClientBase;
   runtime: IAgentRuntime;
@@ -240,8 +242,10 @@ export class TwitterInteractionClient {
         const { profile } = session;
         // Check for mentions first (replies enabled by default)
         const repliesEnabled =
-          (getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
-            process.env.TWITTER_ENABLE_REPLIES) !== "false";
+          parseBooleanValue(
+            getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
+              process.env.TWITTER_ENABLE_REPLIES,
+          ) ?? true;
         if (repliesEnabled) {
           await this.handleMentions(session);
         }
@@ -370,7 +374,7 @@ export class TwitterInteractionClient {
     username: string,
     session: TwitterAccountSession,
   ) {
-    const maxEngagementsPerRun = normalizePositiveInteger(
+    const maxEngagementsPerRun = parseTwitterCount(
       getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") ??
         process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
@@ -401,7 +405,16 @@ export class TwitterInteractionClient {
         logger.info(
           `Engaging with tweet from @${username}: ${tweet.text.substring(0, 50)}...`,
         );
-        const engaged = await this.engageWithTweet(tweet, actions, session);
+        let engaged: boolean;
+        try {
+          engaged = await this.engageWithTweet(tweet, actions, session);
+        } catch (error) {
+          // An earlier action (a quote, a like) may already be public. Mark the
+          // tweet processed so the next poll does not ask the model again and
+          // repeat it; X has no idempotency key for these writes.
+          await this.ensureTweetContext(tweet);
+          throw error;
+        }
         if (engaged) {
           await this.ensureTweetContext(tweet);
           engagementCount++;
@@ -786,6 +799,14 @@ ${tweet.text}`;
     uniqueTweetCandidates = uniqueTweetCandidates
       .sort((a, b) => a.id.localeCompare(b.id))
       .filter((tweet) => !profileId || tweet.userId !== profileId);
+    // Pagination keeps the whole page containing the watermark, so drop
+    // already-handled tweets before the per-run cap or they can fill every slot.
+    const watermark = this.client.getLatestCheckedTweetId(profileId);
+    if (watermark !== null) {
+      uniqueTweetCandidates = uniqueTweetCandidates.filter(
+        (tweet) => BigInt(tweet.id) > watermark,
+      );
+    }
     // Get TWITTER_TARGET_USERS configuration
     const targetUsersConfig =
       ((getSetting(this.runtime, "TWITTER_TARGET_USERS") ??
@@ -806,12 +827,17 @@ ${tweet.text}`;
       });
     }
     // Check AUTO_RESPOND settings
+    // Boolean settings, on by default: "false", "0", "no" and "off" turn them off.
     const autoRespondMentions =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
-        process.env.TWITTER_AUTO_RESPOND_MENTIONS) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
+          process.env.TWITTER_AUTO_RESPOND_MENTIONS,
+      ) ?? true;
     const autoRespondReplies =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
-        process.env.TWITTER_AUTO_RESPOND_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
+          process.env.TWITTER_AUTO_RESPOND_REPLIES,
+      ) ?? true;
     // Filter based on AUTO_RESPOND settings
     if (!autoRespondMentions || !autoRespondReplies) {
       const inReplyToIds = Array.from(
@@ -865,7 +891,7 @@ ${tweet.text}`;
       });
     }
     // Get max interactions per run setting
-    const maxInteractionsPerRun = normalizePositiveInteger(
+    const maxInteractionsPerRun = parseTwitterCount(
       getSetting(this.runtime, "TWITTER_MAX_ENGAGEMENTS_PER_RUN") ??
         process.env.TWITTER_MAX_ENGAGEMENTS_PER_RUN,
       10,
@@ -904,10 +930,16 @@ ${tweet.text}`;
             memory.content.inReplyTo === tweetId ||
             memory.content.inReplyTo === tweet.id,
         );
-        if (hasExistingReply) {
+        const replySettled = await this.runtime.getCache<string>(
+          mentionReplySettledKey(this.client.accountId, tweet.id),
+        );
+        if (hasExistingReply || replySettled) {
           logger.log(
-            `Already responded to tweet ${tweet.id} (found in conversation history), skipping`,
+            `Already responded to tweet ${tweet.id} (${hasExistingReply ? "found in conversation history" : `reply ${replySettled}`}), skipping`,
           );
+          // A durable reply can survive a crash before the cursor was saved.
+          this.assertCurrentSession(session);
+          this.client.recordLatestCheckedTweetId(profileId, BigInt(tweet.id));
           continue;
         }
         logger.log("New Tweet found", tweet.id);
@@ -1236,10 +1268,10 @@ ${tweet.text}`;
     let deliveryError: unknown = null;
     let egressAttempted = false;
     // Create a callback for handling the response
-    const callback: HandlerCallback = async (
-      response: Content,
-      tweetId?: string,
-    ) => {
+    // The callback's second argument is the producing action's name (core
+    // HandlerCallback), not a tweet id: a mention reply always targets the
+    // mention itself.
+    const callback: HandlerCallback = async (response: Content) => {
       if (!response.text) {
         logger.warn("No text content in response, skipping tweet reply");
         return [];
@@ -1251,7 +1283,7 @@ ${tweet.text}`;
         return [];
       }
       egressAttempted = true;
-      const tweetToReplyTo = tweetId || tweet.id;
+      const tweetToReplyTo = tweet.id;
       if (this.isDryRun) {
         logger.info(
           `[DRY RUN] Would have replied to ${tweet.username} with: ${response.text}`,
@@ -1265,7 +1297,23 @@ ${tweet.text}`;
         deliveryError = error;
         throw error;
       }
+      // X has no idempotency key for posts. Persist a no-replay barrier before
+      // the request, as the DM path does, so a timeout or a failure after the
+      // first chunk cannot post a second public reply on the next poll. The
+      // mention reopens only when no post request was issued (auth rotation,
+      // media fetch or upload failure) or X explicitly refused the first chunk.
+      const settledKey = mentionReplySettledKey(
+        this.client.accountId,
+        normalizedTweet.id,
+      );
+      try {
+        await this.runtime.setCache(settledKey, "egress_started");
+      } catch (error) {
+        deliveryError = error;
+        throw error;
+      }
       let responseMemories: Memory[];
+      let postRequests = 0;
       try {
         responseMemories = await sendChunkedTweet(
           this.client,
@@ -1273,11 +1321,34 @@ ${tweet.text}`;
           message.roomId,
           normalizedTweet.username,
           tweetToReplyTo,
+          {
+            onPostRequest: () => {
+              postRequests += 1;
+            },
+          },
         );
       } catch (error) {
         deliveryError = error;
+        // error-policy:J2 nothing reached X, or X explicitly refused the first
+        // chunk: reopen the mention. A refusal X ties to this conversation
+        // settles it so later mentions are not held behind it; app- or
+        // account-level refusals reopen it. Any other failure keeps the
+        // tombstone.
+        const refusedFirstChunk =
+          postRequests === 1 && isExplicitTwitterRejection(error);
+        if (
+          postRequests === 0 ||
+          (refusedFirstChunk && !isPermanentTwitterRejection(error))
+        ) {
+          await this.runtime.deleteCache(settledKey);
+        } else if (refusedFirstChunk) {
+          await this.runtime.setCache(settledKey, "rejected");
+        } else {
+          await this.runtime.setCache(settledKey, "indeterminate");
+        }
         throw error;
       }
+      await this.runtime.setCache(settledKey, "delivered");
       if (responseMemories.length === 0) {
         throw new Error("Failed to get X thread receipts from response");
       }

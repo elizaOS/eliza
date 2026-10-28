@@ -228,7 +228,10 @@ export async function ensureConnections(
 		}
 	>();
 	const worldMap = new Map<string, World>();
+	const worldFallbackNames = new Map<string, string>();
 	const roomMap = new Map<string, Room>();
+	const roomExplicitTypes = new Map<string, ChannelType>();
+	const roomFallbackNames = new Map<string, string>();
 	const roomParticipants = new Map<string, Set<UUID>>();
 
 	for (const c of connections) {
@@ -265,13 +268,14 @@ export async function ensureConnections(
 			};
 		}
 
+		// `name` stays unset when the connection omits `worldName`; it is
+		// filled from the stored world (or the generated fallback) before the
+		// write, so a nameless connection cannot replace a real world name
+		// with the fallback. A name an earlier connection in this batch gave
+		// the same world is kept the same way.
 		const world: World = {
 			id: worldId,
-			name: c.worldName
-				? c.worldName
-				: c.messageServerId
-					? `World for server ${c.messageServerId}`
-					: `World for room ${c.roomId}`,
+			name: c.worldName || worldMap.get(worldId)?.name || undefined,
 			agentId,
 			messageServerId: c.messageServerId,
 			metadata: {
@@ -280,23 +284,40 @@ export async function ensureConnections(
 			},
 		};
 		worldMap.set(worldId, world);
+		if (!worldFallbackNames.has(worldId)) {
+			worldFallbackNames.set(
+				worldId,
+				c.messageServerId
+					? `World for server ${c.messageServerId}`
+					: `World for room ${c.roomId}`,
+			);
+		}
 
 		const roomType =
 			typeof c.type === "string" &&
 			(Object.values(ChannelType) as string[]).includes(c.type)
 				? (c.type as keyof typeof ChannelType)
 				: ChannelType.DM;
+		// `type` is optional: remember only a type the connection actually
+		// gave, so a type-less connection can keep the stored room's type
+		// at write time instead of demoting it to the DM default.
+		if (roomType !== ChannelType.DM || c.type === ChannelType.DM) {
+			roomExplicitTypes.set(c.roomId, roomType as ChannelType);
+		}
+		// `name` and `channelId` stay unset here when the connection omits them;
+		// they are filled from the stored room (or a default) before the write.
 		const room: Room = {
 			id: c.roomId,
-			name: c.roomName || c.name || "default",
+			name: c.roomName || undefined,
 			source,
 			type: roomType,
-			channelId: c.channelId ?? c.roomId,
+			channelId: c.channelId,
 			serverId: c.serverId,
 			messageServerId: c.messageServerId,
 			worldId,
 		};
 		roomMap.set(c.roomId, room);
+		if (c.name) roomFallbackNames.set(c.roomId, c.name);
 
 		if (!roomParticipants.has(c.roomId)) {
 			roomParticipants.set(c.roomId, new Set());
@@ -372,6 +393,12 @@ export async function ensureConnections(
 							merged: {
 								...existing,
 								...world,
+								name:
+									world.name ||
+									existing?.name ||
+									worldFallbackNames.get(world.id),
+								messageServerId:
+									world.messageServerId ?? existing?.messageServerId,
 								agentId,
 								metadata: {
 									...(existing?.metadata ?? {}),
@@ -408,10 +435,31 @@ export async function ensureConnections(
 		},
 	);
 
-	const rooms = [...roomMap.values()].map((r) => ({
-		...r,
-		agentId,
-	}));
+	// A connection that omits the room's channel, name, or type keeps what the
+	// room already records, such as the platform conversation id a connector
+	// stored through ensureRoomExists; replies to the room are addressed by it.
+	// The server binding is the same: a caller that resolves the room through
+	// `worldId` omits `serverId`/`messageServerId`, and the write replaces the
+	// whole row, so an omitted binding must fall back to the stored one.
+	const storedRooms =
+		roomMap.size > 0
+			? ((await adapter.getRoomsByIds([...roomMap.keys()] as UUID[])) ?? [])
+			: [];
+	const storedRoomById = new Map(storedRooms.map((r) => [r.id, r]));
+	const rooms = [...roomMap.values()].map((r) => {
+		const stored = storedRoomById.get(r.id);
+		return {
+			...r,
+			name: r.name || stored?.name || roomFallbackNames.get(r.id) || "default",
+			channelId: r.channelId ?? stored?.channelId ?? r.id,
+			// A connection that omits `type` keeps the stored room's type;
+			// the DM default applies only when no type is recorded at all.
+			type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+			serverId: r.serverId ?? stored?.serverId,
+			messageServerId: r.messageServerId ?? stored?.messageServerId,
+			agentId,
+		};
+	});
 	if (rooms.length) await adapter.upsertRooms(rooms);
 
 	let createdRoomParticipants = 0;

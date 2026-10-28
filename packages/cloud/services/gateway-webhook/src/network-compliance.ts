@@ -2,8 +2,8 @@
  * Carrier keyword handling (STOP / START / HELP), the consent ledger, and the
  * Twilio reply idempotency fence for The Network's `network` project.
  *
- * Everything here is gated on `project === "network"`; Eliza projects never
- * reach it, so their behaviour is unchanged.
+ * The Network project and explicitly admitted Shared phone senders use this
+ * ledger. Other Shared traffic keeps its existing behavior.
  *
  * Rules (ported from the Network messaging prototype, CTIA conventions):
  *  - Exact keyword match after normalization ("stop", "STOP!", " Stop. "),
@@ -17,13 +17,80 @@
  *    sender's ledger entry.
  */
 
-import type { ChatEvent, Platform } from "./adapters/types";
+import type { DeliveryReceiptStore } from "@elizaos/cloud-services-common/delivery-receipts";
+import {
+  CONSENT_HISTORY_LIMIT,
+  cloudflareNetworkConsentLedger,
+  consentAddress,
+  type NetworkConsentEntry,
+  type NetworkConsentLedger,
+  parseConsentEntry,
+} from "@elizaos/cloud-services-common/network-consent";
+
+export {
+  consentAddress,
+  type NetworkConsentEntry,
+  type NetworkConsentLedger,
+} from "@elizaos/cloud-services-common/network-consent";
+
+import type { ChatEvent } from "./adapters/types";
 import type { GatewayRedis } from "./redis";
 
 export const NETWORK_PROJECT = "network";
 
 export function isNetworkProject(project: string | undefined | null): boolean {
   return project?.trim().toLowerCase() === NETWORK_PROJECT;
+}
+
+/**
+ * Staged rollout: NETWORK_TAKEOVER_ALLOWLIST (comma-separated E.164 numbers).
+ * When set, only these senders take the service path; everyone else keeps the
+ * legacy path. Unset = every sender (full takeover).
+ */
+export function takeoverAppliesTo(
+  sender: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.NETWORK_TAKEOVER_ALLOWLIST?.trim();
+  if (!raw) return true;
+  const allowed = new Set(
+    raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  return allowed.has(sender.trim());
+}
+
+/** Shared takeover is opt-in for one existing project and a non-empty owned sender allowlist. */
+export function networkTakeoverAppliesTo(
+  project: string,
+  event: Pick<
+    ChatEvent,
+    "platform" | "senderId" | "chatType" | "membershipChange"
+  >,
+  explicitAgentId?: string,
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  if (
+    env.NETWORK_TAKEOVER !== "1" ||
+    explicitAgentId ||
+    event.membershipChange ||
+    (event.platform !== "blooio" && event.platform !== "twilio") ||
+    event.chatType === "group" ||
+    event.chatType === "supergroup"
+  )
+    return false;
+  if (isNetworkProject(project)) return takeoverAppliesTo(event.senderId, env);
+  const sharedProject = env.NETWORK_SHARED_PROJECT?.trim();
+  const canonicalProject = env.ELIZA_APP_WEBHOOK_PROJECT?.trim() || "eliza-app";
+  return (
+    !!sharedProject &&
+    sharedProject === canonicalProject &&
+    project === sharedProject &&
+    !!env.NETWORK_TAKEOVER_ALLOWLIST?.trim() &&
+    takeoverAppliesTo(event.senderId, env)
+  );
 }
 
 export const STOP_WORDS = [
@@ -72,72 +139,19 @@ export function detectNetworkKeyword(
   return null;
 }
 
-export interface NetworkConsentEntry {
-  project: string;
-  /** Service-owned app scope; absent/null is the shared line. */
-  app?: "ntwrk" | "slop" | "peon" | "friends" | null;
-  channel: Platform;
-  address: string;
-  state: "opted_in" | "opted_out";
-  /** `keyword:STOP`, `keyword:START`, `invite_acceptance`, `admin`, ... */
-  source: string;
-  providerMessageId?: string;
-  at: string;
-}
-
-/** Current consent state per (project, address), plus an append-only history. */
-export interface NetworkConsentLedger {
-  current(
-    project: string,
-    address: string,
-    app?: NetworkConsentEntry["app"],
-  ): Promise<NetworkConsentEntry | null>;
-  record(entry: NetworkConsentEntry): Promise<void>;
-}
-
-const CONSENT_HISTORY_LIMIT = 200;
-
-/** Addresses are phone numbers or handles; case and whitespace never matter. */
-export function consentAddress(address: string): string {
-  return address.trim().toLowerCase();
-}
-
-function parseConsentEntry(value: unknown): NetworkConsentEntry | null {
-  let candidate = value;
-  if (typeof candidate === "string") {
-    try {
-      candidate = JSON.parse(candidate);
-    } catch {
-      // error-policy:J3 an unreadable ledger row is treated as no consent row.
-      return null;
-    }
-  }
-  if (!candidate || typeof candidate !== "object") return null;
-  const entry = candidate as Record<string, unknown>;
-  if (
-    typeof entry.project !== "string" ||
-    typeof entry.address !== "string" ||
-    (entry.state !== "opted_in" && entry.state !== "opted_out") ||
-    typeof entry.source !== "string" ||
-    typeof entry.at !== "string" ||
-    !Number.isFinite(Date.parse(entry.at)) ||
-    (entry.app !== undefined &&
-      entry.app !== null &&
-      !["ntwrk", "slop", "peon", "friends"].includes(String(entry.app)))
-  ) {
-    return null;
-  }
-  return entry as unknown as NetworkConsentEntry;
-}
-
 /**
- * Redis-backed ledger. The current-state key has no TTL (consent must not
+ * Selected consent ledger (Redis by default). Current state has no TTL (consent must not
  * silently expire); the history list keeps the latest entries per address.
  * Postgres `network.consent_ledger` (migration 0474) is the durable audit copy.
  */
 export function redisNetworkConsentLedger(
   redis: GatewayRedis,
 ): NetworkConsentLedger {
+  const backend = process.env.CLOUD_NETWORK_CONSENT_BACKEND ?? "redis";
+  if (backend === "cloudflare")
+    return cloudflareNetworkConsentLedger(process.env);
+  if (backend !== "redis")
+    throw new Error("Invalid CLOUD_NETWORK_CONSENT_BACKEND");
   const currentKey = (
     project: string,
     address: string,
@@ -233,7 +247,10 @@ export async function handleNetworkInboundCompliance(
   event: ChatEvent,
   now: () => Date = () => new Date(),
 ): Promise<NetworkInboundCompliance> {
-  if (!isNetworkProject(project) || event.membershipChange) {
+  if (
+    (!isNetworkProject(project) && !networkTakeoverAppliesTo(project, event)) ||
+    event.membershipChange
+  ) {
     return { kind: "continue" };
   }
   const isGroup = event.chatType === "group" || event.chatType === "supergroup";
@@ -279,21 +296,25 @@ const REPLY_FENCE_TTL_SECONDS = 14 * 24 * 60 * 60;
  * provider receipt, and release it only on an explicit provider rejection.
  */
 export async function sendWithTwilioReplyFence(
-  redis: GatewayRedis,
+  receipts: Pick<DeliveryReceiptStore, "set" | "del">,
   project: string,
   messageId: string,
-  send: () => Promise<string[]>,
+  send: () => Promise<string[] | false>,
   isExplicitRejection: (error: unknown) => boolean,
-): Promise<"sent" | "replayed"> {
+): Promise<"sent" | "replayed" | "suppressed"> {
   const key = `reply:twilio:${project}:${messageId}`;
-  const claimed = await redis.set(key, "indeterminate", {
+  const claimed = await receipts.set(key, "indeterminate", {
     nx: true,
     ex: REPLY_FENCE_TTL_SECONDS,
   });
   if (claimed === null) return "replayed";
   try {
-    const providerMessageIds = (await send()) ?? [];
-    await redis.set(
+    const providerMessageIds = await send();
+    if (providerMessageIds === false) {
+      await receipts.set(key, "suppressed", { ex: REPLY_FENCE_TTL_SECONDS });
+      return "suppressed";
+    }
+    await receipts.set(
       key,
       JSON.stringify({ state: "complete", providerMessageIds }),
       { ex: REPLY_FENCE_TTL_SECONDS },
@@ -302,7 +323,7 @@ export async function sendWithTwilioReplyFence(
   } catch (error) {
     if (isExplicitRejection(error)) {
       try {
-        await redis.del(key);
+        await receipts.del(key);
       } catch {
         // error-policy:J6 the tombstone outlives a lost release; the provider
         // rejection below remains the primary outcome.

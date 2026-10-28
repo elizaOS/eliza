@@ -128,6 +128,38 @@ describe("CONNECTOR Google capability selection", () => {
     },
   );
 
+  it.each(["cloud_managed", "remote"])(
+    "names the mode argument when Google is asked for mode %s",
+    async (mode) => {
+      for (const parameters of [
+        {
+          connector: "google",
+          action: "connect",
+          mode,
+          capabilities: ["google.calendar.read"],
+        },
+        { connector: "google", action: "disconnect", mode },
+      ]) {
+        expect(validateToolArgs(connectorAction, parameters).valid).toBe(true);
+        const result = (await connectorAction.handler(
+          runtime,
+          {
+            agentId: runtime.agentId,
+            entityId: runtime.agentId,
+            roomId: runtime.agentId,
+            content: { text: `${parameters.action} my Google account` },
+          },
+          undefined,
+          { parameters },
+        )) as { success: boolean; text: string; data: Record<string, unknown> };
+        expect(result.success).toBe(false);
+        expect(result.data.error).toBe("GOOGLE_MODE_UNSUPPORTED");
+        expect(result.text).toContain(`mode "${mode}"`);
+        expect(result.data.requiresConfirmation).toBeUndefined();
+      }
+    },
+  );
+
   it("refuses a disconnect that can only fail without first asking the owner to confirm", async () => {
     const disconnect = async (connector: string) => {
       const parameters = { action: "disconnect", connector };

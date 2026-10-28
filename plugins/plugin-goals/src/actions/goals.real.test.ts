@@ -9,9 +9,7 @@
  * `callback` captures the agent's reply, asserting the natural-language →
  * deterministic-model-provider-extraction → action-dispatch loop closed with zero external cost.
  *
- * Two complementary paths, both terminating inside the action's own handler
- * (before the goals back-end touches PA's cross-plugin `app_lifeops` audit
- * table, which is out of this plugin's keyless surface):
+ * Two complementary paths, both terminating inside the action's own handler:
  *   1. A missing required field → the handler's clarification branch, reply
  *      naming the field the LLM could not extract.
  *   2. A low-confidence extraction → the same structured clarification, proving
@@ -28,42 +26,10 @@ import {
   type ModelProviderTestRuntime,
 } from "@elizaos/testing/runtime";
 import { afterEach, describe, expect, it } from "vitest";
-import { executeRawSql } from "../db/sql.ts";
 import { createOwnerGoalsService } from "../goals-runtime.ts";
 import { goalsPlugin } from "../plugin.ts";
 import { GOAL_CHECKIN_PROGRESS_STATES } from "../services/checkin.ts";
 import { ownerGoalsAction } from "./goals.ts";
-
-/**
- * Provision the one peer-owned table the OWNER_GOALS create/update/delete path
- * appends an audit row into. In production `@elizaos/plugin-personal-assistant`
- * owns `app_lifeops.life_audit_events`; in this PA-free keyless e2e we create
- * just that table (matching the columns the goals repository's INSERT writes) so
- * the full create→reply loop runs without pulling all of PA into the runtime.
- */
-async function provisionAuditTable(
-  harness: ModelProviderTestRuntime,
-): Promise<void> {
-  await executeRawSql(
-    harness.runtime,
-    "CREATE SCHEMA IF NOT EXISTS app_lifeops",
-  );
-  await executeRawSql(
-    harness.runtime,
-    `CREATE TABLE IF NOT EXISTS app_lifeops.life_audit_events (
-       id text PRIMARY KEY,
-       agent_id text NOT NULL,
-       event_type text NOT NULL,
-       owner_type text NOT NULL,
-       owner_id text NOT NULL,
-       reason text,
-       inputs_json text,
-       decision_json text,
-       actor text NOT NULL,
-       created_at text NOT NULL
-     )`,
-  );
-}
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -123,7 +89,6 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
         ],
       }),
     );
-    await provisionAuditTable(harness);
 
     const { result, reply } = await runOwnerGoals(
       harness,
@@ -189,7 +154,6 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
         ],
       }),
     );
-    await provisionAuditTable(harness);
 
     const created = await runOwnerGoals(
       harness,
@@ -277,7 +241,6 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
         ],
       }),
     );
-    await provisionAuditTable(harness);
 
     const { result, reply } = await runOwnerGoals(
       harness,
@@ -390,7 +353,6 @@ describe("OWNER_GOALS action (deterministic model-provider runtime)", () => {
         ],
       }),
     );
-    await provisionAuditTable(harness);
 
     const created = await runOwnerGoals(
       harness,

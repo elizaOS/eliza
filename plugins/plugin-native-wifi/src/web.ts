@@ -1,7 +1,9 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
+  ApprovedJoinResult,
   ConnectedNetworkResult,
+  ConnectivityResult,
   ConnectOptions,
   ConnectResult,
   ListNetworksOptions,
@@ -68,7 +70,9 @@ function validateConnectOptions(options: ConnectOptions): void {
  * full TypeScript interface is satisfied without throwing during normal
  * desktop or browser dev sessions. `connectToNetwork` and
  * `disconnectFromNetwork` resolve with `{ success: false }` because there is
- * no meaningful action to take on the web side.
+ * no meaningful action to take on the web side. `getConnectivity` and
+ * `addNetworkWithApproval` reject as unavailable: an empty result would
+ * misreport the browser's Internet state.
  */
 export class WiFiWeb extends WebPlugin implements WiFiPlugin {
   async getWifiState(): Promise<WifiStateResult> {
@@ -98,5 +102,16 @@ export class WiFiWeb extends WebPlugin implements WiFiPlugin {
   async disconnectFromNetwork(): Promise<ConnectResult> {
     warnOnce();
     return { success: false, message: UNAVAILABLE_MESSAGE };
+  }
+
+  async getConnectivity(): Promise<ConnectivityResult> {
+    throw this.unavailable(UNAVAILABLE_MESSAGE);
+  }
+
+  async addNetworkWithApproval(
+    options: ConnectOptions,
+  ): Promise<ApprovedJoinResult> {
+    validateConnectOptions(options);
+    throw this.unavailable(UNAVAILABLE_MESSAGE);
   }
 }

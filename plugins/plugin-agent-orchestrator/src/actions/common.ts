@@ -474,7 +474,11 @@ export async function resolveSession(
       sessions: [],
     };
   }
-  const sessions = await Promise.resolve(service.listSessions());
+  // The store keeps finished sessions and bumps their activity at close, so
+  // the default target is the newest session that is still live.
+  const sessions = (await Promise.resolve(service.listSessions())).filter(
+    (session) => !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase()),
+  );
   return { session: newestSession(sessions), sessions };
 }
 

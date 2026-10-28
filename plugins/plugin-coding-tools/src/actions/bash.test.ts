@@ -22,6 +22,7 @@ import {
   type Memory,
   UnavailableCapabilityRouter,
   type UUID,
+  validateToolArgs,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __codingMutationRequiresVerificationForTests } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
@@ -36,6 +37,7 @@ import { __codingMutationRequiresVerificationForTests } from "../../../plugin-as
 // the suite on Windows and trust the equivalent Linux/macOS runs.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
+import { classifyDestructiveCommand } from "../lib/destructive-gate.js";
 import { runShell } from "../lib/run-shell.js";
 import { persistShellOutputArtifact } from "../lib/shell-output-artifact.js";
 import {
@@ -55,7 +57,11 @@ import {
 } from "../types.js";
 
 import {
+  boundedDiskAndMemoryInspectionCommand,
+  boundedDiskInspectionCommand,
   type CommandPlatform,
+  localHealthCommand,
+  localMemoryCommand,
   localResourceUserFacingText,
   resolveCommandPlatform,
   resolveCryptoSpotPriceCommand,
@@ -1869,7 +1875,7 @@ describeIfPosix("shellAction", () => {
     expect(result.text).toContain(tmpRoot);
   });
 
-  it("uses session cwd instead of an unmentioned cwd for running-source checks", async () => {
+  it("rejects an unmentioned cwd for running-source checks and does not run in the session cwd", async () => {
     const roomId = "11111111-aaaa-bbbb-cccc-232323232323";
     const sessionRoot = path.resolve(
       process.cwd(),
@@ -1891,13 +1897,14 @@ describeIfPosix("shellAction", () => {
           "Can you tell me what branch and commit the local source is running from?",
         ),
         undefined,
-        { command: "pwd", cwd: staleRoot },
+        { command: "touch ran.txt", cwd: staleRoot },
       );
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("invalid_param");
+      expect(result.text).toContain(staleRoot);
       expect(result.text).toContain(sessionRoot);
-      expect(result.text).not.toContain(staleRoot);
-      const data = result.data as Record<string, unknown> | undefined;
-      expect(data?.cwd).toBe(sessionRoot);
+      expect(await fs.readdir(sessionRoot)).toEqual([]);
+      expect(await fs.readdir(staleRoot)).toEqual([]);
     } finally {
       await fs.rm(sessionRoot, { recursive: true, force: true });
       await fs.rm(staleRoot, { recursive: true, force: true });
@@ -2255,10 +2262,15 @@ describeIfPosix("shellAction", () => {
     expect(result.command).toContain("/api/health");
   });
 
-  it("canonicalizes RAM status probes", () => {
+  it.each([
+    "top -b -n 1 | head",
+    "free -m | awk '/Mem:/ {print $4; exit}'",
+    "grep -E 'MemTotal|MemAvailable' /proc/meminfo",
+    "free -m | awk '$3 > 100'",
+  ])("canonicalizes RAM status probes (%s)", (command) => {
     const result = resolveLocalStatusCommand({
       messageText: "how much RAM is free right now? concise",
-      command: "top -b -n 1 | head",
+      command,
       platform: "linux",
     });
 
@@ -2278,6 +2290,50 @@ describeIfPosix("shellAction", () => {
     });
 
     expect(result).toEqual({ command, kind: "memory", rewritten: false });
+  });
+
+  it.each([
+    [
+      "How much RAM is free right now? Also create the file notes.txt in the workspace.",
+      "touch notes.txt && echo created",
+    ],
+    ["check free memory and then list the files in /tmp", "ls /tmp"],
+    [
+      "what's the current memory limit in docker-compose.yml?",
+      "grep -n mem_limit docker-compose.yml",
+    ],
+    ["how much RAM is free right now?", "free -m > mem.txt"],
+    ["how much RAM is free right now?", "free -m | awk '{print}'; rm -rf x"],
+    ["how much RAM is free right now?", 'echo "$(rm -rf x)"; free -m'],
+    ["Is the bot health endpoint up? then run git status", "git status"],
+    [
+      "check the local bot health endpoint",
+      "curl -X POST http://localhost:2138/api/health/reset",
+    ],
+  ])(
+    "keeps a command that is not a status probe (%s)",
+    (messageText, command) => {
+      const result = resolveLocalStatusCommand({
+        messageText,
+        command,
+        platform: "linux",
+      });
+
+      expect(result.command).toBe(command);
+      expect(result.rewritten).toBe(false);
+    },
+  );
+
+  it("keeps a non-probe command on a combined disk and RAM request", () => {
+    const command = "rm -rf ./build-cache";
+    const result = resolveDiskInspectionCommand({
+      messageText:
+        "check disk space and free RAM on this server, then clean up ./build-cache",
+      command,
+      platform: "linux",
+    });
+
+    expect(result).toEqual({ command, rewritten: false });
   });
 
   it("bounds broad local source searches to the current workspace", () => {
@@ -2591,8 +2647,39 @@ describeIfPosix("shellAction", () => {
     }
   });
 
+  it("runs the planner's command when a RAM question also asks for other work", async () => {
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "shell-ram-work-"));
+    try {
+      const { runtime } = await makeRuntime();
+      const args = {
+        command: "touch notes.txt && echo created",
+        cwd: tempDir,
+      };
+      expect(validateToolArgs(shellAction, args).valid).toBe(true);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-646464646464",
+          "How much RAM is free right now? Also create the file notes.txt in the workspace.",
+        ),
+        undefined,
+        args,
+      );
+
+      expect(result.success).toBe(true);
+      expect((result.data as Record<string, unknown>).command).toBe(
+        args.command,
+      );
+      expect(await fs.readdir(tempDir)).toEqual(["notes.txt"]);
+    } finally {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("adds user-facing text for RAM status output", async () => {
-    if (process.platform !== "linux") return;
+    // macOS runs the canned vm_stat/sysctl probe. It must succeed without a
+    // destructive-operation confirmation.
+    if (process.platform !== "linux" && process.platform !== "darwin") return;
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
       runtime,
@@ -2601,7 +2688,10 @@ describeIfPosix("shellAction", () => {
         "how much RAM is free right now? concise",
       ),
       undefined,
-      { command: "top -b -n 1 | head" },
+      {
+        command:
+          process.platform === "darwin" ? "vm_stat" : "top -b -n 1 | head",
+      },
     );
 
     expect(result.success).toBe(true);
@@ -4115,6 +4205,24 @@ describe("shell timeout operator setting", () => {
 // `platform` so the canned-command dialect is asserted deterministically,
 // independent of the host shell the test runner happens to be on.
 describe("platform-aware canned resource commands", () => {
+  // The handler writes these commands itself and then runs them through the
+  // destructive gate. A read-only probe must not ask the owner to confirm.
+  it.each(["linux", "macos"] as const)(
+    "passes the destructive gate without confirmation on %s",
+    (platform) => {
+      for (const command of [
+        localMemoryCommand(platform),
+        localHealthCommand(platform),
+        boundedDiskInspectionCommand(platform),
+        boundedDiskAndMemoryInspectionCommand(platform),
+      ]) {
+        expect(classifyDestructiveCommand(command, "posix")).toMatchObject({
+          destructive: false,
+        });
+      }
+    },
+  );
+
   describe("windows (PowerShell)", () => {
     it("rewrites memory probes to a Win32_OperatingSystem query (no `free`)", () => {
       const result = resolveLocalStatusCommand({
@@ -4926,6 +5034,29 @@ describeIfPosix("destructive-bulk scanner integration", () => {
     }
   });
 
+  it("blocks a delete after a [[ =~ ]] regex group before it deletes a real fixture", async () => {
+    const target = await fs.mkdtemp(
+      path.join(os.tmpdir(), "coding-tools-regex-group-"),
+    );
+    const quotedTarget = `'${target.replaceAll("'", "'\\''")}'`;
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean the build output"),
+        undefined,
+        {
+          command: `[[ build =~ ^(build|dist)$ ]] && rm -rf ${quotedTarget}`,
+        },
+      );
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("needs_confirmation");
+      expect(await pathExists(target)).toBe(true);
+    } finally {
+      await fs.rm(target, { recursive: true, force: true });
+    }
+  });
+
   it("blocks a quote-composed executable before it deletes a real fixture", async () => {
     const target = await fs.mkdtemp(
       path.join(os.tmpdir(), "coding-tools-quoted-command-"),
@@ -4946,6 +5077,37 @@ describeIfPosix("destructive-bulk scanner integration", () => {
       await fs.rm(target, { recursive: true, force: true });
     }
   });
+
+  it.each([
+    ["; terminators", "-exec echo {} \\; -exec rm -rf {} \\;"],
+    ["+ terminators", "-exec echo {} + -execdir rm -rf {} +"],
+  ])(
+    "blocks a later find -exec delete clause with %s before it deletes a real fixture",
+    async (_label, actions) => {
+      const root = await fs.mkdtemp(
+        path.join(os.tmpdir(), "coding-tools-find-exec-"),
+      );
+      const target = path.join(root, "build");
+      await fs.mkdir(target);
+      const quotedRoot = `'${root.replaceAll("'", "'\\''")}'`;
+      const { runtime } = await makeRuntime();
+      try {
+        const result = await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "list the build directories"),
+          undefined,
+          {
+            command: `find ${quotedRoot} -mindepth 1 -type d -name build -prune ${actions}`,
+          },
+        );
+        expect(result.success).toBe(false);
+        expect(result.text).toContain("needs_confirmation");
+        expect(await pathExists(target)).toBe(true);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("allows benign quoted examples and comment-contained quotes to run", async () => {
     const { runtime } = await makeRuntime();

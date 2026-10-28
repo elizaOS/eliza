@@ -86,6 +86,38 @@ export function fingerprintIcsSourceUrl(url: URL): string {
   return createHash("sha256").update(url.href).digest("hex");
 }
 
+/** Length of a line fold (a line break and one space or tab) at `index`. */
+function foldLengthAt(bytes: Uint8Array, index: number): number {
+  const first = bytes[index];
+  const breakLength =
+    first === 0x0d
+      ? bytes[index + 1] === 0x0a
+        ? 2
+        : 1
+      : first === 0x0a
+        ? 1
+        : 0;
+  const next = bytes[index + breakLength];
+  return breakLength > 0 && (next === 0x20 || next === 0x09)
+    ? breakLength + 1
+    : 0;
+}
+
+/** Unfold content lines before UTF-8 decoding, including folds inside a scalar. */
+function unfoldIcsBytes(bytes: Uint8Array): Uint8Array {
+  const unfolded = new Uint8Array(bytes.length);
+  let written = 0;
+  for (let index = 0; index < bytes.length; ) {
+    const foldLength = foldLengthAt(bytes, index);
+    if (foldLength > 0) {
+      index += foldLength;
+    } else {
+      unfolded[written++] = bytes[index++];
+    }
+  }
+  return unfolded.subarray(0, written);
+}
+
 async function readBoundedUtf8Body(
   response: Response,
   sourceFingerprint: string,
@@ -111,12 +143,12 @@ async function readBoundedUtf8Body(
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: true });
-  let body = "";
+  const chunks: Uint8Array[] = [];
   let byteLength = 0;
 
-  const decode = (value?: Uint8Array, stream = false): string => {
+  const decode = (value: Uint8Array): string => {
     try {
-      return decoder.decode(value, { stream });
+      return decoder.decode(value);
     } catch (error) {
       // error-policy:J2 Preserve the decoder failure and add only the opaque
       // source identity; capability-bearing URLs never enter the error chain.
@@ -157,12 +189,12 @@ async function readBoundedUtf8Body(
           { sourceFingerprint, limit: MAX_ICS_FEED_BYTES },
         );
       }
-      body += decode(chunk.value, true);
+      chunks.push(chunk.value);
     }
-    body += decode();
   } finally {
     reader.releaseLock();
   }
+  const body = decode(unfoldIcsBytes(Buffer.concat(chunks)));
   return { body, byteLength };
 }
 

@@ -166,6 +166,18 @@ export class MessageTurnLifetime {
     callback?: HandlerCallback,
     options?: MessageProcessingOptions,
   ): Promise<MessageProcessingResult> {
+    if (options?.resolveTypedReadReply !== undefined) {
+      if (typeof options.resolveTypedReadReply !== "function")
+        throw new ElizaError(
+          "Typed read resolver must be a trusted host callback",
+          { code: "TYPED_READ_RESOLVER_INVALID" },
+        );
+      if (options.onStreamChunk)
+        throw new ElizaError(
+          "Typed public reads require buffered message delivery",
+          { code: "TYPED_READ_BUFFERED_ONLY" },
+        );
+    }
     // Validate trusted host policy before touching the message, runtime events,
     // action hooks, or callbacks. A profile is meaningful only on the explicit
     // direct coding path; accepting it elsewhere would make telemetry claim a
@@ -504,6 +516,7 @@ export class MessageTurnLifetime {
                 options.onPlanningAcknowledgment?.(text);
               }
             : undefined,
+          onResponseDecision: options?.onResponseDecision,
           keepExistingResponses:
             options?.keepExistingResponses ??
             parseBooleanFromText(
@@ -513,6 +526,14 @@ export class MessageTurnLifetime {
           ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
           ...(options?.roomHandlerLease
             ? { roomHandlerLease: options.roomHandlerLease }
+            : {}),
+          ...(options?.resolveTypedReadReply
+            ? {
+                resolveTypedReadReply: options.resolveTypedReadReply,
+                ...(options.onTypedReadEgress
+                  ? { onTypedReadEgress: options.onTypedReadEgress }
+                  : {}),
+              }
             : {}),
           onSettledActionResult: (result) => {
             runTerminalOwner?.recordActionResult(result);
@@ -722,11 +743,13 @@ export class MessageTurnLifetime {
                 streamingContext
                   ? {
                       ...streamingContext,
+                      modelAttemptTurnId: message.id,
                       ...(abortSignal ? { abortSignal } : {}),
                     }
                   : abortSignal
                     ? {
                         messageId: responseId,
+                        modelAttemptTurnId: message.id,
                         abortSignal,
                         reportError: runtime.reportError.bind(runtime),
                       }

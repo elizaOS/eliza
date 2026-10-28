@@ -208,7 +208,9 @@ export const notificationTriageAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const r = buildResolvedClient(runtime, "user");
+    const r = await buildResolvedClient(runtime, "user", {
+      refresh: "on-miss",
+    });
     return !("error" in r);
   },
 
@@ -227,7 +229,7 @@ export const notificationTriageAction: Action = {
     }>
   > => {
     const selection = resolveAccountSelection(options, "user");
-    const resolved = buildResolvedClient(runtime, selection);
+    const resolved = await buildResolvedClient(runtime, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });
       return { success: false, error: resolved.error };

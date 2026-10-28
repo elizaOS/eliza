@@ -1150,8 +1150,8 @@ export function useCloudState({
       // even when they meant to pick Google — and leaves the pre-opened
       // popup blank (the "white page"). Real wallet sign-in is an EXPLICIT
       // choice behind the /login page's EVM/Solana buttons; only the harness
-      // wallet (isElizaE2eWallet, packages/ui/src/platform/e2e-wallet.ts, which
-      // by its own gates never installs on deployed web) may sign in headlessly.
+      // wallet (isElizaE2eWallet, packages/app/src/dev/e2e-wallet.ts, whose
+      // hard gates keep it off store builds and deployed web) may sign in headlessly.
       if (
         !hasUsableStoredStewardToken() &&
         getInjectedEthereumProvider()?.isElizaE2eWallet === true

@@ -95,6 +95,7 @@
  */
 
 import {
+  ElizaError,
   type EventPayload,
   type IAgentRuntime,
   type JsonValue,
@@ -111,6 +112,7 @@ import {
   getSessionById,
   saveAutofillData,
   saveSubmission,
+  deleteSession as storageDeleteSession,
   getActiveSession as storageGetActiveSession,
   getAllActiveSessions as storageGetAllActiveSessions,
   getStashedSessions as storageGetStashedSessions,
@@ -593,7 +595,8 @@ export class FormService extends Service {
     }
 
     // Get old value for history
-    const oldValue = session.fields[field]?.value;
+    const oldState = session.fields[field];
+    const oldValue = oldState?.value;
 
     value = this.normalizeBuiltinDateValue(value, control);
 
@@ -620,7 +623,15 @@ export class FormService extends Service {
     // so undoing it clears the field instead of reverting an older change.
     const historyEntry: FieldHistoryEntry = {
       field,
-      ...(oldValue !== undefined ? { oldValue } : {}),
+      ...(oldState && oldValue !== undefined
+        ? {
+            oldValue,
+            oldStatus: oldState.status,
+            ...(oldState.confidence !== undefined
+              ? { oldConfidence: oldState.confidence }
+              : {}),
+          }
+        : {}),
       newValue: value,
       timestamp: now,
     };
@@ -629,7 +640,8 @@ export class FormService extends Service {
     // Limit history size
     const maxUndo = form.ux?.maxUndoSteps ?? 5;
     if (session.history.length > maxUndo) {
-      session.history = session.history.slice(-maxUndo);
+      // slice(-0) is slice(0): a zero limit must clear, not keep everything.
+      session.history = maxUndo > 0 ? session.history.slice(-maxUndo) : [];
     }
 
     // Update field state
@@ -653,6 +665,11 @@ export class FormService extends Service {
 
     // Check if all required fields are filled
     const allRequiredFilled = this.checkAllRequiredFilled(session, form);
+    // A correction can invalidate a previously ready form — move it back to
+    // active so it is not treated as complete (mirrors undoLastChange()).
+    if (!allRequiredFilled && session.status === "ready") {
+      session.status = "active";
+    }
     if (allRequiredFilled && session.status === "active") {
       session.status = "ready";
       if (form.hooks?.onReady) {
@@ -695,16 +712,56 @@ export class FormService extends Service {
       return null;
     }
 
-    // Restore the old value
+    // Restore the old value as it was. An answer that failed validation or
+    // still awaited confirmation must not come back as filled: the agent
+    // stopped asking for it, submit then threw on the invalid value, and an
+    // unconfirmed value was submitted without the confirmation step.
     if (lastChange.oldValue !== undefined) {
+      const control = form.controls.find((c) => c.key === lastChange.field);
+      const validation = control
+        ? validateField(
+            lastChange.oldValue,
+            control,
+            this.getControlType(control.type),
+          )
+        : undefined;
+      // Without its control (the form definition changed since the answer)
+      // the value cannot be revalidated, so its recorded status stands.
+      const invalid = validation
+        ? !validation.valid
+        : lastChange.oldStatus === "invalid";
+      let status: FieldState["status"] = "filled";
+      if (invalid) {
+        status = "invalid";
+      } else if (lastChange.oldStatus === "uncertain") {
+        status = "uncertain";
+      }
       session.fields[lastChange.field] = {
-        status: "filled",
+        status,
         value: lastChange.oldValue,
+        ...(lastChange.oldConfidence !== undefined
+          ? { confidence: lastChange.oldConfidence }
+          : {}),
         source: "correction",
         updatedAt: Date.now(),
+        ...(status === "invalid" ? { error: validation?.error } : {}),
       };
     } else {
       session.fields[lastChange.field] = { status: "empty" };
+    }
+
+    // 'ready' means every required field is filled. When undo leaves a
+    // required field invalid, uncertain or empty, the form is open again;
+    // when it puts back the answer that completes the form, the form is
+    // ready again, as when updateField completes it.
+    const allRequiredFilled = this.checkAllRequiredFilled(session, form);
+    if (session.status === "ready" && !allRequiredFilled) {
+      session.status = "active";
+    } else if (session.status === "active" && allRequiredFilled) {
+      session.status = "ready";
+      if (form.hooks?.onReady) {
+        await this.executeHook(session, "onReady");
+      }
     }
 
     session.updatedAt = Date.now();
@@ -906,6 +963,12 @@ export class FormService extends Service {
     session.effort.interactionCount++;
     session.effort.lastInteractionAt = now;
     session.effort.timeSpentMs = now - session.effort.firstInteractionAt;
+
+    // A composite answer is effort too: extend the deadline from the effort
+    // this answer recorded, as updateField() does. Without this, work on a
+    // composite field never moves the expiry and the session is deleted while
+    // the user is still answering it.
+    session.expiresAt = this.calculateTTL(session);
 
     session.updatedAt = now;
     await storageSaveSession(this.runtime, session);
@@ -1239,6 +1302,13 @@ export class FormService extends Service {
 
     for (const control of form.controls) {
       const fieldState = session.fields[control.key];
+      if (fieldState?.status === "uncertain") {
+        throw new ElizaError(`Field ${control.key} requires confirmation`, {
+          code: "FORM_FIELD_CONFIRMATION_REQUIRED",
+          severity: "ephemeral",
+          context: { formId: form.id, field: control.key },
+        });
+      }
       if (fieldState?.value !== undefined) {
         const validation = validateField(
           fieldState.value,
@@ -1275,8 +1345,22 @@ export class FormService extends Service {
     // Save submission
     await saveSubmission(this.runtime, submission);
 
-    // Update autofill data
-    await saveAutofillData(this.runtime, entityId, session.formId, values);
+    // Update autofill data. A sensitive answer (password, token) is not a
+    // prefill value: the autofill record is replayed into the next session of
+    // this form, so storing it there kept the secret in a second record and
+    // silently answered the field again on the next run.
+    const autofillValues = createValueMap<JsonValue>();
+    for (const control of form.controls) {
+      if (control.sensitive) continue;
+      const value = values[control.key];
+      if (value !== undefined) autofillValues[control.key] = value;
+    }
+    await saveAutofillData(
+      this.runtime,
+      entityId,
+      session.formId,
+      autofillValues,
+    );
 
     // Update session status
     session.status = "submitted";
@@ -1323,9 +1407,15 @@ export class FormService extends Service {
   }
 
   /**
-   * Restore a stashed session
+   * Restore a stashed session. Pass `roomId` to restore it into the room the
+   * user is talking in: the session is looked up by room, so a form left in
+   * its original room would get no context and no extracted answers here.
    */
-  async restore(sessionId: string, entityId: UUID): Promise<FormSession> {
+  async restore(
+    sessionId: string,
+    entityId: UUID,
+    roomId?: UUID,
+  ): Promise<FormSession> {
     const session = await getSessionById(this.runtime, entityId, sessionId);
     if (!session) {
       throw new Error(`Session not found: ${sessionId}`);
@@ -1335,14 +1425,23 @@ export class FormService extends Service {
       throw new Error(`Session is not stashed: ${session.status}`);
     }
 
-    // Check for existing active session in the same room
+    const targetRoomId = roomId ?? session.roomId;
+
+    // Check for existing active session in the target room
     const existing = await storageGetActiveSession(
       this.runtime,
       entityId,
-      session.roomId,
+      targetRoomId,
     );
     if (existing && existing.id !== sessionId) {
       throw new Error(`Active session already exists in room: ${existing.id}`);
+    }
+
+    if (targetRoomId !== session.roomId) {
+      // The storage key includes the room, so drop the old row before saving
+      // under the new room.
+      await storageDeleteSession(this.runtime, session);
+      session.roomId = targetRoomId;
     }
 
     session.status = "active";
@@ -1455,8 +1554,15 @@ export class FormService extends Service {
         continue;
       }
 
-      const value = autofill.values[control.key];
-      if (value !== undefined) {
+      const rawValue = autofill.values[control.key];
+      if (rawValue !== undefined) {
+        const value = this.normalizeBuiltinDateValue(rawValue, control);
+        const validation = validateField(
+          value,
+          control,
+          this.getControlType(control.type),
+        );
+        if (!validation.valid) continue;
         session.fields[control.key] = {
           status: "filled",
           value,
@@ -1544,7 +1650,11 @@ export class FormService extends Service {
         uncertainFields.push({
           key: control.key,
           label: control.label,
-          value: fieldState.value ?? null,
+          // A sensitive value goes to the model and the confirm prompt, so it
+          // gets the same mask as a filled one.
+          value: control.sensitive
+            ? formatValue(fieldState.value ?? null, control)
+            : (fieldState.value ?? null),
           confidence: fieldState.confidence ?? 0,
         });
       } else if (fieldState?.status === "invalid") {

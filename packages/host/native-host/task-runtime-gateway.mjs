@@ -1,18 +1,22 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { NativeHostError } from "./errors.mjs";
+import { openTaskDatabase } from "./task-storage.mjs";
 
 /** The host owns identity and storage; shared code owns task transitions. */
 export async function createTaskGateway({
   bundlePath,
   databasePath,
+  databaseProvider,
+  requireEncryptedDatabase = false,
   credentialGate,
   actuator,
   actuatorFactory,
   authorizeGoal,
   extensionFactory,
+  decoratePresentation,
+  onResponse,
   agentId = "eliza",
   connectorSource = "native-gateway",
 }) {
@@ -39,12 +43,11 @@ export async function createTaskGateway({
     InteractiveTaskChoices,
     SqliteTaskPresentation,
   } = await import(pathToFileURL(bundlePath).href);
-  await mkdir(dirname(databasePath), { recursive: true, mode: 0o700 });
-  const db = process.versions.bun
-    ? new (await import("bun:sqlite")).Database(databasePath, { create: true })
-    : new (await import("node:sqlite")).DatabaseSync(databasePath);
-  await chmod(databasePath, 0o600);
-  db.exec("PRAGMA synchronous = FULL");
+  const db = await openTaskDatabase({
+    databasePath,
+    databaseProvider,
+    requireEncryption: requireEncryptedDatabase,
+  });
   const store = new SqliteInteractiveTaskStore(db);
   const choiceStore = new SqliteMessageInteractionSessionStore(db);
   const extension = extensionFactory?.({
@@ -177,6 +180,62 @@ export async function createTaskGateway({
     initialOwner = null;
   }
   if (initialOwner) runtimeFor(initialOwner);
+  async function handleRequest(request) {
+    let owner;
+    try {
+      owner = await authenticate();
+    } catch (error) {
+      return error?.code === "TASK_CLEANUP_UNCONFIRMED"
+        ? Response.json({ code: error.code }, { status: 503 })
+        : Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
+    }
+    if (closed || authenticatedEpochs.get(owner) !== epoch)
+      return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
+    const requestEpoch = epoch;
+    const runtime = runtimeFor(owner);
+    const extensionResponse = await extension?.(request, {
+      owner,
+      runtime,
+      authenticate,
+      requestEpoch,
+      currentEpoch: () => epoch,
+    });
+    if (extensionResponse !== undefined && extensionResponse !== null) {
+      if (!(extensionResponse instanceof Response))
+        throw new NativeHostError("Invalid task host extension response");
+      const current = await authenticate();
+      if (
+        closed ||
+        request.signal.aborted ||
+        requestEpoch !== epoch ||
+        current.actorId !== owner.actorId
+      )
+        return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
+      return extensionResponse;
+    }
+    // Do not create a cosmetic task when the actual helper is unavailable.
+    if (
+      request.method === "POST" &&
+      new URL(request.url).pathname === "/tasks" &&
+      ((!actuator && !actuatorFactory) || !authorizeGoal)
+    )
+      return Response.json(
+        { code: "TASK_HELPER_UNAVAILABLE" },
+        { status: 503 },
+      );
+    return createInteractiveTaskHandler({
+      runtime,
+      authenticate: async () => {
+        try {
+          const current = await authenticate();
+          return requestEpoch === epoch ? current : null;
+        } catch {
+          return null;
+        }
+      },
+      authorizeGoal: authorizeGoal || unavailable,
+    })(request);
+  }
   return {
     /** Trusted host planner API. Never exposed as a renderer execution route. */
     async forCurrentOwner() {
@@ -232,63 +291,82 @@ export async function createTaskGateway({
         latest.authorization.state !== "active"
       )
         throw new NativeHostError("Task changed");
-      return { taskId, epoch: latest.epoch, revision: latest.revision, choice };
-    },
-    async handle(request) {
-      let owner;
+      const shown = {
+        taskId,
+        epoch: latest.epoch,
+        revision: latest.revision,
+        choice,
+      };
+      if (typeof decoratePresentation !== "function") return shown;
+      // Decoration is optional, but its wait cannot outlive task authority.
+      let decorated = shown;
       try {
-        owner = await authenticate();
-      } catch (error) {
-        return error?.code === "TASK_CLEANUP_UNCONFIRMED"
-          ? Response.json({ code: error.code }, { status: 503 })
-          : Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
+        decorated =
+          (await decoratePresentation({
+            presentation: { ...shown },
+            db,
+            owner,
+            runtime,
+          })) ?? shown;
+      } catch {
+        // Keep the validated presentation when optional decoration fails.
       }
-      if (closed || authenticatedEpochs.get(owner) !== epoch)
-        return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
-      const requestEpoch = epoch;
-      const runtime = runtimeFor(owner);
-      const extensionResponse = await extension?.(request, {
-        owner,
-        runtime,
-        authenticate,
-        requestEpoch,
-        currentEpoch: () => epoch,
-      });
-      if (extensionResponse !== undefined && extensionResponse !== null) {
-        if (!(extensionResponse instanceof Response))
-          throw new NativeHostError("Invalid task host extension response");
-        const current = await authenticate();
-        if (
-          closed ||
-          request.signal.aborted ||
-          requestEpoch !== epoch ||
-          current.actorId !== owner.actorId
-        )
-          return Response.json({ code: "TASK_UNAUTHORIZED" }, { status: 401 });
-        return extensionResponse;
-      }
-      // Do not create a cosmetic task when the actual helper is unavailable.
+      const afterDecoration = await authenticate();
       if (
-        request.method === "POST" &&
-        new URL(request.url).pathname === "/tasks" &&
-        ((!actuator && !actuatorFactory) || !authorizeGoal)
+        closed ||
+        requestEpoch !== epoch ||
+        afterDecoration.actorId !== actorId
       )
-        return Response.json(
-          { code: "TASK_HELPER_UNAVAILABLE" },
-          { status: 503 },
-        );
-      return createInteractiveTaskHandler({
-        runtime,
-        authenticate: async () => {
+        throw new NativeHostError("Task changed");
+      const afterTask = runtime.get(taskId);
+      if (
+        afterTask.epoch !== expectedEpoch ||
+        afterTask.revision !== task.revision ||
+        afterTask.status !== "active" ||
+        afterTask.authorization.state !== "active"
+      )
+        throw new NativeHostError("Task changed");
+      return decorated;
+    },
+    /** `onResponse` observes each answer; it cannot change or fail it. */
+    async handle(request) {
+      if (typeof onResponse !== "function") return handleRequest(request);
+      const started = performance.now();
+      let response;
+      try {
+        response = await handleRequest(request);
+      } finally {
+        const responseEpoch = epoch;
+        const responseOwner = activeOwner;
+        try {
+          await onResponse({
+            request,
+            response: response?.clone(),
+            durationMs: performance.now() - started,
+          });
+        } catch {}
+        if (response?.ok) {
           try {
             const current = await authenticate();
-            return requestEpoch === epoch ? current : null;
+            if (
+              closed ||
+              request.signal.aborted ||
+              responseEpoch !== epoch ||
+              current.actorId !== responseOwner
+            )
+              response = Response.json(
+                { code: "TASK_UNAUTHORIZED" },
+                { status: 401 },
+              );
           } catch {
-            return null;
+            response = Response.json(
+              { code: "TASK_UNAUTHORIZED" },
+              { status: 401 },
+            );
           }
-        },
-        authorizeGoal: authorizeGoal || unavailable,
-      })(request);
+        }
+      }
+      return response;
     },
     revoke() {
       epoch++;

@@ -5,6 +5,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
+import { ensureInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 import {
   FREE_RESOURCE_CEILINGS,
   resolveSubscriptionPlanDefinition,
@@ -55,6 +56,7 @@ export const SUBSCRIPTION_FREE_ENTITLEMENT_VALUES = {
   catalog_version: "v1",
   source_subscription_id: null,
   source_subscription_revision: null,
+  source_grant_id: null,
 } as const satisfies Omit<RebuildValues, "effective_from" | "source_digest">;
 
 export interface RebuildSubscriptionEntitlementInput {
@@ -152,6 +154,7 @@ export function deriveSubscriptionEntitlementValues(
     source_digest: revision.provider_object_digest,
     source_subscription_id: revision.subscription_id,
     source_subscription_revision: revision.revision,
+    source_grant_id: null,
   };
 }
 
@@ -181,6 +184,8 @@ export class SubscriptionEntitlementsRepository {
     tx: DbTransaction,
     input: RebuildSubscriptionEntitlementInput,
   ): Promise<RebuildSubscriptionEntitlementResult> {
+    await ensureInferencePolicyMutation(tx, input.organizationId);
+
     const [organization] = await tx
       .select({ id: organizations.id })
       .from(organizations)

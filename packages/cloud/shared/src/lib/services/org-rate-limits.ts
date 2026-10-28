@@ -26,6 +26,8 @@ export interface OrgRateLimitConfig {
   authority?: OrganizationPolicyStamp;
   windowMs: number;
   maxRequests: number;
+  /** Plan key from the cached admission snapshot; selects the plan request buckets. */
+  planKey?: string;
 }
 
 export interface OrgTierData {

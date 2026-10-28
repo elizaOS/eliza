@@ -941,6 +941,21 @@ function nonEmptyRecord<T>(value: T | undefined): T | undefined {
   return Object.keys(value).length > 0 ? value : undefined;
 }
 
+/**
+ * True when the planner supplied an output that is not the destination a
+ * chat-bound task is pinned to. The pinned destination always wins; the
+ * result must then say that the supplied one was not applied.
+ */
+function outputDiffersFromBound(
+  supplied: unknown,
+  bound: ScheduledTask["output"],
+): boolean {
+  return (
+    nonEmptyRecord(supplied) !== undefined &&
+    stableStringify(supplied) !== stableStringify(bound)
+  );
+}
+
 function defaultChatOutput(
   scope: RunnerScope,
 ): ScheduledTask["output"] | undefined {
@@ -1360,6 +1375,21 @@ async function handleCreate(
     }
     throw error;
   }
+  if (
+    chatDeliveryBinding &&
+    outputDiffersFromBound(params.output, created.output)
+  ) {
+    return {
+      success: true,
+      text: `Scheduled the ${noun}. It will be delivered to this ${chatDeliveryBinding.source} chat. An item created from a direct chat is always delivered to that chat, so the requested destination was not applied.`,
+      data: {
+        subaction: "create",
+        task: created,
+        outputIgnored: true,
+        boundOutput: created.output,
+      },
+    };
+  }
   return {
     success: true,
     text: `Scheduled the ${noun}.`,
@@ -1468,7 +1498,30 @@ async function handleUpdate(
     }
     patch = { ...patch, trigger: normalized.trigger };
   }
-  const patchEntries = Object.entries(patch);
+  const existingBinding = readScheduledTaskChatDeliveryBinding(
+    existing.metadata,
+  );
+  // A chat-bound task keeps its destination. A different patch.output is not
+  // applied, so it does not count as a change and the result reports it.
+  const outputIgnored =
+    existingBinding !== null &&
+    Object.hasOwn(patch, "output") &&
+    stableStringify(patch.output) !== stableStringify(existing.output);
+  const patchEntries = Object.entries(patch).filter(
+    ([key]) => !(outputIgnored && key === "output"),
+  );
+  if (outputIgnored && existingBinding && patchEntries.length === 0) {
+    return {
+      success: false,
+      text: `I did not change that scheduled item. It is always delivered to the ${existingBinding.source} chat it was created in.`,
+      data: {
+        subaction: "update",
+        error: "OUTPUT_BOUND_TO_CHAT",
+        message: `patch.output was not applied: this task is bound to ${existing.output?.target}. Omit patch.output.`,
+        boundOutput: existing.output,
+      },
+    };
+  }
   const unchanged =
     patchEntries.length === 0 ||
     patchEntries.every(([key, value]) => {
@@ -1478,13 +1531,20 @@ async function handleUpdate(
   if (unchanged) {
     return {
       success: true,
-      text: "That scheduled item is already up to date.",
-      data: { subaction: "update", task: existing, unchanged: true },
+      text:
+        outputIgnored && existingBinding
+          ? `That scheduled item is already up to date. It is always delivered to the ${existingBinding.source} chat it was created in, so the requested destination was not applied.`
+          : "That scheduled item is already up to date.",
+      data: {
+        subaction: "update",
+        task: existing,
+        unchanged: true,
+        ...(outputIgnored
+          ? { outputIgnored: true, boundOutput: existing.output }
+          : {}),
+      },
     };
   }
-  const existingBinding = readScheduledTaskChatDeliveryBinding(
-    existing.metadata,
-  );
   // Delivery identity is server-attested state, never model-editable state.
   // Preserve both the canonical output and binding while still allowing the
   // owner to reschedule or rewrite the reminder itself.
@@ -1528,6 +1588,18 @@ async function handleUpdate(
       };
     }
     throw error;
+  }
+  if (outputIgnored && existingBinding) {
+    return {
+      success: true,
+      text: `Updated that scheduled item. It is always delivered to the ${existingBinding.source} chat it was created in, so the requested destination was not applied.`,
+      data: {
+        subaction: "update",
+        task: updated,
+        outputIgnored: true,
+        boundOutput: updated.output,
+      },
+    };
   }
   return {
     success: true,
@@ -1897,7 +1969,6 @@ export const scheduledTaskAction: Action & {
     "SET_FOLLOWUP_THRESHOLD",
     // PRD action-catalog aliases. The PRD's NotificationIntent and
     // event-decision flows fold onto SCHEDULED_TASKS with escalation policy.
-    // See packages/docs/action-prd-map.md.
     "EVENT_SET_DECISION_DEADLINE",
     "EVENT_TRACK_ASSET_DEADLINES",
     "NOTIFICATION_CREATE_INTENT",
@@ -2017,7 +2088,7 @@ export const scheduledTaskAction: Action & {
     {
       name: "output",
       description:
-        "create-only: output destination/target, e.g. channel -> in_app:<roomId>.",
+        "create-only: output destination/target, e.g. channel -> in_app:<roomId>. A task created from a connector direct chat is always delivered to that chat: a different output is not applied and the result carries outputIgnored.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -2079,7 +2150,7 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "patch",
-      description: `update-only: shallow patch of ScheduledTask fields: ${SCHEDULED_TASK_PATCH_FIELDS.join(", ")}. Reword with promptInstructions and retime with trigger (same shapes as create). Any other key fails with UNKNOWN_PATCH_FIELD.`,
+      description: `update-only: shallow patch of ScheduledTask fields: ${SCHEDULED_TASK_PATCH_FIELDS.join(", ")}. Reword with promptInstructions and retime with trigger (same shapes as create). Any other key fails with UNKNOWN_PATCH_FIELD. output cannot change for a task created from a connector direct chat: it is not applied (outputIgnored), and a patch with only that output fails with OUTPUT_BOUND_TO_CHAT.`,
       schema: { type: "object" as const, additionalProperties: true },
     },
     {

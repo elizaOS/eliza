@@ -23,6 +23,8 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 
 const billedCosts: number[] = [];
+const routedMessages: Array<{ mediaUrls?: string[]; mediaTypes?: string[] }> =
+  [];
 mock.module(
   "@elizaos/cloud-shared/lib/middleware/rate-limit-hono-cloudflare",
   () => ({
@@ -35,13 +37,19 @@ mock.module("@elizaos/cloud-shared/lib/services/twilio-automation", () => ({
 }));
 mock.module("@elizaos/cloud-shared/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {
-    routePhoneMessage: async () => ({
-      handled: true,
-      userId: randomUUID(),
-      agentId: randomUUID(),
-      organizationId: randomUUID(),
-      replyText: "hi",
-    }),
+    routePhoneMessage: async (args: {
+      mediaUrls?: string[];
+      mediaTypes?: string[];
+    }) => {
+      routedMessages.push(args);
+      return {
+        handled: true,
+        userId: randomUUID(),
+        agentId: randomUUID(),
+        organizationId: randomUUID(),
+        replyText: "hi",
+      };
+    },
   },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/message-router", () => ({
@@ -89,6 +97,7 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   billedCosts.length = 0;
+  routedMessages.length = 0;
   warn.mockClear();
 });
 afterAll(async () => {
@@ -97,13 +106,17 @@ afterAll(async () => {
 });
 
 /** Delivers one inbound SMS; reports the billed cost and whether the operator was warned. */
-async function deliver(configuredCost: string | undefined) {
+async function deliver(
+  configuredCost: string | undefined,
+  extraFields: Record<string, string> = {},
+) {
   const form = new URLSearchParams({
     MessageSid: `SM${randomUUID().replaceAll("-", "")}`,
     AccountSid: "AC_test",
     From: "+15550000001",
     To: "+15550000002",
     Body: "hello",
+    ...extraFields,
   });
   const response = await app.request(
     `/twilio/${orgId}`,
@@ -155,5 +168,22 @@ test("does not warn when the cost is not configured", async () => {
   expect(await deliver(undefined)).toEqual({
     billedCosts: [DEFAULT_TWILIO_SMS_COST_PER_SEGMENT_USD],
     warned: false,
+  });
+});
+
+test("passes the type of each MMS file to routing", async () => {
+  const base =
+    "https://api.twilio.com/2010-04-01/Accounts/AC_test/Messages/MM1/Media";
+  await deliver(undefined, {
+    NumMedia: "2",
+    MediaUrl0: `${base}/ME0`,
+    MediaContentType0: "audio/amr",
+    MediaUrl1: `${base}/ME1`,
+    MediaContentType1: "application/pdf",
+  });
+  expect(routedMessages).toHaveLength(1);
+  expect(routedMessages[0]).toMatchObject({
+    mediaUrls: [`${base}/ME0`, `${base}/ME1`],
+    mediaTypes: ["audio/amr", "application/pdf"],
   });
 });

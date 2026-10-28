@@ -3543,6 +3543,104 @@
       "when": 1796083200153,
       "tag": "0535_managed_gmail_read_state_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 506,
+      "version": "7",
+      "when": 1796083200154,
+      "tag": "0536_rooms_connector_server_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1796083200155,
+      "tag": "0537_relationships_extraction_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1796083200156,
+      "tag": "0538_message_server_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 509,
+      "version": "7",
+      "when": 1796083200157,
+      "tag": "0539_agent_identities",
+      "breakpoints": true
+    },
+    {
+      "idx": 510,
+      "version": "7",
+      "when": 1796083200158,
+      "tag": "0540_embeddings_space_nonce_dim2048",
+      "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1796083200159,
+      "tag": "0541_app_pilot_redemptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 512,
+      "version": "7",
+      "when": 1796083200160,
+      "tag": "0542_subscription_grant_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 513,
+      "version": "7",
+      "when": 1796083200161,
+      "tag": "0543_app_pilot_allowance",
+      "breakpoints": true
+    },
+    {
+      "idx": 514,
+      "version": "7",
+      "when": 1796083200162,
+      "tag": "0544_inference_funding_budgets",
+      "breakpoints": true
+    },
+    {
+      "idx": 515,
+      "version": "7",
+      "when": 1796083200163,
+      "tag": "0545_inference_policy_mutation_fences",
+      "breakpoints": true
+    },
+    {
+      "idx": 516,
+      "version": "7",
+      "when": 1796083200164,
+      "tag": "0546_lifetime_subscription_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 517,
+      "version": "7",
+      "when": 1796083200165,
+      "tag": "0547_subscription_grant_calendar_terms",
+      "breakpoints": true
+    },
+    {
+      "idx": 518,
+      "version": "7",
+      "when": 1796083200166,
+      "tag": "0548_agent_provisioning_deferred_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 519,
+      "version": "7",
+      "when": 1796083200167,
+      "tag": "0549_drop_erc8004_agent_identity",
+      "breakpoints": true
     }
   ]
 }

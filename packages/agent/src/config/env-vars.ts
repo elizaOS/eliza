@@ -13,6 +13,34 @@
 import type { ElizaConfig } from "@elizaos/host/protocol";
 import { isBlockedEnvKey } from "./blocked-env-keys.ts";
 
+// Track the values this config projection actually writes, including cold boot.
+// Separate env objects must not share ownership (embedded hosts and tests).
+const configEnvWrites = new WeakMap<NodeJS.ProcessEnv, Map<string, string>>();
+
+export function writeConfigEnvValue(
+  key: string,
+  value: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  let owned = configEnvWrites.get(env);
+  if (env[key] !== value) {
+    owned ??= new Map<string, string>();
+    configEnvWrites.set(env, owned);
+    owned.set(key, value);
+    env[key] = value;
+  }
+}
+
+export function clearConfigEnvValue(
+  key: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const owned = configEnvWrites.get(env);
+  const previous = owned?.get(key);
+  if (previous !== undefined && env[key] === previous) delete env[key];
+  owned?.delete(key);
+}
+
 /**
  * Maps connector config fields to the environment variables expected by
  * elizaOS plugins. Keep this aligned with runtime/eliza.ts.
@@ -132,9 +160,10 @@ export function collectConfigEnvVars(
   return entries;
 }
 
-export function collectConnectorEnvVars(
+/** The saved connector settings boot reads: `connectors`, else legacy `channels`. */
+export function resolveConnectorConfigs(
   cfg?: ElizaConfig,
-): Record<string, string> {
+): Record<string, unknown> | undefined {
   const rawConnectors =
     cfg?.connectors ?? (cfg as Record<string, unknown> | undefined)?.channels;
   if (
@@ -142,10 +171,16 @@ export function collectConnectorEnvVars(
     typeof rawConnectors !== "object" ||
     Array.isArray(rawConnectors)
   ) {
-    return {};
+    return undefined;
   }
+  return rawConnectors as Record<string, unknown>;
+}
 
-  const connectors = rawConnectors as Record<string, unknown>;
+export function collectConnectorEnvVars(
+  cfg?: ElizaConfig,
+): Record<string, string> {
+  const connectors = resolveConnectorConfigs(cfg);
+  if (!connectors) return {};
   const entries: Record<string, string> = {};
 
   for (const [connectorName, envMap] of Object.entries(CONNECTOR_ENV_MAP)) {

@@ -7,7 +7,9 @@ import type {
   InferenceTurnSummary,
   Memory,
   MessageHandlerResult,
+  MessageProcessingOptions,
   MessageReplyRecoveryContext,
+  ProviderRateLimit,
   RoomHandlerLease,
   RunTerminalOwner,
   RuntimeFailure,
@@ -21,6 +23,8 @@ import type {
  * Required numeric options + optional streaming callback.
  */
 export type ResolvedMessageOptions = {
+  resolveTypedReadReply?: MessageProcessingOptions["resolveTypedReadReply"];
+  onTypedReadEgress?: MessageProcessingOptions["onTypedReadEgress"];
   maxRetries: number;
   codingMode: boolean;
   codingActionProfile?: CodingActionProfile;
@@ -28,6 +32,7 @@ export type ResolvedMessageOptions = {
   keepExistingResponses: boolean;
   onStreamChunk?: StreamChunkCallback;
   onPlanningAcknowledgment?: (text: string) => void;
+  onResponseDecision?: () => void;
   shouldRespondModel: ShouldRespondModelType;
   /**
    * Per-turn abort signal threaded into the streaming context so
@@ -72,8 +77,8 @@ export interface StrategyResult {
 export type FailureReplyAttempt =
   | { kind: "text"; value: string }
   | { kind: "noProvider" }
-  | { kind: "creditsExhausted" }
-  | { kind: "rateLimited" }
+  | { kind: "creditsExhausted"; rateLimit?: ProviderRateLimit }
+  | { kind: "rateLimited"; rateLimit?: ProviderRateLimit }
   | { kind: "authFailed" }
   | { kind: "schemaRejected" };
 

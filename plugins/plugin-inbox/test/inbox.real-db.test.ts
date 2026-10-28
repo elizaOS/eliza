@@ -14,11 +14,12 @@
  * the test is fully hermetic (no network, no real LLM, no credentials).
  *
  * Every assertion is a triage-then-read-back round-trip against the live DB,
- * and dedup-by-`source_message_id` is verified against the real table.
+ * and source-scoped message deduplication is verified against the real table.
  */
 
 import {
   type AgentRuntime,
+  getConnectorAccountManager,
   ModelType,
   type ModelTypeName,
   type Plugin,
@@ -38,7 +39,10 @@ import {
   lifeInboxTriageExamples,
 } from "../src/db/schema.ts";
 import { curateEmailCandidates } from "../src/inbox/email-curation.ts";
-import type { InboxGmailGateway } from "../src/inbox/google-gmail-seam.ts";
+import {
+  createInboxGmailGateway,
+  type InboxGmailGateway,
+} from "../src/inbox/google-gmail-seam.ts";
 import { InboxService } from "../src/inbox/service.ts";
 import type { InboundMessage } from "../src/inbox/types.ts";
 import { InboxUnsubscribeRepository } from "../src/inbox/unsubscribe-repository.ts";
@@ -188,6 +192,30 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     expect(queue[0]?.urgency).toBe("high");
   });
 
+  it("rejects a send-only Google account before Gmail subscription search", async () => {
+    const manager = getConnectorAccountManager(runtime);
+    await manager.upsertAccount("google", {
+      provider: "google",
+      id: "send-only-google-account",
+      role: "OWNER",
+      purpose: ["messaging"],
+      accessGate: "owner_binding",
+      status: "connected",
+      displayHandle: "send-only@example.test",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      metadata: {
+        isDefault: true,
+        grantedScopes: ["https://www.googleapis.com/auth/gmail.send"],
+      },
+    });
+
+    const gmail = createInboxGmailGateway(runtime, runtime.agentId);
+    await expect(gmail.requireGmailGrant()).rejects.toThrow(
+      "Google Gmail triage access has not been granted.",
+    );
+  });
+
   it("refuses a combined unsubscribe before any effect when Gmail manage access is absent", async () => {
     const httpEffect = vi.fn(async () => new Response(null, { status: 204 }));
     const createFilter = vi.fn(async () => ({ filterId: "filter-1" }));
@@ -254,7 +282,172 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     });
   });
 
-  it("dedups by source_message_id against the real DB on re-triage", async () => {
+  it("keeps a failed HTTP unsubscribe failed when the sender is also blocked", async () => {
+    const createFilter = vi.fn(async () => ({ filterId: "filter-500" }));
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage", "google.gmail.manage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            {
+              id: "unsubscribe-message-500",
+              threadId: "unsubscribe-thread-500",
+              from: "Promo <promo@example.com>",
+              fromEmail: "promo@example.com",
+              subject: "Sale",
+              receivedAt: "2026-10-10T00:00:00.000Z",
+              metadata: {
+                headers: {
+                  "List-Unsubscribe": "<https://unsubscribe.example.com/promo>",
+                },
+              },
+            },
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(),
+      createGmailFilterForSender: createFilter,
+      trashGmailThread: vi.fn(),
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, {
+      gmail,
+      httpTransport: {
+        lookupFn: async () => [{ address: "93.184.216.34", family: 4 }],
+        pinnedFetchImpl: async () => new Response(null, { status: 500 }),
+      },
+    });
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "promo@example.com",
+      userAuthorization: true,
+      blockAfter: true,
+    });
+
+    // The filter hides the mail, but the sender was never unsubscribed.
+    expect(createFilter).toHaveBeenCalledTimes(1);
+    expect(result.record).toMatchObject({
+      status: "failed",
+      filterCreated: true,
+      errorMessage: "HTTP unsubscribe returned 500.",
+    });
+  });
+
+  it("sends the mailto unsubscribe fields as RFC 6068 defines them", async () => {
+    const send = vi.fn(async () => undefined);
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            {
+              id: "unsubscribe-message-2",
+              threadId: "unsubscribe-thread-2",
+              from: "List <list@example.com>",
+              fromEmail: "list@example.com",
+              subject: "Weekly list",
+              receivedAt: "2026-10-10T00:00:00.000Z",
+              metadata: {
+                headers: {
+                  // "+" is the character "+", and a field name can have
+                  // capital letters.
+                  "List-Unsubscribe":
+                    "<mailto:leave@lists.example.com?Subject=unsubscribe%20a1B2+c3D4&body=token%3Aq9+Zx>",
+                },
+              },
+            },
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: send,
+      createGmailFilterForSender: vi.fn(async () => ({ filterId: "filter-2" })),
+      trashGmailThread: vi.fn(),
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, { gmail });
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "list@example.com",
+      userAuthorization: true,
+    });
+
+    expect(result.record).toMatchObject({
+      method: "mailto",
+      status: "succeeded",
+    });
+    expect(send).toHaveBeenCalledWith("account-1", {
+      recipient: "leave@lists.example.com",
+      subject: "unsubscribe a1B2+c3D4",
+      body: "token:q9+Zx",
+    });
+  });
+
+  it("trashes every thread of a sender whose address case varies", async () => {
+    const trash = vi.fn(async () => undefined);
+    const message = (n: number, fromEmail: string) => ({
+      id: `case-message-${n}`,
+      threadId: `case-thread-${n}`,
+      from: `Shop <${fromEmail}>`,
+      fromEmail,
+      subject: `Sale ${n}`,
+      receivedAt: `2026-10-0${n}T00:00:00.000Z`,
+      metadata: {
+        headers: { "List-Unsubscribe": "<mailto:unsub@shop.example>" },
+      },
+    });
+    const gmail = {
+      requireGmailGrant: async () =>
+        ({
+          id: "grant-1",
+          connectorAccountId: "account-1",
+          capabilities: ["google.gmail.triage", "google.gmail.manage"],
+        }) as Awaited<ReturnType<InboxGmailGateway["requireGmailGrant"]>>,
+      // Gmail's from: search ignores case and keeps each header's casing.
+      searchGmail: async () =>
+        ({
+          syncedAt: "2026-10-11T00:00:00.000Z",
+          messages: [
+            message(1, "News@Shop.example"),
+            message(2, "News@Shop.example"),
+            message(3, "news@shop.example"),
+            message(4, "news@shop.example"),
+            message(5, "news@shop.example"),
+          ],
+        }) as Awaited<ReturnType<InboxGmailGateway["searchGmail"]>>,
+      sendMailtoUnsubscribeEmail: vi.fn(async () => undefined),
+      createGmailFilterForSender: vi.fn(async () => ({ filterId: "filter-c" })),
+      trashGmailThread: trash,
+    } satisfies InboxGmailGateway;
+    const unsubscribe = new InboxUnsubscribeService(runtime, { gmail });
+
+    const scan = await unsubscribe.scanEmailSubscriptions({
+      query: "from:news@shop.example",
+    });
+    expect(
+      scan.senders.map((sender) => [sender.senderEmail, sender.messageCount]),
+    ).toEqual([["news@shop.example", 5]]);
+
+    const result = await unsubscribe.unsubscribeEmailSender({
+      senderEmail: "news@shop.example",
+      userAuthorization: true,
+      trashExisting: true,
+    });
+    expect(result.record).toMatchObject({
+      status: "succeeded",
+      threadsTrashed: 5,
+    });
+    expect(trash).toHaveBeenCalledTimes(5);
+  });
+
+  it("dedups one source message against the real DB on re-triage", async () => {
     const first = await service.triage([
       inbound({ id: "msg-dedup", text: "Can you confirm the meeting?" }),
     ]);
@@ -269,6 +462,32 @@ describe("InboxService + InboxRepository — real PGLite", () => {
     expect(second.triaged[0]?.entry?.id).toBe(firstEntryId);
     const after = (await service.list()).length;
     expect(after).toBe(before);
+  });
+
+  it("keeps provider-local message ids separate across sources", async () => {
+    await service.triage([
+      inbound({
+        id: "shared-provider-id",
+        source: "discord",
+        text: "Discord question?",
+      }),
+    ]);
+    const gmail = await service.triage([
+      inbound({
+        id: "shared-provider-id",
+        source: "gmail",
+        text: "Gmail question?",
+      }),
+    ]);
+
+    expect(gmail.triaged[0]?.entry?.source).toBe("gmail");
+    const matches = (await service.list()).filter(
+      (entry) => entry.sourceMessageId === "shared-provider-id",
+    );
+    expect(matches.map((entry) => entry.source).sort()).toEqual([
+      "discord",
+      "gmail",
+    ]);
   });
 
   it("filters by classification and respects resolve() against the real DB", async () => {

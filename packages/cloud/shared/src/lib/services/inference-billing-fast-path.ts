@@ -635,7 +635,7 @@ const SWEEP_LOCK_TTL_MS = 50_000; // < 60s cron interval; auto-expires if a run 
  * Single-flighted via a best-effort lock (real exclusion on atomic backends;
  * a no-op on Cloudflare KV, where overlapping sweeps plus non-atomic getAndDelete
  * remain a documented residual — the production-grade fix is a DB-backed ledger,
- * see packages/cloud/api/docs/inference-hot-path.md). `maxKeys` bounds work per
+ * see `lib/services/inference-billing-ledger.ts`). `maxKeys` bounds work per
  * run; a `capHit` means the backlog exceeds one run and is logged, not silently
  * dropped.
  */

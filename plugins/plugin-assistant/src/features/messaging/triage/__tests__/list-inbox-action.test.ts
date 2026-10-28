@@ -17,7 +17,11 @@ import {
 } from "../message-ref-store.ts";
 import { __resetDefaultTriageServiceForTests } from "../triage-service.ts";
 import type { MessageRef } from "../types.ts";
-import { createFakeRuntime } from "./fake-runtime.ts";
+import { createFakeRuntime, FAKE_AGENT_ID } from "./fake-runtime.ts";
+
+function saveMessages(refs: readonly MessageRef[]): void {
+  getDefaultMessageRefStore().saveMessages(refs, FAKE_AGENT_ID);
+}
 
 function messageRef(overrides: Partial<MessageRef>): MessageRef {
   return {
@@ -78,7 +82,7 @@ describe("listInboxAction", () => {
   });
 
   it("filters cached unread messages to the requested sources", async () => {
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({
         id: "gmail-1",
         source: "gmail",
@@ -117,7 +121,7 @@ describe("listInboxAction", () => {
 
   it("rejects a requested source that has no adapter able to list", async () => {
     // A cached ref must not stand in for a source that was never read.
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({ id: "gmail-1", externalId: "gmail-external-1" }),
     ]);
     const adapter = new FixedListAdapter([]);
@@ -159,7 +163,7 @@ describe("listInboxAction", () => {
         receivedAtMs: 2_000,
       }),
     ];
-    getDefaultMessageRefStore().saveMessages(refs);
+    saveMessages(refs);
     const adapter = new FixedListAdapter(refs);
     await registerAdapter(adapter);
 
@@ -188,7 +192,7 @@ describe("listInboxAction", () => {
   });
 
   it("rejects an unsupported source instead of listing every source", async () => {
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({ id: "gmail-1", externalId: "gmail-external-1" }),
     ]);
 
@@ -227,7 +231,7 @@ describe("listInboxAction", () => {
   });
 
   it("ranks cached messages, preserves equal-score ties, filters read mail, and applies the limit", async () => {
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({
         id: "read-newest",
         receivedAtMs: 9_000,
@@ -307,7 +311,7 @@ describe("listInboxAction", () => {
   });
 
   it("does not report an empty inbox when the limit trims every unread message", async () => {
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({ id: "unread-1", receivedAtMs: 2_000 }),
       messageRef({ id: "unread-2", receivedAtMs: 1_000 }),
     ]);
@@ -394,7 +398,7 @@ describe("listInboxAction", () => {
     // The store keeps every ref a sweep ever handed it and never prunes read
     // rows, so a warm all-read cache must not let the action claim an empty
     // inbox while the connector holds new unread mail.
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({
         id: "read-1",
         externalId: "read-external-1",
@@ -451,7 +455,7 @@ describe("listInboxAction", () => {
   });
 
   it("claims no unread only after a live pull confirms it past an all-read cache", async () => {
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({
         id: "read-1",
         externalId: "read-external-1",
@@ -482,7 +486,7 @@ describe("listInboxAction", () => {
   });
 
   it("pulls once when every cached row is older than the requested window", async () => {
-    getDefaultMessageRefStore().saveMessages([
+    saveMessages([
       messageRef({ id: "old", externalId: "old", receivedAtMs: 1_000 }),
     ]);
     const adapter = new FixedListAdapter([

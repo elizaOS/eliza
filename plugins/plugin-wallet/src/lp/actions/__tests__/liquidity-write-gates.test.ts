@@ -10,6 +10,7 @@ import {
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
+  promoteSubactionsToActions,
   validateToolArgs,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -24,6 +25,8 @@ import { liquidityAction } from "../liquidity";
 
 const HARDHAT_KEY =
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+// Public USDC contract on Base.
+const BASE_USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 
 function createRuntime(settings: Record<string, string> = {}): {
   runtime: IAgentRuntime;
@@ -237,6 +240,39 @@ describe("LIQUIDITY write gates", () => {
     expect(lp.openPosition).not.toHaveBeenCalled();
   });
 
+  it("binds the pending confirmation to the EVM chain and names it, so a yes on another chain re-pends", async () => {
+    const { runtime, lp } = lpRuntime();
+    const { prompts, callback } = recordingCallback();
+    const close = (chainId: number) => ({
+      action: "close",
+      chain: "evm",
+      chainId,
+      dex: "uniswap",
+      pool: BASE_USDC,
+      position: "123",
+    });
+
+    const first = await liquidityAction.handler(
+      runtime,
+      message("close my LP position"),
+      undefined,
+      close(8453),
+      callback,
+    );
+    expect(first?.data?.requiresConfirmation).toBe(true);
+    expect(prompts[0]).toContain("Base 8453");
+
+    const second = await liquidityAction.handler(
+      runtime,
+      message("yes"),
+      undefined,
+      close(1),
+      callback,
+    );
+    expect(second?.data?.requiresConfirmation).toBe(true);
+    expect(lp.closePosition).not.toHaveBeenCalled();
+  });
+
   it("binds pending confirmation to dex and range, so a yes with swapped protocol re-pends", async () => {
     const { runtime, lp } = lpRuntime();
     const { prompts, callback } = recordingCallback();
@@ -390,8 +426,10 @@ describe("LIQUIDITY write gates", () => {
  * provider write methods are spies: the assertions below are that a request
  * the provider would refuse never reaches them or the confirmation prompt.
  */
-function registryRuntime() {
-  const { runtime, cache } = createRuntime({ EVM_PRIVATE_KEY: HARDHAT_KEY });
+function registryRuntime(
+  settings: Record<string, string> = { EVM_PRIVATE_KEY: HARDHAT_KEY },
+) {
+  const { runtime, cache } = createRuntime(settings);
   const lp = new LpManagementService(runtime);
   const provider = (
     chain: "solana" | "evm",
@@ -433,18 +471,43 @@ async function runPlannerCall(
   const validation = validateToolArgs(liquidityAction, args);
   expect(validation.errors).toEqual([]);
   const { prompts, callback } = recordingCallback();
+  // The shape the runtime passes: validated arguments under `parameters`.
+  const options = { parameters: validation.args };
+  // The runtime drops the call when validate returns false, so the handler
+  // is only reachable when the gate reads the planner arguments.
+  expect(
+    await liquidityAction.validate(
+      setup.runtime,
+      message("manage my LP"),
+      undefined,
+      options,
+    ),
+  ).toBe(true);
   const result = await liquidityAction.handler(
     setup.runtime,
     message("manage my LP"),
     undefined,
-    // The shape the runtime passes: validated arguments under `parameters`.
-    { parameters: validation.args },
+    options,
     callback,
   );
   return { result, prompts, ...setup };
 }
 
 describe("LIQUIDITY planner arguments", () => {
+  it("is available to a promoted LIQUIDITY_* call, whose subaction arrives in the arguments", async () => {
+    const listPools = promoteSubactionsToActions(liquidityAction).find(
+      (action) => action.name === "LIQUIDITY_LIST_POOLS",
+    );
+    expect(
+      await listPools?.validate(
+        registryRuntime().runtime,
+        message("show me the raydium pools"),
+        undefined,
+        { parameters: { dex: "raydium" } },
+      ),
+    ).toBe(true);
+  });
+
   it("accepts a tick range and the set_preferences fields the handler reads", () => {
     expect(
       validateToolArgs(liquidityAction, {
@@ -624,5 +687,118 @@ describe("LIQUIDITY planner arguments", () => {
     expect(updateProfile).toHaveBeenCalledWith(expect.any(String), {
       autoRebalanceConfig: { enabled: true },
     });
+  });
+
+  it.each([
+    [
+      "a list_pools filter given as token symbols",
+      { action: "list_pools", dex: "uniswap", tokenA: "USDC", tokenB: "WETH" },
+      /not by symbol; got USDC/,
+    ],
+    [
+      "a list_pools filter with one token of the pair",
+      {
+        action: "list_pools",
+        dex: "uniswap",
+        tokenA: BASE_USDC,
+      },
+      /Pass both tokenA and tokenB/,
+    ],
+    [
+      "an EVM list_pools with no pair to look up",
+      { action: "list_pools", dex: "uniswap", chainId: 8453 },
+      /needs tokenA and tokenB/,
+    ],
+    [
+      "a list_pools on a DEX adapter that has no getPools",
+      { action: "list_pools", dex: "orca" },
+      /list_pools is unavailable for orca on solana/,
+    ],
+    [
+      "a get_position on a DEX adapter that has no getLpPositionDetails",
+      { action: "get_position", dex: "orca", position: "pos-1" },
+      /get_position is unavailable for orca on solana/,
+    ],
+    [
+      "an EVM list_positions with no chainId",
+      { action: "list_positions", dex: "uniswap" },
+      /list_positions on an EVM chain needs chainId/,
+    ],
+    [
+      "an EVM get_position with no pool",
+      { action: "get_position", dex: "uniswap", chainId: 8453, position: "1" },
+      /get_position on an EVM chain needs pool/,
+    ],
+  ])(
+    "reports %s as a failure, not an empty result",
+    async (_label, args, text) => {
+      const { result, raydium, uniswap } = await runPlannerCall(args);
+
+      expect(result?.success).toBe(false);
+      expect(String(result?.text)).toMatch(text);
+      expect(raydium.listPools).not.toHaveBeenCalled();
+      expect(uniswap.listPools).not.toHaveBeenCalled();
+    },
+  );
+
+  it("reports a failed pool lookup as a failure, not as no pools", async () => {
+    const setup = registryRuntime();
+    vi.mocked(setup.raydium.listPools).mockRejectedValue(
+      new Error("pool API unreachable"),
+    );
+
+    const { result } = await runPlannerCall(
+      { action: "list_pools", dex: "raydium" },
+      setup,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(String(result?.text)).toContain("pool API unreachable");
+  });
+
+  it("refuses a Solana open with no LP profile before the confirmation prompt", async () => {
+    const setup = registryRuntime();
+    const lpService = setup.runtime.getService(LP_MANAGEMENT_SERVICE_TYPE);
+    const getVaultKeypair = vi.fn();
+    vi.mocked(setup.runtime.getService).mockImplementation((name: string) =>
+      name === LP_MANAGEMENT_SERVICE_TYPE
+        ? lpService
+        : name === "VaultService"
+          ? { getVaultKeypair }
+          : name === "UserLpProfileService"
+            ? { getProfile: async () => null }
+            : null,
+    );
+
+    const { result, prompts, cache, raydium } = await runPlannerCall(
+      { action: "open", dex: "raydium", pool: "pool-1", amount: "1000000000" },
+      setup,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(String(result?.text)).toContain("Use action=onboard");
+    expect(prompts).toEqual([]);
+    expect(confirmationKeys(cache)).toHaveLength(0);
+    expect(getVaultKeypair).not.toHaveBeenCalled();
+    expect(raydium.openPosition).not.toHaveBeenCalled();
+  });
+
+  it("refuses an EVM open with no EVM key before the confirmation prompt", async () => {
+    const { result, prompts, cache, uniswap } = await runPlannerCall(
+      {
+        action: "open",
+        dex: "uniswap",
+        chainId: 8453,
+        pool: "0x4C36388bE6F416A29C8d8Eee81C771cE6bE14B18",
+        amount: "1000000",
+      },
+      registryRuntime({}),
+    );
+
+    expect(result?.success).toBe(false);
+    expect(String(result?.text)).toContain("EVM_PRIVATE_KEY is required");
+    expect(prompts).toEqual([]);
+    expect(confirmationKeys(cache)).toHaveLength(0);
+    expect(uniswap.openPosition).not.toHaveBeenCalled();
   });
 });

@@ -880,6 +880,66 @@ async function extractAgentData(
     }
   }
 
+  // World metadata can reference entities that never joined one of the
+  // exported rooms. Include those entities before collecting their components
+  // and relationships, and fail explicitly if the reference is stale instead
+  // of importing a world with a dangling owner or role id.
+  const metadataEntityIds = new Set<string>();
+  for (const world of agentWorlds) {
+    const ownerId = world.metadata?.ownership?.ownerId;
+    if (ownerId) metadataEntityIds.add(ownerId);
+    for (const entityId of Object.keys(world.metadata?.roles ?? {})) {
+      metadataEntityIds.add(entityId);
+    }
+  }
+  if (metadataEntityIds.size > 0) {
+    const metadataEntities = await db.getEntitiesByIds([
+      ...metadataEntityIds,
+    ] as UUID[]);
+    for (const entity of metadataEntities) {
+      if (entity.id) entityMap.set(entity.id, entity);
+    }
+    const missingEntityIds = [...metadataEntityIds].filter(
+      (entityId) => !entityMap.has(entityId),
+    );
+    if (missingEntityIds.length > 0) {
+      throw new AgentExportError(
+        `World metadata references entities that cannot be exported: ${missingEntityIds.join(", ")}`,
+      );
+    }
+  }
+
+  // Relationships may point at a user who is not a room participant or a
+  // metadata subject. Export that endpoint too so import never mints a
+  // relationship to a random, nonexistent entity.
+  const relationships = await db.getRelationships({
+    entityIds: [agentId, ...entityMap.keys()] as UUID[],
+  });
+  const relationshipEntityIds = new Set<string>();
+  for (const relationship of relationships) {
+    relationshipEntityIds.add(relationship.sourceEntityId);
+    relationshipEntityIds.add(relationship.targetEntityId);
+  }
+  const missingRelationshipEntityIds = [...relationshipEntityIds].filter(
+    (entityId) => !entityMap.has(entityId),
+  );
+  if (missingRelationshipEntityIds.length > 0) {
+    const relationshipEntities = await db.getEntitiesByIds(
+      missingRelationshipEntityIds as UUID[],
+    );
+    for (const entity of relationshipEntities) {
+      if (entity.id) entityMap.set(entity.id, entity);
+    }
+    const unresolvedRelationshipEntityIds = missingRelationshipEntityIds.filter(
+      (entityId) => !entityMap.has(entityId),
+    );
+    if (unresolvedRelationshipEntityIds.length > 0) {
+      throw new AgentExportError(
+        `Relationships reference entities that cannot be exported: ${unresolvedRelationshipEntityIds.join(", ")}`,
+      );
+    }
+  }
+
   const entities = Array.from(entityMap.values());
   logger.info(
     `[agent-export] Found ${entities.length} entities, ${participantRecords.length} participant records`,
@@ -936,8 +996,9 @@ async function extractAgentData(
 
   logger.info(`[agent-export] Found ${allMemories.length} memories`);
 
-  // 7. Relationships
-  const relationships = await db.getRelationships({ entityIds: [agentId] });
+  // 7. Relationships. The reflection evaluator records relationships between
+  // the agent's users as well, so every row touching an exported entity is
+  // carried, not only the rows that touch the agent.
   logger.info(`[agent-export] Found ${relationships.length} relationships`);
 
   // 8. Tasks
@@ -1025,6 +1086,34 @@ function createIdRemapper(
     const newId = crypto.randomUUID();
     map.set(oldId, newId);
     return newId;
+  };
+}
+
+/** World metadata with its owner and role entity ids remapped to the imported entities. */
+function remapWorldMetadata(
+  metadata: NonNullable<World["metadata"]>,
+  remap: (oldId: string) => string,
+): NonNullable<World["metadata"]> {
+  return {
+    ...metadata,
+    ...(metadata.ownership
+      ? {
+          ownership: {
+            ...metadata.ownership,
+            ownerId: remap(metadata.ownership.ownerId),
+          },
+        }
+      : {}),
+    ...(metadata.roles
+      ? {
+          roles: Object.fromEntries(
+            Object.entries(metadata.roles).map(([entityId, role]) => [
+              remap(entityId),
+              role,
+            ]),
+          ),
+        }
+      : {}),
   };
 }
 
@@ -1189,13 +1278,17 @@ async function restoreAgentDataInScope(
     `[agent-import] Created agent record${payload.characterConfig ? " (merged with characterConfig)" : ""}`,
   );
 
-  // 2. Create worlds
+  // 2. Create worlds. Ownership and roles name entities by id, so they follow
+  // the entities' new ids; otherwise the owner's role reads as GUEST.
   let worldsImported = 0;
   for (const world of worlds) {
     const newWorld: World = {
       ...world,
       id: remap(world.id) as UUID,
       agentId: newAgentId as UUID,
+      ...(world.metadata
+        ? { metadata: remapWorldMetadata(world.metadata, remap) }
+        : {}),
     };
     await db.createWorlds([newWorld]);
     worldsImported++;
@@ -1273,7 +1366,10 @@ async function restoreAgentDataInScope(
   }
   logger.info(`[agent-import] Imported ${componentsImported} components`);
 
-  // 7. Create memories
+  // 7. Create memories. Reply targets may refer to deleted or external messages.
+  const exportedMemoryIds = new Set(
+    payload.memories.map((memory) => memory.id),
+  );
   let memoriesImported = 0;
   for (const mem of orderedMemories) {
     const tableName = resolveMemoryTableName(mem);
@@ -1285,6 +1381,17 @@ async function restoreAgentDataInScope(
       ...(mem.entityId ? { entityId: remap(mem.entityId) as UUID } : {}),
       ...(mem.roomId ? { roomId: remap(mem.roomId) as UUID } : {}),
       ...(mem.worldId ? { worldId: remap(mem.worldId) as UUID } : {}),
+      // Remap only targets carried in this bundle. Preserve external references
+      // instead of minting an id for a message that will never be restored.
+      ...(typeof mem.content?.inReplyTo === "string" &&
+      exportedMemoryIds.has(mem.content.inReplyTo)
+        ? {
+            content: {
+              ...mem.content,
+              inReplyTo: remap(mem.content.inReplyTo) as UUID,
+            },
+          }
+        : {}),
       ...(fragment !== undefined
         ? {
             metadata: withFragmentDocumentId(

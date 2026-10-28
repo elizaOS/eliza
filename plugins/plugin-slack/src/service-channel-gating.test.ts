@@ -37,6 +37,8 @@ const bolt = vi.hoisted(() => ({
   channels: [] as Array<Record<string, unknown>>,
   users: [] as Array<Record<string, unknown>>,
   infoError: null as Error | null,
+  teamInfoError: null as Error | null,
+  openApps: 0,
   authResult: {
     user_id: "U0BOTBOT0",
     team_id: "T0TEAM000",
@@ -69,8 +71,15 @@ function createClient() {
     },
     chat: {
       postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "1.000001" }),
+      update: vi.fn().mockResolvedValue({ ok: true }),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
     },
-    team: { info: vi.fn().mockResolvedValue({ team: { name: "Sandbox" } }) },
+    team: {
+      info: vi.fn().mockImplementation(async () => {
+        if (bolt.teamInfoError) throw bolt.teamInfoError;
+        return { team: { name: "Sandbox" } };
+      }),
+    },
   };
 }
 
@@ -126,8 +135,12 @@ vi.mock("@slack/bolt", () => ({
       );
     }
 
-    async start() {}
-    async stop() {}
+    async start() {
+      bolt.openApps += 1;
+    }
+    async stop() {
+      bolt.openApps -= 1;
+    }
   },
 }));
 
@@ -368,6 +381,8 @@ function reaction(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   bolt.apps.length = 0;
+  bolt.teamInfoError = null;
+  bolt.openApps = 0;
   bolt.channels = [
     { id: OPS, name: "ops", is_channel: true },
     { id: DISABLED, name: "leadership", is_private: true, is_group: true },
@@ -384,6 +399,30 @@ beforeEach(() => {
 });
 
 describe("persisted Slack policy through Bolt handlers", () => {
+  it("reports an unavailable selected account instead of empty history", async () => {
+    const harness = await startHarness();
+    const target = {
+      source: "slack",
+      accountId: "missing-account",
+      channelId: OPS,
+    };
+
+    await expect(
+      harness.service.fetchConnectorMessages(
+        {
+          runtime: harness.runtime,
+          source: "slack",
+          accountId: "missing-account",
+          target,
+        },
+        { target },
+      ),
+    ).rejects.toMatchObject({
+      code: "SLACK_ACCOUNT_NOT_INITIALIZED",
+      context: { accountId: "missing-account" },
+    });
+  });
+
   it("claims a retried event once before persistence, emission, processing, and response", async () => {
     const harness = await startHarness();
     const appMention = harness.app.eventHandlers.get("app_mention");
@@ -707,6 +746,27 @@ describe("persisted Slack policy through Bolt handlers", () => {
     expect(bolt.apps[0]?.eventHandlers.size).toBe(0);
   });
 
+  it("closes the Socket Mode app when startup fails after it opened", async () => {
+    // First boot with no stored world: the workspace bootstrap reads
+    // team.info, which fails without the team:read scope.
+    bolt.teamInfoError = new Error("missing_scope");
+    const start = () => {
+      const runtime = createRuntime({
+        enabled: true,
+        botToken: "xoxb-test-token",
+        appToken: "xapp-test-token",
+        groupPolicy: "open",
+      });
+      vi.mocked(runtime.getWorld).mockResolvedValue(null);
+      return SlackService.start(runtime);
+    };
+    // Boot, then the in-process restart that a settings save runs.
+    await expect(start()).rejects.toThrow("missing_scope");
+    await expect(start()).rejects.toThrow("missing_scope");
+    expect(bolt.apps).toHaveLength(2);
+    expect(bolt.openApps).toBe(0);
+  });
+
   it("rejects missing and foreign workspace identity on every inbound family", async () => {
     const harness = await startHarness();
     const appMention = harness.app.eventHandlers.get("app_mention");
@@ -851,6 +911,44 @@ describe("persisted Slack policy through Bolt handlers", () => {
         sender: { id: "B0123BOT" },
       },
     });
+  });
+
+  it("edits and deletes an OWNER user-token post with the token that posted it", async () => {
+    // Slack lets a bot token change only the bot's own posts, so a message the
+    // agent posted as the owner must be edited and deleted as the owner.
+    const harness = await startHarness({
+      role: "OWNER",
+      userToken: "xoxp-owner-token",
+    });
+    const state = (
+      harness.service as unknown as {
+        getAccountState(accountId?: string | null): {
+          userClient: unknown;
+        } | null;
+      }
+    ).getAccountState("default");
+    if (!state) throw new Error("Slack account state was not initialised");
+    const userChat = {
+      postMessage: vi.fn().mockResolvedValue({ ok: true, ts: "1.000002" }),
+      update: vi.fn().mockResolvedValue({ ok: true }),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    state.userClient = { chat: userChat };
+
+    await harness.service.editMessage(OPS, "1700000000.000100", "fixed text");
+    await harness.service.deleteMessage(OPS, "1700000000.000100");
+
+    expect(userChat.update).toHaveBeenCalledWith({
+      channel: OPS,
+      ts: "1700000000.000100",
+      text: "fixed text",
+    });
+    expect(userChat.delete).toHaveBeenCalledWith({
+      channel: OPS,
+      ts: "1700000000.000100",
+    });
+    expect(harness.app.client.chat.update).not.toHaveBeenCalled();
+    expect(harness.app.client.chat.delete).not.toHaveBeenCalled();
   });
 
   it("treats an OWNER user-token post as agent-owned", async () => {

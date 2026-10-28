@@ -313,10 +313,45 @@ export function isDirectMessage(space: GoogleChatSpace): boolean {
   return space.type === "DM" || space.singleUserBotDm === true;
 }
 
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" }
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
+function utf8ByteLength(text: string): number {
+  let bytes = 0;
+  for (const character of text) {
+    const codePoint = character.codePointAt(0);
+    bytes +=
+      codePoint === undefined
+        ? 0
+        : codePoint <= 0x7f
+          ? 1
+          : codePoint <= 0x7ff
+            ? 2
+            : codePoint <= 0xffff
+              ? 3
+              : 4;
+  }
+  return bytes;
+}
+
 /**
  * Returns lossless, provider-sized, well-formed Unicode chunks for Google Chat.
  * Google Chat measures the message boundary in UTF-8 bytes, not JavaScript
- * UTF-16 code units.
+ * UTF-16 code units. A chunk never ends inside a grapheme cluster (a ZWJ emoji
+ * sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two messages.
  */
 export function splitMessageForGoogleChat(
   text: string,
@@ -335,25 +370,31 @@ export function splitMessageForGoogleChat(
   let remaining = wellFormedText;
 
   while (remaining.length > 0) {
+    // Build the longest prefix that fits the byte budget without ending
+    // inside a grapheme cluster: whole segments are added one at a time.
+    const segmentEnds: number[] = [];
     let prefixLength = 0;
     let prefixBytes = 0;
-    for (const character of remaining) {
-      const codePoint = character.codePointAt(0);
-      const characterBytes =
-        codePoint === undefined
-          ? 0
-          : codePoint <= 0x7f
-            ? 1
-            : codePoint <= 0x7ff
-              ? 2
-              : codePoint <= 0xffff
-                ? 3
-                : 4;
-      if (prefixBytes + characterBytes > maxBytes) {
+    for (const { segment } of graphemeSegmenter.segment(remaining)) {
+      const segmentBytes = utf8ByteLength(segment);
+      if (prefixBytes + segmentBytes > maxBytes) {
         break;
       }
-      prefixBytes += characterBytes;
-      prefixLength += character.length;
+      prefixBytes += segmentBytes;
+      prefixLength += segment.length;
+      segmentEnds.push(prefixLength);
+    }
+    if (prefixLength === 0) {
+      // A single grapheme cluster alone exceeds the byte budget, so fall back
+      // to the code-point prefix; it is the only case with no clean boundary.
+      for (const character of remaining) {
+        const characterBytes = utf8ByteLength(character);
+        if (prefixBytes + characterBytes > maxBytes) {
+          break;
+        }
+        prefixBytes += characterBytes;
+        prefixLength += character.length;
+      }
     }
     if (prefixLength === 0) {
       throw new RangeError("Google Chat message maxBytes cannot fit the next Unicode scalar");
@@ -363,15 +404,20 @@ export function splitMessageForGoogleChat(
       break;
     }
 
-    const prefix = remaining.slice(0, prefixLength);
+    // Prefer breaking right after the last newline in the second half of the
+    // prefix, else right after the last space there. Only segment boundaries
+    // are candidates, so the break can never land inside a cluster.
     let breakPoint = prefixLength;
-    const newlineIndex = prefix.lastIndexOf("\n");
-    if (newlineIndex > prefixLength * 0.5) {
-      breakPoint = newlineIndex + 1;
-    } else {
-      const spaceIndex = prefix.lastIndexOf(" ");
-      if (spaceIndex > prefixLength * 0.5) {
-        breakPoint = spaceIndex + 1;
+    for (const marker of ["\n", " "]) {
+      let candidate = 0;
+      for (const end of segmentEnds) {
+        if (end - 1 > prefixLength * 0.5 && remaining[end - 1] === marker) {
+          candidate = end;
+        }
+      }
+      if (candidate > 0) {
+        breakPoint = candidate;
+        break;
       }
     }
 

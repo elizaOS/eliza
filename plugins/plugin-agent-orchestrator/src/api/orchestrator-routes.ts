@@ -434,8 +434,9 @@ async function dispatchOrchestratorRoutes(
       sendError(res, "Invalid includeArchived", 400);
       return true;
     }
+    const status = query.get("status");
     const tasks = await service.listTasks({
-      status: query.get("status") ?? undefined,
+      statuses: status && status !== "all" ? [status] : undefined,
       search: query.get("search") ?? undefined,
       includeArchived: includeArchived.value,
       projectId: query.get("projectId") ?? undefined,

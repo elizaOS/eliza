@@ -373,7 +373,7 @@ function normalizeSlackEmojiName(emoji: string): string {
   let end = value.length;
   while (start < end && value.charCodeAt(start) === 58) start += 1;
   while (end > start && value.charCodeAt(end - 1) === 58) end -= 1;
-  return value.slice(start, end);
+  return value.slice(start, end).toLowerCase();
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
@@ -620,6 +620,24 @@ class SlackTextPartialDeliveryError extends ElizaError {
   static isPartial(value: unknown): value is SlackTextPartialDeliveryError {
     return value instanceof SlackTextPartialDeliveryError;
   }
+}
+
+/**
+ * Slack history bounds (latest/oldest) are Unix timestamps in seconds; the
+ * connector contract leaves the format open, and callers often pass ISO dates.
+ * A Slack ts or epoch value passes through; a date is converted.
+ */
+function slackTimestampBound(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms)) {
+    throw new Error(
+      `Slack message bound must be a Unix timestamp or an ISO date, got "${trimmed}"`,
+    );
+  }
+  return (ms / 1000).toFixed(6);
 }
 
 export class SlackService extends Service implements ISlackService {
@@ -1063,7 +1081,30 @@ export class SlackService extends Service implements ISlackService {
         "Slack account started successfully",
       );
 
-      await this.ensureWorkspaceExists(accountId);
+      try {
+        await this.ensureWorkspaceExists(accountId);
+      } catch (error) {
+        // The Socket Mode connection is open. A failed start must close it:
+        // no service instance is kept, so nothing else can stop this app, and
+        // Slack would keep sending events to a connection no runtime handles.
+        await app.stop().catch((stopError: unknown) => {
+          this.runtime.logger.warn(
+            {
+              src: "plugin:slack",
+              agentId: this.runtime.agentId,
+              accountId,
+              error:
+                stopError instanceof Error
+                  ? stopError.message
+                  : String(stopError),
+            },
+            "Failed to stop the Slack app after a failed start",
+          );
+        });
+        this.accountStates.delete(accountId);
+        this.syncDefaultAccountAliases();
+        throw error;
+      }
       return state;
     })();
 
@@ -1243,8 +1284,8 @@ export class SlackService extends Service implements ISlackService {
   }
 
   /**
-   * Returns the client that outbound user-action calls (currently
-   * chat.postMessage) should use for the given account. OWNER-role
+   * Returns the client that outbound user-action calls (chat.postMessage,
+   * chat.update, chat.delete) should use for the given account. OWNER-role
    * accounts with a configured xoxp- user token route through it so
    * the agent posts as the user; everything else stays on the bot
    * client. Falls back to `getClientForAccount` when no per-account
@@ -1479,6 +1520,34 @@ export class SlackService extends Service implements ISlackService {
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
+    // Slack delivers membership changes and channel metadata edits as
+    // `message` events with a system subtype, not as user-authored
+    // messages. Nothing downstream distinguishes them, so without this
+    // early return a join/leave/topic notice runs a full agent turn
+    // and posts a thread reply under the system message. Member
+    // joins/leaves are still covered by the dedicated
+    // member_joined_channel / member_left_channel handlers, and
+    // real user content (no subtype, file_share, thread_broadcast,
+    // me_message, bot_message) flows unchanged.
+    const SYSTEM_MESSAGE_SUBTYPES = new Set([
+      "channel_join",
+      "channel_leave",
+      "channel_topic",
+      "channel_name",
+      "channel_purpose",
+      "channel_archive",
+      "channel_unarchive",
+      "group_join",
+      "group_leave",
+      "group_topic",
+      "group_name",
+      "group_purpose",
+      "group_archive",
+      "group_unarchive",
+    ]);
+    if (message.subtype && SYSTEM_MESSAGE_SUBTYPES.has(message.subtype)) {
+      return;
+    }
     if (
       !isValidChannelId(message.channel) ||
       !isValidMessageTs(message.ts) ||
@@ -1550,6 +1619,8 @@ export class SlackService extends Service implements ISlackService {
       message.thread_ts,
       accountId,
     );
+    // The response pipeline reads the conversation kind from the message.
+    memory.content.channelType = room.type;
 
     const existingEntity = await this.runtime.getEntityById(memory.entityId);
     if (!existingEntity) {
@@ -1591,12 +1662,17 @@ export class SlackService extends Service implements ISlackService {
       this.buildEventPayload(accountId),
     );
 
-    // Process the message through the agent
+    // Process the message through the agent. A channel reply opens a thread
+    // under the message; a direct message is one conversation, so a top-level
+    // DM is answered in the DM itself and its reply stays in the DM room.
     await this.processAgentMessage(
       claimedMemory,
       room,
       message.channel,
-      message.thread_ts || message.ts,
+      gate.conversationKind === "public_channel" ||
+        gate.conversationKind === "private_channel"
+        ? message.thread_ts || message.ts
+        : message.thread_ts,
       accountId,
     );
   }
@@ -1663,6 +1739,8 @@ export class SlackService extends Service implements ISlackService {
       event.thread_ts,
       accountId,
     );
+    // The response pipeline reads the conversation kind from the message.
+    memory.content.channelType = room.type;
 
     const existingEntity = await this.runtime.getEntityById(memory.entityId);
     if (!existingEntity) {
@@ -2156,7 +2234,7 @@ export class SlackService extends Service implements ISlackService {
     memory: Memory,
     room: Room,
     channelId: string,
-    threadTs: string,
+    threadTs: string | undefined,
     accountId = this.defaultAccountId,
   ): Promise<void> {
     const callback: HandlerCallback = async (
@@ -2291,10 +2369,20 @@ export class SlackService extends Service implements ISlackService {
       }
 
       if (responseMemories.length > 0) {
-        await this.runtime.emitEvent(
-          SlackEventTypes.MESSAGE_SENT as string,
-          this.buildEventPayload(accountId),
-        );
+        // Listeners are observers: a failing listener must not turn an
+        // already-sent message into a send failure that invites a retry.
+        try {
+          await this.runtime.emitEvent(
+            SlackEventTypes.MESSAGE_SENT as string,
+            this.buildEventPayload(accountId),
+          );
+        } catch (error) {
+          this.runtime.reportError("SlackService.processAgentMessage", error, {
+            event: SlackEventTypes.MESSAGE_SENT,
+            accountId,
+            channelId,
+          });
+        }
       }
 
       if (attachmentFailures.length > 0) {
@@ -3432,48 +3520,47 @@ export class SlackService extends Service implements ISlackService {
       (typeof metadata?.threadTs === "string" ? metadata.threadTs : undefined);
     const channel = await this.getChannel(channelId, accountId);
 
-    const historyMessages = threadTs
-      ? await this.readThreadReplies(channelId, threadTs, undefined, accountId)
-      : await this.readHistory(channelId, undefined, accountId);
-    // Stored history (`slackMessageToMemory`) attributes this account's own
-    // bot posts to the agent; apply the same rule here so the same message
-    // does not surface as a separate participant through cached context.
-    const botUserId = this.getBotUserIdForAccount(accountId);
-    const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
-    for (const message of historyMessages.slice().reverse()) {
-      const text = String(message.text ?? "");
-      if (!text.trim()) {
-        continue;
-      }
-      const userId = message.user ?? message.botId;
-      const fromAgent =
-        userId !== undefined && botUserId !== null && userId === botUserId;
-      const user =
-        typeof message.user === "string"
-          ? await this.getUser(message.user, accountId)
-          : null;
-      recentMessages.push({
-        entityId: fromAgent
-          ? this.runtime.agentId
-          : userId
-            ? (userId as UUID)
-            : undefined,
-        name: user ? getSlackUserDisplayName(user) : userId,
-        text,
-        timestamp: Number(message.ts) * 1000 || undefined,
-        metadata: {
-          accountId,
-          slackMessageTs: message.ts,
-          slackUserId: userId,
-        },
-      });
-    }
+    // Recent history comes from the stored room messages, never the Slack
+    // API: this hook runs on every planned turn, an unbounded
+    // conversations.history / conversations.replies read pages the whole
+    // channel or thread behind Slack's rate limits, and the transcript in the
+    // prompt is owned by RECENT_MESSAGES anyway (the provider strips
+    // recentMessages before rendering).
+    const roomId =
+      target.roomId ??
+      room?.id ??
+      (await this.getRoomId(channelId, threadTs, accountId));
+    const memories = await context.runtime.getMemories({
+      tableName: "messages",
+      roomId,
+      orderBy: "createdAt",
+      orderDirection: "desc",
+    });
+    const recentMessages: MessageConnectorChatContext["recentMessages"] =
+      memories
+        .slice()
+        .reverse()
+        .filter((memory) => (memory.content.text ?? "").trim().length > 0)
+        .map((memory) => ({
+          entityId: memory.entityId,
+          name:
+            typeof memory.content.name === "string"
+              ? memory.content.name
+              : undefined,
+          text: memory.content.text ?? "",
+          timestamp: memory.createdAt,
+          metadata: {
+            memoryId: memory.id,
+            accountId,
+            source: memory.content.source,
+          },
+        }));
 
     return {
       target: {
         source: "slack",
         accountId,
-        roomId: target.roomId ?? room?.id,
+        roomId,
         channelId,
         serverId:
           target.serverId ?? this.getTeamIdForAccount(accountId) ?? undefined,
@@ -3562,9 +3649,18 @@ export class SlackService extends Service implements ISlackService {
       ? await this.getUser(message.user, accountId)
       : null;
     const displayName = user ? getSlackUserDisplayName(user) : slackUserId;
-    const channel = await this.getChannel(channelId, accountId).catch(
-      () => null,
-    );
+    const channel = effectiveThreadTs
+      ? null
+      : await this.getChannel(channelId, accountId);
+    if (!effectiveThreadTs && !channel) {
+      throw new ElizaError(
+        "Slack conversation metadata is unavailable for message history",
+        {
+          code: "SLACK_CHANNEL_IDENTITY_MISSING",
+          context: { accountId, channelId, messageTs: message.ts },
+        },
+      );
+    }
     const channelType = effectiveThreadTs
       ? ChannelType.THREAD
       : channel?.isIm
@@ -3693,7 +3789,10 @@ export class SlackService extends Service implements ISlackService {
     );
     const client = this.getClientForAccount(accountId);
     if (!client) {
-      return [];
+      throw new ElizaError("Slack account client is not initialized", {
+        code: "SLACK_ACCOUNT_NOT_INITIALIZED",
+        context: { accountId },
+      });
     }
 
     const { channelId, threadTs } = await this.resolveConnectorMessageLocation(
@@ -4302,7 +4401,9 @@ export class SlackService extends Service implements ISlackService {
     text: string,
     accountId?: string | null,
   ): Promise<void> {
-    const client = this.getClientForAccount(accountId);
+    // Slack lets a token change only its own posts, so use the client that
+    // posted: the owner's user token for OWNER accounts.
+    const client = this.getOutboundClient(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
     }
@@ -4313,7 +4414,9 @@ export class SlackService extends Service implements ISlackService {
     await client.chat.update({
       channel: channelId,
       ts: messageTs,
-      text,
+      // Send uses markdownToSlackMrkdwn for the same agent content; an edit
+      // must render the same way instead of showing raw markdown syntax.
+      text: markdownToSlackMrkdwn(text),
     });
   }
 
@@ -4322,7 +4425,9 @@ export class SlackService extends Service implements ISlackService {
     messageTs: string,
     accountId?: string | null,
   ): Promise<void> {
-    const client = this.getClientForAccount(accountId);
+    // Slack lets a token change only its own posts, so use the client that
+    // posted: the owner's user token for OWNER accounts.
+    const client = this.getOutboundClient(accountId);
     if (!client) {
       throw new Error("Slack client not initialized");
     }
@@ -4434,8 +4539,8 @@ export class SlackService extends Service implements ISlackService {
       const result = await client.conversations.history({
         channel: channelId,
         limit: Math.min(15, requestedLimit ?? 15),
-        latest: options?.before,
-        oldest: options?.after,
+        latest: slackTimestampBound(options?.before),
+        oldest: slackTimestampBound(options?.after),
         cursor,
       });
       rawMessages.push(
@@ -4504,8 +4609,8 @@ export class SlackService extends Service implements ISlackService {
         channel: channelId,
         ts: threadTs,
         limit: 15,
-        latest: options?.before,
-        oldest: options?.after,
+        latest: slackTimestampBound(options?.before),
+        oldest: slackTimestampBound(options?.after),
         cursor,
       });
       rawMessages.push(

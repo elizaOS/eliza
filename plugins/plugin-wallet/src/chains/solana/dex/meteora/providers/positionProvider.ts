@@ -184,7 +184,11 @@ const fetchPositions = async (
           (Math.max(...positionBinIds) + Math.min(...positionBinIds)) / 2
         );
 
-        const distanceFromActiveBinBps = Math.abs(centerBinId - activeBin.binId) * 100;
+        // Each bin is exactly binStep basis points wide (price scales as
+        // (1 + binStep/10000)^binId), so the hardcoded 100 is only correct
+        // for binStep=100 pools; use the pool's actual step.
+        const binStep = dlmmPool.lbPair.binStep;
+        const distanceFromActiveBinBps = Math.abs(centerBinId - activeBin.binId) * binStep;
 
         positions.push({
           poolAddress: poolAddress.toString(),

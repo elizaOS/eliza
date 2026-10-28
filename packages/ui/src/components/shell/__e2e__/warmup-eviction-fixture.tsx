@@ -171,7 +171,7 @@ function Harness(): React.JSX.Element {
     pollCloudCredits: async () => true,
   };
 
-  const { sendChatText } = useChatSend(deps);
+  const { sendChatText, handleChatRetry } = useChatSend(deps);
 
   const messages = React.useMemo<ShellMessage[]>(
     () =>
@@ -288,15 +288,17 @@ function Harness(): React.JSX.Element {
           {notice}
         </div>
       ) : null}
-      <ChatOverlay controller={controller} />
+      <MockAppProvider
+        value={{
+          handleChatRetry,
+          activeConversationId: "conv-1",
+        }}
+      >
+        <ChatOverlay controller={controller} />
+      </MockAppProvider>
     </div>
   );
 }
 
 const root = document.getElementById("root");
-if (root)
-  createRoot(root).render(
-    <MockAppProvider>
-      <Harness />
-    </MockAppProvider>,
-  );
+if (root) createRoot(root).render(<Harness />);

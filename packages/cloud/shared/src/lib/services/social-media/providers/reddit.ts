@@ -13,7 +13,13 @@ import type {
 } from "../../../types/social-media";
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const REDDIT_API_BASE = "https://oauth.reddit.com";
 const REDDIT_AUTH_BASE = "https://www.reddit.com/api/v1";
@@ -91,7 +97,7 @@ async function getAccessToken(
         error?: string;
         error_description?: string;
       };
-      if (json.error) throw new Error(json.error_description || json.error);
+      if (json.error) throw new SocialApiRejectionError(json.error_description || json.error);
       return json;
     },
     { platform: "reddit", maxRetries: 2 },
@@ -104,6 +110,7 @@ async function redditApiRequest<T>(
   endpoint: string,
   accessToken: string,
   options: RequestInit = {},
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const url = endpoint.startsWith("http") ? endpoint : `${REDDIT_API_BASE}${endpoint}`;
 
@@ -123,10 +130,10 @@ async function redditApiRequest<T>(
         error?: string;
         error_description?: string;
       };
-      if (json.error) throw new Error(json.error_description || json.error);
+      if (json.error) throw new SocialApiRejectionError(json.error_description || json.error);
       return json;
     },
-    { platform: "reddit", maxRetries: 3 },
+    { platform: "reddit", maxRetries: 3, ...retry },
   );
 
   return data;
@@ -270,13 +277,37 @@ export const redditProvider: SocialMediaProvider = {
           data?: { id: string; name: string; url: string };
           errors?: string[][];
         };
-      }>("/api/submit", accessToken, {
-        method: "POST",
-        body: params,
-      });
+      }>(
+        "/api/submit",
+        accessToken,
+        {
+          method: "POST",
+          body: params,
+        },
+        // A replay after a timeout or a 5xx posts the submission twice.
+        { replayUnknownOutcome: false },
+      );
 
-      if (response.json.errors?.length) {
-        const errorMessage = response.json.errors.map((e) => e.join(": ")).join(", ");
+      const errors = response?.json?.errors;
+      if (
+        errors !== undefined &&
+        (!Array.isArray(errors) ||
+          errors.some(
+            (error) =>
+              !Array.isArray(error) ||
+              error.length < 2 ||
+              !error.every((part) => typeof part === "string") ||
+              !error[0].trim() ||
+              !error[1].trim(),
+          ))
+      ) {
+        throw new UnknownPostOutcomeError(
+          "reddit",
+          new Error("Reddit response contains a malformed error list"),
+        );
+      }
+      if (errors?.length) {
+        const errorMessage = errors.map((e) => e.join(": ")).join(", ");
         return {
           platform: "reddit",
           success: false,
@@ -284,30 +315,30 @@ export const redditProvider: SocialMediaProvider = {
         };
       }
 
-      const postData = response.json.data;
-      if (!postData) {
-        return {
-          platform: "reddit",
-          success: false,
-          error: "No post data returned",
-        };
+      // A 2xx answer with no error list and no post id is neither a
+      // refusal nor a publication receipt: Reddit may have published,
+      // so the outcome stays unknown and the credit is held instead of
+      // refunded (the slack/telegram rule).
+      const postData = response?.json?.data;
+      const postId = postData?.id;
+      if (typeof postId !== "string" || !postId.trim()) {
+        throw new UnknownPostOutcomeError(
+          "reddit",
+          new Error("Reddit response lacks a publication receipt"),
+        );
       }
 
       return {
         platform: "reddit",
         success: true,
-        postId: postData.id,
-        postUrl: `https://reddit.com${postData.url || `/r/${subreddit}/comments/${postData.id}`}`,
+        postId,
+        postUrl: `https://reddit.com${postData?.url || `/r/${subreddit}/comments/${postId}`}`,
       };
     } catch (error) {
       // error-policy:J1 Boundary translation: a failed Reddit submit call becomes a
       // structured PostResult failure surfaced to the caller.
       logger.error("[Reddit] Post failed", { error });
-      return {
-        platform: "reddit",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("reddit", error);
     }
   },
 
@@ -458,16 +489,23 @@ export const redditProvider: SocialMediaProvider = {
           data?: { things: Array<{ data: { id: string } }> };
           errors?: string[][];
         };
-      }>("/api/comment", accessToken, {
-        method: "POST",
-        body: new URLSearchParams({
-          thing_id: fullname,
-          text: content.text,
-          api_type: "json",
-        }),
-      });
+      }>(
+        "/api/comment",
+        accessToken,
+        {
+          method: "POST",
+          body: new URLSearchParams({
+            thing_id: fullname,
+            text: content.text,
+            api_type: "json",
+          }),
+        },
+        // A replay after a timeout or a 5xx publishes the comment twice
+        // (the post create call in this file passes the same flag).
+        { replayUnknownOutcome: false },
+      );
 
-      if (response.json.errors?.length) {
+      if (response?.json?.errors?.length) {
         return {
           platform: "reddit",
           success: false,
@@ -475,21 +513,28 @@ export const redditProvider: SocialMediaProvider = {
         };
       }
 
-      const commentId = response.json.data?.things?.[0]?.data?.id;
+      // A 2xx answer with no error list and no comment id is neither a
+      // refusal nor a publication receipt: Reddit may have published the
+      // comment, so the outcome stays unknown and the credit is held
+      // instead of reporting the parent post as the new comment
+      // (the slack/telegram rule).
+      const commentId = response?.json?.data?.things?.[0]?.data?.id;
+      if (typeof commentId !== "string" || !commentId) {
+        throw new UnknownPostOutcomeError(
+          "reddit",
+          new Error("Reddit response lacks a publication receipt"),
+        );
+      }
 
       return {
         platform: "reddit",
         success: true,
-        postId: commentId || postId,
+        postId: commentId,
       };
     } catch (error) {
       // error-policy:J1 Boundary translation: a failed Reddit comment call becomes a
       // structured PostResult failure surfaced to the caller.
-      return {
-        platform: "reddit",
-        success: false,
-        error: extractErrorMessage(error),
-      };
+      return failedPostResult("reddit", error);
     }
   },
 

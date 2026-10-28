@@ -15,6 +15,7 @@ import {
   type PersistCharacterParams,
   type PersistCharacterResult,
 } from "@elizaos/plugin-assistant/character-persistence";
+import { mirrorSavedConfigToLive } from "../api/config-state.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { agentIdentityName } from "../runtime/build-character-config.ts";
 import {
@@ -200,6 +201,7 @@ export class ElizaCharacterPersistenceService
       const nextAgent = syncCharacterIntoConfig(config, runtimeCharacter);
       persistence.config = "unknown";
       saveElizaConfig(config);
+      mirrorSavedConfigToLive(config);
       persistence.config = "committed";
 
       const persistedCharacter = buildPersistedCharacterData(runtimeCharacter);

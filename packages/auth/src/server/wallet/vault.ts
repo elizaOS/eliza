@@ -1501,10 +1501,11 @@ export class Vault {
   ): Promise<AgentIdentity[]> {
     const db = getDb();
     const limit = Math.min(Math.max(Math.floor(options.limit ?? 100), 1), 200);
-    const offset = Math.min(
-      Math.max(Math.floor(options.offset ?? 0), 0),
-      100_000,
-    );
+    const requestedOffset = options.offset ?? 0;
+    const offset =
+      Number.isSafeInteger(requestedOffset) && requestedOffset >= 0
+        ? requestedOffset
+        : 0;
     const rows = await db
       .select()
       .from(agents)
@@ -2340,8 +2341,8 @@ export class Vault {
       walletAddress = kp.publicKey.toBase58();
     } else {
       // EVM - expect 0x-prefixed hex private key
-      const normalizedKey = privateKey.startsWith("0x")
-        ? privateKey
+      const normalizedKey = /^0x/i.test(privateKey)
+        ? `0x${privateKey.slice(2)}`
         : `0x${privateKey}`;
       const account = privateKeyToAccount(normalizedKey as `0x${string}`);
       walletAddress = account.address;

@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyLocalInferenceManagementMutation } from "./local-inference-routes.js";
+import { readEffectiveAssignments } from "./services/assignments.js";
 
 const originalStateDir = process.env.ELIZA_STATE_DIR;
 let tempStateDir: string;
@@ -119,5 +120,56 @@ describe("local-inference management verify and uninstall", () => {
 			readFileSync(path.join(localInferenceRoot(), "registry.json"), "utf8"),
 		);
 		expect(registry.models).toEqual([]);
+	});
+
+	it("drops the uninstalled model from saved slot assignments", async () => {
+		const models = ["eliza-1-2b", "eliza-1-4b"].map((id) => {
+			const rel = `models/${id}.gguf`;
+			const bytes = Buffer.concat([Buffer.from("GGUF"), Buffer.alloc(64)]);
+			mkdirSync(path.dirname(path.join(localInferenceRoot(), rel)), {
+				recursive: true,
+			});
+			writeFileSync(path.join(localInferenceRoot(), rel), bytes);
+			return {
+				id,
+				displayName: id,
+				path: rel,
+				sizeBytes: bytes.length,
+				installedAt: "2026-05-17T06:17:00.000Z",
+				lastUsedAt: null,
+				source: "eliza-download",
+				bundleVerifiedAt: "2026-05-17T06:17:00.000Z",
+			};
+		});
+		writeRegistry(models);
+		writeFileSync(
+			path.join(localInferenceRoot(), "assignments.json"),
+			JSON.stringify({
+				version: 1,
+				assignments: {
+					TEXT_SMALL: "eliza-1-2b",
+					TEXT_LARGE: "eliza-1-4b",
+					TEXT_TO_SPEECH: "eliza-1-2b",
+					TRANSCRIPTION: "eliza-1-2b",
+				},
+			}),
+		);
+
+		const result = await applyLocalInferenceManagementMutation({
+			op: "uninstall_model",
+			modelId: "eliza-1-2b",
+		});
+
+		expect(result).toMatchObject({ op: "uninstall_model", removed: true });
+		const saved = JSON.parse(
+			readFileSync(path.join(localInferenceRoot(), "assignments.json"), "utf8"),
+		);
+		expect(saved.assignments).toEqual({ TEXT_LARGE: "eliza-1-4b" });
+		expect(await readEffectiveAssignments()).toEqual({
+			TEXT_SMALL: "eliza-1-4b",
+			TEXT_LARGE: "eliza-1-4b",
+			TEXT_TO_SPEECH: "eliza-1-4b",
+			TRANSCRIPTION: "eliza-1-4b",
+		});
 	});
 });

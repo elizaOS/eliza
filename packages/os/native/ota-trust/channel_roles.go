@@ -4,8 +4,16 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
+
+// minimumChannelApprovals is the least delegation threshold each channel may
+// declare. A Stable release needs signatures from two distinct authorized
+// approver keys; Beta needs one. go-tuf counts each authorized key ID once, and
+// the checks below give every channel key ID a distinct public key, so a Stable
+// role cannot be satisfied by one key, a repeated signature or an alias.
+var minimumChannelApprovals = map[string]int{"stable": 2, "beta": 1}
 
 // This product uses a closed delegation graph. Top-level targets may authorize
 // channel keys but cannot directly supply releases; channel publishers have no
@@ -31,6 +39,9 @@ func validateChannelRoles(root *metadata.Metadata[metadata.RootType], top *metad
 	for _, role := range d.Roles {
 		if (role.Name != "stable" && role.Name != "beta") || roles[role.Name] || !role.Terminating || len(role.PathHashPrefixes) != 0 || len(role.Paths) != 2 || len(role.KeyIDs) < 1 || len(role.KeyIDs) > 16 || role.Threshold < 1 || role.Threshold > len(role.KeyIDs) {
 			return errors.New("invalid channel delegation")
+		}
+		if role.Threshold < minimumChannelApprovals[role.Name] {
+			return fmt.Errorf("%s channel requires %d distinct approvals", role.Name, minimumChannelApprovals[role.Name])
 		}
 		roles[role.Name] = true
 		paths := map[string]bool{}

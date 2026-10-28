@@ -133,8 +133,8 @@ afterAll(async () => {
 async function ids(
   options: Parameters<ServiceModule["appEarningsService"]["getTransactionHistory"]>[1],
 ) {
-  const rows = await service.getTransactionHistory(APP_ID, options);
-  return rows.map((row) => row.id);
+  const { transactions } = await service.getTransactionHistory(APP_ID, options);
+  return transactions.map((row) => row.id);
 }
 
 describe("appEarningsService.getTransactionHistory with type and offset", () => {

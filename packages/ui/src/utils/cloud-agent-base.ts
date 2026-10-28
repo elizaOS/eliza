@@ -10,6 +10,32 @@ import {
   isElizaDedicatedAgentHostname,
   LEGACY_ELIZA_DOMAIN_CONTRACTS,
 } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+import { isCapacitorNativeRuntime } from "../platform/native-probe";
+
+/** The current browser's first-party Pages proxy; never a sibling preview. */
+export function currentOwnedElizaPagesOrigin(): string | null {
+  if (
+    typeof window === "undefined" ||
+    isCapacitorNativeRuntime() ||
+    isElectrobunRuntime()
+  ) {
+    return null;
+  }
+  const url = normalizeHttpUrl(window.location.href);
+  if (
+    url?.protocol !== "https:" ||
+    url.port ||
+    url.username ||
+    url.password ||
+    !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)?eliza-app\.pages\.dev$/i.test(
+      url.hostname,
+    )
+  ) {
+    return null;
+  }
+  return url.origin;
+}
 
 function stripTrailingSlash(value: string): string {
   let end = value.length;
@@ -92,9 +118,15 @@ export function isPersonalSharedElizaId(value: string): boolean {
 export function isManagedCloudSharedAgentBase(
   value: string | null | undefined,
 ): boolean {
-  if (directCloudSharedAgentIdFromBase(value) === null || !value) return false;
+  const agentId = directCloudSharedAgentIdFromBase(value);
+  if (agentId === null || !value) return false;
   const url = normalizeHttpUrl(value.trim());
-  return Boolean(url && isElizaCloudControlPlaneHostname(url.hostname));
+  return Boolean(
+    url &&
+      (isElizaCloudControlPlaneHostname(url.hostname) ||
+        (url.origin === currentOwnedElizaPagesOrigin() &&
+          isPersonalSharedElizaId(agentId))),
+  );
 }
 function hostnameOf(origin: string): string {
   return new URL(origin).hostname;
@@ -242,17 +274,28 @@ const TRUSTED_ELIZA_APP_PAGES_ORIGINS = new Set([
 /**
  * True when an agentless browser host is trusted to own hosted Cloud
  * onboarding. Canonical and legacy control-plane origins are always trusted.
- * The deployed Cloudflare Pages branch aliases are trusted only for an
- * authoritative Cloud-only build and only on their exact HTTPS origins.
- * Other Pages project/preview hosts and self-hosted `cloudOnly` branding must
- * never suppress the local-install/auth gates because they are outside the
- * credentialed API's server-authoritative origin set.
+ * The current browser's first-party Pages proxy can own onboarding without
+ * Cloud-only branding. Other branch aliases retain their existing branding
+ * requirement. This does not authorize a runtime bearer or a sibling preview.
  */
 export function isTrustedHostedCloudOnboardingBase(
   value: string | null | undefined,
   cloudOnlyBranding: boolean,
 ): boolean {
   if (isElizaCloudControlPlaneAgentlessBase(value)) return true;
+  const currentProxy = currentOwnedElizaPagesOrigin();
+  const proxyBase = value ? normalizeHttpUrl(value.trim()) : null;
+  if (
+    currentProxy &&
+    proxyBase?.origin === currentProxy &&
+    !proxyBase.username &&
+    !proxyBase.password &&
+    !proxyBase.search &&
+    !proxyBase.hash &&
+    isCloudAgentsCollectionBase(value)
+  ) {
+    return true;
+  }
   if (!cloudOnlyBranding || !value?.trim()) return false;
   const url = normalizeHttpUrl(value.trim());
   if (url?.protocol !== "https:" || !isCloudAgentsCollectionBase(value)) {

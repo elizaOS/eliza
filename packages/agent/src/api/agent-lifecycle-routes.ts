@@ -158,8 +158,11 @@ export async function handleAgentLifecycleRoutes(
         return true;
       }
     } else {
+      // The runtime already exists: only record a fresh start time when this
+      // request actually transitions the agent into running (e.g. from paused).
+      // Re-starting an already-running agent must not reset the uptime clock.
+      if (state.agentState !== "running") state.startedAt = Date.now();
       state.agentState = "running";
-      state.startedAt = Date.now();
       state.model = detectRuntimeModel(state.runtime);
     }
 
@@ -169,7 +172,7 @@ export async function handleAgentLifecycleRoutes(
         state: state.agentState,
         agentName: state.agentName,
         model: state.model,
-        uptime: 0,
+        uptime: state.startedAt ? Date.now() - state.startedAt : 0,
         startedAt: state.startedAt,
       },
     });

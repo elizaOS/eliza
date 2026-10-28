@@ -20,6 +20,15 @@ Hosted Android E2E requires SELinux enforcing and never roots the device or rela
 its policy. The runner requires the renderer stamp to match the full current Git
 revision, rebuilding cached output from older revisions before testing.
 
+The Android compatibility shim preserves its own SIGSYS handler and keeps that
+signal available during Bun's pre-exec signal-mask changes. Other signals and
+foreign handlers keep their requested behavior; the kernel seccomp policy is
+unchanged. This covers libc `sigaction` and `sigprocmask`, not direct kernel
+signal calls or `pthread_sigmask`. Run `node --test
+packages/app/scripts/aosp/sigsys-mask.integration.mjs` on Linux x86_64 for the
+real-kernel trap and signal-mask regression; installed Android proof remains
+separate and must use a shim rebuilt from the reviewed source.
+
 Thin consumers can build the shared task runtime with `build:consumer-tasks --
 OUTPUT SOURCE_ROOT REVIEWED_COMMIT`. The builder exports immutable Git bytes,
 records the full source commit and bundle hash, and optionally stages the narrow
@@ -52,3 +61,10 @@ or lost custody fails; a crash alone never passes. Call a separate successful
 `instrumentPhase` to verify product recovery before returning. Its record names
 the interruption it recovers; cleanup cannot satisfy this requirement. This API
 is not a device-acceptance claim and does not retry interrupted user effects.
+
+Android SIGSYS shim caches are reusable only with a completed source/output receipt.
+The receipt binds the ABI, Zig target/version, selected C source, shared preservation
+header, loader wrapper, compiler recipe/policy and both output hashes. `compile-shim.ts --skip-if-present` rebuilds legacy or stale pairs; staging rejects them if provisioning
+is disabled or fails. Never add a receipt to old binaries manually. Build both outputs
+with the reviewed compiler entrypoint. Cache freshness does not qualify Bun child
+processes or Android runtime behavior; installed process/signal tests remain required.

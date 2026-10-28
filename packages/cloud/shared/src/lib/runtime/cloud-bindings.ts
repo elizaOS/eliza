@@ -11,7 +11,15 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-const als = new AsyncLocalStorage<Record<string, unknown>>();
+const als = new AsyncLocalStorage<Record<string, unknown> | undefined>();
+
+/** Preserve the creating request's bindings when a stream invokes a callback later. */
+export function bindCloudBindings<Args extends unknown[], Result>(
+  fn: (...args: Args) => Result,
+): (...args: Args) => Result {
+  const bindings = als.getStore();
+  return (...args) => als.run(bindings, fn, ...args);
+}
 
 /** Whether the current async chain still owns a Worker bindings context. */
 export function hasCloudBindingsContext(): boolean {

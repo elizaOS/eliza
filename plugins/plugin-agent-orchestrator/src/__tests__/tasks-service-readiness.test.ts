@@ -14,6 +14,89 @@ const LIST_AGENTS_MESSAGE = {
   },
 } as unknown as Memory;
 
+function runtimeWithAcp(): IAgentRuntime {
+  return {
+    getService: (type: string) =>
+      type === "ACP_SERVICE" ? ({} as Service) : null,
+    hasService: () => true,
+  } as unknown as IAgentRuntime;
+}
+
+function chat(text: string): Memory {
+  return { content: { text } } as unknown as Memory;
+}
+
+describe("TASKS validate reads the planner arguments", () => {
+  it.each([
+    [
+      "Create a task to fix the login bug in acme/api",
+      { action: "create", task: "Fix the login bug", repo: "acme/api" },
+    ],
+    [
+      "Create a task to fix the login bug in the checkout",
+      {
+        action: "create",
+        task: "Fix the login bug",
+        workdir: "/workspaces/acme-api",
+      },
+    ],
+    [
+      "Add a note for the coding agent: also run the linter",
+      { action: "send", input: "also run the linter" },
+    ],
+    [
+      "Add a note to issue 12 on acme/api saying we shipped it",
+      {
+        action: "manage_issues",
+        issueAction: "comment",
+        repo: "acme/api",
+        issueNumber: 12,
+        body: "We shipped it.",
+      },
+    ],
+  ])("is available for %s", async (text, parameters) => {
+    await expect(
+      tasksAction.validate(runtimeWithAcp(), chat(text), undefined, {
+        parameters,
+      }),
+    ).resolves.toBe(true);
+  });
+
+  it.each([
+    [{ action: "create", task: "Buy milk" }],
+    [{ action: "create", task: "Buy milk", agentType: "claude" }],
+  ])("keeps a plain to-do unavailable for %o", async (parameters) => {
+    await expect(
+      tasksAction.validate(
+        runtimeWithAcp(),
+        chat("Add a task to buy milk"),
+        undefined,
+        { parameters },
+      ),
+    ).resolves.toBe(false);
+  });
+
+  it("serves history from the task service when ACP is not running", async () => {
+    const runtime = {
+      getService: (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE" ? { listTasks: () => [] } : null,
+      hasService: () => false,
+    } as unknown as IAgentRuntime;
+    const message = chat("show my task history");
+
+    await expect(
+      tasksAction.validate(runtime, message, undefined, {
+        parameters: { action: "history" },
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      tasksAction.validate(runtime, message, undefined, {
+        parameters: { action: "list_agents" },
+      }),
+    ).resolves.toBe(false);
+  });
+});
+
 describe("TASKS service readiness", () => {
   it("waits for the registered ACP service before validating", async () => {
     const acpService = {} as Service;

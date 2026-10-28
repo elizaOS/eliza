@@ -364,3 +364,27 @@ test("transfer clients accept counts and reject malformed or leaking bridge resu
     );
   }
 });
+
+test("native editor returns only creation receipt and rejects secret-bearing responses", async () => {
+  let response = { status: "saved", id: "native-entry", extra: "ignored" };
+  const client = createPasswordsClient({
+    openEditor: async (...args) => {
+      assert.deepEqual(args, []);
+      return response;
+    },
+  });
+  assert.deepEqual(await client.openEditor(), {
+    status: "saved",
+    id: "native-entry",
+  });
+  response = { status: "cancelled", id: "discarded" };
+  assert.deepEqual(await client.openEditor(), { status: "cancelled" });
+  for (const invalid of [
+    { status: "saved" },
+    { status: "unknown" },
+    { status: "saved", id: "x", nested: { password: SYNTHETIC } },
+  ]) {
+    response = invalid;
+    await assert.rejects(client.openEditor(), { code: "unavailable" });
+  }
+});

@@ -3,8 +3,12 @@ set -euo pipefail
 
 # AOSP's repo launcher is executable source code. Keep the launcher itself
 # immutable; repo then resolves the manifest-pinned implementation.
+# Launcher 2.69 (signed 2026-10-14). Before changing this digest, check the
+# download against repo.asc with the Repo Maintainer key whose fingerprint
+# source.android.com/docs/setup/start publishes
+# (8BB9AD793E8E6153AF0F9A4416530D5E920F5C65).
 readonly repo_url="https://storage.googleapis.com/git-repo-downloads/repo"
-readonly repo_sha256="1211b57b57e4122a9c546295a59b37d24068f1164d0e87bef096d5323c413e4f"
+readonly repo_sha256="6ed2f6325705b6ea0af99466d6ebd04adec387a5b6a906cd77bc8c6da65123e5"
 readonly destination="${1:?usage: provision-repo.sh DESTINATION}"
 
 temporary_file="$(mktemp)"

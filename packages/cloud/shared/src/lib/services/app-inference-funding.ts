@@ -4,10 +4,12 @@
  * admission is a durable dispatch intent: a repeated logical operation cannot invoke the provider again.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, eq, gt, isNull, lte } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, type SQL, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
+import { sqlRows } from "../../db/execute-helpers";
 import { writeTransaction } from "../../db/helpers";
 import { appBillingMembershipEnvironment } from "../../db/repositories/app-billing-membership-scope";
+import { readAppPilotAccess } from "../../db/repositories/app-pilot-access";
 import {
   lockAppBillingScope,
   type ScopedBillingContext,
@@ -250,45 +252,58 @@ export class AppInferenceFundingService {
           dispatchGranted: false,
         };
       }
-      const [entitlement] = await tx
-        .select()
-        .from(organizationEntitlements)
-        .where(
-          and(
-            eq(organizationEntitlements.organization_id, scope.organizationId),
-            eq(organizationEntitlements.billing_scope_id, scope.scopeId),
-          ),
+      const pilot = await readAppPilotAccess(tx, scope);
+      let sourcePredicate: SQL;
+      let effectiveUntil: Date;
+      if (pilot) {
+        if (!pilot.plan.entitlements.features.includes("inference"))
+          fail("ENTITLEMENT", "This pilot plan does not grant inference access");
+        sourcePredicate = eq(subscriptionAllowancePeriods.pilot_redemption_id, pilot.redemptionId);
+        effectiveUntil = pilot.endsAt;
+      } else {
+        const [entitlement] = await tx
+          .select()
+          .from(organizationEntitlements)
+          .where(
+            and(
+              eq(organizationEntitlements.organization_id, scope.organizationId),
+              eq(organizationEntitlements.billing_scope_id, scope.scopeId),
+            ),
+          )
+          .for("update");
+        if (
+          !entitlement ||
+          !entitlement.entitlement_effective ||
+          entitlement.access !== "granted" ||
+          entitlement.effective_from > now ||
+          entitlement.effective_until === null ||
+          entitlement.effective_until <= now ||
+          !entitlement.features.includes("inference") ||
+          !entitlement.source_subscription_id
         )
-        .for("update");
-      if (
-        !entitlement ||
-        !entitlement.entitlement_effective ||
-        entitlement.access !== "granted" ||
-        entitlement.effective_from > now ||
-        entitlement.effective_until === null ||
-        entitlement.effective_until <= now ||
-        !entitlement.features.includes("inference") ||
-        !entitlement.source_subscription_id
-      )
-        fail("ENTITLEMENT", "This app subscription does not currently grant inference access");
-      const [subscription] = await tx
-        .select()
-        .from(billingSubscriptions)
-        .where(
-          and(
-            eq(billingSubscriptions.id, entitlement.source_subscription_id),
-            eq(billingSubscriptions.organization_id, scope.organizationId),
-            fundingScopePredicate(billingSubscriptions, scopeBinding(scope)),
-          ),
+          fail("ENTITLEMENT", "This app subscription does not currently grant inference access");
+        const [subscription] = await tx
+          .select()
+          .from(billingSubscriptions)
+          .where(
+            and(
+              eq(billingSubscriptions.id, entitlement.source_subscription_id),
+              eq(billingSubscriptions.organization_id, scope.organizationId),
+              fundingScopePredicate(billingSubscriptions, scopeBinding(scope)),
+            ),
+          )
+          .for("update");
+        if (
+          !subscription ||
+          subscription.provider_environment !== input.actor.environment ||
+          subscription.lifecycle_revision !== entitlement.source_subscription_revision ||
+          !["active", "trialing"].includes(subscription.status)
         )
-        .for("update");
-      if (
-        !subscription ||
-        subscription.provider_environment !== input.actor.environment ||
-        subscription.lifecycle_revision !== entitlement.source_subscription_revision ||
-        !["active", "trialing"].includes(subscription.status)
-      )
-        fail("PROJECTION_UNAVAILABLE", "App subscription projection is stale or unavailable");
+          fail("PROJECTION_UNAVAILABLE", "App subscription projection is stale or unavailable");
+        sourcePredicate = eq(subscriptionAllowancePeriods.subscription_id, subscription.id);
+        effectiveUntil = entitlement.effective_until;
+      }
+      const allowanceNow = await readPostLockDatabaseNow(tx);
       const periods = await tx
         .select()
         .from(subscriptionAllowancePeriods)
@@ -296,11 +311,11 @@ export class AppInferenceFundingService {
           and(
             eq(subscriptionAllowancePeriods.organization_id, scope.organizationId),
             fundingScopePredicate(subscriptionAllowancePeriods, scopeBinding(scope)),
-            eq(subscriptionAllowancePeriods.subscription_id, subscription.id),
+            sourcePredicate,
             eq(subscriptionAllowancePeriods.provider_environment, input.actor.environment),
             eq(subscriptionAllowancePeriods.state, "open"),
-            lte(subscriptionAllowancePeriods.period_start, now),
-            gt(subscriptionAllowancePeriods.expires_at, now),
+            lte(subscriptionAllowancePeriods.period_start, allowanceNow),
+            gt(subscriptionAllowancePeriods.expires_at, allowanceNow),
           ),
         )
         .for("update");
@@ -314,9 +329,7 @@ export class AppInferenceFundingService {
           "ALLOWANCE_INSUFFICIENT",
           "This app account has no sufficient current usage allowance",
         );
-      const validUntil = new Date(
-        Math.min(entitlement.effective_until.getTime(), period.expires_at.getTime()),
-      );
+      const validUntil = new Date(Math.min(effectiveUntil.getTime(), period.expires_at.getTime()));
       const keys = identity(input);
       const metadata = {
         type: "app_subscription_infrastructure",
@@ -406,7 +419,6 @@ export class AppInferenceFundingService {
       const pair = await findPair(tx, scope, input);
       if (!pair) fail("RESERVATION", "Original app funding reservation is unavailable");
       assertPair(pair, requestDigests(scope, input, amount), amount);
-      const now = await readPostLockDatabaseNow(tx);
       const [entitlement] = await tx
         .select()
         .from(organizationEntitlements)
@@ -417,6 +429,37 @@ export class AppInferenceFundingService {
           ),
         )
         .for("update");
+      const pilot = await readAppPilotAccess(tx, scope);
+      const [allocation] = await sqlRows<{
+        subscription_id: string | null;
+        pilot_redemption_id: string | null;
+      }>(
+        tx,
+        sql`
+        SELECT p.subscription_id,p.pilot_redemption_id FROM billing_funding_allocations a
+          JOIN subscription_allowance_periods p ON p.id=a.allowance_period_id
+        WHERE a.reservation_id=${pair.allowance.id} AND a.billing_scope_id=${scope.scopeId}`,
+      );
+      const dispatchNow = await readPostLockDatabaseNow(tx);
+      // A later paid subscription cannot revive a reservation made by a revoked pilot (or vice versa).
+      const accessCurrent = allocation?.pilot_redemption_id
+        ? Boolean(
+            pilot &&
+              allocation.pilot_redemption_id === pilot.redemptionId &&
+              pilot.endsAt > dispatchNow &&
+              pilot.plan.entitlements.features.includes("inference"),
+          )
+        : Boolean(
+            allocation?.subscription_id &&
+              entitlement &&
+              entitlement.source_subscription_id === allocation.subscription_id &&
+              entitlement.entitlement_effective &&
+              entitlement.access === "granted" &&
+              entitlement.effective_from <= dispatchNow &&
+              entitlement.effective_until &&
+              entitlement.effective_until > dispatchNow &&
+              entitlement.features.includes("inference"),
+          );
       const [admission] = await tx
         .select({ id: providerAdmissions.id })
         .from(providerAdmissions)
@@ -431,15 +474,9 @@ export class AppInferenceFundingService {
         .for("update");
       if (
         pair.allowance.status !== "reserved" ||
-        pair.infrastructure.expires_at <= now ||
-        pair.allowance.expires_at <= now ||
-        !entitlement ||
-        !entitlement.entitlement_effective ||
-        entitlement.access !== "granted" ||
-        entitlement.effective_from > now ||
-        !entitlement.effective_until ||
-        entitlement.effective_until <= now ||
-        !entitlement.features.includes("inference") ||
+        pair.infrastructure.expires_at <= dispatchNow ||
+        pair.allowance.expires_at <= dispatchNow ||
+        !accessCurrent ||
         !admission
       )
         fail(

@@ -224,7 +224,7 @@ export class CloudBridgeService extends Service {
    * undici's `WebSocket` is an `EventTarget` subclass, so a throw inside the
    * `"message"` listener is re-raised via `process.nextTick` and surfaces as an
    * `uncaughtException`; the agent host translates that into `process.exit(1)`
-   * (`packages/app-core/src/cli/run-main.ts`). A single non-JSON text frame
+   * (`packages/app/src/cli/run-main.ts`). A single non-JSON text frame
    * (protocol drift, a proxy-injected error page, or a misbehaving peer) would
    * therefore kill the entire process, not just the bridge. This is the
    * transport boundary, so an untrusted frame is sanitized here rather than

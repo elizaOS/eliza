@@ -532,7 +532,15 @@ export async function requireGenerativeRouteCaller(
               : "Rate limiter is unavailable",
             limited.status === 503
               ? { retryable: true, retryAfterSeconds: 1 }
-              : undefined,
+              : {
+                  retryAfterSeconds: Math.max(
+                    1,
+                    Number.parseInt(
+                      limited.headers.get("Retry-After") ?? "",
+                      10,
+                    ) || 60,
+                  ),
+                },
           );
         }
       }

@@ -33,6 +33,7 @@ import {
   lowerOrgBalanceHint,
   republishOrgBalanceHint,
 } from "./inference-auth-cache";
+import { withInferencePolicyMutation } from "./inference-policy-fence";
 import { organizationsService } from "./organizations";
 import { userSessionsService } from "./user-sessions";
 import {
@@ -1308,6 +1309,13 @@ export class CreditsService {
     amount: number;
     /** Cumulative authoritative reversal target; delta is derived under the org lock. */
     cumulativeTargetAmount?: number;
+    /**
+     * Prefix of the idempotency keys the cumulative target counts: a charge's
+     * refunds, or one dispute. Stripe states a refund total and a dispute amount
+     * independently, so the delta is taken against the same series only, while
+     * the grant minus every reversal of the payment intent caps it.
+     */
+    reversalSeries?: string;
     /** Original grant PI whose reversal ledger is serialized. */
     originalPaymentIntentId?: string;
     description: string;
@@ -1334,20 +1342,23 @@ export class CreditsService {
     const cumulativeTarget =
       params.cumulativeTargetAmount === undefined ? null : String(params.cumulativeTargetAmount);
     const originalPaymentIntentId = params.originalPaymentIntentId ?? null;
-    const rows = await writeTransaction(async (tx) => {
-      const lockRows = await sqlRows<{ id: string }>(
-        tx,
-        sql`SELECT id FROM organizations WHERE id = ${params.organizationId} FOR UPDATE`,
-      );
-      if (!lockRows[0]) throw new Error("Organization not found");
+    const reversalSeries = params.reversalSeries ?? null;
+    const rows = await withInferencePolicyMutation(
+      { organizationIds: [params.organizationId] },
+      async (tx) => {
+        const lockRows = await sqlRows<{ id: string }>(
+          tx,
+          sql`SELECT id FROM organizations WHERE id = ${params.organizationId} FOR UPDATE`,
+        );
+        if (!lockRows[0]) throw new Error("Organization not found");
 
-      // The reversal query runs as a second READ COMMITTED statement after
-      // acquiring the org lock. A contender that waited for this lock now gets
-      // a fresh snapshot containing the winner's committed clawback before it
-      // derives its cumulative delta.
-      return await sqlRows<ClawbackMutationRow>(
-        tx,
-        sql`
+        // The reversal query runs as a second READ COMMITTED statement after
+        // acquiring the org lock. A contender that waited for this lock now gets
+        // a fresh snapshot containing the winner's committed clawback before it
+        // derives its cumulative delta.
+        return await sqlRows<ClawbackMutationRow>(
+          tx,
+          sql`
         WITH org AS (
           SELECT id, credit_balance::numeric AS current_balance
           FROM organizations
@@ -1370,20 +1381,36 @@ export class CreditsService {
           LIMIT 1
         ),
         grant_lock AS (
-          SELECT id
+          SELECT id, amount::numeric AS amount
           FROM credit_transactions
           WHERE stripe_payment_intent_id = ${originalPaymentIntentId}
           FOR UPDATE
         ),
+        -- A clawback's obligation is what it removed plus what it could not
+        -- recover (held as a shortfall). A reinstated dispute returns the
+        -- removed credits and releases its hold, so it no longer counts.
         prior_reversal AS (
-          SELECT COALESCE(SUM(-ct.amount), 0)::numeric AS total
+          SELECT
+            COALESCE(SUM(obligation.amount), 0)::numeric AS total,
+            COALESCE(
+              SUM(obligation.amount) FILTER (
+                WHERE ${reversalSeries}::text IS NULL
+                  OR ct.stripe_payment_intent_id LIKE ${reversalSeries} || '%'
+              ),
+              0
+            )::numeric AS series_total
           FROM org
           LEFT JOIN credit_transactions AS ct
             ON ct.metadata->>'payment_intent_id' = ${originalPaymentIntentId}
-            AND (
-              ct.type = 'clawback'
-              OR (ct.type = 'refund' AND ct.metadata->>'source' = 'charge.dispute.funds_reinstated')
+            AND ct.type = 'clawback'
+            AND NOT EXISTS (
+              SELECT 1 FROM credit_transactions AS reinstated
+              WHERE reinstated.stripe_payment_intent_id = ct.stripe_payment_intent_id || ':reinstated'
             )
+          LEFT JOIN LATERAL (
+            SELECT -ct.amount
+              + COALESCE(NULLIF(ct.metadata->>'unrecovered_clawback_usd', '')::numeric, 0) AS amount
+          ) AS obligation ON true
         ),
         candidate AS (
           SELECT
@@ -1398,7 +1425,15 @@ export class CreditsService {
           CROSS JOIN LATERAL (
             SELECT CASE
               WHEN ${cumulativeTarget}::numeric IS NULL THEN ${String(params.amount)}::numeric
-              ELSE GREATEST(${cumulativeTarget}::numeric - prior_reversal.total, 0)
+              -- The series delta, capped by what the grant still has to return.
+              ELSE LEAST(
+                GREATEST(${cumulativeTarget}::numeric - prior_reversal.series_total, 0),
+                GREATEST(
+                  COALESCE((SELECT SUM(amount) FROM grant_lock), ${cumulativeTarget}::numeric)
+                    - prior_reversal.total,
+                  0
+                )
+              )
             END AS requested_amount
           ) AS target
           WHERE NOT EXISTS (SELECT 1 FROM existing)
@@ -1509,8 +1544,9 @@ export class CreditsService {
         FROM (SELECT 1) AS singleton
         LEFT JOIN chosen_transaction ON true
         `,
-      );
-    });
+        );
+      },
+    );
 
     const row = rows[0];
     if (!row || !isPgTrue(row.org_exists)) {
@@ -2581,6 +2617,11 @@ export class CreditsService {
       capHit: false,
     };
 
+    // A hold this run could not settle keeps `settled_at` null, so it would be
+    // selected again by every later batch and, once a full batch of such holds
+    // exists, by every later run; newer holds behind it would never settle.
+    // Each run excludes the holds it has already skipped.
+    const skipped: string[] = [];
     for (let batch = 0; batch < maxBatches; batch++) {
       const rows = await sqlRows<{
         id: string;
@@ -2604,8 +2645,19 @@ export class CreditsService {
                 AND metadata->>'settlement_marker' = ${APP_CHAT_RESERVATION_SETTLEMENT_MARKER}
               )
             )
+            -- Native storage holds are settled by the storage reconciler after a
+            -- strong R2 HEAD; the reconcile claim below refuses them.
+            AND NOT (metadata ? 'storage_operation_id')
             AND settled_at IS NULL
             AND created_at < NOW() - (${String(graceMs)} || ' milliseconds')::interval
+            ${
+              skipped.length
+                ? sql`AND id NOT IN (${sql.join(
+                    skipped.map((id) => sql`${id}`),
+                    sql`, `,
+                  )})`
+                : sql``
+            }
           ORDER BY created_at ASC
           LIMIT ${batchSize}
         `,
@@ -2615,6 +2667,7 @@ export class CreditsService {
       stats.scanned += rows.length;
 
       for (const row of rows) {
+        const settledBefore = stats.settled;
         const reservedAmount = Math.abs(parseNumeric(row.amount, "reservation_amount"));
         const reservationMetadata = parseMetadata(row.metadata);
         const description = (row.description ?? "Credit reservation").replace(
@@ -2680,6 +2733,9 @@ export class CreditsService {
             organizationId: row.organization_id,
             error: error instanceof Error ? error.message : String(error),
           });
+        } finally {
+          // Every row this run did not settle, whichever branch it took.
+          if (stats.settled === settledBefore) skipped.push(row.id);
         }
       }
 

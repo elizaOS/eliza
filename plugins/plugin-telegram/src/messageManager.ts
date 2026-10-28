@@ -20,12 +20,14 @@ import {
   createUniqueUuid,
   decodeCallback,
   ElizaError,
+  type EventPayload,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
   type Media,
   type Memory,
+  type MentionContext,
   type MessagePayload,
   ModelType,
   type ResolvedAttachmentBytes,
@@ -163,6 +165,16 @@ async function resolveTelegramFileBytes(
 }
 
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+const CODE_FENCE = "```";
+
+/** The opener (```lang) of a code block left open at the end of `text`. */
+function openCodeFence(text: string): string | null {
+  const fences = text.split(CODE_FENCE).length - 1;
+  if (fences % 2 === 0) return null;
+  const start = text.lastIndexOf(CODE_FENCE);
+  const lang = /^[^\s`]*/.exec(text.slice(start + CODE_FENCE.length))?.[0];
+  return `${CODE_FENCE}${lang ?? ""}`;
+}
 const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
 const ACTION_PROGRESS_SOURCE = "action_progress";
@@ -431,12 +443,74 @@ function telegramReceipt(
   };
 }
 
+/**
+ * Whether a group message is addressed to this bot: a reply to one of its
+ * messages, an @mention of its username (any case), a text mention of its
+ * user, or a /command@ its username. Same rules as the Cloud Telegram group
+ * classifier. Telegram entity offsets count UTF-16 units, like JS strings.
+ */
+export function telegramMentionContext(
+  message: Message,
+  bot: { id: number; username?: string } | undefined,
+): MentionContext {
+  const username = bot?.username?.toLowerCase();
+  const isReply =
+    bot !== undefined &&
+    "reply_to_message" in message &&
+    message.reply_to_message?.from?.id === bot.id;
+  const text =
+    ("text" in message && message.text) ||
+    ("caption" in message && message.caption) ||
+    "";
+  const entities =
+    ("entities" in message && message.entities) ||
+    ("caption_entities" in message && message.caption_entities) ||
+    [];
+  const isMention = entities.some((entity) => {
+    if (entity.type === "text_mention") return entity.user.id === bot?.id;
+    if (!username) return false;
+    const value = text.slice(entity.offset, entity.offset + entity.length);
+    if (entity.type === "mention") {
+      return value.slice(1).toLowerCase() === username;
+    }
+    if (entity.type === "bot_command") {
+      const target = value.split("@")[1];
+      return target?.toLowerCase() === username;
+    }
+    return false;
+  });
+  return {
+    isMention,
+    isReply,
+    isThread: false,
+    mentionType: isMention ? "platform_mention" : isReply ? "reply" : "none",
+  };
+}
+
 export class MessageManager {
   public bot: Telegraf<Context>;
   protected runtime: IAgentRuntime;
   protected accountId: string;
   /** Rooms with an agent turn in flight, with the count of turns per room. */
   private activeTurnRooms = new Map<UUID, number>();
+
+  /**
+   * Attachments Telegram refused for a reply, keyed by the reply content object
+   * that `sendMessageInChunks` and `persistSentMessageMemories` both receive.
+   */
+  private readonly undeliveredAttachments = new WeakMap<object, Set<Media>>();
+
+  /** The reply as the user received it: attachments Telegram refused are left out. */
+  private deliveredContent<T extends Content>(content: T): T {
+    const undelivered = this.undeliveredAttachments.get(content);
+    if (!undelivered) return content;
+    return {
+      ...content,
+      attachments: content.attachments?.filter(
+        (attachment) => !undelivered.has(attachment),
+      ),
+    };
+  }
 
   /**
    * Constructor for creating a new instance of a BotAgent.
@@ -490,11 +564,26 @@ export class MessageManager {
     }
   }
 
+  /** Upgraded groups seen by this process: old chat id → supergroup chat id. */
+  private readonly migratedChatIds = new Map<string, number>();
+
+  private currentChatId(chatId: number | string): number | string {
+    return this.migratedChatIds.get(String(chatId)) ?? chatId;
+  }
+
   private telegramMessageMemoryKey(
     chatId: number | string,
     messageId: number | string,
   ): string {
     return `telegram:${this.accountId}:message:${chatId}:${messageId}`;
+  }
+
+  /** Memory id of a message this account stored for a chat (sent or received). */
+  messageMemoryId(chatId: number | string, messageId: number | string): UUID {
+    return createUniqueUuid(
+      this.runtime,
+      this.telegramMessageMemoryKey(chatId, messageId),
+    );
   }
 
   private telegramUpdateDedupeKey(
@@ -909,9 +998,10 @@ export class MessageManager {
         // Add a basic attachment even if documentInfo is null
         attachments.push({
           id: document.file_id,
-          url: "",
+          url: telegramFileRefUrl(document.file_id),
           title: `Document: ${document.file_name || "Unknown Document"}`,
           source: "Document",
+          contentType: contentTypeForMime(document.mime_type),
           description: `Document: ${document.file_name || "Unknown Document"}`,
           text: `Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nType: ${document.mime_type || "unknown"}`,
         });
@@ -1092,9 +1182,11 @@ export class MessageManager {
   private async sendWithRetry<T>(
     send: () => Promise<T>,
     plainTextFallback?: () => Promise<T>,
+    chat?: { id: number | string },
   ): Promise<T> {
     const MAX_RATE_LIMIT_RETRIES = 2;
     const MAX_RETRY_AFTER_SECONDS = 30;
+    let migrated = false;
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await send();
@@ -1104,11 +1196,37 @@ export class MessageManager {
             response?: {
               error_code?: number;
               description?: string;
-              parameters?: { retry_after?: number };
+              parameters?: {
+                retry_after?: number;
+                migrate_to_chat_id?: number;
+              };
             };
           }
         ).response;
         const code = response?.error_code;
+        // A basic group upgraded to a supergroup has a new chat id; Telegram
+        // names it in the error. Send there once and remember it for the chat.
+        const migrateTo = response?.parameters?.migrate_to_chat_id;
+        if (
+          code === 400 &&
+          chat &&
+          typeof migrateTo === "number" &&
+          !migrated
+        ) {
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              fromChatId: chat.id,
+              toChatId: migrateTo,
+            },
+            "Telegram group was upgraded to a supergroup; sending to its new chat id",
+          );
+          this.migratedChatIds.set(String(chat.id), migrateTo);
+          chat.id = migrateTo;
+          migrated = true;
+          continue;
+        }
         if (code === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
           const retryAfter = Math.min(
             response?.parameters?.retry_after ?? 1,
@@ -1157,6 +1275,7 @@ export class MessageManager {
     replyToMessageId?: number,
     messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
+    const undelivered = new Set<Media>();
     if (content.attachments && content.attachments.length > 0) {
       await Promise.all(
         content.attachments.map(async (attachment: Media) => {
@@ -1203,6 +1322,8 @@ export class MessageManager {
           } catch (error) {
             // error-policy:J4 an undeliverable attachment must not drop the
             // accompanying prose; log a URL summary, never a data-URL payload.
+            // It is kept out of the reply memory (persistSentMessageMemories).
+            undelivered.add(attachment);
             logger.warn(
               {
                 src: "plugin:telegram",
@@ -1218,6 +1339,7 @@ export class MessageManager {
       );
       // Fall through to the text path below so an attachment reply never drops
       // the agent's accompanying prose (sent as a follow-up message).
+      this.undeliveredAttachments.set(content, undelivered);
     }
 
     {
@@ -1246,6 +1368,21 @@ export class MessageManager {
       // Nothing textual to send (e.g. an attachments-only reply that already
       // dispatched its media above) — don't post an empty trailing message.
       if (textToSend.trim().length === 0 && !hasKeyboardRows) {
+        const attachmentCount = content.attachments?.length ?? 0;
+        if (attachmentCount > 0 && undelivered.size === attachmentCount) {
+          // Nothing reached the user; an empty result would read as "nothing to send".
+          throw new ElizaError(
+            "Telegram refused every attachment of the reply",
+            {
+              code: "TELEGRAM_ATTACHMENTS_NOT_DELIVERED",
+              context: {
+                accountId: this.accountId,
+                chatId: String(ctx.chat?.id ?? ""),
+                attachments: attachmentCount,
+              },
+            },
+          );
+        }
         return sentMessages;
       }
 
@@ -1303,7 +1440,7 @@ export class MessageManager {
             ? Markup.inlineKeyboard(keyboardRows).reply_markup
             : undefined;
 
-        const chatId = ctx.chat.id;
+        const chat = { id: this.currentChatId(ctx.chat.id) };
         const sendOptions = {
           reply_parameters:
             i === 0 && replyToMessageId
@@ -1317,7 +1454,7 @@ export class MessageManager {
         try {
           const sentMessage = (await this.sendWithRetry(
             () =>
-              ctx.telegram.sendMessage(chatId, chunk, {
+              ctx.telegram.sendMessage(chat.id, chunk, {
                 ...sendOptions,
                 parse_mode: "MarkdownV2",
               }),
@@ -1327,10 +1464,11 @@ export class MessageManager {
             // the editMessage fallback, which sends cleanText(text).
             () =>
               ctx.telegram.sendMessage(
-                chatId,
+                chat.id,
                 cleanText(chunks[i]),
                 sendOptions,
               ),
+            chat,
           )) as Message.TextMessage;
 
           sentMessages.push(sentMessage);
@@ -1343,7 +1481,7 @@ export class MessageManager {
               [],
               cause,
               this.accountId,
-              String(chatId),
+              String(chat.id),
             );
           throw cause;
         }
@@ -1363,6 +1501,7 @@ export class MessageManager {
     inReplyTo: UUID;
   }): Promise<Memory[]> {
     const memories: Memory[] = [];
+    const content = this.deliveredContent(args.content);
     for (const sentMessage of args.sentMessages) {
       const responseMemory: Memory = {
         id: createUniqueUuid(
@@ -1376,7 +1515,7 @@ export class MessageManager {
         agentId: this.runtime.agentId,
         roomId: args.roomId,
         content: {
-          ...args.content,
+          ...content,
           source: "telegram",
           text: sentMessage.text,
           inReplyTo: args.inReplyTo,
@@ -1453,7 +1592,9 @@ export class MessageManager {
       if (!ctx.chat) {
         throw new Error("sendMedia: ctx.chat is undefined");
       }
-      const chatId = ctx.chat.id;
+      // Same chat routing as text: a group upgraded to a supergroup takes its
+      // new chat id, learned here or by an earlier send.
+      const chat = { id: this.currentChatId(ctx.chat.id) };
       const captionNeedsFollowUp =
         typeof caption === "string" &&
         caption.length > MAX_MEDIA_CAPTION_LENGTH;
@@ -1469,19 +1610,28 @@ export class MessageManager {
         // A stored inbound capability reference names a Telegram file_id; the
         // Bot API re-sends those by id directly, so the round-trip never needs
         // the token-bearing file URL.
-        await sendFunction(ctx.chat.id, fileRefId, sendOptions);
+        await this.sendWithRetry(
+          () => sendFunction(chat.id, fileRefId, sendOptions),
+          undefined,
+          chat,
+        );
       } else {
         const resolved = await resolveOutboundAttachmentBytes(mediaPath, {
           localFetch: this.runtime.fetch ?? undefined,
           ...fetchOptions,
         });
-        await sendFunction(
-          ctx.chat.id,
-          {
-            source: resolved.buffer,
-            filename: resolved.fileName ?? "attachment",
-          },
-          sendOptions,
+        await this.sendWithRetry(
+          () =>
+            sendFunction(
+              chat.id,
+              {
+                source: resolved.buffer,
+                filename: resolved.fileName ?? "attachment",
+              },
+              sendOptions,
+            ),
+          undefined,
+          chat,
         );
       }
 
@@ -1490,10 +1640,13 @@ export class MessageManager {
         // the media first, then preserve the complete caption as ordinary text
         // messages instead of reporting success after silently clipping it.
         for (const chunk of this.splitMessage(caption)) {
-          await this.sendWithRetry(() =>
-            ctx.telegram.sendMessage(chatId, chunk, {
-              message_thread_id: messageThreadId,
-            }),
+          await this.sendWithRetry(
+            () =>
+              ctx.telegram.sendMessage(chat.id, chunk, {
+                message_thread_id: messageThreadId,
+              }),
+            undefined,
+            chat,
           );
         }
       }
@@ -1535,29 +1688,52 @@ export class MessageManager {
     }
 
     let remaining = toWellFormedUnicode(text);
+    // Fence opener (```lang) repeated at the start of the next chunk when a
+    // chunk ends inside a code block. Each chunk is converted on its own, so
+    // without it the rest of the block is styled as prose and the closing
+    // fence opens a new block.
+    let reopen = "";
     while (remaining.length > 0) {
       // This is lossless transport chunking: every returned chunk is sent and
-      // concatenating them reconstructs the complete well-formed input. When
-      // the remainder does not fit, prefer cutting right before the last
-      // newline inside the window so paragraphs stay intact; the newline
-      // itself is carried into the next chunk rather than dropped.
-      let chunk: string;
-      if (remaining.length <= MAX_MESSAGE_LENGTH) {
-        chunk = remaining;
-      } else {
-        const newlineIndex = remaining.lastIndexOf("\n", MAX_MESSAGE_LENGTH);
-        chunk =
-          newlineIndex > 0
-            ? remaining.slice(0, newlineIndex)
-            : truncateTelegramGraphemes(remaining, MAX_MESSAGE_LENGTH);
+      // concatenating them reconstructs the complete well-formed input, plus
+      // any repeated fence openers. When the remainder does not fit, prefer
+      // cutting right before the last newline inside the window so paragraphs
+      // stay intact; the newline itself is carried into the next chunk rather
+      // than dropped.
+      let chunk = this.cutTelegramChunk(
+        remaining,
+        MAX_MESSAGE_LENGTH - reopen.length,
+      );
+      let open = openCodeFence(reopen + chunk);
+      if (open && chunk.length < remaining.length) {
+        // Leave room for the closing fence the converter adds to this chunk.
+        chunk = this.cutTelegramChunk(
+          remaining,
+          MAX_MESSAGE_LENGTH - reopen.length - CODE_FENCE.length,
+        );
+        open = openCodeFence(reopen + chunk);
       }
       if (chunk.length === 0) {
         throw new Error("Unable to split Telegram message without data loss");
       }
-      chunks.push(chunk);
+      chunks.push(reopen + chunk);
       remaining = remaining.slice(chunk.length);
+      reopen =
+        open && remaining.length > 0
+          ? remaining.startsWith("\n")
+            ? open
+            : `${open}\n`
+          : "";
     }
     return chunks;
+  }
+
+  private cutTelegramChunk(remaining: string, limit: number): string {
+    if (remaining.length <= limit) return remaining;
+    const newlineIndex = remaining.lastIndexOf("\n", limit);
+    return newlineIndex > 0
+      ? remaining.slice(0, newlineIndex)
+      : truncateTelegramGraphemes(remaining, limit);
   }
 
   /**
@@ -1711,6 +1887,14 @@ export class MessageManager {
           source: "telegram",
           metadata: { accountId: this.accountId },
           channelType,
+          ...(channelType === ChannelType.DM
+            ? {}
+            : {
+                mentionContext: telegramMentionContext(
+                  message,
+                  ctx.botInfo ?? this.bot.botInfo,
+                ),
+              }),
           inReplyTo:
             "reply_to_message" in message && message.reply_to_message
               ? createUniqueUuid(
@@ -1772,8 +1956,9 @@ export class MessageManager {
         _actionName?: string,
       ) => {
         try {
-          // If response is from reasoning do not send it.
-          if (!content.text) {
+          // Skip an empty reply (reasoning with no text), but still deliver an
+          // attachment-only reply such as ATTACH_TO_CHAT's media.
+          if (!content.text?.trim() && !content.attachments?.length) {
             return [];
           }
 
@@ -2360,6 +2545,34 @@ export class MessageManager {
   }
 
   /**
+   * Emits an observer event. The update, memory row, or provider send that
+   * produced the event is already durable, so a rejecting listener is
+   * reported and never becomes an unhandled rejection or a retry trigger.
+   */
+  private observeEvent(
+    scope: string,
+    event: string,
+    payload: EventPayload,
+    context: Record<string, unknown> = {},
+  ): void {
+    const reportFailure = (error: unknown) =>
+      this.runtime.reportError(scope, error, {
+        event,
+        accountId: this.accountId,
+        ...context,
+      });
+    try {
+      // error-policy:J7 The effect that produced this event already
+      // succeeded. Event listeners are observers, so a rejected listener is
+      // reported without creating an unhandled rejection or making the
+      // accepted update look retryable.
+      void this.runtime.emitEvent(event, payload).catch(reportFailure);
+    } catch (error) {
+      reportFailure(error);
+    }
+  }
+
+  /**
    * Handles the reaction event triggered by a user reacting to a message.
    * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
    * @returns {Promise<void>} A Promise that resolves when the reaction handling is complete
@@ -2516,32 +2729,40 @@ export class MessageManager {
       };
 
       // Let the bootstrap plugin handle the reaction
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        callback,
-        source: "telegram",
-        accountId: this.accountId,
-        metadata: { accountId: this.accountId },
-        ctx,
-        originalMessage: syntheticReactionMessage,
-        reactionString: reactionLabel,
-        originalReaction: firstReaction as ReactionType,
-      } as TelegramReactionReceivedPayload);
+      this.observeEvent(
+        "MessageManager.emitReaction",
+        EventType.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          callback,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          ctx,
+          originalMessage: syntheticReactionMessage,
+          reactionString: reactionLabel,
+          originalReaction: firstReaction as ReactionType,
+        } as TelegramReactionReceivedPayload,
+      );
 
       // Also emit the platform-specific event
-      this.runtime.emitEvent(TelegramEventTypes.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        callback,
-        source: "telegram",
-        accountId: this.accountId,
-        metadata: { accountId: this.accountId },
-        ctx,
-        originalMessage: syntheticReactionMessage,
-        reactionString: reactionLabel,
-        originalReaction: firstReaction as ReactionType,
-      } as TelegramReactionReceivedPayload);
+      this.observeEvent(
+        "MessageManager.emitReaction",
+        TelegramEventTypes.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          callback,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          ctx,
+          originalMessage: syntheticReactionMessage,
+          reactionString: reactionLabel,
+          originalReaction: firstReaction as ReactionType,
+        } as TelegramReactionReceivedPayload,
+      );
     } catch (error) {
       logger.error(
         {
@@ -2568,10 +2789,15 @@ export class MessageManager {
     messageThreadId?: number,
   ): Promise<void> {
     const formatted = convertMarkdownToTelegram(text);
+    // Route through the same migration retry as the send path: a group
+    // upgraded to a supergroup rejects the old chat id with
+    // migrate_to_chat_id, and without the mutable chat object the retry
+    // branch can never fire.
+    const chat = { id: this.currentChatId(chatId) };
     await this.sendWithRetry(
       () =>
         this.bot.telegram.editMessageText(
-          chatId,
+          chat.id,
           messageId,
           undefined,
           formatted,
@@ -2581,11 +2807,12 @@ export class MessageManager {
       // the user sees the content unformatted rather than a stale message.
       () =>
         this.bot.telegram.editMessageText(
-          chatId,
+          chat.id,
           messageId,
           undefined,
           cleanText(text),
         ),
+      chat,
     );
     logger.info(
       {
@@ -2813,6 +3040,7 @@ export class MessageManager {
         !Array.isArray(content.metadata)
           ? content.metadata
           : {};
+      const delivered = this.deliveredContent(content);
       for (const sentMessage of sentMessages) {
         const memory: Memory = {
           id: createUniqueUuid(
@@ -2826,7 +3054,7 @@ export class MessageManager {
           agentId: this.runtime.agentId,
           roomId,
           content: {
-            ...content,
+            ...delivered,
             text: sentMessage.text,
             source: "telegram",
             metadata: { ...contentMetadata, accountId: this.accountId },
@@ -2872,7 +3100,11 @@ export class MessageManager {
       // Emit both generic and platform-specific message sent events
       if (memories.length > 0) {
         const firstMemory = memories[0];
-        this.runtime.emitEvent(EventType.MESSAGE_SENT, {
+        const observeEvent = (event: string, payload: EventPayload) =>
+          this.observeEvent("MessageManager.emitMessageSent", event, payload, {
+            chatId: String(chatId),
+          });
+        observeEvent(EventType.MESSAGE_SENT, {
           runtime: this.runtime,
           message: firstMemory,
           source: "telegram",
@@ -2896,7 +3128,7 @@ export class MessageManager {
           accountId: string;
           metadata: { accountId: string };
         };
-        this.runtime.emitEvent(
+        observeEvent(
           TelegramEventTypes.MESSAGE_SENT as string,
           telegramMessageSentPayload,
         );
@@ -2913,7 +3145,7 @@ export class MessageManager {
         },
         "Error persisting a Telegram message that the Bot API already accepted",
       );
-      // error-policy:J2 Local persist/event failure after Telegram accepted the
+      // error-policy:J2 Local persistence failure after Telegram accepted the
       // send. Returning [] would look like "nothing sent" and invite a retry
       // that duplicates the visible message; rethrow with the provider ids in
       // context so the connector boundary can fail without claiming silence.

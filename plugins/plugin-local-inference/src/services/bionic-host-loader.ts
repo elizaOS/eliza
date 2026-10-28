@@ -57,8 +57,18 @@ import {
 	bundleHasAsrModelFiles,
 	readBundleAsrProvenanceBlockers,
 } from "./asr-provenance";
+import {
+	type BionicAsrStream,
+	bionicAsrOneShot,
+	bionicSocketPath,
+	openBionicAsrStream,
+} from "./bionic-asr-stream";
 import { mergeElizaTurnStopSequences } from "./eliza-turn-stops";
 import { elizaModelsDir } from "./paths";
+import {
+	BionicStreamingTranscriber,
+	type BionicStreamingTranscriberOptions,
+} from "./voice/bionic-streaming-transcriber";
 
 /** Connect + full round-trip budget. A cold GPU decode of a long reply fits. */
 const REQUEST_TIMEOUT_MS = 120000;
@@ -92,6 +102,19 @@ interface BionicStreamFrame {
 	incomplete?: boolean;
 	finishReason?: string;
 }
+/** op="tts" response: base64 little-endian fp32 PCM at `sampleRate`. */
+interface BionicTtsResponse {
+	ok: boolean;
+	sampleRate?: number;
+	samples?: number;
+	pcmBase64?: string;
+	error?: string;
+	cancelled?: boolean;
+}
+/** Longest text one op="tts" request may carry (the host chunks it natively). */
+export const BIONIC_TTS_MAX_TEXT_CHARS = 4000;
+/** Longest audio one op="tts" response may carry. */
+const BIONIC_TTS_MAX_SECONDS = 120;
 /** {ok, text} response for the asr / image ops (transcript / description). */
 interface BionicTextResponse {
 	ok: boolean;
@@ -373,37 +396,221 @@ export class BionicHostLoader implements LocalInferenceLoader {
 	}
 	/**
 	 * On-device STT: transcribe mono fp32 PCM via the bionic host's fused
-	 * Gemma ASR path (op="asr"). The musl agent can't load the fused lib, so
-	 * the TRANSCRIPTION delegate routes the audio here over the UDS and gets
-	 * the transcript back. `pcm` is little-endian fp32 already base64-encoded.
+	 * libelizainference ASR (op="asr") over the bundle's `asr/` model
+	 * (Phonon-2). Live voice should prefer
+	 * `openAsrStream()`; this batch call is the fallback when it returns null. The musl agent
+	 * can't load the fused lib, so the TRANSCRIPTION delegate routes the audio
+	 * here over the UDS and gets the transcript back. `pcm` is little-endian
+	 * fp32 already base64-encoded. Aborting `signal` sends op="asr_cancel",
+	 * which stops the native decode, and rejects with the abort reason.
 	 */
 	async transcribe(args: {
 		pcmBase64: string;
 		sampleRate: number;
+		signal?: AbortSignal;
 	}): Promise<string> {
-		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
-			throw new Error(
-				"[BionicHostLoader] host asr requires an active Gemma ASR-capable bundle; refusing to use the bionic host default bundle",
-			);
-		}
-		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
-		if (blockers.length > 0) {
-			throw new Error(
-				`[BionicHostLoader] host asr refused non-Gemma ASR provenance: ${blockers.join("; ")}`,
-			);
-		}
-		const res = await this.roundTrip<BionicTextResponse>({
-			op: "asr",
-			bundleDir: this.bundleDir,
-			pcmBase64: args.pcmBase64,
-			sampleRate: args.sampleRate,
-		});
+		this.assertAsrBundle();
+		const res = await this.cancellableRoundTrip<BionicTextResponse>(
+			{
+				op: "asr",
+				bundleDir: this.bundleDir,
+				pcmBase64: args.pcmBase64,
+				sampleRate: args.sampleRate,
+			},
+			"asr_cancel",
+			args.signal,
+		);
 		if (!res.ok) {
 			throw new Error(
 				`[BionicHostLoader] host asr failed: ${res.error ?? "unknown error"}`,
 			);
 		}
 		return res.text ?? "";
+	}
+	/** Refuse ASR on a missing or non-pinned bundle (shared by batch and streaming). */
+	private assertAsrBundle(): void {
+		if (!this.bundleDir || !bundleHasAsrModelFiles(this.bundleDir)) {
+			throw new Error(
+				"[BionicHostLoader] host asr requires an active bundle with an asr/ model (the Phonon-2 GGUF); refusing to use the bionic host default bundle",
+			);
+		}
+		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
+		if (blockers.length > 0) {
+			throw new Error(
+				`[BionicHostLoader] host asr refused non-Phonon-2 ASR provenance: ${blockers.join("; ")}`,
+			);
+		}
+	}
+	/**
+	 * Whether the host's ASR backend streams (op="asr_stream_supported"). The
+	 * host acquires the bundle's asr/ region first, so this is accurate on a
+	 * cold context: true for Phonon-2 (parakeet), false only for a host
+	 * library built without the Parakeet-TDT backend.
+	 */
+	async asrStreamSupported(): Promise<boolean> {
+		this.assertAsrBundle();
+		const res = await bionicAsrOneShot(bionicSocketPath(this.socketName), {
+			op: "asr_stream_supported",
+			bundleDir: this.bundleDir,
+		});
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host asr_stream_supported failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		return res.supported === true;
+	}
+	/**
+	 * Open a streaming ASR session on the host (op="asr_stream_open") for
+	 * mono fp32 PCM at `sampleRate`. Resolves null only when the host's
+	 * backend reports it cannot stream; callers then use `transcribe()`.
+	 */
+	async openAsrStream(args: {
+		sampleRate: number;
+	}): Promise<BionicAsrStream | null> {
+		this.assertAsrBundle();
+		return openBionicAsrStream({
+			socketPath: bionicSocketPath(this.socketName),
+			bundleDir: this.bundleDir,
+			sampleRate: args.sampleRate,
+		});
+	}
+	/**
+	 * Live transcription through the host: a `StreamingTranscriber` that emits
+	 * partials from `asr_stream_*` and uses batch op="asr" only when the
+	 * host's ASR backend cannot stream. Caller owns `dispose()`.
+	 */
+	createStreamingTranscriber(
+		opts: Omit<BionicStreamingTranscriberOptions, "host"> = {},
+	): BionicStreamingTranscriber {
+		return new BionicStreamingTranscriber({ ...opts, host: this });
+	}
+	/**
+	 * On-device TTS: send the text to the bionic host (op="tts"), which runs
+	 * the fused Paradee-8M head with its native misaki G2P over the bundle's
+	 * `tts/paradee/` files and returns mono fp32 PCM. Aborting `signal` sends
+	 * op="tts_cancel" (eliza_inference_cancel_tts on the host context) and
+	 * rejects with the abort reason.
+	 */
+	async synthesize(args: {
+		text: string;
+		speed?: number;
+		signal?: AbortSignal;
+	}): Promise<{ pcm: Float32Array; sampleRate: number }> {
+		const text = args.text.trim();
+		if (!text) {
+			throw new Error("[BionicHostLoader] host tts requires non-empty text");
+		}
+		if (!this.bundleDir) {
+			// Same rule as transcribe: an empty bundleDir would make the host
+			// synthesize from its own default bundle, not the active one.
+			throw new Error(
+				"[BionicHostLoader] host tts requires an active bundle (tts/paradee/); refusing to use the bionic host default bundle",
+			);
+		}
+		if (text.length > BIONIC_TTS_MAX_TEXT_CHARS) {
+			throw new Error(
+				`[BionicHostLoader] host tts text exceeds ${BIONIC_TTS_MAX_TEXT_CHARS} characters; split it into sentences`,
+			);
+		}
+		const speed = args.speed ?? 1;
+		if (!Number.isFinite(speed) || speed <= 0) {
+			throw new Error("[BionicHostLoader] host tts speed must be positive");
+		}
+		const res = await this.cancellableRoundTrip<BionicTtsResponse>(
+			{
+				op: "tts",
+				bundleDir: this.bundleDir,
+				text,
+				language: "en-US",
+				speed,
+			},
+			"tts_cancel",
+			args.signal,
+		);
+		if (!res.ok) {
+			throw new Error(
+				`[BionicHostLoader] host tts failed: ${res.error ?? "unknown error"}`,
+			);
+		}
+		const sampleRate = res.sampleRate;
+		if (
+			typeof sampleRate !== "number" ||
+			!Number.isInteger(sampleRate) ||
+			sampleRate < 8000 ||
+			sampleRate > 96000 ||
+			typeof res.pcmBase64 !== "string"
+		) {
+			throw new Error(
+				"[BionicHostLoader] host tts returned a malformed response",
+			);
+		}
+		const bytes = Buffer.from(res.pcmBase64, "base64");
+		const samples = bytes.length / 4;
+		if (
+			bytes.length === 0 ||
+			!Number.isInteger(samples) ||
+			(typeof res.samples === "number" && res.samples !== samples) ||
+			samples > BIONIC_TTS_MAX_SECONDS * sampleRate
+		) {
+			throw new Error(
+				`[BionicHostLoader] host tts returned ${bytes.length} PCM bytes for ${res.samples ?? "?"} samples`,
+			);
+		}
+		const pcm = new Float32Array(samples);
+		for (let i = 0; i < samples; i++) {
+			const value = bytes.readFloatLE(i * 4);
+			if (!Number.isFinite(value)) {
+				throw new Error(
+					"[BionicHostLoader] host tts returned a non-finite sample",
+				);
+			}
+			pcm[i] = value;
+		}
+		return { pcm, sampleRate };
+	}
+	/**
+	 * Round trip whose in-flight native work can be cancelled: when `signal`
+	 * aborts, `cancelOp` is sent on a second connection (the host sets the
+	 * engine's cancel flag on its resident context) and the call rejects with
+	 * the abort reason without waiting for the first response.
+	 */
+	private cancellableRoundTrip<T>(
+		request: Record<string, unknown>,
+		cancelOp: "tts_cancel" | "asr_cancel",
+		signal?: AbortSignal,
+	): Promise<T> {
+		const abortError = () =>
+			signal?.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		if (signal?.aborted) return Promise.reject(abortError());
+		const pending = this.roundTrip<T>(request);
+		if (!signal) return pending;
+		return new Promise<T>((resolve, reject) => {
+			const onAbort = () => {
+				this.roundTrip<BionicTextResponse>({
+					op: cancelOp,
+					bundleDir: this.bundleDir,
+				}).catch((err: unknown) => {
+					logger.warn(
+						`[BionicHostLoader] ${cancelOp} failed: ${err instanceof Error ? err.message : String(err)}`,
+					);
+				});
+				reject(abortError());
+			};
+			signal.addEventListener("abort", onAbort, { once: true });
+			pending.then(
+				(value) => {
+					signal.removeEventListener("abort", onAbort);
+					resolve(value);
+				},
+				(err: unknown) => {
+					signal.removeEventListener("abort", onAbort);
+					reject(err);
+				},
+			);
+		});
 	}
 	/**
 	 * On-device vision / screen-recognition: describe a raw image (PNG/JPEG/WebP
@@ -441,7 +648,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		payload.copy(frame, 4);
 		return new Promise<T>((resolve, reject) => {
 			// Abstract-namespace socket: a leading NUL byte in the path.
-			const sock = net.connect({ path: `\0${this.socketName}` });
+			const sock = net.connect({ path: bionicSocketPath(this.socketName) });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
 			let expected = -1;
@@ -515,7 +722,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		frame.writeUInt32BE(payload.length, 0);
 		payload.copy(frame, 4);
 		return new Promise<BionicGenerateResponse>((resolve, reject) => {
-			const sock = net.connect({ path: `\0${this.socketName}` });
+			const sock = net.connect({ path: bionicSocketPath(this.socketName) });
 			let settled = false;
 			let chunks: Buffer = Buffer.alloc(0);
 			// Serialize (possibly async) chunk callbacks so consumers see the

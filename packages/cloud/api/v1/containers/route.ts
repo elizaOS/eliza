@@ -45,20 +45,15 @@ import {
   isCodingContainerImageAllowed,
 } from "@elizaos/cloud-shared/lib/services/coding-containers";
 import { QuotaExceededError } from "@elizaos/cloud-shared/lib/services/container-quota";
-import {
-  type Container,
-  containersService,
-} from "@elizaos/cloud-shared/lib/services/containers";
+import { containersService } from "@elizaos/cloud-shared/lib/services/containers";
 import { getHetznerContainersClient } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/client";
-import {
-  type ContainerSummary,
-  HetznerClientError,
-} from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/types";
+import { HetznerClientError } from "@elizaos/cloud-shared/lib/services/containers/hetzner-client/types";
 import { getOrgImageNamespaces } from "@elizaos/cloud-shared/lib/services/org-image-namespaces";
 import { findReservedEnvKeys } from "@elizaos/cloud-shared/lib/services/reserved-env-keys";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
+import { toContainerDto } from "./dto";
 import { CreateContainerSchema } from "./schema";
 
 const app = new Hono<AppEnv>();
@@ -87,101 +82,6 @@ function slugify(name: string): string {
  * adding a field here means adding it there. Timestamps are ISO strings; secret
  * and infra columns are never included.
  */
-interface ContainerDto {
-  id: string;
-  name: string;
-  project_name: string;
-  description: string | null;
-  load_balancer_url: string | null;
-  public_hostname: string | null;
-  status: string;
-  image_tag: string | null;
-  desired_count: number | null;
-  cpu: number | null;
-  memory: number | null;
-  port: number | null;
-  health_check_path: string | null;
-  last_deployed_at: string | null;
-  last_health_check: string | null;
-  error_message: string | null;
-  billing_status: string | null;
-  last_billed_at: string | null;
-  next_billing_at: string | null;
-  shutdown_warning_sent_at: string | null;
-  scheduled_shutdown_at: string | null;
-  total_billed: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-function isoOrNull(value: Date | null): string | null {
-  return value ? value.toISOString() : null;
-}
-
-function isContainerSummary(
-  container: Container | ContainerSummary,
-): container is ContainerSummary {
-  return "projectName" in container;
-}
-
-function toContainerDto(container: Container | ContainerSummary): ContainerDto {
-  if (isContainerSummary(container)) {
-    return {
-      id: container.id,
-      name: container.name,
-      project_name: container.projectName,
-      description: null,
-      load_balancer_url: container.publicUrl,
-      public_hostname: null,
-      status: container.status,
-      image_tag: container.image,
-      desired_count: null,
-      cpu: null,
-      memory: null,
-      port: null,
-      health_check_path: null,
-      last_deployed_at: null,
-      last_health_check: null,
-      error_message: container.errorMessage,
-      billing_status: null,
-      last_billed_at: null,
-      next_billing_at: null,
-      shutdown_warning_sent_at: null,
-      scheduled_shutdown_at: null,
-      total_billed: null,
-      created_at: container.createdAt.toISOString(),
-      updated_at: container.updatedAt.toISOString(),
-    };
-  }
-
-  return {
-    id: container.id,
-    name: container.name,
-    project_name: container.project_name,
-    description: container.description,
-    load_balancer_url: container.load_balancer_url,
-    public_hostname: container.public_hostname,
-    status: container.status,
-    image_tag: container.image_tag,
-    desired_count: container.desired_count,
-    cpu: container.cpu,
-    memory: container.memory,
-    port: container.port,
-    health_check_path: container.health_check_path,
-    last_deployed_at: isoOrNull(container.last_deployed_at),
-    last_health_check: isoOrNull(container.last_health_check),
-    error_message: container.error_message,
-    billing_status: container.billing_status,
-    last_billed_at: isoOrNull(container.last_billed_at),
-    next_billing_at: isoOrNull(container.next_billing_at),
-    shutdown_warning_sent_at: isoOrNull(container.shutdown_warning_sent_at),
-    scheduled_shutdown_at: isoOrNull(container.scheduled_shutdown_at),
-    total_billed: container.total_billed,
-    created_at: container.created_at.toISOString(),
-    updated_at: container.updated_at.toISOString(),
-  };
-}
-
 // GET /api/v1/containers — list the org's containers
 app.get("/", async (c) => {
   try {

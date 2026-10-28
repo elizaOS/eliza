@@ -20,6 +20,7 @@ import {
   registerCandidateActionBackstopRule,
   registerDirectActionRoutingRule,
   registerLocalizedExamplesProvider,
+  ServiceType,
 } from "@elizaos/core";
 import type {
   IPermissionsRegistry,
@@ -31,7 +32,10 @@ import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
   type MeetingTranscriptFinalizedPayload,
 } from "@elizaos/core/protocol";
-import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
+import {
+  isMobilePlatform,
+  type HttpPlugin as Plugin,
+} from "@elizaos/host/protocol";
 import {
   getDefaultTriageService,
   messagingTriageActions,
@@ -75,6 +79,7 @@ import {
 import {
   calendarAction,
   calendarActionPromotionOptions,
+  registerPersonalAssistantCalendarHost,
 } from "./actions/calendar.js";
 import { registerPersonalAssistantCalendarSourcesHost } from "./actions/calendar-sources.js";
 import {
@@ -220,9 +225,8 @@ import {
   registerWorkflowStepRegistry,
 } from "./lifeops/registries/index.js";
 import {
-  createOwnerReminderDirectRoutingRule,
-  ownerReminderChoiceDirectRoutingRules,
   ownerReminderChoiceRoutingEvaluator,
+  registerOwnerReminderDirectRouting,
 } from "./lifeops/reminders/direct-routing.js";
 import { LifeOpsRepository } from "./lifeops/repository.js";
 import {
@@ -474,7 +478,7 @@ async function importGoogleConnectorPluginModule(): Promise<
   Record<string, unknown>
 > {
   try {
-    return (await import(GOOGLE_CONNECTOR_PLUGIN_PACKAGE)) as Record<
+    return (await import("@elizaos/plugin-google-workspace")) as Record<
       string,
       unknown
     >;
@@ -517,9 +521,9 @@ export async function ensureLifeOpsGooglePluginRegistered(
  * to) is available. The calendar plugin is a hard LifeOps dependency, so a
  * static import is sufficient.
  *
- * PA composes its own CALENDAR and CONFLICT_DETECT actions with LifeOps deps
- * (travel buffers, approval gateway, host adapter), so only those two names
- * are withheld from the standalone plugin. Every other calendar action — the
+ * PA composes CALENDAR, its promoted child actions, and CONFLICT_DETECT with
+ * LifeOps deps (travel buffers, approval gateway, host adapter). Withhold that
+ * entire family from the standalone plugin. Other calendar actions — the
  * typed CALENDAR_SOURCES source-administration surface in particular — must
  * stay reachable: this init runs before PA's own actions register, so passing
  * a colliding action here would silently win first-wins and shadow the
@@ -532,12 +536,16 @@ export async function ensureLifeOpsCalendarPluginRegistered(
   // composed here, so PA's hasLifeOpsAccess gate reaches it through the
   // runtime-keyed host adapter — bound before the already-registered early
   // return so the substitution holds either way.
+  registerPersonalAssistantCalendarHost(runtime);
   registerPersonalAssistantCalendarSourcesHost(runtime);
   if (runtime.plugins.some((plugin) => plugin.name === calendarPlugin.name)) {
     return;
   }
   const composedByPersonalAssistant = new Set([
-    calendarAction.name,
+    ...promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    ).map((action) => action.name),
     conflictDetectAction.name,
   ]);
   await runtime.registerPlugin({
@@ -557,6 +565,16 @@ export async function ensureLifeOpsCalendarPluginRegistered(
 export async function ensureLifeOpsPdfPluginRegistered(
   runtime: IAgentRuntime,
 ): Promise<void> {
+  // Desktop PDF rendering depends on native canvas. Preserve any native host
+  // PDF adapter, but do not register the absent desktop module on mobile.
+  if (isMobilePlatform()) {
+    if (!runtime.getService(ServiceType.PDF)) {
+      runtime.logger.info(
+        "[lifeops] PDF processing is unavailable on this host; PDF operations require a native PDF service",
+      );
+    }
+    return;
+  }
   if (runtime.plugins.some((plugin) => plugin.name === pdfPlugin.name)) {
     return;
   }
@@ -930,13 +948,7 @@ const rawPersonalAssistantPlugin: Plugin = {
       runtime,
       createTrackedWorkRecapDirectRoutingRule(),
     );
-    registerDirectActionRoutingRule(
-      runtime,
-      createOwnerReminderDirectRoutingRule(),
-    );
-    for (const rule of ownerReminderChoiceDirectRoutingRules) {
-      registerDirectActionRoutingRule(runtime, rule);
-    }
+    registerOwnerReminderDirectRouting(runtime);
     registerDirectActionRoutingRule(
       runtime,
       createUndatedOwnerTodoDirectRoutingRule(),
@@ -1121,7 +1133,7 @@ const rawPersonalAssistantPlugin: Plugin = {
     // core default adapters so MESSAGE triage operations operate on real
     // connected data.
     const triage = getDefaultTriageService();
-    triage.register(new GoogleGmailAdapter());
+    if (!triage.getAdapter("gmail")) triage.register(new GoogleGmailAdapter());
     triage.register(new XDmAdapter());
     // Register the activity-profile maintenance worker. One scheduler
     // (#10721 H1): this tick only maintains the owner activity profile and

@@ -3,7 +3,10 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
-import { installBillingCommandEvidenceTestColumns } from "../../testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 import type { AccountDeletionProviderContext } from "./account-deletion-saga";
 import type { BuyerBillingIdentity, GenericBillingRuntime } from "./generic-billing-runtime";
 import { createRuntimeStripeFixture } from "./generic-billing-runtime.stripe-fixture";
@@ -132,6 +135,10 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
       "0430_billing_identity_references",
       "0511_organization_plan_change_quotes",
       "0512_organization_upgrade_dispatch",
+      "0534_subscription_allowance_invoice_authority",
+      "0541_app_pilot_redemptions",
+      "0542_subscription_grant_codes",
+      "0543_app_pilot_allowance",
       "0431_app_billing_deletion_dispositions",
       "0432_app_billing_deletion_disposition_guards",
       "0433_app_billing_customer_closures",
@@ -183,6 +190,7 @@ describe.skipIf(!postgresUrl)("generic purchaser runtime with PostgreSQL and Str
         if (statement.trim()) await db.query(statement.replaceAll('"public".', ""));
     }
     await installBillingCommandEvidenceTestColumns((statement) => db.query(statement));
+    await installSubscriptionGrantTestSchema((statement) => db.query(statement));
     // The focused fixture omits unrelated storage/sandbox tables from 0380.
     await db.query(
       "ALTER TABLE organization_subscription_authorities ADD COLUMN policy_generation bigint NOT NULL DEFAULT 0 CHECK (policy_generation >= 0)",

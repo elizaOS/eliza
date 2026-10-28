@@ -46,7 +46,10 @@ import {
 } from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
-import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
+import {
+  IN_FLIGHT_TASK_STATUSES,
+  type OrchestratorTaskStatus,
+} from "../services/orchestrator-task-types.js";
 import { resolveTaskSpawnWorkdir } from "../services/project-binding.js";
 import { recordedPromptDurationMs } from "../services/prompt-duration.js";
 import {
@@ -73,6 +76,7 @@ import {
   type SpawnResult,
   TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
+import { wordTokens } from "../services/word-tokens.js";
 import type {
   AuthPromptCallback,
   CodingWorkspaceService,
@@ -80,6 +84,7 @@ import type {
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
+  type AcpActionService,
   callbackText,
   canonicalSessionId,
   contentRecord,
@@ -692,6 +697,15 @@ function taskWithResolvedRoute(
 // unambiguous build/deploy/view signals — a bare personal to-do never trips them.
 const SPECIALIZED_CODING_TASK_TYPES: ReadonlySet<OrchestratorTaskType> =
   new Set(["view-create", "app-build", "deploy"]);
+
+const PLANNER_CODING_TARGET_FIELDS = [
+  "repo",
+  "workdir",
+  "agents",
+  "sessionId",
+  "threadId",
+  "taskId",
+] as const;
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
   if (
@@ -1413,8 +1427,25 @@ async function runCreate(
     if (createGuard) return createGuard;
   }
 
+  // Every non-lane path below starts all task parts at once. Refuse an
+  // ordering it cannot honor before any spawn. Without ACP nothing spawns and
+  // the legacy path owns the SERVICE_UNAVAILABLE refusal.
+  const createWithoutLanes = (): Promise<ActionResult> | ActionResult => {
+    const refusal = getAcpService(runtime)
+      ? unsupportedLaneOrdering(
+          params,
+          content,
+          taskParts(params, content, requestText(message)).length,
+        )
+      : undefined;
+    return (
+      refusal ??
+      runCreateLegacy(runtime, message, state, params, content, callback)
+    );
+  };
+
   if (!shouldUseLanePlanner(runtime)) {
-    return runCreateLegacy(runtime, message, state, params, content, callback);
+    return createWithoutLanes();
   }
 
   let plan: Awaited<ReturnType<LanePlannerService["plan"]>>;
@@ -1465,20 +1496,13 @@ async function runCreate(
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return runCreateLegacy(runtime, message, state, params, content, callback);
+    return createWithoutLanes();
   }
 
   if (plan.lanes.length <= 1) {
     const lane = plan.lanes[0];
     if (!lane || lane.scopePaths.length === 0) {
-      return runCreateLegacy(
-        runtime,
-        message,
-        state,
-        params,
-        content,
-        callback,
-      );
+      return createWithoutLanes();
     }
   }
 
@@ -1692,6 +1716,29 @@ function readLaneDependencies(
     );
   }
   return deps;
+}
+
+/** The non-lane create path starts every task part at once. Return a refusal
+ * when the caller asked for a dependency edge or a parallel limit below the
+ * part count, since neither would be honored. */
+function unsupportedLaneOrdering(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  partCount: number,
+): ActionResult | undefined {
+  const dependencies = readLaneDependencies(params, content);
+  const hasEdges =
+    dependencies !== undefined &&
+    Object.values(dependencies).some((edges) => edges.length > 0);
+  const maxParallel = readPositiveInteger(
+    params.maxParallel ?? content.maxParallel,
+  );
+  const overLimit = maxParallel !== undefined && maxParallel < partCount;
+  if (!hasEdges && !overLimit) return undefined;
+  return errorResult(
+    "LANE_PLANNER_UNAVAILABLE",
+    "action=create could not apply dependencies/maxParallel: the lane planner is disabled or could not plan this request, and without it every task part starts at once. Nothing was started. Call action=create without dependencies and maxParallel, or create the tasks one at a time in the required order.",
+  );
 }
 
 /** Parse numeric planner parameters only when they are explicit positive
@@ -2618,7 +2665,7 @@ type TaskSessionLookup =
  */
 async function sessionsOfTask(
   runtime: IAgentRuntime,
-  service: NonNullable<ReturnType<typeof getAcpService>>,
+  service: AcpActionService,
   taskId: string,
 ): Promise<TaskSessionLookup> {
   const taskService = runtime.getService?.(
@@ -2641,6 +2688,32 @@ async function sessionsOfTask(
 
 function isLiveSession(session: SessionInfo): boolean {
   return !TERMINAL_SESSION_STATUSES.has(session.status.toLowerCase());
+}
+
+/**
+ * Cancel a live sub-agent. A native session waiting between turns has no
+ * prompt to cancel and refuses with ACP_CANCEL_NO_ACTIVE_PROMPT, so it is
+ * stopped instead.
+ */
+async function cancelLiveSession(
+  service: NonNullable<ReturnType<typeof getAcpService>>,
+  sessionId: string,
+): Promise<void> {
+  if (!service.cancelSession) {
+    await service.stopSession(sessionId);
+    return;
+  }
+  try {
+    await service.cancelSession(sessionId);
+  } catch (error) {
+    if (
+      !(error instanceof ElizaError) ||
+      error.code !== "ACP_CANCEL_NO_ACTIVE_PROMPT"
+    ) {
+      throw error;
+    }
+    await service.stopSession(sessionId);
+  }
 }
 
 async function runCancel(
@@ -2670,8 +2743,7 @@ async function runCancel(
     if (all) {
       const stoppedSessions: string[] = [];
       for (const session of sessions) {
-        await (service.cancelSession?.(session.id) ??
-          service.stopSession(session.id));
+        await cancelLiveSession(service, session.id);
         stoppedSessions.push(session.id);
       }
       // The cancel confirmation is the complete answer to a single-operation
@@ -2701,8 +2773,7 @@ async function runCancel(
         );
       }
       for (const session of running) {
-        await (service.cancelSession?.(session.id) ??
-          service.stopSession(session.id));
+        await cancelLiveSession(service, session.id);
       }
       const text = `Canceled task ${taskId}.`;
       await callbackText(callback, text);
@@ -2751,8 +2822,7 @@ async function runCancel(
       );
     }
 
-    await (service.cancelSession?.(target.id) ??
-      service.stopSession(target.id));
+    await cancelLiveSession(service, target.id);
     const text = `Canceled task ${target.id}.`;
     await callbackText(callback, text);
     return {
@@ -3080,24 +3150,8 @@ function sessionMatchesTaskStatus(
 export const DUPLICATE_SPAWN_FORCE_RE =
   /\b(?:again|another|fresh|new one|restart|retry|redo|re-?run|one more|from scratch)\b/i;
 
-/** Task statuses that mean the work is still in flight (or parked awaiting a
- * verdict/human) — a near-identical new spawn against one of these is a
- * duplicate, not a new request. */
-const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
-  "open",
-  "active",
-  "validating",
-  "waiting_on_user",
-  "blocked",
-]);
-
 function goalTokenSet(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((token) => token.length > 2),
-  );
+  return new Set(wordTokens(text).filter((token) => token.length > 2));
 }
 
 /** Overlap over the smaller token set — the composed duplicate goal is often a
@@ -3159,9 +3213,10 @@ async function findNearDuplicateInFlightWork(args: {
   if (DUPLICATE_SPAWN_FORCE_RE.test(userText)) return undefined;
   try {
     if (taskService && typeof taskService.listTasks === "function") {
-      const tasks = await taskService.listTasks({});
+      const tasks = await taskService.listTasks({
+        statuses: IN_FLIGHT_TASK_STATUSES,
+      });
       for (const task of tasks) {
-        if (!IN_FLIGHT_TASK_STATUSES.has(task.status)) continue;
         const existingText = `${task.title} ${task.originalRequest ?? ""}`;
         if (hasDistinctSlugIdentity(candidateText, existingText)) continue;
         if (
@@ -3323,6 +3378,9 @@ async function runHistory(
     : (filterIdValue(params.threadId) ?? filterIdValue(params.taskId));
   const includeArchived =
     pickBoolean(params, content, "includeArchived") ?? false;
+  // The store drops archived tasks before the status filter runs, so a request
+  // for the archived status has to list them.
+  const listArchived = includeArchived || statuses.includes("archived");
   const windowFilters = buildWindowFilters(window);
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
@@ -3336,7 +3394,7 @@ async function runHistory(
         sessionId && !sessionTask
           ? []
           : await taskService.listTasks({
-              includeArchived,
+              includeArchived: listArchived,
               ...(search ? { search } : {}),
               ...(projectId ? { projectId } : {}),
             });
@@ -3347,7 +3405,7 @@ async function runHistory(
         return failureResult(
           "TASKS:history",
           "TASK_NOT_FOUND",
-          includeArchived
+          listArchived
             ? `Task ${taskId} not found.`
             : `Task ${taskId} not found among tasks that are not archived. Pass includeArchived=true to include archived tasks.`,
           { reason: "task_not_found", taskId },
@@ -5573,7 +5631,7 @@ export const tasksAction: Action & {
     {
       name: "dependencies",
       description:
-        'Lane dependency graph for gated action=create, shaped as {"lane-2":["lane-1"]}. References must use generated lane ids.',
+        'Lane dependency graph for gated action=create, shaped as {"lane-2":["lane-1"]}. References must use generated lane ids. Needs the lane planner: when it is disabled or cannot plan the request, create fails and starts nothing.',
       required: false,
       schema: {
         type: "object" as const,
@@ -5586,7 +5644,7 @@ export const tasksAction: Action & {
     {
       name: "maxParallel",
       description:
-        "Maximum concurrently launched lanes for gated action=create; ready backlog remains queued until dependencies and capacity allow launch.",
+        "Maximum concurrently launched lanes for gated action=create; ready backlog remains queued until dependencies and capacity allow launch. Needs the lane planner: when it is disabled or cannot plan the request, a limit below the number of task parts makes create fail and start nothing.",
       required: false,
       schema: { type: "integer" as const, minimum: 1 },
     },
@@ -5895,8 +5953,12 @@ export const tasksAction: Action & {
       schema: { type: "string" as const },
     },
   ],
-  validate: async (runtime, message) => {
+  validate: async (runtime, message, _state, options) => {
     const content = contentRecord(message);
+    // The executor passes the validated planner arguments in options. A user
+    // chat message carries none of these fields in its own content.
+    const params = paramsRecord(options as HandlerOptionsLike | undefined);
+    const op = readOp(params);
     // Registration starts services asynchronously. Validation is the first
     // consumer on a cold plugin load, so it owns the readiness wait before the
     // planner decides whether TASKS exists.
@@ -5905,7 +5967,7 @@ export const tasksAction: Action & {
         OrchestratorTaskService.serviceType,
       ) as OrchestratorTaskService | null | undefined;
       return (
-        readOp(content) === "history" &&
+        (op ?? readOp(content)) === "history" &&
         typeof taskService?.listTasks === "function"
       );
     }
@@ -5942,6 +6004,17 @@ export const tasksAction: Action & {
         "threadId",
         "taskId",
       ])
+    )
+      return true;
+    // Planner arguments that cannot describe a personal to-do: an operation on
+    // existing orchestrator work, or a named coding target. agentType is not
+    // one: the planner guesses it for any create, so a create / spawn_agent
+    // with only task text and a backend guess stays under the text check.
+    if (op !== null && op !== "create" && op !== "spawn_agent") return true;
+    if (
+      PLANNER_CODING_TARGET_FIELDS.some(
+        (field) => typeof params[field] === "string",
+      )
     )
       return true;
     // Availability gate only: the orchestrator service is present and this is

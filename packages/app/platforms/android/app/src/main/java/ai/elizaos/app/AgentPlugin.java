@@ -154,6 +154,95 @@ public class AgentPlugin extends Plugin {
         }
     }
 
+    private static final int MAX_EVENT_SUBSCRIPTIONS = 2;
+    private static final java.util.regex.Pattern SUBSCRIPTION_ID =
+        java.util.regex.Pattern.compile("^[A-Za-z0-9-]{8,64}$");
+    private final java.util.concurrent.ConcurrentHashMap<String, ElizaAgentService.LocalStreamHandle>
+        eventSubscriptions = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /**
+     * Live agent-event feed (WS {@code agent_event} parity for the port-free
+     * app). Takes {@code {streams: string[], subscriptionId?: string}}; resolves
+     * {@code {subscriptionId}} at once, then emits {@code agentEvent}
+     * Capacitor events tagged with that id:
+     *   {subscriptionId, type:"subscribed", streams}
+     *   {subscriptionId, type:"event", event:<agent_event envelope>}
+     *   {subscriptionId, type:"dropped", count}
+     *   {subscriptionId, type:"end", error?}   (terminal; no replay — resubscribe)
+     * A caller-chosen {@code subscriptionId} lets the WebView filter events
+     * before this call resolves.
+     */
+    @PluginMethod
+    public void subscribeEvents(PluginCall call) {
+        try {
+            String requested = call.getString("subscriptionId");
+            final String subscriptionId = requested == null
+                ? java.util.UUID.randomUUID().toString()
+                : requested;
+            if (!SUBSCRIPTION_ID.matcher(subscriptionId).matches()) {
+                call.reject("Invalid subscriptionId");
+                return;
+            }
+            org.json.JSONArray streams = call.getArray("streams");
+            JSONObject request = new JSONObject().put("streams", streams == null ? new org.json.JSONArray() : streams);
+            final ElizaAgentService.LocalStreamHandle handle = new ElizaAgentService.LocalStreamHandle();
+            synchronized (eventSubscriptions) {
+                if (eventSubscriptions.containsKey(subscriptionId)) {
+                    call.reject("subscriptionId already active");
+                    return;
+                }
+                if (eventSubscriptions.size() >= MAX_EVENT_SUBSCRIPTIONS) {
+                    call.reject("Too many event subscriptions");
+                    return;
+                }
+                eventSubscriptions.put(subscriptionId, handle);
+            }
+            ElizaAgentService.localAgentToken(getContext());
+            final String requestJson = request.toString();
+            JSObject ack = new JSObject();
+            ack.put("subscriptionId", subscriptionId);
+            call.resolve(ack);
+            Thread worker = new Thread(() -> {
+                try {
+                    ElizaAgentService.subscribeLocalAgentEvents(requestJson, (String eventJson) -> {
+                        try {
+                            JSObject payload = toJsObject(new JSONObject(eventJson));
+                            payload.put("subscriptionId", subscriptionId);
+                            notifyListeners("agentEvent", payload);
+                        } catch (JSONException ignored) {
+                            // A malformed envelope must not kill the feed.
+                        }
+                    }, handle);
+                } finally {
+                    eventSubscriptions.remove(subscriptionId, handle);
+                }
+            }, "agent-events");
+            worker.setDaemon(true);
+            worker.start();
+        } catch (JSONException e) {
+            call.reject("Event subscription request was invalid", e);
+        }
+    }
+
+    /** Ends one feed; its {@code agentEvent} stream finishes with a plain {@code end}. */
+    @PluginMethod
+    public void unsubscribeEvents(PluginCall call) {
+        String subscriptionId = call.getString("subscriptionId");
+        ElizaAgentService.LocalStreamHandle handle =
+            subscriptionId == null ? null : eventSubscriptions.remove(subscriptionId);
+        if (handle != null) handle.cancel();
+        JSObject result = new JSObject();
+        result.put("ok", handle != null);
+        call.resolve(result);
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        for (ElizaAgentService.LocalStreamHandle handle : eventSubscriptions.values()) handle.cancel();
+        eventSubscriptions.clear();
+        super.handleOnDestroy();
+    }
+
     private static JSObject status(String state) {
         JSObject result = new JSObject();
         String token = ElizaAgentService.localAgentToken();

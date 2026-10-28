@@ -153,6 +153,15 @@ export class ConnectorHealthMonitor {
     }
   }
 
+  /**
+   * Point the checks at the runtime that replaced the old one. An in-process
+   * restart swaps the runtime; checking the stopped one reports its leftover
+   * services instead of the connectors that are running now.
+   */
+  setRuntime(runtime: AgentRuntime): void {
+    this.runtime = runtime;
+  }
+
   getConnectorStatuses(): Record<string, ConnectorStatus> {
     const result: Record<string, ConnectorStatus> = {};
     for (const [name, status] of this.statuses) {

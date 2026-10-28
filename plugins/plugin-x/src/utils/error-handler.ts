@@ -176,6 +176,80 @@ export function isExplicitTwitterRejection(error: unknown): boolean {
   return status !== undefined && status >= 400 && status < 500;
 }
 
+/**
+ * X problem types that describe the whole app or account (access tier, auth
+ * method, exhausted usage or credits), not the DM or post being answered.
+ */
+const APP_LEVEL_PROBLEM_PATTERN =
+  /client-forbidden|client-not-enrolled|unsupported-authentication|usage-capped|credits?[- ](?:depleted|exhausted)/i;
+
+/**
+ * Legacy X error codes for a refusal tied to one recipient or conversation:
+ * 136 blocked by the author, 150/349 the recipient does not accept the DM,
+ * 385 the replied-to post is deleted or hidden, 433 the author limits replies.
+ */
+const ITEM_LEVEL_ERROR_CODES = new Set([136, 150, 349, 385, 433]);
+
+const ITEM_LEVEL_REFUSAL_PATTERN =
+  /reply to this conversation is not allowed|restricted who can reply|deleted or not visible to you|(?:cannot|can't|not (?:allowed|permitted) to) (?:send )?(?:a )?(?:direct )?messages? to (?:this user|users who)/i;
+
+/** Message, problem type/title/detail and legacy error entries of an X error. */
+function providerProblemEvidence(error: unknown): {
+  texts: string[];
+  codes: number[];
+} {
+  const texts: string[] = [];
+  const codes: number[] = [];
+  const pushText = (value: unknown) => {
+    if (typeof value === "string") texts.push(value);
+  };
+  pushText(probeError(error).message);
+  const data = (probeError(error) as { data?: unknown }).data;
+  if (data && typeof data === "object") {
+    const body = data as Record<string, unknown>;
+    pushText(body.type);
+    pushText(body.title);
+    pushText(body.detail);
+    if (Array.isArray(body.errors)) {
+      for (const entry of body.errors) {
+        if (!entry || typeof entry !== "object") continue;
+        const item = entry as Record<string, unknown>;
+        if (typeof item.code === "number") codes.push(item.code);
+        pushText(item.type);
+        pushText(item.title);
+        pushText(item.detail);
+        pushText(item.message);
+      }
+    }
+  }
+  return { texts, codes };
+}
+
+/**
+ * An explicit X refusal that repeats on every retry of this one DM or post: a
+ * recipient who blocks the sender or closed DMs, a conversation that limits
+ * replies, a malformed request. Only these may settle the item.
+ *
+ * Auth (401), payment or credits (402), timeouts (408), rate limits (429),
+ * app/account problem types, and a 403 without recipient-level evidence
+ * describe the app or account. Those must reopen the item so it resumes once
+ * the operator fixes the configuration, instead of dropping the backlog.
+ */
+export function isPermanentTwitterRejection(error: unknown): boolean {
+  if (!isExplicitTwitterRejection(error)) return false;
+  const status = errorCode(error);
+  if (status === 401 || status === 402 || status === 408 || status === 429) {
+    return false;
+  }
+  const { texts, codes } = providerProblemEvidence(error);
+  if (texts.some((text) => APP_LEVEL_PROBLEM_PATTERN.test(text))) return false;
+  if (status !== 403) return true;
+  return (
+    codes.some((code) => ITEM_LEVEL_ERROR_CODES.has(code)) ||
+    texts.some((text) => ITEM_LEVEL_REFUSAL_PATTERN.test(text))
+  );
+}
+
 export function getErrorType(error: unknown): TwitterErrorType {
   const message = errorMessage(error);
   const code = errorCode(error);

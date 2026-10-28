@@ -55,6 +55,23 @@ export function phaseOf(call: UILlmCall): PhaseName | null {
   return null;
 }
 
+const VERDICT = "RESPOND|REPLY|ANSWER|IGNORE|STOP|SKIP";
+const VERDICT_WORDS = new RegExp(`\\b(?:${VERDICT})\\b`, "gi");
+// A leading keyword counts only when set off as a verdict ("IGNORE - ...",
+// "RESPOND."), not when it opens a sentence ("Respond? No, IGNORE.").
+const VERDICT_LEADING = new RegExp(
+  `^[^A-Za-z0-9]*(${VERDICT})\\b(?=[^\\S\\n]*(?:$|[\\n:;,.!(\\-\\u2013\\u2014]))`,
+  "i",
+);
+const VERDICT_XML_FIELD = new RegExp(
+  `<(action|decision)>\\s*(${VERDICT})\\s*</\\1>`,
+  "i",
+);
+const VERDICT_KV_FIELD = new RegExp(
+  `\\b(?:action|decision)["']?\\s*[:=]\\s*["']?(${VERDICT})\\b`,
+  "i",
+);
+
 export function extractShouldRespondDecision(
   call: UILlmCall,
 ): { decision: string; reasoning?: string } | null {
@@ -79,8 +96,19 @@ export function extractShouldRespondDecision(
       /* fall through */
     }
   }
-  const word = text.match(/\b(RESPOND|REPLY|ANSWER|IGNORE|STOP|SKIP)\b/i);
-  return word ? { decision: word[0].toUpperCase() } : null;
+  // An explicit verdict field (`action: IGNORE`, `<decision>IGNORE</decision>`)
+  // wins over any keyword mentioned in surrounding reasoning.
+  const field =
+    text.match(VERDICT_XML_FIELD)?.[2] ?? text.match(VERDICT_KV_FIELD)?.[1];
+  if (field) return { decision: field.toUpperCase() };
+  // Free text: a verdict stated up front ("IGNORE - talking to someone else")
+  // is the answer; otherwise the last keyword is the conclusion reached after
+  // the reasoning ("Should I respond? No, IGNORE.").
+  const leading = text.match(VERDICT_LEADING)?.[1];
+  if (leading) return { decision: leading.toUpperCase() };
+  const words = text.match(VERDICT_WORDS);
+  const word = words?.[words.length - 1];
+  return word ? { decision: word.toUpperCase() } : null;
 }
 
 export function summarizePhases(
@@ -195,7 +223,12 @@ function summarizeAction(events: UIToolEvent[]): {
   if (events.length === 0) return { status: "idle", summary: null };
   const e = events[events.length - 1];
   const name = e.actionName || e.toolName || e.name || "action";
-  if (e.type === "tool_error" || e.error || e.success === false) {
+  if (
+    e.status === "failed" ||
+    e.type === "tool_error" ||
+    e.error ||
+    e.success === false
+  ) {
     return { status: "error", summary: name };
   }
   if (
@@ -216,7 +249,7 @@ function summarizeEvaluate(
   if (events.length > 0) {
     const e = events[events.length - 1];
     const name = e.evaluatorName || e.name || "evaluator";
-    if (e.error || e.success === false) {
+    if (e.status === "failed" || e.error || e.success === false) {
       return { status: "error", summary: name };
     }
     if (e.decision)

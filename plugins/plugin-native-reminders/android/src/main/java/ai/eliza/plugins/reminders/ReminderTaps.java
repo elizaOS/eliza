@@ -19,7 +19,7 @@ final class ReminderTaps {
   Set<Long> orders = new HashSet<>();
   for (String token : keys(rows)) {
    JSONObject row = rows.getJSONObject(token);
-   if (!token.matches("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}") || !keys(row).equals(Set.of("target", "state", "order")) || !Set.of("new", "pending", "consumed").contains(row.getString("state"))) throw new IllegalStateException("Invalid reminder tap ledger");
+   if (!token.matches("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}") || !(keys(row).equals(Set.of("target", "state", "order")) || keys(row).equals(Set.of("target", "state", "order", "question")) && Boolean.TRUE.equals(row.opt("question"))) || !Set.of("new", "pending", "consumed").contains(row.getString("state"))) throw new IllegalStateException("Invalid reminder tap ledger");
    target(row.getJSONObject("target"));
    Object rawOrder = row.get("order"); long order = row.getLong("order");
    if (!(rawOrder instanceof Integer || rawOrder instanceof Long) || order < 0 || order == 0 && !row.getString("state").equals("new") || order > 0 && !orders.add(order)) throw new IllegalStateException("Invalid reminder tap order");
@@ -49,11 +49,16 @@ final class ReminderTaps {
    .setData(android.net.Uri.parse(configuration.tapUriPrefix + token)).addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP | android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
   return android.app.PendingIntent.getActivity(context, 0, intent, android.app.PendingIntent.FLAG_NO_CREATE | android.app.PendingIntent.FLAG_IMMUTABLE);
  }
+ private static boolean matches(android.app.PendingIntent expected,android.app.Notification notice){
+  if(expected.equals(notice.contentIntent))return true;
+  if(notice.actions!=null)for(android.app.Notification.Action action:notice.actions)if(expected.equals(action.actionIntent))return true;
+  return false;
+ }
  private boolean posted(String token) {
   android.app.PendingIntent expected = intent(token);
   if (expected == null) return false;
   for (android.service.notification.StatusBarNotification notice : context.getSystemService(android.app.NotificationManager.class).getActiveNotifications())
-   if (expected.equals(notice.getNotification().contentIntent)) return true;
+   if (matches(expected,notice.getNotification())) return true;
   return false;
  }
  private void cancelExact(String token, JSONObject target) throws Exception {
@@ -61,19 +66,22 @@ final class ReminderTaps {
   if (expected == null) return;
   android.app.NotificationManager manager = context.getSystemService(android.app.NotificationManager.class);
   for (android.service.notification.StatusBarNotification notice : manager.getActiveNotifications())
-   if (notice.getId() == 0 && configuration.notificationTag(target.getString("reminderId")).equals(notice.getTag()) && expected.equals(notice.getNotification().contentIntent)) manager.cancel(notice.getTag(), notice.getId());
+   if (notice.getId() == 0 && configuration.notificationTag(target.getString("reminderId")).equals(notice.getTag()) && matches(expected,notice.getNotification())) manager.cancel(notice.getTag(), notice.getId());
  }
- String prepare(JSONObject input) throws Exception { synchronized (owner) {
+ String prepare(JSONObject input) throws Exception {return prepare(input,false);}
+ String prepareQuestion(JSONObject input) throws Exception {if(configuration.questionActionLabel==null)throw new IllegalStateException("Reminder questions disabled");return prepare(input,true);}
+ private String prepare(JSONObject input,boolean question) throws Exception { synchronized (owner) {
   JSONObject exact = target(input), rows = ledger();
   // In-flight identical publication reuses its identity. A deliberate later
   // publication after consumption receives a fresh token; old taps never revive.
-  for (String token : keys(rows)) if (!rows.getJSONObject(token).getString("state").equals("consumed") && same(exact, rows.getJSONObject(token).getJSONObject("target"))) return token;
+  for (String token : keys(rows)) if (rows.getJSONObject(token).optBoolean("question")==question && !rows.getJSONObject(token).getString("state").equals("consumed") && same(exact, rows.getJSONObject(token).getJSONObject("target"))) return token;
   // Only acknowledged routes whose exact OS notice is absent may be reclaimed.
   // Forgotten UUIDs resolve UnknownTap; never bind an old token to a newer record.
   for (String token : keys(rows)) if (rows.getJSONObject(token).getString("state").equals("consumed") && !posted(token)) rows.remove(token);
   if (rows.length() >= 512) throw new IllegalStateException("Reminder tap storage full");
   String token = UUID.randomUUID().toString();
   rows.put(token, new JSONObject().put("target", exact).put("state", "new").put("order", 0));
+  if(question)rows.getJSONObject(token).put("question",true);
   storage.write(configuration.tapSlot, rows.toString()); return token;
  } }
  void capture(String token) throws Exception { synchronized (owner) {
@@ -88,7 +96,7 @@ final class ReminderTaps {
  JSONObject pending() throws Exception { synchronized (owner) {
   JSONObject rows = ledger(), selected = null; String token = null; long order = -1;
   for (String key : keys(rows)) { JSONObject row = rows.getJSONObject(key); if (row.getString("state").equals("pending") && row.getLong("order") > order) { selected = row; token = key; order = row.getLong("order"); } }
-  return selected == null ? new JSONObject() : new JSONObject().put("token", token).put("target", target(selected.getJSONObject("target"))).put("retained", retained(selected));
+  return selected == null ? new JSONObject() : new JSONObject().put("token", token).put("target", target(selected.getJSONObject("target"))).put("retained", retained(selected)&&(!selected.optBoolean("question")||posted(token))).put("question",selected.optBoolean("question"));
  } }
  JSONObject consume(String token) throws Exception { synchronized (owner) {
   JSONObject current = pending();
@@ -96,6 +104,11 @@ final class ReminderTaps {
   JSONObject rows = ledger(); rows.getJSONObject(token).put("state", "consumed"); storage.write(configuration.tapSlot, rows.toString());
   cancelExact(token, current.getJSONObject("target"));
   return current.getJSONObject("target");
+ } }
+ /** Explicit question cancellation leaves the exact notice and route reusable. */
+ void releaseQuestion(String token) throws Exception { synchronized(owner){
+  JSONObject current=pending();if(token==null||!token.equals(current.optString("token"))||!current.optBoolean("question"))throw new IllegalStateException("Reminder question changed");
+  JSONObject rows=ledger();rows.getJSONObject(token).put("state","new").put("order",0);storage.write(configuration.tapSlot,rows.toString());
  } }
  void dismiss(String token) throws Exception { synchronized (owner) {
   JSONObject current = pending();

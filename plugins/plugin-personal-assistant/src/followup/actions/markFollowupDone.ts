@@ -49,6 +49,24 @@ async function resolveDisplayName(
   return entity?.names?.[0] ?? String(contact.entityId);
 }
 
+// Han/Kana/Hangul letters do not count as word characters so names can abut
+// particles ("김민준은"). Mirrors the whole-word matcher merged for app-block
+// (#35709) in this plugin.
+const WORD_CHAR_SOURCE =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
+function includesWholePhrase(text: string, phrase: string): boolean {
+  const words = phrase.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  const body = words
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("\\s+");
+  return new RegExp(
+    `(?<!${WORD_CHAR_SOURCE})${body}(?!${WORD_CHAR_SOURCE})`,
+    "iu",
+  ).test(text);
+}
+
 async function findByName(
   runtime: IAgentRuntime,
   service: RelationshipsServiceLike,
@@ -58,13 +76,21 @@ async function findByName(
   if (needle.length === 0) return [];
   const contacts = await service.searchContacts({});
   const matches: ContactMatch[] = [];
+  const wholeWordMatches: ContactMatch[] = [];
   for (const contact of contacts) {
     const displayName = await resolveDisplayName(runtime, contact);
     if (displayName.toLowerCase().includes(needle)) {
-      matches.push({ contact, displayName });
+      const match = { contact, displayName };
+      matches.push(match);
+      if (includesWholePhrase(displayName, needle)) {
+        wholeWordMatches.push(match);
+      }
     }
   }
-  return matches;
+  // A whole-word hit outranks substring hits ("Ann" names Ann Lee, not
+  // Joanne Park), mirroring merged #35741/#35729; the substring tier stays
+  // for genuine fragments ("Joann") when no whole-word hit exists.
+  return wholeWordMatches.length > 0 ? wholeWordMatches : matches;
 }
 
 export const markFollowupDoneAction: Action = {

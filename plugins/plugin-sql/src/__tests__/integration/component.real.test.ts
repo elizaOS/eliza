@@ -88,7 +88,7 @@ describe("Component Integration Tests", () => {
         data: { value: "test" },
         worldId: testWorldId,
         sourceEntityId: testSourceEntityId,
-        createdAt: Date.now(),
+        createdAt: 0,
       };
 
       await adapter.createComponent(component);
@@ -96,6 +96,7 @@ describe("Component Integration Tests", () => {
       expect(retrieved).toBeDefined();
       expect(retrieved?.id).toBe(component.id);
       expect(retrieved?.data).toEqual({ value: "test" });
+      expect(retrieved?.createdAt).toBe(0);
     });
 
     it("should update an existing component", async () => {

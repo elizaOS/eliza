@@ -97,6 +97,23 @@ it("ships consumer build tools without private repository test dependencies", as
         rmSync(path.join(fixture, entry), { recursive: true });
     }
     const dist = path.join(fixture, "dist");
+    // Every quoted C include must ship in the assembled consumer payload.
+    for (const name of [
+      "sigsys-handler.c",
+      "sigsys-handler-arm64.c",
+      "sigsys-handler-riscv64.c",
+    ]) {
+      const file = path.join(dist, "scripts/aosp/seccomp-shim", name);
+      for (const match of readFileSync(file, "utf8").matchAll(
+        /^#include "([^"]+)"/gm,
+      )) {
+        expect(readFileSync(path.join(path.dirname(file), match[1]))).toEqual(
+          readFileSync(
+            path.join(packageRoot, "scripts/aosp/seccomp-shim", match[1]),
+          ),
+        );
+      }
+    }
     expect(
       existsSync(path.join(dist, "scripts/repository-maintenance.mjs")),
     ).toBe(false);

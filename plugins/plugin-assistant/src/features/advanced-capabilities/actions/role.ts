@@ -33,12 +33,17 @@ import {
   resolveWorldForMessage,
   setEntityRoleCas,
   toWellFormedUnicode,
+  validateUuid,
 } from "@elizaos/core";
 
 const ROLE_OPS = ["assign", "revoke", "list"] as const;
 type RoleOp = (typeof ROLE_OPS)[number];
 
 const ROLE_NAMES: readonly RoleName[] = ["OWNER", "ADMIN", "USER", "GUEST"];
+
+/** Mirrors core `validateUuid`, which `setEntityRoleCas` applies to the write target. */
+const ENTITY_UUID_PATTERN =
+  "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
 
 const MAX_USERNAME_LENGTH = 64;
 const AMBIGUOUS_MATCH_SCORE_GAP = 10;
@@ -177,13 +182,14 @@ function normalizeAssignmentArray(raw: unknown): AssignmentJson[] {
   const out: AssignmentJson[] = [];
   for (const entry of raw) {
     const rec = asRecord(entry);
-    if (!rec) continue;
+    if (!rec) {
+      out.push({});
+      continue;
+    }
     const entityId =
       typeof rec.entityId === "string" ? rec.entityId : undefined;
     const newRole = typeof rec.newRole === "string" ? rec.newRole : undefined;
-    if (entityId || newRole) {
-      out.push({ entityId, newRole });
-    }
+    out.push({ entityId, newRole });
   }
   return out;
 }
@@ -379,6 +385,13 @@ async function buildAssignmentsFromParams(args: {
       errors.push("Assignment missing entityId");
       continue;
     }
+    const entityId = validateUuid(entry.entityId);
+    if (!entityId) {
+      errors.push(
+        `Invalid entityId "${entry.entityId}": assignments[].entityId must be an entity UUID; use target for a name.`,
+      );
+      continue;
+    }
     const newRole = revoking
       ? "GUEST"
       : entry.newRole
@@ -388,7 +401,12 @@ async function buildAssignmentsFromParams(args: {
       errors.push(`Invalid role for ${entry.entityId}`);
       continue;
     }
-    assignments.push({ entityId: entry.entityId as UUID, newRole });
+    assignments.push({ entityId, newRole });
+  }
+  // A batch is applied entry by entry, so a bad entry must stop the whole
+  // batch here: writing the rest would report a partial write as the request.
+  if (errors.length > 0) {
+    return { assignments: [], errors };
   }
 
   if (assignments.length === 0 && params.target) {
@@ -739,14 +757,17 @@ export const roleAction: Action = {
     {
       name: "assignments",
       description:
-        "Batch assignments by entityId for assign/revoke. newRole applies to assign only; revoke always sets GUEST.",
+        "Batch assignments by entity UUID for assign/revoke; use target for a name. newRole applies to assign only; revoke always sets GUEST. One invalid entry rejects the whole batch.",
       required: false,
       schema: {
         type: "array" as const,
         items: {
           type: "object" as const,
           properties: {
-            entityId: { type: "string" as const },
+            entityId: {
+              type: "string" as const,
+              pattern: ENTITY_UUID_PATTERN,
+            },
             newRole: {
               type: "string" as const,
               enum: [...ROLE_NAMES],

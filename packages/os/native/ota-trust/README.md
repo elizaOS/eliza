@@ -26,6 +26,23 @@ in test code. The independent-host test rejects another product's release.
 These tests do not prove device-owner provisioning, installed update recovery,
 full AOSP boot, production trust enrollment or real-device acceptance.
 
+Hosts that build a `TrustedTimeSource` from Roughtime can call
+`NewRoughtimeRequest` and `VerifyRoughtimeResponse` (IETF drafts 11 and 12).
+They verify the authority's Ed25519 delegation and response signatures, the
+nonce, version and Merkle binding, and the delegation window. They do no network
+I/O and read no clock. The host sends the request, adds its measured round
+trip, requires agreement from its chosen authorities and owns the boot-scoped
+anchor. Choosing authorities and keys is the host's decision.
+
+Release metadata uses a closed channel graph: top-level targets delegate only to
+terminating `stable` and `beta` roles with their own keys. Devices and the
+publication verifier refuse a Stable delegation whose threshold is below two, so
+an admitted Stable release carries signatures from two distinct authorized
+approver keys; Beta needs one. Each channel key must be a distinct public key
+that shares no other role's authority, and go-tuf counts each authorized key
+once, so a repeated signature or an aliased key cannot stand in for the second
+approval. Who holds those keys is the host's decision.
+
 Hosts retain trust-root provisioning, signing authority, repository/package
 binding, update UI, permitted hardware and release/rollout policy. Native callers
 must independently recheck current device state and installation authority.
@@ -42,3 +59,20 @@ source directory, build-time host policy and optional consumer Go tests. The hos
 verifies its reviewed pin before calling. The composer hashes all inputs, rejects
 test collisions and symlinks, and verifies cached bytes before reuse. Run its
 contracts with `node --test scripts/compose-source.test.mjs`.
+
+Runtime artifact verification accepts ARM64 or x86_64 only when that ABI appears
+in the authenticated release artifact. Every inventoried native ELF must match
+the selected machine, and its ABI-specific musl loader is required. Mixed loader
+inventories fail. This does not qualify an x86_64 host for release or change
+hardware, signing, rollout or installation policy.
+
+Release hosts can call `ValidateReleaseDescriptor` without fabricating device
+state. It applies the same descriptor and forward-recovery contract used by
+native admission, with compiled product identity and an independently supplied
+repository/host policy. `cmd/verify-release` reads bounded descriptor bytes from
+stdin and requires `-repository` and `-hosts`; its JSON result binds the exact
+input SHA-256 and explicitly reports `authenticated:false`. The invoking host
+owns process cancellation and deadlines. This check does not verify signatures,
+APK bytes, source approval, current rollout eligibility or publication authority.
+Use the separate runtime and signed-publication verifiers for their respective
+checks, and independently verify APK signing and public release evidence.

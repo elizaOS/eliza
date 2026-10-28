@@ -214,10 +214,23 @@ export function projectPlanChangeQuote(
       fail();
     detail = { effectiveAt: v.effectiveAt, amountDueNowCents: 0 };
   }
+  // Historical quotes carry no terms. Never borrow them from today's catalog.
+  let allowanceTerms;
+  if (v.allowanceTerms !== undefined) {
+    const terms = v.allowanceTerms;
+    if (
+      terms?.fundingClass !== "allowance_eligible" ||
+      terms.rollover !== false ||
+      terms.expiresAt !== "billing_period_end"
+    )
+      fail();
+    allowanceTerms = pick(terms, ["fundingClass", "rollover", "expiresAt"]);
+  }
   return {
     quoteId: value.quoteId,
     review: {
       ...pick(v, fields),
+      ...(allowanceTerms ? { allowanceTerms } : {}),
       ...detail,
       recurringEstimate: invoice(v.recurringEstimate),
     },

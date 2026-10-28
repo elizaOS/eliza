@@ -3,7 +3,7 @@
  *
  * Single umbrella action for all secret management. The planner picks
  * `SECRETS` and supplies a structured `action` value (`get | set | delete |
- * list | check | mirror | request`); the dispatcher routes to the
+ * list | check | request`); the dispatcher routes to the
  * appropriate atomic handler.
  *
  * `SECRETS_UPDATE_SETTINGS` stays a separate action (it's a settings
@@ -31,18 +31,10 @@ import { checkSecretHandler } from "./check-secret.ts";
 import { deleteSecretHandler } from "./delete-secret.ts";
 import { getSecretHandler } from "./get-secret.ts";
 import { listSecretsHandler } from "./list-secrets.ts";
-import { mirrorSecretToVaultHandler } from "./mirror-secret-to-vault.ts";
 import { requestSecretHandler } from "./request-secret.ts";
 import { setSecretHandler } from "./set-secret.ts";
 
-type SecretsAction =
-  | "get"
-  | "set"
-  | "delete"
-  | "list"
-  | "check"
-  | "mirror"
-  | "request";
+type SecretsAction = "get" | "set" | "delete" | "list" | "check" | "request";
 
 type SecretsDispatchHandler = (
   runtime: IAgentRuntime,
@@ -58,7 +50,6 @@ const SECRETS_ACTIONS: readonly SecretsAction[] = [
   "delete",
   "list",
   "check",
-  "mirror",
   "request",
 ] as const;
 
@@ -90,7 +81,6 @@ const dispatch: Record<SecretsAction, SecretsDispatchHandler> = {
   delete: deleteSecretHandler,
   list: listSecretsHandler,
   check: checkSecretHandler,
-  mirror: mirrorSecretToVaultHandler,
   request: requestSecretHandler,
 };
 
@@ -121,24 +111,21 @@ export const secretsAction: Action = {
     "PURGE_SECRET",
     "ENUMERATE_SECRETS",
     "SHOW_SECRETS",
-    "COPY_SECRET_TO_VAULT",
-    "VAULT_MIRROR_SECRET",
     "ASK_FOR_SECRET",
     "REQUIRE_SECRET",
     "NEED_SECRET",
     "MISSING_SECRET",
   ],
   description:
-    "Manage secrets: get, set, delete, list, check, mirror to vault, request missing secret.",
+    "Manage secrets: get, set, delete, list, check, request missing secret.",
   parameters: [
     {
       name: "action",
-      description:
-        "Secret operation: get, set, delete, list, check, mirror, request.",
+      description: "Secret operation: get, set, delete, list, check, request.",
       required: true,
       schema: {
         type: "string" as const,
-        enum: ["get", "set", "delete", "list", "check", "mirror", "request"],
+        enum: ["get", "set", "delete", "list", "check", "request"],
       },
     },
     {
@@ -217,12 +204,6 @@ export const secretsAction: Action = {
       },
     },
     {
-      name: "vaultName",
-      description: "Service name of the vault to mirror into (action=mirror).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
       name: "reason",
       description: "Why the secret is needed (action=request).",
       required: false,
@@ -291,13 +272,13 @@ export const secretsAction: Action = {
     const resolved = resolveSecretsAction(params);
     if (!resolved) {
       logger.warn(
-        "[SECRETS] Missing or unknown action; expected one of: get, set, delete, list, check, mirror, request",
+        "[SECRETS] Missing or unknown action; expected one of: get, set, delete, list, check, request",
       );
       // Planner-facing only: the canned op menu is raw tool-speak a chat
       // user never asked for. The evaluator owns asking the user, in voice.
       return {
         success: false,
-        text: "No clear secret operation found in the request; ask the user whether they want to get, set, delete, list, check, mirror, or request a secret.",
+        text: "No clear secret operation found in the request; ask the user whether they want to get, set, delete, list, check, or request a secret.",
         data: { actionName: "SECRETS", action: null },
       };
     }

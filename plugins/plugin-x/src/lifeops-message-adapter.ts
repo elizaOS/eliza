@@ -22,11 +22,11 @@ import {
 
 type XRuntimeServiceLike = {
   sendDirectMessageForAccount?: (
-    accountId: string,
+    accountId: string | undefined,
     params: { participantId: string; text: string },
   ) => Promise<{ ok?: boolean; status?: number; messageId?: string | null }>;
   fetchDirectMessagesForAccount?: (
-    accountId: string,
+    accountId: string | undefined,
     params?: { participantId?: string; limit?: number },
   ) => Promise<Memory[]>;
 };
@@ -82,9 +82,12 @@ function memoryToMessageRef(memory: Memory): MessageRef {
     memory.id,
   );
   const threadId = firstStringField(x.conversationId, memory.roomId, senderId);
+  // The X account that received the DM; a reply must go out from it.
+  const accountId = firstStringField(metadata.accountId, x.accountId);
   return {
     id: `twitter:${externalId}`,
     source: "twitter",
+    ...(accountId ? { worldId: accountId } : {}),
     externalId,
     threadId,
     from: {
@@ -113,14 +116,17 @@ function normalizeListLimit(limit: number | undefined): number | undefined {
 function parseDraftId(draftId: string): {
   participantId: string;
   text: string;
+  accountId?: string;
 } {
   const parts = draftId.split(":");
-  if (parts.length !== 4 || parts[0] !== "twitter") {
+  if ((parts.length !== 4 && parts.length !== 5) || parts[0] !== "twitter") {
     throw new Error(`[XDmAdapter] malformed draftId ${draftId}`);
   }
   let participantId = "";
+  let accountId: string | undefined;
   try {
     participantId = parts[1] ? decodeURIComponent(parts[1]) : "";
+    accountId = parts[4] ? decodeURIComponent(parts[4]) : undefined;
   } catch {
     // error-policy:J3 draft ids are untrusted client input: a lone "%" or
     // "%ZZ" recipient segment makes decodeURIComponent throw URIError,
@@ -136,7 +142,7 @@ function parseDraftId(draftId: string): {
   if (!text) {
     throw new Error(`[XDmAdapter] cannot resolve body from draftId ${draftId}`);
   }
-  return { participantId, text };
+  return { participantId, text, ...(accountId ? { accountId } : {}) };
 }
 
 export class XDmAdapter extends BaseMessageAdapter {
@@ -168,21 +174,44 @@ export class XDmAdapter extends BaseMessageAdapter {
 
     const limit = normalizeListLimit(opts.limit);
     const sinceMs = opts.sinceMs;
-    const memories = await service.fetchDirectMessagesForAccount("default", {
-      participantId: undefined,
-      limit,
-    });
-    const refs = memories.map(memoryToMessageRef);
-    return refs.filter((ref) => {
-      if (
-        sinceMs !== undefined &&
-        Number.isFinite(ref.receivedAtMs) &&
-        ref.receivedAtMs < sinceMs
-      ) {
-        return false;
-      }
-      return true;
-    });
+    // A conversation-scoped request (`channelIds`) lists only those
+    // conversations; this adapter owns that scope (`channels: "implicit"`).
+    const channels = opts.channelIds?.length ? new Set(opts.channelIds) : null;
+    // Every requested X account (`worldIds`), or the service's default account.
+    const accountIds: Array<string | undefined> = opts.worldIds?.length
+      ? [...new Set(opts.worldIds)]
+      : [undefined];
+    const refs: MessageRef[] = [];
+    for (const accountId of accountIds) {
+      // The listing includes the account's own sent DMs; the inbox holds only
+      // messages from others, like the Discord triage adapter. Fetch the
+      // service's full window before filtering, so recent replies do not push
+      // older inbound DMs out of the result.
+      const memories = await service.fetchDirectMessagesForAccount(accountId, {
+        participantId: undefined,
+      });
+      const candidates = memories
+        .filter((memory) => memory.entityId !== runtime.agentId)
+        .map(memoryToMessageRef)
+        .filter(
+          (ref) =>
+            (!channels ||
+              (ref.channelId !== undefined && channels.has(ref.channelId))) &&
+            (sinceMs === undefined ||
+              !Number.isFinite(ref.receivedAtMs) ||
+              ref.receivedAtMs >= sinceMs),
+        );
+      refs.push(...candidates);
+    }
+    const newest = refs
+      .map((ref, index) => ({ ref, index }))
+      .sort(
+        (left, right) =>
+          right.ref.receivedAtMs - left.ref.receivedAtMs ||
+          left.index - right.index,
+      )
+      .map(({ ref }) => ref);
+    return limit === undefined ? newest : newest.slice(0, limit);
   }
 
   protected async getMessageImpl(
@@ -206,7 +235,10 @@ export class XDmAdapter extends BaseMessageAdapter {
     if (!draft.body.trim()) {
       throw new Error("[XDmAdapter] createDraft requires non-empty body");
     }
-    const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}`;
+    const accountSegment = draft.worldId
+      ? `:${encodeURIComponent(draft.worldId)}`
+      : "";
+    const draftId = `twitter:${encodeURIComponent(recipient)}:${Date.now()}:${encodeDraftBody(draft.body)}${accountSegment}`;
     const preview = toWellFormedUnicode(draft.body);
     return { draftId, preview };
   }
@@ -220,8 +252,8 @@ export class XDmAdapter extends BaseMessageAdapter {
       throw new Error("[XDmAdapter] X runtime service is unavailable");
     }
 
-    const { participantId, text } = parseDraftId(draftId);
-    const sent = await service.sendDirectMessageForAccount("default", {
+    const { participantId, text, accountId } = parseDraftId(draftId);
+    const sent = await service.sendDirectMessageForAccount(accountId, {
       participantId,
       text,
     });

@@ -178,6 +178,9 @@ agent guide; do not add nested `AGENTS.md` files.
   detailed steps to test the change.
 - Write issues and PRs in ASD-STE100 Simplified Technical English. Use short,
   direct sentences and explain technical terms for a non-technical reader.
+- Slop bounty work: star and fork the repository first, use real LLM calls,
+  make no UI changes, and test in more than one agent client. See
+  [Slop bounty contributions](CONTRIBUTING.md#slop-bounty-contributions).
 
 elizaOS focuses on its first-party runtime, applications, and maintained integrations.
 We no longer accept third-party plugins or registry items, including new listings,

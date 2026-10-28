@@ -15,6 +15,7 @@ import { organizationCreditsToLegacyMcpPoints } from "@elizaos/cloud-shared/bill
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { CreatorMonetizationRetiredError } from "@elizaos/cloud-shared/lib/services/creator-monetization-retirement";
 import { userMcpsService } from "@elizaos/cloud-shared/lib/services/user-mcps";
+import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { z } from "zod";
 
@@ -155,8 +156,11 @@ async function __hono_PUT(
   const authResult = await requireAuthOrApiKeyWithOrg(request);
   const { mcpId } = await ctx.params;
 
-  const body = await request.json();
-  const validation = updateMcpSchema.safeParse(body);
+  const decodedBody = await decodeRequestJson(request);
+  if (!decodedBody.ok) {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const validation = updateMcpSchema.safeParse(decodedBody.value);
 
   if (!validation.success) {
     return Response.json(

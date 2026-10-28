@@ -21,6 +21,18 @@ export {
 	type CancelSignal,
 } from "./barge-in";
 export {
+	type BionicAsrHost,
+	type BionicAsrStreamHandle,
+	BionicStreamingTranscriber,
+	type BionicStreamingTranscriberOptions,
+	createBionicStreamingTranscriber,
+	DEFAULT_BIONIC_PARTIAL_INTERVAL_MS,
+} from "./bionic-streaming-transcriber";
+export {
+	type BionicTranscriptionHost,
+	transcribeViaBionicHost,
+} from "./bionic-transcription";
+export {
 	type CoordinatorRuntime,
 	VoiceCancellationCoordinator,
 	type VoiceCancellationCoordinatorOptions,
@@ -162,6 +174,23 @@ export {
 	type VoiceLifecycleLoaders,
 	type VoiceLifecycleState,
 } from "./lifecycle";
+export {
+	LiveStreamingAsrSession,
+	type LiveStreamingAsrSessionOptions,
+	type LiveTurnResult,
+	PushVadEventSource,
+} from "./live-streaming-asr-session";
+export {
+	createVoiceTranscriptEmitter,
+	type LiveTranscriptMode,
+	VOICE_TRANSCRIPT_STREAM,
+	type VoiceTranscriptEvent,
+} from "./live-transcript-events";
+export {
+	AWAIT_FIRST_TOKEN_MS,
+	hasLiveVoiceTurnAwaitingToken,
+	noteLlmFirstToken,
+} from "./live-voice-latency";
 export {
 	buildMeetingAcousticStressMatrix,
 	MEETING_ACOUSTIC_STRESS_SOURCE_MANIFESTS,

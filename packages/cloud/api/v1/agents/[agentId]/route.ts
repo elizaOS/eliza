@@ -32,8 +32,12 @@ app.get("/", async (c) => {
     });
 
     // assertOrgMembership throws 403 on cross-org access, so reaching here
-    // guarantees agent.organization_id === user.organization_id — no second
-    // DB lookup needed.
+    // guarantees agent.organization_id === user.organization_id. The row holds
+    // the creator's secrets, and characters belong to their creator inside an
+    // organization (as in getByIdForUser), so another member gets 404.
+    if (agent.user_id !== user.id) {
+      return c.json({ success: false, error: "Agent not found" }, 404);
+    }
     return c.json({ success: true, data: agent });
   } catch (error) {
     return failureResponse(c, error);

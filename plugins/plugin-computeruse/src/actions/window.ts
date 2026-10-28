@@ -135,13 +135,15 @@ export const windowAction: Action = {
     },
     {
       name: "width",
-      description: "Window width for set_bounds.",
+      description:
+        "Window width for set_bounds. Give it together with height; omit both to move without resizing.",
       required: false,
       schema: { type: "number", minimum: 1 },
     },
     {
       name: "height",
-      description: "Window height for set_bounds.",
+      description:
+        "Window height for set_bounds. Give it together with width; omit both to move without resizing.",
       required: false,
       schema: { type: "number", minimum: 1 },
     },

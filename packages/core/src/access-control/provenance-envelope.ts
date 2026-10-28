@@ -366,6 +366,23 @@ export interface RecalledItem {
 	memory: Memory;
 	provenance: CanonicalProvenance;
 	dedupeKey: string;
+	/** Candidate position of the record's best-ranked copy; lower is a closer match. */
+	rank: number;
+}
+
+/**
+ * Keep the `count` best-ranked items and return them in transcript order.
+ * Recall items are sorted by time, so truncating them directly keeps the
+ * oldest matches instead of the closest ones.
+ */
+export function selectBestRankedRecallItems(
+	items: readonly RecalledItem[],
+	count: number,
+): RecalledItem[] {
+	return [...items]
+		.sort((a, b) => a.rank - b.rank)
+		.slice(0, count)
+		.sort((a, b) => a.provenance.timestampMs - b.provenance.timestampMs);
 }
 
 /**
@@ -483,7 +500,7 @@ function evaluateCanonicalRecall(
 		}
 	};
 
-	for (const memory of input.candidates) {
+	for (const [rank, memory] of input.candidates.entries()) {
 		const provenanceResult = deriveCanonicalProvenance(memory, input.agentId);
 		if (!provenanceResult.valid) {
 			recordDenial(provenanceResult.code, provenanceResult.reason);
@@ -512,7 +529,12 @@ function evaluateCanonicalRecall(
 
 		const existing = byKey.get(dedupeKey);
 		if (!existing || provenance.timestampMs < existing.provenance.timestampMs) {
-			byKey.set(dedupeKey, { memory, provenance, dedupeKey });
+			byKey.set(dedupeKey, {
+				memory,
+				provenance,
+				dedupeKey,
+				rank: existing?.rank ?? rank,
+			});
 		}
 	}
 
@@ -724,10 +746,9 @@ export async function searchCanonicalConversationMemories(
 	const normalizedSource = input.source
 		? normalizeConnectorSource(input.source)
 		: undefined;
-	const allCandidates: Memory[] = [];
+	let allCandidates: Memory[] = [];
 	const excludedRooms = new Set(input.excludeRoomIds);
 	let candidateWindowComplete = true;
-	const seenIds = new Set<string>();
 	let roundCount = initialCount;
 
 	for (;;) {
@@ -772,15 +793,24 @@ export async function searchCanonicalConversationMemories(
 			candidateWindowComplete = false;
 		}
 
-		// Deduplicate against what we already have and accumulate.
+		// A wider round re-ranks its whole window (the SQL adapter reranks each
+		// window with BM25), so its order is the relevance order: put this
+		// round's rows first and keep rows only earlier rounds returned behind.
+		const roundIds = new Set<string>();
+		const ranked: Memory[] = [];
 		for (const mem of roundCandidates) {
 			// Enforce exclusions even for an adapter that ignores the optional filter.
 			if (excludedRooms.has(mem.roomId)) continue;
 			const memId = mem.id?.toString();
-			if (memId && seenIds.has(memId)) continue;
-			if (memId) seenIds.add(memId);
-			allCandidates.push(mem);
+			if (memId && roundIds.has(memId)) continue;
+			if (memId) roundIds.add(memId);
+			ranked.push(mem);
 		}
+		for (const mem of allCandidates) {
+			const memId = mem.id?.toString();
+			if (!memId || !roundIds.has(memId)) ranked.push(mem);
+		}
+		allCandidates = ranked;
 
 		// Limited searches need intermediate eligibility checks to know when
 		// to stop. Complete recall validates once after exhausting the adapter.
@@ -842,7 +872,7 @@ export async function searchCanonicalConversationMemories(
 	const items =
 		explicitCount === undefined
 			? eligibleItems
-			: eligibleItems.slice(0, explicitCount);
+			: selectBestRankedRecallItems(eligibleItems, explicitCount);
 
 	if (
 		deliveryMessage &&

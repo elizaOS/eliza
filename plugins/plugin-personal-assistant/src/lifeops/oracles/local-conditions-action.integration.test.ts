@@ -323,6 +323,34 @@ describe("LOCAL_CONDITIONS action — registry-backed production wiring", () => 
     ).rejects.toMatchObject({ code: "ORACLE_QUERY_INVALID" });
   });
 
+  it("rejects an activity query the source would refuse as an invalid argument, not as a source outage", async () => {
+    registerLocalActivityAdapterRegistry(
+      runtime,
+      loopbackActivityRegistry(await startTicketmasterServer()),
+    );
+    const refused: Array<[Record<string, unknown>, string]> = [
+      [{ pageSize: 200 }, "pageSize"],
+      [{ maxPages: 10 }, "maxPages"],
+      [
+        { location: { postalCode: "94110", countryCode: "USA" } },
+        "location.countryCode",
+      ],
+      [
+        { location: { latitude: 37.7, longitude: -122.4, radiusMiles: 0 } },
+        "location.radiusMiles",
+      ],
+      [{ endAt: discoveryParams().startAt }, "endAt"],
+    ];
+    for (const [override, field] of refused) {
+      await expect(
+        run("discover_activities", { ...discoveryParams(), ...override }),
+      ).rejects.toMatchObject({
+        code: "ORACLE_QUERY_INVALID",
+        context: { field },
+      });
+    }
+  });
+
   it("reads a typed point forecast through the registered weather registry", async () => {
     registerExternalOracleRegistry(
       runtime,

@@ -2,14 +2,18 @@
  * Store-level tests for the task↔Project binding (#13776) against a REAL PGlite
  * database (no mocks): the `project_id` column, its idempotent ADD-COLUMN
  * migration onto a pre-existing table, project_id persistence, and the
- * projectId list filter. The `?`→`$n` shim below is the only glue — PGlite runs
- * the actual SQL the store emits.
+ * projectId and status list filters. The `?`→`$n` shim below is the only glue —
+ * PGlite runs the actual SQL the store emits.
  */
 
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { RuntimeDbTaskStore } from "../services/orchestrator-task-store.ts";
+import {
+  InMemoryTaskStore,
+  RuntimeDbTaskStore,
+} from "../services/orchestrator-task-store.ts";
+import { IN_FLIGHT_TASK_STATUSES } from "../services/orchestrator-task-types.ts";
 
 // PGlite bootstraps a WASM Postgres per case; the first init is slow (~15s).
 const PGLITE_TIMEOUT = 60_000;
@@ -248,6 +252,38 @@ describe("task store project binding (real PGlite)", () => {
     );
     expect(rows.rows).toHaveLength(1);
   });
+
+  it.each([
+    {
+      backend: "SQL",
+      createStore: () => new RuntimeDbTaskStore(pgliteAdapter(db)),
+    },
+    { backend: "memory", createStore: () => new InMemoryTaskStore() },
+  ])(
+    "filters listTasks by a status set on the $backend store",
+    {
+      timeout: PGLITE_TIMEOUT,
+    },
+    async ({ createStore }) => {
+      const store = createStore();
+      for (const status of ["open", "blocked", "done", "failed"] as const) {
+        const created = await store.createTask({
+          title: `${status} task`,
+          goal: status,
+        });
+        await store.updateTask(created.task.id, { status });
+      }
+
+      const inFlight = await store.listTasks({
+        statuses: IN_FLIGHT_TASK_STATUSES,
+      });
+      expect(inFlight.map((t) => t.title).sort()).toEqual([
+        "blocked task",
+        "open task",
+      ]);
+      await expect(store.listTasks({ statuses: [] })).resolves.toEqual([]);
+    },
+  );
 
   it("initializes through a REAL drizzle adapter, where duplicate-column arrives wrapped in DrizzleQueryError", {
     timeout: PGLITE_TIMEOUT,

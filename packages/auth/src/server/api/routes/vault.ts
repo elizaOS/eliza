@@ -277,16 +277,14 @@ function base64UrlEncode(bytes: Uint8Array): string {
 }
 
 function base64UrlDecode(value: string): Uint8Array | null {
+  // Mirrors the user.ts copy of this decoder: base64url wire values may
+  // arrive padded or unpadded (the shared web-push helper documents the
+  // same contract), so optional trailing padding is accepted.
+  if (!/^[A-Za-z0-9_-]+={0,2}$/u.test(value)) return null;
   try {
-    if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
-    const padded = value.replace(/-/g, "+").replace(/_/g, "/");
-    const paddingLength = (4 - (padded.length % 4)) % 4;
-    const binary = atob(`${padded}${"=".repeat(paddingLength)}`);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.charCodeAt(i);
-    }
-    return bytes;
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
   } catch {
     return null;
   }
@@ -480,7 +478,8 @@ function parseListLimit(value: string | undefined, fallback = 100): number {
 function parseListOffset(value: string | undefined): number {
   const parsed = value ? Number(value) : 0;
   if (!Number.isSafeInteger(parsed) || parsed < 0) return 0;
-  return Math.min(parsed, 100_000);
+  // Do not clamp large valid offsets: a ceiling repeats earlier pages.
+  return parsed;
 }
 
 function isUint64DecimalString(value: unknown): value is string {

@@ -327,9 +327,44 @@ export async function resolveScheduledTaskDispatchContext(
       );
     }
     const requestedIds = request.includeRelationships.relationshipIds;
+    // The scope goes into the store query. A plain list orders by last update
+    // and applies its limit before any filter, so an edge for the requested
+    // entity would fall out behind more recently updated edges with no signal.
+    // The result keeps the same lookup boundary as every other context list:
+    // each query reads one row past it, and a scope that resolves to more
+    // relationships than the boundary is refused, never trimmed.
+    const scopedTypes = request.includeRelationships.types?.length
+      ? request.includeRelationships.types
+      : undefined;
+    const scopedEntityIds = request.includeRelationships.forEntityIds ?? [];
+    const scopedQuery = { type: scopedTypes, limit: CONTEXT_ID_LIMIT + 1 };
+    const listScoped = async () => {
+      const pages = await Promise.all(
+        scopedEntityIds.length
+          ? scopedEntityIds.flatMap((entityId) => [
+              store.list({ ...scopedQuery, fromEntityId: entityId }),
+              store.list({ ...scopedQuery, toEntityId: entityId }),
+            ])
+          : [store.list(scopedQuery)],
+      );
+      const byId = new Map<string, (typeof pages)[number][number]>();
+      for (const page of pages) {
+        for (const relationship of page) {
+          byId.set(relationship.relationshipId, relationship);
+        }
+      }
+      if (byId.size > CONTEXT_ID_LIMIT) {
+        throw contextError(
+          `Scheduled dispatch relationship scope resolves to more than the ${CONTEXT_ID_LIMIT}-item lookup boundary.`,
+          "SCHEDULED_DISPATCH_CONTEXT_LIMIT_EXCEEDED",
+          record,
+        );
+      }
+      return [...byId.values()];
+    };
     const candidates = requestedIds?.length
       ? await Promise.all(requestedIds.map((id) => store.get(id)))
-      : await store.list({ limit: 100 });
+      : await listScoped();
     if (requestedIds?.length && candidates.some((value) => value === null)) {
       throw contextError(
         "A requested relationship is unavailable for scheduled dispatch context.",

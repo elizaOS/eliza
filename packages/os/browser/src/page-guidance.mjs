@@ -49,7 +49,9 @@ export function pageGuidance(request) {
     keepClear.length > 8 ||
     keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
     (request.action !== undefined &&
-      !["click", "fill", "scroll"].includes(request.action)) ||
+      !["click", "fill", "select", "scroll", "follow"].includes(
+        request.action,
+      )) ||
     (request.restore !== undefined && typeof request.restore !== "boolean") ||
     window !== window.top ||
     request.origin !== location.origin ||
@@ -110,6 +112,9 @@ export function pageGuidance(request) {
   )
     return fail("stale-observation");
   const target = snapshot.nodes.get(request.nodeId)?.node;
+  const scrollGuide =
+    request.action === "scroll" ||
+    snapshot.nodes.get(request.nodeId)?.scrollOnly === true;
   if (!target?.isConnected || target.getRootNode() !== document)
     return fail("missing-target");
   // Controls the label must not cover, for example the button she presses
@@ -134,7 +139,21 @@ export function pageGuidance(request) {
   // A step whose control is outside the visible page brings it into view, so
   // the guide never waits unseen. An action guide never scrolls: the action
   // needs the page exactly as observed.
-  const placed = target.getBoundingClientRect();
+  const targetRect = () => {
+    if (target !== document.scrollingElement)
+      return target.getBoundingClientRect();
+    // Native panes and page zoom can make the visible viewport fractional.
+    // Rounded layout bounds would center the tall document as an off-screen
+    // target, scrolling before the separately authorized action.
+    const view = window.visualViewport;
+    return new DOMRect(
+      view?.offsetLeft ?? 0,
+      view?.offsetTop ?? 0,
+      view?.width ?? innerWidth,
+      view?.height ?? innerHeight,
+    );
+  };
+  const placed = targetRect();
   const view0 = window.visualViewport;
   const placement =
     placed.width <= 0 ||
@@ -155,9 +174,9 @@ export function pageGuidance(request) {
     target.scrollIntoView({
       block: "center",
       inline: "nearest",
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "instant"
-        : "smooth",
+      // Finish the host-owned reveal before acknowledging it. A later task
+      // snapshot must not race a smooth scroll after guidance is cleared.
+      behavior: "instant",
     });
   // The page shares document.fonts. Each document gets an unguessable family
   // added from bytes (no network or page CSP); any other face that claims it
@@ -205,14 +224,16 @@ export function pageGuidance(request) {
   style.replaceSync(
     ".ring{position:fixed;box-sizing:border-box;border-radius:8px;pointer-events:none;box-shadow:0 0 0 3px #fff,0 0 0 6px #4a3428}.ring.pulse{animation:ring .9s ease-in-out 3}@keyframes ring{50%{box-shadow:0 0 0 3px #fff,0 0 0 7px #4a34288c}}" +
       ".label{font:500 20px/1.4 var(--face);position:fixed;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;background:#fff;color:#141414;border:2px solid #b3aad3;border-radius:16px;padding:18px;box-shadow:0 8px 24px #14141324;pointer-events:none;opacity:0;transform:translateY(-8px);transition:opacity .3s ease-out,transform .3s ease-out}.label.shown{opacity:1;transform:none;pointer-events:auto}.label.tone-success{border-color:#265b19}" +
+      ".label.compact{flex-direction:row;align-items:center;gap:12px;padding:0 12px}.label.compact .row{flex:1;min-width:0}.label.compact .mark{display:none}.label.compact .title{font-size:20px;line-height:24px}.label.compact .close{flex:none;min-width:92px;height:48px;padding:0 16px}" +
       ".tail{position:absolute;left:28px;top:-10px;width:16px;height:16px;box-sizing:border-box;background:#fff;border:2px solid;border-color:inherit;border-right:0;border-bottom:0;transform:rotate(45deg)}.tail.up{top:auto;bottom:-10px;border:2px solid;border-color:inherit;border-left:0;border-top:0}" +
       ".row{display:flex;gap:12px;align-items:flex-start}.mark{flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:#d4ceea;color:#141414;font:700 20px/1 var(--face)}.tone-active .mark{background:#b3aad3}.tone-success .mark{border-radius:17px;background:#265b19;color:#fff}" +
       ".words{display:flex;flex-direction:column;gap:4px;min-width:0}.title{margin:0;font:700 22px/28px var(--face);overflow-wrap:anywhere}.detail{margin:0;font:500 17px/22px var(--face);color:#4a3428;overflow-wrap:anywhere}" +
       "button{font:700 22px/1 var(--face);color:#141414;border:0;border-radius:20px;background:#fff;box-shadow:inset 0 0 0 1.5px #4a342899;cursor:pointer;margin:0}button:focus-visible{outline:3px solid #141414;outline-offset:3px}.answered button{cursor:default}" +
       ".cards{display:flex;flex-direction:column;gap:10px}.card{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;min-height:64px;padding:12px 20px;border-radius:16px;text-align:left}.value{font:700 22px/28px var(--face);overflow-wrap:anywhere}.purpose{font:500 17px/22px var(--face);color:#4a3428}" +
       ".actions{display:flex;gap:10px}.actions button{flex:1 1 0}.actions button,.close{height:64px;padding:0 28px;white-space:nowrap}.actions .primary{background:#b3aad3;box-shadow:none}[hidden]{display:none!important}" +
+      ".inset{position:fixed;left:0;bottom:0;width:0;height:0;padding-bottom:env(safe-area-inset-bottom,0px);visibility:hidden;pointer-events:none}" +
       ".pointer{position:fixed;left:0;top:0;width:28px;height:32px;pointer-events:none;transition:left 1.4s cubic-bezier(.45,0,.25,1),top 1.4s cubic-bezier(.45,0,.25,1)}.pointer svg{display:block;fill:#141414;filter:drop-shadow(0 2px 3px #14141359)}" +
-      ".tag{position:absolute;left:24px;top:28px;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 8px;border-radius:9px;background:#b3aad3;color:#141414;box-shadow:0 3px 10px #14141340;font:700 18px/1 var(--face);white-space:nowrap}.initial{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:#141414;color:#b3aad3;font-size:12px}" +
+      ".tag{position:absolute;left:24px;top:28px;display:flex;align-items:center;gap:8px;min-height:34px;width:max-content;box-sizing:border-box;padding:4px 12px 4px 8px;border-radius:9px;background:#b3aad3;color:#141414;box-shadow:0 3px 10px #14141340;font:700 18px/1 var(--face);white-space:normal}.name{min-width:0;overflow-wrap:anywhere}.initial{flex-shrink:0;display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;background:#141414;color:#b3aad3;font-size:12px}" +
       ".pointer.paused{transition:none}.paused svg{fill:#73726c}.paused .tag{background:#4a4a47;color:#fff}.paused .initial{background:#fff;color:#4a4a47}" +
       ".tap{position:fixed;width:36px;height:36px;border:4px solid #141414;border-radius:50%;box-sizing:border-box;pointer-events:none;animation:tap .7s ease-out forwards}@keyframes tap{0%{transform:scale(.4);opacity:1}to{transform:scale(1.6);opacity:0}}" +
       "@media (prefers-reduced-motion:reduce){.ring.pulse,.tap{animation:none}.label,.pointer{transition:none}.label{transform:none}}",
@@ -300,6 +321,7 @@ export function pageGuidance(request) {
   };
   const cards = answers.filter((answer) => answer.kind === "card");
   const buttons = answers.filter((answer) => answer.kind !== "card");
+  const offered = [];
   if (cards.length) {
     const list = element("div", "cards");
     for (const answer of cards) {
@@ -310,7 +332,7 @@ export function pageGuidance(request) {
       card.onclick = choose(answer.id);
       list.append(card);
     }
-    label.append(list);
+    offered.push(list);
   }
   if (buttons.length) {
     const list = element("div", "actions");
@@ -320,7 +342,7 @@ export function pageGuidance(request) {
       button.onclick = choose(answer.id);
       list.append(button);
     }
-    label.append(list);
+    offered.push(list);
   }
   // An offer's secondary answer is its decline; other labels keep Dismiss.
   const close = element(
@@ -329,9 +351,14 @@ export function pageGuidance(request) {
     request.action ? "Cancel this action" : "Dismiss guidance",
   );
   close.type = "button";
-  if (request.action || !buttons.some((answer) => answer.kind === "secondary"))
-    label.append(close);
-  root.append(ring, label, pointer, tap);
+  if (request.action) close.setAttribute("aria-label", "Cancel this action");
+  close.hidden =
+    !request.action && buttons.some((answer) => answer.kind === "secondary");
+  label.append(...offered, close);
+  // Measures the bottom inset the page is drawn under (the navigation bar on Android).
+  const inset = element("div", "inset");
+  // The cursor shadow must not paint over the preview or its Cancel button.
+  root.append(ring, pointer, label, tap, inset);
   shadow.adoptedStyleSheets = [style];
   shadow.append(root);
   pointer.style.display = "none";
@@ -339,7 +366,13 @@ export function pageGuidance(request) {
   ring.hidden = true;
   label.hidden = true;
   monitor.ownedHosts.add(host);
-  document.documentElement.append(host);
+  // Keep guidance above a website modal and inside its non-inert subtree.
+  // A manual popover does not dismiss the site's dialog or steal its modality.
+  const parent = target.closest("dialog:modal") ?? document.documentElement;
+  if (typeof host.showPopover === "function")
+    host.setAttribute("popover", "manual");
+  parent.append(host);
+  if (typeof host.showPopover === "function") host.showPopover();
   // Taps count only while Chromium reports the label as fully visible: not
   // covered by page content (including the top layer), transformed or faded.
   const visibility = new IntersectionObserver(
@@ -363,11 +396,69 @@ export function pageGuidance(request) {
     visibleSince = 0,
     appearedAt = 0,
     acted = false,
+    lapsed = false,
     travel = instant ? "done" : "idle",
     travelAt = 0;
+  // The pointer's time is up. The host shows it again only after a fresh
+  // look at the page. Until then a show-only step keeps its words readable,
+  // without the ring, the tail, the cursor or answers.
+  const lapse = () => {
+    lapsed = true;
+    travel = "done";
+    pointer.style.display = "none";
+    ring.hidden = true;
+    tail.hidden = true;
+    for (const list of offered) list.hidden = true;
+    close.hidden = false;
+  };
   const place = (point) => {
     pointer.style.left = `${point[0] - 3}px`;
     pointer.style.top = `${point[1] - 2}px`;
+  };
+  const fitTag = () => {
+    if (pointer.style.display !== "block") return;
+    const left = (viewport?.offsetLeft ?? 0) + 8;
+    const top = (viewport?.offsetTop ?? 0) + 8;
+    const width = Math.max(0, (viewport?.width ?? innerWidth) - 16);
+    const height = Math.max(0, (viewport?.height ?? innerHeight) - 16);
+    tag.style.maxWidth = `${width}px`;
+    const cursorRect = pointer.getBoundingClientRect();
+    const tagRect = tag.getBoundingClientRect();
+    const x = Math.max(
+      left,
+      Math.min(cursorRect.left + 24, left + width - tagRect.width),
+    );
+    // Keep the identity readable without covering the preview or its target.
+    // Either may be above or below the cursor in a compact viewport.
+    const avoid = [
+      targetRect(),
+      ...(label.hidden ? [] : [label.getBoundingClientRect()]),
+    ];
+    const positions = [
+      { x, y: cursorRect.top + 28 },
+      { x, y: cursorRect.top - tagRect.height - 4 },
+      ...avoid.flatMap((rect) => [
+        { x, y: rect.bottom + 8 },
+        { x, y: rect.top - tagRect.height - 8 },
+        { x: rect.right + 8, y: cursorRect.top },
+        { x: rect.left - tagRect.width - 8, y: cursorRect.top },
+      ]),
+    ].map((point) => ({
+      x: Math.max(left, Math.min(point.x, left + width - tagRect.width)),
+      y: Math.max(top, Math.min(point.y, top + height - tagRect.height)),
+    }));
+    const position =
+      positions.find((point) =>
+        avoid.every(
+          (rect) =>
+            point.x + tagRect.width <= rect.left - 4 ||
+            point.x >= rect.right + 4 ||
+            point.y + tagRect.height <= rect.top - 4 ||
+            point.y >= rect.bottom + 4,
+        ),
+      ) ?? positions[0];
+    tag.style.left = `${position.x - cursorRect.left}px`;
+    tag.style.top = `${position.y - cursorRect.top}px`;
   };
   const hide = () => {
     ring.hidden = true;
@@ -412,6 +503,10 @@ export function pageGuidance(request) {
   window.addEventListener("pagehide", invalidate);
   document.addEventListener("beforeinput", invalidate, true);
   document.addEventListener("change", invalidate, true);
+  // The navigation bar's inset last seen without a keyboard, kept for this document in the
+  // isolated world: a guide shown after the keyboard opened (each show is a new renderer) still
+  // knows it.
+  const insetKey = "__elizaGuideBarInsetV1";
   const state = {
     id: request.id,
     nodeId: request.nodeId,
@@ -431,6 +526,8 @@ export function pageGuidance(request) {
           !state.paused &&
           !state.dismissed &&
           state.visible &&
+          unobscured &&
+          Date.now() - unobscuredSince >= 800 &&
           visibleSince &&
           Date.now() - visibleSince >= 800 &&
           Date.now() < request.expiresAt &&
@@ -456,6 +553,7 @@ export function pageGuidance(request) {
       place(point);
       nameTag.textContent = `${name} · paused`;
       pointer.style.display = "block";
+      fitTag();
     },
     destroy: () => {
       disposed = true;
@@ -497,6 +595,9 @@ export function pageGuidance(request) {
       face = family;
       root.style.setProperty("--face", face);
     }
+    // Follow the rendered cursor during travel and keep the full name readable
+    // at viewport edges, including the longer paused label and keyboard resize.
+    fitTag();
     if (acted || state.paused) {
       if (acted) {
         label.hidden = true;
@@ -515,7 +616,7 @@ export function pageGuidance(request) {
       return;
     }
     if (
-      Date.now() >= request.expiresAt ||
+      (request.action && Date.now() >= request.expiresAt) ||
       location.href !== snapshot.url ||
       !host.isConnected ||
       !target.isConnected
@@ -523,12 +624,13 @@ export function pageGuidance(request) {
       state.destroy();
       return;
     }
+    if (!lapsed && Date.now() >= request.expiresAt) lapse();
     if (dirty || state.dismissed) {
       hide();
       frame = requestAnimationFrame(update);
       return;
     }
-    const rect = target.getBoundingClientRect();
+    const rect = targetRect();
     const view = {
       left: viewport?.offsetLeft ?? 0,
       top: viewport?.offsetTop ?? 0,
@@ -536,6 +638,29 @@ export function pageGuidance(request) {
       height: viewport?.height ?? innerHeight,
       scale: viewport?.scale ?? 1,
     };
+    // Chromium on Android draws the page under the navigation bar and, when the keyboard opens,
+    // shrinks the visual viewport by the keyboard's height less that bar. The reported bottom is
+    // then under the keyboard by the bar's inset, which env(safe-area-inset-bottom) no longer
+    // reports. The inset last seen without a keyboard in this document is taken off again.
+    const bottomInset =
+      Number.parseFloat(getComputedStyle(inset).paddingBottom) || 0;
+    const keyboard = view.height * view.scale < innerHeight - 1;
+    if (!keyboard) globalThis[insetKey] = bottomInset;
+    const barInset = Number.isFinite(globalThis[insetKey])
+      ? globalThis[insetKey]
+      : 0;
+    view.height = Math.max(
+      0,
+      view.height -
+        (keyboard ? Math.max(bottomInset, barInset) : bottomInset) / view.scale,
+    );
+    // A split-screen or keyboard viewport must still show the action and its
+    // full-size cancel target. Keep the target unobscured and the preview dwell.
+    const compact = Boolean(request.action && view.height < 320);
+    label.classList.toggle("compact", compact);
+    const cancelText = compact ? "Cancel" : "Cancel this action";
+    if (request.action && close.textContent !== cancelText)
+      close.textContent = cancelText;
     const geometry = JSON.stringify([
       rect.x,
       rect.y,
@@ -561,10 +686,11 @@ export function pageGuidance(request) {
       rect.bottom <= view.top + view.height
     ) {
       label.hidden = false;
-      label.style.width = `${Math.min(answers.length ? 440 : 360, view.width - 24)}px`;
+      label.style.width = `${Math.min(compact ? view.width - 16 : answers.length ? 440 : 360, view.width - (compact ? 16 : 24))}px`;
       const height = label.getBoundingClientRect().height,
         width = label.getBoundingClientRect().width;
       const candidates = [
+        ...(scrollGuide ? [{ x: view.left + 8, y: view.top + 8 }] : []),
         { x: rect.left, y: rect.bottom + 22, tail: "" },
         { x: rect.left, y: rect.top - height - 22, tail: "up" },
         { x: rect.right + 22, y: rect.top },
@@ -586,7 +712,10 @@ export function pageGuidance(request) {
           (p) =>
             p.y >= view.top + 8 &&
             p.y + height <= view.top + view.height - 8 &&
-            [rect, ...clear.map((node) => node.getBoundingClientRect())].every(
+            [
+              ...(scrollGuide ? [] : [rect]),
+              ...clear.map((node) => node.getBoundingClientRect()),
+            ].every(
               (avoid) =>
                 p.x + width <= avoid.left - 8 ||
                 p.x >= avoid.right + 8 ||
@@ -604,7 +733,7 @@ export function pageGuidance(request) {
       if (position) {
         label.style.left = `${position.x}px`;
         label.style.top = `${position.y}px`;
-        tail.hidden = position.tail === undefined;
+        tail.hidden = position.tail === undefined || lapsed;
         tail.className = position.tail ? "tail up" : "tail";
         tail.style.left = `${Math.max(14, Math.min(rect.left + 28 - position.x, width - 32))}px`;
         const point = [
@@ -624,6 +753,7 @@ export function pageGuidance(request) {
             ],
           );
           pointer.style.display = "block";
+          fitTag();
           pointer.getBoundingClientRect();
           pointer.style.transition = "";
           place(point);
@@ -639,7 +769,7 @@ export function pageGuidance(request) {
           frame = requestAnimationFrame(update);
           return;
         }
-        ring.hidden = Boolean(request.action);
+        ring.hidden = Boolean(request.action) || lapsed;
         cursor.point = point;
         if (!appearedAt) appearedAt = now;
         if (now - appearedAt >= 250) label.classList.add("shown");
@@ -647,6 +777,7 @@ export function pageGuidance(request) {
           pointer.style.transition = "none";
           place(point);
           pointer.style.display = "block";
+          fitTag();
           tap.style.left = `${point[0] - 18}px`;
           tap.style.top = `${point[1] - 18}px`;
           tap.hidden = !acted;
@@ -658,7 +789,7 @@ export function pageGuidance(request) {
         hide();
         // Only the label needs room. A show-only step keeps its ring on the
         // control; an action still needs its label and Cancel.
-        ring.hidden = Boolean(request.action);
+        ring.hidden = Boolean(request.action) || lapsed;
       }
     } else hide();
     frame = requestAnimationFrame(update);

@@ -5,7 +5,7 @@ name: Cloud Gateway Discord
 # validates source only; it never attaches an Environment or reads configuration.
 #
 # AWS EKS / Terraform / Helm deploy jobs were removed as part of the AWS
-# retirement (see packages/cloud/infra/cloud/AWS_RETIREMENT.md).
+# retirement.
 
 on:
   workflow_call:

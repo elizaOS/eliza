@@ -375,7 +375,8 @@ function parseListLimit(value: string | undefined, fallback = 100): number {
 function parseListOffset(value: string | undefined): number {
   const parsed = value ? Number(value) : 0;
   if (!Number.isSafeInteger(parsed) || parsed < 0) return 0;
-  return Math.min(parsed, 100_000);
+  // Do not clamp large valid offsets: a ceiling repeats earlier pages.
+  return parsed;
 }
 
 function auditCtx(c: {
@@ -686,17 +687,15 @@ function getPlatformMetadataValidationError(
 }
 
 function clampLimit(value: string | null, fallback = 50): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(1, Math.min(parsed, 100));
+  const parsed = value ? Number(value) : fallback;
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, 100);
 }
 
 function parseOffset(value: string | null): number {
-  if (!value) return 0;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) return 0;
-  return Math.max(0, parsed);
+  const parsed = value ? Number(value) : 0;
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return 0;
+  return parsed;
 }
 
 function parseQueryList(value: string | undefined): string[] {

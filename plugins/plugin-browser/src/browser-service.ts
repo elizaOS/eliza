@@ -8,9 +8,12 @@
  * resolved by availability.
  *
  * Built-in targets:
- *   - `workspace` — Eliza's electrobun-embedded BrowserView (with a JSDOM
- *     web-mode fallback when the desktop bridge isn't configured). Always
- *     registered by this plugin's `start`. Always available.
+ *   - `workspace` — Eliza's electrobun-embedded BrowserView. Always
+ *     registered by this plugin's `start`; available only when the desktop
+ *     bridge (`ELIZA_BROWSER_WORKSPACE_URL`) is configured.
+ *   - `chromium-device` — the user's Chromium on this device through the
+ *     native messaging socket. Always registered by `start`; available only
+ *     while a profile is connected.
  *
  * Optional targets registered by other plugins:
  *   - `computeruse` — registered by `@elizaos/plugin-computeruse` on plugin
@@ -321,6 +324,21 @@ export class BrowserService extends Service {
   }
 
   /**
+   * Whether a registered target can take a command, decided without a network
+   * round trip. `start` always registers the workspace and native targets, so
+   * their local availability check decides. Other targets register only when
+   * they are configured; dispatch still checks that they are reachable.
+   */
+  async hasActionableTarget(): Promise<boolean> {
+    for (const target of this.listTargets()) {
+      if (target.id !== "workspace" && target.id !== "chromium-device")
+        return true;
+      if (await target.available()) return true;
+    }
+    return false;
+  }
+
+  /**
    * Read-only live workspace snapshot (bridge mode + open tabs). Hosts query
    * this through the runtime service registry so no caller needs a static
    * import edge into this plugin.
@@ -542,7 +560,9 @@ export class BrowserService extends Service {
           // error-policy:J2 preserve native failures and prevent uncertain effects from being replayed.
           if (
             isBrowserDispatchFailure(error) ||
-            isIdempotentBrowserSubaction(command.subaction)
+            isIdempotentBrowserSubaction(command.subaction, {
+              script: command.script,
+            })
           )
             throw error;
           throw new BrowserDispatchFailure(
@@ -726,7 +746,9 @@ export class BrowserService extends Service {
         throw err;
       }
       const message = err instanceof Error ? err.message : String(err);
-      const idempotent = isIdempotentBrowserSubaction(command.subaction);
+      const idempotent = isIdempotentBrowserSubaction(command.subaction, {
+        script: command.script,
+      });
       logger.debug(
         `[BrowserService] target "${selected.id}" failed for ${command.subaction} (idempotent=${idempotent}): ${message}`,
       );

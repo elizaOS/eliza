@@ -50,6 +50,7 @@ import { HTTPException } from "hono/http-exception";
 import { logger as honoLogger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
+import assetLinksRoute from "../.well-known/assetlinks.json/route";
 import jwksRoute from "../.well-known/jwks.json/route";
 import oidcJwksRoute from "../.well-known/oidc/jwks.json/route";
 import oidcDiscoveryRoute from "../.well-known/openid-configuration/route";
@@ -466,6 +467,9 @@ export async function createApp(
   // also mounts /api/ twins of these two files; those are never advertised.
   app.route("/.well-known/openid-configuration", oidcDiscoveryRoute);
   app.route("/.well-known/oidc/jwks.json", oidcJwksRoute);
+  // Android App Link verification fetches this from the link host's root and
+  // never follows a redirect; the Pages middleware proxies it from eliza.app.
+  app.route("/.well-known/assetlinks.json", assetLinksRoute);
 
   // Rate-limit config guard (#9853 P1.1) — never let production silently serve
   // with rate limiting OFF. The limiters fall open whenever REDIS_RATE_LIMITING
@@ -485,9 +489,14 @@ export async function createApp(
     }
     const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
     const verdict = rateLimitConfigVerdict({
+      backend: c.env.CLOUD_RATE_STATE_BACKEND,
+      hasDurableBinding: Boolean(c.env.RATE_LIMIT_STATE),
       environment: env.ENVIRONMENT,
       redisRateLimiting: env.REDIS_RATE_LIMITING,
-      hasRedisClient: Boolean(buildRedisClient(c.env)),
+      hasRedisClient:
+        c.env.CLOUD_RATE_STATE_BACKEND === "cloudflare"
+          ? false
+          : Boolean(buildRedisClient(c.env)),
     });
     if (!rateLimitConfigLogged) {
       rateLimitConfigLogged = true;

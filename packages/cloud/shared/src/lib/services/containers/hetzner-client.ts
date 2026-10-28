@@ -23,7 +23,8 @@
  *
  * - This module imports `ssh2` transitively via `DockerSSHClient` and is
  *   therefore Node-only. Cloudflare Workers cannot host the routes that use
- *   it; they run on the Node sidecar (see INFRA.md "Container backend").
+ *   it; they run on the Node sidecar.
+ *
  *
  * - All errors are normalized to `HetznerClientError` so the route layer
  *   has a single error type to map to HTTP status codes.

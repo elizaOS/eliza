@@ -40,7 +40,8 @@ func fixture(t *testing.T) *repository {
 	r := &repository{files: map[string][]byte{}, signers: map[string]signature.Signer{}, channelKeys: map[string]*metadata.Key{}, body: []byte(`{"releaseId":"fixture"}`)}
 	root := metadata.Root(now.Add(365 * 24 * time.Hour))
 	root.Signed.ConsistentSnapshot = true
-	for _, role := range []string{"root", "timestamp", "snapshot", "targets", "stable", "beta"} {
+	// Stable has two distinct approver keys (threshold 2); Beta has one.
+	for _, role := range []string{"root", "timestamp", "snapshot", "targets", "stable", "stable-second", "beta"} {
 		_, priv, err := ed25519.GenerateKey(nil)
 		if err != nil {
 			t.Fatal(err)
@@ -49,7 +50,7 @@ func fixture(t *testing.T) *repository {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if role == "stable" || role == "beta" {
+		if role == "stable" || role == "stable-second" || role == "beta" {
 			r.channelKeys[role] = key
 		} else if err = root.Signed.AddKey(key, role); err != nil {
 			t.Fatal(err)
@@ -86,29 +87,29 @@ func (r *repository) publishDistribution(t *testing.T, version int64, distributi
 	}
 	targets.Signed.Delegations = &metadata.Delegations{Keys: map[string]*metadata.Key{}}
 	for _, channel := range []string{"stable", "beta"} {
-		key := r.channelKeys[channel]
-		id, e := key.ID()
-		if e != nil {
-			t.Fatal(e)
+		var ids []string
+		for _, name := range channelSigners(channel) {
+			key := r.channelKeys[name]
+			id, e := key.ID()
+			if e != nil {
+				t.Fatal(e)
+			}
+			targets.Signed.Delegations.Keys[id] = key
+			ids = append(ids, id)
 		}
-		targets.Signed.Delegations.Keys[id] = key
-		targets.Signed.Delegations.Roles = append(targets.Signed.Delegations.Roles, metadata.DelegatedRole{Name: channel, KeyIDs: []string{id}, Threshold: 1, Terminating: true, Paths: []string{channel + "/launcher.json", channel + "/standalone.json"}})
+		targets.Signed.Delegations.Roles = append(targets.Signed.Delegations.Roles, metadata.DelegatedRole{Name: channel, KeyIDs: ids, Threshold: len(ids), Terminating: true, Paths: []string{channel + "/launcher.json", channel + "/standalone.json"}})
 	}
 	stable := metadata.Targets(now.Add(24 * time.Hour))
 	stable.Signed.Version = version
 	stable.Signed.Targets["stable/"+distribution+".json"] = target
-	if _, err = stable.Sign(r.signers["stable"]); err != nil {
-		t.Fatal(err)
-	}
+	r.signChannel(t, stable, "stable")
 	r.files[baseURL+fmt.Sprintf("%d.stable.json", version)], err = stable.ToBytes(false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	beta := metadata.Targets(now.Add(24 * time.Hour))
 	beta.Signed.Version = version
-	if _, err = beta.Sign(r.signers["beta"]); err != nil {
-		t.Fatal(err)
-	}
+	r.signChannel(t, beta, "beta")
 	r.files[baseURL+fmt.Sprintf("%d.beta.json", version)], err = beta.ToBytes(false)
 	if err != nil {
 		t.Fatal(err)
@@ -144,6 +145,24 @@ func (r *repository) publishDistribution(t *testing.T, version int64, distributi
 	}
 	digest := sha256.Sum256(r.body)
 	r.files[baseURL+"targets/stable/"+hex.EncodeToString(digest[:])+"."+distribution+".json"] = r.body
+}
+
+// channelSigners names the approver keys the fixture delegates to a channel.
+func channelSigners(channel string) []string {
+	if channel == "stable" {
+		return []string{"stable", "stable-second"}
+	}
+	return []string{channel}
+}
+
+// signChannel adds every approver signature the channel's threshold requires.
+func (r *repository) signChannel(t *testing.T, m *metadata.Metadata[metadata.TargetsType], channel string) {
+	t.Helper()
+	for _, name := range channelSigners(channel) {
+		if _, err := m.Sign(r.signers[name]); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 func fetch(dir string, r *repository, clock time.Time) ([]byte, error) {
 	return FetchDescriptorInterval(dir, r.root, baseURL, "stable", "launcher", clock.UnixMilli(), clock.UnixMilli(), r)
@@ -331,7 +350,7 @@ func TestRootReplayAtNextVersionRejected(t *testing.T) {
 // Generates only public metadata and target bytes for the Android test APK.
 // Ephemeral signing keys remain in memory and are never exported.
 func TestExportAndroidFixture(t *testing.T) {
-	dir := os.Getenv("SENIOR_CARE_OTA_TEST_ASSETS")
+	dir := os.Getenv("OTA_TRUST_TEST_ASSETS")
 	if dir == "" {
 		t.Skip("Android fixture export not requested")
 	}

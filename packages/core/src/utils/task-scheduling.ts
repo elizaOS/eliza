@@ -198,6 +198,7 @@ export class TaskDrain {
 		}
 		const agentId = runtime.agentId;
 		const existing = await runtime.getTasksByName(this.taskName);
+		if (this.disposed) return;
 		const matchingTasks = existing.filter((t) =>
 			this.matchesTask(t, String(agentId)),
 		);
@@ -238,6 +239,7 @@ export class TaskDrain {
 				maxFailures: -1,
 			},
 		});
+		if (this.disposed) await this.dispose(runtime);
 	}
 
 	/**
@@ -263,7 +265,10 @@ export class TaskDrain {
 		}
 		const current = (task.metadata as Record<string, unknown>)
 			?.updateInterval as number | undefined;
-		if (current === newIntervalMs) {
+		if (
+			current === newIntervalMs &&
+			task.metadata?.baseInterval === newIntervalMs
+		) {
 			return;
 		}
 		await runtime.updateTask(taskId, {

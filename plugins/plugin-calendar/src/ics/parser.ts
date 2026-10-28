@@ -9,7 +9,11 @@
 import { createHash } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
 import { normalizeCalendarDateTimeInTimeZone } from "../internal/calendar-normalize.js";
-import { addDaysToLocalDate, getZonedDateParts } from "../internal/time.js";
+import {
+  addDaysToLocalDate,
+  getZonedDateParts,
+  type ZonedDateParts,
+} from "../internal/time.js";
 import type {
   IcsAttendee,
   IcsParsedCalendar,
@@ -370,7 +374,10 @@ function decodeIcsText(value: string): string {
     if (escaped === "n" || escaped === "N") decoded += "\n";
     else if (escaped === "," || escaped === ";" || escaped === "\\")
       decoded += escaped;
-    else decoded += escaped;
+    // RFC 5545 defines no meaning for any other escape. Keep the backslash
+    // so literal text such as Windows paths ("C:\notes\file") survives
+    // instead of silently losing characters.
+    else decoded += `\\${escaped}`;
   }
   return decoded;
 }
@@ -453,13 +460,15 @@ function parseDateProperty(
       `${field} must use RFC 5545 DATE or DATE-TIME basic format.`,
     );
   }
+  // RFC 5545: represent leap seconds as second 59 on clocks without support.
+  const second = Number(dateTimeMatch[6] ?? "0");
   const parts = {
     year: Number(dateTimeMatch[1]),
     month: Number(dateTimeMatch[2]),
     day: Number(dateTimeMatch[3]),
     hour: Number(dateTimeMatch[4]),
     minute: Number(dateTimeMatch[5]),
-    second: Number(dateTimeMatch[6] ?? "0"),
+    second: second === 60 ? 59 : second,
   };
   validateDateParts(parts);
   const isUtc = dateTimeMatch[7] === "Z";
@@ -478,7 +487,7 @@ function parseDateProperty(
   const instant = isUtc
     ? dUtc.toISOString()
     : normalizeCalendarDateTimeInTimeZone(
-        `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${dateTimeMatch[6] ?? "00"}`,
+        `${dateTimeMatch[1]}-${dateTimeMatch[2]}-${dateTimeMatch[3]}T${dateTimeMatch[4]}:${dateTimeMatch[5]}:${String(parts.second).padStart(2, "0")}`,
         field,
         timezone,
       );
@@ -568,6 +577,141 @@ function endFromDuration(
     timezone: start.timezone,
     localDate,
   };
+}
+
+function parsedStartAt(
+  startAt: string,
+  timezone: string,
+  isAllDay: boolean,
+): ParsedDateValue {
+  const instant = new Date(startAt);
+  if (!Number.isFinite(instant.getTime())) {
+    throw new Error("ICS occurrence start is not a valid instant.");
+  }
+  const zone = isAllDay ? "UTC" : timezone;
+  const parts = getZonedDateParts(instant, zone);
+  return {
+    instant: instant.toISOString(),
+    isDate: isAllDay,
+    timezone,
+    localDate: {
+      year: parts.year,
+      month: parts.month,
+      day: parts.day,
+    },
+  };
+}
+
+/** Apply a validated RFC 5545 duration to one recurring occurrence. */
+export function endAtFromIcsDuration(args: {
+  startAt: string;
+  timezone: string;
+  isAllDay: boolean;
+  duration: string;
+}): string {
+  return endFromDuration(
+    parsedStartAt(args.startAt, args.timezone, args.isAllDay),
+    args.duration,
+  ).instant;
+}
+
+/**
+ * Spring-forward DST gap size on a local date in milliseconds, or 0.
+ */
+function springForwardGapMs(
+  zone: string,
+  date: Pick<ZonedDateParts, "year" | "month" | "day">,
+): number {
+  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+  const at = (hour: number) =>
+    normalizeCalendarDateTimeInTimeZone(
+      `${pad(date.year, 4)}-${pad(date.month)}-${pad(date.day)}T${pad(hour)}:00:00`,
+      "DST gap probe",
+      zone,
+    );
+  const dayStart = at(0);
+  const dayEnd = at(23);
+  if (!dayStart || !dayEnd) return 0;
+  const offsetMs = (instantMs: number) => {
+    const parts = getZonedDateParts(new Date(instantMs), zone);
+    return (
+      Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour % 24,
+        parts.minute,
+        parts.second,
+      ) - instantMs
+    );
+  };
+  // Probe an hour before local midnight: a zone that springs forward at
+  // midnight (America/Santiago, Asia/Beirut) has no 00:00, so `dayStart`
+  // already carries the post-gap offset.
+  const gap =
+    offsetMs(Date.parse(dayEnd)) - offsetMs(Date.parse(dayStart) - 3_600_000);
+  return gap > 0 ? gap : 0;
+}
+
+/**
+ * Find an inclusive recurrence-search boundary for an event that can still
+ * overlap `endAt` after a nominal RFC 5545 duration. This is the inverse of
+ * {@link endAtFromIcsDuration}: exact units move on the timeline, then nominal
+ * days move by civil date in the event zone.
+ */
+export function startAtBeforeIcsDurationEnd(args: {
+  endAt: string;
+  timezone: string;
+  isAllDay: boolean;
+  duration: string;
+}): string {
+  const duration = parseDuration(args.duration);
+  let boundary = new Date(args.endAt);
+  if (!Number.isFinite(boundary.getTime())) {
+    throw new Error("ICS recurrence boundary is not a valid instant.");
+  }
+  boundary = new Date(boundary.getTime() - duration.exactMs);
+  if (duration.days === 0) return boundary.toISOString();
+
+  const zone = args.isAllDay ? "UTC" : args.timezone;
+  const clock = getZonedDateParts(boundary, zone);
+  const localDate = addDaysToLocalDate(clock, -duration.days);
+  const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+  const resolved = normalizeCalendarDateTimeInTimeZone(
+    `${pad(localDate.year, 4)}-${pad(localDate.month)}-${pad(localDate.day)}T${pad(clock.hour % 24)}:${pad(clock.minute)}:${pad(clock.second)}`,
+    "recurrence range start",
+    zone,
+  );
+  if (!resolved)
+    throw new Error("ICS recurrence boundary could not be resolved.");
+  // A boundary wall time inside a DST gap resolves forward by the gap size.
+  // Step back by that shift so the boundary stays at or before the earliest
+  // start that can still overlap; callers filter each occurrence exactly.
+  const resolvedClock = getZonedDateParts(new Date(resolved), zone);
+  const wallMs = (parts: ZonedDateParts) =>
+    Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour % 24,
+      parts.minute,
+      parts.second,
+    );
+  const gapShiftMs = wallMs(resolvedClock) - wallMs({ ...clock, ...localDate });
+  let result =
+    gapShiftMs > 0
+      ? new Date(Date.parse(resolved) - gapShiftMs).toISOString()
+      : resolved;
+  // The end date (clock's date) may have a spring-forward DST gap. A start
+  // whose wall-clock falls inside that gap resolves forward by the gap size,
+  // so its end can land after the nominal end even when the start is earlier
+  // than the boundary above. Step back by the gap size so those overlapping
+  // starts stay in range; callers filter each occurrence exactly.
+  const endGapMs = springForwardGapMs(zone, clock);
+  if (endGapMs > 0) {
+    result = new Date(Date.parse(result) - endGapMs).toISOString();
+  }
+  return result;
 }
 
 function addOneLocalDay(
@@ -727,6 +871,7 @@ function parseEvent(
     status: propertyValue(component, "STATUS")?.toLowerCase() ?? "confirmed",
     startAt: start.instant,
     endAt: end.instant,
+    duration,
     isAllDay: start.isDate,
     timezone: start.timezone,
     url: propertyValue(component, "URL"),

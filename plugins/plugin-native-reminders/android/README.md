@@ -52,3 +52,19 @@ and no AlarmManager entry or notification. A retried save with the same ID and t
 idempotent. `todoDecision` takes the exact reviewed target and `done`, `reopen` or
 `cancel`. Reviewed `operateReminder` operations and `reminderDecision` refuse undated
 to-dos.
+
+## Optional reviewed-question action
+
+The constructor overload's final `questionActionLabel` enables an authenticated
+notification action. Omit it (or use null) to preserve existing publication.
+Question and content taps have separate opaque tokens; existing Done, Snooze and
+content routes are unchanged. `pendingReminderTap.question` identifies a question
+route, and `retained` requires both the exact reminder revision and its posted
+notification action. Hosts must independently fence the current user/agent,
+unlocked foreground and reviewed excerpt before prefilling a composer. The
+engine never starts a model call or sends a message.
+
+On explicit review cancellation, call `releaseReminderQuestion` to return the
+pending question to a reusable state without consuming or cancelling its notice.
+Only consume after the exact source has been rechecked and the reviewed draft is
+ready to hand off. Interrupted review can retain the pending tap for later retry.

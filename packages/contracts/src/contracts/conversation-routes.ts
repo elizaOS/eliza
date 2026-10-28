@@ -81,6 +81,17 @@ export const PostConversationTruncateRequestSchema = z
     ...(value.inclusive !== undefined ? { inclusive: value.inclusive } : {}),
   }));
 
+/**
+ * The part of a stored assistant reply that the user heard before they
+ * interrupted playback: a non-empty prefix of the stored reply text or of its
+ * spoken form (`sanitizeSpeechText`).
+ */
+export const PostConversationMessageHeardRequestSchema = z
+  .object({
+    heardText: z.string().regex(/\S/, "heardText must not be empty"),
+  })
+  .strict();
+
 export const PatchConversationRequestSchema = z
   .object({
     title: z.string().optional(),
@@ -132,6 +143,9 @@ export type PostConversationRequest = z.infer<
 >;
 export type PostConversationTruncateRequest = z.infer<
   typeof PostConversationTruncateRequestSchema
+>;
+export type PostConversationMessageHeardRequest = z.infer<
+  typeof PostConversationMessageHeardRequestSchema
 >;
 export type PatchConversationRequest = z.infer<
   typeof PatchConversationRequestSchema

@@ -69,6 +69,19 @@ commits = [
   "82694fe2b91e9ca63635d5d74e0ab67401c0143e",
 ]
 
+# The first subscription-entitlement commit used the base64 of the text
+# "not a key" as a malformed signing-key fixture. The test now builds that value
+# at runtime. Allowlist only that commit, file and value.
+[[allowlists]]
+description = "historical malformed entitlement signing-key fixture (base64 of 'not a key')"
+condition = "AND"
+commits = ["da8590a40373dacbac2f0907a7d251a185b5ba1d"]
+paths = [
+  '''^packages/cloud/shared/src/lib/services/subscription-entitlement-token\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = ['''^bm90IGEga2V5$''']
+
 # The inference-auth controlled-probe test uses a fixed discriminator with a
 # 32-character lowercase-hex suffix so the trusted bypass path is exercised
 # without accepting a production credential. Scope both the file and exact
@@ -175,6 +188,20 @@ paths = [
 regexTarget = "line"
 regexes = [
   '''CEREBRAS_API_KEY= EVAL_CEREBRAS_API_KEY= ELIZA_E2E_CEREBRAS_API_KEY=''',
+]
+
+# The native-host sensitive-text tests use an invented password canary to prove
+# the scrubber removes it. Match only that literal in that test file; every
+# other value in it stays scanned.
+[[allowlists]]
+description = "Native-host sensitive-text test fictional password canary"
+condition = "AND"
+paths = [
+  '''(^|/)packages/host/native-host/sensitive-text\.test\.mjs$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^hunter2-fiction$''',
 ]
 
 [[allowlists]]

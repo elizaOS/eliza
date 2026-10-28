@@ -15,6 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { findCatalogModel, isDefaultEligibleId } from "./catalog";
+import { withConfigFileLock } from "./config-file-lock";
 import { manifestPassesActivationGate } from "./manifest";
 import { localInferenceRoot } from "./paths";
 import { defaultManifestLoader, type ManifestLoader } from "./ram-budget";
@@ -43,6 +44,24 @@ export class AssignmentRejectedError extends Error {
 	}
 }
 
+/**
+ * Raised when assignments.json exists but cannot be read or parsed. Distinct
+ * from "no file yet" (an empty policy): callers must not treat an unreadable
+ * policy as an empty one, or the next read-modify-write rewrites the file from
+ * that empty map and destroys the user's other slots.
+ */
+export class AssignmentsUnreadableError extends Error {
+	readonly code = "ASSIGNMENTS_UNREADABLE" as const;
+	readonly filePath: string;
+	constructor(filePath: string, cause: unknown) {
+		super(`failed to read local inference assignments at ${filePath}`, {
+			cause,
+		});
+		this.name = "AssignmentsUnreadableError";
+		this.filePath = filePath;
+	}
+}
+
 interface AssignmentsFile {
 	version: 1;
 	assignments: ModelAssignments;
@@ -50,6 +69,15 @@ interface AssignmentsFile {
 
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), ASSIGNMENTS_FILENAME);
+}
+
+/**
+ * Run a read-modify-write of assignments.json under the same per-file lock
+ * as the HTTP routes, so a concurrent slot change (another slot, a finished
+ * download filling defaults) is not overwritten by a stale read.
+ */
+export function withAssignmentsLock<T>(task: () => Promise<T>): Promise<T> {
+	return withConfigFileLock(assignmentsPath(), task);
 }
 
 function isCuratedEliza1AssignmentId(modelId: string): boolean {
@@ -83,8 +111,15 @@ export async function readAssignments(): Promise<ModelAssignments> {
 		const parsed = JSON.parse(raw) as AssignmentsFile;
 		if (parsed?.version !== 1 || !parsed.assignments) return {};
 		return sanitizeAssignments(parsed.assignments);
-	} catch {
-		return {};
+	} catch (error) {
+		// No assignments file yet is legitimately "no policy declared", and the
+		// boot-time auto-assign path depends on that. A file that exists but
+		// cannot be read or parsed is not the same thing: returning {} there makes
+		// every caller treat "policy unreadable" as "policy empty", and the next
+		// read-modify-write (setAssignment, ensureBundledAssignment) rewrites the
+		// file from that empty map and destroys the user's other slots.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+		throw new AssignmentsUnreadableError(assignmentsPath(), error);
 	}
 }
 
@@ -190,23 +225,44 @@ export async function setAssignment(
 	slot: AgentModelSlot,
 	modelId: string | null,
 ): Promise<ModelAssignments> {
-	const current = await readAssignments();
-	const next: ModelAssignments = { ...current };
-	if (modelId) {
-		if (!isCuratedEliza1AssignmentId(modelId)) {
-			throw new AssignmentRejectedError({
-				slot,
-				modelId,
-				message:
-					"Local inference assignments are limited to curated Eliza-1 tiers.",
-			});
+	return withAssignmentsLock(async () => {
+		const current = await readAssignments();
+		const next: ModelAssignments = { ...current };
+		if (modelId) {
+			if (!isCuratedEliza1AssignmentId(modelId)) {
+				throw new AssignmentRejectedError({
+					slot,
+					modelId,
+					message:
+						"Local inference assignments are limited to curated Eliza-1 tiers.",
+				});
+			}
+			next[slot] = modelId;
+		} else {
+			delete next[slot];
 		}
-		next[slot] = modelId;
-	} else {
-		delete next[slot];
-	}
-	await writeAssignments(next);
-	return next;
+		await writeAssignments(next);
+		return next;
+	});
+}
+
+/**
+ * Remove every saved slot that names `modelId`. Called after an uninstall:
+ * a saved slot overrides the recommendation, so a slot left on a deleted
+ * model fails every load even while another model is installed.
+ */
+export async function clearAssignmentsForModel(modelId: string): Promise<void> {
+	return withAssignmentsLock(async () => {
+		const current = await readAssignments();
+		const next: ModelAssignments = {};
+		for (const [slot, assigned] of Object.entries(current) as Array<
+			[AgentModelSlot, string | undefined]
+		>) {
+			if (assigned && assigned !== modelId) next[slot] = assigned;
+		}
+		if (Object.keys(next).length === Object.keys(current).length) return;
+		await writeAssignments(next);
+	});
 }
 
 /**
@@ -254,33 +310,35 @@ export function isEmbeddingModelId(modelId: string): boolean {
 export async function ensureDefaultAssignment(
 	modelId: string,
 ): Promise<ModelAssignments> {
-	const current = await readAssignments();
-	if (!isDefaultEligibleId(modelId)) return current;
+	return withAssignmentsLock(async () => {
+		const current = await readAssignments();
+		if (!isDefaultEligibleId(modelId)) return current;
 
-	const next: ModelAssignments = { ...current };
+		const next: ModelAssignments = { ...current };
 
-	if (isEmbeddingModelId(modelId)) {
-		if (!next.TEXT_EMBEDDING) next.TEXT_EMBEDDING = modelId;
-	} else {
-		if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
-		if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
-		if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
-		if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
-	}
+		if (isEmbeddingModelId(modelId)) {
+			if (!next.TEXT_EMBEDDING) next.TEXT_EMBEDDING = modelId;
+		} else {
+			if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
+			if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
+			if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
+			if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
+		}
 
-	// Cheap shortcut: skip the rewrite when nothing changed.
-	if (
-		next.TEXT_SMALL === current.TEXT_SMALL &&
-		next.TEXT_LARGE === current.TEXT_LARGE &&
-		next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
-		next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
-		next.TRANSCRIPTION === current.TRANSCRIPTION
-	) {
-		return current;
-	}
+		// Cheap shortcut: skip the rewrite when nothing changed.
+		if (
+			next.TEXT_SMALL === current.TEXT_SMALL &&
+			next.TEXT_LARGE === current.TEXT_LARGE &&
+			next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
+			next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
+			next.TRANSCRIPTION === current.TRANSCRIPTION
+		) {
+			return current;
+		}
 
-	await writeAssignments(next);
-	return next;
+		await writeAssignments(next);
+		return next;
+	});
 }
 
 /**

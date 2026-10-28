@@ -66,6 +66,26 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@elizaos\/contracts$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/contracts\/calendar-linked-sync$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "calendar-linked-sync.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },

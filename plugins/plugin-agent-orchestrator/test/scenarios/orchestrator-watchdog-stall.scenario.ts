@@ -71,7 +71,7 @@ async function runWatchdogStall(): Promise<WatchdogScenarioResult> {
   process.env.ELIZA_CONFIG_PATH = "/nonexistent-watchdog-scenario-config.json";
   process.env.ELIZA_AGENT_SPEND_CAP_USD = "1.00";
   resetSessionSpendUsd();
-  addSessionSpendUsd(LOOP_SESSION, 0.85); // 85% of the $1.00 cap
+  await addSessionSpendUsd(LOOP_SESSION, 0.85); // 85% of the $1.00 cap
 
   const grills: Array<{ sessionId: string; text: string }> = [];
   const posts: Array<{ roomId?: string; source?: string; text: string }> = [];

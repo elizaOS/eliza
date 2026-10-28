@@ -21,3 +21,9 @@ It invokes the real registered tap methods while a synthetic storage adapter
 blocks reads, verifies that a main-thread heartbeat and WebView callbacks still
 run, then releases storage and requires each promise to settle. It does not use
 production data or qualify installed-app migration.
+
+The optional question action also has local Android-shadow tests, discovered by
+`:reminders:testDebugUnitTest` in this consumer build. They exercise actual engine
+storage and notification builders, distinct content/question identities, failed
+release persistence, reusable cancellation and refusal after the OS action is
+removed. These tests do not establish real lock-screen or PendingIntent delivery.

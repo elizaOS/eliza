@@ -30,6 +30,11 @@ export async function buildOrganizationDowngradeTestAccount(
     amountDueNowCents: 0,
     targetBaseAmountCents: 3000,
     targetAllowanceUsd: "25.000000",
+    allowanceTerms: {
+      fundingClass: "allowance_eligible",
+      rollover: false,
+      expiresAt: "billing_period_end",
+    },
     recurringEstimate: {
       amountDueCents: 3000,
       subtotalCents: 3000,

@@ -27,6 +27,8 @@ import { sendJsonError as sendJsonErrorResponse } from "./response.js";
 const MAX_BODY_BYTES = 1048576;
 export interface CompatRuntimeState {
   current: AgentRuntime | null;
+  /** Authentication only; this runtime's services remain stopped. */
+  stoppedAuthRuntime?: AgentRuntime | null;
   pendingAgentName: string | null;
   pendingRestartReasons: string[];
   reloadConfigFromDisk?: () => void;

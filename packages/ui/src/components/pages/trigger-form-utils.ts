@@ -86,6 +86,12 @@ export interface TriggerFormState {
   durationUnit: DurationUnit;
   /** Zone stored on the trigger being edited or duplicated. */
   timezone?: string;
+  /**
+   * One-time instant stored on the trigger being edited. The input text alone
+   * cannot name the second of two repeated wall-clock times (daylight-saving
+   * fall-back), so an unchanged field sends this instant back.
+   */
+  storedScheduledAtIso?: string;
 }
 export const emptyForm: TriggerFormState = {
   displayName: "",
@@ -248,14 +254,38 @@ export function formFromTrigger(trigger: TriggerSummary): TriggerFormState {
     triggerType: trigger.triggerType,
     eventKind: trigger.eventKind ?? "message.received",
     wakeMode: trigger.wakeMode,
-    scheduledAtIso: trigger.scheduledAtIso ?? "",
+    scheduledAtIso: localDateTimeInput(trigger.scheduledAtIso ?? ""),
     cronExpression: trigger.cronExpression ?? "0 * * * *",
     maxRuns: trigger.maxRuns ? String(trigger.maxRuns) : "",
     enabled: trigger.enabled,
     durationValue: String(value),
     durationUnit: unit,
     timezone: trigger.timezone,
+    storedScheduledAtIso: trigger.scheduledAtIso,
   };
+}
+/**
+ * The `YYYY-MM-DDTHH:mm` wall-clock value a `datetime-local` input shows for a
+ * stored instant, in the browser zone. The input has no zone, so the form
+ * sends the instant it previews (see `buildCreateRequest`), not the raw text:
+ * the agent host can run in another zone.
+ */
+function localDateTimeInput(iso: string): string {
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return iso;
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+/** The instant a one-time trigger runs at: the stored one while the field is unchanged. */
+export function onceInstant(form: TriggerFormState): string {
+  const text = form.scheduledAtIso.trim();
+  if (
+    form.storedScheduledAtIso &&
+    localDateTimeInput(form.storedScheduledAtIso) === text
+  )
+    return new Date(form.storedScheduledAtIso).toISOString();
+  return new Date(text).toISOString();
 }
 export function buildCreateRequest(
   form: TriggerFormState,
@@ -276,8 +306,7 @@ export function buildCreateRequest(
       form.triggerType === "interval"
         ? durationToMs(Number(form.durationValue) || 1, form.durationUnit)
         : undefined,
-    scheduledAtIso:
-      form.triggerType === "once" ? form.scheduledAtIso.trim() : undefined,
+    scheduledAtIso: form.triggerType === "once" ? onceInstant(form) : undefined,
     cronExpression:
       form.triggerType === "cron" ? form.cronExpression.trim() : undefined,
     eventKind: form.triggerType === "event" ? form.eventKind.trim() : undefined,

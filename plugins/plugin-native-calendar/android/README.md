@@ -16,7 +16,20 @@ without registering the writable bridge or requesting WRITE_CALENDAR. The host
 checks READ_CALENDAR and its source-consent policy before reading. Calendar and
 instance reads return the complete requested range; unavailable provider cursors
 reject rather than masquerading as empty data. The existing bridge list method
-uses this same reader and no longer truncates at 2,000 instances.
+uses this same reader and no longer truncates at 2,000 instances. With the host
+package and creation URI prefix, the reader also returns `creationId` for
+events the host created through `save`. CalendarProvider can reuse a row id
+after a deletion, so hosts that link records to events use `creationId`. Other
+apps with calendar write access can set the same fields, so treat it as a link,
+not as proof of ownership.
+`SelectedCalendarReader.readAvailability` reads free/busy rows of exactly the
+selected calendars for a window of at most seven days. It queries only times,
+the all-day flag, availability and status, never titles, descriptions,
+locations or attendees. All-day events match the owner's civil dates. Cancelled
+events and declined invitations are skipped. It returns at most 200 rows and
+throws `TooMany` above that, and throws `SourceChanged` when a selected calendar
+changed before or during the read. `availabilitySources` lists the calendars
+readable at free/busy level or above, with the source revision a read asserts.
 `reviewNewEvent` only constructs an ACTION_INSERT editor intent; it neither
 dispatches the intent nor writes an event. The host handles launch failures and
 reports dispatch separately from a saved-event outcome.

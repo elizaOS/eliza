@@ -27,11 +27,14 @@ import {
   createGlobalPauseStore,
   resolvePendingPromptsStore,
 } from "@elizaos/plugin-assistant";
+import { computeNextFireAt } from "@elizaos/plugin-scheduling";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
+  getRecordedTestNotifications,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
+import { resolveOwnerFactStore } from "../owner/fact-store.ts";
 import { LifeOpsRepository } from "../repository.ts";
 import { settleDeferredInboundScans } from "./deferred-inbound-scans.ts";
 import {
@@ -86,6 +89,7 @@ describe("processDueScheduledTasks — production wiring", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     if (runtimeResult) {
       await runtimeResult.cleanup();
       runtimeResult = null;
@@ -136,6 +140,80 @@ describe("processDueScheduledTasks — production wiring", () => {
     });
     const transitions = log.map((entry) => entry.transition);
     expect(transitions).toContain("fired");
+  });
+
+  it("fires owner-local cron after travel changes the zone despite a future home-zone index", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    // The scheduler preflight and runner must observe the same instant.
+    // Otherwise the runner correctly rechecks the cron against today's clock.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-11T00:01:00.000Z"));
+    const facts = resolveOwnerFactStore(runtime);
+    const provenance = {
+      source: "profile_save" as const,
+      recordedAt: "2026-10-10T00:00:00.000Z",
+    };
+    await facts.update({ timezone: "America/Los_Angeles" }, provenance);
+    const lastFireAt = "2026-10-10T16:00:00.000Z";
+    const seed = await seedScheduledTask(runtime, {
+      kind: "reminder",
+      promptInstructions: "Prepare the daily report.",
+      trigger: { kind: "cron", expression: "0 9 * * *", tz: "owner_local" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      ownerVisible: true,
+      state: {
+        status: "completed",
+        followupCount: 0,
+        firedAt: lastFireAt,
+      },
+      metadata: { createdAtIso: provenance.recordedAt },
+    });
+    const repo = new LifeOpsRepository(runtime);
+    const index = await computeNextFireAt(seed, {
+      now: new Date(lastFireAt),
+      ownerFacts: { timezone: "America/Los_Angeles" },
+    });
+    expect(index).toBe("2026-10-11T16:00:00.000Z");
+    await repo.upsertScheduledTask(runtime.agentId, seed, {
+      nextFireAtIso: index,
+    });
+    const fixedZone = {
+      ...seed,
+      taskId: `${seed.taskId}_fixed`,
+      trigger: { ...seed.trigger, tz: "America/Los_Angeles" },
+    } as ScheduledTask;
+    await repo.upsertScheduledTask(runtime.agentId, fixedZone, {
+      nextFireAtIso: index,
+    });
+    await facts.setActiveTravel(
+      {
+        startIso: "2026-10-10T23:00:00.000Z",
+        endIso: "2026-10-12T00:00:00.000Z",
+        destinationTimezone: "Asia/Tokyo",
+      },
+      provenance,
+    );
+    const request = {
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-10-11T00:01:00.000Z"),
+      limit: 5,
+    };
+    const result = await processDueScheduledTasks(request);
+    expect(result.errors).toEqual([]);
+    expect(result.fires.map((fire) => fire.taskId)).toEqual([seed.taskId]);
+    expect(result.fires[0]?.occurrenceAtIso).toBe("2026-10-11T00:00:00.000Z");
+    expect(
+      (await repo.getScheduledTask(runtime.agentId, seed.taskId))?.state.status,
+    ).toBe("fired");
+    expect(
+      (await repo.getScheduledTask(runtime.agentId, fixedZone.taskId))?.state
+        .status,
+    ).toBe("completed");
+    expect((await processDueScheduledTasks(request)).fires).toEqual([]);
   });
 
   it("reconciles a stale bound fire after restart by replaying its provider receipt", async () => {
@@ -199,6 +277,7 @@ describe("processDueScheduledTasks — production wiring", () => {
         chatDeliveryBinding: {
           version: 1,
           source: "telegram",
+          accountId: "personal",
           roomId,
           channelId: "owner-chat-42",
           audience: {
@@ -1011,3 +1090,54 @@ describe("processDueScheduledTasks — production wiring", () => {
     warnSpy.mockRestore();
   });
 });
+
+it("does not deliver a scheduled task the owner dismissed while its message was rendered", async () => {
+  const fixture = await createLifeOpsTestRuntime();
+  const { runtime } = fixture;
+  try {
+    const repo = new LifeOpsRepository(runtime);
+    const tickAt = new Date("2026-05-09T12:01:00.000Z");
+    const taskId = "st_dismissed_during_render";
+    await repo.upsertScheduledTask(runtime.agentId, {
+      taskId,
+      kind: "reminder",
+      promptInstructions: "Remind the owner to call the pharmacy.",
+      trigger: { kind: "once", atIso: "2026-05-09T12:00:00.000Z" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      state: { status: "scheduled", followupCount: 0 },
+    } as never);
+    if (typeof runtime.getModel === "function") {
+      vi.spyOn(runtime, "getModel").mockReturnValue((async () => "x") as never);
+    }
+    let dismissed = false;
+    vi.spyOn(runtime, "useModel").mockImplementation(async () => {
+      if (!dismissed) {
+        dismissed = true;
+        await getScheduledTaskRunner(runtime, {
+          agentId: runtime.agentId,
+          now: () => tickAt,
+        }).apply(taskId, "dismiss", { reason: "owner cancelled" });
+      }
+      return "Hey, don't forget to call the pharmacy.";
+    });
+
+    await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: tickAt,
+      limit: 10,
+    });
+
+    expect(dismissed).toBe(true);
+    expect(
+      (await repo.getScheduledTask(runtime.agentId, taskId))?.state.status,
+    ).toBe("dismissed");
+    expect(getRecordedTestNotifications(runtime)).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 180_000);

@@ -2,6 +2,15 @@
 import type { OrganizationSubscriptionUpgradeReviewDto } from "@elizaos/cloud-sdk/contracts";
 import { z } from "zod";
 
+/** Optional only for historical saved reviews. New quotes retain the catalog terms. */
+export const organizationAllowanceTermsSchema = z
+  .object({
+    fundingClass: z.literal("allowance_eligible"),
+    rollover: z.literal(false),
+    expiresAt: z.literal("billing_period_end"),
+  })
+  .strict();
+
 const cents = z.number().int().safe();
 const amount = z.string().regex(/^(0|[1-9]\d*)\.\d{6}$/);
 const invoice = z
@@ -30,6 +39,7 @@ export const organizationUpgradeReviewSchema: z.ZodType<OrganizationSubscription
       currentPeriodEnd: z.iso.datetime(),
       targetBaseAmountCents: cents.positive(),
       targetAllowanceUsd: amount,
+      allowanceTerms: organizationAllowanceTermsSchema.optional(),
       additionalAllowanceUsd: amount,
       dueNow: invoice,
       recurringEstimate: invoice,

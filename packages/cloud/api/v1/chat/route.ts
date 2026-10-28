@@ -414,6 +414,7 @@ app.post("/", async (c) => {
             executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
             apiKeyId: apiKey?.id,
+            userId: user.id,
           },
         );
       } catch (error) {

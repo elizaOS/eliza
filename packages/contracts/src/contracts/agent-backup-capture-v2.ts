@@ -5,6 +5,7 @@
  * provider, object-storage, encryption-key, or credential metadata.
  */
 
+import { validateUuid } from "@elizaos/core/protocol";
 import z from "zod";
 import { closeBackupIterator } from "./close-backup-iterator.js";
 
@@ -45,6 +46,14 @@ export const AGENT_BACKUP_CAPTURE_V2_LIMITS = Object.freeze({
 const UUIDSchema = z
   .uuid()
   .refine((value) => value === value.toLowerCase(), "UUID must be lowercase");
+// Agent IDs use Core canonical UUIDs, including persisted deterministic version 0.
+// Operation and activation IDs retain their existing RFC UUID schema.
+const AgentIdSchema = z
+  .string()
+  .refine(
+    (value) => validateUuid(value) !== null && value === value.toLowerCase(),
+    "Agent ID must be a canonical lowercase UUID",
+  );
 const CanonicalUint64StringSchema = z
   .string()
   .regex(/^(?:0|[1-9][0-9]{0,19})$/, "Expected a canonical uint64 decimal")
@@ -112,7 +121,7 @@ export const AgentBackupCaptureV2RequestSchema = z.strictObject({
   format: z.literal(AGENT_BACKUP_CAPTURE_V2_REQUEST_FORMAT),
   schemaVersion: z.literal(AGENT_BACKUP_CAPTURE_V2_SCHEMA_VERSION),
   operationId: UUIDSchema,
-  agentId: UUIDSchema,
+  agentId: AgentIdSchema,
   activationGeneration: UUIDSchema,
   lifecycleRevision: CanonicalUint64StringSchema,
   deadlineEpochMs: SafePositiveIntegerSchema,
@@ -164,7 +173,7 @@ const CaptureStartHeaderSchema = z.strictObject({
   ...HeaderBaseShape,
   kind: z.literal("capture-start"),
   operationId: UUIDSchema,
-  agentId: UUIDSchema,
+  agentId: AgentIdSchema,
   activationGeneration: UUIDSchema,
   lifecycleRevision: CanonicalUint64StringSchema,
   createdAt: CanonicalTimestampSchema,

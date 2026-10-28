@@ -167,7 +167,22 @@ const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
   (window as SpeechRecognitionWindow).webkitSpeechRecognition ||
   null;
 
-function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
+/**
+ * Accept a positive finite minCommandLength (floored to an integer); anything
+ * else is rejected as `undefined` so callers choose the fallback.
+ */
+function parseMinCommandLength(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : undefined;
+}
+
+type NormalizedSwabbleConfig = SwabbleConfig & {
+  minCommandLength: number;
+  sampleRate: number;
+};
+
+function normalizeConfig(config: SwabbleConfig): NormalizedSwabbleConfig {
   if (!config || !Array.isArray(config.triggers)) {
     throw new Error("Swabble config requires a triggers array");
   }
@@ -178,12 +193,7 @@ function normalizeConfig(config: SwabbleConfig): SwabbleConfig {
   if (triggers.length === 0) {
     throw new Error("Swabble config requires at least one non-empty trigger");
   }
-  const minCommandLength =
-    typeof config.minCommandLength === "number" &&
-    Number.isFinite(config.minCommandLength) &&
-    config.minCommandLength > 0
-      ? Math.floor(config.minCommandLength)
-      : 1;
+  const minCommandLength = parseMinCommandLength(config.minCommandLength) ?? 1;
   const sampleRate =
     typeof config.sampleRate === "number" &&
     Number.isFinite(config.sampleRate) &&
@@ -234,7 +244,7 @@ class WakeWordGate {
       trigger: t.toLowerCase(),
       regex: buildTriggerMatcher(t),
     }));
-    this.minCommandLength = config.minCommandLength ?? 1;
+    this.minCommandLength = normalized.minCommandLength;
     // Note: minPostTriggerGap cannot be enforced - Web Speech API lacks timing data
   }
 
@@ -247,12 +257,9 @@ class WakeWordGate {
         regex: buildTriggerMatcher(t),
       }));
     }
-    if (
-      typeof config.minCommandLength === "number" &&
-      Number.isFinite(config.minCommandLength) &&
-      config.minCommandLength > 0
-    ) {
-      this.minCommandLength = Math.floor(config.minCommandLength);
+    const minCommandLength = parseMinCommandLength(config.minCommandLength);
+    if (minCommandLength !== undefined) {
+      this.minCommandLength = minCommandLength;
     }
   }
 
@@ -308,6 +315,11 @@ function stoppedBeforeStart(): SwabbleStartResult {
     error: "Speech recognition was stopped before it started",
   };
 }
+
+type NativeAudioCaptureResult =
+  | { status: "started" }
+  | { status: "retired" }
+  | { status: "failed"; error: string };
 
 export class SwabbleWeb extends WebPlugin {
   private recognition: SpeechRecognitionInstance | null = null;
@@ -404,38 +416,47 @@ export class SwabbleWeb extends WebPlugin {
   }
 
   /**
-   * Opens the microphone feeding native (Whisper) transcription. Returns false
-   * when a stop() retired `generation` while getUserMedia was pending (for
-   * example while the OS permission prompt was open); any stream acquired for
-   * the retired start is released instead of being installed.
+   * Opens the microphone feeding native (Whisper) transcription. Reports when
+   * a stop() retired `generation` while getUserMedia was pending (for example
+   * while the OS permission prompt was open), or when capture failed. Any
+   * stream acquired for a retired start is released instead of being installed.
    */
   private async startNativeAudioCapture(
     generation: number,
     sampleRate = 16000,
-  ): Promise<boolean> {
+  ): Promise<NativeAudioCaptureResult> {
     const rpcRequest = this.getRendererRpc()?.request?.swabbleAudioChunk;
     let stream: MediaStream | null;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
-      if (generation !== this.startGeneration) return false;
+      if (generation !== this.startGeneration) return { status: "retired" };
       // error-policy:J1 microphone is the sole audio source feeding native
       // (Whisper) transcription; a denied/failed capture must surface to the
       // app's error listener, not silently leave the bridge with no audio.
+      const message = `Microphone capture failed: ${err instanceof Error ? err.message : String(err)}`;
       this.notifyListeners("error", {
         code: "mic-permission",
-        message: `Microphone capture failed: ${err instanceof Error ? err.message : String(err)}`,
+        message,
         recoverable: false,
       });
-      return true;
+      return { status: "failed", error: message };
     }
     if (generation !== this.startGeneration) {
       stream?.getTracks().forEach((t) => {
         t.stop();
       });
-      return false;
+      return { status: "retired" };
     }
-    if (!stream) return true;
+    if (!stream) {
+      const message = "Microphone capture failed: no audio stream was returned";
+      this.notifyListeners("error", {
+        code: "mic-permission",
+        message,
+        recoverable: false,
+      });
+      return { status: "failed", error: message };
+    }
     this.captureStream = stream;
     this.captureContext = new AudioContext();
     const source = this.captureContext.createMediaStreamSource(stream);
@@ -479,7 +500,7 @@ export class SwabbleWeb extends WebPlugin {
     sink.gain.value = 0;
     processor.connect(sink);
     sink.connect(this.captureContext.destination);
-    return true;
+    return { status: "started" };
   }
 
   private computeRms(samples: Float32Array): number {
@@ -541,13 +562,24 @@ export class SwabbleWeb extends WebPlugin {
         this.usingNativeIpc = true;
         this.config = config;
         this.setupNativeListeners();
-        const owned = await this.startNativeAudioCapture(
+        const capture = await this.startNativeAudioCapture(
           generation,
           config.sampleRate ?? 16000,
         );
         // A stop() during the microphone request already tore the native
         // session down; the acquired stream was released above.
-        if (!owned) return stoppedBeforeStart();
+        if (capture.status === "retired") return stoppedBeforeStart();
+        if (capture.status === "failed") {
+          this.isActive = false;
+          this.usingNativeIpc = false;
+          this.removeNativeListeners();
+          this.requestNativeStop();
+          this.notifyListeners("stateChange", {
+            state: "error",
+            reason: "mic-permission",
+          });
+          return { started: false, error: capture.error };
+        }
         return result;
       }
     }

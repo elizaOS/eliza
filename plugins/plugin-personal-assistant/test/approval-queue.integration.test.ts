@@ -50,6 +50,10 @@ import {
   type SchedulingApprovalTransportChannel,
 } from "../src/lifeops/approval-queue.types.js";
 import { getChannelRegistry } from "../src/lifeops/channels/index.js";
+import {
+  readLifeOpsMeetingPreferences,
+  updateLifeOpsMeetingPreferences,
+} from "../src/lifeops/owner-profile.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import {
   attachSchedulingApprovalCorrelation,
@@ -1141,6 +1145,104 @@ describe("ApprovalQueue integration (real PGlite)", () => {
       verifySchedulingApprovalContent(cancellationApproval.payload)?.matches,
     ).toBe(true);
     expect(sendEmail).not.toHaveBeenCalled();
+  }, 60_000);
+
+  it("reads proposal clocks in the owner's meeting zone when start names no timezone", async () => {
+    const previous = await readLifeOpsMeetingPreferences(runtime);
+    await updateLifeOpsMeetingPreferences(runtime, {
+      timeZone: "America/New_York",
+    });
+    try {
+      const message = {
+        id: runtime.agentId,
+        entityId: String(runtime.agentId),
+        roomId: runtime.agentId,
+        content: { text: "Start scheduling a dentist visit" },
+      } as never;
+      const started = await runSchedulingNegotiationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            subaction: "start",
+            subject: "Dentist visit",
+            durationMinutes: 30,
+          },
+        } as never,
+        async () => [],
+      );
+      expect(started.success).toBe(true);
+      const negotiation = (
+        started.data as { negotiation: { id: string; timezone: string } }
+      ).negotiation;
+      expect(negotiation.timezone).toBe("America/New_York");
+      const proposed = await runSchedulingNegotiationHandler(
+        runtime,
+        message,
+        undefined,
+        {
+          parameters: {
+            subaction: "propose",
+            negotiationId: negotiation.id,
+            startAt: "2026-08-10T15:00:00",
+            endAt: "2026-08-10T15:30:00",
+            proposedBy: "counterparty",
+          },
+        } as never,
+        async () => [],
+      );
+      expect(proposed.success).toBe(true);
+      // 3pm in America/New_York (UTC-4 on this date) is 19:00Z.
+      expect(
+        (proposed.data as { proposal: { startAt: string } }).proposal.startAt,
+      ).toBe("2026-08-10T19:00:00.000Z");
+    } finally {
+      await updateLifeOpsMeetingPreferences(runtime, {
+        timeZone: previous.timeZone,
+      });
+    }
+  }, 60_000);
+
+  it("refuses a start without a timezone when the saved meeting zone is unknown", async () => {
+    const previous = await readLifeOpsMeetingPreferences(runtime);
+    await updateLifeOpsMeetingPreferences(runtime, { timeZone: "Not/AZone" });
+    try {
+      const started = await runSchedulingNegotiationHandler(
+        runtime,
+        {
+          id: runtime.agentId,
+          entityId: String(runtime.agentId),
+          roomId: runtime.agentId,
+          content: { text: "Start scheduling a tax review" },
+        } as never,
+        undefined,
+        {
+          parameters: {
+            subaction: "start",
+            subject: "Tax review",
+            durationMinutes: 30,
+          },
+        } as never,
+        async () => [],
+      );
+      expect(started.success).toBe(false);
+      expect(started.data).toMatchObject({
+        error: "UNKNOWN_TIMEZONE",
+        timezone: "Not/AZone",
+      });
+      expect(
+        (
+          await new LifeOpsService(runtime).listActiveNegotiations({
+            limit: 100,
+          })
+        ).some((negotiation) => negotiation.subject === "Tax review"),
+      ).toBe(false);
+    } finally {
+      await updateLifeOpsMeetingPreferences(runtime, {
+        timeZone: previous.timeZone,
+      });
+    }
   }, 60_000);
 
   it("keeps scheduling delivery unclaimed during a handoff pause and sends once after resume", async () => {

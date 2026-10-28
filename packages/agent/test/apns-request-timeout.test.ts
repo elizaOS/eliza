@@ -13,6 +13,7 @@ import {
   ApnsProvider,
   DEFAULT_APNS_REQUEST_TIMEOUT_MS,
 } from "../src/services/push/apns-provider.ts";
+import { PushUnregisteredError } from "../src/services/push/push-types.ts";
 
 /** The transport entry point under test, including its optional deadline. */
 type PostHttp2 = (
@@ -100,6 +101,47 @@ it("resolves the APNs status when the request ends normally", async () => {
       "{}",
     );
     expect(result).toEqual({ status: 200, reason: undefined });
+  } finally {
+    await server.close();
+  }
+});
+
+it("classifies BadDeviceToken as a delivery error and only Unregistered as a dead token", async () => {
+  let request = 0;
+  const server = await startServer((stream) => {
+    request += 1;
+    const unregistered = request === 2;
+    stream.respond({
+      ":status": unregistered ? 410 : 400,
+      "content-type": "application/json",
+    });
+    stream.end(
+      JSON.stringify({
+        reason: unregistered ? "Unregistered" : "BadDeviceToken",
+      }),
+    );
+  });
+  const provider = configuredProvider();
+  const localPost = postHttp2(provider);
+  (
+    provider as unknown as {
+      postHttp2: PostHttp2;
+    }
+  ).postHttp2 = (_host, token, jwt, body, timeoutMs) =>
+    localPost(server.host, token, jwt, body, timeoutMs);
+  try {
+    const badEnvironment = await provider
+      .send("valid-token-for-other-environment", { title: "Test" })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(badEnvironment).toBeInstanceOf(Error);
+    expect(badEnvironment).not.toBeInstanceOf(PushUnregisteredError);
+
+    await expect(
+      provider.send("unregistered-token", { title: "Test" }),
+    ).rejects.toBeInstanceOf(PushUnregisteredError);
   } finally {
     await server.close();
   }

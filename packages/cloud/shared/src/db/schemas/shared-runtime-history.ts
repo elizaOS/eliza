@@ -52,6 +52,14 @@ export type SharedRuntimeHistoryMessage = {
   id?: string;
   role: "system" | "user" | "assistant";
   content: string;
+  /** Accepted selected-photo receipt refs only; never URLs, private scores or access authority. */
+  relayPhotoRefs?: Array<{
+    photoId: string;
+    itemId: string;
+    sha256: string;
+    bytes: number;
+    contentType: string;
+  }>;
   /** Epoch-ms timestamp; used to order turns merged from concurrent writers. */
   createdAt?: number;
   /** True when an assistant message is a partial interrupted response. */

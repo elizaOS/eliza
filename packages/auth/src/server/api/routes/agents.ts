@@ -33,7 +33,10 @@ import {
   type SpendPeriod,
 } from "../../redis/index.ts";
 import { redactedThrownDiagnostics } from "../../shared/index.ts";
-import { isRedisAvailable } from "../middleware/redis";
+import {
+  isRedisAvailable,
+  isSpendTelemetryAvailable,
+} from "../middleware/redis";
 import { deleteAgentAuthority } from "../services/agent-deletion";
 import {
   type AuditEventInput,
@@ -269,7 +272,8 @@ function parseListLimit(value: string | undefined, fallback = 100): number {
 function parseListOffset(value: string | undefined): number {
   const parsed = value ? Number(value) : 0;
   if (!Number.isSafeInteger(parsed) || parsed < 0) return 0;
-  return Math.min(parsed, 100_000);
+  // Do not clamp large valid offsets: a ceiling repeats earlier pages.
+  return parsed;
 }
 
 function requireTenantAdminSession(
@@ -1402,7 +1406,6 @@ agentRoutes.get("/pregenerated", async (c) => {
           tenantId: row.tenantId,
           name: row.name,
           walletAddress: row.walletAddress,
-          erc8004TokenId: row.erc8004TokenId ?? undefined,
           platformId: row.platformId ?? undefined,
           createdAt: row.createdAt,
         }),
@@ -1521,7 +1524,6 @@ agentRoutes.post("/pregenerated/:agentId/claim-token/rotate", async (c) => {
         tenantId: updated.tenantId,
         name: updated.name,
         walletAddress: updated.walletAddress,
-        erc8004TokenId: updated.erc8004TokenId ?? undefined,
         platformId: updated.platformId ?? undefined,
         createdAt: updated.createdAt,
       }),
@@ -2411,7 +2413,7 @@ agentRoutes.get("/:agentId/spend", async (c) => {
       ),
     );
 
-  const realtimeEnabled = isRedisAvailable();
+  const realtimeEnabled = isSpendTelemetryAvailable();
   const realtimePeriods = realtimeEnabled
     ? await Promise.all(
         SPEND_PERIODS.map(async (period) => ({
@@ -3830,7 +3832,7 @@ agentRoutes.delete("/:agentId/key-quorums/:quorumId", async (c) => {
 
 export async function createAgentBatch(
   c: Context<{ Variables: AppVariables }>,
-) {
+): Promise<Response> {
   if (!requireTenantAdminOrApiKey(c)) {
     return c.json<ApiResponse>(
       {

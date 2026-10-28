@@ -24,7 +24,13 @@
  */
 
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { logger } from "@elizaos/core";
@@ -371,8 +377,8 @@ export class LinuxTesseractOcrService implements OcrWithCoordsService {
 
     const dir = mkdtempSync(join(tmpdir(), "eliza-tesseract-"));
     const imgPath = join(dir, "frame.png");
-    writeFileSync(imgPath, Buffer.from(input.pngBytes));
     try {
+      writeFileSync(imgPath, Buffer.from(input.pngBytes));
       const tsv = await runTesseract(imgPath);
       const { width, height } = readPngDimensions(input.pngBytes);
       return mapTesseractTsvToResult(
@@ -386,7 +392,12 @@ export class LinuxTesseractOcrService implements OcrWithCoordsService {
       logger.warn(
         `[LinuxTesseractOcr] OCR failed: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return { blocks: [] };
+      // A failed run is not an empty screen: callers report or skip it.
+      throw err;
+    } finally {
+      // The frame is a copy of the screen or of a user image; it must not
+      // outlive the call (frequent OCR would also fill the temp dir).
+      rmSync(dir, { recursive: true, force: true });
     }
   }
 }

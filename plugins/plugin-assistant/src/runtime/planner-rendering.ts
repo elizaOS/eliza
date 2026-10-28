@@ -426,7 +426,122 @@ export function projectToolResultForModel(
     } = projected;
     return { ...rest, data: promptData };
   }
+  const data = result.data;
+  if (
+    result.success !== true ||
+    typeof result.text !== "string" ||
+    result.text.length > 262144 ||
+    !data ||
+    data.actionName !== "WEB_SEARCH" ||
+    !["parallel", "exa", "tavily"].includes(String(data.provider))
+  )
+    return projected;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(result.text);
+  } catch {
+    // Unparsed provider text cannot establish exact duplicate evidence.
+    return projected;
+  }
+  if (!payload || typeof payload !== "object" || Array.isArray(payload))
+    return projected;
+  const records = (payload as Record<string, unknown>).results;
+  if (!Array.isArray(records) || records.length > 512) return projected;
+  // Ambiguous URL records keep their full source evidence; compare at most one
+  // record per source rather than multiplying hostile same-URL buckets.
+  const recordsByUrl = new Map<
+    string,
+    { record: unknown; index: number } | null
+  >();
+  for (const [index, record] of records.entries()) {
+    if (!record || typeof record !== "object" || Array.isArray(record))
+      continue;
+    const url = (record as Record<string, unknown>).url;
+    if (typeof url !== "string") continue;
+    recordsByUrl.set(url, recordsByUrl.has(url) ? null : { record, index });
+  }
+  const comparisonBudget = { remaining: 8192 };
+  const modelData = { ...data };
+  if (data.value === result.text)
+    modelData.value = "[Same evidence as result.text]";
+  const sources = data.sources;
+  if (
+    Array.isArray(sources) &&
+    sources.length <= 512 &&
+    sources.reduce(
+      (total, source) =>
+        total +
+        (source && typeof source === "object" && typeof source.text === "string"
+          ? source.text.length
+          : 0),
+      0,
+    ) <= 262144
+  ) {
+    modelData.sources = sources.map((source) => {
+      if (!source || typeof source !== "object" || Array.isArray(source))
+        return source;
+      const entry = source as Record<string, unknown>;
+      if (
+        typeof entry.url !== "string" ||
+        typeof entry.text !== "string" ||
+        entry.text.length > 262144
+      )
+        return source;
+      let sourceRecord: unknown;
+      try {
+        sourceRecord = JSON.parse(entry.text);
+      } catch {
+        return source;
+      }
+      const match = recordsByUrl.get(entry.url);
+      if (
+        !match ||
+        !exactJsonEvidence(match.record, sourceRecord, comparisonBudget)
+      )
+        return source;
+      return {
+        ...entry,
+        text: `[Same evidence as result.text JSON /results/${match.index}]`,
+      };
+    });
+  }
+  projected.data = modelData;
   return projected;
+}
+
+/** Bounded comparison of parsed JSON only; key order never changes evidence. */
+function exactJsonEvidence(
+  left: unknown,
+  right: unknown,
+  budget: { remaining: number },
+): boolean {
+  const pending: Array<[unknown, unknown]> = [[left, right]];
+  while (pending.length) {
+    if (--budget.remaining < 0) return false;
+    const pair = pending.pop();
+    if (!pair) return false;
+    const [a, b] = pair;
+    if (a === b) continue;
+    if (
+      a === null ||
+      b === null ||
+      typeof a !== "object" ||
+      typeof b !== "object"
+    )
+      return false;
+    if (Array.isArray(a) !== Array.isArray(b)) return false;
+    const ak = Object.keys(a);
+    const bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    for (const key of ak) {
+      if (!Object.hasOwn(b, key)) return false;
+      pending.push([
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+      ]);
+    }
+  }
+  return true;
 }
 
 export function cacheProviderOptions(

@@ -259,46 +259,23 @@ async function validateRoomOpAvailability(
   if (typeof runtime.getParticipantUserState !== "function") {
     return false;
   }
-  const params = readRoomOpParams(options);
-  const op = forcedOp ?? normalizeOp(params.action) ?? normalizeOp(params.op);
-  if (!op) {
+  if (options?.parameters !== undefined) {
+    // A planner call. The handler resolves the target room and checks the
+    // precondition before any state change or model call, and returns
+    // ROOM_NOT_FOUND, ROOM_SCOPE_INVALID or ROOM_<OP>_PRECONDITION_FAILED.
+    // Refusing here would replace those with "not available".
     return true;
   }
-  const platform = normalizePlatform(params.platform);
-  const explicitRoomId = normalizeString(params.roomId);
-  const chatName = normalizeString(params.chatName);
-  if (chatName && !platform && !explicitRoomId) {
-    // The handler refuses this call with ROOM_PLATFORM_REQUIRED; do not judge
-    // it by the current room's state.
+  // No call yet: a child action is offered only when the room the message
+  // arrived in is in a state the operation can change.
+  if (!forcedOp) {
     return true;
-  }
-  let roomId = explicitRoomId as UUID | undefined;
-  if (platform && (explicitRoomId || chatName)) {
-    const targetRoom = await resolveTargetRoom({
-      runtime: runtime as RuntimeLike,
-      platform,
-      roomId: explicitRoomId,
-      chatName,
-    });
-    if (!targetRoom) {
-      return false;
-    }
-    roomId = targetRoom.id;
-  }
-  roomId = (roomId ?? message.roomId) as UUID;
-  if (normalizeScope(params.scope) === "server") {
-    if (op !== "mute" && op !== "unmute") return false;
-    const room = await runtime.getRoom(roomId);
-    if (!room?.worldId) return false;
-    const world = await runtime.getWorld(room.worldId);
-    const active = worldMuteActive(world);
-    return op === "mute" ? !active : active;
   }
   const current = (await runtime.getParticipantUserState(
-    roomId,
+    message.roomId,
     runtime.agentId,
   )) as ParticipantState;
-  return preconditionMet(op, current);
+  return preconditionMet(forcedOp, current);
 }
 async function decide(
   runtime: IAgentRuntime,
@@ -441,6 +418,13 @@ async function applyOp(args: {
       args.op === "mute"
         ? muteUntilIsoFromDuration(args.durationMinutes)
         : undefined;
+    // The state lives on the agent's participant row. A room the agent has
+    // no row in (for example, one a connector created on join) would take the
+    // update as a no-op while the reply says the room is muted.
+    await args.runtime.ensureParticipantInRoom(
+      args.runtime.agentId,
+      args.roomId,
+    );
     await args.runtime.updateParticipantUserState(
       args.roomId,
       args.runtime.agentId,

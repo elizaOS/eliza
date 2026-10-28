@@ -23,7 +23,13 @@ import {
 import { extractErrorMessage } from "../../../utils/error-handling";
 import { logger } from "../../../utils/logger";
 import { assertSocialMediaBytesWithinBudget, decodeSocialMediaBase64 } from "../media-download";
-import { withRetry } from "../rate-limit";
+import {
+  failedPostResult,
+  type RetryOptions,
+  SocialApiRejectionError,
+  UnknownPostOutcomeError,
+  withRetry,
+} from "../rate-limit";
 
 const TIKTOK_API_BASE = "https://open.tiktokapis.com/v2";
 
@@ -334,6 +340,7 @@ async function tiktokApiRequest<T>(
   endpoint: string,
   accessToken: string,
   options: RequestInit = {},
+  retry: Pick<RetryOptions, "replayUnknownOutcome"> = {},
 ): Promise<T> {
   const url = endpoint.startsWith("http") ? endpoint : `${TIKTOK_API_BASE}${endpoint}`;
 
@@ -356,11 +363,11 @@ async function tiktokApiRequest<T>(
         error?: { code: string; message: string };
       };
       if (json.error?.code && json.error.code !== "ok") {
-        throw new Error(json.error.message || `TikTok error: ${json.error.code}`);
+        throw new SocialApiRejectionError(json.error.message || `TikTok error: ${json.error.code}`);
       }
       return json;
     },
-    { platform: "tiktok", maxRetries: 3 },
+    { platform: "tiktok", maxRetries: 3, ...retry },
   );
 
   return data.data;
@@ -402,6 +409,35 @@ async function waitForPublish(
       maxWait,
     },
   );
+}
+
+/** Once publishing starts, an unreadable status cannot prove that nothing posted. */
+async function finishTikTokPublish(accessToken: string, publishId: string): Promise<PostResult> {
+  let status: TikTokPublishStatus;
+  try {
+    status = await waitForPublish(accessToken, publishId);
+  } catch (error) {
+    // error-policy:J1 Preserve a definite provider failure; otherwise retain the
+    // original publication identity and its unresolved credit disposition.
+    if (error instanceof ElizaError && error.code === "TIKTOK_PUBLISH_FAILED") throw error;
+    logger.warn("[TikTok] Publication outcome remains unresolved", { publishId, error });
+    return {
+      platform: "tiktok",
+      success: false,
+      error: "TikTok has not confirmed the publication outcome; it may have posted",
+      errorCode: "TIKTOK_PUBLISH_STATUS_UNKNOWN",
+      creditDisposition: "hold",
+      metadata: { publishId },
+    };
+  }
+  const postId = status.publicaly_available_post_id?.[0];
+  return {
+    platform: "tiktok",
+    success: true,
+    postId: postId || publishId,
+    postUrl: postId ? `https://www.tiktok.com/@me/video/${postId}` : undefined,
+    metadata: { publishId },
+  };
 }
 
 function fetchPublishStatus(accessToken: string, publishId: string): Promise<TikTokPublishStatus> {
@@ -510,20 +546,11 @@ export const tiktokProvider: SocialMediaProvider = {
               },
             }),
           },
+          // A pulled video is published by the init call itself.
+          { replayUnknownOutcome: false },
         );
 
-        // Wait for publish to complete
-        const status = await waitForPublish(credentials.accessToken, initResponse.publish_id);
-
-        const postId = status.publicaly_available_post_id?.[0];
-
-        return {
-          platform: "tiktok",
-          success: true,
-          postId: postId || initResponse.publish_id,
-          postUrl: postId ? `https://www.tiktok.com/@me/video/${postId}` : undefined,
-          metadata: { publishId: initResponse.publish_id },
-        };
+        return await finishTikTokPublish(credentials.accessToken, initResponse.publish_id);
       }
 
       // File upload method (requires chunked upload)
@@ -562,6 +589,9 @@ export const tiktokProvider: SocialMediaProvider = {
               },
             }),
           },
+          // A replay after a timeout or a 5xx publishes the video twice
+          // (the URL-pull init call in this file passes the same flag).
+          { replayUnknownOutcome: false },
         );
 
         if (!initResponse.upload_url) {
@@ -685,17 +715,7 @@ export const tiktokProvider: SocialMediaProvider = {
           };
         }
 
-        // Wait for publish to complete
-        const status = await waitForPublish(credentials.accessToken, initResponse.publish_id);
-
-        const postId = status.publicaly_available_post_id?.[0];
-
-        return {
-          platform: "tiktok",
-          success: true,
-          postId: postId || initResponse.publish_id,
-          postUrl: postId ? `https://www.tiktok.com/@me/video/${postId}` : undefined,
-        };
+        return await finishTikTokPublish(credentials.accessToken, initResponse.publish_id);
       }
 
       return {
@@ -708,6 +728,7 @@ export const tiktokProvider: SocialMediaProvider = {
       // PostResult the caller inspects; socialMediaService relies on this (not a throw) to
       // drive the per-platform credit refund (#11680).
       logger.error("[TikTok] Post failed", { error });
+      if (error instanceof UnknownPostOutcomeError) return failedPostResult("tiktok", error);
       return {
         platform: "tiktok",
         success: false,

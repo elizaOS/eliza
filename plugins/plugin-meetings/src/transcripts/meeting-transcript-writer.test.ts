@@ -376,6 +376,168 @@ describe("MeetingTranscriptWriter — finalize vs in-flight flush", () => {
     expect(transcriptsViewReader(row)?.segments).toHaveLength(2);
   });
 });
+describe("MeetingTranscriptWriter — finalize state machine", () => {
+  const FINAL_SEGMENTS = [
+    segment("s1", "Jill", "hello", 0, 1_000),
+    segment("s2", "Bob", "bye", 1_000, 2_000),
+  ];
+  const FINALIZE_INPUT = {
+    segments: FINAL_SEGMENTS,
+    endReason: "normal_completion" as const,
+    participants: [],
+    audioWav: null,
+  };
+  it("retries the durable ready write after a failed finalize", async () => {
+    const fake = makeFakeRuntime();
+    const applyWrite = fake.runtime.updateMemory.bind(fake.runtime);
+    let calls = 0;
+    (
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
+    ).updateMemory = async (patch) => {
+      calls += 1;
+      if (calls === 1) throw new Error("db unavailable");
+      return applyWrite(patch);
+    };
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    await expect(writer.finalize(FINALIZE_INPUT)).rejects.toThrow(
+      "db unavailable",
+    );
+    expect(calls).toBe(1);
+    // The failed write must not leave a cached "ready" result behind.
+    const failedRow = fake.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(failedRow)?.status).toBe("recording");
+    expect(transcriptsViewReader(failedRow)?.segments).toHaveLength(0);
+    const final = await writer.finalize(FINALIZE_INPUT);
+    expect(calls).toBe(2);
+    expect(final.status).toBe("ready");
+    const row = fake.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(row)).toEqual(final);
+    expect(transcriptsViewReader(row)?.status).toBe("ready");
+    expect(transcriptsViewReader(row)?.segments).toEqual(FINAL_SEGMENTS);
+    // Once durably finalized, further calls return the stored result.
+    await expect(writer.finalize(FINALIZE_INPUT)).resolves.toEqual(final);
+    expect(calls).toBe(2);
+  });
+  it("retries after the ready write reports a missing row", async () => {
+    const fake = makeFakeRuntime();
+    const applyWrite = fake.runtime.updateMemory.bind(fake.runtime);
+    let calls = 0;
+    (
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
+    ).updateMemory = async (patch) => {
+      calls += 1;
+      if (calls === 1) return false;
+      return applyWrite(patch);
+    };
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    await expect(writer.finalize(FINALIZE_INPUT)).rejects.toThrow(
+      /row vanished before finalize/,
+    );
+    const final = await writer.finalize(FINALIZE_INPUT);
+    expect(calls).toBe(2);
+    const row = fake.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(row)?.status).toBe("ready");
+    expect(final.status).toBe("ready");
+  });
+  it("shares one in-flight finalization across concurrent callers", async () => {
+    const fake = makeFakeRuntime();
+    const applyWrite = fake.runtime.updateMemory.bind(fake.runtime);
+    let release: (() => void) | null = null;
+    let calls = 0;
+    (
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
+    ).updateMemory = async (patch) => {
+      calls += 1;
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return applyWrite(patch);
+    };
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    const first = writer.finalize(FINALIZE_INPUT);
+    const second = writer.finalize(FINALIZE_INPUT);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(release).not.toBeNull();
+    expect(calls).toBe(1);
+    release?.();
+    const [a, b] = await Promise.all([first, second]);
+    expect(calls).toBe(1);
+    expect(b).toBe(a);
+    expect(a.status).toBe("ready");
+  });
+  it("rejects every concurrent caller with the same failure", async () => {
+    const fake = makeFakeRuntime();
+    let fail: ((err: Error) => void) | null = null;
+    let calls = 0;
+    (
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
+    ).updateMemory = async () => {
+      calls += 1;
+      await new Promise<void>((_, reject) => {
+        fail = reject;
+      });
+      return true;
+    };
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    const first = writer.finalize(FINALIZE_INPUT);
+    const second = writer.finalize(FINALIZE_INPUT);
+    const settled = Promise.allSettled([first, second]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fail).not.toBeNull();
+    const failure = new Error("db unavailable");
+    fail?.(failure);
+    const [a, b] = await settled;
+    expect(calls).toBe(1);
+    expect(a).toEqual({ status: "rejected", reason: failure });
+    expect(b).toEqual({ status: "rejected", reason: failure });
+  });
+  it("issues no recording write for segment updates during an in-flight finalize", async () => {
+    const fake = makeFakeRuntime();
+    const applyWrite = fake.runtime.updateMemory.bind(fake.runtime);
+    let release: (() => void) | null = null;
+    const statuses: unknown[] = [];
+    (
+      fake.runtime as {
+        updateMemory: typeof fake.runtime.updateMemory;
+      }
+    ).updateMemory = async (patch) => {
+      statuses.push(patch.metadata?.status);
+      if (patch.metadata?.status === "ready") {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return applyWrite(patch);
+    };
+    const writer = new MeetingTranscriptWriter(fake.runtime, 0);
+    await writer.start(START_INPUT);
+    const finalized = writer.finalize(FINALIZE_INPUT);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(release).not.toBeNull();
+    writer.updateSegments([segment("late", "Jill", "late tail", 0, 500)]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(statuses).toEqual(["ready"]);
+    release?.();
+    await finalized;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(statuses).toEqual(["ready"]);
+    const row = fake.memories.get(writer.transcriptId) as Memory;
+    expect(transcriptsViewReader(row)?.status).toBe("ready");
+    expect(transcriptsViewReader(row)?.segments).toEqual(FINAL_SEGMENTS);
+  });
+});
 describe("persistMeetingAudioWav", () => {
   it("writes content-addressed WAV bytes under the served media dir", () => {
     const dir = mkdtempSync(join(tmpdir(), "meetings-audio-"));

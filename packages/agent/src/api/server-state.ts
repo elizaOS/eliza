@@ -60,7 +60,11 @@ export function createServerState(
     skills: [],
     logBuffer: [],
     eventBuffer: [],
-    nextEventId: 1,
+    // A dashboard retains its replay cursor across server restarts. Seed the
+    // sequence from startup time to avoid resetting to evt-1 and dropping new
+    // events as duplicates. This assumes the wall clock has not moved backward
+    // and the previous process emitted fewer than 1000 events per millisecond.
+    nextEventId: Date.now() * 1000,
     chatRoomId: null,
     chatUserId: null,
     chatConnectionReady: null,

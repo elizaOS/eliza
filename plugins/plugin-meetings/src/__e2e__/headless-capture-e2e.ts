@@ -65,9 +65,14 @@ function assert(cond: unknown, msg: string): boolean {
 function scriptedBackend(textFor: Map<string, string>): {
   backend: AsrBackend;
   calls: Array<{ wavBytes: number }>;
+  release: () => void;
   perKeyText: (speakerKey: string) => string;
 } {
   const calls: Array<{ wavBytes: number }> = [];
+  let release!: () => void;
+  const completion = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   // The pipeline hands the backend only the WAV window, not the speaker key —
   // it labels the resulting segment by speaker itself. So the backend just
   // round-robins deterministic non-silence text across the two speakers; the
@@ -80,10 +85,11 @@ function scriptedBackend(textFor: Map<string, string>): {
       // Round-robin the scripted texts so distinct speakers get distinct text.
       const text = texts[seq % texts.length] ?? "hello from the meeting";
       seq += 1;
+      await completion;
       return { text };
     },
   };
-  return { backend, calls, perKeyText: (k) => textFor.get(k) ?? "" };
+  return { backend, calls, release, perKeyText: (k) => textFor.get(k) ?? "" };
 }
 
 // --autoplay-policy=no-user-gesture-required lets the fake page's local WebAudio
@@ -245,7 +251,13 @@ async function main() {
   );
 
   // ── Finalize: pipeline flush -> segments -> transcript write ─────────────
-  const segments = await pipeline.finalize();
+  assert(
+    scripted.calls.length >= 2,
+    "both captured speakers have ASR in flight",
+  );
+  const finalizing = pipeline.finalize();
+  scripted.release();
+  const segments = await finalizing;
   assert(
     segments.length >= 1,
     `pipeline produced >=1 confirmed segment (got ${segments.length})`,

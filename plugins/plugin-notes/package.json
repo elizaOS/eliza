@@ -6,6 +6,12 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./workspace": {
+      "eliza-source": "./src/workspace.ts",
+      "types": "./dist/workspace.d.ts",
+      "import": "./dist/workspace.js",
+      "default": "./dist/workspace.js"
+    },
     ".": {
       "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
@@ -53,21 +59,21 @@
     "@elizaos/plugin-assistant": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0",
-    "react": "^19.3.0",
+    "react": "^19.3.1",
     "@elizaos/contracts": "workspace:*"
   },
   "peerDependencies": {
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@typescript/native": "npm:typescript@^7.0.2",
-    "react-dom": "^19.0.0",
-    "tsup": "^8.5.1",
+    "react-dom": "^19.3.1",
+    "tsup": "^9.0.0",
     "typescript": "^6.0.3",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.3",
+    "vite": "^8.3.3",
+    "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*"
   },
   "publishConfig": {

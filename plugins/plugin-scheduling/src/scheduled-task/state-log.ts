@@ -55,7 +55,11 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
         .filter((r) => (excludeRollups ? !r.rolledUp : true))
         .filter((r) => (sinceIso ? r.occurredAtIso >= sinceIso : true))
         .filter((r) => (untilIso ? r.occurredAtIso < untilIso : true))
-        .sort((a, b) => (a.occurredAtIso < b.occurredAtIso ? -1 : 1));
+        .sort(
+          (a, b) =>
+            a.occurredAtIso.localeCompare(b.occurredAtIso) ||
+            a.logId.localeCompare(b.logId),
+        );
       if (typeof limit === "number" && limit > 0) {
         view = view.slice(0, limit);
       }

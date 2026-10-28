@@ -15,7 +15,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
+import {
+  hasActionContext,
+  resolveScheduledAtIsoInTimeZone,
+} from "@elizaos/core";
 import type { TriageService } from "../triage-service.ts";
 import {
   ALL_MESSAGE_SOURCES,
@@ -540,21 +543,55 @@ export function parseSearchMessagesParams(
   const sender = parseSenderParam(params.sender);
   const parsedSources = parseSourceList(params.sources ?? params.source);
   if ("error" in parsedSources) return parsedSources;
+  const gmailOnly =
+    parsedSources.sources?.length === 1 && parsedSources.sources[0] === "gmail";
+  const queryValues = [params.query, params.content, params.q].filter(
+    (value) => value !== undefined,
+  );
+  if (gmailOnly && queryValues.some((value) => typeof value !== "string"))
+    return { error: "Search query aliases must be strings." };
+  const queryAliases = queryValues
+    .map((value) => asString(value))
+    .filter((value): value is string => value !== undefined);
+  if (gmailOnly && new Set(queryAliases).size > 1)
+    return {
+      error:
+        "Conflicting search query aliases: provide one exact query; content and q cannot replace a different query.",
+    };
+
   const since = parseTimeBound(params.sinceMs ?? params.since, "since");
   if ("error" in since) return since;
   const until = parseTimeBound(params.untilMs ?? params.until, "until");
   if ("error" in until) return until;
-  return {
+  const filters: SearchMessagesFilters = {
     sources: parsedSources.sources,
     worldIds: asStringList(params.worldIds),
     channelIds: asStringList(params.channelIds),
     sender,
-    content: asString(params.content ?? params.query ?? params.q),
+    content: gmailOnly
+      ? queryAliases[0]
+      : asString(params.content ?? params.query ?? params.q),
     tags: asStringList(params.tags),
     sinceMs: since.ms,
     untilMs: until.ms,
     limit: asNumber(params.limit),
   };
+  if (
+    gmailOnly &&
+    !filters.content &&
+    !filters.sender?.identifier &&
+    !filters.sender?.displayName &&
+    !filters.tags?.length &&
+    filters.sinceMs === undefined &&
+    filters.untilMs === undefined &&
+    !filters.worldIds?.length &&
+    !filters.channelIds?.length
+  )
+    return {
+      error:
+        "Search requires at least one requested query, sender, label, date, account, or channel constraint. Use MESSAGE_LIST_INBOX only for an explicitly unfiltered inbox request.",
+    };
+  return filters;
 }
 
 export interface ManageMessageParams {
@@ -666,15 +703,31 @@ export interface ScheduleDraftSendParams {
 }
 export function parseScheduleDraftSendParams(
   options: HandlerOptions | undefined,
+  timeZone: string,
 ): ScheduleDraftSendParams | { error: string } {
   const params = getParams(options);
   const draftId = asString(params.draftId ?? params.id);
   if (!draftId) return { error: "draftId is required" };
-  const sendAtMs = asTimestampMs(params.sendAtMs ?? params.sendAt ?? params.at);
+  const rawSendAt = params.sendAtMs ?? params.sendAt ?? params.at;
+  // The planner writes an offset-free time as a wall clock in the user's
+  // zone (CURRENT_TIME's); Date.parse would read it in the host zone.
+  const sendAtMs = asTimestampMs(
+    typeof rawSendAt === "string"
+      ? resolveScheduledAtIsoInTimeZone(rawSendAt, timeZone)
+      : rawSendAt,
+  );
   if (sendAtMs === undefined) {
     return {
       error:
         "sendAt is required as an ISO 8601 timestamp or epoch milliseconds",
+    };
+  }
+  // A time that is already past is sent on the next scheduler tick, so a
+  // misread value (epoch seconds, a bare year, a blank) would send the draft
+  // at once while the action reports it as scheduled.
+  if (sendAtMs <= Date.now()) {
+    return {
+      error: `sendAt must be in the future (got ${new Date(sendAtMs).toISOString()})`,
     };
   }
   return { draftId, sendAtMs };

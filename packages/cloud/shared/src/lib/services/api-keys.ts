@@ -7,23 +7,32 @@
 import { ElizaError } from "@elizaos/core";
 import crypto from "crypto";
 import { and, count, eq, gt, isNull, notExists, or, sql } from "drizzle-orm";
-import { type DbTransaction, dbWrite } from "../../db/client";
+import type { DbTransaction } from "../../db/client";
 import { encryptApiKey } from "../../db/crypto/api-keys";
 import { writeTransaction } from "../../db/helpers";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories/api-keys";
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
-import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
+import {
+  isMobileApiKeySecret,
+  isUsableMobileApiKey,
+  MOBILE_API_KEY_PREFIX,
+} from "../auth/mobile-api-key";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import {
   invalidateInferenceAuthContextByKeyHash,
   invalidateInferenceAuthContextsByKeyHashes,
 } from "./inference-auth-cache";
 import { revokeInferenceApiKey } from "./inference-credential-revocation";
+import {
+  withInferencePolicyMutation,
+  withInferencePolicyMutationInTransaction,
+} from "./inference-policy-fence";
 import {
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationResourceLimit,
@@ -85,16 +94,6 @@ async function countUserCreatedKeys(tx: DbTransaction, organizationId: string): 
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
-}
-
-function isUsableMobileApiKey(value: ApiKey | undefined): boolean {
-  return Boolean(
-    value?.is_active &&
-      !value.deleted_at &&
-      isUuid(value.source_app_id) &&
-      value.expires_at &&
-      new Date(value.expires_at) > new Date(),
-  );
 }
 
 function isCacheableApiKey(value: unknown): value is ApiKey {
@@ -175,14 +174,16 @@ async function withMutationAudit<T>(
   mutate: (tx: DbTransaction | undefined) => Promise<T>,
   audit: ApiKeyMutationAudit<T> | undefined,
   outerTx?: DbTransaction,
+  organizationIds: string[] = [],
 ): Promise<T> {
-  if (!audit) return await mutate(outerTx);
   const run = async (tx: DbTransaction): Promise<T> => {
     const outcome = await mutate(tx);
-    await audit(tx, outcome);
+    await audit?.(tx, outcome);
     return outcome;
   };
-  return outerTx ? await run(outerTx) : await dbWrite.transaction(run);
+  return outerTx
+    ? withInferencePolicyMutationInTransaction(outerTx, { organizationIds }, run)
+    : withInferencePolicyMutation({ organizationIds }, run);
 }
 
 export interface MobileCredentialSummary {
@@ -460,6 +461,7 @@ export class ApiKeysService {
       (inner) => apiKeysRepository.create(apiKey, inner),
       audit,
       tx,
+      [data.organization_id],
     );
 
     return {
@@ -480,7 +482,7 @@ export class ApiKeysService {
   ): Promise<{ apiKey: ApiKey; plainKey: string; usage: ApiKeyUsage }> {
     // Encrypt outside the transaction so KMS work does not hold the policy lock.
     const { apiKey, plainKey } = await this.buildApiKeyInsert({ ...data, user_created: true });
-    return writeTransaction(async (tx) => {
+    return withInferencePolicyMutation({ organizationIds: [data.organization_id] }, async (tx) => {
       await lockOrganizationPolicy(tx, data.organization_id);
       const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
       const limit = Number(requireOrganizationResourceLimit(policy, "apiKeys"));
@@ -563,7 +565,7 @@ export class ApiKeysService {
       is_active: true,
     });
 
-    await dbWrite.transaction(async (tx) => {
+    await withInferencePolicyMutation({ organizationIds: [organizationId] }, async (tx) => {
       // Keep lock acquisition in its own statement. Under READ COMMITTED, a
       // waiter gets a fresh snapshot for the conditional INSERT after the lock
       // holder commits. Folding lock + existence check into one statement
@@ -685,7 +687,15 @@ export class ApiKeysService {
       }
     }
 
-    const updated = await apiKeysRepository.update(id, data);
+    const updated = await withInferencePolicyMutation(
+      {
+        organizationIds: [
+          ...(existing ? [existing.organization_id] : []),
+          ...(data.organization_id ? [data.organization_id] : []),
+        ],
+      },
+      (tx) => apiKeysRepository.update(id, data, tx),
+    );
     if (existing) {
       await this.invalidateCache(existing.key_hash);
     }
@@ -709,7 +719,12 @@ export class ApiKeysService {
       await revokeInferenceApiKey(existing.organization_id, existing.id);
     }
 
-    await withMutationAudit((tx) => apiKeysRepository.delete(id, tx), audit);
+    await withMutationAudit(
+      (tx) => apiKeysRepository.delete(id, tx),
+      audit,
+      undefined,
+      existing ? [existing.organization_id] : [],
+    );
     if (existing) {
       await this.invalidateCache(existing.key_hash);
     }
@@ -755,6 +770,8 @@ export class ApiKeysService {
     const apiKey = await withMutationAudit(
       (tx) => apiKeysRepository.replace(existing.id, replacement, tx),
       audit,
+      undefined,
+      [existing.organization_id],
     );
     await this.invalidateCache(existing.key_hash);
     return { apiKey, plainKey };
@@ -810,6 +827,8 @@ export class ApiKeysService {
             if (revoked) await audit(tx, { receipt: revoked, revokedNow: true });
           }
         : undefined,
+      undefined,
+      [organizationId],
     );
     if (receipt) return { receipt, revokedNow: true };
 
@@ -849,6 +868,8 @@ export class ApiKeysService {
             if (result) await audit(tx, result);
           }
         : undefined,
+      undefined,
+      [existing.organization_id],
     );
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
@@ -912,6 +933,8 @@ export class ApiKeysService {
               if (value) await audit(tx, value);
             }
           : undefined,
+        undefined,
+        [existing.organization_id],
       );
       result =
         resultFor(row, true) ??
@@ -971,6 +994,8 @@ export class ApiKeysService {
             if (result) await audit(tx, result);
           }
         : undefined,
+      undefined,
+      [exact.organization_id],
     );
     if (!tombstone) {
       const concurrentResult = mobileSelfRevocationResult(
@@ -1004,7 +1029,10 @@ export class ApiKeysService {
       await revokeInferenceApiKey(key.organization_id, key.id);
     }
 
-    await apiKeysRepository.deactivateUserKeysByName(userId, name);
+    await withInferencePolicyMutation(
+      { organizationIds: existingKeys.map((key) => key.organization_id) },
+      (tx) => apiKeysRepository.deactivateUserKeysByName(userId, name, tx),
+    );
     await this.confirmRevocationAfterCommit(existingKeys.map((key) => key.key_hash));
   }
 
@@ -1018,12 +1046,34 @@ export class ApiKeysService {
       await revokeInferenceApiKey(key.organization_id, key.id);
     }
 
-    await apiKeysRepository.deactivateByUserAndOrganization(userId, organizationId);
+    await withInferencePolicyMutation({ organizationIds: [organizationId] }, (tx) =>
+      apiKeysRepository.deactivateByUserAndOrganization(userId, organizationId, tx),
+    );
     await this.confirmRevocationAfterCommit(keysInOrganization.map((key) => key.key_hash));
   }
 
   // Sandbox-scoped keys are named "agent-sandbox:<id>". Listing/revoking by that
   // canonical name is enough — no need for a separate metadata column today.
+  private async withNamedKeyPolicyMutation<T>(
+    name: string,
+    tx: DbTransaction | undefined,
+    fn: (tx: DbTransaction | undefined) => Promise<T>,
+  ): Promise<T> {
+    if (getCloudAwareEnv().INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") return fn(tx);
+    const run = async (inner: DbTransaction) => {
+      const rows = await inner
+        .select({ organization_id: apiKeys.organization_id })
+        .from(apiKeys)
+        .where(eq(apiKeys.name, name));
+      return withInferencePolicyMutationInTransaction(
+        inner,
+        { organizationIds: rows.map((row) => row.organization_id) },
+        fn,
+      );
+    };
+    return tx ? run(tx) : writeTransaction(run);
+  }
+
   private static agentApiKeyName(agentSandboxId: string): string {
     return `agent-sandbox:${agentSandboxId}`;
   }
@@ -1094,7 +1144,9 @@ export class ApiKeysService {
     // re-cache the row while a transactional delete is not yet committed), so
     // every retry must re-offer it for confirmed invalidation until one
     // succeeds. A DELETE here would discard the hash forever and cap nothing.
-    const revoked = await apiKeysRepository.deactivateByNameReturningAll(name, tx);
+    const revoked = await this.withNamedKeyPolicyMutation(name, tx, (inner) =>
+      apiKeysRepository.deactivateByNameReturningAll(name, inner),
+    );
     const revokedKeyHashes = revoked.map((key) => key.key_hash);
 
     // Inline invalidation pass. Under `tx` it is merely the best-effort
@@ -1165,7 +1217,9 @@ export class ApiKeysService {
   ): Promise<void> {
     const name = ApiKeysService.agentApiKeyName(agentSandboxId);
     try {
-      await apiKeysRepository.deleteInactiveByHashes(name, confirmedKeyHashes);
+      await this.withNamedKeyPolicyMutation(name, undefined, (tx) =>
+        apiKeysRepository.deleteInactiveByHashes(name, confirmedKeyHashes, tx),
+      );
     } catch (error) {
       // error-policy:J6 teardown-only: the credentials are already inactive
       // and their caches confirmed clear; the residue is re-swept later.

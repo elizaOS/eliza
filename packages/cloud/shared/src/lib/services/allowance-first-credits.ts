@@ -28,6 +28,7 @@ import {
 } from "./organization-quota-policy";
 import {
   SUBSCRIPTION_FUNDING_INSUFFICIENT,
+  type SubscriptionFundingSettlementResult,
   subscriptionFundingService,
 } from "./subscription-funding";
 import {
@@ -156,24 +157,26 @@ export function isSubscriptionFundedReservation(
 }
 
 function reconciliationResult(
-  reservation: BillingFundingReservation,
+  settlement: SubscriptionFundingSettlementResult,
   actualCost: number,
-  collectedAmount: string,
-  uncollectedOverageAmount: string,
 ): CreditReconciliationResult {
-  const reservedAmount = Number(reservation.requested_amount);
-  const uncollected = new Decimal(uncollectedOverageAmount);
+  const { reservation, collectedAmount, overageReservation } = settlement;
+  const collected = new Decimal(collectedAmount);
   return {
-    reservedAmount,
+    reservedAmount: Number(reservation.requested_amount),
     actualCost,
-    collectedAmount: Number(collectedAmount),
+    collectedAmount: collected.toNumber(),
     reservationTransactionId: reservation.id,
-    settlementTransactionIds: [reservation.id],
-    adjustmentType: uncollected.gt(0)
+    settlementTransactionIds: overageReservation
+      ? [reservation.id, overageReservation.id]
+      : [reservation.id],
+    adjustmentType: new Decimal(settlement.uncollectedOverageAmount).gt(0)
       ? "uncollected_overage"
-      : new Decimal(collectedAmount).lt(reservation.requested_amount)
-        ? "refund"
-        : "none",
+      : collected.gt(reservation.requested_amount)
+        ? "overage"
+        : collected.lt(reservation.requested_amount)
+          ? "refund"
+          : "none",
   };
 }
 
@@ -195,12 +198,7 @@ export async function settleSubscriptionFundedReservation(params: {
     occurredAt: params.occurredAt,
     metadata: params.metadata,
   });
-  return reconciliationResult(
-    settlement.reservation,
-    Number(actualAmount),
-    settlement.collectedAmount,
-    settlement.uncollectedOverageAmount,
-  );
+  return reconciliationResult(settlement, Number(actualAmount));
 }
 
 /**

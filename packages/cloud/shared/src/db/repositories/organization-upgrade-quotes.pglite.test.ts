@@ -211,3 +211,41 @@ test("provider binding is immutable and cannot contain credential-shaped extra f
     ),
   ).rejects.toThrow();
 });
+
+test("new saves require allowance terms while historical saved reviews remain unchanged", async () => {
+  const f = await fixture();
+  const { allowanceTerms: _terms, ...historical } = f.review;
+  await expect(
+    quotes.saveOrganizationUpgradeQuote({
+      identity: f.input,
+      captured: f.captured,
+      providerBinding: f.providerBinding,
+      review: historical,
+    }),
+  ).rejects.toMatchObject({ code: "SUBSCRIPTION_PLAN_CHANGE_CONFLICT" });
+  const original = await quotes.saveOrganizationUpgradeQuote({
+    identity: f.input,
+    captured: f.captured,
+    providerBinding: f.providerBinding,
+    review: f.review,
+  });
+  const { settlementDigest } = await import("../../lib/services/settlement-digest");
+  const db = client.getPgliteClientForTests();
+  // Seed the historical row directly: current writers must never produce this shape.
+  const seeded = await db.query<{ id: string }>(
+    `INSERT INTO organization_plan_change_quotes(organization_id,actor_id,subscription_id,subscription_revision,target_plan_key,catalog_version,source_digest,review_digest,review,created_at,expires_at,provider_binding)
+ SELECT organization_id,actor_id,subscription_id,subscription_revision,target_plan_key,catalog_version,source_digest,$2,$3::jsonb,created_at,expires_at,provider_binding FROM organization_plan_change_quotes WHERE id=$1 RETURNING id`,
+    [original.id, settlementDigest(historical), JSON.stringify(historical)],
+  );
+  const id = seeded.rows[0]!.id;
+  const before = await db.query(
+    "SELECT review,review_digest FROM organization_plan_change_quotes WHERE id=$1",
+    [id],
+  );
+  expect((await quotes.readOrganizationUpgradeQuote(f.input, id)).review).toEqual(historical);
+  expect(
+    await db.query("SELECT review,review_digest FROM organization_plan_change_quotes WHERE id=$1", [
+      id,
+    ]),
+  ).toEqual(before);
+});

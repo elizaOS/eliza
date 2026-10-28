@@ -166,7 +166,7 @@ export async function runManagedDiscordGuildVoiceTurn(
     await speech.speechToText({
       audioFile: new File([audio], `${input.utteranceId}.wav`, { type: "audio/wav" }),
     })
-  ).trim();
+  ).transcript.trim();
   if (!transcript) throw new Error("Discord guild voice contained no speech");
 
   const agent = personalSharedAgent({
