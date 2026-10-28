@@ -2,6 +2,7 @@
 
 import type {
   CalendarReadBinding,
+  LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/contracts";
 import {
@@ -993,4 +994,334 @@ describe("registered scheduling handler to completion coverage", () => {
       }
     },
   );
+});
+
+describe("existing-event duration through actual scheduling and coverage", () => {
+  async function proposal(
+    input: { existingMinutes?: number; newMinutes?: number; legacy?: boolean },
+    check: (proof: {
+      result: Awaited<ReturnType<typeof executePlannedToolCall>>;
+      f: ReturnType<typeof fixture>;
+      read: { mock: { calls: unknown[][] } };
+      event: LifeOpsCalendarEvent;
+    }) => void,
+  ) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-04T01:19:36Z"));
+    const runtime = new AgentRuntime({
+      character: {
+        name: "Existing duration producer",
+        bio: [],
+        settings: { TIMEZONE: "UTC" },
+      },
+      logLevel: "fatal",
+    });
+    const noModel = vi
+      .spyOn(runtime, "useModel")
+      .mockRejectedValue(new Error("No model permitted"));
+    vi.spyOn(runtime, "getTasks").mockResolvedValue([
+      {
+        name: "LIFEOPS_SCHEDULER",
+        metadata: {
+          lifeopsScheduler: { kind: "runtime_runner", version: 1 },
+          meetingPreferences: {
+            preferredStartLocal: "08:00",
+            preferredEndLocal: "20:00",
+          },
+        },
+      },
+    ]);
+    const event: LifeOpsCalendarEvent = {
+      id: "existing-workshop",
+      externalId: "existing-workshop",
+      agentId: runtime.agentId,
+      provider: "google",
+      side: "owner",
+      calendarId: "selected-calendar",
+      title: "Long workshop",
+      description: "",
+      location: "",
+      status: "confirmed",
+      startAt: "2026-10-01T08:00:00.000Z",
+      endAt: new Date(
+        Date.parse("2026-10-01T08:00:00Z") +
+          (input.existingMinutes ?? 30) * 60_000,
+      ).toISOString(),
+      isAllDay: false,
+      timezone: "UTC",
+      htmlLink: null,
+      conferenceLink: null,
+      organizer: null,
+      attendees: [],
+      metadata: {},
+      syncedAt: "2026-10-04T01:19:36Z",
+      updatedAt: "2026-10-04T01:19:36Z",
+    };
+    const before = structuredClone(event);
+    const read = vi
+      .spyOn(LifeOpsService.prototype, "getCalendarFeed")
+      .mockImplementation(async (_url, options) => ({
+        calendarId: "selected-calendar",
+        events: options?.timeMin === "2026-10-05T08:00:00.000Z" ? [] : [event],
+        source: "synced",
+        state: "complete",
+        syncedAt: "2026-10-04T01:19:36Z",
+        timeMin: options?.timeMin ?? "2026-09-01T00:00:00Z",
+        timeMax: options?.timeMax ?? "2026-11-01T00:00:00Z",
+        sources: [
+          {
+            key: {
+              provider: "google",
+              side: "owner",
+              grantId: "owner-grant",
+              connectorAccountId: "owner-account",
+              calendarId: "selected-calendar",
+            },
+            summary: "Selected calendar",
+            accessRole: "owner",
+            visibility: "details",
+            status: "fresh",
+            syncedAt: "2026-10-04T01:19:36Z",
+            error: null,
+          },
+        ],
+      }));
+    const create = vi.spyOn(LifeOpsService.prototype, "createCalendarEvent"),
+      update = vi.spyOn(LifeOpsService.prototype, "updateCalendarEvent"),
+      remove = vi.spyOn(LifeOpsService.prototype, "deleteCalendarEvent");
+    vi.spyOn(collaborator, "renderGroundedActionReply").mockImplementation(
+      renderGroundedActionReply,
+    );
+    try {
+      runtime.registerAction(calendarAction);
+      for (const action of promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      ))
+        runtime.registerAction(action);
+      const duration =
+        input.existingMinutes === undefined
+          ? input.legacy
+            ? undefined
+            : { minutes: input.newMinutes }
+          : {
+              existingEventQuery: "Long workshop",
+              ...(input.newMinutes === undefined || input.legacy
+                ? {}
+                : { minutes: input.newMinutes }),
+            };
+      const name = input.legacy ? "CALENDAR" : "CALENDAR_PROPOSE_TIMES";
+      const params = {
+        ...(input.legacy
+          ? { action: "propose_times", durationMinutes: input.newMinutes }
+          : {}),
+        ...(duration ? { duration } : {}),
+        slotCount: 1,
+        windowStart: "2026-10-05T08:00:00",
+        windowEnd: "2026-10-05T20:00:00",
+        timeZone: "UTC",
+      };
+      const message = {
+        id: "00000000-0000-0000-0000-000000000201",
+        agentId: runtime.agentId,
+        entityId: runtime.agentId,
+        roomId: "00000000-0000-0000-0000-000000000202",
+        createdAt: requestedAt,
+        content: {
+          text:
+            input.existingMinutes === undefined
+              ? "Find a new meeting opening."
+              : "Find times to move Long workshop, preserving its duration.",
+          source: "test",
+        },
+      } as Memory;
+      const result = await executePlannedToolCall(
+        runtime,
+        {
+          message,
+          state: { values: {}, data: {}, text: "" },
+          replyOwner: "planner",
+          userRoles: ["OWNER"],
+          activeContexts: ["calendar"],
+        },
+        { name, params },
+        { actions: runtime.actions },
+      );
+      const f = fixture();
+      const bindings = f.context.metadata
+        ?.calendarReadBindings as CalendarReadBinding[];
+      bindings[0] = {
+        ...bindings[0],
+        operation: "propose_times",
+        sourceMessageId: message.id,
+        roomId: message.roomId,
+        actorId: message.entityId,
+        requestedAt,
+      };
+      f.context.metadata = {
+        ...f.context.metadata,
+        messageId: message.id,
+        roomId: message.roomId,
+        actorId: message.entityId,
+      };
+      f.trajectory.outcomeIntents = [message.content.text ?? ""];
+      f.trajectory.steps = [
+        {
+          iteration: 1,
+          toolCall: {
+            id: "actual-existing-duration",
+            name,
+            params,
+          },
+          result,
+        },
+      ];
+      check({ result, f, read, event });
+      expect(event).toEqual(before);
+      expect(noModel).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+    } finally {
+      vi.restoreAllMocks();
+      vi.useRealTimers();
+    }
+  }
+  it.each([540.5, 5.5])(
+    "preserves %s existing minutes from the canonical handler through completion coverage",
+    async (minutes) => {
+      await proposal(
+        { existingMinutes: minutes },
+        ({ result, f, read, event }) => {
+          expect(result.success).toBe(true);
+          expect(result.data).toMatchObject({
+            durationMinutes: minutes,
+            existingEvent: event,
+            slots: [expect.objectContaining({ durationMinutes: minutes })],
+            targetSnapshot: {
+              artifacts: expect.arrayContaining([
+                expect.objectContaining({
+                  kind: "calendar.event",
+                  id: event.id,
+                  version: event.updatedAt,
+                }),
+              ]),
+            },
+          });
+          const slots = result.data?.slots;
+          if (!Array.isArray(slots) || !slots[0])
+            throw new Error("Missing actual proposed slot");
+          const slot = slots[0] as { startAt: string; endAt: string };
+          expect(Date.parse(slot.endAt) - Date.parse(slot.startAt)).toBe(
+            minutes * 60_000,
+          );
+          expect(
+            calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+          ).toBe(true);
+          expect(read).toHaveBeenCalledTimes(2);
+          for (const fault of [
+            "duration",
+            "source",
+            "receipt",
+            "window",
+            "target",
+            "event-duration",
+          ]) {
+            const bad = structuredClone(f.trajectory);
+            const step = bad.steps[0];
+            if (!step.result?.data || !step.result.effectReceipts?.[0])
+              throw new Error("Missing actual proposal evidence");
+            if (fault === "duration")
+              step.result.data.durationMinutes = minutes + 1;
+            if (fault === "source")
+              step.result.effectReceipts[0].resource.id = "other-calendar";
+            if (fault === "receipt")
+              step.result.effectReceipts[0].outcome = "noop";
+            if (fault === "target") delete step.result.data.targetSnapshot;
+            if (fault === "event-duration")
+              (step.result.data.existingEvent as LifeOpsCalendarEvent).endAt =
+                "2026-10-01T08:10:00Z";
+            if (fault === "window")
+              step.result.data.windowEnd = "2026-10-05T08:00:00Z";
+            expect(
+              calendarReadCoverage(f.output, f.context, bad).verified,
+            ).toBe(false);
+          }
+        },
+      );
+    },
+  );
+  it("retains the existing sub-five-minute event refusal", async () => {
+    await proposal({ existingMinutes: 2.5 }, ({ result, read }) => {
+      expect(result.success).toBe(false);
+      expect(result.data?.error).toBe("INVALID_EVENT_DURATION");
+      expect(read).toHaveBeenCalledOnce();
+    });
+  });
+  it.each([4.99, 5, 480, 480.01])(
+    "keeps the new-slot bounds for %s requested minutes",
+    async (minutes) => {
+      await proposal({ newMinutes: minutes }, ({ result, f, read }) => {
+        const valid = minutes >= 5 && minutes <= 480;
+        expect(result.success).toBe(valid);
+        if (valid) {
+          expect(result.data?.durationMinutes).toBe(minutes);
+          expect(
+            calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+          ).toBe(true);
+          expect(read).toHaveBeenCalledOnce();
+        } else {
+          expect(result.failureProvenance?.code).toBe(
+            "ACTION_ARGUMENTS_INVALID",
+          );
+          expect(read).not.toHaveBeenCalled();
+        }
+      });
+    },
+  );
+
+  it.each([4.99, 480.01])(
+    "rejects out-of-range legacy new lengths %s in the actual handler",
+    async (minutes) => {
+      await proposal(
+        { newMinutes: minutes, legacy: true },
+        ({ result, read }) => {
+          expect(result.success).toBe(false);
+          expect(result.data).toMatchObject({
+            error: "INVALID_ARGUMENTS",
+            outOfRange: ["durationMinutes (5-480)"],
+          });
+          expect(read).not.toHaveBeenCalled();
+        },
+      );
+    },
+  );
+
+  it("reports no choices when the preserved event cannot fit the bounded window", async () => {
+    await proposal({ existingMinutes: 900 }, ({ result, f, read }) => {
+      expect(result.success).toBe(true);
+      expect(result.data).toMatchObject({
+        durationMinutes: 900,
+        slots: [],
+        awaitingUserInput: true,
+      });
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(true);
+      expect(read).toHaveBeenCalledTimes(2);
+    });
+  });
+  it("does not use an existing-event query to bypass an explicit new-length limit", async () => {
+    await proposal(
+      { existingMinutes: 540.5, newMinutes: 540.5, legacy: true },
+      ({ result, read }) => {
+        expect(result.success).toBe(false);
+        expect(result.data).toMatchObject({
+          error: "INVALID_ARGUMENTS",
+          outOfRange: ["durationMinutes (5-480)"],
+        });
+        expect(read).not.toHaveBeenCalled();
+      },
+    );
+  });
 });

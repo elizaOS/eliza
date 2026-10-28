@@ -21,6 +21,7 @@ import {
  */
 
 import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
 } from "@elizaos/contracts";
@@ -2467,6 +2468,147 @@ function calendarMutationTargetReadEvidence(
   return [...ids];
 }
 
+/** The scheduling producer proves preview/read windows independently of agenda reads. */
+function calendarSchedulingOutcomeCovered(
+  operation: "propose_times" | "check_availability",
+  step: PlannerTrajectory["steps"][number],
+): boolean {
+  const result = step.result;
+  if (!result || !isObjectRecord(result.data)) return false;
+  const data = result.data;
+  const proposal = operation === "propose_times";
+  const snapshot = data.calendarSnapshot;
+  if (!isObjectRecord(snapshot) || !isObjectRecord(snapshot.resource))
+    return false;
+  const resource = snapshot.resource;
+  if (
+    resource.kind !== "calendar.feed" ||
+    typeof resource.id !== "string" ||
+    !resource.id ||
+    typeof resource.version !== "string" ||
+    !resource.version ||
+    typeof snapshot.observedAt !== "string" ||
+    !Number.isFinite(Date.parse(snapshot.observedAt)) ||
+    !result.effectReceipts?.some(
+      (receipt) =>
+        receipt.operation ===
+          (proposal
+            ? "calendar.propose_times.preview"
+            : "calendar.check_availability.read") &&
+        receipt.outcome === (proposal ? "preview" : "noop") &&
+        receipt.idempotency.replayed === false &&
+        receipt.resource.kind === resource.kind &&
+        receipt.resource.id === resource.id &&
+        receipt.resource.version === resource.version &&
+        receipt.observedAt === snapshot.observedAt,
+    )
+  )
+    return false;
+  const start =
+    typeof data.windowStart === "string" ? Date.parse(data.windowStart) : NaN;
+  const end =
+    typeof data.windowEnd === "string" ? Date.parse(data.windowEnd) : NaN;
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start ||
+    typeof data.timeZone !== "string" ||
+    !data.timeZone
+  )
+    return false;
+  if (!proposal)
+    return (
+      typeof data.isFree === "boolean" &&
+      Array.isArray(data.conflicts) &&
+      data.isFree === (data.conflicts.length === 0)
+    );
+  const duration = data.durationMinutes;
+  if (
+    typeof duration !== "number" ||
+    !Number.isFinite(duration) ||
+    duration < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
+    !Array.isArray(data.slots)
+  )
+    return false;
+  const params = step.toolCall?.params;
+  const durationInput = isObjectRecord(params?.duration)
+    ? params.duration
+    : undefined;
+  const suppliedDuration = durationInput?.minutes ?? params?.durationMinutes;
+  if (
+    suppliedDuration !== undefined &&
+    (typeof suppliedDuration !== "number" ||
+      !Number.isFinite(suppliedDuration) ||
+      suppliedDuration < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
+      suppliedDuration > CALENDAR_NEW_SLOT_DURATION_MINUTES.max ||
+      duration !== Math.floor(suppliedDuration))
+  )
+    return false;
+  const inherited =
+    suppliedDuration === undefined &&
+    typeof durationInput?.existingEventQuery === "string" &&
+    durationInput.existingEventQuery.trim().length > 0;
+  if (duration > CALENDAR_NEW_SLOT_DURATION_MINUTES.max && !inherited)
+    return false;
+  if (inherited) {
+    // The canonical handler resolves this existing event from its target feed.
+    // Preserve its exact duration, not the limits for a newly requested length.
+    const event = data.existingEvent,
+      target = data.targetSnapshot;
+    if (
+      !isObjectRecord(event) ||
+      !isObjectRecord(target) ||
+      !isObjectRecord(target.resource) ||
+      target.resource.kind !== "calendar.feed" ||
+      typeof target.resource.id !== "string" ||
+      !target.resource.id ||
+      typeof target.resource.version !== "string" ||
+      !target.resource.version ||
+      typeof target.observedAt !== "string" ||
+      !Number.isFinite(Date.parse(target.observedAt)) ||
+      typeof event.id !== "string" ||
+      !event.id ||
+      typeof event.updatedAt !== "string" ||
+      !event.updatedAt ||
+      typeof event.startAt !== "string" ||
+      typeof event.endAt !== "string" ||
+      !Number.isFinite(Date.parse(event.startAt)) ||
+      !Number.isFinite(Date.parse(event.endAt)) ||
+      (Date.parse(event.endAt) - Date.parse(event.startAt)) / 60_000 !==
+        duration ||
+      !Array.isArray(target.artifacts) ||
+      !target.artifacts.some(
+        (artifact) =>
+          isObjectRecord(artifact) &&
+          artifact.kind === "calendar.event" &&
+          artifact.id === event.id &&
+          artifact.version === event.updatedAt,
+      )
+    )
+      return false;
+  }
+  // The canonical producer may truthfully find no options. A successful
+  // preview otherwise contains concrete slots, not unbounded free windows.
+  return data.slots.every((slot) => {
+    if (
+      !isObjectRecord(slot) ||
+      slot.durationMinutes !== duration ||
+      slot.timeZone !== data.timeZone
+    )
+      return false;
+    const from =
+      typeof slot.startAt === "string" ? Date.parse(slot.startAt) : NaN;
+    const to = typeof slot.endAt === "string" ? Date.parse(slot.endAt) : NaN;
+    return (
+      Number.isFinite(from) &&
+      Number.isFinite(to) &&
+      from >= start &&
+      to <= end &&
+      to - from === Math.round(duration * 60_000)
+    );
+  });
+}
+
 export function calendarReadCoverage(
   output: EvaluatorOutput,
   context: ContextObject,
@@ -2552,95 +2694,8 @@ export function calendarReadCoverage(
       if (
         binding.operation === "propose_times" ||
         binding.operation === "check_availability"
-      ) {
-        const proposal = binding.operation === "propose_times";
-        const snapshot = data.calendarSnapshot;
-        if (!isObjectRecord(snapshot) || !isObjectRecord(snapshot.resource))
-          return false;
-        const resource = snapshot.resource;
-        if (
-          resource.kind !== "calendar.feed" ||
-          typeof resource.id !== "string" ||
-          !resource.id ||
-          typeof resource.version !== "string" ||
-          !resource.version ||
-          typeof snapshot.observedAt !== "string" ||
-          !Number.isFinite(Date.parse(snapshot.observedAt)) ||
-          !step.result.effectReceipts?.some(
-            (receipt) =>
-              receipt.operation ===
-                (proposal
-                  ? "calendar.propose_times.preview"
-                  : "calendar.check_availability.read") &&
-              receipt.outcome === (proposal ? "preview" : "noop") &&
-              receipt.idempotency.replayed === false &&
-              receipt.resource.kind === resource.kind &&
-              receipt.resource.id === resource.id &&
-              receipt.resource.version === resource.version &&
-              receipt.observedAt === snapshot.observedAt,
-          )
-        )
-          return false;
-        const start =
-          typeof data.windowStart === "string"
-            ? Date.parse(data.windowStart)
-            : NaN;
-        const end =
-          typeof data.windowEnd === "string" ? Date.parse(data.windowEnd) : NaN;
-        if (
-          !Number.isFinite(start) ||
-          !Number.isFinite(end) ||
-          end <= start ||
-          typeof data.timeZone !== "string" ||
-          !data.timeZone
-        )
-          return false;
-        if (!proposal)
-          return (
-            typeof data.isFree === "boolean" &&
-            Array.isArray(data.conflicts) &&
-            data.isFree === (data.conflicts.length === 0)
-          );
-        const duration = data.durationMinutes;
-        if (
-          typeof duration !== "number" ||
-          !Number.isFinite(duration) ||
-          duration < 5 ||
-          duration > 480 ||
-          !Array.isArray(data.slots)
-        )
-          return false;
-        const params = step.toolCall.params;
-        const suppliedDuration = isObjectRecord(params?.duration)
-          ? params.duration.minutes
-          : params?.durationMinutes;
-        if (
-          typeof suppliedDuration === "number" &&
-          duration !== Math.floor(suppliedDuration)
-        )
-          return false;
-        // The canonical producer may truthfully find no options. A successful
-        // preview otherwise contains concrete slots, not unbounded free windows.
-        return data.slots.every((slot) => {
-          if (
-            !isObjectRecord(slot) ||
-            slot.durationMinutes !== duration ||
-            slot.timeZone !== data.timeZone
-          )
-            return false;
-          const from =
-            typeof slot.startAt === "string" ? Date.parse(slot.startAt) : NaN;
-          const to =
-            typeof slot.endAt === "string" ? Date.parse(slot.endAt) : NaN;
-          return (
-            Number.isFinite(from) &&
-            Number.isFinite(to) &&
-            from >= start &&
-            to <= end &&
-            to - from === Math.round(duration * 60_000)
-          );
-        });
-      }
+      )
+        return calendarSchedulingOutcomeCovered(binding.operation, step);
       const reply = data.replyContext;
       if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
       if (binding.operation === "feed") {

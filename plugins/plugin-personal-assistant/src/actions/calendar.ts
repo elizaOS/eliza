@@ -16,7 +16,10 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/contracts";
-import { resolveCalendarTimeZone } from "@elizaos/contracts";
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -255,7 +258,11 @@ type OwnerCalendarSubaction =
 const ACTION_NAME = "CALENDAR";
 
 const proposalDurationProperties: Record<string, ActionParameterSchema> = {
-  minutes: { type: "number", minimum: 5, maximum: 480 },
+  minutes: {
+    type: "number",
+    minimum: CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+    maximum: CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+  },
   existingEventQuery: { type: "string", minLength: 1 },
 };
 

@@ -16,6 +16,12 @@ import type {
   LifeOpsConnectorSide,
 } from "./lifeops/connectors.js";
 import type { LifeOpsGmailMessageSummary } from "./lifeops/gmail.js";
+/** Requested NEW slot lengths; inherited event lengths retain their own policy. */
+export const CALENDAR_NEW_SLOT_DURATION_MINUTES = Object.freeze({
+  min: 5,
+  max: 480,
+});
+
 export interface LifeOpsCalendarEventEndedFilters {
   /** Only fire for events on these calendar ids (e.g. "primary"). */
   calendarIds?: string[];
