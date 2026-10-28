@@ -432,7 +432,30 @@ export async function runPlannerLoop(
     // Failure-aware synthesis is the final authority. Its grounded answer must
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
     // another synthesis that lacks the recorded failure context.
-    const final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    let final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    if (
+      final.status === "finished" &&
+      final.evaluator?.success === true &&
+      latestUnresolvedFailedNonTerminalToolStep(final.trajectory)
+    ) {
+      // The returned verdict is consumed as authority by parent planners.
+      // Keep the raw model output in trajectory.evaluatorOutputs unchanged;
+      // preserve successful sibling receipts and the normal reply postpasses.
+      final = {
+        ...final,
+        evaluator: {
+          ...final.evaluator,
+          success: false,
+          requestFullyCovered: false,
+          // This status disclaims the failed overall completion described by
+          // the reply; successful sibling receipts still prove their effects.
+          replyEffectStatus: "non_applied",
+          effectReceiptIds: undefined,
+          outcomeCoverage: undefined,
+          messageToUser: final.finalMessage,
+        },
+      };
+    }
     const binding = params.resolveTypedReadReply?.({
       trajectory: final.trajectory,
       nowMs: Date.now(),
@@ -2974,11 +2997,8 @@ async function runPlannerLoopIterations(
     }
 
     if (
-      latestResult?.success === false &&
-      latestResult.failureProvenance?.retryable === true &&
-      latestResult.data?.acceptance === "rejected" &&
-      latestResult.data?.executionStatus === "not_started" &&
-      !latestResult.effectReceipts?.length &&
+      latestResult !== undefined &&
+      isRetryablePreExecutionRejection(latestResult) &&
       !hasExecutionPrerequisite(latestResult)
     ) {
       // A typed pre-execution rejection is safe to repair, not proof that an
@@ -6935,7 +6955,8 @@ function latestUnresolvedFailedNonTerminalToolStep(
     if (
       step.result.success === false &&
       (step.result.data as { readOnlyOperation?: unknown } | undefined)
-        ?.readOnlyOperation === true
+        ?.readOnlyOperation === true &&
+      !isRetryablePreExecutionRejection(step.result)
     ) {
       continue;
     }
@@ -6944,22 +6965,13 @@ function latestUnresolvedFailedNonTerminalToolStep(
     if (
       step.result.success === false &&
       (step.result.data as { coachingFailure?: unknown } | undefined)
-        ?.coachingFailure === true
+        ?.coachingFailure === true &&
+      !isRetryablePreExecutionRejection(step.result)
     ) {
       continue;
     }
-    // Typed retryable validation rejections prove no operation started. Like
-    // read-before-write coaching, they remain full evidence for replanning but
-    // cannot turn a later verified completed outcome into a failed mutation.
-    if (
-      step.result.success === false &&
-      step.result.failureProvenance?.retryable === true &&
-      step.result.data?.acceptance === "rejected" &&
-      step.result.data?.executionStatus === "not_started" &&
-      !step.result.effectReceipts?.length
-    ) {
-      continue;
-    }
+    // Rejected drafts remain unresolved until the same operation succeeds.
+    // The absence of an effect is not proof that the user request completed.
     const operationKey = plannerToolOperationKey(step.toolCall, step.result);
     if (step.result.success === false || step.result.error != null) {
       unresolvedByOperation.delete(operationKey);
@@ -6968,18 +6980,171 @@ function latestUnresolvedFailedNonTerminalToolStep(
       // Identical arguments do not prove every failed effect succeeded.
       const previous = unresolvedByOperation.get(operationKey);
       if (
+        !isRetryablePreExecutionRejection(previous?.result) &&
         !previous?.result?.effectReceipts?.some(
           (receipt) => receipt.outcome === "failed",
         )
       ) {
         unresolvedByOperation.delete(operationKey);
       }
+      resolveRejectedCallsSupersededBy(
+        step,
+        unresolvedByOperation,
+        trajectory.outcomeIntents?.length ?? 0,
+      );
       resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
       resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
       resolveFailedEffectsSupersededBy(step, unresolvedByOperation);
     }
   }
   return [...unresolvedByOperation.values()].at(-1);
+}
+
+/** A schema/validation refusal with explicit proof that dispatch did not start. */
+function isRetryablePreExecutionRejection(
+  result: PlannerToolResult | undefined,
+): boolean {
+  return (
+    result?.success === false &&
+    result.failureProvenance?.retryable === true &&
+    result.data?.acceptance === "rejected" &&
+    result.data?.executionStatus === "not_started" &&
+    !result.effectReceipts?.length
+  );
+}
+
+/** Registered dispatch metadata correlates child and umbrella calls without guessing names. */
+function rejectedRetryCall(step: PlannerStep): PlannerToolCall | undefined {
+  const call = step.toolCall;
+  if (!call) return undefined;
+  const dispatch =
+    step.result?.inferredSubaction ?? step.result?.registeredSubaction;
+  return dispatch
+    ? {
+        ...call,
+        name: dispatch.child,
+        params: { ...call.params, [dispatch.discriminator]: dispatch.value },
+      }
+    : call;
+}
+
+function resolveRejectedCallsSupersededBy(
+  step: PlannerStep,
+  unresolvedByOperation: Map<string, PlannerStep>,
+  declaredIntentCount: number,
+): void {
+  const result = step.result,
+    call = rejectedRetryCall(step);
+  if (
+    !call ||
+    !result ||
+    result.success !== true ||
+    result.error != null ||
+    hasExecutionPrerequisite(result) ||
+    result.data?.requiresInput === true ||
+    result.effectReceipts?.some((receipt) => receipt.outcome === "failed")
+  )
+    return;
+  for (const [key, rejected] of unresolvedByOperation) {
+    if (!isRetryablePreExecutionRejection(rejected.result)) continue;
+    const failedCall = rejectedRetryCall(rejected);
+    if (
+      !failedCall ||
+      failedCall.name.toUpperCase() !== call.name.toUpperCase() ||
+      plannerToolDiscriminatorValue(failedCall) !==
+        plannerToolDiscriminatorValue(call)
+    )
+      continue;
+    const params = { ...failedCall.params };
+    const invalidNames = rejected.result?.data?.invalidParameterNames;
+    if (Array.isArray(invalidNames))
+      for (const name of invalidNames) {
+        if (typeof name !== "string" || TARGET_PARAMETER_KEY_PATTERN.test(name))
+          continue;
+        const value = params[name];
+        // A rejected composite can still carry an explicit target. Retain those
+        // bindings while omitting the rejected non-target representation hints.
+        const targets = isObjectRecord(value)
+          ? Object.fromEntries(
+              Object.entries(value).filter(
+                ([field, value]) =>
+                  TARGET_PARAMETER_KEY_PATTERN.test(field) &&
+                  isSuppliedParameterValue(value),
+              ),
+            )
+          : {};
+        if (Object.keys(targets).length) params[name] = targets;
+        else delete params[name];
+      }
+    const targets = Object.entries(params).flatMap(([name, value]) => {
+      if (
+        TARGET_PARAMETER_KEY_PATTERN.test(name) &&
+        isSuppliedParameterValue(value)
+      )
+        return [
+          {
+            path: [name],
+            value,
+            mayMove: Array.isArray(invalidNames) && invalidNames.includes(name),
+          },
+        ];
+      return isObjectRecord(value)
+        ? Object.entries(value)
+            .filter(
+              ([field, target]) =>
+                TARGET_PARAMETER_KEY_PATTERN.test(field) &&
+                isSuppliedParameterValue(target),
+            )
+            .map(([field, value]) => ({
+              path: [name, field],
+              value,
+              mayMove: false,
+            }))
+        : [];
+    });
+    const completedTargets = Object.entries(call.params ?? {}).flatMap(
+      ([name, value]) =>
+        TARGET_PARAMETER_KEY_PATTERN.test(name)
+          ? [value]
+          : isObjectRecord(value)
+            ? Object.entries(value)
+                .filter(([field]) => TARGET_PARAMETER_KEY_PATTERN.test(field))
+                .map(([, value]) => value)
+            : [],
+    );
+    if (
+      targets.some((target) => {
+        let current: unknown = call.params;
+        for (const field of target.path)
+          current =
+            isObjectRecord(current) && Object.hasOwn(current, field)
+              ? current[field]
+              : undefined;
+        return (
+          !correlationValuesEqual(target.value, current) &&
+          !(
+            target.mayMove &&
+            completedTargets.some((value) =>
+              correlationValuesEqual(target.value, value),
+            )
+          )
+        );
+      })
+    )
+      continue;
+    const hasTarget = targets.length > 0;
+    // A malformed envelope with no machine-stable target cannot discharge
+    // several declared outcomes merely because another call used the same tool.
+    if (!hasTarget && declaredIntentCount > 1) continue;
+    if (
+      malformedCallSupersededBy(
+        { ...failedCall, params },
+        rejected.result,
+        call,
+      )
+    )
+      unresolvedByOperation.delete(key);
+  }
 }
 
 /** Canonicalizes the calendar wrapper's explicitly supported operation aliases. */
@@ -7151,6 +7316,9 @@ function resolveMalformedCallsSupersededBy(
     ) {
       continue;
     }
+    // Typed no-dispatch refusals require a successful exact operation, not a
+    // merely similar constructive subaction accepted by legacy correlation.
+    if (isRetryablePreExecutionRejection(failed.result)) continue;
     if (!isMalformedCallFailure(failed.result)) continue;
     if (!malformedCallSupersededBy(failedCall, failed.result, call)) continue;
     unresolvedByOperation.delete(key);
@@ -8098,6 +8266,25 @@ function isRepeatableObservation(result: PlannerToolResult): boolean {
     : result.data?.readOnlyOperation === true;
 }
 
+/** Canonical failed receipts carry retry policy even without legacy data markers. */
+export function hasNonRetryableToolFailure(result: PlannerToolResult): boolean {
+  if (
+    result.failureProvenance?.retryable === false ||
+    result.data?.retryable === false
+  )
+    return true;
+  try {
+    return normalizeEffectReceipts(result.effectReceipts).some(
+      (receipt) =>
+        receipt.outcome === "failed" && receipt.failure.retryable === false,
+    );
+  } catch {
+    // error-policy:J3 malformed receipt lookalikes cannot establish retry policy.
+    // The original result remains intact for its existing validation/failure path.
+    return false;
+  }
+}
+
 /**
  * Separate settled operations from executable calls across the complete turn.
  * Successful mutations and legacy unclassified results remain deduplicated.
@@ -8141,10 +8328,7 @@ export function partitionRedundantSucceededCalls(
         succeeded.clear();
       }
       succeeded.add(identity);
-    } else if (
-      step.result.failureProvenance?.retryable === false ||
-      step.result.data?.retryable === false
-    ) {
+    } else if (hasNonRetryableToolFailure(step.result)) {
       failedNonRetryable.add(identity);
     }
   }

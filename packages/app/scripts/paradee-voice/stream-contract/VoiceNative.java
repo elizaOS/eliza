@@ -3,12 +3,19 @@ import java.util.concurrent.CancellationException;
 final class VoiceNative {
     static volatile int calls, destroyed, created, textClosed;
     static volatile long ttsContext, asrContext;
+    static Runnable afterTtsLoad;
     static String nativeVoiceAbiVersion() { return "19"; }
     static int nativeParadeeSupported() { return 1; }
     static int nativeParadeeStreamSupported() { return 1; }
     static long nativeContextCreate(String directory) { return ++created; }
     static void nativeContextDestroy(long context) { destroyed++; }
-    static int nativeParadeeLoad(long context, String model, String lexicon, String espeak) { ttsContext = context; return 0; }
+    static int nativeParadeeLoad(long context, String model, String lexicon, String espeak) {
+        ttsContext = context;
+        Runnable callback = afterTtsLoad;
+        afterTtsLoad = null;
+        if (callback != null) callback.run();
+        return 0;
+    }
     static int nativeParadeeSampleRate(long context) { return 24000; }
     static int nativeParadeeG2pKind(long context) { return 0; }
     static String nativeParadeePhonemize(long context, byte[] text) { return "test"; }

@@ -14,3 +14,9 @@ Use `@elizaos/contracts` for browser-safe DTOs and validators. Node signing and 
 Device-review contracts cover foreground Calendar availability, Notes search and
 name-targeted edits. Domain owners supply record validators; hosts retain local
 selection, permission and approval. A no-match receipt reports no change.
+
+`@elizaos/contracts/device-action-execution` shares immutable attempt identity
+and a single-dispatch renderer guard. Hosts retain authenticated requests,
+foreground consent, durable journal transitions and result admission. Retirement
+blocks dispatch but does not discard a known result of an admitted attempt.
+The guard does not grant retry permission or replace journal recovery.

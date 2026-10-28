@@ -14,9 +14,7 @@ import {
 function fixture() {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
   const js = ts.transpileModule(
-    source
-      .replace(/^import[\s\S]*?;\n/gm, "")
-      .replace("export const viewsAction", "const viewsAction"),
+    source.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""),
     {
       compilerOptions: {
         target: ts.ScriptTarget.ES2022,

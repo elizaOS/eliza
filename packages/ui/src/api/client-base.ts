@@ -90,7 +90,7 @@ import { defaultFetchTimeoutMs } from "./request-timeout";
 import {
   type AgentRequestTransport,
   fetchAgentTransport,
-  findSseEventBreak,
+  SseEventFramer,
 } from "./transport";
 
 // ---------------------------------------------------------------------------
@@ -2916,7 +2916,7 @@ export class ElizaClient {
     }
     const decoder = new TextDecoder();
     const reader = res.body.getReader();
-    let buffer = "";
+    const framer = new SseEventFramer();
     const streamState: StreamChatState = {
       deltaProtocol: true,
       fullText: "",
@@ -3010,12 +3010,7 @@ export class ElizaClient {
         break;
       }
       if (done || !value) break;
-      buffer += decoder.decode(value, { stream: true });
-      let eventBreak = findSseEventBreak(buffer);
-      while (eventBreak) {
-        const rawEvent = buffer.slice(0, eventBreak.index);
-        buffer = buffer.slice(eventBreak.index + eventBreak.length);
-        const eventLines = rawEvent.split(/\r?\n/);
+      framer.push(decoder.decode(value, { stream: true }), (eventLines) => {
         const eventName = sseEventName(eventLines);
         for (const line of eventLines) {
           if (!line.startsWith("data:")) continue;
@@ -3030,21 +3025,19 @@ export class ElizaClient {
               notifyReplyReady,
             )
           ) {
-            buffer = "";
             // error-policy:J6 best-effort reader teardown after terminal done.
             void reader
               .cancel("elizaos-sse-terminal-done")
               .catch(() => undefined);
-            break;
+            return true;
           }
         }
-        if (streamState.receivedDone) break;
-        eventBreak = findSseEventBreak(buffer);
-      }
+        return false;
+      });
       if (streamState.receivedDone) break;
     }
-    if (!streamState.receivedDone && buffer.trim()) {
-      const trailingLines = buffer.split(/\r?\n/);
+    if (!streamState.receivedDone) {
+      const trailingLines = framer.takePending();
       const trailingEventName = sseEventName(trailingLines);
       for (const line of trailingLines) {
         if (line.startsWith("data:")) {

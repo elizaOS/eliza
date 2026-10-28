@@ -228,3 +228,6 @@ export function createNotesClient(api: Pick<ElizaClient, "fetch">) {
     },
   };
 }
+
+/** Canonical transport port; clients retain their host-owned authorization. */
+export type NotesClient = ReturnType<typeof createNotesClient>;

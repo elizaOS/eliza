@@ -184,6 +184,7 @@ import {
   type IMessageDeliveryResult,
   IMessageDomain,
   type IMessageRecord,
+  type IMessageSendReceipt,
   type IMessageSendRequest,
 } from "./domains/imessage-service.js";
 import { InboxDomain } from "./domains/inbox-service.js";
@@ -2101,9 +2102,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
     return this.imessageDomain.getIMessageConnectorStatus();
   }
 
-  sendIMessage(
-    req: IMessageSendRequest,
-  ): Promise<{ ok: true; messageId?: string; messageIds?: string[] }> {
+  sendIMessage(req: IMessageSendRequest): Promise<IMessageSendReceipt> {
     return this.imessageDomain.sendIMessage(req);
   }
 

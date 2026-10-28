@@ -483,6 +483,7 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/contracts": () => import("@elizaos/contracts"),
   "@elizaos/host/protocol": () => import("@elizaos/host/protocol"),
   "@elizaos/ui": importUiRootCompat,
+  "@elizaos/ui/view-primitives": () => import("../../view-primitives.js"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),

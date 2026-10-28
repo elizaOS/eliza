@@ -50,7 +50,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-host": "node scripts/test-native-host.mjs"
+    "test:native-host": "node scripts/test-native-host.mjs && node --test test/provider-admission/provider-admission.node.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",

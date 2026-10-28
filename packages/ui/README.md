@@ -3,6 +3,10 @@
 Shared React UI library for elizaOS apps: primitives, composites, layouts, the typed HTTP/WS API client, agent-surface view
 instrumentation, GenUI, voice, and host capability interfaces.
 
+`@elizaos/ui/view-primitives` provides the shared page frame, button, compact
+skeleton, agent-element hook and API error predicate for embedded domain views.
+It does not import the application, account or provider client barrels.
+
 Public JavaScript APIs use the package root; UI internals import owner files directly.
 Batch voice hosts use `@elizaos/ui/voice/batch-conversation` to load the coordinator
 without the React UI root. This public entry owns no credentials, media or provider
@@ -14,6 +18,24 @@ UI root: `@elizaos/ui/text-control-editing` and `@elizaos/ui/voice/` followed by
 `draft-transcript-guard`, `microphone-capture`, `pcm-wave`,
 `progressive-speech-playback`, `recorded-transcription-controller` or
 `segmented-speech-playback`. The same packed-consumer test covers these entries.
+
+`@elizaos/ui/voice/voice-session-client` exposes the realtime PCM client with a
+required host-owned fetch transport. It does not load dashboard credentials or
+connection settings. The app's existing internal entry retains its default
+dashboard transport. The packed-consumer check verifies the public client's
+mint, first-frame handshake, interruption and cleanup with injected transports.
+`@elizaos/ui/installed-apps-launcher` renders the shared installed-app list,
+search, favorites and default-phone shortcut. Pass the controller from
+`@elizaos/capacitor-system/launcher`, current query and host callbacks. The host
+provides its product name, builtin key prefix, icons and CSS theme tokens; the
+component does not choose a native adapter or storage namespace. AOSP
+`LauncherSurface` uses the same component for registered views and Android apps.
+
+`@elizaos/ui/api/transport` exposes the browser-safe request helpers and
+`SseEventFramer`. It preserves event lines across fragmented network reads;
+hosts retain UTF-8 decoding policy, limits, cancellation, validation and receipts.
+The Eliza chat client uses it without a pending-event rescan on each chunk.
+
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.

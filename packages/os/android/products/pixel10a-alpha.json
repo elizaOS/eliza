@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "target": "pixel10a",
+  "sourceProfile": "pixel10a",
+  "vendorDirectory": "alphaphone",
+  "productName": "alpha_stallion_phone",
+  "model": "Alpha Phone Pixel 10a",
+  "brand": "Alpha",
+  "manufacturer": "Google",
+  "releaseConfig": "cp2a",
+  "launcher": {
+    "moduleName": "AlphaPhone",
+    "packageName": "ai.elizaresearch.alphaphone"
+  },
+  "releaseQualified": false,
+  "sense": {
+    "moduleName": "AlphaSense",
+    "appName": "Alpha",
+    "wakeNames": ["alpha"],
+    "componentPackage": "ai.elizaresearch.alphaphone.sense",
+    "assistActivity": "ai.elizaresearch.alphaphone.AlphaAssistActivity",
+    "storageName": "listener-settings"
+  }
+}

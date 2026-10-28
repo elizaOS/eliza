@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hashFile } from "./release-contract.ts";
+import { verifyDeviceSource } from "./verify-device-source.mjs";
 
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 export const defaultLockPath = join(repositoryRoot, "android/aosp.lock.json");
@@ -60,7 +61,58 @@ export function loadProfile(profileName, lockPath = defaultLockPath) {
     if (!/^[0-9a-f]{40}$/.test(profile.manifest[field]))
       fail(`${profileName}.manifest.${field} must be a full Git object ID`);
   }
+  if (profile.sourceInventory) readSourceInventory(profile, lockPath);
   return profile;
+}
+
+function readSourceInventory(profile, lockPath) {
+  const reference = profile.sourceInventory;
+  if (
+    profile.kind !== "physical" ||
+    !isRelativePath(reference?.path) ||
+    !/^[0-9a-f]{64}$/.test(reference?.sha256 ?? "") ||
+    ["sourceTarget", "codename", "androidRelease"].some(
+      (field) =>
+        typeof profile.device?.[field] !== "string" || !profile.device[field],
+    )
+  )
+    fail("invalid complete source inventory reference");
+  const inventoryPath = resolve(dirname(lockPath), reference.path);
+  if (hashFile(inventoryPath).sha256 !== reference.sha256)
+    fail("complete source inventory SHA-256 differs from the profile");
+  const inventory = JSON.parse(readFileSync(inventoryPath, "utf8"));
+  if (
+    inventory.target !== profile.device.sourceTarget ||
+    inventory.device?.codename !== profile.device.codename ||
+    inventory.device?.androidRelease !== profile.device.androidRelease ||
+    ["tag", "tagObject", "commit"].some(
+      (field) => inventory.manifest?.[field] !== profile.manifest[field],
+    )
+  )
+    fail(
+      "complete source inventory target or manifest differs from the profile",
+    );
+  return inventoryPath;
+}
+
+/** Verify every recorded input of an inventory-backed physical source profile. */
+export function verifyProfileSource(
+  profile,
+  { aospRoot, archivePath, lockPath = defaultLockPath, appliedPatches = [] },
+) {
+  if (!aospRoot || !archivePath)
+    fail("complete source inventory requires --aosp-root and --vendor-archive");
+  return verifyDeviceSource({
+    source: aospRoot,
+    factory: archivePath,
+    lock: readSourceInventory(profile, lockPath),
+    expected: {
+      target: profile.device.sourceTarget,
+      codename: profile.device.codename,
+      androidRelease: profile.device.androidRelease,
+    },
+    appliedPatches,
+  });
 }
 
 export function verifyArchive(profile, archivePath) {
@@ -83,6 +135,10 @@ export function verifyArchive(profile, archivePath) {
 }
 
 export function verifyCheckout(profile, aospRoot) {
+  if (profile.sourceInventory)
+    fail(
+      "complete source inventory requires verifyProfileSource with the factory archive",
+    );
   if (
     !Array.isArray(profile.projects ?? []) ||
     (profile.projects ?? []).some(
@@ -187,6 +243,14 @@ export function main(argv = process.argv.slice(2)) {
     manifest: profile.manifest,
     repoInit: `repo init -u ${profile.manifest.url} -b ${profile.manifest.tag}`,
   };
+  if (
+    profile.sourceInventory &&
+    (options.aospRoot || options.archivePath || options.verifyVendorTree)
+  ) {
+    return verifyProfileSource(profile, options).then((sourceInventory) =>
+      printResult({ ...result, sourceInventory }, options.json),
+    );
+  }
   if (options.archivePath)
     result.archive = verifyArchive(profile, options.archivePath);
   if (options.aospRoot)
@@ -194,18 +258,25 @@ export function main(argv = process.argv.slice(2)) {
   if (options.verifyVendorTree) {
     result.vendorTree = verifyExtractedVendor(profile, options.aospRoot);
   }
+  return printResult(result, options.json);
+}
+
+function printResult(result, json) {
   const output = JSON.stringify(result, null, 2);
-  if (options.json) process.stdout.write(`${output}\n`);
+  if (json) process.stdout.write(`${output}\n`);
   else {
-    const checks = ["archive", "checkout", "vendorTree"].filter(
-      (key) => result[key],
-    );
+    const checks = [
+      "archive",
+      "checkout",
+      "vendorTree",
+      "sourceInventory",
+    ].filter((key) => result[key]);
     const scope = checks.length
       ? `verified ${checks.join(", ")}`
       : "loaded profile only";
-    console.log(`[aosp-lock] ${options.profile}: ${scope}\n${output}`);
+    console.log(`[aosp-lock] ${result.profile}: ${scope}\n${output}`);
   }
   return result;
 }
 
-if (import.meta.main) main();
+if (import.meta.main) await main();

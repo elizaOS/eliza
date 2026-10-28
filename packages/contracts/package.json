@@ -22,6 +22,12 @@
       "import": "./dist/node.js",
       "default": "./dist/node.js"
     },
+    "./device-action-execution": {
+      "eliza-source": "./src/device-action-execution.ts",
+      "types": "./dist/device-action-execution.d.ts",
+      "import": "./dist/device-action-execution.js",
+      "default": "./dist/device-action-execution.js"
+    },
     "./native-notes-query": {
       "eliza-source": "./src/native-notes-query.ts",
       "types": "./dist/native-notes-query.d.ts",

@@ -146,6 +146,22 @@ try {
 	);
 	console.log("Packed protocol bundles for browsers without Node built-ins");
 
+	writeFileSync(
+		path.join(consumer, "browser-read-memo.ts"),
+		'import { SingleFlightMemo } from "@elizaos/core/read-memo"; Object.assign(globalThis, { memo: new SingleFlightMemo(1000, 1) });\n',
+	);
+	run(
+		"bun",
+		[
+			"build",
+			"browser-read-memo.ts",
+			"--target=browser",
+			"--outfile=browser-read-memo.js",
+		],
+		consumer,
+	);
+	console.log("Packed read memo bundles for browsers without Node built-ins");
+
 	// The test host supplies storage; it must not enter the published kernel closure.
 	run(
 		"bun",

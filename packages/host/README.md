@@ -10,6 +10,9 @@ Node-only SQLite task gateways, research collection and trace transport, databas
 leases, and verified document-runtime packaging. Consumers supply authentication,
 consent, measurement policy and lifecycle ownership. Internal code imports defining files.
 
+`@elizaos/host/voice/ui-context` exposes the small renderer-observation contract
+for browser voice clients without loading host configuration or voice presets.
+
 From the repository root, run `bun run --cwd packages/host build`,
 `bun run --cwd packages/host test` and `bun run --cwd packages/host typecheck`.
 

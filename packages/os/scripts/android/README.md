@@ -5,6 +5,12 @@ installation. Use the [Android build commands](../../android/README.md) and each
 script's `--help`. Application sources resolve through
 [eliza-source.ts](../eliza-source.ts).
 
+`verify-source-lock.ts --profile pixel10a` and the exported `verifyProfileSource`
+share full Pixel 10a/stallion source admission between product orchestrators.
+See the Android README for required source/archive inputs and qualification limits.
+The lower-level `verifyDeviceSource` accepts caller-authenticated patch envelopes;
+it never applies patches or changes the source tree.
+
 Physical writes and publication require a signed v2 contract. Run contract tests
 with `bun run --cwd packages/os test:release` from the repository root.
 

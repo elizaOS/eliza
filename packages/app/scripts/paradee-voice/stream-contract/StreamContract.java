@@ -56,7 +56,15 @@ public final class StreamContract {
         int created = VoiceNative.created, destroyed = VoiceNative.destroyed;
         InferenceSession session = new InferenceSession(root, model, lexicon, null);
         try {
+            check(!session.isSpeechLoaded());
+            check(session.supportsStreaming());
             check(VoiceNative.created == created);
+            check(!session.isSpeechLoaded());
+            session.prepareSpeech();
+            check(session.isSpeechLoaded());
+            check(VoiceNative.created == created + 1);
+            check(VoiceNative.ttsContext == VoiceNative.asrContext);
+            check(session.speechSampleRate() == 24000);
             session.synthesize("hello", 1);
             session.transcribe(new float[]{0.1f});
             check(VoiceNative.created == created + 1);
@@ -66,6 +74,7 @@ public final class StreamContract {
             check(text.next().equals("step"));
             int closedStreams = VoiceNative.textClosed;
             session.trimMemory();
+            check(!session.isSpeechLoaded());
             check(VoiceNative.destroyed == destroyed + 1 && VoiceNative.textClosed == closedStreams + 1);
             try { text.next(); throw new AssertionError(); } catch (IllegalStateException expected) {}
             session.synthesize("reload", 1);
@@ -74,9 +83,21 @@ public final class StreamContract {
             check(VoiceNative.destroyed == destroyed + 1);
             session.synthesize("still usable", 1);
             session.close(); session.close();
+            check(!session.isSpeechLoaded());
             check(VoiceNative.destroyed == destroyed + 2);
             try { session.synthesize("closed", 1); throw new AssertionError(); } catch (IllegalStateException expected) {}
-        } finally { session.close(); model.delete(); lexicon.delete(); asrDir.delete(); root.delete(); }
+            try { session.prepareSpeech(); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        } finally { session.close(); }
+        InferenceSession cancelledLoad = new InferenceSession(root, model, lexicon, null);
+        try {
+            int beforeLoad = VoiceNative.created;
+            VoiceNative.afterTtsLoad = cancelledLoad::cancel;
+            try { cancelledLoad.prepareSpeech(); throw new AssertionError(); } catch (CancellationException expected) {}
+            check(cancelledLoad.isSpeechLoaded());
+            cancelledLoad.prepareSpeech();
+            check(VoiceNative.created == beforeLoad + 1);
+            check(VoiceNative.ttsContext == VoiceNative.asrContext);
+        } finally { cancelledLoad.close(); model.delete(); lexicon.delete(); asrDir.delete(); root.delete(); }
         System.out.println("Paradee stream and shared inference lifecycle contracts passed");
     }
 }

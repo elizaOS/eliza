@@ -90,6 +90,12 @@
     "test:batch-voice-package": "node scripts/verify-batch-voice-package.ts"
   },
   "exports": {
+    "./view-primitives": {
+      "eliza-source": "./src/view-primitives.ts",
+      "types": "./dist/view-primitives.d.ts",
+      "import": "./dist/view-primitives.js",
+      "default": "./dist/view-primitives.js"
+    },
     ".": {
       "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",
@@ -116,6 +122,12 @@
       "types": "./dist/utils/value-formatting.d.mts",
       "import": "./dist/utils/value-formatting.mjs",
       "default": "./dist/utils/value-formatting.mjs"
+    },
+    "./voice/voice-session-client": {
+      "eliza-source": "./src/voice/voice-session-client-core.ts",
+      "types": "./dist/voice/voice-session-client-core.d.ts",
+      "import": "./dist/voice/voice-session-client-core.js",
+      "default": "./dist/voice/voice-session-client-core.js"
     },
     "./voice/batch-conversation": {
       "eliza-source": "./src/voice/batch-conversation.ts",
@@ -164,6 +176,18 @@
       "types": "./dist/voice/segmented-speech-playback.d.ts",
       "import": "./dist/voice/segmented-speech-playback.js",
       "default": "./dist/voice/segmented-speech-playback.js"
+    },
+    "./api/transport": {
+      "eliza-source": "./src/api/transport.ts",
+      "types": "./dist/api/transport.d.ts",
+      "import": "./dist/api/transport.js",
+      "default": "./dist/api/transport.js"
+    },
+    "./installed-apps-launcher": {
+      "eliza-source": "./src/components/pages/InstalledAppsLauncher.tsx",
+      "types": "./dist/components/pages/InstalledAppsLauncher.d.ts",
+      "import": "./dist/components/pages/InstalledAppsLauncher.js",
+      "default": "./dist/components/pages/InstalledAppsLauncher.js"
     }
   },
   "peerDependencies": {
@@ -262,7 +286,8 @@
     "@elizaos/host": "workspace:*",
     "@elizaos/contracts": "workspace:*",
     "@elizaos/voice": "workspace:*",
-    "@elizaos/plugin-assistant": "workspace:*"
+    "@elizaos/plugin-assistant": "workspace:*",
+    "@elizaos/capacitor-system": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/haptics": "8.0.2",

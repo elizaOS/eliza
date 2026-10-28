@@ -21,6 +21,12 @@ const operation={type:'clock_handoff',action:'dismiss'},identity={scope:'a'.repe
 const executor=createClockReviewExecutor({async reviewClock(input){assert.deepEqual(input.operation,operation);return saved?{result}:{reviewToken:'native-gesture'};},async confirmClock(input){assert.equal(input.reviewToken,'native-gesture');assert.equal(input.operationId,'operation');effects++;saved=true;return {result};},async cancelClock(){cancels++;if(failCancel)throw Error('unconfirmed');}});
 assert.deepEqual(await executor.review(operation,'operation',identity,new AbortController().signal,()=>{}),result);assert.equal(effects,1);assert.deepEqual(await executor.review(operation,'operation',identity,new AbortController().signal,()=>{}),result);assert.equal(effects,1);
 failCancel=true;await assert.rejects(executor.review(operation,'operation',identity,new AbortController().signal,()=>{}));const before=cancels;await assert.rejects(executor.retire());assert.equal(cancels,before+1);failCancel=false;await executor.retire();const after=cancels;await executor.retire();assert.equal(cancels,after);assert.equal(effects,1);
+let releasePrepared;let preparedConfirms=0;
+const preRetire=createClockReviewExecutor({async reviewClock(){return new Promise(resolve=>releasePrepared=resolve);},async confirmClock(){preparedConfirms++;return {result};},async cancelClock(){releasePrepared?.({reviewToken:'late-gesture'});}});
+const beforeDispatch=preRetire.review(operation,'before-retire',identity,new AbortController().signal,()=>{});await preRetire.retire();await assert.rejects(beforeDispatch);assert.equal(preparedConfirms,0);
+let releaseConfirmed,startedConfirm;const confirming=new Promise(resolve=>startedConfirm=resolve);let live=true;
+const postRetire=createClockReviewExecutor({async reviewClock(){return {reviewToken:'gesture'};},async confirmClock(){startedConfirm();return new Promise(resolve=>releaseConfirmed=resolve);},async cancelClock(){}});
+const afterDispatch=postRetire.review(operation,'after-retire',identity,new AbortController().signal,()=>{if(!live)throw Error('Owner changed');});await confirming;live=false;await postRetire.retire();releaseConfirmed({result});assert.deepEqual(await afterDispatch,result);
 let reviewed=0;const setResult={kind:'clock-handoff',action:'set',status:'opened'};let expected;
 const repeatExecutor=createClockReviewExecutor({async reviewClock(input){reviewed++;assert.deepEqual(input.operation,expected);assert.notEqual(input.operation.days,expected.days);return {reviewToken:'repeat-consent'};},async confirmClock(){return {result:setResult};},async cancelClock(){}});
 for(const days of [[],[1,2,3,4,5,6,7],[2,3,4,5,6],[7,1]]){expected={type:'clock_handoff',action:'set',hour:9,minute:0,label:'Repeat fixture',timeZone:'UTC',days};assert.deepEqual(validateClockOperation(expected),expected);assert.deepEqual(validateClockResult(expected,setResult,'applied'),setResult);assert.deepEqual(await repeatExecutor.review(expected,'repeat',identity,new AbortController().signal,()=>{}),setResult);}
@@ -29,6 +35,15 @@ assert.equal(CLOCK_ALARMS_CAPABILITY,'clock.alarms.v1');const alarmId='12345678-
   try {
     fs.writeFileSync(path.join(temp, "package.json"), JSON.stringify(manifest));
     fs.symlinkSync(path.join(source, "src"), path.join(temp, "src"), "dir");
+    const contracts = fileURLToPath(
+      new URL("../../../packages/contracts", import.meta.url),
+    );
+    fs.mkdirSync(path.join(temp, "node_modules/@elizaos"), { recursive: true });
+    fs.symlinkSync(
+      contracts,
+      path.join(temp, "node_modules/@elizaos/contracts"),
+      "dir",
+    );
     fs.writeFileSync(path.join(temp, "proof.mjs"), proof);
     for (const compiled of [false, true]) {
       if (compiled) {
@@ -67,7 +82,7 @@ assert.equal(CLOCK_ALARMS_CAPABILITY,'clock.alarms.v1');const alarmId='12345678-
         ])
           assert.match(
             declarations,
-            new RegExp(`export\\s*\\{[^}]*\\b${name}\\b`),
+            new RegExp(`export(?: type)?\\s*\\{[^}]*\\b${name}\\b`),
           );
       }
       let consumer = temp;
@@ -91,6 +106,11 @@ assert.equal(CLOCK_ALARMS_CAPABILITY,'clock.alarms.v1');const alarmId='12345678-
           "-C",
           installed,
         ]);
+        fs.symlinkSync(
+          contracts,
+          path.join(consumer, "node_modules/@elizaos/contracts"),
+          "dir",
+        );
         fs.writeFileSync(path.join(consumer, "proof.mjs"), proof);
       }
       const run = spawnSync(

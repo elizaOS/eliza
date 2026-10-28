@@ -12,7 +12,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import java.io.UncheckedIOException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -44,7 +43,6 @@ public class ElizaInferencePlugin extends Plugin {
     private static final class Request {
         private boolean cancelled;
         private InferenceSession active;
-        private Runnable alternative;
         synchronized void begin(InferenceSession session) {
             if (cancelled) throw new CancellationException();
             active = session;
@@ -52,14 +50,8 @@ public class ElizaInferencePlugin extends Plugin {
         synchronized void cancel() {
             cancelled = true;
             if (active != null) active.cancel();
-            if (alternative != null) alternative.run();
         }
-        synchronized void alternative(Runnable cancel) {
-            if (cancelled) { cancel.run(); throw new CancellationException(); }
-            alternative = cancel;
-        }
-        synchronized void clearAlternative() { alternative = null; }
-        synchronized void finish() { active = null; alternative = null; }
+        synchronized void finish() { active = null; }
         synchronized void check() {
             if (cancelled) throw new CancellationException();
         }
@@ -111,12 +103,11 @@ public class ElizaInferencePlugin extends Plugin {
         models.worker.execute(() -> {
             try {
                 if (destroyed) throw new IllegalStateException("Inference bridge closed");
-                boolean platform = OnDeviceRecognizer.available(getContext());
                 boolean packaged = packaged("manifest.json");
                 if (packaged) models.session(null);
                 JSObject result = new JSObject();
                 result.put("speech", packaged && VoiceNative.nativeParadeeSupported() == 1);
-                result.put("transcription", platform ? "android" : packaged && packaged("asr/phonon-2-fv5.gguf") && VoiceNative.nativeAsrSupported() == 1 ? "asr" : "none");
+                result.put("transcription", packaged && packaged("asr/phonon-2-fv5.gguf") && VoiceNative.nativeAsrSupported() == 1 ? "asr" : "none");
                 result.put("provider", "libelizainference");
                 call.resolve(result);
             } catch (Exception failure) {
@@ -165,25 +156,16 @@ public class ElizaInferencePlugin extends Plugin {
             float[] pcm = new float[bytes.length / 2];
             for (int i = 0; i < pcm.length; i++) pcm[i] = input.getShort() / 32768f;
             long start = SystemClock.elapsedRealtime();
-            TranscriptionRoute.Heard heard = TranscriptionRoute.transcribe(bytes,
-                    OnDeviceRecognizer.available(getContext()),
-                    () -> {
-                        OnDeviceRecognizer recognizer = new OnDeviceRecognizer(getContext());
-                        request.alternative(recognizer::cancel);
-                        try { return recognizer.transcribe(bytes, TranscriptionRoute.limitMillis(bytes.length)); }
-                        finally { request.clearAlternative(); }
-                    },
-                    () -> {
-                        request.check();
-                        try { return models.session(request).transcribe(pcm); }
-                        catch (IOException failure) { throw new UncheckedIOException(failure); }
-                    }, OnDeviceRecognizer::demote, line -> Log.i("ElizaInference", line));
+            // This is the local-inference endpoint. Use its admitted Phonon
+            // session rather than selecting a platform recognizer.
+            String heard = models.session(request).transcribe(pcm);
             if (heard == null) throw new IllegalStateException("Transcription unavailable");
             JSObject result = new JSObject();
-            result.put("text", heard.text == null ? "" : heard.text.trim());
-            result.put("engine", heard.engine);
-            result.put("fellBack", heard.fellBack);
-            result.put("demoted", heard.demoted);
+            result.put("text", heard.trim());
+            result.put("engine", "asr");
+            // Keep the response shape for older consumers.
+            result.put("fellBack", false);
+            result.put("demoted", false);
             result.put("ms", SystemClock.elapsedRealtime() - start);
             return result;
         });

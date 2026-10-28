@@ -138,3 +138,43 @@ export function findSseEventBreak(chunkBuffer: string): {
     ? { index: lfBreak, length: 2 }
     : { index: crlfBreak, length: 4 };
 }
+
+/** Incremental SSE line framing. Decode bytes and validate event data in the
+ * owning transport; this layer preserves lines without interpreting payloads.
+ * Pending fragments are joined only once, when a line ends, so one large event
+ * split across small network chunks does not repeatedly scan its old prefix. */
+export class SseEventFramer {
+  private lineParts: string[] = [];
+  private lines: string[] = [];
+
+  /** Returns true when the consumer stops at a terminal event. */
+  push(chunk: string, onEvent: (lines: readonly string[]) => boolean): boolean {
+    let start = 0;
+    while (true) {
+      const boundary = chunk.indexOf("\n", start);
+      if (boundary === -1) break;
+      this.lineParts.push(chunk.slice(start, boundary));
+      const line = this.lineParts.join("").replace(/\r$/, "");
+      this.lineParts = [];
+      start = boundary + 1;
+      if (line !== "") {
+        this.lines.push(line);
+        continue;
+      }
+      const event = this.lines;
+      this.lines = [];
+      if (onEvent(event) === true) return true;
+    }
+    if (start < chunk.length) this.lineParts.push(chunk.slice(start));
+    return false;
+  }
+
+  /** A host may accept an unterminated final event; strict hosts reject EOF. */
+  takePending(): readonly string[] {
+    const lines = this.lines;
+    if (this.lineParts.length) lines.push(this.lineParts.join(""));
+    this.lines = [];
+    this.lineParts = [];
+    return lines;
+  }
+}

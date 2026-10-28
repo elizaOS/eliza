@@ -23,9 +23,6 @@ before(() => {
       "-d",
       classes,
       path.join(voice("src/main"), "Wer.java"),
-      path.join(voice("src/main"), "RecognizerUnavailable.java"),
-      path.join(voice("capacitor/src/main"), "TranscriptionRoute.java"),
-      path.join(voice("capacitor/src/main"), "RequestCancels.java"),
       path.join(here, "plugin-contract/PluginContract.java"),
     ],
     { stdio: "pipe" },
@@ -61,12 +58,5 @@ test("device Wer normalizes like the host wer.ts", () => {
   ).split("\n");
   lines.forEach((line, index) => {
     assert.equal(java[index], normalizeWords(line).join(" "), line);
-  });
-});
-
-test("plugin transcription route and request cancellation", () => {
-  execFileSync("java", ["-cp", classes, "ai.eliza.voice.PluginContract"], {
-    stdio: "pipe",
-    timeout: 15000,
   });
 });

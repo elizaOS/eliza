@@ -7,16 +7,27 @@ lazy native context for text, embeddings, Paradee TTS and Phonon-2 ASR.
 reloads them. `close()` is terminal. Native callers own scheduling and should
 trim on Android memory pressure.
 
+`supportsStreaming()` checks the engine without opening a context or loading
+models. `speechSampleRate()` loads only speech output when needed and returns
+its actual rate. Consumers can use these methods on the shared session instead
+of opening a separate `ParadeeVoice` handle to check output capabilities.
+Use `prepareSpeech()` when readiness requires both speech output and recognition
+models to initialize. It uses the same context and reports initialization or
+cancellation failures. `isSpeechLoaded()` observes the actual output wrapper
+without loading anything, including after a cancelled first load. Trimming or
+closing the session clears that state.
+
 The optional `ElizaInferencePlugin` Capacitor transport provides one process
 queue, idle unloading and Android memory-pressure handling. Enable it with
 `elizaInferenceCapacitor=true` and register `ElizaInferencePlugin` with the host.
 The legacy `elizaParadeeCapacitor` flag and `ParadeeVoicePlugin` name select the
 same owner. Existing `ai.eliza.voice` Java APIs remain source compatible;
 new code should use `InferenceSession` instead of opening independent handles.
-The old app-side Gradle path forwards here. The public `Wer` helper and Android
+The old app-side Gradle path forwards here. The public `Wer` helper and legacy Android
 on-device recognizer API remain available. The Capacitor transcription route
-retains Android-first recognition with native Phonon-2 fallback, using the same
-request queue and cancellation owner.
+uses only Phonon-2 through `InferenceSession`, with the same request queue and
+cancellation owner. Missing native assets or a failed transcription report an
+error; they never select the platform recognizer or a cloud provider.
 
 The Eliza app uses its existing `ElizaBionicInferenceServer` shared context.
 Hosts using that server should route speech through it. The optional Capacitor
@@ -101,8 +112,12 @@ A consumer Gradle library sets `ext.elizaParadeeSourceDir` to this directory
 and applies `consumer.gradle`. Optional properties: `elizaParadeeNativeDir`,
 `elizaParadeeFfiIncludeDir`, `elizaParadeeInferenceLibDir`, and
 `elizaParadeePackageInference=false` when the app already packages
-`libelizainference.so`. The build fails if a generated file differs from
-`native/build-record.json`.
+`libelizainference.so` and its admitted `libc++_shared.so`. In that mode the
+library packages only its JNI bridge; both runtime libraries remain the host's
+responsibility. This also excludes CMake's implicit copies, avoiding duplicate
+runtime selection during APK merging. The default still packages both runtime
+libraries for standalone consumers such as Sense. The build fails if a generated
+file differs from `native/build-record.json`.
 
 Store the model uncompressed in the APK (`androidResources { noCompress 'gguf', 'lex' }`).
 A host made by `scripts/mobile/android/consumer-host.mjs` sets this in its profile:
@@ -121,3 +136,13 @@ audio; that is flagged for review, not a blocker. `libelizainference.so` links e
 that ships it must meet the GPL. The bundle `notices/` carry the eSpeak NG
 license, and the misaki (Apache-2.0) and spaCy (MIT) notices for the G2P
 rules ported from them.
+
+## Hosts with an existing native inference server
+
+Set `elizaParadeeAssetsOnly=true` when applying `consumer.gradle` to package only the pinned models and `VoiceBundleAssets` installer. This mode includes no inference session classes, JNI bridge or native library. The Eliza Android app uses this mode through `:voice-assets`; `ELIZA_VOICE_NATIVE_DIR` selects its generated native input directory. Explicit cloud and host-test builds omit these assets.
+
+Admission checks the complete asset inventory against the build record and rejects duplicate paths, extra files and symlinks. Required speech models must also match `inputs.json`; a matching record cannot substitute a different model.
+
+`VoiceAssets.install(context)` delegates to the same installer. The default private directory remains `paradee-voice-v1`. A host may set application manifest metadata `ai.eliza.voice.BUNDLE_DIRECTORY` to a relative private directory; Eliza uses `eliza-1/bundle` for its existing bionic server. The installer validates that directory beneath `filesDir`. It copies and verifies model files but never opens a native context.
+
+Run `bun run test:android-assets` from this package to exercise the installer with real JVM file operations and synthetic model bytes. It requires JDK 17 or newer and `org.json:json:20250517` in the Gradle cache (or `ELIZA_JSON_JAR`). This test does not qualify models or a device.
