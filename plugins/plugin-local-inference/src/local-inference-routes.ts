@@ -1588,7 +1588,7 @@ export async function handleLocalInferenceRoutes(
 		// can't take over the assignment slots nor leave the bridge holding
 		// a half-loaded model. The gate only fires for tiers whose
 		// `eliza-1.manifest.json` is reachable next to the installed bundle
-		// (see `defaultManifestLoader`); external-scan / non-bundle installs
+		// (see `declaredManifestLoader`); external-scan / non-bundle installs
 		// are passed through.
 		// Lazy: active-model.js pulls the engine (~545ms). Load it here, on the
 		// model-activation path (the engine is needed to activate anyway), so it

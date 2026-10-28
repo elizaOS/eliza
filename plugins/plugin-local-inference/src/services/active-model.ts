@@ -42,6 +42,7 @@ import {
 } from "./manifest";
 import {
 	assessRamFit,
+	declaredManifestLoader,
 	defaultManifestLoader,
 	type ManifestLoader,
 	pickFittingContextVariant,
@@ -1040,14 +1041,16 @@ export class CandidateModelActivationError extends Error {
  * `eliza-1.manifest.json` on disk (third-party HF GGUFs, external scans,
  * pre-bundle installs) is *not* gated — the gate only applies to bundles
  * that ship a published manifest, which is the source of truth for the
- * publish state.
+ * publish state. The default loader checks the shipped manifest against the
+ * schema only: a strict release whose evals failed also breaks the contract,
+ * and the contract-validated loader would hide it from this gate.
  *
  * Throws `CandidateModelActivationError` on a failing manifest; returns
  * silently otherwise.
  */
 export function assertManifestEvalsPassed(
 	installed: InstalledModel,
-	manifestLoader: ManifestLoader = defaultManifestLoader,
+	manifestLoader: ManifestLoader = declaredManifestLoader,
 ): void {
 	const manifest = manifestLoader(installed.id, installed);
 	if (!manifest) return;
@@ -1113,11 +1116,13 @@ export class GemmaRuntimeDispatchContractError extends Error {
  * ships a manifest, verify it declares every kernel its tier requires; throw
  * `MissingRequiredKernelsError` otherwise. A bundle with no manifest (bare
  * GGUF, external scan, dev path) is NOT gated — there is no kernel contract to
- * check, so it is a no-op.
+ * check, so it is a no-op. The default loader checks the shipped manifest
+ * against the schema only, because the manifest contract itself rejects a
+ * `kernels.required` without the tier's kernels.
  */
 export function assertRequiredKernelsPresent(
 	installed: InstalledModel,
-	manifestLoader: ManifestLoader = defaultManifestLoader,
+	manifestLoader: ManifestLoader = declaredManifestLoader,
 ): void {
 	const manifest = manifestLoader(installed.id, installed);
 	if (!manifest) return;

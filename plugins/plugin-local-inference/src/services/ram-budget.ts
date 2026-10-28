@@ -31,7 +31,11 @@ import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import { ELIZA_1_TIER_IDS, type Eliza1TierId, MODEL_CATALOG } from "./catalog";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
-import { type Eliza1Manifest, validateManifest } from "./manifest";
+import {
+	type Eliza1Manifest,
+	Eliza1ManifestSchema,
+	validateManifest,
+} from "./manifest";
 import type { CatalogModel, InstalledModel, RamBudget } from "./types";
 
 const MB_PER_GB = 1024;
@@ -110,6 +114,13 @@ function manifestTierFromId(id: Eliza1TierId): string {
 	return id.slice("eliza-1-".length);
 }
 
+function manifestCandidatePaths(modelPath: string): string[] {
+	return [
+		path.join(path.dirname(path.dirname(modelPath)), "eliza-1.manifest.json"),
+		path.join(path.dirname(modelPath), "eliza-1.manifest.json"),
+	];
+}
+
 /**
  * Production manifest loader — reads `eliza-1.manifest.json` from the
  * installed bundle's directory. Two candidate paths are probed:
@@ -138,15 +149,7 @@ export function defaultManifestLoader(
 	}
 
 	const expectedTier = manifestTierFromId(modelId);
-	const candidates = [
-		path.join(
-			path.dirname(path.dirname(installed.path)),
-			"eliza-1.manifest.json",
-		),
-		path.join(path.dirname(installed.path), "eliza-1.manifest.json"),
-	];
-
-	for (const candidate of candidates) {
+	for (const candidate of manifestCandidatePaths(installed.path)) {
 		let raw: string;
 		try {
 			raw = fs.readFileSync(candidate, "utf8");
@@ -171,6 +174,39 @@ export function defaultManifestLoader(
 		if (result.manifest.tier !== expectedTier) continue;
 		if (cacheKey) MANIFEST_CACHE.set(cacheKey, result.manifest);
 		return result.manifest;
+	}
+	return null;
+}
+
+/**
+ * The manifest the installed bundle ships, checked against the schema only.
+ * The activation gates read this one: `defaultManifestLoader` also applies the
+ * contract rules, so it returns `null` for exactly the manifests those gates
+ * refuse (a `kernels.required` without the tier's kernels, a strict release
+ * whose evals failed), and `null` means "no manifest, not gated".
+ *
+ * Same candidate paths as `defaultManifestLoader`; `null` when no candidate
+ * parses against the schema for the expected tier.
+ */
+export function declaredManifestLoader(
+	modelId: string,
+	installed: InstalledModel | undefined,
+): Eliza1Manifest | null {
+	if (!installed?.path) return null;
+	if (!isEliza1TierId(modelId)) return null;
+
+	const expectedTier = manifestTierFromId(modelId);
+	for (const candidate of manifestCandidatePaths(installed.path)) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(fs.readFileSync(candidate, "utf8"));
+		} catch {
+			continue;
+		}
+		const result = Eliza1ManifestSchema.safeParse(parsed);
+		if (!result.success) continue;
+		if (result.data.tier !== expectedTier) continue;
+		return result.data;
 	}
 	return null;
 }
