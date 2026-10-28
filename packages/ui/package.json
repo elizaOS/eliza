@@ -263,7 +263,7 @@
     "embla-carousel-react": "^8.6.0",
     "libphonenumber-js": "^1.13.14",
     "lucide-react": "^1.0.0",
-    "motion": "^12.38.0",
+    "motion": "^14.6.0",
     "nprogress": "^0.2.0",
     "react-day-picker": "^10.0.1",
     "react-hook-form": "^7.74.0",
