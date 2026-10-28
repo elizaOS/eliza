@@ -22,6 +22,12 @@ const PACKAGING_INTERMEDIATES = [
   "merged_jni_libs",
   "stripped_native_libs",
 ];
+// Files this build writes beside the artifacts and into the archive.
+const RESERVED_OUTPUT_NAMES = [
+  "apk-manifest.json",
+  "service-mode.json",
+  "build-checks.json",
+];
 
 /** Build selected distributions and archive only their verified artifacts.
  * Product hosts select identity, environment, admission commands and archive metadata.
@@ -38,7 +44,11 @@ const PACKAGING_INTERMEDIATES = [
  * `androidTestOutput` (relative to `output`, "" for `output` itself) retains each
  * `<variant>-androidTest.apk`; `mappings` retains R8 mappings under `output/mapping`;
  * `sequential` builds one variant/mode at a time and discards packaging intermediates
- * between them. `archive` is optional. */
+ * between them. `record` (`{ name, metadata }`, a plain `.json` name) is the host's
+ * build record, written beside the artifacts only after every artifact of this build
+ * is in place and before verification, so it always describes the artifacts beside it;
+ * a failed build leaves the previous record with the previous artifacts. An archive
+ * keeps a copy. `archive` is optional. */
 export function buildAndroidConsumer({
   root = process.cwd(),
   environment = process.env,
@@ -46,6 +56,7 @@ export function buildAndroidConsumer({
   prepare = [],
   verify,
   archive,
+  record = null,
   daemon = false,
   lint = true,
   androidTest = true,
@@ -130,6 +141,19 @@ export function buildAndroidConsumer({
     metadata = JSON.stringify(archive.metadata, null, 2);
     if (metadata === undefined)
       throw new Error("Android archive metadata is required");
+  }
+  let recordText = null;
+  if (record !== null) {
+    // The record cannot take a name the build itself writes beside the artifacts.
+    if (
+      typeof record?.name !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(record.name) ||
+      RESERVED_OUTPUT_NAMES.includes(record.name)
+    )
+      throw new Error("Invalid Android build record name");
+    recordText = JSON.stringify(record.metadata, null, 2);
+    if (recordText === undefined)
+      throw new Error("Android build record metadata is required");
   }
   root = path.resolve(root);
   const projectDirectory = path.join(root, project);
@@ -324,6 +348,13 @@ export function buildAndroidConsumer({
         path.join(outputDirectory, "mapping", `${variant}-release-mapping.txt`),
       );
     }
+  if (recordText !== null) {
+    // Every artifact of this build is in place: only now does the record describe them.
+    const target = path.join(outputDirectory, record.name);
+    const pending = path.join(outputDirectory, `.${record.name}.pending`);
+    fs.writeFileSync(pending, `${recordText}\n`);
+    fs.renameSync(pending, target);
+  }
   // Verification must produce a manifest for this invocation, not reuse an old success.
   fs.rmSync(manifest, { force: true });
   invoke(verify);
@@ -346,6 +377,8 @@ export function buildAndroidConsumer({
         path.join(replacement, name),
       );
     fs.copyFileSync(manifest, path.join(replacement, "apk-manifest.json"));
+    if (recordText !== null)
+      fs.writeFileSync(path.join(replacement, record.name), `${recordText}\n`);
     fs.writeFileSync(path.join(replacement, "service-mode.json"), metadata);
     fs.writeFileSync(
       path.join(replacement, "build-checks.json"),

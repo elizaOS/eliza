@@ -151,6 +151,11 @@ test("invalid names, duplicates and unserializable metadata fail before any comm
     { archive: { name: "../escape", metadata: {} } },
     { verify: null },
     { archive: { name: "production", metadata: 1n } },
+    { record: { name: "apk-manifest.json", metadata: {} } },
+    { record: { name: "../build-record.json", metadata: {} } },
+    { record: { name: "build-record.txt", metadata: {} } },
+    { record: { name: "build-record.json" } },
+    { record: { name: "build-record.json", metadata: 1n } },
   ]) {
     const f = fixture(t);
     Object.assign(f.options, patch);
@@ -283,6 +288,66 @@ test("earlier verification evidence is withdrawn before Gradle can replace any a
       "utf8",
     ),
     "prior",
+  );
+});
+
+test("the build record is written only beside this build's artifacts, before verification", (t) => {
+  const f = fixture(t),
+    run = f.options.run;
+  f.options.record = {
+    name: "build-record.json",
+    metadata: { testMocks: false, profile: "native" },
+  };
+  const record = path.join(f.root, "artifacts/build-record.json");
+  let seenByVerifier = null;
+  f.options.run = (command, ...args) => {
+    if (command === "verify")
+      seenByVerifier = {
+        record: JSON.parse(fs.readFileSync(record, "utf8")),
+        apk: fs.readFileSync(
+          path.join(f.root, "artifacts/launcher-release-unsigned.apk"),
+          "utf8",
+        ),
+      };
+    return run(command, ...args);
+  };
+  const result = f.build();
+  assert.deepEqual(seenByVerifier, {
+    record: f.options.record.metadata,
+    apk: "launcher:release:current",
+  });
+  assert.deepEqual(
+    JSON.parse(
+      fs.readFileSync(path.join(result.archive, "build-record.json"), "utf8"),
+    ),
+    f.options.record.metadata,
+  );
+  assert.equal(
+    fs
+      .readdirSync(path.join(f.root, "artifacts"))
+      .some((name) => name.endsWith(".pending")),
+    false,
+  );
+  // A failed build keeps the previous record with the previous artifacts.
+  const failed = fixture(t),
+    failedRun = failed.options.run;
+  failed.options.record = { name: "build-record.json", metadata: { next: 1 } };
+  fs.mkdirSync(path.join(failed.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(failed.root, "artifacts/build-record.json"),
+    "previous record",
+  );
+  failed.options.run = (command, ...args) => {
+    if (command === "./gradlew") throw Error("controlled failure");
+    return failedRun(command, ...args);
+  };
+  assert.throws(failed.build, /controlled failure/);
+  assert.equal(
+    fs.readFileSync(
+      path.join(failed.root, "artifacts/build-record.json"),
+      "utf8",
+    ),
+    "previous record",
   );
 });
 

@@ -333,7 +333,9 @@ upstream or dependency roots; selected native files can be copied without admitt
 whole plugin source directories. Existing unmarked projects, identity changes,
 unowned-file collisions and symlink escapes are rejected. Generated ownership
 permits regeneration and removal of formerly selected generated files while
-preserving other build outputs. Hosts keep authored manifests/resources outside
+preserving other build outputs. Ownership is recorded with the output's place in
+the consumer, so a moved or renamed checkout still owns its generated host, while
+the marker copied to another place owns nothing there. Hosts keep authored manifests/resources outside
 the generated project and supply already-verified optional runtime payloads. The
 generator owns the non-translatable `app_name` brand string (written under the
 generated `eliza-consumer-host/res`); host resources must not redefine it. Other UI
@@ -382,7 +384,11 @@ environment names: a signed release keeps `<variant>-release.apk`, an unsigned o
 is `-release-unsigned.apk`, and an unsigned release fails when every named signing
 variable is set. Stale release outputs and an earlier `apk-manifest.json` are removed
 before Gradle runs, so a failed or partly copied build never keeps old verification
-beside its artifacts. The archive is optional. Run
+beside its artifacts. A host build `record` (a named JSON file, for example the build
+options its verifier checks) is written only after every artifact of the build is in
+place and before verification, so it always describes the artifacts beside it; a
+failed build keeps the previous record with the previous artifacts. The archive is
+optional. Run
 `node --test packages/app/scripts/mobile/android/build-consumer.test.mjs`.
 
 `scripts/mobile/android/resident-host-sources.mjs` stages the resident runtime's
