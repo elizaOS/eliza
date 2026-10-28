@@ -7,6 +7,7 @@ export {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
 	readTaskExtractionRequestIntents,
+	readTaskExtractionUserSources,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,
