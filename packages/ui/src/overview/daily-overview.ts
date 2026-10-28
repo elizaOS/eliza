@@ -1060,9 +1060,14 @@ export function presentOverviewAgendaCard(
   const { item, provenance, now } = input;
   const overdue = !!item?.overdue;
   const dateLabel = f.shortDate(new Date(item ? item.begin : now));
+  const overdueCount = Number(input.overdueCount);
   const heading = overviewAgendaHeader(
     dateLabel,
-    overdue ? Math.max(1, Math.floor(input.overdueCount ?? 1)) : 0,
+    !overdue
+      ? 0
+      : Number.isFinite(overdueCount) && overdueCount > 1
+        ? Math.floor(overdueCount)
+        : 1,
   );
   const span = (shown: OverviewAgendaCardItem) => {
     if (shown.allDay) return "All day";

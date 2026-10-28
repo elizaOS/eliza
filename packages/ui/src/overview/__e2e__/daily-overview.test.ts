@@ -371,6 +371,13 @@ describe("agenda card", () => {
     expect(
       presentOverviewAgendaCard({ now, item: { title: "Pay rent", begin: at(9), end: Number.NaN, allDay: false, overdue: true }, provenance: reminder, emptyTitle: "" }, f).heading,
     ).toBe("Overdue reminder");
+    for (const overdueCount of [Number.NaN, 0, -2, undefined])
+      expect(
+        presentOverviewAgendaCard(
+          { now, item: { title: "Pay rent", begin: at(9), end: Number.NaN, allDay: false, overdue: true }, provenance: reminder, overdueCount, emptyTitle: "" },
+          f,
+        ).heading,
+      ).toBe("Overdue reminder");
     expect(presentOverviewAgendaCard({ now, item: review, provenance: read, next: { item: review, provenance: read }, emptyTitle: "" }, f).next).toBeNull();
   });
   it("a stale read keeps the item and is marked", () => {
