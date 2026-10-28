@@ -97,12 +97,7 @@ async function readLocalInferenceAsrAudio(
 		});
 		if (!body) return null;
 		if (typeof body.audioBase64 === "string") {
-			const audio = Buffer.from(body.audioBase64, "base64");
-			if (audio.byteLength > MAX_LOCAL_ASR_AUDIO_BYTES) {
-				sendJson(res, 413, { error: "Audio body too large" });
-				return null;
-			}
-			return new Uint8Array(audio);
+			return new Uint8Array(Buffer.from(body.audioBase64, "base64"));
 		}
 		sendJson(res, 400, { error: "Missing audioBase64" });
 		return null;
