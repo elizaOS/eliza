@@ -2146,8 +2146,8 @@ export class ProvisioningJobQueue {
    * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
    * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
    * (see the AGENT_DELETE failure handler), so a row that has already been
-   * re-enqueued `maxReEnqueues` times is EXCLUDED from the due set — counted
-   * once per sweep as `event: "deletion.abandoned_candidate"` for ops to
+   * re-enqueued `maxReEnqueues` times is EXCLUDED from the due set — logged
+   * per row as `event: "deletion.abandoned_candidate"` for ops to
    * investigate (the container likely needs a manual node-level teardown)
    * rather than looping. Exclusion, not an in-loop skip: a skipped row is never
    * written, so it would hold a batch slot on every sweep and starve the rows
@@ -2195,7 +2195,7 @@ export class ProvisioningJobQueue {
     // inside the batch. A skipped row is never written, so it never leaves the
     // due set: it would occupy one slot of every capped sweep forever, and once
     // `maxAgents` such rows accumulate the sweep reports `scanned` work while
-    // recovering nothing. They are counted once per sweep for ops instead.
+    // recovering nothing. They are logged per row for ops instead.
     const stuck = await dbWrite
       .select({
         id: agentSandboxes.id,
@@ -2210,11 +2210,15 @@ export class ProvisioningJobQueue {
       .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(maxAgents);
 
-    const [abandonedRow] = await dbWrite
-      .select({ count: sql<number>`count(*)::int` })
+    const abandonedRows = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
+        errorCount: agentSandboxes.error_count,
+      })
       .from(agentSandboxes)
       .where(and(dueSet, sql`COALESCE(${agentSandboxes.error_count}, 0) >= ${maxReEnqueues}`));
-    const abandoned = abandonedRow?.count ?? 0;
+    const abandoned = abandonedRows.length;
 
     let reEnqueued = 0;
     let failed = 0;
@@ -2235,10 +2239,12 @@ export class ProvisioningJobQueue {
       }
     }
 
-    if (abandoned > 0) {
-      logger.warn("[provisioning-jobs] deletions abandoned past the re-enqueue budget", {
+    for (const agent of abandonedRows) {
+      logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
         event: "deletion.abandoned_candidate",
-        abandoned,
+        agentId: agent.id,
+        orgId: agent.organizationId,
+        errorCount: agent.errorCount,
         maxReEnqueues,
       });
     }
