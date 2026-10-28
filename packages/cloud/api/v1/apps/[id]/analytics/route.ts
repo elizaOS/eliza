@@ -1,7 +1,7 @@
 /** Handles app analytics summaries with shared date-range validation. */
 
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { parseDateRangeParams } from "@elizaos/cloud-shared/lib/api/date-range-params";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -97,7 +97,7 @@ app.get("/", async (c) => {
     return c.json(
       {
         success: false,
-        error: "Failed to get app analytics",
+        error: safeUnknownErrorMessage(error),
       },
       500,
     );

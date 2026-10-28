@@ -6,6 +6,7 @@
  * eliza-app session token.
  */
 
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import {
   OAuthError,
@@ -87,7 +88,7 @@ app.post("/", async (c) => {
     logger.error("[Eliza App] Failed to initiate OAuth:", error);
     return c.json(
       {
-        error: "Failed to initiate OAuth",
+        error: safeUnknownErrorMessage(error),
         code: "INITIATE_FAILED",
       },
       500,

@@ -1,4 +1,4 @@
-import { ApiError as PrivateOwnerApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError as PrivateOwnerApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 // Handles v1 cloud API v1 eliza google calendar calendars route traffic with route-local auth expectations.
 
@@ -47,7 +47,7 @@ async function __hono_GET(request: Request, env: AppEnv["Bindings"]) {
     logger.error("[Google Calendar] Failed to list calendars:", error);
     return Response.json(
       {
-        error: "Failed to list Google calendars.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

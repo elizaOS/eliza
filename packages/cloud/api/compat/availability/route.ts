@@ -6,6 +6,7 @@
  * hostnames to end users is an unnecessary information leak).
  */
 
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
 import { validateServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key";
 import { authenticateWaifuBridge } from "@elizaos/cloud-shared/lib/auth/waifu-bridge";
@@ -89,7 +90,7 @@ app.get("/", async (c) => {
       new Response(
         JSON.stringify({
           success: false,
-          error: "Failed to fetch availability",
+          error: safeUnknownErrorMessage(err),
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
       ),

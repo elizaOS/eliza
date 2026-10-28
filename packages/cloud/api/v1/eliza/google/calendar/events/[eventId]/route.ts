@@ -1,4 +1,4 @@
-import { ApiError as PrivateOwnerApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError as PrivateOwnerApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 /** Updates and deletes managed Google Calendar events. */
 
@@ -90,7 +90,7 @@ async function __hono_PATCH(
     logger.error("[Google Calendar] Failed to update event:", error);
     return Response.json(
       {
-        error: "Failed to update Google Calendar event.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -151,7 +151,7 @@ async function __hono_DELETE(
     logger.error("[Google Calendar] Failed to delete event:", error);
     return Response.json(
       {
-        error: "Failed to delete Google Calendar event.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

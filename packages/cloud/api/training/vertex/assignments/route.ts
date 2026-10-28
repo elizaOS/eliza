@@ -1,6 +1,6 @@
 // Handles cloud API training vertex assignments route traffic with route-local auth expectations.
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   requireAdmin,
   requireAuthOrApiKeyWithOrg,
@@ -118,7 +118,7 @@ async function __hono_GET(request: Request) {
     logger.error("[Training] Failed to list tuned-model assignments:", error);
     return Response.json(
       {
-        error: "Failed to list tuned-model assignments",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

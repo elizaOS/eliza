@@ -3,7 +3,7 @@
  * Query and JSON-body limits are validated before the export service can read rows.
  */
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   llmTrajectoryService,
@@ -114,7 +114,7 @@ async function __hono_GET(request: Request) {
     logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
-        error: "Failed to export trajectories",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -150,7 +150,7 @@ async function __hono_POST(request: Request) {
     logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
-        error: "Failed to export trajectories",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

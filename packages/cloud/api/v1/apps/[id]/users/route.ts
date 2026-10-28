@@ -2,7 +2,7 @@
  * Lists an app's users after validating pagination and access at the HTTP boundary.
  */
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { ApiError, safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -97,7 +97,7 @@ async function __hono_GET(
     return Response.json(
       {
         success: false,
-        error: "Failed to get app users",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
