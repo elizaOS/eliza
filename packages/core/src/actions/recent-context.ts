@@ -15,6 +15,10 @@ import type { IAgentRuntime } from "../types/runtime.js";
 import type { State } from "../types/state.js";
 import { CONVERSATION_MESSAGES_HEADER_PREFIX } from "../utils";
 
+// Newest-window size for the recent-conversation DB read, matching
+// the agent server's conversation window convention.
+const RECENT_CONVERSATION_WINDOW = 200;
+
 /** Compare complete plain data without invoking accessors or coercing values.
  * Unsupported shapes are uncertainty, so retain both representations. */
 function sameMemoryData(left: unknown, right: unknown): boolean {
@@ -128,28 +132,32 @@ export async function recentConversationTexts(args: {
 	}
 
 	try {
-		// Callers render these texts as the conversation, so read oldest-first;
-		// adapters default to newest-first.
+		// Callers render these texts as the recent conversation, so
+		// read the newest window and restore chronological order:
+		// an unbounded oldest-first read made every action call's
+		// cost scale with room age, while the prompt only grounds
+		// the current turn's intent. Rooms under the window behave
+		// exactly as before.
 		const memories = await args.runtime.getMemories({
 			roomId,
 			tableName: "messages",
 			orderBy: "createdAt",
-			orderDirection: "asc",
+			orderDirection: "desc",
+			limit: RECENT_CONVERSATION_WINDOW,
 		});
-		const memoryTexts = Array.isArray(memories)
-			? memories
-					.map((memory) =>
-						memory.content && typeof memory.content.text === "string"
-							? memory.content.text
-							: "",
-					)
-					.filter((text) => text.length > 0)
-			: [];
+		const ordered = [...(Array.isArray(memories) ? memories : [])].reverse();
+		const memoryTexts = ordered
+			.map((memory) =>
+				memory.content && typeof memory.content.text === "string"
+					? memory.content.text
+					: "",
+			)
+			.filter((text) => text.length > 0);
 		// Two projections of the same identified, structurally identical memory are
 		// one occurrence. Never infer identity from text, speaker or timestamps:
 		// different IDs, absent IDs, foreign rooms and conflicting versions stay.
 		const byId = new Map<string, Memory[]>();
-		for (const memory of Array.isArray(memories) ? memories : []) {
+		for (const memory of ordered) {
 			if (
 				!memory.id ||
 				memory.roomId !== roomId ||
