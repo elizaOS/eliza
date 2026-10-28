@@ -840,6 +840,44 @@ describe("local inference downloader status", () => {
 		);
 	});
 
+	it("ends a bundle cancelled during the verify-on-device pass as cancelled, not installed", async () => {
+		const model = ELIZA_2B_MODEL;
+
+		installFetchFixture(freshBundleFixtureFiles());
+
+		// Every byte is on disk, but the job is still "downloading", so the
+		// Model Hub still offers Cancel while the verify pass loads the model.
+		let cancelled: boolean | undefined;
+		const downloader: Downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+			verifyOnDevice: async ({ modelId }) => {
+				cancelled = downloader.cancel(modelId);
+			},
+		});
+		// cancel() reports its own "cancelled"; the job then settles with one
+		// more terminal event.
+		const settled = new Promise<string>((resolve) => {
+			const unsubscribe = downloader.subscribe((event) => {
+				if (event.job.modelId !== model.id || cancelled === undefined) return;
+				if (event.type === "progress") return;
+				unsubscribe();
+				resolve(event.type);
+			});
+		});
+		await downloader.start(model.id);
+
+		expect(await settled).toBe("cancelled");
+		expect(cancelled).toBe(true);
+		expect(readOwnedRegistryModels().some((m) => m.id === model.id)).toBe(
+			false,
+		);
+		expect(await readAssignments()).toEqual({});
+		expect(
+			downloader.snapshot().find((job) => job.modelId === model.id)?.state,
+		).toBe("cancelled");
+	});
+
 	it("dedups concurrent start(sameId) onto one job (no .part write race)", async () => {
 		const model = ELIZA_2B_MODEL;
 

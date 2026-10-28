@@ -1554,6 +1554,11 @@ export class Downloader {
 			bundleVerifiedAt = new Date().toISOString();
 		}
 
+		// No fetch watches the signal after the last byte, so a cancel during
+		// the final hash or the verify pass lands here. cancel() has already
+		// reported the job as cancelled: register nothing and fill no slot.
+		if (record.abortController.signal.aborted) throw makeAbortError();
+
 		const now = new Date().toISOString();
 		const bundleMeta = {
 			bundleRoot,
