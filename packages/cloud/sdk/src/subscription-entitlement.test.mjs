@@ -1033,6 +1033,70 @@ test("revocation to no plan stops refreshing, and a rejected sign-in or account 
   assert.equal(legacyChecks, 1);
 });
 
+test("a throwing host view handler or an unexpected check error never ends refreshing as a sign-in failure", async () => {
+  const timers = fakeTimers();
+  let checks = 0,
+    authFailures = 0,
+    shown = 0;
+  const originalError = console.error;
+  const reported = [];
+  console.error = (...args) => reported.push(args);
+  try {
+    const refresher = new EntitlementRefresher({
+      timers,
+      entitlement: entitlementAt(NOW, NOW + 400000),
+      onView: () => {
+        shown++;
+        throw new Error("host render failed");
+      },
+      onAuthFailure: () => authFailures++,
+      check: async () => {
+        checks++;
+        const entitlement = entitlementAt(timers.now(), timers.now() + 400000);
+        return { view: subscriptionView(entitlement), entitlement };
+      },
+    });
+    await timers.advance(300000);
+    assert.equal(checks, 1);
+    assert.equal(shown, 1);
+    assert.equal(authFailures, 0);
+    assert.equal(reported.length, 1);
+    // The next refresh is still scheduled from the new entitlement.
+    await timers.advance(300000);
+    assert.equal(checks, 2);
+    assert.equal(authFailures, 0);
+    refresher.stop();
+  } finally {
+    console.error = originalError;
+  }
+
+  // A check that throws something other than a sign-in refusal is retried
+  // like an outage and keeps the still-valid plan shown as not refreshed.
+  const errorTimers = fakeTimers();
+  const views = [];
+  let errorChecks = 0,
+    errorAuthFailures = 0;
+  const failing = new EntitlementRefresher({
+    timers: errorTimers,
+    entitlement: entitlementAt(NOW, NOW + 400000),
+    onView: (view) => views.push(view),
+    onAuthFailure: () => errorAuthFailures++,
+    check: async () => {
+      errorChecks++;
+      throw new TypeError("unexpected");
+    },
+  });
+  await errorTimers.advance(300000);
+  assert.equal(errorChecks, 1);
+  assert.equal(views.at(-1).kind, "active");
+  assert.equal(views.at(-1).refreshFailed, true);
+  await errorTimers.advance(REFRESH_RETRY_MIN_MS);
+  assert.equal(errorChecks, 2);
+  assert.equal(errorAuthFailures, 0);
+  failing.stop();
+  assert.equal(errorTimers.queue.length, 0);
+});
+
 test("cached tokens past their refresh hint cannot cause a zero-delay refresh loop", async () => {
   const timers = fakeTimers();
   const entitlement = entitlementAt(NOW - 300000, NOW + 100000);

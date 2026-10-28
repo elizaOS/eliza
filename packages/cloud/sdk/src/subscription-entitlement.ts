@@ -1009,7 +1009,7 @@ export class EntitlementRefresher {
       this.entitlement.expiresAt <= now
     ) {
       this.lapsedPlanName = this.entitlement.plan.name;
-      this.onView({ kind: "expired", planName: this.lapsedPlanName });
+      this.emit({ kind: "expired", planName: this.lapsedPlanName });
       this.entitlement = null;
     }
     let delay = nextRefreshDelay(this.entitlement, now, this.failures);
@@ -1022,61 +1022,78 @@ export class EntitlementRefresher {
       void this.run();
     }, delay);
   }
+  /**
+   * Hands a view to the host. A host callback that throws is reported and
+   * never ends refreshing or reads as a rejected sign-in.
+   */
+  private emit(view: SubscriptionView): void {
+    try {
+      this.onView(view);
+    } catch (error) {
+      console.error("[cloud-sdk] subscription onView handler threw", error);
+    }
+  }
   private async run(): Promise<void> {
     if (this.stopped) return;
     const controller = new AbortController();
     this.controller = controller;
+    let result: EntitlementCheck;
     try {
-      const result = await this.check(controller.signal);
-      if (this.stopped || controller.signal.aborted) return;
-      if (result.entitlement) {
-        this.fallbackActive = false;
-        this.entitlement = result.entitlement;
-        this.lapsedPlanName = null;
-        this.failures = 0;
-        this.onView(result.view);
-      }
-      // An active billing snapshot needs periodic refresh too: the owner can
-      // cancel a plan while the app stays foregrounded, or Cloud can deploy
-      // the signed entitlement route.
-      else if (
-        result.view.kind === "active" ||
-        result.view.kind === "credits"
-      ) {
-        this.fallbackActive = true;
-        this.entitlement = null;
-        this.lapsedPlanName = null;
-        this.failures = 0;
-        this.onView(result.view);
-      }
-      // No plan or no published source remains terminal until the next explicit check.
-      else if (
-        result.view.kind === "inactive" ||
-        (result.view.kind === "unavailable" &&
-          result.view.reason === "not-published")
-      ) {
-        this.fallbackActive = false;
-        this.entitlement = null;
-        this.lapsedPlanName = null;
-        this.failures = 0;
-        this.onView(result.view);
-        return;
-      } else {
-        this.failures++;
-        if (this.entitlement && this.entitlement.expiresAt > this.timers.now())
-          this.onView(subscriptionView(this.entitlement, true));
-        // A lapsed plan stays reported as out of date until a check succeeds, never as a plain outage.
-        else if (this.lapsedPlanName !== null)
-          this.onView({ kind: "expired", planName: this.lapsedPlanName });
-        else if (!this.entitlement) this.onView(result.view);
-      }
+      result = await this.check(controller.signal);
     } catch (error) {
       if (this.stopped || controller.signal.aborted) return;
-      this.onAuthFailure(error);
-      this.stop();
-      return;
+      // Only a rejected sign-in or an account change ends refreshing. Any
+      // other failure is treated like an outage and retried with backoff.
+      if (isEntitlementSignInFailure(error)) {
+        this.stop();
+        this.onAuthFailure(error);
+        return;
+      }
+      result = {
+        view: { kind: "unavailable", reason: "outage" },
+        entitlement: null,
+      };
     } finally {
       if (this.controller === controller) this.controller = null;
+    }
+    if (this.stopped || controller.signal.aborted) return;
+    if (result.entitlement) {
+      this.fallbackActive = false;
+      this.entitlement = result.entitlement;
+      this.lapsedPlanName = null;
+      this.failures = 0;
+      this.emit(result.view);
+    }
+    // An active billing snapshot needs periodic refresh too: the owner can
+    // cancel a plan while the app stays foregrounded, or Cloud can deploy
+    // the signed entitlement route.
+    else if (result.view.kind === "active" || result.view.kind === "credits") {
+      this.fallbackActive = true;
+      this.entitlement = null;
+      this.lapsedPlanName = null;
+      this.failures = 0;
+      this.emit(result.view);
+    }
+    // No plan or no published source remains terminal until the next explicit check.
+    else if (
+      result.view.kind === "inactive" ||
+      (result.view.kind === "unavailable" &&
+        result.view.reason === "not-published")
+    ) {
+      this.fallbackActive = false;
+      this.entitlement = null;
+      this.lapsedPlanName = null;
+      this.failures = 0;
+      this.emit(result.view);
+      return;
+    } else {
+      this.failures++;
+      if (this.entitlement && this.entitlement.expiresAt > this.timers.now())
+        this.emit(subscriptionView(this.entitlement, true));
+      // A lapsed plan stays reported as out of date until a check succeeds, never as a plain outage.
+      else if (this.lapsedPlanName !== null)
+        this.emit({ kind: "expired", planName: this.lapsedPlanName });
+      else if (!this.entitlement) this.emit(result.view);
     }
     this.schedule();
   }
