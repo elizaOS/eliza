@@ -111,6 +111,15 @@ describe("exposure and dropped focus", () => {
     expect(firstNamedExposed(document, "[data-title]")).toBe(title);
     title.textContent = " ";
     expect(firstNamedExposed(document, "[data-title]")).toBeNull();
+    // aria-labelledby names it only through a referenced element with text.
+    title.setAttribute("aria-labelledby", "missing-title");
+    expect(firstNamedExposed(document, "[data-title]")).toBeNull();
+    const label = document.createElement("span");
+    label.id = "missing-title";
+    document.body.append(label);
+    expect(firstNamedExposed(document, "[data-title]")).toBeNull();
+    label.textContent = "Display";
+    expect(firstNamedExposed(document, "[data-title]")).toBe(title);
   });
 
   it("focuses a screen name as a name, never as a tab stop", () => {

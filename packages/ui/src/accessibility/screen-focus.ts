@@ -91,13 +91,24 @@ export function isFocusDropped(doc: Document = document): boolean {
   return !active.getClientRects().length;
 }
 
+/**
+ * Whether an attribute names the element: a non-empty aria-label, or an
+ * aria-labelledby whose referenced elements carry text. A reference to a
+ * missing or empty element names nothing, as in the accessibility tree.
+ */
+function hasLabel(element: Element): boolean {
+  if (element.getAttribute("aria-label")?.trim()) return true;
+  const ids = element.getAttribute("aria-labelledby")?.trim().split(/\s+/);
+  if (!ids?.[0]) return false;
+  const root = element.getRootNode() as Document | ShadowRoot;
+  return ids.some((id) =>
+    Boolean(root.getElementById?.(id)?.textContent?.trim()),
+  );
+}
+
 /** The accessible name an attribute or the element's own text gives it. */
 function hasName(element: Element): boolean {
-  return Boolean(
-    element.getAttribute("aria-label")?.trim() ||
-      element.getAttribute("aria-labelledby")?.trim() ||
-      element.textContent?.trim(),
-  );
+  return hasLabel(element) || Boolean(element.textContent?.trim());
 }
 
 /**
@@ -192,11 +203,7 @@ export function createScreenFocus(options: ScreenFocusOptions): ScreenFocus {
   const inlineModal = (): HTMLElement | null => {
     const open = Array.from(doc.querySelectorAll(inlineModalSelector)).filter(
       (element): element is HTMLElement =>
-        isExposed(element) &&
-        Boolean(
-          element.getAttribute("aria-label")?.trim() ||
-            element.getAttribute("aria-labelledby")?.trim(),
-        ),
+        isExposed(element) && hasLabel(element),
     );
     return open.at(-1) ?? null;
   };
