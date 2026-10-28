@@ -337,10 +337,24 @@ export class VoiceProfileStore {
 	private async readProfileFromDisk(
 		profileId: string,
 	): Promise<VoiceProfileRecord | null> {
+		let raw: string;
 		try {
-			const raw = await fsp.readFile(this.profilePath(profileId), "utf8");
+			raw = await fsp.readFile(this.profilePath(profileId), "utf8");
+		} catch (error) {
+			// error-policy:J3 an absent profile file is the only "no such profile"
+			// state. Any other read failure (EACCES/EISDIR/EIO) means the file is
+			// there but unusable, so callers must not be told the profile does not
+			// exist — the management routes answer 404 and list() drops the row.
+			if ((error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") {
+				return null;
+			}
+			throw error;
+		}
+		try {
 			return JSON.parse(raw) as VoiceProfileRecord;
 		} catch {
+			// error-policy:J3 a poisoned profile file carries no usable imprint;
+			// unparseable JSON is omitted rather than fabricated.
 			return null;
 		}
 	}
@@ -404,7 +418,13 @@ export class VoiceProfileStore {
 		) {
 			const victim = evictionCandidates.shift();
 			if (!victim) break;
-			const record = await this.readProfileFromDisk(victim.profileId);
+			// error-policy:J6 eviction is best-effort and the index (rewritten
+			// below) is the source of truth, so a victim whose file cannot be read
+			// is still evictable — otherwise one unreadable file would block every
+			// later save.
+			const record = await this.readProfileFromDisk(victim.profileId).catch(
+				() => null,
+			);
 			if (record && record.entityId !== null) continue;
 			if (record && (record.confidence >= 0.5 || record.sampleCount >= 3)) {
 				continue;
