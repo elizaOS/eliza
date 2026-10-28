@@ -268,10 +268,29 @@ export async function findDeliveredReply(
 ): Promise<string | null> {
 	let memories: Memory[];
 	try {
+		// A reply cannot predate the message it replies to, so window
+		// the probe at the inbound message's creation (minus a
+		// clock-skew margin) instead of scanning the agent's whole
+		// room history. A newest-N cap would be wrong here: an edit
+		// to an old message must still find its old reply, or the
+		// turn resumes and sends a duplicate. Skip the embedding
+		// join too: the probe reads only content.inReplyTo and
+		// metadata.platformMessageId. If the inbound lookup fails,
+		// fall back to the unwindowed call so a lookup failure can
+		// never turn into a missed reply.
+		let start: number | undefined;
+		try {
+			const inbound = await runtime.getMemoryById(inboundMemoryId);
+			if (inbound) start = inbound.createdAt - 60_000;
+		} catch {
+			// Fall through to the unwindowed probe below.
+		}
 		memories = await runtime.getMemories({
 			roomId,
 			tableName: "messages",
 			agentId: runtime.agentId,
+			...(start !== undefined ? { start } : {}),
+			includeEmbedding: false,
 		});
 	} catch {
 		// Probe failure is treated as "unknown / not found": we would rather
