@@ -263,8 +263,9 @@ fixed script a host runs only in an isolated world of the selected tab's main fr
 the whole document and returns `{blocked:true}` for credential prose, login fields or
 unlabelled codes, otherwise at most 5,000 characters of visible article text. `./page-reading`
 applies the same text and address rules in the renderer, probes provider support
-(`createReadingSupport`), and `pageQuestionExcerpt` returns the excerpt a native question
-review released, or `""` when the provider has no isolated world so the host's review opens
+(`createReadingSupport`), and `pageQuestionReading` returns the excerpt a native question
+review released with whether the page was cut to fit it (`pageQuestionExcerpt` returns only
+the text), or `""` when the provider has no isolated world so the host's review opens
 for pasted text. A sensitive page never opens a review. Hosts own the review UI, consent,
 speech and what is sent; this heuristic is not a credential detector.
 

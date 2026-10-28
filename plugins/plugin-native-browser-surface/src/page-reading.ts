@@ -171,16 +171,24 @@ export function createReadingSupport(
   };
 }
 
+/** A released page-question excerpt and whether the page was cut to fit it. */
+export interface PageQuestionReading {
+  text: string;
+  /** True when the provider stopped before the end of the page. */
+  truncated: boolean;
+}
+
 /**
  * The excerpt a native page-question review released, for the host's own
- * question review. When the provider cannot read the page in an isolated
- * world the result is "" and the host's review opens empty for pasted text; a
+ * question review, with whether the page was cut to fit the excerpt so the
+ * review can say so. When the provider cannot read the page in an isolated
+ * world the text is "" and the host's review opens empty for pasted text; a
  * sensitive page, or a released excerpt that reads as sensitive, is refused
  * with `SENSITIVE_PAGE` and never opens a review. Other failures are rethrown.
  */
-export async function pageQuestionExcerpt(
+export async function pageQuestionReading(
   review: () => Promise<unknown>,
-): Promise<string> {
+): Promise<PageQuestionReading> {
   let result: unknown;
   try {
     result = await review();
@@ -195,14 +203,29 @@ export async function pageQuestionExcerpt(
       code === ISOLATED_WORLD_UNAVAILABLE ||
       /^Isolated page reading is unavailable/.test(String(message ?? ""))
     )
-      return "";
+      return { text: "", truncated: false };
     throw error;
   }
-  const text = (result as { text?: unknown } | null | undefined)?.text;
+  const { text, truncated } = (result ?? {}) as {
+    text?: unknown;
+    truncated?: unknown;
+  };
   const excerpt = typeof text === "string" ? text : "";
   if (excerpt && sensitiveReadingText(excerpt))
     throw Object.assign(new Error(SENSITIVE_READING_MESSAGE), {
       code: SENSITIVE_PAGE,
     });
-  return excerpt.trim() && excerpt.length <= MAX_READING_EXCERPT ? excerpt : "";
+  if (!excerpt.trim() || excerpt.length > MAX_READING_EXCERPT)
+    return { text: "", truncated: false };
+  return { text: excerpt, truncated: truncated === true };
+}
+
+/**
+ * The text of {@link pageQuestionReading}, for hosts that do not show whether
+ * the page was cut.
+ */
+export async function pageQuestionExcerpt(
+  review: () => Promise<unknown>,
+): Promise<string> {
+  return (await pageQuestionReading(review)).text;
 }

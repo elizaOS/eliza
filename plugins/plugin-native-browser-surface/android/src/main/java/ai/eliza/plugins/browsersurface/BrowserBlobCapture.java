@@ -70,9 +70,11 @@ public final class BrowserBlobCapture {
   public BrowserBlobCapture(WebView web, File directory) {
     this.web = web;
     this.directory = directory;
-    if (!WebViewFeature.isFeatureSupported(WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD))
-      return;
     try {
+      // An old or missing WebView provider can throw from the probe itself.
+      if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)
+          || !WebViewFeature.isFeatureSupported(WebViewFeature.JS_INJECTION_IN_FRAME_AND_WORLD))
+        return;
       world = WebViewCompat.getExecutionWorld(web, WORLD);
       // The wildcard exists only in this isolated world, never in the page world.
       WebViewCompat.addWebMessageListener(web, CHANNEL, Set.of("*"), world,
@@ -82,7 +84,7 @@ public final class BrowserBlobCapture {
       // itself. The script fetches only the blob address native code sends on this channel.
       script = WebViewCompat.addJavaScriptOnEvent(web, SCRIPT,
           WebViewCompat.INJECTION_EVENT_DOCUMENT_END, Set.of("*"), world);
-    } catch (RuntimeException unavailable) {
+    } catch (RuntimeException | LinkageError unavailable) {
       close();
     }
   }
@@ -231,14 +233,14 @@ public final class BrowserBlobCapture {
     if (script != null) {
       try {
         script.remove();
-      } catch (RuntimeException ignored) {
+      } catch (RuntimeException | LinkageError ignored) {
       }
       script = null;
     }
     if (world != null) {
       try {
         WebViewCompat.removeWebMessageListener(web, world, CHANNEL);
-      } catch (RuntimeException ignored) {
+      } catch (RuntimeException | LinkageError ignored) {
       }
       world = null;
     }

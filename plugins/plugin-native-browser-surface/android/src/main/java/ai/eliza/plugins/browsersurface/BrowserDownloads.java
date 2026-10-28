@@ -13,6 +13,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.util.Log;
 import android.webkit.URLUtil;
 import android.widget.Button;
 import android.widget.LinearLayout;
@@ -117,10 +118,13 @@ public final class BrowserDownloads {
   private String pendingTab;
   private Runnable update;
   /** Positive ids are DownloadManager IDs; negative ids are files the host saved to MediaStore. */
+  private static final String TAG = "BrowserDownloads";
   private final BrowserDownloadPolicy.History history = new BrowserDownloadPolicy.History();
   private long localSequence;
   /** Set by destroy(): the activity is gone, so no dialog may be shown and no worker accepts work. */
   private volatile boolean closed;
+  /** The saved download list could not be read; see {@link #historyUnreadable()}. */
+  private final boolean historyUnreadable;
 
   public BrowserDownloads(Context context, Config config) {
     this.context = context;
@@ -128,6 +132,7 @@ public final class BrowserDownloads {
     manager = context.getSystemService(DownloadManager.class);
     preferences = context.getSharedPreferences(config.preferences, Context.MODE_PRIVATE);
     List<BrowserDownloadPolicy.Entry> saved = new ArrayList<>();
+    boolean unreadable = false;
     try {
       JSONArray records = new JSONArray(preferences.getString("owned", "[]"));
       for (int i = 0; i < records.length(); i++) {
@@ -142,10 +147,26 @@ public final class BrowserDownloads {
             false, null, item.has("uri") ? item.optString("uri") : null, false,
             item.optBoolean("failed", false)));
       }
-    } catch (Exception ignored) {
-      // No outside IDs are queried.
+    } catch (Exception corrupt) {
+      // No outside IDs are queried. A corrupt store is reported rather than shown as an empty
+      // history; the unreadable record is kept aside so the next persist() does not erase it.
+      unreadable = true;
+      saved.clear();
+      Log.w(TAG, "Saved download history is unreadable; starting with an empty list", corrupt);
+      preferences.edit()
+          .putString("owned_unreadable", preferences.getString("owned", ""))
+          .apply();
     }
+    historyUnreadable = unreadable;
     history.restore(saved);
+  }
+
+  /**
+   * True when the saved download list could not be read at construction. The host should tell the
+   * user that earlier downloads are not listed (the files themselves are untouched).
+   */
+  public boolean historyUnreadable() {
+    return historyUnreadable;
   }
 
   /** Persist only finished normal-tab entries. Private-tab entries live in memory until their tab closes. */

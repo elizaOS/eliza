@@ -5,6 +5,7 @@ import {
   createReadingSupport,
   ISOLATED_WORLD_UNAVAILABLE,
   pageQuestionExcerpt,
+  pageQuestionReading,
   SENSITIVE_PAGE,
   sensitiveReadingDocument,
   sensitiveReadingText,
@@ -140,5 +141,27 @@ describe("page question excerpt", () => {
       await pageQuestionExcerpt(async () => ({ text: "a".repeat(5001) })),
     ).toBe("");
     expect(await pageQuestionExcerpt(async () => null)).toBe("");
+  });
+
+  it("keeps whether the page was cut to fit the excerpt", async () => {
+    expect(
+      await pageQuestionReading(async () => ({
+        text: "Garden journal",
+        truncated: true,
+      })),
+    ).toEqual({ text: "Garden journal", truncated: true });
+    expect(
+      await pageQuestionReading(async () => ({ text: "Garden journal" })),
+    ).toEqual({ text: "Garden journal", truncated: false });
+    expect(
+      await pageQuestionReading(async () => ({ text: "  ", truncated: true })),
+    ).toEqual({ text: "", truncated: false });
+    expect(
+      await pageQuestionReading(async () => {
+        throw Object.assign(new Error("x"), {
+          code: ISOLATED_WORLD_UNAVAILABLE,
+        });
+      }),
+    ).toEqual({ text: "", truncated: false });
   });
 });
