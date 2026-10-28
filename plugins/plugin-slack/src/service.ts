@@ -1528,7 +1528,11 @@ export class SlackService extends Service implements ISlackService {
     // joins/leaves are still covered by the dedicated
     // member_joined_channel / member_left_channel handlers, and
     // real user content (no subtype, file_share, thread_broadcast,
-    // me_message, bot_message) flows unchanged.
+    // me_message, bot_message) flows unchanged. Pin and unpin
+    // notices are the same class: an actor-only system notice with
+    // no user-authored text, which would otherwise build an
+    // empty-text memory and run a turn in an allowed
+    // no-mention-required channel.
     const SYSTEM_MESSAGE_SUBTYPES = new Set([
       "channel_join",
       "channel_leave",
@@ -1544,6 +1548,8 @@ export class SlackService extends Service implements ISlackService {
       "group_purpose",
       "group_archive",
       "group_unarchive",
+      "pinned_item",
+      "unpinned_item",
     ]);
     if (message.subtype && SYSTEM_MESSAGE_SUBTYPES.has(message.subtype)) {
       return;
