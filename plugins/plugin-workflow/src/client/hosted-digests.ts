@@ -486,10 +486,12 @@ export function latestRetainedBrief(
 
 /**
  * Retained brief for the current account and agent. A host binds the scope of
- * its current connection (for example origin, owner and agent); results read
- * under another scope are ignored, and changing the scope clears the brief, so
- * a late read for a previous account can never reach the current Home.
- * Without any bound scope, unscoped results are accepted.
+ * its current connection (for example origin, owner and agent); results are
+ * accepted only when read under exactly the bound scope, and changing the
+ * scope clears the brief, so a late read for a previous account can never
+ * reach the current Home. With no bound scope (a host that never binds, or one
+ * that unbound with `bind(null)` on disconnect) only unscoped results are
+ * accepted: a late read for the account that was just disconnected is ignored.
  */
 export class RetainedBriefStore {
   private value: RetainedDigestSummary | null = null;
@@ -513,15 +515,16 @@ export class RetainedBriefStore {
   }
   /**
    * Records the newest brief that ran from results read under `scope`, or
-   * clears it for `null`. Returns false when the results belong to another
-   * scope and were ignored.
+   * clears it for `null`. Returns false when the results were read under
+   * another scope than the bound one (including a scoped read after the host
+   * unbound) and were ignored.
    */
   remember(
     results: readonly DigestResult[] | null,
     options: { agent?: string; scope?: string | null } = {}
   ): boolean {
     const scope = options.scope ?? null;
-    if (this.scope !== null && scope !== this.scope) return false;
+    if (scope !== this.scope) return false;
     this.set(results ? latestRetainedBrief(results, options.agent) : null);
     return true;
   }

@@ -88,10 +88,10 @@ describe('retained brief', () => {
     });
     const overlap = result({ status: 'overlap' });
     const unavailable = result({ status: 'unavailable' });
-    expect(latestRetainedBrief([morning, missed, overlap, unavailable], 'Alpha')).toEqual({
+    expect(latestRetainedBrief([morning, missed, overlap, unavailable], 'Eliza')).toEqual({
       summary: 'Two meetings today.',
       ranAt: morning.completedAt,
-      agent: 'Alpha',
+      agent: 'Eliza',
       status: 'finished',
     });
     expect(latestRetainedBrief([missed, unavailable])).toBeNull();
@@ -132,6 +132,20 @@ describe('retained brief', () => {
     store.remember([other], { scope: 'owner-b' });
     expect(notified).toBe(before);
     expect(store.current()?.summary).toBe('Owner B brief');
+  });
+  test('after a disconnect unbinds the store, a late read for that account is ignored', () => {
+    const store = new RetainedBriefStore();
+    const brief = result({ status: 'finished', output: 'Owner A brief' });
+    store.bind('owner-a');
+    expect(store.remember([brief], { scope: 'owner-a' })).toBe(true);
+    store.bind(null);
+    expect(store.current()).toBeNull();
+    // The read started before the disconnect finishes afterwards: it never reaches Home.
+    expect(store.remember([brief], { scope: 'owner-a' })).toBe(false);
+    expect(store.current()).toBeNull();
+    // A host without account scopes still records its results.
+    expect(store.remember([brief])).toBe(true);
+    expect(store.current()?.summary).toBe('Owner A brief');
   });
 });
 

@@ -243,7 +243,7 @@ export interface OverviewBriefCardProps
   /** Card heading. */
   heading?: string;
   title: string;
-  /** Agent and run time ("Alpha · Ran 7:02 AM"). */
+  /** Agent and run time ("Eliza · Ran 7:02 AM"). */
   status: string;
   failed: boolean;
 }

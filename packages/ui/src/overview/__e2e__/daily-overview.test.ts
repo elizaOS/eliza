@@ -179,13 +179,13 @@ describe("brief", () => {
     expect(presentOverviewBriefCard({ summary: "Ready", ranAt: "never", agent: "A", status: "finished" }, now, f).has).toBe(false);
   });
   it("names the agent and run time, and a failure", () => {
-    const card = presentOverviewBriefCard({ summary: "Two meetings\ntoday.", ranAt: new Date(at(7, 2)).toISOString(), agent: "Alpha", status: "finished" }, now, f);
+    const card = presentOverviewBriefCard({ summary: "Two meetings\ntoday.", ranAt: new Date(at(7, 2)).toISOString(), agent: "Eliza", status: "finished" }, now, f);
     expect(card).toEqual({
       has: true,
       title: "Two meetings today.",
       failed: false,
-      status: "Alpha · Ran 7:02 AM",
-      label: "Open scheduled digests. Latest brief from Alpha, ran 7:02 AM: Two meetings today.",
+      status: "Eliza · Ran 7:02 AM",
+      label: "Open scheduled digests. Latest brief from Eliza, ran 7:02 AM: Two meetings today.",
     });
     const failed = presentOverviewBriefCard({ summary: `Source expired. ${"x".repeat(200)}`, ranAt: at(22, 30, 6), agent: "", status: "failed" }, now, f);
     expect([failed.failed, failed.status]).toEqual([true, "Your agent · Failed Tue, Oct 6 10:30 PM"]);

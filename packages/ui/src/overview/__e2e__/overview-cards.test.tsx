@@ -154,14 +154,14 @@ describe("OverviewAttentionCard", () => {
 
 describe("OverviewBriefCard", () => {
   it("renders the retained brief and its failure state", () => {
-    const brief = presentOverviewBriefCard({ summary: "Two meetings today.", ranAt: at(7, 2), agent: "Alpha", status: "finished" }, now, f);
+    const brief = presentOverviewBriefCard({ summary: "Two meetings today.", ranAt: at(7, 2), agent: "Eliza", status: "finished" }, now, f);
     if (!brief.has) throw new Error("expected a brief");
     const markup = html(<OverviewBriefCard title={brief.title} status={brief.status} failed={brief.failed} label={brief.label} />);
     expect(markup).toContain('aria-haspopup="dialog"');
     expect(markup).toContain('data-overview-failed="false"');
     expect(markup).toContain('data-overview-part="heading">Latest brief<');
-    expect(markup).toContain(">Alpha · Ran 7:02 AM<");
-    const failed = presentOverviewBriefCard({ summary: "Source expired", ranAt: at(7), agent: "Alpha", status: "failed" }, now, f);
+    expect(markup).toContain(">Eliza · Ran 7:02 AM<");
+    const failed = presentOverviewBriefCard({ summary: "Source expired", ranAt: at(7), agent: "Eliza", status: "failed" }, now, f);
     if (!failed.has) throw new Error("expected a failed brief");
     expect(html(<OverviewBriefCard title={failed.title} status={failed.status} failed={failed.failed} label={failed.label} />)).toContain(
       'data-overview-state="failed"',
