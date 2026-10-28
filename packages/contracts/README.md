@@ -44,3 +44,7 @@ agent on its own. Each mutation records its identity before it is sent; only the
 agent's refusal of that exact identity is reported as not applied, and any other
 failure leaves the outcome unknown until reconciled. The agent admits a
 submission identity at most once, so a resend cannot start a second run.
+`workflowOccurrenceNotRun` reads an execution output that settles a scheduled
+occurrence without running anything (`missed` while the agent was not running,
+or `overlap` beside an active run), so clients never present it as completed
+work; a missed occurrence is never replayed and only an explicit new run follows.
