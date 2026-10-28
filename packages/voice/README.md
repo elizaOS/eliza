@@ -46,6 +46,22 @@ prefix is kept, with one retry and never blocking the next turn). Hosts supply t
 request port; neither module carries audio anywhere else, stores or logs text. Vitest covers them
 against stub agents; this is not microphone, recognition, scorer or latency evidence.
 
+## Voice turn latency records
+
+`@elizaos/voice/turn-timing` keeps per-turn latency records on the device:
+`createVoiceTurnTiming({ storageKey, format, routes })` returns a recorder whose marks run from the
+last user input (`recording-end`, offset 0) through `transcript-ready`, `send`, `first-token`,
+`final-reply` and `first-audio` (the first audible reply sample the playback layer reports). Each
+mark is taken once, never before an earlier one, and reply marks need a send, so a late
+observation cannot shorten a phase. `sendEntry` is the send boundary for an `auto-send`
+(conversation) or `review` (dictation into an editable draft) entry; review time stays between
+`transcript-ready` and `send`. Optional `live`, `endpoint` and `heard` sections hold numbers and
+enums only, and a host-installed native stage sink links conversation turns to a native monotonic
+collector by a random id. Records never hold text, account, agent or conversation identifiers.
+The host names the storage key and export format so installed records keep their identity.
+Vitest covers ordering, validation, review boundaries and sink failures with a fake clock; this
+is not device latency evidence.
+
 ## Browser voice capture
 
 `@elizaos/voice/browser-capture` records one MediaRecorder clip at a time. The host admits

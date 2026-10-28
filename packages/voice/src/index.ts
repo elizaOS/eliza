@@ -132,6 +132,25 @@ export {
   readEndOfTurn,
   residentEndpoint,
 } from "./voice-turn-routes.js";
+export type {
+  NativeVoiceStage,
+  NativeVoiceStageSink,
+  VoiceTimingEndpoint,
+  VoiceTimingLive,
+  VoiceTimingMark,
+  VoiceTimingPolicy,
+  VoiceTimingRecord,
+  VoiceTimingSemantic,
+  VoiceTimingStorage,
+  VoiceTurnTiming,
+  VoiceTurnTimingOptions,
+} from "./voice-turn-timing.js";
+export {
+  createVoiceTurnTiming,
+  VOICE_TIMING_MARKS,
+  voiceTimingEndpoint,
+  voiceTimingLive,
+} from "./voice-turn-timing.js";
 export {
   MAX_WER_EDIT_CELLS,
   MAX_WER_INPUT_CHARS,
