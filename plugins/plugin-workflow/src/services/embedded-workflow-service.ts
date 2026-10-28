@@ -136,19 +136,18 @@ export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSettin
 }
 
 /**
- * Whether a terminal execution output records a missed scheduled occurrence:
- * the record this service (or a resident digest's admission) writes, with its
- * scheduled instant and explanation, not any workflow output that happens to
- * carry `status: 'missed'`.
+ * Whether a terminal execution is a missed scheduled occurrence: only the
+ * engine-recorded `missedOccurrenceAt` this service writes when it records the
+ * occurrence (or a resident digest's admission reports it missed). A
+ * workflow's own output that carries `status: 'missed'` ran and is not missed.
  */
-export function isMissedOccurrenceOutput(output: unknown): boolean {
-  if (!output || typeof output !== 'object' || Array.isArray(output)) return false;
-  const record = output as Record<string, unknown>;
+export function isMissedOccurrenceExecution(
+  execution: Pick<WorkflowExecution, 'finished' | 'missedOccurrenceAt'>
+): boolean {
   return (
-    record.status === 'missed' &&
-    typeof record.scheduledAt === 'string' &&
-    Number.isFinite(Date.parse(record.scheduledAt)) &&
-    typeof record.text === 'string'
+    execution.finished === true &&
+    typeof execution.missedOccurrenceAt === 'string' &&
+    Number.isFinite(Date.parse(execution.missedOccurrenceAt))
   );
 }
 
@@ -1851,6 +1850,11 @@ export class EmbeddedWorkflowService extends Service {
         finished: !!missed || (!!hosted && hosted.status !== 'ready'),
         ...(hosted && hosted.status !== 'ready' ? { stoppedAt: nowIso(), output: hosted } : {}),
         ...(missed ? { stoppedAt: nowIso(), output: missed } : {}),
+        ...(missed
+          ? { missedOccurrenceAt: String(missed.scheduledAt) }
+          : hosted?.status === 'missed'
+            ? { missedOccurrenceAt: hosted.scheduledAt }
+            : {}),
         startedAt: nowIso(),
         input: cloneJson(
           hosted

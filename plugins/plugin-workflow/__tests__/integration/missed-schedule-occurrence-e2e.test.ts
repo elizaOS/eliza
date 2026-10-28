@@ -12,26 +12,26 @@ import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import {
   EmbeddedWorkflowService,
-  isMissedOccurrenceOutput,
+  isMissedOccurrenceExecution,
   missedOccurrence,
   recordsMissedOccurrences,
 } from '../../src/services/embedded-workflow-service';
 import { createWorkflowDispatchService } from '../../src/services/workflow-dispatch';
 
-test('only a recorded missed occurrence reads as missed', () => {
+test('only the engine-recorded missed occurrence reads as missed', () => {
+  expect(
+    isMissedOccurrenceExecution({ finished: true, missedOccurrenceAt: '2026-10-27T09:00:00.000Z' })
+  ).toBe(true);
+  // Unfinished, or an unparseable instant, is not a recorded missed occurrence.
+  expect(
+    isMissedOccurrenceExecution({ finished: false, missedOccurrenceAt: '2026-10-27T09:00:00.000Z' })
+  ).toBe(false);
+  expect(isMissedOccurrenceExecution({ finished: true, missedOccurrenceAt: 'soon' })).toBe(false);
+  // A workflow's own output, even one shaped exactly like the recorded
+  // occurrence, ran: only the engine-written execution field marks it missed.
   const now = Date.parse('2026-10-27T09:10:00.000Z');
-  expect(isMissedOccurrenceOutput(missedOccurrence(now - 10 * 60_000, now, now - 60_000))).toBe(
-    true
-  );
-  // A workflow's own output that merely carries this status ran and is not missed.
-  for (const output of [
-    { status: 'missed' },
-    { status: 'missed', scheduledAt: 'soon', text: 'x' },
-    ['missed'],
-    'missed',
-    null,
-  ])
-    expect(isMissedOccurrenceOutput(output)).toBe(false);
+  const forged = { finished: true, output: missedOccurrence(now - 10 * 60_000, now, now - 60_000) };
+  expect(isMissedOccurrenceExecution(forged)).toBe(false);
 });
 
 test('missed occurrence policy is explicit and bounded by the scheduled window', () => {
@@ -161,6 +161,7 @@ import {createSmithers} from 'smthrs/create';import {z} from 'zod';const {Workfl
       finished: true,
       mode: 'trigger',
       output: { status: 'missed', scheduledAt: new Date(scheduledAtMs).toISOString() },
+      missedOccurrenceAt: new Date(scheduledAtMs).toISOString(),
     });
     expect(first.events).toEqual([]);
     // A repeated fire of the same occurrence (restart, duplicate scheduler tick)

@@ -20,7 +20,7 @@ import { WorkflowApiError } from '../types/index';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
-  isMissedOccurrenceOutput,
+  isMissedOccurrenceExecution,
 } from './embedded-workflow-service';
 
 export const WORKFLOW_DISPATCH_SERVICE_TYPE = 'WORKFLOW_DISPATCH' as const;
@@ -205,7 +205,7 @@ async function runDispatch(
       ...(triggerChainDepth !== undefined ? { triggerChainDepth } : {}),
       ...(scheduledAtMs !== undefined ? { scheduledAtMs } : {}),
     });
-    const missed = execution.finished && isMissedOccurrenceOutput(execution.output);
+    const missed = isMissedOccurrenceExecution(execution);
     return {
       ok: true,
       ...(execution.id ? { executionId: execution.id } : {}),
