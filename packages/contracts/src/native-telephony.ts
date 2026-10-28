@@ -1160,3 +1160,29 @@ export function createTelephonyClient(
   };
 }
 export type TelephonyClient = ReturnType<typeof createTelephonyClient>;
+
+const PROFILE_SLOT = Symbol.for("elizaos.native-telephony.profile");
+type ProfileHolder = { [PROFILE_SLOT]?: TelephonyClient | null };
+
+/**
+ * Registers (or with `null` clears) the host's admitted telephony client, so the shared Messages,
+ * Phone and Contacts surfaces route their side effects through its reviewed native screens. An
+ * unavailable client is never kept. The slot is a `Symbol.for` global because view bundles load as
+ * separate module instances. Returns a function that clears this registration only.
+ */
+export function registerTelephonyProfile(
+  client: TelephonyClient | null,
+): () => void {
+  const holder = globalThis as ProfileHolder;
+  const next = client?.available ? client : null;
+  holder[PROFILE_SLOT] = next;
+  return () => {
+    if (holder[PROFILE_SLOT] === next) holder[PROFILE_SLOT] = null;
+  };
+}
+
+/** The registered, admitted telephony client, or `null` (every install without the profile). */
+export function telephonyProfile(): TelephonyClient | null {
+  const client = (globalThis as ProfileHolder)[PROFILE_SLOT];
+  return client?.available ? client : null;
+}
