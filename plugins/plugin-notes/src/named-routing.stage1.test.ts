@@ -244,9 +244,8 @@ describe("body-free canonical named-note Stage1 routing", () => {
   });
   it("keeps historical and mixed intent neutral and does not add planner or model calls", async () => {
     const f = await fixture();
-    const outputs: Awaited<
-      ReturnType<typeof namedNotesRoutingProvider.get>
-    >[] = [];
+    const outputs: Awaited<ReturnType<typeof namedNotesRoutingProvider.get>>[] =
+      [];
     for (const text of [
       "What's in Weekend bag?",
       "What did I say about Weekend bag last year?",
