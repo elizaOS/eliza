@@ -324,6 +324,11 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     return Math.trunc(value);
   }
 
+  // Default activity page when the planner omits limit. Without
+  // it the action fetched the agent's entire facts table and
+  // rendered every activity item into the result.
+  const CONTACT_ACTIVITY_DEFAULT_LIMIT = 50;
+
   function clampActivityOffset(value: number | undefined): number {
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
       return 0;
@@ -1584,7 +1589,8 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     runtime: IAgentRuntime,
     params: ContactParams,
   ): Promise<ActionResult> {
-    const limit = requestedActivityLimit(params.limit);
+    const limit =
+      requestedActivityLimit(params.limit) ?? CONTACT_ACTIVITY_DEFAULT_LIMIT;
     const offset = clampActivityOffset(params.offset);
 
     const graphService = await getGraphService(runtime);
@@ -1641,10 +1647,23 @@ export function createContactActions(dependencies: ContactActionDependencies): {
         });
       }
 
+      // Bound the facts read to what the page can contain: the
+      // merged list is sorted newest-first, so a fact at merged
+      // position p has fact-rank at most p + 1, and every fact
+      // that can appear in page [offset, offset + limit) is
+      // within the newest offset + limit facts. The graph
+      // snapshot itself stays complete: it builds the
+      // person-by-entity map used to attribute facts.
       const recentFacts = await runtime.getMemories({
         agentId: runtime.agentId,
         tableName: "facts",
+        orderDirection: "desc",
+        limit: offset + limit,
       });
+      // The fetch hit its bound, so older facts may exist beyond
+      // this window: the page itself is exact, but the total
+      // below is a lower bound and more pages may follow.
+      const factsMayHaveMore = recentFacts.length === offset + limit;
       for (const fact of recentFacts) {
         const text =
           typeof fact.content.text === "string" ? fact.content.text.trim() : "";
@@ -1693,21 +1712,19 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       });
 
       const total = activity.length;
-      const page =
-        limit === undefined
-          ? activity.slice(offset)
-          : activity.slice(offset, offset + limit);
+      const page = activity.slice(offset, offset + limit);
       const lines = page.map((item, i) => {
         const ts = item.timestamp ? ` · ${item.timestamp.slice(0, 19)}` : "";
         const detail = item.detail ? ` — ${item.detail}` : "";
         return `${String(offset + i + 1).padStart(3, " ")} | [${item.type}] ${item.summary}${detail}${ts}`;
       });
 
-      const pageDescription =
-        limit === undefined
-          ? `offset ${offset}`
-          : `offset ${offset}, limit ${limit}`;
-      const header = `Relationships activity | ${page.length}/${total} items shown (${pageDescription})`;
+      const pageDescription = `offset ${offset}, limit ${limit}`;
+      const header = `Relationships activity | ${page.length}/${total} items shown (${pageDescription})${
+        factsMayHaveMore
+          ? " — older activity beyond this window is not counted"
+          : ""
+      }`;
       const body = lines.length > 0 ? lines.join("\n") : "(no activity yet)";
 
       return {
@@ -1722,7 +1739,9 @@ export function createContactActions(dependencies: ContactActionDependencies): {
           count: page.length,
           offset,
           limit,
-          hasMore: limit !== undefined && offset + limit < total,
+          hasMore:
+            offset + limit < total ||
+            (factsMayHaveMore && page.length === limit),
         },
       };
     } catch (err) {
