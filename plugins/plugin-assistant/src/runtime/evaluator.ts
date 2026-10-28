@@ -2538,9 +2538,6 @@ export function calendarReadCoverage(
         return false;
       const data = step.result.data;
       if (!isObjectRecord(data)) return false;
-      const reply = data.replyContext;
-      if (!isObjectRecord(reply)) return false;
-      if (reply.domain !== "calendar") return false;
       const expected = CALENDAR_READ_ACTIONS[binding.operation];
       if (
         !expected ||
@@ -2552,6 +2549,100 @@ export function calendarReadCoverage(
           ))
       )
         return false;
+      if (
+        binding.operation === "propose_times" ||
+        binding.operation === "check_availability"
+      ) {
+        const proposal = binding.operation === "propose_times";
+        const snapshot = data.calendarSnapshot;
+        if (!isObjectRecord(snapshot) || !isObjectRecord(snapshot.resource))
+          return false;
+        const resource = snapshot.resource;
+        if (
+          resource.kind !== "calendar.feed" ||
+          typeof resource.id !== "string" ||
+          !resource.id ||
+          typeof resource.version !== "string" ||
+          !resource.version ||
+          typeof snapshot.observedAt !== "string" ||
+          !Number.isFinite(Date.parse(snapshot.observedAt)) ||
+          !step.result.effectReceipts?.some(
+            (receipt) =>
+              receipt.operation ===
+                (proposal
+                  ? "calendar.propose_times.preview"
+                  : "calendar.check_availability.read") &&
+              receipt.outcome === (proposal ? "preview" : "noop") &&
+              receipt.idempotency.replayed === false &&
+              receipt.resource.kind === resource.kind &&
+              receipt.resource.id === resource.id &&
+              receipt.resource.version === resource.version &&
+              receipt.observedAt === snapshot.observedAt,
+          )
+        )
+          return false;
+        const start =
+          typeof data.windowStart === "string"
+            ? Date.parse(data.windowStart)
+            : NaN;
+        const end =
+          typeof data.windowEnd === "string" ? Date.parse(data.windowEnd) : NaN;
+        if (
+          !Number.isFinite(start) ||
+          !Number.isFinite(end) ||
+          end <= start ||
+          typeof data.timeZone !== "string" ||
+          !data.timeZone
+        )
+          return false;
+        if (!proposal)
+          return (
+            typeof data.isFree === "boolean" &&
+            Array.isArray(data.conflicts) &&
+            data.isFree === (data.conflicts.length === 0)
+          );
+        const duration = data.durationMinutes;
+        if (
+          typeof duration !== "number" ||
+          !Number.isFinite(duration) ||
+          duration < 5 ||
+          duration > 480 ||
+          !Array.isArray(data.slots)
+        )
+          return false;
+        const params = step.toolCall.params;
+        const suppliedDuration = isObjectRecord(params?.duration)
+          ? params.duration.minutes
+          : params?.durationMinutes;
+        if (
+          typeof suppliedDuration === "number" &&
+          duration !== Math.floor(suppliedDuration)
+        )
+          return false;
+        // The canonical producer may truthfully find no options. A successful
+        // preview otherwise contains concrete slots, not unbounded free windows.
+        return data.slots.every((slot) => {
+          if (
+            !isObjectRecord(slot) ||
+            slot.durationMinutes !== duration ||
+            slot.timeZone !== data.timeZone
+          )
+            return false;
+          const from =
+            typeof slot.startAt === "string" ? Date.parse(slot.startAt) : NaN;
+          const to =
+            typeof slot.endAt === "string" ? Date.parse(slot.endAt) : NaN;
+          return (
+            Number.isFinite(from) &&
+            Number.isFinite(to) &&
+            from >= start &&
+            to <= end &&
+            to - from === Math.round(duration * 60_000)
+          );
+        });
+      }
+      const reply = data.replyContext;
+      if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
       if (binding.operation === "feed") {
         const scope = reply.context;
         return (
