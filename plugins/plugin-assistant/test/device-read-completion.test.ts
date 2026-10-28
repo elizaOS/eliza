@@ -12,11 +12,13 @@ import {
   type IDatabaseAdapter,
   type JsonValue,
   type Memory,
+  ModelType,
   type UUID,
 } from "@elizaos/core";
 import { getTableConfig, PgDialect } from "drizzle-orm/pg-core";
 import { drizzle } from "drizzle-orm/pglite";
 import { afterEach, expect, it, vi } from "vitest";
+import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -34,7 +36,6 @@ import {
   deviceProposalDigest,
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
-  withDeviceActionTurn,
 } from "../src/services/device-actions/service.ts";
 
 async function createTable(
@@ -124,7 +125,16 @@ async function fixture(
     getService: () => null,
     getModelRegistrations: () => [],
     reportError: vi.fn(),
-    useModel: model,
+    useModel: vi.fn(async (type: unknown, params: unknown) =>
+      type === ModelType.TEXT_LARGE
+        ? JSON.stringify({
+            requiresInput: false,
+            clarification: null,
+            changes: [],
+            textEdit: null,
+          })
+        : model(type, params),
+    ),
     getMemoryById: async (id: string) =>
       (
         await pg.query<{ data: Memory }>(
@@ -176,6 +186,20 @@ async function fixture(
         "Read the synthetic QA note and quote its body.",
       source: "client_chat",
       channelType: "DM",
+      metadata: {
+        clientDevice: {
+          context: {
+            view: "notes",
+            sensitive: false,
+            revision: 1,
+            selectedObject: {
+              kind: "note-source",
+              id: "closed-qa",
+              revision: "a".repeat(64),
+            },
+          },
+        },
+      },
     },
   };
   await pg.query("INSERT INTO original_memories VALUES($1,$2)", [
@@ -228,17 +252,21 @@ async function fixture(
   );
   await pg.exec(migration);
   await pg.exec(migration);
-  const outcome = await withDeviceActionTurn(runtime, credential, async () => {
-    setDeviceReadReplyConversation(runtime, conversationId, roomId);
-    setDeviceReadReplyContext(runtime, original, context);
-    const outcome = await service.proposeWithOutcome(
-      credential,
-      params.operation,
-      params.operationKey,
-      params.reason,
-    );
-    return outcome;
-  });
+  const outcome = await withOwnerDeviceActionTurn(
+    runtime,
+    credential,
+    async () => {
+      setDeviceReadReplyConversation(runtime, conversationId, roomId);
+      setDeviceReadReplyContext(runtime, original, context);
+      const outcome = await service.proposeWithOutcome(
+        credential,
+        params.operation,
+        params.operationKey,
+        params.reason,
+      );
+      return outcome;
+    },
+  );
   const digest = deviceProposalDigest(outcome.request);
   const result = {
     version: 1,
@@ -287,6 +315,7 @@ async function fixture(
     digest,
     result,
     model,
+    inference: runtime.useModel,
     legacy,
     apply,
   };
@@ -314,7 +343,7 @@ it("additively upgrades existing approvals; fresh original read is bound private
       id: randomUUID() as UUID,
       roomId: randomUUID() as UUID,
     };
-    await withDeviceActionTurn(f.runtime, f.credential, async () => {
+    await withOwnerDeviceActionTurn(f.runtime, f.credential, async () => {
       setDeviceReadReplyConversation(f.runtime, randomUUID(), other.roomId);
       setDeviceReadReplyContext(f.runtime, other, f.context);
       const replay = await f.service.proposeWithOutcome(
@@ -333,7 +362,7 @@ it("additively upgrades existing approvals; fresh original read is bound private
         )
       ).rows[0]?.device_read_completion,
     ).toEqual(before);
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
   }
@@ -421,7 +450,7 @@ it("plain receipt/history never starts inference, and cancellation before comple
         f.digest,
         attempt,
       );
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
     await f.service.cancelReadReply(
       f.credential,
       f.outcome.request.id,
@@ -434,7 +463,7 @@ it("plain receipt/history never starts inference, and cancellation before comple
         new AbortController().signal,
       ),
     ).rejects.toThrow();
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
   }
@@ -526,7 +555,7 @@ it.each([
         new AbortController().signal,
       ),
     ).rejects.toThrow();
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
   }
@@ -550,7 +579,7 @@ it.each(["subjectUserId", "installationId", "deviceKey"] as const)(
           new AbortController().signal,
         ),
       ).rejects.toThrow();
-      expect(f.model).not.toHaveBeenCalled();
+      expect(f.inference).not.toHaveBeenCalled();
     } finally {
       await f.pg.close();
     }
@@ -577,7 +606,7 @@ it("refuses an expired binding and a changed original request without another re
         new AbortController().signal,
       ),
     ).rejects.toThrow("Original read request changed");
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
   }
@@ -704,7 +733,7 @@ it("late enrollment revocation after original-memory wait blocks the first model
     await f.service.revoke(f.credential);
     release(f.original);
     await expect(pending).rejects.toThrow();
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
   }
@@ -792,7 +821,7 @@ it.each([
           return actionResultToPlannerToolResult(result);
         },
       );
-      const result = await withDeviceActionTurn(
+      const result = await withOwnerDeviceActionTurn(
         f.runtime,
         f.credential,
         async () => {
@@ -896,7 +925,7 @@ it.each(["no-match", "empty-body", "selected-read"] as const)(
       expect(hint).toBeTruthy();
       const expected =
         kind === "no-match"
-          ? "No note matched that title."
+          ? "That reviewed Notes lookup found no matching record. No note was changed."
           : kind === "empty-body"
             ? "The selected note body is empty."
             : "Closed synthetic body.";
@@ -921,17 +950,14 @@ it.each(["no-match", "empty-body", "selected-read"] as const)(
         (f.model.mock.calls[0]?.[1] as { messages?: unknown[] } | undefined)
           ?.messages,
       );
-      if (kind === "no-match") {
-        expect(wire).toContain("no-match");
-        expect(wire).not.toContain("Closed synthetic body.");
-      }
+      if (kind === "no-match") expect(f.inference).not.toHaveBeenCalled();
       if (kind === "empty-body") {
         expect(wire).toContain("Synthetic QA note");
         expect(wire).not.toContain("Closed synthetic body.");
       }
       if (kind === "selected-read")
         expect(wire).toContain("Closed synthetic body.");
-      expect(f.model).toHaveBeenCalledTimes(1);
+      expect(f.model).toHaveBeenCalledTimes(kind === "no-match" ? 0 : 1);
     } finally {
       await f.pg.close();
     }
@@ -960,7 +986,7 @@ it.each(["failed", "cancelled"] as const)(
           attempt,
         ),
       ).rejects.toThrow();
-      expect(f.model).not.toHaveBeenCalled();
+      expect(f.inference).not.toHaveBeenCalled();
     } finally {
       await f.pg.close();
     }
@@ -975,7 +1001,7 @@ it("rolls back a new durable proposal when original binding cannot be committed"
       "CREATE FUNCTION reject_read_binding() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.device_read_completion IS NOT NULL THEN RAISE EXCEPTION 'Closed binding failure'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_read_binding BEFORE UPDATE ON approval_requests FOR EACH ROW EXECUTE FUNCTION reject_read_binding();",
     );
     await expect(
-      withDeviceActionTurn(f.runtime, f.credential, async () => {
+      withOwnerDeviceActionTurn(f.runtime, f.credential, async () => {
         setDeviceReadReplyConversation(
           f.runtime,
           f.conversationId,
@@ -993,7 +1019,7 @@ it("rolls back a new durable proposal when original binding cannot be committed"
     expect(
       (await f.pg.query("SELECT id FROM approval_requests")).rows.length,
     ).toBe(before);
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
   }
@@ -1037,7 +1063,7 @@ it.each(["modern", "legacy"] as const)(
             new AbortController().signal,
           ),
         ).rejects.toThrow();
-        expect(f.model).not.toHaveBeenCalled();
+        expect(f.inference).not.toHaveBeenCalled();
       }
     } finally {
       await f.pg.close();
@@ -1067,7 +1093,7 @@ it("changed trusted account/provider/environment revision admits no model or del
         persist,
       ),
     ).rejects.toThrow();
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
     expect(persist).not.toHaveBeenCalled();
   } finally {
     await f.pg.close();
@@ -1096,7 +1122,7 @@ it("expiry after an applied read blocks inference and leaves the shared native s
         new AbortController().signal,
       ),
     ).rejects.toThrow();
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
     expect(
       (await f.service.list(f.credential)).find(
         (row) => row.id === f.outcome.request.id,
@@ -1164,7 +1190,7 @@ it("a host missing its protected revision retains a typed receipt without any co
         attempt,
       ),
     ).toBeUndefined();
-    expect(f.model).not.toHaveBeenCalled();
+    expect(f.inference).not.toHaveBeenCalled();
     expect(
       (await f.service.list(f.credential)).find(
         (row) => row.id === f.outcome.request.id,
@@ -1211,7 +1237,7 @@ it.each(["expiry", "enrollment"] as const)(
       else await f.service.revoke(f.credential);
       release();
       await expect(pending).rejects.toThrow();
-      expect(f.model).not.toHaveBeenCalled();
+      expect(f.inference).not.toHaveBeenCalled();
     } finally {
       await f.pg.close();
     }

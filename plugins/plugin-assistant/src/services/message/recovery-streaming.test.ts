@@ -20,6 +20,13 @@ const evidence = JSON.stringify({
   original: "Keep every original observation.",
   receipt: "note-receipt",
 });
+const savedNoteClaim = {
+  quote: prose,
+  actor: "assistant",
+  change: true,
+  supported: true,
+  evidence: "note-receipt",
+};
 const cases = [
   {
     name: "rewrite",
@@ -43,16 +50,8 @@ const cases = [
   },
   {
     name: "grounding",
-    raw: JSON.stringify({
-      grounded: true,
-      completedChangeClaim: true,
-      reason: "Matching receipt supports the reply.",
-    }),
-    expected: {
-      grounded: true,
-      completedChangeClaim: true,
-      reason: "Matching receipt supports the reply.",
-    },
+    raw: JSON.stringify({ grounded: true, claims: [savedNoteClaim] }),
+    expected: { claims: [savedNoteClaim] },
     invoke: (runtime: AgentRuntime) =>
       reviewRecoveredReply({
         runtime,
@@ -82,12 +81,12 @@ describe("internal recovery model streaming", () => {
         ModelType.TEXT_SMALL,
         async () => ({
           textStream: (async function* () {
-            yield '{"grounded":';
+            yield '{"claims":';
             if (failure === "unavailable")
               throw new Error("Controlled provider stream failure");
             yield "invalid}";
           })(),
-          text: Promise.resolve('{"grounded":invalid}'),
+          text: Promise.resolve('{"claims":invalid}'),
           usage: Promise.resolve(undefined),
           finishReason: Promise.resolve("stop"),
         }),
@@ -178,7 +177,7 @@ describe("internal recovery model streaming", () => {
           textStream: (async function* () {
             yield "{";
             controller.abort(new Error("cancelled turn"));
-            yield '"grounded":true}';
+            yield '"grounded":true,"claims":[]}';
           })(),
           text: Promise.resolve(scenario.raw),
           usage: Promise.resolve(undefined),

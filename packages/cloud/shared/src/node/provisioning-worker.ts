@@ -1577,59 +1577,73 @@ export class ProvisioningJobService extends ProvisioningJobQueue {
           executionLeaseMs: this.leaseDurationForJobType(jobType),
         });
 
-    for (const job of claimedJobs) {
-      result.claimed++;
-      const stopLeaseHeartbeat = this.startExecutionLeaseHeartbeat(job);
-      const execution = this.executeJob(job);
+    // Every claimed job's lease is renewed from the claim on: the batch runs
+    // one job at a time, and a job still waiting behind a slow one must not
+    // look abandoned to the stale-job sweep before it has started.
+    const heartbeats = new Map(
+      claimedJobs.map((job) => [job.id, this.startExecutionLeaseHeartbeat(job)] as const),
+    );
+    const started = new Set<string>();
+    try {
+      for (const job of claimedJobs) {
+        result.claimed++;
+        started.add(job.id);
+        const stopLeaseHeartbeat = heartbeats.get(job.id) ?? (() => {});
+        const execution = this.executeJob(job);
 
-      try {
-        await withTimeout(execution, this.executionTimeoutMs(job.type), `job ${job.type}`);
-        result.succeeded++;
-        stopLeaseHeartbeat();
-      } catch (err) {
-        if (safeErrorKind(err, OperationTimeoutError)) {
-          const errorMsg = err.message;
-          result.failed++;
-          result.errors.push({ jobId: job.id, error: errorMsg });
-          logger.warn(
-            "[provisioning-jobs] Execution timed out; retaining ownership until quiescent",
-            {
-              jobId: job.id,
-              executionGeneration: job.execution_generation,
-              timeoutMs: err.timeoutMs,
-            },
-          );
-          // error-policy:J5 the detached result and terminal supervisor rejection
-          // stay observed until settlement commits or a successor wins takeover.
-          void execution
-            .then(
-              () => stopLeaseHeartbeat(),
-              async (executionError) => {
-                try {
-                  if (await this.handleExecutionFailure(job, executionError)) {
-                    await this.releaseProviderAdmissionAfterRecordedFailure(job);
-                  }
-                } finally {
-                  stopLeaseHeartbeat();
-                }
-              },
-            )
-            .catch((settlementError) => {
-              logger.warn("[provisioning-jobs] Detached settlement supervisor stopped", {
+        try {
+          await withTimeout(execution, this.executionTimeoutMs(job.type), `job ${job.type}`);
+          result.succeeded++;
+          stopLeaseHeartbeat();
+        } catch (err) {
+          if (safeErrorKind(err, OperationTimeoutError)) {
+            const errorMsg = err.message;
+            result.failed++;
+            result.errors.push({ jobId: job.id, error: errorMsg });
+            logger.warn(
+              "[provisioning-jobs] Execution timed out; retaining ownership until quiescent",
+              {
                 jobId: job.id,
                 executionGeneration: job.execution_generation,
-                error: jobErrorText(settlementError),
+                timeoutMs: err.timeoutMs,
+              },
+            );
+            // error-policy:J5 the detached result and terminal supervisor rejection
+            // stay observed until settlement commits or a successor wins takeover.
+            void execution
+              .then(
+                () => stopLeaseHeartbeat(),
+                async (executionError) => {
+                  try {
+                    if (await this.handleExecutionFailure(job, executionError)) {
+                      await this.releaseProviderAdmissionAfterRecordedFailure(job);
+                    }
+                  } finally {
+                    stopLeaseHeartbeat();
+                  }
+                },
+              )
+              .catch((settlementError) => {
+                logger.warn("[provisioning-jobs] Detached settlement supervisor stopped", {
+                  jobId: job.id,
+                  executionGeneration: job.execution_generation,
+                  error: jobErrorText(settlementError),
+                });
               });
-            });
-          continue;
-        }
-        try {
-          if (await this.handleExecutionFailure(job, err, result)) {
-            await this.releaseProviderAdmissionAfterRecordedFailure(job);
+            continue;
           }
-        } finally {
-          stopLeaseHeartbeat();
+          try {
+            if (await this.handleExecutionFailure(job, err, result)) {
+              await this.releaseProviderAdmissionAfterRecordedFailure(job);
+            }
+          } finally {
+            stopLeaseHeartbeat();
+          }
         }
+      }
+    } finally {
+      for (const [jobId, stopLeaseHeartbeat] of heartbeats) {
+        if (!started.has(jobId)) stopLeaseHeartbeat();
       }
     }
   }

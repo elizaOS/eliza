@@ -612,7 +612,7 @@ export class ScheduleProjectionRepository {
       `DELETE FROM app_lifeops.life_task_occurrences
         WHERE agent_id = ${sqlQuote(agentId)}
           AND definition_id = ${sqlQuote(definitionId)}
-          AND state IN ('pending', 'visible', 'snoozed', 'expired')
+          AND state IN ('pending', 'visible', 'snoozed')
           ${keepClause}`,
     );
   }

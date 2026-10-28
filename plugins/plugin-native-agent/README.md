@@ -345,3 +345,14 @@ The gate retains the credential fingerprint session fence and derives its stable
 owner from the JSON tuple `[authority, userId, organizationId]`. This option changes
 storage ownership semantics: enable only with an explicit migration and database
 writer lease. These ports do not implement either one or enable product encryption.
+
+`NativeProviderAdmission` shares the native Cloud provider rules, protected binding
+identity, credential expiry, generation checks and compare-exchange rollback.
+Hosts keep encrypted storage, its mutation lock, the authenticated identity lookup
+and lifecycle retirement. This class does not admit a legacy key on startup or
+select an account. The native host test lane runs the existing provider contract
+with JDK 21 and `ELIZA_JSON_JAR`, or the pinned `org.json:json:20250517` Gradle cache.
+The compatibility host keeps its storage slot and subclass name; records do not
+move or change shape. The later native profile overrides Cloud embeddings with
+the admitted local BGE route; this extraction preserves the existing generic
+provider behavior.
