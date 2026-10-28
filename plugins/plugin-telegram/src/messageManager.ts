@@ -495,12 +495,6 @@ export class MessageManager {
   private activeTurnRooms = new Map<UUID, number>();
 
   /**
-   * Constructor for creating a new instance of a BotAgent.
-   *
-   * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
-   * @param {IAgentRuntime} runtime - The runtime environment for the agent.
-   */
-  /**
    * Attachments Telegram refused for a reply, keyed by the reply content object
    * that `sendMessageInChunks` and `persistSentMessageMemories` both receive.
    */
@@ -518,6 +512,12 @@ export class MessageManager {
     };
   }
 
+  /**
+   * Constructor for creating a new instance of a BotAgent.
+   *
+   * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
+   * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+   */
   constructor(
     bot: Telegraf<Context>,
     runtime: IAgentRuntime,
