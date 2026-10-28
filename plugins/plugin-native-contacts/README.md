@@ -48,3 +48,14 @@ truncating it. Reads take a CancellationSignal and time out after five seconds.
 `reviewed(id, lookup, revision)` rechecks a selected contact before the host
 hands an edit to the system Contacts editor. Hosts gate it behind their own
 image admission and foreground checks.
+
+`ai.eliza.plugins.contacts.AddressBookPlugin` is the address book of the AOSP
+telephony profile built on the catalog. A host subclasses it under its own
+plugin name (declaring the `contacts` permission alias) and answers
+`admitted()` from its native image admission. It offers `status`,
+`requestPermissions`, `list({ query, limit })`, `create()` and
+`edit({ id, lookup, revision })`. Reads run only while the phone is unlocked
+with the host in front and are cancelled on pause, resume, screen-off and
+permission change. Creation and edits open a system app's exported Contacts
+editor, which owns the account choice and the save; nothing is written from the
+plugin and `edit` rechecks the contact's lookup key and revision first.

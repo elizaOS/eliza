@@ -37,6 +37,9 @@ repositories {
 dependencies {
     androidTestImplementation 'androidx.test.uiautomator:uiautomator:2.3.0'
     implementation project(':capacitor-android')
+    // AddressBookPlugin's screen-off receiver and the system editor's activity result.
+    implementation "androidx.core:core:${rootProject.ext.has('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.12.0'}"
+    implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.11.0'}"
 
     // Instrumented test deps (issue #9967 — on-device contacts round-trip).
     androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
