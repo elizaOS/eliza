@@ -307,14 +307,30 @@ export const metaAdsProvider: AdProvider = {
   async listAdAccounts(
     credentials: AdAccountCredentials,
   ): Promise<Array<{ id: string; name: string }>> {
-    const response = await graphApiRequest<{
-      data: AdAccountResponse[];
-    }>(
-      "/me/adaccounts?fields=id,name,account_status,currency,timezone_name",
-      credentials.accessToken,
-    );
+    // Meta pages ad accounts (25 by default); follow paging.next to the end so
+    // accounts after the first page can be discovered and selected.
+    const accounts: AdAccountResponse[] = [];
+    const seenPages = new Set<string>();
+    let endpoint: string | undefined =
+      "/me/adaccounts?fields=id,name,account_status,currency,timezone_name&limit=100";
+    while (endpoint) {
+      if (seenPages.has(endpoint)) {
+        throw new Error("Meta ad account listing repeated a page");
+      }
+      seenPages.add(endpoint);
+      const response: {
+        data: AdAccountResponse[];
+        paging?: { next?: string };
+      } = await graphApiRequest(endpoint, credentials.accessToken);
+      accounts.push(...response.data);
+      const next = response.paging?.next;
+      if (next && new URL(next).origin !== new URL(GRAPH_API_BASE).origin) {
+        throw new Error("Meta ad account listing pointed outside the Graph API");
+      }
+      endpoint = next;
+    }
 
-    return response.data
+    return accounts
       .filter((acc) => acc.account_status === 1) // Active accounts only
       .map((acc) => ({
         id: acc.id.replace("act_", ""),

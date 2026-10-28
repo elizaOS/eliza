@@ -1,3 +1,4 @@
+import { publishConversationUpdate } from "../runtime/agent-event-service.ts";
 /**
  * Registers a send handler for the "client_chat" source so the agent can
  * proactively push messages to connected Eliza app clients.
@@ -200,9 +201,11 @@ function makeDeliver(runtime: IAgentRuntime, state: ServerState) {
       // metadata/createdAt and race that immutable publication boundary.
 
       conv.updatedAt = new Date().toISOString();
+      publishConversationUpdate(runtime, conv.id, conv.roomId, messageId);
 
       state.broadcastWs?.({
         type: "proactive-message",
+        agentId: runtime.agentId,
         conversationId: conv.id,
         message: {
           id: messageId,
@@ -310,8 +313,10 @@ function makeOwnerChatDeliver(runtime: IAgentRuntime, state: ServerState) {
     };
     await runtime.createMemory(agentMessage, "messages");
     conv.updatedAt = new Date().toISOString();
+    publishConversationUpdate(runtime, conv.id, conv.roomId, messageId);
     state.broadcastWs?.({
       type: "proactive-message",
+      agentId: runtime.agentId,
       conversationId: conv.id,
       message: {
         id: messageId,

@@ -198,8 +198,6 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     "MATRIX_ACCOUNTS",
     // ElizaCloud secrets
     "ELIZAOS_CLOUD_API_KEY",
-    "ELIZAOS_CLOUD_BASE_URL",
-    "ELIZAOS_CLOUD_ENABLED",
     // Wallet / blockchain secrets
     "EVM_PRIVATE_KEY",
     "SOLANA_PRIVATE_KEY",
@@ -235,6 +233,9 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
   // (homeserver URL, user/room/device IDs, the verify allow-list, on/off flags),
   // so redacting them only corrupted output (room names, the agent's own id).
   const publicConnectorConfigKeys = [
+    // Cloud routing values are public configuration, not redaction seeds.
+    "ELIZAOS_CLOUD_BASE_URL",
+    "ELIZAOS_CLOUD_ENABLED",
     "GOOGLE_CLIENT_ID",
     "GOOGLE_REDIRECT_URI",
     "ELIZA_EXTERNAL_BASE_URL",

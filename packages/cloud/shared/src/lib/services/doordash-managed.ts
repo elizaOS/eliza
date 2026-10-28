@@ -223,7 +223,13 @@ async function storeSession(auth: HostedBrowserAuthContext, sessionId: string): 
 
 async function getOrCreateSession(auth: HostedBrowserAuthContext): Promise<DoorDashBrowserSession> {
   const key = getManagedDoorDashSessionKey(auth);
-  const storedId = await cache.get<string>(key);
+  // A read that fails is not a miss: creating a session here would overwrite
+  // the stored id and orphan the browser the user signed in to.
+  const stored = await cache.getWithOutcome<string>(key);
+  if (stored.kind === "unavailable" || stored.kind === "error") {
+    throw new Error("DoorDash session storage is unavailable");
+  }
+  const storedId = stored.kind === "hit" ? stored.value : null;
   if (storedId) {
     try {
       return await getDoorDashBrowserSession(storedId);

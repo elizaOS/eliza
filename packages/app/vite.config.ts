@@ -63,23 +63,42 @@ import { resolveViteDevServerRuntime } from "./vite-dev-origin.ts";
 const _require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
+/** Inline the host's local logo; a missing or remote logo keeps the app-name fallback. */
 export function resolveAndroidCloudPrebootLockupDataUri(): string {
-  const androidCloudPrebootLockupSvg = fs
-    .readFileSync(
-      path.join(here, "public", "brand", "logos", "eliza_logotext.svg"),
-      "utf8",
-    )
-    .replace(
-      /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
-      "\n",
-    );
-  if (androidCloudPrebootLockupSvg.includes("#FF5800")) {
-    throw new Error(
-      "Android Cloud preboot lockup still contains its orange backing rect",
-    );
+  const logoPath = resolveAppBranding(appConfig).logoUrl?.trim();
+  if (!logoPath?.startsWith("/") || logoPath.startsWith("//")) return "";
+  const publicRoot = path.join(here, "public");
+  const file = path.resolve(publicRoot, logoPath.slice(1));
+  if (!file.startsWith(`${publicRoot}${path.sep}`)) {
+    throw new Error("Startup logo must be inside the host public assets");
   }
-  return `data:image/svg+xml;base64,${Buffer.from(androidCloudPrebootLockupSvg).toString("base64")}`;
+  const mime = new Map([
+    [".svg", "image/svg+xml"],
+    [".png", "image/png"],
+    [".jpg", "image/jpeg"],
+    [".jpeg", "image/jpeg"],
+    [".webp", "image/webp"],
+  ]).get(path.extname(file).toLowerCase());
+  if (!mime) throw new Error("Startup logo must be SVG, PNG, JPEG or WebP");
+  let bytes = fs.readFileSync(file);
+  // Preserve the canonical host's reviewed transparent Android launch lockup.
+  if (logoPath === "/brand/logos/eliza_logotext.svg") {
+    const svg = bytes
+      .toString("utf8")
+      .replace(
+        /\s*<rect x="0\.081543" y="1\.84143" width="101\.919" height="101\.919" fill="#FF5800"\s*\/?>\s*/,
+        "\n",
+      );
+    if (svg.includes("#FF5800")) {
+      throw new Error(
+        "Android Cloud preboot lockup still contains its orange backing rect",
+      );
+    }
+    bytes = Buffer.from(svg);
+  }
+  return `data:${mime};base64,${bytes.toString("base64")}`;
 }
+
 const nativePluginsRoot = path.join(elizaRoot, "plugins");
 const bunLinkedPackageCacheRoot = path.join(
   os.homedir(),
@@ -909,6 +928,7 @@ function resolveAppShellMetadata() {
   const appUrl = ensureTrailingSlash(branding.appUrl.trim());
   return {
     appName: appConfig.appName.trim(),
+    startupLogoPath: appConfig.web?.startupLogoPath?.trim() || "",
     shortName: appConfig.web?.shortName?.trim() || appConfig.appName.trim(),
     description: appConfig.description.trim(),
     appUrl,
@@ -1111,7 +1131,9 @@ export function stripAndroidCloudPublicAssetReferences(
     )
     .replace(
       /<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*<span\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__name\b[^"']*["'][^>]*>[^<]*<\/span>/gi,
-      `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`,
+      prebootLockupDataUri
+        ? `<img class="eliza-preboot-shell__lockup" src="${prebootLockupDataUri}" alt="" decoding="sync" fetchpriority="high" />`
+        : `<span class="eliza-preboot-shell__name">${APP_SHELL_METADATA.appName}</span>`,
     )
     .replace(
       /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
@@ -1201,6 +1223,7 @@ export function appShellMetadataPlugin(
   )}\n`;
   const replacements = new Map<string, string>([
     ["__APP_NAME__", APP_SHELL_METADATA.appName],
+    ["__APP_STARTUP_LOGO__", APP_SHELL_METADATA.startupLogoPath],
     ["__APP_DESCRIPTION__", APP_SHELL_METADATA.description],
     ["__APP_URL__", APP_SHELL_METADATA.appUrl],
     ["__APP_SHARE_IMAGE__", APP_SHELL_METADATA.shareImageUrl],
@@ -1214,8 +1237,21 @@ export function appShellMetadataPlugin(
   ]);
   return {
     name: "app-shell-metadata",
+    configResolved(config) {
+      const logo = APP_SHELL_METADATA.startupLogoPath;
+      replacements.set(
+        "__APP_STARTUP_LOGO__",
+        logo ? `${config.base}${logo.replace(/^\/+/, "")}` : "",
+      );
+    },
     transformIndexHtml(html) {
       let next = html;
+      if (!APP_SHELL_METADATA.startupLogoPath && !isAndroidCloudBuild) {
+        next = next.replace(
+          /\s*<img\b[^>]*\bclass=["'][^"']*\beliza-preboot-shell__mark\b[^"']*["'][^>]*>\s*/gi,
+          "\n",
+        );
+      }
       for (const [token, value] of replacements) {
         next = next.replaceAll(token, value);
       }

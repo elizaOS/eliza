@@ -190,6 +190,13 @@ export interface WorkflowExecution {
   idempotencyKey?: string;
   /** Internal ancestry carried across native workflow-trigger executions. */
   triggerChainDepth?: number;
+  /**
+   * Engine-recorded scheduled instant (ISO) of an occurrence that passed while
+   * the agent was not running; the workflow never ran. Only the workflow
+   * service writes it when it records the occurrence, never from a workflow's
+   * own output, so it is the sole evidence that a run was missed.
+   */
+  missedOccurrenceAt?: string;
 }
 
 /** Request provenance captured under the execution row lock, separate from terminal outcome. */

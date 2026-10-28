@@ -1,17 +1,16 @@
 /**
- * Wallet / Inventory / Registry / Drop / Whitelist state, one of the domain hooks AppContext composes.
+ * Wallet / Inventory / Drop / Whitelist state, one of the domain hooks AppContext composes.
  *
  * Manages:
  * - Wallet addresses, config, balances, NFTs, export flow
  * - Inventory view preferences (sort, filter, chain toggles)
- * - ERC-8004 on-chain registry (register, sync, status)
  * - Drop / mint state and actions
  * - Whitelist status
  *
  * Cross-domain dependencies accepted as params:
  * - `setActionNotice` — from useLifecycleState, used by handleWalletApiKeySave
- * - `agentName`       — from agentStatus?.agentName, used by registry/mint
- * - `characterName`   — from characterDraft?.name, used by registry/mint
+ * - `agentName`       — from agentStatus?.agentName, used by mint
+ * - `characterName`   — from characterDraft?.name, used by mint
  * - `promptModal`     — from AppContext's usePrompt(), used by handleExportKeys
  * - `confirmAction`   — confirmDesktopAction utility, used by handleExportKeys
  */
@@ -31,10 +30,7 @@ import type {
 } from "@elizaos/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api/client";
-import type {
-  RegistryStatus,
-  WhitelistStatus,
-} from "../api/client-types-cloud";
+import type { WhitelistStatus } from "../api/client-types-cloud";
 import type { WalletExportResult } from "../api/client-types-config";
 import { isApiError } from "../api/client-types-core";
 import type { PromptOptions } from "../components/ui/confirm-dialog";
@@ -248,13 +244,6 @@ export function useWalletState({
       solana: true,
     });
   const [walletError, setWalletError] = useState<string | null>(null);
-  // ── ERC-8004 Registry ──────────────────────────────────────────────
-  const [registryStatus, setRegistryStatus] = useState<RegistryStatus | null>(
-    null,
-  );
-  const [registryLoading, setRegistryLoading] = useState(false);
-  const [registryRegistering, setRegistryRegistering] = useState(false);
-  const [registryError, setRegistryError] = useState<string | null>(null);
   // ── Drop / Mint ────────────────────────────────────────────────────
   const [dropStatus, setDropStatus] = useState<DropStatus | null>(null);
   const [dropLoading, setDropLoading] = useState(false);
@@ -305,10 +294,6 @@ export function useWalletState({
     setWalletPrimaryPending({});
     setCloudRefreshing(false);
     setWalletError(null);
-    setRegistryStatus(null);
-    setRegistryLoading(false);
-    setRegistryRegistering(false);
-    setRegistryError(null);
     setDropStatus(null);
     setDropLoading(false);
     setMintInProgress(false);
@@ -742,66 +727,6 @@ export function useWalletState({
       );
     }
   }, [isCurrentAuthority, promptModal, walletExportVisible]);
-  // ── Registry callbacks ─────────────────────────────────────────────
-  const loadRegistryStatus = useCallback(async () => {
-    const requestAuthority = authorityTokenRef.current;
-    if (!isCurrentAuthority(requestAuthority)) return;
-    setRegistryLoading(true);
-    setRegistryError(null);
-    try {
-      const status = await client.getRegistryStatus();
-      if (isCurrentAuthority(requestAuthority)) setRegistryStatus(status);
-    } catch (err) {
-      if (!isCurrentAuthority(requestAuthority)) return;
-      setRegistryError(
-        err instanceof Error ? err.message : "Failed to load registry status",
-      );
-    } finally {
-      if (isCurrentAuthority(requestAuthority)) setRegistryLoading(false);
-    }
-  }, [isCurrentAuthority]);
-  const registerOnChain = useCallback(async () => {
-    const requestAuthority = authorityTokenRef.current;
-    if (!isCurrentAuthority(requestAuthority)) return;
-    setRegistryRegistering(true);
-    setRegistryError(null);
-    try {
-      await client.registerAgent({
-        name: characterName || agentName,
-      });
-      if (!isCurrentAuthority(requestAuthority)) return;
-      await loadRegistryStatus();
-    } catch (err) {
-      if (!isCurrentAuthority(requestAuthority)) return;
-      setRegistryError(
-        err instanceof Error ? err.message : "Registration failed",
-      );
-    } finally {
-      if (isCurrentAuthority(requestAuthority)) {
-        setRegistryRegistering(false);
-      }
-    }
-  }, [characterName, agentName, isCurrentAuthority, loadRegistryStatus]);
-  const syncRegistryProfile = useCallback(async () => {
-    const requestAuthority = authorityTokenRef.current;
-    if (!isCurrentAuthority(requestAuthority)) return;
-    setRegistryRegistering(true);
-    setRegistryError(null);
-    try {
-      await client.syncRegistryProfile({
-        name: characterName || agentName,
-      });
-      if (!isCurrentAuthority(requestAuthority)) return;
-      await loadRegistryStatus();
-    } catch (err) {
-      if (!isCurrentAuthority(requestAuthority)) return;
-      setRegistryError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      if (isCurrentAuthority(requestAuthority)) {
-        setRegistryRegistering(false);
-      }
-    }
-  }, [characterName, agentName, isCurrentAuthority, loadRegistryStatus]);
   // ── Drop / Mint callbacks ──────────────────────────────────────────
   const loadDropStatus = useCallback(async () => {
     const requestAuthority = authorityTokenRef.current;
@@ -831,8 +756,6 @@ export function useWalletState({
         });
         if (!isCurrentAuthority(requestAuthority)) return;
         setMintResult(result);
-        await loadRegistryStatus();
-        if (!isCurrentAuthority(requestAuthority)) return;
         await loadDropStatus();
       } catch (err) {
         if (!isCurrentAuthority(requestAuthority)) return;
@@ -844,13 +767,7 @@ export function useWalletState({
         }
       }
     },
-    [
-      characterName,
-      agentName,
-      isCurrentAuthority,
-      loadRegistryStatus,
-      loadDropStatus,
-    ],
+    [characterName, agentName, isCurrentAuthority, loadDropStatus],
   );
   // ── Whitelist callback ─────────────────────────────────────────────
   const loadWhitelistStatus = useCallback(async () => {
@@ -909,10 +826,6 @@ export function useWalletState({
       inventorySortDirection,
       inventoryChainFilters,
       walletError: walletStateIsCurrent ? walletError : null,
-      registryStatus: walletStateIsCurrent ? registryStatus : null,
-      registryLoading: walletStateIsCurrent ? registryLoading : false,
-      registryRegistering: walletStateIsCurrent ? registryRegistering : false,
-      registryError: walletStateIsCurrent ? registryError : null,
       dropStatus: walletStateIsCurrent ? dropStatus : null,
       dropLoading: walletStateIsCurrent ? dropLoading : false,
       mintInProgress: walletStateIsCurrent ? mintInProgress : false,
@@ -932,7 +845,6 @@ export function useWalletState({
     setInventorySortDirection,
     setInventoryChainFilters,
     setWalletError,
-    setRegistryError,
     setMintResult,
     setMintError,
     // Callbacks
@@ -945,9 +857,6 @@ export function useWalletState({
     refreshCloud: refreshCloudWallets,
     refreshCloudWallets,
     handleExportKeys,
-    loadRegistryStatus,
-    registerOnChain,
-    syncRegistryProfile,
     loadDropStatus,
     mintFromDrop,
     loadWhitelistStatus,

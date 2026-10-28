@@ -554,6 +554,48 @@ async function partialSize(stagingPath: string): Promise<number> {
 	}
 }
 
+/**
+ * Bytes an earlier attempt already left for a bundle: the files under its
+ * bundle root and its `.part` files in the staging dir. A retry keeps a file
+ * whose sha256 still matches, Range-resumes a partial, and deletes a stale file
+ * before fetching its replacement, so only the rest of the bundle needs space.
+ */
+async function bundleBytesOnDisk(modelId: string): Promise<number> {
+	const stagingPrefix = bundleStagingFilename(modelId, "").replace(
+		/\.part$/,
+		"",
+	);
+	const [finished, partial] = await Promise.all([
+		bytesOfFiles(path.join(elizaModelsDir(), bundleDirname(modelId))),
+		bytesOfFiles(
+			downloadsStagingDir(),
+			(name) => name.startsWith(stagingPrefix) && name.endsWith(".part"),
+		),
+	]);
+	return finished + partial;
+}
+
+async function bytesOfFiles(
+	dir: string,
+	keep: (name: string) => boolean = () => true,
+): Promise<number> {
+	let entries: fs.Dirent[];
+	try {
+		entries = await fsp.readdir(dir, { withFileTypes: true, recursive: true });
+	} catch {
+		// error-policy:J3 no directory (ENOENT) means nothing on disk yet — the
+		// preflight then asks for the whole download, as on a first attempt.
+		return 0;
+	}
+	let total = 0;
+	for (const entry of entries) {
+		if (entry.isFile() && keep(entry.name)) {
+			total += await partialSize(path.join(entry.parentPath, entry.name));
+		}
+	}
+	return total;
+}
+
 /** Sidecar recording which expected sha256 a `.part` file was started against. */
 function stagingMetaPath(stagingPath: string): string {
 	return `${stagingPath}.expected`;
@@ -865,8 +907,16 @@ export class Downloader {
 	 * ENOSPC near the end. Best-effort: when free disk can't be probed we let
 	 * the download proceed (the post-hoc ENOSPC handling still catches it).
 	 */
-	private async assertDiskSpaceForJob(record: ActiveJob): Promise<void> {
-		const remainingBytes = Math.max(0, record.job.total - record.job.received);
+	private async assertDiskSpaceForJob(
+		catalogEntry: CatalogModel,
+		record: ActiveJob,
+	): Promise<void> {
+		// A bundle never writes `<id>.part`, so `received` is 0 here; count the
+		// files an earlier attempt left in the bundle root and staging dir.
+		const bytesOnDisk = catalogEntry.bundleManifestFile
+			? await bundleBytesOnDisk(catalogEntry.id)
+			: record.job.received;
+		const remainingBytes = Math.max(0, record.job.total - bytesOnDisk);
 		if (remainingBytes <= 0) return;
 		let freeDiskGb: number | undefined;
 		try {
@@ -1234,7 +1284,7 @@ export class Downloader {
 		try {
 			this.updateState(record, "downloading");
 			this.setDownloadKeepAwake(true);
-			await this.assertDiskSpaceForJob(record);
+			await this.assertDiskSpaceForJob(catalogEntry, record);
 			if (catalogEntry.bundleManifestFile) {
 				await this.runBundleJob(catalogEntry, record);
 				return;
@@ -1553,6 +1603,11 @@ export class Downloader {
 			});
 			bundleVerifiedAt = new Date().toISOString();
 		}
+
+		// No fetch watches the signal after the last byte, so a cancel during
+		// the final hash or the verify pass lands here. cancel() has already
+		// reported the job as cancelled: register nothing and fill no slot.
+		if (record.abortController.signal.aborted) throw makeAbortError();
 
 		const now = new Date().toISOString();
 		const bundleMeta = {

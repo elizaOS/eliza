@@ -7,6 +7,7 @@ import type {
   InferenceTurnSummary,
   Memory,
   MessageHandlerResult,
+  MessageProcessingOptions,
   MessageReplyRecoveryContext,
   ProviderRateLimit,
   RoomHandlerLease,
@@ -22,6 +23,8 @@ import type {
  * Required numeric options + optional streaming callback.
  */
 export type ResolvedMessageOptions = {
+  resolveTypedReadReply?: MessageProcessingOptions["resolveTypedReadReply"];
+  onTypedReadEgress?: MessageProcessingOptions["onTypedReadEgress"];
   maxRetries: number;
   codingMode: boolean;
   codingActionProfile?: CodingActionProfile;

@@ -29,13 +29,14 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeServiceRoutingConfig,
   prepareFirstRunConnectors,
+  resolveLinkedAccountsInConfig,
 } from "@elizaos/host/protocol";
 import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
 import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
-import { ensureRouteAuthorized } from "./auth.ts";
+import { ensureRouteAuthorized, ensureRouteMinRole } from "./auth.ts";
 import {
   type CompatRuntimeState,
   hasCompatPersistedFirstRunState,
@@ -162,6 +163,14 @@ function scheduleCloudApiKeyResave(apiKey: string): void {
   setTimeout(() => {
     try {
       const freshConfig = loadElizaConfig();
+      // An explicit disconnect retires this delayed setup write. Match the
+      // canonical guard used by the host's ordinary Cloud-key backfill.
+      if (
+        resolveLinkedAccountsInConfig(freshConfig)?.elizacloud?.status ===
+        "unlinked"
+      ) {
+        return;
+      }
       if (freshConfig.cloud?.apiKey) {
         return;
       }
@@ -275,6 +284,18 @@ export async function handleFirstRunRoute(
           ? "The selected provider could not activate. Retry setup or inspect runtime diagnostics."
           : null,
     });
+    return true;
+  }
+  // Once setup is complete, re-running first-run rewrites the owner's
+  // config and reboots the runtime, so the submit path must be
+  // owner-only. The session tier stays as-is pre-setup: no persisted
+  // state exists yet, and the local onboarding shell resolves to
+  // OWNER via trusted loopback. Activation lookups above are
+  // untouched by this check.
+  if (
+    hasCompatPersistedFirstRunState(loadElizaConfig()) &&
+    !(await ensureRouteMinRole(req, res, state, "OWNER"))
+  ) {
     return true;
   }
   let rawBody: string;

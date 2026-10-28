@@ -270,7 +270,15 @@ export function ensureCopyForkLlamaLibGuards(content) {
 
 export function injectCopyForkLlamaLibTask(content) {
   if (/\[copyForkLlamaLib\]/.test(content)) {
-    return ensureCopyForkLlamaLibGuards(content);
+    return ensureCopyForkLlamaLibGuards(content)
+      .replace(
+        /def requiredAbis = project\.ext\.elizaRequiredJniAbis(?!\.)/,
+        "def selectedAbis = android.defaultConfig.ndk.abiFilters\n        def requiredAbis = project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }",
+      )
+      .replace(
+        "project.ext.elizaForkLlamaAbis.each { abi ->",
+        "project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each { abi ->",
+      );
   }
   const block =
     `\n` +
@@ -354,10 +362,11 @@ export function injectCopyForkLlamaLibTask(content) {
     `            return\n` +
     `        }\n` +
     `        def stagedAbis = [] as Set\n` +
-    `        def requiredAbis = project.ext.elizaRequiredJniAbis\n` +
+    `        def selectedAbis = android.defaultConfig.ndk.abiFilters\n` +
+    `        def requiredAbis = project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }\n` +
     `        int totalCopied = 0\n` +
     `        boolean stagedKernels = false\n` +
-    `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
+    `        project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each { abi ->\n` +
     `            def libDir = resolveForkLlamaLibDir(abi)\n` +
     `            if (!libDir) {\n` +
     `                // No fresh source configured. If the fused lib set is already\n` +

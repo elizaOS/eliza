@@ -3858,6 +3858,24 @@ export class AcpService extends Service {
       session,
       opts,
     );
+    if (this.nativeStoppingSessionIds.has(session.id)) {
+      // The session was stopped while it was attaching: close the client the
+      // attach just opened and do not send the prompt.
+      this.nativePromptSessionIds.delete(session.id);
+      await this.stopNativeClient(session.id);
+      this.nativeStoppingSessionIds.delete(session.id);
+      await this.store.updateStatus(session.id, "stopped");
+      void this.revokeModelLease(session.id, "native_prompt:stopped");
+      return {
+        sessionId: session.id,
+        response: "",
+        finalText: "",
+        stopReason: "stopped",
+        durationMs: Date.now() - startedAt,
+        exitCode: null,
+        signal: null,
+      };
+    }
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
@@ -3879,7 +3897,6 @@ export class AcpService extends Service {
       finalText = handled.finalText;
       eventStopReason = handled.stopReason ?? eventStopReason;
     };
-    this.nativePromptSessionIds.add(session.id);
     client.setEventHandler(previousOnAcp);
     client.setTimeoutMs(opts.timeoutMs ?? this.sessionTimeoutMs);
     try {

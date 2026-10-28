@@ -321,7 +321,7 @@ export const formEvaluator: Evaluator<
       formService,
       session,
       form,
-      templateValues: buildTemplateValues(session),
+      templateValues: buildTemplateValues(session, form.controls),
       entityId,
     };
   },
