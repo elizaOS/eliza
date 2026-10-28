@@ -26,12 +26,7 @@ export async function alertFetch(
     signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
   if (!response.ok) {
-    // error-policy:J6 best-effort read of the rejection body; the HTTP status still fails the delivery.
-    const body = await response.text().catch(() => "");
-    const detail = body.trim().slice(0, 200);
-    throw new Error(
-      `Alert delivery rejected by the channel: HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
-    );
+    throw new Error(`Alert delivery rejected by the channel: HTTP ${response.status}`);
   }
   return response;
 }
