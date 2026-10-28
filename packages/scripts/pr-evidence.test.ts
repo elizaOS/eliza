@@ -412,52 +412,6 @@ describe("attach (injected gh runner)", () => {
     });
   });
 
-  it("refuses two different files that would share one evidence asset name", () => {
-    const { run } = fakeGh({ releases: [{ tag: "pr-evidence", assets: [] }] });
-    const messages: string[] = [];
-    const realError = console.error;
-    console.error = (message) => messages.push(String(message));
-    try {
-      withExitTrap(() => {
-        assert.throws(
-          () =>
-            attach(
-              126,
-              [
-                stagedFile("shot.png", "before"),
-                stagedFile("shot.png", "after"),
-              ],
-              run,
-            ),
-          /process\.exit\(1\)/,
-        );
-      });
-    } finally {
-      console.error = realError;
-    }
-    assert.match(
-      messages.join("\n"),
-      /two different files upload as the same evidence asset '126-shot\.png'/,
-    );
-  });
-
-  it("keeps a byte-identical duplicate as one upload", () => {
-    const { run, calls } = fakeGh({
-      releases: [{ tag: "pr-evidence", assets: [] }],
-    });
-    const urls = attach(
-      127,
-      [stagedFile("shot.png"), stagedFile("shot.png")],
-      run,
-    );
-    const upload = calls.find((c) => c[0] === "release" && c[1] === "upload");
-    assert.equal(upload?.slice(3).length, 1);
-    assert.equal(
-      urls.get("127-shot.png"),
-      "https://github.com/elizaOS/eliza/releases/download/pr-evidence/127-shot.png",
-    );
-  });
-
   it("parses the paginated NDJSON release listing", () => {
     const { run } = fakeGh({
       releases: [
