@@ -9,4 +9,9 @@ android {
 repositories { google(); mavenCentral() }
 dependencies {
  implementation project(':capacitor-android')
+ // Activity-result launchers and lifecycle for the permitted-media review.
+ implementation 'androidx.appcompat:appcompat:1.7.1'
+ // Video edit copies (VideoCopyEdits): trim, rotation and crop through Media3 Transformer.
+ implementation 'androidx.media3:media3-transformer:1.11.1'
+ implementation 'androidx.media3:media3-effect:1.11.1'
 }

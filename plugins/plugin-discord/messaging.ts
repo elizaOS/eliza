@@ -98,6 +98,11 @@ function parseFenceLine(line: string): OpenFence | null {
 	}
 	const indent = match[1] ?? "";
 	const marker = match[2] ?? "";
+	// A backtick fence's info string may not contain a backtick (CommonMark);
+	// a line like "```alpha`beta```" is inline code, not a fence.
+	if (marker[0] === "`" && (match[3] ?? "").includes("`")) {
+		return null;
+	}
 	return {
 		indent,
 		markerChar: marker[0] ?? "`",
@@ -386,7 +391,12 @@ export function chunkDiscordText(
 				nextOpenFence = fenceInfo;
 			} else if (
 				openFence.markerChar === fenceInfo.markerChar &&
-				fenceInfo.markerLen >= openFence.markerLen
+				fenceInfo.markerLen >= openFence.markerLen &&
+				// A closing fence may be followed only by spaces/tabs (CommonMark);
+				// a line like "```js" inside an open fence is content, not a closer.
+				/^[ \t]*$/.test(
+					originalLine.slice(fenceInfo.indent.length + fenceInfo.markerLen),
+				)
 			) {
 				nextOpenFence = null;
 			}

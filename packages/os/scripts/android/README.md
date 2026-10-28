@@ -11,6 +11,43 @@ See the Android README for required source/archive inputs and qualification limi
 The lower-level `verifyDeviceSource` accepts caller-authenticated patch envelopes;
 it never applies patches or changes the source tree.
 
+Pixel products keep the factory vendor partition. `vendor-api.mjs` checks that
+the lunch release configuration's `RELEASE_BOARD_API_LEVEL` and the generated
+vendor VINTF sepolicy version both equal the locked `vendorApiLevel` (grizzly's
+lock and the `pixel10a` profile in `android/aosp.lock.json`);
+`stage-pixel10a-product.ts` refuses a mismatch instead of rewriting VINTF.
+Every brand's Pixel 10a composition also declares its launcher's versioned
+`<package>.aosp_image` system feature in the product partition
+(`image-capability.mjs`), the marker image-only native surfaces require along
+with a system-partition install. A presigned launcher that instead reads an
+overlayable boolean (default false, `system|product` policy) names it in the
+product's `launcher.imageProvisioning`; production compositions then add the
+static product-partition resource overlay `writeImageProvisioningOverlay`
+generates, and `assertProvisioningResourceDefault` checks the host's default.
+
+`cuttlefish-product.mjs` checks a brand's Cuttlefish validation product
+descriptor before production staging: target, brand config (brand-config.ts),
+source-lock profile, pinned host packages and reviewed signer. A downstream
+product may use the shared reviewed `cuttlefish` profile in
+`android/aosp.lock.json` when its brand config inherits only that profile's
+required device trees. The launcher stays nonprivileged and the listener is the
+only privileged package, as in the Pixel 10a composition. It admits inputs
+only, never an image build or boot.
+
+`secure-camera.mjs` keeps capture over Keyguard with the stock AOSP Camera2
+`SecureCameraActivity` and the SystemUI power gesture for every brand: it
+authenticates the reviewed source inputs in `android/sources/secure-camera.json`,
+stages the Camera2 product overlay, refuses a launcher manifest that shows over
+Keyguard or handles the secure capture actions, and runs read-only image checks.
+It never proves locked-capture isolation, unlock return or device acceptance.
+
+Pixel 10a release signing (`aosp-release-signing.mjs`, Eliza's
+`sign-pixel10a-release.mjs`), compatibility records (`aosp-release-record.mjs`), the
+operator OTA update client with interrupted-update, fallback and stock-recovery
+tooling (`aosp-ota-update.mjs`) and read-only image checks (`verify-launcher-image.mjs`)
+take each brand's release descriptor and channel; see
+[the release guide](../../android/releases/README.md).
+
 Physical writes and publication require a signed v2 contract. Run contract tests
 with `bun run --cwd packages/os test:release` from the repository root.
 

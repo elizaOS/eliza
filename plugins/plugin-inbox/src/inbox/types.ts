@@ -67,6 +67,8 @@ export interface InboundMessage {
   gmailMessageId?: string;
   gmailIsImportant?: boolean;
   gmailLikelyReplyNeeded?: boolean;
+  /** Gmail UNREAD label state. */
+  gmailIsUnread?: boolean;
 
   // ---------------------------------------------------------------------------
   // Optional schema additions for downstream inbox features.

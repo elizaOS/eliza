@@ -203,7 +203,11 @@ import {
   type TelegramReadReceiptResult,
   type TelegramSendMessageResult,
 } from "./domains/telegram-service.js";
-import { TravelDomain } from "./domains/travel-service.js";
+import {
+  finalArrivalAt,
+  firstDepartureAt,
+  TravelDomain,
+} from "./domains/travel-service.js";
 import {
   WhatsAppDomain,
   type WhatsAppMessage,
@@ -1766,7 +1770,8 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // silently evicted owner wins from the recap (#16966 post-merge review).
     // Known completion timestamps are bounded through now before the scan
     // limit, so future timestamps cannot evict real wins. The local-day filter
-    // then removes the lookback tail; the final cap bounds the provider block.
+    // then removes the lookback tail. Every win of the day is returned: the
+    // provider and the evening brief report this count to the model.
     const views = await this.repository.listCompletedOccurrenceViewsSince(
       this.agentId(),
       new Date(now.getTime() - lookbackMs).toISOString(),
@@ -1783,19 +1788,17 @@ export class LifeOpsService extends LifeOpsServiceBase {
         limit: 200,
       },
     );
-    return views
-      .filter((occurrence) => {
-        const completedAt = occurrence.completionPayload?.completedAt;
-        if (typeof completedAt !== "string") return false;
-        const completedMs = Date.parse(completedAt);
-        return (
-          Number.isFinite(completedMs) &&
-          new Date(completedMs).toISOString() === completedAt &&
-          completedMs <= now.getTime() &&
-          dayKey(new Date(completedMs)) === todayKey
-        );
-      })
-      .slice(0, 24);
+    return views.filter((occurrence) => {
+      const completedAt = occurrence.completionPayload?.completedAt;
+      if (typeof completedAt !== "string") return false;
+      const completedMs = Date.parse(completedAt);
+      return (
+        Number.isFinite(completedMs) &&
+        new Date(completedMs).toISOString() === completedAt &&
+        completedMs <= now.getTime() &&
+        dayKey(new Date(completedMs)) === todayKey
+      );
+    });
   }
 
   async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
@@ -2329,6 +2332,7 @@ export class LifeOpsService extends LifeOpsServiceBase {
       passengers: ReadonlyArray<TravelBookingPassenger>;
       calendarSync?: TravelCalendarSyncPlan | null;
       calendarGrantId?: string;
+      approvedTotal?: { cents: number; currency: string } | null;
     },
   ): Promise<FlightBookingExecutionResult> {
     const result = await this.travelDomain.bookFlightItinerary(
@@ -2338,21 +2342,23 @@ export class LifeOpsService extends LifeOpsServiceBase {
     // A confirmed itinerary is the strongest travel signal we have: the owner
     // will be away for the booked window. Record it as a first-class travel
     // fact so the `during_travel` scheduling gate can derive `travelActive`.
-    // The window comes from the booked order's own departure/arrival segments;
-    // `calendarSync.timeZone` (when the caller supplied one) is the only
-    // destination-zone signal Duffel exposes — orders carry IATA codes, not
-    // zones. A store-write failure is not swallowed: a silently-dropped travel
-    // fact would leave the gate blind, so we let it surface.
-    const departingAt = result.order.slices[0]?.segments[0]?.departingAt;
+    // The window comes from the booked order's own departure/arrival segments,
+    // read in each airport's zone (Duffel times are airport-local). The
+    // destination zone is the arrival airport's. A store-write failure is not
+    // swallowed: a silently-dropped travel fact would leave the gate blind, so
+    // we let it surface.
+    const firstSegment = result.order.slices[0]?.segments[0];
     const lastSlice = result.order.slices[result.order.slices.length - 1];
-    const arrivingAt =
-      lastSlice?.segments[lastSlice.segments.length - 1]?.arrivingAt;
-    if (departingAt) {
-      const destinationTimezone = args.calendarSync?.timeZone ?? undefined;
+    const lastSegment = lastSlice?.segments[lastSlice.segments.length - 1];
+    if (firstSegment) {
+      const destinationTimezone =
+        lastSegment?.destinationTimeZone ??
+        args.calendarSync?.timeZone ??
+        undefined;
       await resolveOwnerFactStore(this.runtime).setActiveTravel(
         {
-          startIso: departingAt,
-          ...(arrivingAt ? { endIso: arrivingAt } : {}),
+          startIso: firstDepartureAt(result.order),
+          ...(lastSegment ? { endIso: finalArrivalAt(result.order) } : {}),
           ...(destinationTimezone ? { destinationTimezone } : {}),
         },
         { source: "connector_inferred", recordedAt: new Date().toISOString() },

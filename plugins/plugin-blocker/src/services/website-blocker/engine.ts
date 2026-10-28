@@ -1758,6 +1758,20 @@ function normalizeStringList(
   return null;
 }
 
+/** Minute multipliers for the units an owner may append to a duration. */
+const DURATION_UNIT_MINUTES: Readonly<Record<string, number>> = {
+  m: 1,
+  min: 1,
+  mins: 1,
+  minute: 1,
+  minutes: 1,
+  h: 60,
+  hr: 60,
+  hrs: 60,
+  hour: 60,
+  hours: 60,
+};
+
 function parseDurationMinutes(
   value: number | string | null | undefined,
 ): number | null | undefined {
@@ -1778,10 +1792,16 @@ function parseDurationMinutes(
       return null;
     }
 
-    const parsed = Number.parseFloat(trimmed);
-    if (Number.isFinite(parsed)) {
-      return Math.round(parsed);
-    }
+    // The whole string must be `<amount>` or `<amount> <unit>`. A prefix parse
+    // read "2 hours" as two minutes and started a block that ended 118 minutes
+    // early, so an unreadable unit is rejected instead.
+    const match = /^(\d+(?:\.\d+)?)\s*([a-z]+)?$/.exec(trimmed);
+    if (!match) return undefined;
+    const amount = Number.parseFloat(match[1]);
+    const unit = match[2];
+    const multiplier = unit === undefined ? 1 : DURATION_UNIT_MINUTES[unit];
+    if (multiplier === undefined) return undefined;
+    return Math.round(amount * multiplier);
   }
 
   return undefined;

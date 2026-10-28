@@ -129,6 +129,14 @@ async function ensureNamespace(runtime: IAgentRuntime): Promise<void> {
     }
   })();
   namespacePromises.set(runtime, setup);
+  // Keep a successful setup cached so the namespace is created once, but drop a
+  // failed one. Otherwise one transient storage error becomes permanent: every
+  // later save/list replays the cached rejection and never retries the setup.
+  void setup.catch(() => {
+    if (namespacePromises.get(runtime) === setup) {
+      namespacePromises.delete(runtime);
+    }
+  });
   return setup;
 }
 

@@ -15,7 +15,10 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { hasActionContext } from "@elizaos/core";
+import {
+  hasActionContext,
+  resolveScheduledAtIsoInTimeZone,
+} from "@elizaos/core";
 import type { TriageService } from "../triage-service.ts";
 import {
   ALL_MESSAGE_SOURCES,
@@ -700,11 +703,19 @@ export interface ScheduleDraftSendParams {
 }
 export function parseScheduleDraftSendParams(
   options: HandlerOptions | undefined,
+  timeZone: string,
 ): ScheduleDraftSendParams | { error: string } {
   const params = getParams(options);
   const draftId = asString(params.draftId ?? params.id);
   if (!draftId) return { error: "draftId is required" };
-  const sendAtMs = asTimestampMs(params.sendAtMs ?? params.sendAt ?? params.at);
+  const rawSendAt = params.sendAtMs ?? params.sendAt ?? params.at;
+  // The planner writes an offset-free time as a wall clock in the user's
+  // zone (CURRENT_TIME's); Date.parse would read it in the host zone.
+  const sendAtMs = asTimestampMs(
+    typeof rawSendAt === "string"
+      ? resolveScheduledAtIsoInTimeZone(rawSendAt, timeZone)
+      : rawSendAt,
+  );
   if (sendAtMs === undefined) {
     return {
       error:

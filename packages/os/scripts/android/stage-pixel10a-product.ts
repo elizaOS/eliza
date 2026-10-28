@@ -16,12 +16,14 @@ import {
 } from "./launcher-provisioning.mjs";
 import {
   composePixel10aProduct,
+  enforceLauncherLockScreenPolicy,
   validatePixel10aProduct,
 } from "./pixel10a-product.ts";
 import { stageSenseApk, validateSenseProduct } from "./sense-listener.mjs";
 import { senseSystemuiPatch } from "./sense-systemui.mjs";
 import { soongAppNativePatch } from "./soong-app-native.mjs";
 import { stageLauncher, validateDescriptor } from "./stage-launcher-overlay.ts";
+import { assertStockVendorApi } from "./vendor-api.mjs";
 import { loadProfile, verifyProfileSource } from "./verify-source-lock.ts";
 
 export async function stagePixel10aProduct(options) {
@@ -74,17 +76,22 @@ export async function stagePixel10aProduct(options) {
     packageName: launcher.packageName,
     bunTarget: options.bunTarget ?? "linux-musl",
   });
-  const sourceEvidence = await verifyProfileSource(
-    loadProfile(product.sourceProfile),
-    {
-      aospRoot: options.aospRoot,
-      archivePath: options.archivePath,
-      appliedPatches: [
-        soongAppNativePatch(),
-        ...(options.appliedSensePatch ? [senseSystemuiPatch()] : []),
-      ],
-    },
-  );
+  const sourceProfile = loadProfile(product.sourceProfile);
+  const sourceEvidence = await verifyProfileSource(sourceProfile, {
+    aospRoot: options.aospRoot,
+    archivePath: options.archivePath,
+    appliedPatches: [
+      soongAppNativePatch(),
+      ...(options.appliedSensePatch ? [senseSystemuiPatch()] : []),
+    ],
+  });
+  // The product keeps the stock stallion vendor partition: its lunch release
+  // and the generated vendor VINTF manifest must both carry the locked API.
+  const vendorApi = assertStockVendorApi(options.aospRoot, {
+    codename: sourceProfile.device.codename,
+    releaseConfig: product.releaseConfig,
+    vendorApiLevel: sourceProfile.device.vendorApiLevel,
+  });
   const parent = path.dirname(path.resolve(options.output));
   fs.mkdirSync(parent, { recursive: true });
   const temporary = fs.mkdtempSync(path.join(parent, ".pixel10a-product-"));
@@ -101,6 +108,7 @@ export async function stagePixel10aProduct(options) {
       ],
       { encoding: "utf8", env: options.env },
     );
+    enforceLauncherLockScreenPolicy(product, xml);
     const components = provisioningComponents(xml, launcher.packageName);
     writeProvisioningOverlay(output, launcher.packageName, components);
     const nativeStagingEvidence = stageAndroidNative({
@@ -134,6 +142,8 @@ export async function stagePixel10aProduct(options) {
       sourceEvidence,
       nativeStagingEvidence,
       production: !options.development,
+      bootAnimation: options.bootAnimation ?? null,
+      vendorApi,
     });
     finalizeAndroidNative({
       apk: path.join(output, "Launcher.apk"),
@@ -152,7 +162,7 @@ export async function stagePixel10aProduct(options) {
 export async function main(argv = process.argv.slice(2)) {
   if (argv.length === 1 && argv[0] === "--help") {
     console.log(
-      "Usage: node stage-pixel10a-product.ts --product PRODUCT_JSON --launcher-descriptor LAUNCHER_JSON --apk APK --aosp-root AOSP --vendor-archive FACTORY --output NEW_DIR --source-commit COMMIT --applied-app-native-patch [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--listener-apk APK --listener-descriptor JSON --voice-host JSON] [--applied-sense-patch] [--development] [--aapt TOOL] [--apksigner TOOL]",
+      "Usage: node stage-pixel10a-product.ts --product PRODUCT_JSON --launcher-descriptor LAUNCHER_JSON --apk APK --aosp-root AOSP --vendor-archive FACTORY --output NEW_DIR --source-commit COMMIT --applied-app-native-patch [--runtime-source ELIZA_ROOT] [--bun-target linux-musl|android] [--listener-apk APK --listener-descriptor JSON --voice-host JSON] [--applied-sense-patch] [--boot-animation ZIP] [--development] [--aapt TOOL] [--apksigner TOOL]",
     );
     return;
   }
@@ -177,6 +187,7 @@ export async function main(argv = process.argv.slice(2)) {
     "--runtime-source": "runtimeSource",
     "--source-commit": "sourceCommit",
     "--bun-target": "bunTarget",
+    "--boot-animation": "bootAnimation",
   };
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--applied-sense-patch") options.appliedSensePatch = true;

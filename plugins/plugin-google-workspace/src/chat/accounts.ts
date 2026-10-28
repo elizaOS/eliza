@@ -12,6 +12,7 @@ import {
   DEFAULT_CONNECTOR_ACCOUNT_ID,
   ElizaError,
   type IAgentRuntime,
+  parseBooleanValue,
   selectDefaultConnectorAccountId,
 } from "@elizaos/core";
 import type { GoogleChatAudienceType, GoogleChatSettings } from "./types.js";
@@ -101,9 +102,8 @@ function accountConfig(runtime: IAgentRuntime, accountId: string): GoogleChatAcc
 }
 
 function boolValue(value: unknown, fallback = false): boolean {
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return value.trim().toLowerCase() !== "false";
-  return fallback;
+  // "0", "no" and "off" turn a switch off too; other text keeps the default.
+  return parseBooleanValue(value) ?? fallback;
 }
 
 function spaceList(value: unknown): string[] {

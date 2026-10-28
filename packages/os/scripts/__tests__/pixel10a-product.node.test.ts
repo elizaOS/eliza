@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { renderProvisioningOverlay } from "../android/launcher-provisioning.mjs";
+import { inspectBootAnimationArchive } from "../android/pixel10a-brand-assets.mjs";
 import {
   composePixel10aProduct,
+  enforceLauncherLockScreenPolicy,
   renderSensePermissions,
   validatePixel10aProduct,
 } from "../android/pixel10a-product.ts";
@@ -69,10 +72,53 @@ for (const brand of ["alpha", "eliza"]) {
       /eliza_common|BOARD_AVB|privapp|default-permissions/,
     );
     assert.match(mk, new RegExp(`PRODUCT_MODEL := ${f.product.model}`));
+    // Alarms and timers stay with the system Clock in both brands' images.
+    assert.equal(
+      fs
+        .readFileSync(path.join(f.output, "product.mk"), "utf8")
+        .match(/^PRODUCT_PACKAGES \+= DeskClock$/gm)?.length,
+      1,
+    );
     assert.match(
       fs.readFileSync(path.join(f.output, "AndroidProducts.mk"), "utf8"),
       new RegExp(`${f.product.productName}-cp2a-user\\b`),
     );
+    // Every brand's Pixel image declares its launcher's image feature once.
+    const feature = `${f.launcher.packageName}.aosp_image`;
+    assert.deepEqual(result.imageFeature, { feature, version: 1 });
+    assert.equal(
+      fs
+        .readFileSync(path.join(f.output, "product.mk"), "utf8")
+        .split(`/etc/permissions/${feature}.xml`).length - 1,
+      1,
+    );
+    assert.equal(result.vendorApi, null, "staging records the checked API");
+    // Only a brand whose presigned launcher reads an overlayable provisioning
+    // resource gets the product RRO, and only in a production image.
+    const provisioning = f.product.launcher.imageProvisioning;
+    if (provisioning) {
+      assert.deepEqual(result.imageProvisioning, {
+        module: provisioning.module,
+        overlayable: provisioning.overlayable,
+      });
+      assert.match(
+        fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
+        new RegExp(`^PRODUCT_PACKAGES \\+= ${provisioning.module}$`, "m"),
+      );
+      assert.match(
+        fs.readFileSync(
+          path.join(f.output, "image-capabilities/res/values/capabilities.xml"),
+          "utf8",
+        ),
+        new RegExp(`name="${provisioning.resource}">true<`),
+      );
+    } else {
+      assert.equal(result.imageProvisioning, null);
+      assert.equal(
+        fs.existsSync(path.join(f.output, "image-capabilities")),
+        false,
+      );
+    }
     const source = new URL("../../android/devices/pixel10a/", import.meta.url);
     for (const name of fs.readdirSync(source, { recursive: true })) {
       const file = new URL(name, source);
@@ -111,6 +157,129 @@ for (const brand of ["alpha", "eliza"]) {
   });
 }
 
+test("a launcher product that already requires DeskClock keeps one requirement", (t) => {
+  const f = fixture(t, "alpha");
+  fs.appendFileSync(
+    path.join(f.output, "product.mk"),
+    "\n# Brand staging\nPRODUCT_PACKAGES += DeskClock\n",
+  );
+  composePixel10aProduct(f);
+  assert.equal(
+    fs
+      .readFileSync(path.join(f.output, "product.mk"), "utf8")
+      .match(/DeskClock/g)?.length,
+    1,
+  );
+});
+
+/** A bootanimation.zip; `stored` false deflates its entries. */
+function bootAnimation(
+  dir,
+  name,
+  { stored = true, desc = "1080 2400 30\np 1 0 part0\n" } = {},
+) {
+  const file = path.join(dir, name);
+  execFileSync("python3", [
+    "-c",
+    "import sys,zipfile\nz=zipfile.ZipFile(sys.argv[1],'w',zipfile.ZIP_STORED if sys.argv[2]=='1' else zipfile.ZIP_DEFLATED)\nz.writestr('desc.txt',sys.argv[3])\nz.writestr('part0/00001.png',b'\\x89PNG'+bytes(64))\nz.close()",
+    file,
+    stored ? "1" : "0",
+    desc,
+  ]);
+  return file;
+}
+
+test("a pinned brand boot animation is installed exactly; unpinned, compressed or different archives are refused", (t) => {
+  const f = fixture(t, "eliza");
+  const archive = bootAnimation(f.output, "brand-boot.zip");
+  const sha256 = createHash("sha256")
+    .update(fs.readFileSync(archive))
+    .digest("hex");
+  // Without a pin in the composition no asset is accepted, and none is installed.
+  assert.throws(
+    () => composePixel10aProduct({ ...f, bootAnimation: archive }),
+    /pins no boot animation/,
+  );
+  const pinned = { ...f.product, brandAssets: { bootAnimation: { sha256 } } };
+  assert.throws(
+    () => composePixel10aProduct({ ...f, product: pinned }),
+    /supply the reviewed bootanimation\.zip/,
+  );
+  assert.throws(
+    () =>
+      composePixel10aProduct({
+        ...f,
+        product: {
+          ...f.product,
+          brandAssets: { bootAnimation: { sha256: "0".repeat(64) } },
+        },
+        bootAnimation: archive,
+      }),
+    /not the composition's pinned/,
+  );
+  assert.throws(
+    () =>
+      validatePixel10aProduct({ ...f.product, brandAssets: { wallpaper: {} } }),
+    /may only pin a bootAnimation/,
+  );
+  const compressed = bootAnimation(f.output, "compressed.zip", {
+    stored: false,
+  });
+  const compressedSha = createHash("sha256")
+    .update(fs.readFileSync(compressed))
+    .digest("hex");
+  assert.throws(
+    () =>
+      composePixel10aProduct({
+        ...f,
+        product: {
+          ...f.product,
+          brandAssets: { bootAnimation: { sha256: compressedSha } },
+        },
+        bootAnimation: compressed,
+      }),
+    /is compressed; every entry must be stored/,
+  );
+  assert.equal(
+    fs.existsSync(path.join(f.output, "stallion")),
+    false,
+    "refusals write nothing",
+  );
+  const evidence = composePixel10aProduct({
+    ...f,
+    product: pinned,
+    bootAnimation: archive,
+  });
+  assert.deepEqual(evidence.brandAssets.bootAnimation, {
+    sha256,
+    sizeBytes: fs.statSync(archive).size,
+    parts: ["part0"],
+  });
+  assert.deepEqual(
+    fs.readFileSync(path.join(f.output, "brand/bootanimation.zip")),
+    fs.readFileSync(archive),
+  );
+  assert.match(
+    fs.readFileSync(path.join(f.output, `${f.product.productName}.mk`), "utf8"),
+    /^PRODUCT_COPY_FILES \+= vendor\/alphaphone\/brand\/bootanimation\.zip:\$\(TARGET_COPY_OUT_PRODUCT\)\/media\/bootanimation\.zip$/m,
+  );
+  assert.throws(
+    () =>
+      inspectBootAnimationArchive(
+        fs.readFileSync(
+          bootAnimation(f.output, "empty-part.zip", {
+            desc: "1080 2400 30\np 1 0 part1\n",
+          }),
+        ),
+      ),
+    /part part1 has no PNG frames/,
+  );
+  assert.throws(
+    () => inspectBootAnimationArchive(Buffer.from("not a zip archive at all")),
+    /end-of-central-directory/,
+  );
+});
+
 test("changed privilege policy, product identity and qualified claims fail before composition", (t) => {
   const f = fixture(t, "alpha");
   assert.throws(
@@ -136,6 +305,40 @@ test("changed privilege policy, product identity and qualified claims fail befor
   fs.appendFileSync(path.join(f.output, "Android.bp"), "\nprivileged: true\n");
   assert.throws(() => composePixel10aProduct(f), /nonprivileged/);
   assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
+});
+
+test("a brand that leaves lock-screen capture to Camera2 refuses a launcher shown over Keyguard", (t) => {
+  const alpha = fixture(t, "alpha").product;
+  const eliza = fixture(t, "eliza").product;
+  const manifest = (attrs) =>
+    [
+      "N: android=http://schemas.android.com/apk/res/android",
+      "  E: manifest (line=2)",
+      "    E: application (line=3)",
+      "      E: activity (line=4)",
+      `        A: android:name(0x01010003)="${alpha.launcher.packageName}.Ringing" (Raw: "${alpha.launcher.packageName}.Ringing")`,
+      ...attrs,
+    ].join("\n");
+  const locked = manifest([
+    "        A: android:showWhenLocked(0x01010003)=(type 0x12)0xffffffff",
+  ]);
+  assert.equal(alpha.launcher.refuseLockScreenSurfaces, true);
+  assert.equal(enforceLauncherLockScreenPolicy(alpha, manifest([])), true);
+  assert.throws(
+    () => enforceLauncherLockScreenPolicy(alpha, locked),
+    /Alpha does not implement[\s\S]*Ringing sets android:showWhenLocked/,
+  );
+  // Eliza's own launcher keeps its alarm activity over Keyguard.
+  assert.equal(eliza.launcher.refuseLockScreenSurfaces, undefined);
+  assert.equal(enforceLauncherLockScreenPolicy(eliza, locked), false);
+  assert.throws(
+    () =>
+      validatePixel10aProduct({
+        ...alpha,
+        launcher: { ...alpha.launcher, refuseLockScreenSurfaces: "yes" },
+      }),
+    /refuseLockScreenSurfaces must be a boolean/,
+  );
 });
 
 test("shared provisioning takes actual component names and leaves absent Autofill unset", () => {
@@ -227,4 +430,24 @@ test("Soong native installation uses the pinned source patch without ELF check o
     patch,
     /BUILD_BROKEN|Check_elf_files|check_elf_files|prebuilt_any/,
   );
+});
+
+test("development images keep the launcher's provisioning default and malformed provisioning is refused", (t) => {
+  const f = fixture(t, "alpha");
+  const result = composePixel10aProduct({ ...f, production: false });
+  assert.equal(result.imageProvisioning, null);
+  assert.equal(fs.existsSync(path.join(f.output, "image-capabilities")), false);
+  for (const imageProvisioning of [
+    null,
+    { module: "Alpha", extra: true },
+    { resource: "Not-A-Resource" },
+  ])
+    assert.throws(
+      () =>
+        validatePixel10aProduct({
+          ...f.product,
+          launcher: { ...f.product.launcher, imageProvisioning },
+        }),
+      /imageProvisioning|Invalid/,
+    );
 });

@@ -588,6 +588,37 @@ describe("NotesStore", () => {
     });
     expect(() => store.snapshot()).toThrow("not valid JSON");
   });
+
+  it("keeps reads and later writes working after one failed write", async () => {
+    const filePath = await temporaryStateFile();
+    const store = new NotesStore({ filePath });
+    const service = new NotesService(undefined, { store });
+    await service.initialize();
+    await service.createNote({ title: "first" });
+
+    // One rename fails (for example EBUSY while another program holds the
+    // file); the next one is real.
+    const rename = vi.spyOn(fs, "rename").mockImplementationOnce(async () => {
+      throw Object.assign(new Error("EBUSY: resource busy, rename"), {
+        code: "EBUSY",
+        syscall: "rename",
+      });
+    });
+    try {
+      await expect(
+        service.createNote({ title: "second" }),
+      ).rejects.toMatchObject({ code: "NOTES_STORE_WRITE_FAILED" });
+    } finally {
+      rename.mockRestore();
+    }
+
+    expect(service.listNotes().map((note) => note.title)).toEqual(["first"]);
+    await service.createNote({ title: "third" });
+    expect(
+      (await store.persistedSnapshot()).notes.map((note) => note.title),
+    ).toEqual(["third", "first"]);
+    await service.stop();
+  });
 });
 
 describe("NotesStore on filesystems that deny hard links (#30725)", () => {

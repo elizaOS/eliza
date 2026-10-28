@@ -197,3 +197,66 @@ describe("Calendar availability source ownership", () => {
     });
   });
 });
+
+describe("Clock host device context", () => {
+  // The Android Clock host's chat bridge sends these two shapes as
+  // clientDevice.context: no view, so no screen observation, and never private.
+  it.each([
+    { sensitive: false, revision: 4, timeZone: "America/Los_Angeles" },
+    {
+      sensitive: false,
+      revision: 4,
+      timeZone: "America/Los_Angeles",
+      alarmsStatus: "available",
+      alarmsObservedAt: 1_761_600_000_000,
+      alarmsRevision: "alarms-1",
+      alarms: [],
+    },
+  ])("keeps canonical Notes and Calendar routing for %j", async (context) => {
+    const runtime = {
+      agentId,
+      getSetting: () => undefined,
+      actions: [],
+      getService: () => null,
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    } as unknown as IAgentRuntime;
+    const message = {
+      id: "33333333-3333-4333-8333-333333333333",
+      agentId,
+      entityId: owner,
+      roomId: "55555555-5555-4555-8555-555555555555",
+      content: {
+        text: "What is on my calendar tomorrow?",
+        metadata: { clientDevice: { context } },
+      },
+    } as Memory;
+    vi.spyOn(DeviceActionService.prototype, "viewProfile").mockResolvedValue(
+      null,
+    );
+    const sources = await withDeviceActionTurn(
+      runtime,
+      {
+        subjectUserId: "owner-subject",
+        installationId: "installation",
+        deviceKey: "key",
+        capabilities: [CALENDAR_CREATE_CAPABILITY],
+      },
+      async () => {
+        setDeviceActionRequestMessage(runtime, message);
+        return [
+          currentAppRecordSource(runtime, "notes", message),
+          currentAppRecordSource(runtime, "calendar", message),
+        ];
+      },
+      {
+        isCurrent: () => true,
+        requestCaller: {
+          subjectUserId: "owner-subject",
+          entityId: owner,
+          role: "OWNER",
+        },
+      },
+    );
+    expect(sources).toEqual(["runtime", "runtime"]);
+  });
+});

@@ -1310,8 +1310,10 @@ export class AppsRepository {
           lte(appRequests.created_at, endDate),
         ),
       )
-      .groupBy(sql`TO_CHAR(${appRequests.created_at}, ${dateFormat})`)
-      .orderBy(sql`TO_CHAR(${appRequests.created_at}, ${dateFormat})`);
+      // By position: a bound format parameter in GROUP BY/ORDER BY is a
+      // different expression from the SELECT one, which Postgres rejects.
+      .groupBy(sql`1`)
+      .orderBy(sql`1`);
 
     return results;
   }
