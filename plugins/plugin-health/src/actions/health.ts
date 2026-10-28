@@ -69,6 +69,15 @@ const HEALTH_METRICS: readonly HealthMetric[] = [
   "active_minutes",
 ];
 
+// Max bridge trend/by_metric window in days, matching the
+// connector path's MAX_HEALTH_SUMMARY_DAYS (31): the bridge
+// trend path fires one external call per day and renders every
+// day's summary, so an unclamped window scales both with the
+// requested span. The clamp applies to the bridge fallback
+// branches only; the connector path keeps its own 400-above-31
+// refusal.
+const HEALTH_TREND_MAX_DAYS = 31;
+
 export type HealthActionParameters = {
   subaction?: Subaction;
   intent?: string;
@@ -904,10 +913,12 @@ export function createHealthActionRunner(
     }
 
     if (subaction === "trend") {
-      const days =
+      const days = Math.min(
         params.days && params.days > 0
           ? Math.floor(params.days)
-          : (plannedDays ?? 7);
+          : (plannedDays ?? 7),
+        HEALTH_TREND_MAX_DAYS,
+      );
       const trend = await service.getHealthTrend(days, { timeZone });
       const fallback =
         trend.length === 0
@@ -938,13 +949,19 @@ export function createHealthActionRunner(
       }
       // A named date reads that local calendar day; otherwise the trailing
       // `days` window ending now.
+      // The bridge by_metric window is clamped like the trend
+      // window; a named date reads that day and ignores the
+      // trailing window entirely, so its label is untouched.
+      const bridgeDays = Math.min(byMetricDays, HEALTH_TREND_MAX_DAYS);
       const { startAt, endAt } = dayBounds ?? {
         startAt: new Date(
-          Date.now() - byMetricDays * 24 * 60 * 60 * 1000,
+          Date.now() - bridgeDays * 24 * 60 * 60 * 1000,
         ).toISOString(),
         endAt: new Date().toISOString(),
       };
-      const windowLabel = byMetricWindowLabel;
+      const windowLabel = dayBounds
+        ? byMetricWindowLabel
+        : `last ${bridgeDays} day${bridgeDays === 1 ? "" : "s"}`;
       const windowContext = byMetricWindowContext;
       const points = await service.getHealthDataPoints(
         { metric, startAt, endAt },
