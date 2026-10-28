@@ -82,19 +82,12 @@ function emitObservedEvent(
   if (!runtime) {
     return;
   }
-  const reportFailure = (error: unknown) =>
-    runtime.reportError("GoogleChatService.emitEvent", error, {
-      event,
-      ...context,
-    });
-  try {
-    // error-policy:J7 diagnostics-must-not-kill-the-loop — the Google Chat API
-    // call already succeeded. Listeners are observers, so a rejected listener
-    // must not make the accepted message look retryable.
-    void Promise.resolve(runtime.emitEvent(event, payload)).catch(reportFailure);
-  } catch (error) {
-    reportFailure(error);
-  }
+  // error-policy:J7 diagnostics-must-not-kill-the-loop — the Google Chat API
+  // call already succeeded. Listeners are observers, so a rejected listener
+  // must not make the accepted message look retryable.
+  void Promise.resolve(runtime.emitEvent(event, payload)).catch((error) =>
+    runtime.reportError("GoogleChatService.emitEvent", error, { event, ...context })
+  );
 }
 
 function scoreGoogleChatSpace(space: GoogleChatSpace, query: string): number {
