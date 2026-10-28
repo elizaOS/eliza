@@ -403,7 +403,7 @@ async function main() {
   try {
     child = spawn(command[0], command.slice(1), {
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: process.platform === "win32" && /\.(?:cmd|bat)$/i.test(command[0]),
     });
 
     for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
