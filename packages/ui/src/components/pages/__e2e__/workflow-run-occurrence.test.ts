@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { workflowRunNotRun } from "../workflow-run-occurrence";
+import { triggerRunMissed, workflowRunNotRun } from "../workflow-run-occurrence";
 
 const at = "2026-10-28T07:30:00.000Z";
 const iso = (value: string) => value;
@@ -69,6 +69,34 @@ describe("workflow run occurrence", () => {
         finished: true,
         output: { status: "missed", scheduledAt: "later", text: "x" },
       }),
+    ).toBeNull();
+  });
+});
+
+describe("trigger run missed occurrence", () => {
+  const at = Date.parse("2026-10-12T09:00:00.000Z");
+  const fmt = (epochMs: number) => new Date(epochMs).toISOString();
+
+  it("presents a skipped run with a recorded missed occurrence as not run", () => {
+    expect(
+      triggerRunMissed({ status: "skipped", missedOccurrenceAt: at }, fmt),
+    ).toEqual({
+      label: "Missed — did not run",
+      notice:
+        "Scheduled for 2026-10-12T09:00:00.000Z. The agent was not running then, so nothing ran. It is not run later; it runs again at its next scheduled time.",
+    });
+  });
+
+  it("keeps the generic presentation for any other run", () => {
+    expect(triggerRunMissed({ status: "skipped" }, fmt)).toBeNull();
+    expect(
+      triggerRunMissed({ status: "success", missedOccurrenceAt: at }, fmt),
+    ).toBeNull();
+    expect(
+      triggerRunMissed({ status: "skipped", missedOccurrenceAt: "soon" }, fmt),
+    ).toBeNull();
+    expect(
+      triggerRunMissed({ status: "skipped", missedOccurrenceAt: 0 }, fmt),
     ).toBeNull();
   });
 });

@@ -51,3 +51,32 @@ export function workflowRunNotRun(
         offerRunNow: false,
       };
 }
+
+export interface TriggerRunMissed {
+  /** Short label for the run list in place of the generic "Skipped". */
+  label: string;
+  /** Owner-facing statement that nothing ran and nothing is replayed. */
+  notice: string;
+}
+
+/**
+ * The missed-occurrence presentation of a trigger run record, or null for any
+ * run that is not a recorded missed occurrence. Under powered-on scheduling the
+ * agent persists a scheduled occurrence that came due while it was stopped as a
+ * `skipped` run carrying `missedOccurrenceAt`; nothing ran for it and it is
+ * never run late. The field is read structurally so older run records (and
+ * agents that predate the field) keep the generic skipped presentation.
+ */
+export function triggerRunMissed(
+  run: { status: string; missedOccurrenceAt?: unknown },
+  formatTime: (epochMs: number) => string = (epochMs) =>
+    new Date(epochMs).toLocaleString(),
+): TriggerRunMissed | null {
+  if (run.status !== "skipped") return null;
+  const at = run.missedOccurrenceAt;
+  if (typeof at !== "number" || !Number.isFinite(at) || at <= 0) return null;
+  return {
+    label: "Missed — did not run",
+    notice: `Scheduled for ${formatTime(at)}. The agent was not running then, so nothing ran. It is not run later; it runs again at its next scheduled time.`,
+  };
+}
