@@ -406,6 +406,17 @@ fail closed when the upstream source changes; each staged file reports source an
 generated digests for the host's provenance receipt. Run
 `node --test packages/app/scripts/mobile/android/resident-host-sources.test.mjs`.
 
+`scripts/mobile/artifact-inspection/apk-distribution.mjs` is the shared distribution
+check of a built consumer APK. `readApk` collects aapt badging/xmltree, zip entries and
+dex markers; `apkDistributionProblems` judges them against a host policy given as data:
+the exported-component allowlist (each with its guarding permission or `null`),
+development class names, manifest text and entries tolerated only in a test-mocks debug
+build, forbidden permissions, entries and dex prefixes, and required entries. Backup,
+cleartext, release network security config, test-only names, source maps and version
+fields are checked for every host. `parseApkSignerDigest` reads `apksigner --print-certs`
+and requires an explicit API level for rotated signers. Product-specific checks stay with
+the host. Run `node --test packages/app/scripts/mobile/artifact-inspection/apk-distribution.test.mjs`.
+
 The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
 JDK 21, independently of the full app's newer default wrapper. The distribution
 and shared wrapper JAR are hash pinned. Run the filesystem contract with
