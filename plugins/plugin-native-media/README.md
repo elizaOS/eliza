@@ -34,6 +34,10 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
   report `complete` or `partial`, counts, and a two-step permanent removal of trashed items whose
   confirmation (two minutes) names each item's generation, so a restored or changed item is skipped.
   The host injects playback-grant revocation for trashed and removed videos.
+- `TrashDeleteRequest` – the target of a permanent removal: `all()` only from an explicit
+  empty-trash intent (`{"all": true}` on the bridge), or 1–20 named owned items with their reviewed
+  revisions. A missing, null or non-list selection is refused, never read as the whole trash
+  (`prepareDeleteTrash(JSONArray)` refuses null; use `prepareDeleteAllTrash()`). Pure Java.
 - `OwnedAlbums` – device-local custom albums over owned and permitted items. Albums store member
   names and identities, never bytes; a changed or no longer accessible member is withheld but keeps
   its membership. Every change names the album revision, and listings hold the permitted fence.

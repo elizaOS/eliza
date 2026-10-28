@@ -528,27 +528,34 @@ public final class OwnedMediaLibrary {
   }
 
   /**
-   * First step of permanent removal: snapshots the generation of every owned trashed item (or of
-   * the 1–20 named ones, whose revisions must match) and returns a confirmation token valid for
-   * two minutes. At most four confirmations are pending; nothing is removed here.
+   * Prepares removal of the named owned trashed items. A null or empty list is refused: it never
+   * means "every trashed item". Use {@link #prepareDeleteAllTrash()} for an explicit empty-trash.
    */
-  public synchronized JSObject prepareDeleteTrash(JSONArray requested) throws Exception {
+  public JSObject prepareDeleteTrash(JSONArray requested) throws Exception {
+    return prepareDeleteTrash(TrashDeleteRequest.named(requested));
+  }
+
+  /** Prepares removal of every owned trashed item; only for an explicit "empty trash" intent. */
+  public JSObject prepareDeleteAllTrash() throws Exception {
+    return prepareDeleteTrash(TrashDeleteRequest.all());
+  }
+
+  /**
+   * First step of permanent removal: snapshots the generation of every owned trashed item (for
+   * {@link TrashDeleteRequest#all()}) or of the 1–20 named ones, whose revisions must match, and
+   * returns a confirmation token valid for two minutes. At most four confirmations are pending;
+   * nothing is removed here.
+   */
+  public synchronized JSObject prepareDeleteTrash(TrashDeleteRequest request) throws Exception {
+    if (request == null) throw new IllegalArgumentException("Select deleted items again");
     if (Build.VERSION.SDK_INT < 30)
       throw new UnsupportedOperationException("Android trash requires Android 11 or later");
-    Map<String, String> wanted = new LinkedHashMap<>();
-    if (requested != null) {
-      if (requested.length() < 1 || requested.length() > BATCH) throw new IllegalArgumentException();
-      for (int i = 0; i < requested.length(); i++) {
-        JSONObject item = requested.getJSONObject(i);
-        String key = item.getString("id"), version = item.getString("revision");
-        if (!isOwnedKey(key) || version.isEmpty() || wanted.put(key, version) != null)
-          throw new IllegalArgumentException();
-      }
-    }
+    Map<String, String> wanted = request.items();
+    boolean named = !request.isAll();
     String selection = owned(true) + MEDIA;
     List<String> args = new ArrayList<>();
     args.add(owner());
-    if (requested != null) {
+    if (named) {
       StringBuilder ids = new StringBuilder();
       for (String key : wanted.keySet()) {
         if (ids.length() > 0) ids.append(',');
@@ -568,14 +575,14 @@ public final class OwnedMediaLibrary {
       while (rows.moveToNext()) {
         if (items.size() >= TRASH_LIMIT) throw new TooManyTrashed();
         String key = key(rows);
-        if (requested != null) {
+        if (named) {
           if (!wanted.containsKey(key)) continue;
           if (!mutationRevision(rows).equals(wanted.get(key))) throw new IllegalArgumentException();
         }
         items.add(new TrashItem(key, rows.getLong(9)));
       }
     }
-    if (requested != null && items.size() != wanted.size()) throw new IllegalArgumentException();
+    if (named && items.size() != wanted.size()) throw new IllegalArgumentException();
     long now = SystemClock.elapsedRealtime();
     confirmations.entrySet().removeIf(entry -> entry.getValue().until < now);
     while (confirmations.size() >= 4) confirmations.remove(confirmations.keySet().iterator().next());
