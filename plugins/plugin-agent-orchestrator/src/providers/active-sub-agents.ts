@@ -39,6 +39,12 @@ interface AdmissionSnapshotService {
 const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
 const WAVE_SUPERVISOR_SERVICE_TYPE = "ORCHESTRATOR_WAVE_SUPERVISOR";
 
+// Max live-output entries rendered per session in the ambient
+// section. The session buffer itself is uncapped for the session
+// lifetime, so an unbounded read would re-render a long session's
+// entire stdout history into every turn's prompt.
+const ACTIVE_SUB_AGENT_LIVE_LINES = 200;
+
 interface WaveStatusSnapshot {
   waveId: string;
   totalLanes: number;
@@ -194,16 +200,22 @@ export const activeSubAgentsProvider: Provider = {
     const stalled = stalledSessionIds(runtime);
     const approaching = approachingCapBySession(runtime);
 
-    // Pull complete live activity for each session so the
+    // Pull recent live activity for each session so the
     // planner can answer "where are you" with concrete detail instead of
     // just `status=busy`. The buffer mixes message chunks and captured tool
-    // output; preserving it avoids status decisions based on a misleading tail.
+    // output; the newest entries answer that question, while rendering
+    // the whole session transcript would grow the prompt without bound
+    // over a long session's lifetime. The full transcript stays
+    // retrievable on demand via the output endpoints and TASKS_HISTORY.
     const liveByName = new Map<string, string>();
     if (typeof service.getSessionOutput === "function") {
       await Promise.all(
         routed.map(async (session) => {
           try {
-            const raw = await service.getSessionOutput?.(session.id);
+            const raw = await service.getSessionOutput?.(
+              session.id,
+              ACTIVE_SUB_AGENT_LIVE_LINES,
+            );
             if (typeof raw !== "string") return;
             const completeOutput = toWellFormedUnicode(raw.trim());
             if (completeOutput) liveByName.set(session.id, completeOutput);
