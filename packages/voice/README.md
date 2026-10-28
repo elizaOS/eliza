@@ -38,6 +38,12 @@ response or the event). `createLiveSegmentStream` maps one continuous capture on
 per closed VAD segment (null when the segment produced no transcript), stop reconciliation
 (`cutoff` drops audio stamped after the stop, `close` ends the open segment at it) and `cancel`
 (discard). Its handlers are the `listen` port of `VoiceAssistantSession`.
+When the host opens the capture and its ASR route itself (for example a native plugin that runs
+VAD in the app process and routes segments to the owner's agent), it supplies a
+`LiveCaptureOpener`: `liveAssistantListener` turns it into the assistant's echo-cancelled `listen`
+port (full duplex only when the device's echo canceller is active), and `createLiveDictation`
+into Transcribe, a recorder-shaped driver whose Stop finalizes exactly the audio up to the tap and
+whose text only becomes an editable draft (never sent).
 
 `@elizaos/voice/turn-routes` holds the clients for the resident's end-of-turn route
 (`residentEndpoint`, the controller's `endpoint` port: unavailable, malformed or over-long input is

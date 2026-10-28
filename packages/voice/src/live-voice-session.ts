@@ -28,6 +28,11 @@
  * Pure module (no Capacitor, DOM, storage or logging): hosts supply the transport.
  */
 
+import type {
+  AssistantCapture,
+  AssistantListenHandlers,
+} from "./voice-assistant-session.js";
+
 export const LIVE_ASR_PATH = "/api/asr/local-inference/live";
 export const LIVE_ASR_STATUS_PATH = "/api/asr/local-inference/live/status";
 export const LIVE_SAMPLE_RATE = 16000;
@@ -630,3 +635,227 @@ export function createLiveSegmentStream(
   };
 }
 export type LiveSegmentStream = ReturnType<typeof createLiveSegmentStream>;
+
+/**
+ * One open microphone capture with VAD and its agent live ASR session, as a host opens it (for
+ * example a native plugin that runs VAD in the app process). The host owns the microphone,
+ * transport and owner fence; the adapters below give it the assistant listen port and dictation.
+ */
+export interface LiveCaptureStream {
+  readonly startedAt: number;
+  /** The platform echo canceller is active on this capture. */
+  readonly echoCancelled: boolean;
+  speaking(): boolean;
+  /** Stop at `at` and finalize: results for audio up to `at` arrive before this resolves. */
+  close(at?: number): Promise<{ durationMs: number }>;
+  /** Stop now and discard. */
+  cancel(): Promise<void>;
+}
+export interface LiveCaptureOpenOptions {
+  signal: AbortSignal;
+  /** Platform echo cancellation for full-duplex use (the assistant listens while it speaks). */
+  echoCancel: boolean;
+  roomId?: string;
+  onSpeechStart?(atMs: number): void;
+  onSpeechEnd?(atMs: number): void;
+  onSegment(text: string | null, latency?: LiveVoiceLatency): void;
+  onInterim?(text: string): void;
+  onLevel?(peak: number): void;
+  /** The capture or the agent route failed or stopped without being asked to. */
+  onLost(error: unknown): void;
+}
+export type LiveCaptureOpener = (
+  input: LiveCaptureOpenOptions,
+) => Promise<LiveCaptureStream>;
+
+/**
+ * The voice assistant's listen port over a host's live capture, always echo-cancelled. Voice may
+ * interrupt playback (`fullDuplex`) only when the device cancels its own speaker.
+ */
+export function liveAssistantListener(
+  open: LiveCaptureOpener,
+  options: {
+    roomId?: string;
+    onInterim?: (text: string) => void;
+    onLatency?: (latency: LiveVoiceLatency) => void;
+  } = {},
+) {
+  return async (
+    handlers: AssistantListenHandlers,
+  ): Promise<AssistantCapture> => {
+    const capture = await open({
+      signal: handlers.signal,
+      echoCancel: true,
+      ...(options.roomId ? { roomId: options.roomId } : {}),
+      onSpeechStart: handlers.onSpeechStart,
+      onSpeechEnd: handlers.onSpeechEnd,
+      onSegment: (text, latency) => {
+        if (latency) options.onLatency?.(latency);
+        handlers.onSegment(text);
+      },
+      onInterim: (text) => options.onInterim?.(text),
+      onLevel: (peak) => handlers.onLevel?.(peak),
+      onLost: (error) => handlers.onEnd(error),
+    });
+    return {
+      fullDuplex: capture.echoCancelled,
+      close: async () => {
+        await capture.close();
+      },
+      cancel: () => capture.cancel(),
+    };
+  };
+}
+
+export type LiveDictationClip = { recordingId: string; durationMs: number };
+/**
+ * Dictation (Transcribe) over a host's live capture, shaped like a recorder driver: Stop finalizes
+ * exactly the audio up to Stop and the transcript is ready when Stop resolves; Cancel discards
+ * everything. The text only ever becomes an editable draft; nothing is sent. A lost capture or the
+ * duration limit reports a clip through `recordingStopped` (`durationMs` NaN when lost).
+ */
+export function createLiveDictation(
+  open: LiveCaptureOpener,
+  options: {
+    roomId?: string;
+    onInterim?: (text: string) => void;
+    onLatency?: (latency: LiveVoiceLatency) => void;
+    maxDurationMs?: number;
+  } = {},
+) {
+  const maxDurationMs = Math.max(
+    1000,
+    Math.min(options.maxDurationMs ?? 300_000, 600_000),
+  );
+  type Recording = {
+    id: string;
+    capture?: LiveCaptureStream;
+    controller: AbortController;
+    texts: string[];
+    clip?: LiveDictationClip;
+    timer?: ReturnType<typeof setTimeout>;
+    stopping?: Promise<LiveDictationClip>;
+  };
+  let recording: Recording | undefined;
+  const listeners = new Set<(clip: LiveDictationClip) => void>();
+  const emit = (clip: LiveDictationClip) => {
+    for (const listener of [...listeners]) listener(clip);
+  };
+  const finish = (current: Recording, at?: number) => {
+    current.stopping ??= (async () => {
+      if (current.timer) clearTimeout(current.timer);
+      const result = await (current.capture as LiveCaptureStream).close(at);
+      const clip = { recordingId: current.id, durationMs: result.durationMs };
+      current.clip = clip;
+      return clip;
+    })();
+    return current.stopping;
+  };
+  return {
+    live: true as const,
+    async startRecording(): Promise<{
+      recordingId: string;
+      maxDurationMs: number;
+    }> {
+      if (recording && !recording.clip)
+        throw Error("A transcription is already recording.");
+      const current: Recording = {
+        id: `live:${crypto.randomUUID()}`,
+        controller: new AbortController(),
+        texts: [],
+      };
+      recording = current;
+      const owned = () => recording === current;
+      let capture: LiveCaptureStream;
+      try {
+        capture = await open({
+          signal: current.controller.signal,
+          echoCancel: false,
+          ...(options.roomId ? { roomId: options.roomId } : {}),
+          onSegment: (text, latency) => {
+            if (!owned()) return;
+            if (latency) options.onLatency?.(latency);
+            if (text) current.texts.push(text);
+          },
+          onInterim: (text) => {
+            if (owned()) options.onInterim?.(text);
+          },
+          onLost: () => {
+            if (!owned() || current.stopping) return;
+            if (current.timer) clearTimeout(current.timer);
+            current.controller.abort();
+            // A lost capture leaves nothing to stop or transcribe; Transcribe can start again.
+            recording = undefined;
+            current.texts.length = 0;
+            emit({ recordingId: current.id, durationMs: Number.NaN });
+          },
+        });
+      } catch (error) {
+        if (owned()) recording = undefined;
+        throw error;
+      }
+      current.capture = capture;
+      if (!owned()) {
+        await capture.cancel();
+        throw new DOMException("Transcription cancelled", "AbortError");
+      }
+      current.timer = setTimeout(() => {
+        if (owned() && !current.stopping)
+          void finish(current).then(emit, () =>
+            emit({ recordingId: current.id, durationMs: Number.NaN }),
+          );
+      }, maxDurationMs);
+      return { recordingId: current.id, maxDurationMs };
+    },
+    /** Stop at this moment. Audio captured after the tap is never transcribed. */
+    async stopRecording(): Promise<LiveDictationClip> {
+      const current = recording;
+      const at = Date.now();
+      if (!current?.capture) throw Error("No transcription is recording.");
+      return finish(current, at);
+    },
+    /** The transcript of a stopped recording ('' is reported as no speech). */
+    async transcribe(
+      recordingId: string,
+      signal: AbortSignal,
+    ): Promise<{ text: string; local: true }> {
+      signal.throwIfAborted();
+      const current = recording;
+      if (!current || current.id !== recordingId || !current.stopping)
+        throw Error("This transcription is no longer available.");
+      await current.stopping;
+      signal.throwIfAborted();
+      if (recording !== current)
+        throw new DOMException("Transcription cancelled", "AbortError");
+      const text = current.texts.join(" ").replace(/\s+/g, " ").trim();
+      if (!text)
+        throw Object.assign(Error("No speech was detected."), {
+          code: "no-speech",
+        });
+      return { text, local: true };
+    },
+    async cancelRecording() {
+      const current = recording;
+      recording = undefined;
+      if (!current) return;
+      if (current.timer) clearTimeout(current.timer);
+      current.controller.abort();
+      current.texts.length = 0;
+      await current.capture?.cancel();
+    },
+    /** Transcription completes with Stop; nothing is pending. */
+    async cancel(_input: { requestId: string }) {},
+    async addListener(
+      _event: "recordingStopped",
+      callback: (clip: LiveDictationClip) => void,
+    ): Promise<{ remove(): Promise<void> }> {
+      listeners.add(callback);
+      return {
+        remove: async () => {
+          listeners.delete(callback);
+        },
+      };
+    },
+  };
+}
+export type LiveDictation = ReturnType<typeof createLiveDictation>;

@@ -1,12 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  createLiveDictation,
   createLiveSegmentStream,
   createLiveVoiceSession,
   encodeLiveFrame,
   type LiveAudioFrame,
+  type LiveCaptureOpenOptions,
+  type LiveCaptureStream,
   type LiveFinal,
   type LiveVoiceLatency,
   type LiveVoiceTransport,
+  liveAssistantListener,
   parseLiveFinal,
   parseVoiceTranscriptEnvelope,
 } from "./live-voice-session";
@@ -526,5 +530,171 @@ describe("live segment stream", () => {
     pending.shift()?.();
     await flush();
     expect(results).toEqual([null, null]);
+  });
+});
+
+/** A host capture that records how it was opened and lets the test drive its callbacks. */
+function fakeOpener() {
+  const opened: LiveCaptureOpenOptions[] = [];
+  const closes: (number | undefined)[] = [];
+  let cancels = 0;
+  let segmentsOnClose: string[] = [];
+  const open = async (
+    input: LiveCaptureOpenOptions,
+  ): Promise<LiveCaptureStream> => {
+    opened.push(input);
+    return {
+      startedAt: 1000,
+      echoCancelled: input.echoCancel,
+      speaking: () => false,
+      async close(at) {
+        closes.push(at);
+        for (const text of segmentsOnClose) input.onSegment(text);
+        return { durationMs: 1234 };
+      },
+      async cancel() {
+        cancels++;
+      },
+    };
+  };
+  return {
+    open,
+    opened,
+    closes,
+    get cancels() {
+      return cancels;
+    },
+    finalOnClose(texts: string[]) {
+      segmentsOnClose = texts;
+    },
+  };
+}
+
+describe("live dictation over a host capture", () => {
+  it("opens without echo cancellation, finalizes up to Stop and returns an editable draft", async () => {
+    const host = fakeOpener();
+    const latencies: unknown[] = [];
+    const dictation = createLiveDictation(host.open, {
+      roomId: "room-1",
+      onLatency: (latency) => latencies.push(latency),
+    });
+    const { recordingId } = await dictation.startRecording();
+    expect(host.opened[0]?.echoCancel).toBe(false);
+    expect(host.opened[0]?.roomId).toBe("room-1");
+    await expect(dictation.startRecording()).rejects.toThrow(
+      "already recording",
+    );
+    host.opened[0]?.onSegment("hello", {
+      asrFinalFromSpeechEndMs: 40,
+    } as LiveVoiceLatency);
+    host.finalOnClose(["  world  "]);
+    const clip = await dictation.stopRecording();
+    expect(clip).toEqual({ recordingId, durationMs: 1234 });
+    expect(typeof host.closes[0]).toBe("number");
+    expect(latencies).toHaveLength(1);
+    const controller = new AbortController();
+    await expect(
+      dictation.transcribe(recordingId, controller.signal),
+    ).resolves.toEqual({ text: "hello world", local: true });
+    await expect(
+      dictation.transcribe("live:other", controller.signal),
+    ).rejects.toThrow("no longer available");
+  });
+
+  it("reports no speech, discards on cancel and reports a lost capture once", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    const silent = await dictation.startRecording();
+    await dictation.stopRecording();
+    await expect(
+      dictation.transcribe(silent.recordingId, new AbortController().signal),
+    ).rejects.toMatchObject({ code: "no-speech" });
+
+    const discarded = await dictation.startRecording();
+    host.opened[1]?.onSegment("private");
+    await dictation.cancelRecording();
+    expect(host.cancels).toBe(1);
+    expect(host.opened[1]?.signal.aborted).toBe(true);
+    await expect(
+      dictation.transcribe(discarded.recordingId, new AbortController().signal),
+    ).rejects.toThrow("no longer available");
+
+    const stopped: { recordingId: string; durationMs: number }[] = [];
+    await dictation.addListener("recordingStopped", (clip) =>
+      stopped.push(clip),
+    );
+    const lost = await dictation.startRecording();
+    host.opened[2]?.onLost(new Error("mic"));
+    host.opened[2]?.onLost(new Error("again"));
+    expect(stopped).toHaveLength(1);
+    expect(stopped[0]?.recordingId).toBe(lost.recordingId);
+    expect(Number.isNaN(stopped[0]?.durationMs)).toBe(true);
+    // Transcribe can start again after a lost capture.
+    await expect(dictation.startRecording()).resolves.toBeTruthy();
+  });
+
+  it("stops by itself at the duration limit", async () => {
+    vi.useFakeTimers();
+    try {
+      const host = fakeOpener();
+      const dictation = createLiveDictation(host.open, { maxDurationMs: 1000 });
+      const stopped: { recordingId: string; durationMs: number }[] = [];
+      await dictation.addListener("recordingStopped", (clip) =>
+        stopped.push(clip),
+      );
+      const { recordingId, maxDurationMs } = await dictation.startRecording();
+      expect(maxDurationMs).toBe(1000);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(stopped).toEqual([{ recordingId, durationMs: 1234 }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("assistant listen port over a host capture", () => {
+  it("opens echo-cancelled, forwards segments, latency and loss, and is full duplex only with a canceller", async () => {
+    const host = fakeOpener();
+    const latencies: unknown[] = [];
+    const interims: string[] = [];
+    const listen = liveAssistantListener(host.open, {
+      onLatency: (latency) => latencies.push(latency),
+      onInterim: (text) => interims.push(text),
+    });
+    const events: unknown[] = [];
+    const controller = new AbortController();
+    const capture = await listen({
+      signal: controller.signal,
+      onSpeechStart: (at) => events.push(["start", at]),
+      onSpeechEnd: (at) => events.push(["end", at]),
+      onSegment: (text) => events.push(["segment", text]),
+      onEnd: (error) => events.push(["lost", (error as Error).message]),
+      onLevel: (peak) => events.push(["level", peak]),
+    });
+    const input = host.opened[0] as LiveCaptureOpenOptions;
+    expect(input.echoCancel).toBe(true);
+    expect(input.signal).toBe(controller.signal);
+    expect(capture.fullDuplex).toBe(true);
+    input.onSpeechStart?.(5);
+    input.onSegment("hi", { asrFinalFromSpeechEndMs: 10 } as LiveVoiceLatency);
+    input.onSegment(null);
+    input.onInterim?.("h");
+    input.onLevel?.(0.5);
+    input.onSpeechEnd?.(9);
+    input.onLost(new Error("gone"));
+    expect(events).toEqual([
+      ["start", 5],
+      ["segment", "hi"],
+      ["segment", null],
+      ["level", 0.5],
+      ["end", 9],
+      ["lost", "gone"],
+    ]);
+    expect(latencies).toHaveLength(1);
+    expect(interims).toEqual(["h"]);
+    await capture.close();
+    expect(host.closes).toEqual([undefined]);
+    await capture.cancel();
+    expect(host.cancels).toBe(1);
   });
 });
