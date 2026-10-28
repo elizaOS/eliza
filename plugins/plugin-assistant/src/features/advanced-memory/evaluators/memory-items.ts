@@ -221,7 +221,16 @@ async function prepareLongTermMemory(
       runtime.getMemories({
         tableName: "messages",
         roomId: message.roomId,
-        limit: Math.max(1, currentMessageCount),
+        // Bound the fallback read: with the full count as the
+        // limit this materializes the room's whole history on
+        // every extraction run, and the prompt renders it in
+        // full when no shared transcript is available.
+        // Extraction is interval-gated and the checkpoint
+        // advances each run, so messages older than the
+        // newest window have already passed through prior
+        // runs. The adapter orders newest-first and the
+        // result is re-sorted oldest-first for display.
+        limit: Math.min(15000, Math.max(1, currentMessageCount)),
         unique: false,
       }),
     message.entityId
