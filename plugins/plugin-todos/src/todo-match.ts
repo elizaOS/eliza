@@ -60,13 +60,27 @@ function stem(token: string): string {
   // "meet", so the same visible todo addressed in either form did not count as
   // one row and a create added a silent duplicate instead of asking.
   const singular = singularize(token);
+  let reduced = singular;
   if (singular.length > 5 && singular.endsWith("ing")) {
-    return singular.slice(0, -3);
+    reduced = singular.slice(0, -3);
+  } else if (singular.length > 4 && singular.endsWith("ed")) {
+    reduced = singular.slice(0, -2);
   }
-  if (singular.length > 4 && singular.endsWith("ed")) {
-    return singular.slice(0, -2);
+  // The consonant + "y" family spells the plural with "ie" and drops the "y"
+  // before "ed"/"ing" ("party/parties", "copy/copies", "try/tried"), so the
+  // forms above land on three different tokens ("party", "partie", "tri")
+  // and the family never collapses. Map every spelling to "i": a trailing
+  // "ie" (the plural after the "s" strip, and the base form of "movie" and
+  // "cookie", which collapse today and must keep the token their plurals
+  // get) and a trailing consonant + "y". A vowel + "y" ("play", "key")
+  // already collapses through the plain rules and stays untouched.
+  if (reduced.length > 2 && reduced.endsWith("ie")) {
+    return `${reduced.slice(0, -2)}i`;
   }
-  return singular;
+  if (reduced.length > 2 && /[^aeiou]y$/u.test(reduced)) {
+    return `${reduced.slice(0, -1)}i`;
+  }
+  return reduced;
 }
 
 function contentTokens(content: string): string[] {
