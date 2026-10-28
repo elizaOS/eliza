@@ -8521,7 +8521,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   async deleteRelationships(relationshipIds: UUID[]): Promise<void> {
     if (relationshipIds.length === 0) return;
     return this.withDatabase(async () => {
-      await this.db.delete(relationshipTable).where(inArray(relationshipTable.id, relationshipIds));
+      await this.db
+        .delete(relationshipTable)
+        .where(
+          and(
+            inArray(relationshipTable.id, relationshipIds),
+            eq(relationshipTable.agentId, this.agentId)
+          )
+        );
     });
   }
 
