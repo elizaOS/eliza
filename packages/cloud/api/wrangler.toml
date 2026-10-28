@@ -520,7 +520,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      hashes (>= 32 chars). POST /api/v1/subscription/redeem
 #                                      returns 503 while unset. Changing it invalidates
 #                                      every unredeemed code.
-#   ELIZA_MAPS_ROUTER_API_KEY          Optional GraphHopper key for ELIZA_MAPS_ROUTER_URL.
+#   ELIZA_MAPS_ROUTER_API_KEY          Optional router key for ELIZA_MAPS_ROUTER_URL.
+#   ELIZA_MAPS_GEOCODER_API_KEY        Optional geocoder key for ELIZA_MAPS_GEOCODER_URL.
 #                                      Maps settings are listed in the cloud-api README.
 #   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
 #                                      (element 0 signs, all published at jwks_uri).

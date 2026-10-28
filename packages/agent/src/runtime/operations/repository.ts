@@ -10,7 +10,8 @@
  *
  * Hydration:
  *   1. Reap abandoned ops — `pending`/`running` with a confirmed dead local
- *      executor or older than `ABANDONED_AFTER_MS` are marked `failed` with code
+ *      executor, an earlier process with this host and PID, or older than
+ *      `ABANDONED_AFTER_MS` are marked `failed` with code
  *      `"abandoned"` (the process died mid-flight).
  *   2. Prune terminal ops — `succeeded`/`failed`/`rolled-back` records older
  *      than `RETENTION_MS` or beyond the `MAX_RECORDS` cap are deleted from
@@ -20,6 +21,7 @@
  * process doesn't accumulate state between hydrations.
  */
 
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { hostname } from "node:os";
 import path from "node:path";
@@ -106,6 +108,34 @@ function localExecutorExited(op: RuntimeOperation): boolean {
   }
 }
 
+const PROCESS_INCARNATION = randomUUID();
+
+/** Executor identity stamped on new operations by this process. */
+export function currentProcessOwner(): NonNullable<
+  RuntimeOperation["processOwner"]
+> {
+  return {
+    hostname: hostname(),
+    pid: process.pid,
+    incarnation: PROCESS_INCARNATION,
+  };
+}
+
+/**
+ * A live record with this host and PID but another incarnation was written
+ * by an earlier process that had the same PID (a container's PID 1 after a
+ * restart). Records from this process, from any repository, stay live.
+ */
+function ownedByEarlierProcess(op: RuntimeOperation): boolean {
+  const owner = op.processOwner;
+  return (
+    owner !== undefined &&
+    owner.hostname === hostname() &&
+    owner.pid === process.pid &&
+    owner.incarnation !== PROCESS_INCARNATION
+  );
+}
+
 function operationsDirFor(stateDir: string): string {
   return path.join(stateDir, "runtime-operations");
 }
@@ -180,7 +210,12 @@ export class FilesystemRuntimeOperationRepository
       // Reap abandoned operations: a process died with this op still "live".
       const isLive = op.status === "pending" || op.status === "running";
       const isStale = now - op.startedAt > ABANDONED_AFTER_MS;
-      if (isLive && (op.processOwner ? localExecutorExited(op) : isStale)) {
+      if (
+        isLive &&
+        (op.processOwner
+          ? ownedByEarlierProcess(op) || localExecutorExited(op)
+          : isStale)
+      ) {
         const reaped: RuntimeOperation = {
           ...op,
           status: "failed",

@@ -210,7 +210,7 @@ export async function runProviderWizard(
   });
   const choice = await prompt(`\n  Provider ${theme.muted("[1]")} `);
   const index = choice === "" ? 0 : Number(choice) - 1;
-  if (Number.isNaN(index) || index < 0 || index >= PROVIDERS.length) {
+  if (!Number.isInteger(index) || index < 0 || index >= PROVIDERS.length) {
     log(`${theme.warn("⚠")}  Invalid choice. Skipping model setup.`);
     return;
   }

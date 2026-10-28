@@ -166,6 +166,7 @@ export async function ensureRouteAuthorized(
 export async function readCompatJsonBody(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
+	options: { maxBytes?: number } = {},
 ): Promise<Record<string, unknown> | null> {
 	const preParsed = (req as { body?: unknown }).body;
 	if (preParsed && typeof preParsed === "object" && !Array.isArray(preParsed)) {
@@ -174,7 +175,9 @@ export async function readCompatJsonBody(
 
 	let buffered: Buffer | null;
 	try {
-		buffered = await readRequestBodyBuffer(req, { maxBytes: MAX_BODY_BYTES });
+		buffered = await readRequestBodyBuffer(req, {
+			maxBytes: options.maxBytes ?? MAX_BODY_BYTES,
+		});
 	} catch (error) {
 		const tooLarge =
 			typeof error === "object" &&

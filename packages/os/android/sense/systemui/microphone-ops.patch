@@ -1,0 +1,31 @@
+--- a/packages/SystemUI/src/com/android/systemui/appops/AppOpsControllerImpl.java
++++ b/packages/SystemUI/src/com/android/systemui/appops/AppOpsControllerImpl.java
+@@ -108,6 +108,8 @@
+     @VisibleForTesting
+     protected static final int[] OPS_MIC = new int[] {
+             AppOpsManager.OP_RECORD_AUDIO,
++            AppOpsManager.OP_RECORD_AUDIO_HOTWORD,
++            AppOpsManager.OP_RECORD_AUDIO_SANDBOXED,
+             AppOpsManager.OP_PHONE_CALL_MICROPHONE,
+             AppOpsManager.OP_RECEIVE_AMBIENT_TRIGGER_AUDIO,
+             AppOpsManager.OP_RECEIVE_SANDBOX_TRIGGER_AUDIO,
+--- a/packages/SystemUI/src/com/android/systemui/privacy/AppOpsPrivacyItemMonitor.kt
++++ b/packages/SystemUI/src/com/android/systemui/privacy/AppOpsPrivacyItemMonitor.kt
+@@ -74,6 +74,8 @@
+                 AppOpsManager.OP_CAMERA,
+                 AppOpsManager.OP_PHONE_CALL_CAMERA,
+                 AppOpsManager.OP_RECORD_AUDIO,
++                AppOpsManager.OP_RECORD_AUDIO_HOTWORD,
++                AppOpsManager.OP_RECORD_AUDIO_SANDBOXED,
+                 AppOpsManager.OP_PHONE_CALL_MICROPHONE,
+                 AppOpsManager.OP_RECEIVE_AMBIENT_TRIGGER_AUDIO,
+                 AppOpsManager.OP_RECEIVE_EXPLICIT_USER_INTERACTION_AUDIO,
+@@ -388,6 +390,8 @@
+                 AppOpsManager.OP_RECEIVE_AMBIENT_TRIGGER_AUDIO,
+                 AppOpsManager.OP_RECEIVE_EXPLICIT_USER_INTERACTION_AUDIO,
+                 AppOpsManager.OP_RECEIVE_SANDBOX_TRIGGER_AUDIO,
++                AppOpsManager.OP_RECORD_AUDIO_HOTWORD,
++                AppOpsManager.OP_RECORD_AUDIO_SANDBOXED,
+                 AppOpsManager.OP_RECORD_AUDIO -> PrivacyType.TYPE_MICROPHONE
+                 else -> return null
+             }

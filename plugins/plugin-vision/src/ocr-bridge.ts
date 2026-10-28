@@ -67,6 +67,14 @@ export class OcrBridgeService extends Service {
     return new Promise<OcrBridgeWord[] | null>((resolve) => {
       const timer = setTimeout(() => {
         this.pending.delete(requestId);
+        // A request that timed out can never be delivered. Drop it from the
+        // drain queue too, or the renderer runs on-device OCR on a stale frame
+        // for a request this agent already abandoned, then POSTs words the
+        // route rejects as `unknown_request`.
+        const queued = this.queue.findIndex(
+          (queuedRequest) => queuedRequest.requestId === requestId,
+        );
+        if (queued >= 0) this.queue.splice(queued, 1);
         logger.debug(
           `[OcrBridgeService] OCR request ${requestId} timed out after ${this.timeoutMs}ms`,
         );

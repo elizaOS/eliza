@@ -43,12 +43,16 @@ export const ECHO_WINDOW_MS = 9000;
 /** Word-overlap fraction above which a turn is treated as TTS echo. */
 export const ECHO_OVERLAP_THRESHOLD = 0.7;
 
+/**
+ * Split a transcript into comparable words. Unicode-aware, so a turn written in
+ * any script still has words: an ASCII-only strip turns every non-Latin turn
+ * into an empty one, and the gate then drops it as if it were noise. Apostrophes
+ * and hyphens inside a word stay part of it (`it's`, `twenty-three`).
+ */
 function words(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9'\s-]/gi, "")
-    .split(/\s+/)
-    .filter(Boolean);
+  return (
+    text.toLowerCase().match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu) ?? []
+  );
 }
 
 export interface ShouldRespondContext {

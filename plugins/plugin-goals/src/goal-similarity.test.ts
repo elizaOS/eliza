@@ -43,6 +43,41 @@ describe("scoreGoalSimilarity — non-Latin goal text", () => {
   });
 });
 
+describe("scoreGoalSimilarity — Unicode normalization", () => {
+  // The tokenizer splits words on combining marks, so the same goal written
+  // with a decomposed accent (e + U+0301, as some input methods and
+  // copy-paste produce) lost its accent and shared no token with the
+  // precomposed spelling. Dedup then created a second row for one goal.
+  it("scores the same goal written in NFC and NFD as a duplicate", () => {
+    expect(
+      score("Morning caf\u00e9 walk", "Morning cafe\u0301 walk"),
+    ).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("still separates two different accented goals", () => {
+    expect(
+      score("Morning caf\u00e9 walk", "Evening cafe\u0301 walk"),
+    ).toBeLessThan(0.85);
+  });
+
+  it("scores a decomposed Japanese goal as a duplicate", () => {
+    // Dakuten is a combining mark too: NFD splits ジョギング into single kana
+    // below the length floor, so the whole title shared no token at all.
+    expect(
+      score("毎朝ジョギングする", "毎朝ジョギングする".normalize("NFD")),
+    ).toBeGreaterThanOrEqual(0.85);
+  });
+
+  it("scores a decomposed Korean goal as a duplicate", () => {
+    expect(
+      score(
+        "매일 아침 30분 달리기하기",
+        "매일 아침 30분 달리기하기".normalize("NFD"),
+      ),
+    ).toBeGreaterThanOrEqual(0.85);
+  });
+});
+
 describe("scoreGoalSimilarity — English goal text", () => {
   it.each([
     ["Meditate every morning", "Meditate every morning", "", "", 1],

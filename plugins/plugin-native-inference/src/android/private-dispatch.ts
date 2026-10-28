@@ -53,6 +53,10 @@ export function startLocalAgentServer(
           frame,
           connection,
           bus: resolveAgentEventBus(runtime),
+          registerRenderer: coreRoutes?.registerNativeViewRenderer
+            ? (clientId, send) =>
+                coreRoutes.registerNativeViewRenderer!(runtime, clientId, send)
+            : undefined,
           expectedToken:
             env === process.env
               ? readAliasedEnv("ELIZA_API_TOKEN")

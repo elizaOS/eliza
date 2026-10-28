@@ -16,12 +16,10 @@
  */
 
 import crypto from "node:crypto";
-import path from "node:path";
 import {
 	EventType,
 	type IAgentRuntime,
 	logger,
-	resolveStateDir,
 	type VoiceEntityBoundPayload,
 	type VoiceSpeakerNameInferencePayload,
 } from "@elizaos/core";
@@ -30,8 +28,9 @@ import type {
 	VoiceNextSpeaker,
 	VoiceTurnSignal,
 } from "../services/voice/eot-classifier.js";
-import { VoiceProfileStore } from "../services/voice/profile-store.js";
+import type { VoiceProfileStore } from "../services/voice/profile-store.js";
 import type { VoiceAttributionOutput } from "../services/voice/speaker/attribution-pipeline.js";
+import { getSharedVoiceProfileStore } from "../services/voice/speaker/profile-store-factory.js";
 
 // ---------------------------------------------------------------------------
 // Store wiring (injectable for tests, mirrors the route handlers)
@@ -47,11 +46,7 @@ export function setVoiceEntityBindingStore(
 
 export async function getVoiceProfileStore(): Promise<VoiceProfileStore> {
 	if (storeOverride) return storeOverride;
-	const store = new VoiceProfileStore({
-		rootDir: path.join(resolveStateDir(), "voice-profiles"),
-	});
-	await store.init();
-	return store;
+	return getSharedVoiceProfileStore();
 }
 
 // ---------------------------------------------------------------------------
