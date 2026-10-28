@@ -52,6 +52,8 @@
     "src/voice/batch-conversation.ts",
     "src/voice/voice-session-client-core.ts",
     "src/**/*.d.ts",
-    "src/components/pages/InstalledAppsLauncher.tsx"
+    "src/components/pages/InstalledAppsLauncher.tsx",
+    "src/mobile-shell/index.ts",
+    "src/mobile-shell/core.ts"
   ]
 }
