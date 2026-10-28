@@ -91,15 +91,12 @@ function parseOutputLines(raw: string | null): number | undefined | null {
 function undeliveredReason(delivery: {
   stopReason: string;
   error?: string;
-  terminalFailure?: { message?: string };
 }): string | null {
   if (delivery.error) return delivery.error;
-  if (delivery.terminalFailure?.message) return delivery.terminalFailure.message;
-  const stopReason = delivery.stopReason.toLowerCase();
   if (
-    stopReason === "cancelled" ||
-    stopReason === "stopped" ||
-    stopReason === "error"
+    delivery.stopReason === "cancelled" ||
+    delivery.stopReason === "stopped" ||
+    delivery.stopReason === "error"
   )
     return `turn settled ${delivery.stopReason}`;
   return null;
