@@ -1197,6 +1197,7 @@ async function __hono_POST(c: AppContext) {
         new Uint8Array(buffer),
         languageCode,
         c.req.raw.signal,
+        finalMimeType,
       );
       const { segments, words, invalidFields } =
         parseWhisperTimestamps(payload);

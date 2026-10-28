@@ -32,6 +32,13 @@ identity and cancellation. It cannot install packages or select a trust authorit
 Its portable contract is included in `test:native-host`. Qualify the host adapter
 separately with real Android install/recovery tests; journal tests alone do not
 prove silent-install authority or product health.
+`updater.policy.PolicyEngine` decides when to run discovery, download and activation
+jobs. It gates them on signed time, device signals (unknown signals defer) and a local
+comfort window, and keeps a durable alert ledger. Hosts bind the ports: signed clock,
+signal readers, discovery, pending plan and activation. The engine reads no clock and
+installs nothing itself. Share one engine per ledger across scheduled jobs; runs
+serialize effects and ledger updates. Do not write that ledger from another engine
+or process. Its JVM contract is included in `test:native-host`.
 `LocalCredentialBroker` is a private loopback HTTP transport for the embedded
 native process. Hosts inject separate primary and pending-enrollment stores plus
 a nonempty private token. It is not a Capacitor method: do not pass that token or
@@ -171,8 +178,14 @@ private sink without persistence, logging or renderer output. Hosts must strip
 handled Intent data before passing lifecycle events to a WebView, use a bounded
 executor and supply coarse delivery-failure handling. The sink must validate state,
 PKCE, account identity and single-use exchange. `QUEUED` is transport admission,
-not authentication success. Portable JVM coverage is in `test:native-host`; Android
-intent/app-link delivery and provider callback registration need host qualification.
+not authentication success. `ResponseMode.FRAGMENT` admits `response_mode=fragment`
+returns, with the response in the fragment or an error in the query, never both.
+`OAuthBrowserLauncher` opens the authorize address in an Auth Tab when the browser
+supports it and hands the result to the callback. If the browser cannot verify the
+redirect host, or has no Auth Tab support, it opens a Custom Tab; the host then
+delivers the App Link intent to the same callback. Portable JVM coverage is in
+`test:native-host`; Android intent/app-link delivery, Auth Tab results and provider
+callback registration need host qualification.
 
 `NativeProcessLog` drains child diagnostics with bounded line buffers, literal
 secret redaction before truncation, UTF-8 byte-limited rotation and serialized
@@ -332,3 +345,14 @@ The gate retains the credential fingerprint session fence and derives its stable
 owner from the JSON tuple `[authority, userId, organizationId]`. This option changes
 storage ownership semantics: enable only with an explicit migration and database
 writer lease. These ports do not implement either one or enable product encryption.
+
+`NativeProviderAdmission` shares the native Cloud provider rules, protected binding
+identity, credential expiry, generation checks and compare-exchange rollback.
+Hosts keep encrypted storage, its mutation lock, the authenticated identity lookup
+and lifecycle retirement. This class does not admit a legacy key on startup or
+select an account. The native host test lane runs the existing provider contract
+with JDK 21 and `ELIZA_JSON_JAR`, or the pinned `org.json:json:20250517` Gradle cache.
+The compatibility host keeps its storage slot and subclass name; records do not
+move or change shape. The later native profile overrides Cloud embeddings with
+the admitted local BGE route; this extraction preserves the existing generic
+provider behavior.

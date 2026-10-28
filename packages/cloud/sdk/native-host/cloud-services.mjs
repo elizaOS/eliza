@@ -453,6 +453,9 @@ export function createCloudRoutes({
   verifiedAccountStore,
   credentialGate,
   pendingCredentialStore,
+  // false: the host has its own sign-in. `/cloud/login` and its status route answer
+  // 404, and no Cloud web origin (cloudSiteBase) is used.
+  browserSignIn = true,
 } = {}) {
   const billingEnabled = hostPolicy?.accountBilling !== false;
   if (
@@ -495,7 +498,7 @@ export function createCloudRoutes({
   } = hostPolicy;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
-  const site = origin(cloudSiteBase),
+  const site = browserSignIn ? origin(cloudSiteBase) : null,
     api = origin(cloudApiBase);
   const verifiedRequired = () =>
     Object.assign(new Error("Verified Cloud account activation required"), {
@@ -889,7 +892,11 @@ export function createCloudRoutes({
     try {
       await ready;
       let path = url.pathname;
-      if (!billingEnabled && path.startsWith("/cloud/account/")) {
+      if (
+        (!billingEnabled && path.startsWith("/cloud/account/")) ||
+        (!browserSignIn &&
+          (path === "/cloud/login" || path === "/cloud/login/status"))
+      ) {
         send(res, 404, { error: "Cloud route not available" });
         return true;
       }

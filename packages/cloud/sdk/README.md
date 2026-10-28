@@ -29,8 +29,10 @@ canvasVersion explicitly; artifact provenance must match both.
 Hosts supply explicit `hostPolicy` functions (projectAccountAccess,
 createNativeCloudAuth, requireNonSensitiveText, pickMessage, fundingError),
 planKeys, planCurrency, planInterval, speechLanguage, multipartPrefix and presentation
-messages, plus speechVoice. These are trusted host settings, never renderer
-input. The host remains responsible for origin admission and authenticating
+messages, plus speechVoice. A host with its own sign-in passes
+`browserSignIn: false`: `/cloud/login` and `/cloud/login/status` then answer
+404 and no `cloudSiteBase` is used. These are trusted host settings, never
+renderer input. The host remains responsible for origin admission and authenticating
 requests before this route handler. Native enrollment keeps its own registered
 application identity. Document runtimes are reviewed host-owned artifacts.
 

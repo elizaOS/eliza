@@ -55,6 +55,7 @@ export type VoiceModelQuant =
   | "q6_k"
   | "q8_0"
   | "fv5-pair16-v1"
+  | "fv5-b5x3t7-v1"
   | "gguf-fp32"
   | "fp16"
   | "onnx-fp32"

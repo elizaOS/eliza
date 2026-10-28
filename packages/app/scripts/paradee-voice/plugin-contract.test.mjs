@@ -8,7 +8,10 @@ import { fileURLToPath } from "node:url";
 import { normalizeWords } from "../voice-quality/wer.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const library = path.resolve(here, "../../platforms/android/paradee-voice");
+const library = path.resolve(
+  here,
+  "../../../../plugins/plugin-local-inference/native/android",
+);
 const voice = (root) => path.join(library, root, "java/ai/eliza/voice");
 let classes;
 
@@ -20,9 +23,6 @@ before(() => {
       "-d",
       classes,
       path.join(voice("src/main"), "Wer.java"),
-      path.join(voice("src/main"), "RecognizerUnavailable.java"),
-      path.join(voice("capacitor/src/main"), "TranscriptionRoute.java"),
-      path.join(voice("capacitor/src/main"), "RequestCancels.java"),
       path.join(here, "plugin-contract/PluginContract.java"),
     ],
     { stdio: "pipe" },
@@ -61,9 +61,34 @@ test("device Wer normalizes like the host wer.ts", () => {
   });
 });
 
-test("plugin transcription route and request cancellation", () => {
-  execFileSync("java", ["-cp", classes, "ai.eliza.voice.PluginContract"], {
-    stdio: "pipe",
-    timeout: 15000,
-  });
+test("the on-device recognizer accepts only plain language tags and defaults to en-US", () => {
+  const androidJar = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  execFileSync(
+    "javac",
+    [
+      "--release",
+      "21",
+      "-cp",
+      androidJar,
+      "-sourcepath",
+      path.join(library, "src/main/java"),
+      "-d",
+      classes,
+      path.join(here, "plugin-contract/RecognizerLanguageCheck.java"),
+    ],
+    { stdio: "pipe" },
+  );
+  const out = execFileSync(
+    "java",
+    [
+      "-cp",
+      `${classes}${path.delimiter}${androidJar}`,
+      "ai.eliza.voice.RecognizerLanguageCheck",
+    ],
+    { encoding: "utf8", timeout: 15000 },
+  );
+  assert.match(out, /PASS recognizer language tags/);
 });

@@ -171,7 +171,7 @@ describe("request-bound Calendar read coverage", () => {
     const reply = outcome.data?.replyContext as Record<string, unknown>;
     expect(reply.facts).toContain("Report absence only");
     expect(reply.userFacingFacts).toBe(
-      "No upcoming event was found in Eliza Calendar from Oct 3, 2026 to before Nov 2, 2026.",
+      "No upcoming event was found in Eliza Calendar from Saturday, Oct 3, 2026 to before Monday, Nov 2, 2026. This read covers only those sources and dates; it does not establish that the whole calendar is clear.",
     );
     const bindings = f.context.metadata
       ?.calendarReadBindings as CalendarReadBinding[];

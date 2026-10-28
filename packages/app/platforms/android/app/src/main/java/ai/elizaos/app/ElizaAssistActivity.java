@@ -16,6 +16,10 @@ public class ElizaAssistActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        // Only Android's caller identity can mark a listener invocation. Deep-link fields
+        // remain navigation data and never authorize starting the microphone.
+        String caller = savedInstanceState == null && android.os.Build.VERSION.SDK_INT >= 34 ? getLaunchedFromPackage() : null;
+        new ai.eliza.plugins.system.SenseListenerClient(this).recordInvocation(caller);
         Intent source = getIntent();
         String action = source != null ? source.getAction() : null;
         boolean voiceCommand = Intent.ACTION_VOICE_COMMAND.equals(action);

@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { getEmbeddingVectorSpace, ModelType } from "@elizaos/core";
+import { EventType, getEmbeddingVectorSpace, ModelType } from "@elizaos/core";
 import { prepareBgeEmbeddingInput } from "@elizaos/plugin-native-inference/model-catalog/bge-input";
 import {
 	afterAll,
@@ -322,6 +322,34 @@ describe("local-ai compat adapter behavior", () => {
 		};
 		expect(initParams.use_mmap).toBe(true);
 		expect(initParams.swa_full).toBe(false);
+	});
+
+	it("reports a MODEL_USED listener failure instead of an unhandled rejection", async () => {
+		const failure = new Error("usage meter offline");
+		const reportError = vi.fn();
+		const runtime = {
+			getSetting: vi.fn(() => undefined),
+			emitEvent: vi.fn(async () => {
+				throw failure;
+			}),
+			reportError,
+		} as unknown as IAgentRuntime;
+
+		const text = await localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+			prompt: "meter this",
+		} as never);
+
+		expect(text).toBe("hello");
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(runtime.emitEvent).toHaveBeenCalledWith(
+			EventType.MODEL_USED,
+			expect.objectContaining({ source: "local-ai", provider: "local-ai" }),
+		);
+		expect(reportError).toHaveBeenCalledWith(
+			"LocalAIModelUsage.emitEvent",
+			failure,
+			expect.objectContaining({ model: expect.any(String) }),
+		);
 	});
 
 	it("sends a desktop-safe prompt and forwards sampler controls", async () => {

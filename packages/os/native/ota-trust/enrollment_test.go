@@ -16,7 +16,7 @@ func enrollmentFixture(t *testing.T) ([]byte, []byte) {
 	t.Helper()
 	r := fixture(t)
 	sum := sha256.Sum256(r.root)
-	c := enrollmentConfig{Schema: 1, Repository: "eliza-research/senior-care", Distribution: "launcher", Signer: string(bytes.Repeat([]byte("a"), 64)), RootHash: hex.EncodeToString(sum[:]), MetadataBase: baseURL, Hosts: []string{"updates.example.com", "github.com", "release-assets.githubusercontent.com"}}
+	c := enrollmentConfig{Schema: 1, Repository: "example-org/example-app", Distribution: "launcher", Signer: string(bytes.Repeat([]byte("a"), 64)), RootHash: hex.EncodeToString(sum[:]), MetadataBase: baseURL, Hosts: []string{"updates.example.com", "github.com", "release-assets.githubusercontent.com"}}
 	data, e := json.Marshal(c)
 	if e != nil {
 		t.Fatal(e)

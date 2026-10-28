@@ -1,4 +1,21 @@
+import { findViewActionHandoff } from "@elizaos/core/protocol";
+import { evaluatePlannedReplyEgress } from "../services/message/egress-policy.ts";
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
+import {
+  replyNamesStructuredEffectDestination,
+  structuredEffectFromToolResult,
+} from "../services/message/structured-tool-effect.ts";
+import {
+  contextDiagnosticOptions,
+  describePlannerSourceReview,
+  type PlannerSourceReviewAttribution,
+} from "./evaluator-context-attribution.ts";
+
+import {
+  applyTypedReadReply,
+  createTypedReadEgressReceipt,
+  partialTypedReadReply,
+} from "./typed-read-reply";
 /**
  * The planner's tool-calling agent loop: iteratively calls the planner model,
  * dispatches queued tool calls, and either gates or runs the trajectory
@@ -74,11 +91,13 @@ import {
   isPlainObject,
   isProviderContextOverflowError,
   isProviderContextOverflowFailure,
+  isRateLimitError,
   type JSONSchema,
   MODEL_CANONICAL_CONTEXT,
   ModelType,
   mergeChainingLoopConfig,
   modelProviderErrorDetail,
+  normalizeEffectReceipts,
   normalizePromptSegments,
   OWNED_CONTEXT_SOURCE_SCOPE,
   PROVIDER_CONTEXT_OVERFLOW,
@@ -94,6 +113,7 @@ import {
   promotedParentRoutingHint,
   providerRateLimitRetryAt,
   type ResponseSkeleton,
+  readProviderRateLimit,
   readSubaction,
   readWorkspaceDeltaReceipt,
   referencePlannerQueryTokens,
@@ -382,6 +402,14 @@ export async function runPlannerLoop(
     ...params,
     config: { ...params.config, maxTrajectoryPromptTokens: maxPromptTokens },
     onModelUsage: observeModelUsage,
+    ...(params.resolveTypedReadReply
+      ? {
+          admitTypedReadCorrection: () =>
+            getStreamingContext()?.abortSignal?.aborted !== true &&
+            usage.promptTokens < maxPromptTokens &&
+            params.admitTypedReadCorrection?.() !== false,
+        }
+      : {}),
   };
   let result: PlannerLoopResult;
   let liveTrajectory: PlannerTrajectory | undefined;
@@ -404,7 +432,68 @@ export async function runPlannerLoop(
     // Failure-aware synthesis is the final authority. Its grounded answer must
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
     // another synthesis that lacks the recorded failure context.
-    const final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    let final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    if (
+      final.status === "finished" &&
+      final.evaluator?.success === true &&
+      latestUnresolvedFailedNonTerminalToolStep(final.trajectory)
+    ) {
+      // The returned verdict is consumed as authority by parent planners.
+      // Keep the raw model output in trajectory.evaluatorOutputs unchanged;
+      // preserve successful sibling receipts and the normal reply postpasses.
+      final = {
+        ...final,
+        evaluator: {
+          ...final.evaluator,
+          success: false,
+          requestFullyCovered: false,
+          // This status disclaims the failed overall completion described by
+          // the reply; successful sibling receipts still prove their effects.
+          replyEffectStatus: "non_applied",
+          effectReceiptIds: undefined,
+          outcomeCoverage: undefined,
+          messageToUser: final.finalMessage,
+        },
+      };
+    }
+    const binding = params.resolveTypedReadReply?.({
+      trajectory: final.trajectory,
+      nowMs: Date.now(),
+      admittedToolNames: (params.tools ?? []).map((tool) => tool.name),
+    });
+    if (
+      binding &&
+      final.status === "finished" &&
+      !final.terminalFailure &&
+      final.finalMessage &&
+      !final.endedWithDeliberateSilence
+    ) {
+      const output: EvaluatorOutput = {
+        ...final.evaluator,
+        decision: "FINISH",
+        success: final.evaluator?.success ?? false,
+        thought:
+          final.evaluator?.thought ??
+          "Checking terminal public-read output against producer facts.",
+        messageToUser: final.finalMessage,
+      };
+      const checked = applyTypedReadReply(
+        output,
+        { ...binding, phase: "final-answer" },
+        true,
+      );
+      const guarded = checked.typedReadRejected
+        ? partialTypedReadReply(output, binding)
+        : checked;
+      const receipt = createTypedReadEgressReceipt(guarded, binding);
+      if (receipt) params.onTypedReadEgress?.(receipt);
+      return {
+        ...final,
+        evaluator: guarded,
+        finalMessage: guarded.messageToUser,
+        modelUsage: usage,
+      };
+    }
     return { ...final, modelUsage: usage };
   } catch (error) {
     // error-policy:J4 Preserve settled effects and pending work at a resource boundary.
@@ -583,7 +672,15 @@ async function runPlannerLoopIterations(
         source: "planner-loop",
         createdAt: Date.now(),
         content: hasAwaitingDeviceExecutionMarker(postToolReplySeed.result)
-          ? "The durable request is still pending on the external device. Write an honest partial reply; do not claim it applied or ask for manual confirmation without a native request. Do not call or repeat any tool."
+          ? findViewActionHandoff([
+              {
+                success: postToolReplySeed.result.success,
+                actionName: postToolReplySeed.toolCall.name,
+                values: postToolReplySeed.result.data?.values,
+              },
+            ])?.navigationPrepared === true
+            ? "This app-view navigation is prepared for the originating renderer. The reply carries its bound handoff; the renderer can execute and acknowledge it only after receiving that reply. Use brief prospective navigation wording. Preparation is not failure or proof of nondelivery: do not say the view failed to open, ask the user to retry, or claim delivery already completed. Do not call or repeat any tool."
+            : "The durable request is still pending on the external device. Write an honest partial reply; do not claim it applied or ask for manual confirmation without a native request. Do not call or repeat any tool."
           : "The tool result in this turn is already settled and complete. Write the final user-facing reply in the agent's natural voice from that result. Do not describe the work as starting, opening now, pending, or still in progress. If the result provides a link object, include it as a Markdown link using its label and href. Include internal IDs or raw tool data only when explicitly requested and safe to disclose; never expose secrets or internal reasoning.",
       }
     : undefined;
@@ -659,6 +756,7 @@ async function runPlannerLoopIterations(
   }
   const failures: FailureLike[] = [];
   let terminalOnlyContinuations = 0;
+  let silenceReviewed = false;
   let consecutiveCodingTerminalContinuations = 0;
   let codingVerificationDeferrals = 0;
   let lastCodingVerificationProgressCount = -1;
@@ -1074,13 +1172,13 @@ async function runPlannerLoopIterations(
         effectReceiptIds,
       },
       terminalFailure: {
-        kind:
-          modelProviderErrorDetail(error)?.status === 429
-            ? "rate_limited"
-            : "provider_issue",
+        kind: isRateLimitError(error) ? "rate_limited" : "provider_issue",
         code: "PLANNER_INCOMPLETE_PROVIDER_FAILURE",
         transient: false,
         message,
+        ...(isRateLimitError(error) && readProviderRateLimit(error)
+          ? { rateLimit: readProviderRateLimit(error) }
+          : {}),
       },
       // Each dynamic snippet was checked before appending the mandatory
       // incomplete notice. A generic final-message fallback must not replace
@@ -1992,6 +2090,59 @@ async function runPlannerLoopIterations(
         };
       }
 
+      const typedReadTerminal = params.resolveTypedReadReply?.({
+        trajectory,
+        nowMs: Date.now(),
+        admittedToolNames: (params.tools ?? []).map((tool) => tool.name),
+      });
+      const typedReadDeclined = Boolean(
+        typedReadTerminal &&
+          trajectory.plannedQueue.length === 0 &&
+          allTrajectorySteps(trajectory).some(
+            (step) =>
+              step.result &&
+              step.toolCall &&
+              ["WEB_FETCH", "WEB_SEARCH"].includes(
+                step.toolCall.name.toUpperCase(),
+              ),
+          ) &&
+          plannerOutput.toolCalls.length > 0 &&
+          plannerOutput.toolCalls.every((call) =>
+            ["IGNORE", "NONE"].includes(call.name.toUpperCase()),
+          ),
+      );
+      if (
+        typedReadTerminal &&
+        (typedReadDeclined ||
+          plannerOutput.toolCalls.length === 0 ||
+          (plannerOutput.toolCalls.every(isTerminalToolCall) &&
+            plannerOutput.toolCalls.some(
+              (call) => call.name.toUpperCase() === "REPLY",
+            )))
+      ) {
+        // A native/text terminal is a proposed answer, not evidence of a completed read.
+        const evaluator = await evaluateTrajectory(
+          params,
+          trajectory,
+          iteration,
+          typedReadDeclined,
+        );
+        trajectory.evaluatorOutputs.push(evaluator);
+        appendEvaluatorContextEvent(
+          trajectory,
+          evaluator,
+          iteration,
+          redactDiagnosticText,
+        );
+        if (evaluator.decision === "FINISH")
+          return finishWithEvaluator(evaluator);
+        if (evaluator.decision === "NEXT_RECOMMENDED") {
+          if (!preferRecommendedToolCall(trajectory, evaluator))
+            trajectory.plannedQueue.length = 0;
+        } else trajectory.plannedQueue.length = 0;
+        continue;
+      }
+
       if (plannerOutput.toolCalls.length === 0) {
         if (
           requireNonTerminalToolCall &&
@@ -2306,6 +2457,29 @@ async function runPlannerLoopIterations(
           if (settled) return settled;
           continue;
         }
+        // The message service delivers a reply on an owed turn regardless,
+        // so a planner that chose silence before doing anything reconsiders
+        // once with the tools and context it already has.
+        const hasReplyCall = plannerOutput.toolCalls.some(
+          (toolCall) => toolCall.name.toUpperCase() === "REPLY",
+        );
+        if (
+          params.replyOwed &&
+          !hasReplyCall &&
+          !silenceReviewed &&
+          !hasExecutedNonTerminalTool(trajectory)
+        ) {
+          silenceReviewed = true;
+          appendPlannerModelFeedbackEvent(trajectory, {
+            id: `silent-terminal-review:${iteration}`,
+            type: "instruction",
+            source: "planner-loop",
+            createdAt: Date.now(),
+            content:
+              "Stage 1 decided to respond to this message, so a reply is owed; ending with IGNORE/STOP delivers nothing. Answer with REPLY (the answer, or an honest statement of what you cannot do), or call a tool the request needs. Nothing has been delivered or executed.",
+          });
+          continue;
+        }
         if (codingDrainQueue) {
           const verificationTerminal =
             await handleCodingVerificationTerminal(iteration);
@@ -2320,9 +2494,6 @@ async function runPlannerLoopIterations(
         // accompanying the call is scratch reasoning, not a user reply
         // ("We should wait for the sub-agent result before replying."
         // reached Discord verbatim, live 2026-06-12).
-        const hasReplyCall = plannerOutput.toolCalls.some(
-          (toolCall) => toolCall.name.toUpperCase() === "REPLY",
-        );
         const finalMessage = hasReplyCall
           ? terminalMessageFromToolCalls(
               plannerOutput.toolCalls,
@@ -2826,11 +2997,8 @@ async function runPlannerLoopIterations(
     }
 
     if (
-      latestResult?.success === false &&
-      latestResult.failureProvenance?.retryable === true &&
-      latestResult.data?.acceptance === "rejected" &&
-      latestResult.data?.executionStatus === "not_started" &&
-      !latestResult.effectReceipts?.length &&
+      latestResult !== undefined &&
+      isRetryablePreExecutionRejection(latestResult) &&
       !hasExecutionPrerequisite(latestResult)
     ) {
       // A typed pre-execution rejection is safe to repair, not proof that an
@@ -2921,13 +3089,18 @@ async function runPlannerLoopIterations(
     // Historical harmless failures remain in the retry ledger; only unresolved
     // failures below prevent replanning from a later successful read.
     const pendingReadReplan =
-      lastPlannerExplicitCompleted === false &&
-      trajectory.plannedQueue.length === 0 &&
-      isSettledInternalSuccess(latestResult) &&
-      latestResult.data?.readOnlyOperation === true &&
-      !latestResult.failureProvenance &&
-      (latestResult.effectReceipts?.length ?? 0) === 0 &&
-      !latestUnresolvedFailedNonTerminalToolStep(trajectory);
+      (lastPlannerExplicitCompleted === false &&
+        trajectory.plannedQueue.length === 0 &&
+        isSettledInternalSuccess(latestResult) &&
+        latestResult.data?.readOnlyOperation === true &&
+        !latestResult.failureProvenance &&
+        (latestResult.effectReceipts?.length ?? 0) === 0 &&
+        !latestUnresolvedFailedNonTerminalToolStep(trajectory)) ||
+      canReplanPendingReceiptRead({
+        trajectory,
+        failures,
+        lastPlannerExplicitCompleted,
+      });
     const pendingMutationReplan = canReplanPendingCommittedMutation({
       trajectory,
       failures,
@@ -3021,22 +3194,28 @@ async function runPlannerLoopIterations(
     // action-owned completion. Falls through on any ambiguity. See
     // `tryGateEvaluator` for the full contract.
     const gateStartedAt = Date.now();
-    const gatedDecision = evaluateSettledReply
-      ? null
-      : (trySubPlannerVerdictGate({
-          trajectory,
-          failures,
-          lastPlannerExplicitCompleted,
-          declaredIntentCount,
-        }) ??
-        (requiresIntentEvaluation
-          ? null
-          : tryGateEvaluator({
-              trajectory,
-              failures,
-              lastPlannerExplicitMessageToUser,
-              lastPlannerExplicitCompleted,
-            })));
+    const typedReadBinding = params.resolveTypedReadReply?.({
+      trajectory,
+      nowMs: Date.now(),
+      admittedToolNames: (params.tools ?? []).map((tool) => tool.name),
+    });
+    const gatedDecision =
+      evaluateSettledReply || typedReadBinding
+        ? null
+        : (trySubPlannerVerdictGate({
+            trajectory,
+            failures,
+            lastPlannerExplicitCompleted,
+            declaredIntentCount,
+          }) ??
+          (requiresIntentEvaluation
+            ? null
+            : tryGateEvaluator({
+                trajectory,
+                failures,
+                lastPlannerExplicitMessageToUser,
+                lastPlannerExplicitCompleted,
+              })));
     if (gatedDecision) {
       const { output: gated, reason } = gatedDecision;
       trajectory.evaluatorOutputs.push(
@@ -3327,7 +3506,7 @@ function renderPlannerModelInput(params: {
   const original = params.trajectory.modelBaseContext ?? params.context;
   const selected =
     params.allowSourceSelection && !params.codingMode
-      ? selectCompletionContext(original)
+      ? selectCompletionContext(original, { historicalEffects: true })
       : {
           context: original,
           applied: false,
@@ -3434,7 +3613,7 @@ function renderPlannerModelInput(params: {
       id: "planner-context-selection",
       label: "planner_context",
       stable: false,
-      content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nThese are Stage 1's selected dialogue sources, not proof that every stored message was read; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
+      content: `${JSON.stringify({ selection: selected.selection, omittedSourceCount: selected.omittedSourceCount })}\nThese are selected dialogue sources; validated outcomes for omitted reviewed requests remain with the complete originals. This is not proof that every stored message was read; current request, standing provider constraints, selected assistant referents/pending work and all current tool receipts remain complete. Explicit live-record filters (such as a keyword and date bounds) do not by themselves require prior dialogue: use the supplied constraints and the live tool. Restore history to resolve a specific missing constraint, correction, referent or historical dependency. If such a dependency is uncertain, call RESTORE_CONTEXT alone with scope=history before taking effects. Every original source will be restored for this and all later planner rounds. Never infer or count omitted messages or replay an action to retrieve conversation context.`,
     });
   const template = params.template ?? plannerTemplate;
   const scopedTemplate =
@@ -4786,6 +4965,7 @@ async function dispatchPlannerModelCall(params: {
 
   // A per-tool subset cannot narrow later planning. Only unanimous, complete,
   // request-bound whole-turn review may select originals for subsequent stages.
+  let sourceReviewAttribution: PlannerSourceReviewAttribution | undefined;
   const domainCalls = parsed.toolCalls.filter(
     (call) =>
       !isTerminalToolCall(call) &&
@@ -4822,6 +5002,19 @@ async function dispatchPlannerModelCall(params: {
         })
       : undefined;
     const accepted = reviewed?.applied ? selection : undefined;
+    if (params.recorder && params.trajectoryId)
+      sourceReviewAttribution = describePlannerSourceReview({
+        original,
+        newReview,
+        submitted,
+        selection,
+        previousApplied: previous.applied,
+        unanimous,
+        accepted,
+        offeredSourceSetId:
+          renderedInput.actionSourceSelectionSchema?.properties?.sourceSetId
+            ?.enum?.[0],
+      });
     params.trajectory.modelBaseContext = {
       ...original,
       metadata: {
@@ -4895,6 +5088,7 @@ async function dispatchPlannerModelCall(params: {
     prefixHash,
     logger: params.runtime.logger,
     providerAttributionState: params.providerAttributionState,
+    sourceReviewAttribution,
   });
 
   if (params.sourceReply) {
@@ -5175,6 +5369,7 @@ async function recordPlannerStage(args: {
   segmentHashes: string[];
   prefixHash: string;
   providerAttributionState?: PlannerLoopParams["providerAttributionState"];
+  sourceReviewAttribution?: PlannerSourceReviewAttribution;
   logger?: PlannerRuntime["logger"];
 }): Promise<void> {
   if (!args.recorder || !args.trajectoryId) return;
@@ -5216,7 +5411,11 @@ async function recordPlannerStage(args: {
         messages: args.modelParams.messages,
         tools: args.modelParams.tools,
         toolChoice: args.modelParams.toolChoice,
-        providerOptions: args.modelParams.providerOptions,
+        providerOptions: contextDiagnosticOptions(
+          args.modelParams.providerOptions,
+          args.sourceReviewAttribution,
+          "plannerSourceSelection",
+        ),
         response: responseText,
         ...(typeof args.raw !== "string" && args.raw.content
           ? { responseContent: args.raw.content }
@@ -5355,7 +5554,7 @@ function evaluatorFailureAfterInternalEffect(
   const noProvider =
     error instanceof Error && error.name === "NoModelProviderConfiguredError";
   if (!effectResult) return undefined;
-  if (!noProvider && !isModelProviderError(error)) {
+  if (!noProvider && !isModelProviderError(error) && !isRateLimitError(error)) {
     if (
       trajectory.codingMode === true ||
       isProviderContextOverflowFailure(error) ||
@@ -5372,14 +5571,20 @@ function evaluatorFailureAfterInternalEffect(
   // A later read cannot erase an earlier settled effect. Keep
   // success/data/receipts intact, and propagate presentation failure through
   // the existing non-replayable boundary instead of promoting internal facts.
-  const replyFailure = createUnavailableGroundedActionReply({
-    kind: noProvider
-      ? "no_provider"
-      : modelProviderErrorDetail(error)?.status === 429
-        ? "rate_limited"
-        : "provider_issue",
-    code: "EVALUATOR_REPLY_GENERATION_FAILED",
-  }).failure;
+  const providerRateLimit = isRateLimitError(error)
+    ? readProviderRateLimit(error)
+    : undefined;
+  const replyFailure = {
+    ...createUnavailableGroundedActionReply({
+      kind: noProvider
+        ? "no_provider"
+        : isRateLimitError(error)
+          ? "rate_limited"
+          : "provider_issue",
+      code: "EVALUATOR_REPLY_GENERATION_FAILED",
+    }).failure,
+    ...(providerRateLimit ? { rateLimit: providerRateLimit } : {}),
+  };
   effectResult.replyFailure = replyFailure;
   return { status: "finished", trajectory, terminalFailure: replyFailure };
 }
@@ -5388,9 +5593,21 @@ async function evaluateTrajectory(
   params: PlannerLoopParams,
   trajectory: PlannerTrajectory,
   iteration: number,
+  typedReadFinalizing = false,
 ): Promise<EvaluatorOutput> {
+  const typedReadOptions = params.resolveTypedReadReply
+    ? {
+        resolveTypedReadReply: params.resolveTypedReadReply,
+        admittedToolNames: (params.tools ?? []).map((tool) => tool.name),
+        iteration,
+        onUsage: params.onModelUsage,
+        admitTypedReadCorrection: params.admitTypedReadCorrection,
+        ...(typedReadFinalizing ? { typedReadFinalizing: true as const } : {}),
+      }
+    : {};
   if (params.evaluate) {
     return params.evaluate({
+      ...typedReadOptions,
       runtime: params.runtime,
       context: trajectory.context,
       trajectory,
@@ -5398,6 +5615,7 @@ async function evaluateTrajectory(
   }
 
   return runEvaluator({
+    ...typedReadOptions,
     hasUnresolvedToolFailure:
       latestUnresolvedFailedNonTerminalToolStep(trajectory) !== undefined,
     runtime: params.runtime,
@@ -6737,7 +6955,8 @@ function latestUnresolvedFailedNonTerminalToolStep(
     if (
       step.result.success === false &&
       (step.result.data as { readOnlyOperation?: unknown } | undefined)
-        ?.readOnlyOperation === true
+        ?.readOnlyOperation === true &&
+      !isRetryablePreExecutionRejection(step.result)
     ) {
       continue;
     }
@@ -6746,22 +6965,13 @@ function latestUnresolvedFailedNonTerminalToolStep(
     if (
       step.result.success === false &&
       (step.result.data as { coachingFailure?: unknown } | undefined)
-        ?.coachingFailure === true
+        ?.coachingFailure === true &&
+      !isRetryablePreExecutionRejection(step.result)
     ) {
       continue;
     }
-    // Typed retryable validation rejections prove no operation started. Like
-    // read-before-write coaching, they remain full evidence for replanning but
-    // cannot turn a later verified completed outcome into a failed mutation.
-    if (
-      step.result.success === false &&
-      step.result.failureProvenance?.retryable === true &&
-      step.result.data?.acceptance === "rejected" &&
-      step.result.data?.executionStatus === "not_started" &&
-      !step.result.effectReceipts?.length
-    ) {
-      continue;
-    }
+    // Rejected drafts remain unresolved until the same operation succeeds.
+    // The absence of an effect is not proof that the user request completed.
     const operationKey = plannerToolOperationKey(step.toolCall, step.result);
     if (step.result.success === false || step.result.error != null) {
       unresolvedByOperation.delete(operationKey);
@@ -6770,18 +6980,171 @@ function latestUnresolvedFailedNonTerminalToolStep(
       // Identical arguments do not prove every failed effect succeeded.
       const previous = unresolvedByOperation.get(operationKey);
       if (
+        !isRetryablePreExecutionRejection(previous?.result) &&
         !previous?.result?.effectReceipts?.some(
           (receipt) => receipt.outcome === "failed",
         )
       ) {
         unresolvedByOperation.delete(operationKey);
       }
+      resolveRejectedCallsSupersededBy(
+        step,
+        unresolvedByOperation,
+        trajectory.outcomeIntents?.length ?? 0,
+      );
       resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
       resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
       resolveFailedEffectsSupersededBy(step, unresolvedByOperation);
     }
   }
   return [...unresolvedByOperation.values()].at(-1);
+}
+
+/** A schema/validation refusal with explicit proof that dispatch did not start. */
+function isRetryablePreExecutionRejection(
+  result: PlannerToolResult | undefined,
+): boolean {
+  return (
+    result?.success === false &&
+    result.failureProvenance?.retryable === true &&
+    result.data?.acceptance === "rejected" &&
+    result.data?.executionStatus === "not_started" &&
+    !result.effectReceipts?.length
+  );
+}
+
+/** Registered dispatch metadata correlates child and umbrella calls without guessing names. */
+function rejectedRetryCall(step: PlannerStep): PlannerToolCall | undefined {
+  const call = step.toolCall;
+  if (!call) return undefined;
+  const dispatch =
+    step.result?.inferredSubaction ?? step.result?.registeredSubaction;
+  return dispatch
+    ? {
+        ...call,
+        name: dispatch.child,
+        params: { ...call.params, [dispatch.discriminator]: dispatch.value },
+      }
+    : call;
+}
+
+function resolveRejectedCallsSupersededBy(
+  step: PlannerStep,
+  unresolvedByOperation: Map<string, PlannerStep>,
+  declaredIntentCount: number,
+): void {
+  const result = step.result,
+    call = rejectedRetryCall(step);
+  if (
+    !call ||
+    !result ||
+    result.success !== true ||
+    result.error != null ||
+    hasExecutionPrerequisite(result) ||
+    result.data?.requiresInput === true ||
+    result.effectReceipts?.some((receipt) => receipt.outcome === "failed")
+  )
+    return;
+  for (const [key, rejected] of unresolvedByOperation) {
+    if (!isRetryablePreExecutionRejection(rejected.result)) continue;
+    const failedCall = rejectedRetryCall(rejected);
+    if (
+      !failedCall ||
+      failedCall.name.toUpperCase() !== call.name.toUpperCase() ||
+      plannerToolDiscriminatorValue(failedCall) !==
+        plannerToolDiscriminatorValue(call)
+    )
+      continue;
+    const params = { ...failedCall.params };
+    const invalidNames = rejected.result?.data?.invalidParameterNames;
+    if (Array.isArray(invalidNames))
+      for (const name of invalidNames) {
+        if (typeof name !== "string" || TARGET_PARAMETER_KEY_PATTERN.test(name))
+          continue;
+        const value = params[name];
+        // A rejected composite can still carry an explicit target. Retain those
+        // bindings while omitting the rejected non-target representation hints.
+        const targets = isObjectRecord(value)
+          ? Object.fromEntries(
+              Object.entries(value).filter(
+                ([field, value]) =>
+                  TARGET_PARAMETER_KEY_PATTERN.test(field) &&
+                  isSuppliedParameterValue(value),
+              ),
+            )
+          : {};
+        if (Object.keys(targets).length) params[name] = targets;
+        else delete params[name];
+      }
+    const targets = Object.entries(params).flatMap(([name, value]) => {
+      if (
+        TARGET_PARAMETER_KEY_PATTERN.test(name) &&
+        isSuppliedParameterValue(value)
+      )
+        return [
+          {
+            path: [name],
+            value,
+            mayMove: Array.isArray(invalidNames) && invalidNames.includes(name),
+          },
+        ];
+      return isObjectRecord(value)
+        ? Object.entries(value)
+            .filter(
+              ([field, target]) =>
+                TARGET_PARAMETER_KEY_PATTERN.test(field) &&
+                isSuppliedParameterValue(target),
+            )
+            .map(([field, value]) => ({
+              path: [name, field],
+              value,
+              mayMove: false,
+            }))
+        : [];
+    });
+    const completedTargets = Object.entries(call.params ?? {}).flatMap(
+      ([name, value]) =>
+        TARGET_PARAMETER_KEY_PATTERN.test(name)
+          ? [value]
+          : isObjectRecord(value)
+            ? Object.entries(value)
+                .filter(([field]) => TARGET_PARAMETER_KEY_PATTERN.test(field))
+                .map(([, value]) => value)
+            : [],
+    );
+    if (
+      targets.some((target) => {
+        let current: unknown = call.params;
+        for (const field of target.path)
+          current =
+            isObjectRecord(current) && Object.hasOwn(current, field)
+              ? current[field]
+              : undefined;
+        return (
+          !correlationValuesEqual(target.value, current) &&
+          !(
+            target.mayMove &&
+            completedTargets.some((value) =>
+              correlationValuesEqual(target.value, value),
+            )
+          )
+        );
+      })
+    )
+      continue;
+    const hasTarget = targets.length > 0;
+    // A malformed envelope with no machine-stable target cannot discharge
+    // several declared outcomes merely because another call used the same tool.
+    if (!hasTarget && declaredIntentCount > 1) continue;
+    if (
+      malformedCallSupersededBy(
+        { ...failedCall, params },
+        rejected.result,
+        call,
+      )
+    )
+      unresolvedByOperation.delete(key);
+  }
 }
 
 /** Canonicalizes the calendar wrapper's explicitly supported operation aliases. */
@@ -6953,6 +7316,9 @@ function resolveMalformedCallsSupersededBy(
     ) {
       continue;
     }
+    // Typed no-dispatch refusals require a successful exact operation, not a
+    // merely similar constructive subaction accepted by legacy correlation.
+    if (isRetryablePreExecutionRejection(failed.result)) continue;
     if (!isMalformedCallFailure(failed.result)) continue;
     if (!malformedCallSupersededBy(failedCall, failed.result, call)) continue;
     unresolvedByOperation.delete(key);
@@ -7900,6 +8266,25 @@ function isRepeatableObservation(result: PlannerToolResult): boolean {
     : result.data?.readOnlyOperation === true;
 }
 
+/** Canonical failed receipts carry retry policy even without legacy data markers. */
+export function hasNonRetryableToolFailure(result: PlannerToolResult): boolean {
+  if (
+    result.failureProvenance?.retryable === false ||
+    result.data?.retryable === false
+  )
+    return true;
+  try {
+    return normalizeEffectReceipts(result.effectReceipts).some(
+      (receipt) =>
+        receipt.outcome === "failed" && receipt.failure.retryable === false,
+    );
+  } catch {
+    // error-policy:J3 malformed receipt lookalikes cannot establish retry policy.
+    // The original result remains intact for its existing validation/failure path.
+    return false;
+  }
+}
+
 /**
  * Separate settled operations from executable calls across the complete turn.
  * Successful mutations and legacy unclassified results remain deduplicated.
@@ -7918,9 +8303,18 @@ export function partitionRedundantSucceededCalls(
 } {
   const succeeded = new Set<string>();
   const failedNonRetryable = new Set<string>();
+  const invalidDefinitions = new Set<string>();
   for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
     if (!step.toolCall || !step.result) continue;
     const identity = toolCallIdentity(step.toolCall);
+    const failure = step.result.failureProvenance;
+    if (
+      step.result.success === false &&
+      failure?.kind === "missing_capability" &&
+      failure.code === "ACTION_DEFINITION_INVALID" &&
+      failure.retryable === false
+    )
+      invalidDefinitions.add(step.toolCall.name.toUpperCase());
     if (step.result.success === true) {
       if (isRepeatableObservation(step.result)) continue;
       // A successful coding mutation can change the answer to any earlier
@@ -7934,10 +8328,7 @@ export function partitionRedundantSucceededCalls(
         succeeded.clear();
       }
       succeeded.add(identity);
-    } else if (
-      step.result.failureProvenance?.retryable === false ||
-      step.result.data?.retryable === false
-    ) {
+    } else if (hasNonRetryableToolFailure(step.result)) {
       failedNonRetryable.add(identity);
     }
   }
@@ -7947,7 +8338,11 @@ export function partitionRedundantSucceededCalls(
   for (const call of calls) {
     const identity = toolCallIdentity(call);
     if (succeeded.has(identity)) redundant.push(call);
-    else if (failedNonRetryable.has(identity)) nonRetryable.push(call);
+    else if (
+      invalidDefinitions.has(call.name.toUpperCase()) ||
+      failedNonRetryable.has(identity)
+    )
+      nonRetryable.push(call);
     else fresh.push(call);
   }
   return { fresh, redundant, nonRetryable };
@@ -8462,6 +8857,137 @@ function hasSuccessfulNonTerminalToolStep(
  * model failure here keeps the original result rather than discarding the
  * completed tool work.
  */
+function preparedNavigationSynthesisStep(
+  trajectory: PlannerTrajectory,
+): PlannerStep | undefined {
+  if (
+    trajectory.archivedSteps.length ||
+    trajectory.plannedQueue.length ||
+    trajectory.outcomeIntents?.length !== 1
+  )
+    return;
+  const effects = trajectory.steps.filter((step) => {
+    if (step.terminalOnly && !step.toolCall && !step.result) return false;
+    const r = step.result;
+    return !(
+      step.toolCall &&
+      isDiscoveryActionName(step.toolCall.name) &&
+      r?.success === true &&
+      r.data?.readOnlyOperation === true &&
+      !r.effectReceipts?.length &&
+      !r.userFacingEffectReceiptIds?.length &&
+      !hasExecutionPrerequisite(r)
+    );
+  });
+  const step = effects.length === 1 ? effects[0] : undefined;
+  const result = step?.result;
+  if (
+    !step?.toolCall ||
+    result?.success !== true ||
+    result.transcriptVisibility !== "internal" ||
+    !result.modelReplyRequired ||
+    !hasAwaitingDeviceExecutionMarker(result) ||
+    hasAwaitingUserInputMarker(result) ||
+    hasRequiresConfirmationMarker(result) ||
+    result.error != null ||
+    result.replyFailure ||
+    result.effectReceipts?.length ||
+    result.userFacingEffectReceiptIds?.length
+  )
+    return;
+  const handoff = findViewActionHandoff([
+    {
+      success: true,
+      actionName: step.toolCall.name,
+      values: result.data?.values,
+    },
+  ]);
+  const effect = structuredEffectFromToolResult(result);
+  const navigation = result.data?.navigation;
+  if (
+    !handoff?.navigationPrepared ||
+    effect?.effect !== "view_navigation" ||
+    effect.status !== "prepared" ||
+    !effect.label ||
+    !isObjectRecord(navigation) ||
+    navigation.viewId !== handoff.viewId ||
+    effect.viewId !== handoff.viewId ||
+    navigation.handoffId !== handoff.completedActionHandoffId ||
+    navigation.label !== effect.label ||
+    navigation.status !== "prepared" ||
+    effect.resolvedAlias !== navigation.resolvedAlias
+  )
+    return;
+  const view = result.data?.view;
+  if (
+    !isObjectRecord(view) ||
+    view.id !== handoff.viewId ||
+    view.installationId !== handoff.navigationBinding?.installationId
+  )
+    return;
+  const wanted = step.toolCall.params?.view;
+  if (
+    typeof wanted !== "string" ||
+    ![effect.viewId, effect.label, effect.resolvedAlias].some(
+      (name) =>
+        typeof name === "string" &&
+        name.trim().toLowerCase() === wanted.trim().toLowerCase(),
+    )
+  )
+    return;
+  return step;
+}
+
+function pendingNavigationSynthesisReply(
+  candidate: string | undefined,
+  trajectory: PlannerTrajectory,
+): string | undefined {
+  const step = preparedNavigationSynthesisStep(trajectory);
+  if (!step?.result) return;
+  const effect = structuredEffectFromToolResult(step.result);
+  const reply = userSafeRescueReply(candidate, trajectory);
+  if (
+    !effect ||
+    !reply ||
+    !replyNamesStructuredEffectDestination(reply, effect)
+  )
+    return;
+  const source = [...(trajectory.modelBaseContext ?? trajectory.context).events]
+    .reverse()
+    .find(
+      (event): event is ContextProviderEvent =>
+        event.type === "provider" &&
+        "name" in event &&
+        event.name === "VIEW_NAVIGATION",
+    );
+  // The current full destination registry is needed to reject completion
+  // claims about any other view, not only the prepared destination.
+  if (!source?.data || !Array.isArray(source.data.views)) return;
+  const verdict = evaluatePlannedReplyEgress({
+    reply,
+    pendingWork: true,
+    providers: {
+      VIEW_NAVIGATION: {
+        ...source,
+        data: { ...source.data, currentViewId: null },
+      },
+    },
+    actionResults: [
+      {
+        success: step.result.success,
+        transcriptVisibility: step.result.transcriptVisibility,
+        text: step.result.text,
+        effectReceipts: step.result.effectReceipts,
+        userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
+        data: step.result.data as ActionResult["data"],
+        values: step.result.data?.values as ActionResult["values"],
+      },
+    ],
+    actions: [],
+  });
+  return verdict.verdict === "allow" ? reply : undefined;
+}
+
 async function ensureToolTurnFinalMessage(
   params: PlannerLoopParams,
   result: PlannerLoopResult,
@@ -8534,6 +9060,48 @@ async function ensureToolTurnFinalMessage(
     // completed evidence directly to its existing receipt-bound recovery.
     return { ...result, finalMessage: undefined, replyRecoveryRequired: true };
   }
+  // The host already owns bound prepared-navigation prose and its final
+  // egress check. Defer that pending reply before paying for generic synthesis;
+  // preparation still is not a delivered effect or a successful completion.
+  if (
+    params.deferInternalReplyRecoveryToCaller === true &&
+    result.evaluator?.decision === "FINISH" &&
+    result.evaluator.success === false &&
+    result.evaluator.requestFullyCovered === false &&
+    result.evaluator.replyEffectStatus === "non_applied" &&
+    !result.evaluator.protocolFailure &&
+    result.trajectory.plannedQueue.length === 0 &&
+    result.trajectory.archivedSteps.length === 0 &&
+    result.trajectory.outcomeIntents?.length === 1 &&
+    !latestUnresolvedFailedNonTerminalToolStep(result.trajectory)
+  ) {
+    const steps = result.trajectory.steps.filter(
+      (step) =>
+        !step.terminalOnly || step.toolCall != null || step.result != null,
+    );
+    const step = steps.length === 1 ? steps[0] : undefined;
+    const handoff =
+      step?.result &&
+      findViewActionHandoff([
+        {
+          success: step.result.success,
+          actionName: step.toolCall?.name,
+          values: step.result.data?.values,
+        },
+      ]);
+    if (
+      step?.result?.transcriptVisibility === "internal" &&
+      step.result.modelReplyRequired === true &&
+      hasAwaitingDeviceExecutionMarker(step.result) &&
+      handoff?.navigationPrepared === true
+    )
+      return {
+        ...result,
+        finalMessage: undefined,
+        replyRecoveryRequired: true,
+      };
+  }
+  const preparedNavigation = preparedNavigationSynthesisStep(result.trajectory);
   const iteration = result.trajectory.steps.length + 1;
   try {
     const synthesized = await finishWithForcedSynthesis({
@@ -8541,13 +9109,14 @@ async function ensureToolTurnFinalMessage(
       config: mergeChainingLoopConfig(params.config),
       trajectory: result.trajectory,
       iteration,
-      instruction:
-        "Tool work for this turn is complete but no user-facing reply was produced. " +
-        "Do not call any tool. Write the final answer to the user now from the tool " +
-        "results already in this trajectory; if they do not contain the answer, say " +
-        "plainly what you found and what was missing. For completed UI navigation, " +
-        "name the destination shown in the accepted receipt in your own concise wording; " +
-        "do not answer with only a generic acknowledgement.",
+      instruction: preparedNavigation
+        ? "The requested app-view navigation is prepared for the originating renderer, which will apply and acknowledge the bound handoff after receiving this reply. It is not yet confirmed on screen. Write one concise, natural prospective sentence naming that destination. Do not call tools, claim it already opened, or expose handoff/preparation/acknowledgment mechanics or add a disclaimer."
+        : "Tool work for this turn is complete but no user-facing reply was produced. " +
+          "Do not call any tool. Write the final answer to the user now from the tool " +
+          "results already in this trajectory; if they do not contain the answer, say " +
+          "plainly what you found and what was missing. For completed UI navigation, " +
+          "name the destination shown in the accepted receipt in your own concise wording; " +
+          "do not answer with only a generic acknowledgement.",
       onUsage: params.onModelUsage,
     });
     const finalMessage = synthesized.finalMessage;
@@ -8556,13 +9125,25 @@ async function ensureToolTurnFinalMessage(
       finalMessage.trim() !== "" &&
       finalMessage !== HANDLED_STEP_FALLBACK_MESSAGE &&
       finalMessage !== FAILED_TOOL_FALLBACK_MESSAGE &&
-      userSafeCapturedAnswerCandidate(finalMessage) !== undefined;
+      (preparedNavigation
+        ? pendingNavigationSynthesisReply(finalMessage, result.trajectory) !==
+          undefined
+        : userSafeCapturedAnswerCandidate(finalMessage) !== undefined);
     params.runtime.logger?.warn?.(
       { iteration, synthesizedUsable },
       "[planner-loop] tool work finished without a usable reply; forced a no-tools synthesis pass",
     );
     if (synthesizedUsable) {
       return { ...result, trajectory: synthesized.trajectory, finalMessage };
+    }
+    if (preparedNavigation) {
+      // An invalid pending-navigation draft must pass the host's existing
+      // grounded recovery, not an unqualified completed-tool rescue.
+      return {
+        ...result,
+        finalMessage: undefined,
+        replyRecoveryRequired: true,
+      };
     }
     const rescued = await rescueReplyFromSuccessfulResults(
       params,
@@ -9195,6 +9776,7 @@ function hasRequiresConfirmationMarker(result: PlannerToolResult | undefined) {
   if (!data) return false;
   if (
     data.requiresConfirmation === true ||
+    data.approvalRequired === true ||
     data.awaitingUserInput === true ||
     data.lifeDraft !== undefined
   ) {
@@ -9202,7 +9784,9 @@ function hasRequiresConfirmationMarker(result: PlannerToolResult | undefined) {
   }
   const values = plannerResultValues(result);
   return (
-    values?.requiresConfirmation === true || values?.awaitingUserInput === true
+    values?.requiresConfirmation === true ||
+    values?.approvalRequired === true ||
+    values?.awaitingUserInput === true
   );
 }
 
@@ -9933,8 +10517,10 @@ function trySubPlannerVerdictGate(args: {
   // evaluation over the complete trajectory.
   if (args.declaredIntentCount > 1) return null;
   if (trajectory.plannedQueue.length > 0) return null;
-  if (failures.length > 0) return null;
-  if (completedToolStepCount(trajectory) !== 1) return null;
+  const soleSuccessfulStep =
+    failures.length === 0 && completedToolStepCount(trajectory) === 1;
+  if (!soleSuccessfulStep && !canReuseRecoveredSubPlannerVerdict(args))
+    return null;
   const latestStep = trajectory.steps[trajectory.steps.length - 1];
   const result = latestStep?.result;
   const verdict = result?.subPlannerEvaluation;
@@ -9953,6 +10539,140 @@ function trySubPlannerVerdictGate(args: {
       messageToUser: message,
     },
   };
+}
+
+/** An explicit un-replayed no-op is evidence of no change, not a commit.
+ * Invalid/unknown/preview/applied/rollback/artifact-bearing results remain unsafe. */
+function hasOnlyUnappliedCoachingReceipts(result: PlannerToolResult): boolean {
+  const supplied = result.effectReceipts;
+  if (supplied === undefined) return true;
+  if (
+    !Array.isArray(supplied) ||
+    supplied.some(
+      (receipt) =>
+        !isPlainObject(receipt) ||
+        "commit" in receipt ||
+        "failure" in receipt ||
+        "rollback" in receipt,
+    )
+  )
+    return false;
+  try {
+    const receipts = normalizeEffectReceipts(supplied);
+    return (
+      receipts.length === supplied.length &&
+      receipts.every(
+        (receipt) =>
+          receipt.outcome === "noop" &&
+          !receipt.idempotency.replayed &&
+          receipt.artifacts.length === 0 &&
+          !("commit" in receipt) &&
+          !("failure" in receipt) &&
+          !("rollback" in receipt),
+      )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** A no-effect admission coaching refusal is not an unfinished domain action.
+ * Reuse the successful child verdict only with a current committed effect,
+ * final single-intent scope and an exact accounting of every earlier refusal.
+ * Preserve failures/trajectory; every uncertain shape keeps normal evaluation. */
+function canReuseRecoveredSubPlannerVerdict(args: {
+  trajectory: PlannerTrajectory;
+  failures: readonly FailureLike[];
+  lastPlannerExplicitCompleted: boolean | undefined;
+  declaredIntentCount: number;
+}): boolean {
+  if (
+    args.lastPlannerExplicitCompleted !== true ||
+    args.declaredIntentCount !== 1 ||
+    args.trajectory.plannedQueue.length > 0
+  )
+    return false;
+  const steps = allTrajectorySteps(args.trajectory).filter(
+    (step) => step.toolCall && step.result,
+  );
+  const latest = steps.at(-1),
+    result = latest?.result;
+  if (
+    !latest?.toolCall ||
+    isTerminalToolCall(latest.toolCall) ||
+    !result ||
+    result.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    result.continueChain === false ||
+    hasExecutionPrerequisite(result) ||
+    result.data?.requiresInput === true ||
+    plannerResultValues(result)?.requiresInput === true ||
+    result.subPlannerEvaluation?.decision !== "FINISH" ||
+    result.subPlannerEvaluation.success !== true
+  )
+    return false;
+  const prior = steps.slice(0, -1);
+  if (prior.length === 0 || args.failures.length !== prior.length) return false;
+  const unmatched = [...args.failures];
+  for (const step of prior) {
+    const { toolCall, result: refused } = step;
+    if (
+      !toolCall ||
+      !refused ||
+      isTerminalToolCall(toolCall) ||
+      refused.success !== false ||
+      refused.data?.coachingFailure !== true ||
+      refused.error != null ||
+      refused.failureProvenance ||
+      refused.replyFailure ||
+      refused.continueChain === false ||
+      hasExecutionPrerequisite(refused) ||
+      refused.data?.requiresInput === true ||
+      plannerResultValues(refused)?.requiresInput === true ||
+      !hasOnlyUnappliedCoachingReceipts(refused)
+    )
+      return false;
+    const index = unmatched.findIndex(
+      (failure) =>
+        failure.toolName === toolCall.name &&
+        failure.success === false &&
+        !failure.failureProvenance &&
+        failure.repeatKey === toolFailureRepeatKey(toolCall),
+    );
+    if (index < 0) return false;
+    unmatched.splice(index, 1);
+  }
+  try {
+    const supplied = result.effectReceipts;
+    if (!Array.isArray(supplied) || supplied.length === 0) return false;
+    const receipts = normalizeEffectReceipts(supplied);
+    if (receipts.length !== supplied.length) return false;
+    const committed = committedReceiptIdsForGate({
+      ...result,
+      effectReceipts: receipts,
+    });
+    if (
+      !committed?.length ||
+      !receipts.some(
+        (receipt) =>
+          receipt.outcome === "applied" &&
+          !READ_EFFECT_OPERATION_PATTERN.test(receipt.operation),
+      )
+    )
+      return false;
+    const active = new Set(
+      activeCommittedEffectReceipts(
+        allTrajectorySteps(args.trajectory).flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).map((receipt) => receipt.receiptId),
+    );
+    return committed.every((id) => active.has(id));
+  } catch {
+    return false;
+  }
 }
 
 const READ_EFFECT_OPERATION_PATTERN =
@@ -10087,6 +10807,74 @@ function selectQueueAutoAdvance(args: {
   const next = trajectory.plannedQueue[0];
   if (!next || isTerminalToolCall(next)) return null;
   return { nextToolCallId: next.id ?? next.name };
+}
+
+/** A declared dependent read returns its complete result to planning, not a
+ * completion verdict. Cost: linear receipt validation, no I/O/cache or model
+ * call. Final grounding and original-request mutation checks remain unchanged. */
+function canReplanPendingReceiptRead(args: {
+  trajectory: PlannerTrajectory;
+  failures: readonly FailureLike[];
+  lastPlannerExplicitCompleted: boolean | undefined;
+}): boolean {
+  const { trajectory } = args;
+  if (
+    args.lastPlannerExplicitCompleted !== false ||
+    trajectory.plannedQueue.length > 0 ||
+    args.failures.length > 0 ||
+    latestUnresolvedFailedNonTerminalToolStep(trajectory)
+  )
+    return false;
+  const step = trajectory.steps.at(-1),
+    result = step?.result;
+  if (
+    !step?.toolCall ||
+    isTerminalToolCall(step.toolCall) ||
+    !result ||
+    result.success !== true ||
+    result.error != null ||
+    result.transcriptVisibility !== "internal" ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    result.continueChain === false ||
+    hasExecutionPrerequisite(result) ||
+    result.data?.requiresInput === true ||
+    plannerResultValues(result)?.requiresInput === true ||
+    result.data?.readOnlyOperation === false
+  )
+    return false;
+  const supplied = result.effectReceipts;
+  if (!Array.isArray(supplied) || supplied.length === 0) return false;
+  try {
+    // Canonical parser validates every receipt, including identity, source
+    // version, observed time and idempotency. Never silently filter bad proof.
+    const receipts = normalizeEffectReceipts(supplied);
+    if (
+      receipts.length !== supplied.length ||
+      supplied.some(
+        (receipt) =>
+          "commit" in receipt || "failure" in receipt || "rollback" in receipt,
+      )
+    )
+      return false;
+    const reverted = revertedEffectReceiptIds(
+      allTrajectorySteps(trajectory).flatMap(
+        (item) => item.result?.effectReceipts ?? [],
+      ),
+    );
+    return receipts.every(
+      (receipt) =>
+        receipt.outcome === "noop" &&
+        !receipt.idempotency.replayed &&
+        READ_EFFECT_OPERATION_PATTERN.test(
+          receipt.operation.split(".").at(-1) ?? "",
+        ) &&
+        !reverted.has(receipt.receiptId),
+    );
+  } catch {
+    // Invalid or inconsistent evidence retains the normal evaluator path.
+    return false;
+  }
 }
 
 /** Pending scope and a settled commit permit replanning, never completion or replay. */

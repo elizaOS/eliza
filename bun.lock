@@ -28,7 +28,7 @@
         "node-edge-tts": "^1.2.9",
         "pg": "^8.23.1",
         "tailwind-merge": "3.7.0",
-        "zod": "^4.6.5",
+        "zod": "^4.6.6",
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.15",
@@ -866,6 +866,8 @@
         "drizzle-orm": "0.45.4",
       },
       "devDependencies": {
+        "@types/pg": "8.23.1",
+        "pg": "8.23.1",
         "playwright": "^1.64.1",
       },
     },
@@ -1007,6 +1009,7 @@
       "dependencies": {
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/cloud-services-common": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-network": "workspace:*",
         "@upstash/redis": "^1.37.0",
@@ -1107,6 +1110,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/host": "workspace:*",
         "@elizaos/plugin-assistant": "workspace:*",
+        "@elizaos/plugin-coding-tools": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-google-workspace": "workspace:*",
         "@elizaos/plugin-mcp": "workspace:*",
@@ -1345,6 +1349,7 @@
       "devDependencies": {
         "@elizaos/plugin-local-inference": "workspace:*",
         "@elizaos/voice": "workspace:*",
+        "@types/pg": "8.23.1",
         "elizaos-benchmarks": "workspace:*",
         "ts-morph": "28.0.0",
       },
@@ -1442,6 +1447,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/auth": "workspace:*",
+        "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -1691,6 +1697,7 @@
       "dependencies": {
         "@capacitor/core": "8.4.0",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "drizzle-orm": "0.45.4",
         "lucide-react": "^1.0.0",
@@ -2582,6 +2589,7 @@
       "dependencies": {
         "@capacitor/core": "8.4.0",
         "@elizaos/capacitor-system": "workspace:*",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "lucide-react": "^1.0.0",
@@ -2668,6 +2676,7 @@
         "@capacitor/haptics": "8.0.2",
         "@capacitor/preferences": "^8.0.1",
         "@capacitor/push-notifications": "^8.0.0",
+        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -9724,7 +9733,7 @@
 
     "zlibjs": ["zlibjs@0.3.1", "", {}, "sha512-+J9RrgTKOmlxFSDHo0pI1xM6BLVUv+o0ZT9ANtCxGkjIVCCUdx9alUF8Gm+dGLKbkkkidWIHFDZHDMpfITt4+w=="],
 
-    "zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
 
     "zod-to-json-schema": ["zod-to-json-schema@3.25.2", "", { "peerDependencies": { "zod": "^3.25.28 || ^4" } }, "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA=="],
 

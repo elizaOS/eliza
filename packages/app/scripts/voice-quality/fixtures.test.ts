@@ -7,7 +7,7 @@ import { FIXTURES, loadSentences } from "./host-wer-gate";
 const repoRoot = path.resolve(import.meta.dir, "../../../..");
 const deviceWerJava = path.join(
   repoRoot,
-  "packages/app/platforms/android/paradee-voice/src/main/java/ai/eliza/voice/Wer.java",
+  "plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice/Wer.java",
 );
 
 describe("voice-quality fixtures", () => {

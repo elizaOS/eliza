@@ -178,15 +178,13 @@ describe("Calendar operation bindings", () => {
       evaluators: [calendarReadBindingEvaluator],
     });
     expect(handler.plan.requiresTool).toBe(false);
-    expect(handler.plan.candidateActions).toEqual(["CALENDAR_NEXT_EVENT"]);
+    expect(handler.plan.candidateActions).toBeUndefined();
   });
-  it("activates on the actual personal-assistant Calendar promotion path, not a bare parent", async () => {
+  it("activates on registered Calendar read operations from both plugin hosts", async () => {
     const runtime = new AgentRuntime({
       character: { name: "Registered Calendar", bio: [] },
       logLevel: "fatal",
     });
-    for (const action of calendarPlugin.actions ?? [])
-      runtime.registerAction(action);
     const context = {
       runtime,
       message: {
@@ -202,6 +200,9 @@ describe("Calendar operation bindings", () => {
       turnSignal: new AbortController().signal,
     };
     expect(await calendarReadBindingField.shouldRun?.(context)).toBe(false);
+    for (const action of calendarPlugin.actions ?? [])
+      runtime.registerAction(action);
+    expect(await calendarReadBindingField.shouldRun?.(context)).toBe(true);
     for (const action of promoteSubactionsToActions(
       ownerCalendarAction,
       calendarActionPromotionOptions,

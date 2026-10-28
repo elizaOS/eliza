@@ -38,7 +38,10 @@ import {
   type SubactionsMap,
   stableStringify,
 } from "@elizaos/core";
-import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
+import {
+  renderGroundedActionReply,
+  requestLocalCalendarAgenda,
+} from "@elizaos/plugin-assistant";
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
@@ -50,6 +53,7 @@ import {
   CalendarServiceError,
   createCalendarActionRunner,
   createCalendarMutationApprovalGateway,
+  registerCalendarActionHostAdapter,
 } from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
@@ -121,6 +125,7 @@ function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
  * injected rather than moved.
  */
 const calendarActionDeps: CalendarActionDeps = {
+  requestLocalAgenda: requestLocalCalendarAgenda,
   runTextModel: runLifeOpsTextModel,
   runJsonModel: runLifeOpsJsonModel,
   recentConversationTexts: (args) => recentConversationTexts(args),
@@ -159,6 +164,13 @@ const calendarActionDeps: CalendarActionDeps = {
       error instanceof TravelTimeUnavailableError,
   },
 };
+
+/** Bind PA integrations before Calendar's registered actions can execute. */
+export function registerPersonalAssistantCalendarHost(
+  runtime: IAgentRuntime,
+): void {
+  registerCalendarActionHostAdapter(runtime, calendarActionDeps);
+}
 
 const googleCalendarAction = createCalendarActionRunner(calendarActionDeps);
 
@@ -222,11 +234,7 @@ function actionResultCalendarEvent(
     : null;
 }
 
-// Re-exported for consumers that route calendar-plan extraction without going
-// through the umbrella handler (multilingual routing test, live LLM extraction
-// test). The implementation lives in `@elizaos/plugin-calendar`; importing this
-// module first runs `createCalendarActionRunner` above, so the extractor's
-// injected LLM dependencies are wired before any caller invokes it.
+// Direct plan-extraction consumers resolve the same runtime-specific host adapter.
 export { extractCalendarPlanWithLlm } from "@elizaos/plugin-calendar";
 
 type OwnerCalendarSubaction =

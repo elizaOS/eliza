@@ -569,18 +569,18 @@ export default function AuthSuccessPage() {
   useDocumentTitle(
     view.phase === "verified"
       ? t("cloud.authSuccess.metaTitle", {
-          defaultValue: "Connection Successful | Eliza Cloud",
+          defaultValue: "Connection Successful | {{cloudName}}",
         })
       : view.phase === "pending"
         ? t("cloud.authSuccess.pendingMetaTitle", {
-            defaultValue: "Verifying Connection | Eliza Cloud",
+            defaultValue: "Verifying Connection | {{cloudName}}",
           })
         : view.phase === "unavailable"
           ? t("cloud.authSuccess.unavailableMetaTitle", {
-              defaultValue: "Verification Unavailable | Eliza Cloud",
+              defaultValue: "Verification Unavailable | {{cloudName}}",
             })
           : t("cloud.authSuccess.unverifiedMetaTitle", {
-              defaultValue: "Connection Could Not Be Verified | Eliza Cloud",
+              defaultValue: "Connection Could Not Be Verified | {{cloudName}}",
             }),
   );
 
@@ -649,7 +649,7 @@ export default function AuthSuccessPage() {
           </h1>
           <p className="text-sm text-muted">
             {t("cloud.authSuccess.pendingDescription", {
-              defaultValue: "Confirming this connection with Eliza Cloud…",
+              defaultValue: "Confirming this connection with {{cloudName}}…",
             })}
           </p>
         </div>
@@ -666,7 +666,7 @@ export default function AuthSuccessPage() {
         <div className="space-y-2">
           <h1 className="text-xl font-semibold text-txt">
             {t("cloud.authSuccess.unavailableTitle", {
-              defaultValue: "Could Not Reach Eliza Cloud",
+              defaultValue: "Could Not Reach {{cloudName}}",
             })}
           </h1>
           <p className="text-sm text-muted">
@@ -706,7 +706,7 @@ export default function AuthSuccessPage() {
       view.reason === "untrusted" || view.reason === "rejected"
         ? t("cloud.authSuccess.untrustedDescription", {
             defaultValue:
-              "This connection link could not be verified. It may be incomplete, expired, or not issued by Eliza Cloud.",
+              "This connection link could not be verified. It may be incomplete, expired, or not issued by {{cloudName}}.",
           })
         : t("cloud.authSuccess.missingDescription", {
             defaultValue:

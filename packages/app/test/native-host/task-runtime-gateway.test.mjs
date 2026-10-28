@@ -285,39 +285,49 @@ test("missing credentials revoke tasks and late authentication cannot replace or
   }
 });
 
-test("an extension cannot publish a former-account result after an owner change", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "eliza-task-extension-"));
-  const bundlePath = join(directory, "task-runtime.mjs");
-  buildTaskRuntime(bundlePath);
-  let account = "owner-a",
-    release,
-    entered;
-  const pending = new Promise((resolve) => (release = resolve)),
-    started = new Promise((resolve) => (entered = resolve));
-  const gateway = await createTaskGateway({
-    bundlePath,
-    databasePath: join(directory, "journal.sqlite"),
-    credentialGate: async () => account,
-    extensionFactory: () => async () => {
-      entered();
-      await pending;
-      return Response.json({ private: "former-owner-result" });
-    },
+for (const boundary of ["extension", "observer"])
+  test(`a delayed ${boundary} cannot publish a former-account result`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-task-extension-"));
+    const bundlePath = join(directory, "task-runtime.mjs");
+    buildTaskRuntime(bundlePath);
+    let account = "owner-a",
+      release,
+      entered;
+    const pending = new Promise((resolve) => (release = resolve)),
+      started = new Promise((resolve) => (entered = resolve));
+    const gateway = await createTaskGateway({
+      bundlePath,
+      databasePath: join(directory, "journal.sqlite"),
+      credentialGate: async () => account,
+      extensionFactory: () => async () => {
+        if (boundary === "extension") {
+          entered();
+          await pending;
+        }
+        return Response.json({ private: "former-owner-result" });
+      },
+      onResponse:
+        boundary === "observer"
+          ? async () => {
+              entered();
+              await pending;
+            }
+          : undefined,
+    });
+    t.after(async () => {
+      await gateway.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+    const response = gateway.handle(
+      new Request("http://localhost/tasks/extension"),
+    );
+    await started;
+    account = "owner-b";
+    release();
+    const denied = await response;
+    assert.equal(denied.status, 401);
+    assert.doesNotMatch(await denied.text(), /former-owner-result/);
   });
-  t.after(async () => {
-    await gateway.close();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const response = gateway.handle(
-    new Request("http://localhost/tasks/extension"),
-  );
-  await started;
-  account = "owner-b";
-  release();
-  const denied = await response;
-  assert.equal(denied.status, 401);
-  assert.doesNotMatch(await denied.text(), /former-owner-result/);
-});
 
 test("concurrent same-account reads and planner access remain authorized", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-task-concurrent-"));
@@ -358,6 +368,112 @@ test("concurrent same-account reads and planner access remain authorized", async
   release("account");
   assert.equal((await older).status, 200);
 });
+
+for (const transition of ["account", "revision"])
+  test(`host hooks preserve answers and fence a delayed ${transition} change`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-task-hooks-"));
+    const bundlePath = join(directory, "task-runtime.mjs");
+    buildTaskRuntime(bundlePath);
+    const observed = [];
+    let failHooks = false;
+    let decorationWait;
+    let decorationEntered;
+    let account = "account";
+    const gateway = await createTaskGateway({
+      bundlePath,
+      databasePath: join(directory, "journal.sqlite"),
+      credentialGate: async () => account,
+      actuator: { capabilities: ["fill"] },
+      authorizeGoal: async (goalRef) => ({
+        id: "task-hooks",
+        goalRef,
+        authorization: {
+          decisionId: "grant",
+          policyRevision: "policy",
+          state: "active",
+          decidedAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+        allowedCapabilities: ["fill"],
+        allowedOrigins: ["https://example.org"],
+      }),
+      decoratePresentation: async ({ presentation, db, owner, runtime }) => {
+        if (decorationWait) {
+          decorationEntered();
+          await decorationWait;
+        }
+        if (failHooks) throw new Error("decorator failed");
+        assert.equal(typeof db.prepare, "function");
+        assert.equal(runtime.get(presentation.taskId).id, "task-hooks");
+        return { ...presentation, actor: owner.actorId };
+      },
+      onResponse: async ({ request, response, durationMs }) => {
+        if (failHooks) throw new Error("observer failed");
+        await response.json();
+        response.headers.set("x-observer", "private");
+        observed.push([
+          request.method,
+          new URL(request.url).pathname,
+          response.status,
+          durationMs >= 0,
+        ]);
+      },
+    });
+    t.after(async () => {
+      await gateway.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+    const created = await gateway.handle(
+      new Request("http://localhost/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: '{"goalRef":"bill"}',
+      }),
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.headers.get("x-observer"), null);
+    assert.equal((await created.json()).task.id, "task-hooks");
+    assert.deepEqual(observed, [["POST", "/tasks", 201, true]]);
+    const task = (await gateway.forCurrentOwner()).current();
+    const read = () =>
+      gateway.presentationForConversation({
+        taskId: task.id,
+        expectedEpoch: task.epoch,
+        actorId: "account",
+      });
+    const decorated = await read();
+    assert.equal(decorated.taskId, "task-hooks");
+    assert.equal(decorated.actor, "account");
+    failHooks = true;
+    const { actor, ...undecorated } = decorated;
+    assert.deepEqual(await read(), undecorated);
+    assert.equal(
+      (await gateway.handle(new Request("http://localhost/tasks/current")))
+        .status,
+      200,
+    );
+    assert.equal(observed.length, 1);
+    failHooks = false;
+    {
+      let release;
+      decorationWait = new Promise((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise((resolve) => {
+        decorationEntered = resolve;
+      });
+      const pendingRead = read();
+      const refused = assert.rejects(pendingRead, /Task changed/);
+      await entered;
+      if (transition === "account") account = "another-account";
+      else {
+        const runtime = await gateway.forCurrentOwner();
+        runtime.control(task.id, runtime.get(task.id).revision, "pause");
+      }
+      release();
+      await refused;
+    }
+  });
 
 async function actuatorFixture(t, { leaseMs = 60000, commitGrant } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "eliza-native-refusal-"));

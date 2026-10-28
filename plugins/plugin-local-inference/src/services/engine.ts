@@ -68,6 +68,7 @@ import { VoiceLifecycleError } from "./voice/lifecycle";
 import {
 	createParadeeSpeakerPreset,
 	createParadeeTtsBackend,
+	ParadeeTtsBackend,
 } from "./voice/paradee/paradee-backend";
 import {
 	discoverParadeeEngine,
@@ -475,8 +476,10 @@ export class LocalInferenceEngine {
 	 * the arbiter already counts in its resident map.
 	 */
 	getResidentFootprintMb(): number {
-		if (this.ownedEvictableRoleIds.size === 0) return 0;
-		let mb = 0;
+		let mb =
+			this.voiceBridge?.backend instanceof ParadeeTtsBackend
+				? this.voiceBridge.backend.residentModelMb
+				: 0;
 		for (const role of this.sharedResources.evictableRoles()) {
 			if (this.ownedEvictableRoleIds.has(role.id)) {
 				mb += role.estimatedResidentMb();
@@ -654,6 +657,8 @@ export class LocalInferenceEngine {
 			}
 			bridge.dispose();
 			if (this.voiceBridge === bridge) this.voiceBridge = null;
+			if (!this.hasLoadedModel() && !this.voiceBridge)
+				this.memoryMonitor.stop();
 		}
 	}
 
@@ -1059,6 +1064,7 @@ export class LocalInferenceEngine {
 			...opts,
 			sharedResources: this.sharedResources,
 		});
+		if (!this.memoryMonitor.isRunning()) this.memoryMonitor.start();
 		return this.voiceBridge;
 	}
 
@@ -1849,6 +1855,8 @@ export class LocalInferenceEngine {
 			}
 			bridge.dispose();
 			if (this.voiceBridge === bridge) this.voiceBridge = null;
+			if (!this.hasLoadedModel() && !this.voiceBridge)
+				this.memoryMonitor.stop();
 		}
 	}
 

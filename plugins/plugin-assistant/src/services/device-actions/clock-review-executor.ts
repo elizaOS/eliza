@@ -1,3 +1,4 @@
+import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
   type ClockOperation,
   type ClockResult,
@@ -10,6 +11,9 @@ export type {
   ClockAlarmOperation,
   ClockAlarmRecord,
   ClockAlarmResult,
+  ClockDay,
+  ClockHandoffOperation,
+  ClockHandoffResult,
   ClockOperation,
   ClockResult,
 } from "./clock-contract.ts";
@@ -25,6 +29,42 @@ export {
   validateClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
+export type {
+  ClockHandoffForm,
+  ClockHandoffHostSupport,
+  ClockHandoffRequest,
+  ClockHandoffSetRequest,
+} from "./clock-handoff.ts";
+export {
+  assertClockHandoffObservation,
+  assertClockHandoffTimeZone,
+  buildClockHandoffRequest,
+  CLOCK_DAY_NAMES,
+  clockHandoffCapabilities,
+  clockHandoffFormDays,
+  clockHandoffReceipt,
+  currentClockTimeZone,
+  describeClockDays,
+  describeClockHandoff,
+  isClockHandoffOperation,
+  normalizeClockTimeZone,
+  validateClockHandoffDispatch,
+  validateClockHandoffResult,
+} from "./clock-handoff.ts";
+export type {
+  ClockHandoffEnvelope,
+  ClockHandoffHistory,
+  ClockHandoffHistoryOptions,
+  ClockHandoffHistoryStorage,
+  ClockHandoffRecord,
+  ClockHandoffSnapshot,
+} from "./clock-handoff-history.ts";
+export {
+  CLOCK_HANDOFF_HISTORY_ACTIONS,
+  CLOCK_HANDOFF_HISTORY_STATUSES,
+  createClockHandoffHistory,
+  validateClockHandoffRecord,
+} from "./clock-handoff-history.ts";
 export interface ClockJournalIdentity {
   scope: string;
   proposalId: string;
@@ -84,23 +124,17 @@ export function createClockReviewExecutor(bridge: ClockReviewBridge) {
     assertCurrent: () => void,
   ): Promise<ClockResult> {
     const approved = validateClockOperation(operation);
-    if (
-      !/^[a-f0-9]{64}$/.test(identity.scope) ||
-      !/^[-A-Za-z0-9_]{1,128}$/.test(identity.proposalId) ||
-      !/^[-A-Za-z0-9_]{1,128}$/.test(operationId)
-    )
-      throw Error("Invalid Clock journal identity");
-    const input = {
-      scope: identity.scope,
-      proposalId: identity.proposalId,
-      operationId,
-    };
+    const execution = createDeviceActionExecution(
+      { ...identity, operationId },
+      signal,
+      assertCurrent,
+    );
+    const input = execution.identity;
     let cancellation: Promise<void> | undefined;
     let cancellationFailed = false;
-    let retired = false;
     const retryCancellation = () => cancel(true);
     const cancel = (retry = false) => {
-      retired = true;
+      execution.retire();
       if (cancellation && (!cancellationFailed || !retry)) return cancellation;
       cancellationFailed = false;
       cancellation = bridge.cancelClock(input).then(
@@ -114,11 +148,7 @@ export function createClockReviewExecutor(bridge: ClockReviewBridge) {
       );
       return cancellation;
     };
-    const current = () => {
-      signal.throwIfAborted();
-      if (retired) throw Error("Clock review retired");
-      assertCurrent();
-    };
+    const current = execution.assertPrepared;
     const onAbort = () => {
       void cancel().catch(() => {});
     };
@@ -140,13 +170,15 @@ export function createClockReviewExecutor(bridge: ClockReviewBridge) {
       )
         throw Error("Clock review unavailable");
       // The native gesture is necessary but not sufficient: retain the exact live owner.
-      current();
+      execution.markDispatched(input);
       const confirmed = await bridge.confirmClock({
         ...input,
         reviewToken: reviewed.reviewToken,
       });
       if (!confirmed.result) throw Error("Clock outcome unavailable");
-      return validateResult(approved, confirmed.result, operationId);
+      const result = validateResult(approved, confirmed.result, operationId);
+      execution.settle(input);
+      return result;
     } finally {
       signal.removeEventListener("abort", onAbort);
       // A failed acknowledgement remains registered. Only explicit retirement can

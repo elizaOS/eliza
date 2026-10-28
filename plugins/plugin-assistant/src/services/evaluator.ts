@@ -1286,9 +1286,22 @@ export class EvaluatorService extends BaseService {
     const providerNames = Array.from(
       new Set(active.flatMap((evaluator) => evaluator.providers ?? [])),
     );
+    // The stored message names the trajectory step of the turn that wrote it,
+    // long closed for a background run: provider captures belong to the
+    // current trajectory context instead.
+    const {
+      trajectoryStepId: _stepId,
+      trajectoryId: _trajectoryId,
+      ...metadata
+    } = (message.metadata ?? {}) as Record<string, unknown>;
     const providerState =
       providerNames.length > 0
-        ? await this.runtime.composeState(message, providerNames, true, true)
+        ? await this.runtime.composeState(
+            { ...message, metadata: metadata as Memory["metadata"] },
+            providerNames,
+            true,
+            true,
+          )
         : EMPTY_STATE;
     return mergeStates(state, providerState);
   }

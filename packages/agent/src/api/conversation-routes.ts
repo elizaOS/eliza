@@ -3079,6 +3079,12 @@ export async function handleConversationRoutes(
     // The bound identity is never copied from message metadata or model parameters.
     let authenticated = false;
     const authenticatedRuntime = ctx.state.runtime;
+    const authenticatedCaller = resolveConversationCaller(
+      ctx.req,
+      ctx.state,
+      resolveTrustedApiPrincipal(ctx.req, ctx.callerAuthorization),
+      authenticatedRuntime,
+    );
     try {
       return await withDeviceActionTurn(
         ctx.state.runtime,
@@ -3088,6 +3094,11 @@ export async function handleConversationRoutes(
           return handle();
         },
         {
+          requestCaller: {
+            subjectUserId: credential.subjectUserId,
+            entityId: authenticatedCaller.entityId,
+            role: authenticatedCaller.role,
+          },
           isCurrent: () =>
             !ctx.req.aborted &&
             !ctx.res.destroyed &&

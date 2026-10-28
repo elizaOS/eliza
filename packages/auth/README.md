@@ -174,6 +174,28 @@ fingerprint is not a verified Cloud owner. The optional native
 `VerifiedAccountCredentialStore` provides encrypted whole-record compare-and-exchange;
 hosts still need to wire it to their private process protocol and lifecycle.
 
+## Native Android sign-in
+
+`android/` is a Gradle library (`ai.eliza.auth.cloud`) for apps that sign in on
+their own native screens: email and SMS codes, the Android Google account picker,
+MFA, the mobile App Auth connect/token/ack tail, acknowledgement resume, best-effort
+replaced-key revocation and per-method readiness. A host subclasses
+`CloudSignInPlugin`, declares its Capacitor name and returns a `CloudSignInConfig`
+(App Auth client id, device and product names, Steward app client for native Google,
+admitted deployments and its installed storage names) plus its protected
+`CloudCredentialSlots`. Admit staging only in development builds. Codes, PKCE
+verifiers and Steward sessions stay native; results carry no secret. Run
+`bun run --cwd packages/auth test:native-android` (needs a JDK); it checks the
+policy and the exact plugin methods on a plain JVM, not on a device.
+
+The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
+(`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
+`NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
+`nativeSignInCodeStarted`, `nativeSignInVerified`, `nativeSignInGoogleOutcome`,
+`nativeSignInReadiness`), the failure codes the plugin rejects with and owner-facing copy
+that takes the app's and the deployment's names. An answer with an extra key, another
+deployment or a malformed time is refused as `unavailable`.
+
 ## Optional Blooio phone-code delivery
 
 Twilio Verify remains the default when its existing environment is configured.

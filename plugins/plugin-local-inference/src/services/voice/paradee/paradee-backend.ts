@@ -25,6 +25,11 @@
  * Paradee ships one voice; `SpeakerPreset.voiceId` is ignored.
  */
 
+import {
+	createEvictableModelRole,
+	type EvictableModelRole,
+	type MmapRegionHandle,
+} from "../shared-resources";
 import type {
 	AudioChunk,
 	Phrase,
@@ -40,6 +45,7 @@ import {
 	ParadeeSpeechCancelledError,
 } from "./host-tts-client";
 import {
+	PARADEE_MODEL_FILES,
 	PARADEE_SAMPLE_RATE,
 	PARADEE_VOICE_ID,
 	type ParadeeEngineConfig,
@@ -126,6 +132,8 @@ export function wavToFloat32(wav: Buffer): {
 export interface ParadeeSynthesizer {
 	synthesize(text: string, isCancelled: () => boolean): Promise<Buffer>;
 	initialize?(): Promise<void>;
+	readonly running: boolean;
+	unload(): Promise<void>;
 	dispose(): void;
 }
 
@@ -134,6 +142,8 @@ export interface ParadeeTtsBackendOptions {
 	/** PCM slice size delivered to the scheduler. Default: 250 ms. */
 	streamingChunkSamples?: number;
 }
+
+let nextParadeeRegion = 0;
 
 export class ParadeeTtsBackend implements TtsBackend, StreamingTtsBackend {
 	readonly id = "paradee" as const;
@@ -149,6 +159,37 @@ export class ParadeeTtsBackend implements TtsBackend, StreamingTtsBackend {
 
 	supportsStreamingTts(): boolean {
 		return true;
+	}
+
+	/** Weight and lexicon bytes; excludes transient synthesis allocations. */
+	get residentModelMb(): number {
+		return this.synthesizer.running
+			? PARADEE_MODEL_FILES.reduce((bytes, file) => bytes + file.bytes, 0) /
+					1024 ** 2
+			: 0;
+	}
+
+	/** The same registry that owns text models can reclaim this worker. */
+	async acquireMemoryRegion(): Promise<MmapRegionHandle & EvictableModelRole> {
+		await this.warmUp();
+		const sizeBytes = PARADEE_MODEL_FILES.reduce(
+			(bytes, file) => bytes + file.bytes,
+			0,
+		);
+		const unload = () => this.synthesizer.unload();
+		return {
+			...createEvictableModelRole({
+				id: `paradee:tts:${nextParadeeRegion++}`,
+				role: "tts",
+				estimatedMb: sizeBytes / 1024 ** 2,
+				isResident: () => this.synthesizer.running,
+				evict: unload,
+				release: unload,
+			}),
+			path: "",
+			sizeBytes,
+			evictPages: unload,
+		};
 	}
 
 	/** Start the worker ahead of the first phrase (loads + warms the model). */
