@@ -33,9 +33,11 @@ export function calendarReadParameters(
       : operation === "next_event"
         ? CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA
         : CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA;
-  const aliases = new Set<string>(
-    Object.values(CALENDAR_DETAIL_ALIASES).flat(),
-  );
+  const spellings = (key: string): string[] => [
+    key,
+    ...(CALENDAR_DETAIL_ALIASES[key as keyof typeof CALENDAR_DETAIL_ALIASES] ??
+      []),
+  ];
   const descriptions: Record<string, string> = {
     calendarId: "Exact Calendar result ID.",
     grantId: "Exact connected grant ID; pair with calendarId.",
@@ -57,37 +59,35 @@ export function calendarReadParameters(
     queries: "Additional user-supplied content filters.",
     oldTitle: "Legacy event-content query.",
   };
-  // Old callers retain all spellings at the unchanged normalizer. The planner
-  // exposes one canonical spelling per semantic field, never mutation fields.
+  // Promoted tools and the umbrella share the existing read aliases. Validation
+  // runs before handler normalization, so the tool schema must accept them too.
   const details = {
     ...sourceDetails,
     properties: Object.fromEntries(
-      Object.entries(sourceDetails.properties ?? {})
-        .filter(([key]) => !aliases.has(key))
-        .map(([key, value]) => [
-          key,
-          (() => {
-            const { description: _redundant, ...schema } = value;
-            return {
-              ...schema,
-              ...(["date", "endDate", "timeMin", "timeMax"].includes(key) &&
-              _redundant
-                ? { description: _redundant }
-                : {}),
-              ...([
-                "date",
-                "endDate",
-                "timeMin",
-                "timeMax",
-                "timeZone",
-                "includeHiddenCalendars",
-                "windowDays",
-              ].includes(key) && descriptions[key]
-                ? { description: descriptions[key] }
-                : {}),
-            };
-          })(),
-        ]),
+      Object.entries(sourceDetails.properties ?? {}).map(([key, value]) => [
+        key,
+        (() => {
+          const { description: _redundant, ...schema } = value;
+          return {
+            ...schema,
+            ...(["date", "endDate", "timeMin", "timeMax"].includes(key) &&
+            _redundant
+              ? { description: _redundant }
+              : {}),
+            ...([
+              "date",
+              "endDate",
+              "timeMin",
+              "timeMax",
+              "timeZone",
+              "includeHiddenCalendars",
+              "windowDays",
+            ].includes(key) && descriptions[key]
+              ? { description: descriptions[key] }
+              : {}),
+          };
+        })(),
+      ]),
     ),
   };
   // The planner must choose one window representation. These are metadata
@@ -99,7 +99,7 @@ export function calendarReadParameters(
     "timeMax",
     "windowDays",
     "windowPreset",
-  ];
+  ].flatMap(spellings);
   const common = Object.fromEntries(
     Object.entries(details.properties).filter(
       ([key]) => !windowKeys.includes(key),
@@ -108,19 +108,45 @@ export function calendarReadParameters(
   const branch = (
     keys: string[],
     required: string[],
-  ): ActionParameterSchema => ({
-    type: "object",
-    properties: {
+  ): ActionParameterSchema => {
+    const properties = {
       ...common,
       ...Object.fromEntries(
         keys
+          .flatMap(spellings)
           .filter((key) => Object.hasOwn(details.properties, key))
           .map((key) => [key, details.properties[key]]),
       ),
-    },
-    required,
-    additionalProperties: false,
-  });
+    };
+    const alternatives = required.reduce<string[][]>(
+      (groups, key) =>
+        groups.flatMap((group) =>
+          spellings(key)
+            .filter((name) => Object.hasOwn(properties, name))
+            .map((name) => [...group, name]),
+        ),
+      [[]],
+    );
+    return {
+      type: "object",
+      properties,
+      additionalProperties: false,
+      ...(alternatives.length === 1
+        ? { required: alternatives[0] }
+        : {
+            // Presence alternatives permit alias combinations; the typed outer
+            // branch still validates every value and rejects undeclared fields.
+            anyOf: alternatives.map((names) => ({
+              type: "object",
+              properties: Object.fromEntries(
+                names.map((name) => [name, { type: properties[name].type }]),
+              ),
+              required: names,
+              additionalProperties: true,
+            })),
+          }),
+    };
+  };
   const windows = [
     { keys: ["date", "endDate"], required: ["date"] },
     { keys: ["timeMin", "timeMax"], required: ["timeMin", "timeMax"] },
