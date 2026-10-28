@@ -43,25 +43,7 @@ export function createManagedCalendarMutationPort(
   const transport = createManagedCalendarRead(env, request);
   if (!transport) return;
   const call = transport.mutation;
-  async function capabilities(grantId: string, calendarId: string) {
-    if (!scoped(grantId) || !calendarId)
-      throw Error("Choose the exact connected Calendar");
-    const c = object(
-      await call({ operation: "write-capabilities", grantId, calendarId }),
-    );
-    if (
-      c.grantId !== grantId ||
-      c.calendarId !== calendarId ||
-      typeof c.accountId !== "string" ||
-      c.read !== true ||
-      c.write !== true ||
-      c.idempotentCreate !== true ||
-      c.conditionalWrites !== true ||
-      c.providerExactlyOnce !== false
-    )
-      throw Error("Calendar write access could not be verified");
-    return c as Record<string, unknown> & { accountId: string };
-  }
+  const capabilities = transport.writeCapabilities;
   async function target(grantId: string, calendarId: string, eventId: string) {
     const raw = object(
       await call({ operation: "write-target", grantId, calendarId, eventId }),

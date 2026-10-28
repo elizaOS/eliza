@@ -256,3 +256,77 @@ test("Soong conversion refuses changed APK, library or launcher definitions befo
     assert.equal(fs.existsSync(path.join(f.output, "Android.mk")), true);
   }
 });
+
+test("native configuration mismatch refuses the whole pipeline before product publication", (t) => {
+  const f = stagedFixture(t);
+  const product = JSON.parse(
+    fs.readFileSync(
+      new URL("../../android/products/pixel10a-eliza.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const file = path.join(f.output, "config.fs");
+  const original = fs.readFileSync(file, "utf8");
+  const changed = original.replace("mode: 0755", "mode: 0777");
+  assert.notEqual(changed, original);
+  fs.writeFileSync(file, changed);
+  assert.throws(() => {
+    composePixel10aProduct({
+      ...f,
+      product,
+      nativeStagingEvidence: f.evidence,
+    });
+    finalizeAndroidNative({ ...f, moduleName: f.launcher.moduleName });
+  }, /filesystem configuration differs/);
+  assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
+  assert.equal(
+    fs.existsSync(path.join(f.output, "physical-product.json")),
+    false,
+  );
+  assert.equal(fs.existsSync(path.join(f.output, "Android.mk")), true);
+});
+
+test("native receipt must retain its unique APK entries, installation paths and modes", (t) => {
+  const f = stagedFixture(t);
+  const product = JSON.parse(
+    fs.readFileSync(
+      new URL("../../android/products/pixel10a-eliza.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  for (const mutation of [
+    (libraries) => {
+      libraries[0].apkEntry = "lib/x86_64/libeliza_bun.so";
+    },
+    (libraries) => {
+      libraries[0].installPath = "/product/app/Other/lib/arm64/libeliza_bun.so";
+    },
+    (libraries) => {
+      libraries[0].mode = "0777";
+    },
+    (libraries) => {
+      libraries.push({ ...libraries[0] });
+    },
+  ]) {
+    const changed = structuredClone(f.evidence);
+    mutation(changed.libraries);
+    fs.writeFileSync(
+      path.join(f.output, "native-libraries.json"),
+      JSON.stringify(changed),
+    );
+    assert.throws(
+      () =>
+        composePixel10aProduct({
+          ...f,
+          product,
+          nativeStagingEvidence: changed,
+        }),
+      /Invalid native staging entry/,
+    );
+    assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
+    assert.equal(
+      fs.existsSync(path.join(f.output, "physical-product.json")),
+      false,
+    );
+  }
+});
