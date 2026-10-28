@@ -417,6 +417,14 @@ function getLimit(value: unknown): number | undefined {
   return value;
 }
 
+// Default render bound for DOCUMENT search when the planner
+// omits limit. Without it every above-threshold fragment's full
+// text landed in the action result, and the overflow signal only
+// activated when a limit was given. Matches are rank-ordered in
+// every search mode, so the top matches are the synthesis-relevant
+// ones, and the planner can re-issue with a larger explicit limit.
+const DOCUMENT_SEARCH_DEFAULT_LIMIT = 10;
+
 function getScope(
   runtime: IAgentRuntime,
   message: Memory,
@@ -893,7 +901,7 @@ async function handleSearch(
     content: { ...message.content, text: query },
   };
   const filters = getDocumentFilterParams(params, message);
-  const limit = getLimit(params.limit);
+  const limit = getLimit(params.limit) ?? DOCUMENT_SEARCH_DEFAULT_LIMIT;
   const matches = await service.searchDocuments(
     searchMessage,
     filters.scopedToEntityId
