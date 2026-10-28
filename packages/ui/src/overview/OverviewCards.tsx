@@ -9,6 +9,7 @@
  * `partAttributes`) so installed selectors keep working.
  */
 import type { CSSProperties, ReactNode } from "react";
+import type { OverviewInboxCardState } from "./daily-overview";
 
 /** Extra attributes for one rendered part (for example `data-*` hooks). */
 export type OverviewPartAttributes = Record<string, string | undefined>;
@@ -164,7 +165,8 @@ export interface OverviewAttentionCardProps
   status: string;
   /** Attendee or sender initials, decorative. */
   people?: readonly string[];
-  state?: "not-connected" | "loading" | "ready" | "stale" | "error";
+  /** `presentOverviewInboxCard().state`; `idle` is connected with nothing loaded. */
+  state?: OverviewInboxCardState;
 }
 
 /** Attention card: unread mail from the last read the user loaded. */

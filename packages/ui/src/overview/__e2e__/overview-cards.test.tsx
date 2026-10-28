@@ -5,6 +5,7 @@ import {
   presentOverviewAgendaSource,
   presentOverviewAttention,
   presentOverviewBriefCard,
+  presentOverviewInboxCard,
 } from "../daily-overview";
 import {
   OverviewAgendaCard,
@@ -109,6 +110,42 @@ describe("OverviewAttentionCard", () => {
     );
     expect(rows).toContain('data-overview-part="rowTitle">Invoice<');
     expect(rows).toContain('data-overview-state="ready"');
+  });
+  it("renders every inbox card state with host parts and no message body", () => {
+    const base = { now, loaded: null, failure: null, pending: false, connected: true, disconnected: false, unchecked: false } as const;
+    const render = (model: ReturnType<typeof presentOverviewInboxCard>) =>
+      html(
+        <OverviewAttentionCard
+          count={model.count}
+          rows={model.rows}
+          title={model.title}
+          status={model.status}
+          label={model.label}
+          description={model.description}
+          state={model.state}
+          classNames={{ card: "inbox-card", rows: "inbox-rows" }}
+          partAttributes={{ rows: { "data-host-rows": "" } }}
+          dataAttributes={{ "data-host-inbox": "" }}
+        />,
+      );
+    const idle = render(presentOverviewInboxCard(base, f));
+    expect(idle).toContain('data-overview-state="idle"');
+    expect(idle).toContain('data-overview-part="title">Inbox<');
+    expect(idle).toContain('aria-description="Open to load email"');
+    const ready = render(
+      presentOverviewInboxCard(
+        { ...base, loaded: { unread: [{ subject: "Invoice", from: "Billing", body: "Private body" } as never], more: false, label: "work@example.test", readAt: at(15, 4) } },
+        f,
+      ),
+    );
+    expect(ready).toMatch(/^<button type="button" data-overview-part="card" class="inbox-card" data-overview-card="attention" data-overview-state="ready" data-host-inbox=""/);
+    expect(ready).toContain('<div data-overview-part="rows" class="inbox-rows" data-host-rows="">');
+    expect(ready).toContain('data-overview-part="rowDetail">Billing<');
+    expect(ready).not.toContain("Private body");
+    expect(ready).not.toContain('data-overview-part="title"');
+    const failed = render(presentOverviewInboxCard({ ...base, failure: "revoked" }, f));
+    expect(failed).toContain('data-overview-state="error"');
+    expect(failed).toContain('data-overview-part="title">Reconnect email<');
   });
 });
 

@@ -10,6 +10,7 @@ import {
   overviewCalendarState,
   overviewOverdueDueLabel,
   overviewReadIsStale,
+  presentOverviewAgendaCard,
   presentOverviewAgendaFeed,
   presentOverviewAgendaNext,
   presentOverviewAgendaSource,
@@ -17,6 +18,7 @@ import {
   presentOverviewBrief,
   presentOverviewBriefCard,
   presentOverviewCalendar,
+  presentOverviewInboxCard,
   presentOverviewInboxStatus,
   presentOverviewWorkflowFreshness,
   selectOverviewAgenda,
@@ -83,6 +85,89 @@ describe("attention", () => {
     expect(presentOverviewInboxStatus({ ...base, connected: true }, f)).toBe("Open to load email");
     expect(presentOverviewInboxStatus({ ...base, unchecked: true }, f)).toBe("Open to check email");
     expect(presentOverviewInboxStatus(base, f)).toBe("");
+  });
+});
+
+describe("inbox card", () => {
+  const base = { now, loaded: null, failure: null, pending: false, connected: false, disconnected: false, unchecked: false };
+  const loaded = (unread: { subject?: unknown; from?: unknown }[], more = false, readAt: number | null = at(15, 4)) => ({
+    unread,
+    more,
+    label: "work@example.test",
+    readAt,
+  });
+  it("not connected, unchecked and connected-but-unloaded are distinct and claim no count", () => {
+    expect(presentOverviewInboxCard({ ...base, disconnected: true }, f)).toEqual({
+      state: "not-connected",
+      count: "",
+      rows: [],
+      title: "Connect email",
+      status: "",
+      label: "Connect email",
+      description: "",
+    });
+    const unchecked = presentOverviewInboxCard({ ...base, unchecked: true }, f);
+    expect([unchecked.state, unchecked.title, unchecked.status, unchecked.label]).toEqual(["idle", "Inbox", "Open to check email", "Open Inbox"]);
+    const idle = presentOverviewInboxCard({ ...base, connected: true }, f);
+    expect([idle.state, idle.title, idle.status]).toEqual(["idle", "Inbox", "Open to load email"]);
+  });
+  it("a loaded page shows its unread count, two subjects and senders, the account and read time", () => {
+    const card = presentOverviewInboxCard(
+      {
+        ...base,
+        connected: true,
+        loaded: loaded([{ subject: "Invoice", from: "Billing" }, { subject: "", from: "Ada" }, { subject: "Third", from: "Grace" }]),
+      },
+      f,
+    );
+    expect(card).toEqual({
+      state: "ready",
+      count: "3 unread",
+      rows: [
+        { title: "Invoice", detail: "Billing" },
+        { title: "(no subject)", detail: "Ada" },
+      ],
+      title: "",
+      status: "work@example.test · Updated 3:04 PM",
+      label: "Open Inbox: 3 unread emails",
+      description: "work@example.test · Updated 3:04 PM",
+    });
+    const one = presentOverviewInboxCard({ ...base, connected: true, loaded: loaded([{ subject: "Only", from: 7 }], true) }, f);
+    expect([one.count, one.label, one.rows]).toEqual(["1+ unread", "Open Inbox: 1+ unread email", [{ title: "Only", detail: "" }]]);
+  });
+  it("an empty page says so only when it saw every message; a partial one does not", () => {
+    const complete = presentOverviewInboxCard({ ...base, connected: true, loaded: loaded([]) }, f);
+    expect([complete.state, complete.count, complete.title, complete.label]).toEqual(["ready", "", "No unread email", "Open Inbox"]);
+    const partial = presentOverviewInboxCard({ ...base, connected: true, loaded: loaded([], true, at(8, 15, 6)) }, f);
+    expect([partial.title, partial.status]).toEqual(["Inbox", "Recent email · Updated Tue, Oct 6 8:15 AM"]);
+  });
+  it("loading and failures keep the last read time and say what to do", () => {
+    const loading = presentOverviewInboxCard({ ...base, connected: true, pending: true }, f);
+    expect([loading.state, loading.title, loading.status]).toEqual(["loading", "Loading email…", "Updating email…"]);
+    const revoked = presentOverviewInboxCard({ ...base, connected: true, failure: "revoked", loaded: loaded([]) }, f);
+    expect([revoked.state, revoked.title, revoked.status]).toEqual(["error", "Reconnect email", "Open to retry · last updated 3:04 PM"]);
+    const failed = presentOverviewInboxCard({ ...base, connected: true, failure: "error" }, f);
+    expect([failed.state, failed.title, failed.status]).toEqual(["error", "Email unavailable", "Open to retry"]);
+    // Unread rows from the last loaded page stay listed above a failed refresh.
+    const kept = presentOverviewInboxCard({ ...base, connected: true, failure: "error", loaded: loaded([{ subject: "Invoice", from: "Billing" }]) }, f);
+    expect([kept.title, kept.count, kept.rows.length]).toEqual(["", "1 unread", 1]);
+  });
+  it("a dropped page is stale with its last read time and no rows", () => {
+    const stale = { state: "stale" as const, unread: 2, source: "work@example.test", updatedAt: at(8, 15, 6) };
+    expect(presentOverviewInboxCard({ ...base, connected: true, stale }, f)).toEqual({
+      state: "stale",
+      count: "",
+      rows: [],
+      title: "Inbox",
+      status: "Not updated since Tue, Oct 6 8:15 AM",
+      label: "Open Inbox: work@example.test has not updated since Tue, Oct 6 8:15 AM; 2 unread emails when last read",
+      description: "Not updated since Tue, Oct 6 8:15 AM",
+    });
+    // A loaded page, a read in flight, a failure or a summary with no completed read win over it.
+    expect(presentOverviewInboxCard({ ...base, connected: true, stale, loaded: loaded([]) }, f).state).toBe("ready");
+    expect(presentOverviewInboxCard({ ...base, connected: true, stale, pending: true }, f).state).toBe("loading");
+    expect(presentOverviewInboxCard({ ...base, connected: true, stale, failure: "error" }, f).state).toBe("error");
+    expect(presentOverviewInboxCard({ ...base, connected: true, stale: { ...stale, updatedAt: null } }, f).state).toBe("idle");
   });
 });
 
@@ -217,6 +302,96 @@ describe("agenda", () => {
     ).toBe("Fri, Oct 9");
     expect(overviewAttendeeInitials(["Ada Lovelace", "grace hopper", 42, ""])).toEqual(["AL", "GH"]);
     expect(overviewAttendeeInitials(["A B", "C D", "E F", "G H"])).toEqual(["AB", "CD", "+2"]);
+  });
+});
+
+describe("agenda card", () => {
+  const read = presentOverviewAgendaSource({ state: "ready", overdue: false, readAt: at(15, 4), now, native: true, calendar: "Work" }, f);
+  const review = { title: "Design review", begin: at(16), end: at(17), allDay: false, video: true, people: ["Ada Lovelace", "Grace Hopper"] };
+  it("an event names its day, time range, source and attendees", () => {
+    expect(presentOverviewAgendaCard({ now, item: review, provenance: read, emptyTitle: "No upcoming events" }, f)).toEqual({
+      heading: "Wed, Oct 7",
+      origin: "Work",
+      title: "Design review",
+      footer: "4:00 PM – 5:00 PM",
+      hasItem: true,
+      hasMeta: true,
+      source: "",
+      next: null,
+      overdue: false,
+      stale: false,
+      label: "Open calendar event: Design review, Wed, Oct 7, 4:00 PM – 5:00 PM",
+      description: "Work. Read 3:04 PM from calendars on this device",
+      itemDescription: "Work. Read 3:04 PM from calendars on this device",
+      video: true,
+      people: ["AL", "GH"],
+      state: "item",
+    });
+  });
+  it("all-day, open-ended, overnight and untitled items", () => {
+    const card = (item: Partial<typeof review>) =>
+      presentOverviewAgendaCard({ now, item: { ...review, ...item }, provenance: read, emptyTitle: "" }, f);
+    expect(card({ allDay: true, begin: at(0, 0, 9), end: at(0, 0, 10) }).footer).toBe("All day");
+    expect(card({ allDay: true, begin: at(0, 0, 9), end: at(0, 0, 10) }).heading).toBe("Fri, Oct 9");
+    expect(card({ end: Number.NaN }).footer).toBe("4:00 PM");
+    expect(card({ end: at(16) }).footer).toBe("4:00 PM");
+    expect(card({ begin: at(23), end: at(1, 0, 8) }).footer).toBe("11:00 PM – Thu, Oct 8, 1:00 AM");
+    const untitled = card({ title: "" });
+    expect([untitled.title, untitled.label]).toEqual(["Untitled event", "Open calendar event: Untitled event, Wed, Oct 7, 4:00 PM – 5:00 PM"]);
+    expect(card({ people: undefined, video: undefined })).toMatchObject({ people: [], video: false });
+  });
+  it("an overdue reminder heads the card and the next event keeps its own line and source", () => {
+    const reminder = presentOverviewAgendaSource({ state: "ready", overdue: true, reminderReadAt: at(15, 1), readAt: at(15, 4), now, native: true }, f);
+    const card = presentOverviewAgendaCard(
+      {
+        now,
+        item: { title: "Pay rent", begin: at(9), end: Number.POSITIVE_INFINITY, allDay: false, overdue: true },
+        provenance: reminder,
+        next: { item: review, provenance: read },
+        overdueCount: 2,
+        stale: true,
+        emptyTitle: "",
+      },
+      f,
+    );
+    expect(card).toMatchObject({
+      heading: "2 overdue reminders",
+      origin: "",
+      title: "Pay rent",
+      footer: "Due 9:00 AM",
+      overdue: true,
+      stale: false,
+      state: "overdue",
+      label: "Open overdue reminder: Pay rent, Due 9:00 AM",
+      next: { text: "Next: Design review 4:00 PM", source: "Work" },
+      itemDescription: "Overdue reminder saved on this device, read 3:01 PM",
+      description: "Overdue reminder saved on this device, read 3:01 PM. Next: Design review, 4:00 PM. Work. Read 3:04 PM from calendars on this device",
+    });
+    // One overdue reminder, and a next item is shown only under an overdue reminder.
+    expect(
+      presentOverviewAgendaCard({ now, item: { title: "Pay rent", begin: at(9), end: Number.NaN, allDay: false, overdue: true }, provenance: reminder, emptyTitle: "" }, f).heading,
+    ).toBe("Overdue reminder");
+    expect(presentOverviewAgendaCard({ now, item: review, provenance: read, next: { item: review, provenance: read }, emptyTitle: "" }, f).next).toBeNull();
+  });
+  it("a stale read keeps the item and is marked", () => {
+    const stale = presentOverviewAgendaSource({ state: "stale", overdue: false, readAt: at(21, 5, 6), now, native: true, calendar: "Work" }, f);
+    const card = presentOverviewAgendaCard({ now, item: review, provenance: stale, stale: true, emptyTitle: "" }, f);
+    expect([card.state, card.stale, card.source, card.origin]).toEqual(["stale", true, "Not updated since Tue, Oct 6 9:05 PM", ""]);
+  });
+  it("without an item: today's date, the empty title and the source the card opens", () => {
+    const empty = presentOverviewAgendaCard({ now, item: null, provenance: { origin: "", read: "", description: "" }, emptyTitle: "No upcoming events" }, f);
+    expect(empty).toMatchObject({ heading: "Wed, Oct 7", title: "No upcoming events", footer: "", hasItem: false, hasMeta: false, label: "Open your calendar", state: "empty", people: [] });
+    const failed = presentOverviewAgendaCard(
+      {
+        now,
+        item: null,
+        provenance: { origin: "", read: "Open Calendar to retry", description: "Agent Calendar could not be read. Open Calendar to retry." },
+        emptyTitle: "Calendar unavailable",
+        sourceName: "Agent Calendar",
+      },
+      f,
+    );
+    expect([failed.title, failed.source, failed.hasMeta, failed.label]).toEqual(["Calendar unavailable", "Open Calendar to retry", true, "Open Agent Calendar"]);
   });
 });
 

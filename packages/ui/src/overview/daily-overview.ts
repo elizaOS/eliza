@@ -220,6 +220,148 @@ export function presentOverviewInboxStatus(
       : "";
 }
 
+/** States of a Home mail card; `idle` is connected with nothing loaded yet. */
+export type OverviewInboxCardState =
+  | "not-connected"
+  | "idle"
+  | "loading"
+  | "ready"
+  | "stale"
+  | "error";
+
+export interface OverviewInboxCardInput {
+  now: number;
+  /**
+   * Metadata of the page the user last loaded in the mailbox for the current
+   * account, or null. Only subjects and senders of unread messages; never a
+   * body.
+   */
+  loaded: {
+    unread: readonly { subject?: unknown; from?: unknown }[];
+    /** The loaded pages did not see every message. */
+    more: boolean;
+    /** Account label. */
+    label: string;
+    /** When the first page of that read completed, epoch milliseconds. */
+    readAt: number | null;
+  } | null;
+  /** The last read failed; `revoked` when its grant was revoked. */
+  failure: "revoked" | "error" | null;
+  /** A read is in flight or scheduled. */
+  pending: boolean;
+  /** An account can be read. */
+  connected: boolean;
+  /** No account: settled, not just unknown during startup. */
+  disconnected: boolean;
+  /** Accounts were not checked yet. */
+  unchecked: boolean;
+  /**
+   * The provider adapter's summary when a page read earlier was dropped since
+   * (for example an account change elsewhere); used only without a loaded page.
+   */
+  stale?: OverviewAttentionSummary | null;
+}
+
+/** Everything a Home mail card renders (see `OverviewAttentionCard`). */
+export interface OverviewInboxCardModel {
+  state: OverviewInboxCardState;
+  /** "2 unread", "3+ unread", or empty. */
+  count: string;
+  /** At most two unread messages of the loaded page. */
+  rows: { title: string; detail: string }[];
+  /** Headline when no rows are shown. */
+  title: string;
+  /** Account and read time, loading, retry or staleness. */
+  status: string;
+  label: string;
+  description: string;
+}
+
+/**
+ * The Home mail card from the page the user loaded in the mailbox. It shows
+ * only metadata the user already loaded there: the unread count, up to two
+ * subjects and senders, the account and when it was read. Home never reads
+ * mail to refresh it.
+ */
+export function presentOverviewInboxCard(
+  input: OverviewInboxCardInput,
+  format?: OverviewFormat,
+): OverviewInboxCardModel {
+  const { loaded, failure, pending, now } = input;
+  const stale =
+    !loaded &&
+    !failure &&
+    !pending &&
+    input.stale?.state === "stale" &&
+    overviewInstant(input.stale.updatedAt)
+      ? presentOverviewAttention(input.stale, now, format)
+      : null;
+  if (stale)
+    return {
+      state: "stale",
+      count: "",
+      rows: [],
+      title: "Inbox",
+      status: stale.text,
+      label: stale.label,
+      description: stale.text,
+    };
+  const status = presentOverviewInboxStatus(
+    {
+      failure: !!failure,
+      pending,
+      cached: loaded
+        ? { more: loaded.more, label: loaded.label, readAt: loaded.readAt }
+        : null,
+      connected: input.connected,
+      unchecked: input.unchecked,
+      now,
+    },
+    format,
+  );
+  const unread = loaded?.unread ?? [];
+  const count = unread.length
+    ? `${unread.length}${loaded?.more ? "+" : ""} unread`
+    : "";
+  const text = (value: unknown) => (typeof value === "string" ? value : "");
+  return {
+    state: failure
+      ? "error"
+      : pending
+        ? "loading"
+        : loaded
+          ? "ready"
+          : input.disconnected
+            ? "not-connected"
+            : "idle",
+    count,
+    rows: unread.slice(0, 2).map((message) => ({
+      title: text(message.subject) || "(no subject)",
+      detail: text(message.from),
+    })),
+    title: unread.length
+      ? ""
+      : failure === "revoked"
+        ? "Reconnect email"
+        : failure
+          ? "Email unavailable"
+          : pending
+            ? "Loading email…"
+            : loaded && !loaded.more
+              ? "No unread email"
+              : input.disconnected
+                ? "Connect email"
+                : "Inbox",
+    status,
+    label: count
+      ? `Open Inbox: ${count} email${unread.length === 1 ? "" : "s"}`
+      : input.disconnected
+        ? "Connect email"
+        : "Open Inbox",
+    description: status,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Brief (latest retained digest)
 // ---------------------------------------------------------------------------
@@ -826,6 +968,164 @@ export function presentOverviewAgendaFeed(
     description: `${source}${when ? `. As of ${when}` : ""}`,
     stale: false,
     state: input.hasItem ? "ready" : "empty",
+  };
+}
+
+/** One agenda item as the card shows it. Hosts map their own records to this. */
+export interface OverviewAgendaCardItem {
+  title: string;
+  /**
+   * Start (event) or due time (reminder), epoch milliseconds. An all-day item
+   * starts at local midnight of its first day.
+   */
+  begin: number;
+  /** End, epoch milliseconds; not finite for a reminder. */
+  end: number;
+  allDay: boolean;
+  /** A reminder past due and not handled. */
+  overdue?: boolean;
+  /** The item has a meeting link. */
+  video?: boolean;
+  /** Attendee names; only their initials are shown. */
+  people?: readonly unknown[];
+}
+
+export interface OverviewAgendaCardInput {
+  now: number;
+  /** The item the card shows (`selectOverviewAgenda().agenda`), or null. */
+  item: OverviewAgendaCardItem | null;
+  /**
+   * Where and when the shown item was read ({@link presentOverviewAgendaSource},
+   * or an agent feed's read line and description). Without an item it
+   * describes the source: a retry line after a failed read, or nothing.
+   */
+  provenance: OverviewAgendaProvenance;
+  /**
+   * Under an overdue reminder, the next item that is not overdue, with its own
+   * provenance, so an overdue reminder never hides it.
+   */
+  next?: {
+    item: OverviewAgendaCardItem;
+    provenance: OverviewAgendaProvenance;
+  } | null;
+  /** Overdue reminders, for the heading. */
+  overdueCount?: number;
+  /** The last completed read is from an earlier local day. */
+  stale?: boolean;
+  /** Title when no item is shown ({@link overviewAgendaEmptyTitle} or a feed title). */
+  emptyTitle: string;
+  /** What the card opens when it shows no item. Default "your calendar". */
+  sourceName?: string;
+}
+
+/** Everything an agenda card renders (see `OverviewAgendaCard`). */
+export interface OverviewAgendaCardModel {
+  heading: string;
+  origin: string;
+  title: string;
+  /** Time of the shown item: due time, "All day", or its time range. */
+  footer: string;
+  hasItem: boolean;
+  /** The meta row holds the item time and/or a read line. */
+  hasMeta: boolean;
+  /** Read line: retry after a failed read, or staleness. */
+  source: string;
+  next: { text: string; source: string } | null;
+  overdue: boolean;
+  stale: boolean;
+  /** Accessible name. */
+  label: string;
+  /** Accessible description: where and when the item was read, then the Next line. */
+  description: string;
+  /** The shown item's description alone. */
+  itemDescription: string;
+  video: boolean;
+  /** Attendee initials. */
+  people: string[];
+  state: "item" | "overdue" | "stale" | "empty";
+}
+
+/**
+ * The agenda card from a selected item and where it was read. A host selects
+ * the item with {@link selectOverviewAgenda} and describes its provenance; this
+ * produces the heading (the item's day, or the overdue count), the time line,
+ * the accessible name and description, the Next line under an overdue reminder
+ * and the attendee initials. Nothing is read here.
+ */
+export function presentOverviewAgendaCard(
+  input: OverviewAgendaCardInput,
+  format?: OverviewFormat,
+): OverviewAgendaCardModel {
+  const f = resolveFormat(format);
+  const { item, provenance, now } = input;
+  const overdue = !!item?.overdue;
+  const dateLabel = f.shortDate(new Date(item ? item.begin : now));
+  const heading = overviewAgendaHeader(
+    dateLabel,
+    overdue ? Math.max(1, Math.floor(input.overdueCount ?? 1)) : 0,
+  );
+  const span = (shown: OverviewAgendaCardItem) => {
+    if (shown.allDay) return "All day";
+    const begin = new Date(shown.begin);
+    if (!(Number.isFinite(shown.end) && shown.end > shown.begin))
+      return f.time(begin);
+    const end = new Date(shown.end);
+    return `${f.time(begin)} – ${
+      end.toDateString() === begin.toDateString()
+        ? f.time(end)
+        : `${f.shortDate(end)}, ${f.time(end)}`
+    }`;
+  };
+  const title = item
+    ? typeof item.title === "string" && item.title
+      ? item.title
+      : "Untitled event"
+    : "";
+  const footer = !item
+    ? ""
+    : overdue
+      ? overviewOverdueDueLabel(item.begin, now, format)
+      : span(item);
+  const next =
+    overdue && input.next
+      ? presentOverviewAgendaNext(
+          {
+            title:
+              typeof input.next.item.title === "string"
+                ? input.next.item.title
+                : "",
+            begin: input.next.item.begin,
+            allDay: input.next.item.allDay,
+            now,
+            provenance: input.next.provenance,
+          },
+          format,
+        )
+      : null;
+  const stale = !!input.stale && !overdue;
+  return {
+    heading,
+    origin: provenance.origin,
+    title: title || input.emptyTitle,
+    footer,
+    hasItem: !!item,
+    hasMeta: !!item || !!provenance.read,
+    source: provenance.read,
+    next: next ? { text: next.text, source: next.source } : null,
+    overdue,
+    stale,
+    label: !item
+      ? `Open ${input.sourceName?.trim() || "your calendar"}`
+      : overdue
+        ? `Open overdue reminder: ${title}, ${footer}`
+        : `Open calendar event: ${title}, ${dateLabel}, ${footer}`,
+    description: [provenance.description, next?.description]
+      .filter(Boolean)
+      .join(". "),
+    itemDescription: provenance.description,
+    video: !!item?.video,
+    people: item ? overviewAttendeeInitials([...(item.people ?? [])]) : [],
+    state: !item ? "empty" : overdue ? "overdue" : stale ? "stale" : "item",
   };
 }
 
