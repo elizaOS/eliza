@@ -2914,35 +2914,9 @@ export function createScheduledTaskRunner(
               context: { taskId: claimed.taskId },
             });
           }
-          // A global pause (vacation mode) that started during preparation
-          // skips this occurrence, as a pause active before the claim does.
-          const pause = await shouldDeferForGlobalPause(claimed);
-          if (pause.paused && !pause.endedPauseEndIso) {
-            throw new ElizaError("Global pause started before delivery", {
-              code: "SCHEDULED_TASK_DISPATCH_GLOBAL_PAUSED",
-              context: {
-                taskId: claimed.taskId,
-                reason: pause.reason ?? "global_pause",
-              },
-            });
-          }
         },
       });
     } catch (error) {
-      if (
-        error instanceof ElizaError &&
-        error.code === "SCHEDULED_TASK_DISPATCH_GLOBAL_PAUSED"
-      ) {
-        const reason = String(error.context?.reason ?? "global_pause");
-        clearPendingDispatch(claimed);
-        claimed.state.status = "skipped";
-        claimed.state.lastDecisionLog = reason;
-        if (!(await persist(claimed, { expectedStatus: "fired" }))) {
-          return { kind: "raced", taskId: claimed.taskId };
-        }
-        await logger.log(claimed.taskId, "skipped", { reason });
-        return { kind: "skipped", task: claimed, reason };
-      }
       const wrapped = error instanceof Error ? error : new Error(String(error));
       return recordDispatchFailure(claimed, { error: wrapped });
     }
