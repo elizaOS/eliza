@@ -14,10 +14,13 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import { type CallLogEntry, Phone } from "@elizaos/plugin-native-phone/bridge";
 
-const COMPLETE_CALL_LOG_READ_LIMIT = 2_147_483_647;
+// Provider render bound, matching the Phone view's max. The
+// native query already orders newest-first, so the newest window
+// is exactly the recent phone activity this provider exists to
+// surface. The view's explicit complete-read path is untouched.
+const PHONE_CALL_LOG_PROVIDER_LIMIT = 200;
 
 interface PhoneCallLogEntry {
   id: string;
@@ -48,17 +51,12 @@ export const phoneCallLogProvider: Provider = {
   ): Promise<ProviderResult> => {
     try {
       const { calls } = await Phone.listRecentCalls({
-        limit: COMPLETE_CALL_LOG_READ_LIMIT,
+        limit: PHONE_CALL_LOG_PROVIDER_LIMIT,
       });
-      if (calls.length === COMPLETE_CALL_LOG_READ_LIMIT) {
-        throw new ElizaError(
-          "Phone call-log provider reached the native bridge boundary; refusing potentially incomplete planner context.",
-          {
-            code: "NATIVE_PHONE_PROVIDER_INCOMPLETE",
-            context: { limit: COMPLETE_CALL_LOG_READ_LIMIT },
-          },
-        );
-      }
+      // Hitting the limit is the normal truncated case here, not
+      // an incomplete-context error: the provider's contract is
+      // recent activity, and older calls stay reachable through
+      // the Phone view's explicit complete read.
       const entries: PhoneCallLogEntry[] = calls.map(
         (call: CallLogEntry): PhoneCallLogEntry => ({
           id: call.id,
