@@ -3,10 +3,11 @@
  *
  * Runs on the Linux image host, after the production image build, with AOSP
  * releasetools (otatools `bin/`) and a decrypted release key directory supplied at
- * runtime. A brand's wrapper binds its release descriptor (root-relative paths):
+ * runtime. A brand's wrapper binds its product name and release descriptor
+ * (root-relative paths); a descriptor naming another brand's product is refused:
  *
- *   signRelease({ root, descriptorFile, sourceLockPath, applicationSignerFile,
- *     targetFiles, targetFilesSha256, keysDir, releasetools, out,
+ *   signRelease({ root, productName, descriptorFile, sourceLockPath,
+ *     applicationSignerFile, targetFiles, targetFilesSha256, keysDir, releasetools, out,
  *     [apksigner], [keyMap], [apkManifest], [incrementalFrom], [dryRun],
  *     [pkcs11Config, avbSigningHelper, payloadSigner, payloadSignerArgs,
  *      payloadSignerSignatureSize] })
@@ -820,6 +821,7 @@ export function readReleaseInputs({ root, descriptorFile }) {
 /** Every reason the signing job would refuse, without running anything. */
 export async function signingProblems({
   root = process.cwd(),
+  productName = null,
   descriptorFile,
   sourceLockPath,
   applicationSignerFile = null,
@@ -843,6 +845,7 @@ export async function signingProblems({
       file: descriptorFile,
       sourceLockPath,
       applicationSignerFile,
+      productName,
     }),
     ...avbDescriptorProblems(product, descriptorFile),
   ];
@@ -924,14 +927,18 @@ export async function signingProblems({
 }
 
 /**
- * Sign a brand's release. `root`, `descriptorFile`, `sourceLockPath` and
- * `applicationSignerFile` bind the brand's reviewed release inputs; the remaining
- * options are the signing job's runtime inputs.
+ * Sign a brand's release. `root`, `productName`, `descriptorFile`, `sourceLockPath`
+ * and `applicationSignerFile` bind the brand's reviewed release inputs; the
+ * remaining options are the signing job's runtime inputs.
  */
 export async function signRelease(options) {
   const root = options.root ?? process.cwd();
   if (!safeRelativePath(options.descriptorFile))
     throw new Error("signRelease needs the product's release descriptorFile");
+  if (!/^[a-z][a-z0-9_]*$/.test(options.productName ?? ""))
+    throw new Error(
+      "signRelease needs the brand's productName (its Pixel 10a composition)",
+    );
   const { product, channel, sourceLock } = readReleaseInputs({
     root,
     descriptorFile: options.descriptorFile,

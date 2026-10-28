@@ -4,9 +4,12 @@
  * tooling for release-signed A/B AOSP images (Pixel 10a / stallion on Android 17).
  *
  * It applies exactly one release-signed OTA package to one serial-bound device
- * through that device's own recovery (`adb reboot sideload`, `adb sideload`), so the
- * installed image verifies the package against its otacerts and the bootloader
- * enforces verified boot and rollback protection. Nothing here signs, builds,
+ * through that device's own recovery (`adb reboot recovery`, the operator's "Apply
+ * update from ADB" choice, `adb sideload`), so the installed image verifies the
+ * package against its otacerts and the bootloader enforces verified boot and
+ * rollback protection. A user build's adbd cannot enter sideload by itself
+ * (`adb reboot sideload` needs `adb root`), so the tool asks the operator for the
+ * recovery menu choices and waits for the device. Nothing here signs, builds,
  * relocks or wipes. Each operation keeps a durable journal: an interruption is
  * resumed or reported from the device state it observes, never assumed complete.
  *
@@ -50,6 +53,15 @@ const FALLBACK_STATES = new Set([
   "verification-failed",
   "verified",
 ]);
+/** Verified boot states from strongest to weakest (ro.boot.verifiedbootstate). */
+const VERIFIED_BOOT_STRENGTH = ["green", "yellow", "orange", "red"];
+/** What the operator does on the device; the tool cannot do it over a user build's adb. */
+export const OPERATOR_STEPS = Object.freeze({
+  enterSideload:
+    'On the device, in recovery, choose "Apply update from ADB" with the volume and power keys; the update waits for the device to enter sideload.',
+  rebootAfterSideload:
+    'When recovery reports that the installation finished, choose "Reboot system now" if the device does not reboot by itself.',
+});
 
 /**
  * Problems that keep a compatibility record from being applied on a channel: its
@@ -234,8 +246,18 @@ export function observeBooted(device) {
     bootCompleted: props["sys.boot_completed"] === "1",
     verifiedBootState: props["ro.boot.verifiedbootstate"] ?? null,
     flashLocked: props["ro.boot.flash.locked"] ?? null,
+    // Virtual A/B keeps the original slot's dynamic partitions only in snapshots.
+    virtualAb: props["ro.virtual_ab.enabled"] === "true",
     selinux: device.adb(["shell", "getenforce"]).stdout.trim(),
   };
+}
+
+/** True when `observed` is a weaker verified boot state than `installed` (or unknown). */
+export function weakerVerifiedBoot(installed, observed) {
+  const before = VERIFIED_BOOT_STRENGTH.indexOf(installed);
+  if (before < 0) return false;
+  const after = VERIFIED_BOOT_STRENGTH.indexOf(observed);
+  return after < 0 || after > before;
 }
 
 /**
@@ -460,12 +482,15 @@ export function verifyAppliedUpdate(journal, observed) {
     problems.push("SELinux is not enforcing");
   if (journal.from.flashLocked === "1" && observed?.flashLocked !== "1")
     problems.push("the bootloader is no longer locked");
+  // A product key enrolled with avb_custom_key boots yellow; it must not become orange or red.
   if (
-    journal.from.verifiedBootState === "green" &&
-    observed?.verifiedBootState !== "green"
+    weakerVerifiedBoot(
+      journal.from.verifiedBootState,
+      observed?.verifiedBootState,
+    )
   )
     problems.push(
-      `verified boot is ${observed?.verifiedBootState}, weaker than the installed green state`,
+      `verified boot is ${observed?.verifiedBootState}, weaker than the installed ${journal.from.verifiedBootState} state`,
     );
   if (observed?.securityPatch !== journal.release.securityPatch)
     problems.push(
@@ -483,7 +508,10 @@ function readRecordFile(file) {
  * Apply (or resume) one journaled update. Without `execute` it only observes and
  * returns the plan and problems. With `execute`, `confirm` must be true; the
  * device lock (install-lock.ts) prevents a concurrent install or update of the same
- * serial, and an interrupted run leaves it for the operator to inspect.
+ * serial, and an interrupted run leaves it for the operator to inspect. `notify`
+ * receives the steps the operator performs on the device (OPERATOR_STEPS): a user
+ * build's recovery is entered with `adb reboot recovery` and sideload is chosen on
+ * the device, because `adb reboot sideload` needs a root adbd.
  */
 export function applyUpdate({
   device,
@@ -497,9 +525,11 @@ export function applyUpdate({
   timing = {},
   lockDirectory,
   now = () => new Date(),
+  notify = (message) => console.error(message),
 }) {
   const timeouts = {
     reboot: timing.rebootMs ?? 10 * 60_000,
+    operator: timing.operatorMs ?? 10 * 60_000,
     sideload: timing.sideloadMs ?? 60 * 60_000,
     wait: timing.wait,
     now: timing.now,
@@ -605,6 +635,7 @@ export function applyUpdate({
             securityPatch: observed.securityPatch,
             verifiedBootState: observed.verifiedBootState,
             flashLocked: observed.flashLocked,
+            virtualAb: observed.virtualAb === true,
             recordSha256: installed.sha256,
           },
           state: "preflight",
@@ -647,9 +678,16 @@ export function applyUpdate({
       if (next === "sideload") {
         lock.beforeWrites();
         if (current !== "sideload") {
-          device.adb(["reboot", "sideload"]);
+          // A user build's adbd refuses `reboot sideload` (it needs adb root): enter
+          // recovery and let the operator choose sideload on the device.
+          if (current === "device") device.adb(["reboot", "recovery"]);
+          writeJournal(
+            journalFile,
+            event(journal, "recovery", { deviceState: current }, now),
+          );
+          notify(OPERATOR_STEPS.enterSideload);
           current = waitFor(device, (value) => value === "sideload", {
-            timeoutMs: timeouts.reboot,
+            timeoutMs: timeouts.reboot + timeouts.operator,
             wait: timeouts.wait,
             now: timeouts.now,
           });
@@ -664,7 +702,7 @@ export function applyUpdate({
               ),
             );
             throw new Error(
-              `the device did not enter recovery sideload (it is ${current}); the installed slot is unchanged`,
+              `the device did not enter recovery sideload (it is ${current}); nothing was sent. Choose "Apply update from ADB" in recovery and run apply again, or reboot the device`,
             );
           }
         }
@@ -687,13 +725,16 @@ export function applyUpdate({
             ),
           );
           throw new Error(
-            "recovery did not accept the OTA package; the journal records the failure and the installed slot remains bootable",
+            "recovery did not complete the OTA transfer; the journal records the failure. Run status: a repeated apply resumes only from the device state it observes",
           );
         }
         writeJournal(journalFile, event(journal, "transferred", {}, now));
+        // Recovery leaves sideload when the installation ends; a user build's recovery
+        // then has no adb, so the operator may have to choose the reboot.
         device.adb(["reboot"], { allowFailure: true });
+        notify(OPERATOR_STEPS.rebootAfterSideload);
         const booted = waitForBoot(device, {
-          timeoutMs: timeouts.reboot,
+          timeoutMs: timeouts.reboot + timeouts.operator,
           wait: timeouts.wait,
           now: timeouts.now,
         });
@@ -780,8 +821,11 @@ export function updateStatus({ device, journalFile }) {
  * Problems with falling back to the slot the update started from. Fallback is only
  * admitted while the updated slot has not been marked successful (so the stored
  * AVB rollback indexes still admit the original build), the original slot is not
- * marked unbootable, and no snapshot merge is in progress. After that, recover with
- * a compatible rollback release (`check`) or the stock factory image.
+ * marked unbootable, and no snapshot merge is in progress. On a Virtual A/B device
+ * the original slot's dynamic partitions survive only in an unmerged snapshot
+ * update: when recovery could not create snapshots it overwrites them, so the
+ * bootloader must report `snapshotted`. After that, recover with a compatible
+ * rollback release (`check`) or the stock factory image.
  */
 export function fallbackProblems(journal, bootloader) {
   const problems = [];
@@ -807,6 +851,13 @@ export function fallbackProblems(journal, bootloader) {
   if (bootloader.snapshotUpdateStatus === "merging")
     problems.push(
       "a snapshot merge is in progress; the original slot is being overwritten",
+    );
+  else if (
+    journal.from?.virtualAb !== false &&
+    bootloader.snapshotUpdateStatus !== "snapshotted"
+  )
+    problems.push(
+      `the bootloader reports snapshot update status ${bootloader.snapshotUpdateStatus}, not snapshotted; on a Virtual A/B device the original slot's dynamic partitions may have been overwritten, so recover with a compatible release or the stock factory image`,
     );
   return problems;
 }

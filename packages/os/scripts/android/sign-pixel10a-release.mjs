@@ -14,6 +14,7 @@ import { signingMain } from "./aosp-release-signing.mjs";
 
 export const ELIZA_PIXEL10A_RELEASE = Object.freeze({
   root: fileURLToPath(new URL("../..", import.meta.url)),
+  productName: "eliza_stallion_phone",
   descriptorFile: "android/releases/pixel10a-eliza.json",
   sourceLockPath: "android/sources/pixel10a-stallion.json",
 });

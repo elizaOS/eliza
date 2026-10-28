@@ -15,6 +15,7 @@ import {
   fallbackProblems,
   fallbackToOriginalSlot,
   main,
+  OPERATOR_STEPS,
   parseArgs,
   parseGetprop,
   readJournal,
@@ -23,6 +24,7 @@ import {
   updateStatus,
   updateTransitionProblems,
   verifyStockRecovery,
+  weakerVerifiedBoot,
 } from "../android/aosp-ota-update.mjs";
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -268,11 +270,14 @@ test("compatible updates are newer, verifiable by the installed image and never 
 });
 
 /**
- * A simulated A/B device. Recovery sideload writes the candidate to the other slot;
+ * A simulated A/B user build. Its adbd refuses `reboot sideload` (that needs adb
+ * root) and its recovery has no adb until the operator chooses "Apply update from
+ * ADB": with `operator` "present" that choice is made while the tool waits, with
+ * "idle" it is not. Recovery sideload writes the candidate to the other slot;
  * `behavior` scripts failures: "fail" (recovery refuses), "unplug" (the transfer is
  * interrupted and the device disappears), "fallback" (the updated slot does not boot
  * and the bootloader returns to the original slot), "permissive" (the updated image
- * boots with SELinux permissive).
+ * boots with SELinux permissive), "orange" (the updated image boots unverified).
  */
 function simulatedDevice({
   fingerprint = INSTALLED.build.fingerprint,
@@ -280,6 +285,9 @@ function simulatedDevice({
   behavior = [],
   successful = "no",
   snapshot = "snapshotted",
+  operator = "present",
+  verifiedBoot = "green",
+  virtualAb = "true",
 } = {}) {
   const sim = {
     state: "device",
@@ -288,7 +296,9 @@ function simulatedDevice({
     securityPatch: "2026-10-05",
     selinux: "Enforcing",
     locked: "1",
-    verifiedBoot: "green",
+    verifiedBoot,
+    virtualAb,
+    operator,
     slots: {
       a: { fingerprint: slot === "a" ? fingerprint : null },
       b: { fingerprint: slot === "b" ? fingerprint : null },
@@ -309,6 +319,20 @@ function simulatedDevice({
         ? CANDIDATE.build.securityPatch
         : "2026-10-05";
   };
+  const reboot = () => {
+    if (sim.pending && sim.updateBehavior !== "fallback")
+      sim.slot = sim.pending;
+    if (sim.updateBehavior === "permissive") sim.selinux = "Permissive";
+    if (sim.updateBehavior === "orange") sim.verifiedBoot = "orange";
+    sim.pending = null;
+    boot();
+  };
+  // The operator acts on the recovery menu while the tool waits for the device.
+  const operatorActs = () => {
+    if (sim.state !== "recovery-menu" || sim.operator !== "present") return;
+    if (sim.menuChoice === "sideload") sim.state = "sideload";
+    else reboot();
+  };
   const device = {
     serial: "SIMULATED01",
     sim,
@@ -317,11 +341,12 @@ function simulatedDevice({
       calls.push(["adb", ...args]);
       let result: { status: number; stdout: string; stderr: string };
       const [command, ...rest] = args;
-      if (command === "get-state")
+      if (command === "get-state") {
+        operatorActs();
         result = ["device", "recovery", "sideload"].includes(sim.state)
           ? ok(`${sim.state}\n`)
           : fail("error: device not found");
-      else if (sim.state === "absent" || sim.state === "bootloader")
+      } else if (["absent", "bootloader", "recovery-menu"].includes(sim.state))
         result = fail("error: device not found");
       else if (
         command === "shell" &&
@@ -343,6 +368,7 @@ function simulatedDevice({
             ["sys.boot_completed", "1"],
             ["ro.boot.verifiedbootstate", sim.verifiedBoot],
             ["ro.boot.flash.locked", sim.locked],
+            ["ro.virtual_ab.enabled", sim.virtualAb],
           ]
             .map(([key, value]) => `[${key}]: [${value}]`)
             .join("\n"),
@@ -353,31 +379,37 @@ function simulatedDevice({
         sim.state === "device"
       )
         result = ok(`${sim.selinux}\n`);
-      else if (command === "reboot" && rest[0] === "sideload") {
-        sim.state = "sideload";
+      else if (command === "reboot" && rest[0] === "sideload")
+        // A user build's adbd prints this and stays in Android.
+        result = ok("'adb root' is required for 'adb reboot sideload'.\n");
+      else if (command === "reboot" && rest[0] === "recovery") {
+        sim.state = "recovery-menu";
+        sim.menuChoice = "sideload";
         result = ok();
       } else if (command === "reboot" && rest[0] === "bootloader") {
         sim.state = "bootloader";
         result = ok();
       } else if (command === "sideload" && sim.state === "sideload") {
         const next = sim.behavior.shift();
-        if (next === "fail")
+        if (next === "fail") {
+          // Recovery refuses the package and returns to its menu; the operator chooses sideload again.
+          sim.state = "recovery-menu";
+          sim.menuChoice = "sideload";
           result = fail("adb: failed to read command: Success");
-        else if (next === "unplug") {
+        } else if (next === "unplug") {
           sim.state = "absent";
           result = fail("adb: failed to read command: device offline");
         } else {
           sim.slots[other(sim.slot)].fingerprint = CANDIDATE.build.fingerprint;
           sim.pending = other(sim.slot);
           sim.updateBehavior = next;
+          // The installation ends in the recovery menu, where a user build has no adb.
+          sim.state = "recovery-menu";
+          sim.menuChoice = "reboot";
           result = ok("Total xfer: 1.00x\n");
         }
       } else if (command === "reboot" && rest.length === 0) {
-        if (sim.pending && sim.updateBehavior !== "fallback")
-          sim.slot = sim.pending;
-        if (sim.updateBehavior === "permissive") sim.selinux = "Permissive";
-        sim.pending = null;
-        boot();
+        reboot();
         result = ok();
       } else result = fail(`unexpected adb ${args.join(" ")} in ${sim.state}`);
       if (!allowFailure && result.status !== 0) throw new Error(result.stderr);
@@ -444,9 +476,11 @@ function operation(t, candidate = CANDIDATE) {
   };
   const lockDirectory = path.join(dir, "locks");
   fs.mkdirSync(lockDirectory, { mode: 0o700 });
+  const messages: string[] = [];
   return {
     dir,
     lockDirectory,
+    messages,
     options: {
       channel: CHANNEL,
       from: write("installed-record.json", INSTALLED),
@@ -459,7 +493,8 @@ function operation(t, candidate = CANDIDATE) {
       ),
       journalFile: path.join(dir, "update-journal.json"),
       lockDirectory,
-      timing: { wait: () => {}, rebootMs: 0, sideloadMs: 1000 },
+      timing: { wait: () => {}, rebootMs: 0, operatorMs: 0, sideloadMs: 1000 },
+      notify: (message: string) => messages.push(message),
     },
   };
 }
@@ -537,6 +572,7 @@ test("a confirmed update is journaled through recovery sideload and verified on 
   assert.equal(result.executed, true);
   assert.deepEqual(states(run.options.journalFile), [
     "preflight",
+    "recovery",
     "sideload",
     "transferred",
     "rebooted",
@@ -546,12 +582,18 @@ test("a confirmed update is journaled through recovery sideload and verified on 
   assert.equal(journal.signedUpdateApplied, true);
   assert.equal(journal.drillRecorded, false);
   assert.equal(journal.from.slot, "a");
+  assert.equal(journal.from.virtualAb, true);
   assert.equal(device.sim.slot, "b");
   assert.equal(device.sim.fingerprint, CANDIDATE.build.fingerprint);
+  // A user build's adbd cannot enter sideload: recovery is entered and the operator chooses it.
   assert.deepEqual(
     writesOf(device).map((call) => call.slice(0, 3).join(" ")),
-    ["adb reboot sideload", `adb sideload ${run.options.ota}`, "adb reboot"],
+    ["adb reboot recovery", `adb sideload ${run.options.ota}`, "adb reboot"],
   );
+  assert.deepEqual(run.messages, [
+    OPERATOR_STEPS.enterSideload,
+    OPERATOR_STEPS.rebootAfterSideload,
+  ]);
   assert.equal(fs.statSync(run.options.journalFile).mode & 0o077, 0);
   assert.deepEqual(
     fs.readdirSync(run.lockDirectory),
@@ -575,7 +617,7 @@ test("a refused or unplugged transfer is journaled, keeps the lock and resumes f
   let device = simulatedDevice({ behavior: ["fail"] });
   assert.throws(
     () => applyUpdate({ device, ...run.options, execute: true, confirm: true }),
-    /recovery did not accept the OTA package/,
+    /recovery did not complete the OTA transfer/,
   );
   assert.equal(readJournal(run.options.journalFile).state, "transfer-failed");
   assert.equal(
@@ -600,6 +642,7 @@ test("a refused or unplugged transfer is journaled, keeps the lock and resumes f
   assert.equal(resumed.executed, true);
   assert.deepEqual(states(run.options.journalFile), [
     "preflight",
+    "recovery",
     "sideload",
     "transfer-failed",
     "sideload",
@@ -612,7 +655,7 @@ test("a refused or unplugged transfer is journaled, keeps the lock and resumes f
   device = simulatedDevice({ behavior: ["unplug"] });
   assert.throws(
     () => applyUpdate({ device, ...run.options, execute: true, confirm: true }),
-    /recovery did not accept/,
+    /recovery did not complete the OTA transfer/,
   );
   assert.equal(
     updateStatus({ device, journalFile: run.options.journalFile }).next,
@@ -632,13 +675,56 @@ test("a refused or unplugged transfer is journaled, keeps the lock and resumes f
     fs.rmSync(path.join(run.lockDirectory, name));
   assert.deepEqual(applyUpdate({ device, ...run.options }).plan.next, "retry");
   applyUpdate({ device, ...run.options, execute: true, confirm: true });
-  assert.deepEqual(states(run.options.journalFile).slice(-5), [
+  assert.deepEqual(states(run.options.journalFile).slice(-6), [
     "interrupted",
+    "recovery",
     "sideload",
     "transferred",
     "rebooted",
     "verified",
   ]);
+});
+
+test("an operator who does not choose sideload leaves the device unchanged and the update resumes from sideload", (t) => {
+  const run = operation(t);
+  const device = simulatedDevice({ operator: "idle" });
+  assert.throws(
+    () => applyUpdate({ device, ...run.options, execute: true, confirm: true }),
+    /did not enter recovery sideload \(it is absent\); nothing was sent/,
+  );
+  assert.deepEqual(states(run.options.journalFile), [
+    "preflight",
+    "recovery",
+    "sideload-unavailable",
+  ]);
+  assert.deepEqual(run.messages, [OPERATOR_STEPS.enterSideload]);
+  assert.ok(
+    !device.calls.some((call) => call.join(" ") === "adb reboot sideload"),
+    "a user build's adbd refuses reboot sideload; the tool never relies on it",
+  );
+  assert.ok(!device.calls.some((call) => call[1] === "sideload"));
+  // The operator chooses "Apply update from ADB" later; apply resumes from sideload without another reboot.
+  device.sim.operator = "present";
+  for (const name of fs.readdirSync(run.lockDirectory))
+    fs.rmSync(path.join(run.lockDirectory, name));
+  const resumed = applyUpdate({
+    device,
+    ...run.options,
+    execute: true,
+    confirm: true,
+  });
+  assert.equal(resumed.executed, true);
+  assert.deepEqual(states(run.options.journalFile).slice(-4), [
+    "sideload",
+    "transferred",
+    "rebooted",
+    "verified",
+  ]);
+  assert.equal(
+    device.calls.filter((call) => call.join(" ") === "adb reboot recovery")
+      .length,
+    1,
+  );
 });
 
 test("an updated slot that does not boot falls back without a false success, and the candidate is never re-verified blindly", (t) => {
@@ -672,6 +758,26 @@ test("an updated slot that does not boot falls back without a false success, and
     readJournal(permissive.options.journalFile).signedUpdateApplied,
     false,
   );
+  // A product key enrolled with avb_custom_key boots yellow; an update that boots orange is weaker.
+  const custom = operation(t);
+  const unverified = simulatedDevice({
+    verifiedBoot: "yellow",
+    behavior: ["orange"],
+  });
+  assert.throws(
+    () =>
+      applyUpdate({
+        device: unverified,
+        ...custom.options,
+        execute: true,
+        confirm: true,
+      }),
+    /failed verification[\s\S]*verified boot is orange, weaker than the installed yellow state/,
+  );
+  assert.equal(weakerVerifiedBoot("yellow", "yellow"), false);
+  assert.equal(weakerVerifiedBoot("yellow", "green"), false);
+  assert.equal(weakerVerifiedBoot("green", "yellow"), true);
+  assert.equal(weakerVerifiedBoot("yellow", null), true);
   // A journal for another package is never resumed.
   const otherPackage = operation(
     t,
@@ -757,6 +863,38 @@ test("fallback to the original slot is admitted only before the updated slot is 
       journalFile: run.options.journalFile,
     }).problems.join("\n"),
     /snapshot merge is in progress/,
+  );
+  // Virtual A/B: when recovery could not keep the update in snapshots it overwrote the
+  // original slot's dynamic partitions, and the bootloader reports no snapshot update.
+  device.sim.snapshot = "none";
+  assert.match(
+    fallbackToOriginalSlot({
+      device,
+      journalFile: run.options.journalFile,
+    }).problems.join("\n"),
+    /snapshot update status none, not snapshotted; on a Virtual A\/B device/,
+  );
+  const installedJournal = readJournal(run.options.journalFile);
+  const bootloader = {
+    currentSlot: "b",
+    snapshotUpdateStatus: null,
+    slots: { a: { unbootable: "no" }, b: { successful: "no" } },
+  };
+  assert.match(
+    fallbackProblems(installedJournal, bootloader).join("\n"),
+    /status null, not snapshotted/,
+    "a bootloader that does not report the snapshot status cannot prove the original slot",
+  );
+  assert.deepEqual(
+    fallbackProblems(
+      {
+        ...installedJournal,
+        from: { ...installedJournal.from, virtualAb: false },
+      },
+      bootloader,
+    ),
+    [],
+    "a device without Virtual A/B keeps both slots' partitions",
   );
   device.sim.snapshot = "snapshotted";
   const dry = fallbackToOriginalSlot({

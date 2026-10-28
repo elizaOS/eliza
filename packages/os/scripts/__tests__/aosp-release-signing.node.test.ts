@@ -24,11 +24,12 @@ import {
   isWithin,
   PKCS11_JAVA_ARGS,
   parseSigningArgs,
-  signingCommands,
   signRelease as sign,
+  signingCommands,
   X509_KEYS,
 } from "../android/aosp-release-signing.mjs";
 import { encodeAvbPublicKey } from "../android/generate-release-keys.ts";
+import { ELIZA_PIXEL10A_RELEASE } from "../android/sign-pixel10a-release.mjs";
 
 const osRoot = fileURLToPath(new URL("../..", import.meta.url));
 const fixtures = fileURLToPath(
@@ -45,7 +46,12 @@ const FINGERPRINT =
 const DEV = "build/make/target/product/security";
 const TEST_KEY_DIGEST = "0".repeat(64);
 const signRelease = (options) =>
-  sign({ descriptorFile: ELIZA, sourceLockPath: LOCK, ...options });
+  sign({
+    productName: ELIZA_PIXEL10A_RELEASE.productName,
+    descriptorFile: ELIZA,
+    sourceLockPath: LOCK,
+    ...options,
+  });
 
 /** Write a zip; object values become nested zips (APKs and APEXes inside target-files). */
 function zip(file, entries) {
@@ -341,6 +347,17 @@ test("the committed Eliza release descriptor pins the shared source lock and nam
     dry.problems.join("\n"),
   );
   assert.equal(dry.ran, false);
+  // A binding names its brand's product; without it nothing is checked or run.
+  await assert.rejects(
+    sign({
+      root: osRoot,
+      descriptorFile: ELIZA,
+      sourceLockPath: LOCK,
+      out,
+      dryRun: true,
+    }),
+    /needs the brand's productName/,
+  );
 });
 
 test("signing commands follow the releasetools job with keys only as runtime paths", () => {
@@ -632,6 +649,17 @@ test("signing refuses unsafe keys, mismatched digests, changed inputs and unset 
   await refuse(({ repo }) => {
     edit(repo, LOCK, (l) => ({ ...l, developmentOnly: true }));
   }, /differs from the pinned sourceLock\.sha256|still marked developmentOnly/);
+  // A brand's binding signs only its own product, even when its descriptor names another brand's.
+  await refuse(({ repo }) => {
+    edit(repo, ELIZA, (p) => ({
+      ...p,
+      product: "alpha_stallion_phone",
+      lunch: {
+        development: "alpha_stallion_phone-cp2a-userdebug",
+        production: "alpha_stallion_phone-cp2a-user",
+      },
+    }));
+  }, /product must be eliza_stallion_phone, this brand's Pixel 10a composition/);
   // Keys inside a Git working tree (for example this repository) are refused.
   await refuse(({ options, key }) => {
     const inside = fs.mkdtempSync(path.join(options.root, "keys-"));

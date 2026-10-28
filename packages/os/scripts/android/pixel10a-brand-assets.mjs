@@ -164,7 +164,8 @@ export function admitBrandAssets(product, { bootAnimation = null } = {}) {
   const { parts } = inspectBootAnimationArchive(bytes);
   return {
     files: [{ path: "brand/bootanimation.zip", bytes }],
-    makefile: `\n# Reviewed brand boot animation (brandAssets.bootAnimation).\nPRODUCT_COPY_FILES += vendor/alphaphone/brand/bootanimation.zip:${BOOT_ANIMATION_DESTINATION}\n`,
+    // The composition is staged at vendor/<vendorDirectory> in the source tree.
+    makefile: `\n# Reviewed brand boot animation (brandAssets.bootAnimation).\nPRODUCT_COPY_FILES += vendor/${product.vendorDirectory}/brand/bootanimation.zip:${BOOT_ANIMATION_DESTINATION}\n`,
     evidence: { bootAnimation: { sha256, sizeBytes: bytes.length, parts } },
   };
 }

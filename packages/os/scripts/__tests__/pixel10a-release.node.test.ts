@@ -253,6 +253,23 @@ test("a brand's complete release descriptor admits staging inputs; each gap is r
     (l) => ({ ...l, device: { ...l.device, codename: "frankel" } }),
     /not the Pixel 10a Android 17 source contract|differs from the pinned/,
   );
+  // A brand's binding names its own product; another brand's composition is refused.
+  const bound = (productName) =>
+    releaseDescriptorProblems(root.readBack(DESCRIPTOR), {
+      root: root.dir,
+      file: DESCRIPTOR,
+      sourceLockPath: SOURCE,
+      applicationSignerFile: SIGNER,
+      productName,
+    });
+  assert.deepEqual(bound("alpha_stallion_phone"), []);
+  assert.ok(
+    bound("eliza_stallion_phone").some((problem) =>
+      /product must be eliza_stallion_phone, this brand's Pixel 10a composition/.test(
+        problem,
+      ),
+    ),
+  );
   // Without an application signer file the descriptor carries the certificate itself.
   const eliza = read("android/releases/pixel10a-eliza.json");
   assert.ok(

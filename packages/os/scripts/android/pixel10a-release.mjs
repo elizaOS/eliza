@@ -123,8 +123,10 @@ function readJson(root, rel) {
  * source inventory (the descriptor must pin exactly that file). With
  * `applicationSignerFile`, the descriptor names that file and its `signerSha256` is
  * the application release certificate; otherwise the descriptor carries
- * `signer.applicationCertificateSha256` itself. An empty list admits staging
- * inputs only; it is never an image build, signed image, boot or qualification.
+ * `signer.applicationCertificateSha256` itself. `productName`, when given, is the
+ * brand's own composition: a descriptor naming another brand's product is refused.
+ * An empty list admits staging inputs only; it is never an image build, signed
+ * image, boot or qualification.
  */
 export function releaseDescriptorProblems(
   descriptor,
@@ -133,12 +135,17 @@ export function releaseDescriptorProblems(
     file = "release descriptor",
     sourceLockPath,
     applicationSignerFile = null,
+    productName = null,
   },
 ) {
   if (!descriptor || typeof descriptor !== "object")
     return [`${file} is missing or unreadable`];
   const problems = [];
   if (descriptor.schema !== 1) problems.push(`${file}: schema must be 1`);
+  if (productName !== null && descriptor.product !== productName)
+    problems.push(
+      `${file}: product must be ${productName}, this brand's Pixel 10a composition`,
+    );
   for (const field of placeholderFields(descriptor))
     problems.push(`${file}: ${field} is unset or a placeholder`);
   let composition = null;

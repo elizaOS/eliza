@@ -23,8 +23,9 @@ Release inputs are brand-owned public identities. A brand keeps three records:
 
 [`scripts/android/pixel10a-release.mjs`](../../scripts/android/pixel10a-release.mjs)
 validates all three for any brand. A downstream product (for example Alpha Phone)
-keeps its records in its own repository and passes its root, the vendored path of
-`android/sources/pixel10a-stallion.json` and, optionally, its application signer file.
+keeps its records in its own repository and passes its root, its product name, the
+vendored path of `android/sources/pixel10a-stallion.json` and, optionally, its
+application signer file. A descriptor that names another brand's product is refused.
 Every Eliza value that depends on a key ceremony is `UNSET`, so production staging
 and signing refuse until a reviewed change records the digests. `releaseQualified`
 and `deviceAcceptanceVerified` are evidence and stay `false` in every descriptor.
@@ -42,8 +43,8 @@ node packages/os/scripts/android/sign-pixel10a-release.mjs \
    [--payload-signer-arg ARG ...] --payload-signer-signature-size BYTES] [--dry-run]
 ```
 
-Downstream brands call `signingMain(args, { root, descriptorFile, sourceLockPath,
-applicationSignerFile })` from
+Downstream brands call `signingMain(args, { root, productName, descriptorFile,
+sourceLockPath, applicationSignerFile })` from
 [`aosp-release-signing.mjs`](../../scripts/android/aosp-release-signing.mjs). The job
 uses the [signing key layout](../signing/README.md), refuses unmapped APK, APEX and
 chained AVB keys, unreviewed certificate digests, keys inside a Git working tree and
@@ -67,10 +68,14 @@ update client for one serial-bound device:
   Downgrades are refused.
 - `apply ... --ota OTA.zip --journal FILE [--execute --confirm-update]` verifies the
   package bytes against the candidate record and the device against the installed
-  record, then reboots into recovery sideload, sends the package (recovery verifies it
-  against the image's otacerts on a locked user build), reboots and verifies the
-  candidate build on the other slot with SELinux enforcing and verified boot not
-  weakened. Every step is journaled. It holds the same device lock as the installer.
+  record, then reboots into recovery (`adb reboot recovery`). A user build's adbd
+  cannot enter sideload itself (`adb reboot sideload` needs `adb root`), so the tool
+  asks the operator to choose "Apply update from ADB" and waits for sideload. It sends
+  the package (recovery verifies it against the image's otacerts on a locked user
+  build), asks the operator to choose "Reboot system now" if recovery stays in its
+  menu, and verifies the candidate build on the other slot with SELinux enforcing and
+  verified boot no weaker than before (a key enrolled with `avb_custom_key` boots
+  yellow). Every step is journaled. It holds the same device lock as the installer.
 - An interrupted run leaves the lock and journal for inspection. `status` classifies
   the observed device: the candidate booted (verify), recovery or sideload (send
   again), the installed build still on its slot (the update did not take effect or
@@ -78,8 +83,11 @@ update client for one serial-bound device:
   with the same journal resumes from that observation and never assumes success.
 - `fallback --journal FILE [--execute --confirm-fallback]` switches back to the
   original slot from the bootloader only while the updated slot is not marked
-  successful, the original slot is bootable and no snapshot merge is in progress.
-  Afterwards a compatible rollback is a newer release that passes `check`.
+  successful, the original slot is bootable and no snapshot merge is in progress. On
+  a Virtual A/B device (Pixel 10a) the bootloader must also report a `snapshotted`
+  update: when recovery cannot create snapshots it overwrites the original slot's
+  dynamic partitions, and then only a compatible release or stock recovery restores
+  the device. Afterwards a compatible rollback is a newer release that passes `check`.
 - `stock-archive` verifies the channel's stock factory archive against the source
   lock and prints the exact fastboot plan; `verify-stock` checks the restored stock
   build. Stock recovery unlocks the bootloader and wipes data, so the operator runs it
