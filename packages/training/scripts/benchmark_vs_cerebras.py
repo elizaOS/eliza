@@ -288,7 +288,7 @@ def _run_native_tool_bench(
     summary_path = out_dir / "summary.json"
     if summary_path.exists():
         try:
-            return json.loads(summary_path.read_text())
+            return json.loads(summary_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return None
     return None
@@ -589,7 +589,7 @@ def _write_markdown_report(
             "> Export the key and re-run to include the Cerebras column.",
         ]
 
-    output_path.write_text("\n".join(lines) + "\n")
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     log.info("Markdown report written to %s", output_path)
 
 
@@ -725,7 +725,7 @@ def main() -> int:
 
     # Write JSON results
     results_path = output_dir / f"benchmark_results_{timestamp}.json"
-    results_path.write_text(json.dumps(all_results, indent=2))
+    results_path.write_text(json.dumps(all_results, indent=2), encoding="utf-8")
     log.info("JSON results written to %s", results_path)
 
     matrix_path: Path | None = None
