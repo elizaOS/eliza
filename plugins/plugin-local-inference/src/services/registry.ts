@@ -36,6 +36,25 @@ type StoredInstalledModel = Omit<
 	manifestPath?: string;
 };
 
+/**
+ * Raised when registry.json exists but cannot be read or parsed. Distinct from
+ * "no file yet" (an empty registry): callers must not treat an unreadable
+ * registry as an empty one, or the next read-modify-write (upsertElizaModel,
+ * touchElizaModel, removeElizaModel) rewrites the file from that empty list and
+ * destroys the rows of every other installed model.
+ */
+export class RegistryUnreadableError extends Error {
+	readonly code = "REGISTRY_UNREADABLE" as const;
+	readonly filePath: string;
+	constructor(filePath: string, cause: unknown) {
+		super(`failed to read local inference model registry at ${filePath}`, {
+			cause,
+		});
+		this.name = "RegistryUnreadableError";
+		this.filePath = filePath;
+	}
+}
+
 const EXTERNAL_SCAN_CACHE_TTL_MS = 5_000;
 
 let externalScanCache: {
@@ -61,7 +80,7 @@ async function readElizaOwnedDetailed(): Promise<{
 		const raw = await fs.readFile(registryPath(), "utf8");
 		const parsed = JSON.parse(raw) as RegistryFile;
 		if (parsed?.version !== 1 || !Array.isArray(parsed.models)) {
-			return { models: [], needsRewrite: false };
+			throw new Error("Model registry is not a version 1 model list");
 		}
 		let needsRewrite = false;
 		const models: InstalledModel[] = [];
@@ -75,8 +94,18 @@ async function readElizaOwnedDetailed(): Promise<{
 			models.push(hydrated);
 		}
 		return { models, needsRewrite };
-	} catch {
-		return { models: [], needsRewrite: false };
+	} catch (error) {
+		// No registry file yet is legitimately "nothing installed", and first run
+		// depends on that. A file that exists but cannot be read or parsed is not
+		// the same thing: returning [] there makes every caller treat "registry
+		// unreadable" as "no models installed", and the next read-modify-write
+		// (upsertElizaModel) rewrites the file from that empty list and drops the
+		// rows of every other installed model. Those rows are the only handle on
+		// their files, so the models become unloadable and unmanageable.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+			return { models: [], needsRewrite: false };
+		}
+		throw new RegistryUnreadableError(registryPath(), error);
 	}
 }
 
@@ -118,11 +147,22 @@ async function readElizaOwnedHealed(): Promise<InstalledModel[]> {
 	return present;
 }
 
+/**
+ * A stat failure proves the artifact is absent only for ENOENT/ENOTDIR.
+ * EACCES, EIO, ELOOP and friends leave existence unknown, so the row must
+ * not be healed away and rewritten out of registry.json.
+ */
+function isAbsentPathError(error: unknown): boolean {
+	const code = (error as NodeJS.ErrnoException | null)?.code;
+	return code === "ENOENT" || code === "ENOTDIR";
+}
+
 async function modelArtifactPresent(modelPath: string): Promise<boolean> {
 	try {
 		return (await fs.stat(modelPath)).isFile();
-	} catch {
-		return false;
+	} catch (error) {
+		if (isAbsentPathError(error)) return false;
+		throw error;
 	}
 }
 

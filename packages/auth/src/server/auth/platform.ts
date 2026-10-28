@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import type { MiddlewareHandler } from "hono";
 import { createMiddleware } from "hono/factory";
 import type { ApiResponse } from "../shared/index.ts";
 
@@ -156,7 +157,7 @@ export function hasPlatformScope(
  * });
  * ```
  */
-export function platformAuthMiddleware() {
+export function platformAuthMiddleware(): MiddlewareHandler {
   return createMiddleware(async (c, next) => {
     const key = c.req.header("X-Steward-Platform-Key");
 

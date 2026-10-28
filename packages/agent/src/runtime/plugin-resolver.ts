@@ -64,6 +64,7 @@ import {
 } from "./database-selection.ts";
 import {
   CHANNEL_PLUGIN_MAP,
+  collectDeniedPluginNames,
   collectPluginNames,
   MODEL_PROVIDER_PLUGIN_NAMES,
   OPTIONAL_PLUGIN_MAP,
@@ -2672,14 +2673,14 @@ export async function resolvePlugins(
     ...(config.plugins?.installs ?? {}),
   };
 
-  const denyList = new Set<string>((config.plugins?.deny || []) as string[]);
   const envSkipPlugins = (process.env.ELIZA_SKIP_PLUGINS ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  for (const pluginName of envSkipPlugins) {
-    denyList.add(pluginName);
-  }
+  const denyList = collectDeniedPluginNames([
+    ...(config.plugins?.deny ?? []),
+    ...envSkipPlugins,
+  ]);
   if (envSkipPlugins.length > 0) {
     logger.info(
       `[eliza] Skipping ${envSkipPlugins.length} plugin(s) via ELIZA_SKIP_PLUGINS: ${envSkipPlugins.join(", ")}`,

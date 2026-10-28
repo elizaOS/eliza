@@ -137,6 +137,44 @@ export interface CalendarRouteDeps {
   mutationGateway: CalendarOwnerMutationGateway;
 }
 
+type CalendarQueryParsers = Pick<
+  CalendarRouteDeps,
+  "parseConnectorMode" | "parseConnectorSide" | "parseBoolean"
+>;
+
+/** Query of `GET /api/lifeops/calendar/feed`. */
+export function parseCalendarFeedQuery(
+  q: URLSearchParams,
+  parsers: CalendarQueryParsers,
+): GetLifeOpsCalendarFeedRequest {
+  return {
+    mode: parsers.parseConnectorMode(q.get("mode")),
+    side: parsers.parseConnectorSide(q.get("side")),
+    calendarId: q.get("calendarId") ?? undefined,
+    includeHiddenCalendars: parsers.parseBoolean(
+      q.get("includeHiddenCalendars"),
+      "includeHiddenCalendars",
+    ),
+    timeMin: q.get("timeMin") ?? undefined,
+    timeMax: q.get("timeMax") ?? undefined,
+    timeZone: q.get("timeZone") ?? undefined,
+    forceSync: parsers.parseBoolean(q.get("forceSync"), "forceSync"),
+    grantId: q.get("grantId") ?? undefined,
+  };
+}
+
+/** Query of `GET /api/lifeops/calendar/calendars`. */
+export function parseCalendarListQuery(
+  q: URLSearchParams,
+  parsers: CalendarQueryParsers,
+): ListLifeOpsCalendarsRequest {
+  return {
+    mode: parsers.parseConnectorMode(q.get("mode")),
+    side: parsers.parseConnectorSide(q.get("side")),
+    grantId: q.get("grantId") ?? undefined,
+  };
+}
+
 /**
  * Handle a calendar route. Resolves to `true` when the request matched a
  * calendar path (and was served/short-circuited), or `false` when no calendar
@@ -273,21 +311,9 @@ export async function handleCalendarRoutes(
   if (method === "GET" && pathname === "/api/lifeops/calendar/feed") {
     if (deps.rateLimit("google_api_read")) return true;
     return deps.runRoute(async (service) => {
-      const request: GetLifeOpsCalendarFeedRequest = {
-        mode: deps.parseConnectorMode(q.get("mode")),
-        side: deps.parseConnectorSide(q.get("side")),
-        calendarId: q.get("calendarId") ?? undefined,
-        includeHiddenCalendars: deps.parseBoolean(
-          q.get("includeHiddenCalendars"),
-          "includeHiddenCalendars",
-        ),
-        timeMin: q.get("timeMin") ?? undefined,
-        timeMax: q.get("timeMax") ?? undefined,
-        timeZone: q.get("timeZone") ?? undefined,
-        forceSync: deps.parseBoolean(q.get("forceSync"), "forceSync"),
-        grantId: q.get("grantId") ?? undefined,
-      };
-      deps.json(await service.getCalendarFeed(url, request));
+      deps.json(
+        await service.getCalendarFeed(url, parseCalendarFeedQuery(q, deps)),
+      );
     });
   }
 
@@ -378,12 +404,10 @@ export async function handleCalendarRoutes(
   if (method === "GET" && pathname === "/api/lifeops/calendar/calendars") {
     if (deps.rateLimit("google_api_read")) return true;
     return deps.runRoute(async (service) => {
-      const request: ListLifeOpsCalendarsRequest = {
-        mode: deps.parseConnectorMode(q.get("mode")),
-        side: deps.parseConnectorSide(q.get("side")),
-        grantId: q.get("grantId") ?? undefined,
-      };
-      const calendars = await service.listCalendars(url, request);
+      const calendars = await service.listCalendars(
+        url,
+        parseCalendarListQuery(q, deps),
+      );
       deps.json({ calendars });
     });
   }

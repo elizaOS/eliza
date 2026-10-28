@@ -2,6 +2,7 @@
  * Form interaction helpers for browser workspace click, fill, type, and key commands.
  */
 
+import { randomUUID } from "node:crypto";
 import type { JSDOM } from "jsdom";
 import { browserBridgeDomainFromUrl } from "../bridge-policy.js";
 import { evaluateBrowserDomainPolicies } from "../browser-domain-policy.js";
@@ -87,7 +88,27 @@ function resolveRedirectLocation(response: Response, fromUrl: string): string {
       `Browser workspace redirect (${response.status}) from "${fromUrl}" has no Location header.`,
     );
   }
-  return assertBrowserWorkspaceUrl(new URL(location, fromUrl).toString());
+  const nextUrl = new URL(location, fromUrl);
+  // A redirect without a fragment inherits it (RFC 9110, section 10.2.2).
+  // An explicit trailing # clears it instead.
+  const fragmentIndex = fromUrl.indexOf("#");
+  if (!location.includes("#") && fragmentIndex !== -1) {
+    nextUrl.hash = fromUrl.slice(fragmentIndex);
+  }
+  return assertBrowserWorkspaceUrl(nextUrl.toString());
+}
+
+function resolveResponseDocumentUrl(
+  response: Response,
+  requestUrl: string,
+): string {
+  // Fetch response URLs omit fragments. Keep the document's navigation target.
+  const responseUrl = response.url?.trim() || requestUrl;
+  const fragmentIndex = requestUrl.indexOf("#");
+  return assertBrowserWorkspaceUrl(
+    responseUrl.split("#")[0] +
+      (fragmentIndex === -1 ? "" : requestUrl.slice(fragmentIndex)),
+  );
 }
 
 export function ensureBrowserWorkspaceFormControlElement(
@@ -138,10 +159,6 @@ export function setBrowserWorkspaceControlValue(
   nextValue: string,
 ): void {
   control.value = nextValue;
-  if (control.tagName === "TEXTAREA") {
-    control.textContent = nextValue;
-  }
-  control.setAttribute("value", nextValue);
 }
 
 export async function activateWebBrowserWorkspaceElement(
@@ -206,6 +223,13 @@ export async function activateWebBrowserWorkspaceElement(
   }
 
   const submitForm = findClosestBrowserWorkspaceForm(element);
+  if (
+    submitForm &&
+    ((tag === "button" && (element as HTMLButtonElement).type === "reset") ||
+      (inputElement && inputType === "reset"))
+  ) {
+    submitForm.reset();
+  }
   const submitter =
     tag === "button" && (element as HTMLButtonElement).type === "submit"
       ? (element as HTMLButtonElement)
@@ -213,7 +237,11 @@ export async function activateWebBrowserWorkspaceElement(
         ? inputElement
         : undefined;
   if (submitForm && (tag === "form" || submitter)) {
-    await submitWebBrowserWorkspaceForm(tab, submitForm, submitter);
+    const invalid = await submitWebBrowserWorkspaceForm(
+      tab,
+      submitForm,
+      submitter,
+    );
     return {
       mode: "web",
       subaction,
@@ -222,6 +250,7 @@ export async function activateWebBrowserWorkspaceElement(
         clickCount: subaction === "dblclick" ? 2 : 1,
         selector: buildBrowserWorkspaceElementSelector(element),
         url: tab.url,
+        ...(invalid ? { submitted: false, invalid } : {}),
       },
     };
   }
@@ -284,14 +313,37 @@ export function scrollWebBrowserWorkspaceTarget(
   };
 }
 
+/** The first control that blocked a submission, so the agent can fix it. */
+export interface BrowserWorkspaceInvalidControl {
+  selector: string;
+  message: string;
+}
+
+/** Submits `form`, or returns the first invalid control when constraint validation blocks it. */
 export async function submitWebBrowserWorkspaceForm(
   tab: WebBrowserWorkspaceTabState,
   form: HTMLFormElement,
   submitter?: HTMLButtonElement | HTMLInputElement,
-): Promise<void> {
+): Promise<BrowserWorkspaceInvalidControl | undefined> {
   const state = getBrowserWorkspaceRuntimeState("web", tab.id);
   const dom = ensureBrowserWorkspaceDom(tab);
-  // A submit button's formaction/formmethod override the form's own.
+  // This backend submits directly, without the DOM's click validation step.
+  if (
+    !form.noValidate &&
+    !submitter?.formNoValidate &&
+    !dom.window.HTMLFormElement.prototype.reportValidity.call(form)
+  ) {
+    const invalid = Array.from(form.elements).find(
+      (control) => (control as HTMLInputElement).validity?.valid === false,
+    ) as HTMLInputElement | undefined;
+    return invalid
+      ? {
+          selector: buildBrowserWorkspaceElementSelector(invalid),
+          message: invalid.validationMessage || "This field is invalid.",
+        }
+      : { selector: "form", message: "The form is invalid." };
+  }
+  // A submit button's form attributes override the form's own.
   const attr = (name: string) =>
     submitter?.hasAttribute(`form${name}`)
       ? submitter.getAttribute(`form${name}`)
@@ -312,9 +364,16 @@ export async function submitWebBrowserWorkspaceForm(
   assertBrowserWorkspaceUrlAllowed(submitUrl, "submit", "click");
   const formData = new dom.window.FormData(form, submitter);
   const searchParams = new URLSearchParams();
+  const normalizeLineBreaks = (value: string) =>
+    value.replace(/\r\n|\r|\n/g, "\r\n");
 
   for (const [key, value] of formData.entries()) {
-    searchParams.append(key, String(value));
+    searchParams.append(
+      normalizeLineBreaks(key),
+      normalizeLineBreaks(
+        typeof value === "string" ? value : (value as File).name,
+      ),
+    );
   }
 
   if (method === "get") {
@@ -336,7 +395,50 @@ export async function submitWebBrowserWorkspaceForm(
   // domain by redirecting after the single pre-flight check.
   let requestUrl = submitUrl;
   let requestMethod = method.toUpperCase();
-  let requestBody: string | null = searchParams.toString();
+  let requestBody: string | ArrayBuffer | null = searchParams.toString();
+  let requestHeaders: HeadersInit = {
+    "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+  };
+  const enctype = attr("enctype")?.toLowerCase();
+  if (enctype === "text/plain") {
+    requestHeaders = { "Content-Type": "text/plain" };
+    requestBody = Array.from(
+      searchParams,
+      ([name, value]) => `${name}=${value}\r\n`,
+    ).join("");
+  } else if (enctype === "multipart/form-data") {
+    // Keep empty file names as filename="". Node's FormData encoder omits that
+    // parameter, which turns an empty file control into a text field on receipt.
+    const boundary = `----eliza-form-${randomUUID()}`;
+    const parts: BlobPart[] = [];
+    const escapeName = (name: string) =>
+      name.replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/"/g, "%22");
+    for (const [name, value] of formData.entries()) {
+      const disposition = `--${boundary}\r\nContent-Disposition: form-data; name="${escapeName(normalizeLineBreaks(name))}"`;
+      if (typeof value === "string") {
+        parts.push(`${disposition}\r\n\r\n${normalizeLineBreaks(value)}\r\n`);
+      } else {
+        // Some consumer tsconfigs type FormData entries as strings only.
+        const file = value as File;
+        const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new dom.window.FileReader();
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsArrayBuffer(file);
+        });
+        parts.push(
+          `${disposition}; filename="${escapeName(file.name)}"\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`,
+          bytes,
+          "\r\n",
+        );
+      }
+    }
+    parts.push(`--${boundary}--\r\n`);
+    requestHeaders = {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    };
+    requestBody = await new Blob(parts).arrayBuffer();
+  }
   let response: Response | null = null;
 
   for (let hop = 0; hop <= MAX_BROWSER_WORKSPACE_REDIRECTS; hop += 1) {
@@ -346,9 +448,7 @@ export async function submitWebBrowserWorkspaceForm(
     };
     if (requestBody !== null) {
       hopInit.body = requestBody;
-      hopInit.headers = {
-        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-      };
+      hopInit.headers = requestHeaders;
     }
     const hopResponse = await fetchBrowserWorkspaceTrackedResponse(
       state,
@@ -395,9 +495,7 @@ export async function submitWebBrowserWorkspaceForm(
   }
 
   const html = await response.text();
-  const finalUrl = assertBrowserWorkspaceUrl(
-    response.url?.trim() || requestUrl,
-  );
+  const finalUrl = resolveResponseDocumentUrl(response, requestUrl);
   if (finalUrl !== requestUrl) {
     assertBrowserWorkspaceUrlAllowed(finalUrl, "navigate", "click");
   }
@@ -504,9 +602,7 @@ export async function loadWebBrowserWorkspaceTabDocument(
   }
 
   const html = await response.text();
-  const finalUrl = assertBrowserWorkspaceUrl(
-    response.url?.trim() || requestUrl,
-  );
+  const finalUrl = resolveResponseDocumentUrl(response, requestUrl);
   if (finalUrl !== tab.url) {
     assertBrowserWorkspaceUrlAllowed(finalUrl, "navigate", "open");
   }

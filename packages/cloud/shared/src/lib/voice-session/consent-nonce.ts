@@ -19,24 +19,24 @@
  */
 
 import {
-  buildRedisClient,
-  type CompatibleRedis,
-  hasRedisConfig,
-  isCloudflareWorkerRuntime,
-} from "../cache/redis-factory";
+  type AuthenticationStateStore,
+  buildAuthenticationState,
+} from "../auth/authentication-state";
+
+import { isCloudflareWorkerRuntime } from "../cache/redis-factory";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
 const CONSENT_KEY_PREFIX = "voice-session:consent:";
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
 export const CONSENT_NONCE_TTL_SECONDS = 300;
 
-let cachedRedis: CompatibleRedis | null = null;
+let cachedRedis: AuthenticationStateStore | null = null;
 
-function getRedis(): CompatibleRedis | null {
+function getRedis(): AuthenticationStateStore | null {
   if (!isCloudflareWorkerRuntime() && cachedRedis) return cachedRedis;
   // On Workers, Redis credentials live on `c.env`, exposed via
   // getCloudAwareEnv(); passing process.env would miss them.
-  const client = buildRedisClient(getCloudAwareEnv());
+  const client = buildAuthenticationState(getCloudAwareEnv());
   if (client && !isCloudflareWorkerRuntime()) cachedRedis = client;
   return client;
 }
@@ -46,7 +46,7 @@ function consentKey(userId: string, nonce: string): string {
 }
 
 export function isConsentStoreConfigured(): boolean {
-  return hasRedisConfig(getCloudAwareEnv());
+  return Boolean(buildAuthenticationState(getCloudAwareEnv()));
 }
 
 export interface IssuedConsentNonce {

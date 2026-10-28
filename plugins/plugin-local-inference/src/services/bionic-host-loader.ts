@@ -437,7 +437,7 @@ export class BionicHostLoader implements LocalInferenceLoader {
 		const blockers = readBundleAsrProvenanceBlockers(this.bundleDir);
 		if (blockers.length > 0) {
 			throw new Error(
-				`[BionicHostLoader] host asr refused non-Gemma ASR provenance: ${blockers.join("; ")}`,
+				`[BionicHostLoader] host asr refused non-Phonon-2 ASR provenance: ${blockers.join("; ")}`,
 			);
 		}
 	}

@@ -116,7 +116,6 @@ export function toAgentIdentity(agent: Agent): DbAgentIdentity {
     name: agent.name,
     walletAddress: agent.walletAddress,
     platformId: agent.platformId ?? undefined,
-    erc8004TokenId: agent.erc8004TokenId ?? undefined,
     createdAt: agent.createdAt,
     updatedAt: agent.updatedAt,
   };

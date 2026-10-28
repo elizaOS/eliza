@@ -48,7 +48,8 @@ const LEGACY_WEBHOOK_DEPRECATION_ERROR =
 export const requireTenantId = (
   c: Context<{ Variables: AppVariables }>,
   next: Next,
-) => tenantAuth(c, next, { requireTenantMatch: c.req.param("id") });
+): Promise<Response | void> =>
+  tenantAuth(c, next, { requireTenantMatch: c.req.param("id") });
 
 function isReservedTenantId(id: string): boolean {
   const normalized = id.toLowerCase();

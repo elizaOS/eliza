@@ -1,3 +1,4 @@
+import { publishConversationUpdate } from "../runtime/agent-event-service.ts";
 /**
  * Swarm/autonomy/coding-agent helpers extracted from server.ts.
  */
@@ -212,22 +213,31 @@ export async function routeAutonomyTextToUser(
       await publishNotification?.();
       throw error;
     }
-    await publishNotification?.({ conversationId: conv.id, messageId });
   }
   conv.updatedAt = new Date().toISOString();
+  if (!isEphemeral)
+    publishConversationUpdate(runtime, conv.id, conv.roomId, messageId);
 
-  // Broadcast to all WS clients (always, even for ephemeral sources)
-  state.broadcastWs?.({
-    type: "proactive-message",
-    conversationId: conv.id,
-    message: {
-      id: messageId,
-      role: "assistant",
-      text: deliveredText,
-      timestamp: Date.now(),
-      source,
-    },
-  });
+  // Notification failure cannot hide an already committed conversation row.
+  // Keep its rejection visible to the caller while publishing the WS frame.
+  try {
+    if (!isEphemeral)
+      await publishNotification?.({ conversationId: conv.id, messageId });
+  } finally {
+    // Ephemeral relays retain their original non-canonical frame shape.
+    state.broadcastWs?.({
+      type: "proactive-message",
+      ...(!isEphemeral ? { agentId: runtime.agentId } : {}),
+      conversationId: conv.id,
+      message: {
+        id: messageId,
+        role: "assistant",
+        text: deliveredText,
+        timestamp: Date.now(),
+        source,
+      },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

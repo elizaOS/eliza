@@ -21,11 +21,13 @@ import {
   EventType,
   hashStableJson,
   type IAgentRuntime,
+  isModelOutputLimitFinishReason,
   isObjectRecord as isRecord,
   type JSONSchema,
   type JsonValue,
   type Memory,
   ModelType,
+  modelOutputIncompleteEvidence,
   type PromptSegment,
   projectCompleteToolValueForModel,
   providerRateLimitRetryAt,
@@ -1127,6 +1129,22 @@ export class EvaluatorService extends BaseService {
               },
               true,
             );
+            // Retrying input that cannot succeed only re-buys the same failure.
+            // The evidence stays pending; a later job retries it once it changes.
+            if (
+              result.errors.length &&
+              result.errors.every((entry) => entry.retryable === false)
+            ) {
+              this.runtime.logger.warn(
+                {
+                  src: "service:evaluator",
+                  taskId: task.id,
+                  errors: result.errors,
+                },
+                "Background memory job stopped: its input cannot succeed on retry",
+              );
+              return this.finishBackgroundTask(task);
+            }
             if (result.errors.length)
               throw new ElizaError("Background memory remains pending", {
                 code: "EVALUATOR_JOB_PENDING",
@@ -1268,9 +1286,22 @@ export class EvaluatorService extends BaseService {
     const providerNames = Array.from(
       new Set(active.flatMap((evaluator) => evaluator.providers ?? [])),
     );
+    // The stored message names the trajectory step of the turn that wrote it,
+    // long closed for a background run: provider captures belong to the
+    // current trajectory context instead.
+    const {
+      trajectoryStepId: _stepId,
+      trajectoryId: _trajectoryId,
+      ...metadata
+    } = (message.metadata ?? {}) as Record<string, unknown>;
     const providerState =
       providerNames.length > 0
-        ? await this.runtime.composeState(message, providerNames, true, true)
+        ? await this.runtime.composeState(
+            { ...message, metadata: metadata as Memory["metadata"] },
+            providerNames,
+            true,
+            true,
+          )
         : EMPTY_STATE;
     return mergeStates(state, providerState);
   }
@@ -1392,6 +1423,7 @@ export class EvaluatorService extends BaseService {
     output: Record<string, unknown> | null;
     error?: string;
     retryAt?: number;
+    retryable?: boolean;
   }> {
     const { evaluatorId, rendered, schema } = params;
     try {
@@ -1425,7 +1457,20 @@ export class EvaluatorService extends BaseService {
         // owner recovery work after the chat/action already completed.
         diagnosticOnly: true,
       });
-      return { output: null, error: messageText, retryAt };
+      // At temperature 0 the identical input stops at the output limit again.
+      const outputLimited = isModelOutputLimitFinishReason(
+        modelOutputIncompleteEvidence(error)?.finishReason ??
+          (error instanceof ElizaError &&
+          error.code === "EVALUATOR_INCOMPLETE_OUTPUT"
+            ? error.context?.finishReason
+            : undefined),
+      );
+      return {
+        output: null,
+        error: messageText,
+        retryAt,
+        ...(outputLimited ? { retryable: false } : {}),
+      };
     }
   }
   private async processPreparedEntries(params: {
@@ -1658,6 +1703,7 @@ export class EvaluatorService extends BaseService {
     errors: EvaluatorRunResult["errors"];
     error: string;
     retryAt?: number;
+    retryable?: boolean;
   }): EvaluatorRunResult {
     return {
       skipped: false,
@@ -1672,6 +1718,7 @@ export class EvaluatorService extends BaseService {
           evaluatorName: "post_turn",
           error: params.error,
           retryAt: params.retryAt,
+          retryable: params.retryable,
         },
       ],
     };
@@ -2074,13 +2121,18 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
           evaluatorId,
         }),
       );
-    let { output, error, retryAt } = rendered
+    let { output, error, retryAt, retryable } = rendered
       ? await this.readEvaluatorOutput({
           evaluatorId,
           rendered,
           schema,
         })
-      : { output: {}, error: undefined, retryAt: undefined };
+      : {
+          output: {},
+          error: undefined,
+          retryAt: undefined,
+          retryable: undefined,
+        };
     while (
       background &&
       output &&
@@ -2179,7 +2231,7 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         options,
         schema,
       });
-      ({ output, error, retryAt } = await this.readEvaluatorOutput({
+      ({ output, error, retryAt, retryable } = await this.readEvaluatorOutput({
         evaluatorId,
         rendered,
         schema,
@@ -2198,6 +2250,7 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         errors,
         error: error ?? "Evaluator model returned no output",
         retryAt,
+        retryable,
       });
     }
     if (!output)
@@ -2205,6 +2258,7 @@ ${JSON.stringify(references.map(evaluatorEvidenceRecord))}`
         evaluatorName: "post_turn",
         error: error ?? "Evaluator model returned no output",
         retryAt,
+        retryable,
       });
     const { processedEvaluators, results } = await this.inRoom(
       message,

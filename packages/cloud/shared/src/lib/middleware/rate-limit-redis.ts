@@ -18,6 +18,7 @@ import {
   isCloudflareWorkerRuntime,
 } from "../cache/redis-factory";
 import { logger } from "../utils/logger";
+import { getCloudflareRateState } from "./cloudflare-rate-state";
 
 /** Environment prefix — prevents rate-limit key collisions when dev/prod share the same Redis instance. */
 const ENV_PREFIX = process.env.ENVIRONMENT || "local";
@@ -95,6 +96,15 @@ export async function checkRateLimitRedis(
     carriedCount?: number;
   },
 ): Promise<RateLimitResult> {
+  const durable = getCloudflareRateState();
+  if (durable)
+    return durable.request(`${ENV_PREFIX}:ratelimit:${key}`, {
+      operation: "check",
+      mode: "sliding",
+      windowMs,
+      maxRequests,
+      carriedCount: Math.max(0, Math.floor(options?.carriedCount ?? 0)),
+    });
   const client = getRedisClient();
 
   if (!client) {
@@ -178,6 +188,16 @@ export async function checkRateLimitRedis(
  * @param key - Rate limit key to clear.
  */
 export async function clearRateLimit(key: string): Promise<void> {
+  const durable = getCloudflareRateState();
+  if (durable) {
+    await durable.request(`${ENV_PREFIX}:ratelimit:${key}`, {
+      operation: "clear",
+      mode: "sliding",
+      windowMs: 1,
+      maxRequests: 1,
+    });
+    return;
+  }
   const client = getRedisClient();
   if (!client) return;
 
@@ -205,6 +225,14 @@ export async function getRateLimitStatus(
   windowMs: number,
   maxRequests: number,
 ): Promise<{ count: number; remaining: number; resetAt: number }> {
+  const durable = getCloudflareRateState();
+  if (durable)
+    return durable.request(`${ENV_PREFIX}:ratelimit:${key}`, {
+      operation: "status",
+      mode: "sliding",
+      windowMs,
+      maxRequests,
+    });
   const client = getRedisClient();
 
   if (!client) {

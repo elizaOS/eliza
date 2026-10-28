@@ -23,6 +23,13 @@ export const CORE_PLUGIN_PROFILE_METADATA: readonly CorePluginProfile[] = [
   { plugin: "@elizaos/plugin-browser", mobileCore: true },
   { plugin: "@elizaos/plugin-vision", mobileCore: true },
   { plugin: "@elizaos/plugin-scheduling", mobileCore: true },
+  { plugin: "@elizaos/plugin-personal-assistant", mobileCore: true },
+  {
+    plugin: "@elizaos/plugin-personal-assistant/reminders-plugin",
+    mobileCore: true,
+  },
+  { plugin: "@elizaos/plugin-reminders", mobileCore: true },
+  { plugin: "@elizaos/plugin-goals", mobileCore: true },
   { plugin: "@elizaos/plugin-agent-orchestrator/ui", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-inbox", viewEveryPlatform: true },
   { plugin: "@elizaos/plugin-notes", viewEveryPlatform: true },

@@ -613,6 +613,19 @@ export function setupDiscordEventListeners(service: DiscordServiceInternals): {
 		}
 	});
 
+	// ── messageUpdate ──────────────────────────────────────────────────
+	service.client.on("messageUpdate", async (_oldMessage, newMessage) => {
+		try {
+			await service.messageManager?.handleMessageEdit(newMessage);
+		} catch (error) {
+			service.runtime.reportError("discord:message-edit", error, {
+				accountId,
+				messageId: newMessage.id,
+				channelId: newMessage.channelId,
+			});
+		}
+	});
+
 	// ── messageReactionAdd ─────────────────────────────────────────────
 	service.client.on("messageReactionAdd", async (reaction, user) => {
 		const clientUser = service.client?.user;

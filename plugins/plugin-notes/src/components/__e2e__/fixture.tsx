@@ -1,9 +1,11 @@
-import "@elizaos/ui/styles";
-import { AgentSurfaceProvider } from "@elizaos/ui";
+import "../../../../../packages/ui/src/styles/styles.css";
 import { createRoot } from "react-dom/client";
+import { AgentSurfaceProvider } from "../../../../../packages/ui/src/agent-surface/AgentSurfaceContext.js";
 import { ApiError } from "../../../../../packages/ui/src/api/client-types-core";
+import { createNotesClient } from "../../client/notes-api.js";
 import type { NotesSnapshot, StickyNote } from "../../types.js";
 import { NotesSurface } from "../NotesSurface.js";
+import { NotesWorkspace } from "../NotesWorkspace.js";
 import "./fixture.css";
 
 type FixtureState =
@@ -16,6 +18,7 @@ type FixtureState =
 
 const params = new URLSearchParams(window.location.search);
 const fixtureState = (params.get("state") ?? "populated") as FixtureState;
+const workspace = params.get("workspace") === "1";
 const theme = params.get("theme") === "light" ? "light" : "dark";
 document.documentElement.dataset.theme = theme;
 document.documentElement.classList.toggle("dark", theme === "dark");
@@ -104,6 +107,20 @@ if (!root) throw new Error("Notes fixture root is missing.");
 
 createRoot(root).render(
   <AgentSurfaceProvider viewId="notes-fixture">
-    <NotesSurface {...stateProps()} refresh={async () => undefined} />
+    {workspace ? (
+      <NotesWorkspace
+        client={createNotesClient({
+          fetch: async <T,>(url: string, init?: RequestInit): Promise<T> => {
+            const response = await fetch(url, init);
+            if (!response.ok)
+              throw new Error(`Notes service returned ${response.status}`);
+            return response.json();
+          },
+        })}
+        binding={{ key: "notes-local-service-preview", current: () => true }}
+      />
+    ) : (
+      <NotesSurface {...stateProps()} refresh={async () => undefined} />
+    )}
   </AgentSurfaceProvider>,
 );

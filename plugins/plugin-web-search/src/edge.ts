@@ -233,7 +233,9 @@ async function fail(
     callback?: HandlerCallback,
     query?: string
 ): Promise<ActionResult> {
-    await callback?.({ text });
+    // Failed search callbacks stay internal (#37206): the failure is already
+    // the action result, so a visible callback would add a separate error reply.
+    await callback?.({ text, transcriptVisibility: "internal" });
     return {
         success: false,
         text,
@@ -387,7 +389,10 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner, fallbackEnabled 
             });
             signal?.throwIfAborted();
             if (result.success !== true && result.text) {
-                await callback?.({ text: result.text });
+                await callback?.({
+                    text: result.text,
+                    transcriptVisibility: "internal",
+                });
             }
             return result;
         },

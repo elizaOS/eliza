@@ -77,10 +77,14 @@ async function configuration() {
       createHash("sha256").update(binaryData).digest("hex") !== binarySha ||
       MODEL_SIZES.get(modelSha) !== ms.size
     )
-      return null;
+      throw new VoiceFailure(503, "provider_unavailable");
     return { binary, model, binarySha, modelSha, backend };
-  } catch {
-    return null;
+  } catch (error) {
+    // A path that is genuinely absent means the provider was never installed;
+    // anything else means an install the operator configured cannot be read.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    if (error instanceof VoiceFailure) throw error;
+    throw new VoiceFailure(503, "provider_unavailable");
   }
 }
 function validateWav(bytes: Buffer): number {
@@ -253,7 +257,14 @@ export async function handleStandaloneWhisperRoute(
     sendJson(res, 403, { error: "paired_owner_required" });
     return true;
   }
-  const config = await configuration();
+  let config: Awaited<ReturnType<typeof configuration>>;
+  try {
+    config = await configuration();
+  } catch (error) {
+    if (!(error instanceof VoiceFailure)) throw error;
+    sendJson(res, error.status, { error: error.code });
+    return true;
+  }
   if (status) {
     sendJson(res, 200, {
       ready: !!config,
