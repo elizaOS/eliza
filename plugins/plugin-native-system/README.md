@@ -149,6 +149,22 @@ reader, page fallbacks and shade outcomes against host-JVM stand-ins; the readab
 settings and the pages an image provides still differ by Android version and vendor
 and need device qualification.
 
+## Assistant entry tile
+
+`AssistantEntryTile` is the shared Quick Settings tile that opens a host's assistant
+entry. It is an action, never a toggle: it always reports `STATE_INACTIVE`, so it
+never suggests that an agent, a connection or the microphone is on. A tap on a locked
+device asks Android to unlock first and opens the entry only afterwards; Android 14
+and later receive an immutable `PendingIntent`, earlier versions the `Intent`
+overload. A tap grants no permission and starts no capture. Hosts subclass it under
+their installed component name, return an explicit `entryIntent()` and may supply a
+label, a lock-aware subtitle, a spoken description, an icon and a request code;
+otherwise the manifest label and icon stay. The library declares no tile: each host
+declares its service with `android.permission.BIND_QUICK_SETTINGS_TILE` and
+`TOGGLEABLE_TILE=false`. The Eliza app's `ElizaVoiceTileService` uses it.
+`test/assistant-tile.test.mjs` runs both on a host JVM; SystemUI placement, unlock
+and collapse need device qualification.
+
 ## App data reset
 
 `reset.DataReset` resets a host app's own data through Android's
