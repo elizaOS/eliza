@@ -127,6 +127,20 @@ test("library reads publish only under the read ticket they were admitted with",
     catalog.includes(compact('" AND _id IN ("')),
     "album members are read in batches",
   );
+  assert.ok(
+    catalog.includes(
+      compact("boolean wanted = !watchers.isEmpty() && !closed;"),
+    ),
+    "the MediaStore observer is registered only while some view watches",
+  );
+  assert.ok(
+    catalog.includes(
+      compact(
+        "public final long until = SystemClock.elapsedRealtime() + 5000;",
+      ),
+    ),
+    "a fence's deadline is readable by host instrumentation",
+  );
 });
 
 test("an approved write request is applied only after the activity resumes", () => {

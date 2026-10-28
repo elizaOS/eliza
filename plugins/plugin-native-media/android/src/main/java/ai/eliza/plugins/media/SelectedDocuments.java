@@ -78,12 +78,9 @@ public final class SelectedDocuments {
       for (Map.Entry<String, Integer> entry : retained.entrySet())
         if (selected.containsKey(entry.getKey())) {
           org.json.JSONObject record = new org.json.JSONObject();
-          record.put("id", entry.getKey())
-          ;
-          record.put("uri", selected.get(entry.getKey()).toString())
-          ;
-          record.put("flags", entry.getValue())
-          ;
+          record.put("id", entry.getKey());
+          record.put("uri", selected.get(entry.getKey()).toString());
+          record.put("flags", entry.getValue());
           entries.put(record);
         }
     } catch (org.json.JSONException error) {

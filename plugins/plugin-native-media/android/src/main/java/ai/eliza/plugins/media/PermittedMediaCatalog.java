@@ -217,7 +217,11 @@ public final class PermittedMediaCatalog implements AutoCloseable {
   public static final class Fence {
     final List<String> volumes;
     final String snapshot;
-    final long until = SystemClock.elapsedRealtime() + 5000;
+    /**
+     * {@code SystemClock.elapsedRealtime()} deadline after which {@link #requireCurrent} refuses
+     * this fence. Hosts' instrumentation reads it to tell a library change from an expired query.
+     */
+    public final long until = SystemClock.elapsedRealtime() + 5000;
     Fence(List<String> volumes, String snapshot) {
       this.volumes = List.copyOf(volumes);
       this.snapshot = snapshot;
