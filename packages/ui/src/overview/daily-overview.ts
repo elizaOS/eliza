@@ -496,7 +496,8 @@ export function overviewCalendarState(status: unknown): OverviewCalendarState {
   if (/denied/i.test(text)) return "denied";
   if (/could not be loaded|failed|unavailable\b/i.test(text)) return "error";
   if (/^Loading/i.test(text)) return "loading";
-  if (/connected|limited/i.test(text) && !/^Not connected/i.test(text))
+  // Whole words only: "Disconnected" or "not connected" is never ready.
+  if (/\b(connected|limited)\b/i.test(text) && !/\bnot connected\b/i.test(text))
     return "ready";
   if (/available in the Android app/i.test(text)) return "unavailable";
   return "not-connected";

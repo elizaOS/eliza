@@ -207,6 +207,10 @@ describe("agenda", () => {
     expect(overviewCalendarState("Calendar range could not be loaded.")).toBe("error");
     expect(overviewCalendarState("Loading calendars…")).toBe("loading");
     expect(overviewCalendarState("Device calendars connected")).toBe("ready");
+    expect(overviewCalendarState("Disconnected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar disconnected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar not connected")).toBe("not-connected");
+    expect(overviewCalendarState("Not connected")).toBe("not-connected");
     expect(overviewCalendarState("Device calendars are available in the Android app.")).toBe("unavailable");
     expect(overviewCalendarState(undefined)).toBe("not-connected");
   });
