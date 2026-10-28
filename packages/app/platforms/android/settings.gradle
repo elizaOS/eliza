@@ -14,3 +14,5 @@ apply from: 'capacitor.settings.gradle'
 
 // Explicit image-only companion; neither module is a launcher dependency.
 include ':sense', ':sense-speech'
+
+include ':voice-assets'

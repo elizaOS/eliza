@@ -111,9 +111,11 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
     );
     expect(rejected.success).toBe(false);
     expect(feed).not.toHaveBeenCalled();
-    expect(rejected.effectReceipts?.[0]).toMatchObject({ outcome: "failed" });
+    // Unverified source selection is refused before a Calendar read starts.
+    expect(rejected.effectReceipts ?? []).toEqual([]);
     expect(rejected.data).toMatchObject({
-      error: "CALENDAR_NATIVE_RESOURCE_REQUIRED",
+      code: "CALENDAR_AGENDA_UNAVAILABLE",
+      localCalendarRead: false,
     });
     const explicitBackend = await withDeviceActionTurn(
       runtime,
@@ -453,6 +455,26 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
                 timeZone: "UTC",
                 grantId: googleGrant.id,
                 calendarId: "primary",
+                guestIntent: {
+                  state: "none",
+                  guests: [],
+                  evidence: [
+                    {
+                      sourceId: `current:${MESSAGE_ID}`,
+                      quote: input.content.text,
+                    },
+                  ],
+                },
+                noteIntent: {
+                  state: "none",
+                  sourceNote: null,
+                  evidence: [
+                    {
+                      sourceId: `current:${MESSAGE_ID}`,
+                      quote: input.content.text,
+                    },
+                  ],
+                },
               })
             : "Only selected calendar evidence.",
         );
@@ -677,7 +699,7 @@ beforeAll(async () => {
       },
     })),
     adapter: { db },
-    getSetting: () => undefined,
+    getSetting: (key: string) => (key === "TIMEZONE" ? "UTC" : undefined),
     getService: (serviceType: string) =>
       serviceType === SECRETS_SERVICE_TYPE
         ? secretsService
@@ -910,7 +932,7 @@ describe("CALENDAR receipt grounding over real PGlite", () => {
       agentId: AGENT_ID,
       entityId: ENTITY_ID,
       roomId: ROOM_ID,
-      createdAt: Date.now(),
+      createdAt: Date.parse("2026-07-27T12:00:00.000Z"),
       content: { text: "What is on the family calendar tomorrow?" },
     } as Memory;
 
