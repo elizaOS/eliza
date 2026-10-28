@@ -58,6 +58,47 @@ test("a spring-forward day all-day event does not overlap the previous evening",
   );
 });
 
+test("an all-day event on a repeated-midnight day starts at the first midnight", () => {
+  // Asia/Amman fell back 01:00 -> 00:00 on 2021-10-29, so that civil date
+  // first exists at 2021-10-28T21:00:00.000Z (00:00 at +03:00); the second
+  // midnight is 2021-10-28T22:00:00.000Z (00:00 at +02:00).
+  const result = calendarAvailability(
+    operation("Asia/Amman", Date.UTC(2021, 9, 29)),
+    1,
+    [allDay(Date.UTC(2021, 9, 29))],
+  );
+  assert.equal(result.busy[0]?.start, "2021-10-28T21:00:00.000Z");
+});
+
+test("a repeated-midnight all-day event overlaps the first hour of its day", () => {
+  assert.equal(
+    calendarEventOverlapsRange(
+      {
+        start: "2021-10-28T21:00:00.000Z",
+        end: "2021-10-28T22:00:00.000Z",
+        timeZone: "Asia/Amman",
+      },
+      {
+        start: "2021-10-29T00:00:00.000Z",
+        end: "2021-10-30T00:00:00.000Z",
+        allDay: true,
+      },
+    ),
+    true,
+  );
+});
+
+test("an all-day event starts exactly at a sub-thirty-minute skipped midnight", () => {
+  // Asia/Kathmandu sprang forward 15 minutes at midnight on 1986-01-01, so
+  // that day's first instant is 00:15 local = 1985-12-31T18:30:00.000Z.
+  const result = calendarAvailability(
+    operation("Asia/Kathmandu", Date.UTC(1986, 0, 1)),
+    1,
+    [allDay(Date.UTC(1986, 0, 1))],
+  );
+  assert.equal(result.busy[0]?.start, "1985-12-31T18:30:00.000Z");
+});
+
 test("all-day bounds in a zone whose transition is not at midnight are unchanged", () => {
   // America/New_York springs forward at 02:00; 2026-03-08 local midnight is
   // 05:00Z (EST) and the next midnight is 04:00Z (EDT).

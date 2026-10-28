@@ -161,12 +161,16 @@ function civilMidnight(utcMidnight: number, timeZone: string): number {
   // Resolve the zone offset at the local civil-day boundary.
   let guess = target;
   for (let pass = 0; pass < 3; pass++) guess += target - localAt(guess);
-  // A spring forward at local midnight skips 00:00, so the iteration has no
-  // fixed point and settles on the previous civil day, short of the boundary
-  // by the skipped amount (one hour, or thirty minutes in the zones that
-  // shift by thirty minutes). The civil day then begins at its first
-  // existing instant.
-  while (localDayAt(guess) < target) guess += 1_800_000;
+  // A transition at local midnight leaves the iteration off the boundary in
+  // either direction: a spring forward skips 00:00, so there is no fixed
+  // point and it settles on the previous civil day; a fall back repeats
+  // 00:00, so it converges on the second midnight, inside the target day.
+  // Walk to the first instant of the target civil day; minute steps are
+  // exact for the whole-minute offsets tzdata records from 1970 on. A civil
+  // date that never exists at all (a skipped date) resolves to the start of
+  // the following day.
+  while (localDayAt(guess) < target) guess += 60_000;
+  while (localDayAt(guess - 60_000) === target) guess -= 60_000;
   return guess;
 }
 /** Shared Calendar overlap: all-day bounds are civil dates, not timed UTC events. */
