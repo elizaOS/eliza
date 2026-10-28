@@ -20,3 +20,17 @@ and a single-dispatch renderer guard. Hosts retain authenticated requests,
 foreground consent, durable journal transitions and result admission. Retirement
 blocks dispatch but does not discard a known result of an admitted attempt.
 The guard does not grant retry permission or replace journal recovery.
+
+`@elizaos/contracts/phone-workflow` is the single normalizer, catalog and
+save-receipt reader for typed phone workflows, so the agent's reviewed compiler
+and phone clients bind the same canonical bytes. Its manual and reviewed
+local-time triggers are data, never execution authority: a local-time schedule
+is armed per reviewed version on the agent's durable scheduler, an occurrence
+that passes while the agent is not running is recorded once as missed and never
+run later, and every phone read or effect still needs its own device approval.
+
+`@elizaos/contracts/notice-routes` is the renderer side of the native notice
+routes: the owner privacy fence coordinator, tap resolution through
+authenticated reads of the exact route, the installed approval notice identity
+and the owner-return revalidation of a suspended approval notice. A tap is a read
+request; hosts retain the native ledgers, foreground checks and presentation.
