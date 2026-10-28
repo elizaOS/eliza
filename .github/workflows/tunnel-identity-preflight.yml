@@ -1,0 +1,161 @@
+name: Tunnel Identity Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected tunnel environment
+        required: true
+        type: choice
+        options: [staging, production]
+      proxy_hostname:
+        description: Exact existing proxy hostname in Headscale
+        required: true
+        type: string
+      expected_identity_sha256:
+        description: Baseline receipt to require after the runtime handoff
+        required: false
+        default: ""
+        type: string
+      verify_signed_request:
+        description: Require a healthy upstream through the currently public signed tunnel route
+        required: false
+        default: false
+        type: boolean
+      expected_upstream_identity_sha256:
+        description: Upstream receipt to reuse when comparing the destination with the source
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+jobs:
+  inspect:
+    name: Read-only tunnel node identity
+    if: ${{ (inputs.environment == 'staging' && github.ref == 'refs/heads/staging') || (inputs.environment == 'production' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Verify existing online proxy identity
+        env:
+          TARGET_ENVIRONMENT: ${{ inputs.environment }}
+          PROXY_HOSTNAME: ${{ inputs.proxy_hostname }}
+          EXPECTED_IDENTITY_SHA256: ${{ inputs.expected_identity_sha256 }}
+          HEADSCALE_API_KEY: ${{ secrets.HEADSCALE_API_KEY }}
+          VERIFY_SIGNED_REQUEST: ${{ inputs.verify_signed_request }}
+          EXPECTED_UPSTREAM_IDENTITY_SHA256: ${{ inputs.expected_upstream_identity_sha256 }}
+          TUNNEL_HOSTNAME_SIGNING_SECRET: ${{ secrets.TUNNEL_HOSTNAME_SIGNING_SECRET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import hmac
+          import ipaddress
+          import json
+          import os
+          import re
+          import sys
+          import time
+          import urllib.request
+
+          try:
+              environment = os.environ["TARGET_ENVIRONMENT"]
+              hostname = os.environ["PROXY_HOSTNAME"]
+              expected = os.environ["EXPECTED_IDENTITY_SHA256"]
+              key = os.environ["HEADSCALE_API_KEY"]
+              if environment not in ("staging", "production") or not key:
+                  raise ValueError("missing authority")
+              if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", hostname):
+                  raise ValueError("invalid hostname")
+              if expected and not re.fullmatch(r"[a-f0-9]{64}", expected):
+                  raise ValueError("invalid expected receipt")
+              origin = ("https://headscale-staging.eliza.app" if environment == "staging"
+                        else "https://headscale.eliza.app")
+              request = urllib.request.Request(origin + "/api/v1/node", headers={
+                  "Authorization": "Bearer " + key,
+                  "Accept": "application/json",
+              })
+              # Credentials must never follow a redirect to another origin.
+              class NoRedirect(urllib.request.HTTPRedirectHandler):
+                  def redirect_request(self, req, fp, code, msg, headers, newurl):
+                      return None
+              with urllib.request.build_opener(NoRedirect).open(request, timeout=30) as response:
+                  if response.status != 200:
+                      raise ValueError("node query failed")
+                  payload = json.load(response)
+              nodes = payload.get("nodes")
+              if not isinstance(nodes, list):
+                  raise ValueError("invalid node inventory")
+              matches = [node for node in nodes if isinstance(node, dict)
+                         and node.get("name") == hostname]
+              if len(matches) != 1 or matches[0].get("online") is not True:
+                  raise ValueError("proxy is absent, duplicated, or offline")
+              node = matches[0]
+              node_id = str(node.get("id", ""))
+              addresses = node.get("ipAddresses")
+              if not re.fullmatch(r"[1-9][0-9]*", node_id) or not isinstance(addresses, list) or not addresses:
+                  raise ValueError("invalid node identity")
+              addresses = sorted(str(ipaddress.ip_address(address)) for address in addresses)
+              identity = {"environment": environment, "id": node_id,
+                          "name": hostname, "addresses": addresses}
+              digest = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+              if expected and digest != expected:
+                  raise ValueError("node identity changed")
+              upstream_digest = None
+              if os.environ["VERIFY_SIGNED_REQUEST"] == "true":
+                  signing_key = os.environ["TUNNEL_HOSTNAME_SIGNING_SECRET"]
+                  expected_upstream = os.environ["EXPECTED_UPSTREAM_IDENTITY_SHA256"]
+                  if not signing_key or (expected_upstream and not re.fullmatch(r"[a-f0-9]{64}", expected_upstream)):
+                      raise ValueError("missing signing authority or invalid upstream receipt")
+                  candidates = []
+                  for upstream in nodes:
+                      if not isinstance(upstream, dict) or upstream.get("online") is not True:
+                          continue
+                      name = upstream.get("name", "")
+                      if not isinstance(name, str) or not re.fullmatch(r"eliza-[a-z0-9]{1,10}-[a-f0-9]{20}-[a-z0-9]{6,10}-[a-f0-9]{16}", name):
+                          continue
+                      parts = name.split("-")
+                      # Keep enough validity for the request timeout and a handoff.
+                      if int(parts[3], 36) < time.time() + 300:
+                          continue
+                      signature = hmac.new(signing_key.encode(), "-".join(parts[:4]).encode(), hashlib.sha256).hexdigest()[:16]
+                      if not hmac.compare_digest(signature, parts[4]):
+                          continue
+                      upstream_id = str(upstream.get("id", ""))
+                      upstream_addresses = upstream.get("ipAddresses")
+                      if not re.fullmatch(r"[1-9][0-9]*", upstream_id) or not isinstance(upstream_addresses, list) or not upstream_addresses:
+                          raise ValueError("invalid upstream identity")
+                      upstream_identity = {"environment": environment, "id": upstream_id, "name": name,
+                                           "addresses": sorted(str(ipaddress.ip_address(address)) for address in upstream_addresses)}
+                      receipt = hashlib.sha256(json.dumps(upstream_identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+                      if not expected_upstream or hmac.compare_digest(receipt, expected_upstream):
+                          candidates.append((int(upstream_id), name, receipt))
+                  if not candidates or len({item[1] for item in candidates}) != len(candidates):
+                      raise ValueError("no unambiguous signed upstream available")
+                  if expected_upstream and len(candidates) != 1:
+                      raise ValueError("upstream identity is ambiguous")
+                  _, upstream_name, upstream_digest = sorted(candidates)[0]
+                  public_host = "tunnel-staging.eliza.app" if environment == "staging" else "tunnel.eliza.app"
+                  # Uses current public DNS. A source receipt is not proof of a
+                  # destination that has not yet received the wildcard route.
+                  # /health and /ready only test the proxy itself. This path is forwarded.
+                  probe = urllib.request.Request("https://" + upstream_name + "." + public_host + "/api/health",
+                                                 headers={"Accept": "application/json"})
+                  with urllib.request.build_opener(NoRedirect).open(probe, timeout=30) as response:
+                      if response.status != 200 or response.headers.get_content_type() != "application/json":
+                          raise ValueError("upstream health unavailable")
+                      health = json.load(response)
+                      if not isinstance(health, dict) or health.get("status") not in ("ok", "healthy", "alive", "pass"):
+                          raise ValueError("invalid upstream health response")
+              print("phase=tunnel-identity status=passed identity_sha256=" + digest)
+              print("mode=" + ("compare" if expected else "baseline"))
+              if upstream_digest:
+                  print("phase=tunnel-signed-request status=passed upstream_identity_sha256=" + upstream_digest)
+          except Exception:
+              # Provider responses, topology, and credentials stay out of logs.
+              print("phase=tunnel-identity status=failed code=TUNNEL_IDENTITY_UNVERIFIED", file=sys.stderr)
+              sys.exit(1)
+          PY

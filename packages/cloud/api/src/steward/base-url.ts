@@ -4,10 +4,13 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 
 export function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
-  const candidates: Array<[string, string | undefined]> = [
-    ["STEWARD_API_URL", env.STEWARD_API_URL],
-    ["NEXT_PUBLIC_STEWARD_API_URL", env.NEXT_PUBLIC_STEWARD_API_URL],
-  ];
+  const candidates: Array<[string, string | undefined]> =
+    env.LOGIN_API_URL !== undefined
+      ? [["LOGIN_API_URL", env.LOGIN_API_URL]]
+      : [
+          ["STEWARD_API_URL", env.STEWARD_API_URL],
+          ["NEXT_PUBLIC_STEWARD_API_URL", env.NEXT_PUBLIC_STEWARD_API_URL],
+        ];
   for (const [key, candidate] of candidates) {
     if (typeof candidate !== "string") continue;
     const trimmed = candidate.trim().replace(/\/+$/, "");

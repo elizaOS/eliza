@@ -322,7 +322,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
 
       - name: Upload immutable candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ format('npm-release-candidate-{0}-{1}-{2}', inputs.source_sha, inputs.version, inputs.channel) }}
           path: ${{ runner.temp }}/release-candidate
@@ -408,7 +408,7 @@ jobs:
             --token-env NODE_AUTH_TOKEN
 
       - name: Upload npm-verified candidate state
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ needs.candidate.outputs.artifact_name }}-npm-verified
           path: ${{ runner.temp }}/release-candidate
@@ -521,7 +521,7 @@ jobs:
           --token-env GITHUB_TOKEN
 
       - name: Upload finalized transaction evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ needs.candidate.outputs.artifact_name }}-finalized
           path: ${{ runner.temp }}/release-candidate

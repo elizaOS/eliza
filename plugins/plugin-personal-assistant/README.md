@@ -42,7 +42,11 @@ to three times for exactly one receipt email that names the provider reference
 and then reports `receiptInEmail`. Each lookup reserves a durable attempt before
 the provider read; failed reads share the same budget and one-minute cooldown.
 The code coordinator never fills a code field
-the person has typed in and reports fixed Google reasons (`codeReason`). Bill
+the person has typed in, and every code-step result names a fixed `codeReason`.
+Every fixed workflow stop, unknown outcome or pending save also has a
+`reasonCode`, so a host can use its own words without matching English text.
+`assistantName` (default `Eliza`) names the assistant in fixed workflow words.
+`listForOwner(owner)` lists one owner's saved outcomes, newest first. Bill
 search fails with `account_mismatch` when the connected Google address cannot
 receive the configured recipient's mail (masked addresses are matched by their
 visible parts). `googleSource.windowDays` searches that number of days up to the
@@ -56,14 +60,27 @@ name, placeholder, title, field name, image text, nearby text, row text, group
 and form), so controls with no usable name can still be found. Password, code,
 card, bank and ID-number fields are kept apart: `pageView` gives a model only
 their category and whether they are filled, and the workflow points at them
-for the person without asking a model. The host's `planStep` reads `pageView`
+for the person without asking a model. `pageView.blockers` lists what stands in
+front of the page (modal, cookie or consent banner, person check, sign-in wall,
+paywall) with `covers` and, when the browser identified one, the control ref of
+a close control (`ref`) or a consent banner's reject control (`rejectRef`). A
+person check never carries a ref. The host's `planStep` reads `pageView`
 and returns one step with a ref; `checkStep` can stop and ask before a step.
-The workflow points at the control; the person presses every control. Its only
+By default the workflow points at the control; the person presses every control. Its only
 effect is `fill(offerKey)`: one held value into one empty ordinary field after
 the person agrees. It compares every page fact with the offered page first,
 starts a new task epoch for the new browser target (`fillTargets(task)` gives
 the host policy that target), and reads the page again after the fill. Hosts
 compose `verifyGuidedFill` as the actuator's verification for these fills.
+Hosts can opt into planned browser actions with `authorizeAction`. A planner may
+then return `kind: "agent-action"`, a current control ref, an action (`click`,
+`fill`, `select`, or directional `scroll`) and a held `valueRef` when needed.
+`executeAction(offerKey)` rechecks host policy and the complete page observation
+before one task-runtime dispatch; `actionTargets(task)` supplies its current target.
+The host must grant the capability, decide consequence policy, resolve held values,
+and verify the result from fresh page evidence. The default remains person-guided.
+Unknown effects stop further actions and are not replayed.
+
 A browser-stopped submit or page change pauses the task; a form the person sent
 while the website was hers is a `person-check` stop. `BillWorkflow` is the bill
 configuration of this workflow. Run the real Chromium and model lane with
@@ -98,6 +115,16 @@ outcomes into the app task gateway extension. It receives the existing task
 runtime, SQLite stores, workflow policy and four required presentation strings
 from the host. Authorization is rechecked after asynchronous work; source
 selection and duplicate choice delivery retain their durable task bindings.
+An unknown task answers `404 TASK_NOT_FOUND`. A failed bill route answers
+`503 BILL_WORKFLOW_UNAVAILABLE` with a fixed `reason` naming the step that
+failed: `profile-unavailable`, `workflow-missing` (the host factory),
+`store-error` (a read or write of the task, its saved bill records or its
+choice) or `unknown` (the workflow). The optional `onDiagnostic` hook receives
+the route, task id, reason and error name. Neither carries page text, values or
+error messages. The configured helper's own error carries
+`reason: "profile-unavailable"`, so a host route that calls the workflow itself
+can name that failure without matching the message; `onDiagnostic` covers only
+`/tasks/:id/bill`.
 Product helper descriptions, support/study routes and UI copy stay with hosts.
 
 The native bill-outcome store's `loadEvidence()` returns the current observation
@@ -105,7 +132,9 @@ and whether that exact validated record is persisted. Host reports can distingui
 pending observations from durable evidence without querying the store's tables.
 
 `native-host/bill-client.ts` is a browser-safe client leaf for these routes. It
-validates response snapshots with injected shared choice/money validators, owns
+validates response snapshots with the shared choice/money validators
+(`validateTaskChoiceWidget` and `formatMinorCurrency` by default; a host can
+replace either through `validators`), owns
 request state and task-switch cancellation, and never replays uncertain source
 selection. Source-link opening requires an explicit call and validated provider
 URL. Hosts supply transport and UI wording; owner authorization and durable effect

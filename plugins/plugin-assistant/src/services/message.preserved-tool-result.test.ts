@@ -514,7 +514,7 @@ describe("planner-loop death after a completed tool", () => {
         async (_runtime, params) => {
           const tools = params.tools?.map((tool) => tool.name) ?? [];
           expect(tools).toContain("CALENDAR_NEXT_EVENT");
-          expect(tools).not.toContain("CALENDAR_FEED");
+          expect(tools).toContain("CALENDAR_FEED");
           return {
             text: "",
             toolCalls: [
@@ -662,11 +662,9 @@ describe("planner-loop death after a completed tool", () => {
           expect(names).toContain("VIEWS_SHOW");
           expect(names).toContain("NOTES_LIST");
           expect(names).toContain(reader);
-          expect(names).not.toContain(
-            operation === "next_event"
-              ? "CALENDAR_FEED"
-              : "CALENDAR_NEXT_EVENT",
-          );
+          if (operation === "next_event")
+            expect(names).not.toContain("CALENDAR_FEED");
+          else expect(names).toContain("CALENDAR_NEXT_EVENT");
           for (const intent of intents)
             expect(JSON.stringify(params.messages)).toContain(intent);
           return {
@@ -1390,9 +1388,15 @@ describe("planner-loop death after a completed tool", () => {
           );
           return JSON.stringify({
             grounded: true,
-            completedChangeClaim: false,
-            reason:
-              "The read result and original fictional history support the reply; no edit is claimed.",
+            claims: [
+              {
+                quote: "The page heading is Example Domain.",
+                actor: "assistant",
+                change: false,
+                supported: true,
+                evidence: "The live page heading is Example Domain.",
+              },
+            ],
           });
         }
         rewriteCalls++;
@@ -1944,7 +1948,7 @@ describe("planner-loop death after a completed tool", () => {
     expect(result.requestFulfilled).toBe(false);
     expect(result.outcome).toMatchObject({
       status: "failed",
-      error: { kind: "handler_error" },
+      error: { kind: "rate_limited" },
     });
     const delivered = visibleTexts(harness.callbacks);
     expect(delivered).toContain(result.responseContent?.text);
@@ -2072,7 +2076,7 @@ describe("planner-loop death after a completed tool", () => {
     expect(delivered.join("\n")).toContain("request remains incomplete");
     expect(result.outcome).toMatchObject({
       status: "failed",
-      error: { kind: "handler_error" },
+      error: { kind: "rate_limited" },
     });
     expect(delivered.join("\n")).not.toContain(DIAGNOSTIC);
     expect(result.responseContent?.text ?? "").not.toContain(DIAGNOSTIC);

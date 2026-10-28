@@ -23,8 +23,8 @@ import type { PinnedSpeechAsset } from "./host-speech-runtime";
 export const PHONON_ASR_ASSETS: readonly PinnedSpeechAsset[] = [
 	{
 		path: "asr/phonon-2-fv5.gguf",
-		sha256: "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
-		bytes: 330_632_256,
+		sha256: "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+		bytes: 208_932_352,
 	},
 ];
 

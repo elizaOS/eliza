@@ -3,8 +3,24 @@ import { BillHostError } from "./errors.mjs";
 
 /** Prefix of the proposal ID of a fill the person agreed to. */
 export const GUIDED_FILL = "guided-fill:";
+export const PLANNED_ACTION = "planned-browser-action:";
+const ACTIONS = new Set([
+  "click",
+  "follow",
+  "fill",
+  "select",
+  "scroll.up",
+  "scroll.down",
+  "scroll.left",
+  "scroll.right",
+]);
 
-const blocked = (reason) => ({ kind: "blocked", reason });
+/** Fixed workflow words carry a `reasonCode`, so a host never matches the words. */
+const blocked = (reason, reasonCode) => ({
+  kind: "blocked",
+  reason,
+  reasonCode,
+});
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -142,10 +158,63 @@ const present = (entries) =>
   );
 
 /**
+ * What stands in front of the page (modal, cookie or consent banner, person
+ * check, sign-in wall, paywall), with its controls named by their control
+ * refs. A ref to a protected field or to no listed control is left out. A
+ * person check never has a ref: only the person can answer it.
+ */
+const BLOCKER_KINDS = new Set([
+  "modal",
+  "cookie-consent",
+  "captcha",
+  "login-wall",
+  "paywall",
+]);
+const BLOCKER_COVERAGE = new Set(["viewport", "target", "partial"]);
+
+function pageBlockers(snapshot, controls) {
+  const refOf = (selector) =>
+    typeof selector === "string"
+      ? (controls.find(({ element }) => element.selector === selector)?.ref ??
+        null)
+      : null;
+  return (Array.isArray(snapshot.blockers) ? snapshot.blockers : [])
+    .filter(
+      (blocker) =>
+        blocker &&
+        BLOCKER_KINDS.has(blocker.kind) &&
+        BLOCKER_COVERAGE.has(blocker.covers),
+    )
+    .map((blocker) =>
+      present([
+        ["kind", blocker.kind],
+        // A consent banner's close control may count as agreeing: only its
+        // reject control is offered.
+        [
+          "ref",
+          blocker.kind === "captcha" || blocker.kind === "cookie-consent"
+            ? null
+            : refOf(blocker.ref),
+        ],
+        [
+          "rejectRef",
+          blocker.kind === "cookie-consent" ? refOf(blocker.rejectRef) : null,
+        ],
+        ["covers", blocker.covers],
+        [
+          "text",
+          typeof blocker.text === "string" ? blocker.text.slice(0, 200) : null,
+        ],
+      ]),
+    );
+}
+
+/**
  * The page as a model may read it: the address without its query, the title,
- * the visible text and each control's locating facts, state and position.
- * Selectors, field values and the words of protected fields are not in it.
- * Everything in it was written by the website: it is data, not instructions.
+ * the visible text, what blocks the page and each control's locating facts,
+ * state and position. Selectors, field values and the words of protected
+ * fields are not in it. Everything in it was written by the website: it is
+ * data, not instructions.
  */
 export function pageView(snapshot, { controls, protectedFields }) {
   const url = new URL(snapshot.url);
@@ -153,6 +222,7 @@ export function pageView(snapshot, { controls, protectedFields }) {
     url: `${url.origin}${url.pathname}`,
     title: snapshot.title ?? "",
     text: snapshot.text,
+    blockers: pageBlockers(snapshot, controls),
     controls: controls.map(({ ref, kind, element }) =>
       present([
         ["ref", ref],
@@ -175,6 +245,16 @@ export function pageView(snapshot, { controls, protectedFields }) {
         ],
         ["description", element.description],
         [
+          "options",
+          Array.isArray(element.options)
+            ? element.options.map(({ label, disabled, selected }) => ({
+                label,
+                disabled: disabled === true,
+                selected: selected === true,
+              }))
+            : null,
+        ],
+        [
           "filled",
           typeof element.hasInput === "boolean"
             ? element.hasInput
@@ -190,6 +270,8 @@ export function pageView(snapshot, { controls, protectedFields }) {
         ["submits", element.submits === true ? true : null],
         ["pressable", element.pressable],
         ["inViewport", element.inViewport],
+        ["scroll", element.scroll],
+        ["scrollOnly", element.scrollOnly],
         [
           "position",
           element.bounds
@@ -277,6 +359,10 @@ const DEFAULT_WORDS = {
   notFilled: "That box was not filled in. Check it on the website.",
   fillUnknown:
     "I could not check that box after filling it in. Check the website before you go on.",
+  actionNotSent: "The browser action was not sent. Observe the page again.",
+  actionUnexpected: "The browser action did not produce the expected result.",
+  actionUnverified:
+    "The browser action could not be verified. Check the page before continuing.",
 };
 const PROTECTED_KIND = {
   password: "human-sign-in",
@@ -311,6 +397,10 @@ function validManualActivity(activity) {
  * control herself. The only effect the workflow can cause is one fill of a
  * value the host holds, into one empty ordinary field, after she agrees
  * (`fill`). It re-reads the page before and after that fill.
+ * A host can explicitly opt into planned actions with `authorizeAction`. The
+ * planner may then propose an `agent-action`; `executeAction` rechecks host
+ * authority and page identity before the task runtime dispatches one effect.
+ * The host remains responsible for consequence policy and readback verification.
  *
  * It stops and asks when the website did something nobody asked for (a form
  * sent while the website was hers, or a submit or page change after a task
@@ -324,6 +414,7 @@ export class GuidedWebsiteWorkflow {
     taskId,
     planStep,
     checkStep = null,
+    authorizeAction = null,
     words = {},
     stillAuthorized = async () => true,
     signal = new AbortController().signal,
@@ -336,6 +427,7 @@ export class GuidedWebsiteWorkflow {
       taskId,
       planStep,
       checkStep,
+      authorizeAction,
       stillAuthorized,
       signal,
       words: { ...DEFAULT_WORDS, ...words },
@@ -353,8 +445,11 @@ export class GuidedWebsiteWorkflow {
    * `fill` started for it and ends with that epoch.
    */
   fillTargets(task) {
+    return this.actionTargets(task);
+  }
+  actionTargets(task) {
     return this.grant && this.grant.epoch === task.epoch
-      ? [{ selector: this.grant.selector, action: "fill" }]
+      ? [{ selector: this.grant.selector, action: this.grant.action ?? "fill" }]
       : [];
   }
   /** The person answered a stop-and-ask question; the same question is not asked again. */
@@ -388,6 +483,7 @@ export class GuidedWebsiteWorkflow {
     return {
       kind: "paused",
       taskId: this.taskId,
+      reasonCode: "effect-violation",
       message: this.words.effectViolation,
     };
   }
@@ -413,6 +509,7 @@ export class GuidedWebsiteWorkflow {
       return {
         result: {
           kind: "unknown-outcome",
+          reasonCode: "previous-action-unverified",
           message: "Check the previous action before continuing.",
         },
       };
@@ -422,6 +519,7 @@ export class GuidedWebsiteWorkflow {
       return {
         result: {
           kind: "unavailable",
+          reasonCode: "task-unavailable",
           message: "This task cannot currently observe the website.",
         },
       };
@@ -456,7 +554,7 @@ export class GuidedWebsiteWorkflow {
       current.revision !== revision
     ) {
       await this.clearGuidance();
-      return { result: blocked(taskChanged) };
+      return { result: blocked(taskChanged, "task-changed") };
     }
     await this.runtime.observe(
       current.id,
@@ -472,13 +570,13 @@ export class GuidedWebsiteWorkflow {
     const observed = this.runtime.get(this.taskId);
     if (observed.status !== "active" || observed.epoch !== epoch) {
       await this.clearGuidance();
-      return { result: blocked(taskChanged) };
+      return { result: blocked(taskChanged, "task-changed") };
     }
     if (fresh.snapshot.effectViolation !== undefined)
       return { result: await this.pauseForEffectViolation() };
     if (snapshotKey !== policySnapshotKey(fresh.snapshot)) {
       await this.clearGuidance();
-      return { result: blocked(pageChanged) };
+      return { result: blocked(pageChanged, "page-changed") };
     }
     if (decision?.guidanceTarget !== undefined) {
       const index = snapshot.elements.findIndex(
@@ -664,7 +762,7 @@ export class GuidedWebsiteWorkflow {
     const control = matches.length === 1 ? matches[0] : null;
     if (!control || control.element.disabled === true) {
       await this.clearGuidance();
-      return blocked(this.words.noTarget);
+      return blocked(this.words.noTarget, "no-target");
     }
     const view = pageView(snapshot, {
       controls: [control],
@@ -684,13 +782,42 @@ export class GuidedWebsiteWorkflow {
       typeof plan.instruction === "string" && plan.instruction.trim()
         ? plan.instruction
         : plan.message;
+    const agentAction =
+      plan.kind === "agent-action" &&
+      ACTIONS.has(plan.action) &&
+      typeof control.element.targetSelector === "string" &&
+      controls.filter(
+        (other) =>
+          other.element.targetSelector === control.element.targetSelector,
+      ).length === 1 &&
+      (!["fill", "select"].includes(plan.action) ||
+        typeof plan.valueRef === "string") &&
+      typeof this.authorizeAction === "function" &&
+      (await awaitPolicy(
+        this.authorizeAction(
+          {
+            plan,
+            control: view,
+            page: pageView(snapshot, { controls, protectedFields: [] }),
+          },
+          { signal: this.signal, taskId: this.taskId },
+        ),
+        this.signal,
+      )) === true;
+    // A model cannot grant itself an action. The host must opt in for this step;
+    // dispatch rechecks the exact observed page and the runtime's capability grant.
+    if (plan.kind === "agent-action" && !agentAction) {
+      await this.clearGuidance();
+      return blocked(this.words.noTarget, "no-target");
+    }
     const offer =
-      plan.kind === "offer-fill" &&
-      typeof plan.valueRef === "string" &&
-      offerableField(control, controls);
+      agentAction ||
+      (plan.kind === "offer-fill" &&
+        typeof plan.valueRef === "string" &&
+        offerableField(control, controls));
     const decision = offer
       ? {
-          kind: "offer-fill",
+          kind: agentAction ? "agent-action" : "offer-fill",
           ref: control.ref,
           step: plan.step,
           message: plan.message,
@@ -699,6 +826,7 @@ export class GuidedWebsiteWorkflow {
             control.ref,
             control.element.targetSelector,
             plan.valueRef,
+            agentAction ? plan.action : "fill",
             fingerprint,
           ]),
         }
@@ -711,6 +839,9 @@ export class GuidedWebsiteWorkflow {
     if (offer)
       this.offer = {
         key: decision.offerKey,
+        kind: decision.kind,
+        plan: agentAction ? structuredClone(plan) : null,
+        action: agentAction ? plan.action : "fill",
         ref: control.ref,
         selector: control.element.targetSelector,
         valueRef: plan.valueRef,
@@ -732,9 +863,16 @@ export class GuidedWebsiteWorkflow {
    * again after the fill, and nothing else is pressed. A changed page gets a
    * new step instead.
    */
-  async fill(offerKey, { operationId = randomUUID() } = {}) {
+  async fill(offerKey, options = {}) {
+    return this.dispatch(offerKey, "offer-fill", options);
+  }
+  /** Execute one host-authorized planned action, never an unbound model command. */
+  async executeAction(offerKey, options = {}) {
+    return this.dispatch(offerKey, "agent-action", options);
+  }
+  async dispatch(offerKey, kind, { operationId = randomUUID() } = {}) {
     const offer = this.offer;
-    if (offer?.key !== offerKey) return this.refresh();
+    if (offer?.key !== offerKey || offer.kind !== kind) return this.refresh();
     const gate = await this.taskGate();
     if (gate.result) return gate.result;
     let { task } = gate;
@@ -742,12 +880,17 @@ export class GuidedWebsiteWorkflow {
     await this.requireAuthority();
     if (
       this.grant?.epoch !== task.epoch ||
-      this.grant.selector !== offer.selector
+      this.grant.selector !== offer.selector ||
+      this.grant.action !== offer.action.split(".")[0]
     ) {
       this.runtime.control(task.id, task.revision, "pause");
       await this.runtime.settle?.(task.id);
       task = this.runtime.get(this.taskId);
-      this.grant = { epoch: task.epoch, selector: offer.selector };
+      this.grant = {
+        epoch: task.epoch,
+        selector: offer.selector,
+        action: offer.action.split(".")[0],
+      };
       task = await this.runtime.observe(
         task.id,
         task.revision,
@@ -761,13 +904,13 @@ export class GuidedWebsiteWorkflow {
         false,
         this.stillAuthorized,
       );
-    const { observation, snapshot } = this.actuator.readObservation(
+    let { observation, snapshot } = this.actuator.readObservation(
       task.id,
       this.runtime.owner,
     );
     if (snapshot.effectViolation !== undefined)
       return this.pauseForEffectViolation();
-    const target = pageControls(snapshot).controls.find(
+    let target = pageControls(snapshot).controls.find(
       (control) =>
         control.ref === offer.ref &&
         control.element.targetSelector === offer.selector,
@@ -776,9 +919,42 @@ export class GuidedWebsiteWorkflow {
       this.offer = null;
       return this.refresh();
     }
+    if (kind === "agent-action") {
+      const checked = await this.decideOnFreshPage(
+        { observation, snapshot },
+        (current, context) => {
+          const index = pageControls(current),
+            view = pageView(current, index);
+          return this.authorizeAction(
+            {
+              plan: offer.plan,
+              control: view.controls.find((c) => c.ref === offer.ref),
+              page: view,
+            },
+            context,
+          );
+        },
+        { taskChanged: this.words.changed, pageChanged: this.words.changed },
+      );
+      if (checked.result) return checked.result;
+      if (checked.decision !== true) {
+        this.offer = null;
+        return blocked(this.words.noTarget, "no-target");
+      }
+      ({ observation, snapshot } = checked);
+      target = pageControls(snapshot).controls.find(
+        (c) =>
+          c.ref === offer.ref && c.element.targetSelector === offer.selector,
+      );
+      if (!target) {
+        this.offer = null;
+        return this.refresh();
+      }
+      task = this.runtime.get(this.taskId);
+    }
     await this.requireAuthority();
     this.offer = null;
-    const id = `${GUIDED_FILL}${operationId}`;
+    const id = `${kind === "offer-fill" ? GUIDED_FILL : PLANNED_ACTION}${operationId}`;
     const result = await this.runtime.execute(task.id, task.revision, {
       id,
       taskId: task.id,
@@ -788,19 +964,31 @@ export class GuidedWebsiteWorkflow {
       inputRevision: observation.inputRevision,
       targetRef: target.element.selector,
       expectedSelector: offer.selector,
-      capability: "browser.fill",
+      capability: `browser.${offer.action}`,
       valueRef: offer.valueRef,
       authorizationId: task.authorization.decisionId,
       expiresAt: Date.now() + 10000,
     });
     const operation = result.operations.find((item) => item.proposal.id === id);
     if (operation?.status === "succeeded") return this.refresh();
+    if (kind === "agent-action")
+      return operation?.status === "failed"
+        ? operation.evidenceRef === "not-dispatched"
+          ? blocked(this.words.actionNotSent, "action-not-sent")
+          : blocked(this.words.actionUnexpected, "action-failed")
+        : {
+            kind: "unknown-outcome",
+            reasonCode: "action-unverified",
+            message: this.words.actionUnverified,
+          };
     if (operation?.status === "failed")
-      return blocked(
-        operation.evidenceRef === "not-dispatched"
-          ? this.words.notSent
-          : this.words.notFilled,
-      );
-    return { kind: "unknown-outcome", message: this.words.fillUnknown };
+      return operation.evidenceRef === "not-dispatched"
+        ? blocked(this.words.notSent, "fill-not-sent")
+        : blocked(this.words.notFilled, "fill-failed");
+    return {
+      kind: "unknown-outcome",
+      reasonCode: "fill-unverified",
+      message: this.words.fillUnknown,
+    };
   }
 }

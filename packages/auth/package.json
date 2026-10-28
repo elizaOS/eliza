@@ -112,6 +112,12 @@
       "import": "./dist/auth/index.js",
       "default": "./dist/auth/index.js"
     },
+    "./auth/native-cloud-sign-in": {
+      "eliza-source": "./src/auth/native-cloud-sign-in.ts",
+      "types": "./dist/auth/native-cloud-sign-in.d.ts",
+      "import": "./dist/auth/native-cloud-sign-in.js",
+      "default": "./dist/auth/native-cloud-sign-in.js"
+    },
     "./auth/oauth-flow": {
       "eliza-source": "./src/auth/oauth-flow.ts",
       "types": "./dist/auth/oauth-flow.d.ts",
@@ -333,11 +339,11 @@
     "clean": "node ../scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
     "build": "bun run clean && tsc6 --noCheck -p tsconfig.build.json && bun scripts/copy-assets.ts && node ../scripts/prepare-package-dist.ts packages/auth && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/auth",
-    "test": "bun run build && bun run test:credentials && bun run test:login && bun run test:native-host",
+    "test": "bun run build && bun run test:credentials && bun run test:login && bun run test:native-host && bun run test:native-android",
     "test:watch": "node ../scripts/run-vitest.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.vault.json && tsc --noEmit -p tsconfig.login.json",
-    "lint": "biome check src test scripts native-host",
-    "lint:check": "biome check src test scripts native-host",
+    "lint": "biome check src test scripts native-host android/test",
+    "lint:check": "biome check src test scripts native-host android/test",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
@@ -348,8 +354,12 @@
     "test:credentials": "node ../scripts/run-vitest.ts run",
     "test:login": "bun test --timeout 30000 --isolate src/sdk/__tests__ src/server/__tests__ && bun run test:railpack",
     "test:native-host": "node --test native-host/*.test.mjs native-host/staging-acceptance.process-test.mjs",
+    "test:native-android": "node --test android/test/*.test.mjs",
     "test:postgres": "LOGIN_REQUIRE_POSTGRES_TESTS=1 bun test src/server/__tests__/postgres-login.integration.test.ts",
-    "test:integration": "bun run test:browser && bun run test:postgres"
+    "test:integration": "bun run test:browser && bun run test:postgres",
+    "cloudflare:check": "tsc --noEmit -p cloudflare/tsconfig.json",
+    "cloudflare:deploy:staging": "wrangler deploy --config cloudflare/wrangler.toml --env staging",
+    "cloudflare:deploy:production": "wrangler deploy --config cloudflare/wrangler.toml --env production"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -357,7 +367,7 @@
     "@napi-rs/keyring": "^1.1.6",
     "bs58": "^6.0.0",
     "@simplewebauthn/browser": "^14.0.0",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "postgres": "^3.4.7",
     "@upstash/redis": "^1.34.3",
     "ioredis": "^5.6.1",
@@ -370,22 +380,25 @@
     "viem": "^2.56.9",
     "@aws-sdk/client-kms": "^3.1136.0",
     "graphene-pk11": "^2.2.0",
-    "hono": "^4.13.8",
+    "hono": "^4.13.11",
     "jose": "^6.2.1",
     "siwe": "^3.0.0",
     "@node-saml/node-saml": "5.1.0",
     "@simplewebauthn/server": "^14.0.3",
     "resend": "^6.9.4",
     "@elizaos/host": "workspace:*",
-    "@elizaos/contracts": "workspace:*"
+    "@elizaos/contracts": "workspace:*",
+    "@cloudflare/containers": "^0.3.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "@types/bun": "1.4.2",
-    "@playwright/test": "^1.64.0"
+    "@playwright/test": "^1.64.1",
+    "@cloudflare/workers-types": "^4.20260429.1",
+    "wrangler": "^4.0.0"
   },
   "elizaos": {
     "scripts": {

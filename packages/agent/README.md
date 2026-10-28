@@ -7,6 +7,13 @@ repository root with `bun run start`; use `bun run dev` for the app and API toge
 Configure providers and connectors through the host configuration; never expose host
 secrets to ungranted agents.
 
+`build:mobile --target=android` compacts syntax and whitespace while keeping
+identifier names. Its `plugins-manifest.json` records each npm package that
+contributes emitted bytes, the package metadata hash, and the final bundle hash.
+Notice consumers use `scripts/mobile-bundle-dependencies.ts` to validate this
+inventory against the bundle and prepared source before reading license files.
+Missing or changed inputs fail validation; source comments are not an inventory.
+
 Import public runtime, service, role, and operation APIs from `@elizaos/agent`.
 Agent code imports core APIs and catalog maps through `@elizaos/core`.
 `RegistryClientPluginInfo` and `RegistryClientSearchResult` expose the underlying
@@ -47,6 +54,15 @@ optional actuator `reconcile` readback implementation. It must read evidence onl
 never repeat the effect. Revision/epoch and account checks fence late results;
 resolved results require a durable evidence reference. Reconciliation does not
 resume the task. This method is deliberately absent from renderer HTTP routes.
+
+Trusted hosts may call `runtime.complete(id, revision, stillAuthorized)` after
+they verify and durably save the requested result. The callback must recheck the
+current account and request authority. Completion requires an active task at the
+reviewed revision, refuses unresolved operations, fences pending work, and waits
+for cleanup with reason `complete`. It records a terminal state, not evidence of
+goal success. A cleanup failure can occur after completion was saved; read status
+and retry `settle(id)`, not the task or its effects. There is no renderer completion
+route.
 
 ## Optional phone workflows
 
@@ -196,11 +212,29 @@ remain authoritative. Later plugin replacement requires an explicit matching
 `native-host/gateway.mjs` is a dependency-free Node source entrypoint for native
 hosts shipping a separately verified gateway payload. Supply an explicit
 `hostPolicy`: origins, resetPaths, conversationTitle, abortReason, validateTitle,
-prepareMessage, isPaidAction, formatTaskContext, and optional messages. The policy
+prepareMessage, isPaidAction, formatTaskContext, and optional messages. In place of
+the `origins` list, a host can give an `isAllowedOrigin(origin)` predicate (for
+example, every loopback port during development); give exactly one. The policy
 owns product language and view metadata; the gateway owns authenticated loopback
 transport, bounded JSON, conversation ownership, request cancellation, account
 fencing and authenticated task presentation. Only trusted host code provides this
 policy; never accept it from renderer input.
+
+Native hosts can opt into `native-host/surface-channel.mjs` with an authenticated
+`credentialGate` and pass that channel as `surfaceChannel` to the gateway. The
+four POST routes under `/browser/surface/` require the inbound bearer token and
+normal origin policy. The browser-safe `surface-client.mjs` accepts the host's
+authenticated request adapter and native command handler; it never reads keys.
+Connections use increasing renderer epochs. Commands have bounded deadlines,
+are delivered once, and are never retried or reconnected automatically. Account
+replacement and close retire pending commands. Losing a delivered effect returns
+`UNCERTAIN_OUTCOME`; a receipt is not proof that the website achieved the goal.
+Complete replies up to the explicit 2 MiB transport limit are accepted; larger
+messages fail instead of being truncated. At most 16 commands may be pending.
+Hosts must still authorize task commands and enforce selected-page, document,
+visibility and cancellation checks at the native handler. This channel provides
+no task authority, task store, browser profile or Chromium-extension identity.
+Source-bundle consumers must include the gateway, channel, and task-id source modules.
 
 `native-host/account-state.mjs` preserves private credential-derived namespaces
 and configuration migration. `native-host/runtime-supervisor.mjs` serializes
@@ -253,7 +287,9 @@ adds no effect authority and must not be called inside an existing transaction.
 
 Native hosts may opt into `createCredentialGate({ readVerifiedAccount })` after
 providing an authenticated whole credential/owner record. The stable identity
-hashes the JSON tuple `[authority, userId, organizationId]`; credential rotation
+hashes the JSON tuple `[authority, userId, organizationId]`. Hosts that key
+other data by this owner use the exported `verifiedOwnerIdentity(owner)`
+instead of a copy of the hash. Credential rotation
 still must satisfy the existing per-process fingerprint fence. The default
 credential-hash owner remains unchanged. This option requires a host-owned
 writer lease and an explicit migration before adoption; neither is supplied by

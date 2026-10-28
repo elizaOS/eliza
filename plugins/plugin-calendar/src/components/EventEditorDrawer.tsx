@@ -1,3 +1,18 @@
+import { calendarEditorCommand } from "./event-editor-command.js";
+
+export {
+  cancellationModeForEditorEvent,
+  type EventEditorMutability,
+  type EventEditorReadOnlyReason,
+  eventEditorMutability,
+} from "./event-editor-policy.js";
+
+import {
+  cancellationModeForEditorEvent,
+  type EventEditorMutability,
+  type EventEditorReadOnlyReason,
+  eventEditorMutability,
+} from "./event-editor-policy.js";
 /**
  * Owner-facing drawer for creating and editing a calendar event: title, time
  * window, calendar/account selection, and attendees, submitting through the
@@ -465,73 +480,6 @@ function createEditorOperationKey(): string {
   return `event-editor:${Date.now()}-${editorOperationSequence}`;
 }
 
-export type EventEditorReadOnlyReason =
-  | "provider_version_missing"
-  | "microsoft_read_only"
-  | "ics_subscription"
-  | "apple_read_only";
-
-export type EventEditorMutability =
-  | { readonly kind: "editable"; readonly providerVersion: string }
-  | { readonly kind: "read_only"; readonly reason: EventEditorReadOnlyReason };
-
-/**
- * Which edit affordances the owner-editor mutation pipeline can actually
- * honor for this event. The pipeline (client → route → owner-editor gateway →
- * trusted executor) performs etag-conditional writes and supports them only
- * for Google and built-in Eliza events; Microsoft mutations, ICS subscription
- * feeds, and the Apple native bridge are rejected server-side. Rendering a
- * Save/Delete button for those events would dead-end on every click, so the
- * drawer derives its affordances from this capability instead.
- */
-export function eventEditorMutability(
-  event: LifeOpsCalendarEvent,
-): EventEditorMutability {
-  switch (event.provider) {
-    case "google":
-    case "eliza": {
-      const etag = event.metadata.etag;
-      return typeof etag === "string" && etag.trim().length > 0
-        ? { kind: "editable", providerVersion: etag.trim() }
-        : { kind: "read_only", reason: "provider_version_missing" };
-    }
-    case "microsoft":
-      return { kind: "read_only", reason: "microsoft_read_only" };
-    case "ics":
-      return { kind: "read_only", reason: "ics_subscription" };
-    case "apple_calendar":
-      return { kind: "read_only", reason: "apple_read_only" };
-  }
-}
-
-/**
- * Mirrors the approval executor's organizer-disposition rules
- * (plugin-personal-assistant lifeops-port `eventOrganizerDisposition`): the
- * drawer must never offer a cancellation mode the executor would reject.
- * Organizer identity may also arrive only as the organizer email matching the
- * owning account email, so that comparison is part of the contract.
- * `remove_private_copy` is executor-gated to invitee disposition; the drawer's
- * single delete affordance maps invitees to `decline_invitation`.
- */
-export function cancellationModeForEditorEvent(
-  event: LifeOpsCalendarEvent,
-): "organizer_cancel" | "decline_invitation" | null {
-  if (event.organizer?.self === true) return "organizer_cancel";
-  const selfAttendee = event.attendees.find((attendee) => attendee.self);
-  if (selfAttendee) {
-    return selfAttendee.organizer ? "organizer_cancel" : "decline_invitation";
-  }
-  const organizerEmail =
-    typeof event.organizer?.email === "string"
-      ? event.organizer.email.trim().toLowerCase()
-      : null;
-  const accountEmail = event.accountEmail?.trim().toLowerCase() || null;
-  if (organizerEmail && accountEmail && organizerEmail === accountEmail) {
-    return "organizer_cancel";
-  }
-  return null;
-}
-
 export function EventEditorDrawer({
   open,
   mode = "edit",
@@ -710,8 +658,17 @@ export function EventEditorDrawer({
         );
         return;
       }
-      const range = editorRange(form);
-      if (!range) {
+      const originalForm = event ? formStateFromEvent(event) : null;
+      const timingChanged =
+        isCreate ||
+        (!!originalForm &&
+          (form.isAllDay !== originalForm.isAllDay ||
+            (form.isAllDay
+              ? (["startDate", "lastDate"] as const)
+              : (["startAt", "endAt"] as const)
+            ).some((key) => form[key] !== originalForm[key])));
+      const range = timingChanged ? editorRange(form) : undefined;
+      if (timingChanged && !range) {
         setError(
           t(
             form.isAllDay
@@ -734,19 +691,23 @@ export function EventEditorDrawer({
           const createIdempotencyKey =
             createOperationKey.current ?? createEditorOperationKey();
           createOperationKey.current = createIdempotencyKey;
-          const request = {
-            side: form.side,
-            grantId: form.grantId || undefined,
-            calendarId: form.calendarId || undefined,
-            title: titleTrimmed,
-            description: form.notes.trim() || undefined,
-            location: form.location.trim() || undefined,
-            ...range,
-            timeZone: TIME_ZONE,
-            attendees: attendees.length > 0 ? attendees : undefined,
-            idempotencyKey: createIdempotencyKey,
-            notifyAttendees: false,
-          } satisfies CreateLifeOpsCalendarEventRequest;
+          const request = calendarEditorCommand({
+            kind: "create",
+            fields: {
+              title: titleTrimmed,
+              notes: form.notes.trim() || undefined,
+              location: form.location.trim() || undefined,
+              timeZone: TIME_ZONE,
+              attendees: attendees.length ? attendees : undefined,
+            },
+            range: range!,
+            operationKey: createIdempotencyKey,
+            source: {
+              side: form.side,
+              grantId: form.grantId || undefined,
+              calendarId: form.calendarId || undefined,
+            },
+          });
           const result =
             await calendarClient.createLifeOpsCalendarEvent(request);
           if (result.outcome === "accepted_without_readback") {
@@ -799,36 +760,28 @@ export function EventEditorDrawer({
           const updateIdempotencyKey =
             updateOperationKey.current ?? createEditorOperationKey();
           updateOperationKey.current = updateIdempotencyKey;
-          const patch: LifeOpsCalendarEventUpdate & {
-            expectedProviderVersion: string;
-            idempotencyKey: string;
-          } = {
-            side: form.side,
-            grantId: form.grantId || event.grantId,
-            calendarId: form.calendarId || event.calendarId,
-            timeZone: event.timezone ?? TIME_ZONE,
+          const patch = calendarEditorCommand({
+            kind: "update",
+            event,
+            fields: {
+              title: titleTrimmed,
+              notes: form.notes.trim(),
+              location: form.location.trim(),
+              timeZone: event.timezone ?? TIME_ZONE,
+              ...(didAttendeesChange(form.attendees, event)
+                ? { attendees: attendeesToContract(form.attendees) }
+                : {}),
+            },
+            changed: { timing: timingChanged, zone: false },
+            ...(range ? { range } : {}),
+            operationKey: updateIdempotencyKey,
             expectedProviderVersion: mutability.providerVersion,
-            idempotencyKey: updateIdempotencyKey,
-            notifyAttendees: false,
-          };
-          if (titleTrimmed !== event.title) patch.title = titleTrimmed;
-          if ("allDay" in range) {
-            patch.allDay = range.allDay;
-          } else {
-            if (event.isAllDay || range.startAt !== event.startAt)
-              patch.startAt = range.startAt;
-            if (event.isAllDay || range.endAt !== event.endAt)
-              patch.endAt = range.endAt;
-          }
-          if (form.notes.trim() !== event.description) {
-            patch.notes = form.notes.trim();
-          }
-          if (form.location.trim() !== event.location) {
-            patch.location = form.location.trim();
-          }
-          if (didAttendeesChange(form.attendees, event)) {
-            patch.attendees = attendeesToContract(form.attendees);
-          }
+            source: {
+              side: form.side,
+              grantId: form.grantId || event.grantId,
+              calendarId: form.calendarId || event.calendarId,
+            },
+          });
           const result = await calendarClient.updateLifeOpsCalendarEvent(
             event.externalId,
             patch,

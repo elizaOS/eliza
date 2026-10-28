@@ -3,7 +3,7 @@
  *
  * Android verifies an `autoVerify` App Link by fetching this document from the
  * link host. A verified link is what lets a native client receive its OAuth
- * redirect (for example `https://eliza.app/alphaphone/auth/callback`) without
+ * redirect (for example `https://eliza.app/reader/auth/callback`) without
  * any other app being able to claim it, which is why the redirect is an https
  * App Link rather than a custom scheme.
  *

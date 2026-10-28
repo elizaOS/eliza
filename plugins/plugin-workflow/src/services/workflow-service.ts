@@ -28,8 +28,11 @@ import { generatePhoneSpec, phoneGenerationInput } from './phone-workflow-genera
 import {
   PHONE_CATALOG_REVISION,
   PHONE_COMPILER_REVISION,
+  PHONE_SPEC_KEY,
+  type PhoneWorkflowSpec,
   phoneSpecDigest,
   phoneWorkflowCatalog,
+  storedPhoneTimeTrigger,
   validatePhoneSpec,
 } from './phone-workflow-spec';
 import { validateSmithersSource } from './smithers-runtime';
@@ -225,23 +228,7 @@ export class WorkflowService extends Service {
     if (catalogRevision !== PHONE_CATALOG_REVISION || compilerRevision !== PHONE_COMPILER_REVISION)
       throw new WorkflowApiError('Workflow capability catalog changed; review again', 409);
     const spec = validatePhoneSpec(input);
-    if (spec.device) {
-      const bridge = this.runtime.getService('workflow_device_bridge') as unknown as {
-        validateTarget(owner: string, target: unknown, minimumProtocol?: number): Promise<void>;
-      } | null;
-      if (!bridge) throw new WorkflowApiError('Workflow device bridge unavailable', 409);
-      try {
-        await bridge.validateTarget(
-          owner,
-          spec.device,
-          spec.steps.some((step) => ['app_notification', 'read_aloud'].includes(step.operation))
-            ? 2
-            : 1
-        );
-      } catch {
-        throw new WorkflowApiError('Workflow device enrollment unavailable', 409);
-      }
-    }
+    await this.assertPhoneEnrollment(spec, owner);
     if (spec.device && !this.runtime.getService('workflow_device_bridge'))
       throw new WorkflowApiError('Workflow device bridge unavailable', 409);
     if (
@@ -271,6 +258,25 @@ export class WorkflowService extends Service {
         })),
       active: false,
     };
+  }
+  /** The spec's phone target must still be this owner's verified enrollment. */
+  private async assertPhoneEnrollment(spec: PhoneWorkflowSpec, owner: string) {
+    if (!spec.device) return;
+    const bridge = this.runtime.getService('workflow_device_bridge') as unknown as {
+      validateTarget(owner: string, target: unknown, minimumProtocol?: number): Promise<void>;
+    } | null;
+    if (!bridge) throw new WorkflowApiError('Workflow device bridge unavailable', 409);
+    try {
+      await bridge.validateTarget(
+        owner,
+        spec.device,
+        spec.steps.some((step) => ['app_notification', 'read_aloud'].includes(step.operation))
+          ? 2
+          : 1
+      );
+    } catch {
+      throw new WorkflowApiError('Workflow device enrollment unavailable', 409);
+    }
   }
   async savePhoneDraft(
     owner: string,
@@ -637,17 +643,29 @@ export class WorkflowService extends Service {
     return this.embedded().deleteWorkflow(id);
   }
 
-  async activateWorkflow(id: string, ownerEntityId?: string): Promise<WorkflowDefinitionResponse> {
-    await this.getWorkflow(id, ownerEntityId);
-    return this.publicWorkflow(await this.embedded().activateWorkflow(id));
+  /** `expectedVersionId` binds the change to the exact version the owner reviewed. */
+  async activateWorkflow(
+    id: string,
+    ownerEntityId?: string,
+    expectedVersionId?: string
+  ): Promise<WorkflowDefinitionResponse> {
+    const current = await this.getWorkflow(id, ownerEntityId);
+    // A typed schedule is armed only while its phone target is still the owner's verified enrollment.
+    if (storedPhoneTimeTrigger(current.metadata) && typeof ownerEntityId === 'string')
+      await this.assertPhoneEnrollment(
+        validatePhoneSpec(JSON.parse(String(current.metadata?.[PHONE_SPEC_KEY]))),
+        ownerEntityId
+      );
+    return this.publicWorkflow(await this.embedded().activateWorkflow(id, expectedVersionId));
   }
 
   async deactivateWorkflow(
     id: string,
-    ownerEntityId?: string
+    ownerEntityId?: string,
+    expectedVersionId?: string
   ): Promise<WorkflowDefinitionResponse> {
     await this.getWorkflow(id, ownerEntityId);
-    return this.publicWorkflow(await this.embedded().deactivateWorkflow(id));
+    return this.publicWorkflow(await this.embedded().deactivateWorkflow(id, expectedVersionId));
   }
 
   async getManualSubmission(id: string, submissionId: string, ownerId: string) {

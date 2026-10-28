@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
+import { assetNames } from "../../browser/scripts/chromium-component.mjs";
 import { parseSubArgs as parseBuildArgs } from "../android/build-aosp.ts";
 import {
   assertBrowserAppsStaged,
@@ -64,23 +65,9 @@ function fixture(t, application = "ai.elizaos.app") {
     write(relative, bytes);
     return { path: relative, sha256: hash(bytes) };
   }
-  const names = [
-    "manifest.json",
-    "background.mjs",
-    "commands.mjs",
-    "command-handler.mjs",
-    "manual-activity.mjs",
-    "task-guidance.mjs",
-    "page-guidance.mjs",
-    "guide-font.mjs",
-    "figtree-OFL.txt",
-    "protocol.mjs",
-    "runtime-config.mjs",
-    "native-connection.mjs",
-  ];
   const resources = {};
   const resourceHashes = {};
-  for (const name of names) {
+  for (const name of assetNames) {
     let text = "// synthetic reviewed resource\n";
     if (name === "manifest.json")
       text = JSON.stringify({

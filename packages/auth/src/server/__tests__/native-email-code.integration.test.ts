@@ -1,5 +1,5 @@
 /**
- * Native in-app email sign-in (Alpha Phone): POST /auth/email/code/send, then
+ * Native in-app email sign-in (Example Reader): POST /auth/email/code/send, then
  * POST /auth/email/code/verify. (`delivery: "code"` on /auth/email/send is the
  * compatible older spelling of the same code-only email.)
  *
@@ -111,7 +111,7 @@ function sixDigitCode(text: string): string {
   return match[1];
 }
 
-describe("native email code sign-in (Alpha Phone)", () => {
+describe("native email code sign-in (Example Reader)", () => {
   test('delivery "code" sends a code-only email that contains no link and signs in through code verify', async () => {
     const email = "native-code@example.test";
     const sent = await nativePost(

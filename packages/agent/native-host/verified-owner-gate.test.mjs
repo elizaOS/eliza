@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
-import { createCredentialGate } from "./gateway.mjs";
+import { createCredentialGate, verifiedOwnerIdentity } from "./gateway.mjs";
 
 test("verified owner survives credential rotation while session fingerprint fences stale processes", async () => {
   let key = "credential-one",
@@ -29,6 +29,7 @@ test("verified owner survives credential rotation while session fingerprint fenc
   });
   const first = await gate();
   assert.match(first, /^cloud-owner-v1:[a-f0-9]{64}$/);
+  assert.equal(verifiedOwnerIdentity(record.owner), first);
   key = "credential-two";
   record = { ...record, credential: key };
   await assert.rejects(gate(), (e) => e.status === 409);
@@ -49,4 +50,25 @@ test("verified owner survives credential rotation while session fingerprint fenc
   await assert.rejects(gate());
   record = null;
   await assert.rejects(gate());
+});
+
+test("verified owner identity matches the Android custody vector", () => {
+  const owner = {
+    authority: "https://cloud.example",
+    userId: 'slash/quote"back\\雪😀',
+    organizationId: "org",
+  };
+  // VerifiedTaskCustodyInstrumentedTest pins the same tuple on Android.
+  assert.equal(
+    verifiedOwnerIdentity(owner),
+    "cloud-owner-v1:62daffc216635641024e10f1dc368706bc4398090e4331ff7f8413702ed64462",
+  );
+  for (const invalid of [
+    null,
+    { ...owner, extra: true },
+    { ...owner, userId: "" },
+    { ...owner, authority: "https://cloud.example/" },
+    { ...owner, authority: "http://cloud.example" },
+  ])
+    assert.throws(() => verifiedOwnerIdentity(invalid), TypeError);
 });

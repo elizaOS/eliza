@@ -1,20 +1,20 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { dirname, isAbsolute } from "node:path";
+import { acquireExclusiveDatabaseLease as acquirePilotLease } from "./database-lease.mjs";
 import { NativeHostError } from "./errors.mjs";
 import { validateTraceEvent } from "./research-store.mjs";
 import { createTaskTraceCapture as createPilotTaskCapture } from "./task-trace-capture.mjs";
+import { openTraceQueue } from "./trace-queue.mjs";
 import { createTraceTransport } from "./trace-transport.mjs";
 
-const createPilotTransport = (options) =>
+/** Trace transport that validates each event against the research trace schema. */
+export const createResearchTraceTransport = (options) =>
   createTraceTransport({ ...options, validateEvent: validateTraceEvent });
+/** Trace queue that validates each event against the research trace schema. */
+export const openResearchTraceQueue = (options) =>
+  openTraceQueue({ ...options, validateEvent: validateTraceEvent });
 
-import { openTraceQueue as openQueue } from "./trace-queue.mjs";
-
-const openTraceQueue = (options) =>
-  openQueue({ ...options, validateEvent: validateTraceEvent });
-
-import { acquireExclusiveDatabaseLease as acquirePilotLease } from "./database-lease.mjs";
 export function readResearchProducerConfiguration(path) {
   if (!path || !isAbsolute(path))
     throw new NativeHostError(
@@ -64,7 +64,7 @@ export function startResearchCapture({
   if (!Number.isInteger(intervalMs) || intervalMs < 10 || intervalMs > 60000)
     throw new NativeHostError("Invalid pilot capture interval");
   const cancellation = new AbortController();
-  const transport = createPilotTransport({
+  const transport = createResearchTraceTransport({
     url: config.collectorUrl,
     token: config.deviceToken,
     signal: cancellation.signal,
@@ -72,7 +72,7 @@ export function startResearchCapture({
   const release = acquirePilotLease(config.queuePath);
   let queue;
   try {
-    queue = openTraceQueue({
+    queue = openResearchTraceQueue({
       path: config.queuePath,
       key: Buffer.from(config.encryptionKey, "base64"),
       maxEvents: config.maxEvents ?? 10000,
