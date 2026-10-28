@@ -481,6 +481,8 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/core": importCoreViewCompat,
   "@elizaos/core/protocol": () => import("@elizaos/core/protocol"),
   "@elizaos/contracts": () => import("@elizaos/contracts"),
+  "@elizaos/contracts/native-telephony": () =>
+    import("@elizaos/contracts/native-telephony"),
   "@elizaos/host/protocol": () => import("@elizaos/host/protocol"),
   "@elizaos/ui": importUiRootCompat,
   "@elizaos/ui/view-primitives": () => import("../../view-primitives.js"),

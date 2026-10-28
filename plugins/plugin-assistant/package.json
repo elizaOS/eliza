@@ -77,6 +77,12 @@
       "import": "./dist/device-calendar-contract.js",
       "default": "./dist/device-calendar-contract.js"
     },
+    "./device-photo-library-contract": {
+      "eliza-source": "./src/services/device-actions/photo-library-contract.ts",
+      "types": "./dist/device-photo-library-contract.d.ts",
+      "import": "./dist/device-photo-library-contract.js",
+      "default": "./dist/device-photo-library-contract.js"
+    },
     "./device-foreground-review": {
       "eliza-source": "./src/services/device-actions/foreground-review-contract.ts",
       "types": "./dist/device-foreground-review.d.ts",
