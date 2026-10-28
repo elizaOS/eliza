@@ -47,6 +47,12 @@
       "import": "./dist/device-clock-review.js",
       "default": "./dist/device-clock-review.js"
     },
+    "./device-reminder-journal": {
+      "eliza-source": "./src/services/device-actions/reminder-journal.ts",
+      "types": "./dist/device-reminder-journal.d.ts",
+      "import": "./dist/device-reminder-journal.js",
+      "default": "./dist/device-reminder-journal.js"
+    },
     "./actions/context-signal": {
       "eliza-source": "./src/actions/context-signal.ts",
       "types": "./dist/actions/context-signal.d.ts",
