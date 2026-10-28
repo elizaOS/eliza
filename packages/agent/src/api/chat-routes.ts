@@ -2279,13 +2279,8 @@ export async function readChatRequestPayload(
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
-  // Client-supplied metadata must never carry gate keys. The private-action
-  // gate trusts content.metadata.isAutonomous, but the upstream strip
-  // (hardenIncomingUserMessage) only runs in the incoming_before_compose
-  // pipeline phase, which no production path applies — so a forged marker
-  // would otherwise survive intake and unlock private actions on a user
-  // turn. skipIncomingMessageHooks is stripped for the same reason: it
-  // would let a client skip that phase if it is ever wired up.
+  // Runtime-internal keys: a client could skip the inbound hardening hook, or
+  // pair a forged isAutonomous with the autonomy source to unlock private actions.
   if (rawMetadata) {
     delete rawMetadata.isAutonomous;
     delete rawMetadata.skipIncomingMessageHooks;
