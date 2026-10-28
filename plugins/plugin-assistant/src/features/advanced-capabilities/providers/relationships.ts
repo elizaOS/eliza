@@ -113,7 +113,12 @@ const relationshipsProvider: Provider = {
   contextGate: { anyOf: ["contacts", "memory"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // The whole relationship graph with counterpart names, tags and metadata:
+  // the same ADMIN floor as the `contacts` context and the CONTACTS provider
+  // (merged #37569), so a USER turn in a `memory` context cannot read it.
+  // The contacts context's ADMIN gate is not consulted for providers: the
+  // effective gate is the provider's own roleGate (core context-gates).
+  roleGate: { minRole: "ADMIN" },
   get: async (runtime: IAgentRuntime, message: Memory) => {
     const relatedEntityIds = await getRelatedEntityIds(
       runtime,
