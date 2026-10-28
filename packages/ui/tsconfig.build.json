@@ -46,14 +46,14 @@
   "include": [
     "src/index.ts",
     "src/styles.ts",
+    "src/overview/daily-overview.ts",
+    "src/overview/OverviewCards.tsx",
     "src/api/task-lifecycle.ts",
     "src/voice/pcm-wave.ts",
     "src/voice/microphone-capture.ts",
     "src/voice/batch-conversation.ts",
     "src/voice/voice-session-client-core.ts",
     "src/**/*.d.ts",
-    "src/components/pages/InstalledAppsLauncher.tsx",
-    "src/overview/daily-overview.ts",
-    "src/overview/OverviewCards.tsx"
+    "src/components/pages/InstalledAppsLauncher.tsx"
   ]
 }
