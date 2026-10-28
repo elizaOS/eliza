@@ -23,10 +23,10 @@ import type {
 } from "./model";
 import type { JsonValue, UUID } from "./primitives";
 import type { IAgentRuntime } from "./runtime";
-import type { ViewCapability } from "./view-capability";
 import type { Service } from "./service";
 import type { SurfaceManifest } from "./surface-manifest";
 import type { TestSuite } from "./testing";
+import type { ViewCapability } from "./view-capability";
 
 /**
  * Type for a service class constructor.
