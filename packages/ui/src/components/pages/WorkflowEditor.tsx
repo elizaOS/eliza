@@ -45,6 +45,7 @@ import {
   TableRow,
 } from "../ui/table";
 import { Textarea } from "../ui/textarea";
+import { typedWorkflowSchedule } from "./typed-workflow-schedule";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
 
@@ -573,6 +574,11 @@ function WorkflowEditorSession({
     setRunInputOpen(true);
   }, [inputFields, run]);
 
+  const typedSchedule = useMemo(
+    () => typedWorkflowSchedule(workflow.metadata),
+    [workflow.metadata],
+  );
+
   const toggleActive = useCallback(async () => {
     setError(null);
     try {
@@ -719,13 +725,24 @@ function WorkflowEditorSession({
         ) : null}
       </div>
 
-      <WorkflowTriggerPanel
-        workflowId={workflow.id}
-        workflowName={workflow.name}
-        onNeedsSave={async () =>
-          !workflow.id || dirty ? ((await save())?.id ?? null) : workflow.id
-        }
-      />
+      {typedSchedule ? (
+        // A typed phone workflow runs only on its reviewed trigger; generic
+        // triggers cannot start it, so none are offered here.
+        <section
+          aria-label="Workflow schedule"
+          className="bg-card/40 px-3 py-2 text-xs text-muted"
+        >
+          {typedSchedule.summary}
+        </section>
+      ) : (
+        <WorkflowTriggerPanel
+          workflowId={workflow.id}
+          workflowName={workflow.name}
+          onNeedsSave={async () =>
+            !workflow.id || dirty ? ((await save())?.id ?? null) : workflow.id
+          }
+        />
+      )}
 
       {error ? (
         <div
