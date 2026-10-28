@@ -639,6 +639,14 @@ export function generateAndroidConsumerHost({
     `distributionBase=GRADLE_USER_HOME\ndistributionPath=wrapper/dists\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-${toolchain.gradle}-bin.zip\nnetworkTimeout=10000\nvalidateDistributionUrl=true\nzipStoreBase=GRADLE_USER_HOME\nzipStorePath=wrapper/dists\ndistributionSha256Sum=${toolchain.gradleSha256}\n`,
   );
   const markerPath = path.join(output, markerName);
+  // Ownership is the output's place in the consumer: the marker moves with the
+  // files it lists, so a moved or renamed checkout still owns its generated host,
+  // while a marker copied to another place owns nothing there. A marker written
+  // before places were recorded is matched by its absolute consumer root.
+  const ownedOutput = path
+    .relative(consumerRoot, output)
+    .split(path.sep)
+    .join("/");
   let previous = [];
   if (fs.lstatSync(markerPath, { throwIfNoEntry: false })) {
     requireValue(
@@ -648,7 +656,9 @@ export function generateAndroidConsumerHost({
     const marker = JSON.parse(fs.readFileSync(markerPath));
     requireValue(
       marker.schema === 1 &&
-        marker.consumerRoot === consumerRoot &&
+        (marker.output === undefined
+          ? marker.consumerRoot === consumerRoot
+          : marker.output === ownedOutput) &&
         marker.appId === identity.appId &&
         Array.isArray(marker.files),
       "Generated Android ownership differs",
@@ -685,6 +695,7 @@ export function generateAndroidConsumerHost({
   const receipt = {
     schema: 1,
     consumerRoot,
+    output: ownedOutput,
     appId: identity.appId,
     files: [...new Set([...previous, ...files.keys()])],
   };

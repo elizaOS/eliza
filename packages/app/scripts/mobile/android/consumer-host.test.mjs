@@ -73,6 +73,73 @@ test("an unowned project and changed identity are never overwritten", (t) => {
   options.identity.appId = "example.other";
   assert.throws(generate, /ownership differs/);
 });
+test("a moved checkout keeps owning its generated host; another output place does not", (t) => {
+  const { options, generate } = setup(t);
+  options.profile.manifest = {
+    root: "consumer",
+    path: "android/app/src/main/AndroidManifest.xml",
+  };
+  fs.mkdirSync(path.join(options.output, "app/src/main"), { recursive: true });
+  fs.copyFileSync(
+    path.join(options.consumerRoot, "main.xml"),
+    path.join(options.output, "app/src/main/AndroidManifest.xml"),
+  );
+  options.inPlace = true;
+  generate();
+  const marker = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-host.json")),
+  );
+  assert.equal(marker.output, "android");
+  // Renaming the checkout moves the marker with the files it lists.
+  const moved = `${options.consumerRoot}-moved`;
+  fs.renameSync(options.consumerRoot, moved);
+  t.after(() => fs.rmSync(moved, { recursive: true, force: true }));
+  options.consumerRoot = moved;
+  options.output = path.join(moved, "android");
+  const result = generate();
+  assert.equal(result.directory, path.join(fs.realpathSync(moved), "android"));
+  const profile = JSON.parse(
+    fs.readFileSync(path.join(options.output, ".eliza-consumer-profile.json")),
+  );
+  assert.equal(
+    profile.manifest,
+    path.join(
+      fs.realpathSync(moved),
+      "android/app/src/main/AndroidManifest.xml",
+    ),
+  );
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(path.join(options.output, ".eliza-consumer-host.json")),
+    ).consumerRoot,
+    fs.realpathSync(moved),
+  );
+  // The same marker at another place in the consumer owns nothing there.
+  const copy = path.join(moved, "copy");
+  fs.mkdirSync(copy);
+  fs.copyFileSync(
+    path.join(options.output, ".eliza-consumer-host.json"),
+    path.join(copy, ".eliza-consumer-host.json"),
+  );
+  fs.writeFileSync(path.join(copy, "build.gradle"), "authored");
+  options.output = copy;
+  assert.throws(generate, /ownership differs/);
+  assert.equal(
+    fs.readFileSync(path.join(copy, "build.gradle"), "utf8"),
+    "authored",
+  );
+  // A marker without a recorded place is matched by its absolute consumer root only.
+  options.output = path.join(moved, "android");
+  const markerPath = path.join(options.output, ".eliza-consumer-host.json");
+  const legacy = JSON.parse(fs.readFileSync(markerPath));
+  delete legacy.output;
+  fs.writeFileSync(markerPath, JSON.stringify(legacy));
+  generate();
+  delete legacy.output;
+  legacy.consumerRoot = path.join(os.tmpdir(), "elsewhere");
+  fs.writeFileSync(markerPath, JSON.stringify(legacy));
+  assert.throws(generate, /ownership differs/);
+});
 test("source traversal and symlink escapes fail before output creation", (t) => {
   const { options, generate } = setup(t);
   options.profile.manifest = { root: "consumer", path: "../foreign.xml" };
