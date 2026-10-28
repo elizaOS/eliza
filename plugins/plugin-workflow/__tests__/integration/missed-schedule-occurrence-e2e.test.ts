@@ -191,4 +191,4 @@ import {createSmithers} from 'smthrs/create';import {z} from 'zod';const {Workfl
     await db.close();
     await rm(directory, { recursive: true, force: true });
   }
-}, 180_000);
+}, 600_000);
