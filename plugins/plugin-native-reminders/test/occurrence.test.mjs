@@ -234,3 +234,20 @@ test("Snooze delays alerting reminders only once while scheduled", () => {
     /to-do/,
   );
 });
+
+test("Done fails closed for a legacy row without an occurrence id and leaves it unchanged", () => {
+  const now = Date.parse("2026-03-06T15:00:00Z");
+  const row = {
+    status: "posted",
+    at: Date.parse("2026-03-06T14:00:00Z"),
+    dueAt: Date.parse("2026-03-06T14:00:00Z"),
+    history: [],
+    postedAt: now - MINUTE,
+  };
+  const before = structuredClone(row);
+  assert.throws(
+    () => completeReminderOccurrence(row, host(now)),
+    /current reminder occurrence/,
+  );
+  assert.deepEqual(row, before);
+});
