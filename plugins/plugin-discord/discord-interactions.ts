@@ -49,11 +49,7 @@ import {
 	type DiscordSlashCommand,
 	type DiscordSlashCommandPayload,
 } from "./types";
-import {
-	buildDiscordComponents,
-	getMessageService,
-	sendMessageInChunks,
-} from "./utils";
+import { buildDiscordComponents, getMessageService } from "./utils";
 
 /**
  * Subset of DiscordService fields needed by interaction handling.
@@ -317,14 +313,18 @@ export async function handleInteractionCreate(
 					// would repeat the ones the user already has.
 					const channel = interaction.channel as TextChannel | null;
 					if (channel && typeof channel.send === "function") {
-						await sendMessageInChunks(
-							channel,
-							chunks.slice(accepted).join("\n"),
-							"",
-							[],
-							render.components.length > 0 ? render.components : undefined,
-							service.runtime,
-						);
+						const remaining = chunks.slice(accepted);
+						if (remaining.length === 0) {
+							await channel.send({ content: "​", components });
+						}
+						for (let i = 0; i < remaining.length; i++) {
+							await channel.send({
+								content: remaining[i],
+								...(components && i === remaining.length - 1
+									? { components }
+									: {}),
+							});
+						}
 						return [];
 					}
 					service.runtime.logger.warn(
