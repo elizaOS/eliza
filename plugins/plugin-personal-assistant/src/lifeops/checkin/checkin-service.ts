@@ -588,9 +588,7 @@ function calendarDayPredicate(day: ReturnType<typeof localDayWindow>): string {
      AND LEFT(end_at, 10) > ${sqlQuote(day.key)})
     OR (is_all_day = false
         AND start_at < ${sqlQuote(day.end.toISOString())}
-        AND ((end_at IS NULL
-              AND start_at >= ${sqlQuote(day.start.toISOString())})
-             OR end_at > ${sqlQuote(day.start.toISOString())}))
+        AND end_at > ${sqlQuote(day.start.toISOString())})
   )`;
 }
 function unavailableSection(
