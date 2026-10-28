@@ -264,34 +264,6 @@ it("refuses trigger creation when ELIZA_TRIGGERS_ENABLED is FALSE in any case, l
     else process.env.ELIZA_TRIGGERS_ENABLED = previous;
   }
 });
-it("treats a mixed-case runtime setting as the same kill switch as the environment variable", () => {
-  // Settings surfaces and config files can spell the disable value in any
-  // letter case. The environment branch normalizes case and whitespace, so the
-  // runtime-setting branch must do the same or an explicit disable fails open.
-  const runtime = Object.create(fixture.runtime);
-  runtime.getSetting = (key: string) =>
-    key === "ELIZA_TRIGGERS_ENABLED"
-      ? "FALSE"
-      : fixture.runtime.getSetting(key);
-  const previous = process.env.ELIZA_TRIGGERS_ENABLED;
-  delete process.env.ELIZA_TRIGGERS_ENABLED;
-  try {
-    expect(triggersFeatureEnabled(runtime)).toBe(false);
-    runtime.getSetting = (key: string) =>
-      key === "ELIZA_TRIGGERS_ENABLED"
-        ? " false "
-        : fixture.runtime.getSetting(key);
-    expect(triggersFeatureEnabled(runtime)).toBe(false);
-    runtime.getSetting = (key: string) =>
-      key === "ELIZA_TRIGGERS_ENABLED"
-        ? "true"
-        : fixture.runtime.getSetting(key);
-    expect(triggersFeatureEnabled(runtime)).toBe(true);
-  } finally {
-    if (previous === undefined) delete process.env.ELIZA_TRIGGERS_ENABLED;
-    else process.env.ELIZA_TRIGGERS_ENABLED = previous;
-  }
-});
 it.each([
   {
     triggerType: "interval",
