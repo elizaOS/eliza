@@ -21,8 +21,8 @@
       "labExperimentsEligible": false,
       "blockedReasons": [
         "The shared source inventory does not qualify either product image; current full image, voice, telephony and hardware acceptance remain separate gates.",
-        "Platform, APK, AVB and OTA release signing plus update and recovery evidence have not been admitted for this target.",
-        "The common hardware product and privilege configuration for both launcher brands remains separate work."
+        "Platform, APK, AVB and OTA release signing digests are unset in every brand's release descriptor (android/releases/pixel10a-eliza.json and the downstream descriptors).",
+        "Both brands now compose the same nonprivileged-launcher, narrowly privileged listener product, and release signing, OTA compatibility records, the operator update client and rollback/recovery tooling exist; no release key, signed image, applied OTA or signed-update, interrupted-update, rollback or stock-recovery drill exists for either brand."
       ],
       "decisionNote": "Uses the exact Alpha Phone Pixel 10a/stallion source-input inventory. Its source admission is retained, while releaseQualified remains false. Recorded Alpha manifest and product names are immutable provenance, not the Eliza launcher identity."
     },

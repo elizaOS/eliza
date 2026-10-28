@@ -245,7 +245,12 @@ export async function handleWorkflowRoutes(ctx: WorkflowRouteContext): Promise<v
         // Lapsed-source schedules pause (one unavailable result, schedule removed) and loops report sourceState.
         hostedDigestSourcePauseProtocol: 1,
         ...(hostedNativeSourcesAvailable()
-          ? { hostedNativeSourceProtocol: 1, hostedNativeEveningProtocol: 1 }
+          ? {
+              hostedNativeSourceProtocol: 1,
+              hostedNativeEveningProtocol: 1,
+              // POST /hosted/dossier runs only against a reviewed native source.
+              hostedDossierProtocol: 1,
+            }
           : {}),
       });
       return;

@@ -40,6 +40,22 @@ public final class VoiceAssets {
 
     private VoiceAssets() {}
 
+    private static InferenceSession shared;
+
+    /**
+     * The process-wide session for the installed bundle: one lazy owner for
+     * speech output, recognition and VAD across this process's consumers.
+     * Each consumer calls it through its own {@link InferenceSession#client},
+     * whose cancel and release never fence or unload another consumer's calls;
+     * consumers must not cancel, trim or close the shared session itself. A
+     * closed shared session is replaced on the next call. Installs and verifies
+     * the bundle on first use: call it on a worker thread.
+     */
+    public static synchronized InferenceSession sharedInference(Context context) throws IOException {
+        if (shared == null || shared.isClosed()) shared = install(context).openInference();
+        return shared;
+    }
+
     public static synchronized Bundle install(Context context) throws IOException {
         VoiceBundleAssets.Installation installed = VoiceBundleAssets.install(context);
         return new Bundle(installed.root, installed.model, installed.lexicon, installed.espeakDir);

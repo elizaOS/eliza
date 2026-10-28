@@ -1,4 +1,7 @@
-import type { ActionParameterSchema, JSONSchema } from "@elizaos/core";
+import type {
+  ActionParameterSchema,
+  JSONSchema,
+} from "@elizaos/core/schema-types";
 import {
   type AuthoredNoteContent,
   type AuthoredNoteEdit,

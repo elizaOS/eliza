@@ -168,3 +168,10 @@ the session ends. Capacity exhaustion refuses new values instead of forgetting
 earlier ones. Object nesting beyond the supported depth is refused rather than
 returned unscrubbed. Detection is conservative, not a guarantee that every
 secret is recognized.
+
+`native-host/public-fetch.mjs` is `fetch()` for public HTTPS websites only.
+It connects through a lookup that refuses private, loopback, link-local,
+carrier-NAT, documentation and transition addresses at connect time, so a DNS
+rebinding answer cannot reach a local service. It never follows redirects,
+sends no cookies and reads at most 8 MB. `resolvesPublic` and `privateAddress`
+let a caller check a name or address before handing it to another fetch.

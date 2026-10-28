@@ -46,7 +46,10 @@
   "include": [
     "src/index.ts",
     "src/styles.ts",
+    "src/overview/daily-overview.ts",
+    "src/overview/OverviewCards.tsx",
     "src/api/task-lifecycle.ts",
+    "src/accessibility/index.ts",
     "src/voice/pcm-wave.ts",
     "src/voice/microphone-capture.ts",
     "src/voice/batch-conversation.ts",

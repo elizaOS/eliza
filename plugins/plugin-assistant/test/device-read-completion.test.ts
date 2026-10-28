@@ -183,6 +183,7 @@ async function fixture(
           context: {
             view: "notes",
             sensitive: false,
+            revision: 1,
             selectedObject: {
               kind: "note-source",
               id: "closed-qa",

@@ -6,10 +6,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  agentProcessStartedAtMs,
   computeNextCronRunAtMs,
   type IAgentRuntime,
+  isMissedScheduledOccurrence,
   logger,
+  MISSED_SCHEDULED_OCCURRENCE_TEXT,
   ModelType,
+  recordsMissedScheduledOccurrences,
   Service,
   stringToUuid,
   type Task,
@@ -64,6 +68,7 @@ import {
   validateDigestSpec,
   writeDigestResult,
 } from './hosted-digest';
+import { DIGEST_OVERLAP_TEXT } from './hosted-digest-policy';
 import {
   assertHostedGoogleSource,
   listHostedGoogleCalendars,
@@ -122,6 +127,57 @@ export interface ExecuteWorkflowOptions {
   throwOnError?: boolean;
   /** Trigger hops inherited by events emitted from this execution. */
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
+}
+
+/**
+ * Hosts whose agent runs only while the device is powered on (a mobile
+ * resident) set `ELIZA_MISSED_SCHEDULED_OCCURRENCES=record` (the shared
+ * powered-on scheduling policy in `@elizaos/core`): an occurrence that passed
+ * while the agent was not running is recorded once as missed and never
+ * replayed, and the next occurrence is armed as usual. Other hosts keep
+ * running a late occurrence.
+ */
+export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSetting'>): boolean {
+  return recordsMissedScheduledOccurrences(runtime);
+}
+
+/**
+ * Whether a terminal execution is a missed scheduled occurrence: only the
+ * engine-recorded `missedOccurrenceAt` this service writes when it records the
+ * occurrence (or a resident digest's admission reports it missed). A
+ * workflow's own output that carries `status: 'missed'` ran and is not missed.
+ */
+export function isMissedOccurrenceExecution(
+  execution: Pick<WorkflowExecution, 'finished' | 'missedOccurrenceAt'>
+): boolean {
+  return (
+    execution.finished === true &&
+    typeof execution.missedOccurrenceAt === 'string' &&
+    Number.isFinite(Date.parse(execution.missedOccurrenceAt))
+  );
+}
+
+/**
+ * Terminal record for a scheduled occurrence that passed while the agent was
+ * not running. A delay while the agent was running (device doze, a busy
+ * scheduler) is not missed: that occurrence still runs.
+ */
+export function missedOccurrence(
+  scheduledAtMs: number | undefined,
+  now: number,
+  agentStartedAtMs: number = agentProcessStartedAtMs(now)
+): Record<string, unknown> | undefined {
+  if (scheduledAtMs === undefined) return undefined;
+  if (!Number.isSafeInteger(scheduledAtMs) || scheduledAtMs > now + 1000)
+    throw new WorkflowApiError('Schedule requires its exact scheduled occurrence', 409);
+  if (!isMissedScheduledOccurrence(scheduledAtMs, now, agentStartedAtMs)) return undefined;
+  return {
+    status: 'missed',
+    scheduledAt: new Date(scheduledAtMs).toISOString(),
+    text: MISSED_SCHEDULED_OCCURRENCE_TEXT,
+  };
 }
 
 type RunListener = (event: WorkflowRunEvent) => void;
@@ -1911,6 +1967,14 @@ export class EmbeddedWorkflowService extends Service {
       requireMutable(workflow);
       if ((options.mode === 'trigger' || options.mode === 'schedule') && !workflow.active)
         throw new WorkflowApiError('Workflow is paused', 409);
+      // Resident digests and typed phone schedules keep their own admission below.
+      const missed =
+        !workflow.metadata?.[HOSTED_SPEC] &&
+        !typedTrigger &&
+        options.mode === 'trigger' &&
+        recordsMissedOccurrences(this.runtime)
+          ? missedOccurrence(options.scheduledAtMs, Date.now())
+          : undefined;
       if (typedTrigger) {
         typed = typedScheduleAdmission(
           typedTrigger,
@@ -2013,7 +2077,7 @@ export class EmbeddedWorkflowService extends Service {
           hosted = {
             ...hosted,
             status: 'overlap',
-            text: 'An earlier occurrence is still active. This occurrence did not run.',
+            text: DIGEST_OVERLAP_TEXT,
           };
       }
       const settled = hosted
@@ -2022,7 +2086,7 @@ export class EmbeddedWorkflowService extends Service {
           : undefined
         : typed && typed.status !== 'ready'
           ? { status: typed.status, scheduledAt: typed.scheduledAt, text: typed.text }
-          : undefined;
+          : missed;
       const pending: WorkflowExecution = {
         id: randomUUID(),
         workflowId: id,
@@ -2032,6 +2096,9 @@ export class EmbeddedWorkflowService extends Service {
         status: settled ? 'finished' : 'queued',
         finished: !!settled,
         ...(settled ? { stoppedAt: nowIso(), output: settled } : {}),
+        ...(settled?.status === 'missed'
+          ? { missedOccurrenceAt: String(settled.scheduledAt) }
+          : {}),
         startedAt: nowIso(),
         input: cloneJson(
           hosted

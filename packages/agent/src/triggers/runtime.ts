@@ -31,8 +31,11 @@ import {
   ElizaError,
   formatError,
   inspectSendHandlerResult,
+  isMissedScheduledOccurrence,
   MESSAGE_SOURCE_CLIENT_CHAT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
+  MISSED_SCHEDULED_OCCURRENCE_TEXT,
+  recordsMissedScheduledOccurrences,
   registerRuntimeManagedInternalActor,
   ServiceType,
   stringToUuid,
@@ -146,6 +149,33 @@ function shouldNotifyForTriggerOutcome(
 ): boolean {
   return (
     trigger.notifyOnOutcome === true || triggerNotificationsEnabled(runtime)
+  );
+}
+
+/**
+ * Powered-on scheduling (the host sets ELIZA_MISSED_SCHEDULED_OCCURRENCES to
+ * `record`, as a phone-resident agent does): a scheduler fire whose occurrence
+ * passed while the agent was not running is recorded once as missed instead of
+ * running late. Manual and event runs are never missed.
+ */
+function missedScheduledPromptOccurrence(
+  runtime: IAgentRuntime,
+  trigger: TriggerConfig,
+  options: TriggerExecutionOptions,
+): boolean {
+  if (
+    trigger.kind !== "prompt" ||
+    options.source !== "scheduler" ||
+    options.event ||
+    options.force === true ||
+    trigger.triggerType === "event" ||
+    typeof trigger.nextRunAtMs !== "number" ||
+    !Number.isSafeInteger(trigger.nextRunAtMs)
+  )
+    return false;
+  return (
+    recordsMissedScheduledOccurrences(runtime) &&
+    isMissedScheduledOccurrence(trigger.nextRunAtMs, Date.now())
   );
 }
 
@@ -283,6 +313,8 @@ interface WorkflowDispatchOptionsLike {
   triggerData?: Record<string, unknown>;
   idempotencyKey?: string;
   triggerChainDepth?: number;
+  /** Scheduled instant of a scheduler fire; absent for manual and event runs. */
+  scheduledAtMs?: number;
 }
 
 interface WorkflowDispatchServiceLike {
@@ -295,6 +327,8 @@ interface WorkflowDispatchServiceLike {
     error?: string;
     executionId?: string;
     dedup?: boolean;
+    /** The execution recorded a missed scheduled occurrence and ran nothing. */
+    missed?: boolean;
     code?: string;
   }>;
 }
@@ -405,7 +439,7 @@ async function dispatchWorkflow(
   source: TriggerExecutionOptions["source"],
   event?: TriggerExecutionOptions["event"],
 ): Promise<
-  | { ok: true; executionId?: string; dedup?: boolean }
+  | { ok: true; executionId?: string; dedup?: boolean; missed?: boolean }
   | { ok: false; error: string; code?: string }
 > {
   if (!trigger.workflowId) {
@@ -458,12 +492,25 @@ async function dispatchWorkflow(
     ...(event?.triggerChainDepth !== undefined
       ? { triggerChainDepth: event.triggerChainDepth }
       : {}),
+    // The occurrence this scheduler fire belongs to, so a host that runs only
+    // while powered on can record a missed occurrence instead of replaying it.
+    // A fire reached before its occurrence (a direct task-service run) carries
+    // no instant: a future occurrence cannot be missed, and the workflow
+    // service rejects one, which would fail a run that should proceed.
+    ...(source === "scheduler" &&
+    !event &&
+    typeof trigger.nextRunAtMs === "number" &&
+    Number.isSafeInteger(trigger.nextRunAtMs) &&
+    trigger.nextRunAtMs <= Date.now()
+      ? { scheduledAtMs: trigger.nextRunAtMs }
+      : {}),
   });
   return result.ok
     ? {
         ok: true,
         executionId: result.executionId,
         ...(result.dedup === true ? { dedup: true } : {}),
+        ...(result.missed === true ? { missed: true } : {}),
       }
     : {
         ok: false,
@@ -754,16 +801,24 @@ export async function executeTriggerTask(
   const dispatchedWorkflowId =
     trigger.kind === "workflow" ? trigger.workflowId : undefined;
 
-  const result =
-    trigger.kind === "workflow"
-      ? await dispatchWorkflow(
-          runtime,
-          task,
-          trigger,
-          options.source,
-          options.event,
-        )
-      : await dispatchPrompt(runtime, trigger, task.roomId);
+  // A prompt occurrence that passed while the agent was not running is recorded
+  // once as missed and never runs late. The workflow service records a missed
+  // workflow occurrence in its own run history and reports it back here.
+  const result:
+    | { ok: true; executionId?: string; dedup?: boolean; missed?: boolean }
+    | { ok: false; error: string; code?: string } =
+    missedScheduledPromptOccurrence(runtime, trigger, options)
+      ? { ok: true, missed: true }
+      : trigger.kind === "workflow"
+        ? await dispatchWorkflow(
+            runtime,
+            task,
+            trigger,
+            options.source,
+            options.event,
+          )
+        : await dispatchPrompt(runtime, trigger, task.roomId);
+  const missed = result.ok === true && result.missed === true;
   if (result.ok === true && "dedup" in result && result.dedup === true) {
     // The workflow dispatcher has already accepted this native event identity.
     // A replay is not a new trigger run: recording it would inflate runCount,
@@ -784,6 +839,45 @@ export async function executeTriggerTask(
     // Only workflow dispatch carries an execution id; prompt dispatch types it
     // as `undefined`, so this reads `string | undefined` without a cast.
     workflowExecutionId = result.executionId;
+    if (missed) {
+      // Nothing ran, so this is neither a completed run nor a failure.
+      status = "skipped";
+      errorMessage = MISSED_SCHEDULED_OCCURRENCE_TEXT;
+      runtime.logger.info(
+        {
+          src: "trigger-runtime",
+          triggerId: trigger.triggerId,
+          triggerName: trigger.displayName,
+          triggerType: trigger.triggerType,
+          scheduledAtMs: trigger.nextRunAtMs,
+        },
+        `Trigger "${trigger.displayName}" missed its scheduled occurrence`,
+      );
+      if (shouldNotifyForTriggerOutcome(runtime, trigger)) {
+        void getNotifier(runtime)
+          ?.notify({
+            title: `Automation "${trigger.displayName}" did not run`,
+            body: MISSED_SCHEDULED_OCCURRENCE_TEXT,
+            category: "workflow",
+            priority: "normal",
+            source: "trigger",
+            groupKey: `trigger:${task.id ?? trigger.triggerId}`,
+            data: {
+              taskId: task.id,
+              triggerId: trigger.triggerId,
+              workflowExecutionId,
+              missed: true,
+            },
+          })
+          .catch((error) => {
+            // error-policy:J7 notification diagnostics must not change the record.
+            runtime.reportError("TriggerRuntime.notifyMissed", error, {
+              taskId: task.id,
+              triggerId: trigger.triggerId,
+            });
+          });
+      }
+    }
   } else {
     status = "error";
     errorMessage = result.error;
@@ -923,14 +1017,26 @@ export async function executeTriggerTask(
     latencyMs: finishedAt - startedAt,
     source: options.source,
     eventKind: options.event?.kind,
+    // The durable marker that nothing ran: the occurrence this record missed.
+    ...(missed && typeof trigger.nextRunAtMs === "number"
+      ? { missedOccurrenceAt: trigger.nextRunAtMs }
+      : {}),
   };
 
+  // A missed occurrence did not run: it consumes no run and is not a last run.
+  // A missed one-time trigger stays listed, disabled, with its record, so the
+  // owner can still choose Run now instead of losing it silently.
   const updatedTrigger: TriggerConfig = {
     ...triggerToPersist,
-    runCount: triggerToPersist.runCount + 1,
-    lastRunAtIso: new Date(finishedAt).toISOString(),
+    runCount: missed
+      ? triggerToPersist.runCount
+      : triggerToPersist.runCount + 1,
+    ...(missed ? {} : { lastRunAtIso: new Date(finishedAt).toISOString() }),
     lastStatus: status,
     lastError: errorMessage || undefined,
+    ...(missed && triggerToPersist.triggerType === "once"
+      ? { enabled: false }
+      : {}),
   };
 
   const workflowStillGone =
@@ -940,7 +1046,9 @@ export async function executeTriggerTask(
   // "Run now" on a one-time trigger is an extra run: the scheduled one stays.
   const shouldDeleteTask =
     workflowStillGone ||
-    (updatedTrigger.triggerType === "once" && options.source !== "manual") ||
+    (updatedTrigger.triggerType === "once" &&
+      options.source !== "manual" &&
+      !missed) ||
     (typeof updatedTrigger.maxRuns === "number" &&
       updatedTrigger.maxRuns > 0 &&
       updatedTrigger.runCount >= updatedTrigger.maxRuns);

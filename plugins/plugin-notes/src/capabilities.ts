@@ -5,7 +5,10 @@ import { NOTE_ID_PATTERN } from "./note-id.js";
  * server-side control plane for the view.
  */
 
-import type { ViewCapability, ViewCapabilityParameter } from "@elizaos/core";
+import type {
+  ViewCapability,
+  ViewCapabilityParameter,
+} from "@elizaos/core/schema-types";
 
 const CONTENT_PARAM: ViewCapabilityParameter = {
   type: "string",

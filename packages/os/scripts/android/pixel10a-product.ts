@@ -2,6 +2,19 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { requireClockProduct } from "./aosp-clock-handlers.mjs";
+import {
+  renderImageProvisioningOverlay,
+  stagedImageFeature,
+  writeImageCapability,
+  writeImageProvisioningOverlay,
+} from "./image-capability.mjs";
+import {
+  admitBrandAssets,
+  validateBrandAssets,
+  writeBrandAssets,
+} from "./pixel10a-brand-assets.mjs";
+import { assertNoLockScreenSurface } from "./secure-camera.mjs";
 import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
 
 const hardwareRoot = fileURLToPath(
@@ -32,6 +45,25 @@ export function validatePixel10aProduct(value) {
     !packageName.test(value.launcher?.packageName)
   )
     throw new Error("Invalid Pixel 10a product or launcher identity");
+  if (
+    value.launcher.refuseLockScreenSurfaces !== undefined &&
+    typeof value.launcher.refuseLockScreenSurfaces !== "boolean"
+  )
+    throw new Error("launcher.refuseLockScreenSurfaces must be a boolean");
+  if (value.launcher.imageProvisioning !== undefined) {
+    const provisioning = value.launcher.imageProvisioning;
+    if (
+      !provisioning ||
+      typeof provisioning !== "object" ||
+      Object.keys(provisioning).some(
+        (key) => !["module", "overlayable", "resource"].includes(key),
+      )
+    )
+      throw new Error(
+        "launcher.imageProvisioning takes only module, overlayable and resource",
+      );
+    renderImageProvisioningOverlay(value.launcher.packageName, provisioning);
+  }
   for (const name of ["model", "brand", "manufacturer"]) {
     if (
       typeof value[name] !== "string" ||
@@ -39,7 +71,20 @@ export function validatePixel10aProduct(value) {
     )
       throw new Error(`Invalid Pixel 10a ${name}`);
   }
+  validateBrandAssets(value.brandAssets);
   return value;
+}
+
+/**
+ * A brand that leaves capture over Keyguard to the system Camera2 sets
+ * launcher.refuseLockScreenSurfaces; its launcher manifest (aapt xmltree)
+ * must then declare no activity shown over Keyguard and no secure-capture
+ * handler. Brands with their own lock-screen surfaces (for example an alarm
+ * ringing activity) leave it unset.
+ */
+export function enforceLauncherLockScreenPolicy(product, xmltree) {
+  if (product.launcher.refuseLockScreenSurfaces !== true) return false;
+  return assertNoLockScreenSurface(xmltree, { brand: product.brand });
 }
 
 /** The only privileged package in this product is its separately admitted listener. */
@@ -152,6 +197,8 @@ export function composePixel10aProduct({
   sourceEvidence,
   nativeStagingEvidence,
   production = false,
+  bootAnimation = null,
+  vendorApi = null,
 }) {
   product = validatePixel10aProduct(product);
   launcher = validateDescriptor(launcher);
@@ -180,10 +227,13 @@ export function composePixel10aProduct({
     nativeStagingEvidence,
   );
   checkListenerPolicy(output, launcher.packageName);
+  // Pinned brand assets are verified before anything is written.
+  const brandAssets = admitBrandAssets(product, { bootAnimation });
   for (const name of [
     "AndroidProducts.mk",
     `${product.productName}.mk`,
     "stallion",
+    "brand",
     "physical-product.json",
   ])
     if (fs.existsSync(path.join(output, name)))
@@ -195,9 +245,10 @@ export function composePixel10aProduct({
   });
   fs.writeFileSync(
     path.join(output, `${product.productName}.mk`),
-    `# Shared Pixel 10a/stallion hardware; retain the verified compatibility vendor path.\nUSE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/alphaphone/product.mk)\n\nPRODUCT_NAME := ${product.productName}\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := ${product.model}\nPRODUCT_BRAND := ${product.brand}\nPRODUCT_MANUFACTURER := ${product.manufacturer}\n`,
+    `# Shared Pixel 10a/stallion hardware; retain the verified compatibility vendor path.\nUSE_STOCK_KERNEL := true\n$(call inherit-product, vendor/google_devices/stallion/stallion.mk)\n$(call inherit-product, vendor/alphaphone/product.mk)\n\nPRODUCT_NAME := ${product.productName}\nPRODUCT_DEVICE := stallion\nPRODUCT_MODEL := ${product.model}\nPRODUCT_BRAND := ${product.brand}\nPRODUCT_MANUFACTURER := ${product.manufacturer}\n${brandAssets.makefile ?? ""}`,
     { flag: "wx" },
   );
+  writeBrandAssets(output, brandAssets);
   fs.writeFileSync(
     path.join(output, "AndroidProducts.mk"),
     `PRODUCT_MAKEFILES := $(LOCAL_DIR)/${product.productName}.mk\nCOMMON_LUNCH_CHOICES := \\\n    ${product.productName}-${product.releaseConfig}-userdebug \\\n    ${product.productName}-${product.releaseConfig}-user\n`,
@@ -208,6 +259,34 @@ export function composePixel10aProduct({
       path.join(output, "product.mk"),
       "\n# Exact executable modes for admitted bundled JNI.\nTARGET_FS_CONFIG_GEN += vendor/alphaphone/config.fs\n",
     );
+  // Alarms and timers stay with the system Clock in every brand's image.
+  const productMakefile = path.join(output, "product.mk");
+  const launcherProduct = fs.readFileSync(productMakefile, "utf8");
+  const withClock = requireClockProduct(launcherProduct);
+  if (withClock !== launcherProduct)
+    fs.writeFileSync(productMakefile, withClock);
+  // Image-only surfaces (Phone, Contacts, SMS) need the launcher's image
+  // feature; every brand's Pixel image declares it exactly once.
+  if (!stagedImageFeature(output, launcher.packageName))
+    writeImageCapability(output, launcher.packageName);
+  const imageFeature = stagedImageFeature(output, launcher.packageName);
+  // A presigned launcher that reads an overlayable provisioning resource
+  // (launcher.imageProvisioning) gets it set by a product RRO in production
+  // images only; development images leave the APK's false default.
+  let imageProvisioning = null;
+  if (production && product.launcher.imageProvisioning) {
+    const files = writeImageProvisioningOverlay(
+      output,
+      launcher.packageName,
+      product.launcher.imageProvisioning,
+    );
+    imageProvisioning = {
+      module: /name: "([^"]+)"/.exec(files["image-capabilities/Android.bp"])[1],
+      overlayable: /android:targetName="([^"]+)"/.exec(
+        files["image-capabilities/AndroidManifest.xml"],
+      )[1],
+    };
+  }
   const evidence = {
     schema: 1,
     target: "pixel10a",
@@ -216,7 +295,11 @@ export function composePixel10aProduct({
     production,
     developmentOnly: !production,
     nativeLibrariesStaged,
+    brandAssets: brandAssets.evidence,
     sourceEvidence,
+    vendorApi,
+    imageFeature,
+    imageProvisioning,
     imageBuilt: false,
     imageSigned: false,
     releaseQualified: false,
