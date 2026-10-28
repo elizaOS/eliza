@@ -73,7 +73,11 @@ const event = (title = "QA"): LinkedCalendarSemanticEvent => ({
 });
 
 /** One synthetic Google calendar behind the Cloud sync-v1 contract. */
-function cloud() {
+function cloud(
+  store: (
+    event: LinkedCalendarSemanticEvent,
+  ) => LinkedCalendarSemanticEvent = (value) => value,
+) {
   const events = new Map<
     string,
     { etag: string; event: LinkedCalendarSemanticEvent }
@@ -123,7 +127,7 @@ function cloud() {
           const existing = byKey.get(input.idempotencyKey);
           if (existing) return envelope({ event: snapshot(existing) });
           const id = `remote-${next++}`;
-          events.set(id, { etag: `"v1"`, event: input.event });
+          events.set(id, { etag: `"v1"`, event: store(input.event) });
           byKey.set(input.idempotencyKey, id);
           return envelope({ event: snapshot(id) });
         }
@@ -139,7 +143,7 @@ function cloud() {
               },
             });
           const etag = `"v${Number(row.etag.slice(2, -1)) + 1}"`;
-          events.set(input.eventId, { etag, event: input.event });
+          events.set(input.eventId, { etag, event: store(input.event) });
           return envelope({ event: snapshot(input.eventId) });
         }
         events.delete(input.eventId);
@@ -292,7 +296,14 @@ describe("Google sync-v1 port", () => {
   });
 
   it("checks capabilities, owner fence and create privacy", async () => {
-    const remote = cloud();
+    // Google answers recurrence in its own form; the canonical form is what
+    // the local record holds and what the readback must hash to.
+    const remote = cloud((value) => ({
+      ...value,
+      ...(value.recurrence
+        ? { recurrence: value.recurrence.map((line) => line.toLowerCase()) }
+        : {}),
+    }));
     let current = true;
     const port = await googleCalendarSyncPort(
       remote.client,
@@ -311,8 +322,11 @@ describe("Google sync-v1 port", () => {
     const link = await store.link("e1", "r1");
     const created = await port.create(link, {
       ...event(),
-      recurrence: ["rrule:freq=daily"],
+      recurrence: ["RRULE:FREQ=DAILY"],
     });
+    expect(remote.events.get(created.eventId)?.event.recurrence).toEqual([
+      "rrule:freq=daily",
+    ]);
     expect(created.event.recurrence).toEqual(["RRULE:FREQ=DAILY"]);
     current = false;
     await expect(port.get(link)).rejects.toThrow("owner changed");
@@ -330,6 +344,71 @@ describe("Google sync-v1 port", () => {
         new AbortController().signal,
       ),
     ).rejects.toThrow("protocol is unavailable");
+  });
+
+  it("refuses a write whose readback differs from the requested event", async () => {
+    // Google stores the time with an offset the local record never holds.
+    const remote = cloud((value) => ({
+      ...value,
+      startAt: "2026-10-15T14:00:00-04:00",
+    }));
+    const port = await googleCalendarSyncPort(
+      remote.client,
+      binding,
+      () => true,
+      new AbortController().signal,
+    );
+    const store = await CalendarLinkedStore.open(
+      binding,
+      () => true,
+      storage(),
+    );
+    const link = await store.link("e1", "r1");
+    await expect(port.create(link, event())).rejects.toThrow(
+      "different Calendar event than requested",
+    );
+    remote.events.set("remote-9", { etag: '"v1"', event: event() });
+    await expect(
+      port.update(
+        { ...link, providerEventId: "remote-9", providerEtag: '"v1"' },
+        event("Renamed"),
+      ),
+    ).rejects.toThrow("different Calendar event than requested");
+  });
+
+  it("refuses an answer for a different Google event", async () => {
+    const remote = cloud();
+    const port = await googleCalendarSyncPort(
+      {
+        async googleCalendarSync(input: CalendarSyncRequest) {
+          const answer = (await remote.client.googleCalendarSync(
+            input,
+          )) as Record<string, unknown>;
+          if (input.kind === "get" && answer.event)
+            return {
+              ...answer,
+              event: {
+                ...(answer.event as Record<string, unknown>),
+                eventId: "someone-else",
+              },
+            };
+          return answer;
+        },
+      },
+      binding,
+      () => true,
+      new AbortController().signal,
+    );
+    const store = await CalendarLinkedStore.open(
+      binding,
+      () => true,
+      storage(),
+    );
+    const link = await store.link("e1", "r1");
+    const created = await port.create(link, event());
+    await expect(
+      port.get({ ...link, providerEventId: created.eventId }),
+    ).rejects.toThrow("different Calendar event");
   });
 });
 

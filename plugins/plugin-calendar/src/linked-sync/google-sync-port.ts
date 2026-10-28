@@ -6,10 +6,12 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type {
-  LinkedCalendarEventRecord,
-  LinkedCalendarProviderPort,
-  LinkedCalendarProviderSnapshot,
+import {
+  type LinkedCalendarEventRecord,
+  type LinkedCalendarProviderPort,
+  type LinkedCalendarProviderSnapshot,
+  type LinkedCalendarSemanticEvent,
+  linkedCalendarSemanticText,
 } from "@elizaos/contracts";
 import type {
   CalendarSyncRequest,
@@ -363,8 +365,37 @@ export async function googleCalendarSyncPort(
     caps.conditionalWrites !== true
   )
     throw Error("Review Google Calendar sync access in Settings.");
-  const result = (data: Record<string, unknown>) =>
-    eventSnapshot(data.event, canonicalRecurrence);
+  const result = (
+    data: Record<string, unknown>,
+    expectedEventId?: string | null,
+  ) => {
+    const snapshot = eventSnapshot(data.event, canonicalRecurrence);
+    if (expectedEventId && snapshot.eventId !== expectedEventId)
+      throw Error(
+        "Google returned a different Calendar event. Nothing was applied.",
+      );
+    return snapshot;
+  };
+  /**
+   * A write is accepted only when Google's stored event reads back as exactly
+   * the requested event. Otherwise the checkpoint would record a provider form
+   * the local record never hashes to, and every later pass would write again.
+   */
+  const written = (
+    data: Record<string, unknown>,
+    requested: LinkedCalendarSemanticEvent,
+    expectedEventId?: string | null,
+  ) => {
+    const snapshot = result(data, expectedEventId);
+    if (
+      linkedCalendarSemanticText(snapshot.event) !==
+      linkedCalendarSemanticText(requested)
+    )
+      throw Error(
+        "Google stored a different Calendar event than requested. Check the event before retrying.",
+      );
+    return snapshot;
+  };
   return {
     async get(row) {
       check(row);
@@ -375,7 +406,7 @@ export async function googleCalendarSyncPort(
           ? { eventId: row.providerEventId }
           : { idempotencyKey: row.idempotencyKey },
       });
-      return data.event === null ? null : result(data);
+      return data.event === null ? null : result(data, row.providerEventId);
     },
     async create(row, event) {
       check(row);
@@ -393,13 +424,13 @@ export async function googleCalendarSyncPort(
         throw Error(
           "Google create privacy could not be confirmed. Check the event before retrying.",
         );
-      return result(data);
+      return written(data, event, row.providerEventId);
     },
     async update(row, event) {
       check(row);
       if (!row.providerEventId || !row.providerEtag)
         throw Error("Refresh this Google event before updating.");
-      return result(
+      return written(
         await call({
           kind: "update",
           selection,
@@ -407,6 +438,8 @@ export async function googleCalendarSyncPort(
           expectedEtag: row.providerEtag,
           event,
         }),
+        event,
+        row.providerEventId,
       );
     },
     async delete(row) {
