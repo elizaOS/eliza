@@ -20,6 +20,7 @@ import { WorkflowApiError } from '../types/index';
 import {
   EMBEDDED_WORKFLOW_SERVICE_TYPE,
   type EmbeddedWorkflowService,
+  isMissedOccurrenceOutput,
 } from './embedded-workflow-service';
 
 export const WORKFLOW_DISPATCH_SERVICE_TYPE = 'WORKFLOW_DISPATCH' as const;
@@ -34,6 +35,12 @@ export interface WorkflowDispatchResult {
    * instead of treating the call as a fresh execution.
    */
   dedup?: boolean;
+  /**
+   * True when the execution recorded a scheduled occurrence that passed while
+   * the agent was not running: it finished without running any step, so the
+   * caller must not report it as a completed run.
+   */
+  missed?: boolean;
   /**
    * Machine-readable permanent-failure class. `workflow_not_found` means the
    * target workflow row no longer exists, so retrying the same dispatch can
@@ -198,7 +205,12 @@ async function runDispatch(
       ...(triggerChainDepth !== undefined ? { triggerChainDepth } : {}),
       ...(scheduledAtMs !== undefined ? { scheduledAtMs } : {}),
     });
-    return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
+    const missed = execution.finished && isMissedOccurrenceOutput(execution.output);
+    return {
+      ok: true,
+      ...(execution.id ? { executionId: execution.id } : {}),
+      ...(missed ? { missed: true } : {}),
+    };
   } catch (err) {
     // error-policy:J1 dispatch boundary — the trigger scheduler consumes a
     // structured result; a permanent not-found is classed so it can disable

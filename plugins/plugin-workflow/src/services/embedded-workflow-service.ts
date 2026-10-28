@@ -6,9 +6,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  agentProcessStartedAtMs,
   computeNextCronRunAtMs,
   type IAgentRuntime,
+  isMissedScheduledOccurrence,
   logger,
+  MISSED_SCHEDULED_OCCURRENCE_TEXT,
+  MISSED_SCHEDULED_OCCURRENCES_SETTING,
   ModelType,
   Service,
   stringToUuid,
@@ -119,38 +123,51 @@ export interface ExecuteWorkflowOptions {
   scheduledAtMs?: number;
 }
 
-/** A scheduled occurrence reaching the runtime later than this was missed (the
- * same window resident digests use). */
-export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
-export const MISSED_OCCURRENCES_SETTING = 'ELIZA_WORKFLOW_MISSED_OCCURRENCES';
-
 /**
  * Hosts whose agent runs only while the device is powered on (a mobile
- * resident) set `ELIZA_WORKFLOW_MISSED_OCCURRENCES=record`: a late scheduled
- * occurrence is recorded once as missed and never replayed, and the next
- * occurrence is armed as usual. Other hosts keep running a late occurrence.
+ * resident) set `ELIZA_MISSED_SCHEDULED_OCCURRENCES=record` (the shared
+ * powered-on scheduling policy in `@elizaos/core`): an occurrence that passed
+ * while the agent was not running is recorded once as missed and never
+ * replayed, and the next occurrence is armed as usual. Other hosts keep
+ * running a late occurrence.
  */
 export function recordsMissedOccurrences(runtime: Pick<IAgentRuntime, 'getSetting'>): boolean {
-  const configured = runtime.getSetting(MISSED_OCCURRENCES_SETTING);
+  const configured = runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING);
   return (
-    (typeof configured === 'string' ? configured : process.env[MISSED_OCCURRENCES_SETTING]) ===
-    'record'
+    (typeof configured === 'string'
+      ? configured
+      : process.env[MISSED_SCHEDULED_OCCURRENCES_SETTING]) === 'record'
   );
 }
 
-/** Terminal record for a scheduled occurrence that was not reached in time. */
+/** Whether a terminal execution output records a missed scheduled occurrence. */
+export function isMissedOccurrenceOutput(output: unknown): boolean {
+  return (
+    !!output &&
+    typeof output === 'object' &&
+    !Array.isArray(output) &&
+    (output as Record<string, unknown>).status === 'missed'
+  );
+}
+
+/**
+ * Terminal record for a scheduled occurrence that passed while the agent was
+ * not running. A delay while the agent was running (device doze, a busy
+ * scheduler) is not missed: that occurrence still runs.
+ */
 export function missedOccurrence(
   scheduledAtMs: number | undefined,
-  now: number
+  now: number,
+  agentStartedAtMs: number = agentProcessStartedAtMs(now)
 ): Record<string, unknown> | undefined {
   if (scheduledAtMs === undefined) return undefined;
   if (!Number.isSafeInteger(scheduledAtMs) || scheduledAtMs > now + 1000)
     throw new WorkflowApiError('Schedule requires its exact scheduled occurrence', 409);
-  if (now - scheduledAtMs <= SCHEDULED_OCCURRENCE_WINDOW_MS) return undefined;
+  if (!isMissedScheduledOccurrence(scheduledAtMs, now, agentStartedAtMs)) return undefined;
   return {
     status: 'missed',
     scheduledAt: new Date(scheduledAtMs).toISOString(),
-    text: 'The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.',
+    text: MISSED_SCHEDULED_OCCURRENCE_TEXT,
   };
 }
 

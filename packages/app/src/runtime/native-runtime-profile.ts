@@ -13,9 +13,11 @@
  *   upload, so the agent's own speech routing stays local-only in both.
  *
  * Both run the agent on the phone, so schedules run only while it is powered
- * on: a late scheduled occurrence is recorded once as missed, never replayed.
+ * on: an occurrence that passed while the agent was not running is recorded
+ * once as missed, never replayed (the shared policy in `@elizaos/core`).
  */
 import type { ServiceRouteConfig } from "@elizaos/contracts";
+import { MISSED_SCHEDULED_OCCURRENCES_SETTING } from "@elizaos/core";
 import { buildElizaCloudServiceRoute } from "@elizaos/host/protocol";
 import type { RoutingPreferences } from "@elizaos/plugin-native-inference/model-catalog/routing-preferences";
 
@@ -28,7 +30,8 @@ export interface NativeRuntimeProfile {
   readonly agentSpeech: "local-only";
   /** Whether the host packages local model inputs (BGE, ASR, TTS, VAD). */
   readonly localModels: boolean;
-  /** Late scheduled workflow occurrences are recorded, not run. */
+  /** Scheduled workflow and prompt occurrences that passed while the agent
+   * was not running are recorded, not run. */
   readonly missedOccurrences: "record";
 }
 
@@ -63,8 +66,8 @@ export function resolveNativeRuntimeProfile(
   throw new Error("Unknown native runtime profile");
 }
 
-/** Read by the workflow service; see plugin-workflow recordsMissedOccurrences. */
-export const MISSED_OCCURRENCES_ENV = "ELIZA_WORKFLOW_MISSED_OCCURRENCES";
+/** Read by the trigger runtime and the workflow service. */
+export const MISSED_OCCURRENCES_ENV = MISSED_SCHEDULED_OCCURRENCES_SETTING;
 
 /**
  * Applies the profile's process-wide policy at every resident boot, signed in

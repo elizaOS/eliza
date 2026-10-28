@@ -4,26 +4,34 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
+import {
+  MISSED_SCHEDULED_OCCURRENCES_SETTING as MISSED_OCCURRENCES_SETTING,
+  SCHEDULED_OCCURRENCE_WINDOW_MS,
+} from '@elizaos/core';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '../../src/db/schema';
 import {
   EmbeddedWorkflowService,
-  MISSED_OCCURRENCES_SETTING,
   missedOccurrence,
   recordsMissedOccurrences,
-  SCHEDULED_OCCURRENCE_WINDOW_MS,
 } from '../../src/services/embedded-workflow-service';
+import { createWorkflowDispatchService } from '../../src/services/workflow-dispatch';
 
 test('missed occurrence policy is explicit and bounded by the scheduled window', () => {
   const now = Date.parse('2026-10-27T09:10:00.000Z');
-  expect(missedOccurrence(undefined, now)).toBeUndefined();
-  expect(missedOccurrence(now - SCHEDULED_OCCURRENCE_WINDOW_MS, now)).toBeUndefined();
-  expect(missedOccurrence(now - SCHEDULED_OCCURRENCE_WINDOW_MS - 1, now)).toMatchObject({
+  // The agent process started a minute ago, after the phone was powered on.
+  const bootedAt = now - 60_000;
+  expect(missedOccurrence(undefined, now, bootedAt)).toBeUndefined();
+  expect(missedOccurrence(now - SCHEDULED_OCCURRENCE_WINDOW_MS, now, bootedAt)).toBeUndefined();
+  expect(missedOccurrence(now - SCHEDULED_OCCURRENCE_WINDOW_MS - 1, now, bootedAt)).toMatchObject({
     status: 'missed',
     scheduledAt: new Date(now - SCHEDULED_OCCURRENCE_WINDOW_MS - 1).toISOString(),
   });
+  // A delay while the agent was already running (device doze, a busy
+  // scheduler) is not a missed occurrence: it still runs.
+  expect(missedOccurrence(now - 30 * 60_000, now, now - 60 * 60_000)).toBeUndefined();
   for (const invalid of [now + 5_000, 1.5, Number.NaN])
-    expect(() => missedOccurrence(invalid, now)).toThrow('exact scheduled occurrence');
+    expect(() => missedOccurrence(invalid, now, bootedAt)).toThrow('exact scheduled occurrence');
   const previous = process.env[MISSED_OCCURRENCES_SETTING];
   try {
     delete process.env[MISSED_OCCURRENCES_SETTING];
@@ -162,6 +170,22 @@ import {createSmithers} from 'smthrs/create';import {z} from 'zod';const {Workfl
       })
     ).rejects.toThrow('exact scheduled occurrence');
     expect(await runtime.db.select().from(schema.embeddedExecutions)).toHaveLength(1);
+    // The trigger dispatcher learns that the occurrence was missed, so its run
+    // is not reported as completed; a repeated fire stays a deduplicated one.
+    const dispatch = createWorkflowDispatchService(runtime);
+    const nextMissed = scheduledAtMs + 60 * 60 * 1000;
+    const key = `${workflow.id}:${Math.floor(nextMissed / 60000)}`;
+    const dispatched = await dispatch.execute(
+      workflow.id,
+      {},
+      { idempotencyKey: key, scheduledAtMs: nextMissed }
+    );
+    expect(dispatched).toMatchObject({ ok: true, missed: true });
+    expect(dispatched.executionId).toBeString();
+    expect(
+      await dispatch.execute(workflow.id, {}, { idempotencyKey: key, scheduledAtMs: nextMissed })
+    ).toEqual({ ok: true, executionId: dispatched.executionId, dedup: true });
+    expect(await runtime.db.select().from(schema.embeddedExecutions)).toHaveLength(2);
   } finally {
     await embedded?.stop();
     await db.close();

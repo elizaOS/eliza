@@ -214,6 +214,8 @@ describe("applying a profile before boot", () => {
 
 describe("process policy at resident boot", () => {
   test("a selected profile records missed scheduled occurrences", () => {
+    // The trigger runtime and workflow service read this shared setting.
+    expect(MISSED_OCCURRENCES_ENV).toBe("ELIZA_MISSED_SCHEDULED_OCCURRENCES");
     for (const selection of ["native", "cloud", ""]) {
       const input: NodeJS.ProcessEnv = { ELIZA_RUNTIME_PROFILE: selection };
       expect(
