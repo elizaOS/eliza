@@ -436,8 +436,7 @@ export function presentOverviewBrief(
       : "Your agent";
   const verb = BRIEF_VERB[overviewBriefOutcome(brief.status)];
   const when = overviewWhenLabel(ran, now, format);
-  const title =
-    overviewClip(summary, 56);
+  const title = overviewClip(summary, 56);
   return {
     title,
     time: `${verb} ${when}`,
@@ -923,7 +922,9 @@ export function presentOverviewAgendaFeed(
   const asOf = overviewInstant(input.asOf);
   const when = asOf ? overviewWhenLabel(asOf, input.now, format) : "";
   const error =
-    typeof input.error === "string" ? overviewClip(input.error.trim(), 160) : "";
+    typeof input.error === "string"
+      ? overviewClip(input.error.trim(), 160)
+      : "";
   switch (input.status) {
     case "loading":
       return {

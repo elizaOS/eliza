@@ -56,7 +56,9 @@ function hostDataAttributes(
 ): OverviewPartAttributes {
   if (!attributes) return {};
   return Object.fromEntries(
-    Object.entries(attributes).filter(([key]) => !key.startsWith("data-overview-")),
+    Object.entries(attributes).filter(
+      ([key]) => !key.startsWith("data-overview-"),
+    ),
   );
 }
 
