@@ -5,12 +5,14 @@ import {
   isLibraryId,
   LIBRARY_APP_NAME,
   LIBRARY_LIMITS,
-  type LibraryCatalog,
+  LibraryCatalog,
   type LibraryItem,
   LibraryRevisions,
   libraryKindOf,
   MODEL_REVISION,
   modelItem,
+  parseItem,
+  parsePage,
   prepareReview,
   reviewCurrent,
   reviewText,
@@ -164,5 +166,110 @@ describe("photo library contract", () => {
     expect(model.revision).toMatch(MODEL_REVISION);
     expect(revisions.native(item.id, model.revision)).toBe(item.revision);
     expect(revisions.native(item.id, "rev-s1-999")).toBeUndefined();
+  });
+
+  it("rejects a present but malformed native metric instead of reading it as 0", () => {
+    const row = {
+      id: "lib:i:12:1",
+      revision: "1:2",
+      kind: "image",
+      width: 10,
+      height: 20,
+      size: 30,
+    };
+    const parsed = parseItem(row);
+    expect(parsed.width).toBe(10);
+    // An absent metric is unknown and reads as 0.
+    expect(parsed.takenAt).toBe(0);
+    expect(parsed.modifiedAt).toBe(0);
+    for (const bad of ["12", Number.NaN, Number.POSITIVE_INFINITY, -1, null])
+      for (const field of [
+        "width",
+        "height",
+        "takenAt",
+        "modifiedAt",
+        "size",
+        "duration",
+      ])
+        expect(() => parseItem({ ...row, [field]: bad })).toThrow(
+          `Invalid library ${field}`,
+        );
+    expect(() =>
+      parsePage({ ...scope(), items: [], next: "", generation: "7" }),
+    ).toThrow("Invalid library generation");
+    expect(
+      parsePage({ ...scope(), items: [row], next: "", generation: 7 })
+        .generation,
+    ).toBe(7);
+  });
+
+  it("marks a catalog that stopped at the keep cap instead of reporting the end of the library", () => {
+    const page = (start: number, count: number, next: string) => ({
+      scope: scope(),
+      items: Array.from({ length: count }, (_, index) => ({
+        ...parseItem({
+          id: `lib:i:${start + index}:1`,
+          revision: "1:2",
+          kind: "image",
+        }),
+      })),
+      next,
+      generation: 1,
+    });
+    const catalog = new LibraryCatalog();
+    let start = 1;
+    catalog.apply(page(start, LIBRARY_LIMITS.page, "99"), true);
+    start += LIBRARY_LIMITS.page;
+    while (catalog.items.length + LIBRARY_LIMITS.page <= LIBRARY_LIMITS.kept) {
+      expect(catalog.capped).toBe(false);
+      expect(catalog.next).toBe("99");
+      catalog.apply(page(start, LIBRARY_LIMITS.page, "99"), false);
+      start += LIBRARY_LIMITS.page;
+    }
+    expect(catalog.items.length).toBe(LIBRARY_LIMITS.kept);
+    // Exactly full with more rows in the library: stop paging, but report the cap.
+    expect(catalog.next).toBe("");
+    expect(catalog.capped).toBe(true);
+    catalog.reset();
+    expect(catalog.capped).toBe(false);
+
+    // A library that ends exactly at the cap is complete, not capped.
+    const exact = new LibraryCatalog();
+    let at = 1;
+    for (
+      let loaded = 0;
+      loaded < LIBRARY_LIMITS.kept;
+      loaded += LIBRARY_LIMITS.page
+    ) {
+      const last = loaded + LIBRARY_LIMITS.page >= LIBRARY_LIMITS.kept;
+      exact.apply(
+        page(at, LIBRARY_LIMITS.page, last ? "" : "99"),
+        loaded === 0,
+      );
+      at += LIBRARY_LIMITS.page;
+    }
+    expect(exact.items.length).toBe(LIBRARY_LIMITS.kept);
+    expect(exact.next).toBe("");
+    expect(exact.capped).toBe(false);
+  });
+
+  it("is published as the device-photo-library-contract subpath", () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+    ) as { exports: Record<string, Record<string, string>> };
+    expect(manifest.exports["./device-photo-library-contract"]).toEqual({
+      "eliza-source": "./src/services/device-actions/photo-library-contract.ts",
+      types: "./dist/device-photo-library-contract.d.ts",
+      import: "./dist/device-photo-library-contract.js",
+      default: "./dist/device-photo-library-contract.js",
+    });
+    const build = readFileSync(
+      new URL("../../../build.ts", import.meta.url),
+      "utf8",
+    );
+    expect(build).toContain(
+      '"device-photo-library-contract": `$' +
+        "{root}src/services/device-actions/photo-library-contract.ts`",
+    );
   });
 });

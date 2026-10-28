@@ -80,10 +80,14 @@ const bag = (value: unknown): Bag => {
     throw Error("Invalid library response");
   return value as Bag;
 };
-const finite = (value: unknown, fallback = 0) =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : fallback;
+/** A non-negative metric. An absent field reads as 0 (unknown); a present but malformed value
+ * (a string, NaN, Infinity or a negative number) rejects the row instead of becoming 0. */
+const metric = (value: unknown, field: string) => {
+  if (value === undefined) return 0;
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0)
+    return value;
+  throw Error(`Invalid library ${field}`);
+};
 const short = (value: unknown, max = 255) =>
   typeof value === "string" ? value.slice(0, max) : "";
 
@@ -155,12 +159,12 @@ export function parseItem(value: unknown): LibraryItem {
     mime: short(row.mime, 128),
     name: short(row.name),
     album: short(row.album),
-    width: finite(row.width),
-    height: finite(row.height),
-    takenAt: finite(row.takenAt),
-    modifiedAt: finite(row.modifiedAt),
-    size: finite(row.size),
-    duration: finite(row.duration),
+    width: metric(row.width, "width"),
+    height: metric(row.height, "height"),
+    takenAt: metric(row.takenAt, "takenAt"),
+    modifiedAt: metric(row.modifiedAt, "modifiedAt"),
+    size: metric(row.size, "size"),
+    duration: metric(row.duration, "duration"),
     favorite: row.favorite === true,
     owned: row.owned === true,
     ...(image !== undefined ? { image } : {}),
@@ -188,7 +192,7 @@ export function parsePage(value: unknown): LibraryPage {
     scope: parseScope(row),
     items,
     next,
-    generation: finite(row.generation),
+    generation: metric(row.generation, "generation"),
   };
 }
 
@@ -296,6 +300,9 @@ export class LibraryCatalog {
   generation = 0;
   scope: LibraryScope = "unavailable";
   loaded = false;
+  /** True when the catalog stopped at `LIBRARY_LIMITS.kept` while the library had more rows.
+   * `next` is then empty so no further page loads, but the catalog is not complete. */
+  capped = false;
   private readonly ids = new Set<string>();
 
   reset() {
@@ -305,6 +312,7 @@ export class LibraryCatalog {
     this.version = "";
     this.generation = 0;
     this.loaded = false;
+    this.capped = false;
   }
 
   /** Returns true when the catalog had to be cleared. */
@@ -335,16 +343,22 @@ export class LibraryCatalog {
     this.scope = page.scope.scope;
     this.version = page.scope.version;
     if (first || !this.generation) this.generation = page.generation;
+    let dropped = false;
     for (const item of page.items) {
       if (this.ids.has(item.id)) continue;
       if (this.items.length >= LIBRARY_LIMITS.kept) {
-        this.next = "";
+        dropped = true;
         break;
       }
       this.ids.add(item.id);
       this.items.push(item);
     }
     if (this.items.length < LIBRARY_LIMITS.kept) this.next = page.next;
+    else {
+      // Stop paging at the cap, but say so: an empty cursor alone would read as "end of library".
+      if (dropped || page.next !== "") this.capped = true;
+      this.next = "";
+    }
     this.loaded = true;
     this.trimThumbnails();
   }
