@@ -32,6 +32,12 @@
       "import": "./dist/blooio-transport.js",
       "default": "./dist/blooio-transport.js"
     },
+    "./voice/ui-context": {
+      "eliza-source": "./src/voice/ui-context.ts",
+      "types": "./dist/voice/ui-context.d.ts",
+      "import": "./dist/voice/ui-context.js",
+      "default": "./dist/voice/ui-context.js"
+    },
     "./protocol": {
       "eliza-source": "./src/protocol.ts",
       "types": "./dist/protocol.d.ts",

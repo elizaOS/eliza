@@ -67,6 +67,7 @@ export class MapPlane {
   private readonly globalBasemap: boolean;
   private marker?: Marker;
   private lastSelection = "";
+  private selectionLayout = "";
   private lastRoute = "";
   private requested?: Coordinate;
   private requestedRoute?: Route | null;
@@ -245,6 +246,8 @@ export class MapPlane {
           global ? undefined : { layers: ["roads"] },
         ).length,
       );
+      if (this.options.selectionPadding && this.map.isStyleLoaded())
+        this.updateSelectionCamera(false);
     });
     this.map.on("error", (event) => {
       const message = String(event.error?.message || "");
@@ -335,6 +338,39 @@ export class MapPlane {
       });
     this.lastPosition = key;
   }
+  /** Reflow the selected place when host sheets move, without taking a route's camera. */
+  private updateSelectionCamera(newSelection: boolean) {
+    const selected = this.requested;
+    const padding = this.options.selectionPadding?.();
+    const layout = padding
+      ? [padding.top, padding.bottom, padding.left, padding.right]
+          .map(Math.round)
+          .join(",")
+      : "";
+    const layoutChanged = layout !== this.selectionLayout;
+    this.selectionLayout = layout;
+    if (
+      !selected ||
+      this.requestedOverlay.follow ||
+      (!newSelection && (!layoutChanged || this.requestedRoute))
+    )
+      return;
+    if (this.globalBasemap)
+      this.map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
+    this.map.easeTo({
+      center: [selected.longitude, selected.latitude],
+      ...(newSelection && this.globalBasemap ? { zoom: 14 } : {}),
+      ...(padding
+        ? {
+            offset: [
+              (padding.left - padding.right) / 2,
+              (padding.top - padding.bottom) / 2,
+            ] as [number, number],
+          }
+        : {}),
+      duration: 350,
+    });
+  }
   update(
     selected?: Coordinate,
     route?: Route | null,
@@ -351,7 +387,8 @@ export class MapPlane {
       this.map.easeTo({ bearing: 0, duration: 350 });
     this.following = !!overlay.follow;
     const key = selected ? `${selected.longitude},${selected.latitude}` : "";
-    if (key !== this.lastSelection) {
+    const selectionChanged = key !== this.lastSelection;
+    if (selectionChanged) {
       this.lastSelection = key;
       this.marker?.remove();
       this.marker = undefined;
@@ -359,26 +396,9 @@ export class MapPlane {
         this.marker = new Marker({ color: this.options.accent })
           .setLngLat([selected.longitude, selected.latitude])
           .addTo(this.map);
-        if (!overlay.follow) {
-          const selectionPadding = this.options.selectionPadding?.();
-          if (this.globalBasemap)
-            this.map.setPadding({ top: 0, bottom: 0, left: 0, right: 0 });
-          this.map.easeTo({
-            center: [selected.longitude, selected.latitude],
-            ...(this.globalBasemap ? { zoom: 14 } : {}),
-            ...(selectionPadding
-              ? {
-                  offset: [
-                    (selectionPadding.left - selectionPadding.right) / 2,
-                    (selectionPadding.top - selectionPadding.bottom) / 2,
-                  ] as [number, number],
-                }
-              : {}),
-            duration: 350,
-          });
-        }
       }
     }
+    this.updateSelectionCamera(selectionChanged);
     const routeKey = route?.id || "";
     if (routeKey === this.lastRoute) return;
     this.lastRoute = routeKey;

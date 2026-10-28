@@ -8,15 +8,55 @@ import type { MicAudioContextLike } from "./voice-session-mic-capture";
 import * as micCapture from "./voice-session-mic-capture";
 import type { PlaybackAudioContextLike } from "./voice-session-playback";
 
+const dashboardTransport = vi.hoisted(() => vi.fn());
+vi.mock("./voice-session-fetch", () => ({
+  fetchVoiceSession: dashboardTransport,
+}));
+
 let client: VoiceSessionClient | undefined;
 afterEach(async () => {
   await client?.stop();
   client = undefined;
   vi.useRealTimers();
+  dashboardTransport.mockReset();
 });
 const flush = async () => {
   for (let i = 0; i < 30; i++) await Promise.resolve();
 };
+
+test("the existing app entry retains its lazy dashboard transport", async () => {
+  dashboardTransport.mockResolvedValue(
+    Response.json({ code: "feature_disabled" }, { status: 404 }),
+  );
+  const errors: Error[] = [];
+  const node = {
+    connect() {
+      return this;
+    },
+    disconnect() {},
+  };
+  client = createVoiceSessionClient({
+    agentId: "local-agent",
+    conversationId: "local-conversation",
+    getConsentNonce: async () => "owned-consent",
+    createPlaybackAudioContext: () => ({
+      sampleRate: 16000,
+      state: "running",
+      destination: node,
+      createScriptProcessor: () => ({ ...node, onaudioprocess: null }),
+      async resume() {},
+      async close() {},
+    }),
+    onError: (error) => errors.push(error),
+  });
+  await client.start();
+  expect(dashboardTransport).toHaveBeenCalledOnce();
+  expect(dashboardTransport.mock.calls[0][0]).toBe("/api/v1/voice/session");
+  expect(errors).toHaveLength(1);
+  expect(errors[0]).toMatchObject({ status: 404, code: "feature_disabled" });
+  expect(client.state.phase).toBe("idle");
+});
+
 function harness(
   playbackCompletion = false,
   getUiContext?: () => { uiViewPath?: string },

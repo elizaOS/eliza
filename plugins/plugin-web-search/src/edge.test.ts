@@ -391,6 +391,36 @@ describe("webSearchEdgePlugin", () => {
             transcriptVisibility: "internal",
         });
     });
+
+    it("keeps validation failures internal to the conversation", async () => {
+        const cases: Array<{ parameters: Record<string, unknown>; text: string }> = [
+            { parameters: {}, text: "A web search query is required." },
+            {
+                parameters: { query: "current public result", provider: "bogus" },
+                text: "The requested search provider is not supported.",
+            },
+            {
+                parameters: { query: "current public result", provider: "fallback" },
+                text: "The alternate search provider is not available for this turn.",
+            },
+        ];
+        for (const { parameters, text } of cases) {
+            const callback = vi.fn();
+            const result = await webSearchEdgeAction.handler(
+                {} as IAgentRuntime,
+                {} as Memory,
+                undefined,
+                { parameters },
+                callback
+            );
+            expect(result.success).toBe(false);
+            expect(callback).toHaveBeenCalledOnce();
+            expect(callback).toHaveBeenCalledWith({
+                text,
+                transcriptVisibility: "internal",
+            });
+        }
+    });
 });
 
 it("direct edge runner distinguishes typed outage from successful zero hits and preserves caller abort", async () => {

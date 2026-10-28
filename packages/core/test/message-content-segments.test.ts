@@ -1,11 +1,16 @@
 import {
+	ChannelType,
 	ContentType,
 	createHash,
 	type Media,
 	type Memory,
+	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
-import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
+import {
+	createTestRuntime,
+	SQLiteDatabaseAdapter,
+} from "@elizaos/testing/runtime";
 /**
  * Deterministic unit coverage for native message/attachment source projection:
  * exercises Unicode-safe segmentation, bounded traversal, identity stability,
@@ -415,4 +420,65 @@ describe("message content segments", () => {
 			}),
 		).toThrow();
 	});
+});
+
+describe("segment publication replay", () => {
+	const TEXT = `replay ${"a".repeat(80_000)}`;
+
+	async function publishTwice(
+		contentOfReplay: (id: UUID) => string,
+	): Promise<void> {
+		const harness = await createTestRuntime({ characterName: "ReplayProbe" });
+		const { runtime } = harness;
+		const worldId = stringToUuid("replay-world");
+		const roomId = stringToUuid("replay-room");
+		const entityId = stringToUuid("replay-entity");
+		const id = stringToUuid("replay-message");
+		try {
+			await runtime.createWorld({
+				id: worldId,
+				name: "Replay",
+				agentId: runtime.agentId,
+			});
+			await runtime.createRoom({
+				id: roomId,
+				name: "replay",
+				agentId: runtime.agentId,
+				source: "replay",
+				type: ChannelType.GROUP,
+				channelId: "replay",
+				worldId,
+			});
+			await runtime.createEntity({
+				id: entityId,
+				names: ["Replay"],
+				agentId: runtime.agentId,
+			});
+			const message = {
+				id,
+				agentId: runtime.agentId,
+				entityId,
+				roomId,
+				content: { text: TEXT },
+			} as unknown as Memory;
+			// Adapters assign the row timestamp, so an ingress caller usually omits it.
+			await runtime.createMessageMemory(message, true);
+			await runtime.createMessageMemory(
+				{ ...message, content: { text: contentOfReplay(id) } },
+				true,
+			);
+		} finally {
+			await harness.cleanup();
+		}
+	}
+
+	it("reuses a replayed segmented ingress message", async () => {
+		await publishTwice(() => TEXT);
+	}, 120_000);
+
+	it("rejects the same id with different bytes", async () => {
+		await expect(
+			publishTwice((id) => `changed ${id} ${"a".repeat(80_000)}`),
+		).rejects.toMatchObject({ code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT" });
+	}, 120_000);
 });

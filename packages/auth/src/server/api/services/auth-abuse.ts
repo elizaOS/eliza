@@ -109,22 +109,24 @@ function normalizeEmailList(value: unknown, field: string): string[] | string {
 function normalizeWalletList(value: unknown, field: string): string[] | string {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return `${field} must be an array`;
-  const wallets = value
-    .map((entry) =>
-      typeof entry === "string" ? entry.trim().toLowerCase() : "",
-    )
+  const entries = value
+    .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
     .filter(Boolean);
-  if (wallets.length > 5000) return `${field} can include at most 5000 wallets`;
+  if (entries.length > 5000) return `${field} can include at most 5000 wallets`;
+  // Validate before lower-casing: a base58 Solana address may contain an
+  // upper-case "L", and base58 has no lower-case "l". Lists are stored and
+  // matched lower-cased (validateWalletAbusePolicy lower-cases the signer).
   if (
-    !wallets.every(
+    !entries.every(
       (wallet) =>
-        /^0x[a-f0-9]{40}$/.test(wallet) ||
-        /^solana:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet),
+        /^0x[a-f0-9]{40}$/i.test(wallet) ||
+        (/^solana:/i.test(wallet) &&
+          /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(wallet.slice("solana:".length))),
     )
   ) {
     return `${field} contains an invalid wallet`;
   }
-  return [...new Set(wallets)];
+  return [...new Set(entries.map((wallet) => wallet.toLowerCase()))];
 }
 
 function normalizeCountryCodeList(
@@ -462,13 +464,33 @@ export function publicAuthAbuseConfig(
   };
 }
 
+/** Lower-cased domain of an email address, or null when it is not a valid host name. */
+export function normalizeEmailDomain(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const email = value.trim().toLowerCase();
+  const at = email.lastIndexOf("@");
+  if (at <= 0 || at >= email.length - 1) return null;
+  const domain = email.slice(at + 1);
+  if (
+    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
+      domain,
+    )
+  ) {
+    return null;
+  }
+  return domain;
+}
+
 export function validateEmailAbusePolicy(
   email: string,
   config: TenantAuthAbuseConfig,
 ): string | null {
-  const [localPart, domainPart] = email.toLowerCase().split("@");
-  if (!localPart || !domainPart) return "email is invalid";
-  const domain = domainPart.trim();
+  const [localPart] = email.toLowerCase().split("@");
+  // The same domain reading as the SSO-required check: an address it cannot
+  // read (for example "corp.com." with a trailing dot) is refused, so it
+  // cannot skip SSO-required or domain rules by naming the domain differently.
+  const domain = normalizeEmailDomain(email);
+  if (!localPart || !domain) return "email is invalid";
   const emailConfig = config.email;
   if (!emailConfig) return null;
 

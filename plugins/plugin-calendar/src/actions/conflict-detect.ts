@@ -1,3 +1,4 @@
+import type { ReviewedAvailabilityRequest } from "../internal/reviewed-availability.js";
 /**
  * Calendar-owned `CONFLICT_DETECT` action and production feed adapter.
  *
@@ -27,7 +28,7 @@ import { calendarAvailabilityKindFromMetadata } from "../internal/availability-m
 import { resolveDefaultTimeZone } from "../internal/constants.js";
 import { CalendarServiceError } from "../internal/errors.js";
 import { formatCalendarEventDateTime } from "../internal/format.js";
-import { getZonedDateParts } from "../internal/time.js";
+import { addDaysToLocalDate, getZonedDateParts } from "../internal/time.js";
 import {
   buildZonedCalendarRange,
   type CalendarAvailabilityAttendee,
@@ -118,6 +119,11 @@ export interface ConflictDetectLoader {
 }
 
 export interface ConflictDetectActionDeps {
+  readonly requestLocalAvailability?: (args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    request: ReviewedAvailabilityRequest;
+  }) => Promise<ActionResult | undefined>;
   readonly authorize?: (
     runtime: IAgentRuntime,
     message: Memory,
@@ -129,7 +135,7 @@ export interface ConflictDetectActionDeps {
 
 export type ConflictDetectHostAdapter = Pick<
   ConflictDetectActionDeps,
-  "authorize" | "resolveTimeZone" | "loader"
+  "authorize" | "resolveTimeZone" | "loader" | "requestLocalAvailability"
 >;
 
 const hostAdapters = new WeakMap<IAgentRuntime, ConflictDetectHostAdapter>();
@@ -228,18 +234,51 @@ function attendeeFromCalendarEvent(
   };
 }
 
+/**
+ * The availability engine reads an all-day `endDate` as an exclusive local
+ * midnight, so the adapter must report the day AFTER the last covered day.
+ * Google and ICS already store that exclusive end at UTC midnight, so their
+ * ISO date prefix is the right day. EventKit stores 23:59:59 of the last
+ * covered day in the event zone, so read it in that zone and add one day, as
+ * CalendarService's all-day window check does.
+ */
 function allDayDateForCalendarEvent(
   event: LifeOpsCalendarEvent,
-  instant: string,
+  edge: "start" | "end",
 ): string {
+  const instant = edge === "start" ? event.startAt : event.endAt;
   if (event.provider !== "apple_calendar" || !event.timezone?.trim()) {
     return instant.slice(0, 10);
   }
-  const local = getZonedDateParts(new Date(instant), event.timezone);
-  return `${String(local.year).padStart(4, "0")}-${String(local.month).padStart(
+  const instantMs = Date.parse(instant);
+  const local = getZonedDateParts(
+    new Date(edge === "end" ? instantMs - 1 : instantMs),
+    event.timezone,
+  );
+  const date = edge === "end" ? addDaysToLocalDate(local, 1) : local;
+  return `${String(date.year).padStart(4, "0")}-${String(date.month).padStart(
     2,
     "0",
-  )}-${String(local.day).padStart(2, "0")}`;
+  )}-${String(date.day).padStart(2, "0")}`;
+}
+
+/**
+ * An Apple row without a zone carries only its instants, so there is no civil
+ * date to trust. Leave `startDate`/`endDate` unset for that shape and let the
+ * availability engine compare the instants, which is what CalendarService's
+ * all-day window check already does for the same provider shape.
+ */
+function allDayDateFields(event: LifeOpsCalendarEvent): {
+  startDate?: string;
+  endDate?: string;
+} {
+  if (event.provider === "apple_calendar" && !event.timezone?.trim()) {
+    return {};
+  }
+  return {
+    startDate: allDayDateForCalendarEvent(event, "start"),
+    endDate: allDayDateForCalendarEvent(event, "end"),
+  };
 }
 
 function calendarEventForAvailability(
@@ -250,12 +289,7 @@ function calendarEventForAvailability(
     title: event.title,
     startISO: event.startAt,
     endISO: event.endAt,
-    ...(event.isAllDay
-      ? {
-          startDate: allDayDateForCalendarEvent(event, event.startAt),
-          endDate: allDayDateForCalendarEvent(event, event.endAt),
-        }
-      : {}),
+    ...(event.isAllDay ? allDayDateFields(event) : {}),
     // All-day dates are civil dates on the owner's local days, as in feed
     // reads, so they resolve in the scan's zone. The stored zone is the
     // calendar's (UTC for an ICS feed without X-WR-TIMEZONE).
@@ -1002,6 +1036,25 @@ export function createConflictDetectAction(
           text: "The proposal must fall entirely inside the calendar range being scanned.",
           data: { subaction, error: "PROPOSAL_OUTSIDE_RANGE" },
         };
+      }
+
+      const localAvailability =
+        deps.requestLocalAvailability ??
+        hostAdapters.get(runtime)?.requestLocalAvailability;
+      if (localAvailability) {
+        const local = await localAvailability({
+          runtime,
+          message,
+          request: {
+            kind: "calendar_availability",
+            subaction,
+            range,
+            timeZone,
+            ...(proposal ? { proposal } : {}),
+            ...(params.policy ? { policy: params.policy } : {}),
+          },
+        });
+        if (local) return local;
       }
 
       // Loader tiers mirror authorize/resolveTimeZone: explicit per-instance

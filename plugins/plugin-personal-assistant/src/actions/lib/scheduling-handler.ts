@@ -19,9 +19,10 @@
  * for downstream consumers (ACTION_STATE provider, scenario assertions, UI).
  */
 
-import type {
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
 } from "@elizaos/contracts";
 import type {
   ActionResult,
@@ -670,7 +671,12 @@ export async function runProposeMeetingTimesHandler(
   // place would answer a different question than the one asked.
   const outOfRange = (
     [
-      ["durationMinutes", requestedDuration, 5, 480],
+      [
+        "durationMinutes",
+        requestedDuration,
+        CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+        CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+      ],
       ["slotCount", params.slotCount, 1, 10],
       ["daysAhead", params.daysAhead, 1, MAX_DAYS_LOOKAHEAD],
     ] as const
@@ -798,10 +804,11 @@ export async function runProposeMeetingTimesHandler(
       durationMinutes =
         (Date.parse(existingEvent.endAt) - Date.parse(existingEvent.startAt)) /
         MS_PER_MINUTE;
+      // Preserve the existing minimum. A move keeps the event's full length;
+      // the maximum for a newly requested slot does not shorten this record.
       if (
         !Number.isFinite(durationMinutes) ||
-        durationMinutes < 5 ||
-        durationMinutes > 480
+        durationMinutes < CALENDAR_NEW_SLOT_DURATION_MINUTES.min
       ) {
         return respond({
           success: false,

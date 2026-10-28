@@ -14,7 +14,7 @@ vram_gb: 141
 mem_bandwidth_gbps: 4800
 fp8_supported: true
 fp4_supported: false
-nvlink: true                       # SXM has NVLink, but single-GPU only here
+nvlink: true # SXM has NVLink, but single-GPU only here
 
 bundle_recommendations:
   eliza-1-2b:
@@ -88,7 +88,7 @@ verify_recipe:
   cuda_arch: 90
   cmake_flags:
     - "-DGGML_CUDA=ON"
-    - "-DCMAKE_CUDA_ARCHITECTURES=90a"     # `a` variant for full Hopper feature set
+    - "-DCMAKE_CUDA_ARCHITECTURES=90a" # `a` variant for full Hopper feature set
     - "-DGGML_CUDA_F16=ON"
     - "-DGGML_CUDA_FA_ALL_QUANTS=ON"
   expected_kernels:
