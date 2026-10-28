@@ -558,6 +558,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         error: (_res: http.ServerResponse, message: string) => {
           throw new Error(message);
         },
+        getTriggerLimit,
         listTriggerTasks: async () => {
           const task = await fixture.runtime.getTask(taskId);
           return task ? [task] : [];
