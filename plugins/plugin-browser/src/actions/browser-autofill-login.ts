@@ -412,9 +412,10 @@ export async function executeBrowserAutofillLogin(
       : "the page has no submit control";
     return {
       text: `Filled login on ${domain} (tab ${matchingTab.id}), but the page did not submit it (${blocked}). Nothing was submitted.`,
-      success: true,
+      success: false,
       values: {
-        success: true,
+        success: false,
+        error: "AGENT_AUTOFILL_NOT_SUBMITTED",
         domain,
         tabId: matchingTab.id,
         submitted: false,

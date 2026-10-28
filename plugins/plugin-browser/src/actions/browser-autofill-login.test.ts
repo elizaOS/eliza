@@ -84,6 +84,7 @@ describe("BROWSER autofill-login submission receipt", () => {
     const result = await autofill();
 
     expect(submitted).toBe(false);
+    expect(result.success).toBe(false);
     expect(result.values?.submitted).toBe(false);
     expect(result.values?.invalid).toEqual({
       name: "tenant",
@@ -105,6 +106,7 @@ describe("BROWSER autofill-login submission receipt", () => {
     const result = await autofill();
 
     expect(submitted).toBe(false);
+    expect(result.success).toBe(false);
     expect(result.values?.submitted).toBe(false);
     expect(result.text).toContain("did not submit");
   });
@@ -128,6 +130,7 @@ describe("BROWSER autofill-login submission receipt", () => {
     const result = await autofill();
 
     expect(submitted).toBe(true);
+    expect(result.success).toBe(true);
     expect(result.values?.submitted).toBe(true);
     expect(result.text).toContain("submitted");
   });
