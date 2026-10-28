@@ -2289,14 +2289,6 @@ export async function readChatRequestPayload(
         })
       : [],
   );
-  // `injectionRiskAdjudication` is a runtime-internal gate cache: the
-  // should-respond gate returns a stamped verdict verbatim without
-  // adjudication. A client must not pre-stamp an allow verdict for its own
-  // message, so drop it here (the inbound hardening hook strips it for
-  // connector paths; this covers the API path, which may skip those hooks).
-  if (metadata && "injectionRiskAdjudication" in metadata) {
-    delete metadata.injectionRiskAdjudication;
-  }
   const clientMessageId = normalizeClientMessageId(body.clientMessageId);
   if (body.clientMessageId !== undefined && clientMessageId === null) {
     helpers.error(
