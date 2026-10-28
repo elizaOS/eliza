@@ -32,6 +32,7 @@ import {
 } from "../security/processing-policy";
 import type { SecretSwapSession } from "../security/secret-swap";
 import {
+	getModelAttemptLease,
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 } from "../streaming-context";
@@ -1054,6 +1055,15 @@ export class RuntimeModelDispatch {
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
+			if (
+				getModelAttemptLease() &&
+				(!TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) ||
+					resolvedModel.provider !== "openai")
+			) {
+				throw new ElizaError("Model provider has no qualified attempt guard", {
+					code: "MODEL_ATTEMPT_POLICY_ROUTE",
+				});
+			}
 			// Processing admission precedes every payload transformation (secret/PII
 			// swap, hooks) and the handler, so a denied destination receives nothing.
 			// A denial is terminal and keeps any earlier provider failure as cause.
@@ -1550,6 +1560,25 @@ export class RuntimeModelDispatch {
 					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
 					(modelParams as Record<string, unknown>).system =
 						effectiveSystemPrompt;
+				}
+
+				const attemptLease = getModelAttemptLease();
+				if (
+					attemptLease &&
+					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))
+				) {
+					if (!isPlainObject(modelParams))
+						throw new ElizaError("Bounded text request must be structured", {
+							code: "MODEL_ATTEMPT_POLICY_INVALID",
+						});
+					const record = modelParams as Record<string, unknown>;
+					record.maxTokens =
+						typeof record.maxTokens === "number" &&
+						Number.isSafeInteger(record.maxTokens) &&
+						record.maxTokens > 0
+							? Math.min(record.maxTokens, attemptLease.maxOutputTokens)
+							: attemptLease.maxOutputTokens;
+					record.omitMaxTokens = false;
 				}
 
 				const hookedParamsObj =

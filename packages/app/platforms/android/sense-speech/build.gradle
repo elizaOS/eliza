@@ -1,0 +1,4 @@
+// One canonical libelizainference/Phonon-2 implementation, packaged in the separate Sense APK.
+ext.elizaParadeeSourceDir = new File(projectDir, '../../../../../plugins/plugin-local-inference/native/android')
+ext.elizaParadeeNativeDir = System.getenv('ELIZA_SENSE_NATIVE_DIR') ? file(System.getenv('ELIZA_SENSE_NATIVE_DIR')) : new File(elizaParadeeSourceDir, 'native')
+apply from: new File(elizaParadeeSourceDir, 'consumer.gradle')

@@ -1,15 +1,17 @@
-name: Stage voice compatibility assets
+name: Stage product voice assets
 description: >-
-  Self-provision the pre-Gemma component-compatibility asset set on a runner: verify the fused
-  libelizainference build (downloaded as a workflow artifact) and stage the
-  pinned eliza-1-2b voice bundle regions from Hugging Face into the canonical
-  $HOME/.eliza/local-inference/models/eliza-1-2b.bundle cache. Every file is
-  sha256-pinned; these assets are not product-runtime ASR evidence. A
-  present-and-matching file is never re-downloaded, so the
-  first run per host pays ~2.5 GB once and later runs download nothing. Multiple
-  runner slots share one host $HOME, so the whole staging section runs under an
-  flock. Exports the ELIZA_* env the real-voice suites consume. Any missing or
-  drifted artifact is a hard step failure — the lane never green-skips.
+  Self-provision the product voice asset set on a runner: verify the fused
+  libelizainference build (downloaded as a workflow artifact), build Phonon-2
+  ASR and Paradee-8M v1.1 TTS from their pinned Hugging Face sources with the
+  byte-reproducible converters in the llama.cpp fork, and stage the pinned
+  eliza-1-2b voice bundle regions (VAD, speaker, diarizer, keyless corpus
+  voices) into the canonical $HOME/.eliza/local-inference/models/eliza-1-2b.bundle
+  cache. Every file is sha256-pinned. A present-and-matching file is never
+  re-downloaded or rebuilt, so the first run per host pays the downloads and
+  the Python environment once. Multiple runner slots share one host $HOME, so
+  the whole staging section runs under an flock. Exports the ELIZA_* env the
+  real-voice suites consume. Any missing or drifted artifact is a hard step
+  failure — the lane never green-skips.
 
 inputs:
   fused-lib-dir:
@@ -28,8 +30,11 @@ runs:
           echo "::error title=Fused lib artifact missing::$LIB not found — the voice-fused-build job must have uploaded it."
           exit 1
         fi
-        # The acoustic suites need the Kokoro + speaker + diarizer + VAD ABI.
-        for sym in eliza_inference_kokoro_load eliza_inference_speaker_open eliza_inference_diariz_open eliza_inference_vad_open eliza_inference_asr_transcribe; do
+        # The acoustic suites need the Paradee TTS (the desktop agent voice),
+        # Phonon-2 (batch + streaming ASR), speaker, diarizer and VAD ABI.
+        # Kokoro is linked only to synthesize the keyless multi-speaker human
+        # corpus; it is not the agent voice.
+        for sym in eliza_inference_paradee_load eliza_inference_asr_transcribe eliza_inference_asr_stream_open eliza_inference_kokoro_load eliza_inference_speaker_open eliza_inference_diariz_open eliza_inference_vad_open; do
           if ! nm -D "$LIB" | grep -q "$sym"; then
             echo "::error title=Fused lib incomplete::$LIB does not export $sym"
             exit 1
@@ -42,11 +47,12 @@ runs:
         # artifact speaks the expected contract.
         bun -e "const { dlopen, FFIType } = require('bun:ffi'); const lib = dlopen('$LIB', { eliza_inference_abi_version: { args: [], returns: FFIType.cstring } }); console.log('dlopen OK — fused ABI v' + lib.symbols.eliza_inference_abi_version());"
         echo "ELIZA_INFERENCE_LIBRARY=$LIB" >> "$GITHUB_ENV"
+        echo "ELIZA_INFERENCE_LIBRARY_SHA256=$(sha256sum "$LIB" | awk '{print $1}')" >> "$GITHUB_ENV"
         echo "ELIZA_INFERENCE_LIB_DIR=${{ inputs.fused-lib-dir }}" >> "$GITHUB_ENV"
         echo "fused lib OK: $LIB"
         file "$LIB" || true
 
-    - name: Stage pinned pre-Gemma compatibility bundle (sha256-verified, host-cached)
+    - name: Stage pinned product voice bundle (sha256-verified, host-cached)
       shell: bash
       run: |
         set -euo pipefail
@@ -91,16 +97,36 @@ runs:
         exec 9>"$LOCK"
         flock 9
 
-        # Retired pre-Gemma ASR compatibility pair. The workflow's separate
-        # product-release preflight intentionally rejects these as product proof.
-        stage asr/eliza-1-asr.gguf          bundles/e2b/asr/eliza-1-asr.gguf          bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971
-        stage asr/eliza-1-asr-mmproj.gguf   bundles/e2b/asr/eliza-1-asr-mmproj.gguf   41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d
+        # The retired eliza-1-asr (Qwen3-ASR) pair must not linger in a host
+        # cache from an older run: Phonon-2 is the only file allowed in asr/.
+        rm -f "$BUNDLE/asr/eliza-1-asr.gguf" "$BUNDLE/asr/eliza-1-asr-mmproj.gguf"
+
+        # Product voice stack: Phonon-2 ASR (asr/phonon-2-fv5.gguf + notices)
+        # and Paradee-8M v1.1 TTS (tts/paradee/paradee-8m-v1_1.gguf + misaki
+        # lexicon), converted from FermionResearch/Phonon-2 and
+        # sahilmahendrakar/Paradee-8M-v1.1 at the revisions the fork pins. The
+        # builder hashes every download and every converted file.
+        VOICE_PY="$HOME/.eliza/local-inference/.voice-python"
+        FORK="$GITHUB_WORKSPACE/plugins/plugin-local-inference/native/llama.cpp"
+        if [ ! -x "$VOICE_PY/bin/python" ] || [ ! -f "$VOICE_PY/.ready-v1" ]; then
+          rm -rf "$VOICE_PY"
+          python3 -m venv "$VOICE_PY"
+          "$VOICE_PY/bin/pip" install --quiet --upgrade pip
+          "$VOICE_PY/bin/pip" install --quiet --index-url https://download.pytorch.org/whl/cpu torch
+          "$VOICE_PY/bin/pip" install --quiet numpy zstandard librosa "$FORK/gguf-py"
+          touch "$VOICE_PY/.ready-v1"
+        fi
+        node "$GITHUB_WORKSPACE/packages/app/scripts/paradee-voice/build-native.ts" --models-only \
+          --workspace "$HOME/.eliza/local-inference/.voice-build" \
+          --out "$BUNDLE" --model-cache "$BUNDLE" --python "$VOICE_PY/bin/python"
+
         # VAD (fused vad_open loads the GGUF; the ggml.bin is the legacy
         # silero-vad-cpp artifact some probes still look for).
         stage vad/silero-vad-v5.gguf        bundles/e2b/vad/silero-vad-v5.gguf        d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995
         stage vad/silero-vad-v5.1.2.ggml.bin voice/vad/silero-vad-v5.1.2.ggml.bin     29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
-        # Kokoro TTS (the product on-device engine) + the full voice-pack set
-        # the keyless corpus (#9577) draws from.
+        # Kokoro voice packs: only the keyless human corpus (#9577) and the
+        # workbench enrollment speakers, which need several distinct voices.
+        # The desktop agent speaks with Paradee v1.1 (tts/paradee above).
         stage tts/kokoro/kokoro-82m-v1_0.gguf bundles/e2b/tts/kokoro/kokoro-82m-v1_0.gguf 165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c
         stage tts/kokoro/voices/af_bella.bin    bundles/e2b/tts/kokoro/voices/af_bella.bin    f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b
         stage tts/kokoro/voices/af_nicole.bin   bundles/e2b/tts/kokoro/voices/af_nicole.bin   cd2191ab31b914ed7b318416b0e4440fdf392ddad9106a060819aa600a64f59a
@@ -128,6 +154,11 @@ runs:
 
         {
           echo "ELIZA_ASR_BUNDLE=$BUNDLE"
+          echo "ELIZA_ASR_MODEL_DIR=$BUNDLE"
+          # The desktop agent TTS lanes (agent voice bridge, workbench agent
+          # turns, agent self-voice) run Paradee through the host TTS worker,
+          # which verifies this dir and ELIZA_INFERENCE_LIBRARY_SHA256.
+          echo "ELIZA_PARADEE_MODEL_DIR=$BUNDLE/tts/paradee"
           echo "ELIZA_KOKORO_MODEL_DIR=$BUNDLE/tts/kokoro"
           echo "ELIZA_KOKORO_DEFAULT_VOICE_ID=af_bella"
           echo "ELIZA_SPEAKER_GGUF=$BUNDLE/speaker/wespeaker-resnet34-lm.gguf"

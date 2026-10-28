@@ -1,5 +1,9 @@
 /** Coordinates multi-tenant Discord gateway connections and event routing. */
 import {
+  DISCORD_LEASE_DELETE,
+  DISCORD_LEASE_EXPIRE,
+} from "@elizaos/cloud-services-common/discord-coordination";
+import {
   gatewayTokenRefreshDelayMs,
   gatewayTokenRetryDelayMs,
   requestGatewayToken,
@@ -29,6 +33,8 @@ import {
   HTTP_TIMEOUT_MS,
   sendCloudUpdate,
 } from "./cloud-rest";
+import { discordCoordinationStore } from "./cloudflare-coordination-store";
+import { discordWelcomeStore } from "./cloudflare-welcome-store";
 import { reconcileDiscordConnectionReady } from "./connection-lifecycle";
 import {
   type DiscordInstallWelcomeJob,
@@ -79,7 +85,12 @@ import {
   VoiceMessageHandler,
 } from "./voice-message-handler";
 
-interface GatewayRedis {
+export interface GatewayRedis {
+  eval(
+    script: string,
+    keys: string[],
+    args: Array<string | number>,
+  ): Promise<unknown>;
   get<T = string>(key: string): Promise<T | null>;
   set(
     key: string,
@@ -361,6 +372,8 @@ const DEFAULT_ROUTING_ADAPTERS: GatewayManagerRoutingAdapters = {
 export class GatewayManager {
   private config: GatewayConfig;
   private redis: GatewayRedis | null = null;
+  /** Shared agent-server registry; it has writers outside this gateway. */
+  private routingRedis: GatewayRedis | null = null;
   private connections: Map<string, BotConnection> = new Map();
   private startTime: Date = new Date();
   private pollInterval: NodeJS.Timeout | null = null;
@@ -422,6 +435,7 @@ export class GatewayManager {
     // MOCK_REDIS=1 is an explicit opt-in for tests/CI; never silently used
     // when unset, so real credentials are still honored when present.
     const isTcpRedisUrl = (u: string): boolean => /^rediss?:\/\//i.test(u);
+    const coordination = discordCoordinationStore();
     if (process.env.MOCK_REDIS === "1") {
       this.redis = createMockRedis();
       logger.info("[GatewayManager] using in-memory mock Redis (MOCK_REDIS=1)");
@@ -447,12 +461,25 @@ export class GatewayManager {
       );
     }
 
+    this.routingRedis = this.redis;
+    if (coordination) {
+      if (!this.routingRedis) {
+        throw new Error(
+          "Shared agent routing Redis is required until its writers migrate",
+        );
+      }
+      this.redis = coordination;
+      logger.info(
+        "[GatewayManager] using Cloudflare coordination and shared Redis routing",
+      );
+    }
+
     const elizaAppEnabled =
       process.env.ELIZA_APP_DISCORD_BOT_ENABLED === "true";
     const elizaAppBotToken = process.env.ELIZA_APP_DISCORD_BOT_TOKEN?.trim();
     if (elizaAppEnabled && elizaAppBotToken && this.redis) {
       this.installWelcomeQueue = new DiscordInstallWelcomeQueue(
-        this.redis,
+        discordWelcomeStore(this.redis),
         elizaAppBotToken,
       );
     }
@@ -743,7 +770,13 @@ export class GatewayManager {
     if (this.isElizaAppLeader && this.redis) {
       logger.info("Releasing Eliza App bot leadership");
       // error-policy:J6 best-effort teardown; the leader key carries a TTL so a failed release still expires.
-      await this.redis.del(ELIZA_APP_LEADER_KEY).catch(() => {});
+      await this.redis
+        .eval(
+          DISCORD_LEASE_DELETE,
+          [ELIZA_APP_LEADER_KEY],
+          [this.config.podName],
+        )
+        .catch(() => {});
       if (this.elizaAppClient) {
         this.elizaAppClient.destroy();
         this.elizaAppClient = null;
@@ -1575,8 +1608,8 @@ export class GatewayManager {
       }
     }
 
-    if (!this.redis) {
-      logger.warn("No Redis connection, cannot route message", {
+    if (!this.routingRedis) {
+      logger.warn("No routing store connection, cannot route message", {
         connectionId,
       });
       return;
@@ -1601,7 +1634,7 @@ export class GatewayManager {
     > = null;
     try {
       route = await this.routingAdapters.resolveAgentServer(
-        this.redis,
+        this.routingRedis,
         conn.characterId,
       );
     } catch (error) {
@@ -1621,7 +1654,7 @@ export class GatewayManager {
 
     try {
       await this.routingAdapters.refreshKedaActivity(
-        this.redis,
+        this.routingRedis,
         route.serverName,
       );
       const { channel } = message;
@@ -1975,11 +2008,12 @@ export class GatewayManager {
       });
     } finally {
       // Release lock after operation completes (or let it expire naturally)
-      // Using DEL is safe here - if another pod somehow got the lock, it means
-      // the TTL expired and our operation took too long anyway
-      await this.redis.del(lockKey).catch(() => {
-        // Ignore lock-release errors because the TTL handles expiry
-      });
+      // A stale owner must not remove a successor's lease.
+      await this.redis
+        .eval(DISCORD_LEASE_DELETE, [lockKey], [this.config.podName])
+        .catch(() => {
+          // Ignore lock-release errors because the TTL handles expiry
+        });
     }
   }
 
@@ -2044,9 +2078,10 @@ export class GatewayManager {
     try {
       if (this.isElizaAppLeader) {
         // Already leader - renew the lock
-        const renewed = await this.redis.expire(
-          ELIZA_APP_LEADER_KEY,
-          ELIZA_APP_LEADER_TTL_SECONDS,
+        const renewed = await this.redis.eval(
+          DISCORD_LEASE_EXPIRE,
+          [ELIZA_APP_LEADER_KEY],
+          [this.config.podName, ELIZA_APP_LEADER_TTL_SECONDS],
         );
         if (!renewed) {
           // Lock was lost (expired or deleted)
@@ -2093,6 +2128,11 @@ export class GatewayManager {
         error: sanitizeError(error),
         podName: this.config.podName,
       });
+      // A failed renewal cannot establish continued ownership.
+      if (this.isElizaAppLeader) {
+        this.isElizaAppLeader = false;
+        await this.disconnectElizaAppBot();
+      }
     }
   }
 

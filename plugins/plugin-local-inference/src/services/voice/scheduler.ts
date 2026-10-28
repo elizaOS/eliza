@@ -188,6 +188,13 @@ export class VoiceScheduler {
 	private readonly sampleRate: number;
 	private readonly inFlight = new Map<number, InFlight>();
 	private readonly maxInFlight: number;
+	/**
+	 * Serializes the capacity wait with the slot insert. The check and the
+	 * insert must be one step: two dispatches that both wake when the same
+	 * phrase finishes would otherwise both insert, and the cap would be
+	 * exceeded exactly when the queue is longest.
+	 */
+	private admissionTail: Promise<void> = Promise.resolve();
 	private readonly streamingTtsActive: boolean;
 	private kernelTicks = 0;
 	private nextStandalonePhraseId = -1;
@@ -539,13 +546,6 @@ export class VoiceScheduler {
 			phrase: phraseTelemetry(phrase),
 		});
 
-		if (this.inFlight.size >= this.maxInFlight) {
-			const oldest = this.inFlight.values().next().value;
-			if (oldest) {
-				await oldest.done;
-			}
-		}
-
 		const cancelSignal = { cancelled: false };
 		let resolveDone!: () => void;
 		let rejectDone!: (err: unknown) => void;
@@ -553,11 +553,36 @@ export class VoiceScheduler {
 			resolveDone = resolve;
 			rejectDone = reject;
 		});
-		this.inFlight.set(phrase.id, { phrase, cancelSignal, done });
+		await this.admitPhrase({ phrase, cancelSignal, done });
 		void this.runPhraseSynthesis(phrase, cancelSignal).then(
 			resolveDone,
 			rejectDone,
 		);
+	}
+
+	/**
+	 * Take one in-flight slot, waiting for the oldest phrase when the cap is
+	 * reached. Admission is serialized so a wake-up cannot seat two phrases in
+	 * the slot that one phrase released. A failed synthesis is reported by its
+	 * own caller; a waiter only needs the slot it frees.
+	 */
+	private async admitPhrase(slot: InFlight): Promise<void> {
+		const previous = this.admissionTail;
+		let release!: () => void;
+		this.admissionTail = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		await previous;
+		try {
+			while (this.inFlight.size >= this.maxInFlight) {
+				const oldest = this.inFlight.values().next().value;
+				if (!oldest) break;
+				await oldest.done.catch(() => undefined);
+			}
+			this.inFlight.set(slot.phrase.id, slot);
+		} finally {
+			release();
+		}
 	}
 
 	private async runPhraseSynthesis(

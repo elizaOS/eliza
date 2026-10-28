@@ -15,6 +15,7 @@ import { readStewardAccessCookieFromHeader } from "../auth/steward-cookies";
 import { buildRedisClient, type CompatibleRedis } from "../cache/redis-factory";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import { logger } from "../utils/logger";
+import { getCloudflareRateState } from "./cloudflare-rate-state";
 
 export interface RateLimitConfig {
   windowMs: number;
@@ -93,7 +94,12 @@ export function rateLimitConfigVerdict(opts: {
   environment?: string;
   redisRateLimiting?: string;
   hasRedisClient: boolean;
+  backend?: string;
+  hasDurableBinding?: boolean;
 }): RateLimitConfigVerdict {
+  if (opts.backend && opts.backend !== "redis") {
+    return opts.backend === "cloudflare" && opts.hasDurableBinding ? "ok" : "fail-closed";
+  }
   if (opts.environment !== "production") return "ok";
   if (opts.redisRateLimiting !== "true") return "warn-disabled";
   return opts.hasRedisClient ? "ok" : "fail-closed";
@@ -528,6 +534,52 @@ export function rateLimit(
       if (env.NODE_ENV === "production") {
         return nativeRateLimitUnavailable(c, cloudflare.bindingName);
       }
+    }
+
+    if (env.CLOUD_RATE_STATE_BACKEND && env.CLOUD_RATE_STATE_BACKEND !== "redis") {
+      let result: CheckResult;
+      try {
+        const store = getCloudflareRateState(env, env.RATE_LIMIT_STATE);
+        if (!store) throw new Error("Selected rate state is unavailable");
+        const key = (config.keyGenerator ?? getDefaultKey)(c);
+        result = await store.request(`ratelimit:${key}`, {
+          operation: "check",
+          mode: "fixed",
+          windowMs: effectiveConfig.windowMs,
+          maxRequests: effectiveConfig.maxRequests,
+        });
+      } catch (error) {
+        // error-policy:J1 Explicit durable selection must not fall back to Redis or local buckets.
+        logger.error("[RateLimit] Cloudflare rate state unavailable", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return c.json(
+          {
+            success: false,
+            error: "Service temporarily unavailable",
+            code: "rate_limit_unavailable",
+            message: "Rate limiter backing store is unavailable; request rejected.",
+          },
+          503,
+          { "Retry-After": "30" },
+        );
+      }
+      const headers = rateLimitHeaders(effectiveConfig, result, "cloudflare-durable");
+      if (!result.allowed)
+        return c.json(
+          {
+            success: false,
+            error: "Too many requests",
+            code: "rate_limit_exceeded",
+            message: `Rate limit exceeded. Maximum ${effectiveConfig.maxRequests} requests per ${Math.ceil(effectiveConfig.windowMs / 1000)} seconds.`,
+            retryAfter: result.retryAfter,
+          },
+          429,
+          { ...headers, "Retry-After": String(result.retryAfter ?? 60) },
+        );
+      await next();
+      applyRateLimitHeaders(c, headers);
+      return;
     }
 
     let redis: CompatibleRedis | null = null;

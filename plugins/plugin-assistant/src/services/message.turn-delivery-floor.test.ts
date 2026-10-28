@@ -24,6 +24,7 @@ import {
   ChannelType,
   type Content,
   drainPostDeliveryTasks,
+  ElizaError,
   ResponseHandlerFieldRegistry,
   TurnControllerRegistry,
   type UUID,
@@ -305,6 +306,52 @@ describe("delivery observability floor for transient failure replies", () => {
     expect(
       h.persistedTexts().filter((text) => text === replyText),
     ).toHaveLength(1);
+  });
+});
+
+describe("silent failure on an unaddressed group turn", () => {
+  beforeEach(() => {
+    vi.stubEnv("ELIZA_TRAJECTORY_RECORDING", "0");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("stays silent and records why the turn was ignored", async () => {
+    const h = createHarness(async () => {
+      throw new ElizaError(
+        "Request only context providers listed as available for this turn.",
+        {
+          code: "CONTEXT_DISCOVERY_INVALID_REQUEST",
+          context: { rejected: ["h550"] },
+        },
+      );
+    });
+    vi.mocked(h.runtime.getRoom).mockResolvedValue({
+      id: h.roomId,
+      source: "discord",
+      type: ChannelType.GROUP,
+    } as Room);
+    const message = h.makeMessage("did it actually generate one?");
+    message.content.channelType = ChannelType.GROUP;
+    const deliveries: Content[] = [];
+
+    const result = await h.service.handleMessage(
+      h.runtime,
+      message,
+      async (content) => {
+        deliveries.push(content);
+        return [];
+      },
+    );
+    await drainPostDeliveryTasks(h.runtime);
+
+    expect(visibleTexts(deliveries)).toEqual([]);
+    expect(result.didRespond).toBe(false);
+    expect(result.outcome).toMatchObject({
+      status: "completed",
+      reason: "failure_suppressed",
+    });
   });
 });
 

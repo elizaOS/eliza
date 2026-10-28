@@ -2,7 +2,11 @@
  * Provides the self-contained layout, state, and agent-aware controls used by
  * the statically packaged Notes renderer.
  */
-import { Button, type ButtonProps, useAgentElement } from "@elizaos/ui";
+import {
+  Button,
+  type ButtonProps,
+  useAgentElement,
+} from "@elizaos/ui/view-primitives";
 
 import type { CSSProperties } from "react";
 import type { StickyColor } from "../types.js";
@@ -49,7 +53,8 @@ export function AgentAction({
     group: agentGroup,
     status: agentStatus,
     onActivate: () => {
-      if (!disabled) onClick?.({} as never);
+      if (!disabled && !control.ref.current?.closest("[inert]"))
+        onClick?.({} as never);
     },
   });
   return (
@@ -66,7 +71,7 @@ export function AgentAction({
       size={compact ? "icon-lg" : "touch"}
       {...control.agentProps}
       {...rest}
-      aria-label={rest["aria-label"] ?? (compact ? agentLabel : undefined)}
+      aria-label={rest["aria-label"] ?? agentLabel}
       disabled={disabled}
       onClick={onClick}
       style={style}

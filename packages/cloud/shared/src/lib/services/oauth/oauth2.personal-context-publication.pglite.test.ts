@@ -60,7 +60,7 @@ mock.module("../../runtime/cloud-bindings", () => ({
   ...originals.bindings,
   getCloudAwareEnv: () => ({
     NEXT_PUBLIC_APP_URL: "https://fixture.example.test",
-    ALPHA_OAUTH_RETURN_URLS: "https://alphacompute.ai/alphaphone/gmail/callback",
+    APP_OAUTH_RETURN_URLS: "https://apps.example.org/reader/gmail/callback",
   }),
 }));
 mock.module("./provider-registry", () => ({
@@ -363,7 +363,7 @@ describe("Alpha callback with real credential publication", () => {
         "../../../../../api/v1/oauth/generic-callback"
       );
       const nonce = "s".repeat(43);
-      const returnUrl = `https://alphacompute.ai/alphaphone/gmail/callback?state=${nonce}`;
+      const returnUrl = `https://apps.example.org/reader/gmail/callback?state=${nonce}`;
       state = { ...state, redirectUrl: returnUrl };
       const result = await handleGenericOAuthCallback(
         new Request(
@@ -374,7 +374,7 @@ describe("Alpha callback with real credential publication", () => {
       expect(result.status).toBe(302);
       const target = new URL(result.headers.get("location") ?? "");
       expect(target.origin + target.pathname).toBe(
-        "https://alphacompute.ai/alphaphone/gmail/callback",
+        "https://apps.example.org/reader/gmail/callback",
       );
       const returned = new URLSearchParams(target.hash.slice(1));
       expect(returned.get("state")).toBe(nonce);

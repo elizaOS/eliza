@@ -8,7 +8,8 @@ import android.annotation.TargetApi
 
 @TargetApi(Build.VERSION_CODES.Q)
 internal object WiFiConnectionRequests {
-    fun suggest(manager: WifiManager, ssid: String, password: String?, hidden: Boolean): Boolean {
+    /** Builds one validated Internet suggestion; shared by the direct and user-approved paths. */
+    fun build(ssid: String, password: String?, hidden: Boolean): WifiNetworkSuggestion {
         require(ssid.toByteArray(Charsets.UTF_8).size in 1..32) { "SSID must contain 1 to 32 UTF-8 bytes" }
         if (!password.isNullOrEmpty()) {
             require(password.length in 8..63 && password.all { it.code in 32..126 }) {
@@ -17,7 +18,11 @@ internal object WiFiConnectionRequests {
         }
         val builder = WifiNetworkSuggestion.Builder().setSsid(ssid).setIsHiddenSsid(hidden)
         if (!password.isNullOrEmpty()) builder.setWpa2Passphrase(password)
-        val suggestion = builder.build()
+        return builder.build()
+    }
+
+    fun suggest(manager: WifiManager, ssid: String, password: String?, hidden: Boolean): Boolean {
+        val suggestion = build(ssid, password, hidden)
         // Updating a suggestion is supported directly from Android 11. On Android
         // 10 remove the same network identity before replacing its configuration.
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {

@@ -35,14 +35,142 @@ on:
         description: Base64 RSA SPKI public key for private stage evidence; RSA >=3072 bits
         required: true
         type: string
-permissions: {}
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: production-railway-database-authority-audit
+  cancel-in-progress: false
 jobs:
-  refuse_default_branch:
-    name: Registration only; use reviewed main implementation
+  stage_only:
+    name: Stage one reviewed PITR overlay without commit
     runs-on: ubuntu-latest
-    timeout-minutes: 1
+    timeout-minutes: 25
+    environment: production
     steps:
-      - name: Refuse execution on the registration stub
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - name: Require canonical main source
+        env:
+          SOURCE_REF: ${{ github.ref }}
+          REVIEWED_STAGE_SOURCE_HEAD: ${{ inputs.reviewed_stage_source_head }}
         run: |
-          echo "::error::Registration only. Use --ref main with independently reviewed inputs; provider execution requires separate authorization."
-          exit 1
+          set -euo pipefail
+          if [ "$SOURCE_REF" != "refs/heads/main" ] ||
+             [[ ! "$REVIEWED_STAGE_SOURCE_HEAD" =~ ^[0-9a-f]{40}$ ]] ||
+             [ "$GITHUB_SHA" != "$REVIEWED_STAGE_SOURCE_HEAD" ]; then
+            echo "::error::Stage-only operation requires the exact reviewed canonical main source"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24.15.0"
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies without lifecycle mutation
+        run: bun install --frozen-lockfile --no-save --ignore-scripts
+
+      - name: Validate protected audit configuration
+        env:
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+          HAS_RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN != '' }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ "$HAS_DATABASE_URL" = "true" ] || missing+=(DATABASE_URL)
+          [ "$HAS_RAILWAY_TOKEN" = "true" ] || missing+=(RAILWAY_TOKEN)
+          for name in \
+            RAILWAY_PROJECT_ID \
+            RAILWAY_ENVIRONMENT_ID \
+            RAILWAY_POSTGRES_SERVICE_ID; do
+            value="${!name:-}"
+            if [[ ! "$value" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Missing or invalid protected production audit setting name(s): ${missing[*]}"
+            exit 1
+          fi
+          echo "Protected production audit settings are configured; values were not printed."
+
+      - name: Install pinned Railway CLI
+        run: |
+          set -euo pipefail
+          cli_root="$RUNNER_TEMP/railway-cli-production-db-audit"
+          archive="$RUNNER_TEMP/railway-v5.38.0-production-db-audit.tar.gz"
+          mkdir -m 0700 "$cli_root"
+          curl --fail --silent --show-error --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/railwayapp/cli/releases/download/v5.38.0/railway-v5.38.0-x86_64-unknown-linux-gnu.tar.gz"
+          printf '%s  %s\n' \
+            "72835c48a710c48c4542141bf12264823cf3a029b514f9e27994096c036c539e" \
+            "$archive" | sha256sum --check --status
+          tar -xzf "$archive" -C "$cli_root" railway
+          chmod 0755 "$cli_root/railway"
+          echo "$cli_root" >> "$GITHUB_PATH"
+          "$cli_root/railway" --version | grep -F "railway 5.38.0"
+
+      - name: Stage once with fresh authority and sealed evidence
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_POSTGRES_SERVICE_ID: ${{ vars.RAILWAY_POSTGRES_SERVICE_ID }}
+          PITR_APPROVED_VOLUME_RECEIPT: ${{ inputs.approved_volume_receipt }}
+          PITR_APPROVED_IMAGE_RECEIPT: ${{ inputs.approved_image_receipt }}
+          PITR_WRITER_MAINTENANCE_RECEIPT: ${{ inputs.writer_maintenance_receipt }}
+          PITR_COMPLETED_BACKUP_RUN_ID: ${{ inputs.completed_backup_run_id }}
+          PITR_COMPLETED_BACKUP_SOURCE_HEAD: ${{ inputs.completed_backup_source_head }}
+          PITR_REVIEW_EXPIRES_UTC: ${{ inputs.review_expires_utc }}
+          PITR_STAGE_RECIPIENT_PUBLIC_KEY: ${{ inputs.stage_recipient_public_key }}
+          TMPDIR: ${{ runner.temp }}/production-pitr-stage-authority-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -m 0700 "$TMPDIR"
+          bun --no-env-file packages/cloud/scripts/admin/pitr-stage-operator.ts \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve recipient-encrypted stage evidence on every outcome
+        id: sealed_evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pitr-stage-sealed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/production-pitr-stage-${{ github.run_id }}-${{ github.run_attempt }}/*.sealed.json
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Destroy private authority capture and finalize encrypted evidence
+        if: ${{ always() }}
+        env:
+          SEALED_UPLOAD_OUTCOME: ${{ steps.sealed_evidence.outcome }}
+        run: |
+          set -euo pipefail
+          authority="$RUNNER_TEMP/production-pitr-stage-authority-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          sealed="$RUNNER_TEMP/production-pitr-stage-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          if [ -d "$authority" ] && [ ! -L "$authority" ]; then
+            find "$authority" -type f -exec shred -f -u -- {} +
+            find "$authority" -depth -type d -empty -delete
+            test ! -e "$authority"
+          fi
+          if [ -d "$sealed" ] && [ ! -L "$sealed" ]; then
+            if [ "$SEALED_UPLOAD_OUTCOME" != "success" ] &&
+               find "$sealed" -maxdepth 1 -type f -name '*.sealed.json' -print -quit | grep -q .; then
+              echo "::error::Encrypted stage evidence upload is unconfirmed; ciphertext was not deleted and no further action is authorized"
+              exit 1
+            fi
+            find "$sealed" -type f -exec shred -f -u -- {} +
+            find "$sealed" -depth -type d -empty -delete
+            test ! -e "$sealed"
+          fi

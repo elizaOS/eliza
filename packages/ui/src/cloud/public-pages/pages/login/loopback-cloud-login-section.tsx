@@ -43,7 +43,7 @@ export default function LoopbackCloudLoginSection() {
         "../../../../api/client-cloud"
       );
       const apiBase = ELIZA_CLOUD_DIRECT_API_BY_HOST["staging.eliza.app"];
-      if (!apiBase) throw new Error("Eliza Cloud sign-in is not configured.");
+      if (!apiBase) throw new Error("Cloud sign-in is not configured.");
       const session = await client.cloudLoginDirect(apiBase);
       if (!session.ok || !session.browserUrl || !session.sessionId) {
         throw new Error(session.error || "Could not start sign-in. Try again.");
@@ -56,7 +56,7 @@ export default function LoopbackCloudLoginSection() {
         destination.searchParams.get("session") !== session.sessionId
       ) {
         throw new Error(
-          "Eliza Cloud returned an invalid sign-in link. Try again.",
+          "The Cloud service returned an invalid sign-in link. Try again.",
         );
       }
       const requested = sanitizeLoginReturnTo(searchParams.get("returnTo"));
@@ -114,7 +114,7 @@ export default function LoopbackCloudLoginSection() {
       <p className="text-sm text-muted">
         {t("cloud.login.loopbackHandoff", {
           defaultValue:
-            "Sign in securely with Eliza Cloud, then return to this app.",
+            "Sign in securely with {{cloudName}}, then return to this app.",
         })}
       </p>
       {error ? (
@@ -130,7 +130,7 @@ export default function LoopbackCloudLoginSection() {
         {busy
           ? t("cloud.login.opening", { defaultValue: "Opening sign-in…" })
           : t("cloud.login.continueCloud", {
-              defaultValue: "Continue with Eliza Cloud",
+              defaultValue: "Continue with {{cloudName}}",
             })}
       </Button>
     </div>

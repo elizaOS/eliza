@@ -14,7 +14,10 @@ Native storage behavior requires testing on the target Apple or Android device.
 
 `KeystoreTextFrame` is a native-only codec for existing
 `Base64(IV):Base64(AES-GCM ciphertext/tag)` records. Hosts retain the deployed
-alias, storage and access policy; the format has no AAD or unlock requirement.
+alias, storage and access policy; the format has no unlock requirement.
+`seal(value, aad)` and `open(frame, aad)` bind a frame to its context, such as a
+record name. A bound frame opens only with the same AAD; existing unbound frames
+keep using `seal(value)` and `open(frame)`.
 It serializes cold key creation across instances and bounds encoded records on
 read and write. Native custody tests cover old-writer/new-reader and
 new-writer/old-reader compatibility, tampering and concurrent cold use. Use the
@@ -136,6 +139,17 @@ never use it to recover missing custody for an existing database. Corrupt or
 unreadable custody fails without replacement. Removal compares a key-generation
 ID. Close returned keys and erase caller-owned byte copies after use. Java JSON
 and Base64 strings cannot be reliably erased from memory.
+
+`TaskDataKeyStore.perSlot(directory, aliasPrefix, preferStrongBox)` gives each
+slot its own Keystore wrapping key (`aliasPrefix` plus the slot digest). StrongBox
+is used for new wrapping keys when requested and available, else the default
+Keystore. `destroy` crypto-erases one slot: it deletes the Keystore entry first,
+then the wrapped copy. A wrapped copy whose entry is gone throws
+`WrappingKeyMissingException` and is never replaced; call `destroy` to finish.
+`adopt(from, to, databaseId, step)` copies one key generation to another account,
+reads it back, runs the host step (for example a file move), and only then erases
+the source. A repeat after a stop resumes; a target with a different key is left
+unchanged. Reserve a new directory and alias prefix for per-slot custody.
 
 This helper has no renderer bridge and is not enabled by default. It does not
 provide a database driver, active-key verification, migration, or complete account

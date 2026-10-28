@@ -161,9 +161,19 @@ export function installMobileWorkflowProcessHost(
       );
       bunFlags[key] = env[key] === "1";
     }
+  const bunTarget = env.ELIZA_ANDROID_BUN_TARGET ?? "linux-musl";
+  requireValue(
+    bunTarget === "linux-musl" || bunTarget === "android",
+    "Invalid mobile Bun target",
+  );
+  if (bunTarget === "android")
+    requireValue(
+      env.LD_PATH === env.BUN_PATH,
+      "Native Android runtime executable differs",
+    );
   const launcher = {
-    executable: pin(env.LD_PATH),
-    prefixFiles: [pin(env.BUN_PATH)],
+    executable: pin(bunTarget === "android" ? env.BUN_PATH : env.LD_PATH),
+    prefixFiles: bunTarget === "android" ? [] : [pin(env.BUN_PATH)],
   };
   const nativeSocket = env.ELIZA_BIONIC_INFERENCE_SOCK;
   if (env.ELIZA_BIONIC_HOST_DELEGATED === "1" && nativeSocket) {

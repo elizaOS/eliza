@@ -11,7 +11,7 @@ const body =
 const context = {
   accountId: "google-a",
   actorId: "owner",
-  agentId: "senior-care",
+  agentId: "example-app",
   taskId: "task",
   epoch: 1,
   billingAccountRef: "utility-account",
@@ -97,7 +97,7 @@ test("attachment-only bills retain document hash and exact bill facts", async ()
   try {
     const owner = {
       actorId: "owner",
-      agentId: "senior-care",
+      agentId: "example-app",
       connector: { source: "app", accountId: "owner" },
     };
     const task = {

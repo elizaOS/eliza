@@ -5,10 +5,9 @@
  *   - TTS route → `POST ${KOKORO_TTS_URL}/api/tts` { text, voice, speed } → WAV
  *   - STT route → `POST ${WHISPER_STT_URL}/v1/audio/transcriptions` (multipart)
  *
- * Gated: only runs when ELIZA_VOICE_LIVE_RAILWAY=1 (it hits the deployed Railway
- * services). Defaults point at the provisioned deploy; override via env. This is
- * the on-machine end-to-end validation of the web/cloud voice integration that
- * does not require a Cloudflare Worker deploy.
+ * Opt-in self-hosted compatibility test. ELIZA_VOICE_LIVE_RAILWAY=1 is the
+ * retained workflow flag; both service URLs must now be supplied explicitly.
+ * Managed Cloudflare speech is covered by voice-cloudflare-live.test.ts.
  */
 import { describe, expect, test } from "bun:test";
 import { resolveWhisperSttModel } from "../v1/voice/stt/whisper-model";
@@ -16,15 +15,13 @@ import { resolveWhisperSttModel } from "../v1/voice/stt/whisper-model";
 const LIVE = process.env.ELIZA_VOICE_LIVE_RAILWAY === "1";
 const LIVE_SPANISH =
   LIVE && Boolean(process.env.ELIZA_VOICE_LIVE_SPANISH_AUDIO_URL);
-// `||`, not `??`: the CI workflow maps these from repo *variables*, and GitHub
-// injects an unset variable as the empty string — which must still fall back
-// to the provisioned Railway instances instead of fetch()ing an empty base.
-const KOKORO_TTS_URL =
-  process.env.KOKORO_TTS_URL ||
-  "https://kokoro-tts-production-aa4b.up.railway.app";
-const WHISPER_STT_URL =
-  process.env.WHISPER_STT_URL ||
-  "https://whisper-stt-production-6fc7.up.railway.app";
+const KOKORO_TTS_URL = process.env.KOKORO_TTS_URL?.trim() ?? "";
+const WHISPER_STT_URL = process.env.WHISPER_STT_URL?.trim() ?? "";
+if (LIVE && (!KOKORO_TTS_URL || !WHISPER_STT_URL)) {
+  throw new Error(
+    "Live self-hosted voice tests require KOKORO_TTS_URL and WHISPER_STT_URL",
+  );
+}
 const WHISPER_MODEL = resolveWhisperSttModel(process.env.WHISPER_STT_MODEL);
 
 const maybe = LIVE ? test : test.skip;
@@ -51,7 +48,7 @@ async function transcribeAudio(
   return (sttJson.text ?? "").toLowerCase();
 }
 
-describe("free cloud voice — live Railway contract (Kokoro TTS + Whisper STT)", () => {
+describe("self-hosted voice — live compatibility contract (Kokoro TTS + Whisper STT)", () => {
   maybe(
     "TTS→STT round-trip: Kokoro synthesizes WAV, Whisper transcribes it back",
     async () => {

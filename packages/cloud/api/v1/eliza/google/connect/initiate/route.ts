@@ -86,7 +86,7 @@ app.post("/", async (c) => {
         ? { personalContextPurpose: parsed.data.purpose }
         : {}),
     });
-    const alphaReturn = resolveAppOAuthReturn(
+    const appReturn = resolveAppOAuthReturn(
       {
         providerId: "google",
         organizationId: user.organization_id,
@@ -95,9 +95,9 @@ app.post("/", async (c) => {
         redirectUrl: parsed.data.redirectUrl,
       },
       "google",
-      getCloudAwareEnv().ALPHA_OAUTH_RETURN_URLS,
+      getCloudAwareEnv().APP_OAUTH_RETURN_URLS,
     );
-    return c.json(alphaReturn ? { ...result, alphaReturn: 2 } : result);
+    return c.json(appReturn ? { ...result, appReturn: 2 } : result);
   } catch (error) {
     if (error instanceof AgentGoogleConnectorError) {
       return c.json({ error: error.message }, error.status as 400);

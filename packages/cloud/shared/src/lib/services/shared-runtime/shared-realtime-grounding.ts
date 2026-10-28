@@ -10,6 +10,7 @@ import {
   isPrivateIpAddress,
 } from "@elizaos/core";
 import type { SharedRuntimePublicGrounding } from "../../../db/schemas/shared-runtime-history";
+import { logger } from "../../utils/logger";
 import type { SharedTurnMessage } from "./run-shared-agent-turn";
 import {
   currentNwsObservationSource,
@@ -18,7 +19,11 @@ import {
   parseCurrentWeatherSourceDiagnostics,
   parseExplicitUsWeatherQuery,
 } from "./shared-current-weather";
-import { sharedSelectedGroundingMetadata } from "./shared-runtime-history-policy";
+import { formatSharedMessageText } from "./shared-message-style";
+import {
+  isSharedPublicGroundingFollowUp,
+  sharedSelectedGroundingMetadata,
+} from "./shared-runtime-history-policy";
 
 export type SharedRealtimeDomain = "markets" | "weather" | "news" | "sports" | "mutable_fact";
 
@@ -399,7 +404,8 @@ export function hasSharedRealtimeIntent(
   return Boolean(
     (isSharedPublicSearchSafe(normalized) && sharedPublicGoogleProductQuery(normalized)) ||
       classifyPublicIntent(normalized) ||
-      sharedSelectedGroundingMetadata(history, normalized),
+      (isSharedPublicGroundingFollowUp(normalized) &&
+        sharedSelectedGroundingMetadata(history, normalized)),
   );
 }
 
@@ -418,6 +424,7 @@ export function resolveSharedRealtimeRequirement(
     const query = publicProviderQuery(direct, normalized);
     return query ? { domain: direct, query, correction } : undefined;
   }
+  if (!isSharedPublicGroundingFollowUp(normalized)) return undefined;
   const selected = sharedSelectedGroundingMetadata(history, normalized);
   const priorQuery = selected?.query.normalize("NFKC").trim();
   const priorDomain = priorQuery ? classifyPublicStandalone(priorQuery) : undefined;
@@ -514,6 +521,34 @@ export function requireTraceableRealtimeSearch(
       },
     };
   }
+  logger.audit("[shared-realtime] source receipt refused", {
+    ...(isCurrentWeatherUnavailableReason(data.unavailableReason)
+      ? { unavailableReason: data.unavailableReason }
+      : {}),
+    ...(sourceDiagnostics ? { sourceDiagnostics } : {}),
+    queryScopeRejected: result.error === "PUBLIC_SEARCH_QUERY_SCOPE_MISMATCH",
+    success: result.success === true,
+    actionMatches: data.actionName === "WEB_SEARCH",
+    queryMatches: normalizedRealtimeQuery(data.query) === normalizedRealtimeQuery(query),
+    providerMatches: weather ? nws : data.provider === "parallel",
+    timestampFresh:
+      typeof receiptObservedAt === "number" &&
+      Number.isSafeInteger(receiptObservedAt) &&
+      Math.abs(receiptObservedAt - observedAt) <= 5 * 60 * 1000,
+    complete: data.truncated === false,
+    overflowed: data.evidenceOverflowed === true,
+    sourceCount: Array.isArray(data.sources) ? data.sources.length : 0,
+    sourcesValid: sources !== undefined,
+    sourceFailure: !Array.isArray(data.sources)
+      ? "missing"
+      : data.sources.some((source) => {
+            if (!source || typeof source !== "object") return true;
+            const item = source as Record<string, unknown>;
+            return typeof item.text === "string" && containsUnsafeHttpUrl(item.text);
+          })
+        ? "unsafe-source-url"
+        : "missing-or-invalid-source",
+  });
   return {
     success: false,
     text: "Live public data is temporarily unavailable from complete, source-bound evidence.",
@@ -883,16 +918,125 @@ export function normalizeSharedPublicCitations(
   );
 }
 
+/** Normalize explicit magnitude spellings only for general public citations. */
+function normalizeGeneralNumericFormats(
+  text: string,
+  mode: "claim" | "evidence" = "claim",
+): string | undefined {
+  let invalid = false;
+  const normalized = text.replace(
+    /(?<![\p{L}\p{N}_.+-])([+-]?\d[\d,.]*)(?:[ \t]+(thousand|million|billion)\b|([kmb])(?![\p{L}\p{N}_/]))/giu,
+    (original, rawNumber: string, word: string | undefined, suffix: string | undefined) => {
+      // Lowercase m can mean metres; MB and m/s are not magnitude spellings.
+      if (suffix && !["k", "K", "M", "B"].includes(suffix)) return original;
+      if (!/^[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/u.test(rawNumber)) {
+        invalid = true;
+        return mode === "evidence" ? " " : original;
+      }
+      const magnitude = word?.toLowerCase();
+      const exponent =
+        magnitude === "thousand" || suffix === "k" || suffix === "K"
+          ? 3
+          : magnitude === "million" || suffix === "M"
+            ? 6
+            : 9;
+      // Decimal exponent parsing avoids multiplication roundoff (e.g.1.005k).
+      const expanded = Number(`${rawNumber.replaceAll(",", "")}e${exponent}`);
+      if (!Number.isFinite(expanded) || Math.abs(expanded) > Number.MAX_SAFE_INTEGER) {
+        invalid = true;
+        return mode === "evidence" ? " " : original;
+      }
+      return String(expanded);
+    },
+  );
+  return invalid && mode === "claim" ? undefined : normalized;
+}
+
+/**
+ * General RAG checks citation provenance and numeric presence, not semantic
+ * entailment. In particular, it cannot prove same-page attribution/scope.
+ * Realtime claims continue to use the unchanged strict validator above.
+ */
+function generalPublicClaimSupported(
+  claim: string,
+  source: SourceEvidence,
+  diagnostic: { failedPredicateMask: number },
+): boolean {
+  const normalized = claim.trim();
+  if (!normalized || /^[\s?!.,-]{1,12}$/u.test(normalized)) {
+    diagnostic.failedPredicateMask |= 128;
+    return false;
+  }
+  if (!source.text.trim()) {
+    diagnostic.failedPredicateMask |= 128;
+    return false;
+  }
+  const urls = replyUrls(normalized);
+  if (!urls || urls.some((url) => url !== canonicalPublicUrl(source.url))) {
+    diagnostic.failedPredicateMask |= 64;
+    return false;
+  }
+  // URLs are provenance, not numeric claims. Source text is bounded by the
+  // current-turn receipt; never search another result to support this citation.
+  const factualText = normalizeGeneralNumericFormats(normalized.replace(HTTP_URL, " "));
+  // An invalid magnitude contributes no support, but must not poison unrelated
+  // valid evidence. Never leave its raw digits for numericValues to reinterpret.
+  const evidence = normalizeGeneralNumericFormats(
+    evidenceClauses(source.text).join("\n"),
+    "evidence",
+  );
+  if (factualText === undefined || evidence === undefined) {
+    diagnostic.failedPredicateMask |= 2;
+    return false;
+  }
+  const numbers = numericValues(evidence);
+  if (numericValues(factualText).some((value) => !numericSupported(value, numbers))) {
+    diagnostic.failedPredicateMask |= 2;
+    return false;
+  }
+  const numericUnits = numericUnitTuples(evidence);
+  if (
+    numericUnitTuples(factualText).some(
+      (claimUnit) =>
+        !numericUnits.some(
+          (candidate) =>
+            candidate.unit === claimUnit.unit &&
+            numericSupported(claimUnit.value, [candidate.value]),
+        ),
+    )
+  ) {
+    diagnostic.failedPredicateMask |= 4;
+    return false;
+  }
+  const units = new Set(claimUnits(evidence));
+  if (claimUnits(factualText).some((unit) => !units.has(unit))) {
+    diagnostic.failedPredicateMask |= 8;
+    return false;
+  }
+  return true;
+}
+
 function supportedRealtimeReply(
   reply: string,
   grounding: AvailableGrounding,
-  onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
-): { reply: string; selectedUrls: string[]; omittedUnsupported: boolean } | undefined {
+  onRefusal: ((diagnostic: SharedRealtimeBindingDiagnostic) => void) | undefined,
+  mode: "realtime" | "general_public",
+):
+  | {
+      reply: string;
+      selectedUrls: string[];
+      selectedDisplayUrls: string[];
+      omittedUnsupported: boolean;
+      omittedSubstantive: boolean;
+    }
+  | undefined {
   if (!hasTraceableRealtimeGrounding(grounding)) return undefined;
+  // Preserve the public natural-citation spelling adapter before either validator.
   reply = normalizeSharedPublicCitations(reply, grounding);
   SOURCE_MARKER.lastIndex = 0;
   let cursor = 0;
   let omittedUnsupported = false;
+  let omittedSubstantive = false;
   let lastSegmentAccepted = false;
   const diagnostic = {
     markerCount: 0,
@@ -901,30 +1045,59 @@ function supportedRealtimeReply(
   };
   const segments: string[] = [];
   const selectedUrls: string[] = [];
+  const selectedDisplayUrls: string[] = [];
   for (const marker of reply.matchAll(SOURCE_MARKER)) {
     diagnostic.markerCount = Math.min(1000, diagnostic.markerCount + 1);
     const source = sourceForUrl(grounding, marker[1]);
-    if (source) {
+    if (source)
       diagnostic.knownSourceMarkerCount = Math.min(1000, diagnostic.knownSourceMarkerCount + 1);
-    }
     const claim = reply.slice(cursor, marker.index).trim();
-    if (source && claimSupported(claim, source, diagnostic)) {
+    if (
+      source &&
+      (mode === "general_public"
+        ? generalPublicClaimSupported(claim, source, diagnostic)
+        : claimSupported(claim, source, diagnostic))
+    ) {
       segments.push(claim);
       selectedUrls.push(marker[1]);
+      let displayUrl = marker[1];
+      const preferred = new URL(source.url);
+      if (
+        preferred.hostname === "developers.google.cn" &&
+        preferred.searchParams.getAll("hl").length === 1 &&
+        preferred.searchParams.get("hl") === "en"
+      ) {
+        preferred.hostname = "developers.google.com";
+        preferred.searchParams.delete("hl");
+        const canonicalSource = sourceForUrl(grounding, preferred.href);
+        if (
+          canonicalSource &&
+          (mode === "general_public"
+            ? generalPublicClaimSupported(claim, canonicalSource, { failedPredicateMask: 0 })
+            : claimSupported(claim, canonicalSource))
+        )
+          displayUrl = canonicalSource.url;
+      }
+      selectedDisplayUrls.push(displayUrl);
       lastSegmentAccepted = true;
     } else {
       omittedUnsupported = true;
+      omittedSubstantive ||= /[\p{L}\p{N}]/u.test(claim);
       lastSegmentAccepted = false;
     }
     cursor = (marker.index ?? 0) + marker[0].length;
   }
   const tail = reply.slice(cursor).trim();
-  if (tail && /^[.!?,;:…)\]]+$/u.test(tail)) {
-    // Closing punctuation after the last citation is not an uncited claim. It
-    // is kept only with an accepted segment, never with omitted text.
-    if (lastSegmentAccepted) segments[segments.length - 1] += tail;
+  if (
+    tail &&
+    (mode === "general_public" ? /^[\s.!?,;:…]+$/u.test(tail) : /^[.!?,;:…)\]]+$/u.test(tail))
+  ) {
+    // Punctuation after a citation is not an uncited factual claim. Attach it
+    // only to the immediately preceding accepted segment, never omitted text.
+    if (lastSegmentAccepted) segments[segments.length - 1] += tail.replace(/\s+/gu, "");
   } else if (tail) {
     omittedUnsupported = true;
+    omittedSubstantive ||= /[\p{L}\p{N}]/u.test(tail);
   }
   if (segments.length === 0 && onRefusal) {
     try {
@@ -941,37 +1114,60 @@ function supportedRealtimeReply(
       // Diagnostic delivery must not change the existing refusal outcome.
     }
   }
+  const validatedReply = segments.join("\n");
   return segments.length > 0
-    ? { reply: segments.join("\n"), selectedUrls, omittedUnsupported }
+    ? {
+        reply:
+          mode === "general_public"
+            ? validatedReply.replace(/\n[ \t]*([.!?,;:…]+)(?=[ \t]*(?:\n|$))/gu, "$1")
+            : validatedReply,
+        selectedUrls,
+        selectedDisplayUrls,
+        omittedUnsupported,
+        omittedSubstantive,
+      }
     : undefined;
 }
 
-/** Produces Telegram-safe attribution or an honest deterministic recovery. */
+/** Display identity only: exact receipt URLs remain authoritative for validation. */
+function sourceDisplayIdentity(canonical: string): string {
+  const url = new URL(canonical);
+  // The English Google documentation display variant adds no page identity.
+  // Other locales, hosts and query parameters can select different evidence.
+  if (
+    url.hostname === "developers.google.com" &&
+    url.searchParams.getAll("hl").length === 1 &&
+    url.searchParams.get("hl") === "en"
+  )
+    url.searchParams.delete("hl");
+  return url.href;
+}
+
+/** Produces conversational attribution after the unchanged source validators. */
 export function finalizeSharedRealtimeReply(
   reply: string,
   grounding: SharedRuntimePublicGrounding | undefined,
   onRefusal?: (diagnostic: SharedRealtimeBindingDiagnostic) => void,
+  mode: "realtime" | "general_public" = "realtime",
 ): string {
   if (!hasTraceableRealtimeGrounding(grounding)) {
-    return "I can’t verify the current value from a complete, traceable live source right now, so I won’t guess. Please try again shortly.";
+    return "I couldn’t check that right now. Please try again in a moment.";
   }
-  const supported = supportedRealtimeReply(reply, grounding, onRefusal);
-  if (!supported) {
-    return `I found live public results, but I couldn’t safely bind the requested claim to one complete source, so I won’t guess.\n\nSource provider: ${grounding.provider} (checked ${new Date(grounding.observedAt).toISOString()})`;
-  }
-  const sources = [...new Set(supported.selectedUrls)].map((url) => {
+  const supported = supportedRealtimeReply(reply, grounding, onRefusal, mode);
+  if (!supported)
+    return "I couldn’t verify an answer from the sources I found. Please try rephrasing your question.";
+  const seen = new Set<string>();
+  const sources: string[] = [];
+  for (const url of supported.selectedDisplayUrls) {
     const canonical = canonicalPublicUrl(url);
     if (!canonical) throw new TypeError("Validated Shared realtime source became invalid");
-    const observed =
-      grounding.provider === "nws" && grounding.weatherObservation
-        ? `, observation ${grounding.weatherObservation.timestamp}`
-        : "";
-    return `Source: ${new URL(canonical).hostname.replace(/^www\./u, "")} — ${canonical} (${grounding.provider}${observed}, checked ${new Date(grounding.observedAt).toISOString()})`;
-  });
-  const omission = supported.omittedUnsupported
-    ? "\n\nI left out part of the draft because it was not supported by the live source."
-    : "";
-  return `${supported.reply}${omission}\n\n${sources.join("\n")}`;
+    const identity = sourceDisplayIdentity(canonical);
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    sources.push(canonical);
+  }
+  const partial = supported.omittedSubstantive ? "I found part of the answer:\n\n" : "";
+  return `${partial}${formatSharedMessageText(supported.reply)}\n\n${sources.length === 1 ? "Source" : "Sources"}: ${sources.join("\n")}`;
 }
 
 /** System-only policy; actual provider results remain untrusted data messages. */
