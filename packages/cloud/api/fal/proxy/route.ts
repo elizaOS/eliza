@@ -108,51 +108,18 @@ function readProviderDuration(value: unknown): number {
   return parsed;
 }
 
-// The raw proxy forwards provider JSON unchanged, so the quote must follow the
-// field the provider reads. Host-style aliases may raise the quote but never
-// lower it, and an alias that disagrees with the provider field is refused.
+// The raw proxy forwards provider JSON unchanged, so the quote reads only the
+// field the provider reads.
 function readBilledDuration(body: unknown, defaultDuration: number): number {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    !("duration" in body)
+  ) {
     return defaultDuration;
   }
-  const record = body as Record<string, unknown>;
-  const aliases = ["durationSeconds", "duration_seconds"]
-    .filter((key) => key in record)
-    .map((key) => readProviderDuration(record[key]));
-  if (!("duration" in record)) {
-    return Math.max(defaultDuration, ...aliases);
-  }
-  const duration = readProviderDuration(record.duration);
-  if (aliases.some((alias) => alias !== duration)) {
-    throw new ApiError(
-      400,
-      "validation_error",
-      "Duration fields must match the provider duration",
-    );
-  }
-  return duration;
-}
-
-function readBilledFlag(
-  body: unknown,
-  providerKey: string,
-  aliasKey: string,
-  defaultValue: unknown,
-): boolean | undefined {
-  const provider = readBoolean(body, [providerKey]);
-  const alias = readBoolean(body, [aliasKey]);
-  if (provider !== undefined) {
-    if (alias !== undefined && alias !== provider) {
-      throw new ApiError(
-        400,
-        "validation_error",
-        `${aliasKey} must match ${providerKey}`,
-      );
-    }
-    return provider;
-  }
-  if (alias === undefined) return undefined;
-  return alias || defaultValue === true;
+  return readProviderDuration((body as Record<string, unknown>).duration);
 }
 
 function readBoolean(body: unknown, keys: string[]): boolean | undefined {
@@ -244,18 +211,8 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
   const durationSeconds = h3Body
     ? readH3Duration(h3Body, defaults.durationSeconds)
     : readBilledDuration(body, defaults.durationSeconds);
-  const audio = readBilledFlag(
-    body,
-    "generate_audio",
-    "audio",
-    defaults.dimensions.audio,
-  );
-  const voiceControl = readBilledFlag(
-    body,
-    "voice_control",
-    "voiceControl",
-    defaults.dimensions.voiceControl,
-  );
+  const audio = readBoolean(body, ["generate_audio"]);
+  const voiceControl = readBoolean(body, ["voice_control"]);
   const dimensions = {
     ...defaults.dimensions,
     ...(readString(body, ["resolution"])
