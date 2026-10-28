@@ -18,6 +18,7 @@ import {
   digestSummaryText,
   digestZoneNote,
   HOSTED_DIGEST_CLIENT_ROUTES,
+  HOSTED_DIGEST_DELEGATION_ROUTES,
   HostedDigestProtocol,
   HostedSourceRejected,
   latestRetainedBrief,
@@ -80,6 +81,16 @@ describe('occurrence policy shared by admission and clients', () => {
 });
 
 describe('retained brief', () => {
+  test('a shortened brief or agent name is marked as shortened', () => {
+    const brief = latestRetainedBrief(
+      [result({ status: 'finished', output: 'a'.repeat(3000) })],
+      'b'.repeat(300)
+    );
+    expect(brief?.summary.length).toBe(2000);
+    expect(brief?.summary.endsWith('…')).toBe(true);
+    expect(brief?.agent.length).toBe(200);
+    expect(brief?.agent.endsWith('…')).toBe(true);
+  });
   test('a missed record never replaces the last brief that ran', () => {
     const morning = result({ status: 'finished', output: 'Two meetings today.' });
     const missed = result({
@@ -278,6 +289,27 @@ describe('protocol', () => {
     );
     await expect(protocol.mutate('loops', { id: 'src-9' }, signal)).rejects.toThrow('refused');
     expect(() => parseDigestResult({ cursor: 0 })).toThrow();
+  });
+  test('delegation paths are listed apart from the plugin routes', async () => {
+    const calls = new Set<string>();
+    const protocol = new HostedDigestProtocol(async (path, body) => {
+      calls.add(`${body === undefined ? 'GET' : 'POST'} ${path}`);
+      return {};
+    });
+    const signal = new AbortController().signal;
+    for (const path of ['start', 'complete', 'status', 'cancel', 'revoke', 'revocations'] as const)
+      await protocol.delegation(path, {}, signal);
+    expect([...calls].sort()).toEqual([...HOSTED_DIGEST_DELEGATION_ROUTES].sort());
+    for (const route of HOSTED_DIGEST_DELEGATION_ROUTES)
+      expect(HOSTED_DIGEST_CLIENT_ROUTES).not.toContain(route);
+  });
+  test('the dossier capability follows the advertised flag', async () => {
+    const protocol = new HostedDigestProtocol(async () => ({
+      hostedDigestProtocol: 1,
+      hostedNativeSourceProtocol: 1,
+      hostedDossierProtocol: 1,
+    }));
+    expect((await protocol.capabilities(new AbortController().signal)).dossier).toBe(true);
   });
   test('capabilities report only what the agent advertises', async () => {
     const protocol = new HostedDigestProtocol(async () => ({

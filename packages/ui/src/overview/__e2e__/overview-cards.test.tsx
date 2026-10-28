@@ -78,6 +78,20 @@ describe("OverviewAgendaCard", () => {
     expect(markup).toContain('data-host-card=""');
     expect(markup).toContain('class="host-title">Pay rent<');
     expect(markup).toContain('data-host-next=""');
+    // A host attribute never overrides the card's own state flag.
+    const guarded = renderToStaticMarkup(
+      <OverviewAgendaCard
+        {...base}
+        heading="Overdue reminder"
+        hasItem
+        overdue
+        title="Pay rent"
+        dataAttributes={{ "data-overview-state": "empty", "data-host-card": "" }}
+      />,
+    );
+    expect(guarded).toContain('data-overview-state="overdue"');
+    expect(guarded).not.toContain('data-overview-state="empty"');
+    expect(guarded).toContain('data-host-card=""');
     expect(markup).toContain(">Next: Design review 4:00 PM<");
     expect(markup).toContain('data-overview-part="nextSource">Work<');
   });

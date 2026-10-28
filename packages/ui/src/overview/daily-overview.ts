@@ -15,6 +15,15 @@
  */
 
 /** Locale formatting used by every presenter. */
+/**
+ * Shorten display text to at most `max` characters, marking any cut with an
+ * ellipsis so a shortened brief, label or message never reads as complete.
+ */
+export function overviewClip(text: string, max: number): string {
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
 export interface OverviewFormat {
   /** Time of day, for example "3:04 PM" or "15:04". */
   time(date: Date): string;
@@ -127,7 +136,7 @@ export function presentOverviewAttention(
   const updated = overviewInstant(summary?.updatedAt);
   const source =
     typeof summary?.source === "string" && summary.source.trim()
-      ? summary.source.trim().slice(0, 60)
+      ? overviewClip(summary.source.trim(), 60)
       : "Inbox";
   const unread =
     Number.isSafeInteger(summary?.unread) && Number(summary?.unread) >= 0
@@ -158,7 +167,7 @@ export function presentOverviewAttention(
     case "error": {
       const message =
         typeof summary.message === "string" && summary.message.trim()
-          ? summary.message.trim().slice(0, 120)
+          ? overviewClip(summary.message.trim(), 120)
           : `${source} could not be checked`;
       return {
         action: "inbox",
@@ -423,18 +432,18 @@ export function presentOverviewBrief(
     };
   const agent =
     typeof brief.agent === "string" && brief.agent.trim()
-      ? brief.agent.trim().slice(0, 40)
+      ? overviewClip(brief.agent.trim(), 40)
       : "Your agent";
   const verb = BRIEF_VERB[overviewBriefOutcome(brief.status)];
   const when = overviewWhenLabel(ran, now, format);
   const title =
-    summary.length > 56 ? `${summary.slice(0, 55).trimEnd()}…` : summary;
+    overviewClip(summary, 56);
   return {
     title,
     time: `${verb} ${when}`,
     source: agent,
     has: true,
-    label: `Open workflows. Latest brief from ${agent}, ${verb.toLowerCase()} ${when}: ${summary.slice(0, 280)}`,
+    label: `Open workflows. Latest brief from ${agent}, ${verb.toLowerCase()} ${when}: ${overviewClip(summary, 280)}`,
   };
 }
 
@@ -471,10 +480,10 @@ export function presentOverviewBriefCard(
   );
   return {
     has: true,
-    title: summary.length > 96 ? `${summary.slice(0, 95).trimEnd()}…` : summary,
+    title: overviewClip(summary, 96),
     failed: outcome === "failed",
     status: `${base.source} · ${base.time}`,
-    label: `Open scheduled digests. Latest brief from ${base.source}, ${BRIEF_VERB[outcome].toLowerCase()} ${when}: ${summary.slice(0, 280)}`,
+    label: `Open scheduled digests. Latest brief from ${base.source}, ${BRIEF_VERB[outcome].toLowerCase()} ${when}: ${overviewClip(summary, 280)}`,
   };
 }
 
@@ -496,8 +505,14 @@ export function overviewCalendarState(status: unknown): OverviewCalendarState {
   if (/denied/i.test(text)) return "denied";
   if (/could not be loaded|failed|unavailable\b/i.test(text)) return "error";
   if (/^Loading/i.test(text)) return "loading";
-  // Whole words only: "Disconnected" or "not connected" is never ready.
-  if (/\b(connected|limited)\b/i.test(text) && !/\bnot connected\b/i.test(text))
+  // Whole words only, and a negated status ("Disconnected", "not connected",
+  // "not yet connected", "isn't connected", "no longer connected") is never ready.
+  if (
+    /\b(connected|limited)\b/i.test(text) &&
+    !/\b(?:not|never|isn['’]t|aren['’]t|wasn['’]t|no longer)\s+(?:yet\s+|been\s+)?connected\b/i.test(
+      text,
+    )
+  )
     return "ready";
   if (/available in the Android app/i.test(text)) return "unavailable";
   return "not-connected";
@@ -602,7 +617,7 @@ export function presentOverviewAgendaSource(
     return { origin: "", read: "", description: "" };
   const name =
     typeof input.calendar === "string" && input.calendar.trim()
-      ? input.calendar.trim().slice(0, 60)
+      ? overviewClip(input.calendar.trim(), 60)
       : "";
   return {
     origin: name === "In this app" || name === "This app" ? "" : name,
@@ -908,7 +923,7 @@ export function presentOverviewAgendaFeed(
   const asOf = overviewInstant(input.asOf);
   const when = asOf ? overviewWhenLabel(asOf, input.now, format) : "";
   const error =
-    typeof input.error === "string" ? input.error.trim().slice(0, 160) : "";
+    typeof input.error === "string" ? overviewClip(input.error.trim(), 160) : "";
   switch (input.status) {
     case "loading":
       return {

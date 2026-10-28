@@ -27,7 +27,7 @@ interface OverviewCardBaseProps<Part extends string> {
   partAttributes?: Partial<Record<Part | "card", OverviewPartAttributes>>;
   /** Host inline styles per part (theme tokens, layout); the root uses `style`. */
   styles?: Partial<Record<Part, CSSProperties>>;
-  /** Root `data-*` attributes (state flags are added by each card). */
+  /** Root `data-*` attributes; each card's own `data-overview-*` state flags take precedence. */
   dataAttributes?: OverviewPartAttributes;
   style?: CSSProperties;
   /** Decorative icon in the card head. */
@@ -48,6 +48,16 @@ function partProps<Part extends string>(
     ...(style ? { style } : {}),
     ...(props.partAttributes?.[part] ?? {}),
   };
+}
+
+/** Host root attributes without `data-overview-*` keys, which belong to the card. */
+function hostDataAttributes(
+  attributes: OverviewPartAttributes | undefined,
+): OverviewPartAttributes {
+  if (!attributes) return {};
+  return Object.fromEntries(
+    Object.entries(attributes).filter(([key]) => !key.startsWith("data-overview-")),
+  );
 }
 
 function flag(value: boolean): string {
@@ -105,7 +115,7 @@ export function OverviewAgendaCard(props: OverviewAgendaCardProps) {
       data-overview-has-meta={flag(hasMeta)}
       data-overview-overdue={flag(props.overdue)}
       data-overview-has-next={flag(!!next)}
-      {...props.dataAttributes}
+      {...hostDataAttributes(props.dataAttributes)}
       aria-label={props.label}
       aria-description={props.description || undefined}
       onClick={props.onActivate}
@@ -187,7 +197,7 @@ export function OverviewAttentionCard(props: OverviewAttentionCardProps) {
       {...partProps(props, "card")}
       data-overview-card="attention"
       data-overview-state={props.state ?? (rows.length ? "ready" : "empty")}
-      {...props.dataAttributes}
+      {...hostDataAttributes(props.dataAttributes)}
       aria-label={props.label}
       aria-description={props.description || undefined}
       onClick={props.onActivate}
@@ -260,7 +270,7 @@ export function OverviewBriefCard(props: OverviewBriefCardProps) {
       data-overview-card="brief"
       data-overview-state={props.failed ? "failed" : "ready"}
       data-overview-failed={flag(props.failed)}
-      {...props.dataAttributes}
+      {...hostDataAttributes(props.dataAttributes)}
       aria-label={props.label}
       aria-description={props.description || undefined}
       aria-haspopup="dialog"

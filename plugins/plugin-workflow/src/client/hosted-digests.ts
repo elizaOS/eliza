@@ -459,6 +459,11 @@ export interface RetainedDigestSummary {
   agent: string;
   status: string;
 }
+/** Shorten display text to `max` characters, marking any cut with an ellipsis. */
+function clipText(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
+}
+
 /**
  * The newest retained result that actually ran (by completion, then cursor).
  * A missed, overlapping or unavailable occurrence is a record and never
@@ -476,9 +481,9 @@ export function latestRetainedBrief(
   }, null);
   return latest
     ? {
-        summary: digestSummaryText(latest).slice(0, 2000),
+        summary: clipText(digestSummaryText(latest), 2000),
         ranAt: latest.completedAt,
-        agent: agent.slice(0, 200) || 'Your agent',
+        agent: clipText(agent, 200) || 'Your agent',
         status: latest.status,
       }
     : null;
@@ -658,7 +663,7 @@ export class HostedDigestProtocol {
         id: id(v.id),
         revision: id(v.revision),
         kind: String(v.kind),
-        label: String(v.label).slice(0, 200),
+        label: clipText(String(v.label), 200),
         observedAt: date(v.observedAt),
         expiresAt: date(v.expiresAt),
         revoked: v.revoked === true,
@@ -738,7 +743,13 @@ export class HostedDigestProtocol {
   }
 }
 
-/** Every request path the protocol can make, for route-registration checks. */
+/**
+ * Every request path the protocol can make that plugin-workflow registers, for
+ * route-registration checks. `delegation()` paths under
+ * /api/workflow/hosted/cloud-delegation/ are served by the app host
+ * (packages/app cloud-google-delegation-routes) and are listed separately in
+ * HOSTED_DIGEST_DELEGATION_ROUTES.
+ */
 export const HOSTED_DIGEST_CLIENT_ROUTES: readonly string[] = Object.freeze([
   'GET /api/workflow/status',
   'GET /api/workflow/hosted/live-accounts',
@@ -752,6 +763,13 @@ export const HOSTED_DIGEST_CLIENT_ROUTES: readonly string[] = Object.freeze([
   'GET /api/workflow/hosted/results',
   'POST /api/workflow/hosted/results/ack',
 ]);
+
+/** Delegation request paths, served by the app host rather than plugin-workflow. */
+export const HOSTED_DIGEST_DELEGATION_ROUTES: readonly string[] = Object.freeze(
+  (['start', 'complete', 'status', 'cancel', 'revoke', 'revocations'] as const).map(
+    (path: HostedDigestDelegationPath) => `POST /api/workflow/hosted/cloud-delegation/${path}`
+  )
+);
 
 // JSON objects may arrive with a different property order after reconnect.
 // Array order and every value remain part of the immutable receipt identity.

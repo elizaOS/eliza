@@ -8,6 +8,7 @@ import {
   overviewBriefOutcome,
   overviewCalendarName,
   overviewCalendarState,
+  overviewClip,
   overviewOverdueDueLabel,
   overviewReadIsStale,
   presentOverviewAgendaCard,
@@ -201,6 +202,16 @@ describe("brief", () => {
   });
 });
 
+describe("display text", () => {
+  it("marks every shortened value with an ellipsis", () => {
+    expect(overviewClip("Short", 10)).toBe("Short");
+    expect(overviewClip("x".repeat(10), 10)).toBe("x".repeat(10));
+    const clipped = overviewClip("word ".repeat(100), 120);
+    expect(clipped.length).toBeLessThanOrEqual(120);
+    expect(clipped.endsWith("…")).toBe(true);
+  });
+});
+
 describe("agenda", () => {
   it("maps calendar adapter status to card states", () => {
     expect(overviewCalendarState("Calendar access denied")).toBe("denied");
@@ -211,6 +222,12 @@ describe("agenda", () => {
     expect(overviewCalendarState("Calendar disconnected")).toBe("not-connected");
     expect(overviewCalendarState("Calendar not connected")).toBe("not-connected");
     expect(overviewCalendarState("Not connected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar isn't connected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar isn’t connected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar not yet connected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar is no longer connected")).toBe("not-connected");
+    expect(overviewCalendarState("Calendar has never been connected")).toBe("not-connected");
+    expect(overviewCalendarState("Connected; access limited")).toBe("ready");
     expect(overviewCalendarState("Device calendars are available in the Android app.")).toBe("unavailable");
     expect(overviewCalendarState(undefined)).toBe("not-connected");
   });
