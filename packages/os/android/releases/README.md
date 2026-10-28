@@ -91,7 +91,10 @@ update client for one serial-bound device:
 - `stock-archive` verifies the channel's stock factory archive against the source
   lock and prints the exact fastboot plan; `verify-stock` checks the restored stock
   build. Stock recovery unlocks the bootloader and wipes data, so the operator runs it
-  with physical confirmation.
+  with physical confirmation. `fastboot flashing unlock` is refused unless OEM
+  unlocking was enabled from the running image's developer options, which a device
+  that no longer boots cannot do; whether released devices keep it enabled is a
+  release decision the stock-recovery drill must exercise.
 
 [`verify-launcher-image.mjs --target pixel10a`](../../scripts/android/verify-launcher-image.mjs)
 checks a booted image read-only: exact fingerprint, nonprivileged system launcher

@@ -1029,6 +1029,7 @@ export function stockRecoveryPlan({ channel, sourceLock, archive, entries }) {
     steps: problems.length ? [] : steps,
     notes: [
       "Extract the verified archive into a new directory and run the steps from it.",
+      "flashing unlock is refused unless OEM unlocking was enabled in the running image's developer options; a device that no longer boots cannot enable it, so the drill checks it first.",
       "flashing unlock and -w update erase all user data; the device asks for physical confirmation.",
       "Relock (fastboot flashing lock, which wipes again) only after verify-stock passes.",
       "This restores Google's stock image; it is not a signed update or rollback of the product.",
