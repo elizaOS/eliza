@@ -350,6 +350,28 @@ else
   done
 fi
 
+# Public legal text is split losslessly: the combined object can exceed a
+# Worker's 5 KiB variable limit while each natural document still fits.
+for name in CLOUD_PUBLIC_SERVICE_TERMS_JSON CLOUD_PUBLIC_SERVICE_PRIVACY_JSON; do
+  if has_nonblank_value "${!name:-}"; then
+    compact_document="$(node --input-type=module -e 'process.stdout.write(JSON.stringify(JSON.parse(process.env[process.argv[1]])))' "$name")"
+    printf -v "$name" '%s' "$compact_document"
+    export "${name?}"
+  fi
+done
+node --input-type=module - <<'NODE'
+const names = ["CLOUD_PUBLIC_SERVICE_NAME", "CLOUD_PUBLIC_SERVICE_TERMS_JSON", "CLOUD_PUBLIC_SERVICE_PRIVACY_JSON"];
+const values = names.map((name) => process.env[name] ?? "");
+if (values.some((value) => value.trim())) {
+  for (let index = 0; index < names.length; index++) {
+    if (!values[index].trim() || Buffer.byteLength(values[index], "utf8") > 5120) {
+      throw new Error(`Public service binding missing or exceeds 5120 bytes: ${names[index]}`);
+    }
+  }
+  for (const value of values.slice(1)) JSON.parse(value);
+}
+NODE
+
 # Queue only values explicitly configured in this protected GitHub
 # environment. queue_secret intentionally skips blank values, which
 # preserves an existing Cloudflare binding that GitHub cannot recover.
@@ -450,6 +472,9 @@ for name in \
   ELIZA_APNS_TOPIC \
   ELIZA_APNS_PRODUCTION \
   LOCAL_EMBEDDINGS_API_KEY \
+  CLOUD_PUBLIC_SERVICE_NAME \
+  CLOUD_PUBLIC_SERVICE_TERMS_JSON \
+  CLOUD_PUBLIC_SERVICE_PRIVACY_JSON \
   ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON \
   ELIZA_ANDROID_ASSET_LINKS_JSON
 do

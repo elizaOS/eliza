@@ -520,7 +520,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      hashes (>= 32 chars). POST /api/v1/subscription/redeem
 #                                      returns 503 while unset. Changing it invalidates
 #                                      every unredeemed code.
-#   ELIZA_MAPS_ROUTER_API_KEY          Optional GraphHopper key for ELIZA_MAPS_ROUTER_URL.
+#   ELIZA_MAPS_ROUTER_API_KEY          Optional router key for ELIZA_MAPS_ROUTER_URL.
+#   ELIZA_MAPS_GEOCODER_API_KEY        Optional geocoder key for ELIZA_MAPS_GEOCODER_URL.
 #                                      Maps settings are listed in the cloud-api README.
 #   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
 #                                      (element 0 signs, all published at jwks_uri).
@@ -733,6 +734,8 @@ OIDC_ISSUER_URL = "https://api-staging.eliza.app"
 # this environment (Alpha Phone staging authority). A var, not a secret, so a
 # missing secret push cannot silently change the issuer.
 ELIZA_ENTITLEMENT_ISSUER = "https://api-staging.eliza.app"
+# Preserve the published client contract; other deployments select their own audience.
+ELIZA_ENTITLEMENT_AUDIENCE = "eliza-alpha-phone"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
@@ -1078,6 +1081,8 @@ OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api.eliza.app"
 # Subscription entitlement `iss`; see the staging block.
 ELIZA_ENTITLEMENT_ISSUER = "https://api.eliza.app"
+# Preserve the published client contract; other deployments select their own audience.
+ELIZA_ENTITLEMENT_AUDIENCE = "eliza-alpha-phone"
 OIDC_REDIRECT_URI_ALIASES = '{"elizahub":["https://git.slop.cash/user/oauth2/elizacloud/callback"]}'
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That

@@ -5,7 +5,7 @@
  */
 
 import { System } from "@elizaos/capacitor-system";
-import { Messages } from "@elizaos/plugin-native-messages/bridge";
+import { sendFromMessages } from "../telephony-profile.ts";
 import type { MessagesViewCapabilityId } from "../view-capabilities.ts";
 import { loadMessagesState } from "./messages-view-helpers.ts";
 
@@ -53,8 +53,22 @@ const MESSAGES_CAPABILITY_HANDLERS: Record<
             : "";
     if (!address) throw new Error("address is required");
     if (!body) throw new Error("body is required");
-    await Messages.sendSms({ address, body });
-    return { sent: true, address, bodyLength: body.length };
+    const outcome = await sendFromMessages(address, body);
+    if (outcome.path === "direct")
+      return { sent: true, address, bodyLength: body.length };
+    // Behind the telephony profile the user reviewed the exact text natively;
+    // report the recorded outcome, never a guess.
+    const sent = ["submitted", "sent", "delivered"].includes(
+      outcome.result.status,
+    );
+    return {
+      sent,
+      reviewed: true,
+      status: outcome.result.status,
+      operationId: outcome.result.operationId,
+      address,
+      bodyLength: body.length,
+    };
   },
   "request-sms-role": async () => {
     await System.requestRole({ role: "sms" });

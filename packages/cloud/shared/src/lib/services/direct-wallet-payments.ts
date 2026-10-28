@@ -9,7 +9,7 @@ import {
 import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import Decimal from "decimal.js";
-import { and, eq, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import {
   createPublicClient,
   createWalletClient,
@@ -2380,6 +2380,11 @@ export class DirectWalletPaymentsService {
             AND ${cryptoPayments.transaction_hash} IS NOT NULL
             AND ${cryptoPayments.metadata}->>'kind' = 'direct_wallet_credit_purchase'`,
       )
+      // Every failed verify bumps `updated_at`, so a payment the RPC keeps
+      // failing on sorts to the back instead of holding a batch slot ahead of
+      // deposits nobody has checked yet. Without this order the batch is
+      // whatever physical order the heap returns.
+      .orderBy(asc(cryptoPayments.updated_at), asc(cryptoPayments.id))
       .limit(batchSize);
 
     // Cap how many times the cron retries a transient verify failure on a

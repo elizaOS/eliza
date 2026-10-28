@@ -99,6 +99,7 @@ public class MainActivity extends BridgeActivity {
         ElizaReminderMessagingService.onReminderOpened(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(AgentPlugin.class);
+        registerPlugin(ai.eliza.plugins.system.SensePlugin.class);
         registerPlugin(BatteryOptimizationPlugin.class);
         registerPlugin(VoiceCapturePlugin.class);
         registerPlugin(ElizaVoicePlugin.class);
@@ -173,6 +174,7 @@ public class MainActivity extends BridgeActivity {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         ElizaReminderMessagingService.onReminderOpened(this, intent);
         super.onNewIntent(intent);
+        if (getBridge() != null) getBridge().triggerWindowJSEvent("eliza:sense-invocation");
     }
 
     @Override

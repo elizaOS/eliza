@@ -166,6 +166,14 @@ describe("searchMessagesAction", () => {
     expect(result.data).toEqual({
       count: 1,
       scope: {
+        appliedFilters: {
+          query: "launch",
+          sender: { identifier: "alice@example.com" },
+          tags: ["launch", "important"],
+          sinceMs: 1500,
+          untilMs: 3500,
+          limit: 1,
+        },
         requestedSources: ["gmail", "discord", "telegram", "whatsapp"],
         succeededSources: ["gmail"],
         unregisteredSources: ["whatsapp"],
@@ -194,6 +202,7 @@ describe("searchMessagesAction", () => {
           subject: "Launch plan",
           snippet: "Quarterly launch update",
           receivedAtMs: 3_000,
+          receivedAt: "1970-01-01T00:00:03.000Z",
           tags: ["launch", "important"],
           contactWeight: null,
         },
@@ -241,7 +250,7 @@ describe("searchMessagesAction", () => {
     __resetDefaultTriageServiceForTests();
     const uncapped = await runSearch({ sources: ["whatsapp"] });
     expect(uncapped.text).toBe(
-      "No matching messages were returned. Searched 0 of 1 requested source(s); not searched: whatsapp (not registered). No result cap was probed; connector-internal completeness is unknown.",
+      "No matches were returned for the exact appliedFilters shown below. This does not establish that the mailbox has no matching messages under different filters. Searched 0 of 1 requested source(s); not searched: whatsapp (not registered). No result cap was probed; connector-internal completeness is unknown.",
     );
     expect(uncapped.data).toMatchObject({
       count: 0,
@@ -332,8 +341,8 @@ describe("searchMessagesAction", () => {
       new SearchAdapter("gmail", [], true, new Error("gmail unavailable")),
     );
 
-    await expect(runSearch({ sources: ["gmail"] })).rejects.toThrow(
-      "gmail unavailable",
-    );
+    await expect(
+      runSearch({ sources: ["gmail"], content: "launch" }),
+    ).rejects.toThrow("gmail unavailable");
   });
 });
