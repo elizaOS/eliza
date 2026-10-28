@@ -73,7 +73,10 @@ export async function restartAfterResume(
   return granted && stopped();
 }
 
-/** Outcome of an explicit Keep. Only a host receipt says "saved". */
+/**
+ * Outcome of an explicit Keep. Only a host receipt says "saved". "failed" means the store kept
+ * nothing for that identity; "unknown" means it may have, so only the same identity may retry.
+ */
 export type CameraKeepOutcome =
   | { status: "saved"; id?: string; message?: string }
   | { status: "failed" | "unknown"; message: string };
@@ -89,7 +92,8 @@ export interface CameraHostPorts {
   /**
    * Storage port for an explicit Keep of the reviewed capture. The operation identity is stable
    * for one capture, so a retry after a lost or unknown answer resolves the same save instead of
-   * keeping a duplicate.
+   * keeping a duplicate. After a definite failure the next Keep gets a fresh identity, since the
+   * store kept nothing and may keep answering "failed" for the old one.
    */
   keep?: {
     label: string;

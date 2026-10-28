@@ -88,6 +88,32 @@ describe("CameraPageView host ports", () => {
     expect(run.mock.calls[2][1]).not.toBe(first[1]);
   });
 
+  it("retries a definite Keep failure under a fresh identity", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "failed", message: "Not kept." })
+      .mockResolvedValueOnce({ status: "saved" });
+    render(<CameraPageView ports={{ keep: { label: "Keep photo", run } }} />);
+    fireEvent.click(await screen.findByTestId("camera-capture"));
+    fireEvent.click(await screen.findByTestId("camera-keep"));
+    expect((await screen.findByTestId("camera-keep-status")).textContent).toBe(
+      "Not kept.",
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId("camera-keep") as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByTestId("camera-keep"));
+    await waitFor(() =>
+      expect(screen.getByTestId("camera-keep-status").textContent).toBe(
+        "Photo kept.",
+      ),
+    );
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1][1]).not.toBe(run.mock.calls[0][1]);
+  });
+
   it("restarts a denied preview on return only after a grant in settings", async () => {
     camera.requestPermissions.mockResolvedValue({ camera: "denied" });
     const checkAccess = vi.fn().mockResolvedValue({ camera: "denied" });

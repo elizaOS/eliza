@@ -212,7 +212,12 @@ export function CameraPageView({
       return;
     setHanding(true);
     try {
-      setKept(await keepCapture(keep, photo, operationId));
+      const outcome = await keepCapture(keep, photo, operationId);
+      setKept(outcome);
+      // A definite failure kept nothing, and a store keeps that receipt for its identity, so the
+      // next Keep uses a fresh one. An unknown outcome keeps this identity, so a retry resolves
+      // the same save instead of keeping a duplicate.
+      if (outcome.status === "failed") setOperationId(captureOperationId());
     } finally {
       setHanding(false);
     }
