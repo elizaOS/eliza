@@ -31,6 +31,11 @@ import {
 } from "./local-inference-eot-route";
 
 const MAX_LOCAL_ASR_AUDIO_BYTES = 16 * 1024 * 1024;
+// `{ audioBase64 }` JSON carries the same audio bound as a raw body: base64
+// grows it by 4/3, plus room for the JSON wrapper. The default 1 MiB compat cap
+// refused about 8 s of the UI's 48 kHz WAV.
+const MAX_LOCAL_ASR_JSON_BODY_BYTES =
+	Math.ceil(MAX_LOCAL_ASR_AUDIO_BYTES / 3) * 4 + 1024;
 
 function toUint8Array(value: Uint8Array | ArrayBuffer): Uint8Array {
 	return value instanceof Uint8Array ? value : new Uint8Array(value);
@@ -87,10 +92,17 @@ async function readLocalInferenceAsrAudio(
 		.trim();
 
 	if (contentType === "application/json") {
-		const body = await readCompatJsonBody(req, res);
+		const body = await readCompatJsonBody(req, res, {
+			maxBytes: MAX_LOCAL_ASR_JSON_BODY_BYTES,
+		});
 		if (!body) return null;
 		if (typeof body.audioBase64 === "string") {
-			return new Uint8Array(Buffer.from(body.audioBase64, "base64"));
+			const audio = Buffer.from(body.audioBase64, "base64");
+			if (audio.byteLength > MAX_LOCAL_ASR_AUDIO_BYTES) {
+				sendJson(res, 413, { error: "Audio body too large" });
+				return null;
+			}
+			return new Uint8Array(audio);
 		}
 		sendJson(res, 400, { error: "Missing audioBase64" });
 		return null;
