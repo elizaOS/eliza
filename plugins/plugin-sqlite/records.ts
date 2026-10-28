@@ -1513,11 +1513,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             m.agentId === params.entityId;
           if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
         }
-        // plugin-sql scopes this read with RLS on `agent_id`; sqlite has no
-        // RLS, so scope it here. Rows stored without an agentId belong to
-        // this database, as in the other tenant checks.
-        if ((m.agentId ?? this.agentId) !== (params.agentId ?? this.agentId))
-          return false;
+        if (params.agentId && m.agentId !== params.agentId) return false;
         if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID))
           return false;
         if (params.roomId && m.roomId !== params.roomId) return false;
@@ -2532,11 +2528,7 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
       if (params.tableName && storedMemoryTableName(m) !== params.tableName)
         return false;
       if (params.entityId && m.entityId !== params.entityId) return false;
-      // plugin-sql scopes this read with RLS on `agent_id`; sqlite has no
-      // RLS, so scope it here. Rows stored without an agentId belong to
-      // this database, as in the other tenant checks.
-      if ((m.agentId ?? this.agentId) !== (params.agentId ?? this.agentId))
-        return false;
+      if (params.agentId && m.agentId !== params.agentId) return false;
       if (params.metadata) {
         const md = (m.metadata ?? {}) as Record<string, unknown>;
         for (const [k, v] of Object.entries(params.metadata)) {

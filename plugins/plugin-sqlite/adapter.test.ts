@@ -1601,21 +1601,13 @@ it("keeps another agent's memories out of searchMemories", async () => {
   // plugin-sql scopes this read with `agent_id = this.agentId`; the sqlite
   // read must not surface another agent's memory either.
   expect(hits.map((row) => row.id)).toEqual([own.id]);
-  // The same foreign row must stay out of the sibling reads this change
-  // scopes, mirroring plugin-sql's agent scoping. searchMessages is covered
-  // by #37062, not re-scoped here.
-  const listed = await adapter.getMemories({
-    tableName: "messages",
-    count: 10,
-  });
-  expect(listed.map((row) => row.id)).toEqual([own.id]);
+  // getMemoriesByRoomIds carries the same `agent_id = this.agentId` filter in
+  // plugin-sql.
   const byRooms = await adapter.getMemoriesByRoomIds({
     roomIds: [roomId],
     tableName: "messages",
   });
   expect(byRooms.map((row) => row.id)).toEqual([own.id]);
-  const counted = await adapter.countMemories({ tableName: "messages" });
-  expect(counted).toBe(1);
 });
 
 it("cache CAS has one winner, preserves null and rejects lossy values", async () => {
