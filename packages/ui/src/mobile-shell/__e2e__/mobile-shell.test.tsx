@@ -255,6 +255,7 @@ describe("navigation", () => {
       stack: [],
       drawer: false,
       drawerQuery: "",
+      assistant: "pill",
     });
     for (const view of ["b", "c", "d", "e", "f", "g", "h"])
       state = navigateMobileShell(state, {
@@ -279,6 +280,56 @@ describe("navigation", () => {
     expect(navigateMobileShell({ ...state, stack: [] }, { type: "back" })).toBe(
       MOBILE_SHELL_HOME,
     );
+  });
+
+  it("moves the assistant with navigation: Back lowers it before leaving a view", () => {
+    // The browser rests with its composer open; other views rest as a pill.
+    const options = {
+      assistantRest: (view: string) =>
+        view === "browser" ? ("input" as const) : ("pill" as const),
+    };
+    const go = (
+      state: typeof MOBILE_SHELL_HOME,
+      action: Parameters<typeof navigateMobileShell>[1],
+    ) => navigateMobileShell(state, action, options);
+    expect(MOBILE_SHELL_HOME.assistant).toBe("input");
+    let state = go(MOBILE_SHELL_HOME, { type: "open", view: "notes" });
+    expect(state.assistant).toBe("pill");
+    state = go(state, { type: "open", view: "browser", history: "push" });
+    expect(state).toMatchObject({ view: "browser", assistant: "input" });
+    state = go(state, { type: "assistant", detent: "full" });
+    // Full lowers to the half sheet, the sheet to the view's rest; only then Back leaves.
+    state = go(state, { type: "back" });
+    expect(state).toMatchObject({ view: "browser", assistant: "sheet" });
+    state = go(state, { type: "back" });
+    expect(state).toMatchObject({ view: "browser", assistant: "input" });
+    state = go(state, { type: "back" });
+    expect(state).toMatchObject({ view: "notes", stack: [], assistant: "pill" });
+    // An explicit detent opens a view over its rest; rest returns to it.
+    state = go(state, {
+      type: "open",
+      view: "browser",
+      history: "keep",
+      assistant: "sheet",
+    });
+    expect(state.assistant).toBe("sheet");
+    expect(go(state, { type: "assistant", detent: "rest" }).assistant).toBe(
+      "input",
+    );
+    // On Home the sheet lowers to the composer; the drawer closes before it.
+    const home = go(MOBILE_SHELL_HOME, { type: "home", assistant: "sheet" });
+    expect(home).toMatchObject({ view: null, assistant: "sheet" });
+    expect(go(home, { type: "back" })).toEqual(MOBILE_SHELL_HOME);
+    const drawer = go(home, { type: "drawer", open: true });
+    expect(go(drawer, { type: "back" })).toMatchObject({
+      drawer: false,
+      assistant: "sheet",
+    });
+    // Without a rest policy every view rests as a pill.
+    expect(
+      navigateMobileShell(MOBILE_SHELL_HOME, { type: "open", view: "browser" })
+        .assistant,
+    ).toBe("pill");
   });
 });
 

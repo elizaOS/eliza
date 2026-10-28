@@ -1,15 +1,20 @@
 /**
  * The mobile shell without its React components: product registration and
  * theme, canonical view ids and routes, the view registry, the navigation
- * reducer and the one launcher favorites migration. Runtime and background
- * code (agent navigation, voice, capture) import this entry so they never
- * load Home, All apps or a domain view.
+ * reducer (views, Back, the drawer and the assistant detent) and the one
+ * launcher favorites migration. Runtime and background code (agent
+ * navigation, voice, capture) import this entry so they never load Home,
+ * All apps or a domain view.
  */
 export {
   MOBILE_SHELL_HOME,
   MOBILE_SHELL_STACK_LIMIT,
+  type MobileAssistantDetent,
+  type MobileAssistantRest,
   type MobileShellNavigation,
   type MobileShellNavigationAction,
+  type MobileShellNavigationOptions,
+  mobileAssistantRest,
   navigateMobileShell,
 } from "./navigation";
 export {
