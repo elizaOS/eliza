@@ -765,7 +765,7 @@
     "@sendgrid/mail": "^8.1.6",
     "@solana/kit": "^6.0.0",
     "@solana/spl-token": "^0.4.14",
-    "@solana/web3.js": "1.98.4",
+    "@solana/web3.js": "1.99.0",
     "@upstash/redis": "^1.37.0",
     "@x402/svm": "2.21.0",
     "ai": "^6.0.170",

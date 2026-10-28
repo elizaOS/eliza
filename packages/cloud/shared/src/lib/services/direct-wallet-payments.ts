@@ -958,15 +958,21 @@ async function verifySolanaTokenPayment(params: {
   }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
+  // Version 1 transactions are a large share of mainnet traffic now. Asking
+  // for maxSupportedTransactionVersion 0 makes the node reject them with
+  // -32015 ("Transaction version (1) is not supported by the requesting
+  // client"), and retrying with the same bound can never recover. Version 1
+  // also covers legacy and version 0 transactions, so 1 is strictly wider.
+  // Requires @solana/web3.js >= 1.99, whose response parser accepts version 1.
   let tx = await connection.getParsedTransaction(params.txHash, {
     commitment: "confirmed",
-    maxSupportedTransactionVersion: 0,
+    maxSupportedTransactionVersion: 1,
   });
   for (let attempt = 0; !tx && attempt < 12; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     tx = await connection.getParsedTransaction(params.txHash, {
       commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
+      maxSupportedTransactionVersion: 1,
     });
   }
   if (!tx) {
