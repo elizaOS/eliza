@@ -18,6 +18,28 @@ public abstract class CalendarPlugin extends Plugin {
  private final CalendarCreationStore creations;
  protected CalendarPlugin(CalendarConfiguration configuration){this.configuration=java.util.Objects.requireNonNull(configuration);this.creations=new CalendarCreationStore(configuration);}
 
+ /** Opt-in host persistence after native review. The default engine keeps its existing behavior. */
+ protected boolean deferReviewedDeletion(){return false;}
+ protected JSObject enqueueReviewedDeletion(org.json.JSONObject target,String operationId)throws Exception{throw new UnsupportedOperationException("Deletion journal unavailable");}
+ private org.json.JSONObject deletionTarget(CalendarEventGuard.Snapshot snapshot)throws Exception{return new org.json.JSONObject().put("sourceId",Long.toString(snapshot.calendarId)).put("sourceRevision",snapshot.sourceRevision).put("eventId",Long.toString(snapshot.id)).put("revision",snapshot.revision).put("scope","single-local-event").put("fields",agentFields(snapshot));}
+ /** Exact provider revision and source are checked again immediately before one atomic batch.
+  * The host must durably claim dispatch and enforce owner/permission policy before calling.
+  * No invitation or event is recreated, and an unknown outcome must never be replayed. */
+ public static JSObject deleteReviewedExact(android.content.Context context,CalendarConfiguration configuration,org.json.JSONObject target){
+  JSObject result=new JSObject();boolean dispatched=false;
+  try{
+   if(androidx.core.content.ContextCompat.checkSelfPermission(context,Manifest.permission.READ_CALENDAR)!=android.content.pm.PackageManager.PERMISSION_GRANTED||androidx.core.content.ContextCompat.checkSelfPermission(context,Manifest.permission.WRITE_CALENDAR)!=android.content.pm.PackageManager.PERMISSION_GRANTED){result.put("status","permission-required");return result;}
+   if(!"single-local-event".equals(target.getString("scope")))throw new IllegalArgumentException();
+   long id=Long.parseLong(target.getString("eventId")),source=Long.parseLong(target.getString("sourceId"));
+   CalendarEventGuard.Snapshot current=CalendarEventGuard.read(context.getContentResolver(),id,source);
+   if(current==null||!current.direct(configuration.accountName,configuration.localCalendarName)||!current.revision.equals(target.getString("revision"))||!current.sourceRevision.equals(target.getString("sourceRevision"))){result.put("status","conflict");return result;}
+   ArrayList<ContentProviderOperation> operations=current.assertions();operations.add(ContentProviderOperation.newDelete(CalendarContract.Events.CONTENT_URI).withSelection(CalendarContract.Events._ID+"=?",new String[]{Long.toString(id)}).withExpectedCount(1).build());
+   dispatched=true;context.getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);
+   try(Cursor row=context.getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),new String[]{CalendarContract.Events.DELETED},null,null,null)){if(row==null||row.moveToFirst()&&row.getInt(0)==0)throw new IllegalStateException("Deletion readback unavailable");}
+   result.put("status","deleted");result.put("id",Long.toString(id));result.put("calendarId",Long.toString(source));result.put("revision",current.revision);
+  }catch(android.content.OperationApplicationException conflict){result.put("status","conflict");}catch(Exception failure){result.put("status",dispatched?"unknown":"conflict");}
+  return result;
+ }
  private boolean allowed(){return getPermissionState("calendar")==PermissionState.GRANTED;}
  private JSObject statusValue(String status){JSObject v=new JSObject();v.put("status",status);return v;}
  private void status(PluginCall c,String status){c.resolve(statusValue(status));}
@@ -89,11 +111,12 @@ public abstract class CalendarPlugin extends Plugin {
     try{
     if(!workflowForeground()||!allowed()||!unlocked()){deleting.set(false);status(c,"unavailable");return;}
     String title=snapshot.event.getAsString("title"),zone=snapshot.event.getAsString("eventTimezone");
-    String message=(title==null?"Untitled event":title)+"\n"+calendarIdentity()+"\n"+eventTimeDescription(snapshot.event.getAsLong("dtstart"),snapshot.event.getAsLong("dtend"),zone)+"\n"+NO_ATTENDEES+"\n\nDelete this one local event? This cannot be undone.";
+    String message=(title==null?"Untitled event":title)+"\n"+calendarIdentity()+"\n"+eventTimeDescription(snapshot.event.getAsLong("dtstart"),snapshot.event.getAsLong("dtend"),zone)+"\n"+NO_ATTENDEES+(deferReviewedDeletion()?"\n\nDelete this one local event after 10 seconds? You can Undo during that time.":"\n\nDelete this one local event? This cannot be undone.");
     deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle("Delete calendar event?").setMessage(message).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton("Delete event",(dialog,which)->{
      resolved[0]=true;
      if(!allowed()||!unlocked()){outcome[0]=statusValue("permission-required");return;}
      try{
+      if(deferReviewedDeletion()){outcome[0]=enqueueReviewedDeletion(deletionTarget(snapshot),null);return;}
       ArrayList<ContentProviderOperation> operations=snapshot.assertions();operations.add(ContentProviderOperation.newDelete(CalendarContract.Events.CONTENT_URI).withSelection(CalendarContract.Events._ID+"=?",new String[]{Long.toString(snapshot.id)}).withExpectedCount(1).build());
       getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);
       try(Cursor row=getContext().getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,snapshot.id),new String[]{CalendarContract.Events.DELETED},null,null,null)){if(row==null||row.moveToFirst()&&row.getInt(0)==0)throw new IllegalStateException("Deletion readback unavailable");}
@@ -185,7 +208,7 @@ public abstract class CalendarPlugin extends Plugin {
     if(!location.trim().isEmpty())message+="\nLocation: "+location;
     if(!description.trim().isEmpty())message+="\n\n"+description;
     if(!read)message+="\n\n"+NO_ATTENDEES;
-    message+=read?"\n\nShare this event with the connected agent?":remove?"\n\nDelete this event from this phone? This cannot be undone.":"\n\nSave this event on this phone?";
+    message+=read?"\n\nShare this event with the connected agent?":remove?(deferReviewedDeletion()?"\n\nDelete this event after 10 seconds? You can Undo during that time.":"\n\nDelete this event from this phone? This cannot be undone."):"\n\nSave this event on this phone?";
     android.widget.TextView text=new android.widget.TextView(getActivity());text.setText(message);text.setPadding(32,16,32,16);android.widget.ScrollView scroll=new android.widget.ScrollView(getActivity());scroll.addView(text);
     deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle(action+" calendar event?").setView(scroll).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton(read?"Share with agent":action+" event",(dialog,which)->{
      resolved[0]=true;if(!allowed()||!unlocked()||!operationId.equals(activeAgentOperation)){outcome[0]=statusValue("permission-required");return;}
@@ -193,6 +216,7 @@ public abstract class CalendarPlugin extends Plugin {
      try{
       if(!sourceRevision.equals(CalendarEventGuard.sourceRevision(getContext().getContentResolver(),sourceId,configuration.accountName,configuration.localCalendarName)))throw new IllegalStateException();
       if(!create){CalendarEventGuard.Snapshot latest=CalendarEventGuard.read(getContext().getContentResolver(),snapshot.id,sourceId);if(latest==null||!latest.revision.equals(snapshot.revision))throw new IllegalStateException();}
+      if(remove&&deferReviewedDeletion()){outcome[0]=enqueueReviewedDeletion(deletionTarget(snapshot),operationId);return;}
       long eventId=create?0:snapshot.id;CalendarEventGuard.Snapshot after=snapshot;
       if(!read){ArrayList<ContentProviderOperation> operations=create?new ArrayList<>():snapshot.assertions();if(create){operations.add(CalendarEventGuard.sourceAssertion(getContext().getContentResolver(),sourceId,sourceRevision));operations.add(ContentProviderOperation.newInsert(CalendarContract.Events.CONTENT_URI).withValues(changed).build());}else if(update)operations.add(ContentProviderOperation.newUpdate(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withValues(changed).withExpectedCount(1).build());else operations.add(ContentProviderOperation.newDelete(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId)).withExpectedCount(1).build());
        dispatched=true;android.content.ContentProviderResult[] result=getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);if(create)eventId=ContentUris.parseId(result[result.length-1].uri);

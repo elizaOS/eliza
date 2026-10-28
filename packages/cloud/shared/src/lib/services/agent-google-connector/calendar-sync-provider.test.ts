@@ -57,7 +57,7 @@ function fixture() {
       calls.push({ method, url: String(url), headers });
       expect(url.origin).toBe("https://www.googleapis.com");
       expect(headers.get("authorization")).toBe("Bearer synthetic-token");
-      expect(init.redirect).toBe("error");
+      expect(init.redirect).toBe("manual");
       if (url.pathname.includes("/calendarList/"))
         return inaccessible
           ? Response.json({}, { status: 404 })

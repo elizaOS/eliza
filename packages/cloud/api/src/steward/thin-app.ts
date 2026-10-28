@@ -144,11 +144,16 @@ export function createStewardThinApp(): Hono<AppEnv> {
   app.use("*", async (c, next) => {
     const env = c.env as { ENVIRONMENT?: string; REDIS_RATE_LIMITING?: string };
     const verdict = rateLimitConfigVerdict({
+      backend: c.env.CLOUD_RATE_STATE_BACKEND,
+      hasDurableBinding: Boolean(c.env.RATE_LIMIT_STATE),
       environment: env.ENVIRONMENT,
       redisRateLimiting: env.REDIS_RATE_LIMITING,
       // Config presence only — avoid constructing a Redis client on every
       // login-critical request (same fail-closed decision as bootstrap-app).
-      hasRedisClient: hasRedisConfig(c.env),
+      hasRedisClient:
+        c.env.CLOUD_RATE_STATE_BACKEND === "cloudflare"
+          ? false
+          : hasRedisConfig(c.env),
     });
     if (!rateLimitConfigLogged) {
       rateLimitConfigLogged = true;

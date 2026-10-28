@@ -140,9 +140,15 @@ export function toDocumentRecord(memory: Memory) {
 function fragmentTextChunks(text: string): string[] {
   const maxLength = 4000;
   const chunks: string[] = [];
-  for (let offset = 0; offset < text.length; offset += maxLength) {
-    const chunk = text.slice(offset, offset + maxLength).trim();
+  for (let offset = 0; offset < text.length; ) {
+    let end = Math.min(offset + maxLength, text.length);
+    // Never cut between the halves of a surrogate pair (an emoji, for
+    // example): a lone half is not valid JSON text for the jsonb column.
+    const last = text.charCodeAt(end - 1);
+    if (end < text.length && last >= 0xd800 && last <= 0xdbff) end -= 1;
+    const chunk = text.slice(offset, end).trim();
     if (chunk) chunks.push(chunk);
+    offset = end;
   }
   return chunks.length > 0 ? chunks : [text];
 }

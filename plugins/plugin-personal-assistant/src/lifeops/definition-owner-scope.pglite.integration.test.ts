@@ -612,6 +612,46 @@ describe("LifeOps definition persistence — owner scope and revision predicates
     });
   });
 
+  it("returns every owner item completed today, not only the first 24", async () => {
+    const now = new Date("2027-01-06T10:00:00.000Z");
+    const definitions = Array.from({ length: 30 }, (_, index) =>
+      makeDefinition(agentId, ownerA, `owner win ${index + 1}`),
+    );
+    const occurrenceIds: string[] = [];
+    for (const definition of definitions) {
+      await repository.createDefinition(definition);
+      const [occurrence] = await service.refreshDefinitionOccurrences(
+        definition,
+        now,
+      );
+      if (!occurrence) throw new Error("expected an occurrence to materialize");
+      await repository.updateOccurrence({
+        ...occurrence,
+        state: "completed",
+        completionPayload: { completedAt: now.toISOString() },
+        updatedAt: now.toISOString(),
+      });
+      occurrenceIds.push(occurrence.id);
+    }
+    try {
+      const completed = await service.listOwnerOccurrencesCompletedToday(now);
+      expect(completed.map((item) => item.id).sort()).toEqual(
+        [...occurrenceIds].sort(),
+      );
+    } finally {
+      for (const definition of definitions) {
+        await repository.deleteDefinition(agentId, definition.id, {
+          scope: {
+            domain: "user_lifeops",
+            subjectType: "owner",
+            subjectId: ownerA,
+          },
+          expectedUpdatedAt: definition.updatedAt,
+        });
+      }
+    }
+  });
+
   it("stale expectedUpdatedAt yields a typed conflict and leaves the row intact", async () => {
     const before = await repository.getDefinition(agentId, defA.id);
     if (!before) throw new Error("definition A missing");

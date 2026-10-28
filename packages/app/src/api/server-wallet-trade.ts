@@ -164,6 +164,10 @@ function validateExportNonce(
       reason: `Export confirmation delay not met. Wait ${remaining} more seconds.`,
     };
   }
+  if (elapsed > NONCE_TTL_MS) {
+    pendingExportNonces.delete(nonce);
+    return { valid: false, reason: "Export nonce expired." };
+  }
   pendingExportNonces.delete(nonce);
   return { valid: true };
 }

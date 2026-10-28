@@ -58,10 +58,15 @@ mock.module("../../cache/client", () => ({
 }));
 mock.module("../../runtime/cloud-bindings", () => ({
   ...originals.bindings,
-  getCloudAwareEnv: () => ({ NEXT_PUBLIC_APP_URL: "https://fixture.example.test" }),
+  getCloudAwareEnv: () => ({
+    NEXT_PUBLIC_APP_URL: "https://fixture.example.test",
+    APP_OAUTH_RETURN_URLS: "https://apps.example.org/reader/gmail/callback",
+  }),
 }));
 mock.module("./provider-registry", () => ({
   ...originals.registry,
+  getProvider: () => provider,
+  isProviderConfigured: () => true,
   getClientId: () => "synthetic-client",
   getClientSecret: () => "synthetic-secret",
   getCallbackUrl: () => "https://fixture.example.test/callback",
@@ -126,6 +131,7 @@ const { handleOAuth2Callback } = await import("./oauth2");
 const provider = {
   id: "google",
   pkce: false,
+  useGenericRoutes: true,
   endpoints: {
     authorization: "https://fixture.example.test/auth",
     token: "https://fixture.example.test/token",
@@ -332,4 +338,76 @@ describe("personal OAuth grant publication", () => {
     expect(secretRows.size).toBe(4);
     expect(rotated).toBe(0);
   });
+});
+
+describe("Alpha callback with real credential publication", () => {
+  test("success returns the exact persisted connection; denial publishes nothing", async () => {
+    const realInvalidation = await import("./invalidation");
+    const realEnforcement = await import("../eliza-app");
+    let invalidations = 0;
+    mock.module("./invalidation", () => ({
+      ...realInvalidation,
+      invalidateOAuthState: async () => {
+        invalidations += 1;
+      },
+    }));
+    mock.module("../eliza-app", () => ({
+      ...realEnforcement,
+      connectionEnforcementService: {
+        ...realEnforcement.connectionEnforcementService,
+        invalidateRequiredConnectionCache: async () => {},
+      },
+    }));
+    try {
+      const { handleGenericOAuthCallback } = await import(
+        "../../../../../api/v1/oauth/generic-callback"
+      );
+      const nonce = "s".repeat(43);
+      const returnUrl = `https://apps.example.org/reader/gmail/callback?state=${nonce}`;
+      state = { ...state, redirectUrl: returnUrl };
+      const result = await handleGenericOAuthCallback(
+        new Request(
+          `https://fixture.example.test/callback?code=synthetic-code&state=${crypto.randomUUID()}`,
+        ),
+        { params: Promise.resolve({ platform: "google" }) },
+      );
+      expect(result.status).toBe(302);
+      const target = new URL(result.headers.get("location") ?? "");
+      expect(target.origin + target.pathname).toBe(
+        "https://apps.example.org/reader/gmail/callback",
+      );
+      const returned = new URLSearchParams(target.hash.slice(1));
+      expect(returned.get("state")).toBe(nonce);
+      expect(returned.get("result")).toBe("connected");
+      const grants = (await snapshot()).grants;
+      expect(grants).toHaveLength(1);
+      expect(returned.get("connectionId")).toBe(grants[0]?.id as string);
+      expect([...returned.keys()].sort()).toEqual(["connectionId", "result", "state"]);
+      expect(invalidations).toBe(1);
+      state = {
+        providerId: "google",
+        organizationId: ORG,
+        userId: OWNER,
+        createdAt: Date.now(),
+        redirectUrl: returnUrl,
+      };
+      const denied = await handleGenericOAuthCallback(
+        new Request(
+          `https://fixture.example.test/callback?error=access_denied&state=${crypto.randomUUID()}`,
+        ),
+        { params: Promise.resolve({ platform: "google" }) },
+      );
+      expect(denied.status).toBe(302);
+      const denial = new URLSearchParams(
+        new URL(denied.headers.get("location") ?? "").hash.slice(1),
+      );
+      expect(denial.get("result")).toBe("denied");
+      expect(denial.has("connectionId")).toBe(false);
+      expect((await snapshot()).grants).toHaveLength(1);
+      expect(state).toBeNull();
+    } finally {
+      mock.module("./invalidation", () => realInvalidation);
+      mock.module("../eliza-app", () => realEnforcement);
+    }
+  }, 30_000);
 });

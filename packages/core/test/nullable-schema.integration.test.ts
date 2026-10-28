@@ -5,7 +5,8 @@ import {
 	buildPlannerToolsFromActions,
 } from "../src/actions/to-tool";
 import { validateToolArgs } from "../src/actions/validate-tool-args";
-import type { Action } from "../src/types/components";
+import { ElizaError } from "../src/errors.ts";
+import type { Action, ActionParameterSchema } from "../src/types/components";
 
 const action: Action = {
 	name: "UPDATE_SCHEDULE",
@@ -151,4 +152,36 @@ test("nullable enums retain their null branch in planner schema and admission", 
 		errors: [],
 	});
 	expect(validateToolArgs(enumAction, { value: "non-null" }).valid).toBe(false);
+});
+
+test("invalid tool definitions fail before argument admission with their original cause", () => {
+	const properties: Record<string, ActionParameterSchema> = {};
+	Reflect.set(properties, "missingSchema", undefined);
+	const broken: Action = {
+		...action,
+		name: "BROKEN_DEFINITION",
+		parameters: [{ name: "details", schema: { type: "object", properties } }],
+	};
+	let caught: unknown;
+	try {
+		validateToolArgs(broken, {});
+	} catch (error) {
+		caught = error;
+	}
+	expect(caught).toBeInstanceOf(ElizaError);
+	if (!(caught instanceof ElizaError)) throw new Error("Missing typed error");
+	expect(caught.code).toBe("ACTION_DEFINITION_INVALID");
+	expect(caught.severity).toBe("fatal");
+	expect(caught.cause).toBeInstanceOf(TypeError);
+	expect(caught.context).toEqual({ actionName: "BROKEN_DEFINITION" });
+});
+
+test("correctable arguments still return errors rather than a definition failure", () => {
+	const invalid = validateToolArgs(action, { schedule: { title: "Reviewed" } });
+	expect(invalid.valid).toBe(false);
+	expect(invalid.errors.length).toBeGreaterThan(0);
+	const repaired = validateToolArgs(action, {
+		schedule: { title: "Reviewed", recurrence: null },
+	});
+	expect(repaired.valid).toBe(true);
 });

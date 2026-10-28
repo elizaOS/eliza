@@ -1,3 +1,8 @@
+import {
+  CLOUDFLARE_TTS_MAX_CHARACTERS,
+  CloudflareSpeechError,
+  synthesizeCloudflareAudio,
+} from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -239,10 +244,15 @@ async function __hono_POST(c: AppContext) {
     const providerSelection = body
       ? selectTtsProvider({
           voiceId: body.voiceId,
+          cloudflareConfigured: Boolean(env.AI),
           cartesiaConfigured: Boolean(cartesiaApiKey),
           kokoroConfigured: Boolean(kokoroBaseUrl),
         })
       : undefined;
+    const maxTextLength =
+      providerSelection?.ok && providerSelection.provider === "cloudflare"
+        ? CLOUDFLARE_TTS_MAX_CHARACTERS
+        : MAX_TEXT_LENGTH;
     if (body && !body.text) {
       pendingResponse = Response.json(
         { error: "No text provided" },
@@ -253,10 +263,10 @@ async function __hono_POST(c: AppContext) {
         { error: "Text cannot be empty" },
         { status: 400 },
       );
-    } else if (body && body.text.length > MAX_TEXT_LENGTH) {
+    } else if (body && body.text.length > maxTextLength) {
       pendingResponse = Response.json(
         {
-          error: `Text too long. Maximum length is ${MAX_TEXT_LENGTH} characters`,
+          error: `Text too long. Maximum length is ${maxTextLength} characters`,
         },
         { status: 400 },
       );
@@ -285,7 +295,8 @@ async function __hono_POST(c: AppContext) {
     const willAdmit =
       pendingResponse === undefined &&
       providerSelection?.ok === true &&
-      providerSelection.provider !== "kokoro";
+      providerSelection.provider !== "kokoro" &&
+      providerSelection.provider !== "cloudflare";
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
@@ -368,10 +379,29 @@ async function __hono_POST(c: AppContext) {
       voiceId: providerSelection.voiceId ?? "default",
     });
     // -------------------------------------------------------------------------
-    // Free default voice: self-hosted Kokoro TTS. When KOKORO_TTS_URL is set this
-    // is the product default — no credit reservation, no billing. Explicit
-    // custom/ElevenLabs voice ids continue down the paid provider path.
+    // Workers AI replaces the hosted free default without changing customer
+    // billing. Explicit paid provider voices retain their existing admission.
     // -------------------------------------------------------------------------
+    if (providerSelection.provider === "cloudflare") {
+      timings.admissionMs = Date.now() - admissionStart;
+      const synthesisStart = Date.now();
+      const audio = await synthesizeCloudflareAudio(
+        env.AI,
+        text,
+        wantWav,
+        c.req.raw.signal,
+        providerSelection.speaker,
+      );
+      timings.synthesisMs = Date.now() - synthesisStart;
+      return new Response(audio, {
+        headers: {
+          "Content-Type": wantWav ? "audio/wav" : "audio/mpeg",
+          "Cache-Control": "no-store",
+          ...buildTtsObservabilityHeaders("cloudflare", timings),
+          "X-Eliza-TTS-Voice": providerSelection.speaker,
+        },
+      });
+    }
     if (providerSelection.provider === "kokoro") {
       const kokoroVoice = providerSelection.voiceId;
       timings.admissionMs = Date.now() - admissionStart;
@@ -1051,6 +1081,12 @@ async function __hono_POST(c: AppContext) {
           code: error.classification,
         },
         { status },
+      );
+    }
+    if (error instanceof CloudflareSpeechError) {
+      return Response.json(
+        { error: error.message, provider: "cloudflare" },
+        { status: error.status },
       );
     }
     const errorMessage =

@@ -265,6 +265,46 @@ describe("@elizaos/plugin-coding-tools — filesystem and shell integration", ()
     expect(written).toBe("smoke ok");
   });
 
+  // Current OpenAI keys carry a project, service-account or admin prefix and
+  // use - and _ in the body. Built at run time so no key-shaped literal ships.
+  const openAiKey = (prefix: string) =>
+    `sk-${prefix}-${"Ab3_".repeat(10)}-${"Zx9".repeat(12)}`;
+
+  it.each(["proj", "svcacct", "admin"])(
+    "FILE action=write refuses an OpenAI %s key",
+    async (prefix) => {
+      const target = path.join(tmpDir, `openai-${prefix}.env`);
+      const result = await runFile({
+        action: "write",
+        file_path: target,
+        content: `OPENAI_API_KEY=${openAiKey(prefix)}\n`,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("openai_key");
+      await expect(fs.access(target)).rejects.toThrow();
+    },
+  );
+
+  it("FILE action=edit refuses to introduce an OpenAI project key", async () => {
+    const target = path.join(tmpDir, "openai-edit.env");
+    await fs.writeFile(target, "OPENAI_API_KEY=\n", "utf8");
+    expect((await runFile({ action: "read", file_path: target })).success).toBe(
+      true,
+    );
+
+    const result = await runFile({
+      action: "edit",
+      file_path: target,
+      old_string: "OPENAI_API_KEY=\n",
+      new_string: `OPENAI_API_KEY=${openAiKey("proj")}\n`,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("openai_key");
+    expect(await fs.readFile(target, "utf8")).toBe("OPENAI_API_KEY=\n");
+  });
+
   it("SHELL echo hello", async () => {
     const action = findAction("SHELL");
     const result = await action.handler?.(runtime, makeMessage(), undefined, {
@@ -368,6 +408,30 @@ describe("@elizaos/plugin-coding-tools — filesystem and shell integration", ()
       path.join(tmpDir, "internal", "config", "config.go"),
     );
   });
+
+  it.each([
+    { action: "glob", pattern: "*.tsx", path: "app/[slug]" },
+    guidedFileParameters({ pattern: "*.tsx", path: "app/[slug]" }),
+  ])(
+    "FILE keeps a relative glob root whose directory name has glob characters",
+    async (parameters) => {
+      const slugDir = path.join(tmpDir, "app", "[slug]");
+      await fs.mkdir(slugDir, { recursive: true });
+      await fs.writeFile(path.join(slugDir, "page.tsx"), "export {};\n");
+      await fs.writeFile(path.join(tmpDir, "root.tsx"), "export {};\n");
+      try {
+        const result = await runFile(parameters);
+
+        expect(result.success).toBe(true);
+        expect(result.data).toMatchObject({
+          files: [path.join(slugDir, "page.tsx")],
+        });
+      } finally {
+        await fs.rm(path.join(tmpDir, "app"), { recursive: true, force: true });
+        await fs.rm(path.join(tmpDir, "root.tsx"), { force: true });
+      }
+    },
+  );
 
   it("FILE treats dense decoder defaults as absent for a valid read", async () => {
     const result = await runFile(

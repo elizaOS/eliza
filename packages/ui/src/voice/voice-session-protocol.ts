@@ -18,7 +18,11 @@
  *   - Every server state event carries a `traceId`.
  */
 /** Wire protocol version. Bumped only on breaking control-frame changes. */
-import type { VoiceUiContext } from "@elizaos/host/protocol";
+import {
+  findViewActionHandoff,
+  type ViewActionHandoff,
+} from "@elizaos/core/view-interaction";
+import type { VoiceUiContext } from "@elizaos/host/voice/ui-context";
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 /** Uplink/downlink codecs negotiated in `hello`. */
 export type VoiceSessionCodec = "pcm16" | "opus";
@@ -66,12 +70,14 @@ export type ClientControlFrame =
   | ClientHelloFrame
   | ClientAudioMetaFrame
   | ClientAudioCapabilitiesFrame
+  | { t: "playback_complete"; traceId: string }
   | ClientBargeInFrame
   | ClientByeFrame;
 // ── Server -> client control / state events ────────────────────────────
 export interface ServerReadyEvent {
   t: "ready";
   uiContext?: boolean;
+  playbackCompletion?: boolean;
   sessionId: string;
   traceId: string;
 }
@@ -135,6 +141,9 @@ export interface ServerNavigateViewEvent {
   viewPath?: string;
   subview?: string;
   traceId: string;
+  completedActionHandoffId?: string;
+  navigationPrepared?: true;
+  navigationBinding?: ViewActionHandoff["navigationBinding"];
 }
 export type InterruptionReason = "acoustic" | "explicit";
 export interface ServerInterruptedEvent {
@@ -160,6 +169,7 @@ export type ServerControlFrame =
   | {
       t: "reply_complete";
       traceId: string;
+      userMessageId?: string;
     }
   | ServerReadyEvent
   | ServerSttPartialEvent
@@ -217,6 +227,32 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   ).t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
+  if (t === "reply_complete") {
+    const frame = parsed as Record<string, unknown>;
+    if (
+      typeof frame.traceId !== "string" ||
+      !frame.traceId ||
+      frame.traceId.length > 256
+    )
+      return null;
+    if (
+      frame.userMessageId !== undefined &&
+      (typeof frame.userMessageId !== "string" ||
+        // Same shape rule as core `validateUuid`: elizaOS message ids are
+        // deterministic (version nibble 0), not RFC 4122 version 1-5.
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          frame.userMessageId,
+        ))
+    )
+      return null;
+    return {
+      t,
+      traceId: frame.traceId,
+      ...(typeof frame.userMessageId === "string"
+        ? { userMessageId: frame.userMessageId }
+        : {}),
+    };
+  }
   if (t === "progress") {
     const { text, traceId } = parsed as {
       text?: unknown;
@@ -269,12 +305,39 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
     ) {
       return null;
     }
+    const prepared =
+      Object.hasOwn(parsed, "navigationPrepared") ||
+      Object.hasOwn(parsed, "navigationBinding") ||
+      Object.hasOwn(parsed, "completedActionHandoffId");
+    const handoff = prepared
+      ? findViewActionHandoff([
+          {
+            actionName: "VIEWS_SHOW",
+            success: true,
+            values: { ...parsed, mode: "show" },
+          },
+        ])
+      : undefined;
+    if (
+      prepared &&
+      (!handoff?.navigationPrepared ||
+        !handoff.navigationBinding ||
+        !handoff.completedActionHandoffId)
+    )
+      return null;
     return {
       t,
       viewId,
       ...(viewPath ? { viewPath } : {}),
       ...(subview ? { subview } : {}),
       traceId,
+      ...(handoff?.navigationPrepared
+        ? {
+            navigationPrepared: true,
+            completedActionHandoffId: handoff.completedActionHandoffId,
+            navigationBinding: handoff.navigationBinding,
+          }
+        : {}),
     };
   }
   return parsed as ServerControlFrame;

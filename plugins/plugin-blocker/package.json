@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
-    "test": "bunx vitest run --config ./vitest.config.ts",
+    "test": "bunx vitest run --config ./vitest.config.ts && node --test src/services/website-blocker/*.test.mjs",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
@@ -42,15 +42,16 @@
   "dependencies": {
     "@capacitor/core": "8.4.0",
     "@elizaos/core": "workspace:*",
+    "@elizaos/host": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "lucide-react": "^1.0.0",
     "tldts": "7.4.15"
   },
   "peerDependencies": {
     "@elizaos/plugin-sql": "workspace:*",
-    "react": "^19.3.0",
-    "react-dom": "^19.0.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "elizaos": {
     "app": {
@@ -68,17 +69,17 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "esbuild": "^0.28.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.0.0",
-    "tsup": "^8.5.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tsup": "^9.0.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3",
-    "vite": "^8.3.0"
+    "vitest": "^5.0.5",
+    "vite": "^8.3.3"
   }
 }

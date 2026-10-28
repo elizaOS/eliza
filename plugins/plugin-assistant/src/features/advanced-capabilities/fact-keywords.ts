@@ -8,7 +8,11 @@
  * keyword-set similarity (1.0 identical, 0 disjoint) for dedupe/matching.
  */
 import type { FactMetadata, Memory } from "@elizaos/core";
-import { bm25Scores, normalizeBm25Scores } from "../documents/bm25.ts";
+import {
+  bm25Scores,
+  normalizeBm25Scores,
+  tokenize,
+} from "../documents/bm25.ts";
 
 const STOPWORDS = new Set([
   "the",
@@ -105,13 +109,14 @@ export function tokenizeFactText(text: string): string[] {
   // stored no keywords and a query in the same language built an empty
   // query text that scored every fact 0. Punctuation (including hyphens)
   // still separates tokens because it is outside the matched classes.
-  return (text.toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? []).filter(
-    (token) => {
-      if (STOPWORDS.has(token)) return false;
-      if (/^\p{N}+$/u.test(token)) return token.length >= 2;
-      return token.length >= 3;
-    },
-  );
+  // Reuse that tokenizer so its NFC step applies here too: without it a
+  // decomposed "café" or Hangul claim gave other tokens than the composed
+  // form, and the same preference fact was stored twice.
+  return tokenize(text).filter((token) => {
+    if (STOPWORDS.has(token)) return false;
+    if (/^\p{N}+$/u.test(token)) return token.length >= 2;
+    return token.length >= 3;
+  });
 }
 
 export function extractFactKeywords(...values: unknown[]): string[] {

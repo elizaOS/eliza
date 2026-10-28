@@ -1,3 +1,4 @@
+import { parseJsonObject } from '@elizaos/core';
 import { WorkflowApiError } from '../types/index';
 import {
   type PhoneDeviceTarget,
@@ -64,7 +65,8 @@ export async function generatePhoneSpec(
   input: PhoneGenerationInput,
   generate: (prompt: string) => Promise<string>
 ): Promise<PhoneWorkflowSpec> {
-  const { device: _device, ...existing } = input.existing ?? {};
+  // Enrollment and schedule are owner-set fields: the model never sees or changes them.
+  const { device: _device, trigger: _trigger, ...existing } = input.existing ?? {};
   const prompt =
     `Return one JSON object describing a manual phone workflow, or {"unsupported":"brief reason"} if the request cannot be represented in the permitted operations and selected scopes. Do not silently drop requested behavior. Never return code, source, tools, credentials, device identity, schedules or activation. This creates an editable draft only; it does not save or run anything.
 Schema: {"version":1,"name":"1–200 chars","description":"0–4000 chars","trigger":{"kind":"manual"},"steps":[...]}.
@@ -89,19 +91,12 @@ Only use operations in allowedOperations. Notes and Calendar reads MUST copy the
   const response = await generate(prompt);
   if (typeof response !== 'string' || Buffer.byteLength(response, 'utf8') > 65536)
     throw new WorkflowApiError('Generated workflow exceeds the response limit', 502);
-  let result: Record<string, unknown>;
-  try {
-    result = object(
-      JSON.parse(
-        response
-          .trim()
-          .replace(/^```json\s*/i, '')
-          .replace(/\s*```$/, '')
-      )
-    );
-  } catch {
-    throw new WorkflowApiError('Model did not return a typed workflow object', 502);
-  }
+  // A provider can wrap the object in a code fence, or add a line of prose
+  // before or after it, without changing the object it returned. The shared
+  // reader takes the first complete, string-aware object region and returns
+  // null when the reply has none.
+  const result = parseJsonObject<Record<string, unknown>>(response);
+  if (!result) throw new WorkflowApiError('Model did not return a typed workflow object', 502);
   if (
     Object.keys(result).length === 1 &&
     typeof result.unsupported === 'string' &&
@@ -112,9 +107,16 @@ Only use operations in allowedOperations. Notes and Calendar reads MUST copy the
     throw new WorkflowApiError('Workflow needs clarification: ' + result.unsupported, 422);
   if ('device' in result)
     throw new WorkflowApiError('Generated workflow supplied an enrollment identity', 502);
+  if ('trigger' in result && JSON.stringify(result.trigger) !== JSON.stringify({ kind: 'manual' }))
+    throw new WorkflowApiError('Generated workflow supplied a schedule', 502);
   let spec: PhoneWorkflowSpec;
   try {
-    spec = validatePhoneSpec({ ...result, ...(input.device ? { device: input.device } : {}) });
+    // A generated draft keeps the owner's reviewed trigger; a new draft starts manual.
+    spec = validatePhoneSpec({
+      ...result,
+      trigger: input.existing?.trigger ?? { kind: 'manual' },
+      ...(input.device ? { device: input.device } : {}),
+    });
   } catch {
     throw new WorkflowApiError('Generated workflow failed typed validation', 502);
   }

@@ -98,7 +98,7 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
           bun-version: ${{ env.BUN_VERSION }}
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: "21"
@@ -157,7 +157,7 @@ jobs:
 
       - name: Upload Android native plugin results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: android-native-plugins-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -177,7 +177,7 @@ jobs:
 
       - name: Upload Android device bundle
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: android-device-e2e-bundle-${{ github.run_id }}-${{ github.run_attempt }}
           path: device-e2e-artifacts/android/**
@@ -245,7 +245,7 @@ jobs:
 
       - name: Upload iOS simulator bundle
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ios-simulator-e2e-bundle-${{ github.run_id }}-${{ github.run_attempt }}
           path: device-e2e-artifacts/ios/**
@@ -425,7 +425,7 @@ jobs:
 
       - name: Upload Linux computer-use evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: linux-computeruse-evidence
           path: |
@@ -472,7 +472,7 @@ jobs:
 
       - name: Upload Windows computer-use evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: windows-computeruse-evidence
           path: device-e2e-artifacts/windows-computeruse/**

@@ -1,1 +1,7 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="Owned media test" /></manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- The permitted-library consumer test grants these at run time; the library declares none. -->
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+  <application android:label="Owned media test" />
+</manifest>

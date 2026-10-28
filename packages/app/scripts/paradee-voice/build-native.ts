@@ -20,8 +20,18 @@
  *     [--out <native dir>] [--abi arm64-v8a] [--abi x86_64] \
  *     [--model-cache <dir>] [--python <python with torch>]
  *
+ *   node packages/app/scripts/paradee-voice/build-native.ts --models-only \
+ *     --workspace <dir> --out <bundle dir> [--model-cache <dir>] [--python ...]
+ *
+ * --models-only builds just the pinned model files into <bundle dir> (no NDK,
+ * no native library, no eSpeak NG data): asr/phonon-2-fv5.gguf,
+ * tts/paradee/paradee-8m-v1_1.gguf, tts/paradee/misaki-en-us.lex,
+ * vad/silero-vad-v5.gguf and the Phonon-2 notices. Desktop hosts and the voice
+ * CI matrix stage the product voice stack this way. Files already in place
+ * and matching their pins are kept.
+ *
  * --workspace holds downloads and build trees. --out defaults to
- * packages/app/platforms/android/paradee-voice/native. --model-cache is
+ * plugins/plugin-local-inference/native/android/native. --model-cache is
  * searched (recursively, by file name) for an already converted GGUF or
  * lexicon before converting. --python runs the converters (default python3;
  * the converters need torch, numpy, gguf-py, zstandard and librosa).
@@ -48,7 +58,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 const moduleDir = path.join(
   repoRoot,
-  "packages/app/platforms/android/paradee-voice",
+  "plugins/plugin-local-inference/native/android",
 );
 const forkSrc = path.join(
   repoRoot,
@@ -77,9 +87,14 @@ function parseArgs(argv) {
     abis: [],
     modelCache: "",
     python: "python3",
+    modelsOnly: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const value = argv[i + 1];
+    if (argv[i] === "--models-only") {
+      args.modelsOnly = true;
+      continue;
+    }
     if (argv[i] === "--workspace") args.workspace = path.resolve(value);
     else if (argv[i] === "--out") args.out = path.resolve(value);
     else if (argv[i] === "--abi") args.abis.push(value);
@@ -146,9 +161,15 @@ async function download(url, pin, target) {
 
 /** inputs.json must name the same artifacts the fork pins. */
 export function forkPins() {
-  const paradee = JSON.parse(
+  // inputs.json `paradee.version` picks that version's section of the fork's
+  // pins (for example "v1.1"); without it the top-level v1.0 pins apply.
+  const allParadee = JSON.parse(
     readFileSync(path.join(forkSrc, "tools/paradee/pins.json"), "utf8"),
   );
+  const paradee = inputs.paradee.version
+    ? allParadee[`v${inputs.paradee.version}`]
+    : allParadee;
+  if (!paradee) fail(`the fork pins no Paradee v${inputs.paradee.version}`);
   const misaki = JSON.parse(
     readFileSync(path.join(forkSrc, "tools/misaki-g2p/pins.json"), "utf8"),
   );
@@ -243,6 +264,9 @@ export async function buildModels(args, pins, bundle) {
         hfDir,
         "--output",
         output,
+        ...(inputs.paradee.version
+          ? ["--version", inputs.paradee.version]
+          : []),
         "--outtype",
         "f32",
         "--check-output",
@@ -341,6 +365,13 @@ function listFiles(dir) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.modelsOnly) {
+    mkdirSync(args.workspace, { recursive: true });
+    mkdirSync(args.out, { recursive: true });
+    await buildModels(args, forkPins(), args.out);
+    log(`staged the pinned voice models under ${args.out}`);
+    return;
+  }
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) fail("set ANDROID_HOME");
   if (!existsSync(path.join(sdk, "ndk", NDK_VERSION)))

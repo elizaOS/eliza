@@ -13,8 +13,8 @@ import {
   consumeNavigateViewPayload,
   dispatchNavigateViewEvent,
 } from "@elizaos/ui";
-
 import { useCallback, useEffect, useRef, useState } from "react";
+import { callFromPhone } from "../telephony-profile.ts";
 import {
   type PhoneCallRow,
   type PhoneSnapshot,
@@ -134,7 +134,13 @@ export function PhoneView() {
     }
     setError(null);
     try {
-      await Phone.placeCall({ number: normalized });
+      const outcome = await callFromPhone(normalized);
+      if (
+        outcome.path === "handoff" &&
+        outcome.result.status !== "handed-off"
+      ) {
+        setError(outcome.result.message);
+      }
     } catch (err) {
       // error-policy:J4 Bridge failures remain visible and disable calling until a successful refresh.
       setError(err instanceof Error ? err.message : String(err));

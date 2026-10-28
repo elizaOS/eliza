@@ -11,6 +11,8 @@
  */
 import { DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL, DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/host/protocol";
 
+import { isCloudCatalogModelAvailable } from "./cloud-model-identity";
+
 export const CLOUD_MODEL_NOT_AVAILABLE = "MODEL_NOT_AVAILABLE" as const;
 
 export type CloudTextModelType = "TEXT_SMALL" | "TEXT_LARGE";
@@ -40,6 +42,7 @@ export type CloudTextModelReadiness =
 interface CatalogModel {
   id: string;
   name: string;
+  provider?: string;
 }
 
 interface EffectiveModel {
@@ -98,13 +101,8 @@ export function evaluateCloudTextModelReadiness(input: {
   if (input.models.length === 0) {
     return { status: "unknown", reason: "catalog_empty", checkedAt: input.checkedAt };
   }
-  const listed = new Set<string>();
-  for (const model of input.models) {
-    listed.add(model.id);
-    listed.add(model.name);
-  }
   const missing = resolveEffectiveCloudTextModels(input.readSetting).filter(
-    (model) => !listed.has(model.modelId)
+    (model) => !isCloudCatalogModelAvailable(model.modelId, input.models)
   );
   if (missing.length === 0) {
     return { status: "available", checkedAt: input.checkedAt };

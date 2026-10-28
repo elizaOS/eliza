@@ -66,6 +66,10 @@ import type { ElizaConfig } from "@elizaos/host/protocol";
 import { z } from "zod";
 import { resolveConfigPath } from "../config/paths.ts";
 import { maybeInjectFault } from "../runtime/crash-injection.ts";
+import {
+  isMemoryPgliteDataDir,
+  MEMORY_PGLITE_DATA_DIR,
+} from "../runtime/database-selection.ts";
 import { cancelAndDrainDeferredBoot } from "../runtime/deferred-boot-owner.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import {
@@ -660,8 +664,15 @@ function makeStateFileInclude(
     return true;
   };
 }
+/**
+ * The PGlite data dir the running agent uses. PGlite's in-memory setting
+ * (`memory://`) is a URL, not a path: resolved against the working directory it
+ * would name a `memory:` directory that PGlite never reads, so capture would
+ * refuse the live adapter and a restore would write where nothing loads it.
+ */
 async function resolvePgliteDir(): Promise<string> {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
+  if (isMemoryPgliteDataDir(configured)) return MEMORY_PGLITE_DATA_DIR;
   if (configured) {
     return configured.startsWith("~")
       ? path.join(process.cwd(), configured.slice(1))
@@ -3466,6 +3477,7 @@ function pgliteDumpSource(
 }
 function resolveCapturePgliteDir(config: ElizaConfig): string {
   const configured = process.env.PGLITE_DATA_DIR?.trim();
+  if (isMemoryPgliteDataDir(configured)) return MEMORY_PGLITE_DATA_DIR;
   if (configured) return resolveUserPath(configured);
   const workspace =
     config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();

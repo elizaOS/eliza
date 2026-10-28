@@ -27,3 +27,10 @@ status, agent-listing and API-key creation actions are then absent from runtime
 registration; inference models, providers and services remain available. The
 unset/default value is `enabled`; other values fail plugin loading. This controls
 registration, not authorization of arbitrary direct SDK calls or other plugins.
+
+Text failures expose optional `cloudInferenceFailure` facts through the existing
+authenticated agent status. They contain finite stage, HTTP status, reason and
+schema summaries in runtime memory. Prompts, response text, credentials and
+arbitrary names are not retained. Schema counts are aggregates across inspected
+strict schemas; `schemaScanTruncated` marks incomplete scans, including unexpanded
+references. These diagnostics do not validate or alter requests, funding or retries.

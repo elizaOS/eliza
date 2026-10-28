@@ -56,6 +56,7 @@ export interface VoiceSessionLike {
   start(): void;
   pushUplinkAudio(bytes: Uint8Array): void;
   bargeIn(): void;
+  playbackComplete?(traceId: string): void;
   bye(): void;
   sever(reason: "client_disconnect" | "error"): void;
   /**
@@ -98,7 +99,7 @@ export interface VoiceWsHandlerDeps {
     tokenExpSeconds: number;
     downlink: VoiceSessionDownlink;
     initialUsageAdmissionMinutes?: number;
-  }) => VoiceSessionLike;
+  }) => VoiceSessionLike | Promise<VoiceSessionLike>;
   /** Verify override for tests; defaults to the real verifier. */
   verifyToken: VoiceTokenVerifier;
   /**
@@ -297,6 +298,9 @@ export function attachVoiceWsHandler(
       case "audio_capabilities":
         session.setAudioCapabilities?.(frame);
         return;
+      case "playback_complete":
+        session.playbackComplete?.(frame.traceId);
+        return;
       case "barge_in":
         session.bargeIn();
         return;
@@ -401,13 +405,30 @@ export function attachVoiceWsHandler(
         }
         return;
       }
-      session = deps.buildSession({
+      const builtSession = await deps.buildSession({
         claims: verified.claims,
         jti: verified.jti,
         tokenExpSeconds: verified.expSeconds,
         downlink,
         initialUsageAdmissionMinutes: providerAdmission?.admittedMinutes,
       });
+      // Cloud speech ports can finish admission after the local socket closes.
+      // Retire that exact late acquisition; never start capture or a new turn.
+      if (state !== "awaiting_hello") {
+        const lateAdmission = providerAdmission;
+        providerAdmission = undefined;
+        try {
+          builtSession.sever("client_disconnect");
+        } finally {
+          if (lateAdmission) {
+            const release = lateAdmission.release();
+            if (deps.defer) deps.defer(release);
+            else void release;
+          }
+        }
+        return;
+      }
+      session = builtSession;
       state = "active";
       session.start();
     } catch (error) {

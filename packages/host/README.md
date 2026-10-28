@@ -10,6 +10,9 @@ Node-only SQLite task gateways, research collection and trace transport, databas
 leases, and verified document-runtime packaging. Consumers supply authentication,
 consent, measurement policy and lifecycle ownership. Internal code imports defining files.
 
+`@elizaos/host/voice/ui-context` exposes the small renderer-observation contract
+for browser voice clients without loading host configuration or voice presets.
+
 From the repository root, run `bun run --cwd packages/host build`,
 `bun run --cwd packages/host test` and `bun run --cwd packages/host typecheck`.
 
@@ -158,3 +161,17 @@ Returned key JSON is confined to the private native process channel; byte-array
 copies are wiped, but immutable Java JSON/base64 strings are not fully erased.
 The instrumentation cases in `native-host/android-test` exercise real Keystore
 storage, TCP broker requests, account changes, and database recovery refusals.
+
+`native-host/sensitive-text.mjs` provides a session-scoped secret scrubber and
+sensitive-text gate. Hosts supply optional matchers and clear memory only when
+the session ends. Capacity exhaustion refuses new values instead of forgetting
+earlier ones. Object nesting beyond the supported depth is refused rather than
+returned unscrubbed. Detection is conservative, not a guarantee that every
+secret is recognized.
+
+`native-host/public-fetch.mjs` is `fetch()` for public HTTPS websites only.
+It connects through a lookup that refuses private, loopback, link-local,
+carrier-NAT, documentation and transition addresses at connect time, so a DNS
+rebinding answer cannot reach a local service. It never follows redirects,
+sends no cookies and reads at most 8 MB. `resolvesPublic` and `privateAddress`
+let a caller check a name or address before handing it to another fetch.

@@ -54,7 +54,7 @@ import ai.elizaos.app.R;
  * captured PCM in a canonical WAV container, and transcribes it through the
  * on-device engine's loopback ASR route
  * ({@code POST http://127.0.0.1:31337/api/asr/local-inference}) — the same
- * fused Gemma ASR pipeline the app uses. The final transcript is inserted via
+ * Phonon-2 ASR on libelizainference the app uses. The final transcript is inserted via
  * {@link InputConnection#commitText}.
  *
  * When the local engine is not reachable (loopback refused) or has no ASR model

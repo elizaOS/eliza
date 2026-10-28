@@ -3,6 +3,7 @@
  * Monitoring) into a typed PermissionDeniedError so callers can surface the exact
  * grant the user must enable rather than a generic failure.
  */
+import { execFileSync } from "node:child_process";
 import type { PermissionType } from "../types.js";
 
 type PermissionErrorOptions = {
@@ -205,13 +206,6 @@ function probeWindowsCapabilityAccess(
   // The `Value` REG_SZ is "Allow" / "Deny". This is read-only and never
   // triggers a consent prompt.
   // PARITY: code-complete; not runtime-tested against a real Windows host.
-  const { execFileSync } = require("node:child_process") as {
-    execFileSync: (
-      cmd: string,
-      args: string[],
-      opts?: { encoding?: string; timeout?: number; stdio?: unknown },
-    ) => string;
-  };
   const command = `try { (Get-ItemProperty -ErrorAction Stop -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\${capability}').Value } catch { 'Unknown' }`;
   const stdout = execFileSync(
     "powershell",

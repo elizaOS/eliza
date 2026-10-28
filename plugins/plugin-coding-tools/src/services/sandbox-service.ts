@@ -251,7 +251,7 @@ function parseList(s: string): string[] {
 }
 
 function expandHome(p: string): string {
-  if (p === "~") return homedir();
+  if (p === "~" || p === "$HOME") return homedir();
   if (p.startsWith("~/")) return path.join(homedir(), p.slice(2));
   if (p.startsWith("$HOME/")) return path.join(homedir(), p.slice(6));
   return p;
