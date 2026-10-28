@@ -515,24 +515,11 @@ export class WorkflowsDomain {
         stateChanged = true;
       }
 
-      let ranSlot = false;
       while (
         runs.length < args.limit &&
         schedulerState.nextDueAt &&
         Date.parse(schedulerState.nextDueAt) <= nowMs
       ) {
-        // A run can take long; stop catching up once the owner pauses it.
-        if (
-          ranSlot &&
-          (
-            await this.ctx.repository.getWorkflow(
-              this.ctx.agentId(),
-              nextWorkflow.id,
-            )
-          )?.status !== "active"
-        ) {
-          break;
-        }
         const dueAt = schedulerState.nextDueAt;
         const { run, error, disposition } =
           await this.executeWorkflowDefinition(nextWorkflow, {
@@ -566,7 +553,6 @@ export class WorkflowsDomain {
           break;
         }
         runs.push(run);
-        ranSlot = true;
         await this.deps.emitWorkflowRunNudge(nextWorkflow, run);
         const nextDueAt =
           nextWorkflow.schedule.kind === "relative_to_wake" ||
