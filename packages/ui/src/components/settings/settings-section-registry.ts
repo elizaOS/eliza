@@ -184,11 +184,42 @@ export function getSettingsSection(id: string): SettingsSectionDef | undefined {
 export function getAllSettingsSections(): SettingsSectionDef[] {
   return listSettingsSections();
 }
-/** Pure capability gate shared by hub visibility and deep-link resolution. */
+const SETTINGS_SECTION_EXCLUSIONS_STORE = "settings-section-exclusions";
+function getExclusions(): Set<string> {
+  return getUiRegistryStore(
+    SETTINGS_SECTION_EXCLUSIONS_STORE,
+    () => new Set<string>(),
+  );
+}
+/**
+ * Product policy for the shared Settings surface: section ids a host product never offers, for
+ * example local backups in a product without app-data transfer, or wallet RPC in a product without
+ * Wallet. Exclusions are additive for the session; an excluded section is hidden from the hub and
+ * refused as a deep link, and a later registration of the same id does not bring it back.
+ */
+export function excludeSettingsSections(ids: Iterable<string>): void {
+  const exclusions = getExclusions();
+  let changed = false;
+  for (const id of ids) {
+    if (typeof id !== "string" || id.length === 0 || exclusions.has(id))
+      continue;
+    exclusions.add(id);
+    changed = true;
+  }
+  if (!changed) return;
+  getStore().seq += 1;
+  for (const listener of registryListeners) listener();
+}
+/** True when the host product excluded this section id. */
+export function settingsSectionExcluded(id: string): boolean {
+  return getExclusions().has(id);
+}
+/** Pure capability and product-policy gate shared by hub visibility and deep-link resolution. */
 export function settingsSectionIsAvailable(
   section: SettingsSectionDef,
   capabilities: SettingsRuntimeCapabilities,
 ): boolean {
+  if (settingsSectionExcluded(section.id)) return false;
   return (
     section.requires?.every((capability) => capabilities.has(capability)) ??
     true
