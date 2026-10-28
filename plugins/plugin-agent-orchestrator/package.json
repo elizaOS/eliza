@@ -299,7 +299,7 @@
       },
       "ACPX_FORMAT": {
         "type": "string",
-        "description": "Deprecated alias for ELIZA_ACP_FORMAT.",
+        "description": "Agent Client Protocol event format expected from legacy transports.",
         "required": false,
         "default": "json",
         "sensitive": false
