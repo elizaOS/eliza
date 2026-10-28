@@ -21,6 +21,11 @@ import type {
   RelationshipsPersonSummary,
 } from "@elizaos/plugin-assistant";
 
+// Max contacts rendered per contacts-gated turn, most recently
+// interacted-with first. The provider's purpose is "known
+// contacts" context, not a complete address book.
+const ROLODEX_PROVIDER_MAX_PEOPLE = 50;
+
 function formatPerson(person: RelationshipsPersonSummary): string {
   const platforms =
     person.platforms.length > 0 ? person.platforms.join(", ") : "no platforms";
@@ -102,7 +107,19 @@ export const rolodexProvider: Provider = {
         `Rolodex (${snapshot.stats.totalPeople} contacts, ${snapshot.stats.totalIdentities} identities):`,
       ];
 
-      for (const person of snapshot.people) {
+      // Render only the most recently interacted-with people: the
+      // snapshot itself is unsorted and complete (other paths,
+      // like CONTACT activity attribution, need the full map),
+      // so the recency sort and slice happen here. The header
+      // above keeps the true totals, so the truncation stays
+      // visible. Live 2026-09-05 precedent in the provider
+      // comment: 893 contacts / 44K characters on one plain turn.
+      const visiblePeople = [...snapshot.people]
+        .sort((a, b) =>
+          (b.lastInteractionAt ?? "").localeCompare(a.lastInteractionAt ?? ""),
+        )
+        .slice(0, ROLODEX_PROVIDER_MAX_PEOPLE);
+      for (const person of visiblePeople) {
         lines.push(formatPerson(person));
       }
 
@@ -113,7 +130,7 @@ export const rolodexProvider: Provider = {
           rolodexIdentityCount: snapshot.stats.totalIdentities,
         },
         data: {
-          contacts: snapshot.people,
+          contacts: visiblePeople,
           stats: snapshot.stats,
         },
       };
