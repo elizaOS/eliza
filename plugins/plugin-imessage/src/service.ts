@@ -481,13 +481,10 @@ function assertLocalIMessageAccount(accountId?: string | null): string {
 }
 
 /**
- * error-policy: Event listeners are observers. A listener that throws
- * synchronously or rejects asynchronously must not produce an unhandled
- * rejection — report it via runtime.reportError and continue. Follows the
- * pattern established for MESSAGE_SENT emissions (#36784), extended to the
- * remaining emission sites (connection, inbound, reaction, system, heartbeat).
+ * error-policy:J7 Event listeners are observers. Report a listener failure
+ * through runtime.reportError instead of creating an unhandled rejection.
  */
-export function observeRuntimeEvent(
+function observeRuntimeEvent(
   runtime: IAgentRuntime | undefined | null,
   source: string,
   event: string,
@@ -499,11 +496,7 @@ export function observeRuntimeEvent(
     runtime.reportError(source, error, { event, ...context });
   try {
     const emitted = runtime.emitEvent(event, payload);
-    // Guard against non-promise returns (e.g. test mocks): only attach
-    // .catch when the return value is thenable.
-    if (emitted && typeof (emitted as Promise<unknown>).catch === "function") {
-      void (emitted as Promise<unknown>).catch(reportFailure);
-    }
+    if (emitted) void emitted.catch(reportFailure);
   } catch (error) {
     reportFailure(error);
   }
@@ -1429,52 +1422,50 @@ export class IMessageService extends Service implements IIMessageService {
     // the standard event bus see outbound iMessage sends the same way
     // they see Telegram / Discord / Slack sends.
     if (this.runtime) {
-      const observeEvent = (event: string, payload: EventPayload) => {
-        const reportFailure = (error: unknown) =>
-          this.runtime.reportError("IMessageService.emitMessageSent", error, {
-            event,
-            accountId,
-            chatId: target,
-          });
-        try {
-          // error-policy:J7 The provider send is already accepted. Event
-          // listeners are observers, so report a rejected listener without
-          // creating an unhandled rejection or making the send retryable.
-          const emitted = this.runtime.emitEvent(event, payload);
-          if (emitted) void emitted.catch(reportFailure);
-        } catch (error) {
-          reportFailure(error);
-        }
-      };
-      observeEvent(IMessageEventTypes.MESSAGE_SENT, {
-        runtime: this.runtime,
-        source: "imessage",
-        accountId,
-        to: target,
-        text,
-        hasMedia: mediaUrls.length > 0,
-      } as EventPayload);
-      observeEvent(EventType.MESSAGE_SENT, {
-        runtime: this.runtime,
-        source: "imessage",
-        message: {
-          id: createUniqueUuid(this.runtime, `imessage-outbound-${Date.now()}`),
-          entityId: this.runtime.agentId,
-          agentId: this.runtime.agentId,
-          roomId: createUniqueUuid(this.runtime, target),
-          content: { text, source: "imessage" },
-          metadata: {
-            accountId,
-            source: "imessage",
-            provider: "imessage",
-            imessage: {
+      // error-policy:J7 The provider send is already accepted, so a failing
+      // listener must not make the send retryable.
+      const sentContext = { accountId, chatId: target };
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitMessageSent",
+        IMessageEventTypes.MESSAGE_SENT,
+        {
+          runtime: this.runtime,
+          source: "imessage",
+          accountId,
+          to: target,
+          text,
+          hasMedia: mediaUrls.length > 0,
+        } as EventPayload,
+        sentContext
+      );
+      observeRuntimeEvent(
+        this.runtime,
+        "IMessageService.emitMessageSent",
+        EventType.MESSAGE_SENT,
+        {
+          runtime: this.runtime,
+          source: "imessage",
+          message: {
+            id: createUniqueUuid(this.runtime, `imessage-outbound-${Date.now()}`),
+            entityId: this.runtime.agentId,
+            agentId: this.runtime.agentId,
+            roomId: createUniqueUuid(this.runtime, target),
+            content: { text, source: "imessage" },
+            metadata: {
               accountId,
-              chatId: target,
+              source: "imessage",
+              provider: "imessage",
+              imessage: {
+                accountId,
+                chatId: target,
+              },
             },
+            createdAt: Date.now(),
           },
-          createdAt: Date.now(),
-        },
-      } as EventPayload);
+        } as EventPayload,
+        sentContext
+      );
     }
 
     return {
