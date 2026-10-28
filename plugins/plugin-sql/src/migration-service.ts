@@ -154,83 +154,83 @@ export class DatabaseMigrationService {
     if (failureCount === 0) {
       logger.info({ src: "plugin:sql", successCount }, "All migrations completed successfully");
 
-      if (!migrationOptions.dryRun && !this.membershipAuthorityTtlConstraintsSettled) {
+      // A dry run must not change the database. The RuntimeMigrator skips schema
+      // statements in dry-run mode, so the object installs below must not run
+      // either. The settled flags stay false, so a later real run installs them.
+      if (migrationOptions.dryRun) {
+        logger.info(
+          { src: "plugin:sql" },
+          "Dry run: skipping post-migration object installs (constraints, identity guard, message search objects, RLS)"
+        );
+        return;
+      }
+
+      if (!this.membershipAuthorityTtlConstraintsSettled) {
         this.membershipAuthorityTtlConstraintsSettled =
           await applyMembershipAuthorityTtlConstraints(this.db, this.databaseBackend);
       }
 
-      // A dry run must not change the database. The RuntimeMigrator skips schema
-      // statements in dry-run mode; the object installs below (functions,
-      // triggers, generated columns, indexes, RLS) must not run either. The
-      // settled flags stay false so a later real run still installs everything.
-      if (migrationOptions.dryRun) {
+      if (!this.identityPersonLinkGuardSettled) {
+        this.identityPersonLinkGuardSettled = await applyIdentityPersonLinkAttestationGuard(
+          this.db
+        );
+      }
+
+      // Install the message full-text/trigram search objects on the migrated
+      // `memories` table (#13534). Idempotent; runs after the table exists so the
+      // GIN expression indexes can be created.
+      const shouldInstallSearchObjects = shouldApplyMessageSearchObjects(this.databaseBackend);
+      if (
+        !this.messageSearchObjectsSettled &&
+        shouldInstallSearchObjects &&
+        (await messageSearchTableExists(this.db))
+      ) {
+        await applyMessageSearchObjects(this.db, this.databaseBackend);
+        this.messageSearchObjectsSettled = true;
+      } else if (!this.messageSearchObjectsSettled && shouldInstallSearchObjects) {
+        logger.info(
+          { src: "plugin:sql", table: "memories" },
+          "[MessageSearch] deferring search-object install until the core SQL schema is migrated"
+        );
+      } else if (!this.messageSearchObjectsSettled) {
+        logger.warn(
+          {
+            src: "plugin:sql",
+            env: MESSAGE_SEARCH_OBJECTS_ENV,
+            databaseBackend: this.databaseBackend,
+          },
+          "[MessageSearch] skipping automatic search-object install in production Postgres; set ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true after scheduling the generated-column/index DDL"
+        );
+        this.messageSearchObjectsSettled = true;
+      }
+
+      const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
+
+      if (dataIsolationEnabled) {
+        try {
+          logger.info({ src: "plugin:sql" }, "Re-applying Row Level Security...");
+          interface AdapterWrapper extends IDatabaseAdapter {
+            db: DrizzleDatabase;
+          }
+          const adapterWrapper: AdapterWrapper = {
+            db: this.db,
+          } as AdapterWrapper;
+          await installRLSFunctions(adapterWrapper);
+          await applyRLSToNewTables(adapterWrapper);
+          await applyEntityRLSToAllTables(adapterWrapper);
+          logger.info({ src: "plugin:sql" }, "RLS re-applied successfully");
+        } catch (rlsError) {
+          const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
+          logger.warn(
+            { src: "plugin:sql", error: errorMsg },
+            "Failed to re-apply RLS (expected while schemas are still missing server_id columns)"
+          );
+        }
+      } else {
         logger.info(
           { src: "plugin:sql" },
-          "Dry run: skipping post-migration object installs (identity guard, message search objects, RLS)"
+          "Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)"
         );
-      } else {
-        if (!this.identityPersonLinkGuardSettled) {
-          this.identityPersonLinkGuardSettled = await applyIdentityPersonLinkAttestationGuard(
-            this.db
-          );
-        }
-
-        // Install the message full-text/trigram search objects on the migrated
-        // `memories` table (#13534). Idempotent; runs after the table exists so the
-        // GIN expression indexes can be created.
-        const shouldInstallSearchObjects = shouldApplyMessageSearchObjects(this.databaseBackend);
-        if (
-          !this.messageSearchObjectsSettled &&
-          shouldInstallSearchObjects &&
-          (await messageSearchTableExists(this.db))
-        ) {
-          await applyMessageSearchObjects(this.db, this.databaseBackend);
-          this.messageSearchObjectsSettled = true;
-        } else if (!this.messageSearchObjectsSettled && shouldInstallSearchObjects) {
-          logger.info(
-            { src: "plugin:sql", table: "memories" },
-            "[MessageSearch] deferring search-object install until the core SQL schema is migrated"
-          );
-        } else if (!this.messageSearchObjectsSettled) {
-          logger.warn(
-            {
-              src: "plugin:sql",
-              env: MESSAGE_SEARCH_OBJECTS_ENV,
-              databaseBackend: this.databaseBackend,
-            },
-            "[MessageSearch] skipping automatic search-object install in production Postgres; set ELIZA_APPLY_MESSAGE_SEARCH_OBJECTS=true after scheduling the generated-column/index DDL"
-          );
-          this.messageSearchObjectsSettled = true;
-        }
-
-        const dataIsolationEnabled = process.env.ENABLE_DATA_ISOLATION === "true";
-
-        if (dataIsolationEnabled) {
-          try {
-            logger.info({ src: "plugin:sql" }, "Re-applying Row Level Security...");
-            interface AdapterWrapper extends IDatabaseAdapter {
-              db: DrizzleDatabase;
-            }
-            const adapterWrapper: AdapterWrapper = {
-              db: this.db,
-            } as AdapterWrapper;
-            await installRLSFunctions(adapterWrapper);
-            await applyRLSToNewTables(adapterWrapper);
-            await applyEntityRLSToAllTables(adapterWrapper);
-            logger.info({ src: "plugin:sql" }, "RLS re-applied successfully");
-          } catch (rlsError) {
-            const errorMsg = rlsError instanceof Error ? rlsError.message : String(rlsError);
-            logger.warn(
-              { src: "plugin:sql", error: errorMsg },
-              "Failed to re-apply RLS (expected while schemas are still missing server_id columns)"
-            );
-          }
-        } else {
-          logger.info(
-            { src: "plugin:sql" },
-            "Skipping RLS re-application (ENABLE_DATA_ISOLATION is not true)"
-          );
-        }
       }
     } else {
       logger.error({ src: "plugin:sql", failureCount, successCount }, "Some migrations failed");
