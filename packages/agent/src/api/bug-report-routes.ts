@@ -10,6 +10,7 @@
 import os from "node:os";
 import { PostBugReportRequestSchema } from "@elizaos/contracts";
 import {
+  findAllMnemonicPhrases,
   logger,
   redactSensitiveText,
   toWellFormedUnicode,
@@ -141,8 +142,28 @@ export function sanitize(input: string, maxLen = 10_000): string {
     : cleaned;
 }
 
+/**
+ * Mask checksum-valid BIP-39 phrases before the keyword rules run: the
+ * mnemonic rule below only matches a phrase introduced by `mnemonic:`,
+ * `private key:`, or `seed phrase:` on one line, so a bare phrase, a
+ * differently-keyed phrase, or a line-wrapped phrase would otherwise ship
+ * verbatim to the remote intake or a public issue. Spans are ascending and
+ * non-overlapping, so a single cursor pass masks them all.
+ */
+function maskMnemonicPhrases(text: string): string {
+  const spans = findAllMnemonicPhrases(text);
+  if (spans.length === 0) return text;
+  let masked = "";
+  let cursor = 0;
+  for (const span of spans) {
+    masked += `${text.slice(cursor, span.start)}[redacted-mnemonic]`;
+    cursor = span.end;
+  }
+  return masked + text.slice(cursor);
+}
+
 function redactBugReportText(input: string): string {
-  const patternRedacted = toWellFormedUnicode(input)
+  const patternRedacted = maskMnemonicPhrases(toWellFormedUnicode(input))
     .replace(
       /\b(0x[a-fA-F0-9]{64}|[A-Za-z0-9+/]{80,}={0,2})\b/g,
       "[redacted-secret]",

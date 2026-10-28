@@ -55,7 +55,17 @@ export function notesStateFilePath(
   );
 }
 
+/** Host port must use authenticated encryption and atomic compare/exchange for this agent scope.
+ * No filesystem fallback is permitted when supplied; opaque ciphertext is owned by the host. */
+export interface EncryptedNotesDocumentPort {
+  readonly agentId: string;
+  readonly encryptedAtRest: true;
+  read(): Promise<string | null>;
+  compareExchange(expected: string | null, next: string): Promise<boolean>;
+}
+const encryptedPortIds = new WeakMap<EncryptedNotesDocumentPort, string>();
 interface SharedStoreState {
+  persistedRaw?: string;
   phase: NotesStorePhase;
   document: NotesDocument | undefined;
   failure: ElizaError | undefined;
@@ -85,19 +95,14 @@ function acquireSharedState(filePath: string): SharedStoreState {
 }
 
 function cloneDocument(document: NotesDocument): NotesDocument {
-  return {
-    schemaVersion: document.schemaVersion,
-    revision: document.revision,
-    persistedAt: document.persistedAt,
-    notes: document.notes.map((note) => ({ ...note })),
-  };
+  return structuredClone(document);
 }
-
 function snapshotFromDocument(document: NotesDocument): NotesSnapshot {
-  return {
+  return structuredClone({
     revision: document.revision,
-    notes: document.notes.map((note) => ({ ...note })),
-  };
+    notes: document.notes,
+    trash: document.trash ?? [],
+  });
 }
 
 function isNodeErrorWithCode(
@@ -155,6 +160,7 @@ export class NotesStore {
   private readonly now: () => Date;
   private readonly shared: SharedStoreState;
   private stopped = false;
+  private readonly encryptedPort?: EncryptedNotesDocumentPort;
 
   constructor(
     options: {
@@ -162,11 +168,32 @@ export class NotesStore {
       stateDir?: string;
       agentId?: string;
       now?: () => Date;
+      encryptedPort?: EncryptedNotesDocumentPort;
     } = {},
   ) {
-    this.filePath = options.filePath
-      ? path.resolve(options.filePath)
-      : notesStateFilePath(options.stateDir, options.agentId);
+    if (options.encryptedPort) {
+      const port = options.encryptedPort;
+      if (
+        !options.agentId ||
+        port.agentId !== options.agentId ||
+        port.encryptedAtRest !== true ||
+        options.filePath
+      )
+        throw new ElizaError("Encrypted Notes port scope is invalid.", {
+          code: "NOTES_INVALID_AGENT_SCOPE",
+          severity: "fatal",
+        });
+      this.encryptedPort = port;
+      let id = encryptedPortIds.get(port);
+      if (!id) {
+        id = randomUUID();
+        encryptedPortIds.set(port, id);
+      }
+      this.filePath = `encrypted-notes:${options.agentId}:${id}`;
+    } else
+      this.filePath = options.filePath
+        ? path.resolve(options.filePath)
+        : notesStateFilePath(options.stateDir, options.agentId);
     this.now = options.now ? options.now : () => new Date();
     this.shared = acquireSharedState(this.filePath);
   }
@@ -231,9 +258,19 @@ export class NotesStore {
   /** Reads persisted bytes after queued writes without refreshing or mutating Notes. */
   async persistedSnapshot(): Promise<NotesSnapshot> {
     await this.initialize();
-    return this.serialize(async () =>
-      snapshotFromDocument(await this.readCurrentDocument()),
-    );
+    return this.serialize(async () => {
+      if (this.encryptedPort) {
+        const raw = await this.encryptedPort.read();
+        if (raw === null)
+          throw new ElizaError("Notes document disappeared.", {
+            code: "NOTES_STORE_UNAVAILABLE",
+            severity: "fatal",
+          });
+        // A readback is not a cache refresh or permission to overwrite a different writer.
+        return snapshotFromDocument(parseNotesDocument(JSON.parse(raw)));
+      }
+      return snapshotFromDocument(await this.readCurrentDocument());
+    });
   }
 
   async transact<T>(
@@ -275,7 +312,8 @@ export class NotesStore {
   }
 
   private async load(): Promise<void> {
-    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+    if (!this.encryptedPort)
+      await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     let document: NotesDocument;
     try {
       document = await this.readCurrentDocument();
@@ -294,6 +332,16 @@ export class NotesStore {
    * has never been written. ENOENT from both means first boot.
    */
   private async readCurrentDocument(): Promise<NotesDocument> {
+    if (this.encryptedPort) {
+      const raw = await this.encryptedPort.read();
+      if (raw === null)
+        throw Object.assign(new Error("Notes document absent"), {
+          code: "ENOENT",
+        });
+      const document = parseNotesDocument(JSON.parse(raw));
+      this.shared.persistedRaw = raw;
+      return document;
+    }
     try {
       return await this.readDocument(this.filePath);
     } catch (error) {
@@ -390,6 +438,30 @@ export class NotesStore {
   }
 
   private async writeAtomic(document: NotesDocument): Promise<void> {
+    if (this.encryptedPort) {
+      const raw = JSON.stringify(document);
+      let saved: boolean;
+      try {
+        saved = await this.encryptedPort.compareExchange(
+          this.shared.persistedRaw ?? null,
+          raw,
+        );
+      } catch (error) {
+        throw this.writeFailure(error);
+      }
+      if (!saved)
+        throw new ElizaError("Notes changed in another view.", {
+          code: "NOTES_EDIT_CONFLICT",
+          severity: "ephemeral",
+        });
+      const confirmed = await this.encryptedPort.read();
+      if (confirmed !== raw)
+        throw this.writeFailure(
+          new Error("Encrypted Notes commit readback is uncertain"),
+        );
+      this.shared.persistedRaw = raw;
+      return;
+    }
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await this.writeTemporaryDocument(temporaryPath, document);
@@ -402,6 +474,18 @@ export class NotesStore {
   }
 
   private async writeAtomicIfAbsent(document: NotesDocument): Promise<boolean> {
+    if (this.encryptedPort) {
+      const raw = JSON.stringify(document);
+      const saved = await this.encryptedPort.compareExchange(null, raw);
+      if (saved) {
+        if ((await this.encryptedPort.read()) !== raw)
+          throw this.writeFailure(
+            new Error("Encrypted Notes initialization uncertain"),
+          );
+        this.shared.persistedRaw = raw;
+      }
+      return saved;
+    }
     const temporaryPath = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await this.writeTemporaryDocument(temporaryPath, document);
@@ -524,15 +608,17 @@ export class NotesStore {
     }
   }
 
+  /**
+   * A failed atomic write leaves the published file and the cached document
+   * unchanged, so the store stays ready: the caller gets the typed failure and
+   * the next read or write works when the cause is gone.
+   */
   private writeFailure(error: unknown): ElizaError {
-    const failure = toStoreError(
+    return toStoreError(
       error,
       "NOTES_STORE_WRITE_FAILED",
       "Notes state could not be written atomically.",
       this.filePath,
     );
-    this.shared.failure = failure;
-    this.shared.phase = "error";
-    return failure;
   }
 }

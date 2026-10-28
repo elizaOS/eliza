@@ -874,6 +874,8 @@ export interface WorkflowExecution {
   parentRunId?: string | null;
   nextRunId?: string;
   idempotencyKey?: string;
+  /** Engine-written on a finished execution that records a missed scheduled occurrence. */
+  missedOccurrenceAt?: string;
 }
 export interface WorkflowEvaluationSampleNode {
   name: string;

@@ -104,7 +104,7 @@ export const currentTimeProvider: Provider = {
       timeZone,
     );
     const contextText = userTimeZone
-      ? `${humanReadable} (${timeZone}), ISO (UTC): ${isoTimestamp}`
+      ? `Local date: ${dateOnly} (${timeZone}). ${humanReadable}. Resolve today/tomorrow from this local date, not the UTC date. UTC instant: ${isoTimestamp}`
       : `${origin === "agent-setting" ? "Agent" : "Server"} time: ${humanReadable} (${timeZone}), ISO (UTC): ${isoTimestamp}; user timezone unknown.`;
 
     return {

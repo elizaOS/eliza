@@ -81,7 +81,8 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 		intents: {
 			type: "array",
 			items: { type: "string" },
-			description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
+			description:
+				"Verb-led intents. Lowercase. No punctuation. ~6 words max. Empty for a completed answer or non_applied clarification/preview; those do not execute work this turn.",
 		},
 		completionContext: COMPLETION_CONTEXT_SCHEMA,
 		replyText: {
@@ -93,7 +94,7 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 			type: "string",
 			enum: ["none", "applied", "non_applied", "pending"],
 			description:
-				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied.",
+				"Classify work for the current request: pending=unfinished work, including recording a rejection or cancellation of an existing pending request; applied=claimed completed state change, not execution proof; non_applied=failed/unavailable/preview or withdrawn unstarted work with no persisted decision remaining; none=answer, explanation, question, or conditional offer without a new work claim. Recalling earlier advice, past completed actions, or existing facts alone is none, not applied. non_applied requires intents=[]; retain pending intents only for work executable now. A request awaiting missing user input is terminal for this turn, not a prepared proposal.",
 		},
 		candidateActionNames: {
 			type: "array",

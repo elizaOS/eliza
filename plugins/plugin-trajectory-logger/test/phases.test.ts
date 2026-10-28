@@ -4,8 +4,8 @@
  * its reasoning, as a key/value or XML field, or as JSON.
  */
 import { describe, expect, it } from "vitest";
-import type { UILlmCall } from "../src/api-client";
-import { extractShouldRespondDecision } from "../src/phases";
+import type { TrajectoryDetail, UILlmCall } from "../src/api-client";
+import { extractShouldRespondDecision, summarizePhases } from "../src/phases";
 
 function call(response: string): UILlmCall {
   return {
@@ -88,5 +88,72 @@ describe("extractShouldRespondDecision", () => {
     expect(
       extractShouldRespondDecision(call("I am not sure what to do here.")),
     ).toBeNull();
+  });
+});
+
+function detail(overrides: Partial<TrajectoryDetail>): TrajectoryDetail {
+  return {
+    llmCalls: [],
+    providerAccesses: [],
+    ...overrides,
+  } as unknown as TrajectoryDetail;
+}
+
+function phaseStatus(
+  overrides: Partial<TrajectoryDetail>,
+  phase: "ACTION" | "EVALUATE",
+): string | undefined {
+  return summarizePhases(detail(overrides)).find((p) => p.phase === phase)
+    ?.status;
+}
+
+describe("summarizePhases failure reporting", () => {
+  it("reports a tool call that failed as an error, not as running work", () => {
+    expect(
+      phaseStatus(
+        {
+          toolEvents: [
+            {
+              id: "tool-1",
+              type: "tool_call",
+              actionName: "SEND_EMAIL",
+              status: "failed",
+            },
+          ],
+        },
+        "ACTION",
+      ),
+    ).toBe("error");
+  });
+
+  it("reports a tool result that failed as an error, not as a completed action", () => {
+    expect(
+      phaseStatus(
+        {
+          toolEvents: [
+            {
+              id: "tool-2",
+              type: "tool_result",
+              toolName: "SEARCH_WEB",
+              status: "failed",
+            },
+          ],
+        },
+        "ACTION",
+      ),
+    ).toBe("error");
+  });
+
+  it("reports an evaluator that failed as an error, not as a completed evaluation", () => {
+    expect(
+      phaseStatus(
+        {
+          evaluationEvents: [
+            { id: "eval-1", evaluatorName: "reflection", status: "failed" },
+          ],
+        },
+        "EVALUATE",
+      ),
+    ).toBe("error");
   });
 });

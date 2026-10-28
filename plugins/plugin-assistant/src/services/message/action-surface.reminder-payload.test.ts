@@ -154,7 +154,14 @@ describe("registered owner distinguishes reminder payload from phone work", () =
   ])("retains independent phone work: %s", async (text) => {
     const result = await surface({ request: text, intents: [text] });
     expect(result.tools).toEqual(result.baselineTools);
-    expect(result.tools.map((tool) => tool.name)).toContain("VOICE_CALL");
+    expect(
+      result.tools.map((tool) => tool.name),
+      JSON.stringify({
+        admitted: result.admitted.map((a) => a.name),
+        selected: result.selected.map((a) => a.name),
+        tools: result.tools.map((a) => a.name),
+      }),
+    ).toContain("VOICE_CALL");
   });
 
   it.each([

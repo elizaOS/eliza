@@ -14,7 +14,7 @@ import {
   promoteSubactionsToActions,
   validateToolArgs,
 } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { taskOperationSchemaOverrides } from "../actions/task-operation-schemas.ts";
 import { tasksAction } from "../actions/tasks.ts";
 import { AcpService } from "../services/acp-service.ts";
@@ -528,6 +528,54 @@ describe("resumeTask after a failed re-engage spawn", () => {
   }, 30_000);
 });
 
+describe("postUserMessage to a paused task", () => {
+  it("records the message without starting a worker before resume", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const live = async (taskId: string) =>
+      (await store.getTask(taskId))?.sessions.filter(
+        (s) => s.status !== "stopped",
+      ) ?? [];
+    try {
+      const task = await store.createTask({
+        title: "Paused with a message",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      const taskId = task.task.id;
+      await tasks.spawnAgentForTask(taskId);
+      await tasks.pauseTask(taskId);
+
+      const result = await tasks.postUserMessage(
+        taskId,
+        "also update the README",
+      );
+      expect(result?.recorded).toBe(true);
+      expect(result?.forwardedTo).toEqual([]);
+      expect(result?.failedTo.map((failure) => failure.sessionId)).toEqual([
+        "(paused)",
+      ]);
+      expect(await live(taskId)).toEqual([]);
+
+      // Resume starts exactly one worker for the interrupted work.
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+    } finally {
+      await service.stop();
+    }
+  }, 30_000);
+});
+
 describe("TASKS history with a task id", () => {
   async function withTwoTasks(
     body: (ctx: {
@@ -644,6 +692,58 @@ describe("TASKS history with the archived status", () => {
       expect(result?.text).toContain("Live task");
       expect(result?.text).not.toContain("Shelved task");
     });
+  });
+});
+
+describe("TASKS history day windows", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("today and yesterday follow the asker's calendar, not the host's", async () => {
+    let tasks: OrchestratorTaskService | undefined;
+    const base = runtimeWith(
+      () => undefined,
+      () => tasks,
+    );
+    const runtime = {
+      ...base,
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "America/Los_Angeles" : base.getSetting(key),
+    } as IAgentRuntime;
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // 10:00 in Los Angeles on 2026-10-24.
+    vi.setSystemTime(new Date("2026-10-24T17:00:00.000Z"));
+    const created = await store.createTask({
+      goal: "finish the build",
+      acceptanceCriteria: [],
+      roomId: "target-room",
+      worldId: "target-world",
+      title: "Morning task",
+    });
+    // 18:00 in Los Angeles on the same day; already 2026-10-25 in UTC.
+    vi.setSystemTime(new Date("2026-10-25T01:00:00.000Z"));
+
+    const today = await runTasks(runtime, {
+      action: "history",
+      window: "today",
+    });
+    expect(today?.success).toBe(true);
+    expect(today?.data).toMatchObject({
+      count: 1,
+      taskIds: [created.task.id],
+    });
+    expect(today?.text).toContain("2026-10-24 through 2026-10-24");
+
+    const yesterday = await runTasks(runtime, {
+      action: "history",
+      window: "yesterday",
+    });
+    expect(yesterday?.success).toBe(true);
+    expect(yesterday?.data).toMatchObject({ count: 0 });
+    expect(yesterday?.text).toContain("2026-10-23 through 2026-10-23");
   });
 });
 
