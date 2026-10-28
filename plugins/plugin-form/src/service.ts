@@ -124,7 +124,6 @@ import type {
   FieldHistoryEntry,
   FieldState,
   FilledFieldSummary,
-  FormAutofillData,
   FormContextState,
   FormControl,
   FormDefinition,
@@ -1433,57 +1432,6 @@ export class FormService extends Service {
   // ============================================================================
 
   /**
-   * Sensitive controls of a form, by key. A form that is no longer registered
-   * has no known sensitive key, so only a registered form can authorize the
-   * scrub below.
-   */
-  private sensitiveAutofillKeys(formId: string): Set<string> {
-    const form = this.getForm(formId);
-    return new Set(
-      (form?.controls ?? [])
-        .filter((control) => control.sensitive)
-        .map((control) => control.key),
-    );
-  }
-
-  /**
-   * Drop a sensitive answer from a stored autofill record and rewrite the
-   * record without it.
-   *
-   * WHY: the autofill record is replayed into the next session of the same
-   * form, so a password or token kept there is a second copy of the secret and
-   * answers the field again without the user typing it. The submission path
-   * no longer writes those keys, but a record written before that guard can
-   * still hold one. The exported storage reader ({@link getAutofillData}) has
-   * no form definition and cannot tell which keys are sensitive, so the value
-   * must leave storage here, not only leave the returned object.
-   */
-  private async dropSensitiveAutofillValues(
-    entityId: UUID,
-    formId: string,
-    data: FormAutofillData,
-  ): Promise<FormAutofillData> {
-    const sensitiveKeys = this.sensitiveAutofillKeys(formId);
-    if (sensitiveKeys.size === 0) {
-      return data;
-    }
-    const kept = createValueMap<JsonValue>();
-    let dropped = false;
-    for (const [key, value] of Object.entries(data.values)) {
-      if (sensitiveKeys.has(key)) {
-        dropped = true;
-        continue;
-      }
-      kept[key] = value;
-    }
-    if (!dropped) {
-      return data;
-    }
-    await saveAutofillData(this.runtime, entityId, formId, kept);
-    return { ...data, values: kept };
-  }
-
-  /**
    * Get autofill data for a form
    */
   async getAutofill(
@@ -1491,15 +1439,7 @@ export class FormService extends Service {
     formId: string,
   ): Promise<Record<string, JsonValue> | null> {
     const data = await getAutofillData(this.runtime, entityId, formId);
-    if (!data) {
-      return null;
-    }
-    const scrubbed = await this.dropSensitiveAutofillValues(
-      entityId,
-      formId,
-      data,
-    );
-    return scrubbed.values;
+    return data?.values || null;
   }
 
   /**
@@ -1511,31 +1451,19 @@ export class FormService extends Service {
       return [];
     }
 
-    const stored = await getAutofillData(
+    const autofill = await getAutofillData(
       this.runtime,
       session.entityId,
       session.formId,
     );
-    if (!stored) {
+    if (!autofill) {
       return [];
     }
-    // A legacy record scrubs itself here, so a replayed session never carries
-    // the secret forward even before the read path is called.
-    const autofill = await this.dropSensitiveAutofillValues(
-      session.entityId,
-      session.formId,
-      stored,
-    );
 
     const appliedFields: string[] = [];
     const now = Date.now();
 
     for (const control of form.controls) {
-      // A sensitive answer is never a prefill value the form puts back into a
-      // field on the user's behalf; only an explicit answer can fill it.
-      if (control.sensitive) {
-        continue;
-      }
       // Only autofill empty fields
       if (session.fields[control.key]?.status !== "empty") {
         continue;

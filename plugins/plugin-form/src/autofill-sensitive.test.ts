@@ -10,7 +10,6 @@ import { createTestRuntime } from "@elizaos/testing/runtime";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import formPlugin from "./index";
 import { FormService } from "./service";
-import { getAutofillData, saveAutofillData } from "./storage";
 
 const SECRET = "hunter123";
 
@@ -107,79 +106,5 @@ describe("sensitive answer in form autofill", () => {
     expect(reloaded?.fields?.user?.value).toBe("ann");
     expect(reloaded?.fields?.password?.status).toBe("empty");
     expect(reloaded?.fields?.password?.value).toBeUndefined();
-  }, 60_000);
-
-  it("removes a sensitive value that a legacy record already holds", async () => {
-    const runtime = harness.runtime;
-    const entityId = stringToUuid("form-autofill-legacy-read");
-    await runtime.createEntity({
-      id: entityId,
-      names: ["Ann"],
-      agentId: runtime.agentId,
-    });
-    // The record the pre-guard submission path wrote: every submitted value,
-    // including the password.
-    await saveAutofillData(runtime, entityId, "login-autofill", {
-      user: "ann",
-      password: SECRET,
-    });
-    expect(
-      (await getAutofillData(runtime, entityId, "login-autofill"))?.values
-        .password,
-    ).toBe(SECRET);
-
-    const read = await service.getAutofill(entityId, "login-autofill");
-    expect(read?.user).toBe("ann");
-    expect(read?.password).toBeUndefined();
-
-    // The secret must leave storage, not only the returned object: the
-    // exported storage reader has no form definition and would otherwise keep
-    // handing the password to every caller.
-    const storedAfter = await getAutofillData(
-      runtime,
-      entityId,
-      "login-autofill",
-    );
-    expect(storedAfter?.values).toEqual({ user: "ann" });
-  }, 60_000);
-
-  it("scrubs a legacy value while replaying it into the next session", async () => {
-    const runtime = harness.runtime;
-    const entityId = stringToUuid("form-autofill-legacy-replay");
-    await runtime.createEntity({
-      id: entityId,
-      names: ["Ann"],
-      agentId: runtime.agentId,
-    });
-    await saveAutofillData(runtime, entityId, "login-autofill", {
-      user: "ann",
-      password: SECRET,
-    });
-    const roomId = stringToUuid("form-autofill-legacy-replay-room");
-    await runtime.ensureRoomExists({
-      id: roomId,
-      worldId: runtime.agentId,
-      name: "Form autofill legacy replay",
-      source: "test",
-      type: ChannelType.DM,
-    });
-
-    const session = await service.startSession(
-      "login-autofill",
-      entityId,
-      roomId,
-    );
-    const applied = await service.applyAutofill(session);
-    expect(applied).toEqual(["user"]);
-
-    const reloaded = await service.getActiveSession(entityId, roomId);
-    expect(reloaded?.fields?.user?.value).toBe("ann");
-    expect(reloaded?.fields?.password?.value).toBeUndefined();
-    const storedAfter = await getAutofillData(
-      runtime,
-      entityId,
-      "login-autofill",
-    );
-    expect(storedAfter?.values).toEqual({ user: "ann" });
   }, 60_000);
 });
