@@ -3294,9 +3294,9 @@ export class RemindersDomain {
     now: Date,
   ): Promise<void> {
     const notifier = this.ctx.runtime.getService(ServiceType.NOTIFICATION) as {
-      listIncludingExpired?: () => { id: string; agentId?: string; source: string; category: string; groupKey?: string; data?: Record<string, unknown>; createdAt: number; readAt?: number | null }[];
+      listDurableIncludingExpired?: () => Promise<{ id: string; agentId?: string; source: string; category: string; groupKey?: string; data?: Record<string, unknown>; createdAt: number; readAt?: number | null }[]>;
     } | null;
-    const notifications = notifier?.listIncludingExpired?.() ?? [];
+    const notifications = await notifier?.listDurableIncludingExpired?.() ?? [];
     for (const attempt of attempts) {
       if (attempt.channel !== "in_app" || attempt.outcome !== "delivered" || attempt.agentId !== this.ctx.agentId()) continue;
       const id = attempt.deliveryMetadata.notificationId;
@@ -3307,7 +3307,7 @@ export class RemindersDomain {
         || notification.groupKey !== `reminder:${attempt.ownerType}:${attempt.ownerId}`
         || notification.data?.ownerType !== attempt.ownerType || notification.data?.ownerId !== attempt.ownerId
         || notification.data?.scheduledFor !== attempt.scheduledFor
-        || typeof notification.readAt !== "number" || !Number.isFinite(notification.readAt) || notification.readAt < attemptedAt
+        || typeof notification.readAt !== "number" || !Number.isFinite(notification.readAt) || notification.readAt < attemptedAt || notification.readAt < notification.createdAt
         || notification.createdAt < attemptedAt || notification.readAt > now.getTime()) continue;
       await this.ctx.repository.updateReminderAttemptOutcome(attempt.id, "delivered_read", {
         notificationId: id, readDetectedAt: new Date(notification.readAt).toISOString(), readEvidence: "notification_read",
