@@ -209,6 +209,76 @@ function eventSnapshot(
   };
 }
 
+/** The Google account and calendar a sync review names, as the Cloud route verified them. */
+export type GoogleCalendarSyncDestination = {
+  providerAccountId: string;
+  accountEmail: string;
+  calendarLabel: string;
+};
+
+/**
+ * Validates the Cloud `capabilities` answer for the calendar the owner chose.
+ * A calendar is offered for sync only with readback, conditional writes and
+ * idempotent creates (never a provider exactly-once claim), and only when the
+ * account and calendar names the owner reviews can be shown.
+ */
+export function readGoogleCalendarSyncCapabilities(
+  raw: unknown,
+  calendarId: string,
+): GoogleCalendarSyncDestination {
+  const caps =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  if (
+    caps.version !== 1 ||
+    caps.calendarId !== calendarId ||
+    !text(caps.accountId) ||
+    caps.read !== true ||
+    caps.write !== true ||
+    caps.conditionalWrites !== true ||
+    caps.idempotentCreate !== true ||
+    caps.providerExactlyOnce !== false
+  )
+    throw Error("This Google calendar does not support safe sync.");
+  if (
+    typeof caps.accountEmail !== "string" ||
+    !/^[^\s@]+@[^\s@]+$/.test(caps.accountEmail) ||
+    typeof caps.calendarLabel !== "string" ||
+    !caps.calendarLabel.trim()
+  )
+    throw Error(
+      "Google account and calendar names could not be verified. Review the connection before syncing.",
+    );
+  return {
+    providerAccountId: caps.accountId,
+    accountEmail: caps.accountEmail,
+    calendarLabel: caps.calendarLabel,
+  };
+}
+
+/** Reads and validates the destination before a review. A changed context stops before validation. */
+export async function readGoogleCalendarSyncDestination(
+  client: CalendarSyncClient,
+  selection: { grantId: string; calendarId: string },
+  current: () => boolean,
+  signal: AbortSignal,
+): Promise<GoogleCalendarSyncDestination> {
+  const raw = await client.googleCalendarSync(
+    {
+      kind: "capabilities",
+      selection: {
+        grantId: selection.grantId,
+        calendarId: selection.calendarId,
+      },
+    },
+    signal,
+  );
+  if (!current())
+    throw new DOMException("Calendar sync context changed", "AbortError");
+  return readGoogleCalendarSyncCapabilities(raw, selection.calendarId);
+}
+
 /** Only the explicitly enabled controller supplies this exact binding and current-owner fence. */
 export async function googleCalendarSyncPort(
   client: CalendarSyncClient,
