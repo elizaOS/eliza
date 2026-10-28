@@ -252,7 +252,7 @@
     "@solana/wallet-adapter-react": "^0.15.39",
     "@solana/wallet-adapter-react-ui": "^0.9.39",
     "@solana/wallet-adapter-solflare": "^0.6.33",
-    "@solana/web3.js": "1.98.4",
+    "@solana/web3.js": "1.99.0",
     "@elizaos/auth": "workspace:*",
     "@tanstack/react-query": "^5.90.20",
     "@xyflow/react": "^12.10.2",

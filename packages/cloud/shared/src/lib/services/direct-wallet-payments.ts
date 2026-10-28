@@ -958,8 +958,8 @@ async function verifySolanaTokenPayment(params: {
   }
 
   const connection = new Connection(params.cfg.rpcUrl, "confirmed");
-  // Version 1 transactions are a large share of mainnet traffic now. Asking
-  // for maxSupportedTransactionVersion 0 makes the node reject them with
+  // Asking for maxSupportedTransactionVersion 0 makes the node reject version 1
+  // transactions with
   // -32015 ("Transaction version (1) is not supported by the requesting
   // client"), and retrying with the same bound can never recover. Version 1
   // also covers legacy and version 0 transactions, so 1 is strictly wider.
