@@ -139,7 +139,7 @@
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.15",
+		"@biomejs/biome": "2.6.3",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"@typescript/native": "npm:typescript@^7.0.2",

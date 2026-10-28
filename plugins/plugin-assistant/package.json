@@ -120,7 +120,7 @@
     "tsup": "^9.0.0",
     "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*",
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/plugin-sql": "workspace:*",
     "esbuild": "^0.28.0",
     "@electric-sql/pglite": "^0.4.0"
