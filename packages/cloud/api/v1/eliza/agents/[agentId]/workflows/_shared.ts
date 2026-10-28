@@ -111,6 +111,21 @@ function buildTargetUrl(
   return target;
 }
 
+/** True when the forwarded path is still this agent's /workflows route. */
+export function staysWithinWorkflowRoutes(
+  agentId: string,
+  suffix: string,
+): boolean {
+  const prefix = `/agents/${encodeURIComponent(agentId)}/workflows`;
+  const { pathname } = buildTargetUrl(
+    "http://agent-server.invalid",
+    "http://agent-server.invalid/",
+    agentId,
+    suffix,
+  );
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 /** Keeps long generation/run calls alive while bounding ordinary proxy work. */
 export function workflowProxyTimeoutMs(method: string, suffix: string): number {
   if (method.toUpperCase() !== "POST") {
@@ -241,6 +256,18 @@ async function forwardWorkflowToAgentServer(params: {
 
   const headers = new Headers(params.request.headers);
   headers.delete("host");
+  // The caller's Cloud credentials and identity headers are not for the agent
+  // server; it trusts only the headers set below.
+  for (const name of [...headers.keys()]) {
+    if (
+      name === "cookie" ||
+      name === "authorization" ||
+      name === "x-api-key" ||
+      name.startsWith("x-eliza-")
+    ) {
+      headers.delete(name);
+    }
+  }
   headers.set("x-server-token", sharedSecret);
   headers.set("x-eliza-user-id", params.user.id);
   headers.set("x-eliza-organization-id", params.user.organization_id);
@@ -290,6 +317,17 @@ export async function handleWorkflowProxyRequest(
         Response.json(
           { success: false, error: "Agent not found" },
           { status: 404 },
+        ),
+        WORKFLOW_CORS_METHODS,
+      );
+    }
+    // The target URL resolves dot segments (also backslash and %2e forms), so
+    // check the path the proxy will actually request, not the raw suffix.
+    if (!staysWithinWorkflowRoutes(agentId, suffix)) {
+      return applyCorsHeaders(
+        Response.json(
+          { success: false, error: "Invalid workflow path" },
+          { status: 400 },
         ),
         WORKFLOW_CORS_METHODS,
       );

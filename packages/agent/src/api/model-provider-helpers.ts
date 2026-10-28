@@ -461,7 +461,11 @@ export async function fetchAnthropicModels(
       headers,
       signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      throw new ModelCatalogFetchError("anthropic", {
+        upstreamStatus: res.status,
+      });
+    }
     const data = (await res.json()) as {
       data?: Array<{
         id: string;
@@ -477,7 +481,10 @@ export async function fetchAnthropicModels(
       }))
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
-    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
+    // error-policy:J4 an unreachable catalog is an explicit empty provider list;
+    // a provider that answered with an error status stays a typed catalog
+    // failure for the HTTP boundary (models-routes.ts).
+    if (e instanceof ModelCatalogFetchError) throw e;
     logger.warn(
       `[model-catalog] Failed to fetch Anthropic models: ${e instanceof Error ? e.message : e}`,
     );
@@ -494,7 +501,11 @@ export async function fetchGoogleModels(
     const res = await fetch(url, {
       signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      throw new ModelCatalogFetchError("google-genai", {
+        upstreamStatus: res.status,
+      });
+    }
     const data = (await res.json()) as {
       models?: Array<{
         name: string;
@@ -510,7 +521,10 @@ export async function fetchGoogleModels(
       };
     });
   } catch (e: unknown) {
-    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
+    // error-policy:J4 an unreachable catalog is an explicit empty provider list;
+    // a provider that answered with an error status stays a typed catalog
+    // failure for the HTTP boundary (models-routes.ts).
+    if (e instanceof ModelCatalogFetchError) throw e;
     logger.warn(
       `[model-catalog] Failed to fetch Google models: ${e instanceof Error ? e.message : e}`,
     );
@@ -672,7 +686,11 @@ export async function fetchNearAIModels(
       headers,
       signal: AbortSignal.timeout(DEFAULT_MODEL_CATALOG_FETCH_TIMEOUT_MS),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      throw new ModelCatalogFetchError("nearai", {
+        upstreamStatus: res.status,
+      });
+    }
     const data = (await res.json()) as {
       data?: NearAIModelEntry[];
       models?: NearAIModelEntry[];
@@ -704,7 +722,10 @@ export async function fetchNearAIModels(
       .filter((model): model is CachedModel => model !== null)
       .sort((a, b) => a.id.localeCompare(b.id));
   } catch (e: unknown) {
-    // error-policy:J4 an unavailable catalog is an explicit empty provider list.
+    // error-policy:J4 an unreachable catalog is an explicit empty provider list;
+    // a provider that answered with an error status stays a typed catalog
+    // failure for the HTTP boundary (models-routes.ts).
+    if (e instanceof ModelCatalogFetchError) throw e;
     logger.warn(
       `[model-catalog] Failed to fetch NEAR AI models: ${e instanceof Error ? e.message : e}`,
     );

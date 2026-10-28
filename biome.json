@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
   "root": true,
   "assist": {
     "actions": {
@@ -54,7 +54,9 @@
     "rules": {
       "preset": "recommended",
       "correctness": {
-        "noUnusedPrivateClassMembers": "warn"
+        "noUnusedPrivateClassMembers": "warn",
+        "noComponentHookFactories": "off",
+        "usePlaywrightValidDescribeCallback": "off"
       },
       "style": {
         "noNonNullAssertion": "warn"

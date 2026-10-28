@@ -114,11 +114,14 @@ function shapeClaims(payload: RawClaims):
 async function loadJwks(
   issuer: string,
   options: VerifyOptions,
-): Promise<JwksDocument | null> {
+  { refresh = false }: { refresh?: boolean } = {},
+): Promise<{ document: JwksDocument; fromCache: boolean } | null> {
   const env = options.env ?? process.env;
   const now = options.now?.() ?? Date.now();
-  const cached = await readCachedJwks(issuer, { env, now });
-  if (cached) return cached;
+  if (!refresh) {
+    const cached = await readCachedJwks(issuer, { env, now });
+    if (cached) return { document: cached, fromCache: true };
+  }
   const fetchImpl = options.fetchImpl ?? fetch;
   const url = `${issuer.replace(/\/$/, "")}/.well-known/jwks.json`;
   const response = await fetchImpl(url, {
@@ -135,7 +138,58 @@ async function loadJwks(
     keys: candidate.keys as JwksDocument["keys"],
   };
   await writeCachedJwks(issuer, document, { env, now });
-  return document;
+  return { document, fromCache: false };
+}
+type SignatureAttempt =
+  | { ok: true; payload: RawClaims }
+  | { ok: false; reason: VerifyBootstrapFailureReason; unknownKey: boolean };
+/**
+ * Verify with one key set. An unknown `kid` is reported separately: the key set
+ * is stale, not the signature, so the caller may refetch the published set.
+ */
+async function verifySignature(
+  jwks: JwksDocument,
+  token: string,
+  issuer: string,
+): Promise<SignatureAttempt> {
+  // jose's local JWKS resolver enforces the algorithm we restrict to via
+  // `algorithms`. We pin RS256 explicitly — anything else (notably HS256
+  // signed with a leaked secret) MUST be rejected.
+  const localJwks = createLocalJWKSet({ keys: jwks.keys });
+  try {
+    const verified = await jwtVerify(token, localJwks, {
+      algorithms: [BOOTSTRAP_TOKEN_ALG],
+      issuer,
+    });
+    return { ok: true, payload: verified.payload as RawClaims };
+  } catch (err) {
+    const code = (
+      err as {
+        code?: string;
+      }
+    ).code;
+    if (code === "ERR_JWT_EXPIRED")
+      return { ok: false, reason: "expired", unknownKey: false };
+    if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
+      const claim = (
+        err as {
+          claim?: string;
+        }
+      ).claim;
+      if (claim === "iss")
+        return { ok: false, reason: "issuer_mismatch", unknownKey: false };
+      return { ok: false, reason: "claims_invalid", unknownKey: false };
+    }
+    if (code === "ERR_JWKS_NO_MATCHING_KEY")
+      return { ok: false, reason: "signature_invalid", unknownKey: true };
+    if (code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") {
+      return { ok: false, reason: "signature_invalid", unknownKey: false };
+    }
+    if (code === "ERR_JOSE_ALG_NOT_ALLOWED" || code === "ERR_JWS_INVALID") {
+      return { ok: false, reason: "alg_not_allowed", unknownKey: false };
+    }
+    return { ok: false, reason: "signature_invalid", unknownKey: false };
+  }
 }
 /**
  * Verify a bootstrap token.
@@ -157,50 +211,34 @@ export async function verifyBootstrapToken(
   if (!token || typeof token !== "string" || token.length < 8) {
     return { ok: false, reason: "missing_token" };
   }
-  let jwks: JwksDocument | null;
+  let loaded: { document: JwksDocument; fromCache: boolean } | null;
   try {
-    jwks = await loadJwks(issuer, options);
+    loaded = await loadJwks(issuer, options);
   } catch {
     return { ok: false, reason: "jwks_fetch_failed" };
   }
-  if (!jwks || jwks.keys.length === 0) {
+  if (!loaded || loaded.document.keys.length === 0) {
     return { ok: false, reason: "jwks_fetch_failed" };
   }
-  // jose's local JWKS resolver enforces the algorithm we restrict to via
-  // `algorithms`. We pin RS256 explicitly — anything else (notably HS256
-  // signed with a leaked secret) MUST be rejected.
-  const localJwks = createLocalJWKSet({ keys: jwks.keys });
-  let payload: RawClaims;
-  try {
-    const verified = await jwtVerify(token, localJwks, {
-      algorithms: [BOOTSTRAP_TOKEN_ALG],
-      issuer,
-    });
-    payload = verified.payload as RawClaims;
-  } catch (err) {
-    const code = (
-      err as {
-        code?: string;
-      }
-    ).code;
-    if (code === "ERR_JWT_EXPIRED") return { ok: false, reason: "expired" };
-    if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
-      const claim = (
-        err as {
-          claim?: string;
-        }
-      ).claim;
-      if (claim === "iss") return { ok: false, reason: "issuer_mismatch" };
-      return { ok: false, reason: "claims_invalid" };
+  let jwks = loaded.document;
+  let attempt = await verifySignature(jwks, token, issuer);
+  if (!attempt.ok && attempt.unknownKey && loaded.fromCache) {
+    // The control plane rotated its signing key after this volume wrote its
+    // cache. The token names a key we do not hold yet, so discard the cached
+    // set once instead of failing a valid bootstrap token for the whole TTL.
+    let refreshed: { document: JwksDocument; fromCache: boolean } | null;
+    try {
+      refreshed = await loadJwks(issuer, options, { refresh: true });
+    } catch {
+      refreshed = null;
     }
-    if (code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") {
-      return { ok: false, reason: "signature_invalid" };
+    if (refreshed && refreshed.document.keys.length > 0) {
+      jwks = refreshed.document;
+      attempt = await verifySignature(jwks, token, issuer);
     }
-    if (code === "ERR_JOSE_ALG_NOT_ALLOWED" || code === "ERR_JWS_INVALID") {
-      return { ok: false, reason: "alg_not_allowed" };
-    }
-    return { ok: false, reason: "signature_invalid" };
   }
+  if (!attempt.ok) return { ok: false, reason: attempt.reason };
+  const payload = attempt.payload;
   const shape = shapeClaims(payload);
   if (!shape.ok) return shape;
   const claims = shape.claims;

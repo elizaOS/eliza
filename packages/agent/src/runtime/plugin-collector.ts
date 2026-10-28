@@ -881,10 +881,27 @@ export function collectPluginNames(
   if (
     personalAssistantDisabledByEnv() ||
     leanChat ||
-    storeBuild ||
+    (!onMobile && storeBuild) ||
     isCloudContainer
   ) {
     pluginsToLoad.delete("@elizaos/plugin-personal-assistant");
+  }
+
+  // A selective reminder host opts into its declared storage dependencies.
+  // Do not install this contribution in every standalone or lean deployment.
+  if (
+    pluginsToLoad.has("@elizaos/plugin-personal-assistant/reminders-plugin")
+  ) {
+    for (const companion of [
+      "@elizaos/plugin-scheduling",
+      "@elizaos/plugin-reminders",
+      "@elizaos/plugin-goals",
+    ]) {
+      if (!isPluginExplicitlyDisabled(companion)) {
+        pluginsToLoad.add(companion);
+        track(companion, "selected owner reminders dependency");
+      }
+    }
   }
 
   // Calendar home tiles load on every platform (MOBILE_VIEW_PLUGINS). Calendar
@@ -1018,6 +1035,10 @@ export function collectPluginNames(
   ) {
     pluginsToLoad.delete("@elizaos/plugin-agent-orchestrator/ui");
   }
+  // Full PA already owns this canonical surface. Never install a second
+  // promotion/handler set alongside it; mobile/store uses the selective owner.
+  if (pluginsToLoad.has("@elizaos/plugin-personal-assistant"))
+    pluginsToLoad.delete("@elizaos/plugin-personal-assistant/reminders-plugin");
   return pluginsToLoad;
 }
 

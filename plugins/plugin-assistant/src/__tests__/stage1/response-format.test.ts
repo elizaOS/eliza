@@ -23,6 +23,7 @@ import {
 } from "../../services/message.js";
 import {
   acceptedRecoveryReview,
+  addDeferredReference,
   makeAttachmentState,
   makeMemorySearchAction,
   makeMessage,
@@ -490,6 +491,16 @@ describe("Stage 1 response format", () => {
         contexts: ["simple"],
         replyText: actionBatch,
       }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "safe-reply",
+            name: "REPLY",
+            arguments: { text: "I could not open that page." },
+          },
+        ],
+      },
     ]);
 
     const result = await runStage1({
@@ -497,10 +508,10 @@ describe("Stage 1 response format", () => {
       message: makeMessage({ text: "Open example.com" }),
     });
 
-    expect(result.kind).toBe("direct_reply");
-    if (result.kind === "direct_reply") {
+    expect(result.kind).toBe("planned_reply");
+    if (result.kind === "planned_reply") {
       expect(result.result.responseContent?.text).toBe(
-        "I'm not sure how to answer that.",
+        "I could not open that page.",
       );
       expect(result.result.responseContent?.text).not.toContain("BROWSER");
     }
@@ -2247,9 +2258,8 @@ describe("Stage 1 response format", () => {
           JSON.stringify({
             response: "I need more context to answer that question.",
           }),
-          acceptedRecoveryReview(
-            "The candidate acknowledges missing information without asserting an effect.",
-          ),
+          // The candidate acknowledges missing information without a claim.
+          acceptedRecoveryReview(),
         ]),
       );
       const result = await runStage1({
@@ -2268,6 +2278,110 @@ describe("Stage 1 response format", () => {
         );
       }
     }
+  });
+
+  it("delivers the planner's own reply when it reconsiders silence on an owed turn", async () => {
+    // Live shape: Stage 1 said RESPOND with an empty reply labelled "applied"
+    // beside pending review work; the planner then chose IGNORE, and a
+    // recovery renderer had to invent a reply that a strict judge rejected.
+    const answer = "Looks solid. I'd still check the fail-closed path.";
+    const runtime = makeRuntime([
+      stage1Response({
+        contexts: ["general"],
+        intents: ["review the commit diff"],
+        replyText: "",
+        extra: { replyEffectStatus: "applied" },
+      }),
+      {
+        text: "",
+        toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+      },
+      {
+        text: "",
+        toolCalls: [
+          { id: "reply-1", name: "REPLY", arguments: { text: answer } },
+        ],
+      },
+    ]);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({
+        text: "Shipped all of this, here is the commit diff.",
+        channelType: ChannelType.DM,
+      }),
+    });
+
+    expect(result.kind).toBe("planned_reply");
+    if (result.kind === "planned_reply")
+      expect(result.result.responseContent?.text).toBe(answer);
+    expect(useModelCalls(runtime)).toHaveLength(3);
+    expect(useModelCalls(runtime).map(([model]) => model)).not.toContain(
+      ModelType.TEXT_SMALL,
+    );
+    expect(
+      (runtime.logger.warn as ReturnType<typeof vi.fn>).mock.calls.some(
+        ([, text]) => String(text).includes("zero deliveries"),
+      ),
+    ).toBe(false);
+  });
+
+  it("reviews planner silence after a context restore on a group reply to the agent", async () => {
+    // Incident path: Stage 1 said RESPOND to a reply to the agent, the planner
+    // restored context and then chose IGNORE, and recovery had to invent the
+    // reply. A context read is not work done, so the silence review still runs.
+    const answer = "Looks solid. I'd still check the fail-closed path.";
+    const runtime = makeRuntime([
+      stage1Response({
+        contexts: ["general"],
+        intents: ["review the commit diff"],
+        replyText: "",
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "restore-1",
+            name: "RESTORE_CONTEXT",
+            arguments: { scope: "providers", reason: "Read the references." },
+          },
+        ],
+      },
+      {
+        text: "",
+        toolCalls: [{ id: "ignore-1", name: "IGNORE", arguments: {} }],
+      },
+      {
+        text: "",
+        toolCalls: [
+          { id: "reply-1", name: "REPLY", arguments: { text: answer } },
+        ],
+      },
+    ]);
+    const state = makeState();
+    addDeferredReference(runtime, state);
+    runtime.composeState = vi.fn(async () => state) as never;
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({
+        text: "Shipped all of this, here is the commit diff.",
+        channelType: ChannelType.GROUP,
+        mentionContext: { isReply: true },
+      }),
+      state,
+    });
+
+    expect(result.kind).toBe("planned_reply");
+    if (result.kind === "planned_reply")
+      expect(result.result.responseContent?.text).toBe(answer);
+    const calls = useModelCalls(runtime);
+    expect(calls).toHaveLength(4);
+    expect(calls.map(([model]) => model)).not.toContain(ModelType.TEXT_SMALL);
+    expect(JSON.stringify(calls[1])).not.toContain(
+      "First private reference body.",
+    );
+    expect(JSON.stringify(calls[2])).toContain("First private reference body.");
+    expect(JSON.stringify(calls[2])).not.toContain("a reply is owed");
+    expect(JSON.stringify(calls[3])).toContain("a reply is owed");
   });
 
   it("includes the agent's own prior replies with speaker attribution", async () => {

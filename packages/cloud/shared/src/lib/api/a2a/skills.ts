@@ -705,10 +705,11 @@ export async function executeSkillDeleteMemory(
   const memoryId = dataContent.memoryId as string;
   if (!memoryId) throw new Error("memoryId required");
 
-  await memoryService.deleteMemory({
+  const { deletedCount } = await memoryService.deleteMemory({
     organizationId: ctx.user.organization_id,
     memoryId,
   });
+  if (deletedCount === 0) throw new Error("Memory not found");
   return { success: true, memoryId };
 }
 

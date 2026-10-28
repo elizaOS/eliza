@@ -12,16 +12,21 @@ import type {
 import {
   CONTEXT_ROUTING_METADATA_KEY,
   filterProvidersByContextGate,
+  getContextRoutingFromMessage,
   isPageScopedRoutingContext,
   parseContextRoutingMetadata,
   satisfiesRoleGate,
 } from "@elizaos/core";
+import { turnObservation } from "../device-actions/turn-observation.ts";
 import {
   isAmbientStage1Turn,
   messageExplicitlyAddressesAgent,
   resolveStage1SenderRole,
 } from "./addressing.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+
+/** These approved providers emit only bounded availability metadata, never domain bodies. */
+const STAGE1_ROUTING_METADATA_PROVIDERS = ["NAMED_NOTE_ROUTING"] as const;
 
 /** Stage 1 owns interpretation, the current clock and disclosure context; domain state and output grammars wait for planning. */
 export const STAGE1_RESPONSE_STATE_PROVIDERS = [
@@ -33,6 +38,7 @@ export const STAGE1_RESPONSE_STATE_PROVIDERS = [
   "BOT_AWARENESS",
   "CHOICE",
   "CurrentElizaOwnedAlarmSnapshot",
+  ...STAGE1_ROUTING_METADATA_PROVIDERS,
 ] as const;
 
 export const CORE_RESPONSE_STATE_PROVIDERS = [
@@ -200,17 +206,51 @@ export function uiViewActionPriority(
 /** Select authorized evidence needed to interpret the turn before direct delivery. */
 export function stage1ResponseStateProviderNames(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   userRoles?: readonly RoleGateRole[],
 ): string[] {
   return [...STAGE1_RESPONSE_STATE_PROVIDERS].filter((name) => {
     const provider = runtime.providers?.find((entry) => entry.name === name);
-    return (
-      !provider ||
-      (!provider.private &&
-        satisfiesRoleGate(userRoles, provider.roleGate) &&
-        satisfiesRoleGate(userRoles, provider.contextGate?.roleGate))
-    );
+    if (!provider) return true;
+    if (
+      provider.private ||
+      !satisfiesRoleGate(userRoles, provider.roleGate) ||
+      !satisfiesRoleGate(userRoles, provider.contextGate?.roleGate)
+    )
+      return false;
+    if (STAGE1_ROUTING_METADATA_PROVIDERS.some((entry) => entry === name)) {
+      // Check each declared current-message routing decision independently. Do not
+      // union unrelated metadata to satisfy an allOf gate or miss a noneOf denial.
+      const decisions = [
+        getContextRoutingFromMessage(message),
+        parseContextRoutingMetadata(
+          message.metadata && typeof message.metadata === "object"
+            ? (message.metadata as Record<string, unknown>)[
+                CONTEXT_ROUTING_METADATA_KEY
+              ]
+            : undefined,
+        ),
+      ].filter(
+        (decision) =>
+          decision.primaryContext || decision.secondaryContexts?.length,
+      );
+      return (
+        decisions.length
+          ? decisions
+          : [{ primaryContext: "general", secondaryContexts: [] }]
+      ).every(
+        (decision) =>
+          filterProvidersByContextGate(
+            [provider],
+            [
+              decision.primaryContext ?? "general",
+              ...(decision.secondaryContexts ?? []),
+            ],
+            userRoles,
+          ).length === 1,
+      );
+    }
+    return true;
   });
 }
 
@@ -280,4 +320,92 @@ export function selectV5PlannerStateProviderNames(args: {
     providerNames.delete(excluded);
   }
   return [...providerNames];
+}
+
+/** A registered foreground view can disambiguate an otherwise general planner
+ * bootstrap. Explicit domains, terminal/simple contexts and action hints retain
+ * their own routing. This only chooses discoverable candidates/weights. */
+export function plannerDiscoveryContexts(
+  message: Memory,
+  selectedContexts: readonly AgentContext[] | undefined,
+): readonly AgentContext[] | undefined {
+  if (
+    !selectedContexts?.length ||
+    selectedContexts.some(
+      (context) => String(context).trim().toLowerCase() !== "general",
+    ) ||
+    !hasUiViewPlannerScope(message) ||
+    uiViewActionNames(message).size === 0
+  )
+    return selectedContexts;
+  if (turnObservation(message.content?.metadata)?.sensitive)
+    return selectedContexts;
+  const routing = getContextRoutingFromMessage(message),
+    primary = routing.primaryContext;
+  if (
+    !primary ||
+    primary === "general" ||
+    primary === "simple" ||
+    isPageScopedRoutingContext(primary)
+  )
+    return selectedContexts;
+  return [...new Set([...selectedContexts, primary])];
+}
+
+/** Typed current-record identity in the model-selected outcome is a relevance
+ * hint only. Registered action tags own selection kinds; admission owns access. */
+export function plannerSelectedRecordActionHints(
+  message: Memory,
+  actions: readonly Action[],
+  intents: readonly string[] | undefined,
+): string[] {
+  if (!hasUiViewPlannerScope(message) || uiViewActionNames(message).size === 0)
+    return [];
+  const current = turnObservation(message.content?.metadata),
+    selected = current?.sensitive ? undefined : current?.selectedObject;
+  if (!selected) return [];
+  const primary = getContextRoutingFromMessage(message).primaryContext;
+  if (
+    !primary ||
+    primary === "general" ||
+    primary === "simple" ||
+    !current ||
+    current.view !==
+      (message.content?.metadata as Record<string, unknown> | undefined)?.uiView
+  )
+    return [];
+  return actions
+    .filter((action) => {
+      if (
+        !(action.tags ?? []).includes("selection-kind:" + selected.kind) ||
+        !(action.contexts ?? []).includes(primary)
+      )
+        return false;
+      let identity: string | undefined;
+      try {
+        identity = action.selectionIdentity
+          ? action.selectionIdentity(selected)
+          : /^[A-Za-z0-9._:-]{16,256}$/.test(selected.id)
+            ? selected.id
+            : undefined;
+      } catch {
+        return false;
+      }
+      if (!identity || identity !== selected.id || identity.length > 256)
+        return false;
+      const escaped = identity.replaceAll(".", "\\.");
+      const reference = new RegExp(
+        `(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`,
+        "u",
+      );
+      return (intents ?? []).some((intent) =>
+        reference.test(
+          intent.replace(
+            /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
+            " ",
+          ),
+        ),
+      );
+    })
+    .map((action) => action.name);
 }

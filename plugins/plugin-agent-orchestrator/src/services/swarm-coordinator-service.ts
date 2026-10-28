@@ -779,9 +779,11 @@ export class SwarmCoordinatorService
       // whose teardown it suppresses. Same rule for the validator-pass
       // markers: a pass suppresses only the teardown stop of the turn it
       // verified; new work on the reused session re-arms both the stop notice
-      // and the bare-pass feedback.
+      // and the bare-pass feedback. The completion dedupe slot also belongs to
+      // the previous turn: the new turn's terminal event must post its result.
       this.routerCededTerminalSessions.delete(sessionId);
       this.validatorPassSessions.delete(sessionId);
+      this.synthesizedCompletionSessions.delete(sessionId);
     }
 
     const enrichedData = this.shouldEnrichEvent(event)

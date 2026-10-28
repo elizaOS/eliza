@@ -6,6 +6,12 @@
 
 export const OPTIONAL_PLUGIN_IMPORTERS: Record<string, () => Promise<unknown>> =
   {
+    "@elizaos/plugin-personal-assistant": () =>
+      import("@elizaos/plugin-personal-assistant/plugin"),
+    "@elizaos/plugin-personal-assistant/reminders-plugin": () =>
+      import("@elizaos/plugin-personal-assistant/reminders-plugin"),
+    "@elizaos/plugin-reminders": () => import("@elizaos/plugin-reminders"),
+    "@elizaos/plugin-goals": () => import("@elizaos/plugin-goals"),
     "@elizaos/plugin-agent-orchestrator": () =>
       import("@elizaos/plugin-agent-orchestrator"),
     "@elizaos/plugin-agent-orchestrator/ui": () =>

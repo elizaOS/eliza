@@ -383,9 +383,18 @@ function isStreamAuthorized(
   res: http.ServerResponse,
   url: URL,
 ): boolean {
+  // Match ensureRouteAuthorized: trusted loopback passes, otherwise a
+  // token must be configured and presented. The previous shape returned
+  // true for anyone when no token was configured, so an unauthenticated
+  // remote caller could stream the approval snapshot. EventSource
+  // cannot set headers, so the query token is still accepted here.
+  if (isTrustedComputerUseLocalRequest(req)) return true;
+
   const expectedToken = getCompatApiToken();
   if (!expectedToken) {
-    return true;
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
+    return false;
   }
 
   const headerToken = getProvidedApiToken(req);
