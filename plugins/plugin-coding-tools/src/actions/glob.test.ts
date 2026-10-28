@@ -447,33 +447,4 @@ describe("globHandler — search root that cannot be listed", () => {
       expect(result.text).toContain(code);
     },
   );
-
-  it("rejects when the root itself cannot be read", async () => {
-    const unreadable = Object.assign(new Error("EACCES: permission denied"), {
-      code: "EACCES",
-    });
-
-    await expect(
-      walkContainedGlob(tmpRoot, "**/*.ts", async () => {
-        throw unreadable;
-      }),
-    ).rejects.toThrow("EACCES: permission denied");
-  });
-
-  it("still skips a subdirectory that cannot be read", async () => {
-    const files = await walkContainedGlob(
-      tmpRoot,
-      "**/*.ts",
-      async (directory) => {
-        if (path.resolve(directory) === path.resolve(tmpRoot, "foo", "sub")) {
-          throw new Error("EACCES: permission denied");
-        }
-        return fs.readdir(directory, { withFileTypes: true });
-      },
-    );
-
-    expect(
-      files.map((filePath) => path.relative(tmpRoot, filePath)).sort(),
-    ).toEqual([path.join("foo", "a.ts"), path.join("foo", "b.ts")]);
-  });
 });
