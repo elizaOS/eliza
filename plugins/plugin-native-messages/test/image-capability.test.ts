@@ -24,7 +24,7 @@ const stubs: Record<string, string> = {
   "android/content/pm/ApplicationInfo.java":
     "package android.content.pm; public class ApplicationInfo {public static final int FLAG_SYSTEM=1;public int flags;}",
   "android/content/pm/PackageManager.java":
-    "package android.content.pm; public class PackageManager {public java.util.Map<String,Integer> features=new java.util.HashMap<>();public boolean throwOnRead;public int reads;public boolean hasSystemFeature(String name,int version){reads++;if(throwOnRead)throw new RuntimeException(\"unreadable\");Integer v=features.get(name);return v!=null&&v>=version;}}",
+    'package android.content.pm; public class PackageManager {public java.util.Map<String,Integer> features=new java.util.HashMap<>();public boolean throwOnRead;public int reads;public boolean hasSystemFeature(String name,int version){reads++;if(throwOnRead)throw new RuntimeException("unreadable");Integer v=features.get(name);return v!=null&&v>=version;}}',
   "android/content/res/Resources.java":
     "package android.content.res; public class Resources {public static class NotFoundException extends RuntimeException {}public java.util.Map<Integer,Boolean> values=new java.util.HashMap<>();public boolean getBoolean(int id){Boolean v=values.get(id);if(v==null)throw new NotFoundException();return v;}}",
   "android/content/Context.java":
@@ -117,7 +117,7 @@ describe.skipIf(!hasJdk)("shared native image capability", () => {
     const version = /IMAGE_FEATURE_VERSION = (\d+);/.exec(staging)?.[1];
     expect(version).toBeTruthy();
     expect(source).toContain(`FEATURE_VERSION = ${version};`);
-    expect(staging).toContain("return `${appId}.aosp_image`;");
+    expect(staging).toContain(`return \`\${appId}.aosp_image\`;`);
     expect(source).toContain('return packageName + ".aosp_image";');
   });
 });
