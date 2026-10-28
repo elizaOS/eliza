@@ -868,20 +868,42 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
     },
   );
 
-  it.each([true, false])(
-    "retains iMessage chunk receipts through the real domain and queue (success=%s)",
-    async (success) => {
+  it.each([
+    {
+      label: "provider success",
+      success: true,
+      messageIds: ["accepted-part-1", "accepted-part-2"],
+      localEffectIds: undefined,
+      expected: "delivered",
+    },
+    {
+      label: "provider partial delivery",
+      success: false,
+      messageIds: ["accepted-part-1"],
+      localEffectIds: undefined,
+      expected: "reconciliation_required",
+    },
+    {
+      label: "native local completion",
+      success: true,
+      messageIds: [],
+      localEffectIds: ["imessage-effect:native-accepted"],
+      expected: "delivered",
+    },
+  ] as const)(
+    "retains iMessage receipts through the real domain and queue ($label)",
+    async ({ success, messageIds, localEffectIds, expected }) => {
       const actual = await vi.importActual<
         typeof import("../src/actions/lib/messaging-helpers.js")
       >("../src/actions/lib/messaging-helpers.js");
-      const messageIds = success
-        ? ["accepted-part-1", "accepted-part-2"]
-        : ["accepted-part-1"];
       const send = vi.fn(async () => ({
         success,
         messageIds,
+        ...(localEffectIds ? { localEffectIds } : {}),
         ...(success
-          ? { messageId: "accepted-part-2" }
+          ? messageIds.length > 0
+            ? { messageId: messageIds.at(-1) }
+            : {}
           : { error: "Later chunk failed" }),
       }));
       const connector = { isConnected: () => true, sendMessage: send };
@@ -927,14 +949,18 @@ describe("RESOLVE_REQUEST durable approval execution", () => {
           },
         });
       const outcome = await attempt();
-      expect(outcome.kind).toBe(
-        success ? "delivered" : "reconciliation_required",
-      );
+      expect(outcome.kind).toBe(expected);
       const reopened = createAgentApprovalQueue(runtime, {
         agentId: AGENT_ID,
       }) as unknown as ApprovalQueue;
       expect(await reopened.byId(request.id, OWNER_A)).toMatchObject({
-        execution: { providerReceipt: { provider: "imessage", messageIds } },
+        execution: {
+          providerReceipt: {
+            provider: "imessage",
+            messageIds,
+            ...(localEffectIds ? { localEffectIds } : {}),
+          },
+        },
       });
       await expect(attempt()).rejects.toThrow();
       expect(send).toHaveBeenCalledTimes(1);

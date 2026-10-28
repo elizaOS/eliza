@@ -50,7 +50,7 @@
     "@elizaos/host": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
     "bun-types": "1.4.2",

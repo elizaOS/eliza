@@ -1,3 +1,4 @@
+import type { ReviewedAvailabilityRequest } from "../internal/reviewed-availability.js";
 /**
  * Calendar-owned `CONFLICT_DETECT` action and production feed adapter.
  *
@@ -118,6 +119,11 @@ export interface ConflictDetectLoader {
 }
 
 export interface ConflictDetectActionDeps {
+  readonly requestLocalAvailability?: (args: {
+    runtime: IAgentRuntime;
+    message: Memory;
+    request: ReviewedAvailabilityRequest;
+  }) => Promise<ActionResult | undefined>;
   readonly authorize?: (
     runtime: IAgentRuntime,
     message: Memory,
@@ -129,7 +135,7 @@ export interface ConflictDetectActionDeps {
 
 export type ConflictDetectHostAdapter = Pick<
   ConflictDetectActionDeps,
-  "authorize" | "resolveTimeZone" | "loader"
+  "authorize" | "resolveTimeZone" | "loader" | "requestLocalAvailability"
 >;
 
 const hostAdapters = new WeakMap<IAgentRuntime, ConflictDetectHostAdapter>();
@@ -1002,6 +1008,25 @@ export function createConflictDetectAction(
           text: "The proposal must fall entirely inside the calendar range being scanned.",
           data: { subaction, error: "PROPOSAL_OUTSIDE_RANGE" },
         };
+      }
+
+      const localAvailability =
+        deps.requestLocalAvailability ??
+        hostAdapters.get(runtime)?.requestLocalAvailability;
+      if (localAvailability) {
+        const local = await localAvailability({
+          runtime,
+          message,
+          request: {
+            kind: "calendar_availability",
+            subaction,
+            range,
+            timeZone,
+            ...(proposal ? { proposal } : {}),
+            ...(params.policy ? { policy: params.policy } : {}),
+          },
+        });
+        if (local) return local;
       }
 
       // Loader tiers mirror authorize/resolveTimeZone: explicit per-instance

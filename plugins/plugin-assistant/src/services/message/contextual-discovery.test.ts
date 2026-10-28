@@ -302,7 +302,8 @@ describe("contextual native discovery", () => {
     ['send "search and send draft" to Amy', ["MESSAGE_SEND"]],
     ["MESSAGE_SEND_DRAFT", ["MESSAGE_SEND_DRAFT"]],
     ["schedule draft send", ["MESSAGE_SCHEDULE_DRAFT_SEND"]],
-    ["check my inbox", ["MESSAGE_LIST_INBOX", "MESSAGE_SEARCH_INBOX"]],
+    // Generic checks keep the complete family contract; list/search need an explicit operation.
+    ["check my inbox", ["MESSAGE"]],
     ["triage messages", ["MESSAGE_TRIAGE"]],
   ])(
     "retrieves the requested messaging operation for %s",

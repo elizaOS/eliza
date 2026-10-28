@@ -443,6 +443,12 @@ export function routeMessageHandlerOutput(
 
   if (nonSimpleContexts.length === 0) {
     const reply = getMessageHandlerReply(output);
+    // RESPOND promises an answer. An empty shortcut is an incomplete protocol
+    // result, not a final reply. Reuse ordinary general planning without seeding
+    // a tool or repeating Stage 1; upstream silence/safety/evaluator fences win.
+    if (!reply && allowTextOnlyFallback) {
+      return { type: "planning_needed", output, contexts: ["general"] };
+    }
     // A capability denial on the simple path for an explicit media ask is
     // the history-poisoning shape: stage-1 repeats a stale "no video/image
     // tools" precedent from room history without consulting the runtime
