@@ -21,7 +21,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "../../..");
@@ -294,7 +294,7 @@ describe("with-package-build-lock", () => {
       [NODE_BIN, "-e", "process.exit(0)"],
       "1",
       {
-        NODE_OPTIONS: `--import=${preloadPath}`,
+        NODE_OPTIONS: `--import=${pathToFileURL(preloadPath).href}`,
         ELIZA_BUILD_LOCK_TEST_TARGET: lockPath,
         ELIZA_BUILD_LOCK_TEST_READY: readyPath,
         ELIZA_BUILD_LOCK_TEST_RELEASE: releasePath,
@@ -412,7 +412,7 @@ describe("with-package-build-lock", () => {
       [NODE_BIN, "-e", childCode],
       "1",
       {
-        NODE_OPTIONS: `--import=${preloadPath}`,
+        NODE_OPTIONS: `--import=${pathToFileURL(preloadPath).href}`,
         ELIZA_BUILD_LOCK_TEST_TARGET: lockPath,
         ELIZA_BUILD_LOCK_TEST_READY: readyPath,
         ELIZA_BUILD_LOCK_TEST_RELEASE: releasePath,
