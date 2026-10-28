@@ -14,7 +14,11 @@ import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/reposit
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
-import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
+import {
+  isMobileApiKeySecret,
+  isUsableMobileApiKey,
+  MOBILE_API_KEY_PREFIX,
+} from "../auth/mobile-api-key";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
@@ -90,16 +94,6 @@ async function countUserCreatedKeys(tx: DbTransaction, organizationId: string): 
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
-}
-
-function isUsableMobileApiKey(value: ApiKey | undefined): boolean {
-  return Boolean(
-    value?.is_active &&
-      !value.deleted_at &&
-      isUuid(value.source_app_id) &&
-      value.expires_at &&
-      new Date(value.expires_at) > new Date(),
-  );
 }
 
 function isCacheableApiKey(value: unknown): value is ApiKey {

@@ -1562,24 +1562,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     >("GET /api/v1/eliza/agents/{agentId}/api/health", options);
   }
 
-  getApiV1ElizaAgentsByAgentIdApiIdentity<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/identity">,
-  ): Promise<TResponse> {
-    return this.call<
-      "GET /api/v1/eliza/agents/{agentId}/api/identity",
-      TResponse
-    >("GET /api/v1/eliza/agents/{agentId}/api/identity", options);
-  }
-
-  getApiV1ElizaAgentsByAgentIdApiIdentityOnchain<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/identity/onchain">,
-  ): Promise<TResponse> {
-    return this.call<
-      "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain",
-      TResponse
-    >("GET /api/v1/eliza/agents/{agentId}/api/identity/onchain", options);
-  }
-
   getApiV1ElizaAgentsByAgentIdApiWalletByPath<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}">,
   ): Promise<TResponse> {
@@ -4163,15 +4145,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
-  postApiV1ElizaAgentsByAgentIdApiIdentityRegister<TResponse = unknown>(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/identity/register">,
-  ): Promise<TResponse> {
-    return this.call<
-      "POST /api/v1/eliza/agents/{agentId}/api/identity/register",
-      TResponse
-    >("POST /api/v1/eliza/agents/{agentId}/api/identity/register", options);
-  }
-
   postApiV1ElizaAgentsByAgentIdApiWalletByPath<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}">,
   ): Promise<TResponse> {
@@ -5674,15 +5647,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     >("PUT /api/v1/eliza/agents/{agentId}/api/{path}", options);
   }
 
-  putApiV1ElizaAgentsByAgentIdApiIdentityUri<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/identity/uri">,
-  ): Promise<TResponse> {
-    return this.call<
-      "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri",
-      TResponse
-    >("PUT /api/v1/eliza/agents/{agentId}/api/identity/uri", options);
-  }
-
   putApiV1ElizaAgentsByAgentIdApiWalletByPath<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}">,
   ): Promise<TResponse> {
@@ -6861,24 +6825,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<Response> {
     return this.callRaw(
       "GET /api/v1/eliza/agents/{agentId}/api/health",
-      options,
-    );
-  }
-
-  getApiV1ElizaAgentsByAgentIdApiIdentityRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/identity">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "GET /api/v1/eliza/agents/{agentId}/api/identity",
-      options,
-    );
-  }
-
-  getApiV1ElizaAgentsByAgentIdApiIdentityOnchainRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/eliza/agents/{agentId}/api/identity/onchain">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain",
       options,
     );
   }
@@ -8797,15 +8743,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
     );
   }
 
-  postApiV1ElizaAgentsByAgentIdApiIdentityRegisterRaw(
-    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/identity/register">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "POST /api/v1/eliza/agents/{agentId}/api/identity/register",
-      options,
-    );
-  }
-
   postApiV1ElizaAgentsByAgentIdApiWalletByPathRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}">,
   ): Promise<Response> {
@@ -9882,15 +9819,6 @@ export class ElizaCloudPublicRoutesClient extends PublicRouteTransport {
   ): Promise<Response> {
     return this.callRaw(
       "PUT /api/v1/eliza/agents/{agentId}/api/{path}",
-      options,
-    );
-  }
-
-  putApiV1ElizaAgentsByAgentIdApiIdentityUriRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/eliza/agents/{agentId}/api/identity/uri">,
-  ): Promise<Response> {
-    return this.callRaw(
-      "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri",
       options,
     );
   }

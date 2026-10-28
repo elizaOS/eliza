@@ -453,9 +453,12 @@
     "reason": "Isolated SQL scale evidence exercises the canonical production adapter and its seek plans."
   },
   {
-    "file": "packages/scripts/verify-voice-product-asr-release.ts",
-    "tokens": ["@elizaos/plugin-native-inference"],
-    "reason": "ASR release verification consumes the native provider voice catalog after its ownership move from shared."
+    "file": "packages/scripts/verify-voice-product-release.ts",
+    "tokens": [
+      "plugins/plugin-local-inference",
+      "plugins/plugin-native-inference"
+    ],
+    "reason": "The product voice release gate reads the native provider voice catalog and the llama.cpp fork pins (Phonon-2, Paradee) that the local-inference plugin vendors."
   },
   {
     "file": "packages/cloud/scripts/reconcile-steward-email-callback-config.ts",

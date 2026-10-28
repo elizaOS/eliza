@@ -24,10 +24,16 @@ receipts plus one composed receipt naming the owner of the first failed lane.
 
 | Environment | Branch | Service |
 | --- | --- | --- |
-| `staging` | `staging` | `gateway-webhook-stg` |
-| `production` | `main` | `gateway-webhook` |
+| `staging` | `staging` | `eliza-gateway-webhook-staging` |
+| `production` | `main` | `eliza-gateway-webhook-production` |
 
-No separate build. Validate workflow syntax and executable references from the repository root:
+Gateway releases use Cloudflare Containers and the protected runtime configuration
+secret. Set `GATEWAY_WEBHOOK_CLOUDFLARE_ACTIVE=true` only after the old owner is
+stopped and the Cloudflare handoff is verified. Releases push the immutable image
+before updating the Worker, then check the active version, image, runtime source,
+credential equality, and Telegram identity.
+
+Validate workflow syntax and executable references from the repository root:
 
 ```bash
 actionlint -config-file .github/actionlint.yaml

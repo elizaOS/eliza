@@ -1,14 +1,17 @@
 /**
- * Persists Discord user-install welcome jobs in Redis and delivers them with
+ * Persists Discord user-install welcome jobs and delivers them with
  * crash recovery and deterministic Discord nonces.
  */
+
 import { createHash } from "node:crypto";
+import {
+  DISCORD_WELCOME_DELIVERED as DELIVERED_PREFIX,
+  DISCORD_WELCOME_PROCESSING as PROCESSING_KEY,
+  DISCORD_WELCOME_PENDING as QUEUE_KEY,
+} from "@elizaos/cloud-services-common/discord-welcome-state";
 import { logger } from "./logger";
 
 const DISCORD_API_BASE = "https://discord.com/api/v10";
-const QUEUE_KEY = "discord:eliza-app:install-welcome:pending";
-const PROCESSING_KEY = "discord:eliza-app:install-welcome:processing";
-const DELIVERED_PREFIX = "discord:eliza-app:install-welcome:delivered:";
 const DELIVERED_TTL_SECONDS = 7 * 24 * 60 * 60;
 const POLL_INTERVAL_MS = 1_000;
 const DISCORD_TOKEN_PATTERN =

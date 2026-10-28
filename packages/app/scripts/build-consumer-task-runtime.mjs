@@ -19,7 +19,55 @@ const SOURCE_PATHS = [
   "packages/os/browser/src",
 ];
 
+/** @param {string} file */
+const readProvenance = (file) =>
+  fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined;
+
+/** Return the recorded bundle provenance when every requested output was built
+ * by this builder from the same commit and its bytes are unchanged.
+ * @param {string} output
+ * @param {{schemaVersion:number, sourceCommit:string, builderSha256:string}} spec
+ * @param {string|undefined} browserSource
+ * @param {string|undefined} commandSource
+ */
+function reusableOutput(output, spec, browserSource, commandSource) {
+  /** @param {any} record */
+  const matches = (record) =>
+    record?.schemaVersion === spec.schemaVersion &&
+    record.sourceCommit === spec.sourceCommit &&
+    record.builderSha256 === spec.builderSha256;
+  /** @param {string} file @param {string} digest */
+  const unchanged = (file, digest) =>
+    fs.existsSync(file) && hash(fs.readFileSync(file)) === digest;
+  const bundle = readProvenance(`${output}.json`);
+  if (!matches(bundle) || !unchanged(output, bundle.bundleSha256)) return;
+  if (browserSource) {
+    const browser = readProvenance(path.join(browserSource, "provenance.json"));
+    if (
+      !matches(browser) ||
+      Object.entries(browser.files).some(
+        ([name, digest]) => !unchanged(path.join(browserSource, name), digest),
+      )
+    )
+      return;
+  }
+  if (commandSource) {
+    const command = readProvenance(path.join(commandSource, "provenance.json"));
+    if (
+      !matches(command) ||
+      !unchanged(
+        path.join(commandSource, "command-handler.mjs"),
+        command.bundleSha256,
+      )
+    )
+      return;
+  }
+  return bundle;
+}
+
 /** Bundle the shared task runtime from immutable Git source; no overlays.
+ * Reuses existing output when its provenance records the same source commit
+ * and builder and the recorded hashes still match the files.
  * @param {string} output
  * @param {{sourceRoot:string, sourceCommit:string, browserSource?:string, commandSource?:string}} options
  */
@@ -27,7 +75,13 @@ export function buildTaskRuntime(
   output,
   { sourceRoot, sourceCommit, browserSource, commandSource },
 ) {
-  const spec = { schemaVersion: 2, sourceCommit };
+  const spec = {
+    schemaVersion: 2,
+    sourceCommit,
+    builderSha256: hash(fs.readFileSync(fileURLToPath(import.meta.url))),
+  };
+  const reused = reusableOutput(output, spec, browserSource, commandSource);
+  if (reused) return reused;
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-task-build-"));
   try {
     exportCommittedSources(sourceRoot, sourceCommit, temporary, SOURCE_PATHS);
@@ -54,6 +108,7 @@ export function buildTaskRuntime(
         "messaging/interactive-task",
         ...Object.values(interactionSources),
         "messaging/task-widgets",
+        "messaging/task-events",
       ]
         .map((name) => `export * from './packages/core/src/${name}.ts';`)
         .join("\n"),
@@ -98,6 +153,14 @@ export function buildTaskRuntime(
             `export * from './packages/agent/src/services/interactive-task-${name}.ts';`,
         )
         .join("\n") +
+        (fs.existsSync(
+          path.join(
+            temporary,
+            "plugins/plugin-browser/src/native-surface-target.ts",
+          ),
+        )
+          ? "\nexport * from './plugins/plugin-browser/src/native-surface-target.ts';"
+          : "") +
         `\nexport * from './packages/agent/src/services/sqlite-message-interaction-session-store.ts';\nexport * from './packages/core/src/${interactionSources.sessions}.ts';\nexport * from './plugins/plugin-browser/src/native-socket-target.ts';\nexport * from './plugins/plugin-browser/src/task-actuator.ts';\nexport * from './plugins/plugin-google-workspace/src/task-code-resolver.ts';`,
     );
     fs.mkdirSync(path.dirname(output), { recursive: true });

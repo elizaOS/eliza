@@ -103,6 +103,7 @@ export interface InboxItem {
   readonly platform: InboxPlatform;
   readonly channel: string;
   readonly senderName: string;
+  readonly senderIdentifier?: string;
   readonly snippet: string;
   readonly receivedAt: string;
   readonly threadTopic?: string;
@@ -724,7 +725,11 @@ async function replyToEntry(args: {
         sourceRoomId: args.entry.sourceRoomId ?? null,
         body: args.body,
       }),
-      { affirmations: [`inbox approve ${args.entry.id}`] },
+      {
+        affirmations: [`inbox approve ${args.entry.id}`],
+        source: args.entry.source,
+        requestMessageId: args.authorization.message.id,
+      },
     );
     if (consent === "cancelled") {
       return {
@@ -767,7 +772,12 @@ async function replyToEntry(args: {
     };
   }
 
-  const sent = await service.sendDraft(args.runtime, draft.draftId);
+  const sent = await service.sendDraft(
+    args.runtime,
+    draft.draftId,
+    undefined,
+    args.authorization.kind === "turn" ? args.authorization.message : undefined,
+  );
   await args.repo.markResolved(args.entry.id, {
     draftResponse: args.body,
     autoReplied: true,

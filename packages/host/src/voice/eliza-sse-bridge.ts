@@ -20,8 +20,12 @@
  * decoding path, no live model.
  */
 
-import { stringToUuid } from "@elizaos/core";
-import { normalizeCompletedActionHandoffId } from "@elizaos/core/protocol";
+import { stringToUuid, validateUuid } from "@elizaos/core";
+import {
+  findViewActionHandoff,
+  normalizeCompletedActionHandoffId,
+  type ViewActionHandoff,
+} from "@elizaos/core/protocol";
 import {
   REALTIME_VOICE_CLIENT_TRANSPORT,
   type VoiceUiContext,
@@ -127,6 +131,8 @@ export function parseElizaServerTiming(
 
 export interface ElizaSseBridgeRequest {
   uiContext?: VoiceUiContext;
+  /** Host-owned restrictive policy selection, never UI/model metadata. */
+  modelAttemptPolicy?: { policyId: string; sessionId: string };
   /** API origin hosting the canonical agent conversation routes. */
   endpoint: string;
   /** Bearer token for the existing Eliza session (server-held; never the client's). */
@@ -189,13 +195,19 @@ export interface ElizaSseBridgeResult {
   aborted: boolean;
   /** Successful model-selected VIEWS handoff carried by the terminal frame. */
   viewHandoff?: ElizaVoiceViewHandoff;
+  /** Persisted user message correlation from the canonical terminal receipt. */
+  userMessageId?: string;
 }
 
-export interface ElizaVoiceViewHandoff {
-  viewId: string;
-  viewPath?: string;
-  subview?: string;
-}
+export type ElizaVoiceViewHandoff = Pick<
+  ViewActionHandoff,
+  | "viewId"
+  | "viewPath"
+  | "subview"
+  | "completedActionHandoffId"
+  | "navigationPrepared"
+  | "navigationBinding"
+>;
 
 export class ElizaSseBridgeError extends Error {
   constructor(
@@ -243,10 +255,24 @@ export async function streamElizaConversation(
       request.agentId,
       request.conversationId,
     );
+    const policy = request.modelAttemptPolicy;
+    if (
+      policy &&
+      (!/^[A-Za-z0-9_-]{1,128}$/.test(policy.policyId) ||
+        !/^[A-Za-z0-9_-]{1,128}$/.test(policy.sessionId))
+    ) {
+      throw new Error("Invalid bounded voice model policy");
+    }
     response = await fetchImpl(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(policy
+          ? {
+              "X-Eliza-Voice-Model-Policy": policy.policyId,
+              "X-Eliza-Voice-Session-Id": policy.sessionId,
+            }
+          : {}),
         Authorization: request.authorization,
         // Lets the same-worker subrequest pass the global programmatic-auth gate;
         // the leaf still timing-safe-validates Authorization against its env secret.
@@ -504,10 +530,21 @@ export async function streamElizaConversation(
           finishAuthoritativeText(payload);
           const viewHandoff =
             payload === "[DONE]" ? null : extractViewHandoff(payload);
+          const terminal = payload === "[DONE]" ? null : JSON.parse(payload);
+          const userMessageId = isRecord(terminal)
+            ? terminal.userMessageId
+            : undefined;
+          if (userMessageId !== undefined && !validateUuid(userMessageId)) {
+            throw new ElizaSseBridgeError(
+              "Invalid terminal user message correlation",
+              "protocol_error",
+            );
+          }
           return {
             completed: true,
             aborted: false,
             ...(viewHandoff ? { viewHandoff } : {}),
+            ...(typeof userMessageId === "string" ? { userMessageId } : {}),
           };
         }
         if (eventType === "error" || payloadType === "error") {
@@ -798,7 +835,12 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     const candidate = parsed.actionResults[index];
     if (!isRecord(candidate) || candidate.success !== true) continue;
     const actionName = readBoundedString(candidate.actionName)?.toUpperCase();
-    if (actionName !== "VIEWS" && actionName !== "APP") continue;
+    if (
+      actionName !== "VIEWS" &&
+      actionName !== "VIEWS_SHOW" &&
+      actionName !== "APP"
+    )
+      continue;
     if (!isRecord(candidate.values)) {
       continue;
     }
@@ -806,7 +848,8 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
     const viewId = readBoundedString(candidate.values.viewId);
     if (!viewId) continue;
     const isViewsHandoff =
-      actionName === "VIEWS" && (mode === "show" || mode === "open");
+      (actionName === "VIEWS" && (mode === "show" || mode === "open")) ||
+      (actionName === "VIEWS_SHOW" && mode === "show");
     const isAppBrowserHandoff =
       actionName === "APP" && mode === "launch" && viewId === "browser";
     if (!isViewsHandoff && !isAppBrowserHandoff) continue;
@@ -824,6 +867,17 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
       )
     )
       continue;
+    const prepared =
+      candidate.values.navigationPrepared !== undefined ||
+      candidate.values.navigationBinding !== undefined;
+    const canonical = prepared ? findViewActionHandoff([candidate]) : undefined;
+    if (
+      prepared &&
+      (!canonical?.navigationPrepared ||
+        !canonical.navigationBinding ||
+        !canonical.completedActionHandoffId)
+    )
+      return null;
     const viewPath = readBoundedString(candidate.values.viewPath);
     const subview = readBoundedString(candidate.values.subview);
     if (
@@ -836,6 +890,13 @@ function extractViewHandoff(payload: string): ElizaVoiceViewHandoff | null {
       viewId,
       ...(viewPath ? { viewPath } : {}),
       ...(subview ? { subview } : {}),
+      ...(canonical?.navigationPrepared
+        ? {
+            navigationPrepared: true,
+            completedActionHandoffId: canonical.completedActionHandoffId,
+            navigationBinding: canonical.navigationBinding,
+          }
+        : {}),
     };
   }
   return selected;

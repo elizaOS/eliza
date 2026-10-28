@@ -24,6 +24,7 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
+  parseBooleanValue,
   Service,
   type TargetInfo,
   type UUID,
@@ -297,9 +298,12 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Mentions and interactions
+    // Boolean setting, on by default: "false", "0", "no" and "off" turn it off.
     const repliesEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
-        process.env.TWITTER_ENABLE_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(runtime, "TWITTER_ENABLE_REPLIES") ??
+          process.env.TWITTER_ENABLE_REPLIES,
+      ) ?? true;
 
     if (repliesEnabled) {
       logger.info("Twitter replies/interactions are ENABLED");
@@ -1265,7 +1269,20 @@ export class XService extends Service {
     // A DM fetch failure (expired token, rate limit) propagates: callers
     // translate it at their boundary, and an empty list would read as an
     // empty inbox.
-    const messages = await this.listRecentDirectMessages(accountId);
+    //
+    // A targeted bounded read stops paging once `limit` target
+    // matches are collected: the timeline is newest-first, so
+    // those are exactly the newest `limit` conversation messages
+    // the old full-scan-then-slice returned. A targeted
+    // dates-range read (limit undefined) keeps the full scan:
+    // that is the no-bounds complete-history contract.
+    const messages = await this.listRecentDirectMessages(
+      accountId,
+      targetUserId === undefined ? limit : undefined,
+      targetUserId !== undefined && limit !== undefined
+        ? { targetUserId, count: limit }
+        : undefined,
+    );
 
     // A stored room targets the provider conversation id, while a resolved
     // user target names the authenticated one-to-one counterpart. Accept both
@@ -1492,6 +1509,7 @@ export class XService extends Service {
   private async listRecentDirectMessages(
     accountId: string,
     limit?: number,
+    stop?: { targetUserId: string; count: number },
   ): Promise<
     Array<{
       id: string;
@@ -1547,6 +1565,7 @@ export class XService extends Service {
         isInbound: boolean;
         participantIds: string[];
       }> = [];
+      let stopMatches = 0;
       for await (const event of iterator) {
         if (event.event_type && event.event_type !== "MessageCreate") {
           continue;
@@ -1568,6 +1587,22 @@ export class XService extends Service {
         });
         if (limit !== undefined && messages.length >= limit) {
           break;
+        }
+        // Targeted early stop: same predicate the caller
+        // filters on, so the collected prefix is exactly what
+        // filter-then-slice would have returned.
+        if (stop) {
+          const last = messages[messages.length - 1];
+          if (
+            last &&
+            (last.conversationId === stop.targetUserId ||
+              dmCounterpartId(last) === stop.targetUserId)
+          ) {
+            stopMatches += 1;
+            if (stopMatches >= stop.count) {
+              break;
+            }
+          }
         }
       }
       this.assertDmSessionCurrent(base, session);

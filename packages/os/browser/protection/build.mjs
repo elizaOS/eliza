@@ -9,35 +9,76 @@ import { fileURLToPath } from "node:url";
 import { REPUTATION_FEEDS } from "./policy.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
+const escapeHtml = (s) =>
+  String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+/** Text for the `{{key}}` slots of warning.html. Values are plain text. */
+export function warningCopy(
+  { assistantName = "Eliza", copy = {} } = {},
+  feeds = REPUTATION_FEEDS,
+) {
+  const defaults = {
+    title: `Website warning — ${assistantName}`,
+    heading: "This website has been reported as harmful.",
+    stopped: `${assistantName} stopped it before it opened.`,
+    mistake:
+      "Confirm the address with the company using contact information you already trust. Opening it does not mark it as safe.",
+    feeds: `Community lists: ${new Intl.ListFormat("en", { type: "conjunction" }).format(feeds.map((feed) => `${feed.source} (${feed.license})`))}.`,
+    limits: "Domain-list protection cannot detect every threat.",
+  };
+  for (const [key, value] of Object.entries(copy))
+    if (!Object.hasOwn(defaults, key) || typeof value !== "string")
+      throw Error(`Unknown or invalid warning copy: ${key}`);
+  return { ...defaults, ...copy };
+}
+
+/** Fill `{{key}}` slots; a page without slots is returned unchanged. */
+export function renderWarningPage(template, values) {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    if (!Object.hasOwn(values, key))
+      throw Error(`Unknown warning page slot: ${key}`);
+    return escapeHtml(values[key]);
+  });
+}
+
 /** @param {string} output
- * @param {{warningDirectory?: string, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>}}} options
+ * @param {{warningDirectory?: string, warning?: {assistantName?: string, copy?: Partial<Record<"title"|"heading"|"stopped"|"mistake"|"feeds"|"limits", string>>}, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>}}} options
  */
 export async function buildBrowserProtection(
   output,
   {
     warningDirectory,
+    warning,
     advisory,
     feeds = REPUTATION_FEEDS,
     refreshAlarm = "eliza-protection-refresh",
     exceptionAlarm = "eliza-protection-exception",
   } = {},
 ) {
+  for (const feed of feeds)
+    if (!feed.notice) throw Error(`Feed ${feed.id} has no license notice`);
+  const copy = warningCopy(warning, feeds);
   await mkdir(output, { recursive: true });
-  for (const file of [
-    "policy.mjs",
-    "warning.html",
-    "warning.mjs",
-    "warning.css",
-  ])
+  for (const file of ["policy.mjs", "warning.mjs", "warning.css"])
     await copyFile(
       join(
-        warningDirectory && ["warning.html", "warning.css"].includes(file)
-          ? warningDirectory
-          : root,
+        warningDirectory && file === "warning.css" ? warningDirectory : root,
         file,
       ),
       join(output, file),
     );
+  await writeFile(
+    join(output, "warning.html"),
+    renderWarningPage(
+      await readFile(join(warningDirectory ?? root, "warning.html"), "utf8"),
+      copy,
+    ),
+  );
   const bundled = spawnSync(
     "bun",
     [
@@ -51,11 +92,18 @@ export async function buildBrowserProtection(
   if (bundled.status !== 0)
     throw Error(`Advisory build failed: ${bundled.stderr}`);
   const engine = await readFile(join(root, "extension.mjs"), "utf8");
+  // Attribution fields stay at build time; a local notice path never ships.
+  const runtimeFeeds = feeds.map(({ notice, homepage, ...feed }) => feed);
   await writeFile(
     join(output, "background.mjs"),
     engine +
       "\nexport const protection = installBrowserProtection({chrome:globalThis.chrome,..." +
-      JSON.stringify({ feeds, refreshAlarm, exceptionAlarm, advisory }) +
+      JSON.stringify({
+        feeds: runtimeFeeds,
+        refreshAlarm,
+        exceptionAlarm,
+        advisory,
+      }) +
       "});\n",
   );
   const manifest = {
@@ -81,11 +129,11 @@ export async function buildBrowserProtection(
     join(output, "manifest.json"),
     JSON.stringify(manifest, null, 2) + "\n",
   );
-  const escapeHtml = (s) =>
-    s.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  // A relative notice names a file in licenses/; consumer feeds may give an absolute path.
   const licenses = await Promise.all(
-    ["phishing-database.txt", "hagezi-gpl-3.0.txt"].map((f) =>
-      readFile(join(root, "licenses", f), "utf8"),
+    feeds.map(
+      async (feed) =>
+        `${feed.source} (${feed.license})\n${await readFile(resolve(root, "licenses", feed.notice), "utf8")}`,
     ),
   );
   for (const [name, file] of [
@@ -105,7 +153,7 @@ export async function buildBrowserProtection(
   }
   await writeFile(
     join(output, "licenses.html"),
-    `<!doctype html><html lang="en"><meta charset="utf-8"><title>Protection sources and licenses</title><h1>Sources and licenses</h1><p><a href="https://github.com/Phishing-Database/Phishing.Database">Phishing.Database source</a> · <a href="https://github.com/hagezi/dns-blocklists">HaGeZi source</a></p>${licenses.map((s) => "<pre>" + escapeHtml(s) + "</pre>").join("")}</html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><title>Protection sources and licenses</title><h1>Sources and licenses</h1><p>${feeds.map((feed) => `<a href="${escapeHtml(feed.homepage ?? feed.licenseUrl)}">${escapeHtml(feed.source)} source</a>`).join(" · ")}</p>${licenses.map((s) => "<pre>" + escapeHtml(s) + "</pre>").join("")}</html>`,
   );
   return { output, installed: false, signed: false };
 }

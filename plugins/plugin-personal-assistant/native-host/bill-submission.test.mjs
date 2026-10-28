@@ -243,7 +243,9 @@ test("a replacement task retains same-owner bill history across restart and sepa
       taskId: "replacement",
       outcomes,
     });
-    assert.equal((await workflow.refresh()).kind, "unknown-outcome");
+    const prior = await workflow.refresh();
+    assert.equal(prior.kind, "unknown-outcome");
+    assert.equal(prior.reasonCode, "prior-payment");
     assert.equal(
       (await workflow.chooseExistingMethod("stale")).kind,
       "unknown-outcome",
@@ -279,7 +281,9 @@ test("a replacement task retains same-owner bill history across restart and sepa
     runtime.observe = async () => {
       throw new Error("network lost");
     };
-    assert.equal((await workflow.refresh()).kind, "unknown-outcome");
+    const unchecked = await workflow.refresh();
+    assert.equal(unchecked.kind, "unknown-outcome");
+    assert.equal(unchecked.reasonCode, "status-unavailable");
     runtime.observe = async () => {};
     current = snapshot({ "Payment status": "Paid", Confirmation: "TEST-1" });
     outcomes.save = (decision) => decision;
@@ -401,7 +405,9 @@ test("only activity after this document payment review creates uncertainty, neve
       overflow: false,
       captureGap: false,
     };
-    assert.equal((await workflow.refresh()).kind, "unknown-outcome");
+    const afterReview = await workflow.refresh();
+    assert.equal(afterReview.kind, "unknown-outcome");
+    assert.equal(afterReview.reasonCode, "activity-after-review");
     assert.equal(outcomes.loadAttempt().evidenceKind, "manual-activity");
     assert.equal(outcomes.loadAttempt().review.totalMinor, 12000);
     assert.equal(outcomes.load(), null, "a submit event is not an outcome");
@@ -725,6 +731,7 @@ test("a form she sent while the website was hers, before any review, leads to a 
     current.manualActivity = activity([event]);
     const result = await workflow.refresh();
     assert.equal(result.kind, "unknown-outcome");
+    assert.equal(result.reasonCode, "manual-submit");
     assert.match(result.message, /while it was yours/);
     const attempt = outcomes.loadAttempt();
     assert.equal(attempt.evidenceKind, "manual-activity");
@@ -740,6 +747,7 @@ test("a form she sent while the website was hers, before any review, leads to a 
     current.effectViolation = "submit";
     const paused = await workflow.refresh();
     assert.equal(paused.kind, "paused");
+    assert.equal(paused.reasonCode, "effect-violation");
     assert.doesNotMatch(paused.message, /nothing was sent/i);
     assert.deepEqual(actions, ["pause"]);
   } finally {

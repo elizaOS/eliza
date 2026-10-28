@@ -91,6 +91,8 @@ export interface ReportedError {
 	code: string;
 	/** Human-readable failure message. */
 	message: string;
+	/** Preserve the original recoverability classification in diagnostic events. */
+	severity?: ElizaErrorSeverity;
 	/** Serializable diagnostic context, when supplied. */
 	context?: Record<string, unknown>;
 	/** Epoch-ms timestamp the error was reported. */

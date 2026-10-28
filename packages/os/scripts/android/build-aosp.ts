@@ -36,6 +36,7 @@ import {
 } from "./stage-browser-apps.ts";
 import { main as syncToAospMain } from "./sync-to-aosp.ts";
 import { main as validateMain } from "./validate.ts";
+import { loadProfile, verifyProfileSource } from "./verify-source-lock.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -339,6 +340,7 @@ export function parseSubArgs(argv) {
     aospRoot: null,
     jobs: recommendedJobs(os.totalmem(), os.cpus().length),
     sourceVendor: null,
+    vendorArchive: null,
     skipBuild: false,
     launch: false,
     bootValidate: false,
@@ -372,6 +374,9 @@ export function parseSubArgs(argv) {
     } else if (arg === "--source-vendor") {
       args.sourceVendor = path.resolve(readFlagValue(arg, i));
       i += 1;
+    } else if (arg === "--vendor-archive") {
+      args.vendorArchive = path.resolve(readFlagValue(arg, i));
+      i += 1;
     } else if (arg === "--skip-build") {
       args.skipBuild = true;
     } else if (arg === "--launch") {
@@ -384,7 +389,7 @@ export function parseSubArgs(argv) {
       args.rebuildPrivilegedApk = true;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
+        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("-")) {
@@ -559,24 +564,51 @@ export function rebuildPrivilegedApk(brand, browserPin) {
   run(cmd, rest, { cwd: elizaRoot, env });
 }
 
+/** Run source admission before the orchestrator writes to an AOSP checkout. */
+export async function verifyBuildSource({ brand, aospRoot, archivePath }) {
+  const lockPath = brand.aospLockPath
+    ? path.resolve(repoRoot, brand.aospLockPath)
+    : aospLockPath;
+  if (brand.aospLockProfile) {
+    const profile = loadProfile(brand.aospLockProfile, lockPath);
+    if (profile.sourceInventory) {
+      const sourceEvidence = await verifyProfileSource(profile, {
+        aospRoot,
+        archivePath,
+        lockPath,
+      });
+      return { lock: null, sourceEvidence };
+    }
+    if (brand.aospLockProfile !== "cuttlefish") {
+      throw new Error(
+        "Build source profiles must provide a complete source inventory.",
+      );
+    }
+  }
+  const lock = loadAospLock(lockPath);
+  assertPinnedAospCheckout(aospRoot, lock);
+  return { lock, sourceEvidence: null };
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const { brand, remaining } = loadBrandFromArgv(argv);
   const args = parseSubArgs(remaining);
   assertBuildHost({ brand, launch: args.launch });
   assertAospRoot(args.aospRoot);
-  const selectedLockPath = brand.aospLockPath
-    ? path.resolve(repoRoot, brand.aospLockPath)
-    : aospLockPath;
-  const lock = loadAospLock(selectedLockPath);
-  assertPinnedAospCheckout(args.aospRoot, lock);
+  const archivePath =
+    args.vendorArchive ?? process.env.ELIZA_PIXEL_VENDOR_ARCHIVE;
+  const { lock } = await verifyBuildSource({
+    brand,
+    aospRoot: args.aospRoot,
+    archivePath,
+  });
   if (brand.aospDeviceOverlay) {
     provisionCuttlefishE1({
       aospRoot: args.aospRoot,
       lockPath: path.resolve(repoRoot, brand.aospDeviceOverlay),
     });
   }
-  if (lock.proprietaryArchive) {
-    const archivePath = process.env.ELIZA_PIXEL_VENDOR_ARCHIVE;
+  if (lock?.proprietaryArchive) {
     if (!archivePath) {
       throw new Error(
         "ELIZA_PIXEL_VENDOR_ARCHIVE must point to the licensed vendor archive for this hardware target.",
@@ -585,7 +617,7 @@ export async function main(argv = process.argv.slice(2)) {
     await verifyProprietaryArchive(lock, archivePath);
     assertExtractedVendorTree(args.aospRoot, lock);
   }
-  if (lock.generatedVendor) {
+  if (lock?.generatedVendor) {
     assertGeneratedVendorTree(args.aospRoot, lock);
     // Fail closed when the generated tree was prepared under different
     // ELIZAOS_GRIZZLY_* settings than this build is running with — otherwise

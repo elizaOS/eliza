@@ -19,9 +19,9 @@
  *      fused build's *batch* decoder (`eliza_inference_asr_transcribe`, ABI
  *      v1) over a sliding window with overlap, so each call covers ≤ ~6–7 s
  *      of audio — incremental, not "buffer the whole utterance, one giant
- *      decode". It lives inside the single shipped llama.cpp/GGML build and
- *      emits Gemma text-vocabulary tokens, so it does not vendor a second
- *      ggml or introduce a tokenizer-family mismatch.
+ *      decode". It lives inside the single shipped llama.cpp/GGML build
+ *      (Phonon-2, Parakeet-TDT) and reports surface text, so it does not
+ *      vendor a second ggml.
  *      Selected whenever a `libelizainference` handle + bundled ASR model are
  *      present (which is always true when the fused build is loaded).
  *
@@ -519,9 +519,8 @@ export interface FfiBatchTranscriberOptions {
  * decoder (`eliza_inference_asr_transcribe`, ABI v1). The fused build's true
  * streaming decoder (`eliza_inference_asr_stream_*`, ABI v2) reports unsupported
  * until its runtime lands; this adapter is the contract-clean interim — it runs
- * inside the one shipped llama.cpp/GGML build and emits
- * Gemma token-vocab text, so no second ggml is vendored and no
- * tokenizer-family mismatch is introduced.
+ * inside the one shipped llama.cpp/GGML build (Phonon-2, Parakeet-TDT) and
+ * reports surface text, so no second ggml is vendored.
  *
  * It runs a *windowed re-transcription with overlap* strategy: a prefix older
  * than `windowSeconds` is committed (decoded once, in window-sized chunks

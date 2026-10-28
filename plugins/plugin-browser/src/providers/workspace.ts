@@ -8,11 +8,11 @@
  */
 
 import type { Provider } from "@elizaos/core";
-import { asObjectRecord as asRecord } from "@elizaos/core/protocol";
 import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
 } from "../browser-service.js";
+import { isNativeBrowserRequest } from "../native-browser-request.js";
 import {
   getBrowserWorkspaceMode,
   listBrowserWorkspaceTabs,
@@ -34,7 +34,7 @@ export const browserWorkspaceProvider: Provider = {
   // silently drop it).
   roleGate: { minRole: "OWNER" },
   get: async (runtime, message) => {
-    if (asRecord(message.content?.metadata)?.uiBrowserSurface === "native") {
+    if (isNativeBrowserRequest(message)) {
       return {
         text: JSON.stringify({
           browser_workspace: {

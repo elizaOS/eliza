@@ -1,10 +1,10 @@
 /**
- * Unit coverage for the ATTACHMENTS provider (`attachmentsProvider`): stale
- * room attachments stay out of unrelated prompt text and out of sub-agent
- * result turns, relevance is judged from the current/reply message text, and
- * an `ATTACHMENT action=read` is advertised only when readable text is stored —
- * with images the exception when a vision (`IMAGE_DESCRIPTION`) model is
- * registered. Deterministic harness: a hand-stubbed runtime, no live model or DB.
+ * Unit coverage for the ATTACHMENTS provider (`attachmentsProvider`): room
+ * attachments render whatever the wording or language of the request; they
+ * stay out of sub-agent result turns; and an `ATTACHMENT action=read` is
+ * advertised only when readable text is stored — with images the exception
+ * when a vision (`IMAGE_DESCRIPTION`) model is registered. Deterministic
+ * harness: a hand-stubbed runtime, no live model or DB.
  */
 
 import {
@@ -115,46 +115,72 @@ function ownerPrivateAttachmentMemory(granted = false): Memory {
 }
 
 describe("attachmentsProvider", () => {
-  it("keeps stale room attachments out of unrelated prompt text without fetching history", async () => {
-    // The render gate is decidable from the message alone here, so the
-    // provider must not pay the conversation-history scan at all — that scan
-    // was the largest composeState provider wall on text-only turns.
-    let historyFetches = 0;
-    const result = await attachmentsProvider.get(
-      makeRuntime([attachmentMemory()], {
-        onHistoryFetch: () => {
-          historyFetches += 1;
-        },
-      }),
+  it("renders room attachments whatever the wording or language of the request", async () => {
+    for (const text of [
+      "can u try to gen that image again pls",
+      "¿puedes volver a generar esa imagen?",
+      "その画像をもう一度作って",
+    ]) {
+      const result = await attachmentsProvider.get(
+        makeRuntime([attachmentMemory()]),
+        makeMessage({ text }),
+      );
+
+      expect(result.text).toContain("# Attachments");
+      expect(result.text).toContain("webpage-old");
+    }
+  });
+
+  it("advertises a read for an earlier room image without stored text whatever the wording of the request (#37027)", async () => {
+    // A generated image from an earlier turn carries no stored text. A
+    // follow-up regeneration request (no inspection verb, or not English)
+    // must still see it and its satisfiable ATTACHMENT read.
+    const generatedImageMemory = {
+      ...attachmentMemory(1),
+      content: {
+        text: "here is your image",
+        attachments: [
+          {
+            id: "generated-image",
+            url: "https://example.test/generated.png",
+            title: "generated.png",
+            source: "Image",
+            contentType: "image",
+            text: "",
+          },
+        ],
+      },
+    } as Memory;
+    for (const text of [
+      "can u try to gen that image again pls",
+      "¿puedes volver a generar esa imagen?",
+    ]) {
+      const result = await attachmentsProvider.get(
+        makeRuntime([generatedImageMemory], { hasImageDescriptionModel: true }),
+        makeMessage({ text }),
+      );
+
+      expect(result.text).toContain("ID: generated-image");
+      expect(result.text).toContain(
+        "Stored Content: available via ATTACHMENT action=read",
+      );
+    }
+  });
+
+  it("lists the room's attachments on a turn that does not mention media, and nothing for a room without attachments", async () => {
+    const withAttachments = await attachmentsProvider.get(
+      makeRuntime([attachmentMemory()]),
+      makeMessage({ text: "can you try this?" }),
+    );
+    const withoutAttachments = await attachmentsProvider.get(
+      makeRuntime([makeMessage({ text: "earlier text-only message" })]),
       makeMessage({ text: "can you try this?" }),
     );
 
-    expect(result.text).toBe("");
-    expect(result.data?.visibleAttachments).toHaveLength(0);
-    expect(historyFetches).toBe(0);
-  });
-
-  it("renders attachment prompt text when the current message asks about a link", async () => {
-    const result = await attachmentsProvider.get(
-      makeRuntime([attachmentMemory()]),
-      makeMessage({ text: "can you read the link?" }),
-    );
-
-    expect(result.text).toContain("# Attachments");
-    expect(result.text).toContain("webpage-old");
-  });
-
-  it("uses reply target text when deciding attachment relevance", async () => {
-    const result = await attachmentsProvider.get(
-      makeRuntime([attachmentMemory()]),
-      makeMessage({
-        text: "find anything?",
-        replyToMessageText: "can you read this link?",
-      }),
-    );
-
-    expect(result.text).toContain("# Attachments");
-    expect(result.text).toContain("webpage-old");
+    expect(withAttachments.text).toContain("# Attachments");
+    expect(withAttachments.text).toContain("webpage-old");
+    expect(withoutAttachments.text).toBe("");
+    expect(withoutAttachments.data?.visibleAttachments).toEqual([]);
   });
 
   it("does not inject stale room attachments into sub-agent result turns", async () => {

@@ -1,6 +1,7 @@
 /** Renderer entry: Calendar views and HTTP client without provider or runtime code. */
 export {
   type CalendarClientMethods,
+  createCalendarApi,
   installCalendarClient,
 } from "./api/client-calendar.js";
 export {

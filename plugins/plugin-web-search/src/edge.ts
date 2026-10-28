@@ -387,7 +387,10 @@ function createWebSearchEdgeAction(runner: WebSearchEdgeRunner, fallbackEnabled 
             });
             signal?.throwIfAborted();
             if (result.success !== true && result.text) {
-                await callback?.({ text: result.text });
+                await callback?.({
+                    text: result.text,
+                    transcriptVisibility: "internal",
+                });
             }
             return result;
         },

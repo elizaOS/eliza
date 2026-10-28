@@ -178,8 +178,8 @@ test("worker runtime cancels a blocked engine call and keeps the worker", async 
 }, 60_000);
 
 /**
- * Real libelizainference: Paradee speech out, a transcript back from the ASR
- * the model dir holds (Phonon-2 or the Qwen3-ASR pair), and a native ASR
+ * Real libelizainference: Paradee speech out, a transcript back from
+ * Phonon-2 in the model dir, and a native ASR
  * cancel. Runs on macOS arm64 and Linux x86_64 when the reviewed
  * library and both pinned asset directories are configured; it never
  * downloads assets.

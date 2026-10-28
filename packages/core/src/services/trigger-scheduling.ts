@@ -446,3 +446,65 @@ export function resolveTriggerTiming(
 		}
 	}
 }
+
+/**
+ * Powered-on scheduling. A host whose agent runs only while its device is
+ * powered on (a phone-resident agent) sets this setting to `record`. A
+ * scheduled occurrence that passed while the agent was not running is then
+ * recorded once as missed and never run late, and the next occurrence is
+ * armed as usual. A delay while the agent was running (device doze, a busy
+ * scheduler) is not a missed occurrence: that occurrence still runs. Hosts
+ * without the setting keep running a late occurrence.
+ */
+export const MISSED_SCHEDULED_OCCURRENCES_SETTING =
+	"ELIZA_MISSED_SCHEDULED_OCCURRENCES";
+/** Lateness tolerated before an occurrence can be missed (resident digests use the same window). */
+export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
+export const MISSED_SCHEDULED_OCCURRENCE_TEXT =
+	"The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.";
+
+/**
+ * Whether this host selected the powered-on policy: the runtime setting wins,
+ * then the process environment (the native runtime profile sets it there).
+ */
+export function recordsMissedScheduledOccurrences(
+	runtime?: { getSetting?(key: string): unknown } | null,
+): boolean {
+	// Partial runtimes (tests, narrow hosts) may not expose settings.
+	const configured =
+		typeof runtime?.getSetting === "function"
+			? runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING)
+			: undefined;
+	const value =
+		typeof configured === "string"
+			? configured
+			: typeof process !== "undefined"
+				? process.env?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
+				: undefined;
+	return value === "record";
+}
+
+/** Wall-clock instant at which this agent process started. */
+export function agentProcessStartedAtMs(nowMs: number = Date.now()): number {
+	const uptime =
+		typeof process !== "undefined" && typeof process.uptime === "function"
+			? process.uptime()
+			: 0;
+	return nowMs - Math.round(uptime * 1000);
+}
+
+/**
+ * True when a scheduled occurrence is reached outside its window and its
+ * scheduled instant precedes the start of the agent process, so the agent was
+ * not running when it came due.
+ */
+export function isMissedScheduledOccurrence(
+	scheduledAtMs: number,
+	nowMs: number,
+	agentStartedAtMs: number = agentProcessStartedAtMs(nowMs),
+): boolean {
+	return (
+		nowMs - scheduledAtMs > SCHEDULED_OCCURRENCE_WINDOW_MS &&
+		scheduledAtMs < agentStartedAtMs
+	);
+}

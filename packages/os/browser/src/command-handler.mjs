@@ -5,6 +5,7 @@ import {
   installManualActivity,
 } from "./manual-activity.mjs";
 import { BridgeError, parseCommand } from "./protocol.mjs";
+import { createTaskBindings } from "./task-bindings.mjs";
 import { createTaskGuidance } from "./task-guidance.mjs";
 
 export function createCommandHandler(api) {
@@ -14,221 +15,18 @@ export function createCommandHandler(api) {
   const bindings = new Map();
   const activity = createManualActivity(api, (tabId) => bindings.get(tabId));
   let bindingQueue = Promise.resolve();
-  const guidance = createTaskGuidance(api, scope);
-  const contextKeys = ["actorId", "accountId", "agentId", "taskId", "epoch"];
-  const validId = (value) =>
-    typeof value === "string" && /^[A-Za-z0-9_.:@-]{1,256}$/.test(value);
-  const blocked = () =>
-    new BridgeError(
-      "POLICY_BLOCKED",
-      "The command does not match this tab's active task binding.",
-    );
-  const bindingKey = (id) => `task-binding:${id}`;
-  async function bind(message, sender, current) {
-    const { id, binding } = message;
-    if (
-      !validId(id) ||
-      !binding ||
-      typeof binding !== "object" ||
-      Object.keys(message).some(
-        (key) => !["type", "id", "binding"].includes(key),
-      ) ||
-      Object.keys(binding).some(
-        (key) =>
-          ![
-            "tabId",
-            "bindingRevision",
-            ...contextKeys,
-            "origin",
-            "expiresAt",
-            "targets",
-            "revoked",
-            "assistantName",
-          ].includes(key),
-      ) ||
-      // Display name for the overlay cursor and marks; host configuration.
-      (binding.assistantName !== undefined &&
-        (typeof binding.assistantName !== "string" ||
-          !/^[^\p{Cc}\p{Cf}]{1,32}$/u.test(binding.assistantName) ||
-          !binding.assistantName.trim())) ||
-      typeof binding.tabId !== "string" ||
-      !/^\d+$/.test(binding.tabId) ||
-      !Number.isSafeInteger(Number(binding.tabId)) ||
-      contextKeys
-        .filter((key) => key !== "epoch")
-        .some((key) => !validId(binding[key])) ||
-      !Number.isSafeInteger(binding.bindingRevision) ||
-      binding.bindingRevision < 1 ||
-      !Number.isSafeInteger(binding.epoch) ||
-      binding.epoch < 0 ||
-      !Number.isSafeInteger(binding.expiresAt) ||
-      binding.expiresAt <= Date.now() ||
-      typeof binding.revoked !== "boolean" ||
-      !Array.isArray(binding.targets) ||
-      binding.targets.length > 64 ||
-      binding.targets.some(
-        (target) =>
-          !target ||
-          Object.keys(target).some(
-            (key) => !["selector", "action"].includes(key),
-          ) ||
-          typeof target.selector !== "string" ||
-          !target.selector ||
-          target.selector.length > 256 ||
-          !["click", "fill", "fill-code", "scroll"].includes(target.action),
-      )
-    )
-      throw blocked();
-    let origin;
-    try {
-      origin = new URL(binding.origin);
-    } catch {
-      throw blocked();
-    }
-    if (origin.protocol !== "https:" || origin.origin !== binding.origin)
-      throw blocked();
-    if (!current()) throw blocked();
-    const key = bindingKey(binding.tabId);
-    const previous =
-      bindings.get(binding.tabId) || (await api.storage.local.get(key))[key];
-    // The host renews an expired lease without changing task authorization.
-    // A newer binding revision may do that only for the identical live scope;
-    // a revoked binding still needs a new epoch and cannot be revived here.
-    const renewal =
-      previous &&
-      !previous.revoked &&
-      !binding.revoked &&
-      previous.expiresAt <= Date.now() &&
-      contextKeys.every((key) => binding[key] === previous[key]) &&
-      binding.origin === previous.origin &&
-      binding.assistantName === previous.assistantName &&
-      JSON.stringify(binding.targets) === JSON.stringify(previous.targets);
-    if (
-      !current() ||
-      (previous &&
-        (binding.bindingRevision <= previous.bindingRevision ||
-          (previous.taskId === binding.taskId &&
-            (binding.epoch < previous.epoch ||
-              (binding.epoch === previous.epoch && !renewal)))))
-    )
-      throw blocked();
-    const next = structuredClone(binding);
-    // Fence old work before awaiting storage. Failed persistence leaves the tab
-    // blocked; it never restores an older live binding.
-    bindings.set(binding.tabId, { ...next, revoked: true });
-    await guidance.clearTab(binding.tabId);
-    await api.storage.local.set({ [key]: next });
-    if (!current()) throw blocked();
-    bindings.set(binding.tabId, next);
-    await sender.send({
-      type: "result",
-      id,
-      ok: true,
-      result: {
-        bound: !next.revoked,
-        bindingRevision: next.bindingRevision,
-        tabId: next.tabId,
-        taskId: next.taskId,
-        epoch: next.epoch,
-      },
-    });
-  }
-  async function scope(command, cleanup = false) {
-    const copy = { ...command };
-    if (
-      command.protectedValueKind !== undefined &&
-      (command.protectedValueKind !== "verification-code" ||
-        command.subaction !== "fill" ||
-        !command.taskContext)
-    )
-      throw blocked();
-    if (
-      command.expectedSelector !== undefined &&
-      (!command.taskContext ||
-        !["click", "fill", "scroll"].includes(command.subaction))
-    )
-      throw blocked();
-    delete copy.taskPolicy;
-    delete copy.expectedSelector;
-    // Only a bound task action carries the host's preview sentence.
-    if (!command.taskContext) delete copy.actionText;
-    if (!command.id) {
-      if (command.taskContext) throw blocked();
-      return { command: copy, current: () => true };
-    }
-    const stored =
-      bindings.get(command.id) ||
-      (await api.storage.local.get(bindingKey(command.id)))[
-        bindingKey(command.id)
-      ];
-    if (!stored) {
-      if (command.taskContext) throw blocked();
-      return { command: copy, current: () => true };
-    }
-    const binding = bindings.get(command.id);
-    if (
-      command.taskExpiresAt !== undefined &&
-      (!Number.isSafeInteger(command.taskExpiresAt) ||
-        command.taskExpiresAt <= Date.now())
-    )
-      throw blocked();
-    const expiresAt =
-      command.taskExpiresAt === undefined
-        ? binding?.expiresAt
-        : Math.min(binding?.expiresAt, command.taskExpiresAt);
-    const current = () =>
-      binding &&
-      bindings.get(command.id) === binding &&
-      (cleanup || (!binding.revoked && expiresAt > Date.now()));
-    if (
-      !current() ||
-      !command.taskContext ||
-      Object.keys(command.taskContext).length !== contextKeys.length ||
-      contextKeys.some((key) => command.taskContext[key] !== binding[key])
-    )
-      throw blocked();
-    if (
-      !["snapshot", "click", "fill", "scroll", "navigate"].includes(
-        command.subaction,
-      )
-    )
-      throw blocked();
-    // Removal has no page-read/action authority. It still belongs to exactly
-    // this in-memory binding, but may clean up after expiry or navigation.
-    if (!cleanup) {
-      const tab = await api.tabs.get(Number(command.id));
-      if (!current() || new URL(tab.url).origin !== binding.origin)
-        throw blocked();
-    }
-    if (
-      command.subaction === "navigate" &&
-      new URL(command.url).origin !== binding.origin
-    )
-      throw blocked();
-    if (command.selector && !/^[0-9a-f-]{36}:0:\d+$/.test(command.selector))
-      throw blocked();
-    // The one reviewed control this action is for. It must be one of this
-    // binding's targets; the page then accepts no other target.
-    if (
-      command.expectedSelector !== undefined &&
-      !binding.targets.some(
-        (target) => target.selector === command.expectedSelector,
-      )
-    )
-      throw blocked();
-    copy.taskPolicy = {
-      origin: binding.origin,
-      targets: binding.targets,
-      ...(command.expectedSelector === undefined
-        ? {}
-        : { expectedSelector: command.expectedSelector }),
-      expiresAt,
-      guidanceScope: String(binding.bindingRevision),
-      protectedValueKind: command.protectedValueKind,
-      assistantName: binding.assistantName,
-    };
-    return { command: copy, current };
-  }
+  const guidance = createTaskGuidance(api, (...args) => scope(...args));
+  const { bind, scope, blocked, validId } = createTaskBindings({
+    bindings,
+    read: async (key) => (await api.storage.local.get(key))[key],
+    write: (key, value) => api.storage.local.set({ [key]: value }),
+    clearGuidance: (tabId) => guidance.clearTab(tabId),
+    getUrl: async (tabId) => (await api.tabs.get(Number(tabId))).url,
+    validTabId: (value) =>
+      typeof value === "string" &&
+      /^\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)),
+  });
   let processing = Promise.resolve();
 
   async function handle(message, sender, connectionCurrent) {
@@ -257,7 +55,9 @@ export function createCommandHandler(api) {
       let feedback;
       if (
         request.command.taskPolicy &&
-        ["click", "fill", "scroll"].includes(request.command.subaction)
+        ["click", "fill", "select", "scroll", "follow"].includes(
+          request.command.subaction,
+        )
       ) {
         feedback = await guidance.prepareAction(
           request.command,
@@ -317,6 +117,9 @@ export function createCommandHandler(api) {
         error: {
           kind: error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
           message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof BridgeError && error.reason
+            ? { reason: error.reason }
+            : {}),
         },
       };
       await sender.send(reply);
@@ -395,7 +198,10 @@ export function createCommandHandler(api) {
         );
     }
     if (message?.type === "task-bind") {
-      const bound = bindingQueue.then(() => bind(message, sender, isCurrent));
+      const bound = bindingQueue.then(async () => {
+        const result = await bind(message, isCurrent);
+        await sender.send({ type: "result", id: message.id, ok: true, result });
+      });
       bindingQueue = bound.catch(() => {});
       return bound.catch((error) =>
         sender.send({

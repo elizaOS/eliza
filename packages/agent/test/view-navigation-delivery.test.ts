@@ -58,7 +58,11 @@ import { calendarReadBindingEvaluator } from "../../../plugins/plugin-calendar/s
 import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
 import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
-import { viewsAction } from "../src/actions/views.ts";
+import {
+  createViewsAction,
+  type ViewNavigationDelivery,
+  viewsAction,
+} from "../src/actions/views.ts";
 import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
 import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
 import { registerInProcessApi } from "../src/api/in-process-api.ts";
@@ -83,6 +87,7 @@ import {
 } from "../src/runtime/view-action-affinity.ts";
 import { runWithViewClient } from "../src/runtime/view-client-context.ts";
 import {
+  registerViewNavigationRoutingRule,
   viewNavigationEvaluator,
   viewNavigationField,
 } from "../src/runtime/view-navigation.ts";
@@ -107,6 +112,19 @@ async function fixture(
   inProcess = false,
   missingNotesBundle = false,
 ) {
+  if (missingNotesBundle && inProcess) {
+    vi.stubEnv(
+      "ELIZA_NATIVE_VIEW_DECLARATIONS",
+      JSON.stringify([
+        {
+          id: "notes",
+          label: "Notes",
+          path: "/notes",
+          fallbackFor: "test-nav-views",
+        },
+      ]),
+    );
+  }
   const frames: Array<{ client: string; frame: object }> = [];
   let requests = 0;
   let kernelRequests = 0;
@@ -141,6 +159,7 @@ async function fixture(
           id: "notes",
           label: "Notes",
           path: "/notes",
+          roleGate: { minRole: "OWNER" },
           ...(missingNotesBundle
             ? { bundlePath: "missing-native-counterpart-bundle.js" }
             : { bundleUrl: "/notes.js" }),
@@ -251,6 +270,85 @@ async function show(runtime: IAgentRuntime, view: string, input = message) {
   });
 }
 describe("host view navigation", () => {
+  it("uses an injected preparation-only host with the same registry and exact receipt checks", async () => {
+    const host = await fixture();
+    const prepared: ViewNavigationDelivery[] = [];
+    const action = createViewsAction(async (input) => {
+      prepared.push(input);
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          status: "prepared",
+          viewId: input.view.id,
+          completedActionHandoffId: input.handoffId,
+          navigationBinding: {
+            requestId: input.handoffId,
+            clientId: input.clientId,
+            viewId: input.view.id,
+            viewType: "gui",
+            installationId: input.view.installationId,
+          },
+        },
+      };
+    });
+    const source = {
+      ...message,
+      content: {
+        ...message.content,
+        metadata: {
+          viewClientId: "55555555-5555-4555-8555-555555555555",
+          viewDelivery: "completed-action",
+        },
+      },
+    };
+    const result = await action.handler?.(host.runtime, source, undefined, {
+      parameters: { action: "show", view: "Notes" },
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.values).toMatchObject({
+      viewId: "notes",
+      navigationPrepared: true,
+      completedActionDelivered: false,
+    });
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].view).toBe(getView(host.runtime, "notes"));
+    expect(prepared[0].isAuthorized()).toBe(true);
+    expect(host.requests()).toBe(0);
+    expect(host.frames).toEqual([]);
+    const invalid = createViewsAction(async (input) => ({
+      status: 200,
+      body: {
+        ok: true,
+        status: "prepared",
+        viewId: input.view.id,
+        completedActionHandoffId: input.handoffId,
+        navigationBinding: {
+          ...(result?.values?.navigationBinding as Record<string, unknown>),
+          clientId: "foreign",
+        },
+      },
+    }));
+    expect(
+      (
+        await invalid.handler?.(host.runtime, source, undefined, {
+          parameters: { action: "show", view: "notes" },
+        })
+      )?.success,
+    ).toBe(false);
+    await action.handler?.(
+      host.runtime,
+      { ...source, content: { text: "Open Notes" } },
+      undefined,
+      {
+        parameters: { action: "show", view: "notes" },
+      },
+    );
+    await action.handler?.(host.runtime, source, undefined, {
+      parameters: { action: "show", view: "missing" },
+    });
+    expect(prepared).toHaveLength(1);
+  });
   it("keeps evaluator target-selection instructions within the registered navigation contract", async () => {
     expect(
       viewsAction.parameters?.find((parameter) => parameter.name === "action")
@@ -897,6 +995,129 @@ describe("model-selected host navigation", () => {
     },
   );
 
+  it("supplies the available destination catalog while Home is current", async () => {
+    const f = await fixture();
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    input.content.metadata = { viewClientId: "origin-client", uiView: "chat" };
+    const context = (
+      await fields.composePromptSlices({
+        runtime: f.runtime,
+        message: input,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      })
+    ).context;
+    expect(getView(f.runtime, "notes")?.available).toBe(true);
+    expect(context).toContain('"id":"notes","label":"Notes"');
+    expect(context).toContain('"id":"chat","label":"Home"');
+    expect(context).toContain('"viewId":"chat","label":"Home"');
+    expect(f.requests()).toBe(0);
+  });
+  it("does not advertise unavailable, hidden, or role-forbidden destinations", async () => {
+    const f = await fixture(1, undefined, undefined, false, true);
+    await registerPluginViews(
+      f.runtime,
+      {
+        name: "catalog-policy-fixture",
+        description: "Caller-isolated catalog",
+        views: [
+          {
+            id: "admin-only-catalog",
+            label: "PRIVATE_CATALOG_SENTINEL",
+            path: "/admin-only-catalog",
+            bundleUrl: "/admin.js",
+            roleGate: { roles: ["ADMIN"] },
+          },
+          {
+            id: "preview-catalog",
+            label: "HIDDEN_PREVIEW_SENTINEL",
+            path: "/preview-catalog",
+            bundleUrl: "/preview.js",
+            viewKind: "preview",
+          },
+          {
+            id: "developer-catalog",
+            label: "HIDDEN_DEVELOPER_SENTINEL",
+            path: "/developer-catalog",
+            bundleUrl: "/developer.js",
+            viewKind: "developer",
+          },
+        ],
+      },
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    input.content.metadata = {
+      viewClientId: "origin-client",
+      uiView: "chat",
+      viewDelivery: "completed-action",
+    };
+    const context = (
+      await fields.composePromptSlices({
+        runtime: f.runtime,
+        message: input,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      })
+    ).context;
+    expect(getView(f.runtime, "notes")?.available).toBe(false);
+    expect(context).not.toContain('"id":"notes"');
+    for (const forbidden of [
+      "PRIVATE_CATALOG_SENTINEL",
+      "HIDDEN_PREVIEW_SENTINEL",
+      "HIDDEN_DEVELOPER_SENTINEL",
+    ])
+      expect(context).not.toContain(forbidden);
+    expect(context).toContain('"id":"chat","label":"Home"');
+    expect(f.requests()).toBe(0);
+  });
+  it.each([false, true])(
+    "advertises a trusted native counterpart only with completed-action delivery: %s",
+    async (completed) => {
+      vi.stubEnv(
+        "ELIZA_NATIVE_VIEW_DECLARATIONS",
+        JSON.stringify([
+          {
+            id: "catalog-native",
+            label: "Native catalog counterpart",
+            path: "/catalog-native",
+          },
+        ]),
+      );
+      const f = await fixture();
+      const native = getView(f.runtime, "catalog-native");
+      expect(native).toMatchObject({ nativeOs: true, available: false });
+      const fields = new ResponseHandlerFieldRegistry();
+      fields.register(viewNavigationField);
+      const input = clientMessage();
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: "chat",
+        ...(completed ? { viewDelivery: "completed-action" } : {}),
+      };
+      const context = (
+        await fields.composePromptSlices({
+          runtime: f.runtime,
+          message: input,
+          state: { values: {}, data: {}, text: "" },
+          senderRole: "OWNER",
+          turnSignal: new AbortController().signal,
+        })
+      ).context;
+      if (completed)
+        expect(context).toContain(
+          '"id":"catalog-native","label":"Native catalog counterpart"',
+        );
+      else expect(context).not.toContain('"id":"catalog-native"');
+      expect(f.requests()).toBe(0);
+    },
+  );
   it("composes fresh view identity without changing schema or retaining another turn's view", async () => {
     const f = await fixture();
     const fields = new ResponseHandlerFieldRegistry();
@@ -1338,17 +1559,23 @@ describe("model-selected host navigation", () => {
   });
   it.each([
     { reply: "Home.", wrongDestination: false },
+    { reply: "Notes is open.", wrongDestination: false, openNotes: true },
     { reply: "Chat is open.", wrongDestination: false },
     { reply: "Messages is open.", wrongDestination: true },
     { reply: "Calendar is open.", wrongDestination: true },
     {
-      reply: "Notes is open.",
+      reply: "I’ll take you to Notes.",
       wrongDestination: false,
       missingNativeBundle: true,
     },
   ])(
     "runs the canonical pipeline and gates the held reply ($reply)",
-    async ({ reply, wrongDestination, missingNativeBundle = false }) => {
+    async ({
+      reply,
+      wrongDestination,
+      missingNativeBundle = false,
+      openNotes = false,
+    }) => {
       const f = await fixture(
         1,
         undefined,
@@ -1358,12 +1585,12 @@ describe("model-selected host navigation", () => {
       );
       if (missingNativeBundle)
         vi.stubEnv("ELIZA_LOCAL_AGENT_TRANSPORT", "filesystem-v1");
-      const destination = missingNativeBundle ? "notes" : "chat";
+      const destination = missingNativeBundle || openNotes ? "notes" : "chat";
       const input = clientMessage();
-      input.content.text = missingNativeBundle ? "Open Notes" : "Open Home";
+      input.content.text = destination === "notes" ? "Open Notes" : "Open Home";
       input.content.metadata = {
         viewClientId: "origin-client",
-        uiView: "notes",
+        uiView: openNotes ? "chat" : "notes",
         uiViewCapabilities: ["PRIVATE_CONTROL_SENTINEL"],
         ...(missingNativeBundle ? { viewDelivery: "completed-action" } : {}),
       };
@@ -1416,13 +1643,23 @@ describe("model-selected host navigation", () => {
         }
         expect(
           request.messages.find((entry) => entry.role === "user")?.content,
-        ).toContain('"viewId":"notes","label":"Notes"');
+        ).toContain(
+          openNotes
+            ? '"viewId":"chat","label":"Home"'
+            : '"viewId":"notes","label":"Notes"',
+        );
+        if (openNotes)
+          expect(
+            request.messages.find((entry) => entry.role === "user")?.content,
+          ).toContain('"id":"notes","label":"Notes"');
         expect(
           request.messages.find((entry) => entry.role === "system")?.content,
         ).not.toContain("Current request's renderer view");
         expect(JSON.stringify(params)).not.toContain(
           "PRIVATE_CONTROL_SENTINEL",
         );
+        if (missingNativeBundle)
+          expect(JSON.stringify(params)).toContain("user's preferred wording");
         return {
           text: "",
           toolCalls: [
@@ -1432,7 +1669,7 @@ describe("model-selected host navigation", () => {
                 shouldRespond: "RESPOND",
                 contexts: ["general"],
                 contextRequests: [],
-                intents: ["Open Home"],
+                intents: [destination === "notes" ? "Open Notes" : "Open Home"],
                 replyText: reply,
                 replyEffectStatus: "pending",
                 facts: [],
@@ -1470,6 +1707,8 @@ describe("model-selected host navigation", () => {
           composeState: async () => state,
         }),
       );
+      f.runtime.actions = [...promoteSubactionsToActions(viewsAction)];
+      registerViewNavigationRoutingRule(f.runtime);
       const resultPromise = runWithStreamingContext(
         { messageId: String(input.id), onStreamChunk: () => {} },
         () =>
@@ -1509,7 +1748,7 @@ describe("model-selected host navigation", () => {
           kind: "planned_reply",
           result: {
             responseContent: {
-              text: missingNativeBundle ? "Opening Notes." : reply,
+              text: reply,
             },
           },
         });
@@ -2313,6 +2552,20 @@ describe("native completed-action navigation", () => {
     const selected = await selectNavigation(f, input);
     expect(getView(f.runtime, "notes")?.available).toBe(false);
     expect(selected.plan.deterministicToolCall).toBeUndefined();
+    const unavailable = await show(f.runtime, "notes", input);
+    expect(unavailable).toMatchObject({
+      success: false,
+      data: { navigation: { status: "unavailable", viewId: null } },
+    });
+    const unknown = await show(
+      f.runtime,
+      "not-a-registered-destination",
+      input,
+    );
+    expect(unknown).toMatchObject({
+      success: false,
+      data: { navigation: { status: "not-found", viewId: null } },
+    });
     expect(f.requests()).toBe(0);
     expect(f.frames).toHaveLength(0);
   });
@@ -2362,13 +2615,12 @@ describe("native completed-action navigation", () => {
     const result = await show(f.runtime, "notes", input);
     expect(result).toMatchObject({
       success: true,
-      verifiedUserFacing: true,
       data: { navigation: { status: "prepared" } },
       values: { navigationPrepared: true, completedActionDelivered: false },
     });
     expect(
       result && typeof result !== "boolean" && result.userFacingText,
-    ).not.toContain("Opened");
+    ).toBeUndefined();
     expect(f.kernelRequests()).toBe(1);
     expect(f.frames).toHaveLength(0);
     const scope = { hostKey: f.hostKey, clientId: "origin-client" };

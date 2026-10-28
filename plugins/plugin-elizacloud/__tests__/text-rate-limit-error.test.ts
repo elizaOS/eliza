@@ -13,14 +13,21 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleResponseHandler, handleTextSmall } from "../src/models/text";
 
+import {
+  getCloudInferenceFailure,
+  recordCloudInferenceFailure,
+} from "../src/utils/inference-diagnostics";
+
 let server: Server;
 let baseUrl: string;
 let requests: string[] = [];
+let onRequest: (() => void) | undefined;
 let reply: { status?: number; headers: Record<string, string>; body: string };
 
 beforeAll(async () => {
   server = createServer((req, res) => {
     requests.push(req.url ?? "");
+    onRequest?.();
     req.resume();
     req.on("end", () => {
       res.writeHead(reply.status ?? 429, { "content-type": "application/json", ...reply.headers });
@@ -37,6 +44,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   requests = [];
+  onRequest = undefined;
 });
 
 function runtime(): IAgentRuntime {
@@ -306,5 +314,263 @@ describe("Eliza Cloud text 429", () => {
       kind: "rate_limited",
       retryAfterMs: MAX_PROVIDER_RATE_LIMIT_RETRY_AFTER_MS,
     });
+  });
+});
+
+describe("content-free support diagnostics", () => {
+  it.each([false, true])(
+    "keeps the original HTTP failure and final strict schema facts with stream=%s",
+    async (stream) => {
+      const agent = runtime();
+      reply = {
+        status: 400,
+        headers: {},
+        body: JSON.stringify({
+          error: {
+            message: "Unsupported schema keyword pattern. PRIVATE_NOTE sk-private",
+            param: "tools",
+            code: "invalid_request_error",
+          },
+        }),
+      };
+      let failure: unknown;
+      try {
+        await handleResponseHandler(agent, {
+          prompt: "PRIVATE_PROMPT",
+          stream,
+          streamStructured: stream,
+          tools: [
+            {
+              name: "HANDLE_RESPONSE",
+              type: "function",
+              strict: true,
+              parameters: {
+                type: "object",
+                additionalProperties: false,
+                properties: { intentId: { type: "string", pattern: "^intent:[1-9][0-9]*$" } },
+                required: ["intentId"],
+              },
+            },
+          ],
+          toolChoice: "required",
+        } as never);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toMatchObject({
+        status: 400,
+        message: "Unsupported schema keyword pattern. PRIVATE_NOTE sk-private",
+      });
+      expect(requests).toEqual(["/api/v1/chat/completions"]);
+      const diagnostic = getCloudInferenceFailure(agent);
+      expect(diagnostic).toEqual({
+        version: 1,
+        at: expect.any(Number),
+        stage: "response-handler",
+        status: 400,
+        reason: "unsupported-schema-keyword",
+        parameter: "tools",
+        keyword: "pattern",
+        strictTools: ["HANDLE_RESPONSE"],
+        schemaKeywords: ["pattern"],
+        schemaScanTruncated: false,
+        schemaDepth: 2,
+        schemaProperties: 1,
+        schemaEnumValues: 0,
+        schemaTextChars: 8,
+      });
+      expect(JSON.stringify(diagnostic)).not.toMatch(/PRIVATE|sk-private|intentId/);
+      if (!diagnostic) throw new Error("Missing failure");
+      diagnostic.strictTools.push("other");
+      expect(getCloudInferenceFailure(agent)?.strictTools).toEqual(["HANDLE_RESPONSE"]);
+    }
+  );
+
+  it.each(["nested-tools", "flat-tools", "chat-schema", "responses-schema"])(
+    "inspects the final %s schema envelope without retaining payloads",
+    (shape) => {
+      const agent = runtime(),
+        schema = { type: "string", pattern: "PRIVATE_PATTERN" };
+      const request =
+        shape === "nested-tools"
+          ? {
+              tools: [
+                {
+                  type: "function",
+                  function: { name: "READ_CONTEXT", strict: true, parameters: schema },
+                },
+              ],
+            }
+          : shape === "flat-tools"
+            ? {
+                tools: [
+                  { type: "function", name: "READ_CONTEXT", strict: true, parameters: schema },
+                ],
+              }
+            : shape === "chat-schema"
+              ? {
+                  response_format: {
+                    type: "json_schema",
+                    json_schema: { name: "PRIVATE_SCHEMA", strict: true, schema },
+                  },
+                }
+              : {
+                  text: {
+                    format: { type: "json_schema", name: "PRIVATE_SCHEMA", strict: true, schema },
+                  },
+                };
+      const original = structuredClone(request);
+      recordCloudInferenceFailure(
+        agent,
+        "TEXT_SMALL",
+        request,
+        Object.assign(new Error("Unknown failure"), { status: 400 })
+      );
+      const diagnostic = getCloudInferenceFailure(agent);
+      expect(diagnostic?.schemaKeywords).toEqual(["pattern"]);
+      expect(diagnostic?.strictTools).toEqual(shape.endsWith("tools") ? ["READ_CONTEXT"] : []);
+      expect(diagnostic?.stage).toBe("text");
+      expect(JSON.stringify(diagnostic)).not.toContain("PRIVATE");
+      expect(request).toEqual(original);
+    }
+  );
+
+  it("keeps an actual Responses HTTP refusal classified without inventing native tools", async () => {
+    const agent = runtime();
+    reply = {
+      status: 400,
+      headers: {},
+      body: JSON.stringify({ error: { message: "Unknown error PRIVATE_BODY" } }),
+    };
+    await expect(
+      handleTextSmall(agent, { prompt: "PRIVATE_PROMPT" } as never)
+    ).rejects.toMatchObject({ status: 400 });
+    expect(requests).toEqual(["/api/v1/responses"]);
+    expect(getCloudInferenceFailure(agent)).toMatchObject({
+      stage: "text",
+      status: 400,
+      reason: "unknown",
+      strictTools: [],
+      schemaKeywords: [],
+      schemaScanTruncated: false,
+    });
+  });
+
+  it.each([false, true])(
+    "does not log a user's in-flight cancellation with stream=%s",
+    async (stream) => {
+      const agent = runtime(),
+        controller = new AbortController();
+      const reason = new DOMException("Synthetic user Stop", "AbortError");
+      reply = {
+        status: 200,
+        headers: {},
+        body: JSON.stringify({ choices: [{ message: { content: "not accepted after Stop" } }] }),
+      };
+      onRequest = () => controller.abort(reason);
+      await expect(
+        handleResponseHandler(agent, {
+          prompt: "Synthetic request",
+          messages: [{ role: "user", content: "Synthetic request" }],
+          stream,
+          streamStructured: stream,
+          signal: controller.signal,
+        } as never)
+      ).rejects.toBe(reason);
+      expect(requests).toEqual(["/api/v1/chat/completions"]);
+      expect(getCloudInferenceFailure(agent)).toBeUndefined();
+    }
+  );
+
+  it.each(["prefixItems", "items", "not", "additionalProperties"])(
+    "marks unexpanded %s schema children incomplete",
+    (container) => {
+      const agent = runtime(),
+        child = { type: "string", pattern: "PRIVATE_CHILD" };
+      const schema = {
+        type: "object",
+        [container]: container === "prefixItems" || container === "items" ? [child] : child,
+      };
+      recordCloudInferenceFailure(
+        agent,
+        "RESPONSE_HANDLER",
+        { tools: [{ function: { name: "HANDLE_RESPONSE", strict: true, parameters: schema } }] },
+        Object.assign(new Error("Unknown failure"), { status: 400 })
+      );
+      const diagnostic = getCloudInferenceFailure(agent);
+      expect(diagnostic?.schemaScanTruncated).toBe(true);
+      expect(diagnostic?.schemaKeywords).not.toContain("pattern");
+      expect(JSON.stringify(diagnostic)).not.toContain("PRIVATE_CHILD");
+    }
+  );
+
+  it("reports bounded schema aggregates without copying names, descriptions or values", () => {
+    const agent = runtime();
+    const schema = {
+      type: "object",
+      description: "PRIVATE_IGNORED_DESCRIPTION",
+      properties: {
+        "🧪": { type: "string", enum: ["a", "🧪"] },
+        second: { type: "string", const: "x" },
+      },
+      required: ["🧪", "second"],
+      additionalProperties: false,
+    };
+    recordCloudInferenceFailure(
+      agent,
+      "RESPONSE_HANDLER",
+      { tools: [{ function: { name: "HANDLE_RESPONSE", strict: true, parameters: schema } }] },
+      Object.assign(new Error("JSON schema exceeds maximum number of enum values PRIVATE_BODY"), {
+        status: 400,
+      })
+    );
+    const diagnostic = getCloudInferenceFailure(agent);
+    expect(diagnostic).toMatchObject({
+      reason: "schema-limit",
+      schemaDepth: 2,
+      schemaProperties: 2,
+      schemaEnumValues: 2,
+      schemaTextChars: 10,
+      schemaScanTruncated: false,
+    });
+    expect(JSON.stringify(diagnostic)).not.toMatch(/PRIVATE|second|🧪/);
+  });
+
+  it("omits unknown provider fields and bounds recursive schema inspection without changing the input", () => {
+    const agent = runtime();
+    const cyclic: Record<string, unknown> = { type: "array" };
+    cyclic.items = cyclic;
+    const request = {
+      tools: [
+        {
+          type: "function",
+          function: { name: "PRIVATE_TOOL_NAME", strict: true, parameters: cyclic },
+        },
+      ],
+    };
+    const error = Object.assign(new Error("PRIVATE_UNKNOWN_ERROR"), {
+      status: 400,
+      error: { param: "PRIVATE_PARAM", code: "PRIVATE_CODE", message: "PRIVATE_BODY" },
+    });
+    recordCloudInferenceFailure(agent, "PRIVATE_MODEL_TYPE", request, error);
+    const diagnostic = getCloudInferenceFailure(agent);
+    expect(diagnostic).toMatchObject({
+      stage: "other",
+      status: 400,
+      reason: "unknown",
+      strictTools: ["other"],
+      schemaKeywords: [],
+      schemaScanTruncated: true,
+    });
+    expect(JSON.stringify(diagnostic)).not.toMatch(/PRIVATE/);
+    expect(cyclic.items).toBe(cyclic);
+    expect(error.message).toBe("PRIVATE_UNKNOWN_ERROR");
+    const hostile = Object.defineProperty({}, "message", {
+      get() {
+        throw new Error("PRIVATE_GETTER");
+      },
+    });
+    expect(() => recordCloudInferenceFailure(agent, "TEXT_LARGE", request, hostile)).not.toThrow();
+    expect(getCloudInferenceFailure(agent)).toEqual(diagnostic);
   });
 });

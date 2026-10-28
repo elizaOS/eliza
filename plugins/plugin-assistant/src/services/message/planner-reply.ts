@@ -1,6 +1,11 @@
 /** Resolves the completed planner turn into a deliverable reply or an explicit silent terminal. Preserves tool receipts, prior delivery deduplication, and the addressed-turn delivery guarantee. */
 
-import type { Action, MessageHandlerResult, State } from "@elizaos/core";
+import type {
+  Action,
+  AgentContext,
+  MessageHandlerResult,
+  State,
+} from "@elizaos/core";
 import { getUserMessageText, logger } from "@elizaos/core";
 import {
   FAILED_TOOL_FALLBACK_MESSAGE,
@@ -43,6 +48,7 @@ export async function finalizePlannerReply(
     ambientTurn,
     earlyReplySent,
     messageHandler,
+    selectedContexts,
     prePatchStageOneReplyIsUngroundedAppliedClaim,
     prePatchStageOneReply,
     earlyReplyText,
@@ -57,6 +63,8 @@ export async function finalizePlannerReply(
     ambientTurn: boolean;
     earlyReplySent: boolean;
     messageHandler: MessageHandlerResult;
+    /** Stage 1's contexts merged with a resumed planner's contexts. */
+    selectedContexts: AgentContext[];
     prePatchStageOneReplyIsUngroundedAppliedClaim: boolean;
     prePatchStageOneReply: string | undefined;
     earlyReplyText: string;
@@ -246,6 +254,7 @@ export async function finalizePlannerReply(
           },
           providers: finalPlannerState.data.providers,
           request: getUserMessageText(args.message),
+          contexts: selectedContexts,
           reply: effectiveReplyText,
           actionResults,
           actions: args.runtime.actions,
@@ -254,6 +263,7 @@ export async function finalizePlannerReply(
   if (finalReplyEgressDecision.verdict === "reject") {
     recoveredReply = await resolvePlannedReplyEgress({
       providers: finalPlannerState.data.providers,
+      contexts: selectedContexts,
       runtime: args.runtime,
       message: args.message,
       reply: effectiveReplyText,
@@ -445,6 +455,7 @@ export async function finalizePlannerReply(
     );
     recoveredReply = await resolvePlannedReplyEgress({
       providers: finalPlannerState.data.providers,
+      contexts: selectedContexts,
       runtime: args.runtime,
       message: args.message,
       reply: zeroDeliveryRecovery.text,

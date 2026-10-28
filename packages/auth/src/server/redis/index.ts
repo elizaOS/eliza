@@ -14,6 +14,7 @@ export {
   disconnectRedis,
   getRedis,
   getRedisDriver,
+  getRedisTlsOptions,
   type IoredisLike,
   type RedisDriver,
 } from "./client.js";

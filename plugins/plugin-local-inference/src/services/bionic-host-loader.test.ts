@@ -454,7 +454,7 @@ describeLinuxOnly("BionicHostLoader voice ops (real abstract-UDS)", () => {
 		});
 		await new Promise((r) => setTimeout(r, 50));
 		controller.abort();
-		await expect(pending).rejects.toThrow(/Abort/);
+		await expect(pending).rejects.toBe(controller.signal.reason);
 		await new Promise((r) => setTimeout(r, 50));
 		expect(seen.map((r) => r.op)).toEqual(["asr", "asr_cancel"]);
 	});
@@ -468,7 +468,7 @@ describeLinuxOnly("BionicHostLoader voice ops (real abstract-UDS)", () => {
 		controller.abort();
 		await expect(
 			loader.synthesize({ text: "x", signal: controller.signal }),
-		).rejects.toThrow(/Abort/);
+		).rejects.toBe(controller.signal.reason);
 		expect(seen).toEqual([]);
 	});
 });

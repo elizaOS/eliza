@@ -98,6 +98,9 @@ async function startOwnedLogin(options: {
   );
   const { setEmbeddedAuthDatabase } = await import("./auth/store-backends");
   const { setDatabaseRevocationStore } = await import("./auth/revocation");
+  const { setDatabaseIdempotencyStore } = await import(
+    "./api/middleware/idempotency"
+  );
   const { DatabaseRevocationStore } = await import(
     "./auth/database-revocation"
   );
@@ -144,13 +147,29 @@ async function startOwnedLogin(options: {
     const { setDatabaseAuthRateLimiter } = await import(
       "./api/services/auth-rate-limit"
     );
-    const { initRedis, shutdownRedis } = await import("./api/middleware/redis");
+    const { initRedis, shutdownRedis, isRedisConfigured } = await import(
+      "./api/middleware/redis"
+    );
     const { getConfiguredVault } = await import("./api/services/vault-factory");
     const { SOCKET_PEER_ENV_KEY } = await import("./api/services/runtime-gate");
     closeRedis = shutdownRedis;
     releaseAuth = releaseAuthStores;
     clearRateLimiter = () => setDatabaseAuthRateLimiter(undefined);
     const redisAvailable = await initRedis();
+    const { isCloudflareRateLimitConfigured } = await import(
+      "./redis/cloudflare-rate-limit"
+    );
+    isCloudflareRateLimitConfigured();
+    const { isCloudflareAggregationConfigured } = await import(
+      "./redis/cloudflare-aggregation"
+    );
+    isCloudflareAggregationConfigured();
+    const { isCloudflareSpendMetricsConfigured } = await import(
+      "./redis/cloudflare-spend-metrics"
+    );
+    isCloudflareSpendMetricsConfigured();
+    // A configured Redis outage must not select a different receipt history.
+    setDatabaseIdempotencyStore(!isRedisConfigured());
     await initAuthStores(options.mode === "postgres" && !redisAvailable);
     assertAuthStoresAreSafe();
     const { checkDatabaseAuthRateLimit } = await import(
@@ -196,6 +215,7 @@ async function startOwnedLogin(options: {
           setDatabaseAuthRateLimiter(undefined);
           setEmbeddedAuthDatabase(false);
           setDatabaseRevocationStore(undefined);
+          setDatabaseIdempotencyStore(false);
           const storage = await Promise.allSettled([
             closeDb(),
             shutdownRedis(),
@@ -221,6 +241,7 @@ async function startOwnedLogin(options: {
     clearRateLimiter?.();
     setEmbeddedAuthDatabase(false);
     setDatabaseRevocationStore(undefined);
+    setDatabaseIdempotencyStore(false);
     const teardown = await Promise.allSettled([
       closeDb(),
       ...(closeRedis ? [closeRedis()] : []),

@@ -130,6 +130,32 @@ describe("readBundleTextArchitectureBlockers", () => {
 		const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
 		expect(readBundleTextArchitectureBlockers(root)).toEqual([]);
 	});
+	it("blocks a shipped text GGUF whose header is not GGUF", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
+		mkdirSync(path.join(root, "text"));
+		writeFileSync(
+			path.join(root, "text", "eliza-1-2b-128k.gguf"),
+			Buffer.from("not a gguf file at all"),
+		);
+		const blockers = readBundleTextArchitectureBlockers(root);
+		expect(blockers).toHaveLength(1);
+		expect(blockers[0]).toMatch(/could not read the GGUF header/);
+		expect(blockers[0]).toMatch(/not a GGUF file/);
+		expect(blockers[0]).toMatch(/cannot be verified/);
+	});
+	it("blocks a shipped text GGUF whose header is truncated", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "bundle-"));
+		mkdirSync(path.join(root, "text"));
+		// Magic + version, then the tensor/KV counts are cut off.
+		writeFileSync(
+			path.join(root, "text", "eliza-1-2b-128k.gguf"),
+			Buffer.concat([u32(0x4655_4747), u32(3)]),
+		);
+		const blockers = readBundleTextArchitectureBlockers(root);
+		expect(blockers).toHaveLength(1);
+		expect(blockers[0]).toMatch(/gguf header truncated/);
+		expect(blockers[0]).toMatch(/cannot be verified/);
+	});
 	it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
 		"blocks when text/ exists but cannot be listed",
 		() => {

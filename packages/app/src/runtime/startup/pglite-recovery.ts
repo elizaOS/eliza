@@ -122,7 +122,7 @@ export function normalizePgliteStartupError(err: unknown): unknown {
   if (!isManualResetPgliteError(err)) return err;
   if (
     err instanceof Error &&
-    getPgliteErrorCode(err) === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED
+    (err as ErrorWithCause).code === PGLITE_ERROR_CODES.MANUAL_RESET_REQUIRED
   ) {
     return err;
   }
@@ -143,6 +143,9 @@ export function normalizePgliteStartupError(err: unknown): unknown {
 export async function attemptPgliteAutoReset(
   err: unknown,
 ): Promise<string | null> {
+  // Preservation hosts surface the original startup error without touching storage.
+  if (process.env.ELIZA_PGLITE_AUTO_RESET === "0") return null;
+
   if (!isManualResetPgliteError(err)) return null;
 
   const dataDir =
