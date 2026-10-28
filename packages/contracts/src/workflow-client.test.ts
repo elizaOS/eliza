@@ -159,7 +159,11 @@ test("a generic schedule's missed occurrence needs the engine-recorded missedOcc
   };
   assert.deepEqual(workflowOccurrenceNotRun(output), output);
   const run = parseWorkflowRun(
-    execution({ output, finished: true, missedOccurrenceAt: output.scheduledAt }),
+    execution({
+      output,
+      finished: true,
+      missedOccurrenceAt: output.scheduledAt,
+    }),
   );
   assert.deepEqual(run.occurrence, {
     scheduledAt: "2026-10-28T07:30:00.000Z",
