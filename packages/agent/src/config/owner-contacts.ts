@@ -62,10 +62,7 @@ type RelationshipsServiceLike = {
 
 type RuntimeLike = Pick<
   IAgentRuntime,
-  | "getService"
-  | "getEntityById"
-  | "getRoomsForParticipant"
-  | "getMemories"
+  "getService" | "getEntityById" | "getRoomsForParticipant" | "getMemories"
 >;
 
 function isRelationshipsServiceLike(
