@@ -324,6 +324,12 @@ the current and next two monthly periods funded; missed months do not accumulate
   off while unset. The numbers are not selected yet; `placeholder` enables
   unselected test values only. Latency benchmark:
   `bun --conditions=eliza-source packages/cloud/scripts/plan-request-limit-latency.ts`.
+  Against a deployment, `node packages/cloud/scripts/plan-admission-deployed-latency.ts
+  --config <file.json> --confirm-real-requests` reports client and Server-Timing
+  p50/p95 on the existing completion and geocode routes for accounts a person
+  prepares (normal, cache-miss, exhausted, expired, billing outage), minus an
+  unauthenticated baseline. The config names each key's environment variable;
+  normal-condition requests are real and billed or counted.
 
 Scripts (same `DATABASE_URL` and pepper as the target environment; apply
 migrations through `0547_subscription_grant_calendar_terms` first):
@@ -468,19 +474,30 @@ Success bodies name the provider and carry its attribution. Failures are typed:
 | provider_unavailable` (with `Retry-After`), `502 provider_invalid_response`.
 Cloud never returns guessed places or routes. Navigation and GPS stay on the device.
 
-The provider is OpenStreetMap data on a self-hosted Nominatim (search, geocode,
-reverse, details) and GraphHopper (routes, profiles `car`, `foot`, `bike`). Ops
-must provision, for each environment:
+The provider is chosen by settings (`shared/src/lib/services/maps/provider-registry.ts`).
+The default, `ELIZA_MAPS_PROVIDER=osm`, is OpenStreetMap data on an operator
+Nominatim-compatible geocoder (search, geocode, reverse, details) and a
+GraphHopper router (routes, profiles `car`, `foot`, `bike`); set
+`ELIZA_MAPS_ROUTER=valhalla` for a Valhalla router. Ops must provision, for
+each environment:
 
 - `ELIZA_MAPS_GEOCODER_URL`: HTTPS Nominatim 4.3 or later loaded with the region
-  extracts.
-- `ELIZA_MAPS_ROUTER_URL`: HTTPS GraphHopper with the same extracts and the
-  `car`, `foot` and `bike` profiles; optional `ELIZA_MAPS_ROUTER_API_KEY`.
+  extracts; optional `ELIZA_MAPS_GEOCODER_API_KEY`.
+- `ELIZA_MAPS_ROUTER_URL`: HTTPS GraphHopper (or Valhalla) with the same extracts;
+  optional `ELIZA_MAPS_ROUTER_API_KEY` and `ELIZA_MAPS_ROUTER_PROFILES`
+  (`{"drive":"car","walk":"foot","bicycle":"bike"}` by default).
   Set `ELIZA_MAPS_ROUTE_ALTERNATIVES=false` if the deployment cannot compute
   alternative routes.
 - `ELIZA_MAPS_COVERAGE_JSON`: the regions both services cover, as
   `[{"id","name","bounds":[west,south,east,north]}]`.
 - `ELIZA_MAPS_DATASET_REVISION`: the extract date or version that is served.
+- Optional `ELIZA_MAPS_OPERATOR`, `ELIZA_MAPS_ATTRIBUTION` and
+  `ELIZA_MAPS_PROVIDER_ID`.
+
+`capabilities` also reports `sources` and a location `disclosure`: the services
+that receive a request's text and coordinates and their operator. Cloud records
+only the operation and result code. A self-hostable reference stack with TLS,
+an access key and request logging disabled is in `infra/cloud/maps`.
 
 Ops also own the update schedule (dataset freshness), monitoring, capacity and
 ODbL obligations. Transit, traffic and map tiles are not served.

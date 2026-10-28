@@ -9,7 +9,8 @@
         "marketingName": "Pixel 10a",
         "androidRelease": "17",
         "observedSku": "GE1GQ",
-        "buildId": "CP3A.261005.005"
+        "buildId": "CP3A.261005.005",
+        "vendorApiLevel": "202604"
       },
       "manifest": {
         "url": "https://android.googlesource.com/platform/manifest",

@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "description": "The one signed update channel for the Eliza Pixel 10a (stallion) Android 17 product. The signing job refuses while a field here is UNSET: the OTA package certificate (releasekey x509, installed as otacerts by sign_target_files_apks -o) and the AVB public key must match the runtime key directory. The update authority and release owner are a release decision recorded here before the first release. No key material, URL credential or recovery code belongs here. Drill results are recorded from executed drills, never by software.",
+  "channel": "stable",
+  "product": "eliza_stallion_phone",
+  "device": "stallion",
+  "authority": "UNSET",
+  "releaseOwner": "UNSET",
+  "otaCertificateSha256": "UNSET",
+  "avbPublicKeySha256": "UNSET",
+  "downgradeAllowed": false,
+  "recovery": {
+    "stockFactoryImage": {
+      "filename": "stallion-cp3a.261005.005-factory-d1d25502.zip",
+      "sha256": "d1d2550268de9fd4bfdd4ff0910cc4471fec6ba361506278c25f34f312106675"
+    },
+    "knownGoodRelease": {
+      "buildFingerprint": "UNSET",
+      "otaSha256": "UNSET",
+      "recordFile": "UNSET"
+    }
+  },
+  "drills": {
+    "signedUpdate": "not run",
+    "interruptedUpdate": "not run",
+    "compatibleRollback": "not run",
+    "stockRecovery": "not run"
+  }
+}

@@ -55,7 +55,10 @@ import type {
   LifeOpsCalendarSummary,
   LifeOpsNextCalendarEventContext,
 } from "@elizaos/contracts";
-import { resolveCalendarTimeZone as resolveOwnerCalendarTimeZone } from "@elizaos/contracts";
+import {
+  readClientTurnObservation,
+  resolveCalendarTimeZone as resolveOwnerCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -3907,21 +3910,12 @@ async function inferCreateEventDetails(
     // A valid planner reference alone does not establish which note the user meant.
     // Reuse Notes' named lookup and the actual foreground canonical selection.
     const named = notes.findNotesNamedInText?.(messageText(message)) ?? [];
-    const metadata = message.content.metadata as
-      | Record<string, unknown>
-      | undefined;
-    const device = metadata?.clientDevice as
-      | Record<string, unknown>
-      | undefined;
-    const context = device?.context as Record<string, unknown> | undefined;
-    const selected = context?.selectedObject as
-      | Record<string, unknown>
-      | undefined;
+    // The foreground selection is read only through the shared current-turn
+    // observation contract; a malformed observation selects nothing.
+    const context = readClientTurnObservation(message.content.metadata);
+    const selected = context?.sensitive ? undefined : context?.selectedObject;
     const selectedId =
-      context?.view === "notes" &&
-      context.sensitive !== true &&
-      selected?.kind === "canonical-note" &&
-      typeof selected.id === "string"
+      context?.view === "notes" && selected?.kind === "canonical-note"
         ? selected.id
         : undefined;
     let candidates = named;
@@ -4021,7 +4015,7 @@ async function inferCreateEventDetails(
     `Original user evidence source IDs (quote the matching original above; current: IDs refer to FINAL CURRENT REQUEST below): ${JSON.stringify(userSources.map(({ id }) => id))}`,
     `Verified note references: ${JSON.stringify(verifiedNoteReferences)}`,
     "Return explicit guestIntent and noteIntent with state none/requested/unresolved and evidence [{sourceId,quote}] copied exactly from the original user catalog. For none cite the complete current original; missing fields are not none.",
-    "guestIntent describes requested recipients or calendar invitations, not people named in a private event's subject or title. Recording a meeting with someone on the owner's calendar does not by itself request an invitation: preserve the person in the title, and use none with guests [] when no recipient effect was requested. Use requested when the original user asks to invite or add someone as a guest; use unresolved when that recipient intent is unclear. A planner-proposed attendee or address cannot establish this intent.",
+    "guestIntent describes requested recipients or calendar invitations, not people named in a private event's subject or title. Recording a meeting with someone on the owner's calendar does not by itself request an invitation: preserve the person in the title, and use none with guests [] when no recipient effect was requested. Never add the owner, a contact, a planner suggestion or an example address as a guest. Use requested when the original user asks to invite or add someone as a guest; use unresolved when that recipient intent is unclear. A planner-proposed attendee or address cannot establish this intent.",
     "Requested guests must list every name and email, null when unknown. A missing requested guest address or ambiguous guest reference requires clarification, never a guestless event. Do not change a requested invitation to none to avoid asking for its address. Planner-proposed identities are not evidence. Requested sourceNote must copy an exact verified reference for the note the user named or selected; if unavailable or ambiguous, clarify. Set noteIntent.descriptionMode to verbatim only when the user asks to copy the source note body exactly; otherwise use extracted. Never use a planner description as the note body.",
     nativeConstraints
       ? "Destination: owner-confirmed native phone calendar; no managed account identifiers."
@@ -7759,6 +7753,22 @@ export async function inferNativeCalendarCreate(args: {
       ].includes(error.code)
     )
       return { text: error.message };
+    // The native create runs before the action's service-error handling. Evidence
+    // that does not match the original request (for example invented guests) is a
+    // refusal of this extraction, not a failed turn: nothing was created, and the
+    // owner is asked again instead of the planner repeating the same request.
+    if (
+      error instanceof CalendarServiceError &&
+      error.code === "CALENDAR_CREATE_EVIDENCE_INVALID"
+    ) {
+      args.runtime.reportError("calendar:native-create", error, {
+        diagnosticOnly: true,
+        code: error.code,
+      });
+      return {
+        text: "The event details could not be confirmed from your request. No event was created. Say the title, date and time again.",
+      };
+    }
     throw error;
   }
   args.signal.throwIfAborted();

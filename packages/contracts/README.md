@@ -20,3 +20,13 @@ and a single-dispatch renderer guard. Hosts retain authenticated requests,
 foreground consent, durable journal transitions and result admission. Retirement
 blocks dispatch but does not discard a known result of an admitted attempt.
 The guard does not grant retry permission or replace journal recovery.
+
+`@elizaos/contracts/client-turn-observation` is the typed current-turn screen
+observation a phone renderer sends as `metadata.clientDevice.context`: the
+visible view, its revision, sensitivity, device time zone and an optional
+selected record named only by opaque identifiers (kind, id, revision, source,
+source revision, occurrence and timing version). Parsing is strict and bounded;
+nothing is truncated. The observation is untrusted data for its own message,
+grants no device access and carries no record contents. Prompt assembly shows a
+valid observation once in its own segment; richer host context, such as an
+alarm snapshot, is not an observation and keeps its own validators.

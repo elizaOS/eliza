@@ -34,13 +34,18 @@ import java.util.concurrent.TimeUnit;
  * thread. {@link #cancel} may be called from any thread.
  */
 public final class OnDeviceRecognizer {
-    private static final String LANGUAGE = "en-US";
+    /** The language used when a host names none. */
+    public static final String DEFAULT_LANGUAGE = "en-US";
     private static final int WRITE_BLOCK = 6400;
+    private static final java.util.regex.Pattern LANGUAGE_TAG =
+            java.util.regex.Pattern.compile("[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*");
 
-    /** Learned once per process: null until asked. */
-    private static volatile Boolean usable;
+    /** Learned once per process and language; absent until asked. */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> usable =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private final Context context;
+    private final String language;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final CountDownLatch done = new CountDownLatch(1);
     private volatile SpeechRecognizer recognizer;
@@ -49,30 +54,58 @@ public final class OnDeviceRecognizer {
     private volatile boolean stopped;
 
     public OnDeviceRecognizer(Context context) {
+        this(context, DEFAULT_LANGUAGE);
+    }
+
+    /** A recognizer for one BCP 47 language tag, such as {@code es-US}. */
+    public OnDeviceRecognizer(Context context, String languageTag) {
         this.context = context.getApplicationContext();
+        this.language = requireLanguage(languageTag);
+    }
+
+    /** The tag unchanged when it is a plain BCP 47 language tag; otherwise throws. */
+    public static String requireLanguage(String languageTag) {
+        if (languageTag == null || !LANGUAGE_TAG.matcher(languageTag).matches())
+            throw new IllegalArgumentException("Invalid recognition language");
+        return languageTag;
+    }
+
+    /** {@link #available(Context, String)} for {@link #DEFAULT_LANGUAGE}. */
+    public static boolean available(Context context) {
+        return available(context, DEFAULT_LANGUAGE);
     }
 
     /**
      * True when Android 13 or later has an on-device recognition service with
-     * an installed English model ({@code checkRecognitionSupport}). The answer
-     * is kept for the process. Not on the main thread.
+     * an installed model for the language's primary subtag
+     * ({@code checkRecognitionSupport}). The answer is kept for the process
+     * per language. Not on the main thread.
      */
-    public static boolean available(Context context) {
-        Boolean known = usable;
+    public static boolean available(Context context, String languageTag) {
+        String language = requireLanguage(languageTag);
+        if (demotedAll) return false;
+        Boolean known = usable.get(language);
         if (known != null) return known;
         boolean result = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-                && englishInstalled(context.getApplicationContext());
-        usable = result;
-        return result;
+                && languageInstalled(context.getApplicationContext(), language);
+        usable.putIfAbsent(language, result);
+        return usable.get(language);
     }
 
-    /** Turns the recognizer off for the rest of the process. */
+    /** Turns the recognizer off for every language for the rest of the process. */
     public static void demote() {
-        usable = false;
+        demotedAll = true;
     }
 
-    private static boolean englishInstalled(Context context) {
+    /** Turns the recognizer off for one language for the rest of the process. */
+    public static void demote(String languageTag) {
+        usable.put(requireLanguage(languageTag), false);
+    }
+
+    private static volatile boolean demotedAll;
+
+    private static boolean languageInstalled(Context context, String language) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return false;
         CountDownLatch answered = new CountDownLatch(1);
         boolean[] installed = {false};
@@ -82,12 +115,14 @@ public final class OnDeviceRecognizer {
             try {
                 probe[0] = SpeechRecognizer.createOnDeviceSpeechRecognizer(context);
                 Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, LANGUAGE);
+                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, language);
+                String primary = language.split("-", 2)[0];
                 probe[0].checkRecognitionSupport(intent, Runnable::run, new RecognitionSupportCallback() {
                     @Override
                     public void onSupportResult(RecognitionSupport support) {
-                        for (String language : support.getInstalledOnDeviceLanguages()) {
-                            if (language.toLowerCase(Locale.ROOT).startsWith("en")) installed[0] = true;
+                        for (String tag : support.getInstalledOnDeviceLanguages()) {
+                            String installedPrimary = tag.toLowerCase(Locale.ROOT).split("[-_]", 2)[0];
+                            if (installedPrimary.equals(primary)) installed[0] = true;
                         }
                         answered.countDown();
                     }
@@ -128,7 +163,7 @@ public final class OnDeviceRecognizer {
         }
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, LANGUAGE)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
                 .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
                 .putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, pipe[0])
@@ -218,7 +253,7 @@ public final class OnDeviceRecognizer {
             }
             if (error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
                     || error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED) {
-                demote();
+                demote(language);
             }
             finish(null, "error " + error);
         }

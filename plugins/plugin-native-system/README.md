@@ -104,12 +104,35 @@ authenticated owner/agent/session tuple before consuming native invocations.
 Native origin comes only from Android's caller identity and a same-signer check;
 caller extras and deep-link parameters never authorize a microphone. A pending
 wake expires after five seconds, is consumed once, and cannot cross a lock,
-background state or owner change. A cold process has no bound owner: the wake
-opens the assistant but does not start a voice turn automatically. Once an
-authenticated session is bound, a warm wake can start the existing shell voice
-controller. Hosts must supply live authority reads and re-check readiness.
-Cold-start automatic voice remains a parity gap until the native owner can bind
-an authenticated session before launch; renderer extras must never fill that gap.
+background state or owner change. Once an authenticated session is bound, a warm
+wake can start the existing shell voice controller. Hosts must supply live
+authority reads and re-check readiness.
+
+The invocation is `listener` for a wake from the same-signer listener, `system`
+for an assistant gesture (press-and-hold power, the assist gesture, a long press
+on Home or the navigation handle) that Android reports as launched by the
+platform-signed `com.android.systemui`, and `assist` for every other launch.
+`listener` and `system` may start a voice turn under the same session, lock,
+foreground, window and owner rules; `assist` only opens the assistant. Stock
+SystemUI does not share its identity with the assistant activity it launches, so
+on such images the caller is unknown and a power-button hold stays `assist`. An
+image that applies the shared `assist` SystemUI bundle
+(`packages/os/android/sense/systemui/assist`) shares it, and only that platform
+package can produce `system`.
+
+A wake that arrives before any authenticated binding (a cold process, or a
+renderer that is not signed in yet) only opens the assistant unless the host's
+native code registers `SenseListenerClient.admitOwner(...)` at startup. That
+admission returns a non-secret native owner identity (for example a durable
+account-binding generation, never a token). With it, a listener wake or system
+gesture that arrived unlocked is held for `COLD_WINDOW_MS` (15 seconds), keeping
+its origin: the first authenticated
+binding claims it only if the native owner at that binding equals the owner
+recorded at arrival, and the take still requires the same session, the same
+native owner, no lock and foreground. An owner change, expiry, a later
+non-listener launch, reset or a stale renderer generation drops it. Renderer
+input never fills the gap; a host without an admission keeps assist-only cold
+starts.
 
 Each renderer mount has an opaque binding ID and monotonic generation. Native
 plugin instances also have a process-local monotonic generation. Old mount or
@@ -122,6 +145,108 @@ check can retry; a WebView recreation receives a new native plugin lifetime.
 `node --test plugins/plugin-native-system/test/sense.test.mjs` exercises the
 shared native policy, client refusal rules, Android API compilation and renderer
 authority race. These tests do not prove installed-device microphone handoff.
+
+## System facts and settings handoffs
+
+`getSystemFacts()` returns the switch states an ordinary app can read without a
+permission it does not hold: Wi-Fi, Bluetooth, airplane mode, location, mobile
+data, Do Not Disturb (interruption filter) and adaptive brightness, plus the
+active transport and battery/power-saver state (`SystemFacts.read`). A key is
+present only when Android answered; an absent key is unknown, never off. The
+plugin changes none of these. `openSettingsPage({ page })` opens one allowlisted
+Android page (`SystemSettingsPages.PAGES`) and resolves `specific: false` when
+only a broader fallback page exists on that image, so the caller can say so.
+`openNotificationShade()` asks Android to expand its shade for a host acting as
+the launcher (`canExpandNotificationShade()`: by default, holding Android's HOME
+role; overridable) that declares `EXPAND_STATUS_BAR`; outcomes are `opened` (accepted, not proof the shade is
+visible), `standalone`, `permission-missing`, `unsupported` and `not-in-front`.
+The web fallback reports no facts, opens no page and answers `unsupported`.
+
+`@elizaos/capacitor-system/settings` (`src/settings.ts`) is the shared, browser-safe
+presentation for those facts: `parseSystemFacts`, `systemSwitchRows` (row wording
+that says "Not reported by Android" instead of guessing), quick-setting tile state,
+accessible names that announce handoff tiles as buttons carrying their state,
+`broaderPageNotice` and a one-handoff-per-gesture gate. The Device Settings app
+(`plugin-native-settings`) renders these rows. `test/settings.test.mjs` runs the
+reader, page fallbacks and shade outcomes against host-JVM stand-ins; the readable
+settings and the pages an image provides still differ by Android version and vendor
+and need device qualification.
+
+## Assistant entry tile
+
+`AssistantEntryTile` is the shared Quick Settings tile that opens a host's assistant
+entry. It is an action, never a toggle: it always reports `STATE_INACTIVE`, so it
+never suggests that an agent, a connection or the microphone is on. A tap on a locked
+device asks Android to unlock first and opens the entry only afterwards; Android 14
+and later receive an immutable `PendingIntent`, earlier versions the `Intent`
+overload. A tap grants no permission and starts no capture. Hosts subclass it under
+their installed component name, return an explicit `entryIntent()` and may supply a
+label, a lock-aware subtitle, a spoken description, an icon and a request code;
+otherwise the manifest label and icon stay. The library declares no tile: each host
+declares its service with `android.permission.BIND_QUICK_SETTINGS_TILE` and
+`TOGGLEABLE_TILE=false`. The Eliza app's `ElizaVoiceTileService` uses it.
+`test/assistant-tile.test.mjs` runs both on a host JVM; SystemUI placement, unlock
+and collapse need device qualification.
+
+## App data reset
+
+`reset.DataReset` resets a host app's own data through Android's
+`ActivityManager.clearApplicationUserData()`, which is scoped to that package and
+Android user: it stops the package's processes, cancels its jobs, alarms and
+notifications, clears its private data and its UID Keystore namespace. It never
+enumerates files and never touches shared media, other apps or remote account
+data, and nothing reports a returned request as completed deletion.
+
+A host builds one `DataReset` with its installed identities and shares it:
+
+- `DataReset.builder(markerName, RecoveryActivity.class)` names the pending marker
+  (`<markerName>.pending` and `<markerName>.failures` in device-protected no-backup
+  storage) and the recovery activity. Keep both stable across releases.
+- `beforeDispatch(...)` optionally adds bounded, best-effort work that runs only
+  while a confirmed reset is pending, such as revoking this device's remote
+  sign-in. It never blocks or cancels the local reset beyond its budget.
+- The same-signer image listener (`SenseListenerClient.resetForData()`) must
+  acknowledge first. An installed listener that does not durably acknowledge
+  consent revocation keeps the marker and all app data; an absent listener is
+  safe to reset.
+- The failure record keeps the last failed attempt's outcome, so the recovery
+  screen explains what actually happened (Android refused the clear, or the
+  listener did not acknowledge) rather than guessing from the listener's
+  current install state.
+- `attempt(...)` acts only while a confirmed request is pending. Without the
+  marker it returns `DEFERRED` and neither asks the listener to withdraw consent
+  nor asks Android to clear data, so a stale retry cannot erase unconfirmed data.
+
+Wire it in three places:
+
+1. `Application.attachBaseContext`: after `super`, call
+   `admitBeforeStartup(this, getProcessName())` before providers and initializers
+   run. It returns in isolated processes, the recovery process and when nothing is
+   pending; otherwise it retries the reset and stops the process. Return early
+   from `onCreate` in the recovery process.
+2. A `reset.DataResetPlugin` subclass with the host's own
+   `@CapacitorPlugin(name = ...)`. `review()` takes no arguments: a native
+   disclosure, then a fresh device-credential confirmation
+   (`ResetAuthorization`) authorize the reset, and the request is recorded before
+   any pre-dispatch work. Results are only `cancelled` or `unavailable`; a confirmed
+   reset stops the app. `src/reset.ts` (`@elizaos/capacitor-system/reset`) gives the
+   renderer `reviewDataReset`, which never reports completion.
+3. A `reset.DataResetRecoveryActivity` subclass declared unexported,
+   `excludeFromRecents`, `singleTask` with its own task affinity, and in the
+   process named by `recoveryProcessSuffix` (default `:reset_recovery`). That
+   process installs none of the host's providers. It explains that the reset has
+   not finished and offers a fresh retry, the listener's validated settings
+   activity, the dialer and Android Settings.
+
+`DataResetCopy.forProduct(name)` supplies the text; hosts may replace the
+disclosure, the progress message and a note about remote steps. Automatic
+attempts at launch are bounded (three per minute; unreadable attempt state defers
+them until the user retries), and starts Android attributes to jobs, alarms,
+broadcasts, pushes, providers or services stop without opening recovery over the
+app in front. `test/reset.test.mjs` covers authorization, bounded admission,
+background starts, interrupted dispatch and single dispatch against host-JVM
+stand-ins. Real self-clear, the listener's provider IPC and the recovery task
+returning instead of HOME require installed and device qualification.
 
 ### Protected Power entry
 

@@ -56,10 +56,12 @@ A product's explicit brand config can select `aospLockPath: "android/aosp.lock.j
 and `aospLockProfile: "pixel10a"`. `build-aosp.ts` runs the same full source check
 before staging; supply `--vendor-archive` or `ELIZA_PIXEL_VENDOR_ARCHIVE`. The default
 Cuttlefish selection is unchanged. Selecting a source profile does not supply a
-hardware product, alter APK privileges, or qualify an image. Both products still
-need the common hardware product/build integration and their real image, signing,
-voice, telephony and physical-device validation. `pixel10a-stallion` therefore stays
-installer- and lab-ineligible, and `releaseQualified` stays false.
+hardware product, alter APK privileges, or qualify an image. Both products compose
+the same least-privilege Pixel 10a product; release signing, compatibility records,
+the operator update client and rollback/recovery tooling are described in
+[releases/](releases/README.md). Both still need their real image, signing, voice,
+telephony, update/recovery drills and physical-device validation. `pixel10a-stallion`
+therefore stays installer- and lab-ineligible, and `releaseQualified` stays false.
 The `eliza_gsi_arm64` and `eliza_gsi_x86_64` lunch targets build system-only
 images from the `gsi-android17` (`cp2a`) profile in `aosp.lock.json`, not from the Cuttlefish
 checkout; `make build` does not select them. They use system_ext SELinux policy,
@@ -130,6 +132,9 @@ is unchanged. Development unpacked-extension proofs do not qualify release build
   a profile in `aosp.lock.json`.
 - [`signing/`](signing/README.md): offline key ceremony for the AOSP image keys
   and the Ed25519 release keys, and the signing-environment decryptor.
+- [`releases/`](releases/README.md): Pixel 10a release descriptors and update
+  channels, the signing job, compatibility records, the operator OTA update client
+  and rollback/recovery tooling.
 - Read-only device qualification against a requirements file. The shipped
   [`device-requirements/treble-gsi.json`](device-requirements/treble-gsi.json)
   checks Treble/GSI readiness; products pass their own thresholds. An `identity`
@@ -227,6 +232,13 @@ stager authenticates APK bytes, signer and HOME activity; provisioning takes the
 HOME and assistant component names from that admitted APK. Autofill is offered
 only when its guarded service is present. The current Eliza manifest has no such
 service. The original stock launcher remains installed.
+
+A product that leaves capture over Keyguard to the system Camera2 sets
+`launcher.refuseLockScreenSurfaces: true` (the Alpha product does). Staging then
+refuses a launcher APK whose manifest shows an activity over Keyguard
+(`showWhenLocked`, `showOnLockScreen`, `turnScreenOn`) or handles a secure-capture
+action, before any output is moved into place. Eliza's product leaves it unset
+because its launcher keeps an alarm ringing activity over Keyguard.
 
 The output must be installed at `vendor/alphaphone`: the immutable generated
 `stallion.mk` references `vendor/alphaphone/stallion/device.mk`. This compatibility

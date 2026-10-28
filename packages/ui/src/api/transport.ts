@@ -16,6 +16,34 @@ export interface AgentRequestTransport {
   ): Promise<Response>;
 }
 
+/** Per-call options accepted by `ElizaClient.fetch`. */
+export interface ElizaClientFetchOptions<T> {
+  allowNonOk?: boolean;
+  timeoutMs?: number;
+  /** Skip the 202 resume-retry loop (see `rawRequest.skipResume`). */
+  skipResume?: boolean;
+  /**
+   * Called with the (bounded-read, best-effort-parsed) body when the FIRST
+   * response is a 202 and `skipResume` is set — lets the status poll map the
+   * cloud resume-progress body to a real value WITHOUT bypassing the shared
+   * bounded body-read / timeout logic (#14040 sub-defect 2). Non-202
+   * responses go through the normal strict-parse path unchanged.
+   */
+  on202?: (body: unknown) => T;
+}
+
+/**
+ * The JSON request surface of `ElizaClient`. Plugin clients that only need a
+ * session-bound fetch depend on this instead of the whole client class.
+ */
+export interface ElizaClientFetch {
+  fetch<T>(
+    path: string,
+    init?: RequestInit,
+    options?: ElizaClientFetchOptions<T>,
+  ): Promise<T>;
+}
+
 export const fetchAgentTransport: AgentRequestTransport = {
   request(url, init) {
     return fetch(url, init);

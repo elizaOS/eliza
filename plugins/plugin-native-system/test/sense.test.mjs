@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   invocationSessionKey,
   listenerStartsVoice,
+  parseAssistantInvocation,
   parseListenerStatus,
 } from "../src/sense.ts";
 
@@ -68,6 +69,32 @@ test("wire parser fails closed and live state remains authoritative", () => {
   for (const key of ["hidden", "dialogOpen", "connectionOpen", "voiceActive"])
     assert.equal(listenerStartsVoice({ ...base, [key]: true }), false);
   assert.equal(listenerStartsVoice({ ...base, unlocked: false }), false);
+  // A system assistant gesture (platform system UI caller) starts voice under the same rules.
+  const system = { ...base, invocation: "system" };
+  assert.equal(listenerStartsVoice(system), true);
+  for (const key of ["hidden", "dialogOpen", "connectionOpen", "voiceActive"])
+    assert.equal(listenerStartsVoice({ ...system, [key]: true }), false);
+  assert.equal(listenerStartsVoice({ ...system, unlocked: false }), false);
+  assert.equal(listenerStartsVoice({ ...base, invocation: "assist" }), false);
+  assert.equal(listenerStartsVoice({ ...base, invocation: null }), false);
+  // The wire parser admits only the two native voice origins; anything else only opens.
+  assert.equal(
+    parseAssistantInvocation({ assistant: true, invocation: "listener" }),
+    "listener",
+  );
+  assert.equal(
+    parseAssistantInvocation({ assistant: true, invocation: "system" }),
+    "system",
+  );
+  for (const invocation of ["assist", "hardware", "SYSTEM", null, 1])
+    assert.equal(
+      parseAssistantInvocation({ assistant: true, invocation }),
+      "assist",
+    );
+  assert.equal(
+    parseAssistantInvocation({ assistant: false, invocation: "system" }),
+    null,
+  );
 });
 test("bridge receives only an opaque fixed-length session digest", async () => {
   const first = await invocationSessionKey("owner-a/session-a");

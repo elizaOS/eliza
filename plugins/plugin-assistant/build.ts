@@ -17,6 +17,7 @@ await build({
     "device-calendar-contract": `${root}src/services/device-actions/calendar-contract.ts`,
     "device-foreground-review": `${root}src/services/device-actions/foreground-review-contract.ts`,
     "device-clock-review": `${root}src/services/device-actions/clock-review-executor.ts`,
+    "device-reminder-journal": `${root}src/services/device-actions/reminder-journal.ts`,
     "character-persistence": `${root}src/features/advanced-capabilities/personality/character-persistence.ts`,
     "actions/generate-media": `${root}src/features/advanced-capabilities/actions/generateMedia.ts`,
     "prompts/response-policy": `${root}src/prompts/response-policy.ts`,
