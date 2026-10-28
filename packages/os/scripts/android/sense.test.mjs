@@ -215,6 +215,59 @@ test("exact shared SystemUI patch stages only into a new overlay and retains all
   );
 });
 
+test("SystemUI assist identity patch admits only the exact AssistManager preimage", (t) => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "sense-assist-"));
+  t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
+  const source = path.join(temp, "source");
+  fs.mkdirSync(source);
+  fs.cpSync(
+    path.join(root, "packages/os/test/fixtures/sense-systemui"),
+    path.join(source, "frameworks/base"),
+    { recursive: true },
+  );
+  const envelope = senseSystemuiPatch("assist");
+  assert.equal(envelope.name, "listener-systemui-assist");
+  assert.deepEqual(
+    envelope.manifest.files.map((entry) => entry.path),
+    ["packages/SystemUI/src/com/android/systemui/assist/AssistManager.java"],
+  );
+  const before = verifyListenerSystemui(source, "before", "assist");
+  assert.equal(before.fullTreeVerified, false);
+  assert.equal(before.indicatorHealthLeaseImplemented, false);
+  const output = path.join(temp, "overlay");
+  const result = prepareListenerSystemui(source, output, "assist");
+  assert.equal(result.systemUiCompiled, false);
+  assert.equal(result.imageBuilt, false);
+  const patched = fs.readFileSync(
+    path.join(output, "frameworks/base", envelope.manifest.files[0].path),
+    "utf8",
+  );
+  // Only the assistant activity launch shares SystemUI's identity; nothing else changes.
+  assert.equal(patched.match(/setShareIdentityEnabled\(true\)/g)?.length, 1);
+  assert.match(
+    patched,
+    /opts\.setLaunchDisplayId\(context\.getDisplayId\(\)\);[\s\S]*?opts\.setShareIdentityEnabled\(true\);\s*\n\s*intent\.addFlags\(Intent\.FLAG_ACTIVITY_NEW_TASK\);/,
+  );
+  const original = fs.readFileSync(
+    path.join(source, "frameworks/base", envelope.manifest.files[0].path),
+    "utf8",
+  );
+  assert.equal(
+    patched.split("\n").length - original.split("\n").length,
+    3,
+    "one call and its two comment lines",
+  );
+  fs.appendFileSync(
+    path.join(source, "frameworks/base", envelope.manifest.files[0].path),
+    "\nmutated",
+  );
+  assert.throws(
+    () => prepareListenerSystemui(source, path.join(temp, "refused"), "assist"),
+    /mismatch/,
+  );
+  assert.throws(() => senseSystemuiPatch("other"), /Unknown SystemUI bundle/);
+});
+
 test("Sense models bind the canonical Phonon, VAD and Paradee pins", () => {
   const pins = JSON.parse(
     fs.readFileSync(

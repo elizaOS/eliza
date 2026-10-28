@@ -128,7 +128,7 @@ public final class SenseListenerClient {
     public void bindInvocationSession(long bridge, int generation, String bindingId, String session) {
         SenseInvocation state = invocation();
         synchronized (state) {
-            state.bind(bridge, generation, bindingId, session);
+            state.bind(bridge, generation, bindingId, session, SystemClock.elapsedRealtime());
             if (activity != null && state.boundTo(bridge, generation, bindingId, session)) synchronized (activityBridges) {
                 activityBridges.put(activity, bridge);
             }
@@ -136,6 +136,14 @@ public final class SenseListenerClient {
         PowerLaunch launch = powerLaunch();
         if (launch != null && state.isCurrentRenderer(bridge, generation) && (session == null || state.boundTo(bridge, generation, bindingId, session))) launch.bind(bridge, generation, bindingId, session);
     }
+
+    /**
+     * Registers the host's native owner admission for this host package: the non-secret identity of
+     * the owner whose authenticated session may claim a wake that arrived before the renderer bound
+     * one. Call it from native startup (before the assistant activity records an invocation); null
+     * removes it. Without it a cold wake only opens the assistant.
+     */
+    public void admitOwner(SenseInvocation.OwnerAdmission admission) { invocation().admit(admission); }
     public void releaseInvocationBridge(long bridge) {
         invocation().release(bridge);
         PowerLaunch launch = powerLaunch();
@@ -143,12 +151,32 @@ public final class SenseListenerClient {
         synchronized (activityBridges) { activityBridges.entrySet().removeIf(entry -> entry.getValue() == bridge); }
     }
 
-    /** Caller package must come from Android's Activity caller API, never an extra or deep link. */
+    /** The platform system UI package; its assistant launches carry its identity only on an image that shares it. */
+    public static final String SYSTEM_UI_PACKAGE = "com.android.systemui";
+
+    /**
+     * Caller package must come from Android's Activity caller API ({@code getLaunchedFromPackage},
+     * {@code ComponentCaller}), never an extra or deep link. The same-signer listener marks a
+     * listener wake; the platform-signed system UI marks an assistant gesture
+     * ({@link SenseInvocation#SYSTEM}). Android reports the system UI as caller only when it shares
+     * its identity with the launch (an image patch); otherwise the caller is unknown and the launch
+     * only opens the assistant.
+     */
     public void recordInvocation(String callerPackage) {
         boolean sameSigner = false;
         try { sameSigner = callerPackage != null && context.getPackageManager().checkSignatures(context.getPackageName(), callerPackage) == PackageManager.SIGNATURE_MATCH; } catch (RuntimeException unavailable) { }
         KeyguardManager keyguard = context.getSystemService(KeyguardManager.class);
-        invocation().record(context.getPackageName(), callerPackage, sameSigner, SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
+        invocation().record(context.getPackageName(), callerPackage, sameSigner, systemAssistCaller(callerPackage), SystemClock.elapsedRealtime(), keyguard == null || keyguard.isKeyguardLocked());
+    }
+
+    /**
+     * Exactly the system UI package, signed with the platform certificate. Platform-signed packages
+     * are visible to every app, so an unsigned or absent package fails closed here.
+     */
+    private boolean systemAssistCaller(String callerPackage) {
+        if (!SYSTEM_UI_PACKAGE.equals(callerPackage)) return false;
+        try { return context.getPackageManager().checkSignatures("android", callerPackage) == PackageManager.SIGNATURE_MATCH; }
+        catch (RuntimeException unavailable) { return false; }
     }
 
     private boolean protectedPowerActivity() {

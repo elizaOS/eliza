@@ -1497,6 +1497,7 @@ export {
 } from "./voice/voice-activity.js";
 export {
   createVoiceCapture,
+  LocalSpeechUnavailableError,
   type VoiceCaptureFactoryOptions,
   type VoiceCaptureHandle,
 } from "./voice/voice-capture-factory.js";

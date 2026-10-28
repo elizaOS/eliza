@@ -30,7 +30,15 @@ export type ListenerStatus =
       listening: boolean;
       microphoneOpen: boolean;
     };
-export type AssistantInvocation = "listener" | "power" | "assist" | null;
+/**
+ * Who opened the assistant surface, as native recorded it from Android's caller identity:
+ * `listener` (a wake from the same-signer image listener), `system` (an assistant gesture such as
+ * press-and-hold power that the platform-signed system UI launched with its identity shared),
+ * `power` (a warm press on the host's permission-protected Power activity) or `assist` (any other
+ * launch, which only opens the assistant). Null when nothing is pending.
+ */
+export type AssistantInvocation = "listener" | "system" | "power" | "assist" | null;
+const VOICE_INVOCATIONS: ReadonlySet<AssistantInvocation> = new Set(["listener", "system", "power"]);
 export interface SensePlugin {
   status(): Promise<ListenerStatus>;
   pause(): Promise<ListenerStatus>;
@@ -88,15 +96,18 @@ export function parseListenerStatus(raw: unknown): ListenerStatus {
 }
 export function parseAssistantInvocation(raw: unknown): AssistantInvocation {
   const value = record(raw);
-  return value.assistant === true
-    ? value.invocation === "listener" || value.invocation === "power"
-      ? value.invocation
-      : "assist"
-    : null;
+  if (value.assistant !== true) return null;
+  return VOICE_INVOCATIONS.has(value.invocation as AssistantInvocation)
+    ? (value.invocation as AssistantInvocation)
+    : "assist";
 }
 export function parseInvocationUnlocked(raw: unknown): boolean {
   return record(raw).locked === false;
 }
+/**
+ * A native voice origin (a listener wake or a system assistant gesture) starts one voice turn only
+ * while unlocked, visible, without a dialog or connection prompt, and with no voice already active.
+ */
 export function listenerStartsVoice(input: {
   invocation: AssistantInvocation;
   unlocked: boolean;
@@ -106,7 +117,7 @@ export function listenerStartsVoice(input: {
   voiceActive: boolean;
 }): boolean {
   return (
-    (input.invocation === "listener" || input.invocation === "power") &&
+    VOICE_INVOCATIONS.has(input.invocation) &&
     input.unlocked &&
     !input.hidden &&
     !input.dialogOpen &&

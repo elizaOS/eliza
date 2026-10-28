@@ -104,12 +104,35 @@ authenticated owner/agent/session tuple before consuming native invocations.
 Native origin comes only from Android's caller identity and a same-signer check;
 caller extras and deep-link parameters never authorize a microphone. A pending
 wake expires after five seconds, is consumed once, and cannot cross a lock,
-background state or owner change. A cold process has no bound owner: the wake
-opens the assistant but does not start a voice turn automatically. Once an
-authenticated session is bound, a warm wake can start the existing shell voice
-controller. Hosts must supply live authority reads and re-check readiness.
-Cold-start automatic voice remains a parity gap until the native owner can bind
-an authenticated session before launch; renderer extras must never fill that gap.
+background state or owner change. Once an authenticated session is bound, a warm
+wake can start the existing shell voice controller. Hosts must supply live
+authority reads and re-check readiness.
+
+The invocation is `listener` for a wake from the same-signer listener, `system`
+for an assistant gesture (press-and-hold power, the assist gesture, a long press
+on Home or the navigation handle) that Android reports as launched by the
+platform-signed `com.android.systemui`, and `assist` for every other launch.
+`listener` and `system` may start a voice turn under the same session, lock,
+foreground, window and owner rules; `assist` only opens the assistant. Stock
+SystemUI does not share its identity with the assistant activity it launches, so
+on such images the caller is unknown and a power-button hold stays `assist`. An
+image that applies the shared `assist` SystemUI bundle
+(`packages/os/android/sense/systemui/assist`) shares it, and only that platform
+package can produce `system`.
+
+A wake that arrives before any authenticated binding (a cold process, or a
+renderer that is not signed in yet) only opens the assistant unless the host's
+native code registers `SenseListenerClient.admitOwner(...)` at startup. That
+admission returns a non-secret native owner identity (for example a durable
+account-binding generation, never a token). With it, a listener wake or system
+gesture that arrived unlocked is held for `COLD_WINDOW_MS` (15 seconds), keeping
+its origin: the first authenticated
+binding claims it only if the native owner at that binding equals the owner
+recorded at arrival, and the take still requires the same session, the same
+native owner, no lock and foreground. An owner change, expiry, a later
+non-listener launch, reset or a stale renderer generation drops it. Renderer
+input never fills the gap; a host without an admission keeps assist-only cold
+starts.
 
 Each renderer mount has an opaque binding ID and monotonic generation. Native
 plugin instances also have a process-local monotonic generation. Old mount or
