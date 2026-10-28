@@ -347,13 +347,11 @@ export class TwitterClientInstance implements ITwitterClient {
 
     // Discovery service for autonomous content discovery
     // An explicit value wins; an unset value follows timeline actions.
-    const discoverySetting =
-      getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-      process.env.TWITTER_ENABLE_DISCOVERY;
     const discoveryEnabled =
-      discoverySetting === undefined
-        ? actionsEnabled
-        : parseBooleanFromText(discoverySetting);
+      parseBooleanValue(
+        getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+          process.env.TWITTER_ENABLE_DISCOVERY,
+      ) ?? actionsEnabled;
 
     if (discoveryEnabled) {
       logger.info("Twitter discovery service is ENABLED");
