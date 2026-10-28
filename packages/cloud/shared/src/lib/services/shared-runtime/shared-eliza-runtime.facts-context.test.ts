@@ -152,13 +152,16 @@ test("public facts handler keeps complete Core context while capture is off", as
         tools: [{ ...createFactsAndRelationshipsTool(), name: "OTHER_VALIDATION" }],
         toolChoice: "required",
       });
-      await this.useModel(ModelType.ACTION_PLANNER, {
+      const actionResponse = await this.useModel(ModelType.ACTION_PLANNER, {
         messages: [
           { role: "system", content: "Action-context fixture." },
           { role: "user", content: "Keep the complete action request." },
         ],
         tools: [{ ...createFactsAndRelationshipsTool(), name: "OTHER_VALIDATION" }],
         toolChoice: "required",
+      });
+      expect(actionResponse).toMatchObject({
+        usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
       });
       return result;
     },
@@ -243,6 +246,12 @@ test("public facts handler keeps complete Core context while capture is off", as
     expect(actionCalls).toBe(1);
     expect(contextCalls).toBeGreaterThan(0);
     expect(captureChecks).toBeGreaterThan(0);
+    const calls = factsCalls + otherLargeCalls + actionCalls + contextCalls;
+    expect(result.usage).toMatchObject({
+      promptTokens: calls,
+      completionTokens: calls,
+      totalTokens: calls * 2,
+    });
   } finally {
     initialization.mockRestore();
     registration.mockRestore();

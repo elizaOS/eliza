@@ -13,9 +13,9 @@
  * real user hits — mic-permission denied, silence/empty capture, and a TTS
  * fetch dropped mid-stream — asserting a distinguishable error/degrade render
  * (three-state rule, never healthy-empty) in the same keyless fake-mic lane, plus
- * an opt-in LIVE web round-trip (gated on ELIZA_VOICE_LIVE_RAILWAY=1) that drops
- * every mock and drives the real cloud STT proxy (`/api/asr/cloud` → Railway
- * Whisper) → live agent → cloud Kokoro TTS (`/api/tts/cloud`), asserting a
+ * an opt-in LIVE web round-trip (gated on ELIZA_VOICE_LIVE_CLOUDFLARE=1) that drops
+ * every mock and drives the real cloud STT proxy (`/api/asr/cloud` → Cloudflare
+ * Whisper) → live agent → cloud Workers AI TTS (`/api/tts/cloud`), asserting a
  * transcript match and decoded NON-silent audio out. The live variant SKIPS
  * (never green) when ungated; the failure paths always run.
  *
@@ -580,12 +580,19 @@ const CLOUD_CONVERSATION_ID = "voice-live-convo";
 
 function appConfigWithCloudVoice(): Record<string, unknown> {
   const base = appConfigWithLocalVoice() as {
-    messages: { tts: { provider: string; asr: { provider: string } } };
+    messages: {
+      tts: {
+        provider: string;
+        elevenlabs?: { voiceId: string };
+        asr: { provider: string };
+      };
+    };
   };
-  // Web/cloud default: Eliza Cloud Kokoro TTS (`/api/tts/cloud`) + Eliza Cloud
+  // Cloudflare compatibility voice (`/api/tts/cloud`) + Eliza Cloud
   // ASR, whose interactive web capture records a WAV and POSTs it to the cloud
-  // STT proxy (`/api/asr/cloud` → Railway Whisper). See voice-provider-defaults.
+  // STT proxy (`/api/asr/cloud` → Cloudflare Whisper). See voice-provider-defaults.
   base.messages.tts.provider = "eliza-cloud";
+  base.messages.tts.elevenlabs = { voiceId: "af_heart" };
   base.messages.tts.asr.provider = "eliza-cloud";
   return base;
 }
@@ -876,17 +883,17 @@ test.describe("voice failure paths (keyless)", () => {
 });
 
 // Opt-in LIVE web round-trip against the REAL cloud voice pipeline (#14371).
-// Gated on ELIZA_VOICE_LIVE_RAILWAY=1 with reachable Railway STT/TTS + a live
+// Gated on ELIZA_VOICE_LIVE_CLOUDFLARE=1 with reachable Cloudflare STT/TTS + a live
 // LLM key; it drops every backend mock so the injected known-phrase WAV flows
-// mic → cloud STT proxy (`/api/asr/cloud` → Whisper) → live agent → cloud Kokoro
+// mic → cloud STT proxy (`/api/asr/cloud` → Whisper) → live agent → cloud Workers AI
 // TTS (`/api/tts/cloud`) → decoded, non-silent audio out. SKIPPED (never green)
 // when ungated so an unprovisioned lane can never masquerade as passing.
-const LIVE_RAILWAY = process.env.ELIZA_VOICE_LIVE_RAILWAY === "1";
+const LIVE_CLOUDFLARE = process.env.ELIZA_VOICE_LIVE_CLOUDFLARE === "1";
 
-test.describe("live cloud voice round-trip (Railway path)", () => {
+test.describe("live cloud voice round-trip (Cloudflare path)", () => {
   test.skip(
-    !LIVE_RAILWAY,
-    "set ELIZA_VOICE_LIVE_RAILWAY=1 with reachable Railway STT/TTS + a live LLM key",
+    !LIVE_CLOUDFLARE,
+    "set ELIZA_VOICE_LIVE_CLOUDFLARE=1 with reachable Cloudflare STT/TTS + a live LLM key",
   );
 
   test("injected known-phrase WAV round-trips through real cloud STT → agent → cloud TTS", async ({

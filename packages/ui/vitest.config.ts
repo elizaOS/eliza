@@ -282,6 +282,10 @@ export default defineConfig({
     include: [
       "src/**/__e2e__/**/*.test.{ts,tsx}",
       "test/cloud/network-site-handoff.test.ts",
+      "src/voice/voice-session-cloud-budget-rotation.test.ts",
+      "src/voice/voice-session-prepared-navigation.test.ts",
+      "src/voice/voice-capture-factory.test.ts",
+      "src/utils/value-formatting.test.ts",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 900_000,

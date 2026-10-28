@@ -96,7 +96,7 @@ final class ReminderStore {
  private void arm(Context context, String id, long at) {
   // Inexact alarms deliberately avoid the privileged/user-granted exact-alarm capability.
   String occurrence=null;
-  try { JSONObject record=read(context,id);if(noAlert(record))return;if(record!=null)occurrence=record.optString("occurrenceId",null); }
+  try { JSONObject record=read(context,id);if(noAlert(record)||deletionSuspended(record))return;if(record!=null)occurrence=record.optString("occurrenceId",null); }
   catch(JSONException error){throw new IllegalStateException("Reminder could not be read",error);}
   final String selectedOccurrence=occurrence;
   effect(()->context.getSystemService(AlarmManager.class).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, Math.max(at, System.currentTimeMillis() + 1000), pending(context,id,selectedOccurrence)));
@@ -123,7 +123,7 @@ final class ReminderStore {
    for (String key : preferences.getAll().keySet()) {
     try {
      JSONObject candidate = read(context, key);
-     if (candidate != null && ("cancelled".equals(candidate.optString("status")) || "completed".equals(candidate.optString("status")))
+     if (candidate != null && !deletionSuspended(candidate) && ("cancelled".equals(candidate.optString("status")) || "completed".equals(candidate.optString("status")))
        && candidate.optLong("cancelledAt", candidate.optLong("completedAt", Long.MAX_VALUE)) < oldestAt) {
       reclaimedId = key; reclaimedRecord = candidate.toString();
       oldestAt = candidate.optLong("cancelledAt", candidate.optLong("completedAt"));
@@ -133,6 +133,7 @@ final class ReminderStore {
    if (reclaimedId == null) throw new StorageFull();
   }
   JSONObject previous = read(context, id);
+  if(deletionSuspended(previous))throw new IllegalStateException("Reminder is pending deletion");
   if(previous!=null&&previous.has("alertMinutes")&&timing==null)throw new IllegalArgumentException("Explicit reminder timing must be preserved");
   JSONObject record = new JSONObject().put("id", id).put("title", title.trim()).put("body", body).put("at", at)
    .put("status", "scheduled").put("mode", "inexact").put("createdAt", System.currentTimeMillis());
@@ -180,9 +181,88 @@ final class ReminderStore {
   values.sort(Comparator.comparingLong(value -> value.optLong("at", Long.MAX_VALUE)));
   JSONArray result = new JSONArray(); for (JSONObject value : values) result.put(value); return result;
  }
+ /** Persisted suspension lives with reminder rows, so every delivery/rearm can see it. */
+ private static boolean deletionSuspended(JSONObject row){return row!=null&&row.has("pendingDeletion");}
+ private JSONObject deletionRows(ReminderEnvelope envelope)throws JSONException{
+  JSONObject value=envelope.active();return value.has("deletions")?value.getJSONObject("deletions"):new JSONObject();
+ }
+ private static long deletionTime(JSONObject clock,String name)throws JSONException{Object raw=clock.get(name);if(!(raw instanceof Number)||clock.getDouble(name)!=clock.getLong(name)||clock.getLong(name)<0||clock.getLong(name)>Long.MAX_VALUE-10000)throw new IllegalArgumentException("Deletion clock unavailable");return clock.getLong(name);}
+ private static String deletionClockState(JSONObject intent,JSONObject clock)throws JSONException{
+  long elapsed=deletionTime(clock,"elapsed");if(!intent.getString("continuity").equals(clock.getString("continuity"))||elapsed<intent.getLong("createdElapsed"))return "clock-changed";
+  return elapsed<intent.getLong("expiresElapsed")?"open":"expired";
+ }
+ synchronized JSONObject stageDeletion(Context context,String token,String owner,JSONObject target,JSONObject clock)throws JSONException{return stageDeletion(context,token,owner,target,clock,null);}
+ synchronized JSONObject stageDeletion(Context context,String token,String owner,JSONObject target,JSONObject clock,JSONObject binding)throws JSONException{
+  if(token==null||!token.matches("[A-Za-z0-9_-]{1,128}")||owner==null||owner.isEmpty()||owner.length()>2000)throw new IllegalArgumentException("Deletion identity required");
+  long elapsed=deletionTime(clock,"elapsed"),wall=deletionTime(clock,"wall");String continuity=clock.getString("continuity");if(continuity.isEmpty()||continuity.length()>200)throw new IllegalArgumentException("Deletion clock unavailable");
+  ReminderEnvelope envelope=new ReminderEnvelope(context,this);JSONObject all=deletionRows(envelope);
+  if(all.has(token)){JSONObject previous=all.getJSONObject(token);if(!owner.equals(previous.getString("owner"))||!canonical(target).equals(canonical(previous.getJSONObject("target")))||(binding==null)!=(!previous.has("operationBinding"))||binding!=null&&!canonical(binding).equals(canonical(previous.getJSONObject("operationBinding"))))throw new IllegalArgumentException("Deletion identity changed");return new JSONObject(previous.toString());}
+  if(binding!=null){
+   if(binding.has("journalBinding"))exactKeys(binding,"operationId","bindingHash","operation","journalBinding");else exactKeys(binding,"operationId","bindingHash","operation");if(!token.equals(binding.getString("operationId"))||!binding.getString("bindingHash").matches("[a-f0-9]{64}"))throw new IllegalArgumentException("Invalid operation binding");
+   JSONObject operation=binding.getJSONObject("operation");exactKeys(operation,"type","target");if(!"reminder_cancel".equals(operation.getString("type"))||!canonical(target).equals(canonical(operation.getJSONObject("target"))))throw new IllegalArgumentException("Deletion operation changed");
+   if(envelope.active().getJSONObject("operations").has(token))throw new IllegalArgumentException("Operation already exists");
+  }
+  java.util.ArrayList<String> terminal=new java.util.ArrayList<>();for(java.util.Iterator<String> it=all.keys();it.hasNext();){String key=it.next();JSONObject value=all.getJSONObject(key);if(("undone".equals(value.optString("phase"))||"deleted".equals(value.optString("phase")))&&("complete".equals(value.optString("effects"))||"superseded".equals(value.optString("effects"))))terminal.add(key);}
+  terminal.sort((a,b)->Long.compare(all.optJSONObject(a).optLong("createdElapsed"),all.optJSONObject(b).optLong("createdElapsed")));
+  // Prune only on the transaction below, never mutate the cached durable envelope.
+  if(all.length()-Math.max(0,terminal.size()-127)>=500)throw new IllegalStateException("Pending deletion history requires review");
+  String id=target.getString("reminderId");JSONObject row=read(context,id);
+  if(row==null||deletionSuspended(row)||"cancelled".equals(row.optString("status"))||!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
+  JSONObject intent=new JSONObject().put("version",1).put("id",token).put("owner",owner).put("target",new JSONObject(target.toString())).put("phase","queued")
+   .put("continuity",continuity).put("createdElapsed",elapsed).put("expiresElapsed",elapsed+10000).put("expiresAt",wall+10000).put("original",new JSONObject(row.toString()));
+  if(binding!=null)intent.put("operationBinding",new JSONObject(binding.toString()));
+  envelope.begin();try{JSONObject deletionRecords=deletionRows(envelope);for(int i=0;i<terminal.size()-127;i++){String retired=terminal.get(i);JSONObject removed=deletionRecords.getJSONObject(retired);deletionRecords.remove(retired);if(removed.has("operationBinding"))envelope.active().getJSONObject("operations").remove(retired);}if(binding!=null&&envelope.active().getJSONObject("operations").length()>=500)throw new IllegalStateException("Operation history full");deletionRecords.put(token,intent);envelope.active().put("deletions",deletionRecords);row.put("pendingDeletion",token);envelope.active().getJSONObject("records").put(id,row.toString());envelope.commit();}catch(RuntimeException|JSONException failure){envelope.abort();throw failure;}
+  // Even a failed Android cancellation cannot make a later receiver ignore persisted suspension.
+  cancelAlarm(context,id,row.optString("occurrenceId",null));cancelAlarm(context,id,null);cancelNotification(context,id);
+  return new JSONObject(intent.toString());
+ }
+ synchronized JSONArray pendingDeletions(Context context)throws JSONException{
+  JSONArray result=new JSONArray();JSONObject all=deletionRows(new ReminderEnvelope(context,this));for(java.util.Iterator<String> it=all.keys();it.hasNext();)result.put(new JSONObject(all.getJSONObject(it.next()).toString()));return result;
+ }
+ synchronized void pauseDeletion(Context context,String token,String owner,String reason)throws JSONException{
+  ReminderEnvelope envelope=new ReminderEnvelope(context,this);JSONObject row=deletionRows(envelope).getJSONObject(token);if(!owner.equals(row.getString("owner")))throw new IllegalArgumentException("Deletion owner changed");if(!"queued".equals(row.getString("phase")))return;
+  envelope.begin();try{deletionRows(envelope).getJSONObject(token).put("phase","paused").put("blocked",reason);envelope.commit();}catch(RuntimeException|JSONException failure){envelope.abort();throw failure;}
+ }
+ synchronized JSONObject settleDeletion(Context context,String token,String owner,JSONObject clock,boolean undo)throws JSONException{
+  ReminderEnvelope envelope=new ReminderEnvelope(context,this);JSONObject all=deletionRows(envelope),intent=all.optJSONObject(token);
+  if(intent==null||!owner.equals(intent.getString("owner")))throw new IllegalArgumentException("Deletion owner changed");
+  boolean paused="paused".equals(intent.getString("phase"));if(!"queued".equals(intent.getString("phase"))&&!(undo&&paused))return finishDeletionEffects(context,token,intent);
+  String clockState=deletionClockState(intent,clock);if(undo?!paused&&"expired".equals(clockState):!"expired".equals(clockState))throw new IllegalStateException("Deletion window changed");
+  String id=intent.getJSONObject("target").getString("reminderId");JSONObject row=read(context,id),original=intent.getJSONObject("original");
+  if(row==null||!token.equals(row.optString("pendingDeletion")))throw new IllegalStateException("Pending reminder changed");
+  JSONObject compare=new JSONObject(row.toString());compare.remove("pendingDeletion");if(!canonical(compare).equals(canonical(original)))throw new IllegalStateException("Pending reminder revision changed");
+  JSONObject restored=new JSONObject(original.toString());if(!undo)restored.put("status","cancelled").put("cancelledAt",System.currentTimeMillis());
+  envelope.begin();try{JSONObject changed=deletionRows(envelope).getJSONObject(token);changed.put("phase",undo?"undone":"deleted").put("effects","pending").put("settledRevision",digest(canonical(restored)));envelope.active().getJSONObject("records").put(id,restored.toString());
+   if(changed.has("operationBinding")){
+    JSONObject binding=changed.getJSONObject("operationBinding"),response=new JSONObject().put("status",undo?"cancelled":"unknown");
+    if(!undo){JSONObject result=new JSONObject().put("version",1).put("kind","reminder_cancel").put("sourceId",changed.getJSONObject("target").getString("sourceId")).put("reminderId",id).put("occurrenceId",restored.getString("occurrenceId")).put("revision",digest(canonical(restored))).put("status","cancelled").put("at",restored.getLong("at"));if(restored.has("alertMinutes"))result.put("dueAt",restored.getLong("dueAt")).put("alertMinutes",restored.get("alertMinutes"));response.put("result",result);}
+    envelope.active().getJSONObject("operations").put(token,new JSONObject().put("argumentHash",digest(binding.getString("bindingHash")+":"+canonical(binding.getJSONObject("operation")))).put("phase",undo?"terminal":"effects-pending").put("response",response));
+   }
+   envelope.commit();intent=changed;}catch(RuntimeException|JSONException failure){envelope.abort();throw failure;}
+  return finishDeletionEffects(context,token,intent);
+ }
+ /** Retry only idempotent local alarm/notification effects after a durable settlement.
+  * A later edit supersedes these effects; never restore or overwrite a newer row. */
+ private JSONObject finishDeletionEffects(Context context,String token,JSONObject intent)throws JSONException{
+  if(!"pending".equals(intent.optString("effects")))return new JSONObject(intent.toString());
+  String id=intent.getJSONObject("target").getString("reminderId");JSONObject restored=read(context,id);
+  boolean current=restored!=null&&intent.getString("settledRevision").equals(digest(canonical(restored)));
+  if(current){
+   boolean undo="undone".equals(intent.getString("phase"));
+   if(undo&&!noAlert(restored)){
+    // Keep original occurrence/deadline; established delivery handles a missed
+    // deadline. Recurrence advances only on Done, never because Undo was late.
+    if("scheduled".equals(restored.optString("status")))arm(context,id,restored.getLong("at"));
+    else if("posted".equals(restored.optString("status"))&&allowed(context))postNotification(context,id,restored,restored.optString("occurrenceId",null));
+   }else if(!undo){cancelAlarm(context,id,restored.optString("occurrenceId",null));cancelAlarm(context,id,null);cancelNotification(context,id);}
+  }
+  ReminderEnvelope completed=new ReminderEnvelope(context,this);completed.begin();try{JSONObject record=deletionRows(completed).getJSONObject(token);record.put("effects",current?"complete":"superseded");if("deleted".equals(record.getString("phase"))&&record.has("operationBinding")){JSONObject receipt=completed.active().getJSONObject("operations").getJSONObject(token);receipt.put("phase","terminal");receipt.getJSONObject("response").put("status","succeeded");}completed.commit();intent=record;}catch(RuntimeException|JSONException failure){completed.abort();throw failure;}
+  return new JSONObject(intent.toString());
+ }
  synchronized boolean cancel(Context context, String id) throws JSONException {
   if (!validId(id)) throw new IllegalArgumentException("Invalid reminder ID");
   JSONObject value = read(context, id); if (value == null) return false;
+  if(deletionSuspended(value))throw new IllegalStateException("Reminder is pending deletion");
   // Persist cancellation before touching AlarmManager; the receiver checks the stored state.
   value.put("status", "cancelled").put("cancelledAt", System.currentTimeMillis());
   if (!prefs(context).edit().putString(id, value.toString()).commit()) throw new IllegalStateException("Cancellation could not be saved");
@@ -209,6 +289,7 @@ final class ReminderStore {
   for (String key : prefs(context).getAll().keySet()) {
    try {
     JSONObject value=read(context,key);
+    if(deletionSuspended(value)){cancelAlarm(context,key,value.optString("occurrenceId",null));cancelAlarm(context,key,null);cancelNotification(context,key);continue;}
     if(value!=null && !noAlert(value) && "scheduled".equals(value.optString("status"))) arm(context,value.getString("id"),value.getLong("at"));
     else if(repost && value!=null && !noAlert(value) && "posted".equals(value.optString("status"))) {
      anyPosted = true;
@@ -224,7 +305,7 @@ final class ReminderStore {
   if (!validId(id)) return;
   try {
    JSONObject value = read(context, id);
-   if (value == null || noAlert(value) || !"scheduled".equals(value.optString("status"))) return;
+   if (value == null || deletionSuspended(value) || noAlert(value) || !"scheduled".equals(value.optString("status"))) return;
    if(value.has("occurrenceId")&&!value.getString("occurrenceId").equals(occurrence)){
     if(occurrence!=null||!value.optBoolean("legacyAlarm"))return;
    }
@@ -246,6 +327,7 @@ final class ReminderStore {
  }
 
  private void postNotification(Context context,String id,JSONObject value,String occurrence)throws JSONException{
+   if(deletionSuspended(read(context,id)))return;
    final String token;
    try { token = new ReminderTaps(context,this).prepare(selectedRow(context, id, value)); }
    catch (Exception unavailable) { throw new IllegalStateException("Reminder route could not be saved", unavailable); }
@@ -299,7 +381,7 @@ final class ReminderStore {
  synchronized JSONObject decide(Context context,String id,String occurrence,String action)throws JSONException {
   if(!validId(id)||occurrence==null)throw new IllegalArgumentException("Select the current reminder occurrence");
   JSONObject value=read(context,id);
-  if(value==null||!occurrence.equals(value.optString("occurrenceId"))||"cancelled".equals(value.optString("status"))||"completed".equals(value.optString("status")))return new JSONObject().put("status","stale");
+  if(value==null||deletionSuspended(value)||!occurrence.equals(value.optString("occurrenceId"))||"cancelled".equals(value.optString("status"))||"completed".equals(value.optString("status")))return new JSONObject().put("status","stale");
   if(!action.equals("done")&&!action.equals("snooze"))throw new IllegalArgumentException("Unknown reminder action");
   // Undated to-dos have no instant or alert: Done/Snooze would arm an alarm. Use todoDecision.
   if(value.optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
@@ -355,7 +437,7 @@ final class ReminderStore {
   if(preferences.getAll().size()>=LIMIT){
    long oldestAt=Long.MAX_VALUE;
    for(String key:preferences.getAll().keySet()){
-    try{JSONObject candidate=read(context,key);if(candidate!=null&&("cancelled".equals(candidate.optString("status"))||"completed".equals(candidate.optString("status")))&&candidate.optLong("cancelledAt",candidate.optLong("completedAt",Long.MAX_VALUE))<oldestAt){reclaimedId=key;oldestAt=candidate.optLong("cancelledAt",candidate.optLong("completedAt"));}}
+    try{JSONObject candidate=read(context,key);if(candidate!=null&&!deletionSuspended(candidate)&&("cancelled".equals(candidate.optString("status"))||"completed".equals(candidate.optString("status")))&&candidate.optLong("cancelledAt",candidate.optLong("completedAt",Long.MAX_VALUE))<oldestAt){reclaimedId=key;oldestAt=candidate.optLong("cancelledAt",candidate.optLong("completedAt"));}}
     catch(JSONException|ClassCastException invalid){/* Preserve damaged neighbors. */}
    }
    if(reclaimedId==null)throw new StorageFull();
@@ -370,7 +452,7 @@ final class ReminderStore {
  synchronized JSONObject todoDecision(Context context,JSONObject target,String action)throws JSONException{
   if(target==null||action==null||!java.util.Arrays.asList("done","reopen","cancel").contains(action))throw new IllegalArgumentException("Unknown to-do action");
   String id=target.getString("reminderId");JSONObject row=read(context,id);
-  if(row==null||!row.optBoolean("undated"))throw new IllegalArgumentException("To-do not found");
+  if(row==null||deletionSuspended(row)||!row.optBoolean("undated"))throw new IllegalArgumentException("To-do not found");
   if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
   String status=row.getString("status");long now=System.currentTimeMillis();
   if("cancelled".equals(status))throw new IllegalArgumentException("To-do is no longer active");
@@ -426,6 +508,7 @@ final class ReminderStore {
   String id=creating?operationId:target.getString("reminderId");
   if(creating){if(store.value.getJSONObject("records").has(id))throw new IllegalArgumentException("Reminder creation ID already exists");}
   else if(!canonical(target).equals(canonical(selected(context,id))))throw new IllegalArgumentException("Selected reminder changed");
+  if(!creating&&deletionSuspended(read(context,id))&&!type.equals("reminder_read_selected"))throw new IllegalStateException("Reminder is pending deletion");
   if(!creating&&read(context,id).optBoolean("undated"))throw new IllegalArgumentException("Change undated to-dos from the to-do list");
   activeEnvelope=store;store.begin();deferredEffects=new ArrayList<>();ArrayList<Runnable> effects;
   try{

@@ -1,5 +1,5 @@
 /**
- * Native in-app sign-in through a verified https App Link (Alpha Phone).
+ * Native in-app sign-in through a verified https App Link (Example Reader).
  *
  * Drives the real identity router and PGlite store end to end: a native caller
  * with no browser Origin starts Google authorization against the App Link
@@ -22,7 +22,9 @@ import type { createLoginApp } from "../app";
 import type { createPGLiteDb } from "../db/pglite";
 
 const TENANT_ID = "elizacloud";
-const APP_LINK = "https://eliza.app/alphaphone/auth/callback";
+const EXTERNAL_LINK = "https://apps.example.org/reader/auth/callback";
+const appTokenClients: string[] = [];
+const APP_LINK = "https://eliza.app/reader/auth/callback";
 // Public base the Cloud API proxies to Steward; the router itself is unprefixed.
 const STEWARD_ORIGIN = "https://api.eliza.app/steward";
 const ROUTER_ORIGIN = "https://login.internal";
@@ -55,6 +57,8 @@ beforeAll(async () => {
     if (PROVIDER_TOKEN_URLS.has(request.url)) {
       const body = new URLSearchParams(await request.text());
       const code = body.get("code") ?? "";
+      if (body.get("client_id") === "synthetic-google-web-client")
+        appTokenClients.push(code);
       if (!identities.has(code))
         return Response.json({ error: "invalid_grant" }, { status: 400 });
       return Response.json({
@@ -84,6 +88,7 @@ beforeAll(async () => {
     STEWARD_AUDIT_HMAC_KEY: randomBytes(32).toString("hex"),
     APP_URL: STEWARD_ORIGIN,
     GOOGLE_CLIENT_ID: "synthetic-google-web-client",
+    STEWARD_OAUTH_APP_ERROR_REDIRECTS: EXTERNAL_LINK,
     GOOGLE_CLIENT_SECRET: "synthetic-google-secret",
     DISCORD_CLIENT_ID: "synthetic-discord-client",
     DISCORD_CLIENT_SECRET: "synthetic-discord-secret",
@@ -117,7 +122,7 @@ beforeAll(async () => {
   });
   await database.db.insert(tenantConfigs).values({
     tenantId: TENANT_ID,
-    allowedRedirectUrls: [APP_LINK],
+    allowedRedirectUrls: [APP_LINK, EXTERNAL_LINK],
     // Eliza Cloud accepts new members on first sign-in.
     joinMode: "open",
   });
@@ -195,7 +200,108 @@ function readHandOff(handOff: URL) {
   return { code: fragment.get("code") ?? "", state: fragment.get("state") };
 }
 
-describe("native App Link OAuth (Alpha Phone)", () => {
+describe("native App Link OAuth (Example Reader)", () => {
+  test("App readiness, shared Google exchange and denial return stay bound to the app", async () => {
+    const query = new URLSearchParams({
+      tenant_id: TENANT_ID,
+      redirect_uri: EXTERNAL_LINK,
+    });
+    const ready = await nativeGet(`/auth/oauth/google/app-readiness?${query}`);
+    expect(ready.status).toBe(200);
+    expect(ready.headers.get("cache-control")).toBe("no-store");
+    expect(await ready.json()).toEqual({
+      ok: true,
+      appAuth: 1,
+      tenantId: TENANT_ID,
+      redirectUri: EXTERNAL_LINK,
+    });
+    const verifier = base64url(randomBytes(32));
+    const state = base64url(randomBytes(32));
+    const authorize = await nativeGet(
+      `/auth/oauth/google/authorize?${authorizeQuery({ redirect_uri: EXTERNAL_LINK, state, code_challenge: s256(verifier) })}`,
+    );
+    expect(authorize.status).toBe(302);
+    const provider = new URL(authorize.headers.get("location") ?? "");
+    expect(provider.searchParams.get("client_id")).toBe(
+      "synthetic-google-web-client",
+    );
+    const code = base64url(randomBytes(16));
+    identities.set(code, {
+      sub: "example-dedicated-user",
+      email: "reader@example.test",
+      email_verified: true,
+    });
+    const callback = await nativeGet(
+      `/auth/oauth/google/callback?code=${code}&state=${provider.searchParams.get("state")}`,
+    );
+    expect(callback.status).toBe(302);
+    expect(appTokenClients).toContain(code);
+    const handoff = new URL(callback.headers.get("location") ?? "");
+    expect(handoff.origin + handoff.pathname).toBe(EXTERNAL_LINK);
+    const exchange = await nativePost("/auth/oauth/exchange", {
+      code: readHandOff(handoff).code,
+      redirectUri: EXTERNAL_LINK,
+      tenantId: TENANT_ID,
+      codeVerifier: verifier,
+    });
+    expect(exchange.status).toBe(200);
+    expect(typeof (await exchange.json()).token).toBe("string");
+    const second = await nativeGet(
+      `/auth/oauth/google/authorize?${authorizeQuery({ redirect_uri: EXTERNAL_LINK, state })}`,
+    );
+    const secondProvider = new URL(second.headers.get("location") ?? "");
+    const denied = await nativeGet(
+      `/auth/oauth/google/callback?error=access_denied&state=${secondProvider.searchParams.get("state")}`,
+    );
+    expect(denied.status).toBe(302);
+    const denial = new URL(denied.headers.get("location") ?? "");
+    expect(denial.origin + denial.pathname).toBe(EXTERNAL_LINK);
+    expect(new URLSearchParams(denial.hash.slice(1)).get("state")).toBe(state);
+    expect(new URLSearchParams(denial.hash.slice(1)).has("error")).toBe(true);
+    const secret = process.env.GOOGLE_CLIENT_SECRET;
+    try {
+      delete process.env.GOOGLE_CLIENT_SECRET;
+      const unavailable = await nativeGet(
+        `/auth/oauth/google/app-readiness?${query}`,
+      );
+      expect(unavailable.status).toBe(503);
+      const refused = await nativeGet(
+        `/auth/oauth/google/authorize?${authorizeQuery({ redirect_uri: EXTERNAL_LINK })}`,
+      );
+      expect(refused.status).toBe(503);
+      expect(refused.headers.get("location")).toBeNull();
+    } finally {
+      process.env.GOOGLE_CLIENT_SECRET = secret;
+    }
+  }, 30_000);
+
+  test("readiness supports another registered app without product routing", async () => {
+    const previous = process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS;
+    try {
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS = APP_LINK;
+      const query = new URLSearchParams({
+        tenant_id: TENANT_ID,
+        redirect_uri: APP_LINK,
+      });
+      const response = await nativeGet(
+        `/auth/oauth/google/app-readiness?${query}`,
+      );
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({
+        ok: true,
+        appAuth: 1,
+        tenantId: TENANT_ID,
+        redirectUri: APP_LINK,
+      });
+      query.set("redirect_uri", "https://unregistered.example/callback");
+      expect(
+        (await nativeGet(`/auth/oauth/google/app-readiness?${query}`)).status,
+      ).toBe(503);
+    } finally {
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS = previous;
+    }
+  });
+
   test("authorize forwards prompt=select_account to Google and accepts no Origin", async () => {
     const appState = base64url(randomBytes(32));
     const response = await nativeGet(
@@ -220,12 +326,9 @@ describe("native App Link OAuth (Alpha Phone)", () => {
       ["google", { prompt: "none" }],
       ["google", { prompt: "login" }],
       ["discord", { prompt: "select_account" }],
-      ["google", { redirect_uri: "alphaphone://auth/callback" }],
-      ["google", { redirect_uri: "https://eliza.app/alphaphone/auth/other" }],
-      [
-        "google",
-        { redirect_uri: "https://evil.example/alphaphone/auth/callback" },
-      ],
+      ["google", { redirect_uri: "reader://auth/callback" }],
+      ["google", { redirect_uri: "https://eliza.app/reader/auth/other" }],
+      ["google", { redirect_uri: "https://evil.example/reader/auth/callback" }],
       ["google", { redirect_uri: `${APP_LINK}?extra=1` }],
       ["google", { code_challenge: null }],
       ["google", { code_challenge_method: "plain" }],
@@ -533,6 +636,111 @@ describe("native App Link OAuth (Alpha Phone)", () => {
     expect(replay.status).toBe(401);
   }, 30_000);
 
+  test("parallel wrong TOTP codes on one challenge stop at the attempt limit", async () => {
+    const priorProxyHops = process.env.STEWARD_TRUSTED_PROXY_HOPS;
+    process.env.STEWARD_TRUSTED_PROXY_HOPS = "1";
+    try {
+      const identity = {
+        sub: "google-sub-mfa-burst",
+        email: "mfa-burst@example.test",
+        email_verified: true,
+      };
+      const first = await completeProviderRoundTrip("google", identity);
+      const session = await (
+        await nativePost("/auth/oauth/exchange", {
+          code: readHandOff(first.handOff).code,
+          redirectUri: APP_LINK,
+          tenantId: TENANT_ID,
+          codeVerifier: first.verifier,
+        })
+      ).json();
+      const bearer = (path: string, body: object) =>
+        app.request(`${ROUTER_ORIGIN}${path}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify(body),
+        });
+      const { secret } = (await (
+        await bearer("/auth/mfa/totp/enroll", {})
+      ).json()) as { secret: string };
+      const { generateTotp } = await import("../auth/totp");
+      expect(
+        (
+          await bearer("/auth/mfa/totp/verify", {
+            code: await generateTotp(secret),
+          })
+        ).status,
+      ).toBe(200);
+
+      const verifier = base64url(randomBytes(48));
+      const authorize = await nativeGet(
+        `/auth/oauth/google/authorize?${authorizeQuery({
+          code_challenge: s256(verifier),
+          mfa: "exchange",
+        })}`,
+      );
+      const providerCode = base64url(randomBytes(16));
+      identities.set(providerCode, identity);
+      const callback = await nativeGet(
+        `/auth/oauth/google/callback?code=${providerCode}&state=${new URL(authorize.headers.get("location") ?? "").searchParams.get("state")}`,
+      );
+      const outcome = classifyCallback(
+        callback.headers.get("location") ?? "",
+        "production",
+      );
+      const exchange = (await (
+        await nativePost("/auth/oauth/exchange", {
+          code: outcome.kind === "success" ? outcome.code : "",
+          redirectUri: APP_LINK,
+          tenantId: TENANT_ID,
+          codeVerifier: verifier,
+        })
+      ).json()) as { mfa: { challengeId: string } };
+
+      const valid = new Set<string>();
+      for (let step = -2; step <= 2; step += 1) {
+        valid.add(
+          await generateTotp(secret, { time: Date.now() + step * 30_000 }),
+        );
+      }
+      const wrongCodes: string[] = [];
+      for (let n = 0; wrongCodes.length < 20; n += 1) {
+        const code = String(n).padStart(6, "0");
+        if (!valid.has(code)) wrongCodes.push(code);
+      }
+      // Each guess comes from its own address, so only the per-challenge
+      // attempt limit applies.
+      const statuses = await Promise.all(
+        wrongCodes.map(async (code, index) => {
+          const response = await app.request(
+            `${ROUTER_ORIGIN}/auth/mfa/totp/complete`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-forwarded-for": `198.51.100.${index + 10}`,
+              },
+              body: JSON.stringify({
+                challengeId: exchange.mfa.challengeId,
+                code,
+              }),
+            },
+          );
+          return response.status;
+        }),
+      );
+      expect(statuses.filter((status) => status === 401)).toHaveLength(5);
+      expect(statuses.filter((status) => status === 429)).toHaveLength(15);
+    } finally {
+      if (priorProxyHops === undefined)
+        delete process.env.STEWARD_TRUSTED_PROXY_HOPS;
+      else process.env.STEWARD_TRUSTED_PROXY_HOPS = priorProxyHops;
+    }
+  }, 30_000);
+
   test("authorize refuses an unknown mfa mode", async () => {
     const response = await nativeGet(
       `/auth/oauth/google/authorize?${authorizeQuery({ mfa: "inline" })}`,
@@ -576,11 +784,10 @@ describe("native App Link OAuth (Alpha Phone)", () => {
   }, 30_000);
 });
 
-// ── Shared callback contract with Alpha Phone ────────────────────────────────
+// ── Shared callback contract with Example Reader ────────────────────────────────
 //
-// packages/app/test/fixtures/alphaphone-native-signin-callback.contract.json
-// is committed byte for byte in AlphaCompute/alphaphone, whose native parser
-// runs the same vectors. These tests feed Steward's real hand-offs (success
+// packages/app/test/fixtures/native-signin-callback.contract.json
+// provides synthetic vectors that consumer parsers can reuse. These tests feed Steward's real hand-offs (success
 // and the error page's recovery link) through the fixture's rules and keep
 // its error allowlist in step with the codes Steward can return to the app.
 
@@ -593,7 +800,7 @@ type ContractOutcome =
 const contract = JSON.parse(
   readFileSync(
     new URL(
-      "../../../../app/test/fixtures/alphaphone-native-signin-callback.contract.json",
+      "../../../../app/test/fixtures/native-signin-callback.contract.json",
       import.meta.url,
     ),
     "utf8",
@@ -618,7 +825,7 @@ const contract = JSON.parse(
   }[];
 };
 
-/** The fixture's `rules`, applied to the raw URL text (same as Alpha's parser). */
+/** The fixture's `rules`, applied to the raw URL text (same as the consumer parser). */
 function classifyCallback(url: string, env: ContractEnv): ContractOutcome {
   const reject: ContractOutcome = { kind: "reject" };
   const base = `https://${contract.hosts[env]}${contract.path}`;
@@ -667,7 +874,7 @@ function classifyCallback(url: string, env: ContractEnv): ContractOutcome {
     : reject;
 }
 
-describe("Alpha Phone callback contract (shared fixture)", () => {
+describe("Example Reader callback contract (shared fixture)", () => {
   test("the reference classifier matches every fixture vector", () => {
     expect(contract.authorize.redirectUri.production).toBe(APP_LINK);
     for (const entry of contract.cases) {
@@ -678,7 +885,7 @@ describe("Alpha Phone callback contract (shared fixture)", () => {
     }
   });
 
-  test("authorize accepts exactly the parameters the contract makes Alpha send", async () => {
+  test("authorize accepts exactly the parameters the contract makes native clients send", async () => {
     const query = authorizeQuery(contract.authorize.requiredParams);
     const response = await nativeGet(`/auth/oauth/google/authorize?${query}`);
     expect(response.status).toBe(302);

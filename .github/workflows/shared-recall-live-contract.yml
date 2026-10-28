@@ -1,0 +1,55 @@
+name: Shared Recall Live Contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_cloud_commit:
+        description: Exact commit served by the staging Cloud API
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shared-recall-live-contract-staging
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Staging BGE persistence and tenant isolation
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: 1.4.2
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+      - name: Qualify Shared recall with live vectors and PostgreSQL
+        env:
+          ELIZA_SHARED_RECALL_LIVE: "1"
+          ELIZA_EMBEDDING_CLOUD_ENVIRONMENT: staging
+          ELIZA_EMBEDDING_CLOUD_COMMIT: ${{ inputs.expected_cloud_commit }}
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          private_log=$(mktemp "$RUNNER_TEMP/shared-recall-contract.XXXXXX")
+          trap 'rm -f "$private_log"' EXIT
+          if bun --conditions=eliza-source test packages/cloud/api/__tests__/shared-recall-cloudflare-live.test.ts > "$private_log" 2>&1; then
+            echo "phase=shared-recall status=passed code=SHARED_RECALL_CONTRACT_PASSED"
+          else
+            sed -n '/^shared-recall-fixture=[0-9a-f-]*$/p' "$private_log"
+            grep -Fx "shared-recall-preflight=cleanup-unavailable code=AUTO_TOP_UP_CUTOVER_PAUSED" "$private_log" || true
+            grep -E '^shared-recall-phase=(create-fixtures|record-turns|verify-rows|recall|isolation|verify-release|cleanup) status=(passed|failed) code=(NONE|UNKNOWN|23502|23503|23505|42703|42P01|42501|28P01|3D000|08006|57014)$' "$private_log" || true
+            echo "phase=shared-recall status=failed code=SHARED_RECALL_CONTRACT_FAILED" >&2
+            exit 1
+          fi

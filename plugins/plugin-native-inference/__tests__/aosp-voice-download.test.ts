@@ -233,7 +233,7 @@ describe("pinned mobile voice bundle", () => {
     }
     const asr = files.filter((f) => f.role.startsWith("asr-"));
     expect(asr.map((f) => f.sha256)).toEqual([
-      "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
+      "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
     ]);
     const vad = files.find((f) => f.role === "vad");
     expect(vad?.sha256).toBe(
@@ -248,14 +248,14 @@ describe("pinned mobile voice bundle", () => {
     const files = aospVoiceFiles();
     const tts = files.find((f) => f.role === "tts");
     const lexicon = files.find((f) => f.role === "g2p-lexicon");
-    // packages/app/platforms/android/paradee-voice/inputs.json is what the
+    // plugins/plugin-local-inference/native/android/inputs.json is what the
     // paradee-voice build stages; the catalog must name the same files.
     const inputs = JSON.parse(
-      read("packages/app/platforms/android/paradee-voice/inputs.json"),
+      read("plugins/plugin-local-inference/native/android/inputs.json"),
     );
-    expect(tts?.path).toBe("tts/paradee/paradee-8m-v1_0.gguf");
+    expect(tts?.path).toBe("tts/paradee/paradee-8m-v1_1.gguf");
     expect(tts?.path).toBe(inputs.paradee.path);
-    expect(tts?.hfPath).toBe("voice/paradee/paradee-8m-v1_0.gguf");
+    expect(tts?.hfPath).toBe("voice/paradee/paradee-8m-v1_1.gguf");
     expect({ sha256: tts?.sha256, bytes: tts?.bytes }).toEqual({
       sha256: inputs.paradee.sha256,
       bytes: inputs.paradee.bytes,
@@ -279,7 +279,7 @@ describe("pinned mobile voice bundle", () => {
     );
     expect(catalog).not.toContain("paradee-8m-v1.0.gguf");
     expect(aospParadeePaths("/b").gguf).toBe(
-      path.join("/b", "tts", "paradee", "paradee-8m-v1_0.gguf"),
+      path.join("/b", "tts", "paradee", "paradee-8m-v1_1.gguf"),
     );
 
     // eSpeak NG data: the files inputs.json builds, with the host worker's pins.
@@ -442,8 +442,8 @@ describe("pinned mobile voice bundle", () => {
 
   it("makes Phonon-2 the only ASR and drops the Qwen3-ASR rows", () => {
     const bundle = mobileVoiceBundle();
-    expect(bundle.version).toBe("1.2.0");
-    expect(bundle.parentVersion).toBe("1.1.0");
+    expect(bundle.version).toBe("1.3.0");
+    expect(bundle.parentVersion).toBe("1.2.0");
     for (const file of bundle.files) {
       expect(file.id).not.toMatch(/qwen/i);
       expect(file.path).not.toMatch(/qwen|mmproj/i);
@@ -453,15 +453,15 @@ describe("pinned mobile voice bundle", () => {
     const history = VOICE_MODEL_VERSIONS.filter(
       (v) => v.id === "mobile-voice",
     ).map((v) => v.version);
-    expect(history).toEqual(["1.2.0", "1.1.0", "1.0.0"]);
+    expect(history).toEqual(["1.3.0", "1.2.0", "1.1.0", "1.0.0"]);
     const phonon = aospVoiceFiles().find((f) => f.role === "asr-parakeet");
     expect(phonon).toMatchObject({
       id: "phonon-2-fv5",
       asrBackend: "parakeet",
       path: "asr/phonon-2-fv5.gguf",
       sha256:
-        "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
-      bytes: 330632256,
+        "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+      bytes: 208932352,
       license: "CC-BY-4.0",
       status: "unpublished",
       notice: {

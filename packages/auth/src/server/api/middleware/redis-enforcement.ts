@@ -9,8 +9,9 @@
 import { createPriceOracle, type PolicyRule } from "../../shared/index.ts";
 import {
   checkAgentRateLimit,
-  isRedisAvailable,
+  isRateLimitAvailable,
   isRedisConfigured,
+  isSpendTelemetryAvailable,
   recordAgentSpend,
 } from "./redis";
 
@@ -137,7 +138,7 @@ export async function enforceRateLimit(
 ): Promise<RedisEnforcementResult> {
   const rlParams = extractRateLimitPolicy(policies);
   if (!rlParams) return { allowed: true };
-  if (!isRedisAvailable()) {
+  if (!isRateLimitAvailable()) {
     if (!isRedisConfigured() && process.env.NODE_ENV !== "production")
       return { allowed: true };
     return {
@@ -220,7 +221,7 @@ export async function recordVaultSpend(
   valueWei: string,
   chainId: number,
 ): Promise<void> {
-  if (!isRedisAvailable()) return;
+  if (!isSpendTelemetryAvailable()) return;
 
   // Skip zero/empty values without touching the oracle.
   let wei: bigint;

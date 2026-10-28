@@ -46,6 +46,8 @@ export interface ContextObjectTool {
 }
 
 export interface ContextObjectPromptSegment extends PromptSegment {
+	/** Recorded source-message instant; presentation only, never effect authority. */
+	createdAt?: number;
 	id?: string;
 	label?: string;
 	tokenCount?: number;

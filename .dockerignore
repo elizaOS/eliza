@@ -25,3 +25,12 @@ packages/docs
 
 # Workspace allowlists above must not re-include host dependency links.
 **/node_modules
+
+# Local configuration and generated evidence never belong in image contexts.
+.env*
+**/.env*
+.dev.vars*
+**/.dev.vars*
+test-results
+**/test-results
+**/.wrangler

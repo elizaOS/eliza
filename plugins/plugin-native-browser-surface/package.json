@@ -28,6 +28,21 @@
       "eliza-source": "./src/submitted-navigation.ts",
       "types": "./dist/esm/submitted-navigation.d.ts",
       "import": "./dist/esm/submitted-navigation.js"
+    },
+    "./browsing-session": {
+      "eliza-source": "./src/browsing-session.ts",
+      "types": "./dist/esm/browsing-session.d.ts",
+      "import": "./dist/esm/browsing-session.js"
+    },
+    "./page-reading": {
+      "eliza-source": "./src/page-reading.ts",
+      "types": "./dist/esm/page-reading.d.ts",
+      "import": "./dist/esm/page-reading.js"
+    },
+    "./page-source": {
+      "eliza-source": "./src/page-source.ts",
+      "types": "./dist/esm/page-source.d.ts",
+      "import": "./dist/esm/page-source.js"
     }
   },
   "unpkg": "dist/plugin.js",
@@ -51,23 +66,24 @@
     "build": "node ../../packages/scripts/with-package-build-lock.ts plugins/plugin-native-browser-surface -- bun run build:unlocked",
     "clean": "node ../../packages/scripts/rm-path-recursive.ts dist",
     "prepublishOnly": "bun run build",
-    "test": "vitest run --config vitest.config.ts && bun run test:native-policy",
+    "test": "node scripts/build-control-channel.mjs --check && vitest run --config vitest.config.ts && bun run test:native-policy",
     "watch": "tsc6 --watch",
-    "build:unlocked": "bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
+    "build:unlocked": "node scripts/build-control-channel.mjs && bun run clean && tsc6 && bunx rollup -c rollup.config.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:native-policy": "node --test test/native-host/policies.node.mjs"
+    "test:native-policy": "node --test test/native-host/policies.node.mjs",
+    "test:control": "node scripts/build-control-channel.mjs --check && node scripts/test-control-channel.mjs"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
-    "rollup": "^4.64.5",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

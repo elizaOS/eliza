@@ -27,6 +27,178 @@ export interface TurnActionConstraint {
 	reason: string;
 }
 
+/** A host-verified text tariff. Unknown routes and non-text billing are refused. */
+export interface ModelAttemptTariff {
+	provider: string;
+	model: string;
+	route: string;
+	inputNanoUsdPerToken: number;
+	outputNanoUsdPerToken: number;
+	/** Conservative reservation bound, not measured prompt tokens. */
+	inputTokenUpperBound: number;
+}
+
+export interface ModelAttemptLease {
+	readonly messageId: string;
+	readonly maxOutputTokens: number;
+	reserve(
+		provider: string,
+		model: string,
+		route: string | undefined,
+		serialized: string,
+		outputTokens: number | undefined,
+	): void;
+	close(): void;
+}
+
+/** Host-only, in-memory trial allowance. Reservations are never refunded. */
+export interface ModelAttemptAllowance {
+	openTurn(
+		messageId: string,
+		signal: AbortSignal,
+		assertCurrent?: () => void,
+	): ModelAttemptLease;
+	close(): void;
+	readonly remainingMicroUsd: number;
+}
+const modelAttemptLeases = getAmbientSingleton(
+	Symbol.for("elizaos.modelAttemptLeases"),
+	() => new WeakSet<ModelAttemptLease>(),
+);
+export function createModelAttemptAllowance(options: {
+	signal: AbortSignal;
+	budgetMicroUsd: number;
+	maxAttempts: number;
+	maxOutputTokens: number;
+	expiresAt: number;
+	tariffs: readonly ModelAttemptTariff[];
+}): ModelAttemptAllowance {
+	const positive = (n: number) => Number.isSafeInteger(n) && n > 0;
+	if (
+		!positive(options.budgetMicroUsd) ||
+		!positive(options.maxAttempts) ||
+		!positive(options.maxOutputTokens) ||
+		!positive(options.expiresAt) ||
+		!options.tariffs.length ||
+		options.tariffs.some(
+			(t) =>
+				!t.provider ||
+				!t.model ||
+				!t.route ||
+				!positive(t.inputNanoUsdPerToken) ||
+				!positive(t.outputNanoUsdPerToken) ||
+				!positive(t.inputTokenUpperBound),
+		)
+	) {
+		throw new ElizaError("Invalid host model allowance", {
+			code: "MODEL_ATTEMPT_POLICY_INVALID",
+		});
+	}
+	const tariffs = options.tariffs.map((t) => Object.freeze({ ...t }));
+	const { maxOutputTokens, expiresAt } = options;
+	let remaining = options.budgetMicroUsd,
+		attempts = options.maxAttempts,
+		closed = false;
+	const abortTrial = () => {
+		closed = true;
+	};
+	options.signal.addEventListener("abort", abortTrial, { once: true });
+	if (options.signal.aborted) closed = true;
+	return Object.freeze({
+		get remainingMicroUsd() {
+			return remaining;
+		},
+		close() {
+			closed = true;
+			options.signal.removeEventListener("abort", abortTrial);
+		},
+		openTurn(
+			messageId: string,
+			signal: AbortSignal,
+			assertCurrent?: () => void,
+		): ModelAttemptLease {
+			if (!messageId || closed || Date.now() >= expiresAt || signal.aborted) {
+				throw new ElizaError("Model allowance ended", {
+					code: "MODEL_ATTEMPT_POLICY_CLOSED",
+				});
+			}
+			let ended = false;
+			// Barge-in cancels this turn, not the session's remaining allowance.
+			const abort = () => close();
+			const close = () => {
+				ended = true;
+				signal.removeEventListener("abort", abort);
+			};
+			signal.addEventListener("abort", abort, { once: true });
+			const lease: ModelAttemptLease = Object.freeze({
+				messageId,
+				maxOutputTokens,
+				close,
+				reserve(
+					provider: string,
+					model: string,
+					route: string | undefined,
+					serialized: string,
+					outputTokens: number | undefined,
+				) {
+					if (ended || closed || signal.aborted || Date.now() >= expiresAt) {
+						throw new ElizaError("Model allowance ended", {
+							code: "MODEL_ATTEMPT_POLICY_CLOSED",
+						});
+					}
+					assertCurrent?.();
+					const tariff = tariffs.find(
+						(t) =>
+							t.provider === provider && t.model === model && t.route === route,
+					);
+					if (
+						!tariff ||
+						!outputTokens ||
+						!positive(outputTokens) ||
+						outputTokens > maxOutputTokens ||
+						Buffer.byteLength(serialized, "utf8") > tariff.inputTokenUpperBound
+					) {
+						throw new ElizaError("Unqualified bounded model request", {
+							code: "MODEL_ATTEMPT_POLICY_ROUTE",
+						});
+					}
+					const nanoUsd =
+						BigInt(tariff.inputTokenUpperBound) *
+							BigInt(tariff.inputNanoUsdPerToken) +
+						BigInt(outputTokens) * BigInt(tariff.outputNanoUsdPerToken);
+					const microUsd = (nanoUsd + 999n) / 1000n;
+					if (attempts < 1 || microUsd > BigInt(remaining)) {
+						throw new ElizaError("Model allowance exhausted", {
+							code: "MODEL_ATTEMPT_POLICY_EXHAUSTED",
+						});
+					}
+					// No await between admission and debit: parallel attempts cannot share funds.
+					remaining -= Number(microUsd);
+					attempts--;
+				},
+			});
+			modelAttemptLeases.add(lease);
+			return lease;
+		},
+	});
+}
+
+/** Model parameters and UI metadata cannot mint a trusted lease. */
+export function getModelAttemptLease(): ModelAttemptLease | undefined {
+	const context = getStreamingContext();
+	const lease = context?.modelAttemptLease;
+	if (!lease) return undefined;
+	if (
+		!modelAttemptLeases.has(lease) ||
+		context.modelAttemptTurnId !== lease.messageId
+	) {
+		throw new ElizaError("Invalid model turn lease", {
+			code: "MODEL_ATTEMPT_POLICY_INVALID",
+		});
+	}
+	return lease;
+}
+
 /**
  * Streaming context containing callbacks for streaming lifecycle.
  */
@@ -49,6 +221,10 @@ export interface StreamingContext extends StreamingEventHooks {
 	abortSignal?: AbortSignal;
 	/** Shared by nested model/action scopes; policy producers own writes. */
 	actionConstraints?: Map<string, TurnActionConstraint>;
+	/** Opaque host-created policy; never reconstructed from request/model metadata. */
+	modelAttemptLease?: ModelAttemptLease;
+	/** Original incoming user turn, separate from the assistant streaming ID. */
+	modelAttemptTurnId?: string;
 }
 
 export interface StreamingHookPayloads {
@@ -169,6 +345,29 @@ export function runWithStreamingContext<T>(
 	const parent = manager.active();
 	const sameTurn =
 		!context?.messageId || context.messageId === parent?.messageId;
+	if (parent?.modelAttemptLease) {
+		const originalTurn = parent.modelAttemptTurnId;
+		if (
+			originalTurn !== parent.modelAttemptLease.messageId ||
+			(context?.modelAttemptTurnId !== undefined &&
+				context.modelAttemptTurnId !== originalTurn) ||
+			(!sameTurn && context?.modelAttemptTurnId !== originalTurn)
+		) {
+			throw new ElizaError("Bounded model turn cannot change identity", {
+				code: "MODEL_ATTEMPT_POLICY_INVALID",
+			});
+		}
+		context = {
+			...context,
+			modelAttemptLease: parent.modelAttemptLease,
+			modelAttemptTurnId: originalTurn,
+		};
+		if (!context.messageId) context.messageId = parent.messageId;
+		if (parent.abortSignal)
+			context.abortSignal = context.abortSignal
+				? AbortSignal.any([parent.abortSignal, context.abortSignal])
+				: parent.abortSignal;
+	}
 	if (parent?.actionConstraints && sameTurn) {
 		// Detaching model streaming must not detach execution policy/cancellation.
 		context = context ?? { messageId: parent.messageId };

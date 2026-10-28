@@ -154,7 +154,17 @@ export async function executeStagehandCommandWithFetch(
       resolveStagehandCommandTimeoutMs(command, timeoutMs),
     ),
   });
-  const body = await response.json().catch(() => null);
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    if (response.ok) {
+      throw new Error(
+        `Stagehand command endpoint returned invalid JSON (HTTP ${response.status})`,
+      );
+    }
+    body = null;
+  }
   if (!response.ok) {
     const message =
       body && typeof body === "object" && "error" in body

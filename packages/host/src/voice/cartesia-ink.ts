@@ -119,12 +119,21 @@ export interface CartesiaInkSessionOptions extends CartesiaInkConfigInput {
   onEvent: (event: CartesiaInkRealtimeEvent) => void;
 }
 
+/** Not an invoice receipt: proves the documented graceful close processed all sent PCM. */
+export interface CartesiaInkDrainReceipt {
+  source: "provider-graceful-close";
+  audioBytes: number;
+  sampleRate: 16000;
+  channels: 1;
+  encoding: "pcm_s16le";
+}
 export interface CartesiaInkRealtimeSession {
   socket: CartesiaInkWebSocket;
   url: string;
   sendAudioChunk(chunk: ArrayBuffer | ArrayBufferView): void;
   close(reason?: string): void;
   cancel(reason?: string): void;
+  drain?(timeoutMs?: number): Promise<CartesiaInkDrainReceipt>;
 }
 
 export class CartesiaInkConfigError extends Error {
@@ -219,6 +228,25 @@ export function createCartesiaInkRealtimeSession(
   });
   let cleanedUp = false;
   let gracefulCloseRequested = false;
+  let pendingTurn = false;
+  let sentAudioBytes = 0,
+    drainFailure: unknown,
+    drained: CartesiaInkDrainReceipt | undefined;
+  let drain:
+    | {
+        promise: Promise<CartesiaInkDrainReceipt>;
+        resolve: (value: CartesiaInkDrainReceipt) => void;
+        reject: (error: unknown) => void;
+        timer?: ReturnType<typeof setTimeout>;
+      }
+    | undefined;
+  const failDrain = (error: unknown) => {
+    drainFailure ??= error;
+    if (drain) {
+      if (drain.timer) clearTimeout(drain.timer);
+      drain.reject(error);
+    }
+  };
 
   socket.binaryType = "arraybuffer";
 
@@ -247,6 +275,16 @@ export function createCartesiaInkRealtimeSession(
 
   const onMessage = (event: MessageEvent) => {
     const mapped = mapCartesiaInkMessage(event.data);
+    if (mapped.type === "end-of-turn") pendingTurn = false;
+    else if (
+      mapped.type === "start-of-turn" ||
+      mapped.type === "transcript-update" ||
+      mapped.type === "eager-end-of-turn" ||
+      mapped.type === "turn-resumed"
+    )
+      pendingTurn = true;
+    if (mapped.type === "error")
+      failDrain(new CartesiaInkConnectionError("Provider rejected STT stream"));
     metric({
       name:
         mapped.type === "error" && mapped.code === "malformed_event"
@@ -259,6 +297,11 @@ export function createCartesiaInkRealtimeSession(
   };
 
   const onError = (event: Event) => {
+    failDrain(
+      new CartesiaInkConnectionError(
+        "STT transport failed before graceful drain",
+      ),
+    );
     emit({
       type: "error",
       code: "transport_error",
@@ -282,6 +325,37 @@ export function createCartesiaInkRealtimeSession(
 
   const onClose = (event: CloseEvent) => {
     cleanup();
+    // Only this real remote close event can attest drain. cancelSocket emits a
+    // local synthetic close below; it deliberately cannot produce this receipt.
+    if (
+      gracefulCloseRequested &&
+      !drainFailure &&
+      event.code === 1000 &&
+      (event.wasClean ||
+        // Bun 1.3.14 derives wasClean from local CLOSING state and reports
+        // false for server-initiated normal close. Cartesia's JSON-close
+        // response is an actual code-1000 frame with this exact reason.
+        // Require any observed turn to have ended; silence needs no turn.
+        (event.reason === "Close message" && !pendingTurn))
+    ) {
+      drained = Object.freeze({
+        source: "provider-graceful-close",
+        audioBytes: sentAudioBytes,
+        sampleRate: 16000,
+        channels: 1,
+        encoding: "pcm_s16le",
+      });
+      if (drain) {
+        if (drain.timer) clearTimeout(drain.timer);
+        drain.resolve(drained);
+      }
+    } else
+      failDrain(
+        new CartesiaInkConnectionError(
+          "STT stream ended without graceful drain confirmation",
+        ),
+      );
+
     metric({
       name: "cartesia_ink_closed",
       value: 1,
@@ -297,6 +371,11 @@ export function createCartesiaInkRealtimeSession(
 
   const cancelSocket = (reason: string) => {
     if (cleanedUp) return;
+    failDrain(
+      new CartesiaInkConnectionError(
+        "STT stream was cancelled without provider drain",
+      ),
+    );
     cleanup();
     socket.close(DEFAULT_CLOSE_CODE, reason);
     metric({
@@ -324,7 +403,7 @@ export function createCartesiaInkRealtimeSession(
 
   if (options.signal?.aborted) cancelSocket("cancelled");
 
-  return {
+  const session: CartesiaInkRealtimeSession = {
     socket,
     url,
     sendAudioChunk(chunk) {
@@ -334,7 +413,14 @@ export function createCartesiaInkRealtimeSession(
         );
       }
       validateCartesiaInkAudioChunk(chunk);
-      socket.send(chunk);
+      const chunkBytes = chunk.byteLength;
+      try {
+        socket.send(chunk);
+        sentAudioBytes += chunkBytes;
+      } catch (error) {
+        failDrain(error);
+        throw error;
+      }
       metric({ name: "cartesia_ink_audio_chunk_sent", value: 1 });
     },
     close() {
@@ -349,7 +435,41 @@ export function createCartesiaInkRealtimeSession(
     cancel(reason = "cancelled") {
       cancelSocket(reason);
     },
+    drain(timeoutMs = 2000) {
+      if (drained) return Promise.resolve(drained);
+      if (drain) return drain.promise;
+      if (cleanedUp || drainFailure)
+        return Promise.reject(
+          drainFailure ??
+            new CartesiaInkConnectionError("STT stream is already closed"),
+        );
+      if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 5000)
+        return Promise.reject(
+          new CartesiaInkConnectionError("STT drain timeout is invalid"),
+        );
+      let resolve!: (receipt: CartesiaInkDrainReceipt) => void,
+        reject!: (error: unknown) => void;
+      const promise = new Promise<CartesiaInkDrainReceipt>((yes, no) => {
+        resolve = yes;
+        reject = no;
+      });
+      drain = { promise, resolve, reject };
+      drain.timer = setTimeout(() => {
+        failDrain(
+          new CartesiaInkConnectionError("STT graceful drain timed out"),
+        );
+        cancelSocket("drain-timeout");
+      }, timeoutMs);
+      try {
+        session.close();
+      } catch (error) {
+        failDrain(error);
+        cancelSocket("drain-failed");
+      }
+      return promise;
+    },
   };
+  return session;
 }
 
 export function mapCartesiaInkMessage(data: unknown): CartesiaInkRealtimeEvent {

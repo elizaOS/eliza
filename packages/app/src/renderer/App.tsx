@@ -1,3 +1,8 @@
+import { Capacitor } from "@capacitor/core";
+import {
+  createSenseInvocationController,
+  Sense,
+} from "@elizaos/capacitor-system/sense";
 import { loadSecretsManagerSection } from "@elizaos/ui";
 /**
  * Root App component and the dashboard routing shell mounted by every elizaOS
@@ -70,8 +75,10 @@ import {
   firstRunOwnsLoginSurface,
   GameViewOverlay,
   GlassStyles,
+  getActiveAgentAuthority,
   getAppShellPageRegistrySnapshot,
   getAppSlugFromPath,
+  getAuthStatusSnapshot,
   getCloudAuthToken,
   getCloudPairTokenFromLocation,
   getOverlayApp,
@@ -153,6 +160,7 @@ import {
   shouldShowRemoteAgentPairingGate,
   shouldUseHashNavigation,
   subscribeAppShellPages,
+  subscribeAuthStatus,
   subscribeDesktopBridgeEvent,
   TAB_PATHS,
   TrayLauncher,
@@ -589,6 +597,7 @@ function RegisteredAppShellPage({
   // equivalent: controls registered with useAgentElement are live immediately.
   return (
     <ShellViewAgentSurface
+      active={viewProps?.active !== false}
       viewId={bridge.viewId}
       surfaceKind={bridge.kind}
       capabilities={registration.capabilities}
@@ -1965,9 +1974,64 @@ function FullBleedShellContent(props: ShellContentProps): ReactNode {
  * RoutedShellContent → ViewRouter path.
  */
 function ShellContent(props: ShellContentProps): ReactNode {
-  if (props.isFullBleed) return <FullBleedShellContent {...props} />;
-  if (props.isChat) return <ChatRouteShellContent {...props} />;
-  return <RoutedShellContent {...props} />;
+  const notesAuthority = useActiveAgentAuthority();
+  useAppShellPageRegistryVersion();
+  const retainedNotes = useRef<{
+    authority: string;
+    registration: AppShellPageRegistration;
+  } | null>(null);
+  const notesRegistration = listAppShellPages().find(
+    (page) => page.id === "notes",
+  );
+  if (
+    retainedNotes.current?.authority !== notesAuthority ||
+    !notesRegistration
+  ) {
+    retainedNotes.current = null;
+  }
+  const showNotes =
+    props.tab === "notes" && !props.viewLayout && !!notesRegistration;
+  if (showNotes && notesRegistration) {
+    retainedNotes.current = {
+      authority: notesAuthority,
+      registration: notesRegistration,
+    };
+  }
+  const otherContent = showNotes ? null : props.isFullBleed ? (
+    <FullBleedShellContent {...props} />
+  ) : props.isChat ? (
+    <ChatRouteShellContent {...props} />
+  ) : (
+    <RoutedShellContent {...props} />
+  );
+  return (
+    <>
+      {/* Retain one canonical Notes tree across Home and app navigation. Its
+        owner key changes synchronously; hidden Notes cannot receive input,
+        publish a selected context or start foreground work. */}
+      {retainedNotes.current ? (
+        <div
+          key={retainedNotes.current.authority}
+          data-retained-notes
+          className={APP_SHELL_CLASS}
+          inert={!showNotes || undefined}
+          aria-hidden={!showNotes || undefined}
+          style={{ display: showNotes ? "flex" : "none" }}
+        >
+          {showNotes ? props.desktopTabBar : null}
+          <main className={routedShellMainClass("notes")}>
+            <ViewSurfaceFrame declaration={retainedNotes.current.registration}>
+              <RegisteredAppShellPage
+                registration={retainedNotes.current.registration}
+                viewProps={{ active: showNotes }}
+              />
+            </ViewSurfaceFrame>
+          </main>
+        </div>
+      ) : null}
+      {otherContent}
+    </>
+  );
 }
 /**
  * Vault modal, loaded on first open (#11351). `SecretsManagerSection` pulls the
@@ -2354,6 +2418,69 @@ function ChatOverlayMount({
   const firstRunOpen =
     isAuthoritativeFirstRunOpen(firstRunComplete, startupPhase) ||
     (firstRunComplete === false && retainMountedFirstRunOpen);
+  const senseHost = useRef({ controller, firstRunOpen });
+  senseHost.current = { controller, firstRunOpen };
+  const senseInvocation = useRef<ReturnType<
+    typeof createSenseInvocationController
+  > | null>(null);
+  const senseAuthority = useActiveAgentAuthority();
+  useEffect(() => {
+    if (
+      Capacitor.getPlatform() !== "android" ||
+      !Capacitor.isPluginAvailable("ElizaSense")
+    )
+      return;
+    const ready = () => {
+      const current = senseHost.current;
+      return (
+        !!current.controller &&
+        !current.firstRunOpen &&
+        !current.controller.authGate.gated &&
+        current.controller.canSend &&
+        !current.controller.responding
+      );
+    };
+    const binding = createSenseInvocationController(Sense, {
+      authority: () => {
+        const auth = getAuthStatusSnapshot();
+        if (auth.phase !== "authenticated") return null;
+        return JSON.stringify([
+          getActiveAgentAuthority(),
+          auth.identity.id,
+          auth.session.id,
+          auth.session.kind,
+        ]);
+      },
+      ready,
+      voiceActive: () => {
+        const current = senseHost.current.controller;
+        return !!(
+          current?.recording ||
+          current?.handsFree ||
+          current?.realtimeVoice?.active ||
+          current?.realtimeVoice?.connecting
+        );
+      },
+      startVoice: () => {
+        const current = senseHost.current.controller;
+        if (current && ready()) {
+          current.open();
+          window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
+          current.toggleHandsFree();
+        }
+      },
+      subscribe: (changed) => subscribeAuthStatus(changed),
+    });
+    senseInvocation.current = binding;
+    return () => {
+      senseInvocation.current = null;
+      binding.dispose();
+    };
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: These observations invalidate the ref-backed native authority check.
+  useEffect(() => {
+    senseInvocation.current?.check();
+  }, [senseAuthority, controller, firstRunOpen]);
   useLayoutEffect(() => {
     if (controller && firstRunOpen && firstRunMountEpoch !== null) {
       onFirstRunChatMounted?.(firstRunMountEpoch);

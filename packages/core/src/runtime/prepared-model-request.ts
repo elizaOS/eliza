@@ -7,6 +7,10 @@
 
 import { ElizaError } from "../errors";
 import {
+	getModelAttemptLease,
+	type ModelAttemptLease,
+} from "../streaming-context";
+import {
 	DEFAULT_CONTEXT_WINDOW_TOKENS,
 	DEFAULT_INPUT_RESERVE_TOKENS,
 } from "./model-input-budget";
@@ -28,6 +32,8 @@ export interface PreparedModelRequestBudget {
 export interface PreparedModelRequestGuard {
 	readonly budget: Readonly<PreparedModelRequestBudget>;
 	readonly attempts: number;
+	/** Rechecks preparation after asynchronous serialization without counting a dispatch. */
+	assertUnchanged(): void;
 	/** Revalidates the exact admitted body immediately before one transport try. */
 	assertBeforeAttempt(): void;
 }
@@ -35,6 +41,10 @@ export interface PreparedModelRequestGuard {
 export interface CreatePreparedModelRequestGuardArgs {
 	provider: string;
 	model: string;
+	/** Actual provider transport route, required only by bounded host policy. */
+	route?: string;
+	/** Trusted provider closure; null keeps an earlier graph check non-financial. */
+	attemptLease?: ModelAttemptLease | null;
 	/**
 	 * Rebuild the complete provider request projection from the actual dispatch
 	 * object. The projection must contain every model-visible field, but omit
@@ -322,40 +332,56 @@ export function createPreparedModelRequestGuard(
 		);
 	}
 
+	const lease =
+		args.attemptLease === undefined
+			? getModelAttemptLease()
+			: args.attemptLease;
 	let attempts = 0;
+	const assertUnchanged = (): string => {
+		const attemptSerialized = readSerializedRequest();
+		if (attemptSerialized !== serialized) {
+			throw new ElizaError(
+				"Provider-prepared model request changed after admission",
+				{
+					code: "MODEL_PREPARED_REQUEST_MUTATED",
+					context: { provider, model, attempt: attempts + 1 },
+				},
+			);
+		}
+		const attemptCount = countPreparedInputTokens(
+			attemptSerialized,
+			args.countInputTokens,
+			args.countInputTokensIsExact === true,
+		);
+		if (
+			attemptCount.count !== counted.count ||
+			attemptCount.source !== counted.source
+		) {
+			throw new ElizaError(
+				"Provider token count changed for an identical admitted request",
+				{
+					code: "MODEL_PREPARED_REQUEST_TOKEN_COUNT_DRIFT",
+					context: { provider, model, attempt: attempts + 1 },
+				},
+			);
+		}
+		return attemptSerialized;
+	};
 	return {
 		budget,
+		assertUnchanged,
 		get attempts() {
 			return attempts;
 		},
 		assertBeforeAttempt(): void {
-			const attemptSerialized = readSerializedRequest();
-			if (attemptSerialized !== serialized) {
-				throw new ElizaError(
-					"Provider-prepared model request changed after admission",
-					{
-						code: "MODEL_PREPARED_REQUEST_MUTATED",
-						context: { provider, model, attempt: attempts + 1 },
-					},
-				);
-			}
-			const attemptCount = countPreparedInputTokens(
+			const attemptSerialized = assertUnchanged();
+			lease?.reserve(
+				provider,
+				model,
+				args.route,
 				attemptSerialized,
-				args.countInputTokens,
-				args.countInputTokensIsExact === true,
+				args.outputReserveTokens,
 			);
-			if (
-				attemptCount.count !== counted.count ||
-				attemptCount.source !== counted.source
-			) {
-				throw new ElizaError(
-					"Provider token count changed for an identical admitted request",
-					{
-						code: "MODEL_PREPARED_REQUEST_TOKEN_COUNT_DRIFT",
-						context: { provider, model, attempt: attempts + 1 },
-					},
-				);
-			}
 			attempts += 1;
 		},
 	};

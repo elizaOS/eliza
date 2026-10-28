@@ -36,6 +36,7 @@ test("independent host selects its plan and speech policy without exposing autho
   const routes = createCloudRoutes({
     hostPolicy: {
       ...policy,
+      speechLanguages: ["en", "es"],
       createNativeCloudAuth: () => ({
         // Mirrors cloud-enrollment: async, ISO expiry, null once lapsed.
         billingAuthority: async () =>
@@ -147,6 +148,44 @@ test("independent host selects its plan and speech policy without exposing autho
     assert.match(
       calls.at(-1).init.headers["Content-Type"],
       /boundary=independent-host-/,
+    );
+    // The same host serves people who select different languages. Overrides
+    // apply to one capture; an omitted language keeps the host's default.
+    for (const languageCode of ["es", "en", undefined]) {
+      const response = await post("/voice/stt", {
+        audioBase64: "AQID",
+        mimeType: "audio/wav",
+        ...(languageCode === undefined ? {} : { languageCode }),
+      });
+      assert.equal(response.status, 200);
+      const form = await new Response(calls.at(-1).init.body, {
+        headers: { "Content-Type": calls.at(-1).init.headers["Content-Type"] },
+      }).formData();
+      assert.equal(form.get("languageCode"), languageCode ?? "fr");
+      assert.deepEqual(
+        new Uint8Array(await form.get("audio").arrayBuffer()),
+        new Uint8Array([1, 2, 3]),
+      );
+    }
+    const beforeInvalidLanguage = calls.length;
+    for (const languageCode of [
+      "de",
+      "es\r\nInjected: true",
+      null,
+      42,
+      ["es"],
+    ]) {
+      const response = await post("/voice/stt", {
+        audioBase64: "AQID",
+        mimeType: "audio/wav",
+        languageCode,
+      });
+      assert.equal(response.status, 400);
+    }
+    assert.equal(
+      calls.length,
+      beforeInvalidLanguage,
+      "Unapproved languages never reach the provider",
     );
     const audio = await (await post("/voice/tts", { text: "bonjour" })).json();
     assert.equal(audio.audioBase64, "AQI=");
@@ -564,6 +603,79 @@ test("a sign-in 429 answer carries the reported wait in seconds, and nothing inv
   assert.deepEqual(await unavailable.json(), { error: "Unavailable." });
 });
 
+test("native Google sign-in relays only the return address to the private attempt", async (t) => {
+  const handled = [];
+  const routes = createCloudRoutes({
+    // A native-only host: no browser sign-in, so no Cloud web origin.
+    browserSignIn: false,
+    hostPolicy: {
+      ...policy,
+      createNativeCloudAuth: () => ({
+        handle: async (operation, input) => {
+          handled.push([operation, input]);
+          return { status: "ok" };
+        },
+        cancel: async () => ({ status: "cancelled" }),
+      }),
+    },
+    pendingCredentialStore: { read: async () => null },
+    speechVoice: { voiceId: "voice", modelId: "model" },
+    fetchImpl: async () => {
+      throw Error("Unexpected provider request");
+    },
+  });
+  const server = http.createServer((req, res) =>
+    routes(req, res, new URL(req.url, "http://localhost")),
+  );
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => {
+    server.closeAllConnections();
+    server.close();
+  });
+  const post = (path, value) =>
+    fetch(`http://127.0.0.1:${server.address().port}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(value),
+    });
+  const callbackUrl = "http://127.0.0.1:9/return#code=c&state=s";
+  assert.equal(
+    (await post("/cloud/native/start", { method: "google" })).status,
+    200,
+  );
+  assert.equal(
+    (await post("/cloud/native/google/return", { callbackUrl })).status,
+    200,
+  );
+  for (const value of [
+    { callbackUrl, sessionId: "x" },
+    { callbackUrl, code: "c" },
+  ])
+    assert.equal(
+      (await post("/cloud/native/google/return", value)).status,
+      400,
+    );
+  // Only the route form is served; the operation name is not a path.
+  assert.notEqual(
+    (await post("/cloud/native/google-return", { callbackUrl })).status,
+    200,
+  );
+  assert.deepEqual(handled, [
+    ["start", { method: "google" }],
+    ["google-return", { callbackUrl }],
+  ]);
+  assert.equal((await post("/cloud/login", {})).status, 404);
+  assert.equal(
+    (
+      await fetch(
+        `http://127.0.0.1:${server.address().port}/cloud/login/status?sessionId=12345678-1234-1234-1234-123456789012`,
+      )
+    ).status,
+    404,
+  );
+});
+
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {
   const calls = [];
   let cloudSaysCreated;
@@ -643,6 +755,19 @@ test("a service-only host composes CLI login and provider-default voice without 
     200,
   );
   assert.doesNotMatch(calls.at(-1).options.body.toString(), /languageCode/);
+  const beforeLanguageOverride = calls.length;
+  assert.equal(
+    (
+      await post("/voice/stt", {
+        audioBase64: "AQID",
+        mimeType: "audio/wav",
+        languageCode: "es",
+      })
+    ).status,
+    400,
+  );
+  assert.equal(calls.length, beforeLanguageOverride);
+
   assert.equal((await post("/cloud/login", {})).status, 200);
   // The login reply says whether Cloud made the account, and says it again on a
   // repeated check; an older Cloud sends no flag, and the reply has no `created`.

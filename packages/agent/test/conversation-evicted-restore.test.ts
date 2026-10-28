@@ -13,6 +13,8 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
+  createModelAttemptAllowance,
+  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -23,7 +25,12 @@ import {
   PgliteDatabaseAdapter,
   plugin as sqlPlugin,
 } from "@elizaos/plugin-sql";
-import { expect, it } from "vitest";
+import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
+import { expect, it, vi } from "vitest";
+import { createAssistantPlugin } from "../../../plugins/plugin-assistant/src/index.ts";
+import { handleTextSmall } from "../../../plugins/plugin-openai/models/text.ts";
+import { streamElizaConversation } from "../../host/src/voice/eliza-sse-bridge.ts";
+import { createLocalRuntimeConversationFetch } from "../../host/src/voice/local-runtime-conversation-fetch.ts";
 import {
   restoreConversationFromDb,
   restoreConversationsFromDb,
@@ -501,3 +508,288 @@ it.each(["\ud800", "valid-prefix\udfffsuffix"])(
   },
   120_000,
 );
+
+it("binds the real voice bridge, loopback route and model wire to one host trial", async () => {
+  vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0");
+  vi.stubEnv("ELIZA_TRAJECTORY_STRICT", "0");
+  const modelRequests: Record<string, unknown>[] = [];
+  const model = http.createServer(async (req, res) => {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    const payload = JSON.parse(body);
+    modelRequests.push(payload);
+    const text = JSON.stringify({
+      thought: "Answer directly",
+      text: "Ready.",
+      actions: ["REPLY"],
+      providers: [],
+    });
+    if (payload.stream) {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      const chunk = {
+        id: "fixture",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "fixture-model",
+        choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+      };
+      res.end(
+        `data: ${JSON.stringify(chunk)}\n\ndata: ${JSON.stringify({ ...chunk, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`,
+      );
+    } else {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          id: "fixture",
+          object: "chat.completion",
+          created: 1,
+          model: "fixture-model",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: text },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 10, total_tokens: 11 },
+        }),
+      );
+    }
+  });
+  await new Promise<void>((resolve) => model.listen(0, "127.0.0.1", resolve));
+  const modelAddress = model.address();
+  if (!modelAddress || typeof modelAddress === "string")
+    throw Error("Missing model address");
+  const baseURL = `http://127.0.0.1:${modelAddress.port}/v1`;
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({
+      name: "Bounded voice fixture",
+      settings: {
+        OPENAI_BASE_URL: baseURL,
+        OPENAI_API_KEY: "fixture-only",
+        OPENAI_SMALL_MODEL: "fixture-model",
+      },
+    }),
+    plugins: [createAssistantPlugin()],
+    enableAutonomy: false,
+    logLevel: "fatal",
+  });
+  runtime.registerModel(
+    ModelType.TEXT_EMBEDDING,
+    async () => [1, ...Array(383).fill(0)],
+    "local-fixture",
+  );
+  for (const key of [
+    ModelType.RESPONSE_HANDLER,
+    ModelType.ACTION_PLANNER,
+    ModelType.TEXT_SMALL,
+  ])
+    runtime.registerModel(key, handleTextSmall, "openai", 100);
+  let server: http.Server | undefined;
+  const stop = new AbortController();
+  try {
+    await runtime.initialize();
+    const reported = vi.spyOn(runtime, "reportError");
+    for (const key of [
+      ModelType.RESPONSE_HANDLER,
+      ModelType.ACTION_PLANNER,
+      ModelType.TEXT_SMALL,
+    ])
+      runtime.registerModel(key, handleTextSmall, "openai", 100);
+    const state: ConversationRouteState = {
+      runtime,
+      config: {} as ConversationRouteState["config"],
+      agentName: "Bounded voice fixture",
+      adminEntityId: stringToUuid("voice-budget-owner"),
+      chatUserId: stringToUuid("voice-budget-owner"),
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+      broadcastWs: null,
+    };
+    const created = await call(state, "POST", "/api/conversations", {
+      title: "Bounded fixture",
+    });
+    const conversation = (created.payload as { conversation: { id: string } })
+      .conversation;
+    const allowance = createModelAttemptAllowance({
+      signal: stop.signal,
+      budgetMicroUsd: 1000000,
+      maxAttempts: 1,
+      maxOutputTokens: 128,
+      expiresAt: Date.now() + 60000,
+      tariffs: [
+        {
+          provider: "openai-compatible",
+          model: "fixture-model",
+          route: baseURL,
+          inputNanoUsdPerToken: 100,
+          outputNanoUsdPerToken: 100,
+          inputTokenUpperBound: 262144,
+        },
+      ],
+    });
+    state.voiceModelPolicy = Object.freeze({
+      policyId: "fixture-policy",
+      sessionId: "fixture-session",
+      ownerId: String(state.adminEntityId),
+      agentId: String(runtime.agentId),
+      conversationId: conversation.id,
+      allowance,
+    });
+    server = http.createServer((req, res) => {
+      const json = (
+        response: http.ServerResponse,
+        value: unknown,
+        status = 200,
+      ) => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(JSON.stringify(value));
+      };
+      void handleConversationRoutes({
+        req,
+        res,
+        method: req.method ?? "GET",
+        pathname: new URL(req.url ?? "/", "http://localhost").pathname,
+        state,
+        callerAuthorization: {
+          ok: true,
+          role: req.headers["x-fixture-foreign"] ? "USER" : "OWNER",
+          identityId: req.headers["x-fixture-foreign"]
+            ? "foreign"
+            : "fixture-owner",
+        } as never,
+        readJsonBody: async (request) => {
+          let body = "";
+          for await (const chunk of request) body += chunk;
+          return body ? JSON.parse(body) : null;
+        },
+        json,
+        error: (response, message, status = 500) =>
+          json(response, { error: message }, status),
+      })
+        .then((handled) => {
+          if (!handled) json(res, { error: "Not found" }, 404);
+        })
+        .catch((error) => {
+          if (!res.writableEnded) json(res, { error: String(error) }, 500);
+        });
+    });
+    await new Promise<void>((resolve) =>
+      server!.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string")
+      throw Error("Missing route address");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const adapter = createLocalRuntimeConversationFetch(origin, {
+      agentId: String(runtime.agentId),
+      conversationId: conversation.id,
+    });
+    const request = {
+      endpoint: "https://fixture.invalid",
+      authorization: "fixture-server-only",
+      model: "unused",
+      transcript: "Say ready.",
+      agentId: String(runtime.agentId),
+      conversationId: conversation.id,
+      traceId: "a".repeat(32),
+      signal: stop.signal,
+      fetchImpl: adapter,
+      modelAttemptPolicy: {
+        policyId: "fixture-policy",
+        sessionId: "fixture-session",
+      },
+    };
+    for (const policy of [
+      { policyId: "foreign-policy", sessionId: "fixture-session" },
+      { policyId: "fixture-policy", sessionId: "foreign-session" },
+    ])
+      await expect(
+        streamElizaConversation(
+          { ...request, modelAttemptPolicy: policy },
+          () => {},
+        ),
+      ).rejects.toThrow();
+    await expect(
+      streamElizaConversation(
+        { ...request, modelAttemptPolicy: undefined },
+        () => {},
+      ),
+    ).rejects.toThrow();
+    const foreign = await fetch(
+      origin + `/api/conversations/${conversation.id}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Eliza-Voice-Model-Policy": "fixture-policy",
+          "X-Eliza-Voice-Session-Id": "fixture-session",
+          "X-Eliza-Local-Voice-Agent-Id": String(runtime.agentId),
+          "X-Eliza-Local-Voice-Conversation-Id": conversation.id,
+          "x-fixture-foreign": "1",
+        },
+        body: JSON.stringify({
+          text: "Do not dispatch",
+          channelType: "VOICE_DM",
+        }),
+      },
+    );
+    expect(await foreign.text()).toContain("Bounded voice model owner changed");
+    expect(modelRequests).toHaveLength(0);
+    const chunks: string[] = [];
+    const result = await streamElizaConversation(request, (text) =>
+      chunks.push(text),
+    );
+    expect(modelRequests).toHaveLength(1);
+    expect(JSON.stringify(modelRequests[0])).toContain("Say ready.");
+    expect(
+      modelRequests[0].max_tokens ?? modelRequests[0].max_completion_tokens,
+    ).toBe(128);
+    expect(JSON.stringify(modelRequests[0])).not.toContain("fixture-policy");
+    // A normal planner/recovery may need more than one attempt. Its explicit
+    // refusal is allowed here; it is not proof of a usable real voice trial.
+    expect(typeof result.completed).toBe("boolean");
+    await streamElizaConversation(
+      {
+        ...request,
+        traceId: "b".repeat(32),
+        uiContext: {
+          budgetMicroUsd: 999999999,
+          maxAttempts: 999,
+          modelAttemptTurnId: "foreign",
+        } as never,
+      },
+      () => {},
+    );
+    expect(
+      reported.mock.calls.some(
+        (row) =>
+          (row[1] as { code?: string })?.code ===
+          "MODEL_ATTEMPT_POLICY_EXHAUSTED",
+      ),
+    ).toBe(true);
+    expect(modelRequests).toHaveLength(1);
+    allowance.close();
+    await expect(
+      streamElizaConversation(
+        { ...request, traceId: "c".repeat(32) },
+        () => {},
+      ),
+    ).rejects.toThrow();
+    expect(modelRequests).toHaveLength(1);
+  } finally {
+    stop.abort();
+    if (server) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+    }
+    model.closeAllConnections();
+    await new Promise<void>((resolve) => model.close(() => resolve()));
+    await runtime.stop();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  }
+}, 60000);

@@ -50,7 +50,11 @@ import type {
   SessionStorage,
 } from "./auth-types.ts";
 import { assertSecureBaseUrl, stripTrailingSlashes } from "./base-url.ts";
-import { fetchLoginJson, LoginApiError } from "./transport.ts";
+import {
+  fetchLoginJson,
+  LoginApiError,
+  refuseLoginRedirect,
+} from "./transport.ts";
 
 // ─── Storage key ──────────────────────────────────────────────────────────────
 
@@ -859,13 +863,15 @@ export class LoginAuth {
         device_code: input.deviceCode,
         ...(input.clientId ? { client_id: input.clientId } : {}),
       }),
-      redirect: "error",
-    }).catch((err) => {
-      throw new LoginApiError(
-        err instanceof Error ? err.message : "Network request failed",
-        0,
-      );
-    });
+      redirect: "manual",
+    })
+      .then(refuseLoginRedirect)
+      .catch((err) => {
+        throw new LoginApiError(
+          err instanceof Error ? err.message : "Network request failed",
+          0,
+        );
+      });
 
     const text = await response.text();
     const payload = text ? (JSON.parse(text) as Record<string, unknown>) : {};

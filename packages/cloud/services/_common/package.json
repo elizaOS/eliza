@@ -8,12 +8,17 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./network-consent": "./src/network-consent.ts",
     "./logger": "./src/logger.ts",
     "./blooio-environment": "./src/blooio-environment.ts",
     "./node": "./src/node.ts",
     "./transport": "./src/transport.ts",
     "./testing": "./src/testing.ts",
-    "./telegram": "./src/telegram.ts"
+    "./telegram": "./src/telegram.ts",
+    "./delivery-receipts": "./src/delivery-receipts.ts",
+    "./webhook-ingress": "./src/webhook-ingress.ts",
+    "./discord-welcome-state": "./src/discord-welcome-state.ts",
+    "./discord-coordination": "./src/discord-coordination.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

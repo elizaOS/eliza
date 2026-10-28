@@ -11,6 +11,12 @@ builds. Missing hardware/models are unavailable, not fabricated inference.
 
 Initial model downloads require a network connection and sufficient disk space. Register this plugin in the agent configuration; select local/cloud routing in Settings → Model Routing.
 
+Paradee speech is part of this plugin. Its desktop worker registers with the
+shared model registry and releases native memory on voice disarm or memory
+pressure. The next request reloads it. Android bindings and pinned bundle inputs
+live in [native/android](native/android/README.md); they use `libelizainference`
+and do not register a separate Paradee plugin.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

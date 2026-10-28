@@ -298,14 +298,7 @@ export function CharacterEditor({
     activePackId,
     t,
     uiLanguage,
-    registryStatus: _registryStatus,
-    registryLoading: _registryLoading,
-    registryRegistering: _registryRegistering,
-    registryError: _registryError,
     dropStatus: _dropStatus,
-    loadRegistryStatus,
-    registerOnChain: _registerOnChain,
-    syncRegistryProfile: _syncRegistryProfile,
     loadDropStatus,
     walletConfig: _walletConfig,
     elizaCloudConnected,
@@ -334,14 +327,7 @@ export function CharacterEditor({
     activePackId: s.activePackId,
     t: s.t,
     uiLanguage: s.uiLanguage,
-    registryStatus: s.registryStatus,
-    registryLoading: s.registryLoading,
-    registryRegistering: s.registryRegistering,
-    registryError: s.registryError,
     dropStatus: s.dropStatus,
-    loadRegistryStatus: s.loadRegistryStatus,
-    registerOnChain: s.registerOnChain,
-    syncRegistryProfile: s.syncRegistryProfile,
     loadDropStatus: s.loadDropStatus,
     walletConfig: s.walletConfig,
     elizaCloudConnected: s.elizaCloudConnected,
@@ -351,9 +337,8 @@ export function CharacterEditor({
   const useElevenLabs = elizaCloudConnected || elizaCloudVoiceProxyAvailable;
   useEffect(() => {
     void loadCharacter();
-    void loadRegistryStatus();
     void loadDropStatus();
-  }, [loadCharacter, loadRegistryStatus, loadDropStatus]);
+  }, [loadCharacter, loadDropStatus]);
   const handleFieldEdit = useCallback(
     (field: string, value: unknown) => {
       if (!suppressDirtyRef.current) setFieldsEdited(true);

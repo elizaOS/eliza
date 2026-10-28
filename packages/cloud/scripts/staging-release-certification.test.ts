@@ -321,7 +321,7 @@ describe("Cloud CF workflow staging certification gate", () => {
     expect(block).toContain("staging-release-certification.ts create");
     expect(block).toContain('--event "$GITHUB_EVENT_NAME"');
     expect(block).toContain(
-      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
     );
     expect(block).toContain("retention-days: 14");
     expect(block).toContain("steps.upload.outputs.artifact-id");
@@ -344,7 +344,7 @@ describe("Cloud CF workflow staging certification gate", () => {
       'path == ".github/workflows/cloud-cf-deploy.yml"',
     );
     expect(validate).toContain(
-      "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     );
     expect(validate).toContain("artifact-ids:");
     expect(validate).toContain("github-token: $" + "{{ github.token }}");

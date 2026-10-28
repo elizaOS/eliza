@@ -1,11 +1,13 @@
 /** Authenticated, process-local voice composition for a single self-hosted agent. */
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import type http from "node:http";
 import { isIP } from "node:net";
 import type { Duplex } from "node:stream";
 import { isAllowedHost, isCredentialedCorsOrigin } from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, logger } from "@elizaos/core";
+import type { CartesiaWebSocketFactory } from "@elizaos/host/voice/cartesia-sonic-tts";
+import { createCloudSpeechRelayPorts } from "@elizaos/host/voice/cloud-speech-relay-client";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
 import {
   VoiceSession,
@@ -13,11 +15,18 @@ import {
 } from "@elizaos/host/voice/session";
 import { createVoiceSessionRegistry } from "@elizaos/host/voice/session-registry";
 import type { VoiceSessionTokenClaims } from "@elizaos/host/voice/session-token";
+import { SPEECH_RELAY_BUDGET } from "@elizaos/host/voice/speech-relay-session";
 import { InMemoryVoiceUsageStore } from "@elizaos/host/voice/usage";
 import {
   attachVoiceWsHandler,
   type VoiceSessionLike,
 } from "@elizaos/host/voice/ws-handler";
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud/cloud-config/base-url";
+import { getCloudSecret } from "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets";
+import {
+  resolveDevCloudAuthorityEnvValue,
+  resolveDevCloudEnvAuthority,
+} from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
 import WebSocket, { WebSocketServer } from "ws";
 import { authStoreForRuntime } from "../services/auth-store";
 import {
@@ -37,6 +46,7 @@ import {
   readCompatJsonBody,
 } from "./compat-route-shared";
 import { sendJson } from "./response";
+import { synthesizeDirectReadAloud } from "./self-hosted-read-aloud.js";
 import { adaptVoiceWebSocket } from "./voice-websocket-transport";
 
 const BASE = "/api/v1/voice/session";
@@ -59,9 +69,33 @@ interface Ticket extends Binding {
   claimed: boolean;
   origin: string;
 }
-interface Configuration {
-  apiKey: string;
-  voiceId: string;
+type Configuration =
+  | { route: "direct"; apiKey: string; voiceId: string }
+  | { route: "cloud"; apiKey: string; origin: string };
+/** Match the existing Cloud sealed/env/runtime and explicit dev-authority precedence. */
+function cloudSpeechConfiguration(
+  runtime?: AgentRuntime,
+): Extract<Configuration, { route: "cloud" }> {
+  const key = resolveDevCloudEnvAuthority()
+    ? resolveDevCloudAuthorityEnvValue("ELIZAOS_CLOUD_API_KEY")?.trim()
+    : getCloudSecret("ELIZAOS_CLOUD_API_KEY")?.trim() ||
+      process.env.ELIZAOS_CLOUD_API_KEY?.trim() ||
+      String(runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY || "").trim();
+  if (!key)
+    throw new VoiceAdmissionError(503, "voice_cloud_account_not_configured");
+  const apiBase = new URL(
+    resolveCloudApiBaseUrl(process.env.NEXT_PUBLIC_API_URL),
+  );
+  if (
+    apiBase.protocol !== "https:" ||
+    apiBase.pathname.replace(/\/$/, "") !== "/api/v1" ||
+    apiBase.username ||
+    apiBase.password ||
+    apiBase.search ||
+    apiBase.hash
+  )
+    throw new VoiceAdmissionError(503, "voice_cloud_origin_invalid");
+  return { route: "cloud", apiKey: key, origin: apiBase.origin };
 }
 export interface SelfHostedVoiceOptions {
   /** Protected hosts must provide continuous admission before enabling this protocol. */
@@ -69,6 +103,9 @@ export interface SelfHostedVoiceOptions {
   /** Host tests inject transports, retaining the real VoiceSession orchestration. */
   buildSession?: (config: VoiceSessionConfig) => VoiceSessionLike;
   fetchImpl?: typeof fetch;
+  /** Host tests can connect a two-ended relay without enabling a deployed route. */
+  createCloudSpeechPorts?: typeof createCloudSpeechRelayPorts;
+  cartesiaWebSocketFactory?: CartesiaWebSocketFactory;
   now?: () => number;
 }
 class VoiceAdmissionError extends Error {
@@ -80,8 +117,12 @@ class VoiceAdmissionError extends Error {
   }
 }
 
-async function configuration(): Promise<Configuration | null> {
+async function configuration(
+  runtime?: AgentRuntime,
+): Promise<Configuration | null> {
   if (process.env.ELIZA_SELF_HOSTED_VOICE_ENABLED !== "1") return null;
+  if (process.env.ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED === "1")
+    return cloudSpeechConfiguration(runtime);
   const voiceId =
     process.env.VOICE_REALTIME_CARTESIA_VOICE_ID?.trim() ||
     "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
@@ -98,7 +139,7 @@ async function configuration(): Promise<Configuration | null> {
   }
   if (!apiKey)
     throw new VoiceAdmissionError(503, "voice_provider_not_configured");
-  return { apiKey, voiceId };
+  return { route: "direct", apiKey, voiceId };
 }
 
 /** No listener, provider connection or credential read occurs on construction. */
@@ -118,6 +159,7 @@ export function createSelfHostedVoice(
     perMessageDeflate: false,
   });
   let closed = false;
+  const readAloud = new Set<AbortController>();
 
   function prune() {
     for (const [nonce, entry] of consent)
@@ -237,10 +279,93 @@ export function createSelfHostedVoice(
         sendJson(res, 200, { revoked: true });
         return true;
       }
-      if (closed || options.protectedHost || !(await configuration()))
+      const configured =
+        !closed && !options.protectedHost
+          ? await configuration(binding.runtime)
+          : null;
+      if (!configured)
         throw new VoiceAdmissionError(503, "voice_realtime_unavailable");
       prune();
-      if (req.method === "GET" && url.pathname === `${BASE}/health`) {
+      if (req.method === "POST" && url.pathname === `${BASE}/read-aloud`) {
+        // This is local self-hosted speech only. Never use a direct key to
+        // service a Cloud-configured runtime, or silently fall back providers.
+        if (configured.route !== "direct")
+          throw new VoiceAdmissionError(409, "voice_direct_route_required");
+        const body = await readCompatJsonBody(req, res);
+        if (!body) return true;
+        const requestId = req.headers["x-request-id"];
+        if (
+          typeof requestId !== "string" ||
+          !UUID.test(requestId) ||
+          Object.keys(body).some((key) => key !== "text") ||
+          typeof body.text !== "string" ||
+          !body.text.trim() ||
+          body.text.length > 16000
+        )
+          throw new VoiceAdmissionError(400, "voice_invalid_read_aloud");
+        if (readAloud.size)
+          throw new VoiceAdmissionError(429, "voice_read_aloud_busy");
+        const controller = new AbortController();
+        readAloud.add(controller);
+        const cancel = () => {
+          if (!res.writableEnded) controller.abort();
+        };
+        res.on("close", cancel);
+        let checking = false;
+        const current = async () => {
+          controller.signal.throwIfAborted();
+          if (!(await active(binding)))
+            throw new VoiceAdmissionError(401, "voice_session_revoked");
+          const next = await configuration(binding.runtime);
+          if (
+            next?.route !== "direct" ||
+            next.apiKey !== configured.apiKey ||
+            next.voiceId !== configured.voiceId
+          )
+            throw new VoiceAdmissionError(409, "voice_selection_changed");
+          controller.signal.throwIfAborted();
+        };
+        const poll = setInterval(() => {
+          if (checking) return;
+          checking = true;
+          void current()
+            .catch((error) => controller.abort(error))
+            .finally(() => {
+              checking = false;
+            });
+        }, 1000);
+        try {
+          const audio = await synthesizeDirectReadAloud({
+            text: body.text,
+            signal: controller.signal,
+            beforeDispatch: current,
+            config: {
+              apiKey: configured.apiKey,
+              voiceId: configured.voiceId,
+              websocketFactory:
+                options.cartesiaWebSocketFactory ??
+                ((url, providerOptions) =>
+                  adaptVoiceWebSocket(
+                    new WebSocket(url, { headers: providerOptions.headers }),
+                  )),
+            },
+          });
+          await current();
+          res.writeHead(200, {
+            "Content-Type": "audio/wav",
+            "Content-Length": audio.byteLength,
+            "X-Request-Id": requestId,
+            "X-Eliza-Speech-Provider": "cartesia",
+            "X-Eliza-Speech-Route": "direct",
+          });
+          res.end(audio);
+        } finally {
+          clearInterval(poll);
+          res.off("close", cancel);
+          controller.abort();
+          readAloud.delete(controller);
+        }
+      } else if (req.method === "GET" && url.pathname === `${BASE}/health`) {
         const conversationId = await checkConversation(
           binding,
           originFor(req),
@@ -250,6 +375,9 @@ export function createSelfHostedVoice(
           ready: true,
           agentId: binding.runtime.agentId,
           conversationId,
+          speechRoute: configured?.route,
+          speechProvider: "cartesia",
+          providerAdmission: "at-session-start",
         });
       } else if (req.method === "POST" && url.pathname === `${BASE}/consent`) {
         if (consent.size >= MAX_PENDING)
@@ -288,7 +416,15 @@ export function createSelfHostedVoice(
           throw new VoiceAdmissionError(429, "voice_at_capacity");
         const sessionId = randomUUID();
         const token = randomBytes(32).toString("base64url");
-        const expiresAt = now() + TTL_MS;
+        // The canonical browser client rotates at an idle boundary ten seconds
+        // before this advertised deadline. Match the Cloud speech budget
+        // without adding a second provider-remint loop or extending its limit.
+        // A turn still busy at hard expiry is interrupted, never replayed.
+        const expiresAt =
+          now() +
+          (configured.route === "cloud"
+            ? Math.min(TTL_MS, SPEECH_RELAY_BUDGET.durationMs)
+            : TTL_MS);
         const claims = {
           sessionId,
           organizationId: binding.runtime.agentId,
@@ -347,7 +483,9 @@ export function createSelfHostedVoice(
     try {
       prune();
       const config =
-        !options.protectedHost && !closed ? await configuration() : null;
+        !options.protectedHost && !closed
+          ? await configuration(state.current ?? undefined)
+          : null;
       const ticket = tickets.get(url.searchParams.get("sessionId") ?? "");
       if (!config || !ticket || ticket.claimed || !(await active(ticket))) {
         reject(401);
@@ -365,6 +503,8 @@ export function createSelfHostedVoice(
         return true;
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
+        const providerLifetime = new AbortController();
+        ws.once("close", () => providerLifetime.abort());
         const helloTimer = setTimeout(
           () => ws.close(1008, "Voice hello required"),
           5_000,
@@ -408,7 +548,59 @@ export function createSelfHostedVoice(
             return true;
           },
           admitSession: () => registry.size() < MAX_SOCKETS,
-          buildSession: ({ claims, jti, tokenExpSeconds, downlink }) => {
+          buildSession: async ({ claims, jti, tokenExpSeconds, downlink }) => {
+            let relay:
+              | Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>
+              | undefined;
+            if (config.route === "cloud") {
+              relay = await (
+                options.createCloudSpeechPorts ?? createCloudSpeechRelayPorts
+              )({
+                enabled: true,
+                origin: config.origin,
+                credential: async () => config.apiKey,
+                signal: providerLifetime.signal,
+                assertCurrent: () => {
+                  const current = cloudSpeechConfiguration(ticket.runtime);
+                  if (
+                    closed ||
+                    process.env.ELIZA_SELF_HOSTED_VOICE_ENABLED !== "1" ||
+                    process.env.ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED !==
+                      "1" ||
+                    state.current !== ticket.runtime ||
+                    tickets.get(ticket.claims.sessionId) !== ticket ||
+                    ticket.expiresAt <= now() ||
+                    current.apiKey !== config.apiKey ||
+                    current.origin !== config.origin
+                  )
+                    throw new VoiceAdmissionError(
+                      401,
+                      "voice_cloud_owner_changed",
+                    );
+                },
+              });
+              if (!(await active(ticket)) || providerLifetime.signal.aborted) {
+                await relay.close();
+                throw new VoiceAdmissionError(401, "voice_session_revoked");
+              }
+              try {
+                logger.info(
+                  {
+                    event: "cloud_speech_admitted",
+                    localVoiceSessionId: claims.sessionId,
+                    speechSessionDigest: createHash("sha256")
+                      .update(
+                        JSON.stringify({ cloudSessionId: relay.sessionId }),
+                      )
+                      .digest("hex"),
+                    expiresAt: relay.expiresAt,
+                  },
+                  "[voice-session] Cloud speech admitted",
+                );
+              } catch {
+                // Diagnostics cannot deny an otherwise admitted voice session.
+              }
+            }
             const authenticatedFetch = (async (
               input: RequestInfo | URL,
               init?: RequestInit,
@@ -431,24 +623,10 @@ export function createSelfHostedVoice(
               );
               return fetchImpl(input, { ...init, headers });
             }) as typeof fetch;
-            const sessionConfig: VoiceSessionConfig = {
+            const commonConfig = {
               ...claims,
               jti,
               tokenExpSeconds,
-              cartesiaApiKey: config.apiKey,
-              cartesiaVoiceId: config.voiceId,
-              cartesiaInkWebSocketFactory: (request) =>
-                adaptVoiceWebSocket(
-                  new WebSocket(request.url, {
-                    headers: request.headers,
-                  }),
-                ),
-              cartesiaWebSocketFactory: (url, options) =>
-                adaptVoiceWebSocket(
-                  new WebSocket(url, {
-                    headers: options.headers,
-                  }),
-                ),
               elizaEndpoint: ticket.origin,
               elizaAuthorization: "",
               elizaModel: "runtime-selected",
@@ -471,12 +649,48 @@ export function createSelfHostedVoice(
                 tickets.get(claims.sessionId) !== ticket ||
                 !(await active(ticket)),
               onTeardown: async () => {
-                tickets.delete(claims.sessionId);
+                try {
+                  await relay?.close();
+                } finally {
+                  tickets.delete(claims.sessionId);
+                }
               },
             };
-            return options.buildSession
-              ? options.buildSession(sessionConfig)
-              : new VoiceSession(sessionConfig);
+            let sessionConfig: VoiceSessionConfig;
+            if (config.route === "cloud") {
+              if (!relay)
+                throw new VoiceAdmissionError(
+                  503,
+                  "voice_cloud_transport_unavailable",
+                );
+              sessionConfig = {
+                ...commonConfig,
+                speechProvider: "injected",
+                speechPorts: relay.speechPorts,
+              };
+            } else {
+              sessionConfig = {
+                ...commonConfig,
+                cartesiaApiKey: config.apiKey,
+                cartesiaVoiceId: config.voiceId,
+                cartesiaInkWebSocketFactory: (request) =>
+                  adaptVoiceWebSocket(
+                    new WebSocket(request.url, { headers: request.headers }),
+                  ),
+                cartesiaWebSocketFactory: (url, providerOptions) =>
+                  adaptVoiceWebSocket(
+                    new WebSocket(url, { headers: providerOptions.headers }),
+                  ),
+              };
+            }
+            try {
+              return options.buildSession
+                ? options.buildSession(sessionConfig)
+                : new VoiceSession(sessionConfig);
+            } catch (error) {
+              await relay?.close();
+              throw error;
+            }
           },
         });
       });
@@ -487,6 +701,7 @@ export function createSelfHostedVoice(
     return true;
   }
   function reset() {
+    for (const controller of readAloud) controller.abort();
     consent.clear();
     for (const id of tickets.keys()) revoke(id);
     for (const client of wss.clients) client.terminate();
