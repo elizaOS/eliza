@@ -10,6 +10,9 @@ import { executePlanChange, validatePlanChangeInput } from "./plan-change.mjs";
 import { projectRenewalReview } from "./subscription-review.mjs";
 import { createSpeechStreamSessions } from "./timed-speech.mjs";
 
+const speechLanguageCode = (value) =>
+  typeof value === "string" && /^[a-z]{2}(?:-[A-Za-z0-9]{2,8})?$/.test(value);
+
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
 // Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
@@ -450,6 +453,9 @@ export function createCloudRoutes({
   verifiedAccountStore,
   credentialGate,
   pendingCredentialStore,
+  // false: the host has its own sign-in. `/cloud/login` and its status route answer
+  // 404, and no Cloud web origin (cloudSiteBase) is used.
+  browserSignIn = true,
 } = {}) {
   const billingEnabled = hostPolicy?.accountBilling !== false;
   if (
@@ -471,8 +477,11 @@ export function createCloudRoutes({
     !/^[A-Za-z0-9-]{1,32}$/.test(hostPolicy.multipartPrefix ?? "") ||
     !(
       hostPolicy.speechLanguage === null ||
-      /^[a-z]{2}(?:-[A-Za-z0-9]{2,8})?$/.test(hostPolicy.speechLanguage ?? "")
+      speechLanguageCode(hostPolicy.speechLanguage)
     ) ||
+    (hostPolicy.speechLanguages !== undefined &&
+      (!Array.isArray(hostPolicy.speechLanguages) ||
+        !hostPolicy.speechLanguages.every(speechLanguageCode))) ||
     !(
       (speechVoice === undefined && hostPolicy.providerDefaultVoice === true) ||
       (speechVoice &&
@@ -489,7 +498,7 @@ export function createCloudRoutes({
   } = hostPolicy;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
-  const site = origin(cloudSiteBase),
+  const site = browserSignIn ? origin(cloudSiteBase) : null,
     api = origin(cloudApiBase);
   const verifiedRequired = () =>
     Object.assign(new Error("Verified Cloud account activation required"), {
@@ -883,7 +892,11 @@ export function createCloudRoutes({
     try {
       await ready;
       let path = url.pathname;
-      if (!billingEnabled && path.startsWith("/cloud/account/")) {
+      if (
+        (!billingEnabled && path.startsWith("/cloud/account/")) ||
+        (!browserSignIn &&
+          (path === "/cloud/login" || path === "/cloud/login/status"))
+      ) {
         send(res, 404, { error: "Cloud route not available" });
         return true;
       }
@@ -1755,6 +1768,18 @@ export function createCloudRoutes({
           !/^audio\/[a-zA-Z0-9.+-]+(?:;.*)?$/.test(input.mimeType)
         )
           throw fail(message("validBase64AudioAndMIMETypeRequired"));
+        // A renderer can select only languages that this host explicitly admits.
+        // Keep the selection local to this capture, including concurrent requests.
+        const languageCode =
+          input.languageCode === undefined
+            ? hostPolicy.speechLanguage
+            : input.languageCode;
+        if (
+          input.languageCode !== undefined &&
+          (typeof languageCode !== "string" ||
+            !hostPolicy.speechLanguages?.includes(languageCode))
+        )
+          throw fail("Speech language is not allowed.");
         const audio = Buffer.from(input.audioBase64, "base64");
         if (!audio.length || audio.length > 8 * 1024 * 1024)
           throw fail(message("audioMustContain1ByteTo8MiB"), 413);
@@ -1765,12 +1790,12 @@ export function createCloudRoutes({
           Buffer.from(
             `--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="recording"\r\nContent-Type: ${input.mimeType}\r\n\r\n`,
           ),
-          // Language hint comes from the trusted application policy.
+          // The language hint is selected under the trusted application policy.
           audio,
           Buffer.from(
-            hostPolicy.speechLanguage === null
+            languageCode === null
               ? `\r\n--${boundary}--\r\n`
-              : `\r\n--${boundary}\r\nContent-Disposition: form-data; name="languageCode"\r\n\r\n${hostPolicy.speechLanguage}\r\n--${boundary}--\r\n`,
+              : `\r\n--${boundary}\r\nContent-Disposition: form-data; name="languageCode"\r\n\r\n${languageCode}\r\n--${boundary}--\r\n`,
           ),
         ]);
         const value = await parse(

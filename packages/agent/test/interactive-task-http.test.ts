@@ -3,11 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { TASK_ID_PATTERN } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
 import {
   TaskLifecycle,
   type TaskLifecycleState,
 } from "../../ui/src/api/task-lifecycle.ts";
+import { TASK_ID_PATTERN as STAGED_TASK_ID_PATTERN } from "../native-host/task-id.mjs";
 import { InteractiveTaskChoices } from "../src/services/interactive-task-choices.ts";
 import { createInteractiveTaskHandler } from "../src/services/interactive-task-http.ts";
 import { SqliteTaskPresentation } from "../src/services/interactive-task-presentation.ts";
@@ -17,7 +19,6 @@ import {
 } from "../src/services/interactive-task-runtime.ts";
 import { SqliteInteractiveTaskStore } from "../src/services/interactive-task-store.ts";
 import { SqliteMessageInteractionSessionStore } from "../src/services/sqlite-message-interaction-session-store.ts";
-
 import { listenTaskHttp } from "./fixtures/task-http-server.ts";
 
 const owner = {
@@ -63,6 +64,111 @@ function goal(goalRef: string) {
 }
 
 describe("interactive task HTTP host", () => {
+  it.each([false, true])(
+    "completes through host review and retains the record across restart (cleanup failure: %s)",
+    async (cleanupFails) => {
+      const storage = setup();
+      const cleanup = deferred<void>();
+      const reasons: unknown[] = [];
+      let failCleanup = cleanupFails;
+      const actuator: InteractiveTaskActuator = {
+        capabilities: [],
+        async observe() {
+          throw new Error("No observation expected");
+        },
+        async execute() {
+          throw new Error("No effect expected");
+        },
+        async quiesce({ reason }) {
+          reasons.push(reason);
+          if (reason === "complete" && failCleanup) {
+            failCleanup = false;
+            throw new Error("Native cleanup unavailable");
+          }
+          await cleanup.promise;
+        },
+      };
+      const runtime = new InteractiveTaskRuntime({
+        owner,
+        store: storage.store,
+        actuator,
+      });
+      const http = await listenTaskHttp(
+        createInteractiveTaskHandler({
+          runtime,
+          authenticate: async () => owner,
+          authorizeGoal: async (ref) => goal(ref),
+        }),
+      );
+      try {
+        runtime.create(goal("read-page"));
+        expect(
+          (await http.call("/tasks/task-1/complete", { expectedRevision: 0 }))
+            .status,
+        ).toBe(404);
+        await expect(
+          runtime.complete("task-1", 0, async () => false),
+        ).rejects.toMatchObject({ code: "TASK_UNAUTHORIZED" });
+        expect(runtime.get("task-1").revision).toBe(0);
+        const authorization = deferred<boolean>();
+        const stale = runtime.complete(
+          "task-1",
+          0,
+          () => authorization.promise,
+        );
+        runtime.control("task-1", 0, "pause");
+        authorization.resolve(true);
+        await expect(stale).rejects.toMatchObject({ code: "TASK_CONFLICT" });
+        cleanup.resolve();
+        await runtime.settle();
+        // A new task represents a new verified result; a paused one cannot finish.
+        await expect(
+          runtime.complete("task-1", 1, async () => true),
+        ).rejects.toMatchObject({ code: "TASK_CONFLICT" });
+        runtime.control("task-1", 1, "cancel");
+        await runtime.settle();
+        const next = runtime.create({ ...goal("read-page"), id: "task-2" });
+        const finishing = runtime.complete(
+          next.id,
+          next.revision,
+          async () => true,
+        );
+        if (cleanupFails) {
+          await expect(finishing).rejects.toMatchObject({
+            code: "TASK_CLEANUP_UNCONFIRMED",
+          });
+          expect(runtime.get(next.id).status).toBe("completed");
+          await runtime.settle(next.id);
+        } else await finishing;
+        const completed = runtime.get(next.id);
+        expect(completed.status).toBe("completed");
+        expect(completed.epoch).toBe(next.epoch + 1);
+        expect(reasons.at(-1)).toBe("complete");
+        expect(runtime.current()).toBeNull();
+        expect(
+          (await (await http.call("/tasks/task-2")).json()).task.status,
+        ).toBe("completed");
+        await expect(
+          runtime.observe(next.id, completed.revision, true),
+        ).rejects.toThrow();
+        const restarted = new InteractiveTaskRuntime({
+          owner,
+          store: new SqliteInteractiveTaskStore(storage.db),
+          actuator,
+        });
+        expect(restarted.get(next.id).status).toBe("completed");
+        expect(restarted.events(next.id).events.at(-1)?.kind).toBe("complete");
+        expect(restarted.current()).toBeNull();
+        expect(
+          storage.store.get(next.id, { ...owner, actorId: "another-owner" }),
+        ).toBeNull();
+      } finally {
+        cleanup.resolve();
+        await http.close();
+        storage.close();
+      }
+    },
+  );
   it.each([
     { status: "succeeded" },
     { status: "failed" },
@@ -124,6 +230,10 @@ describe("interactive task HTTP host", () => {
       expect(result.status).toBe("blocked");
       expect(result.operations[0].status).toBe("unknown");
       expect(result.operations[0].evidenceRef).toBeUndefined();
+      await expect(
+        runtime.complete("task-1", result.revision, async () => true),
+      ).rejects.toThrow();
+      expect(runtime.get("task-1").operations[0].status).toBe("unknown");
       expect(
         (await (await http.call("/tasks/task-1")).json()).task.status,
       ).toBe("blocked");
@@ -330,6 +440,10 @@ describe("interactive task HTTP host", () => {
 });
 
 describe("task event transport", () => {
+  it("gives staged native hosts the same task id rule as the protocol", () => {
+    expect(STAGED_TASK_ID_PATTERN.source).toBe(TASK_ID_PATTERN.source);
+    expect(STAGED_TASK_ID_PATTERN.flags).toBe(TASK_ID_PATTERN.flags);
+  });
   it("returns stable ordered lifecycle events with owner checks and strict cursors", async () => {
     const state = setup();
     const runtime = new InteractiveTaskRuntime({
@@ -458,6 +572,10 @@ it.each(["pause", "close"] as const)(
       await entered.promise;
       expect(runtime.get("task-1").status).toBe("paused");
       expect(completed).toBe(false);
+      // The host has paused, but the client has no confirmed reply yet.
+      expect(client.snapshot()).toMatchObject({ pending: true });
+      expect(client.isPaused()).toBe(false);
+      expect(client.currentTaskId()).toBeNull();
       // A host may close a task while its earlier Pause cleanup still awaits an ack.
       runtime.control("task-1", runtime.get("task-1").revision, "close");
       await Promise.resolve();
@@ -485,8 +603,14 @@ it.each(["pause", "close"] as const)(
         error: "",
         task: { status: "paused" },
       });
+      expect(client.snapshot()).toBe(states.at(-1));
+      expect(client.isPaused()).toBe(true);
+      expect(client.currentTaskId()).toBe("task-1");
       fail = true;
       expect(await client.control("close")).toBe(false);
+      expect(client.snapshot()).toMatchObject({ error: "pause failed" });
+      expect(client.isPaused()).toBe(false);
+      expect(client.currentTaskId()).toBeNull();
       const failedRevision = runtime.get("task-1").revision;
       expect(await client.control("pause")).toBe(false);
       expect(runtime.get("task-1").revision).toBe(failedRevision);

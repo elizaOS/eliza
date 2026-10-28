@@ -1,0 +1,488 @@
+{
+  "contract": "native-signin-callback",
+  "version": 1,
+  "description": "Reusable native Eliza Cloud sign-in callback vectors. Consumers supply their own registered callback and package. All identities and values are synthetic.",
+  "rules": [
+    "Parse the raw URL text. It must be exactly https://{host}{path}, optionally followed by ?query and/or #fragment. No port, userinfo, other scheme, other case or other path.",
+    "An empty query or fragment (a bare ? or #) is treated as absent. If both the query and the fragment are non-empty, reject.",
+    "Split the non-empty component on & into key=value pairs. Every pair needs exactly one =, a non-empty value, a key in allowedKeys, and no repeated key. Values are compared raw (no percent-decoding) against the patterns.",
+    "success: the fragment holds exactly {code,state}, code matches codePattern, state matches statePattern. A code anywhere else rejects.",
+    "error: the query or the fragment holds exactly {error,state}, error is in errorAllowlist, state matches statePattern.",
+    "empty: no query and no fragment. The app keeps its pending record until expiry or an explicit retry and shows a retry message.",
+    "reject: anything else. The app ignores the return and keeps its pending record; it compares state before burning the record.",
+    "The browser fallback page never forwards a code. Its hand-off is the callback URL with ?error=app_link_unverified&state={state} when a state matching statePattern is present in the fragment (checked first) or the query, otherwise the bare callback URL."
+  ],
+  "hosts": {
+    "production": "eliza.app",
+    "staging": "staging.eliza.app"
+  },
+  "path": "/reader/auth/callback",
+  "package": "org.example.reader",
+  "allowedKeys": ["code", "state", "error"],
+  "codePattern": "^[A-Za-z0-9_-]{43}$",
+  "statePattern": "^[A-Za-z0-9_-]{43}$",
+  "fallbackError": "app_link_unverified",
+  "errorAllowlist": [
+    "app_link_unverified",
+    "mfa_required",
+    "oauth_account_provisioning_failed",
+    "oauth_authentication_failed",
+    "oauth_authorization_failed",
+    "oauth_callback_incomplete",
+    "oauth_identity_incomplete",
+    "oauth_profile_fetch_failed",
+    "oauth_provider_unavailable",
+    "oauth_state_consumed",
+    "oauth_token_exchange_failed",
+    "oauth_verified_email_required"
+  ],
+  "stewardCodesWithoutReturn": [
+    "oauth_login_disabled",
+    "oauth_provider_mismatch",
+    "oauth_provider_unknown",
+    "oauth_redirect_invalid",
+    "oauth_state_expired",
+    "oauth_state_invalid"
+  ],
+  "authorize": {
+    "path": "/steward/auth/oauth/google/authorize",
+    "requiredParams": {
+      "response_type": "code",
+      "tenant_id": "elizacloud",
+      "code_challenge_method": "S256",
+      "prompt": "select_account",
+      "mfa": "exchange"
+    },
+    "notes": "mfa=exchange: for an account with a second factor, the success return is unchanged ({code,state} in the fragment) and POST /steward/auth/oauth/exchange answers {ok:true, mfaRequired:true, mfa:{type,challengeId,expiresAt}, user} with no tokens; the app completes through /steward/auth/mfa/{type}/complete. Older Steward deployments ignore the parameter and show their error page instead.",
+    "redirectUri": {
+      "production": "https://eliza.app/reader/auth/callback",
+      "staging": "https://staging.eliza.app/reader/auth/callback"
+    }
+  },
+  "cases": [
+    {
+      "name": "success: code and state in the fragment, as Steward emits",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "success",
+        "code": "L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      }
+    },
+    {
+      "name": "success: fragment parameter order does not matter",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI&code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0",
+      "expect": {
+        "kind": "success",
+        "code": "L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      }
+    },
+    {
+      "name": "success: staging host in a staging build",
+      "env": "staging",
+      "url": "https://staging.eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "success",
+        "code": "L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      }
+    },
+    {
+      "name": "error: Steward recovery link puts error and state in the query",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?error=oauth_authorization_failed&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "error",
+        "error": "oauth_authorization_failed",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      }
+    },
+    {
+      "name": "error: error and state in the fragment",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#error=mfa_required&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "error",
+        "error": "mfa_required",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      }
+    },
+    {
+      "name": "error: fallback page hand-off after an unverified App Link",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?error=app_link_unverified&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "error",
+        "error": "app_link_unverified",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      }
+    },
+    {
+      "name": "error: staging error return in a staging build",
+      "env": "staging",
+      "url": "https://staging.eliza.app/reader/auth/callback?error=oauth_state_consumed&state=9FmSx93tgStsdB40A3JQQbqVS4FU9GRzjBH9javPyj0",
+      "expect": {
+        "kind": "error",
+        "error": "oauth_state_consumed",
+        "state": "9FmSx93tgStsdB40A3JQQbqVS4FU9GRzjBH9javPyj0"
+      }
+    },
+    {
+      "name": "empty: parameterless return (fallback without a usable state)",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback",
+      "expect": {
+        "kind": "empty"
+      }
+    },
+    {
+      "name": "empty: empty fragment is treated as absent",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#",
+      "expect": {
+        "kind": "empty"
+      }
+    },
+    {
+      "name": "empty: empty query is treated as absent",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?",
+      "expect": {
+        "kind": "empty"
+      }
+    },
+    {
+      "name": "reject: code in the query (the old fallback hand-off shape)",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: code in the query and state in the fragment",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0#state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: extra parameter beside code and state",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI&token=x",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: code without state",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: state without code or error",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: code together with error",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&error=mfa_required&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: error outside the allowlist",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?error=access_denied&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: error without state",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?error=oauth_authorization_failed",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: error with an extra parameter",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?error=mfa_required&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI&error_description=x",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: duplicate state",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI&state=9FmSx93tgStsdB40A3JQQbqVS4FU9GRzjBH9javPyj0",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: duplicate code",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: state one character short",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hD",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: state one character long",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDIA",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: code with a character outside base64url",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ.&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: percent-encoded value (raw text must match)",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ%41&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: empty state value",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: parameter without a value separator",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: values in both the query and the fragment",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?x=1#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: error in both the query and the fragment",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback?error=mfa_required&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI#error=mfa_required&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: http scheme",
+      "env": "production",
+      "url": "http://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: custom scheme",
+      "env": "production",
+      "url": "reader://auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: intent URI",
+      "env": "production",
+      "url": "intent://eliza.app/reader/auth/callback?code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI#Intent;scheme=https;package=org.example.reader;end",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: lookalike host",
+      "env": "production",
+      "url": "https://eliza.app.evil.example/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: uppercase host",
+      "env": "production",
+      "url": "https://ELIZA.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: explicit port",
+      "env": "production",
+      "url": "https://eliza.app:443/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: userinfo",
+      "env": "production",
+      "url": "https://user@eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: trailing slash",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback/#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: longer path",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callback/extra#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: path prefix match",
+      "env": "production",
+      "url": "https://eliza.app/reader/auth/callbackx#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: staging host in a production build",
+      "env": "production",
+      "url": "https://staging.eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    },
+    {
+      "name": "reject: production host in a staging build",
+      "env": "staging",
+      "url": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "reject"
+      }
+    }
+  ],
+  "fallbackCases": [
+    {
+      "name": "success return renders the fallback: forward only error and state",
+      "pageUrl": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "handOff": "https://eliza.app/reader/auth/callback?error=app_link_unverified&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "error",
+        "error": "app_link_unverified",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      },
+      "env": "production"
+    },
+    {
+      "name": "Steward error return renders the fallback: forward app_link_unverified with its state",
+      "pageUrl": "https://eliza.app/reader/auth/callback?error=oauth_state_consumed&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "handOff": "https://eliza.app/reader/auth/callback?error=app_link_unverified&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "error",
+        "error": "app_link_unverified",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      },
+      "env": "production"
+    },
+    {
+      "name": "legacy code-in-query never forwards the code",
+      "pageUrl": "https://eliza.app/reader/auth/callback?code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "handOff": "https://eliza.app/reader/auth/callback?error=app_link_unverified&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI",
+      "expect": {
+        "kind": "error",
+        "error": "app_link_unverified",
+        "state": "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI"
+      },
+      "env": "production"
+    },
+    {
+      "name": "staging success return",
+      "env": "staging",
+      "pageUrl": "https://staging.eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=9FmSx93tgStsdB40A3JQQbqVS4FU9GRzjBH9javPyj0",
+      "handOff": "https://staging.eliza.app/reader/auth/callback?error=app_link_unverified&state=9FmSx93tgStsdB40A3JQQbqVS4FU9GRzjBH9javPyj0",
+      "expect": {
+        "kind": "error",
+        "error": "app_link_unverified",
+        "state": "9FmSx93tgStsdB40A3JQQbqVS4FU9GRzjBH9javPyj0"
+      }
+    },
+    {
+      "name": "no parameters: parameterless hand-off",
+      "pageUrl": "https://eliza.app/reader/auth/callback",
+      "handOff": "https://eliza.app/reader/auth/callback",
+      "expect": {
+        "kind": "empty"
+      },
+      "env": "production"
+    },
+    {
+      "name": "malformed state: parameterless hand-off",
+      "pageUrl": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=short",
+      "handOff": "https://eliza.app/reader/auth/callback",
+      "expect": {
+        "kind": "empty"
+      },
+      "env": "production"
+    },
+    {
+      "name": "markup in state: parameterless hand-off",
+      "pageUrl": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0&state=-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI%22%3E%3Cscript%3E",
+      "handOff": "https://eliza.app/reader/auth/callback",
+      "expect": {
+        "kind": "empty"
+      },
+      "env": "production"
+    },
+    {
+      "name": "code without state: parameterless hand-off",
+      "pageUrl": "https://eliza.app/reader/auth/callback#code=L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0",
+      "handOff": "https://eliza.app/reader/auth/callback",
+      "expect": {
+        "kind": "empty"
+      },
+      "env": "production"
+    }
+  ]
+}

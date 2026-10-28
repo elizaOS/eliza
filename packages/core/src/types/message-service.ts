@@ -31,7 +31,24 @@ import type { State } from "./state";
 /**
  * Configuration options for message processing
  */
+export type {
+	TypedReadEgressReceipt,
+	TypedReadFact,
+	TypedReadReplyBinding,
+	TypedReadReplyPart,
+	TypedReadReplyPolicy,
+	TypedReadReplyResolver,
+	TypedReadReplyVerdict,
+	TypedReadRequirement,
+} from "../runtime/typed-read-contract";
+
 export interface MessageProcessingOptions {
+	/** Trusted host projection from this turn's admitted producer receipts; never populated by RPC input. */
+	resolveTypedReadReply?: import("../runtime/typed-read-contract").TypedReadReplyResolver;
+	/** In-process proof of exact producer-backed terminal text, not a model-authored success flag. */
+	onTypedReadEgress?: (
+		receipt: import("../runtime/typed-read-contract").TypedReadEgressReceipt,
+	) => void;
 	maxRetries?: number;
 	useMultiStep?: boolean;
 	maxMultiStepIterations?: number;
@@ -51,6 +68,12 @@ export interface MessageProcessingOptions {
 	onStreamChunk?: StreamChunkCallback;
 	/** Transient progress from existing inference; never a persisted or final reply. */
 	onPlanningAcknowledgment?: (text: string) => void;
+	/**
+	 * Called at most once when Stage 1 commits the turn to a response; never
+	 * for IGNORE/STOP or gated turns. Presence only: it carries no content and
+	 * persists nothing. Hosts may start a typing indicator.
+	 */
+	onResponseDecision?: () => void;
 	/**
 	 * When true, run a follow-up reasoning pass after actions complete so the
 	 * agent can decide whether to share results, run another action, or stop.

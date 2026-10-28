@@ -99,6 +99,28 @@ export function createManagedCalendarRead(
   }
   return {
     mutation: (input: Record<string, unknown>) => call(input),
+    async writeCapabilities(grantId: string, calendarId: string) {
+      if (!scoped(grantId) || !calendarId)
+        throw Error("Choose the exact connected Calendar");
+      const c = await call({
+        operation: "write-capabilities",
+        grantId,
+        calendarId,
+      });
+      if (
+        c.version !== 1 ||
+        c.grantId !== grantId ||
+        c.calendarId !== calendarId ||
+        typeof c.accountId !== "string" ||
+        c.read !== true ||
+        c.write !== true ||
+        c.idempotentCreate !== true ||
+        c.conditionalWrites !== true ||
+        c.providerExactlyOnce !== false
+      )
+        throw Error("Calendar write access could not be verified");
+      return c as Record<string, unknown> & { accountId: string };
+    },
     acceptsGrantId: (grantId?: string) => !grantId || scoped(grantId),
     owns: (calendar: LifeOpsCalendarSummary) => scoped(calendar.grantId),
     async sources(): Promise<LifeOpsCalendarSummary[]> {

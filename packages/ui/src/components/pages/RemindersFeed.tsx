@@ -1,3 +1,14 @@
+import {
+  canSnoozeReminder,
+  reminderDeliveryLabel,
+  reminderDue,
+} from "../../utils/reminder-presentation";
+
+export {
+  canSnoozeReminder,
+  reminderDeliveryLabel,
+} from "../../utils/reminder-presentation";
+
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsDefinitionCreationResult,
@@ -81,32 +92,6 @@ async function request<T>(
   } finally {
     unsubscribe();
   }
-}
-export function reminderDeliveryLabel(row: ReminderRow): string {
-  if (row.definition.status === "archived") return "cancelled";
-  if (row.definition.status === "paused") return "paused";
-  if (row.definition.status === "completed") return "completed";
-  const state = row.occurrence?.state;
-  if (
-    state &&
-    ["snoozed", "completed", "skipped", "expired", "muted"].includes(state)
-  )
-    return state;
-  if (state && !["pending", "visible"].includes(state)) return "unknown";
-  const outcome = row.latestAttempt?.outcome;
-  if (outcome?.startsWith("delivered")) return "delivered";
-  if (outcome?.startsWith("blocked")) return "blocked";
-  if (outcome === "skipped_duplicate") return "duplicate";
-  if (outcome) return "unknown";
-  return row.occurrence ? "scheduled" : "unscheduled";
-}
-export function canSnoozeReminder(row: ReminderRow): boolean {
-  return (
-    row.definition.status === "active" &&
-    !!row.occurrence &&
-    ["pending", "visible", "snoozed"].includes(row.occurrence.state) &&
-    !row.occurrence.metadata?.reminderAcknowledgedAt
-  );
 }
 export type ReminderCounts = { all: number; active: number; inactive: number };
 export interface RemindersFeedHandle {
@@ -279,12 +264,7 @@ function AuthorityRemindersFeed({
       ) : (
         <ul className="divide-y divide-border/40">
           {visibleRows.map((row) => {
-            const due =
-              row.occurrence?.snoozedUntil ??
-              row.occurrence?.dueAt ??
-              (row.definition.cadence.kind === "once"
-                ? row.definition.cadence.dueAt
-                : null);
+            const due = reminderDue(row);
             const hasBody =
               row.definition.cadence.kind === "once" &&
               row.definition.metadata?.ownerSurface === "OWNER_REMINDERS" &&
@@ -429,12 +409,7 @@ function ReminderFeedRow({
   const deliveryLabel = reminderDeliveryLabel(row);
   const successful =
     deliveryLabel === "delivered" || deliveryLabel === "completed";
-  const due =
-    row.occurrence?.snoozedUntil ??
-    row.occurrence?.dueAt ??
-    (row.definition.cadence.kind === "once"
-      ? row.definition.cadence.dueAt
-      : null);
+  const due = reminderDue(row);
   const openAction = useAgentElement<HTMLButtonElement>({
     id: `open-reminder-${row.definition.id}`,
     role: "button",

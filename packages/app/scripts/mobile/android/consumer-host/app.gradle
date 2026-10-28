@@ -1,7 +1,46 @@
 apply plugin: 'com.android.application'
-apply plugin: 'org.jetbrains.kotlin.android'
 def profile = new groovy.json.JsonSlurper().parse(rootProject.file('.eliza-consumer-profile.json'))
+if (profile.kotlin) apply plugin: 'org.jetbrains.kotlin.android'
 def identity = profile.identity
+def hostEnvironment = { String name -> def value = System.getenv(name); value == null || value.trim().isEmpty() ? null : value.trim() }
+// The generated identity unless the declared environment overrides it for a release.
+def hostVersionCode = identity.versionCode
+def hostVersionName = identity.version
+if (profile.versionOverride) {
+ def code = hostEnvironment(profile.versionOverride.versionCode)
+ if (code != null) {
+  if (!(code ==~ /[1-9][0-9]{0,9}/) || code.toLong() > 2100000000L)
+   throw new GradleException("${profile.versionOverride.versionCode} must be a positive integer no greater than 2100000000")
+  hostVersionCode = code.toInteger()
+ }
+ def name = hostEnvironment(profile.versionOverride.versionName)
+ if (name != null) {
+  if (!(name ==~ /[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}/))
+   throw new GradleException("${profile.versionOverride.versionName} must be a plain version label")
+  hostVersionName = name
+ }
+}
+// Release signing applies only when every declared variable is set; a partial set
+// fails. Only variable names are ever reported, never their values.
+def hostSigning = null
+if (profile.signing) {
+ def names = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].collect { profile.signing[it] }
+ def missing = names.findAll { hostEnvironment(it) == null }
+ if (!missing.isEmpty() && missing.size() < names.size())
+  throw new GradleException("[release-signing] incomplete signing environment. Missing: ${missing.join(', ')}. Set all of ${names.join(', ')}, or none.")
+ if (missing.isEmpty()) {
+  def store = file(hostEnvironment(profile.signing.storeFile))
+  if (!store.isFile()) throw new GradleException("${profile.signing.storeFile} does not name a readable keystore file")
+  hostSigning = [store: store, storePassword: hostEnvironment(profile.signing.storePassword),
+   keyAlias: hostEnvironment(profile.signing.keyAlias), keyPassword: hostEnvironment(profile.signing.keyPassword)]
+ }
+}
+// Exactly "1" (Gradle property or environment) attaches test-only sources to debug variants.
+def hostTestMocks = false
+if (profile.testMocks) {
+ def raw = project.findProperty(profile.testMocks.property) ?: System.getenv(profile.testMocks.property)
+ hostTestMocks = raw != null && raw.toString() == '1'
+}
 android {
  namespace identity.appId
  compileSdk rootProject.ext.compileSdkVersion
@@ -9,11 +48,12 @@ android {
   applicationId identity.appId
   minSdk rootProject.ext.minSdkVersion
   targetSdk rootProject.ext.targetSdkVersion
-  versionCode identity.versionCode
-  versionName identity.version
+  versionCode hostVersionCode
+  versionName hostVersionName
   manifestPlaceholders = profile.manifestPlaceholders
   testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
   profile.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+  if (profile.testMocks?.buildConfigField) buildConfigField 'boolean', profile.testMocks.buildConfigField, 'false'
  }
  buildFeatures { buildConfig true }
  androidResources { noCompress.addAll(profile.noCompress) }
@@ -26,18 +66,53 @@ android {
    }
   }
  }
+ sourceSets.main.manifest.srcFile profile.manifest
+ sourceSets.main.res.srcDir profile.identityResources
+ profile.flavors.each { flavor -> if (flavor.manifest) sourceSets.getByName(flavor.name).manifest.srcFile flavor.manifest }
  profile.sourceSets.each { name, inputs ->
   inputs.each { kind, directories -> sourceSets.getByName(name).getProperty(kind).srcDirs(directories) }
  }
+ profile.generatedSources.each { entry ->
+  sourceSets.getByName(entry.sourceSet).getProperty(entry.kind).srcDir(layout.buildDirectory.dir(entry.path))
+ }
+ if (hostTestMocks) {
+  profile.testMocks.debug.java.each { directory -> sourceSets.debug.java.srcDir directory }
+  profile.testMocks.debug.res.each { directory -> sourceSets.debug.res.srcDir directory }
+  if (profile.testMocks.debug.manifest) sourceSets.debug.manifest.srcFile profile.testMocks.debug.manifest
+  profile.testMocks.androidTest.java.each { directory -> sourceSets.androidTest.java.srcDir directory }
+ }
+ signingConfigs {
+  if (hostSigning) {
+   release {
+    storeFile hostSigning.store
+    storePassword hostSigning.storePassword
+    keyAlias hostSigning.keyAlias
+    keyPassword hostSigning.keyPassword
+   }
+  }
+ }
  buildTypes {
-  debug { debuggable true }
-  release { minifyEnabled profile.releaseMinify }
+  debug {
+   debuggable true
+   profile.buildTypes.debug.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+   if (profile.testMocks?.buildConfigField) buildConfigField 'boolean', profile.testMocks.buildConfigField, hostTestMocks ? 'true' : 'false'
+   if (profile.buildTypes.debug.abiFilters) ndk { abiFilters(*profile.buildTypes.debug.abiFilters) }
+  }
+  release {
+   minifyEnabled profile.releaseMinify
+   if (profile.buildTypes.release.shrinkResources) shrinkResources true
+   if (profile.releaseMinify) proguardFiles(getDefaultProguardFile('proguard-android-optimize.txt'), *profile.buildTypes.release.proguardFiles)
+   profile.buildTypes.release.buildConfigFields.each { field -> buildConfigField field.type, field.name, field.value }
+   if (profile.buildTypes.release.abiFilters) ndk { abiFilters(*profile.buildTypes.release.abiFilters) }
+   if (hostSigning) signingConfig signingConfigs.release
+  }
  }
  compileOptions {
   sourceCompatibility JavaVersion.toVersion(profile.toolchain.java)
   targetCompatibility JavaVersion.toVersion(profile.toolchain.java)
  }
- kotlinOptions { jvmTarget = String.valueOf(profile.toolchain.java) }
+ if (profile.kotlin) kotlinOptions { jvmTarget = String.valueOf(profile.toolchain.java) }
+ if (profile.preserveRuntimeBytes) packaging.jniLibs.useLegacyPackaging = true
  if (profile.runtimeMain) {
   // AGP's asset merger does not honor AndroidSourceDirectorySet exclusions.
   def runtimeAssets = tasks.register('stageElizaConsumerRuntimeAssets', Sync) {
@@ -48,10 +123,28 @@ android {
   sourceSets.main.assets.srcDir(runtimeAssets.map { it.destinationDir })
   tasks.named('preBuild').configure { dependsOn runtimeAssets }
   sourceSets.main.jniLibs.srcDir(new File(profile.runtimeMain, 'jniLibs'))
-  packaging.jniLibs.useLegacyPackaging = true
  }
 }
 dependencies {
  profile.modules.findAll { it.appDependency }.each { module -> implementation project(":${module.name}") }
  profile.dependencies.each { dependency -> add(dependency.configuration, dependency.coordinate) }
 }
+// Consumer admission runs before every build of the app, however Gradle is invoked.
+profile.admission.each { step ->
+ def admission = tasks.register(step.name, Exec) {
+  workingDir step.directory
+  commandLine step.command
+ }
+ tasks.named('preBuild').configure { dependsOn admission }
+}
+if (!profile.assetFiles.isEmpty()) {
+ def assetDirectory = layout.buildDirectory.dir('generated/eliza-consumer-assets')
+ def assetFiles = tasks.register('stageElizaConsumerAssetFiles', Sync) {
+  profile.assetFiles.each { asset -> from(asset.source) { rename { asset.name } } }
+  into assetDirectory
+ }
+ android.sourceSets.main.assets.srcDir(assetDirectory)
+ tasks.named('preBuild').configure { dependsOn assetFiles }
+}
+// Consumer-owned product configuration, applied after the generated policy.
+profile.appScripts.each { script -> apply from: script }

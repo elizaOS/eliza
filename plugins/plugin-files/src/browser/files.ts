@@ -752,11 +752,9 @@ export class BrowserFiles extends WebPlugin {
         input.action === "move" ? "Selection moved." : "Selection deleted.",
     };
   }
-  async shareMany(input: {
-    items: { id: string; expectedRevision: string }[];
-  }) {
+  private async archiveMany(items: { id: string; expectedRevision: string }[]) {
     const all = await this.storage.entries(),
-      rows = this.batchRows(all, input.items),
+      rows = this.batchRows(all, items),
       files: { path: string; bytes: Uint8Array<ArrayBuffer> }[] = [];
     const visit = async (row: Entry, path: string) => {
       if (row.directory) {
@@ -772,8 +770,22 @@ export class BrowserFiles extends WebPlugin {
       }
     };
     for (const row of rows) await visit(row, row.name);
-    const blob = fileArchive(files),
-      url = URL.createObjectURL(blob),
+    return new File([fileArchive(files)], this.options.archiveName, {
+      type: "application/zip",
+    });
+  }
+  async shareMany(input: {
+    items: { id: string; expectedRevision: string }[];
+  }) {
+    const file = await this.archiveMany(input.items);
+    if (!navigator.share || !navigator.canShare?.({ files: [file] }))
+      throw Error("Sharing is unavailable in this browser.");
+    await navigator.share({ files: [file] });
+    return { status: "opened" };
+  }
+  async saveMany(input: { items: { id: string; expectedRevision: string }[] }) {
+    const file = await this.archiveMany(input.items),
+      url = URL.createObjectURL(file),
       link = document.createElement("a");
     link.href = url;
     link.download = this.options.archiveName;

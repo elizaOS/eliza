@@ -32,11 +32,11 @@
     "bun": "1.4.2"
   },
   "devDependencies": {
-    "@elizaos/vitest-vite": "npm:vite@7.3.5",
+    "@elizaos/vitest-vite": "npm:vite@7.3.7",
     "tsx": "^4.20.0",
     "@elizaos/testing": "workspace:*",
     "@elizaos/core": "workspace:*",
-    "vitest": "^5.0.3",
+    "vitest": "^5.0.5",
     "fflate": "^0.8.3",
     "zod": "^4.6.5",
     "@elizaos/plugin-assistant": "workspace:*"

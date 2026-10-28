@@ -284,6 +284,15 @@ export const GUARDED_REAL_LIVE_SUITES = [
     probe: "fused inference library with Kokoro support",
   },
   {
+    file: "plugins/plugin-local-inference/src/services/voice/paradee/__tests__/paradee-engine-bridge.real.test.ts",
+    blocked:
+      "plugin-local-inference excludes *.real.test.ts from its default config; run with Bun, the fused native library and its reviewed digest, and the staged Paradee v1.1 model",
+    probe:
+      "Bun, fused inference library with Paradee support and a reviewed digest, staged Paradee-8M v1.1 model",
+    notes:
+      "voice-live-e2e.yml voice-acoustic-matrix runs it under bun test against the staged bundle",
+  },
+  {
     file: "plugins/plugin-local-inference/src/services/voice/speaker/diarizer-fused.real.test.ts",
     blocked:
       "plugin-local-inference excludes *.real.test.ts from its default config; run with Bun and the fused diarizer library",

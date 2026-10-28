@@ -88,6 +88,10 @@ test("selected variants are built and verified before archiving; unrelated APKs 
     JSON.parse(fs.readFileSync(path.join(result.archive, "service-mode.json"))),
     f.options.archive.metadata,
   );
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(result.archive, "build-checks.json"))),
+    { lint: true, androidTest: true },
+  );
 });
 test("admission and build failures cannot publish an archive", (t) => {
   for (const failed of ["admit", "sync", "./gradlew", "verify"]) {
@@ -147,6 +151,11 @@ test("invalid names, duplicates and unserializable metadata fail before any comm
     { archive: { name: "../escape", metadata: {} } },
     { verify: null },
     { archive: { name: "production", metadata: 1n } },
+    { record: { name: "apk-manifest.json", metadata: {} } },
+    { record: { name: "../build-record.json", metadata: {} } },
+    { record: { name: "build-record.txt", metadata: {} } },
+    { record: { name: "build-record.json" } },
+    { record: { name: "build-record.json", metadata: 1n } },
   ]) {
     const f = fixture(t);
     Object.assign(f.options, patch);
@@ -168,6 +177,74 @@ test("daemon and fixture/native archive selection stay host-controlled", (t) => 
   assert.equal(path.basename(result.archive), "native-fixture");
 });
 
+test("lint and androidTest switches and in-run prepare steps shape the one Gradle invocation", (t) => {
+  const f = fixture(t);
+  const seen = [];
+  f.options.lint = false;
+  f.options.androidTest = false;
+  f.options.variants = ["launcher"];
+  f.options.prepare = [
+    { command: "sync", args: [] },
+    (context) => seen.push(context),
+    { gradleTasks: [":updater:assembleDebug", ":updater:assembleRelease"] },
+  ];
+  const result = f.build();
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(result.archive, "build-checks.json"))),
+    { lint: false, androidTest: false },
+  );
+  assert.deepEqual(seen, [
+    { root: f.root, environment: f.options.environment },
+  ]);
+  assert.deepEqual(
+    f.calls.map((c) => c.command),
+    ["sync", "./gradlew", "verify"],
+  );
+  assert.deepEqual(f.calls[1].args, [
+    "--no-daemon",
+    ":app:assembleLauncherDebug",
+    ":app:assembleLauncherRelease",
+    ":updater:assembleDebug",
+    ":updater:assembleRelease",
+  ]);
+  for (const prepare of [
+    [{ gradleTasks: [] }],
+    [{ gradleTasks: ["--init-script=evil.gradle"] }],
+    [{ gradleTasks: [":ok", 1] }],
+    [{ command: "sync", args: [], gradleTasks: ["--init-script=evil.gradle"] }],
+    [{ command: "sync", args: [], gradleTasks: [":updater:assembleDebug"] }],
+  ]) {
+    const g = fixture(t);
+    g.options.prepare = prepare;
+    assert.throws(g.build, /Invalid Android admission command/);
+    assert.equal(g.calls.length, 0);
+  }
+  for (const patch of [{ lint: "false" }, { androidTest: 0 }]) {
+    const g = fixture(t);
+    Object.assign(g.options, patch);
+    assert.throws(g.build, /must be booleans/);
+    assert.equal(g.calls.length, 0);
+  }
+});
+
+test("a prepare function that throws or is async stops the build before Gradle", (t) => {
+  for (const step of [
+    () => {
+      throw Error("controlled failure");
+    },
+    async () => {},
+  ]) {
+    const f = fixture(t);
+    f.options.prepare = [step, { command: "sync", args: [] }];
+    assert.throws(f.build, /controlled failure|must be synchronous/);
+    assert.deepEqual(f.calls, []);
+    assert.equal(
+      fs.existsSync(path.join(f.root, "artifacts/production")),
+      false,
+    );
+  }
+});
+
 test("a successful verifier that produces no fresh manifest cannot reuse old evidence", (t) => {
   const f = fixture(t),
     run = f.options.run;
@@ -183,6 +260,118 @@ test("a successful verifier that produces no fresh manifest cannot reuse old evi
   assert.equal(fs.existsSync(path.join(f.root, "artifacts/production")), false);
 });
 
+test("earlier verification evidence is withdrawn before Gradle can replace any artifact", (t) => {
+  const f = fixture(t),
+    run = f.options.run;
+  fs.mkdirSync(path.join(f.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/apk-manifest.json"),
+    "old evidence",
+  );
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/standalone-debug.apk"),
+    "prior",
+  );
+  f.options.run = (command, ...args) => {
+    if (command === "./gradlew") throw Error("controlled failure");
+    return run(command, ...args);
+  };
+  assert.throws(f.build, /controlled failure/);
+  // The prior APKs stay as they were, but nothing still vouches for them.
+  assert.equal(
+    fs.existsSync(path.join(f.root, "artifacts/apk-manifest.json")),
+    false,
+  );
+  assert.equal(
+    fs.readFileSync(
+      path.join(f.root, "artifacts/standalone-debug.apk"),
+      "utf8",
+    ),
+    "prior",
+  );
+});
+
+test("the build record is written only beside this build's artifacts, before verification", (t) => {
+  const f = fixture(t),
+    run = f.options.run;
+  f.options.record = {
+    name: "build-record.json",
+    metadata: { testMocks: false, profile: "native" },
+  };
+  const record = path.join(f.root, "artifacts/build-record.json");
+  let seenByVerifier = null;
+  f.options.run = (command, ...args) => {
+    if (command === "verify")
+      seenByVerifier = {
+        record: JSON.parse(fs.readFileSync(record, "utf8")),
+        apk: fs.readFileSync(
+          path.join(f.root, "artifacts/launcher-release-unsigned.apk"),
+          "utf8",
+        ),
+      };
+    return run(command, ...args);
+  };
+  const result = f.build();
+  assert.deepEqual(seenByVerifier, {
+    record: f.options.record.metadata,
+    apk: "launcher:release:current",
+  });
+  assert.deepEqual(
+    JSON.parse(
+      fs.readFileSync(path.join(result.archive, "build-record.json"), "utf8"),
+    ),
+    f.options.record.metadata,
+  );
+  assert.equal(
+    fs
+      .readdirSync(path.join(f.root, "artifacts"))
+      .some((name) => name.endsWith(".pending")),
+    false,
+  );
+  // A failed build keeps the previous record with the previous artifacts.
+  const failed = fixture(t),
+    failedRun = failed.options.run;
+  failed.options.record = { name: "build-record.json", metadata: { next: 1 } };
+  fs.mkdirSync(path.join(failed.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(failed.root, "artifacts/build-record.json"),
+    "previous record",
+  );
+  failed.options.run = (command, ...args) => {
+    if (command === "./gradlew") throw Error("controlled failure");
+    return failedRun(command, ...args);
+  };
+  assert.throws(failed.build, /controlled failure/);
+  assert.equal(
+    fs.readFileSync(
+      path.join(failed.root, "artifacts/build-record.json"),
+      "utf8",
+    ),
+    "previous record",
+  );
+  // A copy that fails after Gradle succeeded leaves no record describing mixed artifacts.
+  const interrupted = fixture(t);
+  interrupted.options.record = {
+    name: "build-record.json",
+    metadata: { next: 2 },
+  };
+  fs.mkdirSync(path.join(interrupted.root, "artifacts"));
+  fs.writeFileSync(
+    path.join(interrupted.root, "artifacts/build-record.json"),
+    "previous record",
+  );
+  // A directory where an APK must be copied makes the copy fail midway.
+  fs.mkdirSync(
+    path.join(interrupted.root, "artifacts/launcher-debug.apk/blocked"),
+    { recursive: true },
+  );
+  assert.throws(interrupted.build);
+  assert.equal(
+    fs.existsSync(path.join(interrupted.root, "artifacts/build-record.json")),
+    false,
+  );
+});
+
 test("reusing an archive replaces its contents when selected variants shrink", (t) => {
   const f = fixture(t);
   const first = f.build();
@@ -194,6 +383,7 @@ test("reusing an archive replaces its contents when selected variants shrink", (
   const second = f.build();
   assert.deepEqual(fs.readdirSync(second.archive).sort(), [
     "apk-manifest.json",
+    "build-checks.json",
     "launcher-debug.apk",
     "launcher-release-unsigned.apk",
     "service-mode.json",
@@ -234,4 +424,209 @@ test("archive assembly failure preserves the previous verified archive", (t) => 
       .some((name) => name.startsWith(".android-archive-")),
     false,
   );
+});
+
+function product(t, { signed = false } = {}) {
+  const f = fixture(t);
+  Object.assign(f.options, {
+    project: "host",
+    output: "artifacts/product",
+    archive: null,
+    gradleArguments: ["-PHOST_SWITCH=0", "--offline"],
+    androidTestOutput: "instrumentation",
+    signing: { environment: ["HOST_STORE", "HOST_KEY"] },
+    mappings: true,
+  });
+  f.options.run = (command, args, opts) => {
+    f.calls.push({ command, args, opts });
+    const outputs = path.join(f.root, "host/app/build/outputs");
+    const write = (relative, value) => {
+      fs.mkdirSync(path.dirname(path.join(outputs, relative)), {
+        recursive: true,
+      });
+      fs.writeFileSync(path.join(outputs, relative), value);
+    };
+    if (command === "./gradlew")
+      for (const task of args) {
+        const match =
+          /^:app:assemble([A-Z][a-z]+)(Debug|Release|DebugAndroidTest)$/.exec(
+            task,
+          );
+        if (!match) continue;
+        const variant = match[1].toLowerCase();
+        if (match[2] === "Debug")
+          write(
+            `apk/${variant}/debug/app-${variant}-debug.apk`,
+            `${variant}:debug`,
+          );
+        else if (match[2] === "DebugAndroidTest")
+          write(
+            `apk/androidTest/${variant}/debug/app-${variant}-debug-androidTest.apk`,
+            `${variant}:test`,
+          );
+        else {
+          write(
+            `apk/${variant}/release/app-${variant}-release${signed ? "" : "-unsigned"}.apk`,
+            `${variant}:release`,
+          );
+          write(`mapping/${variant}Release/mapping.txt`, `${variant}:mapping`);
+        }
+      }
+    if (command === "verify")
+      fs.writeFileSync(
+        path.join(f.root, "artifacts/product/apk-manifest.json"),
+        "{}",
+      );
+  };
+  return f;
+}
+
+test("product hosts choose project, output, Gradle properties and retained test and mapping files", (t) => {
+  const f = product(t);
+  fs.mkdirSync(path.join(f.root, "artifacts/product/instrumentation"), {
+    recursive: true,
+  });
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/product/instrumentation/stale.apk"),
+    "old",
+  );
+  fs.writeFileSync(
+    path.join(f.root, "artifacts/product/standalone-release.apk"),
+    "an older signed build",
+  );
+  const result = f.build();
+  assert.equal(result.archive, null);
+  const gradle = f.calls.find((call) => call.command === "./gradlew");
+  assert.equal(gradle.opts.cwd, path.join(f.root, "host"));
+  assert.deepEqual(gradle.args.slice(0, 3), [
+    "--no-daemon",
+    "-PHOST_SWITCH=0",
+    "--offline",
+  ]);
+  const output = path.join(f.root, "artifacts/product");
+  assert.deepEqual(fs.readdirSync(output).sort(), [
+    "apk-manifest.json",
+    "instrumentation",
+    "launcher-debug.apk",
+    "launcher-release-unsigned.apk",
+    "mapping",
+    "standalone-debug.apk",
+    "standalone-release-unsigned.apk",
+  ]);
+  assert.deepEqual(
+    fs.readdirSync(path.join(output, "instrumentation")).sort(),
+    ["launcher-androidTest.apk", "standalone-androidTest.apk"],
+  );
+  assert.equal(
+    fs.readFileSync(
+      path.join(output, "mapping/launcher-release-mapping.txt"),
+      "utf8",
+    ),
+    "launcher:mapping",
+  );
+});
+
+test("a signed release keeps its name, and requested signing never yields an unsigned release", (t) => {
+  const signed = product(t, { signed: true });
+  signed.options.environment = { HOST_STORE: "/k", HOST_KEY: "secret" };
+  signed.build();
+  assert.ok(
+    fs.existsSync(
+      path.join(signed.root, "artifacts/product/launcher-release.apk"),
+    ),
+  );
+  const unsigned = product(t);
+  unsigned.options.environment = { HOST_STORE: "/k", HOST_KEY: "secret" };
+  assert.throws(
+    unsigned.build,
+    /HOST_STORE, HOST_KEY are set but Gradle produced an unsigned/,
+  );
+  assert.equal(
+    unsigned.calls.some((call) => call.command === "verify"),
+    false,
+  );
+  // A blank value is not a signing request; the unsigned release is reported as such.
+  const blank = product(t);
+  blank.options.environment = { HOST_STORE: "/k", HOST_KEY: " " };
+  blank.build();
+  // A previous signed release output cannot be mistaken for this build's release.
+  const stale = product(t);
+  const old = path.join(
+    stale.root,
+    "host/app/build/outputs/apk/standalone/release/app-standalone-release.apk",
+  );
+  fs.mkdirSync(path.dirname(old), { recursive: true });
+  fs.writeFileSync(old, "previous signed build");
+  stale.build();
+  assert.ok(
+    fs.existsSync(
+      path.join(
+        stale.root,
+        "artifacts/product/standalone-release-unsigned.apk",
+      ),
+    ),
+  );
+  assert.equal(fs.existsSync(old), false);
+});
+
+test("sequential builds run one variant and mode at a time and discard packaging intermediates", (t) => {
+  const f = product(t);
+  f.options.sequential = true;
+  f.options.variants = ["launcher"];
+  f.options.androidTestOutput = "";
+  f.options.prepare = [{ gradleTasks: [":updater:assembleDebug"] }];
+  const intermediates = path.join(f.root, "host/app/build/intermediates");
+  fs.mkdirSync(path.join(intermediates, "merged_native_libs"), {
+    recursive: true,
+  });
+  fs.mkdirSync(path.join(intermediates, "javac"), { recursive: true });
+  f.build();
+  assert.deepEqual(
+    f.calls
+      .filter((call) => call.command === "./gradlew")
+      .map((call) => call.args.slice(3)),
+    [
+      [":app:assembleLauncherDebug", ":app:assembleLauncherDebugAndroidTest"],
+      [":app:assembleLauncherRelease"],
+      [":updater:assembleDebug", ":app:lint"],
+    ],
+  );
+  assert.equal(
+    fs.existsSync(path.join(intermediates, "merged_native_libs")),
+    false,
+  );
+  assert.equal(fs.existsSync(path.join(intermediates, "javac")), true);
+  assert.ok(
+    fs.existsSync(
+      path.join(f.root, "artifacts/product/launcher-androidTest.apk"),
+    ),
+  );
+  const linked = product(t);
+  linked.options.sequential = true;
+  fs.mkdirSync(path.join(linked.root, "host/app/build"), { recursive: true });
+  fs.symlinkSync(
+    os.tmpdir(),
+    path.join(linked.root, "host/app/build/intermediates"),
+  );
+  assert.throws(linked.build, /Unsafe packaging intermediate path/);
+});
+
+test("unsafe paths, Gradle arguments and signing names are refused before any command", (t) => {
+  for (const patch of [
+    { project: "../outside" },
+    { output: "/tmp/artifacts" },
+    { androidTestOutput: "../escape" },
+    { gradleArguments: ["--init-script=evil.gradle"] },
+    { gradleArguments: ["-Dorg.gradle.dependency.verification=off"] },
+    { gradleArguments: ["-PNAME=$(touch x)"] },
+    { signing: { environment: [] } },
+    { signing: { environment: ["lower"] } },
+    { mappings: "yes" },
+    { sequential: 1 },
+  ]) {
+    const f = product(t);
+    Object.assign(f.options, patch);
+    assert.throws(f.build);
+    assert.equal(f.calls.length, 0);
+  }
 });

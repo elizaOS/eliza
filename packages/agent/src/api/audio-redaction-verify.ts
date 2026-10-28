@@ -8,7 +8,7 @@
  * offer:
  *
  *  - {@link runtimeTranscriptionTranscriber} — the registered
- *    `ModelType.TRANSCRIPTION` handler (local fused eliza-1-asr, or whichever
+ *    `ModelType.TRANSCRIPTION` handler (local Phonon-2 on libelizainference, or whichever
  *    provider won registration). A missing handler THROWS through
  *    `useModel`, so the verify step fails, never passes vacuously.
  *  - {@link openAiCompatSttTranscriber} — any self-hosted OpenAI-compatible

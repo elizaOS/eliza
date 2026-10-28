@@ -182,6 +182,24 @@ describe("PtySessionStore.start", () => {
     await expect(store.start(spec())).rejects.toThrow(/session limit/i);
   });
 
+  it("holds the cap when two starts race before either spawn lands", async () => {
+    const { store, fake } = makeStore({ maxSessions: 1 });
+    const results = await Promise.allSettled([
+      store.start(spec({ label: "a" })),
+      store.start(spec({ label: "b" })),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    expect(fulfilled).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected");
+    if (rejected?.status !== "rejected") {
+      throw new Error("expected the second concurrent start to be rejected");
+    }
+    expect(String(rejected.reason)).toMatch(/session limit/i);
+    // Only one real process may be left behind, and the store must agree.
+    expect(fake.calls).toHaveLength(1);
+    expect(store.size).toBe(1);
+  });
+
   it("confines cwd to an existing directory under the allowed root", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "pty-jail-"));
     const inside = path.join(root, "repo", "sub");

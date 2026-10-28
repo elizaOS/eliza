@@ -270,7 +270,15 @@ export function ensureCopyForkLlamaLibGuards(content) {
 
 export function injectCopyForkLlamaLibTask(content) {
   if (/\[copyForkLlamaLib\]/.test(content)) {
-    return ensureCopyForkLlamaLibGuards(content);
+    return ensureCopyForkLlamaLibGuards(content)
+      .replace(
+        /def requiredAbis = project\.ext\.elizaRequiredJniAbis(?!\.)/,
+        "def selectedAbis = android.defaultConfig.ndk.abiFilters\n        def requiredAbis = project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }",
+      )
+      .replace(
+        "project.ext.elizaForkLlamaAbis.each { abi ->",
+        "project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each { abi ->",
+      );
   }
   const block =
     `\n` +
@@ -354,10 +362,11 @@ export function injectCopyForkLlamaLibTask(content) {
     `            return\n` +
     `        }\n` +
     `        def stagedAbis = [] as Set\n` +
-    `        def requiredAbis = project.ext.elizaRequiredJniAbis\n` +
+    `        def selectedAbis = android.defaultConfig.ndk.abiFilters\n` +
+    `        def requiredAbis = project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }\n` +
     `        int totalCopied = 0\n` +
     `        boolean stagedKernels = false\n` +
-    `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
+    `        project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each { abi ->\n` +
     `            def libDir = resolveForkLlamaLibDir(abi)\n` +
     `            if (!libDir) {\n` +
     `                // No fresh source configured. If the fused lib set is already\n` +
@@ -563,6 +572,18 @@ export function ensureGradleProperty(content, key, value) {
   const re = new RegExp(`^${escapeRegExp(key)}=.*$`, "m");
   if (re.test(content)) return content.replace(re, `${key}=${value}`);
   return `${content.replace(/\s*$/, "")}\n${key}=${value}\n`;
+}
+
+/** Exposes the consumer's identity to Gradle as `rootProject.ext.consumerIdentity`, so extra
+ * modules use the generated app id instead of reading the app config themselves. */
+export function applyConsumerIdentityExt(content, { appId, namespace }) {
+  for (const value of [appId, namespace])
+    if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/.test(value))
+      throw new Error(`Invalid Android package name: ${value}`);
+  const line = `    consumerIdentity = [appId: '${appId}', namespace: '${namespace}']`;
+  if (/^[ \t]*consumerIdentity\s*=.*$/m.test(content))
+    return content.replace(/^[ \t]*consumerIdentity\s*=.*$/m, line);
+  return content.replace(/^ext\s*\{[^\n]*\n/m, (open) => `${open}${line}\n`);
 }
 
 export function applyAndroidGeneratedBuildTargetProperties(
