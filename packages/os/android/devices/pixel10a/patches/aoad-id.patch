@@ -1,0 +1,21 @@
+From 322ff5129d865a5e8d958667e6c63ac943449493 Mon Sep 17 00:00:00 2001
+From: Dmitry Muhomor <muhomor.dmitry@gmail.com>
+Date: Fri, 25 Sep 2026 15:50:55 +0000
+Subject: [PATCH] 17-qpr1: add AID_AOAD
+
+---
+ libcutils/include/private/android_filesystem_config.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/system/core/libcutils/include/private/android_filesystem_config.h b/system/core/libcutils/include/private/android_filesystem_config.h
+index 60a0dd667522..9071262229ff 100644
+--- a/system/core/libcutils/include/private/android_filesystem_config.h
++++ b/system/core/libcutils/include/private/android_filesystem_config.h
+@@ -155,6 +155,7 @@
+ #define AID_SDV_DT_AGENT 1100        /* Software defined vehicle data tunnel agent */
+ #define AID_SDV_RPC_AGENT 1101       /* Software defined vehicle RPC agent */
+ #define AID_SDV_INIT_OPEN_DICE 1102  /* Software defined vehicle init open dice driver */
++#define AID_AOAD 1103
+ // Additions to this file must be accompanied by updates to expect_ids() in
+ // bionic/tests/grp_pwd_test.cpp.
+ 

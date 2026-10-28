@@ -16,6 +16,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { appNameInterpolationVars } from "../../config/branding-base";
+import { useBranding } from "../../config/branding-react.hooks";
 import {
   createTranslator,
   DEFAULT_UI_LANGUAGE,
@@ -66,6 +68,9 @@ export function CloudI18nProvider({
   initialLang,
   children,
 }: CloudI18nProviderProps): React.JSX.Element {
+  const branding = useBranding();
+  const { appName } = appNameInterpolationVars(branding);
+  const cloudName = branding.cloudName?.trim() || `${appName} Cloud`;
   const [lang, setLangState] = useState<UiLanguage>(
     initialLang ?? resolveInitialCloudLang(),
   );
@@ -95,8 +100,12 @@ export function CloudI18nProvider({
       setLangState(normalized);
       void ensureLanguageLoaded(normalized);
     };
-    return { lang, setLang: next, t: createTranslator(lang) };
-  }, [lang]);
+    return {
+      lang,
+      setLang: next,
+      t: createTranslator(lang, { appName, cloudName }),
+    };
+  }, [lang, appName, cloudName]);
 
   return (
     <CloudI18nContext.Provider value={value}>

@@ -9,7 +9,11 @@
  */
 
 import type { Action } from "@elizaos/core";
-import { isReservedNonToolActionName, trimEndCharacters } from "@elizaos/core";
+import {
+  containsResourceAddress,
+  isReservedNonToolActionName,
+  trimEndCharacters,
+} from "@elizaos/core";
 
 export interface DirectActionInferenceHooks {
   looksLikeCodingWorkRequest?: (text: string) => boolean;
@@ -1399,6 +1403,11 @@ export function inferDirectCurrentRequestCandidateInference(
   // turn must not be narrowed to VIEWS (+ the cloud read) while the tools its
   // other clauses asked for are dropped by candidate narrowing (#17363).
   if (shouldDeferCloudAppTurnToPlanner(messageText)) {
+    return EMPTY_DIRECT_CANDIDATE_INFERENCE;
+  }
+  // A view-only candidate cannot satisfy a URL-bearing request. Keep the full
+  // planner surface available for browser navigation or a compound URL task.
+  if (containsResourceAddress(messageText)) {
     return EMPTY_DIRECT_CANDIDATE_INFERENCE;
   }
   const viewShellAction = findViewShellActionName(actions, messageText);

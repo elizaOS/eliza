@@ -80,12 +80,37 @@ app.post("/", async (c) => {
       organizationId: user.organization_id,
     });
 
-    // Get recent updates (includes my_chat_member events)
-    const updates = await bot.telegram.getUpdates(0, 100, 0, [
-      "my_chat_member",
-      "message",
-      "channel_post",
-    ]);
+    // Get recent updates (includes my_chat_member events). getUpdates with
+    // offset 0 confirms nothing, so the webhook is restored without dropping
+    // pending updates and Telegram still delivers them to the agent.
+    let updates: Update[];
+    let webhookResult: { success: boolean; error?: string };
+    try {
+      updates = await bot.telegram.getUpdates(0, 100, 0, [
+        "my_chat_member",
+        "message",
+        "channel_post",
+      ]);
+    } finally {
+      // Re-set the webhook using the centralized service (ensures secret_token is included)
+      webhookResult = await telegramAutomationService.setWebhook(
+        user.organization_id,
+        { dropPendingUpdates: false },
+      );
+    }
+    if (!webhookResult.success) {
+      logger.error("[Telegram Scan] Webhook could not be restored", {
+        organizationId: user.organization_id,
+        error: webhookResult.error,
+      });
+      return c.json(
+        {
+          error: "Telegram webhook could not be restored; scan again",
+          webhookSet: false,
+        },
+        502,
+      );
+    }
 
     logger.info("[Telegram Scan] Got updates from Telegram", {
       organizationId: user.organization_id,
@@ -225,21 +250,6 @@ app.post("/", async (c) => {
           // Preserve chats when the bot may already have been removed
         }
       }
-    }
-
-    // Re-set the webhook using the centralized service (ensures secret_token is included)
-    const webhookResult = await telegramAutomationService.setWebhook(
-      user.organization_id,
-    );
-    if (webhookResult.success) {
-      logger.info("[Telegram Scan] Webhook set via service", {
-        organizationId: user.organization_id,
-      });
-    } else {
-      logger.info("[Telegram Scan] Webhook setup skipped or failed", {
-        organizationId: user.organization_id,
-        error: webhookResult.error,
-      });
     }
 
     logger.info("[Telegram Scan] Scanned for chats", {

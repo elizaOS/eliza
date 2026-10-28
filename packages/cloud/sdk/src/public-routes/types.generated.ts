@@ -269,12 +269,6 @@ export interface PublicRoutePathParams {
     conversationId: string | number;
   };
   "GET /api/v1/eliza/agents/{agentId}/api/health": { agentId: string | number };
-  "GET /api/v1/eliza/agents/{agentId}/api/identity": {
-    agentId: string | number;
-  };
-  "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain": {
-    agentId: string | number;
-  };
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
@@ -684,9 +678,6 @@ export interface PublicRoutePathParams {
     agentId: string | number;
     conversationId: string | number;
   };
-  "POST /api/v1/eliza/agents/{agentId}/api/identity/register": {
-    agentId: string | number;
-  };
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
@@ -909,9 +900,6 @@ export interface PublicRoutePathParams {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
   };
-  "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": {
-    agentId: string | number;
-  };
   "PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}": {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
@@ -1108,8 +1096,6 @@ export interface PublicRouteHeaders {
   "GET /api/v1/eliza/agents/{agentId}/api/conversations": never;
   "GET /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": never;
   "GET /api/v1/eliza/agents/{agentId}/api/health": never;
-  "GET /api/v1/eliza/agents/{agentId}/api/identity": never;
-  "GET /api/v1/eliza/agents/{agentId}/api/identity/onchain": never;
   "GET /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
   "GET /api/v1/eliza/agents/{agentId}/backups": never;
   "GET /api/v1/eliza/agents/{agentId}/discord": never;
@@ -1403,7 +1389,6 @@ export interface PublicRouteHeaders {
   "POST /api/v1/eliza/agents/{agentId}/api/conversations": never;
   "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages": never;
   "POST /api/v1/eliza/agents/{agentId}/api/conversations/{conversationId}/messages/stream": never;
-  "POST /api/v1/eliza/agents/{agentId}/api/identity/register": never;
   "POST /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
   "POST /api/v1/eliza/agents/{agentId}/bridge": never;
   "POST /api/v1/eliza/agents/{agentId}/discord/oauth": never;
@@ -1574,7 +1559,6 @@ export interface PublicRouteHeaders {
   "PUT /api/v1/billing/settings": never;
   "PUT /api/v1/connections/{platform}": never;
   "PUT /api/v1/eliza/agents/{agentId}/api/{path}": never;
-  "PUT /api/v1/eliza/agents/{agentId}/api/identity/uri": never;
   "PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}": never;
   "PUT /api/v1/mcps/{mcpId}": never;
   "PUT /api/v1/proxy/birdeye/{path}": never;

@@ -1,6 +1,28 @@
 {
   "schemaVersion": 1,
   "profiles": {
+    "pixel10a": {
+      "kind": "physical",
+      "device": {
+        "sourceTarget": "pixel10a",
+        "codename": "stallion",
+        "marketingName": "Pixel 10a",
+        "androidRelease": "17",
+        "observedSku": "GE1GQ",
+        "buildId": "CP3A.261005.005",
+        "vendorApiLevel": "202604"
+      },
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "android-17.0.0_r1",
+        "tagObject": "7a9e46ba6ed424f922a3457f4964e67e0b966201",
+        "commit": "5bc9a7ce1cd78dd53613bbfd0ebf506e1e4adb0f"
+      },
+      "sourceInventory": {
+        "path": "sources/pixel10a-stallion.json",
+        "sha256": "760a7184c62c93aeac40595cf5733f8089aa16ccd28eb7a5f5ce41d4dae741d3"
+      }
+    },
     "cuttlefish": {
       "kind": "virtual",
       "manifest": {

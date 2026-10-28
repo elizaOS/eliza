@@ -280,13 +280,22 @@ async function reconcileEvent(
   const endMs = Date.parse(event.endAt);
   const eventOver = Number.isFinite(endMs) && endMs <= nowMs;
 
-  if (!parsed || policy === "off" || eventOver) {
+  // A declined invitation is not a meeting to join: the owner's own
+  // attendee entry carries the decline, and without this check the task
+  // survives every later sync because no other dismiss condition fires.
+  const selfDeclined = event.attendees.some(
+    (attendee) => attendee.self && attendee.responseStatus === "declined",
+  );
+
+  if (!parsed || policy === "off" || eventOver || selfDeclined) {
     if (live.length > 0) {
       const reason = !parsed
         ? "conference link removed or unrecognized"
         : policy === "off"
           ? "meeting auto-join disabled"
-          : "event already ended";
+          : eventOver
+            ? "event already ended"
+            : "meeting invitation declined";
       await dismissTasks(runner, live, reason);
       logger.info(
         {

@@ -1438,13 +1438,9 @@ async function syncConversationRoomState(
   if (room.name === nextName && !metadataChanged) {
     return;
   }
-  const adapter = runtime.adapter as {
-    updateRoom?: (nextRoom: typeof room) => Promise<void>;
-  };
-  if (typeof adapter.updateRoom !== "function") {
-    return;
-  }
-  await adapter.updateRoom({
+  // The runtime writes through every adapter's updateRooms (SQLite has no
+  // updateRoom) and refreshes its room read cache.
+  await runtime.updateRoom({
     ...room,
     name: nextName,
     metadata: nextMetadata,
@@ -3079,6 +3075,12 @@ export async function handleConversationRoutes(
     // The bound identity is never copied from message metadata or model parameters.
     let authenticated = false;
     const authenticatedRuntime = ctx.state.runtime;
+    const authenticatedCaller = resolveConversationCaller(
+      ctx.req,
+      ctx.state,
+      resolveTrustedApiPrincipal(ctx.req, ctx.callerAuthorization),
+      authenticatedRuntime,
+    );
     try {
       return await withDeviceActionTurn(
         ctx.state.runtime,
@@ -3088,6 +3090,11 @@ export async function handleConversationRoutes(
           return handle();
         },
         {
+          requestCaller: {
+            subjectUserId: credential.subjectUserId,
+            entityId: authenticatedCaller.entityId,
+            role: authenticatedCaller.role,
+          },
           isCurrent: () =>
             !ctx.req.aborted &&
             !ctx.res.destroyed &&

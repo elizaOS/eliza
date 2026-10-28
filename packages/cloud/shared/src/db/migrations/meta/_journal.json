@@ -3634,6 +3634,13 @@
       "when": 1796083200166,
       "tag": "0548_agent_provisioning_deferred_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 519,
+      "version": "7",
+      "when": 1796083200167,
+      "tag": "0549_drop_erc8004_agent_identity",
+      "breakpoints": true
     }
   ]
 }

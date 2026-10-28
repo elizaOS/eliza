@@ -33,4 +33,10 @@ describe("experienceText non-Latin learnings", () => {
   it("does not call different-language learnings duplicates", () => {
     expect(isDuplicateLearning(KOREAN_LEARNING, ENGLISH_LEARNING)).toBe(false);
   });
+
+  it("treats a decomposed copy of a learning as a duplicate", () => {
+    const decomposed = KOREAN_LEARNING.normalize("NFD");
+    expect(decomposed).not.toBe(KOREAN_LEARNING);
+    expect(isDuplicateLearning(KOREAN_LEARNING, decomposed)).toBe(true);
+  });
 });

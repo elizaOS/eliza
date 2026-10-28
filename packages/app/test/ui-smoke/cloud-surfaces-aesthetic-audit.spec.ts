@@ -21,6 +21,7 @@ import {
   BILLING_AUDIT_RESOURCE_EXPECTATIONS,
   CLOUD_AUDIT_DEDICATED_AGENT_ID,
   installCloudApiStubs,
+  PUBLIC_SERVICE_DOCUMENT_FIXTURE,
   seedStewardToken,
 } from "./helpers/cloud-audit-fixtures";
 import {
@@ -312,6 +313,12 @@ const CLOUD_AUDIT_CASES: CloudAuditCase[] = [
     auth: PUBLIC,
   },
   { slug: "login", path: "/login", route: "login", auth: PUBLIC },
+  {
+    slug: "network-sign-in",
+    path: "/network/sign-in",
+    route: "network/sign-in",
+    auth: PUBLIC,
+  },
   {
     slug: "auth-success",
     // Public route without a backend-confirmed connection — captures the
@@ -650,6 +657,47 @@ async function captureTransitionState(options: {
 }
 
 test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
+  for (const viewport of VIEWPORTS) {
+    test(`configured startup ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      // Hold the emitted page before React starts, so the real static shell remains visible.
+      await page.route(/\.js(?:\?|$)/, (route) => route.abort());
+      await page.goto("/login", { waitUntil: "domcontentloaded" });
+      const appName = process.env.ELIZA_AUDIT_STARTUP_APP_NAME || "Eliza";
+      const logo =
+        process.env.ELIZA_AUDIT_STARTUP_LOGO ??
+        "/brand/logos/logo_white_nobg.svg";
+      const shell = page.getByRole("status", {
+        name: `Loading ${appName}`,
+        exact: true,
+      });
+      await expect(shell).toBeVisible();
+      await expect(shell.locator(".eliza-preboot-shell__name")).toHaveText(
+        appName,
+      );
+      const mark = shell.locator("img");
+      if (logo) {
+        await expect(mark).toHaveAttribute("src", logo);
+        await expect
+          .poll(() =>
+            mark.evaluate((image: HTMLImageElement) => image.naturalWidth),
+          )
+          .toBeGreaterThan(0);
+      } else {
+        await expect(mark).toHaveCount(0);
+      }
+      const dir = path.join(outputDir, "configured-startup");
+      await mkdir(dir, { recursive: true });
+      await page.screenshot({
+        path: path.join(dir, `${viewport.name}.png`),
+        animations: "disabled",
+      });
+    });
+  }
+
   // Hard gate (#13624): under strict/CI the running renderer bundle MUST contain
   // the test-auth shell. A stale turbo-cached `build:web` (built without
   // VITE_PLAYWRIGHT_TEST_AUTH) leaves the runtime env set but the shell absent —
@@ -688,6 +736,79 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
       "audit:cloud requires VITE_PLAYWRIGHT_TEST_AUTH=true baked into the renderer build so StewardProvider renders the local test-auth shell",
     ).toBe(true);
   });
+
+  for (const viewport of VIEWPORTS) {
+    test(`configured account support ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({
+        width: viewport.width,
+        height: viewport.height,
+      });
+      await installCloudApiStubs(page);
+      const deletionWrites: string[] = [];
+      page.on("request", (request) => {
+        if (
+          request.url().includes("/account-deletion") &&
+          request.method() !== "GET"
+        ) {
+          deletionWrites.push(request.method());
+        }
+      });
+      await page.goto("/account-deletion?requested=untrusted-audit-receipt");
+      const appName = process.env.ELIZA_AUDIT_SUPPORT_APP_NAME || "Eliza";
+      const cloudName =
+        process.env.ELIZA_AUDIT_SUPPORT_CLOUD_NAME || `${appName} Cloud`;
+      const email =
+        process.env.ELIZA_AUDIT_SUPPORT_EMAIL ?? "support@eliza.cloud";
+      await expect(page).toHaveTitle(
+        `Delete your ${appName} account | ${cloudName}`,
+      );
+      await expect(
+        page.getByText(`${cloudName} account deletion`, { exact: true }),
+      ).toBeVisible();
+      if (email) {
+        await expect(
+          page.getByRole("link", { name: email, exact: true }),
+        ).toHaveAttribute(
+          "href",
+          `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`${appName} account deletion request`)}`,
+        );
+      } else {
+        await expect(
+          page.getByText("Support contact details are unavailable.", {
+            exact: false,
+          }),
+        ).toBeVisible();
+        await expect(page.locator('a[href^="mailto:"]')).toHaveCount(0);
+      }
+      if (appName !== "Eliza")
+        await expect(page.locator("main")).not.toContainText("Eliza");
+      await expect(
+        page.getByRole("heading", {
+          name: "Account deletion completed",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      expect(deletionWrites).toEqual([]);
+      const evidenceDir = path.join(outputDir, "configured-support");
+      await mkdir(evidenceDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(evidenceDir, `${viewport.name}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+      const supportContact = email
+        ? page.getByRole("link", { name: email, exact: true })
+        : page.getByText("Support contact details are unavailable.", {
+            exact: false,
+          });
+      await supportContact.scrollIntoViewIfNeeded();
+      await expect(supportContact).toBeInViewport();
+      await page.screenshot({
+        path: path.join(evidenceDir, `${viewport.name}-support.png`),
+        animations: "disabled",
+      });
+    });
+  }
 
   for (const viewport of VIEWPORTS) {
     test(`personal Google consent recovery and disconnect ${viewport.name}`, async ({
@@ -952,6 +1073,64 @@ test.describe("cloud-surfaces aesthetic audit (#10725/#11342)", () => {
           qualityIssues: [],
         }),
       ).toBe("broken");
+    });
+  }
+
+  for (const vp of VIEWPORTS) {
+    test(`configured legal documents and retry ${vp.name}`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await installCloudApiStubs(page);
+      let attempts = 0;
+      await page.route("**/api/public/service", async (route) => {
+        expect(route.request().headers().authorization).toBeUndefined();
+        attempts++;
+        await route.fulfill({
+          status: attempts === 1 ? 503 : 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            attempts === 1
+              ? { success: false }
+              : PUBLIC_SERVICE_DOCUMENT_FIXTURE,
+          ),
+        });
+      });
+      await page.goto("/terms-of-service", { waitUntil: "domcontentloaded" });
+      await expect(page.getByRole("alert")).toContainText(
+        "could not provide this document",
+      );
+      await expect(
+        page.getByText("Service terms", { exact: true }),
+      ).toHaveCount(0);
+      await page
+        .getByRole("button", { name: "Try again", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Nebula Terms", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Terms revision 2026-10-25", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("<strong>Legal text stays plain text.</strong>", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(page.locator("main strong")).toHaveCount(0);
+      await page
+        .getByRole("link", { name: "Privacy Policy", exact: true })
+        .click();
+      await expect(
+        page.getByRole("heading", { name: "Nebula Privacy", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Privacy revision 2026-10-25", { exact: true }),
+      ).toBeVisible();
+      await page
+        .getByRole("link", { name: "Back to login", exact: true })
+        .click();
+      await expect(page).toHaveURL(/\/login(?:[?#]|$)/);
     });
   }
 

@@ -48,7 +48,7 @@
     "dist"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@electric-sql/pglite": "^0.4.5",
     "@types/node": "^25.0.6",
     "@types/react": "^19.3.0",

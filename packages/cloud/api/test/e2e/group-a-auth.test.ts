@@ -18,6 +18,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import {
   api,
   bearerHeaders,
@@ -768,6 +769,58 @@ describeE2E("Group A: auth + sessions", () => {
         },
       );
       expect(res.status).toBe(401);
+    });
+
+    test("happy path: complete mints the API key that the CLI polls once", async () => {
+      const userId = process.env.TEST_USER_ID;
+      const organizationId = process.env.TEST_ORGANIZATION_ID;
+      if (!userId || !organizationId) {
+        throw new Error(
+          "preload did not export TEST_USER_ID/TEST_ORGANIZATION_ID",
+        );
+      }
+      const initRes = await api.post("/api/eliza-app/cli-auth/init", {});
+      expect(initRes.status).toBe(200);
+      const { session_id: sessionId } = (await initRes.json()) as {
+        session_id: string;
+      };
+      const { token } = await elizaAppSessionService.createSession(
+        userId,
+        organizationId,
+      );
+
+      const completeRes = await api.post(
+        "/api/eliza-app/cli-auth/complete",
+        { session_id: sessionId },
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      expect(completeRes.status).toBe(200);
+      const completed = (await completeRes.json()) as { success?: boolean };
+      expect(completed.success).toBe(true);
+
+      const pollUrl = `/api/eliza-app/cli-auth/poll?session_id=${encodeURIComponent(sessionId)}`;
+      const firstPoll = await api.get(pollUrl);
+      expect(firstPoll.status).toBe(200);
+      const first = (await firstPoll.json()) as {
+        status?: string;
+        token?: string | null;
+      };
+      expect(first.status).toBe("authenticated");
+      expect(typeof first.token).toBe("string");
+
+      // The minted key signs in as the user who completed the session.
+      const userRes = await api.get("/api/v1/user", {
+        headers: { Authorization: `Bearer ${first.token}` },
+      });
+      expect(userRes.status).toBe(200);
+      const user = (await userRes.json()) as { data?: { id?: string } };
+      expect(user.data?.id).toBe(userId);
+
+      // The key is revealed once.
+      const secondPoll = await api.get(pollUrl);
+      expect(((await secondPoll.json()) as { token?: unknown }).token).not.toBe(
+        first.token,
+      );
     });
   });
 

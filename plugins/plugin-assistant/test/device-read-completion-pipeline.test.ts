@@ -94,6 +94,14 @@ it.each(["bound", "string", "missing"] as const)(
         plannerCalls = 0,
         replyCalls = 0;
       const respond = async (type: string, parameters: unknown) => {
+        if (type === ModelType.TEXT_LARGE) {
+          return JSON.stringify({
+            requiresInput: false,
+            clarification: null,
+            changes: [],
+            textEdit: null,
+          }) as never;
+        }
         if (type === ModelType.TEXT_EMBEDDING)
           return Array(384).fill(0) as never;
         if (phase === "initial" && handlerCalls === 0) {
@@ -197,7 +205,11 @@ it.each(["bound", "string", "missing"] as const)(
         }
         throw Error(`Unexpected model after ${phase}: ${type}`);
       };
-      for (const type of [ModelType.RESPONSE_HANDLER, ModelType.ACTION_PLANNER])
+      for (const type of [
+        ModelType.RESPONSE_HANDLER,
+        ModelType.ACTION_PLANNER,
+        ModelType.TEXT_LARGE,
+      ])
         runtime.registerModel(
           type,
           async (_active, params) => respond(type, params),
@@ -245,45 +257,6 @@ it.each(["bound", "string", "missing"] as const)(
       expect(created.status).toBeLessThan(300);
       const conversationId = created.body.conversation?.id ?? created.body.id;
       expect(typeof conversationId).toBe("string");
-      const clientMessageId = randomUUID();
-      const initial = await request(
-        `/api/conversations/${conversationId}/messages`,
-        {
-          text: "Read the note titled Synthetic shared title and quote its body.",
-          clientMessageId,
-          channelType: "DM",
-          metadata: {
-            uiView: "notes",
-            uiTab: "notes",
-            uiViewPath: "/notes",
-            clientDevice: {
-              context: { sensitive: false, revision: 1, timeZone: "UTC" },
-            },
-          },
-        },
-      );
-      expect(initial.status, JSON.stringify(initial.body)).toBe(200);
-      expect(JSON.stringify(initial.body)).not.toContain("runtime step failed");
-      const listed = await request("/api/client-devices/proposals");
-      const proposal = listed.body.proposals.find(
-        (item: any) => item.state === "pending",
-      );
-      expect(proposal).toBeTruthy();
-      expect(proposal.readReplyOrigin).toMatchObject({
-        version: 1,
-        requestId: clientMessageId,
-        conversationId,
-      });
-      expect(proposal.readReplyOrigin.inReplyTo).toBeTruthy();
-      expect(JSON.stringify(listed.body)).not.toContain(
-        "original_notes_read_reply",
-      );
-      expect(replyCalls).toBe(0);
-      const rootMessage = await runtime.getMemoryById(
-        proposal.readReplyOrigin.inReplyTo,
-      );
-      expect(rootMessage).toBeTruthy();
-      expect(rootMessage!.roomId).not.toBe(conversationId);
       const values = new Map<string, string>();
       const store = new NotesStore(
         { current: "closed-notes", legacy: "closed-legacy" },
@@ -310,6 +283,56 @@ it.each(["bound", "string", "missing"] as const)(
           },
         ],
       );
+      const source = await store.target("owned-b");
+      const clientMessageId = randomUUID();
+      const initial = await request(
+        `/api/conversations/${conversationId}/messages`,
+        {
+          text: "Read the note titled Synthetic shared title and quote its body.",
+          clientMessageId,
+          channelType: "DM",
+          metadata: {
+            uiView: "notes",
+            uiTab: "notes",
+            uiViewPath: "/notes",
+            clientDevice: {
+              context: {
+                view: "notes",
+                sensitive: false,
+                revision: 1,
+                timeZone: "UTC",
+                selectedObject: {
+                  kind: "note-source",
+                  id: source.sourceId,
+                  revision: source.sourceRevision,
+                },
+              },
+            },
+          },
+        },
+      );
+      expect(initial.status, JSON.stringify(initial.body)).toBe(200);
+      expect(JSON.stringify(initial.body)).not.toContain("runtime step failed");
+      const listed = await request("/api/client-devices/proposals");
+      const proposal = listed.body.proposals.find(
+        (item: any) => item.state === "pending",
+      );
+      expect(proposal).toBeTruthy();
+      expect(proposal.readReplyOrigin).toMatchObject({
+        version: 1,
+        requestId: clientMessageId,
+        conversationId,
+      });
+      expect(proposal.readReplyOrigin.inReplyTo).toBeTruthy();
+      expect(JSON.stringify(listed.body)).not.toContain(
+        "original_notes_read_reply",
+      );
+      expect(replyCalls).toBe(0);
+      const rootMessage = await runtime.getMemoryById(
+        proposal.readReplyOrigin.inReplyTo,
+      );
+      expect(rootMessage).toBeTruthy();
+      expect(rootMessage!.roomId).not.toBe(conversationId);
       const candidates = queryLocalNotes(
         store.list,
         operation.query as { kind: "title"; text: string },
@@ -431,6 +454,21 @@ it.each(["bound", "string", "missing"] as const)(
             text: "Read the note titled Synthetic shared title and quote its body.",
             clientMessageId: secondRequest,
             channelType: "DM",
+            metadata: {
+              clientDevice: {
+                context: {
+                  view: "notes",
+                  sensitive: false,
+                  revision: 1,
+                  timeZone: "UTC",
+                  selectedObject: {
+                    kind: "note-source",
+                    id: source.sourceId,
+                    revision: source.sourceRevision,
+                  },
+                },
+              },
+            },
           })
         ).status,
       ).toBe(200);

@@ -62,6 +62,7 @@ import {
   resolveMutedTargetFlags,
   resolveMutedWorldFlags,
 } from "../../../services/message/mute-state.ts";
+import { boundGmailContinuationRevision } from "../../../services/message/navigation-history.ts";
 import { draftFollowupAction } from "../../messaging/triage/actions/draftFollowup.ts";
 import { draftReplyAction } from "../../messaging/triage/actions/draftReply.ts";
 import { listInboxAction } from "../../messaging/triage/actions/listInbox.ts";
@@ -5814,6 +5815,7 @@ async function handleGetUser(
 async function handleReadMessage(
   runtime: IAgentRuntime,
   message: Memory,
+  state: State | undefined,
   params: ParamRecord,
 ): Promise<ActionResult> {
   const sourceValue = textParam(params.source) ?? "gmail";
@@ -5826,6 +5828,17 @@ async function handleReadMessage(
   }
   const messageId = textParam(params.messageId) ?? textParam(params.id);
   const reference = textParam(params.reference);
+  if (
+    reference &&
+    [textParam(params.messageId), textParam(params.id)].some(
+      (id) => id !== undefined && id !== reference,
+    )
+  )
+    return opFailure(
+      "read_message",
+      "MESSAGE_READ_CONFLICTING_REFERENCE",
+      "Message identifiers disagree with the continuation reference.",
+    );
   if (!messageId && !reference) {
     return opFailure(
       "read_message",
@@ -5855,7 +5868,20 @@ async function handleReadMessage(
         offset: numberParam(params.offset),
         limit: numberParam(params.limit),
         unit: unitValue as "line" | "fragment" | "byte",
-        expectedRevision: textParam(params.expectedRevision),
+        expectedRevision:
+          params.expectedRevision !== undefined
+            ? textParam(params.expectedRevision)
+            : sourceValue === "gmail"
+              ? boundGmailContinuationRevision({
+                  runtime,
+                  message,
+                  state,
+                  reference: reference ?? messageId,
+                  offset: numberParam(params.offset),
+                  limit: numberParam(params.limit),
+                  unit: unitValue,
+                })
+              : undefined,
       },
     );
     const projection = {
@@ -6350,7 +6376,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "query",
     description:
-      "Search term for op=search, search_inbox, list_worlds, or list_rooms.",
+      "Search term for op=search, search_inbox, list_worlds, or list_rooms. For Gmail search_inbox, preserve an explicitly supplied native query verbatim (including from: operators); do not replace it with a label or drop it when sender/date filters are also supplied.",
     required: false,
     subactions: [
       "search",
@@ -6367,14 +6393,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
     name: "content",
     description: "Inbox search text or lookup hint for triage/draft/respond.",
     required: false,
-    subactions: [
-      "search",
-      "search_inbox",
-      "draft_reply",
-      "respond",
-      "manage",
-      "send_draft",
-    ],
+    subactions: ["search", "draft_reply", "respond", "manage", "send_draft"],
     schema: { type: "string" },
   },
   {
@@ -6492,7 +6511,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "reference",
     description:
-      "Opaque continuation reference returned by read_message or a stored read_channel page.",
+      "Opaque continuation reference returned by read_message or a stored read_channel page. Always send its exact expectedRevision together with this reference.",
     required: false,
     subactions: ["read_channel", "read_message"],
     schema: { type: "string" },
@@ -6515,7 +6534,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "expectedRevision",
     description:
-      "Revision returned by the preceding read_message or stored read_channel page.",
+      "Required for read_message when reference is present or offset is greater than zero: copy control.expectedRevision from the preceding read exactly. Optional only for an initial messageId read at offset zero. Stored read_channel continuation also requires its recorded revision.",
     required: false,
     subactions: ["read_channel", "read_message"],
     schema: { type: "string" },
@@ -6559,7 +6578,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   {
     name: "tags",
     description:
-      "For op=search_inbox: every hit must carry all of these tags, as the connector reports them in data.messages[].tags (Gmail label names).",
+      "For op=search_inbox: only labels/tags explicitly requested by the user. Every hit must carry ALL of them. A sender, company, topic, or from: query is NOT a label. Omit this parameter when no label filter was requested. Gmail values are label names.",
     required: false,
     subactions: ["search_inbox"],
     schema: { type: "array", items: { type: "string" } },
@@ -6609,8 +6628,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
   },
   {
     name: "limit",
-    description: "Max items (at least 1).",
+    description:
+      "Maximum requested items (at least 1), or read_message range length in its units. For search_inbox always preserve the user's requested limit; use 25 only if none was specified.",
     required: false,
+    requiredForSubactions: ["search_inbox"],
     subactions: [
       "read_channel",
       "read_with_contact",
@@ -6938,7 +6959,7 @@ export const messageAction: Action = {
       case "read_with_contact":
         return handleReadWithContact(runtime, message, state, params);
       case "read_message":
-        return handleReadMessage(runtime, message, params);
+        return handleReadMessage(runtime, message, state, params);
       case "search":
         return handleSearch(runtime, message, state, params);
       case "list_channels":
@@ -6998,6 +7019,18 @@ export const messageAction: Action = {
 export function promoteMessageActions(): readonly Action[] {
   return promoteSubactionsToActions(messageAction, {
     overrides: {
+      search_inbox: {
+        description:
+          "Search using exactly the user's requested filters and result limit. For Gmail, use sources=['gmail'] and one complete native Gmail query: combine requested sender/from and subject constraints in that same query, preserving an explicit user-supplied query verbatim. Keep subject text in subject: operators; never drop it or replace the requested limit after an error. Structured sender/date filters are additional constraints, never replacements for query terms. Tags are only explicitly requested labels, never sender/company names. Check returned appliedFilters before answering. If a search fails, correct the original filters or report the error; never broaden the search silently.",
+        descriptionCompressed:
+          "Gmail: sources=['gmail']; complete native query with ALL requested from: AND subject: constraints; preserve explicit query and exact limit. Omit unrequested tags. Check appliedFilters. Never drop subject/sender/limit or broaden on error. Other sources keep their connector filters.",
+      },
+      read_message: {
+        description:
+          "Read one exact message body. First page: use messageId and a byte limit. Continuation: copy reference, offset, unit, limit AND expectedRevision from the previous read control; expectedRevision is mandatory for a reference or nonzero offset. Never invent identifiers or omit the revision on retry. This reads only; it does not mark mail read or send anything.",
+        descriptionCompressed:
+          "Read exact message body. Continue only with ALL previous control fields: reference, offset, unit, limit, expectedRevision. expectedRevision is mandatory for reference/nonzero offset; copy it exactly. Never invent IDs or retry a missing revision unchanged. Read only.",
+      },
       send: {
         description:
           "Send a direct message through a registered messaging connector. For Gmail or another email inbox, use MESSAGE_SEND_DRAFT to prepare an exact draft and obtain later user confirmation.",

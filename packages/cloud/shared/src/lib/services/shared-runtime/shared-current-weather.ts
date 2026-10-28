@@ -75,6 +75,8 @@ export function parseCurrentWeatherSourceDiagnostics(
 export const CURRENT_WEATHER_LIMITS = Object.freeze({
   totalMs: 6000,
   requestMs: 1500,
+  // Cold GNIS geocoding can exceed a single NWS hop. Share the same total deadline.
+  geocoderMs: 3000,
   requests: 5,
   bodyBytes: 262144,
   // Observation coordinates can be quantized to two decimals while station
@@ -458,7 +460,10 @@ export async function runCurrentUsWeatherSearch(
     const request = new AbortController();
     const timeout = setTimeout(
       () => request.abort(new Error("CURRENT_WEATHER_REQUEST_DEADLINE")),
-      CURRENT_WEATHER_LIMITS.requestMs,
+      Math.min(
+        hop === "geocoder" ? CURRENT_WEATHER_LIMITS.geocoderMs : CURRENT_WEATHER_LIMITS.requestMs,
+        Math.max(1, CURRENT_WEATHER_LIMITS.totalMs - (now() - started)),
+      ),
     );
     const active = AbortSignal.any([signal, request.signal]);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;

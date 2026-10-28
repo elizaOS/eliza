@@ -38,7 +38,10 @@ export function parseBrowserAddressInput(
   const hostPort =
     /^[^\s/:]+:\d+(?:[/?#]|$)/.test(value) ||
     /^\[[0-9a-fA-F.%]*:[0-9a-fA-F:.%]*\](?::\d+)?(?:[/?#]|$)/.test(value);
-  const explicit = !hostPort && /^[a-z][a-z\d+.-]*:/i.test(value);
+  // A scheme is its name, the colon and then its body. Prose such as
+  // `re: dinner` or `time: 1:30 pm` only looks scheme-shaped; reading the
+  // first word as a protocol rejected a search the user typed.
+  const explicit = !hostPort && /^[a-z][a-z\d+.-]*:(?:\S|$)/i.test(value);
   const domain = /^[^\s/?#]+\.[^\s/?#]+(?:[/?#].*)?$/.test(value);
   if (!explicit && !domain && !hostPort && !value.startsWith("//")) {
     if (value.includes("@")) return { kind: "rejected", reason: "credentials" };
