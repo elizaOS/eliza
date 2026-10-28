@@ -71,7 +71,10 @@ it("keeps one unchanged Calendar answer and fixed diagnostic on JSON, SSE and sa
           outcome: { status: "failed" as const, error: failure, effects: [] },
         };
       },
-    } as IMessageService;
+    } satisfies Pick<
+      IMessageService,
+      "handleMessage"
+    > as unknown as IMessageService;
     server = await startApiServer({
       port: 0,
       runtime,
