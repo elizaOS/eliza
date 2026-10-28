@@ -527,3 +527,93 @@ it("unloading a plugin keeps a default route the host registered over it", async
 	}
 	expect(delivered).toEqual(["host", "host"]);
 });
+
+/** Registers a default message route and a post connector on the keys the
+ * pending-registration cases share; each send records who it reached. */
+function registerPendingKeys(
+	runtime: IAgentRuntime,
+	name: string,
+	delivered: string[],
+): void {
+	runtime.registerMessageConnector({
+		source: "pending-chat",
+		sendHandler: async () => {
+			delivered.push(name);
+		},
+	});
+	runtime.registerPostConnector({ source: "pending-feed" });
+}
+
+/** A plugin whose init registers its connectors and then waits, so another
+ * registration can take the same keys before this registration finishes
+ * (runtime boot registers the character plugins concurrently). */
+function pausedInitPlugin(name: string, delivered: string[], fail: boolean) {
+	const registered = Promise.withResolvers<void>();
+	const resume = Promise.withResolvers<void>();
+	const plugin: Plugin = {
+		name,
+		description: "Registers connectors in init, then waits",
+		init: async (_config, runtime) => {
+			registerPendingKeys(runtime, name, delivered);
+			registered.resolve();
+			await resume.promise;
+			if (fail) throw new Error(`${name} init failed`);
+		},
+	};
+	return { plugin, registered: registered.promise, resume: resume.resolve };
+}
+
+for (const replacer of ["another plugin", "the host"] as const) {
+	for (const ending of ["unloads", "fails its init"] as const) {
+		it(`a plugin that ${ending} keeps the connectors ${replacer} took over while its registration was running`, async () => {
+			const { createInitializedRuntime } = await import(
+				"./initialized-runtime"
+			);
+			const runtime = await createInitializedRuntime({
+				character: { name: "Teardown pending registration", bio: [] },
+				logLevel: "fatal",
+			});
+			const delivered: string[] = [];
+			const earlier = pausedInitPlugin(
+				"pending-earlier",
+				delivered,
+				ending === "fails its init",
+			);
+
+			const registration = runtime.registerPlugin(earlier.plugin);
+			await earlier.registered;
+			if (replacer === "the host") {
+				registerPendingKeys(runtime, "host", delivered);
+			} else {
+				await runtime.registerPlugin({
+					name: "pending-later",
+					description: "Registers the same connectors in init",
+					init: async (_config, pluginRuntime) => {
+						registerPendingKeys(pluginRuntime, "pending-later", delivered);
+					},
+				});
+			}
+			earlier.resume();
+			if (ending === "unloads") {
+				await registration;
+				await runtime.unloadPlugin("pending-earlier");
+			} else {
+				await expect(registration).rejects.toThrow(
+					"pending-earlier init failed",
+				);
+			}
+
+			expect(connectorSources(runtime)).toEqual({
+				message: ["pending-chat:"],
+				post: ["pending-feed"],
+			});
+			await runtime.sendMessageToTarget(
+				{ source: "pending-chat" },
+				{ text: "earlier gone" },
+			);
+			expect(delivered).toEqual([
+				replacer === "the host" ? "host" : "pending-later",
+			]);
+		});
+	}
+}

@@ -98,6 +98,7 @@ type RuntimeWithPluginLifecycle = IAgentRuntime &
 	RuntimePrivateState & {
 		__elizaPluginLifecycleInstalled?: boolean;
 		__elizaPluginOwnership?: Map<string, PluginOwnership>;
+		__elizaPendingPluginOwnership?: Set<PluginOwnership>;
 		// The concrete runtime owns the chat pre-handler registry; the lifecycle
 		// wrapper only needs to know whether an id is already registered.
 		chatPreHandlerRegistry?: { has(id: string): boolean };
@@ -193,6 +194,17 @@ function getPluginOwnershipStore(
 	return runtime.__elizaPluginOwnership;
 }
 
+/** Ownership of plugins whose registration is still running; it joins the
+ * store only when the registration finishes. */
+function getPendingPluginOwnership(
+	runtime: RuntimeWithPluginLifecycle,
+): Set<PluginOwnership> {
+	if (!runtime.__elizaPendingPluginOwnership) {
+		runtime.__elizaPendingPluginOwnership = new Set();
+	}
+	return runtime.__elizaPendingPluginOwnership;
+}
+
 function getOwnershipTarget(
 	runtime: RuntimeWithPluginLifecycle,
 	pluginName: string,
@@ -221,7 +233,8 @@ function getCapturingOwnership(
  * `registerSendHandler` writes the same key as a default-account message
  * connector, so a registration through either API takes the default key from
  * both ownership lists. A registration outside plugin context releases the key
- * from every plugin and records no owner.
+ * from every plugin and records no owner. Plugins whose registration is still
+ * running count too, because runtime boot registers plugins concurrently.
  */
 function releaseConnectorKey(
 	runtime: RuntimeWithPluginLifecycle,
@@ -233,7 +246,11 @@ function releaseConnectorKey(
 	const sameKey = (connector: { source: string; accountId?: string }) =>
 		connector.source === source && connector.accountId === accountId;
 	const defaultMessageKey = kind === "messageConnectors" && !accountId;
-	for (const other of getPluginOwnershipStore(runtime).values()) {
+	const owners = [
+		...getPluginOwnershipStore(runtime).values(),
+		...getPendingPluginOwnership(runtime),
+	];
+	for (const other of owners) {
 		if (other === owner) continue;
 		const index = other[kind].findIndex(sameKey);
 		if (index >= 0) other[kind].splice(index, 1);
@@ -1194,6 +1211,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			}
 		};
 
+		const pendingOwnership = getPendingPluginOwnership(runtimeWithLifecycle);
+		pendingOwnership.add(capture.ownership);
 		try {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
@@ -1232,6 +1251,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				adapterBefore: capture.adapterBefore,
 			});
 			throw error;
+		} finally {
+			pendingOwnership.delete(capture.ownership);
 		}
 	}) as typeof runtimeWithLifecycle.registerPlugin;
 
