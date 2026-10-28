@@ -249,7 +249,7 @@ it("explicit post-fire snooze crosses the original window and preserves its save
     expect(notifications[1].id).not.toBe(notifications[0].id);
     const notifier=f.runtime.getService("notification");
     if(!(notifier instanceof NotificationService))throw Error("Missing canonical inbox");
-    const retained=notifier.listIncludingExpired().filter(row=>row.groupKey===notifications[1].groupKey);
+    const retained=(await notifier.listDurableIncludingExpired()).filter(row=>row.groupKey===notifications[1].groupKey);
     expect(retained).toHaveLength(1);
     expect(retained[0].id).toBe(notifications[1].id);
     expect(notifications[1].body).toBe("Explicit snooze deadline");
@@ -276,6 +276,8 @@ it("explicit post-fire snooze crosses the original window and preserves its save
       f.runtime.agentId,
     );
     expect(attempts).toHaveLength(2);
+    expect(new Set(attempts.map(attempt=>attempt.id)).size).toBe(2);
+    expect(new Set(attempts.map(attempt=>attempt.deliveryMetadata.notificationId))).toEqual(new Set(notifications.map(notification=>notification.id)));
     expect(attempts.find((a) => a.id === firstReceipt.id)).toEqual(
       firstSnapshot,
     );
