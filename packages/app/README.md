@@ -389,9 +389,13 @@ Android classes (`RESIDENT_HOST_CLASSES`) into a host's own application package 
 host supplies data: abstract socket names for the agent, inference and secure-store
 routes, the notification small icon, an optional `0xAARRGGBB` accent and string
 resources for the runtime notifications, an optional static environment hook, and
-selected shared helpers. The rewrite anchors live here and fail closed when the
-upstream source changes; each staged file reports source and generated digests for
-the host's provenance receipt. Run
+the shared helpers it compiles beside them: main Java sources of native plugins
+(`plugins/plugin-native-*/android/src/main/java/...`), which keep their packages. A
+helper reviewed in `RESIDENT_HOST_HELPERS` as reading the host's `BuildConfig` gains
+that import; every other helper is staged verbatim (`residentHelperKind`), so a host
+adopts a new shared helper without an edit here. The rewrite anchors live here and
+fail closed when the upstream source changes; each staged file reports source and
+generated digests for the host's provenance receipt. Run
 `node --test packages/app/scripts/mobile/android/resident-host-sources.test.mjs`.
 
 The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /

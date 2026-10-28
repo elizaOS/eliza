@@ -676,7 +676,7 @@ export function generateAndroidConsumerHost({
     if (fs.existsSync(target))
       requireValue(
         previous.includes(relative) && fs.statSync(target).isFile(),
-        "Refusing an unowned generated-file collision",
+        `Refusing an unowned generated-file collision: ${relative}`,
       );
   }
   fs.mkdirSync(output, { recursive: true });

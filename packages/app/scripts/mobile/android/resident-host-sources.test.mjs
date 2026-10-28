@@ -10,6 +10,7 @@ import {
   RESIDENT_HOST_HELPERS,
   RESIDENT_NOTIFICATION_STRINGS,
   ResidentHostSourceError,
+  residentHelperKind,
   residentHostIdentity,
   rewriteResidentClass,
   stageResidentHostSources,
@@ -206,6 +207,13 @@ test("staging writes only into a new directory outside the upstream source", (t)
     { classes: ["Unknown"] },
     { classes: ["AgentSecureStore"] },
     { helpers: ["packages/app/package.json"] },
+    { helpers: [`${residentRoot}/ElizaAgentService.java`] },
+    {
+      helpers: [
+        Object.keys(RESIDENT_HOST_HELPERS)[0],
+        Object.keys(RESIDENT_HOST_HELPERS)[0],
+      ],
+    },
   ])
     assert.throws(
       () =>
@@ -217,4 +225,46 @@ test("staging writes only into a new directory outside the upstream source", (t)
         }),
       ResidentHostSourceError,
     );
+  assert.equal(fs.existsSync(path.join(root, "fresh")), false);
+});
+
+test("a host selects shared plugin helpers as data: reviewed rewrites apply, others stage verbatim", (t) => {
+  const browser =
+    "plugins/plugin-native-browser-surface/android/src/main/java/ai/eliza/plugins/browsersurface";
+  // A shared helper this module has not reviewed for a rewrite is copied byte for byte.
+  const unreviewed = `${browser}/BrowserMainFrameGate.java`;
+  assert.equal(Object.hasOwn(RESIDENT_HOST_HELPERS, unreviewed), false);
+  assert.equal(residentHelperKind(unreviewed), "verbatim");
+  assert.equal(
+    residentHelperKind(`${browser}/ChromiumBrowserConnection.java`),
+    "host-build-config",
+  );
+  const output = path.join(temporary(t), "java");
+  const result = stageResidentHostSources({
+    sourceRoot: upstreamRoot,
+    output,
+    identity: identity(),
+    helpers: [unreviewed],
+  });
+  const row = result.files.find((file) => file.path === unreviewed);
+  assert.equal(
+    row.generatedFile,
+    path.join(
+      output,
+      "ai/eliza/plugins/browsersurface/BrowserMainFrameGate.java",
+    ),
+  );
+  assert.equal(row.generatedSha256, row.sourceSha256);
+  // Only a shared native plugin's main Java source, by a plain package path, is a helper.
+  for (const relative of [
+    `${browser}/BrowserDockController.kt`,
+    `${browser}/../browsersurface/BrowserWebOrigin.java`,
+    "plugins/plugin-native-browser-surface/android/src/test/java/ai/Example.java",
+    "plugins/plugin-other/android/src/main/java/ai/Example.java",
+    "plugins/plugin-native-agent/android/src/main/java/Example.java",
+    `/${browser}/BrowserWebOrigin.java`,
+    "constructor",
+    undefined,
+  ])
+    assert.throws(() => residentHelperKind(relative), ResidentHostSourceError);
 });

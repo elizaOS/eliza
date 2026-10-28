@@ -6,7 +6,8 @@
  * keep that host's identity. The rewrite anchors are owned here, next to the
  * sources they match, and every anchor fails closed when the source changes.
  * The consumer supplies only data: package, socket namespaces, notification
- * resources and an optional environment hook.
+ * resources, an optional environment hook and the shared plugin helper sources
+ * it compiles beside them.
  */
 
 import { createHash } from "node:crypto";
@@ -44,8 +45,10 @@ export const RESIDENT_HOST_CLASSES = Object.freeze([
 ]);
 
 /**
- * Shared helpers a host may compile beside the resident classes, keeping their
- * own packages. `host-build-config` sources read the host's BuildConfig.
+ * Reviewed shared helpers a host may compile beside the resident classes, keeping
+ * their own packages. `host-build-config` sources read the host's BuildConfig and
+ * are rewritten for it; every other selected helper is staged verbatim (see
+ * residentHelperKind), so adopting a new shared helper needs no edit here.
  */
 export const RESIDENT_HOST_HELPERS = Object.freeze({
   "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java":
@@ -103,6 +106,23 @@ const javaPackage = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 const javaIdentifier = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const resourceName = /^[a-z][a-z0-9_]*$/;
 const socketName = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
+// A shared native plugin's main Java source; the capture is its package path.
+const HELPER_SOURCE =
+  /^plugins\/plugin-native-[a-z0-9-]+\/android\/src\/main\/java\/((?:[a-z][a-z0-9_]*\/)+[A-Z][A-Za-z0-9_]*\.java)$/;
+
+/**
+ * How a selected helper is staged: a reviewed rewrite from RESIDENT_HOST_HELPERS,
+ * otherwise verbatim. Only shared native plugin main Java sources are admitted.
+ */
+export function residentHelperKind(relative) {
+  requireValue(
+    typeof relative === "string" && HELPER_SOURCE.test(relative),
+    `Resident helpers must be shared native plugin Java sources: ${relative}`,
+  );
+  return Object.hasOwn(RESIDENT_HOST_HELPERS, relative)
+    ? RESIDENT_HOST_HELPERS[relative]
+    : "verbatim";
+}
 function occurrences(text, anchor) {
   return text.split(anchor).length - 1;
 }
@@ -229,8 +249,7 @@ export function rewriteResidentClass(name, source, identity) {
 
 /** Rewrite one helper source for a host identity. */
 function rewriteResidentHelper(relative, source, packageName) {
-  const kind = RESIDENT_HOST_HELPERS[relative];
-  requireValue(kind !== undefined, `Unknown resident helper ${relative}`);
+  const kind = residentHelperKind(relative);
   if (kind === "verbatim") return source;
   requireValue(javaPackage.test(packageName ?? ""), "Invalid host package");
   const declaration = /^package ([a-z][a-z0-9_.]*);$/m.exec(source);
@@ -290,13 +309,10 @@ export function stageResidentHostSources({
     "Resident classes must be distinct known classes including ElizaAgentService",
   );
   requireValue(
-    Array.isArray(helpers) &&
-      new Set(helpers).size === helpers.length &&
-      helpers.every((relative) =>
-        Object.hasOwn(RESIDENT_HOST_HELPERS, relative),
-      ),
-    "Resident helpers must be distinct known helpers",
+    Array.isArray(helpers) && new Set(helpers).size === helpers.length,
+    "Resident helpers must be distinct",
   );
+  for (const relative of helpers) residentHelperKind(relative);
   const rows = [];
   const write = (relative, target, input, value) => {
     fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -323,7 +339,7 @@ export function stageResidentHostSources({
     const input = readSource(sourceRoot, relative);
     write(
       relative,
-      path.join(output, relative.split("/android/src/main/java/")[1]),
+      path.join(output, HELPER_SOURCE.exec(relative)[1]),
       input,
       rewriteResidentHelper(relative, input, host.packageName),
     );
