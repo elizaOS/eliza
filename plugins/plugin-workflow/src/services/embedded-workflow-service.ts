@@ -64,6 +64,7 @@ import {
   validateDigestSpec,
   writeDigestResult,
 } from './hosted-digest';
+import { DIGEST_OVERLAP_TEXT } from './hosted-digest-policy';
 import {
   assertHostedGoogleSource,
   listHostedGoogleCalendars,
@@ -1775,7 +1776,7 @@ export class EmbeddedWorkflowService extends Service {
           hosted = {
             ...hosted,
             status: 'overlap',
-            text: 'An earlier occurrence is still active. This occurrence did not run.',
+            text: DIGEST_OVERLAP_TEXT,
           };
       }
       const pending: WorkflowExecution = {
