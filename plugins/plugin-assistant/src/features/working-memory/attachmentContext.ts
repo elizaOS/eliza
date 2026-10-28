@@ -266,11 +266,7 @@ async function readableAttachmentContent(
 export async function listConversationAttachments(
   runtime: IAgentRuntime,
   message: Memory,
-  options: {
-    maxLookback?: number;
-  } = {},
 ): Promise<AttachmentWithInlineData[]> {
-  void options;
   const currentMessageAttachments = (message.content.attachments ??
     []) as AttachmentWithInlineData[];
   const accessContext = await buildAttachmentAccessContext(runtime, message);

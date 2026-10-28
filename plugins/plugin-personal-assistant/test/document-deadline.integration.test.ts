@@ -98,4 +98,40 @@ describe("OWNER_DOCUMENTS deadline tracking", () => {
       atIso: "2026-11-08T17:00:00.000Z",
     });
   });
+
+  it.each([
+    // New York is on EST (-05:00) in November.
+    ["an offset-free time", "2030-11-06T17:00:00", "2030-11-06T22:00:00.000Z"],
+    [
+      "a bare day (start of that day)",
+      "2030-11-06",
+      "2030-11-06T05:00:00.000Z",
+    ],
+  ])("reads %s in the owner's time zone", async (_case, deadline, atIso) => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const message = ownerMessage(runtime.agentId, "Track the lease deadline");
+    message.content.metadata = { uiTimeZone: "America/New_York" };
+
+    const created = await ownerDocumentsAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        parameters: {
+          subaction: "request_approval",
+          documentTitle: "Lease renewal",
+          deadline,
+        },
+      },
+      undefined,
+      [],
+    );
+    expect(created?.success).toBe(true);
+
+    const task = (
+      await getScheduledTaskRunner(runtime, { agentId: runtime.agentId }).list()
+    ).find((candidate) => candidate.taskId === taskId(created));
+    expect(task?.trigger).toEqual({ kind: "once", atIso });
+  });
 });

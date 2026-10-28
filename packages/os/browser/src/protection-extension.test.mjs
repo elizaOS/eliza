@@ -52,7 +52,7 @@ test("engine failure records unavailable and websites/embedded pages cannot requ
       },
     },
     alarms: { create: () => {}, onAlarm: event },
-    webNavigation: { onCommitted: event },
+    webNavigation: { onCommitted: event, onErrorOccurred: event },
     tabs: { onRemoved: event },
   };
   try {
@@ -131,7 +131,7 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
       },
     },
     alarms: { create: async () => {}, onAlarm: event },
-    webNavigation: { onCommitted: event },
+    webNavigation: { onCommitted: event, onErrorOccurred: event },
     tabs: {
       onRemoved: event,
       update: async () => {
@@ -169,6 +169,82 @@ test("clock rollback refreshes rules and failed navigation revokes its exception
     assert.equal(changes.length, 2);
     assert.ok(changes[0].addRules);
     assert.deepEqual(changes[1], { removeRuleIds: [1] });
+  } finally {
+    globalThis.chrome = previousChrome;
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("a refused warning redirect opens the same warning, and nothing else", async () => {
+  const previousChrome = globalThis.chrome,
+    previousFetch = globalThis.fetch;
+  let onError;
+  const updates = [];
+  const event = { addListener: () => {} };
+  const id = "a".repeat(32);
+  globalThis.fetch = async () => {
+    throw Error("Offline");
+  };
+  globalThis.chrome = {
+    storage: { local: { get: async () => ({}), set: async () => {} } },
+    declarativeNetRequest: {
+      getDynamicRules: async () => [],
+      updateSessionRules: async () => {},
+    },
+    runtime: {
+      id,
+      getURL: (f) => `chrome-extension://${id}/${f}`,
+      onInstalled: event,
+      onStartup: event,
+      onMessage: event,
+    },
+    alarms: { create: async () => {}, onAlarm: event },
+    webNavigation: {
+      onCommitted: event,
+      onErrorOccurred: {
+        addListener: (fn) => {
+          onError = fn;
+        },
+      },
+    },
+    tabs: {
+      onRemoved: event,
+      update: async (tabId, props) => {
+        updates.push([tabId, props]);
+      },
+    },
+  };
+  try {
+    installBrowserProtection({
+      chrome: globalThis.chrome,
+      fetchImpl: globalThis.fetch,
+      feeds,
+    });
+    const warning = `chrome-extension://${id}/warning.html#https://bad.example/start`;
+    const blocked = "net::ERR_BLOCKED_BY_CLIENT";
+    for (const details of [
+      { tabId: 3, frameId: 1, error: blocked, url: warning },
+      { tabId: 3, frameId: 0, error: "net::ERR_ABORTED", url: warning },
+      { tabId: 3, frameId: 0, error: blocked, url: "https://bad.example/" },
+      {
+        tabId: 3,
+        frameId: 0,
+        error: blocked,
+        url: `chrome-extension://${"b".repeat(32)}/warning.html#https://bad.example/`,
+      },
+      {
+        tabId: 3,
+        frameId: 0,
+        error: blocked,
+        url: `chrome-extension://${id}/other.html#https://bad.example/`,
+      },
+      { tabId: -1, frameId: 0, error: blocked, url: warning },
+    ])
+      onError(details);
+    assert.deepEqual(updates, []);
+    onError({ tabId: 7, frameId: 0, error: blocked, url: warning });
+    await new Promise((r) => setImmediate(r));
+    assert.deepEqual(updates, [[7, { url: warning }]]);
   } finally {
     globalThis.chrome = previousChrome;
     globalThis.fetch = previousFetch;

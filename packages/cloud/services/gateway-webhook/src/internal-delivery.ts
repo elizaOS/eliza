@@ -11,6 +11,7 @@ import { twilioAdapter } from "./adapters/twilio";
 import { type ChatEvent, PlatformDeliveryError } from "./adapters/types";
 import { resolveApprovedRelayPhotoUrls } from "./approved-relay-photos";
 import { resolveConnectorAccountId } from "./connector-account";
+import { deliveryReceiptStore } from "./delivery-receipts";
 import { logger } from "./logger";
 import {
   isNetworkAddressOptedOut,
@@ -386,13 +387,14 @@ export async function readInternalDeliveryReceipt(
       },
       { status: 403 },
     );
+  const receipts = deliveryReceiptStore(dependencies.redis);
   const key = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
-  let value = await dependencies.redis.get(key);
+  let value = await receipts.get(key);
   if (
     value == null &&
     (raw as Record<string, unknown>).abandonUnclaimed === true
   ) {
-    const abandoned = await dependencies.redis.set(
+    const abandoned = await receipts.set(
       key,
       JSON.stringify({
         state: "abandoned",
@@ -401,7 +403,7 @@ export async function readInternalDeliveryReceipt(
       { ex: DELIVERY_RECEIPT_TTL_SECONDS, nx: true },
     );
     if (abandoned !== null) return notClaimed();
-    value = await dependencies.redis.get(key);
+    value = await receipts.get(key);
   }
   const receipt = parseReceipt(value);
   if (
@@ -598,10 +600,11 @@ export async function deliverInternalMessage(
   // Keep the pre-account key as the monotonic replay fence. Changing this key
   // during rollout would strand complete/indeterminate receipts and could
   // resend a reminder that the provider already accepted.
+  const receipts = deliveryReceiptStore(dependencies.redis);
   const dedupeKey = `internal-delivery:${delivery.platform}:${delivery.project}:${delivery.idempotencyKey}`;
   let existingValue: unknown;
   try {
-    existingValue = await dependencies.redis.get<unknown>(dedupeKey);
+    existingValue = await receipts.get<unknown>(dedupeKey);
   } catch {
     // error-policy:J1 no provider call occurs when durable replay state is unavailable.
     return Response.json(
@@ -692,7 +695,7 @@ export async function deliverInternalMessage(
   const pendingClaim = `pending:${crypto.randomUUID()}`;
   let claimed: unknown;
   try {
-    claimed = await dependencies.redis.set(dedupeKey, pendingClaim, {
+    claimed = await receipts.set(dedupeKey, pendingClaim, {
       ex: 60,
       nx: true,
     });
@@ -761,16 +764,13 @@ export async function deliverInternalMessage(
     // Provider dispatch may succeed before any transport error becomes visible.
     // Persist the tombstone first for every connector; only a proven rejection
     // or a validated receipt may replace it with retryable/complete state.
-    const dispatchClaimed = await dependencies.redis.eval(
-      'if redis.call("get", KEYS[1]) == ARGV[1] then redis.call("set", KEYS[1], ARGV[2], "EX", ARGV[3]); return 1 end return 0',
-      [dedupeKey],
-      [
-        pendingClaim,
-        JSON.stringify({ state: "indeterminate", hash }),
-        String(DELIVERY_RECEIPT_TTL_SECONDS),
-      ],
+    const dispatchClaimed = await receipts.replaceIfEquals(
+      dedupeKey,
+      pendingClaim,
+      JSON.stringify({ state: "indeterminate", hash }),
+      DELIVERY_RECEIPT_TTL_SECONDS,
     );
-    if (Number(dispatchClaimed) !== 1) {
+    if (!dispatchClaimed) {
       return Response.json(
         { success: false, acceptance: "unknown", retryable: false },
         { status: 202 },
@@ -779,10 +779,9 @@ export async function deliverInternalMessage(
     const finalRefusal = await consentRefusal();
     if (finalRefusal) {
       // No connector was invoked. Release only this exact unsent claim.
-      await dependencies.redis.eval(
-        'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0',
-        [dedupeKey],
-        [JSON.stringify({ state: "indeterminate", hash })],
+      await receipts.delIfEquals(
+        dedupeKey,
+        JSON.stringify({ state: "indeterminate", hash }),
       );
       return finalRefusal;
     }
@@ -800,7 +799,7 @@ export async function deliverInternalMessage(
       throw new Error("Connector accepted delivery without a provider receipt");
     }
     const acceptedAt = new Date().toISOString();
-    await dependencies.redis.set(
+    await receipts.set(
       dedupeKey,
       JSON.stringify({
         state: "complete",
@@ -835,7 +834,7 @@ export async function deliverInternalMessage(
     ) {
       let claimReleased = true;
       try {
-        await dependencies.redis.del(dedupeKey);
+        await receipts.del(dedupeKey);
       } catch {
         // error-policy:J6 the bounded claim expires after this explicit provider rejection.
         claimReleased = false;
@@ -888,7 +887,7 @@ export async function deliverInternalMessage(
     // accepted the message even if its response or our receipt write failed.
     if (!connectorAttempted) {
       try {
-        await dependencies.redis.delIfEquals(dedupeKey, pendingClaim);
+        await receipts.delIfEquals(dedupeKey, pendingClaim);
       } catch {
         // error-policy:J6 the bounded claim expires; the primary acceptance result wins.
       }

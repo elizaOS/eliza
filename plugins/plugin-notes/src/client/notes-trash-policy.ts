@@ -65,6 +65,30 @@ export interface NotesTrashPolicyOptions {
 const DAY = 24 * 60 * 60 * 1000;
 const operationId = /^[-\w]{1,128}$/;
 
+/** Stable code for a definite capacity refusal of a new Trash entry. Nothing was written. */
+export const NOTES_TRASH_FULL_CODE = "notes-trash-full";
+/** Stable code a host store uses for a definite, not-applied capacity refusal. */
+export const NOTES_STORAGE_FULL_CODE = "storage-full";
+/** The Trash entry or byte limit refused a new entry. Existing entries are unchanged. */
+export class NotesTrashFull extends Error {
+  readonly code = NOTES_TRASH_FULL_CODE;
+  constructor() {
+    super("Notes Trash is full");
+    this.name = "NotesTrashFull";
+  }
+}
+/**
+ * True only for a definite refusal to add a restorable copy: the Trash limits or the
+ * host store's capacity. In both cases nothing was written and the note is untouched.
+ */
+export function isNotesTrashFull(error: unknown): boolean {
+  const code =
+    error && typeof error === "object"
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return code === NOTES_TRASH_FULL_CODE || code === NOTES_STORAGE_FULL_CODE;
+}
+
 export interface NotesTrashPolicy<
   N extends TrashNote = TrashNote,
   T extends TrashTarget = TrashTarget,
@@ -202,7 +226,7 @@ export function createNotesTrashPolicy<
         next.entries.length > maxEntries ||
         new TextEncoder().encode(JSON.stringify(next)).length > maxBytes
       )
-        throw Error("Notes Trash is full");
+        throw new NotesTrashFull();
       return next;
     },
     remove(doc, ids) {

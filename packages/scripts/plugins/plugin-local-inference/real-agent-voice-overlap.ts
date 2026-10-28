@@ -18,27 +18,32 @@
  *
  * Human speech: two distinct ElevenLabs voices when ELEVENLABS_API_KEY is set,
  * else a keyless cached corpus from two distinct fused Kokoro voice packs
- * (#9577). The AGENT voice is always the fused Kokoro engine — Kokoro is the
- * only on-device TTS engine, so a Kokoro pack IS the agent's product voice, and
- * unlike the OmniVoice auto-voice path its speaker identity is deterministic
- * across replies (the property part A exists to prove). Inputs (env):
- * ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_BUNDLE, ELIZA_SPEAKER_GGUF,
- * ELIZA_DIARIZ_GGUF, ELIZA_KOKORO_MODEL_DIR, optional ELEVENLABS_API_KEY.
+ * (#9577). The AGENT voice is the product on-device TTS, Paradee-8M v1.1
+ * through the host TTS worker — the voice the desktop agent speaks with — and
+ * its speaker identity is deterministic across replies (the property part A
+ * exists to prove). Inputs (env): ELIZA_INFERENCE_LIBRARY,
+ * ELIZA_INFERENCE_LIBRARY_SHA256, ELIZA_PARADEE_MODEL_DIR, ELIZA_ASR_BUNDLE,
+ * ELIZA_SPEAKER_GGUF, ELIZA_DIARIZ_GGUF, ELIZA_KOKORO_MODEL_DIR, optional
+ * ELEVENLABS_API_KEY.
  * Exits 2 (skip) on a missing artifact.
  */
 
 import { existsSync } from "node:fs";
 import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
-import { type BenchGates, ensureKokoroCorpus } from "./voice-bench-shared";
+import {
+  type BenchGates,
+  ensureKokoroCorpus,
+  synthesizeParadeeAgentTurns,
+} from "./voice-bench-shared";
 
 const SR = 16_000;
 const VOICE_A = "21m00Tcm4TlvDq8ikWAM";
 const VOICE_B = "pNInz6obpgDQGcFmaJgB";
-// Kokoro packs for the keyless corpus + the agent self-voice. All three are
-// distinct so the self-voice margin and the two-speaker overlap stay meaningful.
+// Kokoro packs for the keyless human corpus. They are distinct from each other
+// and from the Paradee agent voice, so the self-voice margin and the
+// two-speaker overlap stay meaningful.
 const KEYLESS_USER_A = "af_bella";
 const KEYLESS_USER_B = "am_michael";
-const AGENT_VOICE = "af_nicole";
 
 function skip(m: string): never {
   console.log(`[agent-voice/overlap] SKIP: ${m}`);
@@ -124,22 +129,14 @@ if (elKey) {
   [userA, userB] = humans.map((i) => i.pcm);
 }
 
-// On-device TTS → the AGENT's own voice, two different replies. Synthesized
-// through the fused Kokoro engine (the product on-device voice) with one fixed
-// pack, cached at 16 kHz by the shared corpus helper.
-const agentTurns = await ensureKokoroCorpus(
+// On-device TTS → the AGENT's own voice, two different replies, synthesized
+// with Paradee v1.1 through the host TTS worker (the product voice) and
+// resampled to 16 kHz.
+const agentTurns = await synthesizeParadeeAgentTurns(
   "agent-overlap-agent",
   [
-    {
-      id: "agent1",
-      voiceId: AGENT_VOICE,
-      text: "Your two o'clock meeting was moved to four.",
-    },
-    {
-      id: "agent2",
-      voiceId: AGENT_VOICE,
-      text: "The kitchen light is now set to thirty percent.",
-    },
+    { id: "agent1", text: "Your two o'clock meeting was moved to four." },
+    { id: "agent2", text: "The kitchen light is now set to thirty percent." },
   ],
   gates,
   log,

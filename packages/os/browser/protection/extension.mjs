@@ -131,6 +131,27 @@ export function installBrowserProtection({
     });
     return true;
   });
+  // Chromium refuses a rule's redirect to an extension page when the navigation has
+  // no web initiator (an app's intent, the address bar, a bookmark): the redirect
+  // fails as ERR_BLOCKED_BY_CLIENT on the warning page itself. The harmful site was
+  // still never contacted; open the same warning in that tab from the extension,
+  // which Chromium allows. Only the top frame and only this extension's own warning
+  // address are followed, so a website cannot steer the tab anywhere else.
+  const warningPrefix = `${chrome.runtime.getURL(warningPage)}#`;
+  chrome.webNavigation.onErrorOccurred.addListener((details) => {
+    if (
+      details.frameId !== 0 ||
+      details.error !== "net::ERR_BLOCKED_BY_CLIENT" ||
+      typeof details.url !== "string" ||
+      !details.url.startsWith(warningPrefix) ||
+      !Number.isInteger(details.tabId) ||
+      details.tabId < 0
+    )
+      return;
+    void chrome.tabs
+      .update(details.tabId, { url: details.url })
+      .catch(() => console.warn("Protection warning could not be shown"));
+  });
   // Expire the exception as soon as the permitted document commits or its tab closes.
   chrome.webNavigation.onCommitted.addListener((details) => {
     if (details.frameId === 0)

@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import { testOutputPath } from "../../../scripts/lib/test-output.ts";
 /**
- * Transcribe the synthesized corpus with the real local ASR (Eliza-1
- * Qwen3-ASR GGUF through the fused libelizainference FFI — the exact
+ * Transcribe the synthesized corpus with the real local ASR (Phonon-2
+ * `asr/phonon-2-fv5.gguf` through the fused libelizainference FFI — the exact
  * TRANSCRIPTION path the agent uses). Writes asr-transcripts.json next to
  * this script: per-utterance hypothesis + WER + proper-name survival.
  *

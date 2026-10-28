@@ -46,6 +46,16 @@ globalThis.fetch = async (input, init = {}) => {
       });
     // packages/cloud/api/auth/staging-session-exchange/route.ts
     case "/api/auth/staging-session-exchange/mint": {
+      if (process.env.TEST_SESSION_FAILURE_MODE === "ineligible")
+        return json(403, {
+          code: "subject_not_eligible",
+          error: process.env.ELIZAOS_CLOUD_API_KEY,
+        });
+      if (process.env.TEST_SESSION_FAILURE_MODE === "unexpected")
+        return json(503, {
+          code: process.env.ELIZAOS_CLOUD_API_KEY,
+          token: "private-fixture-token",
+        });
       if (!looksLikeStagingSessionChallenge(body.codeChallenge))
         return json(400, {
           error: "Code challenge required",
@@ -65,6 +75,11 @@ globalThis.fetch = async (input, init = {}) => {
       return json(200, { ok: true, ...issued });
     }
     case "/api/auth/staging-session-exchange/exchange": {
+      if (process.env.TEST_SESSION_FAILURE_MODE === "exchange-unavailable")
+        return json(503, {
+          code: "exchange_unavailable",
+          error: process.env.ELIZAOS_CLOUD_API_KEY,
+        });
       if (!looksLikeStagingSessionCode(body.code))
         return json(400, { error: "Code required", code: "missing_code" });
       const record = await consumeStagingSessionCode(

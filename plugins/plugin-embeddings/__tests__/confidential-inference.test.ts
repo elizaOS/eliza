@@ -149,6 +149,16 @@ it("does not redispatch to fallback after an authorized send fails", async () =>
   expect(requests.map((request) => request.path)).toEqual(["/embeddings"]);
 });
 
+it("refuses a redirect from an admitted route without following it", async () => {
+  // Core asks for redirect "manual" (the Workers runtime rejects "error") and
+  // treats the 3xx as a failed transport, audited like the former rejection.
+  responseStatus = 302;
+  const { embed, records } = fixture({ fallback: true });
+  await expect(embed("synthetic private memory")).rejects.toThrow();
+  expect(requests.map((request) => request.path)).toEqual(["/embeddings"]);
+  expect(records.map((record) => record.phase)).toContain("transport_error");
+});
+
 it("preserves ordinary-mode dispatch", async () => {
   const { runtime } = fixture();
   expect(await handleTextEmbedding(runtime, "ordinary synthetic input")).toHaveLength(384);

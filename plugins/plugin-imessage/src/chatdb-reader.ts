@@ -351,6 +351,7 @@ export interface ChatDbMessage {
 
 /** Error code thrown when a row's attachment metadata cannot be read. */
 export const IMESSAGE_ATTACHMENT_READ_FAILED = "IMESSAGE_ATTACHMENT_READ_FAILED";
+export const IMESSAGE_CHATDB_TIP_READ_FAILED = "IMESSAGE_CHATDB_TIP_READ_FAILED";
 
 export interface ChatDbFetchOptions {
   /**
@@ -397,7 +398,8 @@ export interface ChatDbReader {
    * Return the largest `message.ROWID` currently in the database. Used
    * on service start to seed the polling cursor at the tip so a fresh
    * launch does not replay the entire backlog. Returns 0 on empty dbs
-   * or if the query fails.
+   * or when the reader has been closed. Throws an `ElizaError` with code
+   * {@link IMESSAGE_CHATDB_TIP_READ_FAILED} when the query fails.
    */
   getLatestRowId(): number;
   /**
@@ -918,10 +920,11 @@ export async function openChatDb(
         const rows = tipStmt.all() as Array<{ max_row_id: number | null }>;
         return rows[0]?.max_row_id ?? 0;
       } catch (error) {
-        logger.error(
-          `[imessage] chat.db tip query failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return 0;
+        throw new ElizaError("iMessage chat.db tip could not be read", {
+          code: IMESSAGE_CHATDB_TIP_READ_FAILED,
+          cause: error,
+          severity: "ephemeral",
+        });
       }
     },
     getLatestOwnMessageTimestamp(): number | null {

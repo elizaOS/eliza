@@ -4,30 +4,28 @@
  * Captures the device+mode matrix the product team specified in the
  * settings "advanced mode" picker design:
  *
- *   - Desktop running a local agent → on-device models
- *     (TTS: `local-inference` / OmniVoice, ASR: `local-inference` / Gemma ASR).
- *   - Mobile running a local agent → on-device Kokoro TTS
- *     (TTS: `local-inference`; Kokoro is ~82M params and runs comfortably on
- *     phones — see `selectVoiceBackend({ mobile: true })`). The ASR *provider*
- *     is Eliza Cloud (`eliza-cloud`) because on-device speech recognition is
- *     heavier than TTS — but see the layering note below: on native mobile the
- *     live capture engine is the OS recognizer, not this provider.
- *   - Cloud agents (any device) → free cloud Kokoro TTS
- *     (`eliza-cloud`) for speech, Eliza Cloud (`eliza-cloud`) for ASR.
- *     ElevenLabs is not a default (slow and key-gated); users can still opt
- *     into it from the advanced voice picker.
- *   - Remote-controller surfaces (UI hitting a remote API base) → same as
- *     cloud agents (`eliza-cloud` TTS, Eliza Cloud ASR).
+ *   - A device running a local agent (desktop, Android, AOSP) → on-device
+ *     speech (TTS: `local-inference`, ASR: `local-inference`). Device ASR is
+ *     Phonon-2 (Parakeet-TDT 0.6B, five-value weights) on libelizainference,
+ *     the elizaOS llama.cpp fork; it is the only local ASR. Phones run
+ *     Paradee-8M v1.1 for TTS on the same library.
+ *   - Cloud agents (any device) → Eliza Cloud (`eliza-cloud`) for speech and
+ *     for ASR (Cloud STT: Whisper / Cloudflare / ElevenLabs). ElevenLabs TTS is
+ *     not a default (slow and key-gated); users can still opt into it from the
+ *     advanced voice picker.
+ *   - Web shells and remote-controller surfaces (UI hitting a remote API base)
+ *     → same as cloud agents. ASR never runs locally in a browser or thin
+ *     client; Eliza Cloud STT is their transcriber.
  *
  * The picker is intentionally a pure function so it can be unit-tested
  * exhaustively. The React hook wrapper lives in
  * `hooks/useDefaultProviderPresets.ts`.
  *
- * The ASR side of this matrix is not just a platform guess — it is backed by
- * the measured WER/latency/RTF decision record in `STT_SELECTION.md` (next to
- * this file; #11337): fused eliza-1-asr measured at WER 0.008 / 3.8× realtime
- * on desktop CPU (hence `local-inference` on desktop), while mobile/web stay
- * on `eliza-cloud` until on-device Stage-B numbers justify a flip.
+ * The ASR side of this matrix follows the device voice stack: ASR runs
+ * locally only where the agent and libelizainference are on the device, and
+ * everything else uses Eliza Cloud STT. When the local ASR is not staged yet,
+ * {@link resolveWavAsrRoute} degrades a `local-inference` choice to the cloud
+ * WAV route, so a device default never strands capture.
  *
  * Layering caveat (this function is only one of two ASR layers): the `asr`
  * value it returns is the *provider* — the server-side transcription route the
@@ -37,8 +35,8 @@
  * TalkMode plugin present unconditionally uses the OS speech recognizer (the
  * only backend that streams interim transcripts, and the one whose assets are
  * actually staged on phones) ahead of any provider preference. So on native
- * mobile the `eliza-cloud` value below governs server-side transcription, not
- * the live on-device capture path — the two layers are chosen independently.
+ * mobile the `asr` value below governs server-side transcription, not the
+ * live capture path — the two layers are chosen independently.
  *
  * On web/desktop the two layers now agree for `eliza-cloud`: the capture
  * factory records a WAV and POSTs it to the cloud STT proxy (`/api/asr/cloud`),
@@ -48,7 +46,7 @@
  *
  * `pickDefaultVoiceProvider` gives the platform/mode *preference*.
  * `resolveDefaultTtsProvider` (below) turns that preference into a concrete
- * provider against the runtime's actual capabilities — Kokoro on-device when
+ * provider against the runtime's actual capabilities — Paradee on-device when
  * staged, else Kokoro via Eliza Cloud when a session exists, else ElevenLabs
  * (key-gated), else browser SpeechSynthesis — so a default is never pinned to a
  * backend that will fail on the first utterance.
@@ -91,16 +89,12 @@ export function pickDefaultVoiceProvider(
     return { tts: "eliza-cloud", asr: "eliza-cloud" };
   }
 
-  // Local / local-only: split by platform. Desktop has the CPU/GPU budget
-  // for OmniVoice + Gemma ASR. Mobile runs on-device Kokoro for TTS (small +
-  // fast) but offloads the heavier ASR pipeline to Eliza Cloud. A web shell
-  // hosting a local agent can't run on-device audio, so it stays on Cloud.
-  if (platform === "desktop") {
+  // Local / local-only on a device (desktop, Android, AOSP): the agent and
+  // libelizainference run here, so speech and Phonon-2 ASR stay on-device.
+  // A web shell hosting a local agent has no on-device audio runtime, so it
+  // stays on Eliza Cloud below.
+  if (platform === "desktop" || platform === "mobile") {
     return { tts: "local-inference", asr: "local-inference" };
-  }
-
-  if (platform === "mobile") {
-    return { tts: "local-inference", asr: "eliza-cloud" };
   }
 
   // Web shell hosting a local agent: no on-device audio runtime, so use the
@@ -110,7 +104,7 @@ export function pickDefaultVoiceProvider(
 
 /**
  * Runtime capabilities observed at resolution time. `pickDefaultVoiceProvider`
- * expresses the *preferred* Kokoro path per platform/mode; this fills in whether
+ * expresses the *preferred* speech path per platform/mode; this fills in whether
  * that path can actually run right now, so the default can fall through instead
  * of pinning a backend that will 503/401 on the first utterance.
  */
@@ -147,13 +141,13 @@ export const BROWSER_TTS_PROVIDER: VoiceProvider = "robot-voice";
  * and what the runtime can actually do right now. This is the "no explicit user
  * choice" chain the product wants for bidirectional voice:
  *
- *   Kokoro on-device (`local-inference`, when its engine is staged)
+ *   Paradee v1.1 on-device (`local-inference`, when its engine is staged)
  *     → Kokoro via Eliza Cloud (`eliza-cloud`, when a cloud session exists)
  *     → ElevenLabs (`elevenlabs`, only if a key is configured)
  *     → browser SpeechSynthesis ({@link BROWSER_TTS_PROVIDER}).
  *
  * The preferred entry point (from {@link pickDefaultVoiceProvider}) only orders
- * the two Kokoro transports for this platform — on desktop/mobile-local the
+ * the two speech transports for this platform — on desktop/mobile-local the
  * on-device path is tried first; on web/cloud the cloud path is. Whatever the
  * preference, an unavailable backend is skipped, never selected-then-failed.
  * ElevenLabs is deliberately last and key-gated: it is slow and never a silent
@@ -161,7 +155,7 @@ export const BROWSER_TTS_PROVIDER: VoiceProvider = "robot-voice";
  * returns a provider that cannot run.
  *
  * Native mobile is not modeled here: `useVoiceChat` unconditionally routes the
- * reply through the native TalkMode engine (on-device Kokoro) on a Capacitor
+ * reply through the native TalkMode engine (on-device Paradee) on a Capacitor
  * platform, ahead of this web dispatch, so the on-device voice is used there
  * regardless of the resolved provider value.
  */
@@ -171,7 +165,7 @@ export function resolveDefaultTtsProvider(
 ): VoiceProvider {
   const preferred = pickDefaultVoiceProvider(input).tts;
 
-  // On-device Kokoro first when the platform/mode preference chose it AND the
+  // On-device Paradee first when the platform/mode preference chose it AND the
   // engine is actually staged. A desktop/mobile-local box whose voice bundle
   // isn't downloaded yet skips this and falls to the cloud path below.
   if (preferred === "local-inference" && capabilities.localInferenceTtsReady) {
@@ -180,12 +174,12 @@ export function resolveDefaultTtsProvider(
 
   // Eliza Cloud Kokoro when a linked cloud session with a working TTS proxy
   // exists. This is the default on web/cloud, and the fallback when on-device
-  // Kokoro isn't staged.
+  // Paradee isn't staged.
   if (capabilities.cloudVoiceAvailable) {
     return "eliza-cloud";
   }
 
-  // On-device Kokoro is still preferable to ElevenLabs/browser even when the
+  // On-device Paradee is still preferable to ElevenLabs/browser even when the
   // platform preferred the cloud path but no cloud session is available — a
   // staged local voice beats a key-gated remote one.
   if (capabilities.localInferenceTtsReady) {
@@ -193,7 +187,7 @@ export function resolveDefaultTtsProvider(
   }
 
   // ElevenLabs only with a configured key. Never a silent default (slow + gated)
-  // — reached only when no Kokoro transport is available.
+  // — reached only when no on-device or cloud speech transport is available.
   if (capabilities.elevenLabsKeyConfigured) {
     return "elevenlabs";
   }

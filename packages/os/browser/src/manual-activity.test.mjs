@@ -108,3 +108,26 @@ test("storage errors are not acknowledged and overflow is explicit", async () =>
   assert.equal(result.events.length, 256);
   assert.equal(result.overflow, true);
 });
+test("an extended task records a sign-in on each of its origins, and only those", async () => {
+  const f = fixture();
+  const extended = {
+    ...binding,
+    origins: [binding.origin, "https://secure.login.test"],
+  };
+  f.set(extended);
+  await f.journal.record(
+    { ...message, credential: true },
+    { ...sender, url: "https://secure.login.test/sign-in" },
+  );
+  await assert.rejects(
+    f.journal.record(
+      { ...message, eventId: "22222222-2222-4222-8222-222222222222" },
+      { ...sender, url: "https://other.test/" },
+    ),
+  );
+  const result = await f.journal.read(extended);
+  assert.deepEqual(
+    result.events.map((event) => [event.origin, event.credential]),
+    [["https://secure.login.test", true]],
+  );
+});

@@ -45,8 +45,13 @@ import {
   TableRow,
 } from "../ui/table";
 import { Textarea } from "../ui/textarea";
+import {
+  isHostedDigestWorkflow,
+  typedWorkflowSchedule,
+} from "./typed-workflow-schedule";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
+import { workflowRunNotRun } from "./workflow-run-occurrence";
 
 type StudioTab = "build" | "source" | "runs" | "widgets" | "history";
 
@@ -97,6 +102,9 @@ function newWorkflow(): WorkflowDefinition {
 function terminal(status: WorkflowExecution["status"]): boolean {
   return ["cancelled", "continued", "failed", "finished"].includes(status);
 }
+
+/** An occurrence settled without running anything is neither success nor failure. */
+const NOT_RUN_DOT = "bg-muted-foreground/40";
 
 function statusDot(status: WorkflowExecution["status"]): string {
   if (status === "finished") return "bg-status-success";
@@ -352,6 +360,8 @@ function WorkflowEditorSession({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<WorkflowRevision[]>([]);
   const [cancelArmedId, setCancelArmedId] = useState<string | null>(null);
+  // A missed occurrence's Run now starts a new manual run only after a second, explicit tap.
+  const [runNowArmedId, setRunNowArmedId] = useState<string | null>(null);
   const [restoreArmedId, setRestoreArmedId] = useState<string | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [runsLoading, setRunsLoading] = useState(Boolean(initial?.id));
@@ -375,6 +385,11 @@ function WorkflowEditorSession({
   const dirty = JSON.stringify(workflow) !== savedVersion;
   const selectedRun =
     executions.find((run) => run.id === selectedRunId) ?? executions[0] ?? null;
+  // A hosted digest refuses a generic manual run, so its missed time offers none.
+  const manualRunAvailable = !isHostedDigestWorkflow(workflow.metadata);
+  const selectedNotRun = selectedRun
+    ? workflowRunNotRun(selectedRun, undefined, manualRunAvailable)
+    : null;
   const pendingApproval = selectedRun?.approvals?.find(
     (approval) => approval.status === "pending",
   );
@@ -573,6 +588,11 @@ function WorkflowEditorSession({
     setRunInputOpen(true);
   }, [inputFields, run]);
 
+  const typedSchedule = useMemo(
+    () => typedWorkflowSchedule(workflow.metadata),
+    [workflow.metadata],
+  );
+
   const toggleActive = useCallback(async () => {
     setError(null);
     try {
@@ -580,7 +600,11 @@ function WorkflowEditorSession({
       if (!current?.id) return;
       const updated = current.active
         ? await client.deactivateWorkflowDefinition(current.id)
-        : await client.activateWorkflowDefinition(current.id);
+        : // Turn on exactly the version on screen; a workflow changed elsewhere is refused.
+          await client.activateWorkflowDefinition(
+            current.id,
+            current.versionId,
+          );
       setWorkflow(updated);
       setSavedVersion(JSON.stringify(updated));
       onSaved?.(updated);
@@ -715,13 +739,24 @@ function WorkflowEditorSession({
         ) : null}
       </div>
 
-      <WorkflowTriggerPanel
-        workflowId={workflow.id}
-        workflowName={workflow.name}
-        onNeedsSave={async () =>
-          !workflow.id || dirty ? ((await save())?.id ?? null) : workflow.id
-        }
-      />
+      {typedSchedule ? (
+        // A typed phone workflow runs only on its reviewed trigger; generic
+        // triggers cannot start it, so none are offered here.
+        <section
+          aria-label="Workflow schedule"
+          className="bg-card/40 px-3 py-2 text-xs text-muted"
+        >
+          {typedSchedule.summary}
+        </section>
+      ) : (
+        <WorkflowTriggerPanel
+          workflowId={workflow.id}
+          workflowName={workflow.name}
+          onNeedsSave={async () =>
+            !workflow.id || dirty ? ((await save())?.id ?? null) : workflow.id
+          }
+        />
+      )}
 
       {error ? (
         <div
@@ -809,37 +844,41 @@ function WorkflowEditorSession({
               </div>
             ) : null}
             <div className="space-y-1">
-              {executions.map((execution) => (
-                <Button
-                  type="button"
-                  key={execution.id}
-                  onClick={() => setSelectedRunId(execution.id)}
-                  variant="choice"
-                  size="row"
-                  align="start"
-                  data-state={selectedRun?.id === execution.id ? "on" : "off"}
-                  title={`${execution.status} · ${execution.id}`}
-                >
-                  <span
-                    className={`size-2.5 shrink-0 rounded-full ${statusDot(execution.status)}`}
+              {executions.map((execution) => {
+                const notRun = workflowRunNotRun(execution);
+                const statusLabel = notRun?.label ?? execution.status;
+                return (
+                  <Button
+                    type="button"
+                    key={execution.id}
+                    onClick={() => setSelectedRunId(execution.id)}
+                    variant="choice"
+                    size="row"
+                    align="start"
+                    data-state={selectedRun?.id === execution.id ? "on" : "off"}
+                    title={`${statusLabel} · ${execution.id}`}
                   >
-                    <span className="sr-only">{execution.status}</span>
-                  </span>
-                  <span
-                    className={`min-w-0 flex-1 truncate font-mono text-2xs ${selectedRun?.id === execution.id ? "text-inherit" : "text-muted-foreground"}`}
-                  >
-                    {execution.id.slice(0, 12)}
-                  </span>
-                  <span
-                    className={`text-2xs ${selectedRun?.id === execution.id ? "text-inherit" : "text-muted-foreground/70"}`}
-                  >
-                    {new Date(execution.startedAt).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </Button>
-              ))}
+                    <span
+                      className={`size-2.5 shrink-0 rounded-full ${notRun ? NOT_RUN_DOT : statusDot(execution.status)}`}
+                    >
+                      <span className="sr-only">{statusLabel}</span>
+                    </span>
+                    <span
+                      className={`min-w-0 flex-1 truncate font-mono text-2xs ${selectedRun?.id === execution.id ? "text-inherit" : "text-muted-foreground"}`}
+                    >
+                      {execution.id.slice(0, 12)}
+                    </span>
+                    <span
+                      className={`text-2xs ${selectedRun?.id === execution.id ? "text-inherit" : "text-muted-foreground/70"}`}
+                    >
+                      {new Date(execution.startedAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </Button>
+                );
+              })}
               {!runsLoading && !runsError && executions.length === 0 ? (
                 <div
                   className="flex min-h-32 flex-col items-center justify-center gap-3"
@@ -862,10 +901,12 @@ function WorkflowEditorSession({
               <div className="mx-auto max-w-4xl space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span
-                    className={`size-2.5 rounded-full ${statusDot(selectedRun.status)}`}
-                    title={selectedRun.status}
+                    className={`size-2.5 rounded-full ${selectedNotRun ? NOT_RUN_DOT : statusDot(selectedRun.status)}`}
+                    title={selectedNotRun?.label ?? selectedRun.status}
                   >
-                    <span className="sr-only">{selectedRun.status}</span>
+                    <span className="sr-only">
+                      {selectedNotRun?.label ?? selectedRun.status}
+                    </span>
                   </span>
                   <span className="font-mono text-xs text-muted-foreground">
                     {selectedRun.id.slice(0, 12)}
@@ -903,6 +944,50 @@ function WorkflowEditorSession({
                     </Button>
                   ) : null}
                 </div>
+                {selectedNotRun ? (
+                  <div
+                    role="status"
+                    data-testid="workflow-run-not-run"
+                    className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card p-3 text-xs"
+                  >
+                    <p className="min-w-0 flex-1">
+                      <span className="font-medium">
+                        {selectedNotRun.label}.
+                      </span>{" "}
+                      {selectedNotRun.notice}
+                    </p>
+                    {selectedNotRun.offerRunNow && workflow.id ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          runNowArmedId === selectedRun.id
+                            ? "default"
+                            : "outline"
+                        }
+                        disabled={running}
+                        aria-label={
+                          runNowArmedId === selectedRun.id
+                            ? "Confirm starting a new run now"
+                            : "Run now"
+                        }
+                        onClick={() => {
+                          if (runNowArmedId !== selectedRun.id) {
+                            setRunNowArmedId(selectedRun.id);
+                            return;
+                          }
+                          setRunNowArmedId(null);
+                          requestRun();
+                        }}
+                      >
+                        <Play className="size-3.5" />
+                        {runNowArmedId === selectedRun.id
+                          ? "Confirm new run"
+                          : "Run now"}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="grid gap-3 md:grid-cols-2">
                   {hasObjectValues(selectedRun.input) ? (
                     <div className="rounded-xl border border-border/60 bg-card p-3">

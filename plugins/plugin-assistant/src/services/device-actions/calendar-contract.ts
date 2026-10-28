@@ -1,5 +1,7 @@
 /** Provider-neutral, closed Calendar device contract. No observation grants permission. */
 export const CALENDAR_CAPABILITY = "calendar.local-event.v1";
+/** Standalone, foreground, bounded Calendar agenda reads; never inferred from next-event support. */
+export const CALENDAR_AGENDA_CAPABILITY = "calendar.agenda-read.v1";
 export const CALENDAR_CREATE_CAPABILITY = "calendar.create.v1";
 export const CALENDAR_NEXT_CAPABILITY = "calendar.next-read.v1";
 export interface CalendarWindow {
@@ -103,7 +105,7 @@ function string(value: unknown, max: number, empty = false) {
     throw Error("Invalid Calendar text");
   return value;
 }
-function id(value: unknown) {
+export function calendarIdentifier(value: unknown) {
   const text = string(value, 128);
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(text))
     throw Error("Invalid Calendar identity");
@@ -154,7 +156,7 @@ export function calendarSource(value: unknown): CalendarSource {
   const v = obj(value);
   keys(v, ["sourceId", "sourceRevision"]);
   return {
-    sourceId: id(v.sourceId),
+    sourceId: calendarIdentifier(v.sourceId),
     sourceRevision: revision(v.sourceRevision),
   };
 }
@@ -162,9 +164,9 @@ export function calendarTarget(value: unknown): CalendarTarget {
   const v = obj(value);
   keys(v, ["sourceId", "sourceRevision", "eventId", "revision"]);
   return {
-    sourceId: id(v.sourceId),
+    sourceId: calendarIdentifier(v.sourceId),
     sourceRevision: revision(v.sourceRevision),
-    eventId: id(v.eventId),
+    eventId: calendarIdentifier(v.eventId),
     revision: revision(v.revision),
   };
 }
@@ -324,8 +326,8 @@ export function validateCalendarResult(
   const result: CalendarRecordResult = {
     version: 1,
     kind: operation.type,
-    sourceId: id(v.sourceId),
-    eventId: id(v.eventId),
+    sourceId: calendarIdentifier(v.sourceId),
+    eventId: calendarIdentifier(v.eventId),
     revision: revision(v.revision),
   };
   if (

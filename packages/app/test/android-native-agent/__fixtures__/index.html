@@ -1,4 +1,4 @@
-<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><h1>Android agent lifecycle verification</h1><pre id="progress">Waiting for native bridge</pre><script>
+<!doctype html><html lang="en"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><h1>Android agent lifecycle verification</h1><pre id="progress">Waiting for native bridge</pre><script>
 window.runAgentLifecycle = async () => {
   const call = (method, options = {}) => Capacitor.nativePromise('Agent', method, options);
   const assert = (value, message) => { if (!value) throw new Error(message); };

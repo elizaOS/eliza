@@ -11,6 +11,7 @@
  * consumes these typed events.
  */
 
+import type { ViewActionHandoff } from "@elizaos/core/protocol";
 import { parseVoiceUiContext, type VoiceUiContext } from "../protocol";
 
 export const VOICE_SESSION_PROTOCOL_VERSION = 1;
@@ -87,6 +88,7 @@ export type ClientControlFrame =
   | ClientHelloFrame
   | ClientAudioMetaFrame
   | ClientAudioCapabilitiesFrame
+  | { t: "playback_complete"; traceId: string }
   | ClientBargeInFrame
   | ClientByeFrame
   | ClientEndAudioFrame;
@@ -94,12 +96,18 @@ export type ClientControlFrame =
 // --- server -> client control / state frames ------------------------------
 
 export type ServerControlFrame =
-  | { t: "ready"; sessionId: string; traceId: string; uiContext?: boolean }
+  | {
+      t: "ready";
+      sessionId: string;
+      traceId: string;
+      uiContext?: boolean;
+      playbackCompletion?: boolean;
+    }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
-  | { t: "reply_complete"; traceId: string }
+  | { t: "reply_complete"; traceId: string; userMessageId?: string }
   | { t: "progress"; text: string; traceId: string }
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
@@ -131,6 +139,9 @@ export type ServerControlFrame =
       viewPath?: string;
       subview?: string;
       traceId: string;
+      completedActionHandoffId?: string;
+      navigationPrepared?: true;
+      navigationBinding?: ViewActionHandoff["navigationBinding"];
     }
   | { t: "interrupted"; reason: "acoustic" | "explicit"; traceId: string }
   | {
@@ -204,6 +215,15 @@ export function parseClientControlFrame(
       return parseAudioMeta(parsed);
     case "audio_capabilities":
       return parseAudioCapabilities(parsed);
+    case "playback_complete":
+      return typeof parsed.traceId === "string" &&
+        parsed.traceId.length > 0 &&
+        parsed.traceId.length <= 256
+        ? {
+            ok: true,
+            value: { t: "playback_complete", traceId: parsed.traceId },
+          }
+        : fail("playback_complete_invalid", "invalid playback trace");
     case "barge_in":
       return { ok: true, value: { t: "barge_in" } };
     case "bye":

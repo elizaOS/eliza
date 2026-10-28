@@ -16,7 +16,7 @@
  */
 
 import { requireUser } from "@elizaos/cloud-shared/auth";
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import {
   RateLimitPresets,
   rateLimit,
@@ -52,7 +52,7 @@ app.post("/", async (c) => {
     );
   }
 
-  const redis = buildRedisClient(c.env);
+  const redis = buildAuthenticationState(c.env, c.env.AUTHENTICATION_STATE);
   if (!redis) {
     return c.json({ error: "Service temporarily unavailable" }, 503);
   }

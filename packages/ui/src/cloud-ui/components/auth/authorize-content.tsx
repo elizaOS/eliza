@@ -29,6 +29,7 @@ import {
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { CornerBrackets } from "../../../components/ui/corner-brackets";
+import { useBranding } from "../../../config/branding-react.hooks";
 import { DiscordIcon, GoogleIcon } from "../../../login/icons";
 import { LoginForm } from "../../../login/LoginForm";
 import { useAuth } from "../../../login/useAuth";
@@ -122,6 +123,8 @@ const APP_AUTHORIZE_OAUTH_PROVIDERS = [
 }>;
 
 export function AuthorizeContent() {
+  const branding = useBranding();
+  const cloudName = branding.cloudName?.trim() || `${branding.appName} Cloud`;
   const router = useRouter();
   const searchParams = useSearchParams();
   const appId = searchParams.get("app_id");
@@ -149,7 +152,7 @@ export function AuthorizeContent() {
   if (searchParams.get("flow") === "mobile_pkce" && !mobileRequest) {
     return (
       <AuthorizationErrorFrame
-        error="The mobile sign-in request is incomplete. Return to Eliza and try again."
+        error="The mobile sign-in request is incomplete. Return to the app and try again."
         onHome={() => router.push("/")}
       />
     );
@@ -167,7 +170,7 @@ export function AuthorizeContent() {
   if (!mobileRequest && !appId) {
     return (
       <AuthorizationErrorFrame
-        error="Missing app_id parameter. Apps must be registered with Eliza Cloud."
+        error={`Missing app_id parameter. Apps must be registered with ${cloudName}.`}
         onHome={() => router.push("/")}
       />
     );
@@ -331,6 +334,8 @@ function AuthorizeFlow({
   redirectUri: string;
   state: string | null;
 }) {
+  const branding = useBranding();
+  const cloudName = branding.cloudName?.trim() || `${branding.appName} Cloud`;
   const {
     isLoading: authLoading,
     isAuthenticated,
@@ -372,7 +377,7 @@ function AuthorizeFlow({
     storeCurrentAppAuthorizeReturnTo();
   }, [status]);
 
-  // Validate app + redirect_uri exactly once on mount.
+  // Validate the selected app and exact callback; retire stale responses on changes.
   useEffect(() => {
     let cancelled = false;
 
@@ -420,7 +425,7 @@ function AuthorizeFlow({
         if (!res.ok) {
           if (res.status === 404) {
             setError(
-              "App not found. Please ensure the app is registered with Eliza Cloud.",
+              `App not found. Please ensure the app is registered with ${cloudName}.`,
             );
           } else if (res.status === 400) {
             setError(
@@ -446,7 +451,7 @@ function AuthorizeFlow({
           };
         };
         if (!data.app?.name) {
-          setError("Eliza Cloud returned invalid application metadata.");
+          setError(`${cloudName} returned invalid application metadata.`);
           setStatus("error");
           return;
         }
@@ -481,7 +486,7 @@ function AuthorizeFlow({
     return () => {
       cancelled = true;
     };
-  }, [appId, delegationRequest, mobileRequest, redirectUri]);
+  }, [appId, cloudName, delegationRequest, mobileRequest, redirectUri]);
 
   const handleAuthorize = useCallback(async () => {
     if ((!appId && !mobileRequest) || !redirectUri) return;
@@ -647,7 +652,7 @@ function AuthorizeFlow({
   if (status === "error" && mobileRequest) {
     return (
       <AuthorizationErrorFrame
-        actionLabel="Return to Eliza"
+        actionLabel={`Return to ${appInfo.name}`}
         error={error}
         onHome={handleCancel}
       />
@@ -659,7 +664,7 @@ function AuthorizeFlow({
       <Frame>
         <Loader2 className="size-12 animate-spin text-muted" />
         <h3 className="text-lg font-semibold text-white">
-          {mobileRequest ? "Returning to Eliza…" : "Authorizing…"}
+          {mobileRequest ? `Returning to ${appInfo.name}…` : "Authorizing…"}
         </h3>
         <p className="text-sm text-white/60">
           Redirecting you back to {appInfo.name}
@@ -689,13 +694,13 @@ function AuthorizeFlow({
             ))}
           </ul>
           <p className="mt-3">
-            This app manages its own subscription. Your Eliza Cloud account can
+            This app manages its own subscription. Your {cloudName} account can
             stay free.
           </p>
         </div>
       ) : (
         <p className="max-w-sm text-center text-sm text-white/60">
-          Connect {appInfo.name} to your Eliza Cloud account. AI features may
+          Connect {appInfo.name} to your {cloudName} account. AI features may
           use your cloud credit balance.
         </p>
       )}
@@ -724,7 +729,7 @@ function AuthorizeFlow({
 // Presentational helpers kept local to this file.
 
 function AuthorizationErrorFrame({
-  actionLabel = "Go to Eliza Cloud",
+  actionLabel = "Go Home",
   error,
   onHome,
 }: {

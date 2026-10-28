@@ -199,6 +199,8 @@ export interface EvaluatorRunResult {
 		processorName?: string;
 		/** Provider retry deadline, retained without transporting raw errors/secrets. */
 		retryAt?: number;
+		/** False when retrying the same input cannot succeed. */
+		retryable?: boolean;
 		error: string;
 	}>;
 }

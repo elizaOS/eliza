@@ -53,6 +53,29 @@ export interface LoginTransportOptions {
   maxResponseBodyBytes?: number;
 }
 
+/**
+ * Login requests never follow a redirect. They ask for `"manual"` because the
+ * Cloudflare Workers runtime rejects `redirect: "error"` outright, and this
+ * turns any redirect response (a real 3xx, or a browser `opaqueredirect`) into
+ * the same rejected request `"error"` produced.
+ */
+export async function refuseLoginRedirect(
+  response: Response,
+): Promise<Response> {
+  if (
+    response.type !== "opaqueredirect" &&
+    (response.status < 300 || response.status >= 400)
+  )
+    return response;
+  await response.body?.cancel().catch(() => {
+    // error-policy:J6 The redirect is already refused; body disposal is
+    // best-effort teardown of an unused response.
+  });
+  throw new TypeError(
+    `Login request refused a redirect (HTTP ${response.status})`,
+  );
+}
+
 export async function fetchLoginText(
   url: string,
   init: RequestInit = {},
@@ -94,12 +117,14 @@ export async function fetchLoginText(
       : new Headers(init.headers);
     if (controller.signal.aborted)
       throw new DOMException("Request aborted", "AbortError");
-    const response = await fetch(url, {
-      ...init,
-      headers,
-      redirect: "error",
-      signal: controller.signal,
-    });
+    const response = await refuseLoginRedirect(
+      await fetch(url, {
+        ...init,
+        headers,
+        redirect: "manual",
+        signal: controller.signal,
+      }),
+    );
     const text = await readResponseText(
       response,
       controller.signal,

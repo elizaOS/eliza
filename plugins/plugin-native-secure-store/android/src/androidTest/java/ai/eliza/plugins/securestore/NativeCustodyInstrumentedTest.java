@@ -77,6 +77,15 @@ public final class NativeCustodyInstrumentedTest {
       byte[] tampered = android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP); tampered[0] ^= 1;
       try { codec.open(parts[0] + ":" + android.util.Base64.encodeToString(tampered, android.util.Base64.NO_WRAP)); fail("Accepted changed ciphertext"); }
       catch (javax.crypto.AEADBadTagException expected) {}
+      byte[] record = "fixture-host/record/a".getBytes(StandardCharsets.UTF_8);
+      String bound = codec.seal(value, record);
+      assertEquals(value, codec.open(bound, record));
+      for (byte[] other : new byte[][] {null, "fixture-host/record/b".getBytes(StandardCharsets.UTF_8)}) {
+        try { codec.open(bound, other); fail("Accepted a frame from another context"); }
+        catch (javax.crypto.AEADBadTagException expected) {}
+      }
+      try { codec.open(next, record); fail("Accepted an unbound frame as bound"); }
+      catch (javax.crypto.AEADBadTagException expected) {}
       KeystoreTextFrame small = new KeystoreTextFrame(alias, 41);
       assertEquals("", small.open(small.seal("")));
       try { small.seal("abc"); fail("Wrote a frame larger than the read limit"); } catch (IllegalArgumentException expected) {}

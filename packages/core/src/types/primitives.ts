@@ -6,20 +6,9 @@
  */
 import type { InteractionBlock } from "./interactions.js";
 
-/**
- * JSON-serializable primitive value.
- */
-export type JsonPrimitive = string | number | boolean | null;
+import type { JsonObject, JsonValue } from "./json.js";
 
-export type JsonValue =
-	| JsonPrimitive
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-/**
- * JSON-serializable object (used for dynamic properties).
- */
-export type JsonObject = { [key: string]: JsonValue };
+export type { JsonObject, JsonPrimitive, JsonValue } from "./json.js";
 
 /**
  * Minimal process-like environment shape for packages that also run in

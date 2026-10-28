@@ -133,6 +133,19 @@ export function parseMintOptions(argv: string[]): MintOptions {
 async function main(): Promise<void> {
   loadEnvFiles();
   const options = parseMintOptions(process.argv.slice(2));
+  const productionTest = process.env.ELIZA_PRODUCTION_TEST_GRANT === "1";
+  if (
+    productionTest &&
+    (options.count !== 1 ||
+      options.maxRedemptions !== 1 ||
+      options.planKey !== "plus_monthly" ||
+      !options.requiresNoPaidPlan ||
+      options.durationMonths !== null ||
+      options.durationDays === null ||
+      options.durationDays > 31 ||
+      options.family !== "production_qa")
+  )
+    throw new Error("production_grant_bounds_required");
   const pepper = process.env.ELIZA_SUBSCRIPTION_GRANT_CODE_PEPPER;
   if (!pepper || pepper.length < 32)
     throw new Error(
@@ -164,6 +177,18 @@ async function main(): Promise<void> {
   );
   // One transaction: either every printed code exists, or none does.
   await dbWrite.transaction(async (tx) => {
+    if (productionTest) {
+      const [{ admitProductionTestGrant }, { sql }] = await Promise.all([
+        import("./production-test-grant-admission"),
+        import("drizzle-orm"),
+      ]);
+      await admitProductionTestGrant({
+        query: async (text) => {
+          const result = await tx.execute(sql.raw(text));
+          return { rows: result.rows };
+        },
+      });
+    }
     await tx.insert(subscriptionGrantCodes).values(rows);
   });
   console.error(
@@ -177,7 +202,14 @@ if (import.meta.main) {
   main()
     .then(() => process.exit(0))
     .catch((error) => {
-      console.error(error instanceof Error ? error.message : error);
+      if (process.env.ELIZA_PRODUCTION_TEST_GRANT === "1") {
+        const message = error instanceof Error ? error.message : "";
+        console.error(
+          /^production_grant_[a-z0-9_]+$/.test(message)
+            ? message
+            : "production_grant_mint_failed",
+        );
+      } else console.error(error instanceof Error ? error.message : error);
       process.exit(1);
     });
 }

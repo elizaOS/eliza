@@ -12,6 +12,7 @@ import type { UserWithOrganization } from "../../db/repositories/users";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { Organization } from "../../db/schemas/organizations";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
+import { isMobileApiKeySecret, isUsableMobileApiKey } from "../auth/mobile-api-key";
 import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
 
 export interface InferenceApiKeyAuthTimingObserver {
@@ -73,6 +74,14 @@ export async function requireInferenceApiKeyWithOrg(
   }
   if (!apiKey.is_active) {
     reject(options, new ForbiddenError("API key is inactive"), "credential_inactive");
+  }
+
+  if (isMobileApiKeySecret(rawKey) && !isUsableMobileApiKey(apiKey)) {
+    reject(
+      options,
+      new AuthenticationError("Invalid or expired mobile API key"),
+      "credential_invalid",
+    );
   }
 
   const user: UserWithOrganization | null = identity?.user ?? null;

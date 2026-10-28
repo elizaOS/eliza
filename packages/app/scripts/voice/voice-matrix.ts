@@ -95,13 +95,13 @@ const CELLS = [
     probe: "web",
   },
   {
-    // Opt-in LIVE web round-trip against the real Railway STT/TTS + a live agent
+    // Opt-in LIVE web round-trip against the real Cloudflare STT/TTS + a live agent
     // (#14371). Same spec file, but the live `test.describe` only runs (never
-    // skips-as-pass) when ELIZA_VOICE_LIVE_RAILWAY=1; the `webLiveRailway` probe
+    // skips-as-pass) when ELIZA_VOICE_LIVE_CLOUDFLARE=1; the `webLiveCloudflare` probe
     // gates the cell to `skip` until the lane is provisioned.
-    id: "web.live.railway-roundtrip",
+    id: "web.live.cloudflare-roundtrip",
     title:
-      "Web LIVE cloud voice round-trip: injected WAV -> Railway Whisper STT -> live agent -> Railway Kokoro TTS -> non-silent audio",
+      "Web LIVE cloud voice round-trip: injected WAV -> Workers AI STT -> live agent -> Workers AI TTS -> non-silent audio",
     platform: "web",
     dimensions: {
       transcriptionState: "off",
@@ -128,7 +128,7 @@ const CELLS = [
       ELIZA_UI_SMOKE_CLOUD_MEDIA_LIVE: "1",
     },
     evidence: ["test-results/app", "e2e-recordings/app/test-results"],
-    probe: "webLiveRailway",
+    probe: "webLiveCloudflare",
   },
   {
     id: "web.failure-paths",
@@ -746,26 +746,26 @@ function probeCell(cell) {
         available: true,
         reason: "Chromium fake-device mic lane is host-runnable",
       };
-    case "webLiveRailway":
-      if (process.env.ELIZA_VOICE_LIVE_RAILWAY !== "1") {
+    case "webLiveCloudflare":
+      if (process.env.ELIZA_VOICE_LIVE_CLOUDFLARE !== "1") {
         return {
           available: false,
           reason:
-            "set ELIZA_VOICE_LIVE_RAILWAY=1 with reachable Railway STT/TTS + a live LLM key",
+            "set ELIZA_VOICE_LIVE_CLOUDFLARE=1 with reachable Cloudflare STT/TTS + a live LLM key",
         };
       }
       for (const key of ["CEREBRAS_API_KEY", "ELIZAOS_CLOUD_API_KEY"]) {
         if (!process.env[key]?.trim()) {
           return {
             available: false,
-            reason: `${key} is required for the live Railway browser round-trip`,
+            reason: `${key} is required for the live Cloudflare browser round-trip`,
           };
         }
       }
       return {
         available: true,
         reason:
-          "ELIZA_VOICE_LIVE_RAILWAY=1: live cloud voice round-trip enabled",
+          "ELIZA_VOICE_LIVE_CLOUDFLARE=1: live cloud voice round-trip enabled",
       };
     case "linuxFused":
       if (process.platform !== "linux")
@@ -1043,7 +1043,7 @@ function statusFor(args, probe, execution) {
 
 const AVAILABLE_PROBE_CODES = {
   web: "WEB_FAKE_DEVICE_AVAILABLE",
-  webLiveRailway: "WEB_LIVE_READY",
+  webLiveCloudflare: "WEB_LIVE_READY",
   linuxFused: "LINUX_FUSED_READY",
   openWakeWord: "OPENWAKEWORD_REPORT_READY",
   macosElectrobun: "MACOS_ELECTROBUN_READY",
@@ -1058,7 +1058,7 @@ const AVAILABLE_PROBE_CODES = {
 
 const UNAVAILABLE_PROBE_CODES = {
   web: "WEB_FAKE_DEVICE_UNAVAILABLE",
-  webLiveRailway: "WEB_LIVE_UNAVAILABLE",
+  webLiveCloudflare: "WEB_LIVE_UNAVAILABLE",
   linuxFused: "LINUX_FUSED_UNAVAILABLE",
   openWakeWord: "OPENWAKEWORD_REPORT_UNAVAILABLE",
   macosElectrobun: "MACOS_ELECTROBUN_UNAVAILABLE",
@@ -1076,8 +1076,8 @@ function projectProbe(cell, probe) {
     return { available: false, code: "BUN_UNAVAILABLE" };
   }
   if (
-    cell.probe === "webLiveRailway" &&
-    /is required for the live Railway browser round-trip/.test(probe.reason)
+    cell.probe === "webLiveCloudflare" &&
+    /is required for the live Cloudflare browser round-trip/.test(probe.reason)
   ) {
     return { available: false, code: "WEB_LIVE_CREDENTIAL_MISSING" };
   }

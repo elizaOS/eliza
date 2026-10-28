@@ -1,15 +1,19 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
-import type { VoiceSessionConfig } from "@elizaos/host/voice/session";
+import {
+  VoiceSession,
+  type VoiceSessionConfig,
+} from "@elizaos/host/voice/session";
 import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WebSocket from "ws";
+import { cartesiaEvents } from "../../test/fixtures/cartesia-events";
 import type { AuthRepository } from "../services/auth-repository";
 import { authStoreForRuntime } from "../services/auth-store";
 import { resolveAuthorizedRouteRole } from "./auth";
@@ -20,7 +24,10 @@ import {
   SESSION_COOKIE_NAME,
 } from "./auth/sessions";
 import type { CompatRuntimeState } from "./compat-route-shared";
-import { createSelfHostedVoice } from "./self-hosted-voice";
+import {
+  createSelfHostedVoice,
+  type SelfHostedVoiceOptions,
+} from "./self-hosted-voice";
 
 const agentId = randomUUID() as UUID;
 const conversationId = randomUUID();
@@ -28,12 +35,17 @@ let directory: string, adapter: SQLiteDatabaseAdapter, store: AuthRepository;
 let server: Server, origin: string, state: CompatRuntimeState;
 let host: ReturnType<typeof createSelfHostedVoice>;
 let sessions: VoiceSessionConfig[];
+let hostOptions: SelfHostedVoiceOptions;
+let streamReply: string;
 let upstreamRequests: Array<{ url: string; headers: Record<string, unknown> }>;
 let clock: number;
 const ownerSession = "private-owner-session";
 
 beforeEach(async () => {
   vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_ENABLED", "1");
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "");
+  vi.stubEnv("ELIZA_DEV_CLOUD_ENV_AUTHORITY", "");
+  streamReply = "data: [DONE]\n\n";
   vi.stubEnv("CARTESIA_API_KEY", "private-provider-test-key");
   vi.stubEnv("CARTESIA_API_KEY_FILE", "");
   vi.stubEnv("ELIZA_API_TOKEN", "static-admin-key");
@@ -79,7 +91,7 @@ beforeEach(async () => {
   };
   sessions = [];
   upstreamRequests = [];
-  host = createSelfHostedVoice(state, {
+  hostOptions = {
     now: () => clock,
     buildSession(config) {
       const registry = config.registry;
@@ -110,7 +122,8 @@ beforeEach(async () => {
       };
       return session;
     },
-  });
+  };
+  host = createSelfHostedVoice(state, hostOptions);
   server = createServer(async (req, res) => {
     if (req.url === "/api/conversations") {
       upstreamRequests.push({ url: req.url, headers: { ...req.headers } });
@@ -129,7 +142,7 @@ beforeEach(async () => {
         res.end();
         return;
       }
-      res.end("data: [DONE]\n\n");
+      res.end(streamReply);
     } else if (!(await host.handleRequest(req, res))) {
       res.statusCode = 404;
       res.end();
@@ -149,6 +162,7 @@ afterEach(async () => {
   await adapter?.close();
   await rm(directory, { recursive: true, force: true });
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 function request(path: string, body?: unknown, token = ownerSession) {
   return fetch(`${origin}/api/v1/voice/session${path}`, {
@@ -176,11 +190,13 @@ async function mint() {
     sessionId: string;
     token: string;
     wsUrl: string;
+    expiresAt: number;
   }>;
 }
 async function connect(
   ticket: Awaited<ReturnType<typeof mint>>,
   token = ticket.token,
+  expectReady = true,
 ) {
   const ws = new WebSocket(ticket.wsUrl);
   await once(ws, "open");
@@ -196,7 +212,7 @@ async function connect(
     }),
   );
   const frame = JSON.parse(String((await message)[0]));
-  if (token === ticket.token) expect(frame.t).toBe("ready");
+  if (token === ticket.token && expectReady) expect(frame.t).toBe("ready");
   return { ws, frame };
 }
 
@@ -492,3 +508,393 @@ it.each(["disabled", "missing-key-file"])(
     await closed;
   },
 );
+
+it("explicit Cloud speech mode requires its account and never falls back to a personal Cartesia key", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "");
+  const response = await request(`/health?conversationId=${conversationId}`);
+  expect(response.status).toBe(503);
+  expect(JSON.stringify(await response.json())).not.toContain(
+    "private-provider-test-key",
+  );
+  expect(sessions).toHaveLength(0);
+});
+it.each([false, true])(
+  "Cloud speech admission binds its returned session; diagnostic sink failure=%s",
+  async (sinkFails) => {
+    const admittedSessionId = randomUUID();
+    const admittedExpiresAt = Date.now() + 60000;
+    const log = vi.spyOn(logger, "info");
+    if (sinkFails)
+      log.mockImplementation((...args) => {
+        if (args[1] === "[voice-session] Cloud speech admitted")
+          throw Error("diagnostic sink unavailable");
+      });
+    vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    let admitted = 0,
+      retired = 0,
+      sttEvent:
+        | ((
+            event: import("@elizaos/host/voice/cartesia-ink").CartesiaInkRealtimeEvent,
+          ) => void)
+        | undefined;
+    const relayOptions: Parameters<
+      NonNullable<SelfHostedVoiceOptions["createCloudSpeechPorts"]>
+    >[0][] = [];
+    host.close();
+    host = createSelfHostedVoice(state, {
+      ...hostOptions,
+      createCloudSpeechPorts: async (options) => {
+        admitted++;
+        relayOptions.push(options);
+        options.assertCurrent();
+        expect(await options.credential()).toBe("private-cloud-account");
+        expect(options.origin).toBe("https://api-staging.eliza.app");
+        return {
+          sessionId: admittedSessionId,
+          expiresAt: admittedExpiresAt,
+          close: async () => {
+            retired++;
+          },
+          speechPorts: {
+            openStt: (callback) => {
+              sttEvent = callback;
+              return { sendAudioChunk() {}, close() {}, cancel() {} };
+            },
+            tts: {
+              createStream(_config, callbacks) {
+                let finish!: () => void;
+                const closed = new Promise<void>((resolve) => {
+                  finish = resolve;
+                });
+                return {
+                  opened: Promise.resolve(),
+                  closed,
+                  sendPhrase(phrase) {
+                    callbacks.onFirstAudio?.({ elapsedMs: 1 });
+                    callbacks.onAudioFrame?.({ bytes: new Uint8Array([1, 2]) });
+                    if (!phrase.continueContext) {
+                      callbacks.onComplete?.({ frameCount: 1 });
+                      finish();
+                    }
+                  },
+                  cancel() {
+                    finish();
+                  },
+                };
+              },
+              close() {},
+            },
+          },
+        };
+      },
+      buildSession: (config) => {
+        sessions.push(config);
+        return new VoiceSession(config);
+      },
+    });
+    const health = await (
+      await request(`/health?conversationId=${conversationId}`)
+    ).json();
+    expect(health).toMatchObject({
+      ready: true,
+      speechRoute: "cloud",
+      speechProvider: "cartesia",
+      providerAdmission: "at-session-start",
+    });
+    expect(JSON.stringify(health)).not.toContain("private-");
+    expect(admitted).toBe(0);
+    const ticket = await mint();
+    expect(admitted).toBe(0);
+    const { ws, frame } = await connect(ticket);
+    expect(frame.t).toBe("ready");
+    expect(admitted).toBe(1);
+    const receipt = {
+      event: "cloud_speech_admitted",
+      localVoiceSessionId: ticket.sessionId,
+      speechSessionDigest: createHash("sha256")
+        .update(JSON.stringify({ cloudSessionId: admittedSessionId }))
+        .digest("hex"),
+      expiresAt: admittedExpiresAt,
+    };
+    expect(log).toHaveBeenCalledWith(
+      receipt,
+      "[voice-session] Cloud speech admitted",
+    );
+    expect(JSON.stringify(receipt)).not.toContain(admittedSessionId);
+    expect(JSON.stringify(receipt)).not.toContain("private-");
+    expect(sessions[0].speechProvider).toBe("injected");
+    expect(sessions[0].cartesiaApiKey).toBeUndefined();
+    streamReply =
+      "event: done\ndata: " +
+      JSON.stringify({
+        type: "done",
+        text: "You are on Notes.",
+        actionResults: [
+          {
+            actionName: "VIEWS",
+            success: true,
+            values: { mode: "open", viewId: "notes" },
+          },
+        ],
+      }) +
+      "\n\n";
+    const frames: Record<string, unknown>[] = [];
+    ws.on("message", (data, binary) => {
+      if (!binary) frames.push(JSON.parse(data.toString()));
+    });
+    sttEvent?.({ type: "connected", raw: {} });
+    sttEvent?.({ type: "start-of-turn", transcript: "", raw: {} });
+    sttEvent?.({
+      type: "transcript-update",
+      transcript: "open notes",
+      raw: {},
+    });
+    sttEvent?.({ type: "end-of-turn", transcript: "open notes", raw: {} });
+    await vi.waitFor(() =>
+      expect(frames.some((value) => value.t === "reply_complete")).toBe(true),
+    );
+    expect(
+      frames
+        .filter((value) => value.t === "navigate_view")
+        .map((value) => value.viewId),
+    ).toEqual(["notes"]);
+    const modelRequests = upstreamRequests.filter((r) =>
+      r.url.includes("/messages/stream"),
+    );
+    expect(modelRequests).toHaveLength(1);
+    expect(modelRequests[0].headers.authorization).toBeUndefined();
+    expect(modelRequests[0].headers.cookie).toBe(
+      `${SESSION_COOKIE_NAME}=${ownerSession}`,
+    );
+    ws.send(JSON.stringify({ t: "bye" }));
+    await vi.waitFor(() => expect(retired).toBe(1));
+    expect(relayOptions).toHaveLength(1);
+  },
+);
+it("unavailable Cloud admission closes the local voice attempt without invoking a direct provider", async () => {
+  const log = vi.spyOn(logger, "info");
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let attempts = 0;
+  host.close();
+  host = createSelfHostedVoice(state, {
+    ...hostOptions,
+    createCloudSpeechPorts: async () => {
+      attempts++;
+      throw Error("relay or paid admission unavailable");
+    },
+  });
+  const ticket = await mint();
+  const { ws, frame } = await connect(ticket, ticket.token, false);
+  expect(frame.t).toBe("error");
+  expect(attempts).toBe(1);
+  expect(sessions).toHaveLength(0);
+  ws.terminate();
+  expect(
+    log.mock.calls.some(
+      (call) => call[1] === "[voice-session] Cloud speech admitted",
+    ),
+  ).toBe(false);
+});
+
+it.each(["socket", "owner"] as const)(
+  "ending the %s during asynchronous Cloud admission retires the late session without an admission receipt",
+  async (ended) => {
+    const log = vi.spyOn(logger, "info");
+    vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+    vi.stubEnv(
+      "ELIZAOS_CLOUD_BASE_URL",
+      "https://api-staging.eliza.app/api/v1",
+    );
+    let release!: () => void,
+      admitted = 0,
+      retired = 0,
+      sttOpens = 0;
+    let providerSignal: AbortSignal | undefined;
+    host.close();
+    host = createSelfHostedVoice(state, {
+      ...hostOptions,
+      createCloudSpeechPorts: async (options) => {
+        providerSignal = options.signal;
+        admitted++;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return {
+          sessionId: randomUUID(),
+          expiresAt: Date.now() + 60000,
+          close: async () => {
+            retired++;
+          },
+          speechPorts: {
+            openStt() {
+              sttOpens++;
+              return { sendAudioChunk() {}, close() {}, cancel() {} };
+            },
+            tts: {
+              createStream() {
+                throw Error("No TTS on closed caller");
+              },
+              close() {},
+            },
+          },
+        };
+      },
+      buildSession: (config) => {
+        sessions.push(config);
+        return new VoiceSession(config);
+      },
+    });
+    const ticket = await mint(),
+      ws = new WebSocket(ticket.wsUrl);
+    await once(ws, "open");
+    ws.send(
+      JSON.stringify({
+        t: "hello",
+        token: ticket.token,
+        protocol: 1,
+        uplinkCodec: "pcm16",
+        downlinkCodec: "pcm16",
+        sampleRate: 16000,
+      }),
+    );
+    await vi.waitFor(() => expect(admitted).toBe(1));
+    const endedSocket = once(ws, "close");
+    if (ended === "socket") {
+      ws.terminate();
+      await endedSocket;
+      await vi.waitFor(() => expect(providerSignal?.aborted).toBe(true));
+    } else {
+      await store.revokeSession(ownerSession, clock);
+    }
+    release();
+    await vi.waitFor(() => expect(retired).toBe(1));
+    if (ended === "owner") await endedSocket;
+    expect(
+      log.mock.calls.some(
+        (call) => call[1] === "[voice-session] Cloud speech admitted",
+      ),
+    ).toBe(false);
+    expect(sttOpens).toBe(0);
+    expect(
+      upstreamRequests.filter((r) => r.url.includes("messages/stream")),
+    ).toHaveLength(0);
+  },
+);
+
+it("only Cloud speech advertises the shared60second budget so canonical idle rotation precedes provider expiry", async () => {
+  const direct = await mint();
+  expect(direct.expiresAt - clock).toBe(120000);
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  const cloud = await mint();
+  expect(cloud.expiresAt - clock).toBe(60000);
+  expect(sessions).toHaveLength(0);
+  expect(cloud.token).not.toBe(direct.token);
+});
+
+it("ReadAloud requires current owner auth, strict text and direct configuration before provider dispatch", async () => {
+  let providerCalls = 0;
+  hostOptions.cartesiaWebSocketFactory = () => {
+    providerCalls++;
+    throw Error("must not open");
+  };
+  host.close();
+  host = createSelfHostedVoice(state, hostOptions);
+  const read = (
+    body: unknown,
+    token = ownerSession,
+    id: string = randomUUID(),
+  ) =>
+    fetch(`${origin}/api/v1/voice/session/read-aloud`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        "X-Request-Id": id,
+      },
+      body: JSON.stringify(body),
+    });
+  expect((await read({ text: "Owned" }, "machine")).status).toBe(403);
+  expect((await read({ text: "Owned" }, "")).status).toBe(401);
+  expect((await read({ text: "Owned", apiKey: "untrusted" })).status).toBe(400);
+  expect((await read({ text: "Owned" }, ownerSession, "invalid")).status).toBe(
+    400,
+  );
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "synthetic-cloud");
+  expect((await read({ text: "Owned" })).status).toBe(409);
+  expect(providerCalls).toBe(0);
+});
+
+it("ReadAloud HTTP uses real Sonic composition and returns only owned Cartesia direct WAV", async () => {
+  const sent: Array<Record<string, unknown>> = [];
+  let closed = 0;
+  hostOptions.cartesiaWebSocketFactory = () => {
+    const events = cartesiaEvents(),
+      emit = events.emit;
+    return {
+      readyState: 1,
+      addEventListener: events.addEventListener,
+      removeEventListener: events.removeEventListener,
+      send(raw: string) {
+        const frame = JSON.parse(raw);
+        sent.push(frame);
+        if (!frame.transcript) return;
+        queueMicrotask(() => {
+          emit("message", {
+            data: JSON.stringify({
+              type: "chunk",
+              context_id: frame.context_id,
+              data: Buffer.from([0, 128, 255, 127]).toString("base64"),
+            }),
+          });
+          emit("message", {
+            data: JSON.stringify({
+              type: "done",
+              context_id: frame.context_id,
+              done: true,
+            }),
+          });
+        });
+      },
+      close() {
+        closed++;
+        emit("close", { code: 1000 });
+      },
+    };
+  };
+  host.close();
+  host = createSelfHostedVoice(state, hostOptions);
+  const id = randomUUID();
+  const response = await fetch(`${origin}/api/v1/voice/session/read-aloud`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${ownerSession}`,
+      "Content-Type": "application/json",
+      "X-Request-Id": id,
+    },
+    body: JSON.stringify({ text: "Selected owned message" }),
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get("x-request-id")).toBe(id);
+  expect(response.headers.get("x-eliza-speech-provider")).toBe("cartesia");
+  expect(response.headers.get("x-eliza-speech-route")).toBe("direct");
+  expect(response.headers.get("content-type")).toBe("audio/wav");
+  const audio = Buffer.from(await response.arrayBuffer());
+  expect(audio.toString("ascii", 0, 4)).toBe("RIFF");
+  expect([...audio.subarray(44)]).toEqual([0, 128, 255, 127]);
+  expect(
+    sent.filter((frame) => frame.transcript).map((frame) => frame.transcript),
+  ).toEqual(["Selected owned message"]);
+  expect(closed).toBe(1);
+});
