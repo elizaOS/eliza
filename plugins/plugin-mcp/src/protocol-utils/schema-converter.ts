@@ -1,23 +1,20 @@
 /** Converts MCP JSON Schemas into runtime action parameters without dropping constraints. */
-import { isDeepStrictEqual } from "node:util";
-
 export interface McpInputSchema {
   properties?: Record<string, unknown>;
   required?: string[];
   [key: string]: unknown;
 }
 
-/** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */
 type RuntimeParameterType = "string" | "number" | "boolean" | "object" | "array";
 
+/** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */
 export interface ActionParameter {
   name: string;
   description: string;
   required?: boolean;
   schema: {
-    /** Omitted for a mixed union, which is described by `anyOf` instead. */
+    /** Absent for a union of several runtime types, which `anyOf` states. */
     type?: RuntimeParameterType;
-    /** Mixed union branches. A sibling `type` would contradict the other branch. */
     anyOf?: ReadonlyArray<{ type: RuntimeParameterType }>;
     default?: unknown;
     enum?: string[];
@@ -57,210 +54,38 @@ interface JsonSchemaProperty {
   nullable?: boolean;
 }
 
-/**
- * JSON Schema type names a property accepts.
- *
- * A property does not need a top-level `type`: `anyOf`/`oneOf` branch types are
- * just as binding, and pydantic/FastMCP emit `{"anyOf":[{"type":"string"},
- * {"type":"null"}]}` for `Optional[str]`. Ignoring those branches declared the
- * argument as an object, so the model was told to send an object and every
- * correct string argument failed validation.
- */
-const MAX_TYPE_BRANCH_DEPTH = 8;
-
-/** Every type name a sibling `type` keyword allows. */
-function typeNameSet(declared: JsonSchemaProperty["type"]): Set<string> {
-  const names = new Set<string>();
-  if (typeof declared === "string") names.add(declared);
-  else if (Array.isArray(declared)) {
-    for (const entry of declared) {
-      if (typeof entry === "string") names.add(entry);
-    }
+function mapJsonSchemaType(jsonType: string): RuntimeParameterType {
+  switch (jsonType) {
+    case "string":
+      return "string";
+    case "number":
+    case "integer":
+      return "number";
+    case "boolean":
+      return "boolean";
+    case "array":
+      return "array";
+    default:
+      return "object";
   }
-  return names;
 }
 
 /**
- * Types that satisfy both groups.
- *
- * `integer` is a narrower `number`, so that pair still describes one runtime
- * type instead of an empty intersection.
- */
-function intersectTypeNames(left: Set<string>, right: Set<string>): Set<string> {
-  const shared = new Set<string>();
-  for (const name of left) {
-    if (right.has(name)) shared.add(name);
-    else if (name === "integer" && right.has("number")) shared.add("integer");
-    else if (name === "number" && right.has("integer")) shared.add("integer");
-  }
-  return shared;
-}
-
-/**
- * JSON Schema type names a property accepts.
- *
- * A property does not need a top-level `type`: `anyOf`/`oneOf` branch types are
- * just as binding, and pydantic/FastMCP emit `{"anyOf":[{"type":"string"},
- * {"type":"null"}]}` for `Optional[str]`. Ignoring those branches declared the
- * argument as an object, so the model was told to send an object and every
- * correct string argument failed validation.
- *
- * `type`, `anyOf`, `oneOf` and `allOf` are simultaneous constraints, not
- * alternatives: a value must satisfy the sibling type, every `allOf` branch,
- * and one branch of each union. The groups are therefore intersected. `null`
- * means the constraints share no type, so the property accepts no value.
- */
-function propertyTypeNames(prop: JsonSchemaProperty | undefined, depth = 0): string[] | null {
-  if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return [];
-
-  let names: Set<string> | undefined;
-  const declared = typeNameSet(prop.type);
-  if (declared.size > 0) names = declared;
-
-  for (const key of ["anyOf", "oneOf"] as const) {
-    const variants = prop[key];
-    if (!Array.isArray(variants) || variants.length === 0) continue;
-    const alternatives = new Set<string>();
-    let untyped = false;
-    for (const variant of variants) {
-      const branchNames = propertyTypeNames(variant, depth + 1);
-      // A branch that accepts no value is no alternative.
-      if (branchNames === null) continue;
-      if (branchNames.length === 0) {
-        untyped = true;
-        continue;
-      }
-      for (const name of branchNames) alternatives.add(name);
-    }
-    if (alternatives.size === 0) {
-      // No branch names a type: the keyword adds no bound. If every branch is
-      // unsatisfiable instead, no value can satisfy the union.
-      if (untyped) continue;
-      return null;
-    }
-    names = names ? intersectTypeNames(names, alternatives) : alternatives;
-  }
-
-  // `allOf` requires every branch, so it narrows the names collected so far.
-  // Adding these branches would advertise a type that one branch excludes.
-  if (Array.isArray(prop.allOf) && prop.allOf.length > 0) {
-    for (const variant of prop.allOf) {
-      const branchNames = propertyTypeNames(variant, depth + 1);
-      if (branchNames === null) return null;
-      if (branchNames.length === 0) continue;
-      const branch = new Set(branchNames);
-      names = names ? intersectTypeNames(names, branch) : branch;
-    }
-  }
-
-  if (names && names.size === 0) return null;
-
-  // A declared value with no `type` still names its own kind (`const`, `enum`).
-  if (!names) {
-    const literals = prop.const !== undefined ? [prop.const] : prop.enum;
-    if (Array.isArray(literals) && literals.length > 0) {
-      const kinds = new Set<string>();
-      for (const literal of literals) {
-        if (literal === null) continue;
-        kinds.add(typeof literal);
-      }
-      if (kinds.size === 1) {
-        const [kind] = kinds;
-        if (kind === "string" || kind === "number" || kind === "boolean") {
-          return [kind];
-        }
-      }
-    }
-  }
-
-  return names ? [...names] : [];
-}
-
-/** Runtime value types a single JSON Schema type name can satisfy. */
-function runtimeTypeName(name: string): RuntimeParameterType | undefined {
-  // `integer` is a narrower `number`; `null` and unknown names are not value types.
-  if (name === "integer") return "number";
-  return name === "string" ||
-    name === "number" ||
-    name === "boolean" ||
-    name === "object" ||
-    name === "array"
-    ? name
-    : undefined;
-}
-
-/**
- * Runtime value types the declared branches allow.
- *
- * Validation uses every name so a value any branch allows is accepted. The
- * advertised schema uses this normalized set, because `integer | number` is one
- * runtime type while `string | number` is two.
+ * Runtime types a property accepts. A property with no `type` takes the types
+ * of its `anyOf`/`oneOf` branches: FastMCP emits
+ * `{"anyOf":[{"type":"string"},{"type":"null"}]}` for `Optional[str]`. An
+ * untyped branch, or no type at all, keeps the `object` fallback.
  */
 function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
-  const types = new Set<RuntimeParameterType>();
-  for (const name of propertyTypeNames(prop) ?? []) {
-    const type = runtimeTypeName(name);
-    if (type) types.add(type);
-  }
-  return [...types];
-}
-
-/**
- * The parameter schema advertised to the model.
- *
- * One runtime type stays a plain `type` (`string | null` → `string`). Distinct
- * runtime types become a pure `anyOf` union: picking the first branch would tell
- * the model that only that branch is valid and would make the declared type
- * depend on branch order.
- *
- * `undefined` means the property accepts no value, so no argument is advertised:
- * any type here would name a value the server schema rejects.
- */
-function declaredParameterSchema(prop: JsonSchemaProperty): ActionParameter["schema"] | undefined {
-  const names = propertyTypeNames(prop);
-  if (names === null) return undefined;
-  const types = propertyRuntimeTypes(prop);
-  if (types.length === 1) return { type: types[0] };
-  if (types.length > 1) return { anyOf: types.map((type) => ({ type })) };
-  // No branch names a type. Keep the historical object fallback.
-  return { type: "object" };
-}
-
-/**
- * The values a property pins to one fixed answer.
- *
- * `const` pins one value. An `anyOf`/`oneOf` whose branches each pin their own
- * value pins the answer just as tightly, so a discriminator written as a union
- * of literals is enforced too. A branch that pins nothing leaves the answer
- * open, and then no list comes back.
- *
- * Core's parameter schema has no `const` field, and `enum` is converted to
- * text, so a numeric `const` cannot be advertised without contradicting its own
- * type. The fixed value is therefore enforced at this validation boundary: an
- * invalid tool call must not reach the MCP server.
- */
-function pinnedValues(prop: JsonSchemaProperty | undefined, depth = 0): unknown[] | undefined {
-  if (!prop || depth > MAX_TYPE_BRANCH_DEPTH) return undefined;
-  if (prop.const !== undefined) return [prop.const];
-
-  for (const key of ["anyOf", "oneOf"] as const) {
-    const variants = prop[key];
-    if (!Array.isArray(variants) || variants.length === 0) continue;
-    const perBranch = variants.map((variant) => pinnedValues(variant, depth + 1));
-    // Every branch must pin a value; one open branch makes the union open.
-    if (perBranch.every((values) => values !== undefined)) {
-      return perBranch.flatMap((values) => values as unknown[]);
-    }
-  }
-
-  return undefined;
-}
-
-/** Readable type names for a description and for validation messages. */
-function describeParameterTypes(prop: JsonSchemaProperty): string {
-  if (propertyTypeNames(prop) === null) return "no value";
-  const types = propertyRuntimeTypes(prop);
-  return types.length > 0 ? types.join(" | ") : "object";
+  const branches = prop.anyOf ?? prop.oneOf;
+  const names =
+    prop.type !== undefined
+      ? [prop.type].flat()
+      : branches?.length && branches.every((branch) => branch.type !== undefined)
+        ? branches.flatMap((branch) => [branch.type as string | string[]].flat())
+        : [];
+  const types = new Set(names.filter((name) => name !== "null").map(mapJsonSchemaType));
+  return types.size > 0 ? [...types] : ["object"];
 }
 
 function formatType(type?: string | string[]): string {
@@ -273,12 +98,25 @@ function formatType(type?: string | string[]): string {
 
 function isNullable(prop?: JsonSchemaProperty): boolean {
   if (!prop) return false;
-  if (prop.nullable === true) return true;
-  if (prop.type === "null") return true;
-  if (Array.isArray(prop.type) && prop.type.includes("null")) return true;
-  if (prop.oneOf?.some((v) => isNullable(v))) return true;
-  if (prop.anyOf?.some((v) => isNullable(v))) return true;
-  return false;
+  const explicitlyNullable = prop.nullable === true;
+
+  if (prop.type !== undefined) {
+    if (Array.isArray(prop.type)) {
+      if (!prop.type.includes("null")) return false;
+    } else if (prop.type !== "null" && !explicitlyNullable) {
+      return false;
+    }
+  }
+
+  if (prop.enum && !prop.enum.some((value) => value === null)) return false;
+  if (prop.const !== undefined && prop.const !== null) return false;
+  if (prop.allOf && !prop.allOf.every((v) => isNullable(v))) return false;
+  // oneOf requires exactly one branch to match, so null is acceptable only
+  // when exactly one branch accepts it; two nullable branches make null
+  // ambiguous and must be rejected.
+  if (prop.oneOf && prop.oneOf.filter((v) => isNullable(v)).length !== 1) return false;
+  if (prop.anyOf && !prop.anyOf.some((v) => isNullable(v))) return false;
+  return true;
 }
 
 function renderSchemaDetails(prop: JsonSchemaProperty): string {
@@ -423,7 +261,7 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
 
 function buildDescription(_name: string, prop: JsonSchemaProperty): string {
   const details = renderSchemaDetails(prop);
-  return details.length > 0 ? details : `(${describeParameterTypes(prop)})`;
+  return details.length > 0 ? details : `(${propertyRuntimeTypes(prop).join(" | ")})`;
 }
 
 export function convertJsonSchemaToActionParams(
@@ -436,22 +274,16 @@ export function convertJsonSchemaToActionParams(
   const params: ActionParameter[] = [];
 
   for (const [name, prop] of Object.entries(properties)) {
-    const declared = declaredParameterSchema(prop);
-    // The property accepts no value. It cannot be a valid argument, and any
-    // advertised type would name a value the MCP server rejects.
-    if (!declared) continue;
-    // A pure union carries no sibling constraints: core rejects those, and each
-    // branch already states its own type.
-    const attachEnum = declared.type !== undefined && prop.enum !== undefined;
+    const types = propertyRuntimeTypes(prop);
     params.push({
       name,
       description: buildDescription(name, prop),
       required: required.has(name),
       schema: {
-        ...declared,
-        default: declared.type !== undefined ? prop.default : undefined,
-        enum: attachEnum ? prop.enum?.map((value) => String(value)) : undefined,
-        enumValues: attachEnum ? prop.enum?.map((value) => String(value)) : undefined,
+        ...(types.length === 1 ? { type: types[0] } : { anyOf: types.map((type) => ({ type })) }),
+        default: prop.default,
+        enum: prop.enum?.map((value) => String(value)),
+        enumValues: prop.enum?.map((value) => String(value)),
       },
     });
   }
@@ -482,45 +314,23 @@ export function validateParamsAgainstSchema(
       const prop = properties[name];
       if (!prop) continue;
 
-      // A pinned value is checked before the null shortcut: `const: null` must
-      // reject a number just as `const: 1` must reject null.
-      const pinned = pinnedValues(prop);
-      if (pinned && !pinned.some((candidate) => isDeepStrictEqual(candidate, value))) {
-        errors.push(
-          `Parameter '${name}' must equal ${pinned.map((candidate) => JSON.stringify(candidate)).join(" or ")}`
-        );
-        continue;
-      }
-
       if (value === null) {
+        if (!required.has(name) && !isNullable(prop)) {
+          errors.push(`Parameter '${name}' does not accept null`);
+        }
         continue;
       }
       if (value === undefined) continue;
 
-      const typeNames = propertyTypeNames(prop);
+      const allowedTypes = propertyRuntimeTypes(prop);
       const actual = getValueType(value);
-
-      // The simultaneous constraints share no type, so the server schema
-      // rejects every value. Do not accept a value that one keyword excludes.
-      if (typeNames === null) {
-        errors.push(`Parameter '${name}' accepts no value, got ${actual}`);
-        continue;
+      if (!allowedTypes.includes(actual as RuntimeParameterType)) {
+        errors.push(`Parameter '${name}' expected ${allowedTypes.join(" | ")}, got ${actual}`);
       }
 
-      const declaredTypes = typeNames.filter((type) => type !== "null");
-      const expected = describeParameterTypes(prop);
-
-      if (declaredTypes.length > 0) {
-        const allowedTypes = declaredTypes.map((type) => (type === "integer" ? "number" : type));
-        if (!allowedTypes.includes(actual)) {
-          errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
-        }
-      } else if (actual !== expected) {
-        errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
-      }
-
-      const requiresInteger =
-        declaredTypes.includes("integer") && !declaredTypes.includes("number");
+      const requiresInteger = Array.isArray(prop.type)
+        ? prop.type.includes("integer") && !prop.type.includes("number")
+        : prop.type === "integer";
       if (requiresInteger && typeof value === "number" && !Number.isInteger(value)) {
         errors.push(`Parameter '${name}' expected integer, got ${value}`);
       }
