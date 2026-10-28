@@ -126,6 +126,10 @@ it("offers no Run now for a hosted digest's missed time, which only its schedule
   fireEvent.click(screen.getByRole("button", { name: "Runs" }));
   const notice = await screen.findByTestId("workflow-run-not-run");
   expect(notice.textContent).toContain("Missed — did not run.");
+  expect(notice.textContent).toContain(
+    "it runs again only at its next scheduled time",
+  );
+  expect(notice.textContent).not.toContain("use Run now");
   expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
   expect(io.runWorkflowDefinition).not.toHaveBeenCalled();
 });

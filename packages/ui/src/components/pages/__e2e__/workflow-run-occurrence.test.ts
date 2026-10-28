@@ -23,6 +23,22 @@ describe("workflow run occurrence", () => {
     });
   });
 
+  it("offers no Run now for a missed time a manual run cannot start", () => {
+    const result = workflowRunNotRun(
+      {
+        status: "finished",
+        finished: true,
+        output: { status: "missed", scheduledAt: at, text: "Not run" },
+      },
+      iso,
+      false,
+    );
+    expect(result?.offerRunNow).toBe(false);
+    expect(result?.notice).toBe(
+      `Scheduled for ${at}. The agent was not running then, so nothing ran. It is not run later; it runs again only at its next scheduled time.`,
+    );
+  });
+
   it("presents an overlapping occurrence as skipped without offering a run", () => {
     const result = workflowRunNotRun(
       {

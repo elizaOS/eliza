@@ -20,10 +20,16 @@ export interface WorkflowRunNotRun {
   offerRunNow: boolean;
 }
 
-/** The not-run settlement of a finished execution, or null for any execution that ran. */
+/**
+ * The not-run settlement of a finished execution, or null for any execution that ran.
+ * `runNowAvailable` is false for a workflow a manual run cannot start (a hosted
+ * digest is admitted only at its own scheduled occurrence): its missed time then
+ * offers no Run now and says when it runs next instead.
+ */
 export function workflowRunNotRun(
   execution: Pick<WorkflowExecution, "status" | "finished" | "output">,
   formatTime: (iso: string) => string = (iso) => new Date(iso).toLocaleString(),
+  runNowAvailable = true,
 ): WorkflowRunNotRun | null {
   if (!execution.finished || execution.status !== "finished") return null;
   const settled = workflowOccurrenceNotRun(execution.output);
@@ -33,8 +39,10 @@ export function workflowRunNotRun(
     ? {
         status: "missed",
         label: "Missed — did not run",
-        notice: `Scheduled for ${when}. The agent was not running then, so nothing ran. It is not run later; use Run now to start it once.`,
-        offerRunNow: true,
+        notice: runNowAvailable
+          ? `Scheduled for ${when}. The agent was not running then, so nothing ran. It is not run later; use Run now to start it once.`
+          : `Scheduled for ${when}. The agent was not running then, so nothing ran. It is not run later; it runs again only at its next scheduled time.`,
+        offerRunNow: runNowAvailable,
       }
     : {
         status: "overlap",

@@ -385,7 +385,11 @@ function WorkflowEditorSession({
   const dirty = JSON.stringify(workflow) !== savedVersion;
   const selectedRun =
     executions.find((run) => run.id === selectedRunId) ?? executions[0] ?? null;
-  const selectedNotRun = selectedRun ? workflowRunNotRun(selectedRun) : null;
+  // A hosted digest refuses a generic manual run, so its missed time offers none.
+  const manualRunAvailable = !isHostedDigestWorkflow(workflow.metadata);
+  const selectedNotRun = selectedRun
+    ? workflowRunNotRun(selectedRun, undefined, manualRunAvailable)
+    : null;
   const pendingApproval = selectedRun?.approvals?.find(
     (approval) => approval.status === "pending",
   );
@@ -952,10 +956,7 @@ function WorkflowEditorSession({
                       </span>{" "}
                       {selectedNotRun.notice}
                     </p>
-                    {/* A hosted digest refuses a generic manual run, so its missed time offers none. */}
-                    {selectedNotRun.offerRunNow &&
-                    workflow.id &&
-                    !isHostedDigestWorkflow(workflow.metadata) ? (
+                    {selectedNotRun.offerRunNow && workflow.id ? (
                       <Button
                         type="button"
                         size="sm"
