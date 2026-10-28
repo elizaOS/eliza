@@ -1089,21 +1089,9 @@ export class TelegramService extends Service {
           message?: { message_thread_id?: number };
         }) => Promise<void>,
       ) => {
-        bot.command(name, async (ctx) => {
-          const access = await this.checkChatAccess(ctx, accountId);
-          if (!access.allowed) {
-            if (access.pairingReplyMessage) {
-              try {
-                await ctx.reply(access.pairingReplyMessage);
-              } catch {
-                // Mirrors the middleware: a failed pairing reply keeps
-                // the update blocked; the sender can retry next message.
-              }
-            }
-            return;
-          }
-          await handler(ctx);
-        });
+        bot.command(name, (ctx) =>
+          this.authorizationMiddleware(ctx, () => handler(ctx), accountId),
+        );
       },
       telegram: bot.telegram,
     };
