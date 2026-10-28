@@ -49,9 +49,8 @@ export class VisionWorkerManager {
 
   private restartAttempts = new Map<string, number>();
   private readonly MAX_RESTART_ATTEMPTS = 3;
-  /** Set by `stop()`: a restart timer that outlives shutdown must not start a worker. */
+  /** Set by `stop()`: a restart timer that fires after shutdown must not start a worker. */
   private stopped = false;
-  private restartTimers = new Set<NodeJS.Timeout>();
 
   constructor(config: VisionConfig) {
     this.config = config;
@@ -124,7 +123,7 @@ export class VisionWorkerManager {
         "[ScreenCaptureWorker] Worker error:",
         error instanceof Error ? error.message : String(error),
       );
-      this.scheduleRestart("screenCapture");
+      setTimeout(() => this.restartScreenCaptureWorker(), 1000);
     });
 
     this.screenCaptureWorker.on("exit", (code) => {
@@ -133,7 +132,7 @@ export class VisionWorkerManager {
         logger.error(
           `[ScreenCaptureWorker] Worker stopped with exit code ${code}`,
         );
-        this.scheduleRestart("screenCapture");
+        setTimeout(() => this.restartScreenCaptureWorker(), 1000);
       }
     });
   }
@@ -176,34 +175,16 @@ export class VisionWorkerManager {
         "[OCRWorker] Worker error:",
         error instanceof Error ? error.message : String(error),
       );
-      this.scheduleRestart("ocr");
+      setTimeout(() => this.restartOCRWorker(), 1000);
     });
 
     this.ocrWorker.on("exit", (code) => {
       this.clearOCRReadiness();
       if (code !== 0) {
         logger.error(`[OCRWorker] Worker stopped with exit code ${code}`);
-        this.scheduleRestart("ocr");
+        setTimeout(() => this.restartOCRWorker(), 1000);
       }
     });
-  }
-
-  /**
-   * Restart a crashed worker after a delay. The timer is tracked so `stop()`
-   * can cancel it; a restart that fires after shutdown would create a worker
-   * thread with no owner and keep capture running.
-   */
-  private scheduleRestart(worker: "screenCapture" | "ocr"): void {
-    if (this.stopped) return;
-    const timer = setTimeout(() => {
-      this.restartTimers.delete(timer);
-      if (this.stopped) return;
-      // error-policy:J5 the restart reports its own failure; no caller awaits it.
-      void (worker === "screenCapture"
-        ? this.restartScreenCaptureWorker()
-        : this.restartOCRWorker());
-    }, 1000);
-    this.restartTimers.add(timer);
   }
 
   private updateOCRCache(_msg: unknown): void {
@@ -405,8 +386,6 @@ export class VisionWorkerManager {
     logger.info("[VisionWorkerManager] Stopping all workers...");
 
     this.stopped = true;
-    for (const timer of this.restartTimers) clearTimeout(timer);
-    this.restartTimers.clear();
 
     const stopPromises: Promise<void>[] = [];
 
