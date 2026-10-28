@@ -23,7 +23,10 @@ import {
   mapsRoutesRequestSchema,
   mapsTextSearchRequestSchema,
 } from "@elizaos/cloud-shared/lib/services/maps/contract";
-import { osmMapsProviderFromEnv } from "@elizaos/cloud-shared/lib/services/maps/osm-provider";
+import {
+  MAPS_PROVIDER_SETTINGS,
+  mapsProviderFromEnv,
+} from "@elizaos/cloud-shared/lib/services/maps/provider-registry";
 import {
   consumePlanRequest,
   readPlanRequestLimitConfig,
@@ -58,24 +61,24 @@ export interface MapsRouteDependencies {
 }
 
 let cachedProvider:
-  | { key: string; provider: MapsProviderAdapter | null }
+  | { key: string; provider: MapsProviderAdapter | null; error?: unknown }
   | undefined;
 
 function configuredProvider(): MapsProviderAdapter | null {
-  const env = getCloudAwareEnv();
-  const key = [
-    env.ELIZA_MAPS_GEOCODER_URL,
-    env.ELIZA_MAPS_ROUTER_URL,
-    env.ELIZA_MAPS_ROUTER_API_KEY,
-    env.ELIZA_MAPS_COVERAGE_JSON,
-    env.ELIZA_MAPS_DATASET_REVISION,
-    env.ELIZA_MAPS_ROUTE_ALTERNATIVES,
-  ].join("\u0000");
-  if (cachedProvider?.key !== key)
-    cachedProvider = {
-      key,
-      provider: osmMapsProviderFromEnv(env as Record<string, unknown>),
-    };
+  const env = getCloudAwareEnv() as Record<string, unknown>;
+  const key = MAPS_PROVIDER_SETTINGS.map((name) =>
+    String(env[name] ?? ""),
+  ).join("\u0000");
+  if (cachedProvider?.key !== key) {
+    // An invalid configuration is cached as the error, so each request reports
+    // it as not configured without rebuilding or echoing the settings.
+    try {
+      cachedProvider = { key, provider: mapsProviderFromEnv(env) };
+    } catch (error) {
+      cachedProvider = { key, provider: null, error };
+    }
+  }
+  if (cachedProvider.error) throw cachedProvider.error;
   return cachedProvider.provider;
 }
 
