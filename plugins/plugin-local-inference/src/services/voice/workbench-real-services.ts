@@ -5,9 +5,9 @@
  * has a fused libelizainference build, ASR regions, WeSpeaker, pyannote, and
  * real generated human speech — distinct fused Kokoro voice packs keylessly
  * (#9577), upgraded to ElevenLabs voices when ELEVENLABS_API_KEY is set. The
- * agent turns always come from the fused Kokoro engine (the product's
- * on-device TTS). This adapter drives those real pieces through the existing
- * workbench runner/scorers.
+ * agent turns come from the product on-device TTS, Paradee-8M v1.1 through the
+ * host TTS worker, as the desktop agent speaks. This adapter drives those real
+ * pieces through the existing workbench runner/scorers.
  */
 
 import { existsSync } from "node:fs";
@@ -39,6 +39,14 @@ import {
 import type { KokoroTtsBackend } from "./kokoro/kokoro-backend";
 import { resolveKokoroEngineConfig } from "./kokoro/kokoro-engine-discovery";
 import {
+	createParadeeTtsBackend,
+	type ParadeeTtsBackend,
+} from "./paradee/paradee-backend";
+import {
+	discoverParadeeEngine,
+	PARADEE_VOICE_ID,
+} from "./paradee/paradee-engine-discovery";
+import {
 	type DiarizerOutput,
 	PYANNOTE_WINDOW_SECONDS,
 } from "./speaker/diarizer";
@@ -62,11 +70,7 @@ import type {
 	VoiceTurnObservation,
 	VoiceWorkbenchServices,
 } from "./workbench-headless-runner";
-import {
-	KOKORO_AGENT_VOICE,
-	labelHash,
-	resolveKokoroVoicePack,
-} from "./workbench-voice-packs";
+import { labelHash, resolveKokoroVoicePack } from "./workbench-voice-packs";
 
 const SAMPLE_RATE = 16_000;
 const EOT_COMMIT_THRESHOLD = 0.5;
@@ -526,6 +530,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	private readonly encoder: FusedSpeakerEncoder;
 	private readonly diarizer: FusedDiarizer;
 	private readonly kokoroBackend: KokoroTtsBackend;
+	/** The agent's product voice: Paradee-8M v1.1 through the host worker. */
+	private readonly agentBackend: ParadeeTtsBackend;
 	private readonly apiKey: string | null;
 	private readonly ownerThreshold: number;
 	private readonly voiceMap: Record<string, string>;
@@ -548,6 +554,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		encoder: FusedSpeakerEncoder;
 		diarizer: FusedDiarizer;
 		kokoroBackend: KokoroTtsBackend;
+		agentBackend: ParadeeTtsBackend;
 		apiKey: string | null;
 		ownerThreshold: number;
 		voiceMap: Record<string, string>;
@@ -558,6 +565,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		this.encoder = args.encoder;
 		this.diarizer = args.diarizer;
 		this.kokoroBackend = args.kokoroBackend;
+		this.agentBackend = args.agentBackend;
 		this.apiKey = args.apiKey;
 		this.ownerThreshold = args.ownerThreshold;
 		this.voiceMap = args.voiceMap;
@@ -603,9 +611,17 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				ctx,
 				ggufPath: options.diarizGguf,
 			});
-			// The agent voice is always the fused Kokoro engine (the product's
-			// on-device TTS); keyless mode synthesizes the human turns through it
-			// too, so the backend is required in both modes.
+			// The agent voice is the product on-device TTS: Paradee-8M v1.1
+			// through the host TTS worker, exactly as the desktop agent speaks.
+			const paradee = discoverParadeeEngine({ bundleRoot: options.bundle });
+			if (!paradee.ok) {
+				throw new Error(
+					`[voice:workbench --real] the agent voice needs Paradee-8M v1.1: ${paradee.reason}`,
+				);
+			}
+			// Fused Kokoro voice packs voice the enrollment and (keyless) human
+			// turns: several distinct speakers, which the single Paradee voice
+			// cannot provide. It is required in both modes for enrollment.
 			if (typeof ffi.kokoroSupported !== "function" || !ffi.kokoroSupported()) {
 				throw new Error(
 					"[voice:workbench --real] fused library does not link the Kokoro engine (eliza_inference_kokoro_*)",
@@ -618,12 +634,14 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 				);
 			}
 			const kokoroBackend = createKokoroTtsBackend(kokoro, { ffi });
+			const agentBackend = createParadeeTtsBackend(paradee.config);
 			return new RealVoiceWorkbenchAdapter({
 				ffi,
 				ctx,
 				encoder,
 				diarizer,
 				kokoroBackend,
+				agentBackend,
 				apiKey: options.elevenLabsApiKey,
 				ownerThreshold: options.ownerAcceptThreshold ?? DEFAULT_OWNER_THRESHOLD,
 				voiceMap: options.voiceMap ?? {},
@@ -794,7 +812,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		}
 
 		// Barge-in native-TTS cancellation — when the live gate says an addressed speaker
-		// interrupted, hard-stop a real in-flight Kokoro stream and time it; when
+		// interrupted, hard-stop a real in-flight Paradee stream and time it; when
 		// the gate holds (echo / bystander), report an explicit non-cancel.
 		let bargeInCancelMs: number | null | undefined;
 		if (args.label.bargeIn) {
@@ -888,10 +906,12 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		text: string,
 		voiceId: string,
 	): Promise<Float32Array> {
-		return (await this.synthesizeKokoroMeasured(text, voiceId)).pcm;
+		return (await this.synthesizeMeasured(this.kokoroBackend, text, voiceId))
+			.pcm;
 	}
 
-	private async synthesizeKokoroMeasured(
+	private async synthesizeMeasured(
+		backend: KokoroTtsBackend | ParadeeTtsBackend,
 		text: string,
 		voiceId: string,
 	): Promise<MeasuredSynthesis> {
@@ -899,7 +919,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		let sampleRate = 0;
 		const startedAtMs = performance.now();
 		let firstAudioMs: number | undefined;
-		await this.kokoroBackend.synthesizeStream({
+		await backend.synthesizeStream({
 			phrase: {
 				id: 1,
 				text,
@@ -925,7 +945,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 		const total = chunks.reduce((n, c) => n + c.length, 0);
 		if (total === 0 || sampleRate === 0 || firstAudioMs === undefined) {
 			throw new Error(
-				`[voice:workbench --real] Kokoro produced no audio for "${text}" [${voiceId}]`,
+				`[voice:workbench --real] ${backend.id} produced no audio for "${text}" [${voiceId}]`,
 			);
 		}
 		const pcm = new Float32Array(total);
@@ -942,7 +962,9 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	}
 
 	private async synthesizeAgent(text: string): Promise<Float32Array> {
-		return this.synthesizeKokoro(text, KOKORO_AGENT_VOICE);
+		return (
+			await this.synthesizeMeasured(this.agentBackend, text, PARADEE_VOICE_ID)
+		).pcm;
 	}
 
 	private rememberEchoFarEnd(text: string, pcm: Float32Array): void {
@@ -957,8 +979,8 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 
 	/**
 	 * The clean far-end reference for an echo turn: the exact PCM this adapter
-	 * synthesized into the corpus when available, otherwise a fresh (Kokoro is
-	 * deterministic per text/voice) agent synthesis of the reference transcript.
+	 * synthesized into the corpus when available, otherwise a fresh (Paradee is
+	 * deterministic per text) agent synthesis of the reference transcript.
 	 */
 	private async echoFarEndFor(
 		referenceTranscript: string,
@@ -972,7 +994,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	private async measureBargeInCancel(): Promise<number> {
 		const replyText = this.lastAgentReply ?? BARGE_IN_PROBE_REPLY;
 		return measureBargeInTtsCancelMs(({ cancelSignal, onChunk }) =>
-			this.kokoroBackend.synthesizeStream({
+			this.agentBackend.synthesizeStream({
 				phrase: {
 					id: 1,
 					text: replyText,
@@ -981,7 +1003,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 					terminator: "punctuation",
 				},
 				preset: {
-					voiceId: KOKORO_AGENT_VOICE,
+					voiceId: PARADEE_VOICE_ID,
 					embedding: new Float32Array(0),
 					bytes: new Uint8Array(0),
 				},
@@ -992,9 +1014,10 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	}
 
 	private async observeAgentReply(text: string): Promise<number> {
-		const synthesis = await this.synthesizeKokoroMeasured(
+		const synthesis = await this.synthesizeMeasured(
+			this.agentBackend,
 			text,
-			KOKORO_AGENT_VOICE,
+			PARADEE_VOICE_ID,
 		);
 		this.selfVoiceEmbeddings.push(
 			await this.encoder.encode(ensureMinSpeakerSamples(synthesis.pcm)),
@@ -1037,6 +1060,7 @@ class RealVoiceWorkbenchAdapter implements RealVoiceWorkbenchRuntime {
 	async dispose(): Promise<void> {
 		try {
 			this.kokoroBackend.dispose();
+			this.agentBackend.dispose();
 		} finally {
 			try {
 				await this.encoder.dispose();

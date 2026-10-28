@@ -1045,6 +1045,7 @@ export function createCalendarSourcesAction(
     )(runtime, message);
   return {
     name: ACTION_NAME,
+    historicalObservationOperations: ["calendar.source.list"],
     similes: [
       "LIST_CALENDAR_SOURCES",
       "SELECT_CALENDAR_SOURCE",

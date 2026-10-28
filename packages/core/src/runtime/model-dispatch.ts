@@ -32,6 +32,7 @@ import {
 } from "../security/processing-policy";
 import type { SecretSwapSession } from "../security/secret-swap";
 import {
+	getModelAttemptLease,
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 } from "../streaming-context";
@@ -123,6 +124,30 @@ import {
 	canonicalPromptForModelCall,
 	omitUnvalidatedProviderSpans,
 } from "./trajectory-provider-attribution";
+
+/**
+ * Rebind provider spans to the exact string a model call persists. Copying
+ * composeState's providersText offsets onto a larger messages prompt produces
+ * false exact-match slices.
+ */
+function reboundProviderAttributions(
+	trajCtx: NonNullable<ReturnType<typeof getTrajectoryContext>>,
+	messages: unknown[] | undefined,
+	prompt: string,
+) {
+	const rebound = trajCtx.providerAttributionState
+		? buildProviderAttributionsFromState({
+				state: trajCtx.providerAttributionState,
+				prompt: canonicalPromptForModelCall({ messages, prompt }),
+			})
+		: undefined;
+	return {
+		providerOrder: rebound?.providerOrder ?? trajCtx.providerOrder,
+		providerAttributions:
+			rebound?.providerAttributions ??
+			omitUnvalidatedProviderSpans(trajCtx.providerAttributions),
+	};
+}
 
 export interface RuntimeModelDispatchHost {
 	confidentialInference(): ConfidentialInferenceAuthority | undefined;
@@ -1054,6 +1079,15 @@ export class RuntimeModelDispatch {
 			}
 			const resolvedModelKey = resolvedModel.modelKey;
 			const handler = resolvedModel.handler;
+			if (
+				getModelAttemptLease() &&
+				(!TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey)) ||
+					resolvedModel.provider !== "openai")
+			) {
+				throw new ElizaError("Model provider has no qualified attempt guard", {
+					code: "MODEL_ATTEMPT_POLICY_ROUTE",
+				});
+			}
 			// Processing admission precedes every payload transformation (secret/PII
 			// swap, hooks) and the handler, so a denied destination receives nothing.
 			// A denial is terminal and keeps any earlier provider failure as cause.
@@ -1550,6 +1584,25 @@ export class RuntimeModelDispatch {
 					effectiveSystemPrompt = `${effectiveSystemPrompt ?? ""}\n\n${guidance}`;
 					(modelParams as Record<string, unknown>).system =
 						effectiveSystemPrompt;
+				}
+
+				const attemptLease = getModelAttemptLease();
+				if (
+					attemptLease &&
+					TEXT_GENERATION_MODEL_KEYS.includes(String(resolvedModelKey))
+				) {
+					if (!isPlainObject(modelParams))
+						throw new ElizaError("Bounded text request must be structured", {
+							code: "MODEL_ATTEMPT_POLICY_INVALID",
+						});
+					const record = modelParams as Record<string, unknown>;
+					record.maxTokens =
+						typeof record.maxTokens === "number" &&
+						Number.isSafeInteger(record.maxTokens) &&
+						record.maxTokens > 0
+							? Math.min(record.maxTokens, attemptLease.maxOutputTokens)
+							: attemptLease.maxOutputTokens;
+					record.omitMaxTokens = false;
 				}
 
 				const hookedParamsObj =
@@ -2426,24 +2479,8 @@ export class RuntimeModelDispatch {
 				typeof paramsRecord.prompt === "string"
 					? paramsRecord.prompt
 					: userPrompt;
-			// Rebind provider spans to the exact string this call persists. Copying
-			// composeState's providersText offsets onto a larger messages prompt
-			// produces false exact-match slices.
-			const canonicalPrompt = canonicalPromptForModelCall({
-				messages,
-				prompt,
-			});
-			const reboundAttributions = trajCtx.providerAttributionState
-				? buildProviderAttributionsFromState({
-						state: trajCtx.providerAttributionState,
-						prompt: canonicalPrompt,
-					})
-				: undefined;
-			const providerOrder =
-				reboundAttributions?.providerOrder ?? trajCtx.providerOrder;
-			const providerAttributions =
-				reboundAttributions?.providerAttributions ??
-				omitUnvalidatedProviderSpans(trajCtx.providerAttributions);
+			const { providerOrder, providerAttributions } =
+				reboundProviderAttributions(trajCtx, messages, prompt);
 			const usageRecord = isPlainObject(resultRecord.usage)
 				? (resultRecord.usage as Record<string, unknown>)
 				: {};
@@ -2594,6 +2631,15 @@ export class RuntimeModelDispatch {
 				`${errorMessage}${detailSuffix}`,
 			);
 			const failureEvidence = modelOutputIncompleteEvidence(args.error);
+			const messages = Array.isArray(paramsRecord.messages)
+				? (paramsRecord.messages as unknown[])
+				: undefined;
+			const prompt =
+				typeof paramsRecord.prompt === "string"
+					? paramsRecord.prompt
+					: userPrompt;
+			const { providerOrder, providerAttributions } =
+				reboundProviderAttributions(trajCtx, messages, prompt);
 			const activeTrace = this.runtime.getActiveTrace(
 				this.runtime.getCurrentRunId(),
 			);
@@ -2604,17 +2650,12 @@ export class RuntimeModelDispatch {
 				provider: args.provider,
 				systemPrompt,
 				userPrompt,
-				prompt:
-					typeof paramsRecord.prompt === "string"
-						? paramsRecord.prompt
-						: userPrompt,
+				prompt,
 				// The failed request's messages ARE the evidence: without them a
 				// provider rejection (schema, shape, encoding) cannot be replayed or
 				// diagnosed from the trajectory. Same privacy surface as the
 				// successful-call record, which already persists messages.
-				messages: Array.isArray(paramsRecord.messages)
-					? (paramsRecord.messages as unknown[])
-					: undefined,
+				messages,
 				tools: paramsRecord.tools,
 				toolChoice: paramsRecord.toolChoice,
 				responseSchema: paramsRecord.responseSchema,
@@ -2649,8 +2690,8 @@ export class RuntimeModelDispatch {
 				roomId: trajCtx.roomId,
 				messageId: trajCtx.messageId,
 				executionTraceId: activeTrace?.id,
-				providerOrder: trajCtx.providerOrder,
-				providerAttributions: trajCtx.providerAttributions,
+				providerOrder,
+				providerAttributions,
 			});
 		} catch (trajectoryError) {
 			// error-policy:J7 Trajectory logging must never break core model flow.

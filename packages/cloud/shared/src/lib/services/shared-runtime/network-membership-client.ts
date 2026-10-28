@@ -11,6 +11,7 @@ import { ElizaError, uuidFromString } from "@elizaos/core/protocol";
 import type { Organization } from "../../../db/schemas/organizations";
 import type { User } from "../../../db/schemas/users";
 import type { AuthedUser } from "../../../types/cloud-worker-env";
+import { NO_FOLLOW_REDIRECT } from "../../utils/no-redirect-fetch";
 import { DEFAULT_REST_RESPONSE_MAX_BYTES } from "../../utils/owned-bounded-fetch";
 import { isValidE164, validatePhoneForAPI } from "../../utils/phone-normalization";
 
@@ -371,7 +372,9 @@ export class NetworkMembershipClient {
           "cache-control": "no-store",
         },
         body: JSON.stringify(operation === "route" ? { e164, text: routeText } : { e164 }),
-        redirect: "error",
+        // Never followed. "manual", not "error": workerd rejects "error" when the
+        // Request is built; a 3xx fails closed in the status check below.
+        redirect: NO_FOLLOW_REDIRECT,
         cache: "no-store",
         signal,
       },

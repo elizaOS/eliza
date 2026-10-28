@@ -36,6 +36,50 @@ class NativeBridgeTestActivity : BridgeActivity() {
 
 @RunWith(AndroidJUnit4::class)
 class NativeBridgeInstrumentedTest {
+    private var browserFixture: java.net.ServerSocket? = null
+    private var browserRestorationPaintMs: Long? = null
+    private val submittedRequests = java.util.concurrent.atomic.AtomicInteger(0)
+    private val approvedPageRequests = java.util.concurrent.atomic.AtomicInteger(0)
+
+    @org.junit.After
+    fun closeBrowserFixture() { browserFixture?.close() }
+
+    private fun browserFixtureOrigin(): String {
+        browserFixture?.let { return "http://127.0.0.1:${it.localPort}" }
+        val server = java.net.ServerSocket(0, 8, java.net.InetAddress.getByName("127.0.0.1"))
+        browserFixture = server
+        val origin = "http://127.0.0.1:${server.localPort}"
+        kotlin.concurrent.thread(isDaemon = true, name = "native-browser-fixture") {
+            while (!server.isClosed) {
+                val socket = try { server.accept() } catch (error: java.net.SocketException) {
+                    if (server.isClosed) break else throw error
+                }
+                socket.use {
+                    it.soTimeout = 5000
+                    val input = it.getInputStream().bufferedReader()
+                    val request = input.readLine().split(" ")
+                    val path = request[1]
+                    if (path == "/submitted" && request[0] == "POST") submittedRequests.incrementAndGet()
+                    if (path == "/next") approvedPageRequests.incrementAndGet()
+                    while (!input.readLine().isNullOrEmpty()) { }
+                    val other = "http://localhost:${server.localPort}/next"
+                    val response = if (path == "/redirect") {
+                        "HTTP/1.1 302 Found\r\nLocation: $other\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                    } else {
+                        val title = when (path) { "/submitted" -> "Submitted fixture"; "/first" -> "First fixture"; "/second" -> "Second fixture"; "/same" -> "Same fixture"; "/next" -> "Approved fixture"; else -> "Control fixture" }
+                        val body = if (path == "/first" || path == "/second") {
+                            val text = if (path == "/first") "First visible café 漢字" else "Second visible page"
+                            """<!doctype html><title>$title</title><main>$text</main><div id="loaded"></div><script>document.querySelector('#loaded').textContent=String(performance.timeOrigin)+'-'+Math.random()</script><span hidden>hidden fixture</span><input value="private fixture">"""
+                        } else """<!doctype html><title>$title</title><label>Search query<input id="query"></label><input type="password" value="private-control-value"><button type="button" id="increment" onclick="document.querySelector('output').textContent++">Increment</button><output>0</output><label>Language<select id="language"><option value="internal-en">English</option><option value="internal-fr">French</option></select></label><button type="button" id="history-state" onclick="history.pushState({step:1},'', '#updated')">Change history</button><a id="same-origin" href="$origin/same">Same origin</a><a id="cross-origin" href="$other">Other origin</a><script>window.elizaSurfaceControl={postMessage(){throw new Error("page-owned channel")}};window.__elizaBrowserControlV1={snapshotId:"page-owned snapshot"};</script>"""
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: ${body.toByteArray().size}\r\nConnection: close\r\n\r\n$body"
+                    }
+                    it.getOutputStream().write(response.toByteArray())
+                }
+            }
+        }
+        return origin
+    }
+
     private fun evaluate(scenario: ActivityScenario<NativeBridgeTestActivity>, script: String): String {
         val latch = CountDownLatch(1)
         var value = "null"
@@ -50,6 +94,7 @@ class NativeBridgeInstrumentedTest {
         val descriptor = JSONObject(context.assets.open("native-plugin.json").bufferedReader().use { it.readText() })
         val script = context.assets.open("contracts.js").bufferedReader().use { it.readText() }
         val arguments = InstrumentationRegistry.getArguments()
+        descriptor.put("surfaceControl", arguments.getString("surfaceControl") == "1")
         arguments.getString("smsCleanupBody")?.let { body ->
             check(Build.HARDWARE in setOf("ranchu", "goldfish"))
             check(body.startsWith("Eliza native SMS round trip "))
@@ -158,16 +203,73 @@ class NativeBridgeInstrumentedTest {
                 Thread.sleep(50)
             }
             evaluate(scenario, "window.nativeDescriptor = $descriptor; $script")
-            val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
+            // The extended surface flow includes real navigation, compositor capture,
+            // selection, activity pause and redirect checks. Each step retains its own deadline.
+            val contractSeconds = if (descriptor.optBoolean("surfaceControl", false)) 120L else 30L
+            val finishDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(contractSeconds)
             while (System.nanoTime() < finishDeadline) {
                 if (descriptor.getString("directory") == "plugin-native-browser-surface") {
+                    if (evaluate(scenario, "window.nativeBrowserPauseRequested === true") == "true") {
+                        evaluate(scenario, "window.nativeBrowserPauseRequested = false")
+                        scenario.moveToState(Lifecycle.State.STARTED)
+                        try {
+                            evaluate(scenario, """window.nativePausedControlResult = null;
+                                window.Capacitor.nativePromise("ElizaSurfaceManager", "controlPage", {
+                                  owner: "bridge-test", session: "session-1", epoch: 1,
+                                  id: "bridge-surface", command: {subaction: "snapshot"}
+                                }).then(() => window.nativePausedControlResult = "allowed",
+                                  error => window.nativePausedControlResult = error.code);""")
+                            val pauseDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+                            var result = evaluate(scenario, "window.nativePausedControlResult")
+                            while (result == "null" && System.nanoTime() < pauseDeadline) {
+                                Thread.sleep(50)
+                                result = evaluate(scenario, "window.nativePausedControlResult")
+                            }
+                            assertEquals("A paused host must reject browser control", "\"UNAVAILABLE\"", result)
+                        } finally {
+                            scenario.moveToState(Lifecycle.State.RESUMED)
+                        }
+                        evaluate(scenario, "window.nativeBrowserPauseComplete = true")
+                    }
+                    if (evaluate(scenario, "window.nativeBrowserFixtureOriginRequested === true") == "true") {
+                        evaluate(scenario, "window.nativeBrowserFixtureOriginRequested = false")
+                        evaluate(scenario, "window.nativeBrowserControlOrigin = ${JSONObject.quote(browserFixtureOrigin())}")
+                    }
+                    if (evaluate(scenario, "window.nativeBrowserPostFixtureRequested === true") == "true") {
+                        evaluate(scenario, "window.nativeBrowserPostFixtureRequested = false")
+                        scenario.onActivity { activity ->
+                            val pages = mutableListOf<android.webkit.WebView>()
+                            fun visit(view: android.view.View) {
+                                if (view is android.webkit.WebView && view !== activity.bridge.webView && view.isShown) pages.add(view)
+                                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                            }
+                            visit(activity.window.decorView)
+                            check(pages.size == 1)
+                            pages.single().postUrl("${browserFixtureOrigin()}/submitted", "fixture=one".toByteArray())
+                        }
+                    }
+                    if (evaluate(scenario, "window.nativeBrowserControlFixtureRequested === true") == "true") {
+                        evaluate(scenario, "window.nativeBrowserControlFixtureRequested = false")
+                        val origin = browserFixtureOrigin()
+                        evaluate(scenario, "window.nativeBrowserControlOrigin = ${JSONObject.quote(origin)}")
+                        scenario.onActivity { activity ->
+                            val pages = mutableListOf<android.webkit.WebView>()
+                            fun visit(view: android.view.View) {
+                                if (view is android.webkit.WebView && view !== activity.bridge.webView && view.isShown) pages.add(view)
+                                if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                            }
+                            visit(activity.window.decorView)
+                            check(pages.size == 1)
+                            pages.single().loadUrl("$origin/")
+                        }
+                    }
                     val captureRaw = evaluate(scenario, "JSON.stringify(window.nativeBrowserCapture || null)")
                     val captureText = JSONTokener(captureRaw).nextValue() as? String
                     if (captureText != null && captureText != "null") {
                         val capture = JSONObject(captureText)
                         if (!capture.getBoolean("done")) {
                             val name = capture.getString("name")
-                            check(name in listOf("browser-before-invalid-present.png", "browser-after-invalid-present.png"))
+                            check(name in listOf("browser-before-invalid-present.png", "browser-after-invalid-present.png", "browser-guidance.png", "browser-guidance-paused.png", "browser-guidance-cleared.png"))
                             val drawn = CountDownLatch(1)
                             scenario.onActivity { activity ->
                                 val webViews = mutableListOf<android.webkit.WebView>()
@@ -176,6 +278,8 @@ class NativeBridgeInstrumentedTest {
                                     if (view is android.view.ViewGroup) for (i in 0 until view.childCount) visit(view.getChildAt(i))
                                 }
                                 visit(activity.window.decorView)
+                                assertEquals("The native page must be shown before capture: $name", 1,
+                                    webViews.count { it !== activity.bridge.webView })
                                 val pending = java.util.concurrent.atomic.AtomicInteger(webViews.size)
                                 if (webViews.isEmpty()) drawn.countDown()
                                 for (view in webViews) view.postVisualStateCallback(0L, object : android.webkit.WebView.VisualStateCallback() {
@@ -188,7 +292,41 @@ class NativeBridgeInstrumentedTest {
                             }
                             assertTrue("Native presentation did not render", drawn.await(5, TimeUnit.SECONDS))
                             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-                            val bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+                            var bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+                            if (name == "browser-guidance-paused.png") {
+                                // A bridge reply can precede the compositor frame. Require
+                                // the shared renderer's grey paused tag in the actual pixels.
+                                fun hasPausedTag(image: android.graphics.Bitmap): Boolean {
+                                    var pixels = 0
+                                    for (y in 0 until image.height step 4) {
+                                        for (x in 0 until image.width step 4) {
+                                            if (image.getPixel(x, y) == android.graphics.Color.rgb(74, 74, 71)) pixels++
+                                            if (pixels >= 100) return true
+                                        }
+                                    }
+                                    return false
+                                }
+                                val started = android.os.SystemClock.elapsedRealtime()
+                                while (!hasPausedTag(bitmap) && android.os.SystemClock.elapsedRealtime() - started < 1000) {
+                                    bitmap.recycle()
+                                    Thread.sleep(50)
+                                    bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+                                }
+                                assertTrue("Paused native guidance must paint its grey tag", hasPausedTag(bitmap))
+                            }
+                            if (name == "browser-guidance-cleared.png") {
+                                // The fixture's opaque page starts at screen (0,0). If its
+                                // compositor layer is missing, the dark status bar is exposed.
+                                val started = android.os.SystemClock.elapsedRealtime()
+                                while (bitmap.getPixel(5, 5) != android.graphics.Color.WHITE &&
+                                    android.os.SystemClock.elapsedRealtime() - started < 1000) {
+                                    bitmap.recycle()
+                                    Thread.sleep(50)
+                                    bitmap = checkNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
+                                }
+                                browserRestorationPaintMs = android.os.SystemClock.elapsedRealtime() - started
+                                assertEquals("Restored native page must paint above the host", android.graphics.Color.WHITE, bitmap.getPixel(5, 5))
+                            }
                             val bytes = java.io.ByteArrayOutputStream()
                             try { check(bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, bytes)) }
                             finally { bitmap.recycle() }
@@ -216,6 +354,13 @@ class NativeBridgeInstrumentedTest {
                     if (descriptor.getString("directory") == "plugin-native-browser-surface") {
                         val evidence = evaluate(scenario, "JSON.stringify(window.nativeBrowserEvidence)")
                         result.put("browser", JSONObject(JSONTokener(evidence).nextValue() as String))
+                        browserRestorationPaintMs?.let { result.put("restorationPaintWaitMs", it) }
+                        if (descriptor.getBoolean("surfaceControl")) {
+                            assertEquals("Only the approved host load may request the other origin", 1, approvedPageRequests.get())
+                            result.put("approvedPageRequests", approvedPageRequests.get())
+                            assertEquals("History traversal must not repeat the fixture POST", 1, submittedRequests.get())
+                            result.put("submittedRequests", submittedRequests.get())
+                        }
                         InstrumentationRegistry.getInstrumentation().sendStatus(2, Bundle().apply {
                             putString("nativeArtifactName", "browser-navigation.json")
                             putString("nativeArtifactBase64", Base64.encodeToString(result.toString().toByteArray(), Base64.NO_WRAP))

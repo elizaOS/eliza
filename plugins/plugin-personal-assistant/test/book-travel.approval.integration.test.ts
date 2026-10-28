@@ -81,8 +81,11 @@ function stubGoogleCalendarCreate(): void {
 function installTravelAndCalendarFetchStub(options?: {
   /** Fail the order read that follows the payment. */
   failOrderReadAfterPayment?: boolean;
+  /** Price of the offer when it is read again after the first quote. */
+  offerPriceAfterQuote?: string;
 }) {
   let orderReadCount = 0;
+  let offerReadCount = 0;
   const fetchMock = vi
     .fn()
     .mockImplementation(
@@ -119,16 +122,28 @@ function installTravelAndCalendarFetchStub(options?: {
                     },
                     slices: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
                         duration: "PT7H30M",
                         fare_brand_name: "Economy",
                         segments: [
                           {
-                            origin: { iata_code: "JFK" },
-                            destination: { iata_code: "LHR" },
-                            departing_at: "2026-06-15T09:00:00Z",
-                            arriving_at: "2026-06-15T16:30:00Z",
+                            origin: {
+                              iata_code: "JFK",
+                              time_zone: "America/New_York",
+                            },
+                            destination: {
+                              iata_code: "LHR",
+                              time_zone: "Europe/London",
+                            },
+                            departing_at: "2026-06-15T09:00:00",
+                            arriving_at: "2026-06-15T21:30:00",
                             operating_carrier: { iata_code: "BA" },
                             flight_number: "BA178",
                             duration: "PT7H30M",
@@ -144,13 +159,18 @@ function installTravelAndCalendarFetchStub(options?: {
         }
 
         if (url.includes("/air/offers/off_test_123")) {
+          offerReadCount += 1;
+          const offerPrice =
+            offerReadCount > 1 && options?.offerPriceAfterQuote
+              ? options.offerPriceAfterQuote
+              : "299.50";
           return {
             ok: true,
             status: 200,
             json: async () => ({
               data: {
                 id: "off_test_123",
-                total_amount: "299.50",
+                total_amount: offerPrice,
                 total_currency: "USD",
                 expires_at: "2026-06-01T18:00:00Z",
                 passengers: [
@@ -168,16 +188,25 @@ function installTravelAndCalendarFetchStub(options?: {
                 },
                 slices: [
                   {
-                    origin: { iata_code: "JFK" },
-                    destination: { iata_code: "LHR" },
+                    origin: { iata_code: "JFK", time_zone: "America/New_York" },
+                    destination: {
+                      iata_code: "LHR",
+                      time_zone: "Europe/London",
+                    },
                     duration: "PT7H30M",
                     fare_brand_name: "Economy",
                     segments: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
+                        departing_at: "2026-06-15T09:00:00",
+                        arriving_at: "2026-06-15T21:30:00",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -205,15 +234,24 @@ function installTravelAndCalendarFetchStub(options?: {
                 total_currency: "USD",
                 slices: [
                   {
-                    origin: { iata_code: "JFK" },
-                    destination: { iata_code: "LHR" },
+                    origin: { iata_code: "JFK", time_zone: "America/New_York" },
+                    destination: {
+                      iata_code: "LHR",
+                      time_zone: "Europe/London",
+                    },
                     duration: "PT7H30M",
                     segments: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
+                        departing_at: "2026-06-15T09:00:00",
+                        arriving_at: "2026-06-15T21:30:00",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -261,15 +299,24 @@ function installTravelAndCalendarFetchStub(options?: {
                 total_currency: "USD",
                 slices: [
                   {
-                    origin: { iata_code: "JFK" },
-                    destination: { iata_code: "LHR" },
+                    origin: { iata_code: "JFK", time_zone: "America/New_York" },
+                    destination: {
+                      iata_code: "LHR",
+                      time_zone: "Europe/London",
+                    },
                     duration: "PT7H30M",
                     segments: [
                       {
-                        origin: { iata_code: "JFK" },
-                        destination: { iata_code: "LHR" },
-                        departing_at: "2026-06-15T09:00:00Z",
-                        arriving_at: "2026-06-15T16:30:00Z",
+                        origin: {
+                          iata_code: "JFK",
+                          time_zone: "America/New_York",
+                        },
+                        destination: {
+                          iata_code: "LHR",
+                          time_zone: "Europe/London",
+                        },
+                        departing_at: "2026-06-15T09:00:00",
+                        arriving_at: "2026-06-15T21:30:00",
                         operating_carrier: { iata_code: "BA" },
                         flight_number: "BA178",
                         duration: "PT7H30M",
@@ -531,7 +578,12 @@ describe("BOOK_TRAVEL approval execution", () => {
       "2026-06-16T23:59:59.999Z",
       "owner",
     );
-    expect(events.some((event) => event.title === "London flight")).toBe(true);
+    // 09:00 at JFK (New York, UTC-4) to 21:30 at LHR (London, UTC+1).
+    expect(
+      events
+        .filter((event) => event.title === "London flight")
+        .map((event) => [event.startAt, event.endAt]),
+    ).toEqual([["2026-06-15T13:00:00.000Z", "2026-06-15T20:30:00.000Z"]]);
 
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(true);
@@ -611,6 +663,64 @@ describe("BOOK_TRAVEL approval execution", () => {
       pendingRequest.subjectUserId,
     );
     expect(latest?.state).toBe("rejected");
+  });
+
+  it("does not book when the price rose after the owner approved the quote", async () => {
+    stubGoogleCalendarCreate();
+    const fetchMock = installTravelAndCalendarFetchStub({
+      offerPriceAfterQuote: "389.10",
+    });
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+
+    const queued = await runBookTravelHandler(
+      runtime,
+      ownerMessage("Book the London flight once I approve it."),
+      {} as never,
+      {
+        parameters: {
+          origin: "JFK",
+          destination: "LHR",
+          departureDate: "2026-06-15",
+          passengers: [
+            { givenName: "Tony", familyName: "Stark", bornOn: "1980-07-24" },
+          ],
+        },
+      } as never,
+      undefined,
+    );
+    expect(queued?.success).toBe(true);
+    const [pendingRequest] = await queue.list({
+      subjectUserId: String(runtime.agentId),
+      state: "pending",
+      action: "book_travel",
+      limit: 10,
+    });
+    if (!pendingRequest) throw new Error("Expected a pending travel approval");
+    expect(pendingRequest.payload).toMatchObject({ totalCents: 29950 });
+
+    const restoreModel = installApprovalResolutionModelStub(
+      pendingRequest.id,
+      "approve the London flight",
+    );
+    let approved: ActionResult | undefined;
+    try {
+      approved = await approveRequestAction.handler?.(
+        runtime,
+        ownerMessage("yes, approve that booking"),
+        {} as never,
+        {
+          parameters: { subaction: "approve", requestId: pendingRequest.id },
+        } as never,
+        undefined,
+      );
+    } finally {
+      restoreModel();
+    }
+
+    expect(approved?.success).toBe(false);
+    const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
+    expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(false);
+    expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(false);
   });
 
   it("keeps the order and payment receipt when a hold step fails after payment", async () => {

@@ -6,7 +6,6 @@
 export const DIRECT_TENANT_TABLES = [
   "agent_key_quorums",
   "agent_policies",
-  "agent_registrations",
   "agent_signers",
   "agents",
   "audit_archives",
@@ -75,8 +74,6 @@ export const INDIRECT_TENANT_TABLES = {
     "EXISTS agents(id = agent_id AND tenant_id = current tenant)",
   encrypted_keys: "EXISTS agents(id = agent_id AND tenant_id = current tenant)",
   policies: "EXISTS agents(id = agent_id AND tenant_id = current tenant)",
-  reputation_cache:
-    "EXISTS agents(id = agent_id AND tenant_id = current tenant)",
   transactions: "EXISTS agents(id = agent_id AND tenant_id = current tenant)",
 } as const;
 
@@ -98,7 +95,6 @@ export const INTENTIONALLY_GLOBAL_TABLES = {
     "global user OAuth identities; tenant access derives through user_tenants",
   authenticators:
     "global user WebAuthn identities; tenant access derives through user_tenants",
-  registry_index: "public chain registry cache, not tenant-owned",
   sessions: "global user sessions; tenant membership is checked separately",
   users: "global user identity; tenant access derives through user_tenants",
 } as const;

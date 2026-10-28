@@ -365,27 +365,49 @@ export async function listManagedGoogleCalendars(args: {
   side: OAuthConnectionRole;
   grantId?: string;
 }): Promise<ManagedGoogleCalendarSummary[]> {
-  const params = new URLSearchParams({
+  const baseParams = new URLSearchParams({
     minAccessRole: "reader",
     showDeleted: "false",
     showHidden: "false",
+    maxResults: "250",
     fields:
-      "items(id,summary,summaryOverride,description,primary,accessRole,backgroundColor,foregroundColor,timeZone,selected,deleted,hidden)",
+      "nextPageToken,items(id,summary,summaryOverride,description,primary,accessRole,backgroundColor,foregroundColor,timeZone,selected,deleted,hidden)",
   });
 
-  const response = await googleFetch({
-    organizationId: args.organizationId,
-    userId: args.userId,
-    side: args.side,
-    grantId: args.grantId,
-    url: `${GOOGLE_CALENDAR_LIST_ENDPOINT}?${params.toString()}`,
-  });
-  const parsed = (await response.json()) as {
-    items?: GoogleCalendarListApiEntry[];
-  };
+  // Follow nextPageToken: the list is paged (100 by default), and a caller
+  // has no cursor to continue it.
+  const items: GoogleCalendarListApiEntry[] = [];
+  let pageToken: string | undefined;
+  const seenPageTokens = new Set<string>();
+  do {
+    const params = new URLSearchParams(baseParams);
+    if (pageToken) {
+      params.set("pageToken", pageToken);
+    }
+    const response = await googleFetch({
+      organizationId: args.organizationId,
+      userId: args.userId,
+      side: args.side,
+      grantId: args.grantId,
+      url: `${GOOGLE_CALENDAR_LIST_ENDPOINT}?${params.toString()}`,
+    });
+    const parsed = (await response.json()) as {
+      items?: GoogleCalendarListApiEntry[];
+      nextPageToken?: string;
+    };
+    items.push(...(parsed.items ?? []));
+    const nextPageToken = parsed.nextPageToken?.trim() || undefined;
+    if (nextPageToken && seenPageTokens.has(nextPageToken)) {
+      fail(502, "Google Calendar list pagination repeated a page token.");
+    }
+    if (nextPageToken) {
+      seenPageTokens.add(nextPageToken);
+    }
+    pageToken = nextPageToken;
+  } while (pageToken);
 
   const calendars: ManagedGoogleCalendarSummary[] = [];
-  for (const item of parsed.items ?? []) {
+  for (const item of items) {
     if (item.deleted || item.hidden) continue;
     const calendarId = item.id?.trim();
     if (!calendarId) continue;

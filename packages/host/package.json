@@ -32,6 +32,12 @@
       "import": "./dist/blooio-transport.js",
       "default": "./dist/blooio-transport.js"
     },
+    "./voice/ui-context": {
+      "eliza-source": "./src/voice/ui-context.ts",
+      "types": "./dist/voice/ui-context.d.ts",
+      "import": "./dist/voice/ui-context.js",
+      "default": "./dist/voice/ui-context.js"
+    },
     "./protocol": {
       "eliza-source": "./src/protocol.ts",
       "types": "./dist/protocol.d.ts",
@@ -42,6 +48,13 @@
       "browser": null,
       "import": "./native-host/index.mjs",
       "default": "./native-host/index.mjs"
+    },
+    "./voice/cloud-speech-relay-client": {
+      "browser": null,
+      "eliza-source": "./src/voice/cloud-speech-relay-client.ts",
+      "types": "./dist/voice/cloud-speech-relay-client.d.ts",
+      "import": "./dist/voice/cloud-speech-relay-client.js",
+      "default": "./dist/voice/cloud-speech-relay-client.js"
     },
     "./voice/session": {
       "workerd": "./dist/voice/session.js",
@@ -159,6 +172,24 @@
       "types": "./dist/voice/usage.d.ts",
       "import": "./dist/voice/usage.js",
       "default": "./dist/voice/usage.js"
+    },
+    "./voice/speech-relay-session": {
+      "workerd": "./dist/voice/speech-relay-session.js",
+      "worker": "./dist/voice/speech-relay-session.js",
+      "browser": null,
+      "eliza-source": "./src/voice/speech-relay-session.ts",
+      "types": "./dist/voice/speech-relay-session.d.ts",
+      "import": "./dist/voice/speech-relay-session.js",
+      "default": "./dist/voice/speech-relay-session.js"
+    },
+    "./voice/speech-relay-wire": {
+      "workerd": "./dist/voice/speech-relay-wire.js",
+      "worker": "./dist/voice/speech-relay-wire.js",
+      "browser": null,
+      "eliza-source": "./src/voice/speech-relay-wire.ts",
+      "types": "./dist/voice/speech-relay-wire.d.ts",
+      "import": "./dist/voice/speech-relay-wire.js",
+      "default": "./dist/voice/speech-relay-wire.js"
     }
   },
   "scripts": {
@@ -181,7 +212,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"

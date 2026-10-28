@@ -3,7 +3,7 @@
  *
  * TTS providers:
  *  - Eliza Cloud Kokoro through `/api/tts/cloud` for web/cloud defaults.
- *  - Local-inference Kokoro for provisioned local/native runtimes.
+ *  - Local-inference Paradee v1.1 for provisioned local/native runtimes.
  *  - ElevenLabs for opt-in/custom voices.
  *  - Browser SpeechSynthesis only when it is the configured provider.
  *
@@ -2539,7 +2539,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               ttsDebug("useVoiceChat:local-inference-failed", {
                 err: formatNamedVoiceError(error),
               });
-              // FAIL CLOSED (#12253): local-inference (Kokoro) is the configured
+              // FAIL CLOSED (#12253): local-inference (Paradee) is the configured
               // voice. Do not silently swap to browser SpeechSynthesis — stop the
               // queue and surface the error so the user hears silence + sees why,
               // not a stranger's voice.

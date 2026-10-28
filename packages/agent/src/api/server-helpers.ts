@@ -448,19 +448,25 @@ export async function buildChatAttachments(
   if (!images?.length)
     return { attachments: undefined, compactAttachments: undefined };
   const attachments: ChatAttachmentWithData[] = await Promise.all(
-    images.map(async (img, i) => {
+    images.map(async (img) => {
       // Persist the uploaded bytes to the content-addressed media store so the
       // attachment carries a durable served URL (renderable from chat history),
       // not a throwaway `attachment:img-N` placeholder. `_data` is retained for
       // the in-memory vision/description pass so it needs no re-fetch.
       const bytes = Buffer.from(img.data, "base64");
-      let url = `attachment:img-${i}`;
-      let checksum: string | undefined;
+      let persisted: ReturnType<typeof persistMediaBytes>;
+      try {
+        persisted = persistMediaBytes(bytes, img.mimeType);
+      } catch (err) {
+        // error-policy:J1 Reject message preparation before storing a message
+        // whose attachment bytes are unavailable. The chat route can retry.
+        throw new ElizaError("Failed to store uploaded attachment", {
+          code: "CHAT_ATTACHMENT_STORAGE_FAILED",
+          cause: err,
+        });
+      }
       let thumbnailUrl: string | undefined;
       try {
-        const persisted = persistMediaBytes(bytes, img.mimeType);
-        url = persisted.url;
-        checksum = persisted.hash;
         if (img.thumbnail?.data) {
           // Client already produced a thumbnail (browser/webview canvas) — persist it.
           thumbnailUrl = persistMediaBytes(
@@ -474,19 +480,19 @@ export async function buildChatAttachments(
         }
       } catch (err) {
         logger.warn(
-          `[buildChatAttachments] failed to persist uploaded attachment: ${err instanceof Error ? err.message : String(err)}`,
+          `[buildChatAttachments] failed to persist attachment thumbnail: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
       return {
-        id: checksum ?? url,
-        url,
+        id: persisted.hash,
+        url: persisted.url,
         title: img.name,
         source: MESSAGE_SOURCE_CLIENT_CHAT,
         contentType: contentTypeForUploadMime(img.mimeType),
         mimeType: img.mimeType,
         filename: img.name,
         size: bytes.length,
-        ...(checksum ? { checksum } : {}),
+        checksum: persisted.hash,
         ...(thumbnailUrl ? { thumbnailUrl } : {}),
         _data: img.data,
         _mimeType: img.mimeType,
@@ -581,17 +587,13 @@ type ConversationRoomTitleRef = Pick<
   "id" | "title" | "roomId"
 >;
 export async function persistConversationRoomTitle(
-  runtime: Pick<AgentRuntime, "getRoom" | "adapter"> | null | undefined,
+  runtime: Pick<AgentRuntime, "getRoom" | "updateRoom"> | null | undefined,
   conversation: ConversationRoomTitleRef,
 ): Promise<boolean> {
   if (!runtime) return false;
   const room = await runtime.getRoom(conversation.roomId);
   if (!room) return false;
   if (room.name === conversation.title) return false;
-  const adapter = runtime.adapter as {
-    updateRoom?: (nextRoom: typeof room) => Promise<void>;
-  };
-  if (typeof adapter.updateRoom !== "function") return false;
-  await adapter.updateRoom({ ...room, name: conversation.title });
+  await runtime.updateRoom({ ...room, name: conversation.title });
   return true;
 }

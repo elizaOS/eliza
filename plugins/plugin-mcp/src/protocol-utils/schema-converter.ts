@@ -5,13 +5,17 @@ export interface McpInputSchema {
   [key: string]: unknown;
 }
 
+type RuntimeParameterType = "string" | "number" | "boolean" | "object" | "array";
+
 /** MCP → runtime action parameter row (replaces removed @elizaos/core ActionParameter export). */
 export interface ActionParameter {
   name: string;
   description: string;
   required?: boolean;
   schema: {
-    type: "string" | "number" | "boolean" | "object" | "array";
+    /** Absent for a union of several runtime types, which `anyOf` states. */
+    type?: RuntimeParameterType;
+    anyOf?: ReadonlyArray<{ type: RuntimeParameterType }>;
     default?: unknown;
     enum?: string[];
     enumValues?: string[];
@@ -50,12 +54,7 @@ interface JsonSchemaProperty {
   nullable?: boolean;
 }
 
-function mapJsonSchemaType(
-  jsonType: string | string[] | undefined
-): ActionParameter["schema"]["type"] {
-  if (Array.isArray(jsonType)) {
-    return mapJsonSchemaType(jsonType.find((t) => t !== "null"));
-  }
+function mapJsonSchemaType(jsonType: string): RuntimeParameterType {
   switch (jsonType) {
     case "string":
       return "string";
@@ -69,6 +68,24 @@ function mapJsonSchemaType(
     default:
       return "object";
   }
+}
+
+/**
+ * Runtime types a property accepts. A property with no `type` takes the types
+ * of its `anyOf`/`oneOf` branches: FastMCP emits
+ * `{"anyOf":[{"type":"string"},{"type":"null"}]}` for `Optional[str]`. An
+ * untyped branch, or no type at all, keeps the `object` fallback.
+ */
+function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
+  const branches = prop.anyOf ?? prop.oneOf;
+  const names =
+    prop.type !== undefined
+      ? [prop.type].flat()
+      : branches?.length && branches.every((branch) => branch.type !== undefined)
+        ? branches.flatMap((branch) => [branch.type as string | string[]].flat())
+        : [];
+  const types = new Set(names.filter((name) => name !== "null").map(mapJsonSchemaType));
+  return types.size > 0 ? [...types] : ["object"];
 }
 
 function formatType(type?: string | string[]): string {
@@ -244,7 +261,7 @@ function renderSchemaDetails(prop: JsonSchemaProperty): string {
 
 function buildDescription(_name: string, prop: JsonSchemaProperty): string {
   const details = renderSchemaDetails(prop);
-  return details.length > 0 ? details : `(${mapJsonSchemaType(prop.type)})`;
+  return details.length > 0 ? details : `(${propertyRuntimeTypes(prop).join(" | ")})`;
 }
 
 export function convertJsonSchemaToActionParams(
@@ -257,12 +274,13 @@ export function convertJsonSchemaToActionParams(
   const params: ActionParameter[] = [];
 
   for (const [name, prop] of Object.entries(properties)) {
+    const types = propertyRuntimeTypes(prop);
     params.push({
       name,
       description: buildDescription(name, prop),
       required: required.has(name),
       schema: {
-        type: mapJsonSchemaType(prop.type),
+        ...(types.length === 1 ? { type: types[0] } : { anyOf: types.map((type) => ({ type })) }),
         default: prop.default,
         enum: prop.enum?.map((value) => String(value)),
         enumValues: prop.enum?.map((value) => String(value)),
@@ -304,18 +322,10 @@ export function validateParamsAgainstSchema(
       }
       if (value === undefined) continue;
 
-      const expected = mapJsonSchemaType(prop.type);
+      const allowedTypes = propertyRuntimeTypes(prop);
       const actual = getValueType(value);
-
-      if (Array.isArray(prop.type)) {
-        const allowedTypes = prop.type
-          .filter((t) => t !== "null")
-          .map((t) => (t === "integer" ? "number" : t));
-        if (!allowedTypes.includes(actual)) {
-          errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
-        }
-      } else if (actual !== expected) {
-        errors.push(`Parameter '${name}' expected ${expected}, got ${actual}`);
+      if (!allowedTypes.includes(actual as RuntimeParameterType)) {
+        errors.push(`Parameter '${name}' expected ${allowedTypes.join(" | ")}, got ${actual}`);
       }
 
       const requiresInteger = Array.isArray(prop.type)

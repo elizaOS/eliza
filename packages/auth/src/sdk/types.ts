@@ -57,7 +57,6 @@ export interface AgentIdentity {
     bitcoin?: string;
     monero?: string;
   };
-  erc8004TokenId?: string;
   platformId?: string;
   createdAt: Date;
 }

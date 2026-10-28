@@ -1650,6 +1650,44 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
   }
 
   /**
+   * Whether a duplicate question for `content` is still waiting for an answer.
+   * One turn can ask several ("add milk and eggs" when both exist), so the
+   * newest create record for this content decides, not the newest overall: a
+   * question is open until a later create of the same content lands.
+   */
+  private async hasOpenDuplicateQuestion(
+    tx: TodoTransaction<TSchema>,
+    scope: TodoScope,
+    content: string,
+  ): Promise<boolean> {
+    const rows = await tx
+      .select()
+      .from(todoMutationsTable)
+      .where(
+        and(
+          eq(todoMutationsTable.agentId, scope.agentId as UUID),
+          eq(todoMutationsTable.entityId, scope.entityId as UUID),
+          eq(todoMutationsTable.operation, "create"),
+          sql`${todoMutationsTable.committedAt} > now() - make_interval(secs => ${TODO_CONFIRMATION_TTL_MS / 1000})`,
+        ),
+      )
+      .orderBy(
+        desc(todoMutationsTable.committedAt),
+        desc(todoMutationsTable.mutationId),
+      );
+    for (const row of rows) {
+      const { result } = rowToMutationRecord(row);
+      if (
+        result.action === "create" &&
+        sameTodoContent(result.todo.content, content)
+      ) {
+        return result.duplicate === true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Create with store-owned deduplication: under the scope lock an open todo
    * with the same content (and parent) blocks the insert, so concurrent
    * creates cannot both land. Only an affirmative user reply to the durable
@@ -1668,11 +1706,8 @@ class SqlTodoStore<TSchema extends Record<string, unknown>>
         sameTodoContent(todo.content, mutation.input.content),
     );
     if (existing && mutation.reply === "affirmative") {
-      const question = await this.openConfirmationRecord(tx, scope, "create");
       if (
-        question?.result.action === "create" &&
-        question.result.duplicate === true &&
-        sameTodoContent(question.result.todo.content, mutation.input.content)
+        await this.hasOpenDuplicateQuestion(tx, scope, mutation.input.content)
       ) {
         return {
           action: "create",

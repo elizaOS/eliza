@@ -164,6 +164,38 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
 };
 
 /**
+ * The CSS custom properties one mode of a theme sets: its color tokens, the
+ * `--txt` and `--primary` aliases Tailwind reads, and its font stacks.
+ */
+export function themeCssVariables(
+  theme: ThemeDefinition,
+  mode: "light" | "dark",
+): Record<string, string> {
+  const colorSet = mode === "dark" ? theme.dark : theme.light;
+  const variables: Record<string, string> = {};
+  for (const [key, cssVar] of Object.entries(THEME_CSS_VAR_MAP)) {
+    const value = colorSet[key as keyof ThemeColorSet];
+    if (value != null) variables[cssVar] = value;
+  }
+  // Keep --txt in sync with --text (it's an alias consumed by Tailwind)
+  if (colorSet.text != null) variables["--txt"] = colorSet.text;
+  // Keep --primary/--primary-foreground in sync if not explicitly set
+  // (most themes share accent = primary)
+  if (colorSet.accent != null && colorSet.primary == null) {
+    variables["--primary"] = colorSet.accent;
+  }
+  if (colorSet.accentForeground != null && colorSet.primaryForeground == null) {
+    variables["--primary-foreground"] = colorSet.accentForeground;
+  }
+  const fonts: ThemeFonts = theme.fonts ?? {};
+  for (const key of ["body", "display", "chat", "mono"] as const) {
+    const value = fonts[key];
+    if (value) variables[THEME_FONT_CSS_VARS[key]] = value;
+  }
+  return variables;
+}
+
+/**
  * Apply a theme's color set for the given mode to the document root.
  * Returns a cleanup function that removes all applied properties.
  */
@@ -173,37 +205,18 @@ export function applyThemeToDocument(
 ): () => void {
   if (typeof document === "undefined") return () => {};
   const root = document.documentElement;
-  const colorSet = mode === "dark" ? theme.dark : theme.light;
-  const applied: string[] = [];
-  // Apply color tokens
-  for (const [key, cssVar] of Object.entries(THEME_CSS_VAR_MAP)) {
-    const value = colorSet[key as keyof ThemeColorSet];
-    if (value != null) {
-      root.style.setProperty(cssVar, value);
-      applied.push(cssVar);
-    }
+  const variables = themeCssVariables(theme, mode);
+  for (const [cssVar, value] of Object.entries(variables)) {
+    root.style.setProperty(cssVar, value);
   }
-  // Keep --txt in sync with --text (it's an alias consumed by Tailwind)
-  if (colorSet.text != null) {
-    root.style.setProperty("--txt", colorSet.text);
-    applied.push("--txt");
-  }
-  // Keep --primary/--primary-foreground in sync if not explicitly set
-  // (most themes share accent = primary)
-  if (colorSet.accent != null && colorSet.primary == null) {
-    root.style.setProperty("--primary", colorSet.accent);
-    applied.push("--primary");
-  }
-  if (colorSet.accentForeground != null && colorSet.primaryForeground == null) {
-    root.style.setProperty("--primary-foreground", colorSet.accentForeground);
-    applied.push("--primary-foreground");
-  }
-  // Apply fonts
-  if (theme.fonts) {
-    applyThemeFonts(theme.fonts, applied);
+  // Inject or drop the external font stylesheet
+  if (theme.fonts?.fontImportUrl) {
+    injectFontLink(theme.fonts.fontImportUrl);
+  } else if (theme.fonts) {
+    removeFontLink();
   }
   return () => {
-    for (const cssVar of applied) {
+    for (const cssVar of Object.keys(variables)) {
       root.style.removeProperty(cssVar);
     }
     removeFontLink();
@@ -211,32 +224,6 @@ export function applyThemeToDocument(
 }
 
 // ── Font helpers ───────────────────────────────────────────────────
-function applyThemeFonts(fonts: ThemeFonts, applied: string[]): void {
-  if (typeof document === "undefined") return;
-  const root = document.documentElement;
-  if (fonts.body) {
-    root.style.setProperty(THEME_FONT_CSS_VARS.body, fonts.body);
-    applied.push(THEME_FONT_CSS_VARS.body);
-  }
-  if (fonts.display) {
-    root.style.setProperty(THEME_FONT_CSS_VARS.display, fonts.display);
-    applied.push(THEME_FONT_CSS_VARS.display);
-  }
-  if (fonts.chat) {
-    root.style.setProperty(THEME_FONT_CSS_VARS.chat, fonts.chat);
-    applied.push(THEME_FONT_CSS_VARS.chat);
-  }
-  if (fonts.mono) {
-    root.style.setProperty(THEME_FONT_CSS_VARS.mono, fonts.mono);
-    applied.push(THEME_FONT_CSS_VARS.mono);
-  }
-  // Inject external font stylesheet
-  if (fonts.fontImportUrl) {
-    injectFontLink(fonts.fontImportUrl);
-  } else {
-    removeFontLink();
-  }
-}
 function injectFontLink(url: string): void {
   if (typeof document === "undefined") return;
   const existing = document.getElementById(THEME_FONT_LINK_ID);

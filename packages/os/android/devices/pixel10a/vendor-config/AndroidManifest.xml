@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="ai.elizaresearch.pixelconfig" android:versionCode="1" android:versionName="1">
+    <queries>
+        <package android:name="com.google.euiccpixel" />
+        <package android:name="com.google.android.euicc" />
+    </queries>
+    <application android:label="Pixel vendor configuration" android:allowBackup="false" android:forceQueryable="true"
+        android:directBootAware="true" android:defaultToDeviceProtectedStorage="true">
+        <provider android:name=".FlagsProvider" android:exported="true"
+            android:authorities="com.google.android.gsf.gservices" />
+    </application>
+</manifest>

@@ -8,6 +8,8 @@
  */
 
 import { logger } from "@elizaos/core";
+import { isCloudflareRateLimitConfigured } from "../../redis/cloudflare-rate-limit";
+import { isCloudflareSpendMetricsConfigured } from "../../redis/cloudflare-spend-metrics";
 import {
   checkRateLimit,
   checkSpendLimit,
@@ -95,6 +97,14 @@ export function isRedisAvailable(): boolean {
   return redisAvailable;
 }
 
+export function isSpendTelemetryAvailable(): boolean {
+  return isCloudflareSpendMetricsConfigured() || redisAvailable;
+}
+
+export function isRateLimitAvailable(): boolean {
+  return isCloudflareRateLimitConfigured() || redisAvailable;
+}
+
 export function isRedisConfigured(): boolean {
   const driver = process.env.REDIS_DRIVER?.trim().toLowerCase() || "ioredis";
   if (driver === "upstash") {
@@ -144,7 +154,7 @@ export async function checkAgentRateLimit(
   // Redis not available: only skip enforcement when Redis was never configured
   // (documented dev path). If Redis IS configured (production), an unavailable
   // backend must fail CLOSED — mirroring checkAgentSpendLimit (SEC-016).
-  if (!redisAvailable) {
+  if (!isRateLimitAvailable()) {
     if (!isRedisConfigured()) return PERMISSIVE_RATE_LIMIT;
     return { allowed: false, remaining: 0, resetMs: 60_000 };
   }
@@ -179,7 +189,7 @@ export async function checkProxyRateLimit(
 ): Promise<RateLimitResult> {
   // Same fail-closed posture as checkAgentRateLimit (SEC-016): permissive only
   // when Redis was never configured; a configured-but-down backend denies.
-  if (!redisAvailable) {
+  if (!isRateLimitAvailable()) {
     if (!isRedisConfigured()) return PERMISSIVE_RATE_LIMIT;
     return { allowed: false, remaining: 0, resetMs: 60_000 };
   }
@@ -246,7 +256,7 @@ export async function recordAgentSpend(
   costUsd: number,
   host: string,
 ): Promise<void> {
-  if (!redisAvailable || costUsd <= 0) return;
+  if (!isSpendTelemetryAvailable() || costUsd <= 0) return;
 
   try {
     await recordSpend(agentId, tenantId, costUsd, host);

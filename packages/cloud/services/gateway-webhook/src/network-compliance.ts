@@ -17,7 +17,23 @@
  *    sender's ledger entry.
  */
 
-import type { ChatEvent, Platform } from "./adapters/types";
+import type { DeliveryReceiptStore } from "@elizaos/cloud-services-common/delivery-receipts";
+import {
+  CONSENT_HISTORY_LIMIT,
+  cloudflareNetworkConsentLedger,
+  consentAddress,
+  type NetworkConsentEntry,
+  type NetworkConsentLedger,
+  parseConsentEntry,
+} from "@elizaos/cloud-services-common/network-consent";
+
+export {
+  consentAddress,
+  type NetworkConsentEntry,
+  type NetworkConsentLedger,
+} from "@elizaos/cloud-services-common/network-consent";
+
+import type { ChatEvent } from "./adapters/types";
 import type { GatewayRedis } from "./redis";
 
 export const NETWORK_PROJECT = "network";
@@ -123,72 +139,19 @@ export function detectNetworkKeyword(
   return null;
 }
 
-export interface NetworkConsentEntry {
-  project: string;
-  /** Service-owned app scope; absent/null is the shared line. */
-  app?: "ntwrk" | "slop" | "peon" | "friends" | null;
-  channel: Platform;
-  address: string;
-  state: "opted_in" | "opted_out";
-  /** `keyword:STOP`, `keyword:START`, `invite_acceptance`, `admin`, ... */
-  source: string;
-  providerMessageId?: string;
-  at: string;
-}
-
-/** Current consent state per (project, address), plus an append-only history. */
-export interface NetworkConsentLedger {
-  current(
-    project: string,
-    address: string,
-    app?: NetworkConsentEntry["app"],
-  ): Promise<NetworkConsentEntry | null>;
-  record(entry: NetworkConsentEntry): Promise<void>;
-}
-
-const CONSENT_HISTORY_LIMIT = 200;
-
-/** Addresses are phone numbers or handles; case and whitespace never matter. */
-export function consentAddress(address: string): string {
-  return address.trim().toLowerCase();
-}
-
-function parseConsentEntry(value: unknown): NetworkConsentEntry | null {
-  let candidate = value;
-  if (typeof candidate === "string") {
-    try {
-      candidate = JSON.parse(candidate);
-    } catch {
-      // error-policy:J3 an unreadable ledger row is treated as no consent row.
-      return null;
-    }
-  }
-  if (!candidate || typeof candidate !== "object") return null;
-  const entry = candidate as Record<string, unknown>;
-  if (
-    typeof entry.project !== "string" ||
-    typeof entry.address !== "string" ||
-    (entry.state !== "opted_in" && entry.state !== "opted_out") ||
-    typeof entry.source !== "string" ||
-    typeof entry.at !== "string" ||
-    !Number.isFinite(Date.parse(entry.at)) ||
-    (entry.app !== undefined &&
-      entry.app !== null &&
-      !["ntwrk", "slop", "peon", "friends"].includes(String(entry.app)))
-  ) {
-    return null;
-  }
-  return entry as unknown as NetworkConsentEntry;
-}
-
 /**
- * Redis-backed ledger. The current-state key has no TTL (consent must not
+ * Selected consent ledger (Redis by default). Current state has no TTL (consent must not
  * silently expire); the history list keeps the latest entries per address.
  * Postgres `network.consent_ledger` (migration 0474) is the durable audit copy.
  */
 export function redisNetworkConsentLedger(
   redis: GatewayRedis,
 ): NetworkConsentLedger {
+  const backend = process.env.CLOUD_NETWORK_CONSENT_BACKEND ?? "redis";
+  if (backend === "cloudflare")
+    return cloudflareNetworkConsentLedger(process.env);
+  if (backend !== "redis")
+    throw new Error("Invalid CLOUD_NETWORK_CONSENT_BACKEND");
   const currentKey = (
     project: string,
     address: string,
@@ -333,14 +296,14 @@ const REPLY_FENCE_TTL_SECONDS = 14 * 24 * 60 * 60;
  * provider receipt, and release it only on an explicit provider rejection.
  */
 export async function sendWithTwilioReplyFence(
-  redis: GatewayRedis,
+  receipts: Pick<DeliveryReceiptStore, "set" | "del">,
   project: string,
   messageId: string,
   send: () => Promise<string[] | false>,
   isExplicitRejection: (error: unknown) => boolean,
 ): Promise<"sent" | "replayed" | "suppressed"> {
   const key = `reply:twilio:${project}:${messageId}`;
-  const claimed = await redis.set(key, "indeterminate", {
+  const claimed = await receipts.set(key, "indeterminate", {
     nx: true,
     ex: REPLY_FENCE_TTL_SECONDS,
   });
@@ -348,10 +311,10 @@ export async function sendWithTwilioReplyFence(
   try {
     const providerMessageIds = await send();
     if (providerMessageIds === false) {
-      await redis.set(key, "suppressed", { ex: REPLY_FENCE_TTL_SECONDS });
+      await receipts.set(key, "suppressed", { ex: REPLY_FENCE_TTL_SECONDS });
       return "suppressed";
     }
-    await redis.set(
+    await receipts.set(
       key,
       JSON.stringify({ state: "complete", providerMessageIds }),
       { ex: REPLY_FENCE_TTL_SECONDS },
@@ -360,7 +323,7 @@ export async function sendWithTwilioReplyFence(
   } catch (error) {
     if (isExplicitRejection(error)) {
       try {
-        await redis.del(key);
+        await receipts.del(key);
       } catch {
         // error-policy:J6 the tombstone outlives a lost release; the provider
         // rejection below remains the primary outcome.

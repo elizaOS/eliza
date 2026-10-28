@@ -5,12 +5,19 @@ import {
   ElizaError,
   type InteractiveTask,
   sameTaskOwner,
+  TASK_ID_PATTERN,
   type TaskOwner,
 } from "@elizaos/core/protocol";
 import type {
   AuthorizedTaskGoal,
   InteractiveTaskRuntime,
 } from "./interactive-task-runtime.ts";
+
+const taskId = TASK_ID_PATTERN.source.slice(1, -1);
+const eventsRoutePattern = new RegExp(`^/tasks/(${taskId})/events$`);
+const taskRoutePattern = new RegExp(
+  `^/tasks/(${taskId})(?:/(pause|cancel|resume))?$`,
+);
 
 function json(status: number, value: unknown): Response {
   return Response.json(value, {
@@ -127,10 +134,7 @@ export function createInteractiveTaskHandler(options: {
       await options.runtime.settle();
       if (!(await authenticated(request)))
         return json(401, { code: "TASK_UNAUTHORIZED" });
-      const eventsRoute =
-        /^\/tasks\/([A-Za-z0-9][A-Za-z0-9_.:@-]{0,255})\/events$/.exec(
-          url.pathname,
-        );
+      const eventsRoute = eventsRoutePattern.exec(url.pathname);
       if (eventsRoute) {
         if (request.method !== "GET")
           return json(405, { code: "TASK_METHOD_NOT_ALLOWED" });
@@ -171,10 +175,7 @@ export function createInteractiveTaskHandler(options: {
           return json(403, { code: "TASK_ACTION_DENIED" });
         return json(201, { task: view(options.runtime.create(goal)) });
       }
-      const match =
-        /^\/tasks\/([A-Za-z0-9][A-Za-z0-9_.:@-]{0,255})(?:\/(pause|cancel|resume))?$/.exec(
-          url.pathname,
-        );
+      const match = taskRoutePattern.exec(url.pathname);
       if (!match) return json(404, { code: "TASK_NOT_FOUND" });
       const [, id, command] = match;
       if (!command && request.method === "GET")

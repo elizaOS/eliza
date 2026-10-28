@@ -148,9 +148,14 @@ export function createCliSessionThinApp(): Hono<AppEnv> {
   let rateLimitConfigLogged = false;
   app.use("*", async (c, next) => {
     const verdict = rateLimitConfigVerdict({
+      backend: c.env.CLOUD_RATE_STATE_BACKEND,
+      hasDurableBinding: Boolean(c.env.RATE_LIMIT_STATE),
       environment: c.env.ENVIRONMENT,
       redisRateLimiting: c.env.REDIS_RATE_LIMITING,
-      hasRedisClient: hasRedisConfig(c.env),
+      hasRedisClient:
+        c.env.CLOUD_RATE_STATE_BACKEND === "cloudflare"
+          ? false
+          : hasRedisConfig(c.env),
     });
     if (!rateLimitConfigLogged) {
       rateLimitConfigLogged = true;

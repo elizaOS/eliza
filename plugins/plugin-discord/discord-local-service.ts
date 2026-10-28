@@ -161,10 +161,10 @@ function getDiscordLocalConfig(
 	const clientSecret = runtime.getSetting("DISCORD_LOCAL_CLIENT_SECRET");
 	const enabledValue = runtime.getSetting("DISCORD_LOCAL_ENABLED");
 
+	// getSetting returns a stored "true"/"false" as a boolean.
 	const enabled =
-		enabledValue === undefined ||
-		enabledValue === null ||
-		(typeof enabledValue === "string" && enabledValue.trim() !== "false");
+		enabledValue !== false &&
+		!(typeof enabledValue === "string" && enabledValue.trim() === "false");
 
 	if (
 		typeof clientId !== "string" ||

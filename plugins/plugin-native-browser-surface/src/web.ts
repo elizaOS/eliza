@@ -10,6 +10,7 @@ import { WebPlugin } from "@capacitor/core";
 
 import type {
   BrowserDockState,
+  CaptureSurfaceOptions,
   CreateSurfaceOptions,
   ElizaSurfaceManagerPlugin,
   NativePageRead,
@@ -18,6 +19,7 @@ import type {
   ReconcileOwnerOptions,
   SetBoundsOptions,
   SetOcclusionRectsOptions,
+  SurfaceCapture,
   SurfaceIdOptions,
   SurfaceOwnerOptions,
   SurfaceState,
@@ -31,6 +33,11 @@ export class BrowserSurfaceWeb
   extends WebPlugin
   implements ElizaSurfaceManagerPlugin
 {
+  async controlPage(
+    _options: Parameters<ElizaSurfaceManagerPlugin["controlPage"]>[0],
+  ): ReturnType<ElizaSurfaceManagerPlugin["controlPage"]> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async getBrowserHelperEntryState(): Promise<{
     permissionGranted: boolean;
     visible: boolean;
@@ -100,6 +107,52 @@ export class BrowserSurfaceWeb
     throw this.unavailable(UNAVAILABLE);
   }
   async goBack(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async goForward(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async answerDialog(
+    _options: Parameters<ElizaSurfaceManagerPlugin["answerDialog"]>[0],
+  ): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async openExternalLink(
+    _options: SurfaceIdOptions & { url: string },
+  ): Promise<{ status: "dispatched" }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async setTaskOrigins(
+    _options: SurfaceIdOptions & { origins: string[] },
+  ): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async setTextZoom(
+    _options: SurfaceIdOptions & { percent: number },
+  ): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async clearSurfaceStorage(_options: SurfaceIdOptions): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async purgeProfiles(
+    _options: Parameters<ElizaSurfaceManagerPlugin["purgeProfiles"]>[0],
+  ): Promise<{ purged: number }> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async captureSurface(
+    _options: CaptureSurfaceOptions,
+  ): Promise<SurfaceCapture> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async observeHistory(
+    _options: SurfaceIdOptions,
+  ): ReturnType<ElizaSurfaceManagerPlugin["observeHistory"]> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async navigateHistory(
+    _options: Parameters<ElizaSurfaceManagerPlugin["navigateHistory"]>[0],
+  ): ReturnType<ElizaSurfaceManagerPlugin["navigateHistory"]> {
     throw this.unavailable(UNAVAILABLE);
   }
   async readPage(

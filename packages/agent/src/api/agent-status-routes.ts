@@ -1,51 +1,17 @@
 /**
- * Agent self-status and ERC-8004 registry inline routes.
+ * Agent self-status inline route.
  */
 
 import type http from "node:http";
-import {
-  PostRegistryRegisterRequestSchema,
-  PostRegistrySyncRequestSchema,
-  PostRegistryUpdateUriRequestSchema,
-  type TradePermissionMode,
-} from "@elizaos/contracts";
+import type { TradePermissionMode } from "@elizaos/contracts";
 import type { AgentRuntime } from "@elizaos/core";
-import type { ElizaConfig, ReadJsonBodyOptions } from "@elizaos/host/protocol";
+import type { ElizaConfig } from "@elizaos/host/protocol";
 import type { LocalTradeExecutionOptions } from "@elizaos/plugin-wallet/transactions";
 import type { WalletCapabilityStatus } from "./wallet-capability.ts";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-interface RegistryServiceStatic {
-  defaultCapabilitiesHash: () => string;
-}
-
-interface AgentRegistryService {
-  getStatus(): Promise<Record<string, unknown>>;
-  register(options: {
-    name: string;
-    endpoint: string;
-    capabilitiesHash: string;
-    tokenURI: string;
-  }): Promise<Record<string, unknown>>;
-  updateTokenURI(tokenURI: string): Promise<string>;
-  syncProfile(options: {
-    name: string;
-    endpoint: string;
-    capabilitiesHash: string;
-    tokenURI: string;
-  }): Promise<string>;
-  getChainId(): Promise<number>;
-}
-
-// The on-chain ERC-8004 registry backend was provided by an external plugin
-// that is no longer bundled, so this resolver always reports the service as
-// unavailable and the registry routes degrade to "not configured" / 503.
-function getRegistryServiceIfAvailable(): AgentRegistryService | null {
-  return null;
-}
 
 export interface AwarenessRegistryLike {
   composeSummary: (runtime: unknown) => Promise<string>;
@@ -76,7 +42,6 @@ export interface AgentStatusRouteDeps {
   ) => string | undefined;
   resolveProviderFromModel: (model: string) => string | null;
   getAwarenessRegistry: () => AwarenessRegistryLike | null;
-  RegistryService: RegistryServiceStatic;
 }
 
 export interface AgentStatusRouteState {
@@ -90,19 +55,12 @@ export interface AgentStatusRouteState {
 }
 
 export interface AgentStatusRouteContext {
-  req: http.IncomingMessage;
   res: http.ServerResponse;
   method: string;
   pathname: string;
   url: URL;
   state: AgentStatusRouteState;
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
-  error: (res: http.ServerResponse, message: string, status?: number) => void;
-  readJsonBody: <T extends object>(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    options?: ReadJsonBodyOptions,
-  ) => Promise<T | null>;
   deps: AgentStatusRouteDeps;
 }
 
@@ -113,8 +71,7 @@ export interface AgentStatusRouteContext {
 export async function handleAgentStatusRoutes(
   ctx: AgentStatusRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, state, json, error, readJsonBody, deps } =
-    ctx;
+  const { res, method, pathname, state, json, deps } = ctx;
 
   // ═══════════════════════════════════════════════════════════════════════
   // Agent self-status route
@@ -262,159 +219,6 @@ export async function handleAgentStatusRoutes(
         canConfigureConnectors: true,
       },
       ...(registrySummary !== null ? { registrySummary } : {}),
-    });
-    return true;
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  //  ERC-8004 Registry Routes
-  // ═══════════════════════════════════════════════════════════════════════
-
-  if (!pathname.startsWith("/api/registry")) return false;
-
-  const registryService = getRegistryServiceIfAvailable();
-
-  if (method === "GET" && pathname === "/api/registry/status") {
-    if (!registryService) {
-      json(res, {
-        registered: false,
-        tokenId: 0,
-        agentName: "",
-        agentEndpoint: "",
-        capabilitiesHash: "",
-        isActive: false,
-        tokenURI: "",
-        walletAddress: "",
-        totalAgents: 0,
-        configured: false,
-      });
-      return true;
-    }
-    const status = await registryService.getStatus();
-    json(res, { ...status, configured: true });
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/registry/register") {
-    if (!registryService) {
-      error(
-        res,
-        "Registry service not configured. Set registry config and EVM_PRIVATE_KEY.",
-        503,
-      );
-      return true;
-    }
-    const rawReg = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawReg === null) return true;
-    const parsedReg = PostRegistryRegisterRequestSchema.safeParse(rawReg);
-    if (!parsedReg.success) {
-      error(
-        res,
-        parsedReg.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-    const body = parsedReg.data;
-
-    const agentName = body.name || state.agentName || "Eliza";
-    const endpoint = body.endpoint || "";
-    const tokenURI = body.tokenURI || "";
-
-    const result = await registryService.register({
-      name: agentName,
-      endpoint,
-      capabilitiesHash: deps.RegistryService.defaultCapabilitiesHash(),
-      tokenURI,
-    });
-    json(res, result);
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/registry/update-uri") {
-    if (!registryService) {
-      error(res, "Registry service not configured.", 503);
-      return true;
-    }
-    const rawUri = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawUri === null) return true;
-    const parsedUri = PostRegistryUpdateUriRequestSchema.safeParse(rawUri);
-    if (!parsedUri.success) {
-      error(
-        res,
-        parsedUri.error.issues[0]?.message ?? "tokenURI is required",
-        400,
-      );
-      return true;
-    }
-    const txHash = await registryService.updateTokenURI(
-      parsedUri.data.tokenURI,
-    );
-    json(res, { ok: true, txHash });
-    return true;
-  }
-
-  if (method === "POST" && pathname === "/api/registry/sync") {
-    if (!registryService) {
-      error(res, "Registry service not configured.", 503);
-      return true;
-    }
-    const rawSync = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawSync === null) return true;
-    const parsedSync = PostRegistrySyncRequestSchema.safeParse(rawSync);
-    if (!parsedSync.success) {
-      error(
-        res,
-        parsedSync.error.issues[0]?.message ?? "Invalid request body",
-        400,
-      );
-      return true;
-    }
-    const body = parsedSync.data;
-
-    const agentName = body.name || state.agentName || "Eliza";
-    const endpoint = body.endpoint || "";
-    const tokenURI = body.tokenURI || "";
-
-    const txHash = await registryService.syncProfile({
-      name: agentName,
-      endpoint,
-      capabilitiesHash: deps.RegistryService.defaultCapabilitiesHash(),
-      tokenURI,
-    });
-    json(res, { ok: true, txHash });
-    return true;
-  }
-
-  if (method === "GET" && pathname === "/api/registry/config") {
-    const registryConfig = state.config.registry;
-    let chainId: number | null = null;
-    if (registryService) {
-      try {
-        chainId = await registryService.getChainId();
-      } catch {
-        // Chain RPC unavailable: leave chainId explicitly unavailable.
-        // error-policy:J3 untrusted-input sanitizing - RPC failure yields
-        // an explicit unavailable result, never a fabricated default.
-        chainId = null;
-      }
-    }
-
-    const explorerByChainId: Record<number, string> = {
-      1: "https://etherscan.io",
-      10: "https://optimistic.etherscan.io",
-      137: "https://polygonscan.com",
-      8453: "https://basescan.org",
-      42161: "https://arbiscan.io",
-    };
-
-    json(res, {
-      configured: Boolean(registryService),
-      chainId,
-      registryAddress: registryConfig?.registryAddress ?? null,
-      collectionAddress: registryConfig?.collectionAddress ?? null,
-      explorerUrl:
-        chainId !== null ? (explorerByChainId[chainId] ?? null) : null,
     });
     return true;
   }

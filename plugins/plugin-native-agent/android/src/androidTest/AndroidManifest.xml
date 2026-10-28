@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     android:versionCode="1"
     android:versionName="1.0">
+    <application>
+        <service android:name="ai.eliza.plugins.agent.NativeHealthServiceInstrumentedTest$SelfSupervised" android:exported="false" />
+        <service android:name="ai.eliza.plugins.agent.NativeHealthServiceInstrumentedTest$OtherSupervisor" android:exported="false" />
+    </application>
 </manifest>
