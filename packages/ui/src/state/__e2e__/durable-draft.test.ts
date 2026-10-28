@@ -337,6 +337,46 @@ describe("DurableDraftController sending", () => {
     expect(f.saved()?.text).toBe("Next message");
   });
 
+  it("never offers the in-flight text for review when the conversation reopens with new typing", async () => {
+    const f = fixture();
+    f.external("In flight");
+    await f.c.open("one");
+    await f.c.hold("In flight");
+    f.set("");
+    await tick();
+    f.c.retire();
+    f.set("Typed meanwhile");
+    await f.c.open("one");
+    await tick();
+    expect(f.c.state.conflict).toBe(false);
+    expect(f.c.state.savedText).toBe("");
+    expect(f.get()).toBe("Typed meanwhile");
+    expect(f.saved()?.text).toBe("Typed meanwhile");
+    expect(isSendingDurableDraft(f.saved())).toBe(false);
+    await f.c.commit();
+    expect(f.saved()?.text).toBe("Typed meanwhile");
+    f.set("Typed meanwhile, more");
+    await tick();
+    expect(f.saved()?.text).toBe("Typed meanwhile, more");
+  });
+
+  it("returns an unsent in-flight message ahead of typing made in the reopened conversation", async () => {
+    const f = fixture();
+    f.external("In flight");
+    await f.c.open("one");
+    await f.c.hold("In flight");
+    f.set("");
+    await tick();
+    f.c.retire();
+    f.set("Later");
+    await f.c.open("one");
+    await tick();
+    f.c.release();
+    await tick();
+    expect(f.get()).toBe("In flight\nLater");
+    expect(f.saved()?.text).toBe("In flight\nLater");
+  });
+
   it("keeps unsent text with its conversation when the binding changes before dispatch", async () => {
     const f = fixture();
     f.external("Unsent words");

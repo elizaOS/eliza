@@ -287,6 +287,16 @@ export class DurableDraftController<Recovery = unknown> {
         // Text typed before (or while) the draft opened always wins the
         // editor; a different saved copy is offered for review instead.
         binding.ready = true;
+        if (sending && held && binding.record) {
+          // The saved copy is this send's own in-flight text: it is never
+          // offered as a draft (restoring it could send it twice). The
+          // editor's text is saved as this binding's draft.
+          held.peer = binding;
+          binding.last = "";
+          this.publish({ opening: false, message: "" });
+          this.edit(this.text());
+          return;
+        }
         if (
           binding.record &&
           (binding.record.text !== this.text() || unsettled)
