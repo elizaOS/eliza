@@ -680,6 +680,66 @@ export function fallbackPlanFromLimits(value: unknown): FallbackPlan | null {
     periodEnd: Number.isFinite(end) ? end : null,
   };
 }
+/**
+ * The organization credit balance from `data.v2.balance` of GET
+ * /api/v1/billing/limits, for Cloud's explicit organization-credit billing
+ * mode. It is a read-only account fact: never a top-up meter and never used
+ * to admit AI. A balance that is missing, unavailable, observed more than
+ * five minutes ago (or more than the clock skew in the future), from another
+ * authority, negative, inexact or malformed is `unavailable`.
+ */
+export interface OrganizationCreditBalance {
+  state: "zero" | "funded" | "unavailable";
+  /** Exact base-10 USD amount as Cloud reported it; never a JavaScript number. */
+  usd: string | null;
+  observedAt: number | null;
+}
+/** How old a balance observation may be before it is no longer shown. */
+export const CREDIT_BALANCE_MAX_AGE_MS = 5 * 60 * 1000;
+export function organizationCreditFromLimits(
+  payload: unknown,
+  now: number = Date.now(),
+): OrganizationCreditBalance {
+  const unavailable: OrganizationCreditBalance = {
+    state: "unavailable",
+    usd: null,
+    observedAt: null,
+  };
+  const root = bag(payload);
+  const data = bag(root?.data);
+  const observation = bag(bag(data?.v2)?.balance);
+  const row = bag(observation?.value);
+  const amount = bag(row?.balance);
+  if (
+    root?.success !== true ||
+    data?.schemaVersion !== 2 ||
+    observation?.status !== "available" ||
+    observation.source !== "organizations" ||
+    typeof observation.observedAt !== "string"
+  )
+    return unavailable;
+  const at = Date.parse(observation.observedAt);
+  if (
+    !Number.isFinite(at) ||
+    at > now + CLOCK_SKEW_MS ||
+    now - at > CREDIT_BALANCE_MAX_AGE_MS ||
+    typeof row?.revision !== "string" ||
+    !/^\d+$/.test(row.revision)
+  )
+    return unavailable;
+  if (
+    amount?.unit !== "usd" ||
+    amount.currency !== "USD" ||
+    typeof amount.value !== "string" ||
+    !/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(amount.value)
+  )
+    return unavailable;
+  return {
+    state: /^0(?:\.0+)?$/.test(amount.value) ? "zero" : "funded",
+    usd: amount.value,
+    observedAt: at,
+  };
+}
 const keyCache = new Map<string, { keys: JsonWebKey[]; fetchedAt: number }>();
 /** Forgets cached public signing keys. Call it when the Cloud account is detached. */
 export function clearEntitlementKeyCache(): void {
@@ -1473,4 +1533,28 @@ export function subscriptionSummary(
     limit: current ? serviceLimitMessage(current, now, options.copy) : null,
     admission: planAdmission(view),
   };
+}
+
+/**
+ * Milliseconds until the summary line for a shown Cloud limit changes or
+ * lapses: its wait ends, its reset passes, or (with neither) the one-minute
+ * notice window closes. Bounded to between one second and one hour so a
+ * surface re-renders at those moments only, never as a per-second countdown.
+ * Null when nothing about the limit is still ahead.
+ */
+export function serviceLimitNextChange(
+  limit: ServiceLimit,
+  observedAt: number,
+  now: number = Date.now(),
+): number | null {
+  const points = [
+    limit.retryAfterMs !== null ? observedAt + limit.retryAfterMs : null,
+    limit.resetsAt,
+    limit.retryAfterMs === null && limit.resetsAt === null
+      ? observedAt + 60_000
+      : null,
+  ].filter((at): at is number => at !== null && at > now);
+  return points.length
+    ? Math.min(3_600_000, Math.max(1000, Math.min(...points) - now))
+    : null;
 }

@@ -8,6 +8,7 @@ import { webcrypto } from "node:crypto";
 import {
   allowanceText,
   CLOCK_SKEW_MS,
+  CREDIT_BALANCE_MAX_AGE_MS,
   checkEntitlement,
   clearEntitlementKeyCache,
   decodeEntitlement,
@@ -24,6 +25,7 @@ import {
   MAX_ENTITLEMENT_LIFETIME_MS,
   nextRefreshDelay,
   normalizeSubscriptionCode,
+  organizationCreditFromLimits,
   planAdmission,
   REFRESH_RETRY_MAX_MS,
   REFRESH_RETRY_MIN_MS,
@@ -34,6 +36,7 @@ import {
   redeemSuccessMessage,
   SubscriptionRedeemError,
   serviceLimitMessage,
+  serviceLimitNextChange,
   subscriptionSummary,
   subscriptionView,
   verifyEntitlement,
@@ -1949,4 +1952,123 @@ test("agent turn failures carry a structured period reset; burst and sustained s
       "retryAfterMs still wins the countdown",
     );
   }
+});
+
+test("organization credit balance reads only a fresh exact organizations observation", () => {
+  const now = Date.parse("2026-10-28T12:00:00Z");
+  const payload = (balance, overrides = {}) => ({
+    success: true,
+    data: {
+      schemaVersion: 2,
+      v2: {
+        balance: {
+          status: "available",
+          source: "organizations",
+          observedAt: "2026-10-28T11:59:00Z",
+          value: {
+            balance: { value: balance, unit: "usd", currency: "USD" },
+            revision: "42",
+          },
+          ...overrides,
+        },
+      },
+    },
+  });
+  assert.deepEqual(organizationCreditFromLimits(payload("12.5"), now), {
+    state: "funded",
+    usd: "12.5",
+    observedAt: Date.parse("2026-10-28T11:59:00Z"),
+  });
+  assert.equal(
+    organizationCreditFromLimits(payload("0.000"), now).state,
+    "zero",
+  );
+  for (const bad of ["-1", "1e3", "01", "1.1234567", "", "NaN"])
+    assert.equal(
+      organizationCreditFromLimits(payload(bad), now).state,
+      "unavailable",
+      bad,
+    );
+  const stale = new Date(now - CREDIT_BALANCE_MAX_AGE_MS - 1).toISOString();
+  assert.equal(
+    organizationCreditFromLimits(payload("5", { observedAt: stale }), now)
+      .state,
+    "unavailable",
+  );
+  const future = new Date(now + CLOCK_SKEW_MS + 1).toISOString();
+  assert.equal(
+    organizationCreditFromLimits(payload("5", { observedAt: future }), now)
+      .state,
+    "unavailable",
+  );
+  assert.equal(
+    organizationCreditFromLimits(payload("5", { source: "stripe" }), now).state,
+    "unavailable",
+  );
+  assert.equal(
+    organizationCreditFromLimits(
+      payload("5", {
+        status: "unavailable",
+        error: { code: "x", retryable: true },
+      }),
+      now,
+    ).usd,
+    null,
+  );
+  const unrevisioned = payload("5");
+  unrevisioned.data.v2.balance.value.revision = 42;
+  assert.equal(
+    organizationCreditFromLimits(unrevisioned, now).state,
+    "unavailable",
+  );
+  const v1 = payload("5");
+  v1.data.schemaVersion = 1;
+  assert.equal(organizationCreditFromLimits(v1, now).state, "unavailable");
+  assert.equal(
+    organizationCreditFromLimits({ ...payload("5"), success: false }, now)
+      .state,
+    "unavailable",
+  );
+  assert.equal(organizationCreditFromLimits(null, now).state, "unavailable");
+});
+
+test("a shown Cloud limit re-renders only when its wait, reset or notice window ends", () => {
+  const at = 1_000_000;
+  const limit = (retryAfterMs, resetsAt) => ({
+    kind: "rate-limited",
+    retryAfterMs,
+    resetsAt,
+  });
+  assert.equal(serviceLimitNextChange(limit(30_000, null), at, at), 30_000);
+  assert.equal(
+    serviceLimitNextChange(limit(30_000, null), at, at + 29_500),
+    1000,
+  );
+  assert.equal(
+    serviceLimitNextChange(limit(30_000, null), at, at + 30_000),
+    null,
+  );
+  // The earlier of the wait and the reset, then the reset alone once the wait has passed.
+  assert.equal(
+    serviceLimitNextChange(limit(30_000, at + 90_000), at, at),
+    30_000,
+  );
+  assert.equal(
+    serviceLimitNextChange(limit(30_000, at + 90_000), at, at + 40_000),
+    50_000,
+  );
+  // A reset days away is checked again within an hour, not scheduled days ahead.
+  assert.equal(
+    serviceLimitNextChange(limit(null, at + 3 * 86_400_000), at, at),
+    3_600_000,
+  );
+  // A limit with neither time is shown for one minute.
+  assert.equal(
+    serviceLimitNextChange(limit(null, null), at, at + 10_000),
+    50_000,
+  );
+  assert.equal(
+    serviceLimitNextChange(limit(null, null), at, at + 60_000),
+    null,
+  );
 });
