@@ -25,6 +25,15 @@ product's `launcher.imageProvisioning`; production compositions then add the
 static product-partition resource overlay `writeImageProvisioningOverlay`
 generates, and `assertProvisioningResourceDefault` checks the host's default.
 
+`cuttlefish-product.mjs` checks a brand's Cuttlefish validation product
+descriptor before production staging: target, brand config (brand-config.ts),
+source-lock profile, pinned host packages and reviewed signer. A downstream
+product may use the shared reviewed `cuttlefish` profile in
+`android/aosp.lock.json` when its brand config inherits only that profile's
+required device trees. The launcher stays nonprivileged and the listener is the
+only privileged package, as in the Pixel 10a composition. It admits inputs
+only, never an image build or boot.
+
 `secure-camera.mjs` keeps capture over Keyguard with the stock AOSP Camera2
 `SecureCameraActivity` and the SystemUI power gesture for every brand: it
 authenticates the reviewed source inputs in `android/sources/secure-camera.json`,
