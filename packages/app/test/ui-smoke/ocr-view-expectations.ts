@@ -112,7 +112,9 @@ export const VIEW_OCR_POLICIES = {
     requireAll: ["Clock", "Alarms"],
   }),
   "builtin-automations": expected({
-    requireAll: ["All"],
+    // The three-letter filter is easily read as "Al" by Tesseract. Require
+    // the creation control and actual view content, not a generic filter label.
+    requireAll: ["New"],
     requireAny: [
       "Reminders",
       "Nothing scheduled yet",
@@ -121,7 +123,6 @@ export const VIEW_OCR_POLICIES = {
       "Tasks",
       "Workflows",
       "Inactive",
-      "New",
     ],
   }),
   "builtin-workflow-studio": expected({

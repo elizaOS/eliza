@@ -16,7 +16,10 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/contracts";
-import { resolveCalendarTimeZone } from "@elizaos/contracts";
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -38,18 +41,21 @@ import {
   type SubactionsMap,
   stableStringify,
 } from "@elizaos/core";
-import { renderGroundedActionReply } from "@elizaos/plugin-assistant";
+import {
+  renderGroundedActionReply,
+  requestLocalCalendarAgenda,
+} from "@elizaos/plugin-assistant";
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   CalendarService,
   CalendarServiceError,
+  calendarReadParameters,
   createCalendarActionRunner,
   createCalendarMutationApprovalGateway,
+  registerCalendarActionHostAdapter,
 } from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import {
@@ -121,6 +127,7 @@ function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
  * injected rather than moved.
  */
 const calendarActionDeps: CalendarActionDeps = {
+  requestLocalAgenda: requestLocalCalendarAgenda,
   runTextModel: runLifeOpsTextModel,
   runJsonModel: runLifeOpsJsonModel,
   recentConversationTexts: (args) => recentConversationTexts(args),
@@ -159,6 +166,13 @@ const calendarActionDeps: CalendarActionDeps = {
       error instanceof TravelTimeUnavailableError,
   },
 };
+
+/** Bind PA integrations before Calendar's registered actions can execute. */
+export function registerPersonalAssistantCalendarHost(
+  runtime: IAgentRuntime,
+): void {
+  registerCalendarActionHostAdapter(runtime, calendarActionDeps);
+}
 
 const googleCalendarAction = createCalendarActionRunner(calendarActionDeps);
 
@@ -222,11 +236,7 @@ function actionResultCalendarEvent(
     : null;
 }
 
-// Re-exported for consumers that route calendar-plan extraction without going
-// through the umbrella handler (multilingual routing test, live LLM extraction
-// test). The implementation lives in `@elizaos/plugin-calendar`; importing this
-// module first runs `createCalendarActionRunner` above, so the extractor's
-// injected LLM dependencies are wired before any caller invokes it.
+// Direct plan-extraction consumers resolve the same runtime-specific host adapter.
 export { extractCalendarPlanWithLlm } from "@elizaos/plugin-calendar";
 
 type OwnerCalendarSubaction =
@@ -248,7 +258,11 @@ type OwnerCalendarSubaction =
 const ACTION_NAME = "CALENDAR";
 
 const proposalDurationProperties: Record<string, ActionParameterSchema> = {
-  minutes: { type: "number", minimum: 5, maximum: 480 },
+  minutes: {
+    type: "number",
+    minimum: CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+    maximum: CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+  },
   existingEventQuery: { type: "string", minLength: 1 },
 };
 
@@ -1858,12 +1872,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ),
     },
     ...Object.fromEntries(
-      (
-        [
-          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
-          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
-        ] as const
-      ).map(([name, schema]) => [
+      (["feed", "search_events"] as const).map((name) => [
         name,
         {
           ...(name === "search_events"
@@ -1875,25 +1884,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
                 description:
                   "Read the complete agenda for a day or range. For whole dates supply details.date as the first YYYY-MM-DD date, optional endDate as the last included date, and timeZone; code calculates the local midnight boundaries. For partial-day ranges use timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
               }),
-          parameters: calendarAction.parameters?.map((parameter) => {
-            if (name === "search_events" && parameter.name === "query") {
-              return {
-                ...parameter,
-                required: true,
-                description:
-                  "Required event-content search text, such as a title, attendee, location or topic. Put date bounds in details; use CALENDAR_FEED for an unfiltered agenda.",
-                schema: { type: "string", minLength: 1 },
-              };
-            }
-            return parameter.name === "details"
-              ? {
-                  ...parameter,
-                  description:
-                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
-                  schema,
-                }
-              : parameter;
-          }),
+          parameters: calendarReadParameters(calendarAction, name),
         },
       ]),
     ),

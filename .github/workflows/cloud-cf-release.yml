@@ -1508,6 +1508,10 @@ jobs:
           # source preserves the Worker's current value.
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_ANDROID_ASSET_LINKS_JSON: ${{ vars.ELIZA_ANDROID_ASSET_LINKS_JSON }}
+          # Public operator-owned branding and legal documents. Uses the atomic binding pipeline.
+          CLOUD_PUBLIC_SERVICE_NAME: ${{ vars.CLOUD_PUBLIC_SERVICE_JSON != '' && fromJSON(vars.CLOUD_PUBLIC_SERVICE_JSON).name || '' }}
+          CLOUD_PUBLIC_SERVICE_TERMS_JSON: ${{ vars.CLOUD_PUBLIC_SERVICE_JSON != '' && toJSON(fromJSON(vars.CLOUD_PUBLIC_SERVICE_JSON).terms) || '' }}
+          CLOUD_PUBLIC_SERVICE_PRIVACY_JSON: ${{ vars.CLOUD_PUBLIC_SERVICE_JSON != '' && toJSON(fromJSON(vars.CLOUD_PUBLIC_SERVICE_JSON).privacy) || '' }}
           GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

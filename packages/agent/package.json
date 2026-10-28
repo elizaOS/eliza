@@ -237,6 +237,12 @@
       "types": "./dist/services/sqlite-message-interaction-session-store.d.ts",
       "import": "./dist/services/sqlite-message-interaction-session-store.js",
       "default": "./dist/services/sqlite-message-interaction-session-store.js"
+    },
+    "./actions/views": {
+      "eliza-source": "./src/actions/views.ts",
+      "types": "./dist/actions/views.d.ts",
+      "import": "./dist/actions/views.js",
+      "default": "./dist/actions/views.js"
     }
   },
   "publishConfig": {

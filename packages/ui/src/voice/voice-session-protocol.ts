@@ -21,8 +21,8 @@
 import {
   findViewActionHandoff,
   type ViewActionHandoff,
-} from "@elizaos/core/protocol";
-import type { VoiceUiContext } from "@elizaos/host/protocol";
+} from "@elizaos/core/view-interaction";
+import type { VoiceUiContext } from "@elizaos/host/voice/ui-context";
 export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
 /** Uplink/downlink codecs negotiated in `hello`. */
 export type VoiceSessionCodec = "pcm16" | "opus";

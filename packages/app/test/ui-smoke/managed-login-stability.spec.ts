@@ -307,6 +307,18 @@ for (const surface of SURFACES) {
       await page.goto(`${managedOrigin}${entryPath}`);
       const heading = page.getByRole("heading", { name: "Sign in" });
       await expect(heading).toBeVisible();
+      const appName = process.env.E2E_LOGIN_APP_NAME ?? "Eliza";
+      await expect(page).toHaveTitle(`Sign In | ${appName}`);
+      await expect(
+        page
+          .getByRole("img", { name: appName, exact: true })
+          .or(page.getByText(appName, { exact: true })),
+      ).toBeVisible();
+      await expect(page.locator("main")).not.toContainText("{{appName}}");
+      await expect(page.locator("main")).not.toContainText("{{cloudName}}");
+      if (appName !== "Eliza") {
+        await expect(page.locator("main")).not.toContainText("Eliza");
+      }
       await expect(page.getByText("Taking you to Eliza sign in")).toHaveCount(
         0,
       );

@@ -136,7 +136,7 @@ test("desktop and disabled mobile keep the legacy state root without requiring p
 
 test("opted-in mobile refuses missing, modified, unindexed, or aliased resources and invalid flags", () => {
   const changes: Array<(root: string, env: NodeJS.ProcessEnv) => void> = [
-    (_root, env) => {
+    (_root: string, env: NodeJS.ProcessEnv) => {
       env.ELIZA_SMTHRS_RUNTIME_DIR = "/nonexistent-workflow-resource";
     },
     (root) => rmSync(join(root, "files.sha256")),
@@ -151,15 +151,38 @@ test("opted-in mobile refuses missing, modified, unindexed, or aliased resources
       rmSync(file);
       symlinkSync(join(root, "node_modules/smthrs/package.json"), file);
     },
-    (_root, env) => {
+    (_root: string, env: NodeJS.ProcessEnv) => {
       env.BUN_FEATURE_FLAG_DISABLE_IO_POOL = "yes";
     },
-    (_root, env) => {
+    (_root: string, env: NodeJS.ProcessEnv) => {
       env.LD_LIBRARY_PATH = "relative";
     },
   ];
   for (const change of changes) {
     const result = fixture("boot(env);", change);
     expect(result.status, result.stderr).not.toBe(0);
+  }
+});
+
+test("native Android workflow child has no musl prefix and still pins executable/state/flags", () => {
+  const result = fixture(
+    `boot(env);const c=command('runtime',"process.stdout.write('native-direct-ok')");if(c.executable!==env.BUN_PATH||c.args.includes(env.BUN_PATH))throw Error('unexpected native prefix');const r=spawnSync(c.executable,c.args,{cwd:c.cwd,env:c.env,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);process.stdout.write(r.stdout);`,
+    (_root: string, env: NodeJS.ProcessEnv) => {
+      env.ELIZA_ANDROID_BUN_TARGET = "android";
+      env.LD_PATH = env.BUN_PATH;
+    },
+  );
+  expect(result.status, result.stderr).toBe(0);
+  expect(result.stdout).toBe("native-direct-ok");
+  for (const change of [
+    (_root: string, env: NodeJS.ProcessEnv) => {
+      env.ELIZA_ANDROID_BUN_TARGET = "unknown";
+    },
+    (_root: string, env: NodeJS.ProcessEnv) => {
+      env.ELIZA_ANDROID_BUN_TARGET = "android";
+    },
+  ]) {
+    const rejected = fixture("boot(env);", change);
+    expect(rejected.status, rejected.stderr).not.toBe(0);
   }
 });

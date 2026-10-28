@@ -61,7 +61,12 @@ class BlooioIMessageService extends Service {
     };
   }
 
-  async sendMessage(): Promise<{ success: true; messageId: string }> {
+  async sendMessage(): Promise<{
+    success: boolean;
+    messageId?: string;
+    messageIds?: string[];
+    error?: string;
+  }> {
     return { success: true, messageId: "message-test" };
   }
 }
@@ -231,6 +236,30 @@ describe("LifeOps iMessage runtime status projection", () => {
     });
     expect(response.body).not.toContain("native_bridge_not_connected");
     expect(response.body).not.toContain("full_disk_access_required");
+  });
+
+  it("does not replay a partially accepted send through the runtime fallback", async () => {
+    const send = vi
+      .spyOn(imessage, "sendMessage")
+      .mockResolvedValueOnce({
+        success: false,
+        messageIds: ["accepted-part-1"],
+        error: "Later chunk failed",
+      })
+      .mockResolvedValueOnce({ success: true, messageId: "duplicate-send" });
+    const { LifeOpsService } = await import("../lifeops/service.js");
+    const service = new LifeOpsService(runtime);
+
+    await expect(
+      service.sendIMessage({ to: "+15555550123", text: "Two parts" }),
+    ).rejects.toMatchObject({
+      code: "CONNECTOR_DELIVERY_RECONCILIATION_REQUIRED",
+      providerReceipt: {
+        provider: "imessage",
+        messageIds: ["accepted-part-1"],
+      },
+    });
+    expect(send).toHaveBeenCalledTimes(1);
   });
 });
 

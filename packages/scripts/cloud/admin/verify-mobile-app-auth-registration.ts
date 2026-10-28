@@ -235,6 +235,26 @@ export function requireRegisteredMobileClientAppId(
   return entry.appId;
 }
 
+/** Resolve the same requested client and app UUID for every admin operation. */
+export function resolveMobileAppAuthRegistrationSelection(
+  clientId: unknown,
+  environment: unknown,
+  registry: unknown,
+  primaryAppId: unknown,
+): { target: MobileAppAuthRegistrationTarget; appId: string } {
+  const target = resolveMobileAppAuthRegistrationTarget(
+    clientId,
+    environment,
+    registry,
+    primaryAppId,
+  );
+  const appId =
+    target === PRIMARY_MOBILE_APP_AUTH_TARGET
+      ? requireMobileAppAuthAppId(primaryAppId)
+      : requireRegisteredMobileClientAppId(registry, target, primaryAppId);
+  return { target, appId };
+}
+
 export function requireMobileAppAuthEnvironment(
   value: unknown,
 ): MobileAppAuthDeploymentEnvironment {
@@ -246,10 +266,9 @@ export function requireMobileAppAuthEnvironment(
   return value;
 }
 
-function requireExactFirstPartyHttpsUrl(
+function requireFirstPartyHttpsUrl(
   value: unknown,
   field: string,
-  expected: string,
   expectedOrigin: string,
 ): void {
   if (typeof value !== "string" || value.trim().length === 0) {
@@ -276,9 +295,16 @@ function requireExactFirstPartyHttpsUrl(
   if (parsed.origin !== expectedOrigin) {
     fail(`${field} must use the exact ${expectedOrigin} origin`);
   }
-  if (value !== expected) {
-    fail(`${field} must be exactly ${expected}`);
-  }
+}
+
+function requireExactFirstPartyHttpsUrl(
+  value: unknown,
+  field: string,
+  expected: string,
+  expectedOrigin: string,
+): void {
+  requireFirstPartyHttpsUrl(value, field, expectedOrigin);
+  if (value !== expected) fail(`${field} must be exactly ${expected}`);
 }
 
 export function validateMobileAppAuthRegistrationRow(
@@ -300,12 +326,9 @@ export function validateMobileAppAuthRegistrationRow(
     fail("The mobile App Auth registration must be active and approved");
   }
 
-  requireExactFirstPartyHttpsUrl(
-    row.app_url,
-    "apps.app_url",
-    target.redirectOrigin,
-    target.redirectOrigin,
-  );
+  // app_url is app metadata, not the registered return URL. Apps may use a
+  // homepage path on the same HTTPS origin; callback authority stays literal.
+  requireFirstPartyHttpsUrl(row.app_url, "apps.app_url", target.redirectOrigin);
   if (!Array.isArray(row.allowed_origins)) {
     fail("apps.allowed_origins must be a JSON array");
   }
@@ -675,18 +698,30 @@ async function main(): Promise<void> {
   const registry = readEnvironmentVariable(
     "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
   );
-  const target = resolveMobileAppAuthRegistrationTarget(
-    readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID"),
-    readEnvironmentVariable("ELIZA_MOBILE_APP_AUTH_ENVIRONMENT"),
-    registry,
-    primaryAppId,
+  const clientId = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID",
   );
-  const appId =
+  const environment = readEnvironmentVariable(
+    "ELIZA_MOBILE_APP_AUTH_ENVIRONMENT",
+  );
+  const selection =
     enabled && !options.skipDatabase
-      ? target === PRIMARY_MOBILE_APP_AUTH_TARGET
-        ? requireMobileAppAuthAppId(primaryAppId)
-        : requireRegisteredMobileClientAppId(registry, target, primaryAppId)
+      ? resolveMobileAppAuthRegistrationSelection(
+          clientId,
+          environment,
+          registry,
+          primaryAppId,
+        )
       : undefined;
+  const target =
+    selection?.target ??
+    resolveMobileAppAuthRegistrationTarget(
+      clientId,
+      environment,
+      registry,
+      primaryAppId,
+    );
+  const appId = selection?.appId;
 
   if (enabled && !options.skipDatabase) {
     if (!appId) {

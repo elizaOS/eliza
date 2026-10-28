@@ -77,6 +77,7 @@ export const OPTIONAL_STATIC_PLUGIN_OVERRIDES: Readonly<
   Record<string, OptionalStaticPluginOverride>
 > = {
   "@elizaos/plugin-agent-orchestrator": { registryName: "agent-orchestrator" },
+  "@elizaos/plugin-personal-assistant": { importSubpath: "./plugin" },
   // Not in the mobile bundle — attempting the import there hangs the full
   // deferred-plugin timeout before being skipped. Skip it up front on
   // android/ios (it is a desktop dev tool, already gated in plugin-collector).

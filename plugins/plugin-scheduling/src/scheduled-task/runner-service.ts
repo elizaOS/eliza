@@ -23,9 +23,11 @@
  * exactly one set of injected deps per runtime.
  */
 import {
+  agentProcessStartedAtMs,
   ElizaError,
   type IAgentRuntime,
   logger,
+  recordsMissedScheduledOccurrences,
   Service,
   ServiceType,
 } from "@elizaos/core";
@@ -607,6 +609,11 @@ function buildRunner(
     ...(channelAvailable ? { channelAvailable } : {}),
     ...(deps.hostCapabilities
       ? { hostCapabilities: deps.hostCapabilities }
+      : {}),
+    // Powered-on hosts (a phone-resident agent) record occurrences that
+    // passed while the agent was stopped instead of running them late.
+    ...(recordsMissedScheduledOccurrences(runtime)
+      ? { poweredOnScheduling: { agentStartedAtMs: agentProcessStartedAtMs } }
       : {}),
     ...(opts.now ? { now: opts.now } : {}),
   });

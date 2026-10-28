@@ -561,6 +561,10 @@ export {
 	stripReasoningPrefixes,
 } from "./utils/reasoning-tags.ts";
 export * from "./utils/reference-echo";
+export {
+	containsResourceAddress,
+	parseWebResourceAddress,
+} from "./utils/resource-address.js";
 export { sleepWithAbort } from "./utils/retry";
 export * from "./utils/session-key.js";
 export * from "./utils/streaming";
@@ -574,7 +578,6 @@ export {
 export { createFirstSentenceStreamTracker } from "./utils/text-splitting.ts";
 export * from "./utils/type-guards.ts";
 export * from "./utils/unicode.js";
-
 export * from "./utils/union-find.ts";
 export { uuidFromString, validateUuid } from "./utils/uuid.js";
 export { createCompletedActionNavigationState } from "./views/completed-action-navigation.ts";

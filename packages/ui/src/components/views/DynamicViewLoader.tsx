@@ -481,8 +481,14 @@ const HOST_EXTERNAL_IMPORTERS: Record<string, ScopedHostExternalImporter> = {
   "@elizaos/core": importCoreViewCompat,
   "@elizaos/core/protocol": () => import("@elizaos/core/protocol"),
   "@elizaos/contracts": () => import("@elizaos/contracts"),
+  // The shared AOSP telephony contract: Messages and Phone views send and dial
+  // through the host's registered telephony profile, so they must share the
+  // host's module instance rather than bundle a private copy.
+  "@elizaos/contracts/native-telephony": () =>
+    import("@elizaos/contracts/native-telephony"),
   "@elizaos/host/protocol": () => import("@elizaos/host/protocol"),
   "@elizaos/ui": importUiRootCompat,
+  "@elizaos/ui/view-primitives": () => import("../../view-primitives.js"),
   "lucide-react": () => import("lucide-react"),
   "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
   "@pixiv/three-vrm/nodes": () => import("@pixiv/three-vrm/nodes"),
