@@ -3,10 +3,10 @@
 import { randomUUID } from "node:crypto";
 import { ChannelType, NotificationService, TaskService, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import {
-  createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
-  getRecordedTestNotifications as recordedNotifications,
-} from "../../test/helpers/runtime.js";
+import { createTestRuntime } from "@elizaos/testing/runtime";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/plugin-relationships";
+import { schedulingPlugin } from "@elizaos/plugin-scheduling";
+import { personalAssistantPlugin } from "../plugin.js";
 import { createLifeOpsReminderAttempt } from "./repository.js";
 import { LifeOpsService } from "./service.js";
 import {
@@ -14,12 +14,13 @@ import {
   resolveReminderEscalationDelayMinutes,
 } from "./service-helpers-reminder.js";
 
-function getRecordedTestNotifications(runtime: Parameters<typeof recordedNotifications>[0]) {
+function getRecordedTestNotifications(runtime: Awaited<ReturnType<typeof createTestRuntime>>["runtime"]) {
   const service=runtime.getService("notification");
-  return service instanceof NotificationService ? service.listIncludingExpired() : recordedNotifications(runtime);
+  if(!(service instanceof NotificationService))throw Error("Canonical notification service unavailable");
+  return service.listIncludingExpired();
 }
 
-async function markExactNotificationRead(service:LifeOpsService,runtime:Parameters<typeof recordedNotifications>[0],attempt:ReturnType<typeof createLifeOpsReminderAttempt>,now:number){
+async function markExactNotificationRead(service:LifeOpsService,runtime:Awaited<ReturnType<typeof createTestRuntime>>["runtime"],attempt:ReturnType<typeof createLifeOpsReminderAttempt>,now:number){
   const notifier=runtime.getService("notification");
   if(!(notifier instanceof NotificationService)||typeof attempt.deliveryMetadata.notificationId!=="string")throw Error("Missing canonical notification linkage");
   vi.setSystemTime(now);await notifier.markRead(attempt.deliveryMetadata.notificationId);
@@ -38,11 +39,26 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 async function createLifeOpsTestRuntime() {
-  const fixture = await createBaseLifeOpsTestRuntime();
+  // This test needs the real reminder domain and database, not the app host's
+  // model/provider/HTTP/trajectory bootstrap or an in-memory notification sink.
+  const previous=process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+  process.env.ELIZA_DISABLE_PROACTIVE_AGENT="1";
+  let fixture: Awaited<ReturnType<typeof createTestRuntime>>;
+  try {
+    fixture=await createTestRuntime({plugins:[
+      {name:"reminder-test-knowledge",description:"Canonical reminder knowledge",schema:knowledgeGraphSchema,services:[KnowledgeGraphService]},
+      {name:"reminder-test-notifications",description:"Canonical persisted notifications",services:[NotificationService]},
+      schedulingPlugin,personalAssistantPlugin,
+    ]});
+    for(const plugin of [schedulingPlugin,personalAssistantPlugin])
+      for(const service of plugin.services??[])await fixture.runtime.getServiceLoadPromise(service.serviceType);
+  } finally {
+    if(previous===undefined)delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+    else process.env.ELIZA_DISABLE_PROACTIVE_AGENT=previous;
+  }
   // Each case drives processReminders explicitly, without competing real ticks.
   await TaskService.stop(fixture.runtime);
-  const notifier=await NotificationService.start(fixture.runtime);
-  (fixture.runtime as unknown as {services:Map<string,unknown[]>}).services.set("notification",[notifier]);
+  await fixture.runtime.getServiceLoadPromise("notification");
   // A clock alone is not evidence of wakefulness. Persist the owner's awake
   // signal through the real admission path for this delivery scenario.
   vi.setSystemTime(Date.now() + 1);
