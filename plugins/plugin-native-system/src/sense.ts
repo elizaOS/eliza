@@ -34,8 +34,9 @@ export type ListenerStatus =
  * Who opened the assistant surface, as native recorded it from Android's caller identity:
  * `listener` (a wake from the same-signer image listener), `system` (an assistant gesture such as
  * press-and-hold power that the platform-signed system UI launched with its identity shared),
- * `power` (a warm press on the host's permission-protected Power activity) or `assist` (any other
- * launch, which only opens the assistant). Null when nothing is pending.
+ * `power` (a press recorded or launch-authorized only by the host's native permission-protected
+ * Power activity) or `assist` (any other launch, which only opens the assistant). Null when
+ * nothing is pending.
  */
 export type AssistantInvocation =
   | "listener"
@@ -114,8 +115,9 @@ export function parseInvocationUnlocked(raw: unknown): boolean {
   return record(raw).locked === false;
 }
 /**
- * A native voice origin (a listener wake or a system assistant gesture) starts one voice turn only
- * while unlocked, visible, without a dialog or connection prompt, and with no voice already active.
+ * A native voice origin (a listener wake, a system assistant gesture or a protected Power press)
+ * starts one voice turn only while unlocked, visible, without a dialog or connection prompt, and
+ * with no voice already active.
  */
 export function listenerStartsVoice(input: {
   invocation: AssistantInvocation;

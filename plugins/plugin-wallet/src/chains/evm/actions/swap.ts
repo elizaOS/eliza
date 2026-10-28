@@ -35,6 +35,7 @@ import {
   type Address,
   encodeFunctionData,
   formatUnits,
+  type Hash,
   type Hex,
   parseAbi,
   parseUnits,
@@ -218,6 +219,38 @@ export class SwapAction {
       EVMErrorCode.CONTRACT_REVERT,
       `All swap attempts failed after ${attemptCount} tries. ${lastError?.message ?? "Unknown error"}`
     );
+  }
+  /**
+   * Wait for a broadcast swap's receipt. A reverted swap throws, so the next
+   * route can be tried. Any other failure (receipt timeout, RPC error) leaves
+   * the swap's outcome unknown: it may still land, so it is reported as
+   * unconfirmed instead of failed, and no other route is tried with the same
+   * funds.
+   */
+  private async waitForSwapReceipt(
+    publicClient: ReturnType<WalletProvider["getPublicClient"]>,
+    hash: Hash,
+    revertedMessage: string
+  ): Promise<"confirmed" | "unconfirmed"> {
+    let receipt: Awaited<ReturnType<typeof publicClient.waitForTransactionReceipt>>;
+    try {
+      receipt = await publicClient.waitForTransactionReceipt({
+        hash,
+        timeout: TX_CONFIRMATION_TIMEOUT_MS,
+      });
+    } catch (error) {
+      // error-policy:J2 the transaction was broadcast; its outcome is unknown.
+      logger.warn(
+        `Swap ${hash} was broadcast but its receipt could not be read: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      return "unconfirmed";
+    }
+    if (receipt.status === "reverted") {
+      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, revertedMessage);
+    }
+    return "confirmed";
   }
   private isRecoverableError(error: Error): boolean {
     const message = error.message;
@@ -490,13 +523,11 @@ export class SwapAction {
           : undefined,
       })
     );
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const confirmationStatus = await this.waitForSwapReceipt(
+      publicClient,
       hash,
-      timeout: TX_CONFIRMATION_TIMEOUT_MS,
-    });
-    if (receipt.status === "reverted") {
-      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `Transaction reverted. Hash: ${hash}`);
-    }
+      `Transaction reverted. Hash: ${hash}`
+    );
     return {
       hash,
       from: account.address,
@@ -504,6 +535,7 @@ export class SwapAction {
       value: BigInt(txRequest.value ?? "0"),
       data: txRequest.data as Hex,
       chainId: route.fromChainId,
+      confirmationStatus,
     };
   }
   private async executeBebopQuote(
@@ -537,13 +569,11 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const confirmationStatus = await this.waitForSwapReceipt(
+      publicClient,
       hash,
-      timeout: TX_CONFIRMATION_TIMEOUT_MS,
-    });
-    if (receipt.status === "reverted") {
-      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `Bebop swap reverted. Hash: ${hash}`);
-    }
+      `Bebop swap reverted. Hash: ${hash}`
+    );
     return {
       hash,
       from: account.address,
@@ -551,6 +581,7 @@ export class SwapAction {
       value: BigInt(bebopRoute.value),
       data: bebopRoute.data as Hex,
       chainId: chainConfig.id,
+      confirmationStatus,
     };
   }
   private async executeKyberSwapQuote(
@@ -611,13 +642,11 @@ export class SwapAction {
         chain: walletClient.chain,
       })
     );
-    const receipt = await publicClient.waitForTransactionReceipt({
+    const confirmationStatus = await this.waitForSwapReceipt(
+      publicClient,
       hash,
-      timeout: TX_CONFIRMATION_TIMEOUT_MS,
-    });
-    if (receipt.status === "reverted") {
-      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `KyberSwap swap reverted. Hash: ${hash}`);
-    }
+      `KyberSwap swap reverted. Hash: ${hash}`
+    );
     return {
       hash,
       from: account.address,
@@ -625,6 +654,7 @@ export class SwapAction {
       value: BigInt(tx.transactionValue ?? "0"),
       data: tx.data as Hex,
       chainId: this.walletProvider.getChainConfigs(params.chain).id,
+      confirmationStatus,
     };
   }
   private async handleTokenApproval(

@@ -434,12 +434,20 @@ export class CloudAuthService extends Service {
         return service;
     }
     async stop(): Promise<void> {
+        this.resetRevalidation();
+        this.credentials = null;
+    }
+    /**
+     * Drop the probe loop and the surfaced key state. Every key change goes
+     * through here: the state belongs to one key, so a new key (or no key) must
+     * not inherit a `invalid` verdict confirmed against the previous one.
+     */
+    private resetRevalidation(): void {
         if (this.revalidationTimer) {
             clearTimeout(this.revalidationTimer);
             this.revalidationTimer = null;
         }
         this.revalidationState = { keyState: "unknown", consecutiveInvalid: 0 };
-        this.credentials = null;
     }
     private async initialize(): Promise<void> {
         const baseUrl = String(this.runtime.getSetting("ELIZAOS_CLOUD_BASE_URL") ?? DEFAULT_CLOUD_CONFIG.baseUrl);
@@ -556,10 +564,17 @@ export class CloudAuthService extends Service {
             organizationId: input.organizationId ?? "",
             authenticatedAt: Date.now(),
         };
+        // The new key starts unresolved and gets its own probe loop, so a
+        // verdict against the replaced key is not reported for it and a later
+        // revocation of this key is still caught (keys signed in after boot had
+        // no loop at all before).
+        this.resetRevalidation();
+        this.scheduleRevalidation(0);
         logger.info("[CloudAuth] Authenticated with API key");
         return this.credentials;
     }
     clearAuth(): void {
+        this.resetRevalidation();
         this.credentials = null;
         this.client.setApiKey(undefined);
     }

@@ -1438,13 +1438,9 @@ async function syncConversationRoomState(
   if (room.name === nextName && !metadataChanged) {
     return;
   }
-  const adapter = runtime.adapter as {
-    updateRoom?: (nextRoom: typeof room) => Promise<void>;
-  };
-  if (typeof adapter.updateRoom !== "function") {
-    return;
-  }
-  await adapter.updateRoom({
+  // The runtime writes through every adapter's updateRooms (SQLite has no
+  // updateRoom) and refreshes its room read cache.
+  await runtime.updateRoom({
     ...room,
     name: nextName,
     metadata: nextMetadata,

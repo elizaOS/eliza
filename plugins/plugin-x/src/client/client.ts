@@ -1130,9 +1130,9 @@ export class Client {
    * @param userId The user ID of the user to follow.
    * @returns A promise that resolves when the user is followed.
    */
-  public async followUser(userName: string): Promise<void> {
+  public async followUser(userId: string): Promise<void> {
     await this.withAuthenticatedSession(() =>
-      followUser(userName, this.requireAuth()),
+      followUser(userId, this.requireAuth()),
     );
   }
 

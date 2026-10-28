@@ -37,7 +37,7 @@ export const wifiNetworksProvider: Provider = {
   cacheScope: "turn",
 
   get: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state: State,
   ): Promise<ProviderResult> => {
@@ -69,8 +69,13 @@ export const wifiNetworksProvider: Provider = {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // A failed scan is planner context, not a successful empty list: the
+      // phone call-log provider reports a failed native read the same way.
+      // Empty text would make a denied permission or a radio that is off look
+      // like "there are no networks nearby".
+      runtime.reportError?.("wifiNetworks.provider", error);
       return {
-        text: "",
+        text: JSON.stringify({ wifi_networks: { error: message } }),
         values: {
           wifiNetworksAvailable: false,
           wifiNetworkCount: 0,

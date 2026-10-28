@@ -338,19 +338,19 @@ export class EmbeddedWorkflowService extends Service {
    * call it again. Resume at the earliest timer that has not fired yet.
    */
   private scheduleTimerResume(execution: WorkflowExecution): void {
-    const fired = new Set<unknown>();
-    const created = new Map<unknown, number>();
+    // A timer id is its node id, so a Timer inside a Loop creates the same id
+    // again on each iteration. Walk the events in order: a later TimerCreated
+    // reopens the id after its earlier TimerFired.
+    const open = new Map<unknown, number>();
     for (const event of execution.events ?? []) {
       const payload = event.payload as { timerId?: unknown; firesAtMs?: unknown } | undefined;
       if (event.type === 'TimerFired' || event.type === 'TimerCancelled')
-        fired.add(payload?.timerId);
+        open.delete(payload?.timerId);
       else if (event.type === 'TimerCreated' && typeof payload?.firesAtMs === 'number')
-        created.set(payload.timerId, payload.firesAtMs);
+        open.set(payload.timerId, payload.firesAtMs);
     }
-    const pending = [...created].filter(([timerId]) => !fired.has(timerId));
-    const firesAtMs = pending.length
-      ? Math.min(...pending.map(([, at]) => at))
-      : Date.now() + 60_000;
+    const pending = [...open.values()];
+    const firesAtMs = pending.length ? Math.min(...pending) : Date.now() + 60_000;
     // setTimeout overflows above 2^31-1 ms; a far timer is re-armed when the
     // resumed run reports `waiting-timer` again.
     const delayMs = Math.min(Math.max(firesAtMs - Date.now(), 0) + 100, 2_147_483_647);
@@ -2371,6 +2371,12 @@ export class EmbeddedWorkflowService extends Service {
       };
       await this.saveExecution(completed);
       if (completed.status === 'waiting-timer') this.scheduleTimerResume(completed);
+      else if (completed.status === 'waiting-event' && result.wakeAtMs !== undefined) {
+        // Smithers checks a wait's timeout only when the run is called again.
+        // A far deadline is re-armed when the resumed run still waits.
+        const delayMs = Math.min(Math.max(result.wakeAtMs - Date.now(), 0) + 100, 2_147_483_647);
+        this.scheduleWorkerReconciliation(completed, delayMs);
+      }
       return completed;
     } catch (error) {
       if (

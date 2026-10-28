@@ -375,9 +375,22 @@ export class RuntimeDataMutations {
 				[id],
 				"messages",
 			);
+			const metadataForComparison = (
+				value: Memory["metadata"],
+				isSegment: boolean,
+			): Record<string, unknown> => {
+				const metadata = (value ?? {}) as Record<string, unknown>;
+				if (!isSegment) return metadata;
+				// Segment timestamps describe first publication, not source bytes. A
+				// rebuilt projection stamps the current time when the caller omitted
+				// createdAt, so the same bytes must not look like different evidence.
+				const { timestamp: _publishedAt, ...rest } = metadata;
+				return rest;
+			};
 			const sameEvidence = (
 				stored: Memory | undefined,
 				expected: Memory,
+				isSegment = false,
 			): boolean =>
 				stored !== undefined &&
 				stored.id === expected.id &&
@@ -387,7 +400,10 @@ export class RuntimeDataMutations {
 				// Adapters assign timestamps when callers omit them.
 				(expected.createdAt === undefined ||
 					stored.createdAt === expected.createdAt) &&
-				isDeepStrictEqual(stored.metadata ?? {}, expected.metadata ?? {}) &&
+				isDeepStrictEqual(
+					metadataForComparison(stored.metadata, isSegment),
+					metadataForComparison(expected.metadata, isSegment),
+				) &&
 				isDeepStrictEqual(stored.content, expected.content);
 			if (sameEvidence(existing[0], projectedParent)) {
 				const segments = projection.segments.length
@@ -399,7 +415,7 @@ export class RuntimeDataMutations {
 				if (
 					projection.segments.every((segment) => {
 						const stored = segments.find((entry) => entry.id === segment.id);
-						return sameEvidence(stored, segment);
+						return sameEvidence(stored, segment, true);
 					})
 				)
 					return id;

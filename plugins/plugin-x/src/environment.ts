@@ -284,12 +284,13 @@ export async function validateTwitterConfig(
             getSetting(runtime, "TWITTER_ENABLE_REPLIES"),
         ) ?? true,
       ),
+      // Same parser as the DM client in x.service.ts.
       TWITTER_ENABLE_DMS: String(
-        (
+        parseBooleanFromText(
           config.TWITTER_ENABLE_DMS ??
-          getSetting(runtime, "TWITTER_ENABLE_DMS") ??
-          "true"
-        ).toLowerCase() === "true",
+            getSetting(runtime, "TWITTER_ENABLE_DMS") ??
+            "true",
+        ),
       ),
       TWITTER_DM_POLICY:
         config.TWITTER_DM_POLICY ??

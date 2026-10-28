@@ -297,18 +297,34 @@ export function workflowOccurrenceNotRun(
       }
     : undefined;
 }
-function runOccurrence(
-  input: unknown,
-  output: unknown,
-): WorkflowRunOccurrence | undefined {
+/**
+ * Whether the agent's workflow service recorded this finished execution as a
+ * missed occurrence: only the engine-written `missedOccurrenceAt` field counts
+ * (plugin-workflow `isMissedOccurrenceExecution`). A workflow's own output can
+ * take any shape, including the missed settlement record, so output alone
+ * never proves that nothing ran.
+ */
+export function isRecordedMissedExecution(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const p = value as Bag;
+  return (
+    p.finished === true &&
+    typeof p.missedOccurrenceAt === "string" &&
+    Number.isFinite(Date.parse(p.missedOccurrenceAt))
+  );
+}
+function runOccurrence(execution: Bag): WorkflowRunOccurrence | undefined {
+  const input = execution.input;
   const record =
     input && typeof input === "object" && !Array.isArray(input)
       ? (input as Bag).typedSchedule
       : undefined;
-  const settled = workflowOccurrenceNotRun(output);
-  // A generic schedule's occurrence carries no typed admission: its settlement alone records it.
+  const settled = workflowOccurrenceNotRun(execution.output);
+  // A generic schedule's occurrence carries no typed admission: its settlement
+  // records it, and a missed one only with the engine's missedOccurrenceAt.
   if (record === undefined)
-    return settled
+    return settled &&
+      (settled.status !== "missed" || isRecordedMissedExecution(execution))
       ? { scheduledAt: settled.scheduledAt, status: settled.status }
       : undefined;
   const admitted = parsePhoneScheduledOccurrence(record);
@@ -413,7 +429,7 @@ export function parseWorkflowRun(value: unknown): WorkflowRun {
   if (!Array.isArray(events)) throw new Error("Invalid execution events");
   const error = p.error as Bag | undefined;
   const settled = reconciliation(p.reconciliation);
-  const occurrence = runOccurrence(p.input, p.output);
+  const occurrence = runOccurrence(p);
   return {
     id,
     workflowId,
