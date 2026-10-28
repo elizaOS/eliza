@@ -19,7 +19,11 @@ lock and the `pixel10a` profile in `android/aosp.lock.json`);
 Every brand's Pixel 10a composition also declares its launcher's versioned
 `<package>.aosp_image` system feature in the product partition
 (`image-capability.mjs`), the marker image-only native surfaces require along
-with a system-partition install.
+with a system-partition install. A presigned launcher that instead reads an
+overlayable boolean (default false, `system|product` policy) names it in the
+product's `launcher.imageProvisioning`; production compositions then add the
+static product-partition resource overlay `writeImageProvisioningOverlay`
+generates, and `assertProvisioningResourceDefault` checks the host's default.
 
 `secure-camera.mjs` keeps capture over Keyguard with the stock AOSP Camera2
 `SecureCameraActivity` and the SystemUI power gesture for every brand: it

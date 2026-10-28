@@ -4,8 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireClockProduct } from "./aosp-clock-handlers.mjs";
 import {
+  renderImageProvisioningOverlay,
   stagedImageFeature,
   writeImageCapability,
+  writeImageProvisioningOverlay,
 } from "./image-capability.mjs";
 import {
   admitBrandAssets,
@@ -48,6 +50,20 @@ export function validatePixel10aProduct(value) {
     typeof value.launcher.refuseLockScreenSurfaces !== "boolean"
   )
     throw new Error("launcher.refuseLockScreenSurfaces must be a boolean");
+  if (value.launcher.imageProvisioning !== undefined) {
+    const provisioning = value.launcher.imageProvisioning;
+    if (
+      !provisioning ||
+      typeof provisioning !== "object" ||
+      Object.keys(provisioning).some(
+        (key) => !["module", "overlayable", "resource"].includes(key),
+      )
+    )
+      throw new Error(
+        "launcher.imageProvisioning takes only module, overlayable and resource",
+      );
+    renderImageProvisioningOverlay(value.launcher.packageName, provisioning);
+  }
   for (const name of ["model", "brand", "manufacturer"]) {
     if (
       typeof value[name] !== "string" ||
@@ -254,6 +270,23 @@ export function composePixel10aProduct({
   if (!stagedImageFeature(output, launcher.packageName))
     writeImageCapability(output, launcher.packageName);
   const imageFeature = stagedImageFeature(output, launcher.packageName);
+  // A presigned launcher that reads an overlayable provisioning resource
+  // (launcher.imageProvisioning) gets it set by a product RRO in production
+  // images only; development images leave the APK's false default.
+  let imageProvisioning = null;
+  if (production && product.launcher.imageProvisioning) {
+    const files = writeImageProvisioningOverlay(
+      output,
+      launcher.packageName,
+      product.launcher.imageProvisioning,
+    );
+    imageProvisioning = {
+      module: /name: "([^"]+)"/.exec(files["image-capabilities/Android.bp"])[1],
+      overlayable: /android:targetName="([^"]+)"/.exec(
+        files["image-capabilities/AndroidManifest.xml"],
+      )[1],
+    };
+  }
   const evidence = {
     schema: 1,
     target: "pixel10a",
@@ -266,6 +299,7 @@ export function composePixel10aProduct({
     sourceEvidence,
     vendorApi,
     imageFeature,
+    imageProvisioning,
     imageBuilt: false,
     imageSigned: false,
     releaseQualified: false,

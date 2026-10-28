@@ -93,6 +93,32 @@ for (const brand of ["alpha", "eliza"]) {
       1,
     );
     assert.equal(result.vendorApi, null, "staging records the checked API");
+    // Only a brand whose presigned launcher reads an overlayable provisioning
+    // resource gets the product RRO, and only in a production image.
+    const provisioning = f.product.launcher.imageProvisioning;
+    if (provisioning) {
+      assert.deepEqual(result.imageProvisioning, {
+        module: provisioning.module,
+        overlayable: provisioning.overlayable,
+      });
+      assert.match(
+        fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
+        new RegExp(`^PRODUCT_PACKAGES \\+= ${provisioning.module}$`, "m"),
+      );
+      assert.match(
+        fs.readFileSync(
+          path.join(f.output, "image-capabilities/res/values/capabilities.xml"),
+          "utf8",
+        ),
+        new RegExp(`name="${provisioning.resource}">true<`),
+      );
+    } else {
+      assert.equal(result.imageProvisioning, null);
+      assert.equal(
+        fs.existsSync(path.join(f.output, "image-capabilities")),
+        false,
+      );
+    }
     const source = new URL("../../android/devices/pixel10a/", import.meta.url);
     for (const name of fs.readdirSync(source, { recursive: true })) {
       const file = new URL(name, source);
@@ -404,4 +430,24 @@ test("Soong native installation uses the pinned source patch without ELF check o
     patch,
     /BUILD_BROKEN|Check_elf_files|check_elf_files|prebuilt_any/,
   );
+});
+
+test("development images keep the launcher's provisioning default and malformed provisioning is refused", (t) => {
+  const f = fixture(t, "alpha");
+  const result = composePixel10aProduct({ ...f, production: false });
+  assert.equal(result.imageProvisioning, null);
+  assert.equal(fs.existsSync(path.join(f.output, "image-capabilities")), false);
+  for (const imageProvisioning of [
+    null,
+    { module: "Alpha", extra: true },
+    { resource: "Not-A-Resource" },
+  ])
+    assert.throws(
+      () =>
+        validatePixel10aProduct({
+          ...f.product,
+          launcher: { ...f.product.launcher, imageProvisioning },
+        }),
+      /imageProvisioning|Invalid/,
+    );
 });
