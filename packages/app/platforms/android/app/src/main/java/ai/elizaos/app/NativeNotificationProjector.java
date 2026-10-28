@@ -69,7 +69,7 @@ final class NativeNotificationProjector {
         android.app.Notification post = new NotificationCompat.Builder(context, selected.getId())
                 .setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(item.getString("title"))
                 .setContentText(item.getString("body")).setStyle(new NotificationCompat.BigTextStyle().bigText(item.getString("body")))
-                .setVisibility(android.app.Notification.VISIBILITY_PRIVATE).setAutoCancel(true).setOnlyAlertOnce(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setAutoCancel(true).setOnlyAlertOnce(true)
                 .setContentIntent(PendingIntent.getActivity(context, 0, tap, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE))
                 .addExtras(extras).build();
         String tag = TAG + key;
