@@ -3291,11 +3291,7 @@ export async function requestLocalCalendarUpdate(args: {
   const metadata = args.message.content.metadata,
     context = requireTurnObservation(metadata),
     selected = context.selectedObject;
-  if (
-    context.view !== "calendar" ||
-    context.sensitive === true ||
-    !selected
-  )
+  if (context.view !== "calendar" || context.sensitive === true || !selected)
     return;
   const value = selected;
   if (value.kind !== "calendar-event") return;

@@ -138,9 +138,9 @@ describe("powered-on scheduled tasks", () => {
       "2026-10-12T08:00:00.000Z",
       "2026-10-12T13:00:30.000Z",
     ]);
-    const skips = (await harness.logStore.list({ agentId: "test-agent", taskId })).filter(
-      (row) => row.transition === "skipped",
-    );
+    const skips = (
+      await harness.logStore.list({ agentId: "test-agent", taskId })
+    ).filter((row) => row.transition === "skipped");
     expect(skips).toHaveLength(1);
     expect(skips[0]?.reason).toBe(MISSED_OCCURRENCE_DECISION);
   });

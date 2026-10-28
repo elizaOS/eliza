@@ -1853,7 +1853,7 @@ export class EmbeddedWorkflowService extends Service {
         ...(missed
           ? { missedOccurrenceAt: String(missed.scheduledAt) }
           : hosted?.status === 'missed'
-            ? { missedOccurrenceAt: hosted.scheduledAt }
+            ? { missedOccurrenceAt: String(hosted.scheduledAt) }
             : {}),
         startedAt: nowIso(),
         input: cloneJson(
