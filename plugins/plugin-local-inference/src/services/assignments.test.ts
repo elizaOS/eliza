@@ -167,4 +167,37 @@ describe("local inference assignments", () => {
 
 		expect(await readAssignments()).toEqual({ TEXT_SMALL: "eliza-1-4b" });
 	});
+
+	it("returns no policy when assignments.json does not exist yet", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+
+		expect(await readAssignments()).toEqual({});
+	});
+
+	it("surfaces an unreadable assignments file instead of reporting no policy", async () => {
+		process.env.ELIZA_STATE_DIR = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-assignments-test-"),
+		);
+		const file = path.join(
+			process.env.ELIZA_STATE_DIR,
+			"local-inference",
+			"assignments.json",
+		);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		// Truncated mid-write / hand-edited: the policy is there but unparseable.
+		const corrupt = '{"version":1,"assignments":{"TEXT_LARGE":"eliza-1-7';
+		fs.writeFileSync(file, corrupt, "utf8");
+
+		// "cannot read my policy" must not look like "I have no policy".
+		await expect(readAssignments()).rejects.toThrow(/assignments\.json/i);
+
+		// And a single slot change must not replace the unreadable file with a
+		// partial assignment derived from the empty fallback (silent wipe).
+		await expect(setAssignment("TEXT_SMALL", "eliza-1-4b")).rejects.toThrow(
+			/assignments\.json/i,
+		);
+		expect(fs.readFileSync(file, "utf8")).toBe(corrupt);
+	});
 });

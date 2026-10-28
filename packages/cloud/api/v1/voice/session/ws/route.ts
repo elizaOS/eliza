@@ -5,7 +5,7 @@
  */
 
 import { hasDbCacheContext } from "@elizaos/cloud-shared/db/client";
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import { hasCloudBindingsContext } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type { BridgeExecutionContext } from "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat";
 import {
@@ -157,19 +157,31 @@ app.get("/", (c) => {
   const usageLimits = resolveVoiceUsageLimits(env);
   // Paid provider admission must be atomic across Worker isolates. The
   // isolate-local store is an explicit test/local substitute only; production
-  // refuses the upgrade when Redis EVAL is unavailable.
-  const durableStore = createDurableVoiceUsageStore(
-    env as unknown as Parameters<typeof createDurableVoiceUsageStore>[0],
-  );
-  const mockRedis = (c.env as unknown as { MOCK_REDIS?: string }).MOCK_REDIS;
-  const usageStore: VoiceUsageStore | null =
-    durableStore ?? (mockRedis === "1" ? getWorkerFallbackUsageStore() : null);
+  // refuses the upgrade when the selected durable store is unavailable.
+  let durableStore: VoiceUsageStore | null;
+  try {
+    durableStore = createDurableVoiceUsageStore(
+      env as unknown as Parameters<typeof createDurableVoiceUsageStore>[0],
+    );
+  } catch (error) {
+    // error-policy:J1 The transport refuses admission when the selected quota owner is unavailable.
+    logger.error("[voice-session-ws] usage store unavailable", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return c.json({ error: "voice realtime metering unavailable" }, 503);
+  }
+  const usageStore =
+    durableStore ??
+    (c.env.MOCK_REDIS === "1" && c.env.NODE_ENV !== "production"
+      ? getWorkerFallbackUsageStore()
+      : null);
   if (!usageStore) {
     logger.error("[voice-session-ws] atomic usage admission unavailable");
     return c.json({ error: "voice realtime metering unavailable" }, 503);
   }
-  const rawRedis = buildRedisClient(
-    env as unknown as Parameters<typeof buildRedisClient>[0],
+  const authenticationState = buildAuthenticationState(
+    c.env,
+    c.env.AUTHENTICATION_STATE,
   );
 
   const WebSocketPairCtor = (
@@ -231,10 +243,10 @@ app.get("/", (c) => {
     verifyToken: (token, expected, options) =>
       verifyVoiceSessionToken(token, expected, {
         ...options,
-        ...(rawRedis ? { store: rawRedis } : {}),
+        ...(authenticationState ? { store: authenticationState } : {}),
       }),
     claimToken: (jti, expSeconds) =>
-      claimVoiceSessionToken(jti, expSeconds, rawRedis ?? undefined),
+      claimVoiceSessionToken(jti, expSeconds, authenticationState ?? undefined),
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
@@ -323,7 +335,7 @@ app.get("/", (c) => {
         // connection per tick on Workers — the exact churn #16636 removed
         // from verify/claim (#16663).
         isRevoked: (jti) =>
-          isVoiceSessionTokenRevoked(jti, rawRedis ?? undefined),
+          isVoiceSessionTokenRevoked(jti, authenticationState ?? undefined),
         // A successful hello atomically claimed this jti until expiry, so it
         // cannot be replayed. Avoid a redundant denylist write during abrupt
         // disconnect: it contended with the immediate replacement hello.

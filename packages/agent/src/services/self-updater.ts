@@ -100,6 +100,12 @@ export function detectInstallMethod(): InstallMethod {
     return isLocalDev() ? "local-dev" : "unknown";
   }
 
+  // Check the unresolved path first: snap installs symlink /snap/bin/eliza to
+  // /usr/bin/snap, so realpathSync loses the /snap/ component and snap would
+  // be misdetected as apt.
+  const raw = elizaBin.replace(/\\/g, "/");
+  if (raw.includes("/snap/")) return "snap";
+
   let resolved: string;
   try {
     resolved = fs.realpathSync(elizaBin);

@@ -105,6 +105,17 @@ function nextGmailPageToken(
   return token;
 }
 
+function requireGmailSendMessageId(value: string | null | undefined): string {
+  const messageId = value?.trim();
+  if (!messageId) {
+    throw new ElizaError("Gmail send returned no provider message id.", {
+      code: "GOOGLE_GMAIL_SEND_RECEIPT_MISSING",
+      severity: "fatal",
+    });
+  }
+  return messageId;
+}
+
 export class GoogleGmailClient {
   constructor(private readonly clientFactory: GoogleApiClientFactory) {}
 
@@ -219,7 +230,7 @@ export class GoogleGmailClient {
     });
 
     return {
-      id: response.data.id ?? "",
+      id: requireGmailSendMessageId(response.data.id),
       threadId: response.data.threadId ?? undefined,
     };
   }
@@ -920,7 +931,7 @@ export class GoogleGmailClient {
       requestBody: threadId ? { raw, threadId } : { raw },
     });
     return {
-      messageId: response.data.id ?? null,
+      messageId: requireGmailSendMessageId(response.data.id),
       threadId: response.data.threadId ?? null,
       labelIds: response.data.labelIds ?? [],
     };

@@ -80,7 +80,7 @@ export function deviceActionEffectReceipts(
         }),
       ];
     }
-    const read = deviceOperationIsRead(operation.type);
+    const read = deviceOperationIsRead(operation);
     const noMatch =
       isNamedTargetOperation(operation) &&
       validateNamedTargetResult(
@@ -184,8 +184,8 @@ export function deviceApprovalPersistenceReceipt(
 }
 
 /** Exhaustive closed operation union: new operations require explicit classification. */
-function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
-  switch (type) {
+function deviceOperationIsRead(operation: DeviceOperation): boolean {
+  switch (operation.type) {
     case "maps_read_selected":
     case "notes_read_selected":
     case "notes_query":
@@ -197,8 +197,9 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "read_selected_notes":
     case "read_calendar_range":
       return true;
-    case "notes_named":
     case "calendar_named":
+      return operation.action === "read";
+    case "notes_named":
     case "reminder_named":
     case "notes_update":
     case "notes_delete":
@@ -213,6 +214,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "sms_send":
     case "clock_handoff":
     case "clock_alarm":
+    case "camera_capture_photo":
     case "create_note":
     case "create_reminder":
     case "reminder_create":
@@ -222,7 +224,7 @@ function deviceOperationIsRead(type: DeviceOperation["type"]): boolean {
     case "speak_text":
       return false;
     default: {
-      const unreachable: never = type;
+      const unreachable: never = operation;
       throw new Error(`Unclassified device operation: ${unreachable}`);
     }
   }

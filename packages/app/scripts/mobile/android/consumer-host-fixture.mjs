@@ -9,7 +9,7 @@ export function createConsumerFixture(root, appId) {
   );
   fs.writeFileSync(
     path.join(root, "main.xml"),
-    `<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="@string/app_name"><activity android:name="example.host.MainActivity" android:exported="true" android:label="@string/host_distribution"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>`,
+    `<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application android:label="@string/app_name" android:networkSecurityConfig="@xml/consumer_network_security"><activity android:name="example.host.MainActivity" android:exported="true" android:label="@string/host_distribution"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>`,
   );
   fs.writeFileSync(
     path.join(root, "home.xml"),
@@ -26,6 +26,17 @@ export function createConsumerFixture(root, appId) {
         `<resources><string name="host_distribution">${value}</string></resources>`,
       );
     }
+  }
+  for (const build of ["debug", "release"]) {
+    const resources = path.join(root, `${build}-res/xml`);
+    const assets = path.join(root, `${build}-assets`);
+    fs.mkdirSync(resources, { recursive: true });
+    fs.mkdirSync(assets, { recursive: true });
+    fs.writeFileSync(path.join(assets, `${build}-only.txt`), build);
+    fs.writeFileSync(
+      path.join(resources, "consumer_network_security.xml"),
+      `<network-security-config><base-config cleartextTrafficPermitted="false"/>${build === "debug" ? '<domain-config cleartextTrafficPermitted="false"><domain includeSubdomains="false">localhost</domain><trust-anchors><certificates src="user"/></trust-anchors></domain-config>' : ""}</network-security-config>`,
+    );
   }
   // The library must link into the host; the companion must build separately.
   for (const [name, plugin, namespace] of [
@@ -89,6 +100,11 @@ android {
       sourceSets: {
         main: { java: [source("src")], res: [source("res")] },
         launcher: { res: [source("launcher-res")] },
+        debug: { res: [source("debug-res")], assets: [source("debug-assets")] },
+        release: {
+          res: [source("release-res")],
+          assets: [source("release-assets")],
+        },
       },
       buildConfigFields: [
         { name: "HOST_LABEL", type: "String", value: 'host "literal" $value' },

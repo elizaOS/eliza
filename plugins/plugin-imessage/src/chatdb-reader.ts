@@ -24,7 +24,7 @@
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { IMessagePermissionAction } from "./types.js";
 
 /**
@@ -341,6 +341,26 @@ export interface ChatDbMessage {
   reaction: ChatDbReaction | null;
   /** Zero or more attachments bound to this message. */
   attachments: ChatDbAttachment[];
+  /**
+   * True when the caller tolerated an attachment metadata read failure for
+   * this row (see {@link ChatDbFetchOptions}); `attachments` is then empty
+   * because it could not be read, not because the message has none.
+   */
+  attachmentReadFailed?: boolean;
+}
+
+/** Error code thrown when a row's attachment metadata cannot be read. */
+export const IMESSAGE_ATTACHMENT_READ_FAILED = "IMESSAGE_ATTACHMENT_READ_FAILED";
+export const IMESSAGE_CHATDB_TIP_READ_FAILED = "IMESSAGE_CHATDB_TIP_READ_FAILED";
+
+export interface ChatDbFetchOptions {
+  /**
+   * Rows whose attachment metadata read failure the caller has already
+   * reported. For these rows a failed read yields `attachments: []` with
+   * `attachmentReadFailed: true` instead of throwing, so a persistent
+   * failure cannot head-of-line block every later row.
+   */
+  tolerateAttachmentReadFailure?: ReadonlySet<number>;
 }
 
 /**
@@ -364,14 +384,22 @@ export interface ChatDbReader {
    * caller can advance its cursor to the last row's `rowId`.
    *
    * Returns an empty array when the database has no new messages or
-   * when the reader has been closed.
+   * when the reader has been closed. Throws an `ElizaError` with code
+   * {@link IMESSAGE_ATTACHMENT_READ_FAILED} (context `rowId`) when a row's
+   * attachment metadata cannot be read, unless that row is listed in
+   * `options.tolerateAttachmentReadFailure`.
    */
-  fetchNewMessages(sinceRowId: number, limit: number): ChatDbMessage[];
+  fetchNewMessages(
+    sinceRowId: number,
+    limit: number,
+    options?: ChatDbFetchOptions
+  ): ChatDbMessage[];
   /**
    * Return the largest `message.ROWID` currently in the database. Used
    * on service start to seed the polling cursor at the tip so a fresh
    * launch does not replay the entire backlog. Returns 0 on empty dbs
-   * or if the query fails.
+   * or when the reader has been closed. Throws an `ElizaError` with code
+   * {@link IMESSAGE_CHATDB_TIP_READ_FAILED} when the query fails.
    */
   getLatestRowId(): number;
   /**
@@ -752,7 +780,10 @@ export async function openChatDb(
     chat_style: number | null;
   };
 
-  function materializeMessages(rows: RawMessageRow[]): ChatDbMessage[] {
+  function materializeMessages(
+    rows: RawMessageRow[],
+    options: ChatDbFetchOptions = {}
+  ): ChatDbMessage[] {
     const out: ChatDbMessage[] = [];
     let undecodable = 0;
 
@@ -786,6 +817,7 @@ export async function openChatDb(
 
       // Attachments — only fetched when the cache bit indicates any.
       let attachments: ChatDbAttachment[] = [];
+      let attachmentReadFailed = false;
       if (row.cache_has_attachments === 1) {
         try {
           const attRows = attachmentsStmt.all(row.row_id) as Array<{
@@ -807,9 +839,19 @@ export async function openChatDb(
             isSticker: a.is_sticker === 1,
           }));
         } catch (error) {
-          logger.debug(
-            `[imessage] attachment query failed for rowid=${row.row_id}: ${error instanceof Error ? error.message : String(error)}`
-          );
+          if (options.tolerateAttachmentReadFailure?.has(row.row_id)) {
+            attachmentReadFailed = true;
+            logger.warn(
+              `[imessage] attachment metadata still unreadable for rowid=${row.row_id}; delivering without attachments: ${error instanceof Error ? error.message : String(error)}`
+            );
+          } else {
+            throw new ElizaError("iMessage attachment metadata could not be read", {
+              code: IMESSAGE_ATTACHMENT_READ_FAILED,
+              cause: error,
+              context: { rowId: row.row_id },
+              severity: "ephemeral",
+            });
+          }
         }
       }
 
@@ -839,6 +881,7 @@ export async function openChatDb(
         replyToGuid: row.reply_to_guid,
         reaction,
         attachments,
+        ...(attachmentReadFailed ? { attachmentReadFailed: true } : {}),
       });
     }
 
@@ -852,7 +895,11 @@ export async function openChatDb(
   }
 
   return {
-    fetchNewMessages(sinceRowId: number, limit: number): ChatDbMessage[] {
+    fetchNewMessages(
+      sinceRowId: number,
+      limit: number,
+      options?: ChatDbFetchOptions
+    ): ChatDbMessage[] {
       if (closed) return [];
 
       let rows: RawMessageRow[];
@@ -865,7 +912,7 @@ export async function openChatDb(
         return [];
       }
 
-      return materializeMessages(rows);
+      return materializeMessages(rows, options);
     },
     getLatestRowId(): number {
       if (closed) return 0;
@@ -873,10 +920,11 @@ export async function openChatDb(
         const rows = tipStmt.all() as Array<{ max_row_id: number | null }>;
         return rows[0]?.max_row_id ?? 0;
       } catch (error) {
-        logger.error(
-          `[imessage] chat.db tip query failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return 0;
+        throw new ElizaError("iMessage chat.db tip could not be read", {
+          code: IMESSAGE_CHATDB_TIP_READ_FAILED,
+          cause: error,
+          severity: "ephemeral",
+        });
       }
     },
     getLatestOwnMessageTimestamp(): number | null {

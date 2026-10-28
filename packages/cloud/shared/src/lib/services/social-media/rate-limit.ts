@@ -220,7 +220,18 @@ export async function withRetry<T>(
     } catch (error) {
       // error-policy:J1 outbound social-platform API transport boundary — retries transient failures and propagates the last error after exhausting retries (fail-closed)
       lastError = error instanceof Error ? error : new Error(String(error));
-      if ((error as RateLimitError).rateLimited) throw error;
+      if ((error as RateLimitError).rateLimited) {
+        // A 429 proves only that this attempt was not accepted. When an
+        // earlier attempt of an opted-in create ended without a definite
+        // answer, that attempt may already have published, so the unknown
+        // outcome survives the rate limit instead of escaping as a
+        // refundable failure. Calls that did not opt in keep the typed
+        // rate-limit error: their failure proves no post exists.
+        if (unknownOutcomeOnExhaustion && lastUnknownOutcome) {
+          throw new UnknownPostOutcomeError(platform, lastError);
+        }
+        throw error;
+      }
       if (error instanceof SocialApiRejectionError) unknownOutcome = false;
       lastUnknownOutcome = unknownOutcome;
       if (!replayUnknownOutcome) {

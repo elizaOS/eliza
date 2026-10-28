@@ -387,15 +387,21 @@ export class PtySessionStore {
   async stop(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) return;
-    if (session.reapTimer) clearTimeout(session.reapTimer);
-    if (session.idleTimer) clearTimeout(session.idleTimer);
     try {
       if (!session.info.exited) session.pty.kill();
-    } catch (err) {
-      logger.warn(
-        `[plugin-pty] kill of session ${sessionId} failed: ${String(err)}`,
+    } catch (cause) {
+      throw new ElizaError(
+        `Unable to stop PTY session ${sessionId}; the process may still be running.`,
+        {
+          code: "PTY_SESSION_STOP_FAILED",
+          cause,
+          context: { sessionId, pid: session.info.pid },
+          severity: "ephemeral",
+        },
       );
     }
+    if (session.reapTimer) clearTimeout(session.reapTimer);
+    if (session.idleTimer) clearTimeout(session.idleTimer);
     for (const d of session.disposers) {
       try {
         d.dispose();
@@ -492,7 +498,12 @@ export class PtySessionStore {
       logger.warn(
         `[plugin-pty] idle timeout reached for session ${sessionId}; stopping orphaned PTY`,
       );
-      void this.stop(sessionId);
+      void this.stop(sessionId).catch((error) => {
+        logger.warn(
+          `[plugin-pty] idle stop of session ${sessionId} failed: ${String(error)}`,
+        );
+        this.scheduleIdleReap(sessionId);
+      });
     }, timeout);
     session.idleTimer.unref?.();
   }

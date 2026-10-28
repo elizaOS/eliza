@@ -70,3 +70,57 @@ button:disabled {
     font-size: 1.4rem;
   }
 }
+
+/* Dark pages keep the same contrast; high contrast thickens edges. Forced colors
+   (Windows High Contrast, Chromium's forced-colors mode) use the system palette. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color: #f4f5f6;
+    background: #101214;
+  }
+  button {
+    background: #101214;
+    color: #f4f5f6;
+    border-color: #f4f5f6;
+  }
+  #back {
+    background: #f4f5f6;
+    color: #101214;
+  }
+  a {
+    color: #9cc0ff;
+  }
+}
+@media (prefers-contrast: more) {
+  button {
+    border-width: 3px;
+  }
+  a {
+    text-decoration-thickness: 2px;
+  }
+  button:focus-visible,
+  summary:focus-visible,
+  a:focus-visible {
+    outline-width: 4px;
+  }
+}
+@media (forced-colors: active) {
+  button {
+    border: 2px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+  #back {
+    border-width: 3px;
+  }
+  button:disabled {
+    border-color: GrayText;
+    color: GrayText;
+    opacity: 1;
+  }
+  button:focus-visible,
+  summary:focus-visible,
+  a:focus-visible {
+    outline: 3px solid Highlight;
+  }
+}

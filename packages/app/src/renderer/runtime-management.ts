@@ -359,17 +359,21 @@ async function execute(
       throw new Error("The desktop relay did not stop.");
     return {};
   }
-  const identity = await getRemoteTargetIdentity();
-  const hostId = identity.identity?.runtimeId;
-  if (!hostId) throw new Error("This computer's host identity is unavailable.");
-  const cloud = createDefaultRemoteControlCloudClient();
-  await cloud.revokeHost(hostId);
-  if (!(await finalizeRemoteTargetHostRevoke(hostId))) {
-    throw new Error(
-      "Cloud revoked the host, but local cleanup needs to be retried.",
-    );
+  if (request.op === "revoke_host") {
+    const identity = await getRemoteTargetIdentity();
+    const hostId = identity.identity?.runtimeId;
+    if (!hostId)
+      throw new Error("This computer's host identity is unavailable.");
+    const cloud = createDefaultRemoteControlCloudClient();
+    await cloud.revokeHost(hostId);
+    if (!(await finalizeRemoteTargetHostRevoke(hostId))) {
+      throw new Error(
+        "Cloud revoked the host, but local cleanup needs to be retried.",
+      );
+    }
+    return { hostId };
   }
-  return { hostId };
+  throw new Error(`Unknown runtime management operation: ${request.op}.`);
 }
 export async function executeRuntimeManagementCommand(
   request: LocalRuntimeManagementRequest,

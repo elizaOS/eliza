@@ -73,6 +73,7 @@ import type {
   VisionConfig,
 } from "@elizaos/contracts";
 import {
+  ElizaError,
   fetchRemoteMedia,
   logger,
   nodeLookupFn,
@@ -154,6 +155,11 @@ async function responseToAudioResult(
   const contentType =
     response.headers.get("content-type")?.split(";")[0] || "audio/mpeg";
   const arrayBuffer = await response.arrayBuffer();
+  if (arrayBuffer.byteLength === 0) {
+    throw new ElizaError("No audio returned from ElevenLabs", {
+      code: "ELEVENLABS_AUDIO_MISSING",
+    });
+  }
   const audioBase64 = Buffer.from(arrayBuffer).toString("base64");
   return {
     audioUrl: `data:${contentType};base64,${audioBase64}`,

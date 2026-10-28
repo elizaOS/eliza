@@ -17,6 +17,7 @@ import {
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../../../components/ui/button";
+import { useUserProfile } from "../../../account-security/data/user";
 import {
   hasCloudAuthCompleted,
   isCloudAuthHandoffSurface,
@@ -326,9 +327,127 @@ function CliLoginPanel({
     </main>
   );
 }
+function CliLoginConfirmation({
+  clientLabel,
+  onAuthorize,
+  onCancel,
+  onSwitchAccount,
+}: {
+  clientLabel: string | null;
+  onAuthorize: () => void;
+  onCancel: () => void;
+  onSwitchAccount: () => Promise<void>;
+}) {
+  const t = useCloudT();
+  const profile = useUserProfile();
+  const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState(false);
+  const account =
+    profile.isAuthenticated &&
+    profile.isReady &&
+    profile.isSuccess &&
+    !profile.isFetching
+      ? profile.user
+      : null;
+  const accountLabel =
+    account?.email?.trim() || account?.name?.trim() || account?.id;
+  return (
+    <CliLoginPanel
+      title={t("cloud.cliLogin.confirmTitle", {
+        defaultValue: "Authorize CLI Sign-In?",
+      })}
+      description={
+        clientLabel
+          ? t("cloud.cliLogin.confirmDescriptionNamed", {
+              client: clientLabel,
+              defaultValue: `"${clientLabel}" is asking for an API key with access to your {{cloudName}} organization. Continue only if you started this sign-in yourself.`,
+            })
+          : t("cloud.cliLogin.confirmDescription", {
+              defaultValue:
+                "A command-line application is asking for an API key with access to your {{cloudName}} organization. Continue only if you started this sign-in yourself.",
+            })
+      }
+      icon={Key}
+      tone="accent"
+      actions={
+        <>
+          <Button
+            className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
+            disabled={!account?.id || switching}
+            onClick={onAuthorize}
+          >
+            {t("cloud.cliLogin.authorizeAction", { defaultValue: "Authorize" })}
+          </Button>
+          <Button className="w-full h-11" onClick={onCancel} variant="outline">
+            {t("cloud.cliLogin.cancelAction", { defaultValue: "Cancel" })}
+          </Button>
+          <Button
+            className="w-full h-11"
+            disabled={switching}
+            variant="ghost"
+            onClick={async () => {
+              setSwitching(true);
+              setSwitchError(false);
+              try {
+                await onSwitchAccount();
+              } catch {
+                setSwitchError(true);
+                setSwitching(false);
+              }
+            }}
+          >
+            {t("cloud.cliLogin.switchAccount", {
+              defaultValue: "Use a different account",
+            })}
+          </Button>
+        </>
+      }
+    >
+      <div
+        className="w-full min-w-0 text-sm text-txt break-words"
+        role="status"
+      >
+        {accountLabel ? (
+          <>
+            <p>
+              {t("cloud.cliLogin.accountLabel", {
+                defaultValue: "Signed in as",
+              })}
+            </p>
+            <p className="font-medium">{accountLabel}</p>
+            {account?.organization?.name ? (
+              <p>{account.organization.name}</p>
+            ) : null}
+          </>
+        ) : (
+          <p>
+            {profile.isError ||
+            (profile.isSuccess && !profile.isFetching && !account?.id)
+              ? t("cloud.cliLogin.accountUnavailable", {
+                  defaultValue:
+                    "Unable to verify your account. Reload this page or use a different account.",
+                })
+              : t("cloud.cliLogin.accountLoading", {
+                  defaultValue: "Checking your signed-in account…",
+                })}
+          </p>
+        )}
+        {switchError ? (
+          <p role="alert">
+            {t("cloud.cliLogin.switchFailed", {
+              defaultValue: "Could not switch accounts. Please try again.",
+            })}
+          </p>
+        ) : null}
+      </div>
+    </CliLoginPanel>
+  );
+}
+
 export default function CliLoginPage() {
   const t = useCloudT();
-  const { authenticated, ready } = useSessionAuth();
+  const { authenticated, ready, user: sessionUser } = useSessionAuth();
+  const sessionAccountId = sessionUser?.id ?? null;
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const sessionId = sanitizeCliLoginSessionId(searchParams.get("session"));
@@ -348,11 +467,72 @@ export default function CliLoginPage() {
   const [confirmedSessionId, setConfirmedSessionId] = useState<string | null>(
     null,
   );
+  const [confirmedAccountId, setConfirmedAccountId] = useState<string | null>(
+    null,
+  );
   const lastSessionId = useRef(sessionId);
+  const lastAccountId = useRef(sessionAccountId);
   const completionFiredRef = useRef(false);
+  const [requireFreshConfirmation, setRequireFreshConfirmation] =
+    useState(false);
+  const changingKnownAccount =
+    lastAccountId.current !== null &&
+    lastAccountId.current !== sessionAccountId;
+  const trustedCompletionAllowed =
+    trustedAppLaunch && !requireFreshConfirmation && !changingKnownAccount;
+  const completionAuthority = useRef({
+    sessionId,
+    sessionAccountId,
+    authenticated,
+    launchReturnTo,
+    epoch: 0,
+  });
+  // A switch intent may survive its own cleanup's signed-out transition only.
+  // Newer accounts, URLs, cancellation and unmount invalidate this exact intent.
+  const accountSwitch = useRef<{ accountId: string | null } | null>(null);
+  const priorAuthority = completionAuthority.current;
+  if (
+    priorAuthority.sessionId !== sessionId ||
+    priorAuthority.sessionAccountId !== sessionAccountId ||
+    priorAuthority.authenticated !== authenticated ||
+    priorAuthority.launchReturnTo !== launchReturnTo
+  ) {
+    const switching = accountSwitch.current;
+    const expectedSignOut =
+      switching !== null &&
+      !authenticated &&
+      (sessionAccountId === null || sessionAccountId === switching.accountId) &&
+      priorAuthority.sessionId === sessionId &&
+      priorAuthority.launchReturnTo === launchReturnTo;
+    if (!expectedSignOut) accountSwitch.current = null;
+    completionAuthority.current = {
+      sessionId,
+      sessionAccountId,
+      authenticated,
+      launchReturnTo,
+      epoch: priorAuthority.epoch + 1,
+    };
+  }
+
+  useEffect(
+    () => () => {
+      accountSwitch.current = null;
+    },
+    [],
+  );
+  useEffect(() => {
+    if (lastAccountId.current === sessionAccountId) return;
+    if (lastAccountId.current !== null || completionFiredRef.current)
+      setRequireFreshConfirmation(true);
+    lastAccountId.current = sessionAccountId;
+    setConfirmedSessionId(null);
+    setConfirmedAccountId(null);
+    completionFiredRef.current = false;
+    setCompletion({ status: "idle" });
+  }, [sessionAccountId]);
   useDocumentTitle(
     t("cloud.cliLogin.metaTitle", {
-      defaultValue: "Sign in | Eliza Cloud",
+      defaultValue: "Sign in | {{cloudName}}",
     }),
   );
   useEffect(() => {
@@ -394,10 +574,18 @@ export default function CliLoginPage() {
   // and remembered across the hosted login round trip.
   useEffect(() => {
     if (!sessionId || !ready || !authenticated) return;
-    if (confirmedSessionId !== sessionId && !trustedAppLaunch) return;
+    if (
+      !trustedCompletionAllowed &&
+      (confirmedSessionId !== sessionId ||
+        confirmedAccountId !== sessionAccountId)
+    )
+      return;
     if (completionFiredRef.current) return;
     completionFiredRef.current = true;
     const activeSessionId = sessionId;
+    const requestEpoch = completionAuthority.current.epoch;
+    const isCurrentCompletion = () =>
+      completionAuthority.current.epoch === requestEpoch;
     const abort = new AbortController();
     const timeout = setTimeout(() => abort.abort(), COMPLETE_TIMEOUT_MS);
     async function completeCliLogin() {
@@ -410,6 +598,7 @@ export default function CliLoginPage() {
         const data = (await response.json()) as {
           keyPrefix: string;
         };
+        if (!isCurrentCompletion()) return;
         forgetTrustedAppLaunch(activeSessionId);
         notifyCliLoginComplete(activeSessionId, launchReturnTo);
         // Handoff surface (live opener OR named cloud-auth popup): the opener
@@ -429,10 +618,13 @@ export default function CliLoginPage() {
         }
         setCompletion({ status: "success", apiKeyPrefix: data.keyPrefix });
       } catch (error) {
+        if (!isCurrentCompletion()) return;
         const aborted =
           error instanceof DOMException && error.name === "AbortError";
         if (error instanceof ApiError && error.status === 401) {
           await clearStaleStewardSession();
+          // Account/session authority can change while stale-session cleanup awaits.
+          if (!isCurrentCompletion()) return;
         }
         setCompletion({
           status: "error",
@@ -460,11 +652,13 @@ export default function CliLoginPage() {
   }, [
     authenticated,
     confirmedSessionId,
+    confirmedAccountId,
+    sessionAccountId,
     launchReturnTo,
     ready,
     sessionId,
     t,
-    trustedAppLaunch,
+    trustedCompletionAllowed,
   ]);
   const pageState = getPageState({
     authenticated,
@@ -472,7 +666,7 @@ export default function CliLoginPage() {
     ready,
     sessionId,
     t,
-    trustedAppLaunch,
+    trustedAppLaunch: trustedCompletionAllowed,
   });
   const returnToQuery = searchParams.toString();
   const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
@@ -519,44 +713,37 @@ export default function CliLoginPage() {
     );
   }
   if (pageState.status === "confirm") {
-    const clientLabel = describeCliLoginClient(launchReturnTo);
     return (
-      <CliLoginPanel
-        actions={
-          <>
-            <Button
-              className="w-full h-11 bg-accent hover:bg-accent-hover text-accent-foreground"
-              onClick={() => setConfirmedSessionId(sessionId)}
-            >
-              {t("cloud.cliLogin.authorizeAction", {
-                defaultValue: "Authorize",
-              })}
-            </Button>
-            <Button
-              className="w-full h-11"
-              onClick={() => setCompletion({ status: "cancelled" })}
-              variant="outline"
-            >
-              {t("cloud.cliLogin.cancelAction", { defaultValue: "Cancel" })}
-            </Button>
-          </>
-        }
-        description={
-          clientLabel
-            ? t("cloud.cliLogin.confirmDescriptionNamed", {
-                client: clientLabel,
-                defaultValue: `"${clientLabel}" is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.`,
-              })
-            : t("cloud.cliLogin.confirmDescription", {
-                defaultValue:
-                  "A command-line application is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.",
-              })
-        }
-        icon={Key}
-        title={t("cloud.cliLogin.confirmTitle", {
-          defaultValue: "Authorize CLI Sign-In?",
-        })}
-        tone="accent"
+      <CliLoginConfirmation
+        clientLabel={describeCliLoginClient(launchReturnTo)}
+        onAuthorize={() => {
+          setConfirmedAccountId(sessionAccountId);
+          setConfirmedSessionId(sessionId);
+        }}
+        onCancel={() => {
+          accountSwitch.current = null;
+          completionAuthority.current.epoch += 1;
+          setCompletion({ status: "cancelled" });
+        }}
+        onSwitchAccount={async () => {
+          completionAuthority.current.epoch += 1;
+          setRequireFreshConfirmation(true);
+          setConfirmedSessionId(null);
+          setConfirmedAccountId(null);
+          if (sessionId) forgetTrustedAppLaunch(sessionId);
+          const intent = { accountId: sessionAccountId };
+          accountSwitch.current = intent;
+          try {
+            await clearStaleStewardSession();
+          } catch (error) {
+            if (accountSwitch.current !== intent) return;
+            accountSwitch.current = null;
+            throw error;
+          }
+          if (accountSwitch.current !== intent) return;
+          accountSwitch.current = null;
+          navigate(signInHref, { replace: true });
+        }}
       />
     );
   }
@@ -642,11 +829,12 @@ export default function CliLoginPage() {
           </Button>
         }
         description={t("cloud.cliLogin.waitingAuthDescription", {
-          defaultValue: "Sign in to connect your Eliza app to Eliza Cloud",
+          defaultValue:
+            "Sign in to connect your {{appName}} app to {{cloudName}}",
         })}
         icon={Key}
         title={t("cloud.cliLogin.cliAuthentication", {
-          defaultValue: "Sign in to Eliza Cloud",
+          defaultValue: "Sign in to {{cloudName}}",
         })}
         tone="accent"
       />
@@ -672,7 +860,7 @@ export default function CliLoginPage() {
                 defaultValue: "Returning to app",
               })
             : t("cloud.cliLogin.generatingApiKey", {
-                defaultValue: "Returning to Eliza",
+                defaultValue: "Returning to {{appName}}",
               })
         }
         tone="accent"

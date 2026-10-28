@@ -13,8 +13,8 @@
  *  2. **Per-`jti` denylist (this module)** — revokes a *single* compromised
  *     token before its natural expiry, without disrupting every other pod.
  *
- * The denylist is stored in the same Redis backend already used across cloud
- * (rate limits, credit events, A2A task store — see `cache/redis-factory`).
+ * The denylist uses the host-selected authentication store. Cloudflare owns
+ * the state when CLOUD_AUTH_STATE_BACKEND=cloudflare; legacy hosts use Redis.
  * Entries are written with a TTL equal to the token's remaining lifetime, so
  * the store self-cleans and never grows unbounded: once a revoked token would
  * have expired anyway, its denylist entry expires too.
@@ -37,12 +37,12 @@
  */
 
 import {
-  buildRedisClient,
-  type CompatibleRedis,
-  hasRedisConfig,
-  isCloudflareWorkerRuntime,
-  type RedisFactoryEnvSource,
-} from "../cache/redis-factory";
+  type AuthenticationStateStore,
+  buildAuthenticationState,
+} from "../auth/authentication-state";
+
+import { isCloudflareWorkerRuntime, type RedisFactoryEnvSource } from "../cache/redis-factory";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 
 /** Redis key prefix for revoked internal-JWT ids. */
@@ -62,7 +62,7 @@ function denylistKey(jti: string): string {
   return `${ENV_PREFIX}:${DENYLIST_KEY_PREFIX}${jti}`;
 }
 
-let cachedRedis: CompatibleRedis | null = null;
+let cachedRedis: AuthenticationStateStore | null = null;
 
 /**
  * Select only Redis transports that the current runtime can actually use.
@@ -72,10 +72,11 @@ let cachedRedis: CompatibleRedis | null = null;
  * available and fail-closed in Workers; Node keeps the normal TCP-first
  * factory resolution.
  */
-function getDenylistRedisEnv(): RedisFactoryEnvSource {
+function getDenylistRedisEnv(): RedisFactoryEnvSource & { CLOUD_AUTH_STATE_BACKEND?: string } {
   if (!isCloudflareWorkerRuntime()) return process.env;
 
   return {
+    CLOUD_AUTH_STATE_BACKEND: getCloudAwareEnv().CLOUD_AUTH_STATE_BACKEND,
     MOCK_REDIS: process.env.MOCK_REDIS,
     KV_REST_API_URL: process.env.KV_REST_API_URL,
     KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN,
@@ -89,9 +90,9 @@ function getDenylistRedisEnv(): RedisFactoryEnvSource {
  * socket belongs to the request that opened it); on Node the client is cached.
  * Mirrors the pattern in `middleware/rate-limit-redis`.
  */
-function getRedis(): CompatibleRedis | null {
+function getRedis(): AuthenticationStateStore | null {
   if (!isCloudflareWorkerRuntime() && cachedRedis) return cachedRedis;
-  const client = buildRedisClient(getDenylistRedisEnv());
+  const client = buildAuthenticationState(getDenylistRedisEnv());
   if (client && !isCloudflareWorkerRuntime()) cachedRedis = client;
   return client;
 }
@@ -101,7 +102,7 @@ function getRedis(): CompatibleRedis | null {
  * supported. When `false`, revocation falls back to key-rotation + TTL only.
  */
 export function isDenylistConfigured(): boolean {
-  return hasRedisConfig(getDenylistRedisEnv());
+  return Boolean(buildAuthenticationState(getDenylistRedisEnv()));
 }
 
 /**
@@ -179,6 +180,6 @@ export function __resetDenylistClientForTests(): void {
 }
 
 /** Test-only: inject a mock/failing Redis client for deterministic error-policy testing. */
-export function __setDenylistClientForTests(client: CompatibleRedis | null): void {
+export function __setDenylistClientForTests(client: AuthenticationStateStore | null): void {
   cachedRedis = client;
 }

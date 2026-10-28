@@ -118,6 +118,8 @@ export interface CliLoginPollResponse {
   keyPrefix?: string;
   expiresAt?: string;
   userId?: string;
+  /** With `apiKey`: true when this sign-in made the account, false when it existed. */
+  accountCreated?: boolean;
   error?: string;
 }
 

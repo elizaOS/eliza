@@ -1278,6 +1278,10 @@ export async function executeBrowserWorkspaceCommand(
         return executeDesktopBrowserWorkspaceDomCommand(command, env);
       }
       return executeWebBrowserWorkspaceDomCommand(command);
+    case "follow":
+      throw new Error(
+        "Observed-link navigation requires the bound native surface task target.",
+      );
     case "upload":
     case "realistic-upload":
       throw new Error(

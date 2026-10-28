@@ -49,7 +49,7 @@ export function useVoiceConfig(uiLanguage: string): UseVoiceConfigResult {
   const elevenLabsKeyConfigured = hasConfiguredApiKey(
     voiceConfig?.elevenlabs?.apiKey,
   );
-  // Capability-aware default: on-device Kokoro when staged, else Eliza Cloud
+  // Capability-aware default: on-device Paradee when staged, else Eliza Cloud
   // Kokoro when a session exists, else ElevenLabs (key), else browser TTS. Only
   // seeds when the user hasn't picked a provider (see applyVoiceProviderDefaults).
   const { provider: resolvedTtsProvider } = useResolvedTtsDefault({

@@ -154,6 +154,7 @@ describe("LEAVE_MEETING planner parameters", () => {
       ],
       stopSession: (id: string) => {
         stopped.push(id);
+        return true;
       },
     });
     // The sessionId description points at ACTIVE_MEETINGS, so the provider

@@ -162,13 +162,10 @@ export class ApnsProvider implements PushProvider {
     const { status, reason } = await this.postHttp2(host, token, jwt, body);
     if (status === 200) return;
 
-    // 410 = the device token is no longer active; APNs also returns reason
-    // "Unregistered"/"BadDeviceToken" with 400/410 for dead tokens.
-    if (
-      status === 410 ||
-      reason === "Unregistered" ||
-      reason === "BadDeviceToken"
-    ) {
+    // Only 410 / Unregistered proves that APNs no longer accepts this token.
+    // BadDeviceToken can also mean that a valid token was sent to the wrong
+    // APNs environment, so that response must not delete the registration.
+    if (status === 410 || reason === "Unregistered") {
       throw new PushUnregisteredError(
         token,
         `[ApnsProvider] token rejected (status=${status} reason=${reason ?? "n/a"})`,

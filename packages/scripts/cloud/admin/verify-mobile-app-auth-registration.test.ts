@@ -165,14 +165,23 @@ describe("mobile App Auth deployment preflight", () => {
     ).toThrow(/did not match/);
   });
 
-  test("requires the literal app URL and sole literal callback", () => {
+  test("accepts same-origin homepage paths without treating them as callbacks", () => {
+    for (const app_url of [
+      "https://eliza.app/",
+      "https://eliza.app/mobile",
+      "https://eliza.app/auth/callback",
+      "https://eliza.app?native=true",
+    ])
+      expect(() =>
+        validateMobileAppAuthRegistrationRow(registration({ app_url }), APP_ID),
+      ).not.toThrow();
+  });
+
+  test("requires the HTTPS app origin and sole literal callback", () => {
     for (const row of [
       registration({ app_url: "not-a-url" }),
       registration({ app_url: "http://eliza.app" }),
       registration({ app_url: "https://example.com" }),
-      registration({ app_url: "https://eliza.app/" }),
-      registration({ app_url: "https://eliza.app/mobile" }),
-      registration({ app_url: "https://eliza.app?native=true" }),
       registration({ allowed_origins: ["*"] }),
       registration({ allowed_origins: ["https://*.eliza.app"] }),
       registration({ allowed_origins: ["https://example.com"] }),
