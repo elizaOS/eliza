@@ -45,6 +45,11 @@ The host subclasses `ai.eliza.plugins.messages.TelephonyPlugin` under its own
 plugin name with a `SmsTelephonyConfiguration`, and registers it only when its
 native admission proves the install is its image. Renderers use
 `createTelephonyClient` from `@elizaos/contracts/native-telephony`.
+A Messages surface keeps provider content only while it is in the foreground
+with `createSmsSession` from `@elizaos/contracts/native-telephony-session`
+(late answers from an earlier visit are dropped, a failed read is never shown
+as empty, and the SMS role holder marks an opened conversation read through the
+newest shown message); its receipt labels never claim more than a result proves.
 
 - Reads: bounded thread and message pages (SMS and MMS merged, stable
   `thread:`/`sms:`/`mms:` IDs and cursors), active SIMs, roles and default apps.

@@ -63,6 +63,12 @@
       "types": "./dist/native-telephony.d.ts",
       "import": "./dist/native-telephony.js",
       "default": "./dist/native-telephony.js"
+    },
+    "./native-telephony-session": {
+      "eliza-source": "./src/native-telephony-session.ts",
+      "types": "./dist/native-telephony-session.d.ts",
+      "import": "./dist/native-telephony-session.js",
+      "default": "./dist/native-telephony-session.js"
     }
   },
   "scripts": {
