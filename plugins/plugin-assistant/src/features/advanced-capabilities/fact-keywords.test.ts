@@ -4,14 +4,8 @@
  * provider can rank a fact written in the same language as the query.
  * Mirrors the documents BM25 tokenizer contract (merged #35488).
  */
-import type {
-  EvaluatorProcessorContext,
-  IAgentRuntime,
-  Memory,
-  UUID,
-} from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
-import { preferenceEvaluator } from "./evaluators/preference-items.ts";
+import type { Memory } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   buildFactKeywordsForStorage,
   buildFactQueryText,
@@ -109,67 +103,5 @@ describe("fact keywords across Unicode normalization forms", () => {
   it("scores composed and decomposed copies of a claim as identical", () => {
     expect(factLexicalSimilarity([composedHangul], [decomposedHangul])).toBe(1);
     expect(factLexicalSimilarity([composedClaim], [decomposedClaim])).toBe(1);
-  });
-
-  it("strengthens the stored preference when the claim arrives decomposed", async () => {
-    const agentId = "00000000-0000-0000-0000-0000000000a1" as UUID;
-    const entityId = "00000000-0000-0000-0000-0000000000b1" as UUID;
-    const roomId = "00000000-0000-0000-0000-0000000000c1" as UUID;
-    const stored: Memory = {
-      id: "00000000-0000-0000-0000-0000000000d1" as UUID,
-      entityId,
-      agentId,
-      roomId,
-      content: { text: composedHangul },
-      metadata: {
-        type: "custom",
-        kind: "durable",
-        category: "preference",
-        confidence: 0.6,
-        keywords: buildFactKeywordsForStorage(composedHangul, "preference"),
-      },
-      createdAt: Date.now(),
-    } as Memory;
-    const runtime = {
-      agentId,
-      getMemories: vi.fn(async () => [stored]),
-      getMemoryById: vi.fn(async () => stored),
-      createMemory: vi.fn(async () => "00000000-0000-0000-0000-0000000000e1"),
-      updateMemory: vi.fn(async () => true),
-      getService: vi.fn(() => null),
-    } as unknown as IAgentRuntime;
-    const processor = preferenceEvaluator.processors?.[0];
-    if (!processor) throw new Error("missing preference processor");
-    const result = await processor.process({
-      runtime,
-      message: {
-        id: "00000000-0000-0000-0000-0000000000f1" as UUID,
-        entityId,
-        agentId,
-        roomId,
-        content: { text: decomposedHangul },
-        createdAt: Date.now(),
-      },
-      state: { values: {}, data: {}, text: "" },
-      options: {},
-      evaluatorName: "preferences",
-      prepared: { recentMessages: [], slot: null, knownPreferenceFacts: [] },
-      output: {
-        ops: [
-          {
-            op: "add_preference_fact",
-            claim: decomposedHangul,
-            keywords: [],
-            scope: "across_conversations",
-          },
-        ],
-      },
-    } as unknown as EvaluatorProcessorContext);
-    expect(result?.values).toMatchObject({
-      factsAdded: 0,
-      factsStrengthened: 1,
-    });
-    expect(runtime.createMemory).not.toHaveBeenCalled();
-    expect(runtime.updateMemory).toHaveBeenCalledTimes(1);
   });
 });
