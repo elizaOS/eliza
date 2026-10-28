@@ -144,6 +144,12 @@ function discoverScenarioIds(dirRel, providerEnv) {
     timeout: 240000,
     env: { ...process.env, ...providerEnv },
   });
+  if (res.error || res.status !== 0) {
+    throw new Error(
+      `Scenario discovery failed for ${dirRel} (exit ${res.status}): ${res.stderr || res.error?.message || res.signal || "unknown failure"}`,
+      { cause: res.error },
+    );
+  }
   const ids = [];
   for (const line of (res.stdout || "").split("\n")) {
     const t = line.trim();
