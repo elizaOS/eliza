@@ -1,6 +1,10 @@
 /** Issues the canonical one-time app consent codes, including optional narrow delegation bindings. */
 import type { AppDelegationBinding } from "@elizaos/cloud-sdk/app-delegation";
-import { cache } from "../cache/client";
+import {
+  isSingleUseRecordStoreAvailable,
+  putSingleUseRecord,
+  takeSingleUseRecord,
+} from "../auth/single-use-records";
 import { CacheKeys } from "../cache/keys";
 
 export const APP_AUTH_CODE_TTL_SECONDS = 5 * 60;
@@ -40,7 +44,7 @@ export async function issueAppAuthCode(input: {
   userId: string;
   delegation?: AppAuthCodeRecord["delegation"];
 }): Promise<{ code: string; expiresAt: string; expiresIn: number }> {
-  if (!cache.isAvailable()) {
+  if (!isSingleUseRecordStoreAvailable()) {
     throw new Error("App auth code store is unavailable");
   }
 
@@ -54,10 +58,10 @@ export async function issueAppAuthCode(input: {
     ...(input.delegation ? { delegation: input.delegation } : {}),
   };
 
-  const stored = await cache.setIfNotExists(
+  const stored = await putSingleUseRecord(
     await codeCacheKey(code),
     record,
-    APP_AUTH_CODE_TTL_SECONDS * 1000,
+    APP_AUTH_CODE_TTL_SECONDS,
   );
   if (!stored) {
     throw new Error("App auth code collision");
@@ -73,7 +77,7 @@ export async function issueAppAuthCode(input: {
 export async function consumeAppAuthCode(code: string): Promise<AppAuthCodeRecord | null> {
   if (!looksLikeAppAuthCode(code)) return null;
 
-  const record = await cache.getAndDelete<AppAuthCodeRecord>(await codeCacheKey(code));
+  const record = await takeSingleUseRecord<AppAuthCodeRecord>(await codeCacheKey(code));
   if (!record || record.expiresAt <= Date.now()) return null;
   return record;
 }
