@@ -34,7 +34,16 @@ declare module "./client-base.js" {
       id: string,
       request: WorkflowDefinitionWriteRequest,
     ): Promise<WorkflowDefinition>;
-    activateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
+    /**
+     * `expectedVersionId` binds the activation to the exact version the owner
+     * reviewed. The agent refuses a changed workflow atomically
+     * (`WORKFLOW_ACTIVATION_NOT_APPLIED`), and a typed phone workflow's
+     * local-time schedule is armed only with it.
+     */
+    activateWorkflowDefinition(
+      id: string,
+      expectedVersionId?: string,
+    ): Promise<WorkflowDefinition>;
     deactivateWorkflowDefinition(id: string): Promise<WorkflowDefinition>;
     deleteWorkflowDefinition(id: string): Promise<{ ok: boolean }>;
     runWorkflowDefinition(
@@ -137,12 +146,13 @@ ElizaClient.prototype.updateWorkflowDefinition = async function (
 ElizaClient.prototype.activateWorkflowDefinition = async function (
   this: ElizaClient,
   id: string,
+  expectedVersionId?: string,
 ): Promise<WorkflowDefinition> {
   return workflowSurfaceClient(this).fetch<WorkflowDefinition>(
     `/api/workflow/workflows/${encodeURIComponent(id)}/activate`,
-    {
-      method: "POST",
-    },
+    expectedVersionId === undefined
+      ? { method: "POST" }
+      : { method: "POST", body: JSON.stringify({ expectedVersionId }) },
   );
 };
 

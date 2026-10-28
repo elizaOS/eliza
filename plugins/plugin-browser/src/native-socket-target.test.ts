@@ -140,6 +140,8 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     await vi.waitFor(() => expect(registrations).toHaveLength(1));
     expect(registrations[0].profileId).toBe("stable-profile");
     expect(registrations[0].isCurrent()).toBe(true);
+    expect(target.hasCapability("list")).toBe(true);
+    expect(target.hasCapability("task-bind")).toBe(false);
     first.send({
       type: "ping",
       nonce: "probe-nonce",
@@ -163,6 +165,7 @@ it("acknowledges profile-bound liveness then rejects interrupted effects without
     );
     await interrupted;
     expect(await target.available()).toBe(false);
+    expect(target.hasCapability("list")).toBe(false);
     expect(registrations[0].isCurrent()).toBe(false);
     const second = peer();
     await vi.waitFor(() => expect(second.messages[0]?.type).toBe("hello-ack"));
@@ -340,6 +343,230 @@ it("does not send a cancellable request to an older native peer", async () => {
       false,
     );
   } finally {
+    socket?.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("gives every request failure a stable reason from the fixed list", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-reasons-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 1000,
+    heartbeatMs: 10000,
+    replyMs: 200,
+  });
+  const sockets: Socket[] = [];
+  const connect = async (profileId: string) => {
+    const socket = createConnection(socketPath);
+    sockets.push(socket);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId,
+      capabilities: ["list", "snapshot", "cancel", "protection-owner"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    return { socket, peer };
+  };
+  const dispatched = async (
+    peer: ReturnType<typeof socketFrames>,
+    count: number,
+  ) => {
+    await vi.waitFor(() =>
+      expect(
+        peer.messages.filter((message) => message.type === "command"),
+      ).toHaveLength(count),
+    );
+    return peer.messages.filter((message) => message.type === "command")[
+      count - 1
+    ];
+  };
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    const { socket, peer } = await connect("reason-profile");
+    await expect(
+      target.execute({ subaction: "list" }, { signal: AbortSignal.abort() }),
+    ).rejects.toMatchObject({ kind: "STALE_REF", reason: "request-cancelled" });
+
+    const controller = new AbortController();
+    const cancelled = target.execute(
+      { subaction: "list" },
+      { signal: controller.signal },
+    );
+    const cancelledResult = expect(cancelled).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "request-cancelled",
+    });
+    await dispatched(peer, 1);
+    controller.abort();
+    await cancelledResult;
+
+    await expect(target.execute({ subaction: "list" })).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "reply-timeout",
+    });
+    await dispatched(peer, 2);
+
+    let sent = 2;
+    for (const [error, kind, reason] of [
+      [
+        {
+          kind: "INCOMPLETE_SNAPSHOT",
+          message: "x",
+          reason: "frame-inventory-incomplete",
+        },
+        "UNCERTAIN_OUTCOME",
+        "frame-inventory-incomplete",
+      ],
+      [
+        {
+          kind: "INCOMPLETE_SNAPSHOT",
+          message: "x",
+          reason: "frame-identity-changed",
+        },
+        "UNCERTAIN_OUTCOME",
+        "frame-identity-changed",
+      ],
+      [
+        {
+          kind: "INCOMPLETE_SNAPSHOT",
+          message: "x",
+          reason: "frame-read-incomplete",
+        },
+        "UNCERTAIN_OUTCOME",
+        "frame-read-incomplete",
+      ],
+      [
+        { kind: "UNAVAILABLE", message: "x", reason: "page-loading" },
+        "UNAVAILABLE",
+        "page-loading",
+      ],
+      // A reason outside the peer's list, or none, never passes through.
+      [
+        { kind: "UNAVAILABLE", message: "x", reason: "reply-timeout" },
+        "UNAVAILABLE",
+        "peer-error",
+      ],
+      [
+        { kind: "POLICY_BLOCKED", message: "x" },
+        "POLICY_BLOCKED",
+        "peer-error",
+      ],
+    ] as const) {
+      const running = target.execute({ subaction: "snapshot", id: "1" });
+      const result = expect(running).rejects.toMatchObject({
+        kind,
+        reason,
+        message: "x",
+      });
+      const command = await dispatched(peer, ++sent);
+      peer.send({ type: "result", id: command.id, ok: false, error });
+      await result;
+    }
+
+    // A successful reply the target cannot read.
+    for (const [run, reply] of [
+      [() => target.execute({ subaction: "snapshot" }), {}],
+      [() => target.currentPage(), { tabs: "1" }],
+    ] as const) {
+      const result = expect(run()).rejects.toMatchObject({
+        kind: "UNCERTAIN_OUTCOME",
+        reason: "invalid-reply",
+      });
+      const command = await dispatched(peer, ++sent);
+      expect(command.command).toEqual({ subaction: "list" });
+      peer.send({ type: "result", id: command.id, ok: true, result: reply });
+      await result;
+    }
+    const receipt = target.setProtectionOwner(null);
+    const receiptResult = expect(receipt).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "invalid-reply",
+    });
+    await vi.waitFor(() =>
+      expect(
+        peer.messages.some((message) => message.type === "protection-owner"),
+      ).toBe(true),
+    );
+    peer.send({
+      type: "result",
+      id: peer.messages.find((message) => message.type === "protection-owner")
+        ?.id,
+      ok: true,
+      result: { updated: -1, unavailable: 0 },
+    });
+    await receiptResult;
+
+    const interrupted = target.execute({ subaction: "list" });
+    const interruptedResult = expect(interrupted).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "connection-lost",
+    });
+    await dispatched(peer, ++sent);
+    socket.destroy();
+    await interruptedResult;
+
+    await connect("reason-profile");
+    // Registration is withdrawn synchronously; the close event follows later.
+    const stopping = target.stop();
+    await expect(target.execute({ subaction: "list" })).rejects.toMatchObject({
+      kind: "UNAVAILABLE",
+      reason: "profile-unavailable",
+    });
+    await stopping;
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await target.stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("reports connection-lost when the transport write fails after dispatch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "native-write-failure-"));
+  const socketPath = join(directory, "browser.sock");
+  const target = new NativeSocketBrowserTarget(() => {}, {
+    registrationMs: 60000,
+    heartbeatMs: 60000,
+  });
+  let socket: Socket | undefined;
+  try {
+    await target.start({ ELIZA_BROWSER_NATIVE_SOCKET: socketPath });
+    socket = createConnection(socketPath);
+    const peer = socketFrames(socket);
+    peer.send({
+      type: "hello",
+      protocol: 2,
+      extensionId: "pmldpcoefklbdbgmggcejkfoinmjfeio",
+      profileId: "write-failure-profile",
+      capabilities: ["fill"],
+      nonce: "hello",
+    });
+    await vi.waitFor(() => expect(peer.messages[0]?.type).toBe("hello-ack"));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    // Over the frame limit, so the command goes in chunks that the peer never
+    // acknowledges: the sender's receipt deadline fails the write.
+    const running = target.execute({
+      subaction: "fill",
+      id: "1",
+      selector: "#note",
+      value: "x".repeat(64 * 1024),
+    });
+    const result = expect(running).rejects.toMatchObject({
+      kind: "UNCERTAIN_OUTCOME",
+      reason: "connection-lost",
+      cause: {
+        message: "Native chunk receipt timed out; no message is replayed.",
+      },
+    });
+    await vi.advanceTimersByTimeAsync(10000);
+    await result;
+  } finally {
+    vi.useRealTimers();
     socket?.destroy();
     await target.stop();
     await rm(directory, { recursive: true, force: true });

@@ -282,9 +282,9 @@ export function projectBackgroundHistory(context: ContextObject) {
   return {
     context: {
       ...context,
-      events: selectHistoricalNavigation(context, included).events.filter(
-        (event) => !omitted.has(event),
-      ),
+      events: selectHistoricalNavigation(context, included, {
+        historicalEffects: "settled",
+      }).events.filter((event) => !omitted.has(event)),
     },
     applied: true,
     omittedSourceCount: omitted.size,

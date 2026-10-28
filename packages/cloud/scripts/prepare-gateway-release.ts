@@ -1,6 +1,7 @@
 /** Pin a pre-uploaded image while retaining the tracked gateway host contract. */
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { gatewayReleaseLifecycle } from "./gateway-release-lifecycle";
 
 const environment = process.env.TARGET_ENVIRONMENT;
 if (environment !== "staging" && environment !== "production") {
@@ -41,7 +42,7 @@ delete container.image_vars;
 writeFileSync(
   `${directory}/gateway-wrangler.json`,
   JSON.stringify({
-    ...config,
+    ...gatewayReleaseLifecycle(config, environment),
     main: resolve(
       "packages/cloud/services/gateway-container/cloudflare/worker.ts",
     ),

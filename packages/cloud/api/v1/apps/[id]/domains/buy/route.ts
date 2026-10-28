@@ -92,8 +92,21 @@ app.post("/", domainBuyRateLimit, async (c) => {
     }
 
     const idempotencyKey = `domain-buy:${user.organization_id}:${domain}`;
-    const existingAttempt =
+    let existingAttempt =
       await domainPurchaseAttemptsRepository.read(idempotencyKey);
+    // A failure that never charged replays only for its replay window. After
+    // that, a new purchase of the domain (after a top-up, or once the domain
+    // is free again) starts a new attempt.
+    if (
+      existingAttempt &&
+      (await domainPurchaseAttemptsRepository.deleteExpiredUnchargedFailure({
+        key: idempotencyKey,
+        organizationId: user.organization_id,
+        now: new Date(),
+      }))
+    ) {
+      existingAttempt = null;
+    }
     const pinnedYears = existingAttempt
       ? readPinnedOrLegacyRegistrationYears(existingAttempt)
       : null;

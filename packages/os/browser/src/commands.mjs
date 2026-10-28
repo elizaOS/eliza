@@ -3,15 +3,7 @@
 import { blockerSelectors, pageCommand } from "./page-command.mjs";
 import { BridgeError } from "./protocol.mjs";
 
-export { pageCommand } from "./page-command.mjs";
-
-/**
- * Words on a control that commits a payment, sign-in, submission or other
- * irreversible step. A task policy can never click such a control; the person
- * presses it. Products that plan clicks should use this same vocabulary.
- */
-export const COMMIT_CONTROL =
-  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
+export { COMMIT_CONTROL, pageCommand } from "./page-command.mjs";
 
 /** Resolves required browser context without admitting or performing an effect. */
 export async function prepareCommand(api, command) {
@@ -109,6 +101,7 @@ export async function executeCommand(
       throw new BridgeError(
         "UNAVAILABLE",
         "The exact browser tab is still loading; read it again without repeating navigation.",
+        "page-loading",
       );
   }
   if (!/^https?:/.test(tab.url ?? ""))
@@ -143,6 +136,7 @@ export async function executeCommand(
       throw new BridgeError(
         "INCOMPLETE_SNAPSHOT",
         "The browser could not inventory every frame document.",
+        "frame-inventory-incomplete",
       );
     const frames = await read(() =>
       api.scripting.executeScript({
@@ -178,6 +172,7 @@ export async function executeCommand(
       throw new BridgeError(
         "INCOMPLETE_SNAPSHOT",
         "A frame was inaccessible or changed during the read; no partial snapshot is returned.",
+        "frame-identity-changed",
       );
     return {
       id: command.id,
@@ -187,6 +182,7 @@ export async function executeCommand(
           throw new BridgeError(
             "INCOMPLETE_SNAPSHOT",
             "A frame could not be read completely; no partial snapshot is returned.",
+            "frame-read-incomplete",
           );
         return {
           frameId,

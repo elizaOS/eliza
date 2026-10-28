@@ -103,9 +103,11 @@ test("fills a matched challenge once, keeps raw code out of result, and leaves V
   const result = await f.fill();
   assert.match(result.message, /press Verify yourself/);
   assert.equal(result.kind, "human-verification");
+  assert.equal(result.codeReason, "filled");
   assert.equal(JSON.stringify(result).includes("123456"), false);
   const duplicate = await f.fill();
   assert.match(duplicate.message, /already handled/);
+  assert.equal(duplicate.codeReason, "already_handled");
   assert.deepEqual(f.stats, { reads: 1, fills: 1, consumes: 1 });
   await assert.rejects(f.coordinator.resolveValue("opaque-handle", f.task));
 });
@@ -115,9 +117,21 @@ test("missing expired ambiguous and incomplete searches never dispatch a fill", 
     f.resolver.resolve = async () => ({ status });
     const result = await f.fill();
     assert.equal(result.kind, "human-verification");
+    assert.equal(result.codeReason, status);
     assert.equal(f.stats.fills, 0);
     assert.equal(f.stats.consumes, 0);
   }
+});
+test("an unconfirmed fill names the configured assistant", async () => {
+  const f = fixture();
+  f.coordinator.assistantName = "Ada";
+  f.runtime.execute = async (_id, _revision, proposal) => {
+    f.task.operations.push({ proposal, status: "unknown" });
+    return structuredClone(f.task);
+  };
+  const result = await f.fill();
+  assert.equal(result.codeReason, "fill_unconfirmed");
+  assert.match(result.message, /; Ada will not press Verify\.$/);
 });
 test("authority and task revision changes after lookup prevent consumption", async () => {
   for (const change of [
@@ -162,7 +176,9 @@ test("unsupported pages and concurrent repeated requests do not start extra look
   };
   const first = f.fill();
   await pending;
-  assert.match((await f.fill()).message, /already in progress/);
+  const busy = await f.fill();
+  assert.match(busy.message, /already in progress/);
+  assert.equal(busy.codeReason, "lookup_in_progress");
   release({ status: "missing" });
   await first;
   assert.equal(f.stats.fills, 0);
@@ -274,6 +290,6 @@ test("a Google failure keeps its fixed reason instead of a generic message", asy
   };
   f.coordinator.checkGoogleAccount = async () => "google-account";
   result = await f.fill();
-  assert.equal(result.codeReason, undefined);
+  assert.equal(result.codeReason, "fill_failed");
   assert.doesNotMatch(result.message, /123456/);
 });

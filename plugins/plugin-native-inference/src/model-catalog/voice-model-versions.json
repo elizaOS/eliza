@@ -295,8 +295,8 @@
         "hfPath": "voice/asr/phonon-2-fv5.gguf",
         "url": null,
         "revision": null,
-        "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
-        "bytes": 330632256,
+        "sha256": "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+        "bytes": 208932352,
         "license": "CC-BY-4.0",
         "status": "unpublished",
         "localFrom": "elizaOS/llama.cpp tools/parakeet/pins.json (gguf output of convert_phonon2_to_gguf.py --archive, byte-reproducible)",
@@ -411,7 +411,7 @@
       },
       {
         "filename": "voice/asr/phonon-2-fv5.gguf",
-        "quant": "fv5-pair16-v1",
+        "quant": "fv5-b5x3t7-v1",
         "reason": "missing-from-hf-repo"
       }
     ],
@@ -703,8 +703,8 @@
         "hfPath": "voice/asr/phonon-2-fv5.gguf",
         "url": null,
         "revision": null,
-        "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
-        "bytes": 330632256,
+        "sha256": "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+        "bytes": 208932352,
         "license": "CC-BY-4.0",
         "status": "unpublished",
         "localFrom": "elizaOS/llama.cpp tools/parakeet/pins.json (gguf output of convert_phonon2_to_gguf.py --archive, byte-reproducible)",
@@ -819,7 +819,7 @@
       },
       {
         "filename": "voice/asr/phonon-2-fv5.gguf",
-        "quant": "fv5-pair16-v1",
+        "quant": "fv5-b5x3t7-v1",
         "reason": "missing-from-hf-repo"
       }
     ],
@@ -1111,8 +1111,8 @@
         "hfPath": "voice/asr/phonon-2-fv5.gguf",
         "url": null,
         "revision": null,
-        "sha256": "dc552eb786486167dde3ac80bbe49a6088c8ef39c03c257d5a090fc57b2c47b3",
-        "bytes": 330632256,
+        "sha256": "c0f6ad42f0a5b481904416077dde0a1a78e5b8642295fdf2356ace822588c3df",
+        "bytes": 208932352,
         "license": "CC-BY-4.0",
         "status": "unpublished",
         "localFrom": "elizaOS/llama.cpp tools/parakeet/pins.json (gguf output of convert_phonon2_to_gguf.py --archive, byte-reproducible)",

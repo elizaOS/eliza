@@ -30,6 +30,8 @@ const HEALTH_CONNECTOR_SYNC_TIMEOUT_MS = 60_000;
 // Strava filters activities by UTC timestamps, but callers select owner-local
 // calendar days. Cover every UTC offset and the API's exclusive time bounds.
 const STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS = 14 * 60 * 60 + 1;
+// Strava returns at most 200 rows per activity page and accepts no larger value.
+const STRAVA_ACTIVITIES_PAGE_SIZE = 200;
 
 export class HealthConnectorApiError extends Error {
   constructor(
@@ -55,6 +57,11 @@ interface SyncArgs {
   grantId: string;
   startDate: string;
   endDate: string;
+  /**
+   * The owner's IANA zone. Providers that return only UTC instants (Oura
+   * heart rate) need it to place a sample on the owner's day.
+   */
+  timeZone?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -309,22 +316,57 @@ function compactSamples(
   );
 }
 
+/**
+ * Read every page of the activity list. Strava returns at most `per_page` rows
+ * per request, so a full page means the window holds more rows. Reading page one
+ * only would store a partial window and still report a successful sync.
+ * The deadline mirrors `fetchOuraCollection`.
+ */
+async function fetchStravaActivities(args: {
+  token: StoredHealthConnectorToken;
+  after: number;
+  before: number;
+  deadlineAt: number;
+}): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = [];
+  for (let page = 1; ; page += 1) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Strava pagination exceeded the sync deadline",
+      );
+    }
+    const json = await fetchHealthValue({
+      token: args.token,
+      path: "/athlete/activities",
+      query: {
+        after: args.after,
+        before: args.before,
+        page,
+        per_page: STRAVA_ACTIVITIES_PAGE_SIZE,
+      },
+    });
+    const batch = asRecordArray(json);
+    items.push(...batch);
+    if (batch.length < STRAVA_ACTIVITIES_PAGE_SIZE) {
+      return items;
+    }
+  }
+}
+
 async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
   const after =
     Math.floor(Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000) -
     STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
   const before =
     Math.floor(Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000) +
     STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
-  const [athlete, activitiesJson] = await Promise.all([
+  const [athlete, activities] = await Promise.all([
     fetchHealthJson({ token: args.token, path: "/athlete" }),
-    fetchHealthValue({
-      token: args.token,
-      path: "/athlete/activities",
-      query: { after, before, per_page: 200 },
-    }),
+    fetchStravaActivities({ token: args.token, after, before, deadlineAt }),
   ]);
-  const activities = asRecordArray(activitiesJson);
   const workouts: LifeOpsHealthWorkout[] = [];
   const samples: LifeOpsHealthMetricSample[] = [];
   for (const activity of activities) {
@@ -802,8 +844,17 @@ async function fetchOuraCollection(args: {
 
 async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
-  const startDatetime = `${args.startDate}T00:00:00Z`;
-  const endDatetime = `${args.endDate}T23:59:59Z`;
+  // Heart-rate timestamps are UTC instants. Read the widest span any zone's
+  // local days can cover, then keep the samples on the owner's local days.
+  const heartRateTimeZone = validTimeZone(args.timeZone ?? null);
+  const startDatetime = new Date(
+    Date.parse(`${args.startDate}T00:00:00.000Z`) -
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
+  const endDatetime = new Date(
+    Date.parse(`${args.endDate}T23:59:59.999Z`) +
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
   const [
     personal,
     dailyActivity,
@@ -1006,6 +1057,17 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   for (const entry of heartRate) {
     const timestamp = normalizeIso(getText(entry, "timestamp"));
     const id = getText(entry, "id") ?? getText(entry, "timestamp") ?? "heart";
+    const localDate =
+      timestamp && heartRateTimeZone
+        ? getLocalDateKey(
+            getZonedDateParts(new Date(timestamp), heartRateTimeZone),
+          )
+        : timestamp
+          ? localDateFromIso(timestamp)
+          : null;
+    if (!localDate || localDate < args.startDate || localDate > args.endDate) {
+      continue;
+    }
     samples.push(
       ...compactSamples([
         sample({
@@ -1015,6 +1077,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           value: getNumber(entry, "bpm"),
           unit: "bpm",
           startAt: timestamp,
+          localDate,
           sourceExternalId: `${id}:heart_rate`,
           metadata: { source: getText(entry, "source") },
         }),

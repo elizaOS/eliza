@@ -6,10 +6,9 @@ import { join } from "node:path";
 import test, { after, before } from "node:test";
 import {
   createResearchServer,
-  createTraceTransport,
+  createResearchTraceTransport,
   openResearchStore,
   startResearchCapture,
-  validateTraceEvent,
 } from "@elizaos/host/native-host";
 
 const measurementPolicy = {
@@ -28,8 +27,6 @@ const createPilotServer = (options) =>
     ...options,
     readAsset: () => "<main>Pilot research fixture</main>",
   });
-const createPilotTransport = (options) =>
-  createTraceTransport({ ...options, validateEvent: validateTraceEvent });
 const admin = { name: "operator", role: "admin" },
   device = {
     name: "device",
@@ -272,7 +269,7 @@ test("protected HTTP transport binds the enrolled device and acknowledges actual
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   t.after(() => server.close());
-  const transport = createPilotTransport({
+  const transport = createResearchTraceTransport({
     url: "http://127.0.0.1:" + server.address().port,
     token,
   });
@@ -289,7 +286,7 @@ test("protected HTTP transport binds the enrolled device and acknowledges actual
   assert.equal((await transport.captureState()).status, "withdrawn");
   await assert.rejects(transport.upload([event(2)]), /unavailable/);
   assert.throws(() =>
-    createPilotTransport({ url: "http://remote.invalid", token }),
+    createResearchTraceTransport({ url: "http://remote.invalid", token }),
   );
 });
 

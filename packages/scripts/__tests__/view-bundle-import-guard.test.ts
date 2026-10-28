@@ -563,7 +563,20 @@ describe("view bundle import guard", () => {
     expect(specifiers).toContain("react");
     expect(specifiers).toContain("@elizaos/ui");
     expect(
-      [...specifiers].some((specifier) => specifier.startsWith("@elizaos/ui/")),
-    ).toBe(false);
+      [...specifiers].filter((specifier) =>
+        specifier.startsWith("@elizaos/ui/"),
+      ),
+    ).toEqual(["@elizaos/ui/view-primitives"]);
+    expect(() =>
+      hostExternalSpecifiersFromSources(
+        `
+        const HOST_EXTERNAL_IMPORTERS = {
+          "@elizaos/ui/view-primitives": () => import("../../state/index.ts"),
+        };
+        export function hostImport(name) { return HOST_EXTERNAL_IMPORTERS[name]?.(); }
+      `,
+        [],
+      ),
+    ).toThrow("mismatched relative specifier");
   });
 });

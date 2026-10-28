@@ -1,4 +1,5 @@
 import { transcribeCloudflareAudio } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 /** Runs a trusted messaging delivery through one rowless personal Shared turn. */
 
 import {
@@ -606,7 +607,13 @@ async function transcribeTelegramVoiceNote(
   filename: string,
 ): Promise<string> {
   if (env.AI) {
-    const result = await transcribeCloudflareAudio(env.AI, bytes);
+    const result = await transcribeCloudflareAudio(
+      env.AI,
+      bytes,
+      undefined,
+      undefined,
+      "audio/ogg",
+    );
     const transcript = result.text.trim();
     if (!transcript)
       throw new Error("Telegram voice transcription returned no speech");
@@ -2669,6 +2676,14 @@ app.post("/", async (c) => {
         .join(", "),
     );
 
+    const acknowledgementReaction =
+      !groupConversationId &&
+      parsed.data.platform === "blooio" &&
+      result.responded === false &&
+      !result.text &&
+      !result.mediaUrls?.length
+        ? parseImessageReaction(result.acknowledgementReaction)
+        : undefined;
     return c.json({
       success: true,
       data: {
@@ -2678,6 +2693,9 @@ app.post("/", async (c) => {
           organizationId: account.organizationId,
         },
         reply: guardGroupReply(result.text, groupParticipantRoster),
+        ...(acknowledgementReaction !== undefined
+          ? { acknowledgementReaction }
+          : {}),
         ...(result.responded === false
           ? { responded: false, responseReason: result.responseReason }
           : {}),

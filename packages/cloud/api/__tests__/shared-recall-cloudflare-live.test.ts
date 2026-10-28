@@ -1,6 +1,7 @@
 /** Protected staging qualification; creates and removes only fresh fixture tenants. */
 import { expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { sharedRecallFailureCode } from "./shared-recall-diagnostics";
 
 const qualify = process.env.ELIZA_SHARED_RECALL_LIVE === "1" ? test : test.skip;
 
@@ -87,7 +88,7 @@ qualify(
         .trim(),
     );
     process.env.DATABASE_URL = databaseUrl.toString();
-    const { and, eq, inArray } = await import("drizzle-orm");
+    const { and, eq, inArray, sql } = await import("drizzle-orm");
     const { dbWrite, closeDatabaseConnectionsForTests } = await import(
       "../../shared/src/db/client"
     );
@@ -101,6 +102,24 @@ qualify(
     const { SharedMemoryStore } = await import(
       "../../shared/src/lib/services/shared-runtime/shared-memory-store"
     );
+    // Organization deletion is globally sealed during the billing cutover.
+    // Check before creating fixtures; qualification must not bypass that guard.
+    try {
+      const control = await dbWrite.execute(
+        sql`SELECT mode FROM auto_top_up_control WHERE singleton = true`,
+      );
+      if (control.rows.length !== 1 || control.rows[0]?.mode !== "durable") {
+        console.info(
+          "shared-recall-preflight=cleanup-unavailable code=AUTO_TOP_UP_CUTOVER_PAUSED",
+        );
+        throw new Error(
+          "Shared recall fixtures require the organization cleanup gate to be open",
+        );
+      }
+    } catch (error) {
+      await closeDatabaseConnectionsForTests();
+      throw error;
+    }
     const nonce = randomUUID();
     // Only this random fixture marker is released from the otherwise private log.
     console.info(`shared-recall-fixture=${nonce}`);
@@ -126,63 +145,7 @@ qualify(
       );
     const ids = { user: randomUUID(), assistant: randomUUID() };
     const orgIds = fixtures.map((fixture) => fixture.organizationId);
-    try {
-      await dbWrite.transaction(async (tx) => {
-        for (const fixture of fixtures) {
-          await tx.insert(organizations).values({
-            id: fixture.organizationId,
-            name: "Shared recall qualification",
-            slug: fixture.slug,
-            is_active: false,
-          });
-          await tx.insert(users).values({
-            id: fixture.userId,
-            organization_id: fixture.organizationId,
-            steward_user_id: fixture.slug,
-          });
-        }
-      });
-      const pair = {
-        userMessage: texts[0],
-        assistantReply: texts[1],
-        messageIds: ids,
-      };
-      await store(0).recordTurnPair(pair);
-      await store(0).recordTurnPair(pair);
-      const rows = await dbWrite
-        .select()
-        .from(sharedAgentMemories)
-        .where(
-          eq(sharedAgentMemories.organization_id, fixtures[0].organizationId),
-        );
-      expect(rows).toHaveLength(2);
-      for (const row of rows) {
-        expect(row.embedding_model).toBe(BGE_SMALL_VECTOR_SPACE);
-        expect(row.embedding).toHaveLength(384);
-      }
-      const hits = await store(0).searchByEmbedding(query, 10);
-      expect(hits).toHaveLength(2);
-      expect(hits[0].id).toBe(ids.user);
-      expect(hits[0].distance).toBeLessThan(0.00001);
-      expect(
-        await store(0, `${roomKey}:other`).searchByEmbedding(query, 10),
-      ).toEqual([]);
-      expect(await store(1).searchByEmbedding(query, 10)).toEqual([]);
-      for (const mismatch of [
-        { organizationId: fixtures[1].organizationId },
-        { userId: fixtures[1].userId },
-        { agentKey: `${agentKey}:other` },
-      ]) {
-        const isolated = new SharedMemoryStore({
-          ...fixtures[0],
-          agentKey,
-          roomKey,
-          ...mismatch,
-        });
-        expect(await isolated.searchByEmbedding(query, 10)).toEqual([]);
-      }
-      await verifyRelease();
-    } finally {
+    const cleanupFixtures = async () => {
       try {
         // Both random identity and qualification slug must match; no existing tenant is targeted.
         for (const fixture of fixtures) {
@@ -218,9 +181,88 @@ qualify(
             .from(organizations)
             .where(inArray(organizations.id, orgIds)),
         ).toEqual([]);
+        console.info("shared-recall-phase=cleanup status=passed code=NONE");
+      } catch (error) {
+        console.info(
+          `shared-recall-phase=cleanup status=failed code=${sharedRecallFailureCode(error)}`,
+        );
+        throw error;
       } finally {
         await closeDatabaseConnectionsForTests();
       }
+    };
+    let phase = "create-fixtures";
+    try {
+      await dbWrite.transaction(async (tx) => {
+        for (const fixture of fixtures) {
+          await tx.insert(organizations).values({
+            id: fixture.organizationId,
+            name: "Shared recall qualification",
+            slug: fixture.slug,
+            is_active: false,
+          });
+          await tx.insert(users).values({
+            id: fixture.userId,
+            organization_id: fixture.organizationId,
+            steward_user_id: fixture.slug,
+          });
+        }
+      });
+      const pair = {
+        userMessage: texts[0],
+        assistantReply: texts[1],
+        messageIds: ids,
+      };
+      phase = "record-turns";
+      await store(0).recordTurnPair(pair);
+      await store(0).recordTurnPair(pair);
+      phase = "verify-rows";
+      const rows = await dbWrite
+        .select()
+        .from(sharedAgentMemories)
+        .where(
+          eq(sharedAgentMemories.organization_id, fixtures[0].organizationId),
+        );
+      expect(rows).toHaveLength(2);
+      for (const row of rows) {
+        expect(row.embedding_model).toBe(BGE_SMALL_VECTOR_SPACE);
+        expect(row.embedding).toHaveLength(384);
+      }
+      phase = "recall";
+      const hits = await store(0).searchByEmbedding(query, 10);
+      expect(hits).toHaveLength(2);
+      expect(hits[0].id).toBe(ids.user);
+      expect(hits[0].distance).toBeLessThan(0.00001);
+      phase = "isolation";
+      expect(
+        await store(0, `${roomKey}:other`).searchByEmbedding(query, 10),
+      ).toEqual([]);
+      expect(await store(1).searchByEmbedding(query, 10)).toEqual([]);
+      for (const mismatch of [
+        { organizationId: fixtures[1].organizationId },
+        { userId: fixtures[1].userId },
+        { agentKey: `${agentKey}:other` },
+      ]) {
+        const isolated = new SharedMemoryStore({
+          ...fixtures[0],
+          agentKey,
+          roomKey,
+          ...mismatch,
+        });
+        expect(await isolated.searchByEmbedding(query, 10)).toEqual([]);
+      }
+      phase = "verify-release";
+      await verifyRelease();
+      console.info(
+        "shared-recall-phase=verify-release status=passed code=NONE",
+      );
+    } catch (error) {
+      console.info(
+        `shared-recall-phase=${phase} status=failed code=${sharedRecallFailureCode(error)}`,
+      );
+      throw error;
+    } finally {
+      await cleanupFixtures();
     }
   },
   300_000,

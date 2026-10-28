@@ -415,6 +415,22 @@ export function createBillOutcomeStore(
       validate(JSON.parse(row.document));
       return { taskId: row.task_id };
     },
+    /** This owner's saved outcomes, newest first: `{ taskId, observedAt, decision }`. */
+    listForOwner(owner) {
+      return db
+        .prepare(
+          "SELECT task_id, document FROM bill_outcomes_v1 WHERE owner_key=? ORDER BY rowid DESC",
+        )
+        .all(key(owner))
+        .map((row) => {
+          const record = validate(JSON.parse(row.document));
+          return {
+            taskId: row.task_id,
+            observedAt: record.observedAt,
+            decision: structuredClone(record.decision),
+          };
+        });
+    },
     forTask(runtime, taskId) {
       const owner = runtime.owner,
         ownerKey = key(owner),
@@ -474,6 +490,7 @@ export function createBillOutcomeStore(
             ...structuredClone(record.decision),
             observedAt: record.observedAt,
             saveStatus: "pending",
+            reasonCode: "outcome-save-failed",
             message:
               "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
           };
@@ -925,6 +942,7 @@ export function createBillOutcomeStore(
               ...structuredClone(record.decision),
               observedAt: record.observedAt,
               saveStatus: "pending",
+              reasonCode: "outcome-save-failed",
               message:
                 "The website outcome was observed. Finishing its local record failed. Retry saving the reference; do not submit another payment.",
             };

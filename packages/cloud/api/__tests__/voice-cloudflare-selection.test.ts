@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   type CloudflareSpeechBinding,
   synthesizeCloudflareAudio,
+  transcribeCloudflareAudio,
 } from "../../shared/src/lib/providers/cloudflare-speech";
 import {
   KOKORO_CLOUDFLARE_VOICES,
@@ -11,6 +12,63 @@ import {
 } from "../v1/voice/tts/provider-selection";
 
 describe("Workers AI speech migration", () => {
+  test("Nova preserves audio bytes and word timings, and rejects malformed provider timings", async () => {
+    const audio = new Uint8Array([1, 2, 3]);
+    let end = 0.4;
+    const binding = {
+      async run(
+        model: unknown,
+        input: {
+          audio: { body: ReadableStream<Uint8Array>; contentType: string };
+        },
+      ) {
+        expect(model).toBe("@cf/deepgram/nova-3");
+        expect(input.audio.contentType).toBe("audio/ogg");
+        expect(
+          new Uint8Array(await new Response(input.audio.body).arrayBuffer()),
+        ).toEqual(audio);
+        return {
+          results: {
+            channels: [
+              {
+                alternatives: [
+                  {
+                    transcript: "Hello",
+                    words: [{ word: "hello", start: 0.1, end }],
+                  },
+                ],
+              },
+            ],
+          },
+        };
+      },
+    } as CloudflareSpeechBinding;
+    expect(
+      await transcribeCloudflareAudio(
+        binding,
+        audio,
+        undefined,
+        undefined,
+        "audio/ogg",
+      ),
+    ).toEqual({
+      text: "Hello",
+      words: [{ word: "hello", start: 0.1, end: 0.4 }],
+    });
+    end = -1;
+    await expect(
+      transcribeCloudflareAudio(
+        binding,
+        audio,
+        undefined,
+        undefined,
+        "audio/ogg",
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      code: "SPEECH_PROVIDER_RESPONSE_INVALID",
+    });
+  });
   test("oversized speech is rejected before any provider call and boundary text is preserved", async () => {
     const inputs: string[] = [];
     const binding = {
