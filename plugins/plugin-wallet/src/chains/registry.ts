@@ -31,6 +31,7 @@ import {
   Connection,
   LAMPORTS_PER_SOL,
   PublicKey,
+  type SendOptions,
   SendTransactionError,
   SystemProgram,
   type TransactionInstruction,
@@ -992,78 +993,14 @@ async function executeSolanaTransfer(
   const transaction = new VersionedTransaction(message);
   transaction.sign([senderKeypair]);
 
-  // Send the transaction. Two cases:
-  //
-  // 1. SendTransactionError: the RPC answered with an error (JSON-RPC error
-  //    response). The node processed the request. With skipPreflight: false,
-  //    this includes preflight/simulation rejections (e.g. insufficient
-  //    funds), where the node does NOT broadcast. This is a definitive
-  //    failure: rethrow so the EXECUTION_FAILED path reports the reason
-  //    (and logs via getLogs()). A retry is safe.
-  //
-  //    Note: per @solana/web3.js v1.98.4, the error's "action" field is set
-  //    from the skipPreflight option, not the real cause, and the field is
-  //    private. We do not read it; the error *type* (RPC answered vs not)
-  //    is the signal.
-  //
-  // 2. Any other error (network failure, timeout, response loss): no answer
-  //    arrived, so the broadcast status is truly uncertain — the tx may have
-  //    landed. Do NOT throw (which would invite a retry and risk duplicate
-  //    spend). Return unconfirmed with the signature derived from the signed
-  //    transaction for manual verification.
-  let signature: string;
-  let sendUncertain = false;
-  try {
-    signature = await connection.sendTransaction(transaction, {
-      skipPreflight: false,
-    });
-  } catch (error) {
-    if (error instanceof SendTransactionError) {
-      // RPC explicitly rejected the transaction. Definitive failure.
-      throw error;
-    }
-    // Uncertain: no RPC answer. Derive signature for explorer lookup.
-    // Do NOT claim "not found on explorer" means "definitely not broadcast".
-    sendUncertain = true;
-    signature = bs58.encode(transaction.signatures[0]);
-  }
-
-  // Distinguish: confirmed on-chain, explicitly failed on-chain, or uncertain.
-  // An explicit on-chain failure (confirmation.value.err) is safe to retry.
-  // An uncertain result must NOT be reported as success nor retried
-  // automatically, because the transaction may have landed and a new transfer
-  // would duplicate the spend. The signature is preserved so the user can
-  // check the explorer. Even if the explorer shows "not found", do NOT treat
-  // it as proof of non-broadcast — keep the no-auto-retry guidance.
-  let confirmationStatus: "confirmed" | "unconfirmed" = sendUncertain
-    ? "unconfirmed"
-    : "confirmed";
-  let explicitFailure: Error | null = null;
-  if (!sendUncertain) {
-    try {
-      const confirmation = await connection.confirmTransaction(
-        {
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        "confirmed",
-      );
-      if (confirmation.value.err) {
-        explicitFailure = new Error(
-          `Solana transfer failed on-chain: ${JSON.stringify(confirmation.value.err)}`,
-        );
-        throw explicitFailure;
-      }
-    } catch (error) {
-      // Re-throw explicit on-chain failures (safe to retry); anything else
-      // (timeout, RPC error) leaves the outcome uncertain.
-      if (error === explicitFailure) {
-        throw error;
-      }
-      confirmationStatus = "unconfirmed";
-    }
-  }
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      transaction,
+      { skipPreflight: false },
+      latestBlockhash,
+      "Solana transfer failed on-chain",
+    );
 
   return {
     status: "submitted",
@@ -1082,6 +1019,78 @@ async function executeSolanaTransfer(
       ...(sendUncertain ? { sendUncertain: true } : {}),
     },
   };
+}
+
+/**
+ * Send a signed Solana transaction and classify its outcome.
+ *
+ * - SendTransactionError: the RPC answered and rejected the transaction
+ *   (with skipPreflight: false this includes preflight rejections, where the
+ *   node does NOT broadcast). A definitive failure: rethrow. A retry is safe.
+ *   Per @solana/web3.js v1.98.4 the error's "action" field reflects the
+ *   skipPreflight option, not the cause, so only the error type is used.
+ * - Any other send error (network failure, timeout, lost response): the
+ *   broadcast status is uncertain and the transaction may have landed. Do
+ *   NOT throw (a retry risks a duplicate spend). Return unconfirmed with the
+ *   signature derived from the signed transaction for manual verification.
+ * - confirmation.value.err: an explicit on-chain failure. Throw; a retry is
+ *   safe.
+ * - Any other confirmation error (timeout, RPC error): the outcome is
+ *   uncertain. Return unconfirmed; never report it as success or failure.
+ *   An explorer "not found" is not proof that the transaction was not sent.
+ */
+async function sendAndConfirmSolanaTransaction(
+  connection: Connection,
+  transaction: VersionedTransaction,
+  sendOptions: SendOptions,
+  latestBlockhash: Readonly<{
+    blockhash: string;
+    lastValidBlockHeight: number;
+  }>,
+  failurePrefix: string,
+): Promise<{
+  signature: string;
+  confirmationStatus: "confirmed" | "unconfirmed";
+  sendUncertain: boolean;
+}> {
+  let signature: string;
+  try {
+    signature = await connection.sendTransaction(transaction, sendOptions);
+  } catch (error) {
+    if (error instanceof SendTransactionError) {
+      throw error;
+    }
+    return {
+      signature: bs58.encode(transaction.signatures[0]),
+      confirmationStatus: "unconfirmed",
+      sendUncertain: true,
+    };
+  }
+
+  let confirmation: Awaited<ReturnType<Connection["confirmTransaction"]>>;
+  try {
+    confirmation = await connection.confirmTransaction(
+      {
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      },
+      "confirmed",
+    );
+  } catch {
+    // error-policy:J2 the transaction was sent; its outcome is unknown.
+    return {
+      signature,
+      confirmationStatus: "unconfirmed",
+      sendUncertain: false,
+    };
+  }
+  if (confirmation.value.err) {
+    throw new Error(
+      `${failurePrefix}: ${JSON.stringify(confirmation.value.err)}`,
+    );
+  }
+  return { signature, confirmationStatus: "confirmed", sendUncertain: false };
 }
 
 interface JupiterSwapBuild {
@@ -1271,63 +1280,18 @@ async function executeSolanaSwap(
 
   const latestBlockhash = await connection.getLatestBlockhash();
 
-  // Send the transaction, with the same outcome classification as the
-  // transfer path above. A SendTransactionError means the RPC answered
-  // and rejected the transaction: a definitive failure, safe to retry.
-  // Any other send error means no answer arrived, so the broadcast
-  // status is uncertain — the swap may have landed. Do NOT throw (which
-  // would invite a retry and risk a duplicate swap); return unconfirmed
-  // with the signature derived from the signed transaction.
-  let signature: string;
-  let sendUncertain = false;
-  try {
-    signature = await connection.sendTransaction(transaction, {
-      skipPreflight: false,
-      maxRetries: 3,
-      preflightCommitment: "confirmed",
-    });
-  } catch (error) {
-    if (error instanceof SendTransactionError) {
-      // RPC explicitly rejected the transaction. Definitive failure.
-      throw error;
-    }
-    sendUncertain = true;
-    signature = bs58.encode(transaction.signatures[0]);
-  }
-
-  // An explicit on-chain failure (confirmation.value.err) is safe to
-  // retry and stays a thrown failure. A confirmation error (timeout,
-  // RPC error) leaves the outcome uncertain: report the swap as
-  // submitted but unconfirmed instead of failed, as the transfer does.
-  let confirmationStatus: "confirmed" | "unconfirmed" = sendUncertain
-    ? "unconfirmed"
-    : "confirmed";
-  let explicitFailure: Error | null = null;
-  if (!sendUncertain) {
-    try {
-      const confirmation = await connection.confirmTransaction(
-        {
-          signature,
-          blockhash: latestBlockhash.blockhash,
-          lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-        },
-        "confirmed",
-      );
-      if (confirmation.value.err) {
-        explicitFailure = new Error(
-          `Transaction failed: ${JSON.stringify(confirmation.value.err)}`,
-        );
-        throw explicitFailure;
-      }
-    } catch (error) {
-      // Re-throw explicit on-chain failures (safe to retry); anything
-      // else (timeout, RPC error) leaves the outcome uncertain.
-      if (error === explicitFailure) {
-        throw error;
-      }
-      confirmationStatus = "unconfirmed";
-    }
-  }
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      transaction,
+      {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed",
+      },
+      latestBlockhash,
+      "Transaction failed",
+    );
 
   return {
     status: "submitted",
