@@ -710,7 +710,10 @@ describe("promoted Notes execution", () => {
     },
   );
 
-  it.each([null, "latest", false, ["createdAt"]])(
+  // Each row is one argument list. A bare `["createdAt"]` row would be spread
+  // by `it.each` into a single string argument, so the array case would assert
+  // against the valid scalar "createdAt" and never exercise an array payload.
+  it.each([[null], ["latest"], [false], [["createdAt"]]])(
     "rejects invalid latestBy %j",
     async (latestBy) => {
       const runtime = await executorHarness();

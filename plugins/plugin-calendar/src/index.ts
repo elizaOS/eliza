@@ -66,6 +66,7 @@ export {
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
 } from "./calendar-action-schema.js";
+export { calendarReadParameters } from "./calendar-read-parameters.js";
 export {
   CalendarSection,
   type CalendarSectionProps,

@@ -364,7 +364,7 @@
     "pixelmatch": "^7.2.0",
     "playwright": "^1.64.1",
     "pngjs": "^7.0.0",
-    "postcss": "^8.5.29",
+    "postcss": "^8.5.31",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "sharp": "^0.35.3",

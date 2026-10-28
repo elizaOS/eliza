@@ -1110,6 +1110,18 @@ async function readDirectInstalledVersion(
   return fallbackVersion;
 }
 
+/**
+ * `git ls-remote` failed, so nothing is known about the remote's branches.
+ * A non-zero exit is never "the branch does not exist": `ls-remote --heads
+ * <url> <branch>` exits 0 with empty stdout for a ref that is not there.
+ */
+function remoteBranchQueryError(gitUrl: string, err: unknown): ElizaError {
+  return new ElizaError(
+    `Failed to query branches for ${gitUrl}: git ls-remote could not query the remote (network, credentials, or git executable failure)`,
+    { code: "PLUGIN_INSTALL_REMOTE_UNREACHABLE", cause: err },
+  );
+}
+
 async function remoteBranchExists(
   gitUrl: string,
   branch: string,
@@ -1135,7 +1147,7 @@ async function remoteBranchExists(
     logger.debug(
       `[plugin-installer] Failed to check remote branch "${branch}": ${err instanceof Error ? err.message : String(err)}`,
     );
-    return false;
+    throw remoteBranchQueryError(gitUrl, err);
   }
 }
 
@@ -1162,10 +1174,10 @@ async function listRemoteBranches(gitUrl: string): Promise<string[]> {
     }
     return branches;
   } catch (err) {
-    logger.warn(
+    logger.debug(
       `[plugin-installer] Failed to list remote branches for ${gitUrl}: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return [];
+    throw remoteBranchQueryError(gitUrl, err);
   }
 }
 

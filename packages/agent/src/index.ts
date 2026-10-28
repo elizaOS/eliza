@@ -103,7 +103,6 @@ export * from "./api/project-routes.ts";
 export * from "./api/provider-switch-config.ts";
 export * from "./api/rate-limiter.ts";
 export * from "./api/registry-routes.ts";
-export * from "./api/registry-service.ts";
 export * from "./api/runtime-management-routes.ts";
 export {
   handleRuntimeModePreDispatch,

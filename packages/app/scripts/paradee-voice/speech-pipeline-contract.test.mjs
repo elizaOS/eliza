@@ -33,7 +33,7 @@ const jsonJar =
         .map((hash) => path.join(jsonCache, hash, "json-20250517.jar"))
         .find((jar) => fs.existsSync(jar))
     : undefined);
-const jsonSkip =
+const skipUnlessJsonJarInstalled =
   jsonJar || process.env.CI
     ? false
     : "Set ELIZA_JSON_JAR or install the pinned Gradle org.json dependency";
@@ -106,7 +106,7 @@ test("capture admission fences permission, blocked start, pause and stale stop",
   ));
 test(
   "live segment pipe bounds queued audio and fences cutoff, cancellation and re-enrollment",
-  { skip: jsonSkip },
+  { skip: skipUnlessJsonJarInstalled },
   () =>
     run(["LiveSegmentPipe"], "LiveSegmentPipeTest", /^PASS live segment pipe/, {
       json: true,
@@ -114,7 +114,7 @@ test(
 );
 test(
   "buffered stream exchange has its own deadline, response bound and enrollment fence",
-  { skip: jsonSkip },
+  { skip: skipUnlessJsonJarInstalled },
   () =>
     run(
       ["BufferedStreamExchange"],
@@ -179,7 +179,7 @@ test("validated speech over the shared session: bounds, silence, streamed chunks
 });
 
 test("live capture controller orders the agent session, microphone, cancellation and teardown", {
-  skip: jsonSkip,
+  skip: skipUnlessJsonJarInstalled,
 }, () => {
   const sdk = path.join(
     process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),

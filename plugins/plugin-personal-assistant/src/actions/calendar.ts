@@ -16,7 +16,10 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "@elizaos/contracts";
-import { resolveCalendarTimeZone } from "@elizaos/contracts";
+import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
+  resolveCalendarTimeZone,
+} from "@elizaos/contracts";
 import type {
   Action,
   ActionExample,
@@ -45,12 +48,11 @@ import {
 import {
   CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA,
   CALENDAR_NEXT_EVENT_DETAILS_PARAMETER_SCHEMA,
-  CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA,
   type CalendarActionDeps,
   CalendarService,
   CalendarServiceError,
+  calendarReadParameters,
   createCalendarActionRunner,
   createCalendarMutationApprovalGateway,
   registerCalendarActionHostAdapter,
@@ -256,7 +258,11 @@ type OwnerCalendarSubaction =
 const ACTION_NAME = "CALENDAR";
 
 const proposalDurationProperties: Record<string, ActionParameterSchema> = {
-  minutes: { type: "number", minimum: 5, maximum: 480 },
+  minutes: {
+    type: "number",
+    minimum: CALENDAR_NEW_SLOT_DURATION_MINUTES.min,
+    maximum: CALENDAR_NEW_SLOT_DURATION_MINUTES.max,
+  },
   existingEventQuery: { type: "string", minLength: 1 },
 };
 
@@ -1866,12 +1872,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
       ),
     },
     ...Object.fromEntries(
-      (
-        [
-          ["feed", CALENDAR_FEED_DETAILS_PARAMETER_SCHEMA],
-          ["search_events", CALENDAR_SEARCH_DETAILS_PARAMETER_SCHEMA],
-        ] as const
-      ).map(([name, schema]) => [
+      (["feed", "search_events"] as const).map((name) => [
         name,
         {
           ...(name === "search_events"
@@ -1883,25 +1884,7 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
                 description:
                   "Read the complete agenda for a day or range. For whole dates supply details.date as the first YYYY-MM-DD date, optional endDate as the last included date, and timeZone; code calculates the local midnight boundaries. For partial-day ranges use timeMin/timeMax instead. Report only the actual returned window; empty results do not establish that a different day is free.",
               }),
-          parameters: calendarAction.parameters?.map((parameter) => {
-            if (name === "search_events" && parameter.name === "query") {
-              return {
-                ...parameter,
-                required: true,
-                description:
-                  "Required event-content search text, such as a title, attendee, location or topic. Put date bounds in details; use CALENDAR_FEED for an unfiltered agenda.",
-                schema: { type: "string", minLength: 1 },
-              };
-            }
-            return parameter.name === "details"
-              ? {
-                  ...parameter,
-                  description:
-                    "Optional calendar read bounds, IANA timezone, exact connector/calendar scope and refresh controls. Omit unknown values. Feed reads use selected calendars; searches include hidden calendars unless explicitly restricted.",
-                  schema,
-                }
-              : parameter;
-          }),
+          parameters: calendarReadParameters(calendarAction, name),
         },
       ]),
     ),

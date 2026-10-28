@@ -3,10 +3,13 @@ package ai.eliza.plugins.system;
 /**
  * One process-local, owner-bound assistant invocation. Never accepts caller Intent extras.
  *
- * <p>Two origins may start a voice turn: {@link #LISTENER}, a wake from the same-signer image
+ * <p>Origins that may start a voice turn: {@link #LISTENER}, a wake from the same-signer image
  * listener, and {@link #SYSTEM}, an assistant gesture (press-and-hold power, the assist gesture, a
  * long press on Home or the navigation handle) that the platform-signed system UI launched with
- * its identity shared. Every other launch is {@link #ASSIST}: it opens the assistant only.
+ * its identity shared. A third, {@link #POWER}, is recorded only by a host's native
+ * permission-protected Power activity on an already bound bridge ({@link #recordProtectedPower});
+ * it is warm-only and never held for a cold binding. Every other launch is {@link #ASSIST}: it
+ * opens the assistant only.
  *
  * <p>A voice origin that arrives before any authenticated renderer binding (a cold process, or a
  * renderer that is not signed in yet) normally only opens the assistant. When the host registers a
@@ -25,6 +28,8 @@ public final class SenseInvocation {
     public static final String LISTENER = "listener";
     /** An assistant gesture launched by the platform-signed system UI with its identity shared. */
     public static final String SYSTEM = "system";
+    /** A warm press from a host's permission-protected Power activity (see {@link #recordProtectedPower}). */
+    public static final String POWER = "power";
     /** Any other launch: the assistant opens and no voice turn starts. */
     public static final String ASSIST = "assist";
 
@@ -100,20 +105,45 @@ public final class SenseInvocation {
         coldOwner = startsVoice(origin) && session == null && !lockedAtArrival ? admittedOwner() : null;
     }
 
-    /** The origins that may start a voice turn. */
+    /** The origins that may start a voice turn from a cold or warm recorded launch. */
     private static boolean startsVoice(String origin) { return LISTENER.equals(origin) || SYSTEM.equals(origin); }
+
+    public synchronized boolean isCurrentRenderer(long bridge, int generation) {
+        return bridge == bridgeGeneration && generation == rendererGeneration;
+    }
+
+    public synchronized boolean boundTo(long bridge, int generation, String owner, String expectedSession) {
+        return bridge == bridgeGeneration && generation == rendererGeneration && owner != null && owner.equals(bindingId)
+                && session != null && session.equals(expectedSession);
+    }
+
+    /** Native protected-activity hook. A cold or replaced bridge cannot inherit a Power gesture. */
+    public synchronized boolean recordProtectedPower(long bridge, long now, boolean lockedAtArrival) {
+        if (bridge != bridgeGeneration || bridgeGeneration <= 0 || rendererGeneration <= 0 || bindingId == null || session == null) return false;
+        clear();
+        origin = POWER; invocationSession = session; arrivedAt = now; locked = lockedAtArrival;
+        return true;
+    }
+
+    /** Renderer may drop only its own pending Power receipt, never listener delivery or another owner. */
+    public synchronized void discardProtectedPower(long bridge, int generation, String owner, String expectedSession) {
+        if (bridge == bridgeGeneration && generation == rendererGeneration && owner != null
+                && owner.equals(bindingId) && session != null && session.equals(expectedSession)
+                && POWER.equals(origin) && session.equals(invocationSession)) clear();
+    }
 
     /**
      * Returns null after consumption. Unknown or changed ownership never returns a voice origin
-     * ({@link #LISTENER} or {@link #SYSTEM}); it returns {@link #ASSIST}.
+     * ({@link #LISTENER}, {@link #SYSTEM} or {@link #POWER}); it returns {@link #ASSIST}.
      */
     public synchronized String take(long bridge, int generation, String owner, String expectedSession, long now, boolean lockedNow) {
         if (bridge != bridgeGeneration || generation != rendererGeneration) return null;
         if (owner == null || !owner.equals(bindingId)) return null;
         if (origin == null) return null;
+        // A protected Power receipt is warm-only: it is never adopted from a cold wait.
         long window = adopted ? COLD_WINDOW_MS : WINDOW_MS;
         boolean ownerUnchanged = !adopted || coldOwner != null && coldOwner.equals(admittedOwner());
-        String result = startsVoice(origin) && session != null && session.equals(expectedSession)
+        String result = (startsVoice(origin) || POWER.equals(origin)) && session != null && session.equals(expectedSession)
                 && session.equals(invocationSession) && !locked && !lockedNow && now >= arrivedAt
                 && now - arrivedAt <= window && ownerUnchanged ? origin : ASSIST;
         clear();

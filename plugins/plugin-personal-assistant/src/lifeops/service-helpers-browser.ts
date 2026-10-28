@@ -368,27 +368,38 @@ export function normalizePageForms(
   });
 }
 
+/** "N noun (a, b, c, +K more)": the count is every item, titles are a preview. */
+function describeWorkflowItems(
+  items: unknown[],
+  noun: string,
+  titleOf: (item: unknown) => string,
+): string {
+  const titles = items.map(titleOf).filter((title) => title.length > 0);
+  const preview = titles.slice(0, 3);
+  const more = items.length - preview.length;
+  const parts = more > 0 ? [...preview, `+${more} more`] : preview;
+  return `${items.length} ${noun}${parts.length > 0 ? ` (${parts.join(", ")})` : ""}`;
+}
+
 export function describeWorkflowValue(value: unknown, label?: string): string {
   const prefix = label?.trim() ? `${label.trim()}: ` : "";
   if (isRecord(value) && Array.isArray(value.events)) {
-    const titles = value.events
-      .map((event) =>
+    return `${prefix}${describeWorkflowItems(
+      value.events,
+      "calendar events",
+      (event) =>
         isRecord(event) && typeof event.title === "string" ? event.title : "",
-      )
-      .filter((title) => title.length > 0)
-      .slice(0, 3);
-    return `${prefix}${titles.length} calendar events${titles.length > 0 ? ` (${titles.join(", ")})` : ""}`;
+    )}`;
   }
   if (isRecord(value) && Array.isArray(value.messages)) {
-    const subjects = value.messages
-      .map((message) =>
+    return `${prefix}${describeWorkflowItems(
+      value.messages,
+      "Gmail items",
+      (message) =>
         isRecord(message) && typeof message.subject === "string"
           ? message.subject
           : "",
-      )
-      .filter((subject) => subject.length > 0)
-      .slice(0, 3);
-    return `${prefix}${subjects.length} Gmail items${subjects.length > 0 ? ` (${subjects.join(", ")})` : ""}`;
+    )}`;
   }
   if (typeof value === "string") {
     return `${prefix}${value}`;

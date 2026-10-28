@@ -21,7 +21,9 @@ export const followUpsProvider: Provider = {
   contextGate: { anyOf: ["general"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // Every contact follow-up with its reason: the same ADMIN floor as the
+  // `contacts` context and the CONTACT action.
+  roleGate: { minRole: "ADMIN" },
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

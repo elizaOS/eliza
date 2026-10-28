@@ -1041,6 +1041,34 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
     }
   });
 
+  it("getLatestRowId throws instead of returning 0 when the tip query fails", async ({ skip }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+
+      // Another connection holds an exclusive lock, as Messages.app does
+      // while it writes; the read-only reader then gets SQLITE_BUSY.
+      const writer = openDatabase(path);
+      writer.run("BEGIN EXCLUSIVE");
+      try {
+        expect(() => reader.getLatestRowId()).toThrow(
+          expect.objectContaining({ code: "IMESSAGE_CHATDB_TIP_READ_FAILED" })
+        );
+      } finally {
+        writer.run("ROLLBACK");
+        writer.close();
+      }
+      expect(reader.getLatestRowId()).toBe(13);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("returns null-text rows with empty text so the service layer can advance its cursor", async ({
     skip,
   }) => {

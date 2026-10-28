@@ -444,9 +444,10 @@ export class TrustEngine extends Service {
   }
 
   /**
-   * Records a trust interaction
+   * Records a trust interaction. Resolves `false` when the hourly per-entity
+   * limit drops it, so callers do not report it as recorded.
    */
-  async recordInteraction(interaction: TrustInteraction): Promise<void> {
+  async recordInteraction(interaction: TrustInteraction): Promise<boolean> {
     // Rate limit check
     const rateCheck = this.checkRateLimit(
       interaction.targetEntityId,
@@ -457,7 +458,7 @@ export class TrustEngine extends Service {
         { entityId: interaction.targetEntityId, type: interaction.type },
         "[TrustEngine] Rate limit exceeded, skipping interaction recording",
       );
-      return;
+      return false;
     }
 
     // Apply diminishing returns weight to impact
@@ -518,6 +519,7 @@ export class TrustEngine extends Service {
       });
       throw err;
     }
+    return true;
   }
 
   /**

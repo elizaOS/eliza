@@ -12,7 +12,7 @@ import { logger } from "../../../utils/logger";
 import { secretsService } from "../../secrets";
 import { DecryptionError } from "../../secrets/encryption";
 import { incrementOAuthVersion } from "../cache-version";
-import { Errors } from "../errors";
+import { Errors, OAuthError, OAuthErrorCode } from "../errors";
 import { refreshOAuth2Token } from "../oauth2";
 import { getProvider } from "../provider-registry";
 import type { OAuthConnection, TokenResult } from "../types";
@@ -259,6 +259,16 @@ export function createGenericAdapter(platform: string): ConnectionAdapter {
             organizationId,
             error: error instanceof Error ? error.message : String(error),
           });
+          if (error instanceof OAuthError && error.code === OAuthErrorCode.CONNECTION_EXPIRED) {
+            // The provider refused the grant. Mark the connection expired so
+            // status reads needs-reconnect and active-account selection skips it.
+            await dbWrite
+              .update(platformCredentials)
+              .set({ status: "expired", updated_at: new Date() })
+              .where(eq(platformCredentials.id, connectionId));
+            await incrementOAuthVersion(organizationId, platform);
+            throw Errors.connectionExpired(platform);
+          }
           throw Errors.tokenRefreshFailed(
             platform,
             error instanceof Error ? error.message : "Unknown error",

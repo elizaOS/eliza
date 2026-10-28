@@ -347,7 +347,7 @@ test("native client and plugin compile against the Android 36 APIs", () => {
   try {
     const stubs = {
       "Plugin.java":
-        "package com.getcapacitor; public class Plugin { protected void handleOnDestroy(){} public android.content.Context getContext(){return null;} public android.app.Activity getActivity(){return null;} }",
+        "package com.getcapacitor; public class Plugin { public void load(){} protected void handleOnPause(){} protected void handleOnDestroy(){} public android.content.Context getContext(){return null;} public android.app.Activity getActivity(){return null;} }",
       "PluginCall.java":
         "package com.getcapacitor; public class PluginCall { public void resolve(JSObject value){} public void resolve(){} public void reject(String value){} public String getString(String value){return null;} public Integer getInt(String value){return null;} }",
       "JSObject.java":
@@ -432,5 +432,205 @@ test("native client keeps package, permission, component and reset fences", () =
     );
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test("warm Power is one-shot and blocked Power is discarded instead of deferred", async () => {
+  const { createSenseInvocationController, parseAssistantInvocation } =
+    await import("../src/sense.ts");
+  assert.equal(
+    parseAssistantInvocation({ assistant: true, invocation: "power" }),
+    "power",
+  );
+  assert.equal(
+    listenerStartsVoice({
+      invocation: "power",
+      unlocked: true,
+      hidden: false,
+      dialogOpen: false,
+      connectionOpen: false,
+      voiceActive: false,
+    }),
+    true,
+  );
+  const oldWindow = globalThis.window,
+    oldDocument = globalThis.document;
+  let hidden = false,
+    modal = false,
+    ready = true,
+    active = false,
+    pending = null,
+    started = 0,
+    discards = 0,
+    binding = null;
+  globalThis.window = new EventTarget();
+  globalThis.document = new EventTarget();
+  Object.defineProperty(document, "hidden", { get: () => hidden });
+  document.querySelector = () => (modal ? {} : null);
+  const native = {
+    bindInvocationSession: async (value) => {
+      binding = value;
+      pending = null;
+    },
+    takeInvocation: async (value) => {
+      assert.equal(value.bindingId, binding.bindingId);
+      const origin = pending;
+      pending = null;
+      return { assistant: !!origin, invocation: origin, locked: false };
+    },
+    discardProtectedPowerInvocation: async (value) => {
+      assert.equal(value.bindingId, binding.bindingId);
+      discards++;
+      if (pending === "power") pending = null;
+    },
+  };
+  const controller = createSenseInvocationController(native, {
+    authority: () => "owner/session",
+    ready: () => ready,
+    voiceActive: () => active,
+    startVoice: () => started++,
+  });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  try {
+    await settle();
+    pending = "power";
+    controller.check();
+    await settle();
+    assert.equal(started, 1);
+    controller.check();
+    await settle();
+    assert.equal(started, 1);
+    for (const blocker of ["hidden", "modal", "ready", "active"]) {
+      pending = "power";
+      hidden = blocker === "hidden";
+      modal = blocker === "modal";
+      ready = blocker !== "ready";
+      active = blocker === "active";
+      const before = discards;
+      controller.check();
+      await settle();
+      assert.ok(discards > before);
+      assert.equal(pending, null);
+      hidden = false;
+      modal = false;
+      ready = true;
+      active = false;
+      controller.check();
+      await settle();
+      assert.equal(started, 1, "clearing a blocker cannot revive Power");
+    }
+    pending = "listener";
+    modal = true;
+    controller.check();
+    await settle();
+    assert.equal(pending, "listener", "listener contract remains unchanged");
+    modal = false;
+    controller.check();
+    await settle();
+    assert.equal(started, 2);
+  } finally {
+    controller.dispose();
+    await settle();
+    globalThis.window = oldWindow;
+    globalThis.document = oldDocument;
+  }
+});
+
+test("cold protected launch waits only for initial restore and rechecks account after claim", async () => {
+  const { createSenseInvocationController } = await import("../src/sense.ts");
+  const oldWindow = globalThis.window,
+    oldDocument = globalThis.document;
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  try {
+    for (const mode of ["success", "modal", "interactive", "account-change"]) {
+      globalThis.window = new EventTarget();
+      globalThis.document = new EventTarget();
+      document.hidden = false;
+      let modal = false,
+        restoring = true,
+        ready = false,
+        authority = null,
+        account = null;
+      let claims = 0,
+        discards = 0,
+        starts = 0,
+        release;
+      document.querySelector = () => (modal ? {} : null);
+      const native = {
+        async bindInvocationSession() {},
+        async takeInvocation() {
+          return { assistant: false, locked: false };
+        },
+        async discardProtectedPowerLaunch() {
+          discards++;
+        },
+        async claimProtectedPowerLaunch(input) {
+          claims++;
+          assert.equal(input.accountRef, "verified-account");
+          if (mode === "account-change")
+            await new Promise((resolve) => {
+              release = resolve;
+            });
+          return { assistant: true, invocation: "power", locked: false };
+        },
+      };
+      const controller = createSenseInvocationController(native, {
+        authority: () => authority,
+        ready: () => ready,
+        voiceActive: () => false,
+        initialRestorePending: () => restoring,
+        powerAccountRef: () => account,
+        startVoice: () => starts++,
+      });
+      await settle();
+      assert.equal(claims, 0);
+      assert.equal(discards, 0, "initial restore is not interactive failure");
+      authority = "owner/session";
+      ready = true;
+      controller.check();
+      await settle();
+      assert.equal(
+        claims,
+        0,
+        "published session cannot claim before restoration resolves",
+      );
+      assert.equal(discards, 0);
+      if (mode === "modal") {
+        modal = true;
+        controller.check();
+        await settle();
+        modal = false;
+      }
+      if (mode === "interactive") {
+        restoring = false;
+        controller.check();
+        await settle();
+      }
+      ready = true;
+      restoring = false;
+      authority = "owner/session";
+      account = "verified-account";
+      controller.check();
+      await settle();
+      if (mode === "account-change") {
+        account = "other-account";
+        release();
+        await settle();
+      }
+      assert.equal(starts, mode === "success" ? 1 : 0);
+      assert.equal(claims, mode === "modal" || mode === "interactive" ? 0 : 1);
+      controller.check();
+      await settle();
+      assert.equal(
+        starts,
+        mode === "success" ? 1 : 0,
+        "one launch cannot replay",
+      );
+      controller.dispose();
+      await settle();
+    }
+  } finally {
+    globalThis.window = oldWindow;
+    globalThis.document = oldDocument;
   }
 });

@@ -251,7 +251,10 @@ export {
 	SchemaValidationFailedError,
 } from "./runtime/validated-model-call";
 export { flattenRuntimeSettings } from "./runtime-settings.ts";
-export { mnemonicValid } from "./security/bip39-wordlist.js";
+export {
+	findAllMnemonicPhrases,
+	mnemonicValid,
+} from "./security/bip39-wordlist.js";
 export * from "./security/confidential-inference.js";
 export {
 	type GuardedStreamOutput,

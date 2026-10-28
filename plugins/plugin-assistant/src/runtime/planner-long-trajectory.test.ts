@@ -989,6 +989,89 @@ describe("long progressive planner trajectories", () => {
     });
     expect(schemas).toHaveLength(4);
     expect(new Set(schemas).size).toBe(1);
+    for (const encoded of schemas) {
+      const reply = JSON.parse(encoded).find(
+        (tool: { name: string }) => tool.name === "REPLY",
+      );
+      expect(reply.parameters.required).toContain("text");
+      expect(reply.parameters.properties.text.minLength).toBe(1);
+    }
+  });
+  it("releases a verified held reply without regenerating text or repeating the read", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "held-reply-read-"));
+    const path = join(directory, "note.txt");
+    const body = "Bring the charger.\nAnd the cable.";
+    await writeFile(path, body);
+    let rounds = 0;
+    const executeToolCall = vi.fn(async () => ({
+      success: true,
+      text: "Read the requested local file.",
+      userFacingText: await readFile(path, "utf8"),
+      verifiedUserFacing: true,
+    }));
+    const evaluate = vi.fn(async () => ({
+      success: true,
+      decision: "FINISH" as const,
+      messageToUser: body,
+    }));
+    try {
+      const result = await runPlannerLoop({
+        context: { id: "verified-held-reply" },
+        tools: [
+          { name: "READ", parameters: { type: "object", properties: {} } },
+          {
+            name: "REPLY",
+            parameters: {
+              type: "object",
+              properties: { text: { type: "string" } },
+              required: ["text"],
+            },
+          },
+        ],
+        runtime: {
+          useModel: async (_type, input) => {
+            const reply = JSON.parse(JSON.stringify(input.tools)).find(
+              (tool: { name: string }) => tool.name === "REPLY",
+            );
+            if (++rounds === 1) {
+              expect(reply.parameters.required).toContain("text");
+              expect(reply.parameters.properties.text.minLength).toBe(1);
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    id: "read",
+                    name: "READ",
+                    arguments: { eliza_turn_scope: "more_work_pending" },
+                  },
+                ],
+              };
+            }
+            expect(rounds).toBe(2);
+            expect(reply.parameters.required).not.toContain("text");
+            expect(reply.parameters.properties.text.minLength).toBe(0);
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  id: "release",
+                  name: "REPLY",
+                  arguments: { eliza_turn_scope: "final" },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall,
+        evaluate,
+      });
+      expect(result.finalMessage).toBe(body);
+      expect(executeToolCall).toHaveBeenCalledTimes(1);
+      expect(evaluate).toHaveBeenCalledTimes(1);
+      expect(await readFile(path, "utf8")).toBe(body);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
   it("settles source-bound outcome coverage without a scope-only planner round", async () => {
     let rounds = 0;

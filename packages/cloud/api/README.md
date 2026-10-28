@@ -57,12 +57,12 @@ This does not replace rate limits, gateway queues, or other Redis state.
 
 These additional private stores also default to `redis`:
 
-| State | Protected release variable |
-| --- | --- |
-| Monthly download quotas | `CLOUD_HF_EGRESS_BACKEND` |
-| Daily voice quotas | `CLOUD_VOICE_USAGE_BACKEND` |
-| Fixed and sliding rate limits | `CLOUD_RATE_STATE_BACKEND` |
-| A2A tasks and organization index | `CLOUD_A2A_STATE_BACKEND` |
+| State                            | Protected release variable  |
+| -------------------------------- | --------------------------- |
+| Monthly download quotas          | `CLOUD_HF_EGRESS_BACKEND`   |
+| Daily voice quotas               | `CLOUD_VOICE_USAGE_BACKEND` |
+| Fixed and sliding rate limits    | `CLOUD_RATE_STATE_BACKEND`  |
+| A2A tasks and organization index | `CLOUD_A2A_STATE_BACKEND`   |
 
 Stop source writers and transfer complete state with original expiry before
 selecting `cloudflare`. Imports reject conflicts and close permanently once
@@ -99,13 +99,13 @@ does not register or enable that legacy client.
 Auth has separate configuration boundaries. A Cloud exchange callback is not
 necessarily the browser callback used by Google:
 
-| Channel | Server-owned configuration | Consumer responsibility |
-| --- | --- | --- |
-| Cloud credential exchange | `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and an approved `apps` row | Client ID, environment and exact exchange callback |
-| Google sign-in | Steward tenant/app redirect registration and `STEWARD_OAUTH_APP_ERROR_REDIRECTS` | PKCE, state, optional Steward `authClientId`, browser return handling |
-| Gmail connector consent | `APP_OAUTH_RETURN_URLS` | App nonce and authenticated connection readback |
-| Android verified links | `ELIZA_ANDROID_ASSET_LINKS_JSON` | Package, signing certificate and manifest URL filters |
-| Hosted fallback | Pages `ELIZA_NATIVE_AUTH_CALLBACKS_JSON` | Public callback URL, package and display name |
+| Channel                   | Server-owned configuration                                                       | Consumer responsibility                                               |
+| ------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Cloud credential exchange | `ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON` and an approved `apps` row                  | Client ID, environment and exact exchange callback                    |
+| Google sign-in            | Steward tenant/app redirect registration and `STEWARD_OAUTH_APP_ERROR_REDIRECTS` | PKCE, state, optional Steward `authClientId`, browser return handling |
+| Gmail connector consent   | `APP_OAUTH_RETURN_URLS`                                                          | App nonce and authenticated connection readback                       |
+| Android verified links    | `ELIZA_ANDROID_ASSET_LINKS_JSON`                                                 | Package, signing certificate and manifest URL filters                 |
+| Hosted fallback           | Pages `ELIZA_NATIVE_AUTH_CALLBACKS_JSON`                                         | Public callback URL, package and display name                         |
 
 Request parameters can select these registrations; they cannot register a new
 callback. App IDs in Cloud and client IDs in Steward belong to different stores
@@ -222,7 +222,13 @@ in the protected Pages production/preview environment before deploying this chan
 This is a separate Pages binding, not an API Worker secret. It is a JSON array:
 
 ```json
-[{"redirectUri":"https://eliza.app/example/return","androidPackage":"org.example.reader","appName":"Example Reader"}]
+[
+  {
+    "redirectUri": "https://eliza.app/example/return",
+    "androidPackage": "org.example.reader",
+    "appName": "Example Reader"
+  }
+]
 ```
 
 Entries contain only public routing and display data, never app UUIDs or secrets.

@@ -43,7 +43,12 @@ and multipart modem loopback and uploads the reports and provider receipts.
 Product AOSP images use the reviewed core instead of `sendSms(address, body)`.
 The host subclasses `ai.eliza.plugins.messages.TelephonyPlugin` under its own
 plugin name with a `SmsTelephonyConfiguration`, and registers it only when its
-native admission proves the install is its image. Renderers use
+native admission proves the install is its image. `ImageCapability` is that
+admission for hosts staged with `packages/os/scripts/android/image-capability.mjs`:
+a release, non-test-mocks launcher build installed from a system partition,
+the host's product-overlay provisioning boolean (presigned hosts) and the
+image feature `<package>.aosp_image`. Every fact is required; the launcher
+flavor or HOME role alone never admits. Renderers use
 `createTelephonyClient` from `@elizaos/contracts/native-telephony`.
 A Messages surface keeps provider content only while it is in the foreground
 with `createSmsSession` from `@elizaos/contracts/native-telephony-session`

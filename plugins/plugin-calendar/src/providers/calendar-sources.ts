@@ -19,7 +19,7 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { hasOwnerAccess } from "@elizaos/core";
+import { hasOwnerAccess, OWNER_EXCLUSIVE_DISCLOSURE_GATE } from "@elizaos/core";
 import { listCalendarSourceAdministration } from "../source-administration/adapter.js";
 
 const OWNER_ONLY_EMPTY: ProviderResult = {
@@ -100,6 +100,9 @@ export const calendarSourcesProvider: Provider = {
     anyOf: ["calendar", "connectors", "scheduling", "conflicts"],
   },
   roleGate: { minRole: "OWNER" },
+  // Account emails and calendar ids are the owner's alone: never compose
+  // them into a turn whose delivery audience includes anyone else.
+  disclosureGate: OWNER_EXCLUSIVE_DISCLOSURE_GATE,
   subActions: ["CALENDAR_SOURCES"],
 
   async get(

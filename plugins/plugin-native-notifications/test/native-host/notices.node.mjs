@@ -29,7 +29,7 @@ const cached = () => {
 };
 const jar = process.env.ELIZA_ORG_JSON_JAR || cached();
 
-test("host notice routes, owner fence, approval coordination, journal recovery and tap inbox", {
+test("host notice routes, owner fence, approval coordination, journal recovery, tap inbox and foreground gate", {
   skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
 }, (t) => {
   if (!jar) return;
@@ -54,13 +54,19 @@ test("host notice routes, owner fence, approval coordination, journal recovery a
         "NoticeCoordinator",
         "NoticeRecovery",
         "NoticeTapInbox",
+        "ForegroundNoticeGate",
       ].map((name) => path.join(sources, `${name}.java`)),
       path.join(plugin, "test/native-host/NoticeHostTest.java"),
       path.join(plugin, "test/native-host/NoticeTapInboxTest.java"),
+      path.join(plugin, "test/native-host/ForegroundNoticeGateTest.java"),
     ],
     { timeout: 60000 },
   );
-  for (const main of ["NoticeHostTest", "NoticeTapInboxTest"]) {
+  for (const main of [
+    "NoticeHostTest",
+    "NoticeTapInboxTest",
+    "ForegroundNoticeGateTest",
+  ]) {
     const output = execFileSync(
       bin("java"),
       ["-cp", [classes, jar].join(path.delimiter), main],
