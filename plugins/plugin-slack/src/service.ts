@@ -2323,29 +2323,19 @@ export class SlackService extends Service implements ISlackService {
       }
 
       if (responseMemories.length > 0) {
-        // Listeners are observers: a throwing or rejecting listener must not
-        // turn an already-sent message into a send failure. Report listener
-        // errors and continue.
-        const messageSentEvent = SlackEventTypes.MESSAGE_SENT as string;
-        const reportListenerFailure = (error: unknown) =>
+        // Listeners are observers: a failing listener must not turn an
+        // already-sent message into a send failure that invites a retry.
+        try {
+          await this.runtime.emitEvent(
+            SlackEventTypes.MESSAGE_SENT as string,
+            this.buildEventPayload(accountId),
+          );
+        } catch (error) {
           this.runtime.reportError("SlackService.processAgentMessage", error, {
-            event: messageSentEvent,
+            event: SlackEventTypes.MESSAGE_SENT,
             accountId,
             channelId,
           });
-        try {
-          const emitted = this.runtime.emitEvent(
-            messageSentEvent,
-            this.buildEventPayload(accountId),
-          );
-          if (
-            emitted &&
-            typeof (emitted as Promise<unknown>).catch === "function"
-          ) {
-            void (emitted as Promise<unknown>).catch(reportListenerFailure);
-          }
-        } catch (error) {
-          reportListenerFailure(error);
         }
       }
 
