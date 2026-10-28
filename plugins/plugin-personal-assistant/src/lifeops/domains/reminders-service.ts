@@ -1371,7 +1371,8 @@ export class RemindersDomain {
               groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
               data: { ...metadata, ...target },
             }).then((result) => {
-              if (isRecord(result) && typeof result.id === "string") notificationId = result.id;
+              if (isRecord(result) && typeof result.id === "string")
+                notificationId = result.id;
               return result;
             })),
         };
@@ -3294,28 +3295,66 @@ export class RemindersDomain {
     now: Date,
   ): Promise<void> {
     const notifier = this.ctx.runtime.getService(ServiceType.NOTIFICATION) as {
-      listDurableIncludingExpired?: () => Promise<{ id: string; agentId?: string; source: string; category: string; groupKey?: string; data?: Record<string, unknown>; createdAt: number; readAt?: number | null }[]>;
+      listDurableIncludingExpired?: () => Promise<
+        {
+          id: string;
+          agentId?: string;
+          source: string;
+          category: string;
+          groupKey?: string;
+          data?: Record<string, unknown>;
+          createdAt: number;
+          readAt?: number | null;
+        }[]
+      >;
     } | null;
     // Uncertain notification persistence only withholds read receipts; it never
     // aborts the reminder tick or the escalation that follows it.
-    const notifications = await Promise.resolve(notifier?.listDurableIncludingExpired?.())
+    const notifications = await Promise.resolve(
+      notifier?.listDurableIncludingExpired?.(),
+    )
       .then((rows) => rows ?? [])
       .catch(() => []);
     for (const attempt of attempts) {
-      if (attempt.channel !== "in_app" || attempt.outcome !== "delivered" || attempt.agentId !== this.ctx.agentId()) continue;
+      if (
+        attempt.channel !== "in_app" ||
+        attempt.outcome !== "delivered" ||
+        attempt.agentId !== this.ctx.agentId()
+      )
+        continue;
       const id = attempt.deliveryMetadata.notificationId;
       if (typeof id !== "string") continue;
       const notification = notifications.find((row) => row.id === id);
       const attemptedAt = Date.parse(attempt.attemptedAt ?? "");
-      if (!Number.isFinite(attemptedAt) || !notification || !Number.isFinite(notification.createdAt) || notification.agentId !== attempt.agentId || notification.source !== "lifeops" || notification.category !== "reminder"
-        || notification.groupKey !== `reminder:${attempt.ownerType}:${attempt.ownerId}`
-        || notification.data?.ownerType !== attempt.ownerType || notification.data?.ownerId !== attempt.ownerId
-        || notification.data?.scheduledFor !== attempt.scheduledFor
-        || typeof notification.readAt !== "number" || !Number.isFinite(notification.readAt) || notification.readAt < attemptedAt || notification.readAt < notification.createdAt
-        || notification.createdAt < attemptedAt || notification.readAt > now.getTime()) continue;
-      await this.ctx.repository.updateReminderAttemptOutcome(attempt.id, "delivered_read", {
-        notificationId: id, readDetectedAt: new Date(notification.readAt).toISOString(), readEvidence: "notification_read",
-      });
+      if (
+        !Number.isFinite(attemptedAt) ||
+        !notification ||
+        !Number.isFinite(notification.createdAt) ||
+        notification.agentId !== attempt.agentId ||
+        notification.source !== "lifeops" ||
+        notification.category !== "reminder" ||
+        notification.groupKey !==
+          `reminder:${attempt.ownerType}:${attempt.ownerId}` ||
+        notification.data?.ownerType !== attempt.ownerType ||
+        notification.data?.ownerId !== attempt.ownerId ||
+        notification.data?.scheduledFor !== attempt.scheduledFor ||
+        typeof notification.readAt !== "number" ||
+        !Number.isFinite(notification.readAt) ||
+        notification.readAt < attemptedAt ||
+        notification.readAt < notification.createdAt ||
+        notification.createdAt < attemptedAt ||
+        notification.readAt > now.getTime()
+      )
+        continue;
+      await this.ctx.repository.updateReminderAttemptOutcome(
+        attempt.id,
+        "delivered_read",
+        {
+          notificationId: id,
+          readDetectedAt: new Date(notification.readAt).toISOString(),
+          readEvidence: "notification_read",
+        },
+      );
       attempt.outcome = "delivered_read";
     }
     if (!activityProfile?.lastSeenAt) {
@@ -5379,7 +5418,11 @@ export class RemindersDomain {
           scheduledFor: args.scheduledFor,
           dueAt: args.dueAt,
         });
-        Object.assign(attempt.deliveryMetadata, { reason: null, error: null, ...(notificationId ? { notificationId } : {}) });
+        Object.assign(attempt.deliveryMetadata, {
+          reason: null,
+          error: null,
+          ...(notificationId ? { notificationId } : {}),
+        });
         await this.ctx.repository.updateReminderAttemptOutcome(
           attempt.id,
           "delivered",
@@ -5463,7 +5506,11 @@ export class RemindersDomain {
       });
       if (notificationId) {
         attempt.deliveryMetadata.notificationId = notificationId;
-        await this.ctx.repository.updateReminderAttemptOutcome(attempt.id, attempt.outcome, attempt.deliveryMetadata);
+        await this.ctx.repository.updateReminderAttemptOutcome(
+          attempt.id,
+          attempt.outcome,
+          attempt.deliveryMetadata,
+        );
       }
     }
     return attempt;
