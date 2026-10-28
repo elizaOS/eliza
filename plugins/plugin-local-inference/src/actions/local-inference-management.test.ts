@@ -187,13 +187,13 @@ describe("LOCAL_INFERENCE action twins", () => {
 			);
 		await call({
 			action: "pin_voice_model",
-			voiceModelId: "asr",
+			voiceModelId: "mobile-voice",
 			pinned: true,
 		});
 
 		const result = await call({
 			action: "pin_voice_model",
-			voiceModelId: "asr",
+			voiceModelId: "mobile-voice",
 		});
 
 		expect(result?.success).toBe(false);
@@ -206,7 +206,7 @@ describe("LOCAL_INFERENCE action twins", () => {
 				"utf8",
 			),
 		);
-		expect(pins.pinned).toEqual(["asr"]);
+		expect(pins.pinned).toEqual(["mobile-voice"]);
 	}, 15_000);
 	it("persists quiet hours and refuses malformed replacements without changing preferences", async () => {
 		const call = (quietHours: unknown) =>

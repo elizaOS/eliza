@@ -51,6 +51,7 @@ import {
   getViewClientScope,
   type ViewClientScope,
 } from "../runtime/view-client-context.ts";
+import { resolveViewNavigationTargets } from "../runtime/view-navigation-targets.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import type { ViewInteractResult } from "./pending-request-map.ts";
 import {
@@ -257,6 +258,19 @@ export {
   setViewsBroadcastWs,
 } from "./view-interaction-host.ts";
 export interface CurrentViewState {
+  /** Only a validated native switch acknowledgment may establish this history. */
+  navigationConfirmation?: {
+    ownerId: string;
+    handoffId: string;
+    installationId: string;
+    /** Alias verified by the prepared route, never supplied by its ack. */
+    resolvedAlias?: string;
+    previousView?: {
+      viewId: string;
+      installationId: string;
+      resolvedAlias?: string;
+    };
+  };
   viewId: string;
   viewPath: string | null;
   viewLabel: string;
@@ -763,11 +777,36 @@ export async function handleViewsRoutes(
     const commitCurrentViewState = (
       committedViewPath: string | null,
       announceSwitch = true,
+      confirmation?: {
+        ownerId: string;
+        handoffId: string;
+        resolvedAlias?: string;
+      },
     ) => {
       if (isCloseNavigation) {
         clearCurrentViewState(viewRuntime, scope);
         return;
       }
+      // Read at commit, not from the request's earlier asynchronous snapshot.
+      currentViewState = getCurrentViewState(viewRuntime, scope);
+      const priorConfirmation = currentViewState?.navigationConfirmation;
+      const previousConfirmed =
+        confirmation &&
+        priorConfirmation &&
+        priorConfirmation.ownerId === confirmation.ownerId &&
+        currentViewState &&
+        getView(viewRuntime, currentViewState.viewId, { viewType: "gui" })
+          ?.installationId === priorConfirmation?.installationId
+          ? currentViewState.viewId === id
+            ? priorConfirmation?.previousView
+            : {
+                viewId: currentViewState.viewId,
+                installationId: priorConfirmation.installationId,
+                ...(priorConfirmation.resolvedAlias
+                  ? { resolvedAlias: priorConfirmation.resolvedAlias }
+                  : {}),
+              }
+          : undefined;
       const now = new Date().toISOString();
       const source = reportedSource;
       // Stamp `switchedAt` only when the view actually changes; a re-navigate to
@@ -778,6 +817,17 @@ export async function handleViewsRoutes(
         ? now
         : (currentViewState?.switchedAt ?? now);
       currentViewState = {
+        ...(confirmation && typeof entry?.installationId === "string"
+          ? {
+              navigationConfirmation: {
+                ...confirmation,
+                installationId: entry.installationId,
+                ...(previousConfirmed
+                  ? { previousView: previousConfirmed }
+                  : {}),
+              },
+            }
+          : {}),
         viewId: id,
         viewPath: committedViewPath,
         viewLabel,
@@ -865,6 +915,7 @@ export async function handleViewsRoutes(
               "completedActionHandoffId",
               "viewType",
               "prepareOnly",
+              "resolvedAlias",
             ].includes(key),
         ) ||
         action ||
@@ -882,6 +933,14 @@ export async function handleViewsRoutes(
         );
         return true;
       }
+      // The action may carry its already resolved alias. Re-resolve it against
+      // this exact installed destination; arbitrary presentation text is ignored.
+      const requestedAlias =
+        typeof body.resolvedAlias === "string"
+          ? resolveViewNavigationTargets([entry], body.resolvedAlias)[0]
+              ?.resolvedAlias
+          : undefined;
+      const preparedBase = currentViewState;
       let settled: Promise<ViewInteractResult>;
       try {
         settled = viewInteractionHost(viewRuntime, ctx.hostKey).waitFor(
@@ -906,8 +965,14 @@ export async function handleViewsRoutes(
         .then((result) => {
           if (!result.success) return;
           assertRuntimeViewEntry(viewRuntime, entry);
+          // A manual or newer switch after preparation wins over this acknowledgment.
+          if (getCurrentViewState(viewRuntime, scope) !== preparedBase) return;
           // Explicit native navigation is not an invitation to a proactive greeting.
-          commitCurrentViewState(entry.path ?? null, false);
+          commitCurrentViewState(entry.path ?? null, false, {
+            ownerId,
+            handoffId,
+            ...(requestedAlias ? { resolvedAlias: requestedAlias } : {}),
+          });
         })
         .catch((error) => {
           viewRuntime.reportError("VIEWS.preparedNavigation", error, {
@@ -1420,6 +1485,7 @@ interface ViewInteractTransport {
   clientId?: string | null;
   runtime: IAgentRuntime;
   userRoles?: readonly RoleGateRole[];
+  ownerId?: string;
 }
 /**
  * Dispatch a capability to a view, reusing the established interact semantics.
@@ -1480,6 +1546,7 @@ export async function dispatchViewInteract(
       transport.clientId,
       entry,
       timeoutMs,
+      { ownerId: transport.ownerId },
     );
     const frame = {
       type: "view:interact",

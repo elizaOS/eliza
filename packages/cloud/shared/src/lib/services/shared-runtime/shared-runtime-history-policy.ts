@@ -47,8 +47,15 @@ const GROUNDING_STOP_WORDS = new Set([
   "with",
   "you",
 ]);
+// A pronoun alone does not request more public evidence. In particular, questions
+// about the assistant itself must not inherit a prior search's execution authority.
 const DEICTIC_GROUNDING_FOLLOW_UP =
-  /\b(?:it|that|this|those|these|they|them|result|results|source|sources|find|found|finding|findings|corrected|correction)\b/i;
+  /^\s*(?:(?:please|can you|could you|would you)\s+)?(?:(?:is|are|was|were)\s+(?:it|that|this|those|these)\s+(?:right|correct|accurate|true)\b|(?:check|recheck|verify|confirm|refresh|update)\s+(?:(?:it|that|this|those|these)\b|(?:(?:the|that|this)\s+)?(?:answer|claim|results?|sources?|price|forecast|score)\b)|(?:show|give|list|cite|explain|summari[sz]e)\s+(?:me\s+)?(?:(?:the|those|these)\s+)?(?:sources?|results?|findings)\b|(?:what|where)\s+(?:is|are)\s+(?:the\s+)?sources?\b|(?:wrong|incorrect|check again|try again|prove it)\s*[.!?]*$)/i;
+
+/** An explicit request to revisit public evidence, rather than a new conversation topic. */
+export function isSharedPublicGroundingFollowUp(message: string): boolean {
+  return DEICTIC_GROUNDING_FOLLOW_UP.test(message.normalize("NFKC").trim());
+}
 export type SharedRuntimeHistoryMessageLike = SharedRuntimeHistoryMessage;
 
 const HTTP_URL = /https?:\/\/[^\s<>"']+/giu;
@@ -373,15 +380,9 @@ function selectedGrounding(
     const grounding =
       message.role === "assistant" ? parseSharedPublicWebGrounding(message.grounding) : undefined;
     if (!grounding) return [];
-    let precedingUserQuery = "";
-    for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
-      if (history[cursor].role !== "user") continue;
-      precedingUserQuery = history[cursor].content;
-      break;
-    }
-    // User text and the validated tool query are trusted selection inputs;
-    // assistant prose and provider result text remain excluded.
-    const trustedWords = groundingWords(`${precedingUserQuery}\n${grounding.query}`);
+    // Match the public topic recorded by the tool, not formatting instructions
+    // in the preceding user turn. Those can recur in unrelated requests.
+    const trustedWords = groundingWords(grounding.query);
     let overlap = 0;
     for (const word of query) if (trustedWords.has(word)) overlap += 1;
     const immediate = !history
@@ -415,7 +416,7 @@ function selectedGrounding(
         (left, right) =>
           right.grounding.observedAt - left.grounding.observedAt || right.index - left.index,
       );
-  } else if (DEICTIC_GROUNDING_FOLLOW_UP.test(queryText)) {
+  } else if (isSharedPublicGroundingFollowUp(queryText)) {
     ranked = candidates
       .filter((candidate) => candidate.immediate)
       .sort(

@@ -11,10 +11,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  asObjectRecord as asRecord,
-  readViewInteractionClientId,
-} from "@elizaos/core/protocol";
+import { readViewInteractionClientId } from "@elizaos/core/protocol";
 import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
@@ -24,6 +21,7 @@ import {
   type BrowserDispatchFailure,
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
+import { isNativeBrowserRequest } from "../native-browser-request.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -812,6 +810,7 @@ async function executeBrowserWaitForUrl(
 
 export const browserAction: Action = {
   name: "BROWSER",
+  egress: ["owner-device", "public-network"],
   contexts: ["browser", "web", "automation", "secrets"],
   roleGate: { minRole: "OWNER" },
   similes: [
@@ -845,7 +844,12 @@ export const browserAction: Action = {
   // Wait for the browser result before the model writes its reply. A speculative
   // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
-  validate: async () => true,
+  // The requesting native Browser is its own target.
+  validate: async (runtime, message) => {
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+    if (!service) return false;
+    return isNativeBrowserRequest(message) || service.hasActionableTarget();
+  },
   handler: async (
     runtime,
     message,
@@ -858,8 +862,7 @@ export const browserAction: Action = {
       | undefined;
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
-    const nativePage =
-      asRecord(message.content.metadata)?.uiBrowserSurface === "native";
+    const nativePage = isNativeBrowserRequest(message);
 
     if (
       nativePage &&

@@ -67,7 +67,7 @@ jobs:
         run: |
           test -n "$OPENAI_API_KEY" || { echo 'OPENAI_API_KEY is required'; exit 1; }
           bun packages/benchmarks/framework/typescript/src/bench.ts --real-llm --scenarios=single-message --iterations=1 --warmup=0 --output=/tmp/framework-live.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: framework-live
           path: /tmp/framework-live.json

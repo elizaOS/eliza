@@ -1,6 +1,7 @@
 package ai.eliza.plugins.agent.runtime;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.*;
 import java.util.Map;
 import java.util.UUID;
@@ -42,6 +43,35 @@ public final class InstalledRuntimeLibraries {
     }
     if (selected == null) throw new IOException("Installed embedded runtime loader is unavailable");
     return selected;
+  }
+
+  /** Select the loader for an independently expected Android ABI and check that the
+   * loader, bun and its libraries are 64-bit little-endian ELF files for that machine.
+   * The seccomp wrapper's real loader and syscall shim are checked when present. */
+  public static Path requireAbi(Path installed, String abi) throws IOException {
+    String name; int machine;
+    if ("arm64-v8a".equals(abi)) { name = "libeliza_ld_musl_aarch64.so"; machine = 183; }
+    else if ("x86_64".equals(abi)) { name = "libeliza_ld_musl_x86_64.so"; machine = 62; }
+    else throw new IOException("Unsupported runtime ABI");
+    Path selected = loader(installed);
+    if (!selected.getFileName().toString().equals(name))
+      throw new IOException("Installed runtime loader differs from expected ABI");
+    for (String library : new String[]{name, "libeliza_bun.so", "libeliza_stdcpp.so", "libeliza_gcc_s.so"})
+      requireElf(installed.resolve(library), machine);
+    for (String library : new String[]{name.replace(".so", "_real.so"), "libsigsys-handler.so"})
+      if (Files.exists(installed.resolve(library), LinkOption.NOFOLLOW_LINKS)) requireElf(installed.resolve(library), machine);
+    return selected;
+  }
+
+  private static void requireElf(Path library, int machine) throws IOException {
+    byte[] header = new byte[20];
+    int read = 0;
+    try (InputStream input = Files.newInputStream(library)) {
+      for (int count; read < header.length && (count = input.read(header, read, header.length - read)) >= 0; ) read += count;
+    }
+    if (read != header.length || header[0] != 0x7f || header[1] != 'E' || header[2] != 'L' || header[3] != 'F'
+        || header[4] != 2 || header[5] != 1 || ((header[18] & 255) | (header[19] & 255) << 8) != machine)
+      throw new IOException("Installed runtime library differs from expected ABI: " + library.getFileName());
   }
 
   /** Standard sonames used by the bundled Linux runtime. */

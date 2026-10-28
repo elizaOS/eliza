@@ -19,3 +19,14 @@ Android 10+ connection success means an Internet network suggestion was accepted
 not that association completed. Do not create a second local-only peer request or
 retain network callbacks. Connection security comes from Android security type
 or a matching scan result; unavailable security rejects rather than reporting open.
+
+`addNetworkWithApproval` (Android 11+) opens the system "Save this network?"
+dialog, so ordinary apps can join a network without a privileged permission.
+It resolves `connected` or `captivePortal` only when Android reports that
+state for a Wi-Fi network whose own name equals the requested SSID; another
+Wi-Fi network, such as the one already joined, never counts. Android discloses
+names only with location access and Location on. When no matching network is
+confirmed within 30 seconds it resolves `unverified` if a working Wi-Fi network
+with a withheld name was seen, otherwise `notConnected`.
+`getConnectivity` reports Android's own Internet
+validation and captive-portal state for the active network.

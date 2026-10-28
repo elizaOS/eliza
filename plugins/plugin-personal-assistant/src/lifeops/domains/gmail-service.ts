@@ -769,6 +769,10 @@ export class GmailDomain {
       side,
       grantId,
     );
+    await this.ctx.repository.deleteCachedInboxMessagesForGmailAccount(
+      this.ctx.agentId(),
+      grantId,
+    );
     return {
       provider: "google",
       side,

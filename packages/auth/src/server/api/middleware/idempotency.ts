@@ -1,5 +1,12 @@
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { createMiddleware } from "hono/factory";
+import { createDatabaseAuthSql } from "../../auth/auth-sql";
+import { PostgresBackend } from "../../auth/store-backends";
+import {
+  isCloudflareSpendMetricsConfigured,
+  readCloudflareReplayMetrics,
+  recordCloudflareReplayMetric,
+} from "../../redis/cloudflare-spend-metrics";
 import { redactedThrownDiagnostics } from "../../shared/index.ts";
 import type { ApiResponse, AppVariables } from "../services/context";
 import { isRecentMfaTimestamp } from "../services/recent-mfa";
@@ -183,10 +190,19 @@ async function recordIdempotencyMetricInRedis(
   counter: keyof IdempotencyMetricCounters,
   now: number,
 ): Promise<void> {
-  const redis = getRedisClient();
-  if (!redis) return;
-  const key = metricsRedisKey(tenantId);
   try {
+    if (isCloudflareSpendMetricsConfigured()) {
+      await recordCloudflareReplayMetric(
+        tenantId,
+        counter,
+        now,
+        metricsTtlSeconds(),
+      );
+      return;
+    }
+    const redis = getRedisClient();
+    if (!redis) return;
+    const key = metricsRedisKey(tenantId);
     const existingWindow = await redis.hget(key, "windowStartedAt");
     const pipeline = redis.multi();
     if (!existingWindow) pipeline.hset(key, "windowStartedAt", String(now));
@@ -198,7 +214,7 @@ async function recordIdempotencyMetricInRedis(
     logger.error(
       {
         details: [
-          "[steward:idempotency] Failed to record Redis idempotency metrics",
+          "[steward:idempotency] Failed to record durable idempotency metrics",
           redactedThrownDiagnostics(error),
         ],
       },
@@ -231,8 +247,11 @@ async function snapshotFromRedis(
   now: number,
 ): Promise<TenantIdempotencyMetricsSnapshot | null> {
   const redis = getRedisClient();
-  if (!redis) return null;
-  const fields = await redis.hgetall(metricsRedisKey(tenantId));
+  const fields = isCloudflareSpendMetricsConfigured()
+    ? await readCloudflareReplayMetrics(tenantId)
+    : redis
+      ? await redis.hgetall(metricsRedisKey(tenantId))
+      : null;
   if (!fields || Object.keys(fields).length === 0) return null;
 
   const counters = emptyIdempotencyCounters();
@@ -505,7 +524,70 @@ export class RedisIdempotencyStore implements IdempotencyStore {
   }
 }
 
-export const defaultIdempotencyStore = new RedisIdempotencyStore();
+/** Uses the runtime-owned database and its existing durable key/value store. */
+export class DatabaseIdempotencyStore implements IdempotencyStore {
+  private readonly backend = new PostgresBackend(
+    "idempotency",
+    createDatabaseAuthSql(),
+  );
+
+  async get(key: string): Promise<IdempotencyEntry | undefined> {
+    return parseEntry(await this.backend.get(key));
+  }
+
+  async setProcessing(
+    key: string,
+    entry: Omit<IdempotencyEntry, "status" | "response">,
+  ): Promise<void> {
+    await this.reserve(key, entry);
+  }
+
+  async reserve(
+    key: string,
+    entry: Omit<IdempotencyEntry, "status" | "response">,
+  ): Promise<IdempotencyEntry | undefined> {
+    const reserved = await this.backend.setIfNotExists(
+      key,
+      serializeEntry({ ...entry, status: "processing" }),
+      Math.max(1, entry.expiresAt - Date.now()),
+    );
+    return reserved ? undefined : this.get(key);
+  }
+
+  async setCompleted(
+    key: string,
+    response?: NonNullable<IdempotencyEntry["response"]>,
+  ): Promise<void> {
+    const stored = await this.backend.get(key);
+    const existing = parseEntry(stored);
+    if (!stored || !existing) return;
+    const completed = await this.backend.transition(
+      key,
+      stored,
+      serializeEntry({ ...existing, status: "completed", response }),
+      Math.max(1, existing.expiresAt - Date.now()),
+    );
+    if (!completed) {
+      throw new ElizaError("The request receipt changed before completion", {
+        code: "LOGIN_IDEMPOTENCY_RECEIPT_CHANGED",
+      });
+    }
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.backend.delete(key);
+  }
+}
+
+export let defaultIdempotencyStore: IdempotencyStore =
+  new RedisIdempotencyStore();
+
+/** Select before constructing the app; reset when the owning runtime stops. */
+export function setDatabaseIdempotencyStore(enabled: boolean): void {
+  defaultIdempotencyStore = enabled
+    ? new DatabaseIdempotencyStore()
+    : new RedisIdempotencyStore();
+}
 
 async function buildFingerprint(request: Request): Promise<string> {
   const url = new URL(request.url);

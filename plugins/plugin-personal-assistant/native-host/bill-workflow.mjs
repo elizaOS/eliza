@@ -3,7 +3,17 @@ import { matchBillControl, validateBillControls } from "./bill-controls.mjs";
 import { BillHostError } from "./errors.mjs";
 import { GuidedWebsiteWorkflow } from "./guided-website-workflow.mjs";
 
-const blocked = (reason) => ({ kind: "blocked", reason });
+/** Fixed workflow words carry a `reasonCode`, so a host never matches the words. */
+const blocked = (reason, reasonCode) => ({
+  kind: "blocked",
+  reason,
+  reasonCode,
+});
+const unknownOutcome = (reasonCode, message) => ({
+  kind: "unknown-outcome",
+  reasonCode,
+  message,
+});
 const personGuidance = (kind) =>
   [
     "human-review",
@@ -28,6 +38,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     controls,
     selectionGuidance = null,
     receipts = null,
+    assistantName = "Eliza",
     stillAuthorized = async () => true,
     signal = new AbortController().signal,
   }) {
@@ -43,6 +54,12 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
         selectionGuidance.unavailableMessage.length > 600)
     )
       throw new BillHostError("Invalid required selection guidance policy");
+    if (
+      typeof assistantName !== "string" ||
+      !assistantName.trim() ||
+      assistantName.length > 64
+    )
+      throw new BillHostError("Invalid assistant name");
     super({ runtime, actuator, taskId, stillAuthorized, signal });
     Object.assign(this, {
       selectionGuidance: structuredClone(selectionGuidance),
@@ -51,6 +68,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       outcomes,
       codeCoordinator,
       receipts,
+      assistantName,
       controls: validateBillControls(controls),
     });
   }
@@ -117,7 +135,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     }
     const instruction =
       decision.message ||
-      "Review the existing payment method on the website before choosing it in Eliza.";
+      `Review the existing payment method on the website before choosing it in ${this.assistantName}.`;
     const matches = discovered
       ? snapshot.elements.filter(
           (element) => element.selector === decision.guidanceTarget,
@@ -186,11 +204,10 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       await this.clearGuidance();
       if (!(await this.stillAuthorized()) || this.signal.aborted) throw error;
       if (this.hasPaymentHistory())
-        return {
-          kind: "unknown-outcome",
-          message:
-            "A submission or outcome was previously observed for this bill, but its current status cannot be checked now. Check the provider status before considering another payment.",
-        };
+        return unknownOutcome(
+          "status-unavailable",
+          "A submission or outcome was previously observed for this bill, but its current status cannot be checked now. Check the provider status before considering another payment.",
+        );
       throw error;
     }
     const read = this.actuator.readObservation(task.id, this.runtime.owner);
@@ -218,7 +235,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     if (decision.kind === "outcome") {
       await this.clearGuidance();
       if (!(await this.stillAuthorized()))
-        return blocked("Task authorization changed.");
+        return blocked("Task authorization changed.", "authorization-changed");
       // The website already shows this bill paid or scheduled, but this task
       // neither reviewed nor submitted a payment and saved no outcome. It is
       // not this task's payment when no task submitted one, or when an earlier
@@ -280,6 +297,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
         : {
             ...decision,
             saveStatus: "pending",
+            reasonCode: "outcome-storage-unavailable",
             message:
               "The website outcome was observed, but local outcome storage is not connected.",
           };
@@ -289,19 +307,17 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       if (!(await this.stillAuthorized()) || this.signal.aborted)
         throw new BillHostError("Task authorization changed");
       if (!this.outcomes?.recordSubmission)
-        return {
-          kind: "unknown-outcome",
-          message:
-            "The website shows a submission, but its local record is unavailable. Check the provider status; do not submit another payment.",
-        };
+        return unknownOutcome(
+          "submission-storage-unavailable",
+          "The website shows a submission, but its local record is unavailable. Check the provider status; do not submit another payment.",
+        );
       try {
         this.outcomes.recordSubmission(decision, observation.id);
       } catch {
-        return {
-          kind: "unknown-outcome",
-          message:
-            "The website shows a submission, but saving its local record failed. Check the provider status; do not submit another payment.",
-        };
+        return unknownOutcome(
+          "submission-save-failed",
+          "The website shows a submission, but saving its local record failed. Check the provider status; do not submit another payment.",
+        );
       }
       return decision;
     }
@@ -314,6 +330,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       await this.clearGuidance();
       return blocked(
         "The saved payment review belongs to a different bill. Check the original task before continuing.",
+        "review-other-bill",
       );
     }
     const activity = await this.manualActivity(snapshot);
@@ -351,17 +368,15 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
           observation.id,
         );
       } catch {
-        return {
-          kind: "unknown-outcome",
-          message:
-            "Payment activity may have occurred, but its local record could not be saved. Check the provider status; do not submit another payment.",
-        };
+        return unknownOutcome(
+          "activity-save-failed",
+          "Payment activity may have occurred, but its local record could not be saved. Check the provider status; do not submit another payment.",
+        );
       }
-      return {
-        kind: "unknown-outcome",
-        message:
-          "A form was sent on this website while it was yours. This does not confirm a payment. Check the provider status before trying again.",
-      };
+      return unknownOutcome(
+        "manual-submit",
+        "A form was sent on this website while it was yours. This does not confirm a payment. Check the provider status before trying again.",
+      );
     }
     if (previousReview && activity) {
       const submission = activity.events.some(
@@ -385,26 +400,23 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
         try {
           this.outcomes.recordSubmission(uncertain, observation.id);
         } catch {
-          return {
-            kind: "unknown-outcome",
-            message:
-              "Payment activity may have occurred, but its local record could not be saved. Check the provider status; do not submit another payment.",
-          };
+          return unknownOutcome(
+            "activity-save-failed",
+            "Payment activity may have occurred, but its local record could not be saved. Check the provider status; do not submit another payment.",
+          );
         }
-        return {
-          kind: "unknown-outcome",
-          message:
-            "There was form activity or a gap in observation after payment review. This does not confirm a payment. Check the provider status before trying again.",
-        };
+        return unknownOutcome(
+          "activity-after-review",
+          "There was form activity or a gap in observation after payment review. This does not confirm a payment. Check the provider status before trying again.",
+        );
       }
     }
     if (this.hasPaymentHistory()) {
       await this.clearGuidance();
-      return {
-        kind: "unknown-outcome",
-        message:
-          "A submission or outcome was previously observed for this bill. Check the provider status before considering another payment.",
-      };
+      return unknownOutcome(
+        "prior-payment",
+        "A submission or outcome was previously observed for this bill. Check the provider status before considering another payment.",
+      );
     }
     if (
       decision.kind === "human-verification" &&
@@ -496,7 +508,10 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
           !(await this.stillAuthorized()) ||
           this.signal.aborted
         )
-          return blocked("Task authorization changed.");
+          return blocked(
+            "Task authorization changed.",
+            "authorization-changed",
+          );
         const current = this.runtime.get(this.taskId);
         if (current.status === "active") {
           // The offered choice is consumed even though no effect was dispatched.
@@ -510,6 +525,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     if (decision.reviewKey !== expectedReviewKey)
       return {
         ...decision,
+        reasonCode: "review-changed",
         message: "Review the current details before choosing this method.",
       };
     const task = this.runtime.get(this.taskId);
@@ -519,9 +535,12 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     );
     const target = matchBillControl(snapshot, this.controls.existingMethod);
     if (!target)
-      return blocked("The existing-method control is not unambiguous.");
+      return blocked(
+        "The existing-method control is not unambiguous.",
+        "method-control-ambiguous",
+      );
     if (!isCurrent() || !(await this.stillAuthorized()))
-      return blocked("Task authorization changed.");
+      return blocked("Task authorization changed.", "authorization-changed");
     const proposal = {
       id: operationId,
       taskId: task.id,
@@ -536,7 +555,10 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
     };
     if (!this.outcomes?.recordMethodSelection) {
       await this.clearGuidance();
-      return blocked("Durable method selection storage is unavailable.");
+      return blocked(
+        "Durable method selection storage is unavailable.",
+        "selection-storage-unavailable",
+      );
     }
     try {
       this.outcomes.recordMethodSelection(decision, proposal, snapshot);
@@ -544,6 +566,7 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
       await this.clearGuidance();
       return blocked(
         "The reviewed method could not be saved. No selection was sent.",
+        "selection-save-failed",
       );
     }
     const result = await this.runtime.execute(task.id, task.revision, proposal);
@@ -562,14 +585,14 @@ export class BillWorkflow extends GuidedWebsiteWorkflow {
         });
       return blocked(
         "The saved payment method was not selected. No click was sent.",
+        "selection-not-sent",
       );
     }
     if (status !== "succeeded")
-      return {
-        kind: "unknown-outcome",
-        message:
-          "Method selection was not verified. Check the website before continuing.",
-      };
+      return unknownOutcome(
+        "selection-unverified",
+        "Method selection was not verified. Check the website before continuing.",
+      );
     return this.refresh();
   }
 }

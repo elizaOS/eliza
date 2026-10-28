@@ -523,7 +523,7 @@ if (!/\bespeak_TextToPhonemes\b/.test(builtSymbols)) {
   );
 }
 // parakeet_lib is static and hidden too; without it asr_stream_supported()
-// stays 0 and the bundle's Phonon-2 GGUF would fall through to Qwen3-ASR.
+// stays 0 and the bundle's Phonon-2 GGUF could not load.
 for (const symbol of ["pk_model_load", "pk_stream_open"]) {
   if (!new RegExp(`\\b${symbol}\\b`).test(builtSymbols)) {
     die(

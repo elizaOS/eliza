@@ -227,6 +227,22 @@ export function normalizeRawParsedForFieldRegistry(
   return normalized;
 }
 
+/**
+ * Direct inferences strong enough to keep the planner's full required-tool
+ * corrective budget instead of the "inferred" early acceptance of a repeated
+ * terminal answer. Coding work is anchored to an operation plus a code
+ * artifact; relaxing it lets a planner ship a repeated progress/fallback
+ * answer without ever executing delegation. Media generation is anchored to
+ * a generation verb on a media artifact (or a request naming the generator);
+ * relaxing it lets a planner repeat a capability denial carried in room
+ * history instead of calling the generator it was handed.
+ */
+function keepsFullRequiredToolBudget(
+  kind: DirectCurrentRequestCandidateInference["kind"],
+): boolean {
+  return kind === "coding" || kind === "media-generation";
+}
+
 function requireCompleteIntents(value: unknown): string[] {
   const intents = readCompleteStringHints(value);
   if (intents === null) {
@@ -355,14 +371,22 @@ export function messageHandlerFromFieldResult(
   const replyTextRaw = stripJsonStructuralJunkReply(
     typeof result.replyText === "string" ? result.replyText : "",
   );
-  const replyEffectStatus = normalizeReplyEffectStatus(
-    result.replyEffectStatus,
-  );
   const declaredIntents = requireCompleteIntents(result.intents);
   const actionableIntents = declaredIntents.filter(
     (intent) => intent.trim().length > 0,
   );
   const modelRequiresTool = result.requiresTool === true;
+  const declaredReplyEffectStatus = normalizeReplyEffectStatus(
+    result.replyEffectStatus,
+  );
+  // applied classifies the reply's own completed-change claim. An empty reply
+  // makes none, so the claimed change is still work the planner owes.
+  const replyEffectStatus =
+    declaredReplyEffectStatus === "applied" &&
+    !replyTextRaw.trim() &&
+    sourceReply === undefined
+      ? "pending"
+      : declaredReplyEffectStatus;
   const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
     candidateActions,
     runtimeContext,
@@ -746,16 +770,14 @@ export function messageHandlerFromFieldResult(
   // required-tool enforcement — stand on deterministic text inference alone
   // (coding backstop, ack inference, or direct inference). Record that so
   // the planner loop can accept a firmly repeated terminal answer early
-  // instead of burning the full miss budget on a heuristic's guess. Coding
-  // work is deliberately excluded: that inference is structurally anchored
-  // to an operation plus a code artifact, and relaxing it lets a planner ship
-  // a repeated progress/fallback answer without ever executing delegation.
+  // instead of burning the full miss budget on a heuristic's guess. Strong
+  // inferences are excluded (see keepsFullRequiredToolBudget).
   if (
     shouldPlan &&
     !modelRequiresTool &&
     effectiveCandidateActions.length > 0 &&
     rawCandidateActions.length === 0 &&
-    directCurrentInference.kind !== "coding"
+    !keepsFullRequiredToolBudget(directCurrentInference.kind)
   ) {
     plan.requiredToolEvidence = "inferred";
   }
@@ -1024,13 +1046,12 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
       ...(viewOverlapMissBudget !== undefined
         ? { requiredToolMissBudget: viewOverlapMissBudget }
         : {}),
-      // Same relaxable-inference stamp as the structured path. Strong coding
-      // work orders keep the full corrective budget so a repeated terminal
-      // fallback cannot impersonate completed delegation.
+      // Same relaxable-inference stamp as the structured path; strong
+      // inferences keep the full corrective budget.
       ...(getMessageHandlerCandidateActions(messageHandler).length === 0
-        ? directCurrentInference.kind !== "coding"
-          ? { requiredToolEvidence: "inferred" as const }
-          : {}
+        ? keepsFullRequiredToolBudget(directCurrentInference.kind)
+          ? {}
+          : { requiredToolEvidence: "inferred" as const }
         : {}),
     },
   };

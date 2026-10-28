@@ -33,11 +33,11 @@
         "@elizaos/core": "workspace:*"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.15",
-        "tsup": "^8.5.1",
+        "@biomejs/biome": "2.6.3",
+        "tsup": "^9.0.0",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
-        "vitest": "^5.0.3"
+        "vitest": "^5.0.5"
     },
     "scripts": {
         "build": "tsup --format esm --dts",

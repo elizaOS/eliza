@@ -11,7 +11,7 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/testing": "workspace:*",
     "@elizaos/cloud-services-common": "workspace:*",
-    "drizzle-orm": "0.45.3"
+    "drizzle-orm": "0.45.4"
   },
   "scripts": {
     "sms-gateway:continue": "node ./gateway/continue-sms-gateway-work.ts",
@@ -23,6 +23,8 @@
     "sms-gateway:verify:cloud-prod": "node ./gateway/verify-cloud-api-production-deploy.ts"
   },
   "devDependencies": {
-    "playwright": "^1.64.0"
+    "playwright": "^1.64.1",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1"
   }
 }

@@ -187,4 +187,41 @@ describe("ensureConnection", () => {
 		expect(entity?.metadata?.discord).toEqual({ userName: "discord_handle" });
 		expect(entity?.metadata?.telegram).toEqual({ userName: "telegram_handle" });
 	});
+
+	it("keeps a room's stored server binding when a later connection omits it", async () => {
+		const agentId = stringToUuid("connection-binding-agent");
+		const adapter = SQLiteDatabaseAdapter.create(":memory:", agentId);
+		await adapter.initialize();
+		const entityId = stringToUuid("connection-binding-entity");
+		const roomId = stringToUuid("connection-binding-room");
+		const worldId = stringToUuid("connection-binding-world");
+		const serverId = "423456789012345678";
+		const messageServerId = stringToUuid(serverId);
+
+		await ensureConnection(adapter, {
+			agentId,
+			entityId,
+			roomId,
+			worldId,
+			messageServerId,
+			serverId,
+			source: "discord",
+			channelId: "523456789012345678",
+		});
+
+		// A later connection to the same room only knows the world and the
+		// channel, as a caller that resolves the room before the guild does.
+		await ensureConnection(adapter, {
+			agentId,
+			entityId: stringToUuid("connection-binding-other-entity"),
+			roomId,
+			worldId,
+			source: "discord",
+			channelId: "523456789012345678",
+		});
+
+		const [room] = await adapter.getRoomsByIds([roomId]);
+		expect(room?.serverId).toBe(serverId);
+		expect(room?.messageServerId).toBe(messageServerId);
+	});
 });

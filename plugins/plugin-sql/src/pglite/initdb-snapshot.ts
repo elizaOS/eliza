@@ -32,7 +32,7 @@ const isMemoryDataDir = (dataDir: unknown): boolean =>
 export function initdbSnapshotPath(
   options: PGliteOptions,
   env: Record<string, string | undefined> = process.env,
-  bundleUrl: string = import.meta.url,
+  bundleUrl: string = import.meta.url
 ): string | null {
   const withData = options as PGliteOptions & {
     dataDir?: unknown;
@@ -60,13 +60,26 @@ export function readInitdbSnapshot(
     } catch {
       return null;
     }
-  },
+  }
 ): Blob | null {
   if (!path) return null;
   const bytes = size(path);
   if (bytes === null || bytes < 2 || bytes > MAX_INITDB_SNAPSHOT_BYTES) return null;
-  const data = read(path);
+  let data: Uint8Array;
+  try {
+    data = read(path);
+  } catch {
+    return null;
+  }
   // gzip magic: a file that is not a gzip archive is not a snapshot.
-  if (data.length < 2 || data[0] !== 0x1f || data[1] !== 0x8b) return null;
-  return new Blob([data], { type: "application/x-gzip" });
+  if (
+    data.byteLength < 2 ||
+    data.byteLength > MAX_INITDB_SNAPSHOT_BYTES ||
+    data[0] !== 0x1f ||
+    data[1] !== 0x8b
+  )
+    return null;
+  // Copy only the view into an ArrayBuffer-backed array. A Buffer can point
+  // into a larger pool; its backing buffer is not necessarily the payload.
+  return new Blob([new Uint8Array(data)], { type: "application/x-gzip" });
 }

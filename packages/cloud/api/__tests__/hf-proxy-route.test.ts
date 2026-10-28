@@ -115,3 +115,20 @@ test("a download the upstream cuts off is charged only the bytes sent", async ()
 
   expect(await chargedBytes()).toBe(MiB);
 });
+
+test("selected Cloudflare quota without its binding refuses the download before upstream I/O", async () => {
+  let calls = 0;
+  globalThis.fetch = (async (
+    _input: Parameters<typeof fetch>[0],
+  ): Promise<Response> => {
+    calls += 1;
+    throw new Error("Upstream must not be reached without quota ownership");
+  }) as typeof fetch;
+  const response = await app.request(
+    `/api/v1/hf-proxy/${ELIZA_1_HF_REPO}/resolve/main/model.gguf`,
+    {},
+    { ...env, CLOUD_HF_EGRESS_BACKEND: "cloudflare" },
+  );
+  expect(response.status).toBe(503);
+  expect(calls).toBe(0);
+});

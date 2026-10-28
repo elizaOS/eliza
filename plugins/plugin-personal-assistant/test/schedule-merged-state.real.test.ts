@@ -7,6 +7,16 @@ import type { AgentRuntime } from "@elizaos/core";
 import { createLifeOpsSleepEpisode } from "@elizaos/plugin-health";
 import { describe, expect, it, vi } from "vitest";
 import { createRealTestRuntime } from "../../../packages/app/test/helpers/real-runtime.ts";
+import {
+  createChannelRegistry,
+  registerChannelRegistry,
+  registerDefaultChannelPack,
+} from "../src/lifeops/channels/index.js";
+import {
+  createConnectorRegistry,
+  registerConnectorRegistry,
+} from "../src/lifeops/connectors/index.js";
+import { createTelegramConnectorContribution } from "../src/lifeops/connectors/telegram.js";
 import { resolveDefaultTimeZone } from "../src/lifeops/defaults.js";
 import { resolveOwnerFactStore } from "../src/lifeops/owner/fact-store.js";
 import { resolveNextRelativeScheduleInstant } from "../src/lifeops/relative-schedule-resolver.js";
@@ -498,6 +508,72 @@ describe("merged schedule state", () => {
       expect(await delivered()).toHaveLength(1);
     } finally {
       vi.useRealTimers();
+      await fixture.cleanup();
+    }
+  });
+
+  it("sends a check-in once on the owner's Telegram instead of also on in-app", async () => {
+    const fixture = await createFixture("lifeops-checkin-single-send");
+    const telegramSend = vi
+      .spyOn(LifeOpsService.prototype, "sendTelegramMessage")
+      .mockResolvedValue({ messageId: "tg-42" } as Awaited<
+        ReturnType<LifeOpsService["sendTelegramMessage"]>
+      >);
+    try {
+      const connectors = createConnectorRegistry();
+      connectors.register(createTelegramConnectorContribution(fixture.runtime));
+      registerConnectorRegistry(fixture.runtime, connectors);
+      const channels = createChannelRegistry();
+      registerDefaultChannelPack(channels, fixture.runtime);
+      registerChannelRegistry(fixture.runtime, channels);
+      const domain = (
+        fixture.service as unknown as {
+          remindersDomain: {
+            ctx: { emitAssistantEvent: (...args: unknown[]) => boolean };
+            resolveCheckinRouteTarget: (channel: string) => Promise<string>;
+            dispatchCheckinReport: (args: {
+              reportId: string;
+              kind: "night";
+              message: string;
+              metadata: Record<string, unknown>;
+            }) => Promise<{ ok: boolean; messageId?: string }>;
+          };
+        }
+      ).remindersDomain;
+      domain.resolveCheckinRouteTarget = async () => "owner-chat";
+      const inAppEmit = vi
+        .spyOn(domain.ctx, "emitAssistantEvent")
+        .mockReturnValue(true);
+
+      const delivery = await domain.dispatchCheckinReport({
+        reportId: "report-night-1",
+        kind: "night",
+        message: "How did today go?",
+        metadata: {
+          contactRouteCandidates: [
+            {
+              channel: "telegram",
+              score: 2100,
+              evidence: ["active platform"],
+              vetoReasons: [],
+              interruptionBudget: "normal",
+            },
+            {
+              channel: "in_app",
+              score: 450,
+              evidence: ["in-app surface"],
+              vetoReasons: [],
+              interruptionBudget: "normal",
+            },
+          ],
+        },
+      });
+
+      expect(telegramSend).toHaveBeenCalledTimes(1);
+      expect(inAppEmit).not.toHaveBeenCalled();
+      expect(delivery).toMatchObject({ ok: true, messageId: "tg-42" });
+    } finally {
+      telegramSend.mockRestore();
       await fixture.cleanup();
     }
   });

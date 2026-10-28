@@ -28,13 +28,13 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
-    "hono": "4.13.8",
+    "hono": "4.13.11",
     "@elizaos/testing": "workspace:*",
     "@elizaos/contracts": "workspace:*"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "1.4.2",
-    "vite": "^8.3.0"
+    "vite": "^8.3.3"
   }
 }

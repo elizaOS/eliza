@@ -290,9 +290,14 @@ describe("GET /api/local-inference/voice-models", () => {
 		expect(kokoro?.pinned).toBe(true);
 		const wakeword = body.installations.find((i) => i.id === "wakeword");
 		expect(wakeword?.installedVersion).toBe("0.1.0");
-		const asr = body.installations.find((i) => i.id === "asr");
-		expect(asr).toBeDefined();
-		expect(asr?.installedVersion).toBeNull();
+		// Device ASR ships inside mobile-voice (Phonon-2); there is no
+		// standalone `asr` voice model any more.
+		expect(body.installations.some((i) => i.id === "asr")).toBe(false);
+		const mobileVoice = body.installations.find(
+			(i) => i.id === "mobile-voice",
+		);
+		expect(mobileVoice).toBeDefined();
+		expect(mobileVoice?.installedVersion).toBeNull();
 	});
 });
 
@@ -377,7 +382,7 @@ describe("POST /api/local-inference/voice-models/:id/pin", () => {
 		await fsp.mkdir(path.join(tmpRoot, "local-inference"), { recursive: true });
 		await fsp.writeFile(
 			path.join(tmpRoot, "local-inference", "voice-update-pins.json"),
-			JSON.stringify({ pinned: ["kokoro", "asr"] }),
+			JSON.stringify({ pinned: ["kokoro", "mobile-voice"] }),
 		);
 		const { res, captured } = makeRes();
 		await handleVoiceModelsRoutes(
@@ -394,7 +399,7 @@ describe("POST /api/local-inference/voice-models/:id/pin", () => {
 			path.join(tmpRoot, "local-inference", "voice-update-pins.json"),
 			"utf8",
 		);
-		expect(JSON.parse(raw)).toEqual({ pinned: ["asr"] });
+		expect(JSON.parse(raw)).toEqual({ pinned: ["mobile-voice"] });
 	});
 
 	it("404s for unknown ids", async () => {

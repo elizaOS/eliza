@@ -4,7 +4,7 @@
  *
  * Accepts raw audio bytes or a base64 `audioBase64` JSON body and transcribes
  * through the registered TRANSCRIPTION model handler via `transcribeWavWithWords`
- * (fused Gemma ASR runtime). Status reports ready only when both a TRANSCRIPTION
+ * (Phonon-2 on libelizainference). Status reports ready only when both a TRANSCRIPTION
  * handler is registered and the active Eliza-1 bundle can transcribe locally.
  * Request/response `close` events abort the in-flight decode so a disconnecting
  * client frees the model promptly.
@@ -119,7 +119,7 @@ export async function handleLocalInferenceAsrRoute(
 	if (method === "GET" && url.pathname === "/api/asr/local-inference/status") {
 		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		// Transcription runs through the registered TRANSCRIPTION model handler,
-		// backed by the fused Gemma ASR runtime. A handler alone is not enough:
+		// backed by Phonon-2 on libelizainference. A handler alone is not enough:
 		// the active or assigned Eliza-1 bundle must stage an eligible ASR model.
 		const getModel = state.current?.getModel;
 		const runtimeAsr =

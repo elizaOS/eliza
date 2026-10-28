@@ -4,7 +4,13 @@
  * via a fake runtime; no audio is synthesized.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	mkdtempSync,
+	rmSync,
+	truncateSync,
+	writeFileSync,
+} from "node:fs";
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -21,6 +27,7 @@ vi.hoisted(() => {
 	process.env.LOG_LEVEL = "info";
 });
 
+import { PARADEE_MODEL_FILES } from "../services/voice/paradee/paradee-engine-discovery";
 import type { CompatRuntimeState } from "./compat-helpers";
 import {
 	handleLocalInferenceTtsRoute,
@@ -244,24 +251,33 @@ describe("local inference TTS route", () => {
 	describe("desktop engine provider status", () => {
 		let stateDir: string;
 		let kokoroDir: string;
-		const prevEnv = {
-			state: process.env.ELIZA_STATE_DIR,
-			kokoro: process.env.ELIZA_KOKORO_MODEL_DIR,
-		};
+		const ENV_KEYS = [
+			"ELIZA_STATE_DIR",
+			"ELIZA_KOKORO_MODEL_DIR",
+			"ELIZA_PARADEE_MODEL_DIR",
+			"ELIZA_INFERENCE_LIBRARY",
+			"ELIZA_INFERENCE_LIBRARY_SHA256",
+			"ELIZA_INFERENCE_LIB_DIR",
+			"ELIZA_TTS_BACKEND",
+		] as const;
+		const prevEnv = Object.fromEntries(
+			ENV_KEYS.map((key) => [key, process.env[key]]),
+		);
 
 		beforeEach(() => {
 			stateDir = mkdtempSync(path.join(tmpdir(), "tts-status-"));
 			kokoroDir = path.join(stateDir, "kokoro");
+			for (const key of ENV_KEYS) delete process.env[key];
 			process.env.ELIZA_STATE_DIR = stateDir;
 			process.env.ELIZA_KOKORO_MODEL_DIR = kokoroDir;
 		});
 
 		afterEach(() => {
-			if (prevEnv.state === undefined) delete process.env.ELIZA_STATE_DIR;
-			else process.env.ELIZA_STATE_DIR = prevEnv.state;
-			if (prevEnv.kokoro === undefined)
-				delete process.env.ELIZA_KOKORO_MODEL_DIR;
-			else process.env.ELIZA_KOKORO_MODEL_DIR = prevEnv.kokoro;
+			for (const key of ENV_KEYS) {
+				const value = prevEnv[key];
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
 			rmSync(stateDir, { recursive: true, force: true });
 		});
 
@@ -282,17 +298,67 @@ describe("local inference TTS route", () => {
 			return JSON.parse(out.bodyBuffer().toString());
 		}
 
-		it("reports not-ready when the handler is registered but no Kokoro artifacts are staged", async () => {
+		function stageKokoro() {
+			mkdirSync(path.join(kokoroDir, "voices"), { recursive: true });
+			writeFileSync(path.join(kokoroDir, "kokoro-82m-v1_0.gguf"), "");
+			writeFileSync(path.join(kokoroDir, "voices", "af_bella.bin"), "");
+		}
+
+		/** Paradee in the shared models dir + a stamped library in local-inference/lib. */
+		function stageParadee() {
+			const models = path.join(
+				stateDir,
+				"local-inference",
+				"models",
+				"paradee",
+			);
+			mkdirSync(models, { recursive: true });
+			for (const file of PARADEE_MODEL_FILES) {
+				const target = path.join(models, file.path);
+				writeFileSync(target, "");
+				truncateSync(target, file.bytes);
+			}
+			const lib = path.join(stateDir, "local-inference", "lib");
+			mkdirSync(lib, { recursive: true });
+			const name =
+				process.platform === "darwin"
+					? "libelizainference.dylib"
+					: process.platform === "win32"
+						? "elizainference.dll"
+						: "libelizainference.so";
+			writeFileSync(path.join(lib, name), "lib");
+			writeFileSync(
+				path.join(lib, ".eliza-fused-build-stamp.json"),
+				JSON.stringify({ fusedLib: name, fusedSha256: "d".repeat(64) }),
+			);
+		}
+
+		it("reports not-ready when the handler is registered but nothing is staged", async () => {
 			expect(await engineProviderStatus()).toEqual({
 				ready: false,
 				provider: null,
 			});
 		});
 
-		it("reports ready once the Kokoro model and a voice are staged", async () => {
-			mkdirSync(path.join(kokoroDir, "voices"), { recursive: true });
-			writeFileSync(path.join(kokoroDir, "kokoro-82m-v1_0.gguf"), "");
-			writeFileSync(path.join(kokoroDir, "voices", "af_bella.bin"), "");
+		it("reports ready once Paradee v1.1 and a reviewed library are staged", async () => {
+			stageParadee();
+			expect(await engineProviderStatus()).toEqual({
+				ready: true,
+				provider: "local-inference",
+			});
+		});
+
+		it("does not report a staged Kokoro as the product voice", async () => {
+			stageKokoro();
+			expect(await engineProviderStatus()).toEqual({
+				ready: false,
+				provider: null,
+			});
+		});
+
+		it("reports a staged Kokoro ready only behind ELIZA_TTS_BACKEND=kokoro", async () => {
+			stageKokoro();
+			process.env.ELIZA_TTS_BACKEND = "kokoro";
 			expect(await engineProviderStatus()).toEqual({
 				ready: true,
 				provider: "local-inference",

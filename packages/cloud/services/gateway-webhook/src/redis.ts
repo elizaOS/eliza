@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import { Redis as UpstashRedis } from "@upstash/redis";
 import IORedis from "ioredis";
+import { withCloudflareIngress } from "./cloudflare-ingress";
 import { logger } from "./logger";
 
 const requireCJS = createRequire(import.meta.url);
@@ -333,6 +334,10 @@ class UpstashRedisAdapter implements GatewayRedis {
 }
 
 export function createRedis(): GatewayRedis {
+  return withCloudflareIngress(createRedisBackingStore());
+}
+
+function createRedisBackingStore(): GatewayRedis {
   if (process.env.MOCK_REDIS === "1") {
     logger.info("[GatewayRedis] using in-memory mock adapter");
     return new MemoryRedisAdapter();
