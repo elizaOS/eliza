@@ -1,5 +1,16 @@
 /** Resolves user-visible replies from settled tool results, verified effects, and actual delivery receipts. */
 
+import {
+  replyNamesStructuredEffectDestination,
+  structuredEffectFromToolResult,
+} from "./structured-tool-effect.ts";
+
+export type { StructuredToolEffect } from "./structured-tool-effect.ts";
+export {
+  replyNamesStructuredEffectDestination,
+  structuredEffectFromToolResult,
+} from "./structured-tool-effect.ts";
+
 import type {
   Action,
   ActionResult,
@@ -15,9 +26,11 @@ import {
   bindEffectDelivery,
   getTrajectoryContext,
   getTrustedDeliveryAudience,
+  isObjectRecord,
   stampAppConversationProvenance,
   trustedDeliveryAudienceIsBoundToRuntime,
 } from "@elizaos/core";
+import { findViewActionHandoff } from "@elizaos/core/protocol";
 import {
   isTerminalPlannerToolName,
   type PlannerToolResult,
@@ -116,90 +129,6 @@ export function preservedSettledToolResult(
 
 export const NO_REPORTABLE_TOOL_OUTCOME_MESSAGE =
   "I ran that, but it finished without producing a result I can report back.";
-
-/**
- * Structured machine effect parsed from a tool result's receipt `text` — the
- * shape actions emit as an internal-visibility JSON receipt when the effect
- * has already been applied out-of-band (plugin-app-control's
- * `view_navigation`: `{"effect","status","viewId","label",...}`). `effect`
- * and `status` are the family contract; `label` is the optional human name of
- * the affected thing.
- */
-export interface StructuredToolEffect {
-  effect: string;
-  status: string;
-  label?: string;
-  viewId?: string;
-}
-
-export function structuredEffectFromToolResult(
-  result: PlannerToolResult,
-): StructuredToolEffect | undefined {
-  const raw = result.text?.trim();
-  if (!raw?.startsWith("{")) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // error-policy:J3 a tool's diagnostic text is untrusted input for this
-    // projection; non-JSON text is explicitly "no structured effect" —
-    // never a fake-valid effect — and the caller keeps its fallback.
-    return undefined;
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return undefined;
-  }
-  const { effect, status, label, viewId } = parsed as {
-    effect?: unknown;
-    status?: unknown;
-    label?: unknown;
-    viewId?: unknown;
-  };
-  if (typeof effect !== "string" || effect.trim().length === 0) {
-    return undefined;
-  }
-  if (typeof status !== "string" || status.trim().length === 0) {
-    return undefined;
-  }
-  return {
-    effect: effect.trim(),
-    status: status.trim(),
-    ...(typeof label === "string" && label.trim().length > 0
-      ? { label: label.trim() }
-      : {}),
-    ...(effect.trim() === "view_navigation" &&
-    typeof viewId === "string" &&
-    viewId.trim().length > 0
-      ? { viewId: viewId.trim() }
-      : {}),
-  };
-}
-
-export function replyNamesStructuredEffectDestination(
-  reply: string,
-  effect: StructuredToolEffect,
-): boolean {
-  if (effect.effect !== "view_navigation" || !effect.label) return true;
-  const normalize = (value: string): string =>
-    value
-      .toLocaleLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim();
-  const normalizedReply = normalize(reply);
-  const normalizedLabel = normalize(effect.label);
-  return (
-    normalizedReply.length > 0 &&
-    ((normalizedLabel.length > 0 &&
-      normalizedReply.includes(normalizedLabel)) ||
-      // A delivered view has a canonical identity as well as its display
-      // label (for example chat / Home). Use only that receipt's identity,
-      // not guessed aliases or request text, and match complete words.
-      (effect.status === "delivered" &&
-        !!effect.viewId &&
-        normalize(effect.viewId).length > 0 &&
-        ` ${normalizedReply} `.includes(` ${normalize(effect.viewId)} `)))
-  );
-}
 
 export function preservedVerifiedFailure(
   settled: ReadonlyArray<{ name: string; result: PlannerToolResult }>,
@@ -546,4 +475,95 @@ export function candidateActionsIncludeAsyncHandoff(
         candidates.has(normalizeActionIdentifier(identifier)),
       ),
   );
+}
+
+/** Reuse this turn's held navigation prose only after an exact prepared handoff.
+ * This releases no new action and never labels preparation as delivery. */
+/** Reuse this turn's held navigation prose only after an exact prepared handoff.
+ * This releases no new action and never labels preparation as delivery. */
+export function preparedViewReply(args: {
+  stageOne: unknown;
+  effectStatus: unknown;
+  reply: unknown;
+  steps: readonly unknown[];
+  allow: (text: string) => boolean;
+}): string | undefined {
+  // Terminal synthesis records carry no action/effect. Keep every malformed
+  // or action-bearing step so multiple real outcomes still fail closed.
+  const actionSteps = args.steps.filter(
+    (step) =>
+      !isObjectRecord(step) ||
+      step.terminalOnly !== true ||
+      step.toolCall != null ||
+      step.result != null,
+  );
+  if (
+    args.effectStatus !== "pending" ||
+    typeof args.reply !== "string" ||
+    !args.reply.trim() ||
+    actionSteps.length !== 1 ||
+    !isObjectRecord(args.stageOne)
+  )
+    return;
+  const visual = args.stageOne.visualContinuation,
+    intents = args.stageOne.intents;
+  if (
+    !isObjectRecord(visual) ||
+    visual.disposition !== "direct" ||
+    typeof visual.viewId !== "string" ||
+    !Array.isArray(intents) ||
+    intents.length !== 1 ||
+    typeof intents[0] !== "string" ||
+    !intents[0].trim()
+  )
+    return;
+  const step = actionSteps[0];
+  if (
+    !isObjectRecord(step) ||
+    !isObjectRecord(step.toolCall) ||
+    typeof step.toolCall.name !== "string" ||
+    !isObjectRecord(step.result) ||
+    step.result.success !== true ||
+    typeof step.result.text !== "string" ||
+    !isObjectRecord(step.result.data)
+  )
+    return;
+  const result = step.result as unknown as PlannerToolResult;
+  const effect = structuredEffectFromToolResult(result);
+  const handoff = findViewActionHandoff([
+    {
+      success: true,
+      actionName: step.toolCall.name,
+      values: step.result.data.values,
+    },
+  ]);
+  if (
+    effect?.effect !== "view_navigation" ||
+    effect.status !== "prepared" ||
+    !effect.label ||
+    !handoff?.navigationPrepared ||
+    handoff.viewId !== visual.viewId ||
+    effect.viewId !== handoff.viewId
+  )
+    return;
+  const navigation = step.result.data.navigation;
+  if (
+    !isObjectRecord(navigation) ||
+    navigation.handoffId !== handoff.completedActionHandoffId ||
+    handoff.navigationBinding?.requestId !== navigation.handoffId ||
+    effect.resolvedAlias !== navigation.resolvedAlias ||
+    (effect.resolvedAlias !== undefined &&
+      (!isObjectRecord(step.toolCall.params) ||
+        typeof step.toolCall.params.view !== "string" ||
+        step.toolCall.params.view.trim().toLowerCase() !==
+          effect.resolvedAlias))
+  )
+    return;
+  const reply = args.reply.trim();
+  if (
+    !replyNamesStructuredEffectDestination(reply, effect) ||
+    !args.allow(reply)
+  )
+    return;
+  return reply;
 }

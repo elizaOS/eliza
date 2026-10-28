@@ -26,11 +26,15 @@ import {
   ElizaError,
   MESSAGE_SOURCE_SUB_AGENT,
   MESSAGE_SOURCE_TRIGGER_PROMPT,
+  resolveScheduledAtIsoInTimeZone,
   stringToUuid,
   toWellFormedUnicode,
   unwrapUserMessageText,
 } from "@elizaos/core";
-import { looksLikeBareLinkShare } from "@elizaos/plugin-assistant";
+import {
+  looksLikeBareLinkShare,
+  resolveMessageTimeZone,
+} from "@elizaos/plugin-assistant";
 import type { IssueInfo, PullRequestInfo } from "git-workspace-service";
 import {
   detectTaskType,
@@ -189,23 +193,22 @@ const ACTIVE_TASK_HISTORY_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
     "interrupted",
   ]);
 
-function startOfDay(date: Date): Date {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start;
+/** The calendar date (YYYY-MM-DD) of `ms` in `timeZone`. */
+function dateKeyIn(ms: number, timeZone: string): string {
+  return new Date(ms).toLocaleDateString("en-CA", { timeZone });
 }
 
-function endOfDay(date: Date): Date {
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return end;
+/** The calendar date `days` after `dateKey`. */
+function shiftDateKey(dateKey: string, days: number): string {
+  const ms = Date.parse(`${dateKey}T00:00:00Z`) + days * 24 * 60 * 60 * 1000;
+  return new Date(ms).toISOString().slice(0, 10);
 }
 
-function formatDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+/** The first instant of `dateKey` in `timeZone`. */
+function startOfDateIn(dateKey: string, timeZone: string): number {
+  return Date.parse(
+    resolveScheduledAtIsoInTimeZone(`${dateKey}T00:00:00`, timeZone),
+  );
 }
 
 function readOp(params: Record<string, unknown>): TaskOp | null {
@@ -2966,53 +2969,38 @@ function historyStatusesValue(value: unknown): {
   return { statuses: Array.from(statuses), unknown };
 }
 
-function buildWindowFilters(window: HistoryWindow | undefined): {
+function buildWindowFilters(
+  window: HistoryWindow | undefined,
+  timeZone: string,
+): {
   latestActivityAfter?: number;
   latestActivityBefore?: number;
   statuses?: ReadonlySet<OrchestratorTaskStatus>;
   label?: string;
 } {
-  const now = new Date();
+  const now = Date.now();
   if (window === "active") {
     return {
       statuses: ACTIVE_TASK_HISTORY_STATUSES,
       label: "active tasks right now",
     };
   }
-  if (window === "today") {
-    const start = startOfDay(now);
-    const end = endOfDay(now);
+  // Day windows follow the asker's calendar, not the host's.
+  const today = dateKeyIn(now, timeZone);
+  if (window === "today" || window === "yesterday") {
+    const day = window === "today" ? today : shiftDateKey(today, -1);
     return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: end.getTime(),
-      label: `${formatDate(start)} through ${formatDate(end)}`,
+      latestActivityAfter: startOfDateIn(day, timeZone),
+      latestActivityBefore: startOfDateIn(shiftDateKey(day, 1), timeZone) - 1,
+      label: `${day} through ${day}`,
     };
   }
-  if (window === "yesterday") {
-    const start = startOfDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-    const end = endOfDay(start);
+  if (window === "last_7_days" || window === "last_30_days") {
+    const first = shiftDateKey(today, window === "last_7_days" ? -6 : -29);
     return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: end.getTime(),
-      label: `${formatDate(start)} through ${formatDate(end)}`,
-    };
-  }
-  if (window === "last_7_days") {
-    const start = startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: now.getTime(),
-      label: `${formatDate(start)} through ${formatDate(now)}`,
-    };
-  }
-  if (window === "last_30_days") {
-    const start = startOfDay(
-      new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000),
-    );
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: now.getTime(),
-      label: `${formatDate(start)} through ${formatDate(now)}`,
+      latestActivityAfter: startOfDateIn(first, timeZone),
+      latestActivityBefore: now,
+      label: `${first} through ${today}`,
     };
   }
   return {};
@@ -3381,7 +3369,10 @@ async function runHistory(
   // The store drops archived tasks before the status filter runs, so a request
   // for the archived status has to list them.
   const listArchived = includeArchived || statuses.includes("archived");
-  const windowFilters = buildWindowFilters(window);
+  const windowFilters = buildWindowFilters(
+    window,
+    resolveMessageTimeZone(runtime, message),
+  );
   const taskService = runtime.getService?.(
     OrchestratorTaskService.serviceType,
   ) as OrchestratorTaskService | null | undefined;

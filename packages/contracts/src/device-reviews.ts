@@ -124,24 +124,24 @@ function civilMidnight(utcMidnight: number, timeZone: string): number {
   const y = date.getUTCFullYear(),
     m = date.getUTCMonth(),
     d = date.getUTCDate();
-  // Resolve the zone offset at the local civil-day boundary.
-  let guess = Date.UTC(y, m, d);
-  for (let pass = 0; pass < 3; pass++) {
-    const parts = Object.fromEntries(
-      new Intl.DateTimeFormat("en-US", {
-        timeZone,
-        hourCycle: "h23",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-        .formatToParts(guess)
-        .map((part) => [part.type, part.value]),
+  const target = Date.UTC(y, m, d);
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const partsAt = (instant: number) =>
+    Object.fromEntries(
+      formatter.formatToParts(instant).map((part) => [part.type, part.value]),
     );
-    const local = Date.UTC(
+  const localAt = (instant: number) => {
+    const parts = partsAt(instant);
+    return Date.UTC(
       Number(parts.year),
       Number(parts.month) - 1,
       Number(parts.day),
@@ -149,9 +149,47 @@ function civilMidnight(utcMidnight: number, timeZone: string): number {
       Number(parts.minute),
       Number(parts.second),
     );
-    guess += Date.UTC(y, m, d) - local;
-  }
+  };
+  const localDayAt = (instant: number) => {
+    const parts = partsAt(instant);
+    return Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+    );
+  };
+  // Resolve the zone offset at the local civil-day boundary.
+  let guess = target;
+  for (let pass = 0; pass < 3; pass++) guess += target - localAt(guess);
+  // A transition at local midnight leaves the iteration off the boundary in
+  // either direction: a spring forward skips 00:00, so there is no fixed
+  // point and it settles on the previous civil day; a fall back repeats
+  // 00:00, so it converges on the second midnight, inside the target day.
+  // Walk to the first instant of the target civil day; minute steps are
+  // exact for the whole-minute offsets tzdata records from 1970 on. A civil
+  // date that never exists at all (a skipped date) resolves to the start of
+  // the following day.
+  while (localDayAt(guess) < target) guess += 60_000;
+  while (localDayAt(guess - 60_000) === target) guess -= 60_000;
   return guess;
+}
+/** Shared Calendar overlap: all-day bounds are civil dates, not timed UTC events. */
+export function calendarEventOverlapsRange(
+  range: { start: string; end: string; timeZone: string },
+  event: { start: string; end: string; allDay: boolean },
+): boolean {
+  let a = Date.parse(instant(event.start)),
+    b = Date.parse(instant(event.end));
+  const begin = Date.parse(instant(range.start)),
+    finish = Date.parse(instant(range.end));
+  if (finish <= begin || b < a) throw Error("Invalid Calendar range");
+  if (event.allDay) {
+    if (a % 86400000 !== 0 || b % 86400000 !== 0 || b <= a)
+      throw Error("Invalid all-day civil interval");
+    a = civilMidnight(a, zone(range.timeZone));
+    b = civilMidnight(b, range.timeZone);
+  }
+  return b === a ? a >= begin && a < finish : a < finish && b > begin;
 }
 /**
  * Computes the shared free/busy answer from provider rows the phone read locally.
@@ -461,6 +499,7 @@ export function validateNotesSearchResult<Target, Selected>(
 }
 
 // ---- Name-targeted edits from Home ----
+export const CALENDAR_NAMED_READ_CAPABILITY = "calendar.named-read.v1";
 export const NAMED_TARGET_CAPABILITY = "device.named-target.v1";
 /** Selected-record capability each named domain also requires. */
 export const NAMED_TARGET_DOMAIN_CAPABILITY = {
@@ -500,7 +539,7 @@ export type NamedTargetOperation =
       name: string;
       fields: NamedCalendarFields;
     }
-  | { type: "calendar_named"; action: "delete"; name: string }
+  | { type: "calendar_named"; action: "delete" | "read"; name: string }
   | {
       type: "reminder_named";
       action: "update";
@@ -547,7 +586,7 @@ export interface NamedTargetValidators<
 }
 const NAMED_ACTIONS: Record<NamedTargetType, readonly string[]> = {
   notes_named: ["update", "delete"],
-  calendar_named: ["update", "delete"],
+  calendar_named: ["update", "delete", "read"],
   reminder_named: ["update", "cancel"],
 };
 function namedObject(value: unknown): Record<string, unknown> {
@@ -590,6 +629,12 @@ export function namedTargetCapabilityAvailable(
   capabilities?: readonly string[],
 ): boolean {
   const domain = NAMED_TARGET_DOMAIN_CAPABILITY[type as NamedTargetType];
+  if (
+    type === "calendar_named" &&
+    capabilities?.includes(CALENDAR_NAMED_READ_CAPABILITY) &&
+    capabilities.includes(NAMED_TARGET_DOMAIN_CAPABILITY.calendar_named)
+  )
+    return true;
   return (
     !!domain &&
     capabilities?.includes(NAMED_TARGET_CAPABILITY) === true &&
@@ -603,9 +648,11 @@ export function namedTargetExactType(operation: NamedTargetOperation): string {
   if (operation.type === "notes_named")
     return operation.action === "update" ? "notes_update" : "notes_delete";
   if (operation.type === "calendar_named")
-    return operation.action === "update"
-      ? "calendar_update"
-      : "calendar_delete";
+    return operation.action === "read"
+      ? "calendar_read_selected"
+      : operation.action === "update"
+        ? "calendar_update"
+        : "calendar_delete";
   return operation.action === "update" ? "reminder_update" : "reminder_cancel";
 }
 export function validateNamedTargetOperation(
@@ -646,7 +693,11 @@ export function validateNamedTargetOperation(
   namedKeys(v, ["type", "action", "name"]);
   if (v.type === "notes_named") return { type: v.type, action: "delete", name };
   if (v.type === "calendar_named")
-    return { type: v.type, action: "delete", name };
+    return {
+      type: v.type,
+      action: v.action === "read" ? "read" : "delete",
+      name,
+    };
   return { type: "reminder_named", action: "cancel", name };
 }
 /**

@@ -1,0 +1,14 @@
+// Use the same explicit architecture selection as the native runtime stager.
+// Unselected files may remain in a reusable checkout; never package them.
+def configuredRuntimeAbis = System.getenv('ELIZA_ANDROID_TARGET_ABIS')
+if (configuredRuntimeAbis != null) {
+    def supportedRuntimeAbis = ['arm64-v8a', 'x86_64', 'riscv64']
+    def runtimeAbis = configuredRuntimeAbis.split(',', -1).collect { it.trim() }
+    if (runtimeAbis.any { !supportedRuntimeAbis.contains(it) } || runtimeAbis.toSet().size() != runtimeAbis.size()) {
+        throw new GradleException('ELIZA_ANDROID_TARGET_ABIS must list unique supported Android ABIs')
+    }
+    android.defaultConfig.ndk.abiFilters.clear()
+    android.defaultConfig.ndk.abiFilters.addAll(runtimeAbis)
+    def otherRuntimeAbis = supportedRuntimeAbis.findAll { !runtimeAbis.contains(it) }
+    android.sourceSets.main.assets.exclude(*(otherRuntimeAbis.collect { "agent/${it}/**" }))
+}

@@ -230,12 +230,9 @@ export function plannerReplyRejectedByEgress() {
   };
 }
 
-export function acceptedRecoveryReview(reason: string) {
-  return JSON.stringify({
-    grounded: true,
-    completedChangeClaim: false,
-    reason,
-  });
+/** A grounding review of a candidate that asserts no outcome or state. */
+export function acceptedRecoveryReview() {
+  return JSON.stringify({ grounded: true, claims: [] });
 }
 
 export function makeRuntime(

@@ -99,8 +99,11 @@ const CJK_SCRIPT_CHAR =
 
 function tokenizeGoalText(text: string | null | undefined): string[] {
   const raw = typeof text === "string" ? text : "";
+  // The split below treats a combining mark as a separator, so compose first:
+  // a decomposed "café" (e + U+0301) must give the same token as "café".
   return raw
     .toLowerCase()
+    .normalize("NFC")
     .split(/[^\p{L}\p{N}]+/u)
     .filter(
       (token) =>

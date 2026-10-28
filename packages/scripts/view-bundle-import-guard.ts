@@ -50,8 +50,11 @@ const HOST_EXTERNAL_REGISTRATION_PATHS = [
     registrationPath: path.join(repoRoot, "packages/app/src/host-externals.ts"),
   },
 ];
-// UI exposes one public root; loader-private modules are not public aliases.
-const LOADER_RELATIVE_IMPORT_BINDINGS = new Map<string, string>();
+// Public browser leaves must bind to their exact source entry. Other
+// loader-private modules are not public aliases.
+const LOADER_RELATIVE_IMPORT_BINDINGS = new Map<string, string>([
+  ["@elizaos/ui/view-primitives", "../../view-primitives.js"],
+]);
 // Compatibility importers assemble curated namespaces rather than importing a
 // same-named package. Their function identities are therefore part of the
 // loader contract and must not be interchangeable across map keys.

@@ -118,4 +118,47 @@ describe("processDueScheduledTasks — no-reply retry keeps recurring triggers a
     expect(day2Fire?.status).toBe("fired");
     expect(day2Fire?.reason).toBe("cron_due");
   });
+  it("daily cron check-in: expires with no reply, then fires AGAIN at the next occurrence", async () => {
+    runtimeResult = await createLifeOpsTestRuntime();
+    const { runtime } = runtimeResult;
+    const repo = new LifeOpsRepository(runtime);
+    const task: ScheduledTask = {
+      taskId: "st_recurring_checkin_no_reply",
+      kind: "checkin",
+      promptInstructions: "Daily check-in.",
+      trigger: { kind: "cron", expression: "0 11 * * *", tz: "UTC" },
+      priority: "medium",
+      respectsGlobalPause: false,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      completionCheck: { kind: "user_acknowledged", followupAfterMinutes: 30 },
+      metadata: { createdAtIso: "2026-05-08T00:00:00.000Z" },
+      state: {
+        status: "fired",
+        followupCount: 0,
+        firedAt: "2026-05-09T11:00:00.000Z",
+      },
+    };
+    await repo.upsertScheduledTask(runtime.agentId, task);
+
+    // No reply: one retry, then the check-in expires for that occurrence.
+    for (const nowIso of [
+      "2026-05-09T11:31:00.000Z",
+      "2026-05-10T11:32:00.000Z",
+    ]) {
+      expect((await tick(runtime, nowIso)).errors).toEqual([]);
+    }
+    const expiredTick = await tick(runtime, "2026-05-10T12:03:00.000Z");
+    expect(expiredTick.completionTimeouts).toMatchObject([
+      { taskId: task.taskId, status: "expired" },
+    ]);
+
+    // The daily trigger must still fire at its next occurrence.
+    const nextTick = await tick(runtime, "2026-05-11T11:01:00.000Z");
+    expect(nextTick.errors).toEqual([]);
+    const nextFire = nextTick.fires.find((fire) => fire.taskId === task.taskId);
+    expect(nextFire?.status).toBe("fired");
+    expect(nextFire?.reason).toBe("cron_due");
+  });
 });

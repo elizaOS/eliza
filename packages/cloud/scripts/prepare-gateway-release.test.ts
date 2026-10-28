@@ -40,44 +40,59 @@ describe("gateway release lifecycle", () => {
     expect(tracked).toEqual(before);
   });
 
-  test("production keeps the exact legacy configuration", () => {
-    expect(gatewayReleaseLifecycle(tracked, "production")).toBe(tracked);
+  test("production preserves SQLite classes and bindings without reverting exports to migrations", () => {
+    const before = structuredClone(tracked);
+    const result = gatewayReleaseLifecycle(tracked, "production");
+    expect(result).not.toHaveProperty("migrations");
+    expect(result.exports).toEqual(
+      gatewayReleaseLifecycle(tracked, "staging").exports,
+    );
+    expect(result.env).toEqual(tracked.env);
+    expect(tracked).toEqual(before);
   });
 
-  test("rejects non-additive, ambiguous and incomplete staging histories", () => {
-    for (const history of [
-      [{ tag: "v1", new_classes: ["GatewayContainer"] }],
-      [{ tag: "v1", deleted_classes: ["GatewayContainer"] }],
-      [
-        {
-          tag: "v1",
-          renamed_classes: [{ from: "Old", to: "GatewayContainer" }],
-        },
-      ],
-      [{ tag: "v1", transferred_classes: [] }],
-      [
-        {
-          tag: "v1",
-          new_sqlite_classes: ["GatewayContainer", "GatewayContainer"],
-        },
-      ],
-      [{ tag: "v1", new_sqlite_classes: ["Other"] }],
-      [{ tag: "v1", new_sqlite_classes: [] }],
-      [
-        { tag: "v1", new_sqlite_classes: ["GatewayContainer"] },
-        { tag: "v1", new_sqlite_classes: ["Other"] },
-      ],
-    ])
+  for (const environment of ["staging", "production"] as const) {
+    test(`rejects non-additive, ambiguous and incomplete ${environment} histories`, () => {
+      for (const history of [
+        [{ tag: "v1", new_classes: ["GatewayContainer"] }],
+        [{ tag: "v1", deleted_classes: ["GatewayContainer"] }],
+        [
+          {
+            tag: "v1",
+            renamed_classes: [{ from: "Old", to: "GatewayContainer" }],
+          },
+        ],
+        [{ tag: "v1", transferred_classes: [] }],
+        [
+          {
+            tag: "v1",
+            new_sqlite_classes: ["GatewayContainer", "GatewayContainer"],
+          },
+        ],
+        [{ tag: "v1", new_sqlite_classes: ["Other"] }],
+        [{ tag: "v1", new_sqlite_classes: [] }],
+        [
+          { tag: "v1", new_sqlite_classes: ["GatewayContainer"] },
+          { tag: "v1", new_sqlite_classes: ["Other"] },
+        ],
+      ])
+        expect(() =>
+          gatewayReleaseLifecycle(
+            { ...tracked, migrations: history },
+            environment,
+          ),
+        ).toThrow();
       expect(() =>
-        gatewayReleaseLifecycle({ ...tracked, migrations: history }, "staging"),
+        gatewayReleaseLifecycle({ ...tracked, exports: {} }, environment),
       ).toThrow();
-    expect(() =>
-      gatewayReleaseLifecycle({ ...tracked, exports: {} }, "staging"),
-    ).toThrow();
-    expect(() =>
-      gatewayReleaseLifecycle({ ...tracked, migrations: undefined }, "staging"),
-    ).toThrow();
-  });
+      expect(() =>
+        gatewayReleaseLifecycle(
+          { ...tracked, migrations: undefined },
+          environment,
+        ),
+      ).toThrow();
+    });
+  }
 
   for (const environment of ["staging", "production"] as const) {
     test(`normal preparation writes the correct ${environment} lifecycle and exact image`, () => {
@@ -126,15 +141,15 @@ describe("gateway release lifecycle", () => {
             "packages/cloud/services/gateway-container/cloudflare/worker.ts",
           ),
         );
-        if (environment === "staging") {
-          expect(generated).not.toHaveProperty("migrations");
-          expect(Object.keys(generated.exports).sort()).toEqual(
-            [...classes].sort(),
-          );
-        } else {
-          expect(generated.migrations).toEqual(tracked.migrations);
-          expect(generated).not.toHaveProperty("exports");
-        }
+        expect(generated).not.toHaveProperty("migrations");
+        expect(Object.keys(generated.exports).sort()).toEqual(
+          [...classes].sort(),
+        );
+        for (const name of classes)
+          expect(generated.exports[name]).toEqual({
+            type: "durable-object",
+            storage: "sqlite",
+          });
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }

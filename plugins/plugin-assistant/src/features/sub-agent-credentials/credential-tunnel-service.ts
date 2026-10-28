@@ -49,10 +49,12 @@ import {
   TRACE_ENV,
 } from "@elizaos/core";
 import {
+  type SensitiveRequestDeliveryFailure,
   SUB_AGENT_CREDENTIAL_BRIDGE_ADAPTER_SERVICE,
   SUB_AGENT_CREDENTIAL_BRIDGE_SERVICE,
   type SubAgentCredentialBridge,
   type SubAgentCredentialRequestOrigin,
+  type SubAgentCredentialScope,
 } from "./types.ts";
 
 const TOKEN_BYTES = 32; // 256-bit
@@ -85,9 +87,8 @@ export interface RetrieveCredentialInput {
   scopedToken: string;
 }
 
-export interface SubAgentCredentialScopeResult extends DeclareScopeResult {
-  sensitiveRequestIds: readonly string[];
-}
+/** Scope plus the owner-request outcome the caller must report. */
+export type SubAgentCredentialScopeResult = SubAgentCredentialScope;
 
 export interface BridgeCredentialAdapter {
   requestCredentials(input: {
@@ -584,13 +585,18 @@ function toDispatchSensitiveRequest(
   };
 }
 
+interface CredentialDispatchOutcome {
+  requestId: string | null;
+  failure?: SensitiveRequestDeliveryFailure;
+}
+
 async function dispatchCredentialRequest(input: {
   dispatch: SensitiveRequestDispatchRegistry;
   runtime: IAgentRuntime;
   request: SensitiveRequest;
   deliveryTarget: "dm" | "owner_app_inline";
   origin?: SubAgentCredentialRequestOrigin;
-}): Promise<string | null> {
+}): Promise<CredentialDispatchOutcome> {
   const target: DeliveryTarget =
     input.deliveryTarget === "dm" ? "dm" : "owner_app_inline";
   const channelId = input.origin?.channelId ?? input.origin?.roomId;
@@ -601,7 +607,13 @@ async function dispatchCredentialRequest(input: {
     logger.warn(
       `[SubAgentCredentialBridge] no sensitive-request adapter registered for target=${target}`,
     );
-    return null;
+    return {
+      requestId: null,
+      failure: {
+        target,
+        message: `no sensitive-request adapter for ${target}`,
+      },
+    };
   }
 
   try {
@@ -614,16 +626,25 @@ async function dispatchCredentialRequest(input: {
       logger.warn(
         `[SubAgentCredentialBridge] sensitive-request delivery failed target=${target} requestId=${input.request.id} error=${result.error ?? "unknown"}`,
       );
-      return null;
+      return {
+        requestId: null,
+        failure: { target, message: result.error ?? "delivery not confirmed" },
+      };
     }
-    return input.request.id;
+    return { requestId: input.request.id };
   } catch (error) {
     logger.warn(
       `[SubAgentCredentialBridge] sensitive-request delivery threw requestId=${input.request.id}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
-    return null;
+    return {
+      requestId: null,
+      failure: {
+        target,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    };
   }
 }
 
@@ -663,7 +684,7 @@ export function createSubAgentCredentialBridgeAdapter(options: {
       deliveryTarget,
       origin,
     });
-    const requestId = await dispatchCredentialRequest({
+    const outcome = await dispatchCredentialRequest({
       dispatch,
       runtime,
       request,
@@ -672,7 +693,8 @@ export function createSubAgentCredentialBridgeAdapter(options: {
     });
     return {
       ...scope,
-      sensitiveRequestIds: requestId ? [requestId] : [],
+      sensitiveRequestIds: outcome.requestId ? [outcome.requestId] : [],
+      ...(outcome.failure ? { sensitiveRequestFailure: outcome.failure } : {}),
     };
   }
 
