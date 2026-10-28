@@ -37,8 +37,17 @@ export type ListenerStatus =
  * `power` (a warm press on the host's permission-protected Power activity) or `assist` (any other
  * launch, which only opens the assistant). Null when nothing is pending.
  */
-export type AssistantInvocation = "listener" | "system" | "power" | "assist" | null;
-const VOICE_INVOCATIONS: ReadonlySet<AssistantInvocation> = new Set(["listener", "system", "power"]);
+export type AssistantInvocation =
+  | "listener"
+  | "system"
+  | "power"
+  | "assist"
+  | null;
+const VOICE_INVOCATIONS: ReadonlySet<AssistantInvocation> = new Set([
+  "listener",
+  "system",
+  "power",
+]);
 export interface SensePlugin {
   status(): Promise<ListenerStatus>;
   pause(): Promise<ListenerStatus>;

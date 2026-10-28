@@ -68,7 +68,7 @@ it("keeps one unchanged Calendar answer and fixed diagnostic on JSON, SSE and sa
         return {
           ...strategy,
           didRespond: true,
-          outcome: { status: "failed", error: failure, effects: [] },
+          outcome: { status: "failed" as const, error: failure, effects: [] },
         };
       },
     } as IMessageService;
