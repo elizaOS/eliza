@@ -268,6 +268,15 @@ review released, or `""` when the provider has no isolated world so the host's r
 for pasted text. A sensitive page never opens a review. Hosts own the review UI, consent,
 speech and what is sent; this heuristic is not a credential detector.
 
+When the live page cannot be read in an isolated world (a sandboxed web-build iframe, or
+a WebView without document-start scripts), `readPublicPageSource` from `./page-source`
+fetches the address again without credentials, cookies, referrer or redirects, bounded to
+5 seconds and 256 KiB, drops chrome, forms and hidden nodes, and offers at most 5,000
+characters of the main region for review. Sign-in pages, sensitive addresses and
+credential prose return `{blocked:true}`; any other failure offers nothing so the review
+opens for pasted text. Hosts inject `fetch` and the HTML parser; the live frame keeps its
+opaque origin.
+
 `SubmittedNavigation` from `./submitted-navigation` owns submitted-address history, stale-check fencing and revision-bound explicit one-time overrides. Hosts validate/resolve addresses and supply a verdict check. Failed checks stay unavailable. The default `check-first` policy waits for a clean verdict. A host can select `policy: "blacklist"` to permit unavailable and lookalike results; a confirmed blocked result still stops navigation. Navigation waits for the host check, which should use a local cache rather than await feed downloads. Request-time enforcement must also cover redirects and subsequent navigation. It does not grant task actions. Hosts retain warning/confirmation UI, sandbox configuration and all navigation authorization. This controller cannot observe internal iframe navigation or certify loaded content.
 
 ## Android host web policy

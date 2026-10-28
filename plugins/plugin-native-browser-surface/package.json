@@ -38,6 +38,11 @@
       "eliza-source": "./src/page-reading.ts",
       "types": "./dist/esm/page-reading.d.ts",
       "import": "./dist/esm/page-reading.js"
+    },
+    "./page-source": {
+      "eliza-source": "./src/page-source.ts",
+      "types": "./dist/esm/page-source.d.ts",
+      "import": "./dist/esm/page-source.js"
     }
   },
   "unpkg": "dist/plugin.js",
