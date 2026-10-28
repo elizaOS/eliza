@@ -45,7 +45,10 @@ import {
   TableRow,
 } from "../ui/table";
 import { Textarea } from "../ui/textarea";
-import { typedWorkflowSchedule } from "./typed-workflow-schedule";
+import {
+  isHostedDigestWorkflow,
+  typedWorkflowSchedule,
+} from "./typed-workflow-schedule";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowTriggerPanel } from "./WorkflowTriggerPanel";
 import { workflowRunNotRun } from "./workflow-run-occurrence";
@@ -949,7 +952,10 @@ function WorkflowEditorSession({
                       </span>{" "}
                       {selectedNotRun.notice}
                     </p>
-                    {selectedNotRun.offerRunNow && workflow.id ? (
+                    {/* A hosted digest refuses a generic manual run, so its missed time offers none. */}
+                    {selectedNotRun.offerRunNow &&
+                    workflow.id &&
+                    !isHostedDigestWorkflow(workflow.metadata) ? (
                       <Button
                         type="button"
                         size="sm"

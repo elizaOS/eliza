@@ -102,3 +102,30 @@ it("offers no Run now for an occurrence skipped beside an active run", async () 
   );
   expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
 });
+
+it("offers no Run now for a hosted digest's missed time, which only its schedule admits", async () => {
+  io.getWorkflowExecutions.mockResolvedValue([
+    run({
+      output: {
+        status: "missed",
+        scheduledAt,
+        text: "The scheduled time was missed. No backlog was executed.",
+      },
+    }),
+  ]);
+  render(
+    <WorkflowEditor
+      initial={
+        {
+          ...workflow,
+          metadata: { elizaHostedDigestV1: "{}" },
+        } as unknown as WorkflowDefinition
+      }
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+  const notice = await screen.findByTestId("workflow-run-not-run");
+  expect(notice.textContent).toContain("Missed — did not run.");
+  expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
+  expect(io.runWorkflowDefinition).not.toHaveBeenCalled();
+});
