@@ -1810,3 +1810,36 @@ export class MapsScreenController {
     });
   }
 }
+
+/** A controller with a change subscription, for views that render on demand. */
+export interface MapsScreenHandle {
+  controller: MapsScreenController;
+  subscribe(listener: () => void): () => void;
+  /** Increments on every render request. */
+  version(): number;
+}
+
+/** Creates a screen whose render requests notify subscribers (e.g. React). */
+export function createMapsScreen(
+  host: Omit<MapsScreenHost, "invalidate">,
+): MapsScreenHandle {
+  const listeners = new Set<() => void>();
+  let version = 0;
+  const controller = new MapsScreenController({
+    ...host,
+    invalidate: () => {
+      version++;
+      for (const listener of [...listeners]) listener();
+    },
+  });
+  return {
+    controller,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    version: () => version,
+  };
+}

@@ -30,6 +30,22 @@ map plane draws selectable pins and a moving-device heading, and can follow the
 position during navigation. Hosts still own location permission, voice policy,
 provider configuration and presentation.
 
+## Phone Maps screen
+
+`MapsScreenController` (`./client/maps-screen`) is the phone Maps screen without
+markup: search and coordinate pins, place detail with saved places and renaming,
+directions from an explicit origin, provider-limited travel modes, foreground
+guidance from fresh precise fixes, explicit reroute, screen-off sessions, voice,
+sharing, cross-app hand-offs (for example a Calendar event's location, with Back
+to that event) and the agent's `MapsNavigationSurface`. A host renders `view()`
+in its own markup and supplies the platform ports: provider connection, location,
+voice, screen-off session, share sheet, website opening and agent context.
+`createMapsScreen` adds a change subscription, and the `./screen` entry exports
+`MapsScreen`, a React rendering of the same controller. Hosts theme it with
+`--maps-*` custom properties (`--maps-bg`, `--maps-fg`, `--maps-accent`,
+`--maps-font`, …) and their own icon paths, and supply the map plane. The screen
+never invents a place, route, arrival time or location.
+
 ## Eliza Cloud Maps
 
 With `ELIZAOS_CLOUD_API_KEY` set (and `ELIZAOS_CLOUD_BASE_URL` for a non-production
