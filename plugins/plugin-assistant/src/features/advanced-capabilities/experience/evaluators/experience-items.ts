@@ -552,6 +552,11 @@ export const experiencePatternEvaluator: Evaluator<
       tableName: "messages",
       roomId: message.roomId,
       unique: false,
+      // Bound the scoring read: with no limit this materializes
+      // the room's whole history on every fallback-interval check.
+      // The adapter orders newest-first, so the cap keeps the
+      // newest window for recent-signal scoring.
+      limit: 15000,
     });
     const recentTexts = recentMessages
       .filter((memory) => !isSyntheticMemory(memory))
@@ -579,6 +584,12 @@ export const experiencePatternEvaluator: Evaluator<
         tableName: "messages",
         roomId: message.roomId,
         unique: false,
+        // Bound the render: with no limit this materializes the
+        // room's whole history and joins every text into the
+        // evaluator prompt. The prompt's own purpose is recent
+        // conversation, and the adapter orders newest-first, so
+        // the cap keeps the newest window.
+        limit: 15000,
       }));
     const recentMessages = rawRecentMessages.filter(
       (memory) => !isSyntheticMemory(memory),
