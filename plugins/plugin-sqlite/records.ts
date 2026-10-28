@@ -787,10 +787,17 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
         return names.some((name) => name.toLowerCase().includes(q));
       },
     );
-    // An omitted limit is the complete match set. An explicit limit, including
-    // 0, is a page — `limit ?` treated 0 as "no page" and returned every row.
-    if (params.limit === undefined) return matches;
-    return matches.slice(0, Math.max(0, params.limit));
+    // IDatabaseAdapter contract: an omitted limit means 10 results, and
+    // exact (case-insensitive) matches come first, as the SQL adapter does.
+    // An explicit limit, including 0, is a page — `limit ?` treated 0 as
+    // "no page" and returned every row.
+    const limit = params.limit ?? 10;
+    matches.sort((a, b) => {
+      const aExact = (a.names ?? []).some((name) => name.toLowerCase() === q);
+      const bExact = (b.names ?? []).some((name) => name.toLowerCase() === q);
+      return Number(bExact) - Number(aExact);
+    });
+    return matches.slice(0, Math.max(0, limit));
   }
 
   async queryEntities(params: {

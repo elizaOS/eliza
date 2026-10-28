@@ -2013,7 +2013,7 @@ it("keeps entity name lookups inside the requested agent and honors an explicit 
     query: "patron",
     agentId,
   });
-  expect(all).toHaveLength(11);
+  expect(all).toHaveLength(10);
   expect(all.every((entity) => entity.agentId === agentId)).toBe(true);
 
   expect(
@@ -2030,4 +2030,21 @@ it("keeps entity name lookups inside the requested agent and honors an explicit 
       limit: 1,
     }),
   ).toHaveLength(1);
+});
+
+it("returns an exact name match first and defaults to ten results", async () => {
+  const adapter = await open();
+  const partials = Array.from({ length: 10 }, (_, index) => ({
+    id: id(),
+    agentId,
+    names: [`Patron ${index}`],
+  }));
+  const exact = { id: id(), agentId, names: ["Patron"] };
+  await adapter.createEntities([...partials, exact]);
+  const found = await adapter.searchEntitiesByName({
+    query: "patron",
+    agentId,
+  });
+  expect(found).toHaveLength(10);
+  expect(found[0]?.id).toBe(exact.id);
 });
