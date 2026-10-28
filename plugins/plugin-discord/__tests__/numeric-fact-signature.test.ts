@@ -100,13 +100,24 @@ const INBOUND_MEMORY: Memory = {
 
 // Drives the real MessageManager.handleMessage; the message service answers
 // one inbound message with two callback replies, and the DM sends are captured.
-async function deliverTwoReplies(first: string, second: string) {
+// `failOnSendCall` makes that one user.send call (1-based) fail once.
+async function deliverTwoReplies(
+	first: string,
+	second: string,
+	failOnSendCall?: number,
+) {
 	const sent: string[] = [];
+	let sendCalls = 0;
+	const callbackErrors: string[] = [];
 	const suppressed: string[] = [];
 	const errors: string[] = [];
 	const dmUser = {
 		id: "555000111222333444",
 		send: async (options: { content?: string }) => {
+			sendCalls += 1;
+			if (sendCalls === failOnSendCall) {
+				throw new Error("Discord API 503");
+			}
 			sent.push(options.content ?? "");
 			const id = `99000000000000000${sent.length}`;
 			return {
@@ -148,6 +159,7 @@ async function deliverTwoReplies(first: string, second: string) {
 		reportError: (...args: unknown[]) => errors.push(JSON.stringify(args)),
 		getMemoryById: async () => null,
 		createMemory: async (memory: Memory) => memory.id,
+		updateMemory: async () => true,
 		messageService: {
 			handleMessage: async (
 				_runtime: unknown,
@@ -155,7 +167,11 @@ async function deliverTwoReplies(first: string, second: string) {
 				callback: (content: Content) => Promise<unknown>,
 			) => {
 				for (const text of [first, second]) {
-					await callback({ text, channelType: "DM", inReplyTo: INBOUND_ID });
+					try {
+						await callback({ text, channelType: "DM", inReplyTo: INBOUND_ID });
+					} catch (error) {
+						callbackErrors.push(String(error));
+					}
 				}
 			},
 		},
@@ -199,7 +215,7 @@ async function deliverTwoReplies(first: string, second: string) {
 		mentions: { users: new Map(), repliedUser: undefined },
 	} as unknown as DiscordMessage;
 	await new MessageManager(service, runtime).handleMessage(inbound);
-	return { sent, suppressed, errors };
+	return { sent, suppressed, errors, callbackErrors };
 }
 
 describe("MessageManager reply de-duplication across scripts", () => {
@@ -235,5 +251,21 @@ describe("MessageManager reply de-duplication across scripts", () => {
 		expect(result.errors).toEqual([]);
 		expect(result.suppressed).toEqual(["fact-signature"]);
 		expect(result.sent).toEqual([first]);
+	});
+});
+
+describe("MessageManager long DM reply that fails part way", () => {
+	it("keeps the delivered chunks and does not send them again", async () => {
+		const reply = Array.from(
+			{ length: 3 },
+			(_, i) => `Part ${i + 1}. ${"word ".repeat(380).trim()}`,
+		).join("\n\n");
+		// The same reply is delivered twice; the third DM send (chunk 3 of the
+		// first delivery) fails after chunks 1 and 2 reached the user.
+		const result = await deliverTwoReplies(reply, reply, 3);
+		expect(result.callbackErrors).toEqual([]);
+		expect(result.sent).toHaveLength(2);
+		expect(result.sent[0]?.startsWith("Part 1.")).toBe(true);
+		expect(result.sent[1]?.startsWith("Part 2.")).toBe(true);
 	});
 });

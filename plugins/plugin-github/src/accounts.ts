@@ -7,7 +7,7 @@
  * Octokit client.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   listConnectorAccounts,
   loadConnectorOAuthAccessToken,
@@ -69,26 +69,33 @@ export function resolveGitHubAccountSelection(
 
 function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
   if (!raw) return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (item): item is RawAccountRecord =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item),
-      );
-    }
-    if (parsed && typeof parsed === "object") {
-      return Object.entries(parsed as Record<string, unknown>)
-        .filter(([, value]) => value && typeof value === "object")
-        .map(([id, value]) => ({
-          ...(value as RawAccountRecord),
-          accountId: (value as RawAccountRecord).accountId ?? id,
-        }));
-    }
-  } catch {
-    return [];
+    parsed = JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new ElizaError(
+      "GITHUB_ACCOUNTS is not valid JSON — fix or remove the value.",
+      { code: "GITHUB_ACCOUNTS_INVALID", cause: error },
+    );
   }
-  return [];
+  if (Array.isArray(parsed)) {
+    return parsed.filter(
+      (item): item is RawAccountRecord =>
+        Boolean(item) && typeof item === "object" && !Array.isArray(item),
+    );
+  }
+  if (parsed && typeof parsed === "object") {
+    return Object.entries(parsed as Record<string, unknown>)
+      .filter(([, value]) => value && typeof value === "object")
+      .map(([id, value]) => ({
+        ...(value as RawAccountRecord),
+        accountId: (value as RawAccountRecord).accountId ?? id,
+      }));
+  }
+  throw new ElizaError(
+    "GITHUB_ACCOUNTS must be a JSON object or array of account records.",
+    { code: "GITHUB_ACCOUNTS_INVALID" },
+  );
 }
 
 function readRawField(

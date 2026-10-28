@@ -338,6 +338,23 @@ test('registered typed generation HTTP route validates real enrollment and remai
     expect((await generate()).status).toBe(200);
     output = JSON.stringify({ unsupported: 'Select a calendar first' });
     expect((await generate()).status).toBe(422);
+    // A provider can wrap the same object in a plain code fence, or add one
+    // line of prose before it. The object is unchanged, so the draft is valid.
+    output = ['```', JSON.stringify(basic), '```'].join('\n');
+    expect((await generate()).status).toBe(200);
+    output = `Here is the draft:\n${JSON.stringify(basic)}`;
+    expect((await generate()).status).toBe(200);
+    // Narration can also come after the object, and it can contain a brace or
+    // restate the shape as a second object. The draft is the answer, not the
+    // text between the first and the last brace in the reply.
+    output = `${JSON.stringify(basic)} The final } closes the draft.`;
+    expect((await generate()).status).toBe(200);
+    output = `${JSON.stringify(basic)} I used this shape: {"version":1,"name":"<name>"}`;
+    expect((await generate()).status).toBe(200);
+    // A brace inside a string value is data, not the end of the object. Slicing
+    // to the last `}` in the reply kept the inner brace and lost the draft.
+    output = `Here is the draft:\n${JSON.stringify({ ...basic, name: 'Generated } draft' })}`;
+    expect((await generate()).status).toBe(200);
     for (const malformed of ['not JSON', '[]', 'x'.repeat(65537)]) {
       output = malformed;
       expect((await generate()).status).toBe(502);

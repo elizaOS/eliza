@@ -327,8 +327,14 @@ export function registerTaskSchedulerRuntime(
 }
 
 /** Called by TaskService.stop(). WHY: daemon must not call runTick after runtime has stopped. */
-export function unregisterTaskSchedulerRuntime(agentId: UUID): void {
+export function unregisterTaskSchedulerRuntime(
+	agentId: UUID,
+	taskService?: TaskServiceLike,
+): void {
 	const agentIdKey = String(agentId);
+	// An older service may finish stopping after its replacement registers.
+	if (taskService && registry.get(agentIdKey)?.taskService !== taskService)
+		return;
 	registry.delete(agentIdKey);
 	dirtyAgents.delete(agentIdKey);
 }

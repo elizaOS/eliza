@@ -215,12 +215,13 @@ const deleteRoute: Route = {
     const session = svc.getSession(ctx.params.id as UUID);
     if (!session) return { status: 404, body: { error: "not found" } };
     const stopped = svc.stopSession(ctx.params.id as UUID);
+    const stopping = svc.getSession(ctx.params.id as UUID);
     return {
       status: 200,
       body: {
         ok: true,
         stopped,
-        session: svc.getSession(ctx.params.id as UUID),
+        session: stopping ? await sessionForViewer(ctx, stopping) : null,
       },
     };
   },

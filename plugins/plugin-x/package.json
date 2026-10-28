@@ -44,7 +44,7 @@
     "@elizaos/plugin-elizacloud": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@types/node": "^22.19.17",
     "@types/twitter-text": "3.1.10",
     "@typescript/native": "npm:typescript@^7.0.2",
@@ -197,13 +197,6 @@
         "default": 5,
         "sensitive": false
       },
-      "TWITTER_POLL_INTERVAL": {
-        "type": "number",
-        "description": "Timeline polling interval in seconds.",
-        "required": false,
-        "default": 120,
-        "sensitive": false
-      },
       "TWITTER_DRY_RUN": {
         "type": "boolean",
         "description": "When true, all Twitter actions are simulated and nothing is actually posted.",
@@ -239,74 +232,11 @@
         "default": false,
         "sensitive": false
       },
-      "TWITTER_POST_INTERVAL_VARIANCE": {
-        "type": "number",
-        "description": "Random variance factor (0.0-1.0) applied to posting intervals for natural behavior.",
-        "required": false,
-        "default": 0.2,
-        "sensitive": false
-      },
-      "TWITTER_INTERACTION_INTERVAL_MIN": {
-        "type": "number",
-        "description": "Minimum interval in minutes between interactions.",
-        "required": false,
-        "default": 15,
-        "sensitive": false
-      },
-      "TWITTER_INTERACTION_INTERVAL_MAX": {
-        "type": "number",
-        "description": "Maximum interval in minutes between interactions.",
-        "required": false,
-        "default": 30,
-        "sensitive": false
-      },
-      "TWITTER_INTERACTION_INTERVAL_VARIANCE": {
-        "type": "number",
-        "description": "Random variance factor (0.0-1.0) applied to interaction intervals for natural behavior.",
-        "required": false,
-        "default": 0.3,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_ALGORITHM": {
-        "type": "string",
-        "description": "Timeline processing algorithm: 'weighted' (default) or 'latest'.",
-        "required": false,
-        "default": "weighted",
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_USER_BASED_WEIGHT": {
-        "type": "number",
-        "description": "Weight for user-based scoring in weighted timeline algorithm.",
-        "required": false,
-        "default": 3,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_TIME_BASED_WEIGHT": {
-        "type": "number",
-        "description": "Weight for time-based scoring in weighted timeline algorithm.",
-        "required": false,
-        "default": 2,
-        "sensitive": false
-      },
-      "TWITTER_TIMELINE_RELEVANCE_WEIGHT": {
-        "type": "number",
-        "description": "Weight for relevance-based scoring in weighted timeline algorithm.",
-        "required": false,
-        "default": 5,
-        "sensitive": false
-      },
       "TWITTER_MAX_TWEET_LENGTH": {
         "type": "number",
         "description": "Legacy compatibility setting; complete text is delivered as an ordered thread of provider-sized posts.",
         "required": false,
         "default": 280,
-        "sensitive": false
-      },
-      "TWITTER_MAX_INTERACTIONS_PER_RUN": {
-        "type": "number",
-        "description": "Maximum number of interactions processed per cycle.",
-        "required": false,
-        "default": 10,
         "sensitive": false
       },
       "TWITTER_DM_ONLY": {
@@ -321,13 +251,6 @@
         "description": "Enable timeline action processing and automated responses.",
         "required": false,
         "default": false,
-        "sensitive": false
-      },
-      "TWITTER_ACTION_INTERVAL": {
-        "type": "number",
-        "description": "Interval in minutes between timeline action processing cycles.",
-        "required": false,
-        "default": 240,
         "sensitive": false
       },
       "TWITTER_AUTO_RESPOND_MENTIONS": {

@@ -539,6 +539,13 @@ const CORE_STATIC_PLUGIN_REGISTRATIONS: readonly CoreStaticPluginRegistration[] 
     },
     ...buildDeferredStaticRegistrations(),
   ];
+// Cost: register lazy functions only; no module import or plugin initialization.
+// Mobile has no filesystem fallback, so configured plugins must be resolvable
+// even before the deferred registration phase has run. Reuse its exact loaders.
+for (const registration of CORE_STATIC_PLUGIN_REGISTRATIONS) {
+  const name = registration.registryName ?? registration.packageName;
+  STATIC_ELIZA_PLUGIN_LOADERS[name] ??= registration.load;
+}
 let _blockingStaticPluginsRegistered = false;
 let _deferredStaticPluginsRegistered = false;
 let _blockingStaticPluginsRegistrationPromise: Promise<void> | null = null;

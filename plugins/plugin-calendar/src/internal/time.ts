@@ -5,7 +5,7 @@
  * supports calendar arithmetic; mutation callers can
  * reject repeated and skipped wall times until the user resolves them.
  */
-import { ElizaError } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core/protocol";
 
 export class CalendarLocalTimeError extends ElizaError {
   readonly status = 409;
@@ -267,4 +267,53 @@ export function isRealCalendarDay(
     candidate.getUTCMonth() + 1 === month &&
     candidate.getUTCDate() === day
   );
+}
+
+/** Finite reviewed wall-clock span, preserving civil days across DST changes. */
+export function calendarRangeFitsLocalDays(
+  start: string,
+  end: string,
+  timeZone: string,
+  days = 7,
+): boolean {
+  if (!Number.isInteger(days) || days < 1 || days > 7) return false;
+  const first = new Date(start),
+    last = new Date(end),
+    elapsed = last.getTime() - first.getTime();
+  if (
+    !Number.isFinite(elapsed) ||
+    elapsed <= 0 ||
+    elapsed > (days + 1) * 86400000
+  )
+    return false;
+  try {
+    const a = getZonedDateParts(first, timeZone),
+      b = getZonedDateParts(last, timeZone),
+      limit = addDaysToLocalDate(a, days);
+    // A civil increment cannot jump years; fail closed on unsupported historical arithmetic.
+    if (Math.abs(limit.year - a.year) > 1) return false;
+    const bound = [
+      limit.year,
+      limit.month,
+      limit.day,
+      a.hour,
+      a.minute,
+      a.second,
+      first.getUTCMilliseconds(),
+    ];
+    const actual = [
+      b.year,
+      b.month,
+      b.day,
+      b.hour,
+      b.minute,
+      b.second,
+      last.getUTCMilliseconds(),
+    ];
+    for (let index = 0; index < bound.length; index++)
+      if (actual[index] !== bound[index]) return actual[index] < bound[index];
+    return true;
+  } catch {
+    return false;
+  }
 }

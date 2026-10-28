@@ -8,6 +8,7 @@ import type http from "node:http";
 import { _resetAuthRateLimiter } from "@elizaos/app/auth";
 import type { AgentRuntime } from "@elizaos/core";
 import type { Route } from "@elizaos/host/protocol";
+import { calendarPlugin } from "@elizaos/plugin-calendar";
 import {
   captureDevCloudEnvAuthoritySnapshot,
   resetDevCloudEnvAuthorityForTests,
@@ -254,7 +255,6 @@ describe("LifeOps raw route owner/admin gate", () => {
   });
   it("mounts every owner calendar surface behind the same private gate", () => {
     const calendarRoutes = [
-      ["GET", "/api/lifeops/calendar/feed"],
       ["GET", "/api/lifeops/calendar/sources"],
       ["POST", "/api/lifeops/calendar/sources"],
       ["PATCH", "/api/lifeops/calendar/sources/:sourceId"],
@@ -262,7 +262,6 @@ describe("LifeOps raw route owner/admin gate", () => {
       ["POST", "/api/lifeops/calendar/sources/:sourceId/sync"],
       ["GET", "/api/lifeops/calendar/meeting-auto-join"],
       ["PUT", "/api/lifeops/calendar/meeting-auto-join"],
-      ["GET", "/api/lifeops/calendar/calendars"],
       ["PUT", "/api/lifeops/calendar/calendars/:id/include"],
       ["GET", "/api/lifeops/calendar/next-context"],
       ["POST", "/api/lifeops/calendar/events"],
@@ -280,6 +279,16 @@ describe("LifeOps raw route owner/admin gate", () => {
     ] as const;
     for (const [type, path] of calendarRoutes) {
       expect(findRoute(type, path).public).not.toBe(true);
+    }
+  });
+  it("leaves calendar plugin routes to the calendar plugin", () => {
+    for (const route of calendarPlugin.routes ?? []) {
+      expect(
+        personalAssistantRoutesPlugin.routes?.some(
+          (candidate) =>
+            candidate.type === route.type && candidate.path === route.path,
+        ),
+      ).toBe(false);
     }
   });
   it("mounts every agreement mutation and preview behind the owner gate", () => {

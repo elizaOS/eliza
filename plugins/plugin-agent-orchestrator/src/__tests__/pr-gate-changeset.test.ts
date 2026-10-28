@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { redactSensitiveText } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reviewDiff } from "../services/diff-review-gate.js";
 import { capturePrGateChangeSet } from "../services/workspace-diff.js";
 
@@ -38,6 +38,7 @@ describe("capturePrGateChangeSet → reviewDiff (real git)", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -122,6 +123,75 @@ describe("capturePrGateChangeSet → reviewDiff (real git)", () => {
     });
     expect(result.passed).toBe(false);
     expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
+  });
+
+  function commitSettingsWithToken(branch: string): void {
+    git("checkout", "-q", "-b", branch);
+    writeFileSync(
+      join(dir, "settings.json"),
+      `{\n  "githubToken": "${githubTestPat()}"\n}\n`,
+    );
+    git("add", "-A");
+    git("commit", "-q", "-m", "add settings");
+  }
+
+  async function gateResult() {
+    const changeSet = await capturePrGateChangeSet(dir, "main");
+    expect(changeSet).toBeDefined();
+    if (!changeSet) throw new Error("Expected complete changeset");
+    return reviewDiff({
+      diff: changeSet.diff,
+      changedFiles: changeSet.changedFiles,
+    });
+  }
+
+  it.each([
+    // A side-by-side tool such as difftastic prints its own format.
+    { setting: "an external diff tool", key: "diff.external" },
+    {
+      setting: "a textconv driver",
+      key: "diff.summary.textconv",
+      attributes: "*.json diff=summary\n",
+    },
+    { setting: "color.ui=always", key: "color.ui", value: "always" },
+  ])(
+    "still catches a secret when the user's git config sets $setting",
+    async ({ key, value, attributes }) => {
+      if (attributes) writeFileSync(join(dir, ".gitattributes"), attributes);
+      commitSettingsWithToken("leak-user-config");
+      const configDir = mkdtempSync(join(tmpdir(), "pr-gate-gitconfig-"));
+      try {
+        const tool = join(configDir, "summarize");
+        writeFileSync(tool, '#!/bin/sh\nprintf "%s changed\\n" "$1"\n', {
+          mode: 0o755,
+        });
+        const globalConfig = join(configDir, "gitconfig");
+        writeFileSync(globalConfig, "");
+        execFileSync("git", [
+          "config",
+          "--file",
+          globalConfig,
+          key,
+          value ?? tool,
+        ]);
+        vi.stubEnv("GIT_CONFIG_GLOBAL", globalConfig);
+
+        const result = await gateResult();
+        expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
+        expect(result.passed).toBe(false);
+      } finally {
+        rmSync(configDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("still catches a secret in a text file the branch marks -diff", async () => {
+    writeFileSync(join(dir, ".gitattributes"), "*.json -diff\n");
+    commitSettingsWithToken("leak-attributes");
+
+    const result = await gateResult();
+    expect(result.blocking.some((f) => f.check === "secret")).toBe(true);
+    expect(result.passed).toBe(false);
   });
 
   it("returns undefined for a non-git directory (gate unavailable, fail-safe)", async () => {

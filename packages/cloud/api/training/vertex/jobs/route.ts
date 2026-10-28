@@ -3,10 +3,7 @@
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
-import {
-  getTuningJobStatus,
-  listTuningJobs,
-} from "@elizaos/cloud-shared/lib/services/vertex-tuning";
+import { getTuningJobStatus } from "@elizaos/cloud-shared/lib/services/vertex-tuning";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -14,9 +11,6 @@ async function __hono_GET(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { searchParams } = new URL(request.url);
-    const projectId =
-      searchParams.get("projectId") || process.env.GOOGLE_CLOUD_PROJECT;
-    const region = searchParams.get("region") || "us-central1";
     const jobName = searchParams.get("name");
     const jobId = searchParams.get("jobId");
     const requestedPersistedValues = searchParams.getAll("persisted");
@@ -94,29 +88,18 @@ async function __hono_GET(request: Request) {
       return Response.json({ persistedJobs });
     }
 
-    if (!projectId) {
-      return Response.json(
-        {
-          error:
-            "projectId is required. Set it in the query string or provide GOOGLE_CLOUD_PROJECT.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const jobs = await listTuningJobs(projectId, region);
+    // Only the caller's own tracked jobs: a project-wide Vertex listing would
+    // return every organization's tuning jobs.
+    const jobs = persistedJobs
+      .map((job) => job.last_remote_payload)
+      .filter((payload) => payload != null);
     return Response.json({ jobs, persistedJobs });
   } catch (error) {
     if (error instanceof ApiError) {
       return Response.json(error.toJSON(), { status: error.status });
     }
     return Response.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to query Vertex jobs",
-      },
+      { error: "Failed to query Vertex jobs" },
       { status: 500 },
     );
   }
