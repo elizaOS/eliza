@@ -20,6 +20,21 @@ function getFileStorage(runtime: IAgentRuntime): IFileStorageService | null {
     runtime.getService<IFileStorageService>(ServiceType.REMOTE_FILES) ?? null
   );
 }
+
+// Default page for GET /api/files. The store scan itself is
+// unbounded (every stored file is stat'ed per list call), so the
+// route must not serialize the whole store by default: the Files
+// surface is a recency-ordered browser, and single files stay
+// addressable by name via GET /api/media/:fileName.
+const FILES_LIST_DEFAULT_LIMIT = 200;
+const FILES_LIST_MAX_LIMIT = 1000;
+
+function queryNumber(value: string | string[] | undefined): number | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined) return null;
+  const parsed = Number(raw.trim());
+  return Number.isFinite(parsed) ? parsed : null;
+}
 /**
  * GET /api/files — list stored files (newest first), selected per viewer
  * (#14778): the single-owner boundary and OWNER/ADMIN-rank viewers see the
@@ -46,7 +61,18 @@ export const filesListRoute: Route = {
       ctx.accessContext,
       ctx.runtime.agentId as UUID,
     );
-    return { status: 200, body };
+    const limitRaw = queryNumber(ctx.query?.limit);
+    const limit =
+      limitRaw === null || limitRaw <= 0
+        ? FILES_LIST_DEFAULT_LIMIT
+        : Math.min(Math.floor(limitRaw), FILES_LIST_MAX_LIMIT);
+    const offsetRaw = queryNumber(ctx.query?.offset);
+    const offset =
+      offsetRaw === null || offsetRaw < 0 ? 0 : Math.floor(offsetRaw);
+    return {
+      status: 200,
+      body: { ...body, files: body.files.slice(offset, offset + limit) },
+    };
   },
 };
 /** DELETE /api/files/:filename — delete one stored file (reference-unaware). */

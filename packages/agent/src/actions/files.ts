@@ -15,6 +15,10 @@ import type {
 import { logger, ServiceType } from "@elizaos/core";
 
 const FILES_OPS = ["list", "get", "delete"] as const;
+
+// Max files rendered into one FILES list result. The list is
+// newest-first, so the newest page answers a list call.
+const FILES_LIST_ACTION_MAX = 100;
 type FilesOp = (typeof FILES_OPS)[number];
 
 interface FilesParams {
@@ -76,18 +80,27 @@ async function doList(
   const filtered = params.query
     ? all.filter((file) => matchesQuery(file, params.query ?? ""))
     : all;
+  // Cap the model-context render: the list is newest-first, so
+  // the newest page answers a list call, and single files stay
+  // addressable via op:get. The full count stays in `total`.
+  const rendered = filtered.slice(0, FILES_LIST_ACTION_MAX);
+  const truncated = rendered.length < filtered.length;
   const text = filtered.length
-    ? `Found all ${filtered.length} file(s).\n${filtered
+    ? `Found ${truncated ? "" : "all "}${filtered.length} file(s).${
+        truncated ? ` Showing the newest ${rendered.length}.` : ""
+      }\n${rendered
         .map(
           (file) =>
             `- ${file.fileName} (${file.mimeType}, ${humanSize(file.size)}) ${file.url}`,
         )
-        .join("\n")}`
+        .join("\n")}${
+        truncated ? "\nMore stored files exist; narrow with a query." : ""
+      }`
     : "No stored files match.";
   return {
     success: true,
     text,
-    data: { files: filtered, total: filtered.length },
+    data: { files: rendered, total: filtered.length },
   };
 }
 
