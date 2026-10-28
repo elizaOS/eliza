@@ -27,21 +27,36 @@ export interface WorkflowRunNotRun {
  * offers no Run now and says when it runs next instead.
  */
 export function workflowRunNotRun(
-  execution: Pick<WorkflowExecution, "status" | "finished" | "output">,
+  execution: Pick<
+    WorkflowExecution,
+    "status" | "finished" | "output" | "input"
+  >,
   formatTime: (iso: string) => string = (iso) => new Date(iso).toLocaleString(),
   runNowAvailable = true,
 ): WorkflowRunNotRun | null {
   if (!execution.finished || execution.status !== "finished") return null;
+  // Only the agent's own scheduled admission writes these settlements, and it
+  // records the admission in the run input. A workflow whose own result merely
+  // has the same shape is a run that ran.
+  if (!scheduledAdmission(execution.input)) return null;
   const settled = workflowOccurrenceNotRun(execution.output);
   if (!settled) return null;
+  const later = runNowAvailable
+    ? "It is not run later; use Run now to start it once."
+    : "It is not run later; it runs again only at its next scheduled time.";
+  if (settled.status === "missed" && settled.skippedLocalTime)
+    return {
+      status: "missed",
+      label: "Missed — did not run",
+      notice: `Scheduled for ${settled.skippedLocalTime.slice(11)} on ${settled.skippedLocalTime.slice(0, 10)}, a time the clocks skipped when they moved forward, so nothing ran. ${later}`,
+      offerRunNow: runNowAvailable,
+    };
   const when = formatTime(settled.scheduledAt);
   return settled.status === "missed"
     ? {
         status: "missed",
         label: "Missed — did not run",
-        notice: runNowAvailable
-          ? `Scheduled for ${when}. The agent was not running then, so nothing ran. It is not run later; use Run now to start it once.`
-          : `Scheduled for ${when}. The agent was not running then, so nothing ran. It is not run later; it runs again only at its next scheduled time.`,
+        notice: `Scheduled for ${when}. The agent was not running then, so nothing ran. ${later}`,
         offerRunNow: runNowAvailable,
       }
     : {
@@ -50,6 +65,14 @@ export function workflowRunNotRun(
         notice: `Scheduled for ${when}. An earlier run was still active, so nothing ran for this time.`,
         offerRunNow: false,
       };
+}
+
+function scheduledAdmission(input: unknown): boolean {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+  const record = input as Record<string, unknown>;
+  return [record.typedSchedule, record.hostedDigest].some(
+    (value) => !!value && typeof value === "object" && !Array.isArray(value),
+  );
 }
 
 export interface TriggerRunMissed {

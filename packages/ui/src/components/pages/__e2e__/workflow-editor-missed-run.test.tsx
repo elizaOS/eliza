@@ -46,7 +46,8 @@ const run = (over: Partial<WorkflowExecution>): WorkflowExecution =>
     workflowId: "flow",
     workflowVersionId: "v1",
     workflowName: "Morning",
-    input: {},
+    // The agent's scheduled admission, recorded on every settled occurrence.
+    input: { typedSchedule: { scheduledAt, status: "missed" } },
     events: [],
     ...over,
   }) as WorkflowExecution;
@@ -106,6 +107,7 @@ it("offers no Run now for an occurrence skipped beside an active run", async () 
 it("offers no Run now for a hosted digest's missed time, which only its schedule admits", async () => {
   io.getWorkflowExecutions.mockResolvedValue([
     run({
+      input: { hostedDigest: { scheduledAt, status: "missed" } },
       output: {
         status: "missed",
         scheduledAt,
@@ -132,4 +134,19 @@ it("offers no Run now for a hosted digest's missed time, which only its schedule
   expect(notice.textContent).not.toContain("use Run now");
   expect(screen.queryByRole("button", { name: "Run now" })).toBeNull();
   expect(io.runWorkflowDefinition).not.toHaveBeenCalled();
+});
+
+it("shows a manual run whose own result has a missed shape as a run that finished", async () => {
+  io.getWorkflowExecutions.mockResolvedValue([
+    run({
+      mode: "manual",
+      input: {},
+      output: { status: "missed", scheduledAt, text: "my result" },
+    }),
+  ]);
+  render(<WorkflowEditor initial={workflow} />);
+  fireEvent.click(screen.getByRole("button", { name: "Runs" }));
+  await screen.findAllByText("finished");
+  expect(screen.queryByTestId("workflow-run-not-run")).toBeNull();
+  expect(screen.queryByText("Missed — did not run")).toBeNull();
 });
