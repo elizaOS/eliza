@@ -48,6 +48,7 @@ function fixture(
   const dispatched: Bag[] = [];
   const toasts: string[] = [];
   let state = { outcome, publishes: 0 };
+  const hooks: { prepareGate?: Promise<void>; failReads?: boolean } = {};
   const client: MailReviewClient = {
     gmailInboxCapabilities: async () => ({ ...caps, ...granted }),
     gmailDraft: async (_grant, draftId) => ({
@@ -56,6 +57,7 @@ function fixture(
       providerDigest: "d".repeat(64),
     }),
     async gmailPrepareOperation(_grant, requestId, proposal) {
+      await hooks.prepareGate;
       const review = {
         ...proposal,
         from: "owner@example.invalid",
@@ -110,6 +112,7 @@ function fixture(
     binding: () => current,
     store: {
       async read<T>(key: string) {
+        if (hooks.failReads) throw new Error("storage unavailable");
         const raw = slots.get(key);
         return raw === undefined ? null : (JSON.parse(raw) as T);
       },
@@ -132,6 +135,7 @@ function fixture(
   });
   return {
     controller,
+    hooks,
     slots,
     dispatched,
     toasts,
@@ -255,6 +259,32 @@ describe("createMailReviewController", () => {
     await settle();
     expect(f.slots.size).toBe(0);
     expect(f.toasts.at(-1)).toMatch(/change access was withdrawn/);
+    expect(f.dispatched).toEqual([]);
+  });
+
+  it("tells the owner when a withdrawal applied by a reset cannot discard the review", async () => {
+    const f = fixture();
+    await f.controller.bind("grant");
+    let release = () => {};
+    f.hooks.prepareGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const preparing = f.controller.prepare({
+      kind: "archive",
+      messageId: "m1",
+      expectedHistoryId: "h1",
+    });
+    await settle();
+    // The withdrawal waits for the active run; the reset then owns it.
+    f.controller.withdrawn();
+    f.controller.reset();
+    f.hooks.failReads = true;
+    release();
+    await preparing.catch(() => {});
+    await settle();
+    expect(f.toasts.at(-1)).toMatch(
+      /withdrawn, but the unsent review could not be discarded/,
+    );
     expect(f.dispatched).toEqual([]);
   });
 

@@ -196,11 +196,19 @@ export function createMailReviewController(
       withdrawal = null;
       void (async () => {
         await inFlight?.catch(() => {});
-        await InboxOperation.discardUnsent(
-          options.store,
-          pending.owner,
-          pending.grant,
-        ).catch(() => false);
+        try {
+          await InboxOperation.discardUnsent(
+            options.store,
+            pending.owner,
+            pending.grant,
+          );
+        } catch {
+          // The view has moved on, so the failure is told rather than shown as
+          // status; the saved review stays and is discarded on the next withdrawal.
+          toast(
+            "Gmail change access was withdrawn, but the unsent review could not be discarded. Nothing was changed.",
+          );
+        }
       })();
     }
     epoch++;
