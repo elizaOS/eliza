@@ -1114,6 +1114,11 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     under("/v1/voice/speaker-profiles") ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // iMessage history, chats, and contacts are owner-private, and send
+    // and contact CRUD mutate the owner's identity and address book.
+    // The Blooio webhook stays open: it carries no session and is
+    // authenticated by its HMAC signature, not the local gate.
+    (under("/api/imessage") && pathname !== "/api/imessage/webhook/blooio") ||
     // Custom actions live in the owner's config, are live-registered
     // into the runtime, and their http handlers can carry the owner's
     // webhook secrets — reads disclose them, writes plant persistent
@@ -1134,9 +1139,15 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Release-channel policy: a silent flip to nightly changes what
+        // the owner's next update installs. Status stays a GET read.
+        under("/api/update") ||
         // MCP config writes can point the agent at an attacker-controlled
         // remote server; stdio writes are terminal-gated but not role-gated.
         under("/api/mcp") ||
+        // Connector setup (Telegram, Discord, iMessage): saves, replaces or
+        // clears the owner's connector credentials and sessions.
+        under("/api/setup") ||
         under("/api/config") ||
         under("/api/character") ||
         // Model selection writes into the same config the owner gate protects.
@@ -1158,11 +1169,24 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
         pathname === "/api/provider/switch" ||
+        // Eliza Cloud connection mutations: disconnect deletes the
+        // owner's persisted cloud API key, and login/persist writes a
+        // caller-supplied key into it. Exact paths only, not the whole
+        // /api/cloud prefix — billing, relay, and container routes are
+        // a separate surface, and the GET login-status poll stays open
+        // (it requires a session id only a gated POST can mint).
+        pathname === "/api/cloud/disconnect" ||
+        pathname === "/api/cloud/login" ||
+        pathname === "/api/cloud/login/persist" ||
         // Model credentials themselves: adding, editing, deleting an
         // account, or changing the provider strategy, re-routes the
         // owner's model traffic (prompts included) under another key.
         under("/api/accounts") ||
         under("/api/providers") ||
+        // iMessage connector setup: a guest session could enable or
+        // wipe the owner's iMessage connector config. Write-only, so
+        // GET /api/setup/imessage/status stays open.
+        under("/api/setup/imessage") ||
         // Meeting bots join, transcribe, bill, and stop on the owner's
         // behalf, and Zoom import spends the owner's stored token. The
         // GETs stay open: they are share-viewer routes with per-viewer

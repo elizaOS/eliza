@@ -10,7 +10,10 @@
  * surcharge nor accrues earnings. Returns plain JSON, not SSE.
  */
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
@@ -682,7 +685,7 @@ export async function handleToolCall(
         jsonrpc: "2.0",
         error: {
           code: -32000,
-          message: error instanceof Error ? error.message : "Internal error",
+          message: safeUnknownErrorMessage(error),
         },
         id: rpcId,
       });

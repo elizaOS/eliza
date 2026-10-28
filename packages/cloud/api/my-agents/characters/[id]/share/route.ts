@@ -14,6 +14,7 @@ import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import {
   ApiError,
   failureResponse,
+  safeUnknownErrorMessage,
 } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
 import { CacheKeys } from "@elizaos/cloud-shared/lib/cache/keys";
@@ -148,10 +149,7 @@ app.put("/", async (c) => {
     return c.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update share status",
+        error: safeUnknownErrorMessage(error),
       },
       500,
     );

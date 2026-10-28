@@ -202,6 +202,13 @@ test("year-less dates suggest their next occurrence with a year-inferred disclos
   r = details("Gala\n2 March\n7 PM");
   assert.equal(r.fields.date, "2027-03-02");
   assert.match(r.disclosures.join("\n"), /Year inferred.*2027-03-02/);
+  r = details("Fair\nSept 5\n6 PM");
+  assert.equal(r.fields.date, "2027-09-05");
+  assert.match(r.disclosures.join("\n"), /Year inferred.*2027-09-05/);
+  r = details("Fair\n5 Sept\n6 PM");
+  assert.equal(r.fields.date, "2027-09-05");
+  r = details("Fair\nSept. 5\n6 PM");
+  assert.equal(r.fields.date, "2027-09-05");
   r = details("Fair\nOctober 3\n7 PM");
   assert.equal(
     r.fields.date,

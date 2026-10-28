@@ -6,8 +6,10 @@
  * Authorization header.
  */
 
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import { getProvider } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -71,12 +73,10 @@ app.get("/", async (c) => {
           : "Not connected yet.",
     });
   } catch (error) {
+    logger.error("[Eliza App] Failed to load connection status:", error);
     return c.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load connection status",
+        error: safeUnknownErrorMessage(error),
         code: "CONNECTION_STATUS_FAILED",
       },
       500,
