@@ -82,6 +82,12 @@ A host that can hold the SMS role declares thin subclasses of
 - Quick replies from call screens open the compose review; nothing is sent from
   the service. The compose screen is the review: its Send press uses the same
   journal and operation-ID rules as `TelephonyPlugin.sendSms`.
+- Android writes sent texts to the provider for every app except the default
+  SMS app. While the host holds the role, each reviewed send stores its
+  recipient's message in the outbox just before the SmsManager call, and that
+  recipient's sent callbacks move it to sent or failed. A refused write never
+  blocks or repeats the send. Delivery is not claimed for these rows: an
+  immutable delivery callback carries no status report.
 
 `MmsPdu` encodes M-Send.req, M-NotifyResp.ind and M-Acknowledge.ind. Outgoing
 user MMS (group messages and attachments) is not offered yet. Carrier MMSC

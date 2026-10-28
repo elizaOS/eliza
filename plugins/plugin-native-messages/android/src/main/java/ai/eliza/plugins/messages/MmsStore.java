@@ -5,6 +5,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.ContentResolver;
+import android.content.ContentUris;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
@@ -22,9 +23,10 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Provider writes and notices owed by the default SMS app. Android stores incoming messages for the
- * role holder only through that app, so a message the holder fails to persist is lost; every write
- * here either completes or throws, and nothing is reported as stored before the provider returns.
+ * Provider writes and notices owed by the default SMS app. Android stores incoming messages, and the
+ * texts the role holder sends, only through that app, so a message the holder fails to persist is
+ * lost; every write here either completes or throws, and nothing is reported as stored before the
+ * provider returns.
  */
 public final class MmsStore {
  private MmsStore() {}
@@ -52,6 +54,43 @@ public final class MmsStore {
   Uri row = context.getContentResolver().insert(Telephony.Sms.Inbox.CONTENT_URI, values);
   if (row == null) throw new IllegalStateException("SMS provider refused the incoming message");
   return row;
+ }
+
+ /**
+  * Inserts one reviewed outgoing SMS into the outbox and returns its row. Android writes the sent
+  * messages of every app except the default SMS app, which must write its own, so without this row
+  * the text would be missing from every conversation view. Sent callbacks later move it to sent or
+  * failed ({@link #settleOutgoingSms}). Its delivery status stays "none": an immutable delivery
+  * callback carries no status report, so delivery is never claimed for these rows.
+  */
+ public static long persistOutgoingSms(Context context, String recipient, String body, int subscriptionId, long timestamp) {
+  if (recipient == null || recipient.isEmpty() || body == null) throw new IllegalArgumentException("Outgoing SMS without recipient or body");
+  ContentValues values = new ContentValues();
+  values.put(Telephony.Sms.ADDRESS, recipient);
+  values.put(Telephony.Sms.BODY, body);
+  values.put(Telephony.Sms.DATE, timestamp > 0 ? timestamp : System.currentTimeMillis());
+  values.put(Telephony.Sms.READ, 1);
+  values.put(Telephony.Sms.SEEN, 1);
+  values.put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_OUTBOX);
+  if (subscriptionId >= 0) values.put(Telephony.Sms.SUBSCRIPTION_ID, subscriptionId);
+  Uri row = context.getContentResolver().insert(Telephony.Sms.Outbox.CONTENT_URI, values);
+  long id = row == null ? -1 : ContentUris.parseId(row);
+  if (id <= 0) throw new IllegalStateException("SMS provider refused the outgoing message");
+  return id;
+ }
+
+ /**
+  * Moves an outgoing row out of the outbox to {@link SmsSendJournal#TYPE_SENT} or
+  * {@link SmsSendJournal#TYPE_FAILED}. Only an outbox row this app created changes; a row Android or
+  * another app wrote is never touched.
+  */
+ public static boolean settleOutgoingSms(Context context, long row, int type) {
+  if (row <= 0 || (type != SmsSendJournal.TYPE_SENT && type != SmsSendJournal.TYPE_FAILED)) throw new IllegalArgumentException("Invalid outgoing SMS outcome");
+  ContentValues values = new ContentValues();
+  values.put(Telephony.Sms.TYPE, type);
+  return context.getContentResolver().update(ContentUris.withAppendedId(Telephony.Sms.CONTENT_URI, row), values,
+    Telephony.Sms.TYPE + " = ? AND " + Telephony.Sms.CREATOR + " = ?",
+    new String[] { Integer.toString(SmsSendJournal.TYPE_OUTBOX), context.getPackageName() }) == 1;
  }
 
  /** True when a message with this MMS transaction ID is already stored (a repeated notification). */

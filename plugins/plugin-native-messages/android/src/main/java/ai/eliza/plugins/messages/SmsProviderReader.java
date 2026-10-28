@@ -181,7 +181,7 @@ public final class SmsProviderReader {
    while (c.moveToNext()) {
     if (addresses.length() >= SmsRecords.MAX_ADDRESSES) throw new IllegalStateException("MMS has too many addresses to read completely");
     int type = intAt(c, "type", 0); String address = textAt(c, "address");
-    // Incoming: the sender. Outgoing: the recipients (to, cc, bcc), never Alpha's own number.
+    // Incoming: the sender. Outgoing: the recipients (to, cc, bcc), never this phone's own number.
     if (address == null || "insert-address-token".equals(address)) continue;
     if ("incoming".equals(direction) ? type == MMS_FROM : type != MMS_FROM) addresses.put(complete(address, 64));
    }

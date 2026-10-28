@@ -38,7 +38,9 @@ import org.json.JSONObject;
  * SmsManager for the reviewed subscription with one immutable, package-explicit sent and delivery
  * PendingIntent per part, addressed to the host's receiver. "sent" comes only from RESULT_OK sent
  * callbacks and "delivered" only from delivery reports whose provider row reads complete. Nothing is
- * ever resent automatically and the body is never stored.
+ * ever resent automatically and the journal never stores the body, only its hash. The message itself
+ * is in the system SMS provider, as any sent text is: Android writes that row, except for the default
+ * SMS app, which writes its own (see {@link #dispatch}); delivery is never claimed for those rows.
  *
  * Every entry point is reached only from the host's {@link TelephonyPlugin} or its callback receiver,
  * both of which require {@link SmsTelephonyConfiguration#admission}.
@@ -131,6 +133,11 @@ public final class SmsTelephony {
   * Journals the reviewed send, then submits one message per recipient on the reviewed subscription,
   * divided by the platform. A platform call that throws ends the dispatch as unknown: earlier
   * recipients may have been submitted, so nothing is attempted again automatically.
+  *
+  * Android writes the provider row of a send for every app except the default SMS app. While this
+  * host holds the SMS role it therefore stores each recipient's message in the outbox itself, just
+  * before that recipient's platform call, and its sent callbacks settle the row
+  * ({@link #handleCallback}).
   */
  static SmsSendJournal.Record dispatch(Context context, SmsTelephonyConfiguration config, SmsSendJournal journal, String operationId, String[] recipients, String body, int subscriptionId, ArrayList<String> parts, DispatchGuard guard) throws IOException {
   guard.check();
@@ -138,11 +145,14 @@ public final class SmsTelephony {
   int[] counts = new int[recipients.length];
   java.util.Arrays.fill(counts, parts.size());
   SmsSendJournal.Record record = journal.beginDispatch(operationId, recipients, body, subscriptionId, counts, System.currentTimeMillis(), boot(context));
+  final boolean ownsRows = MmsStore.isDefaultSmsApp(context);
   boolean returned = true;
   try {
    int index = 0;
-   for (String recipient : recipients) {
+   for (int position = 0; position < recipients.length; position++) {
+    String recipient = recipients[position];
     guard.check();
+    if (ownsRows) storeOwnRow(context, journal, record, position, body, subscriptionId);
     ArrayList<PendingIntent> sent = new ArrayList<>(), delivered = new ArrayList<>();
     for (int part = 0; part < parts.size(); part++, index++) { sent.add(callback(context, config, config.sentAction, operationId, index)); delivered.add(callback(context, config, config.deliveredAction, operationId, index)); }
     if (parts.size() == 1) manager.sendTextMessage(recipient, null, parts.get(0), sent.get(0), delivered.get(0));
@@ -154,6 +164,28 @@ public final class SmsTelephony {
    journal.endDispatch(operationId, returned);
   }
   return record;
+ }
+
+ /**
+  * The default SMS app's own outbox row for one recipient, recorded in the journal before the platform
+  * call so that recipient's sent callbacks find it. A refused write never stops the reviewed send, and
+  * never ends it as unknown: the journal keeps the receipt either way, and an unrecorded row can still
+  * be attributed later by creator, address, time window and body hash.
+  */
+ private static void storeOwnRow(Context context, SmsSendJournal journal, SmsSendJournal.Record record, int recipient, String body, int subscriptionId) {
+  long row;
+  try { row = MmsStore.persistOutgoingSms(context, record.recipients[recipient], body, subscriptionId, record.createdAt); }
+  catch (RuntimeException refused) { android.util.Log.w("SmsTelephony", "Outgoing SMS was not stored in the provider"); return; }
+  try { journal.providerRow(record.operationId, recipient, row); }
+  catch (IOException | RuntimeException unrecorded) { android.util.Log.w("SmsTelephony", "Outgoing SMS row was not recorded in the journal"); }
+ }
+
+ /** Moves the default SMS app's own row for this part's recipient out of the outbox once its sent callbacks decide it. */
+ private static void settleOwnRow(Context context, SmsSendJournal journal, String operationId, int index) {
+  long[] settled = journal.settledRow(operationId, index);
+  if (settled == null || !MmsStore.isDefaultSmsApp(context)) return;
+  try { MmsStore.settleOutgoingSms(context, settled[0], (int) settled[1]); }
+  catch (RuntimeException unwritable) { /* The journal keeps the evidence; the row stays queued. */ }
  }
 
  /** The shared contract's `SmsSendResult`, exactly its fields. */
@@ -197,6 +229,7 @@ public final class SmsTelephony {
     try {
      SmsSendJournal journal = journal(app, config);
      boolean changed = sent ? journal.sentResult(operation, index, ok) : journal.deliveryReported(operation, index);
+     if (sent) settleOwnRow(app, journal, operation, index);
      Set<String> reconciled = reconcile(app, config);
      if (changed || reconciled.contains(operation)) updated(operation);
      for (String other : reconciled) if (!other.equals(operation)) updated(other);

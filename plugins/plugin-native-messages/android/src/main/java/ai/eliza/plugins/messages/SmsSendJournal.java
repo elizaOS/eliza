@@ -52,6 +52,8 @@ public final class SmsSendJournal {
  static final char UNKNOWN = 'u', SUCCESS = 's', FAILED = 'f';
  /** Provider SMS status column values (android.provider.Telephony.TextBasedSmsColumns). */
  public static final int STATUS_NONE = -1, STATUS_COMPLETE = 0, STATUS_PENDING = 32, STATUS_FAILED = 64;
+ /** Provider SMS type column values of outgoing rows (Telephony.TextBasedSmsColumns.MESSAGE_TYPE_*). */
+ public static final int TYPE_SENT = 2, TYPE_OUTBOX = 4, TYPE_FAILED = 5;
 
  /** One reviewed send. Mutable fields are only changed under the journal's lock. */
  public static final class Record {
@@ -278,6 +280,28 @@ public final class SmsSendJournal {
   if (record == null || recipient < 0 || recipient >= record.recipients.length || row <= 0 || record.providerRow[recipient] != 0) return;
   record.providerRow[recipient] = row;
   save();
+ }
+
+ /**
+  * The provider row recorded for the recipient of this part and the type its message now has:
+  * {@link #TYPE_FAILED} once any of that recipient's parts failed, {@link #TYPE_SENT} once all of them
+  * were sent, null while a part is still waiting or no row is recorded. Only the default SMS app,
+  * which writes its own rows because Android writes none for it, moves a row with this, and only out
+  * of the outbox.
+  */
+ synchronized long[] settledRow(String operationId, int index) {
+  Record record = records.get(operationId);
+  if (record == null || record.decision != null || index < 0 || index >= record.parts()) return null;
+  int recipient = record.recipientOf(index);
+  long row = record.providerRow[recipient];
+  if (row <= 0) return null;
+  boolean waiting = false;
+  int first = record.firstPart(recipient);
+  for (int i = first; i < first + record.partsPerRecipient[recipient]; i++) {
+   if (record.sent[i] == FAILED) return new long[] { row, TYPE_FAILED };
+   if (record.sent[i] == UNKNOWN) waiting = true;
+  }
+  return waiting ? null : new long[] { row, TYPE_SENT };
  }
 
  /**

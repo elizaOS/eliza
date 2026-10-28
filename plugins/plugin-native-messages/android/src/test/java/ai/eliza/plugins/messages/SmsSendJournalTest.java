@@ -227,6 +227,46 @@ public final class SmsSendJournalTest {
   for (File each : dir.listFiles()) { if (each.isDirectory()) for (File inner : each.listFiles()) inner.delete(); each.delete(); } dir.delete();
  }
 
+ /**
+  * The default SMS app writes its own outbox rows (Android writes none for it). A recipient's row
+  * settles only from that recipient's own sent callbacks: failed at the first failed part, sent once
+  * every part was sent, and never while a part is still waiting. Delivery is not inferred from it.
+  */
+ @Test public void ownOutboxRowsSettleFromSentCallbacksOnly() throws Exception {
+  final String[] memory = { null };
+  SmsSendJournal journal = new SmsSendJournal(new SmsSendJournal.Storage() {
+   public String read() { return memory[0]; }
+   public void write(String value) { memory[0] = value; }
+  });
+  String[] two = { "+15555550100", "5550101" };
+  SmsSendJournal.Record r = journal.beginDispatch("own-1", two, "hello", 3, new int[] { 2, 1 }, 1000, 7);
+  require(journal.settledRow("own-1", 0) == null, "no row recorded yet");
+  journal.providerRow("own-1", 0, 41); journal.providerRow("own-1", 1, 42);
+  journal.endDispatch("own-1", true);
+  require(journal.settledRow("own-1", 0) == null && journal.settledRow("own-1", 2) == null, "rows stay queued until callbacks arrive");
+  journal.sentResult("own-1", 0, true);
+  require(journal.settledRow("own-1", 0) == null && journal.settledRow("own-1", 1) == null, "a multipart row waits for every part");
+  journal.sentResult("own-1", 1, true);
+  long[] first = journal.settledRow("own-1", 1);
+  require(first != null && first[0] == 41 && first[1] == SmsSendJournal.TYPE_SENT, "every part sent moves the recipient's row to sent");
+  require(journal.settledRow("own-1", 2) == null, "another recipient's callbacks never settle this one");
+  journal.sentResult("own-1", 2, false);
+  long[] second = journal.settledRow("own-1", 2);
+  require(second != null && second[0] == 42 && second[1] == SmsSendJournal.TYPE_FAILED, "a failed part moves the row to failed");
+  require("failed".equals(r.status()) && r.delivery[0] == SmsSendJournal.UNKNOWN, "settling rows claims no delivery");
+  require(new SmsSendJournal(new SmsSendJournal.Storage() {
+   public String read() { return memory[0]; }
+   public void write(String value) { memory[0] = value; }
+  }).settledRow("own-1", 0)[0] == 41, "recorded rows survive reload");
+  SmsSendJournal.Record failedEarly = journal.beginDispatch("own-2", two, "bye", 3, new int[] { 2, 1 }, 2000, 7);
+  journal.providerRow("own-2", 0, 51); journal.endDispatch("own-2", true);
+  journal.sentResult("own-2", 1, false);
+  long[] early = journal.settledRow("own-2", 0);
+  require(early != null && early[1] == SmsSendJournal.TYPE_FAILED && "failed".equals(failedEarly.status()), "a failed part settles the row without waiting for the others");
+  journal.decide("own-3", two, "never", 3, "cancelled", 3000, 7);
+  require(journal.settledRow("own-3", 0) == null && journal.settledRow("missing", 0) == null && journal.settledRow("own-1", 9) == null, "cancelled, unknown and out-of-range parts have no row");
+ }
+
  /** The retired-ID filter is salted by the host namespace: a host keeps the namespace its installed journal used. */
  @Test public void retiredFilterNamespaceIsMigrationSensitive() throws Exception {
   final String[] memory = { null };
