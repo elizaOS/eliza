@@ -45,6 +45,14 @@ import {
   getLocalActivityAdapterRegistry,
   type LocalActivitySourceObservation,
 } from "./registry.js";
+import {
+  MAX_KEYWORD_LENGTH,
+  MAX_PAGE_SIZE,
+  MAX_PAGES_PER_QUERY,
+  MAX_SEARCH_RADIUS,
+} from "./ticketmaster.js";
+
+const COUNTRY_CODE_PATTERN = /^[A-Za-z]{2}$/;
 
 export const LOCAL_CONDITIONS_ACTION = "LOCAL_CONDITIONS";
 
@@ -194,6 +202,34 @@ function stringArray(value: unknown, field: string): string[] {
   );
 }
 
+function countryCode(value: unknown, field: string): string {
+  const normalized = text(value, field);
+  if (!COUNTRY_CODE_PATTERN.test(normalized)) {
+    invalid(field, "a two-letter country code");
+  }
+  return normalized;
+}
+
+function searchRadius(value: unknown, field: string): number {
+  const numeric = finiteNumber(value, field);
+  if (numeric <= 0 || numeric > MAX_SEARCH_RADIUS) {
+    invalid(field, `greater than 0 and at most ${MAX_SEARCH_RADIUS}`);
+  }
+  return numeric;
+}
+
+function boundedInteger(
+  value: unknown,
+  field: string,
+  maximum: number,
+): number | undefined {
+  const numeric = optionalInteger(value, field, 1);
+  if (numeric !== undefined && numeric > maximum) {
+    invalid(field, `an integer of at most ${maximum}`);
+  }
+  return numeric;
+}
+
 function activityLocation(
   value: unknown,
 ): LocalActivityOracleQuery["location"] {
@@ -202,7 +238,7 @@ function activityLocation(
     return {
       kind: "postal-code",
       postalCode: text(input.postalCode, "location.postalCode"),
-      countryCode: text(input.countryCode, "location.countryCode"),
+      countryCode: countryCode(input.countryCode, "location.countryCode"),
     };
   }
   if (input.latitude !== undefined) {
@@ -210,7 +246,7 @@ function activityLocation(
       kind: "coordinates",
       latitude: latitude(input.latitude, "location.latitude"),
       longitude: longitude(input.longitude, "location.longitude"),
-      radius: finiteNumber(input.radiusMiles, "location.radiusMiles"),
+      radius: searchRadius(input.radiusMiles, "location.radiusMiles"),
       unit: "miles",
     };
   }
@@ -303,14 +339,29 @@ function protectedWindow(
 function activityQuery(
   params: Record<string, unknown>,
 ): LocalActivityOracleQuery {
-  const pageSize = optionalInteger(params.pageSize, "pageSize", 1);
-  const maxPages = optionalInteger(params.maxPages, "maxPages", 1);
+  const pageSize = boundedInteger(params.pageSize, "pageSize", MAX_PAGE_SIZE);
+  const maxPages = boundedInteger(
+    params.maxPages,
+    "maxPages",
+    MAX_PAGES_PER_QUERY,
+  );
+  const startAt = instant(params.startAt, "startAt");
+  const endAt = instant(params.endAt, "endAt");
+  if (Date.parse(endAt) <= Date.parse(startAt)) {
+    invalid("endAt", "later than startAt");
+  }
+  const keywords = stringArray(params.keywords, "keywords");
+  keywords.forEach((keyword, index) => {
+    if (keyword.length > MAX_KEYWORD_LENGTH) {
+      invalid(`keywords[${index}]`, `at most ${MAX_KEYWORD_LENGTH} characters`);
+    }
+  });
   return {
     kind: "local-activity",
     location: activityLocation(params.location),
-    startAt: instant(params.startAt, "startAt"),
-    endAt: instant(params.endAt, "endAt"),
-    keywords: stringArray(params.keywords, "keywords"),
+    startAt,
+    endAt,
+    keywords,
     ...(pageSize === undefined ? {} : { pageSize }),
     ...(maxPages === undefined ? {} : { maxPages }),
   };
@@ -399,10 +450,21 @@ export function createLocalConditionsAction(
       },
       {
         name: "location",
-        description:
-          "Search area: { postalCode, countryCode } or { latitude, longitude, radiusMiles }.",
+        description: `Search area: { postalCode, countryCode } or { latitude, longitude, radiusMiles }. countryCode is two letters, e.g. "US". radiusMiles is greater than 0 and at most ${MAX_SEARCH_RADIUS}.`,
         subactions: ["discover_activities", "curate_discovered_activities"],
-        schema: { type: "object", additionalProperties: true },
+        schema: {
+          type: "object",
+          properties: {
+            postalCode: { type: "string", minLength: 1 },
+            countryCode: {
+              type: "string",
+              pattern: COUNTRY_CODE_PATTERN.source,
+            },
+            latitude: { type: "number", minimum: -90, maximum: 90 },
+            longitude: { type: "number", minimum: -180, maximum: 180 },
+            radiusMiles: { type: "number", maximum: MAX_SEARCH_RADIUS },
+          },
+        },
       },
       {
         name: "startAt",
@@ -412,7 +474,8 @@ export function createLocalConditionsAction(
       },
       {
         name: "endAt",
-        description: "RFC 3339 end of the activity search window.",
+        description:
+          "RFC 3339 end of the activity search window. Must be later than startAt.",
         subactions: ["discover_activities", "curate_discovered_activities"],
         schema: { type: "string", minLength: 1 },
       },
@@ -421,19 +484,22 @@ export function createLocalConditionsAction(
         description:
           'Search keywords, e.g. ["kids", "summer camp"]. An explicit empty array searches without a keyword filter.',
         subactions: ["discover_activities", "curate_discovered_activities"],
-        schema: { type: "array", items: { type: "string" } },
+        schema: {
+          type: "array",
+          items: { type: "string", maxLength: MAX_KEYWORD_LENGTH },
+        },
       },
       {
         name: "pageSize",
-        description: "Source page size.",
+        description: `Source page size, at most ${MAX_PAGE_SIZE}.`,
         subactions: ["discover_activities", "curate_discovered_activities"],
-        schema: { type: "integer", minimum: 1 },
+        schema: { type: "integer", minimum: 1, maximum: MAX_PAGE_SIZE },
       },
       {
         name: "maxPages",
-        description: "Maximum source pages to read.",
+        description: `Maximum source pages to read, at most ${MAX_PAGES_PER_QUERY}.`,
         subactions: ["discover_activities", "curate_discovered_activities"],
-        schema: { type: "integer", minimum: 1 },
+        schema: { type: "integer", minimum: 1, maximum: MAX_PAGES_PER_QUERY },
       },
       {
         name: "children",

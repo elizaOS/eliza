@@ -2,15 +2,24 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Memory,
+  MessageConnectorQueryContext,
+  MessageConnectorRegistration,
+} from "@elizaos/core";
 import { afterEach, expect, it, vi } from "vitest";
 import { IMessageService } from "./service.js";
 import type { IMessageSettings } from "./types.js";
 
 function fixture(transport: "blooio" | "native" = "blooio") {
+  const registerMessageConnector = vi.fn(
+    (_registration: MessageConnectorRegistration) => undefined
+  );
   const runtime = {
     agentId: "00000000-0000-0000-0000-000000000001",
     emitEvent: vi.fn(),
+    registerMessageConnector,
   } as unknown as IAgentRuntime;
   const service = new IMessageService(runtime);
   const internal = service as unknown as {
@@ -31,7 +40,7 @@ function fixture(transport: "blooio" | "native" = "blooio") {
     blooioChannelId: "ch_synthetic",
   };
   internal.runAppleScript = vi.fn(async () => "");
-  return { service, internal };
+  return { service, internal, registerMessageConnector, runtime };
 }
 afterEach(() => vi.unstubAllGlobals());
 
@@ -103,6 +112,32 @@ it("does not invent a provider receipt for native automation acceptance", async 
   expect(result.success).toBe(true);
   expect(result.messageId).toBeUndefined();
   expect(internal.runAppleScript).toHaveBeenCalledTimes(1);
+});
+
+it("reports a chat database failure instead of empty connector history", async () => {
+  const { service, registerMessageConnector, runtime } = fixture("native");
+  vi.spyOn(service, "getMessages").mockRejectedValue(new Error("chat.db read failed"));
+  IMessageService.registerSendHandlers(runtime, service);
+  const registration = registerMessageConnector.mock.calls[0]?.[0] as
+    | (MessageConnectorRegistration & {
+        fetchMessages: (context: MessageConnectorQueryContext) => Promise<Memory[]>;
+        searchMessages: (
+          context: MessageConnectorQueryContext,
+          params: { query: string }
+        ) => Promise<Memory[]>;
+      })
+    | undefined;
+  const context = { runtime } as MessageConnectorQueryContext;
+
+  const expectedError = {
+    code: "IMESSAGE_HISTORY_READ_FAILED",
+    context: { accountId: "default" },
+    cause: expect.objectContaining({ message: "chat.db read failed" }),
+  };
+  await expect(registration?.fetchMessages(context)).rejects.toMatchObject(expectedError);
+  await expect(registration?.searchMessages(context, { query: "launch" })).rejects.toMatchObject(
+    expectedError
+  );
 });
 
 it("stages every attachment before sending and preserves partial native completion evidence", async () => {

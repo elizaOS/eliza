@@ -167,7 +167,7 @@ try {
   context = null;
   await writeFile(
     join(extension, "background.mjs"),
-    `globalThis.fetch=async()=>{throw Error('Offline fixture');};\n` + original,
+    `globalThis.fetch=async()=>{throw Error('Offline fixture');};\n${original}`,
   );
   context = await chromium.launchPersistentContext(join(dir, "profile"), {
     channel: "chromium",

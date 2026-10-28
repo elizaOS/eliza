@@ -60,7 +60,11 @@ async function read() {
   const unsafe: string = result.result.revision;
   void unsafe;
   const tap = await bridge.pendingReminderTap();
-  if (tap.token) await bridge.consumeReminderTap({ token: tap.token });
+  if (tap.token) {
+    if (tap.question)
+      await bridge.releaseReminderQuestion({ token: tap.token });
+    else await bridge.consumeReminderTap({ token: tap.token });
+  }
 }
 void read;
 

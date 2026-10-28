@@ -157,7 +157,10 @@ async function assertOrganicTriagePersisted(
     InboxRepository: new (
       rt: unknown,
     ) => {
-      getBySourceMessageId: (id: string) => Promise<{
+      getBySourceMessageId: (
+        source: string,
+        id: string,
+      ) => Promise<{
         classification: string;
       } | null>;
     };
@@ -165,9 +168,9 @@ async function assertOrganicTriagePersisted(
   const repo = new InboxRepository(runtime);
 
   const [outageEntry, noiseEntry, questionEntry] = await Promise.all([
-    repo.getBySourceMessageId(OUTAGE_MSG_ID),
-    repo.getBySourceMessageId(NOISE_MSG_ID),
-    repo.getBySourceMessageId(QUESTION_MSG_ID),
+    repo.getBySourceMessageId("discord", OUTAGE_MSG_ID),
+    repo.getBySourceMessageId("gmail", NOISE_MSG_ID),
+    repo.getBySourceMessageId("telegram", QUESTION_MSG_ID),
   ]);
 
   if (!outageEntry || !noiseEntry || !questionEntry) {

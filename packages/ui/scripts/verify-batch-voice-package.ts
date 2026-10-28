@@ -22,17 +22,30 @@ const run = (command: string, args: string[], cwd = repo) =>
     timeout: 180000,
     maxBuffer: 16 * 1024 * 1024,
   });
-for (const owner of ["core", "voice", "ui"])
+const uiEntries = [
+  "voice/voice-session-client",
+  "voice/batch-conversation",
+  "text-control-editing",
+  "voice/draft-transcript-guard",
+  "voice/microphone-capture",
+  "voice/pcm-wave",
+  "voice/progressive-speech-playback",
+  "voice/recorded-transcription-controller",
+  "voice/segmented-speech-playback",
+];
+for (const owner of ["core", "voice", "host", "cloud/sdk", "ui"])
   process.stdout.write(
     run("bun", ["run", "--cwd", `packages/${owner}`, "build"]),
   );
 const consumer = mkdtempSync(path.join(output, "consumer-"));
 try {
-  for (const [owner, entry] of [
-    ["core", "speech"],
-    ["voice", "turn"],
-    ["ui", "voice/batch-conversation"],
-  ]) {
+  for (const [owner, entries] of [
+    ["core", ["speech", "logging", "view-interaction"]],
+    ["voice", ["turn"]],
+    ["host", ["voice/ui-context"]],
+    ["cloud/sdk", ["native-speech-stream"]],
+    ["ui", uiEntries],
+  ] as const) {
     const sourceRoot = path.join(repo, "packages", owner),
       sourceManifest = JSON.parse(
         readFileSync(path.join(sourceRoot, "package.json"), "utf8"),
@@ -51,15 +64,16 @@ try {
         packageRoot,
       ),
     )[0];
-    for (const extension of ["js", "d.ts"])
-      assert(
-        packed.files.some(
-          (file: { path: string }) =>
-            file.path ===
-            `${owner === "ui" ? "" : "dist/"}${entry}.${extension}`,
-        ),
-        `${owner} public ${extension} missing from normal build`,
-      );
+    for (const entry of entries)
+      for (const condition of ["import", "types"]) {
+        const target = path.posix.normalize(
+          manifest.exports?.[`./${entry}`]?.[condition] ?? "",
+        );
+        assert(
+          packed.files.some((file: { path: string }) => file.path === target),
+          `${manifest.name}/${entry} ${condition} target missing from normal build`,
+        );
+      }
     const destination = path.join(consumer, "node_modules", manifest.name);
     mkdirSync(destination, { recursive: true });
     run("tar", [
@@ -129,7 +143,7 @@ try {
       `Consumer escaped its packed modules: ${input}`,
     );
     assert(
-      !/(?:core|ui)\/(?:dist\/)?(?:index|protocol)\.js$|\/auth\/|\/host\//.test(
+      !/(?:core|ui|host)\/(?:dist\/)?(?:index|protocol)\.js$|\/auth\/|\/voice-session-fetch\.js$|\/voice-chat-types\.js$/.test(
         input,
       ),
       `Broad host entry leaked: ${input}`,
@@ -159,9 +173,12 @@ try {
     path.join(output, "receipt.json"),
     `${JSON.stringify(
       {
-        normalBuilds: ["core", "voice", "ui"],
+        normalBuilds: ["core", "voice", "host", "cloud/sdk", "ui"],
+        packedUiEntries: uiEntries,
         packedConsumerTypes: true,
         packedRuntimeTurn: true,
+        packedRealtimeSessionHandshake: true,
+        packedRealtimeSessionRetirement: true,
         packedOwnerInputPause: true,
         packedExactReplyResume: true,
         browserTargetNoNodeRealmTurn: true,
@@ -175,7 +192,7 @@ try {
     )}\n`,
   );
   console.log(
-    "PASS: packed public voice entries, external types and matching turn; browser closure has no host root or Node polyfills.",
+    "PASS: packed public voice and leaf entries, external types and matching turn; browser closure has no host root or Node polyfills.",
   );
 } finally {
   rmSync(consumer, { recursive: true, force: true });

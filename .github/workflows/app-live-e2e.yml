@@ -43,13 +43,26 @@ on:
         description: "Check production test credential expiry and read-only account authentication without browser or model calls. Also select run_cloud_production and run_only_requested."
         type: boolean
         default: false
+      run_shared_runtime:
+        description: "Run only finite public/synthetic Shared runtime QA with the existing Cerebras key. No app UI, native delivery, account, Cloud or deploy access."
+        type: boolean
+        default: false
+      shared_runtime_reviewed_sha:
+        description: "For Shared QA only: exact source SHA reviewed after normal source CI. Must equal this dispatch commit."
+        type: string
+        default: ""
+      shared_runtime_suite:
+        description: "Shared QA: baseline = qualified SF/weather + math + public fact; bare-weather = bare SF + math; full adds quiet/truth controls."
+        type: choice
+        options: [baseline, bare-weather, typed-weather, behavior, full]
+        default: baseline
       run_only_requested:
         description: "Skip the default local/walkthrough/desktop lanes and run only explicitly selected opt-in lanes."
         type: boolean
         default: false
 
 concurrency:
-  group: app-live-e2e-${{ github.ref }}
+  group: app-live-e2e-${{ github.ref }}${{ inputs.run_shared_runtime && '-shared-runtime' || '' }}
   cancel-in-progress: true
 
 permissions:
@@ -90,7 +103,7 @@ jobs:
   # agent from the UI.
   app-live-chat:
     name: app live chat (real local runtime)
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}
+    if: ${{ !inputs.run_shared_runtime && (github.event_name != 'workflow_dispatch' || !inputs.run_only_requested) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
@@ -109,7 +122,7 @@ jobs:
           df -h /
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -180,7 +193,7 @@ jobs:
 
       - name: Upload live-chat artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-chat
           # The harness projects backend stdout/stderr into a fixed category +
@@ -199,7 +212,7 @@ jobs:
   # writes WALKTHROUGH_VERDICTS.md (the PR mock lane is keyless and can't).
   walkthrough-live:
     name: full walkthrough (real backend + model + vision verdicts)
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}
+    if: ${{ !inputs.run_shared_runtime && (github.event_name != 'workflow_dispatch' || !inputs.run_only_requested) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
@@ -216,7 +229,7 @@ jobs:
           docker system prune -af || true
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -258,7 +271,7 @@ jobs:
 
       - name: Upload walkthrough screenshots + recording + verdicts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-walkthrough
           path: |
@@ -276,7 +289,7 @@ jobs:
   # this workflow so keyless PR lanes cannot spend Cloud credits.
   cloud-live:
     name: cloud login + personal identity + chat (real Eliza Cloud, production)
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_production) }}
+    if: ${{ !inputs.run_shared_runtime && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_production)) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 45
     env:
@@ -319,7 +332,7 @@ jobs:
           docker system prune -af || true
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -442,7 +455,7 @@ jobs:
 
       - name: Upload production Cloud progress diagnostic
         if: ${{ always() && steps.production-cloud-smoke.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-cloud-production-progress
           path: test-results/app/**/privacy-safe-trajectory-history-network-diagnostics.json
@@ -469,7 +482,7 @@ jobs:
   # staging Pages artifact (recorded in the spec annotations + step summary).
   cloud-live-staging:
     name: cloud login + personal identity + chat (real Eliza Cloud, staging)
-    if: ${{ (github.event_name == 'schedule' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_staging) }}
+    if: ${{ !inputs.run_shared_runtime && ((github.event_name == 'schedule' && vars.ELIZA_CLOUD_STAGING_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_cloud_staging)) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: staging
     timeout-minutes: 45
@@ -520,7 +533,7 @@ jobs:
           docker system prune -af || true
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -668,7 +681,7 @@ jobs:
 
       - name: Upload cloud-live staging artifacts
         if: ${{ always() && steps.staging-cloud-smoke.outcome != 'skipped' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-cloud-staging
           path: |
@@ -687,7 +700,7 @@ jobs:
   # heavy. android-emulator-runner is the de-facto standard emulator action.
   android-local-chat:
     name: android local chat (on-device GGUF)
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_android_local_chat }}
+    if: ${{ !inputs.run_shared_runtime && (github.event_name == 'workflow_dispatch' && inputs.run_android_local_chat) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 90
     steps:
@@ -703,12 +716,12 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Setup JDK 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: "21"
@@ -747,7 +760,7 @@ jobs:
   # still validate, so the renderer step is best-effort.
   desktop-packaged:
     name: desktop packaged (build + boot + renderer)
-    if: ${{ github.event_name != 'workflow_dispatch' || !inputs.run_only_requested }}
+    if: ${{ !inputs.run_shared_runtime && (github.event_name != 'workflow_dispatch' || !inputs.run_only_requested) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 60
     env:
@@ -773,7 +786,7 @@ jobs:
             libayatana-appindicator3-1 scrot imagemagick x11-apps ffmpeg
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -802,7 +815,7 @@ jobs:
 
       - name: Upload desktop-packaged artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: app-live-e2e-desktop
           path: |
@@ -827,7 +840,7 @@ jobs:
         cloud-live-staging,
         desktop-packaged,
       ]
-    if: ${{ always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure') }}
+    if: ${{ !inputs.run_shared_runtime && (always() && github.event_name == 'schedule' && contains(needs.*.result, 'failure')) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
       issues: write
@@ -872,7 +885,7 @@ jobs:
 
   native-staging-credentials:
     name: native credential lifecycle (protected staging fixture)
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging' && inputs.run_native_staging_credentials }}
+    if: ${{ !inputs.run_shared_runtime && (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/staging' && inputs.run_native_staging_credentials) }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     environment: staging
     timeout-minutes: 45
@@ -885,7 +898,7 @@ jobs:
         with:
           submodules: false
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: ${{ env.NODE_VERSION }}
       - name: Setup workspace dependencies
@@ -900,9 +913,113 @@ jobs:
         run: node --import tsx packages/auth/native-host/staging-acceptance.mjs
       - name: Upload closed native lifecycle receipt
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-staging-credential-receipt
           path: test-results/native-staging-acceptance/receipt.json
           if-no-files-found: error
           retention-days: 7
+
+
+  shared-runtime-live:
+    name: Shared runtime live QA (public synthetic only)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_shared_runtime }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      # Override the broad workflow environment. The key is given only to the QA step.
+      CEREBRAS_API_KEY: ""
+      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
+      GROQ_API_KEY: ""
+      OPENROUTER_API_KEY: ""
+      GOOGLE_GENERATIVE_AI_API_KEY: ""
+      XAI_API_KEY: ""
+      ELIZAOS_CLOUD_API_KEY: ""
+      BLOOIO_API_KEY: ""
+      ELIZA_APP_BLOOIO_API_KEY: ""
+      DATABASE_URL: ""
+      REDIS_URL: ""
+      GATEWAY_INTERNAL_SECRET: ""
+      AI_QA_VISION_BACKEND: ""
+      AI_QA_VISION_MODEL: ""
+      ELIZA_UI_SMOKE_LIVE_STACK: ""
+      ELIZA_UI_SMOKE_BACKEND_LOG_PATH: ""
+      ELIZA_VAULT_PASSPHRASE: ""
+      ELIZA_CLOUD_API_URL: ""
+      ELIZA_CLOUD_URL: ""
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
+    steps:
+      - name: Enforce reviewed, isolated manual scope
+        env:
+          REVIEWED_SHA: ${{ inputs.shared_runtime_reviewed_sha }}
+          ONLY_REQUESTED: ${{ inputs.run_only_requested }}
+          OTHER_OPT_INS: ${{ inputs.run_android_local_chat || inputs.run_cloud_staging || inputs.run_cloud_production || inputs.run_native_staging_credentials || inputs.approve_staging_billable_dedicated_confirmation || inputs.production_credential_preflight_only }}
+          REPOSITORY: ${{ github.repository }}
+          RUNNER_ENVIRONMENT: ${{ runner.environment }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$REPOSITORY" = "elizaOS/eliza"
+          test "$RUNNER_ENVIRONMENT" = "github-hosted"
+          test "$ONLY_REQUESTED" = "true"
+          test "$OTHER_OPT_INS" = "false"
+          [[ "$REVIEWED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$REVIEWED_SHA" = "$GITHUB_SHA"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+          clean: false
+
+      - name: Set up the normal pinned toolchain without install cleanup
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.4.2"
+          node-version: "24.15.0"
+          setup-python: "false"
+          install-protoc: "false"
+          install-native-deps: "false"
+          run-postinstall: "false"
+          init-submodules: "false"
+          publish-caches: "false"
+          cache-turbo: "false"
+          cache-bun-install: "false"
+          # The normal action's retry path clears its cache. Do not enter it here.
+          install-command: "true"
+
+      - name: Install the selected Shared dependency closure once
+        run: bun install --filter @elizaos/cloud-shared --frozen-lockfile --ignore-scripts
+
+      - name: Run the real Shared runtime with finite public cases
+        id: qa
+        working-directory: packages/cloud/shared
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          SHARED_RUNTIME_LIVE_QA_APPROVED: "1"
+          SHARED_RUNTIME_LIVE_QA_REVIEWED_SHA: ${{ inputs.shared_runtime_reviewed_sha }}
+          SHARED_RUNTIME_LIVE_QA_DIR: ${{ runner.temp }}/shared-runtime-live-qa
+          QA_SUITE: ${{ inputs.shared_runtime_suite }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          bun --conditions=eliza-source --tsconfig-override=tsconfig.json src/testing/runtime-live-qa.ts --suite="$QA_SUITE" > "$RUNNER_TEMP/shared-runtime-live-qa-console.log" 2>&1
+          status=$?
+          set -e
+          echo "Shared runtime live QA finished; exit=$status. Review the synthetic public trajectories."
+          exit "$status"
+
+      - name: Upload only sanitized public/synthetic evidence
+        if: ${{ always() && steps.qa.outputs.artifact_ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: shared-runtime-live-qa-${{ github.sha }}-${{ inputs.shared_runtime_suite }}
+          path: ${{ steps.qa.outputs.artifact_path }}
+          if-no-files-found: error
+          retention-days: 3

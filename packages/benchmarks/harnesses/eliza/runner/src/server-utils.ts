@@ -1350,9 +1350,9 @@ export interface RoleSeedPayload {
 /**
  * Minimal structural shape of the runtime PersonalityStore service that
  * the bench-server role-seeding helper consumes. Declared inline so this
- * file does not depend on a non-public path of `@elizaos/core`. The
- * concrete service lives in
- * `packages/core/src/features/advanced-capabilities/personality/services/personality-store.ts`.
+ * file does not depend on a non-public path of `@elizaos/plugin-assistant`.
+ * The concrete service lives in
+ * `plugins/plugin-assistant/src/features/advanced-capabilities/personality/services/personality-store.ts`.
  */
 interface BenchPersonalityStore {
   setSlot(slot: {

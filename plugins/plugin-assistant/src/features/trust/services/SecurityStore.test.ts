@@ -393,7 +393,7 @@ describe("trust evidence", () => {
     expect(row.weight).toBe(-3);
   });
 
-  it("matches evidence where the entity is target or source, newest first", async () => {
+  it("matches target evidence newest first and excludes evidence the entity supplied about someone else", async () => {
     const now = Date.now();
     const target = nextUuid();
     await seedEvidence({
@@ -418,8 +418,15 @@ describe("trust evidence", () => {
       type: "unrelated",
     });
 
+    await seedEvidence({
+      targetEntityId: target,
+      sourceEntityId: nextUuid(),
+      evaluatorId: EVALUATOR_1,
+      timestamp: new Date(now - 20 * MINUTE),
+      type: "older-target",
+    });
     const rows = await getTrustEvidence(db, target);
-    expect(rows.map((row) => row.type)).toEqual(["newer-link", "older-link"]);
+    expect(rows.map((row) => row.type)).toEqual(["newer-link", "older-target"]);
   });
 
   it("narrows matched evidence by evaluator when one is given", async () => {

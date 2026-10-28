@@ -1,7 +1,10 @@
 /** Starts isolated PostgreSQL and signed-session HTTP fixtures while keeping billing repositories and Stripe SDK real. */
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { installBillingCommandEvidenceTestColumns } from "@elizaos/cloud-shared/testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "@elizaos/cloud-shared/testing";
 import type {
   AppContext,
   AppEnv,
@@ -141,6 +144,7 @@ export async function setupAdminTest() {
   await installBillingCommandEvidenceTestColumns((statement) =>
     db.query(statement),
   );
+  await installSubscriptionGrantTestSchema((statement) => db.query(statement));
   await db.query(
     "INSERT INTO organizations(id,name,slug,credit_balance) VALUES($1,'Developer','developer',42),($2,'Other','other',0)",
     [ids.org, ids.otherOrg],

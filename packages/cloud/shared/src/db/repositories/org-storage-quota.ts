@@ -1,3 +1,4 @@
+import { withInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 /** Reserves storage against transaction-current organization policy and records explicitly authorized storage overrides. */
 
 import { eq, sql } from "drizzle-orm";
@@ -129,7 +130,7 @@ export class OrgStorageQuotaRepository {
     if (bytesLimit < 0n) {
       throw new Error("OrgStorageQuotaRepository.setBytesLimit: bytesLimit must be non-negative");
     }
-    await writeTransaction(async (tx) => {
+    await withInferencePolicyMutation({ organizationIds: [organizationId] }, async (tx) => {
       await lockOrganizationPolicy(tx, organizationId);
       const [before] = await tx
         .select()

@@ -25,3 +25,5 @@ bun plugins/plugin-web-search/scripts/test-browser-search.mjs # real Linux Chrom
 The live browser check needs the built extension and `/usr/bin/chromium`. It uses
 a disposable profile and records evidence in `test-results/browser-search/`. A
 Google consent or human-check page is an explicit failure, not a passing search.
+
+Hosts can pass a server-authorized runner to `createWebSearchEdgePlugin(runner, { fallbackEnabled: true })` to expose an optional `provider: "fallback"` choice. The host owns authorization, query scope, and spending limits. Without this opt-in, the action and default edge helper reject fallback selection before network I/O; free search remains the default.

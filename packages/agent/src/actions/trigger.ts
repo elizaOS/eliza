@@ -63,6 +63,7 @@ import {
   normalizeTriggerIntervalMs,
   parseCronExpression,
   parseScheduledAtIso,
+  resolveScheduledAtIsoInTimeZone,
 } from "../triggers/scheduling.ts";
 import type { TriggerTaskMetadata } from "../triggers/types.ts";
 
@@ -88,6 +89,8 @@ type TriggerOp = (typeof TRIGGER_OPS)[number];
 
 const TRIGGER_ACTION = "TRIGGER";
 const MAX_TRIGGERS_PER_CREATOR = 100;
+/** A planner retry of a relative-delay reminder lands within this window. */
+const RELATIVE_DELAY_REPLAY_WINDOW_MS = 60_000;
 const DEFAULT_INTERVAL_MS = 12 * 60 * 60 * 1000;
 // Cap for delaySeconds/delayMinutes. Far-future one-offs should use an
 // absolute scheduledAtIso; unbounded delays overflow Date math (RangeError).
@@ -313,9 +316,24 @@ function buildTriggerDedupeKey(input: {
   );
 }
 
+// Delay-derived once triggers hash the RELATIVE delay, not the absolute fire
+// time: a planner retry/double-emit of the same tool call lands milliseconds
+// apart and must dedupe to one reminder. This single helper feeds both the
+// create-path key and the persisted key, so an update can never silently swap
+// schemes and re-open the duplicate window. Triggers that were never
+// delay-derived fall back to the absolute timestamp.
+function onceScheduleDedupeKey(trigger: {
+  delayMs?: number;
+  scheduledAtIso?: string;
+}): string {
+  return trigger.delayMs !== undefined
+    ? `+${trigger.delayMs}`
+    : (trigger.scheduledAtIso ?? "");
+}
+
 function persistedScheduleDedupeKey(trigger: TriggerConfig): string {
   if (trigger.triggerType === "once") {
-    return trigger.scheduledAtIso ?? "";
+    return onceScheduleDedupeKey(trigger);
   }
   if (trigger.triggerType === "interval") {
     return `every:${trigger.intervalMs ?? ""}`;
@@ -446,6 +464,51 @@ export function impliedTriggerQuery(
   return /[a-z]{3,}/i.test(query) ? query : undefined;
 }
 
+function normalizeTriggerName(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/^trigger:\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const WORD_CHAR = "[\\p{L}\\p{M}\\p{N}]";
+// These scripts attach particles without a space ("운동을"), so a name inside
+// a query stays a substring match there.
+const PARTICLE_SCRIPT_PATTERN =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+
+function containsWholePhrase(text: string, phrase: string): boolean {
+  if (!phrase) return false;
+  const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<!${WORD_CHAR})${escaped}(?!${WORD_CHAR})`, "u").test(
+    text,
+  );
+}
+
+/**
+ * 0 = exact name, 1 = whole word/phrase either way, 2 = substring (a name
+ * inside the query only for particle scripts), undefined = no match.
+ */
+function triggerNameMatchTier(
+  name: string,
+  query: string,
+): 0 | 1 | 2 | undefined {
+  if (!name || !query) return undefined;
+  if (name === query) return 0;
+  if (containsWholePhrase(name, query) || containsWholePhrase(query, name)) {
+    return 1;
+  }
+  if (
+    name.includes(query) ||
+    (PARTICLE_SCRIPT_PATTERN.test(name) && query.includes(name))
+  ) {
+    return 2;
+  }
+  return undefined;
+}
+
 async function resolveTriggerRef(
   runtime: IAgentRuntime,
   op: TriggerOp,
@@ -466,18 +529,12 @@ async function resolveTriggerRef(
           ? readString(params.displayName)
           : undefined;
       if (referenceName) {
-        const normalize = (value: string) =>
-          value
-            .toLowerCase()
-            .replace(/^trigger:\s*/, "")
-            .trim();
-        const actual = normalize(loaded.trigger.displayName);
-        const stated = normalize(referenceName);
+        const actual = normalizeTriggerName(loaded.trigger.displayName);
+        const stated = normalizeTriggerName(referenceName);
         if (
           stated &&
           actual &&
-          !actual.includes(stated) &&
-          !stated.includes(actual)
+          triggerNameMatchTier(actual, stated) === undefined
         ) {
           return failed(
             op,
@@ -499,7 +556,7 @@ async function resolveTriggerRef(
     readString(params.instructions) ??
     (rawId && !readUuid(params.taskId) ? rawId : undefined) ??
     impliedTriggerQuery(message);
-  const query = querySource?.toLowerCase().replace(/^trigger:\s*/, "");
+  const query = querySource ? normalizeTriggerName(querySource) : undefined;
 
   const tasks = await runtime.getTasks({
     tags: [...TRIGGER_TASK_TAGS],
@@ -515,18 +572,26 @@ async function resolveTriggerRef(
     : undefined;
   if (byTriggerId) return byTriggerId;
 
-  const matches = query
-    ? all.filter((c) => {
-        const name = c.trigger.displayName
-          .toLowerCase()
-          .replace(/^trigger:\s*/, "");
-        return (
-          name.includes(query) ||
-          query.includes(name) ||
-          c.trigger.instructions.toLowerCase().includes(query)
-        );
-      })
-    : [];
+  // The first tier with any hit wins, so "Standup" is not ambiguous with
+  // "Standup notes" and "Gym" is not hit by "gymnastics".
+  const tiers: Array<Array<{ task: Task; trigger: TriggerConfig }>> = [
+    [],
+    [],
+    [],
+  ];
+  if (query) {
+    for (const c of all) {
+      const name = normalizeTriggerName(c.trigger.displayName);
+      const instructions = normalizeTriggerName(c.trigger.instructions);
+      let tier = triggerNameMatchTier(name, query);
+      if (tier === undefined || tier > 1) {
+        if (containsWholePhrase(instructions, query)) tier = 1;
+        else if (tier === undefined && instructions.includes(query)) tier = 2;
+      }
+      if (tier !== undefined) tiers[tier].push(c);
+    }
+  }
+  const matches = tiers.find((tier) => tier.length > 0) ?? [];
   if (matches.length === 1) return matches[0];
 
   const names = all.map((c) => `"${c.trigger.displayName}"`).join(", ");
@@ -621,7 +686,15 @@ async function opCreate(
   }
 
   const cronExpression = readString(params.cronExpression);
-  const explicitScheduledAtIso = readString(params.scheduledAtIso);
+  // The planner works from CURRENT_TIME in the user's zone, so a timestamp it
+  // sends without an offset is that zone's wall clock — the same zone the cron
+  // path stores — not the host process zone `Date.parse` would assume.
+  const messageTimeZone = resolveMessageTimeZone(runtime, message);
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  const explicitScheduledAtIso =
+    rawScheduledAtIso === undefined
+      ? undefined
+      : resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone);
   const wantsCron =
     explicitType === "cron" ||
     (cronExpression !== undefined &&
@@ -635,8 +708,14 @@ async function opCreate(
   // cannot block a valid recurring create.
   const hasDelayInput =
     params.delaySeconds !== undefined || params.delayMinutes !== undefined;
+  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // An explicit triggerType=interval with a usable intervalMs is a typed
+  // statement like a cron: the delay beside it is the planner's echo of the
+  // first fire, not a second schedule.
+  const wantsInterval =
+    explicitType === "interval" && parsedIntervalMs !== undefined;
   const parsedDelayMs =
-    wantsCron || explicitScheduledAtIso !== undefined
+    wantsCron || wantsInterval || explicitScheduledAtIso !== undefined
       ? undefined
       : readRelativeDelayMs(params);
   const delayGiven =
@@ -667,9 +746,9 @@ async function opCreate(
       ? new Date(Date.now() + delayMs).toISOString()
       : undefined;
   const scheduledAtIso = explicitScheduledAtIso ?? scheduledFromDelay;
-  // A relative delay is one-shot by definition; a contradictory explicit
-  // triggerType (e.g. "interval") must not silently drop it. Cron resolved
-  // above, so a delay can no longer demote a recurring schedule to one-shot.
+  // A relative delay that survived to here is one-shot by definition. Cron and
+  // an explicit interval with a usable intervalMs resolved above and discarded
+  // it, so a delay can no longer demote a recurring schedule to one-shot.
   const triggerType: TriggerType = wantsCron
     ? "cron"
     : delayMs !== undefined
@@ -683,8 +762,18 @@ async function opCreate(
       ? "next_autonomy_cycle"
       : "inject_now";
   const creatorId = String(message.entityId);
-  const messageTimeZone = resolveMessageTimeZone(runtime, message);
-  const parsedIntervalMs = parsePositiveInt(params.intervalMs);
+  // A repeat period sent with a one-off time and no triggerType names two
+  // schedules. Writing the one-off dropped the period and turned "every 2
+  // hours" into one committed reminder.
+  if (
+    triggerType === "once" &&
+    explicitType !== "once" &&
+    parsedIntervalMs !== undefined
+  ) {
+    return missingSchedule(
+      "intervalMs (repeating) was sent with a one-off delay or scheduledAtIso. Nothing was created. Send intervalMs alone for a repeating trigger, or the delay or scheduledAtIso alone for a one-off.",
+    );
+  }
   // triggerType=interval names the schedule kind, not the cadence. Writing the
   // 12-hour default here turned "every 2 hours" with the number omitted into a
   // committed 12-hour reminder; once and cron already refuse a missing value.
@@ -760,9 +849,10 @@ async function opCreate(
   // no-op.
   const scheduleKey =
     triggerType === "once"
-      ? usedDelay
-        ? `+${delayMs}`
-        : (scheduledAtIso ?? "")
+      ? onceScheduleDedupeKey({
+          delayMs: usedDelay ? delayMs : undefined,
+          scheduledAtIso,
+        })
       : triggerType === "interval"
         ? `every:${intervalMs}`
         : `cron:${normalizeCronDedupeExpression(cronExpression ?? "")}@${messageTimeZone}`;
@@ -812,12 +902,20 @@ async function opCreate(
   }
 
   // Match the complete request and creator before replaying a committed receipt.
+  // A relative-delay key names the delay, not the fire time, so it is a replay
+  // only while the stored fire time is within the retry window: the same "in
+  // 1 hour" asked 40 minutes later is a new reminder.
   const exactDuplicate = existingTasks.find((t) => {
     const cfg = readTriggerConfig(t);
     return Boolean(
       cfg?.enabled &&
         cfg.createdBy === creatorId &&
-        cfg.dedupeKey === dedupeKey,
+        cfg.dedupeKey === dedupeKey &&
+        (!usedDelay ||
+          Math.abs(
+            Date.parse(cfg.scheduledAtIso ?? "") -
+              Date.parse(scheduledFromDelay ?? ""),
+          ) <= RELATIVE_DELAY_REPLAY_WINDOW_MS),
     );
   });
   if (exactDuplicate?.id) {
@@ -858,6 +956,9 @@ async function opCreate(
     runCount: 0,
     intervalMs: triggerType === "interval" ? intervalMs : undefined,
     scheduledAtIso: triggerType === "once" ? scheduledAtIso : undefined,
+    // Delay-derived once triggers keep the relative delay so the persisted
+    // dedupe key uses the same relative scheme as the create-path key.
+    delayMs: usedDelay ? delayMs : undefined,
     cronExpression: triggerType === "cron" ? cronExpression : undefined,
     maxRuns,
     dedupeKey,
@@ -1017,7 +1118,12 @@ async function opUpdate(
   const displayName = readString(params.displayName);
   const instructions = readString(params.instructions);
   const intervalMs = parsePositiveInt(params.intervalMs);
-  const scheduledAtIso = readString(params.scheduledAtIso);
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  // Same rule as create: no offset means the user's wall clock.
+  const scheduledAtIso =
+    rawScheduledAtIso === undefined
+      ? undefined
+      : resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone);
   const cronExpression = readString(params.cronExpression);
   const maxRuns = parsePositiveInt(params.maxRuns);
   const wakeModeRaw = params.wakeMode?.trim().toLowerCase();
@@ -1067,6 +1173,9 @@ async function opUpdate(
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
+    // An explicit move replaces the original relative schedule identity.
+    // Replaying the existing time must keep the original retry identity.
+    if (scheduledAtIso !== trigger.scheduledAtIso) delete next.delayMs;
     next.scheduledAtIso = scheduledAtIso;
   }
   if (cronExpression !== undefined && next.triggerType === "cron") {
@@ -1470,7 +1579,8 @@ export const triggerAction: Action = {
     },
     {
       name: "scheduledAtIso",
-      description: "ISO timestamp for once-triggers.",
+      description:
+        "ISO timestamp for once-triggers. A value with no Z or UTC offset (2026-10-13T09:00:00) is read as the user's local time; a value with one is used as given.",
       required: false,
       aliases: ["scheduledFor", "when", "at", "datetime"],
       schema: { type: "string" as const },

@@ -77,13 +77,89 @@ function requireDnsOnlyRecords(failures, label, records) {
   }
 }
 
+function requireWorkerTunnel(
+  failures,
+  environment,
+  expectedHostname,
+  tunnel,
+  worker,
+  canonical,
+) {
+  const apex =
+    environment === "production"
+      ? "tunnel.eliza.app"
+      : "tunnel-staging.eliza.app";
+  const script = `eliza-tunnel-proxy-${environment}`;
+  if (
+    !new RegExp(`^${script}\\.[a-z0-9-]+\\.workers\\.dev$`).test(
+      expectedHostname,
+    ) ||
+    worker?.hostname !== expectedHostname
+  ) {
+    failures.push(
+      "tunnel_worker does not match the selected environment Worker",
+    );
+  }
+  const records = objectEntries(tunnel);
+  const routes = objectEntries(worker?.routes);
+  if (records.length !== 2 || routes.length !== 2) {
+    failures.push(
+      "Cloudflare tunnel requires exactly two DNS records and routes",
+    );
+  }
+  for (const [role, name] of [
+    ["apex-routing", apex],
+    ["wildcard-routing", `*.${apex}`],
+  ]) {
+    const matches = records.filter(
+      ([, record]) => record?.roles?.length === 1 && record.roles[0] === role,
+    );
+    if (matches.length !== 1) {
+      failures.push(`Cloudflare tunnel must cover ${role} exactly once`);
+      continue;
+    }
+    const [key, record] = matches[0];
+    if (
+      !record.id ||
+      record.name !== name ||
+      record.type !== "CNAME" ||
+      record.content !== expectedHostname ||
+      record.proxied !== true
+    ) {
+      failures.push(
+        `Cloudflare tunnel ${role} DNS does not match the selected Worker`,
+      );
+    }
+    const route = worker?.routes?.[key];
+    if (
+      !route?.id ||
+      route.pattern !== `${name}/*` ||
+      route.script !== script
+    ) {
+      failures.push(
+        `Cloudflare tunnel ${role} route does not match the selected Worker`,
+      );
+    }
+  }
+  if (
+    !objectEntries(canonical?.certificate_packs).some(
+      ([, pack]) =>
+        pack?.status === "active" && pack?.hosts?.includes(`*.${apex}`),
+    )
+  ) {
+    failures.push("Cloudflare tunnel has no active wildcard certificate");
+  }
+}
+
 export function validatePagesDomainState({
   canonical,
   domains,
   environment,
+  expectedTunnelWorkerHostname = "",
   legacyPacks,
   redirect,
   tunnel,
+  tunnelWorker,
 }) {
   const failures = [];
   if (environment !== "staging" && environment !== "production") {
@@ -120,7 +196,26 @@ export function validatePagesDomainState({
     "canonical_edge.certificate_packs",
     canonical?.certificate_packs,
   );
-  requireDnsOnlyRecords(failures, "railway_tunnel_dns", tunnel);
+  if (expectedTunnelWorkerHostname) {
+    requireWorkerTunnel(
+      failures,
+      environment,
+      expectedTunnelWorkerHostname,
+      tunnel,
+      tunnelWorker,
+      canonical,
+    );
+  } else {
+    if (
+      tunnelWorker?.hostname ||
+      objectEntries(tunnelWorker?.routes).length > 0
+    ) {
+      failures.push(
+        "Tunnel Worker routing is present while Railway is selected",
+      );
+    }
+    requireDnsOnlyRecords(failures, "railway_tunnel_dns", tunnel);
+  }
   requireProxiedRecords(failures, "redirect_dns.exact", redirect?.exact);
   requireProxiedRecords(
     failures,
@@ -157,6 +252,7 @@ function main() {
     redirectPath,
     legacyPacksPath,
     environment,
+    tunnelWorkerPath,
   ] = process.argv.slice(2);
   if (
     !domainsPath ||
@@ -167,7 +263,7 @@ function main() {
     !environment
   ) {
     console.error(
-      "::error::Usage: validate-terraform-pages-domain-state.ts <pages-domains-json> <canonical-edge-json> <railway-tunnel-json> <redirect-dns-json> <legacy-certificate-packs-json> <staging|production>",
+      "::error::Usage: validate-terraform-pages-domain-state.ts <pages-domains-json> <canonical-edge-json> <railway-tunnel-json> <redirect-dns-json> <legacy-certificate-packs-json> <staging|production> [tunnel-worker-json]",
     );
     process.exitCode = 1;
     return;
@@ -178,6 +274,11 @@ function main() {
       canonical: JSON.parse(readFileSync(canonicalPath, "utf8")),
       domains: JSON.parse(readFileSync(domainsPath, "utf8")),
       environment,
+      expectedTunnelWorkerHostname:
+        process.env.TF_VAR_tunnel_worker_hostname ?? "",
+      tunnelWorker: tunnelWorkerPath
+        ? JSON.parse(readFileSync(tunnelWorkerPath, "utf8"))
+        : undefined,
       legacyPacks: JSON.parse(readFileSync(legacyPacksPath, "utf8")),
       redirect: JSON.parse(readFileSync(redirectPath, "utf8")),
       tunnel: JSON.parse(readFileSync(tunnelPath, "utf8")),

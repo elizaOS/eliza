@@ -485,7 +485,9 @@ export interface OrchestratorTaskDocument {
 }
 
 export interface TaskListFilter {
-  status?: string;
+  /** Restrict to tasks in any of these statuses (indexed column on the SQL
+   * backend). */
+  statuses?: readonly string[];
   search?: string;
   includeArchived?: boolean;
   limit?: number;
@@ -554,6 +556,16 @@ export const TERMINAL_TASK_SESSION_STATUSES: ReadonlySet<string> = new Set([
 
 export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
   new Set(["done", "failed", "archived"]);
+
+/** Statuses whose work is still in flight, or parked awaiting a verdict or a
+ * person: current state even with no live session attached. */
+export const IN_FLIGHT_TASK_STATUSES: readonly OrchestratorTaskStatus[] = [
+  "open",
+  "active",
+  "validating",
+  "waiting_on_user",
+  "blocked",
+];
 
 /**
  * The named lifecycle triggers that drive a task's status. Every durable

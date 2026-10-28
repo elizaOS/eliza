@@ -42,8 +42,12 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 	if err := validateNativeArtifact(artifact, hosts); err != nil {
 		return err
 	}
-	if !contains(artifact.Android.ABIs, abi) || abi != "arm64-v8a" {
+	if !contains(artifact.Android.ABIs, abi) || (abi != "arm64-v8a" && abi != "x86_64") {
 		return errors.New("unqualified runtime ABI")
+	}
+	machine, loader, otherLoader := uint16(183), "libeliza_ld_musl_aarch64.so", "libeliza_ld_musl_x86_64.so"
+	if abi == "x86_64" {
+		machine, loader, otherLoader = 62, otherLoader, loader
 	}
 	file, err := os.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
@@ -154,7 +158,7 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 		}
 		sources[entryName] = true
 		if fields[0] == "native" {
-			if err = verifyARM64RuntimeELF(entry); err != nil {
+			if err = verifyRuntimeELF(entry, machine); err != nil {
 				return err
 			}
 		}
@@ -171,7 +175,10 @@ func VerifyRuntimeArtifact(name string, artifactJSON []byte, approvedHosts, abi 
 			return errors.New("unlisted runtime asset")
 		}
 	}
-	for _, required := range []string{"libeliza_bun.so", "libeliza_ld_musl_aarch64.so"} {
+	if native[otherLoader] != "" {
+		return errors.New("mixed runtime ABI loaders")
+	}
+	for _, required := range []string{"libeliza_bun.so", loader} {
 		if native[required] == "" {
 			return errors.New("required native agent library absent")
 		}
@@ -285,7 +292,7 @@ func hashAPKEntry(entry *zip.File, length int64, expected string) error {
 	return nil
 }
 
-func verifyARM64RuntimeELF(entry *zip.File) error {
+func verifyRuntimeELF(entry *zip.File, machine uint16) error {
 	reader, err := entry.Open()
 	if err != nil {
 		return err
@@ -299,7 +306,7 @@ func verifyARM64RuntimeELF(entry *zip.File) error {
 	kind := binary.LittleEndian.Uint16(h[16:18])
 	count := uint64(binary.LittleEndian.Uint16(h[56:58]))
 	offset := binary.LittleEndian.Uint64(h[32:40])
-	if !bytes.Equal(h[:4], []byte{0x7f, 'E', 'L', 'F'}) || h[4] != 2 || h[5] != 1 || h[6] != 1 || (kind != 2 && kind != 3) || binary.LittleEndian.Uint16(h[18:20]) != 183 || binary.LittleEndian.Uint32(h[20:24]) != 1 || binary.LittleEndian.Uint16(h[52:54]) != 64 || binary.LittleEndian.Uint16(h[54:56]) != 56 || count == 0 || count > 4096 || offset < 64 || offset > entry.UncompressedSize64 || count*56 > entry.UncompressedSize64-offset {
+	if !bytes.Equal(h[:4], []byte{0x7f, 'E', 'L', 'F'}) || h[4] != 2 || h[5] != 1 || h[6] != 1 || (kind != 2 && kind != 3) || binary.LittleEndian.Uint16(h[18:20]) != machine || binary.LittleEndian.Uint32(h[20:24]) != 1 || binary.LittleEndian.Uint16(h[52:54]) != 64 || binary.LittleEndian.Uint16(h[54:56]) != 56 || count == 0 || count > 4096 || offset < 64 || offset > entry.UncompressedSize64 || count*56 > entry.UncompressedSize64-offset {
 		return errors.New("native runtime ELF ABI or bounds invalid")
 	}
 	return nil

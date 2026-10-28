@@ -6,6 +6,7 @@
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  dedupeCalendarQueries,
   normalizeCalendarDetails,
   parseExplicitLocalDate,
   textFieldAddsDetail,
@@ -117,6 +118,31 @@ describe("normalizeCalendarDetails eventId screen", () => {
   });
 });
 
+describe("dedupeCalendarQueries", () => {
+  it("keeps non-Latin search queries instead of stripping them as edge noise", () => {
+    expect(dedupeCalendarQueries(["치과 예약"])).toEqual(["치과 예약"]);
+    expect(dedupeCalendarQueries(["강남역 회의"])).toEqual(["강남역 회의"]);
+    expect(dedupeCalendarQueries(["встреча с врачом"])).toEqual([
+      "встреча с врачом",
+    ]);
+    expect(dedupeCalendarQueries(["新宿で歯医者"])).toEqual(["新宿で歯医者"]);
+    expect(dedupeCalendarQueries(["회의실 meeting"])).toEqual([
+      "회의실 meeting",
+    ]);
+    expect(dedupeCalendarQueries(["4월 19일 회의"])).toEqual(["4월 19일 회의"]);
+  });
+
+  it("still drops planner noise, punctuation-only, and generic queries", () => {
+    expect(dedupeCalendarQueries(["!!!"])).toEqual([]);
+    expect(dedupeCalendarQueries(["query?:string"])).toEqual([]);
+    expect(dedupeCalendarQueries(["calendar"])).toEqual([]);
+    expect(dedupeCalendarQueries(["  dentist appointment!! "])).toEqual([
+      "dentist appointment",
+    ]);
+    expect(dedupeCalendarQueries(["2026-04-19"])).toEqual(["2026-04-19"]);
+  });
+});
+
 describe("parseExplicitLocalDate Intl names", () => {
   it("resolves Korean month and Spanish weekday names", () => {
     expect(parseExplicitLocalDate("3월 15일 오후 3시", ZONE, NOW)).toEqual({
@@ -139,5 +165,138 @@ describe("parseExplicitLocalDate Intl names", () => {
       month: 10,
       day: 23,
     });
+  });
+
+  it("resolves Korean and Chinese weekday names, including before particles", () => {
+    const friday = { year: 2026, month: 10, day: 16 };
+    for (const text of [
+      "금요일 15:00",
+      "금요일에 치과",
+      "이번 주 금요일",
+      "星期五",
+      "周五",
+      "星期五下午三点",
+      "viernes",
+      "Friday",
+    ]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual(friday);
+    }
+    expect(parseExplicitLocalDate("三月 15", ZONE, NOW)).toEqual({
+      year: 2026,
+      month: 3,
+      day: 15,
+    });
+  });
+
+  it("reads Korean and Chinese next-week qualifiers like next friday", () => {
+    const nextWeekFriday = { year: 2026, month: 10, day: 23 };
+    for (const text of [
+      "다음 주 금요일",
+      "다음주 금요일 3시",
+      "下周五",
+      "下星期五下午",
+      "下周星期五",
+      "下周的星期五",
+      "下个星期五",
+      "다음 주의 금요일",
+    ]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual(
+        nextWeekFriday,
+      );
+    }
+    // The qualifier names the following Monday-start week, so a weekday
+    // earlier in the week than today is still in that week.
+    for (const text of ["下周一", "다음 주 월요일", "下星期一"]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual({
+        year: 2026,
+        month: 10,
+        day: 19,
+      });
+    }
+    const sunday = new Date("2026-10-18T03:00:00Z");
+    for (const text of ["下周一", "다음 주 월요일"]) {
+      expect(parseExplicitLocalDate(text, ZONE, sunday), text).toEqual({
+        year: 2026,
+        month: 10,
+        day: 19,
+      });
+    }
+    // 下下周 / 다다음 주 name the week after next.
+    for (const [text, day] of [
+      ["下下周一", 26],
+      ["下下星期一", 26],
+      ["다다음 주 월요일", 26],
+      ["下下周五", 30],
+      ["下下周日", 1],
+    ] as const) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual({
+        year: 2026,
+        month: day === 1 ? 11 : 10,
+        day,
+      });
+    }
+    for (const text of ["这周五", "这周星期五"]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toEqual({
+        year: 2026,
+        month: 10,
+        day: 16,
+      });
+    }
+  });
+
+  it("does not read a weekday out of Chinese week counts and schedule words", () => {
+    for (const text of [
+      "一周日程",
+      "一周五天",
+      "下一周日程",
+      "下周日程",
+      "这周五天都要加班",
+      "两个星期日程",
+    ]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toBeNull();
+    }
+    expect(parseExplicitLocalDate("下周日", ZONE, NOW)).toEqual({
+      year: 2026,
+      month: 10,
+      day: 25,
+    });
+    expect(parseExplicitLocalDate("周日下午", ZONE, NOW)).toEqual({
+      year: 2026,
+      month: 10,
+      day: 18,
+    });
+  });
+
+  it("leaves past and every-week Korean and Chinese weekdays unresolved", () => {
+    for (const text of [
+      "지난 금요일",
+      "지난주 금요일",
+      "매주 금요일",
+      "上周五",
+      "每周五",
+      "上周星期五",
+      "每周星期五",
+      "上周的星期五",
+    ]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toBeNull();
+    }
+    expect(parseExplicitLocalDate("구매 금요일까지", ZONE, NOW)).toEqual({
+      year: 2026,
+      month: 10,
+      day: 16,
+    });
+  });
+
+  it("keeps English word boundaries and skips one-syllable Korean words", () => {
+    for (const text of [
+      "fridays",
+      "fridayish",
+      "xfriday",
+      "friday_x",
+      "일정 확인 오후 3시",
+      "월급날",
+    ]) {
+      expect(parseExplicitLocalDate(text, ZONE, NOW), text).toBeNull();
+    }
   });
 });

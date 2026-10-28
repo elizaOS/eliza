@@ -1,9 +1,11 @@
 import addressparser from "nodemailer/lib/addressparser";
 import {
   decodeGmailPart,
+  extractGmailHtmlView,
   type GmailMessageLink,
   type GmailPayloadPart,
 } from "../../utils/gmail-mime-text";
+import { fetchWithoutRedirects } from "../../utils/no-redirect-fetch";
 import type { InboxReviewedEffect } from "./inbox-operation-routes";
 import { DefiniteProviderRejection, InboxContractError, type InboxOwner } from "./inbox-receipts";
 
@@ -268,16 +270,21 @@ export class InboxGoogleProvider {
     const controller = new AbortController(),
       timer = setTimeout(() => controller.abort(), 30000);
     try {
-      const response = await (this.dependencies.fetch ?? fetch)(endpoint + path, {
-        method,
-        redirect: "error",
-        signal: controller.signal,
-        headers: {
-          authorization: `Bearer ${grant.token}`,
-          "content-type": "application/json",
+      // Never follow a redirect with the bearer token; a 3xx rejects like the
+      // former redirect: "error", which the Workers runtime refuses.
+      const response = await fetchWithoutRedirects(
+        endpoint + path,
+        {
+          method,
+          signal: controller.signal,
+          headers: {
+            authorization: `Bearer ${grant.token}`,
+            "content-type": "application/json",
+          },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
+        this.dependencies.fetch,
+      );
       if (!response.ok) {
         await response.body?.cancel();
         if ([400, 401, 403, 404, 409, 412, 422].includes(response.status))
@@ -391,8 +398,11 @@ export class InboxGoogleProvider {
       if (!normalized) throw new InboxContractError(502, "Incomplete thread message");
       if (encoder.encode(normalized.bodyText).length > 256 * 1024)
         throw new InboxContractError(413, "Message body exceeds the explicit display limit");
+      const html = extractGmailHtmlView(object(raw.payload));
       return {
         ...normalized,
+        bodyHtml: html.html,
+        bodyHtmlStatus: html.status,
         historyId: typeof raw.historyId === "string" ? raw.historyId : null,
         attachments: attachmentParts(object(raw.payload)).map((part) => {
           const body = object(part.body),

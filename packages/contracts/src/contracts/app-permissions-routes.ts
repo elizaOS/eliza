@@ -2,16 +2,20 @@
  * Zod schemas for the App Permissions HTTP routes.
  *
  * **Pilot for the typed-routes initiative.** Replaces hand-rolled
- * `if (typeof body.x !== 'string')` validation in
- * `packages/agent/src/api/apps-routes.ts` and the parallel client-side
- * type re-declarations in `packages/ui/src/api/client-skills.ts` with a
- * single source of truth: zod schemas defined here, parsed on the
- * server, and used to derive the client's request/response types.
+ * `if (typeof body.x !== 'string')` validation with a single source of
+ * truth: zod schemas defined here. The client derives its
+ * request/response types from these schemas — it imports them in
+ * `packages/ui/src/api/client-skills.ts` instead of re-declaring
+ * them. The agent server does not mount `/api/apps/permissions` yet,
+ * so no server code parses these schemas today; they stay available
+ * for the future server implementation. The UI treats that route's
+ * 404 as a designed unsupported state.
  *
  * The pattern that lands here is the template for migrating other
  * routes off the manual-validation pattern — keep schemas alongside
- * their domain types, expose `.parse()` for the server, expose
- * inferred TS types via `z.infer<typeof schema>` for the client.
+ * their domain types, expose `.parse()` when a server mounts the
+ * route, and expose inferred TS types via `z.infer<typeof schema>`
+ * for the client.
  *
  * Routes covered (from PR #7554):
  *   GET  /api/apps/permissions
@@ -20,8 +24,8 @@
  *
  * The `AppPermissionsView` shape itself is hand-typed in
  * `./app-permissions.ts` (slice 1) and re-derived as a zod schema here.
- * The two are kept in sync by a compile-time `satisfies` check at the
- * bottom of this module — if either drifts, typecheck fails.
+ * No compile-time check binds the two; see the NOTE on drift at the
+ * bottom of this module.
  */
 
 import z from "zod";
@@ -35,7 +39,7 @@ const RecognisedPermissionNamespaceSchema = z.enum(["fs", "net"]);
 /**
  * Wire shape for `AppPermissionsView`. Mirrors the hand-typed
  * interface in `./app-permissions.ts`. Drift between the two is
- * caught at the bottom of this module via a `satisfies` cross-check.
+ * described in the NOTE at the bottom of this module.
  */
 export const AppPermissionsViewSchema = z
   .object({
@@ -105,11 +109,11 @@ export type PutAppPermissionsResponse = z.infer<
 // from the zod schema above): zod 4's nullable + strict-object
 // inference produces `T | undefined` for nullable fields rather than
 // `T | null`, which makes a strict bidirectional Equals-style check
-// fail despite the runtime shapes being identical. The schema tests
-// in `./app-permissions-routes.test.ts` exercise the actual shape on
-// real inputs; that is the load-bearing check. Treat the two
-// declarations as a co-located pair — if you change one, change the
-// other in the same commit and rerun the schema tests.
+// fail despite the runtime shapes being identical. No compile-time
+// check binds the two, and no schema tests exercise them today.
+// Treat the two declarations as a co-located pair — if you change
+// one, change the other in the same commit and keep the runtime
+// shapes identical.
 
 /**
  * Tagged constants the client can send to surface where a malformed

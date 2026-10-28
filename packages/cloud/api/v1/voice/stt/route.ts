@@ -1,3 +1,8 @@
+import {
+  CLOUDFLARE_STT_MODEL,
+  CloudflareSpeechError,
+  transcribeCloudflareAudio,
+} from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 /**
  * Cloud voice transcription route for multipart audio uploads. The request
  * body is size-gated before auth and multipart parsing so rejected uploads do
@@ -133,6 +138,8 @@ function estimateAudioDurationMinutes(
 }
 
 interface DeepgramTranscription {
+  /** Seconds of audio Deepgram transcribed (`metadata.duration`). */
+  durationSeconds?: number;
   transcript: string;
   segments?: SttTimedSpan[];
   words?: SttTimedSpan[];
@@ -226,7 +233,21 @@ function parseDeepgramTranscription(
   const segments = parseDeepgramArray(results?.utterances, "transcript");
   if (words.invalid || segments.invalid) return null;
 
+  const metadata =
+    root?.metadata &&
+    typeof root.metadata === "object" &&
+    !Array.isArray(root.metadata)
+      ? (root.metadata as Record<string, unknown>)
+      : null;
+  const durationSeconds =
+    typeof metadata?.duration === "number" &&
+    Number.isFinite(metadata.duration) &&
+    metadata.duration > 0
+      ? metadata.duration
+      : undefined;
+
   return {
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
     transcript,
     ...(segments.spans.length > 0 ? { segments: segments.spans } : {}),
     ...(words.spans.length > 0 ? { words: words.spans } : {}),
@@ -271,7 +292,12 @@ function parseCartesiaTranscription(
   };
 }
 
-type BatchSttProvider = "cartesia" | "deepgram" | "elevenlabs" | "whisper";
+type BatchSttProvider =
+  | "cloudflare"
+  | "cartesia"
+  | "deepgram"
+  | "elevenlabs"
+  | "whisper";
 
 function parseBatchSttProvider(
   value: string | undefined,
@@ -279,6 +305,7 @@ function parseBatchSttProvider(
   if (value === undefined) return undefined;
   const provider = value.trim().toLowerCase();
   if (
+    provider === "cloudflare" ||
     provider === "cartesia" ||
     provider === "deepgram" ||
     provider === "elevenlabs" ||
@@ -516,6 +543,16 @@ async function __hono_POST(c: AppContext) {
         { status: 400 },
       );
     }
+    const requestedProviders = formData.getAll("provider");
+    if (
+      requestedProviders.length > 1 ||
+      (requestedProviders.length === 1 && requestedProviders[0] !== "cartesia")
+    ) {
+      return Response.json(
+        { error: "Invalid speech-to-text provider" },
+        { status: 400 },
+      );
+    }
     const audioFile = formData.get("audio") as File | null;
     const languageCodeValue = formData.get("languageCode");
     const languageCode =
@@ -655,6 +692,7 @@ async function __hono_POST(c: AppContext) {
         { status: 503 },
       );
     }
+    if (requestedProviders.length === 1) batchSttProvider = "cartesia";
     const deepgramApiKey = env.DEEPGRAM_API_KEY?.trim();
     const cartesiaApiKey = env.CARTESIA_API_KEY?.trim();
     if (batchSttProvider === "deepgram" && !deepgramApiKey) {
@@ -811,6 +849,10 @@ async function __hono_POST(c: AppContext) {
       }
 
       const deepgramDuration = Date.now() - deepgramStart;
+      // Bill the audio Deepgram transcribed; the container header estimate
+      // only sized the reservation.
+      const billedDurationSeconds =
+        transcription.durationSeconds ?? estimate.durationSeconds;
       const billingReservation = reservation;
       reservation = undefined;
 
@@ -821,15 +863,23 @@ async function __hono_POST(c: AppContext) {
         pricingProxyModel: STT_PRICING_PROXY_MODEL,
         provider: "deepgram",
         segmentCount: transcription.segments?.length,
+        transcriptionDurationSeconds: transcription.durationSeconds,
         transcriptLength: transcription.transcript.length,
         wordCount: transcription.words?.length,
       });
       let billingApplied = false;
       const billingTask = (async () => {
         try {
+          const actualSttCost = await calculateSTTCostFromCatalog({
+            model: STT_PRICING_PROXY_MODEL,
+            durationSeconds: billedDurationSeconds,
+            ...(getGenerativePricingCacheOptions(c).cacheOnly
+              ? { cache: getGenerativePricingCacheOptions(c) }
+              : {}),
+          });
           const billing = await billFlatUsage(
             deepgramBillingContext,
-            sttCost,
+            actualSttCost,
             billingReservation,
           );
           billingApplied = true;
@@ -850,7 +900,8 @@ async function __hono_POST(c: AppContext) {
             metadata: {
               audioSizeBytes: audioFile.size,
               estimatedDurationMinutes: estimate.estimatedDurationMinutes,
-              durationSeconds: estimate.durationSeconds,
+              estimatedDurationSeconds: estimate.durationSeconds,
+              durationSeconds: billedDurationSeconds,
               languageCode,
               transcriptLength: transcription.transcript.length,
               baseTotalCost: billing.baseTotalCost,
@@ -1116,11 +1167,19 @@ async function __hono_POST(c: AppContext) {
       if (executionCtx) executionCtx.waitUntil(billingTask);
       else void billingTask;
 
-      return Response.json({
-        transcript: transcription.transcript,
-        duration_ms: cartesiaDuration,
-        ...(transcription.words ? { words: transcription.words } : {}),
-      });
+      return Response.json(
+        {
+          transcript: transcription.transcript,
+          duration_ms: cartesiaDuration,
+          ...(transcription.words ? { words: transcription.words } : {}),
+        },
+        {
+          headers: {
+            "X-Eliza-STT-Provider": "cartesia",
+            "X-Eliza-STT-Model": CARTESIA_BATCH_STT_MODEL,
+          },
+        },
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -1130,6 +1189,39 @@ async function __hono_POST(c: AppContext) {
     // the path below. Inert when WHISPER_STT_URL is unset or the operator
     // pinned `elevenlabs`.
     // -------------------------------------------------------------------------
+    if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
+      await credentialGuard[Symbol.asyncDispose]();
+      const started = Date.now();
+      const payload = await transcribeCloudflareAudio(
+        env.AI,
+        new Uint8Array(buffer),
+        languageCode,
+        c.req.raw.signal,
+        finalMimeType,
+      );
+      const { segments, words, invalidFields } =
+        parseWhisperTimestamps(payload);
+      if (invalidFields.length > 0) {
+        return Response.json(
+          { error: "Speech-to-text returned invalid timestamps" },
+          { status: 502 },
+        );
+      }
+      return Response.json(
+        {
+          transcript: payload.text.trim(),
+          duration_ms: Date.now() - started,
+          ...(segments ? { segments } : {}),
+          ...(words ? { words } : {}),
+        },
+        {
+          headers: {
+            "X-Eliza-STT-Provider": "cloudflare",
+            "X-Eliza-STT-Model": CLOUDFLARE_STT_MODEL,
+          },
+        },
+      );
+    }
     const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl && batchSttProvider !== "elevenlabs") {
       const whisperStart = Date.now();
@@ -1287,26 +1379,42 @@ async function __hono_POST(c: AppContext) {
     await markProviderDispatched?.();
     providerWorkMayHaveStarted = true;
     settlementProvider = "elevenlabs";
-    const transcript = await elevenlabs.speechToText({
-      audioFile: validatedFile,
-      languageCode,
-    });
+    const { transcript, audioDurationSeconds, minAudioDurationSeconds } =
+      await elevenlabs.speechToText({
+        audioFile: validatedFile,
+        languageCode,
+      });
     const duration = Date.now() - startTime;
+    // Bill the audio ElevenLabs transcribed; the container header estimate
+    // only sized the reservation. Without a reported total, the last word end
+    // can only raise the header estimate: audio after the last word is billed.
+    const billedDurationSeconds =
+      audioDurationSeconds ??
+      Math.max(durationSeconds, minAudioDurationSeconds ?? 0);
 
     const billingReservation = reservation;
     reservation = undefined;
 
     logger.info("[Voice STT API] Completed", {
       durationMs: duration,
+      transcriptionDurationSeconds: audioDurationSeconds,
+      minTranscriptionDurationSeconds: minAudioDurationSeconds,
       transcriptLength: transcript.length,
     });
 
     let billingApplied = false;
     const billingTask = (async () => {
       try {
+        const actualSttCost = await calculateSTTCostFromCatalog({
+          model: STT_PRICING_PROXY_MODEL,
+          durationSeconds: billedDurationSeconds,
+          ...(getGenerativePricingCacheOptions(c).cacheOnly
+            ? { cache: getGenerativePricingCacheOptions(c) }
+            : {}),
+        });
         const billing = await billFlatUsage(
           elevenLabsBillingContext,
-          sttCost,
+          actualSttCost,
           billingReservation,
         );
         billingApplied = true;
@@ -1330,7 +1438,8 @@ async function __hono_POST(c: AppContext) {
             // not sensitive content, so it stays.
             audioSizeBytes: audioFile.size,
             estimatedDurationMinutes,
-            durationSeconds,
+            estimatedDurationSeconds: durationSeconds,
+            durationSeconds: billedDurationSeconds,
             languageCode,
             transcriptLength: transcript.length,
             baseTotalCost: billing.baseTotalCost,
@@ -1392,6 +1501,12 @@ async function __hono_POST(c: AppContext) {
       return Response.json(serialized, { status: apiError.status ?? 500 });
     }
 
+    if (error instanceof CloudflareSpeechError) {
+      return Response.json(
+        { error: error.message, provider: "cloudflare" },
+        { status: error.status },
+      );
+    }
     if (error instanceof Error) {
       const errorMessage = error.message.toLowerCase();
       const errorWithBody = error as Error & {

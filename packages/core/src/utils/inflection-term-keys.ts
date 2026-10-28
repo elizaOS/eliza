@@ -25,6 +25,9 @@ export function inflectionTermKeys(term: string): string[] {
 		const stem = base.slice(0, -suffix.length);
 		keys.add(stem);
 		keys.add(`${stem}e`);
+		if (suffix === "ed" && stem.length >= 3 && stem.endsWith("i")) {
+			keys.add(`${stem.slice(0, -1)}y`);
+		}
 		if (stem.length >= 3 && stem[stem.length - 1] === stem[stem.length - 2]) {
 			keys.add(stem.slice(0, -1));
 		}

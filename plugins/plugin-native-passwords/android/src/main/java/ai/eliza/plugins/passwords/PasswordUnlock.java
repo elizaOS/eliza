@@ -61,6 +61,7 @@ public final class PasswordUnlock {
     if (keyguard == null || !keyguard.isDeviceSecure()) { result.failed("no-screen-lock"); return; }
     long ticket = access.begin();
     if (ticket == 0) { result.failed("busy"); return; }
+    PasswordEditor.dismiss(); // The new challenge revoked the draft's admitting grant.
     Pending pending = new Pending(activity, access, ticket, result);
     try {
       BiometricPrompt.Builder builder = new BiometricPrompt.Builder(activity)

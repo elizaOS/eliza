@@ -351,38 +351,60 @@ export class CompositeEotClassifier implements EotClassifier {
 		this.reservation = options.reservation ?? null;
 	}
 
+	/** Telemetry label of the fused model scorer. */
+	get modelLabel(): string {
+		return this.model.modelLabel;
+	}
+
 	/** Release the voice-budget reservation. Idempotent; call at session teardown. */
 	dispose(): void {
 		this.reservation?.release();
 	}
 
-	private async blend(
-		partialTranscript: string,
-	): Promise<{ probability: number; latencyMs: number; usedModel: boolean }> {
+	/**
+	 * The blended read. `scored` is false only when the model pass ran but
+	 * produced no finite probability; `probability` is then neutral, not a
+	 * measurement.
+	 */
+	async evaluate(partialTranscript: string): Promise<{
+		probability: number;
+		latencyMs: number;
+		usedModel: boolean;
+		scored: boolean;
+	}> {
 		const heuristicP = await this.heuristic.score(partialTranscript);
 		const heuristicConfidence = Math.abs(heuristicP - 0.5) * 2;
 		// High-precision syntactic verdict — trust it and skip the model pass.
 		if (heuristicConfidence >= this.confidenceCutoff) {
-			return { probability: heuristicP, latencyMs: 0, usedModel: false };
+			return {
+				probability: heuristicP,
+				latencyMs: 0,
+				usedModel: false,
+				scored: true,
+			};
 		}
-		const { probability: modelP, latencyMs } =
-			await this.model.score(partialTranscript);
+		const {
+			probability: modelP,
+			latencyMs,
+			scored,
+		} = await this.model.score(partialTranscript);
 		const blended =
 			modelP * (1 - heuristicConfidence) + heuristicP * heuristicConfidence;
 		return {
 			probability: clampProbability(blended),
 			latencyMs,
 			usedModel: true,
+			scored,
 		};
 	}
 
 	async score(partialTranscript: string): Promise<number> {
-		return (await this.blend(partialTranscript)).probability;
+		return (await this.evaluate(partialTranscript)).probability;
 	}
 
 	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
 		const { probability, latencyMs, usedModel } =
-			await this.blend(partialTranscript);
+			await this.evaluate(partialTranscript);
 		return turnSignalFromProbability({
 			probability,
 			transcript: partialTranscript,

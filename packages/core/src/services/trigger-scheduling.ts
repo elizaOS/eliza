@@ -13,7 +13,9 @@ export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
 export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 
 const CRON_FIELDS = 5;
-const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
+// A leap-day schedule can be eight years apart across a non-leap century.
+const CRON_SCAN_WINDOW_MS = 8 * 366 * 24 * 60 * 60 * 1000;
+const CRON_DAY_MS = 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
 const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
 const CRON_FALLBACK_LOOKBACKS_MS = [
@@ -168,8 +170,7 @@ export function parseCronExpression(expression: string): CronSchedule | null {
 	};
 }
 
-function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
-	const candidate = new Date(candidateMs);
+function cronDateMatchesUTC(schedule: CronSchedule, candidate: Date): boolean {
 	const dayOfMonthMatches = schedule.dayOfMonth.has(candidate.getUTCDate());
 	const dayOfWeekMatches = schedule.dayOfWeek.has(candidate.getUTCDay());
 	// POSIX/Vixie cron: when BOTH day fields are restricted, a day matching
@@ -179,11 +180,15 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 		schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted
 			? dayOfMonthMatches || dayOfWeekMatches
 			: dayOfMonthMatches && dayOfWeekMatches;
+	return dayMatches && schedule.month.has(candidate.getUTCMonth() + 1);
+}
+
+function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
+	const candidate = new Date(candidateMs);
 	return (
 		schedule.minute.has(candidate.getUTCMinutes()) &&
 		schedule.hour.has(candidate.getUTCHours()) &&
-		dayMatches &&
-		schedule.month.has(candidate.getUTCMonth() + 1)
+		cronDateMatchesUTC(schedule, candidate)
 	);
 }
 
@@ -286,32 +291,89 @@ export function computeNextCronRunAtMs(
 ): number | null {
 	const schedule = parseCronExpression(expression);
 	if (!schedule) return null;
-	// Bail on a non-representable base: scanning forward from a timestamp at/over
-	// the max Date value would build ~366 days of Invalid Dates before returning
-	// null (a ~26s pathological scan).
+	// Do not scan forward from a base at or above the maximum Date value.
 	if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null;
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
 	// Cap the window at the max representable Date so a base near the ceiling
-	// scans only the representable remainder, not ~527k Invalid-Date candidates.
+	// scans only the representable remainder.
 	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
-	// Hoist ONE formatter for the entire scan: a per-candidate-minute
-	// Intl.DateTimeFormat would allocate up to ~527k times across the 366-day
-	// window.
+	// Reuse one formatter for the complete scan.
 	const formatter =
 		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
+	let checkedDay = Number.NaN;
+	let dayCanMatch = false;
 
 	for (
 		let candidate = start + CRON_MINUTE_MS;
 		candidate <= cutoff;
 		candidate += CRON_MINUTE_MS
 	) {
+		const day = Math.floor(candidate / CRON_DAY_MS) * CRON_DAY_MS;
+		if (day !== checkedDay) {
+			checkedDay = day;
+			// A zone's local date can be the previous or next UTC date. Only
+			// skip a whole UTC day when none of those dates can match.
+			dayCanMatch = (formatter ? [-1, 0, 1] : [0]).some((offset) =>
+				cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
+			);
+		}
+		if (!dayCanMatch) {
+			candidate = day + CRON_DAY_MS - CRON_MINUTE_MS;
+			continue;
+		}
 		if (cronMatches(schedule, candidate, timezone, formatter)) {
 			return candidate;
 		}
 	}
 
 	return null;
+}
+
+const OFFSETLESS_ISO_DATE_TIME =
+	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+
+/**
+ * Pin an ISO date-time that carries no `Z` or UTC offset to an absolute
+ * instant by reading its wall-clock time in `timezone`. `Date.parse` reads
+ * such a value in the host process zone, which is not the user's zone on a
+ * cloud or container host. Values that already carry an offset, date-only
+ * values and anything else are returned unchanged for `parseScheduledAtIso`.
+ */
+export function resolveScheduledAtIsoInTimeZone(
+	scheduledAtIso: string,
+	timezone: string,
+): string {
+	const trimmed = scheduledAtIso.trim();
+	if (!OFFSETLESS_ISO_DATE_TIME.test(trimmed)) return scheduledAtIso;
+	const wallMs = Date.parse(`${trimmed}Z`);
+	if (!Number.isFinite(wallMs)) return scheduledAtIso;
+	const formatter = buildTzFormatter(timezone);
+	if (!formatter) {
+		throw new RangeError(`Invalid time zone: ${timezone}`);
+	}
+	// The formatter reads whole seconds, so offsets are taken at the whole
+	// second and the fraction is added back at the end.
+	const fractionMs = wallMs % 1000;
+	const wallSecondMs = wallMs - fractionMs;
+	const offsetAt = (atMs: number) => offsetMsFromFormatter(formatter, atMs);
+	// The zone's offsets a day either side bracket any DST transition near the
+	// wall clock. They give two candidate instants, which are equal away from
+	// a transition.
+	const dayMs = 24 * 60 * 60 * 1000;
+	const offsetBefore = offsetAt(wallSecondMs - dayMs);
+	const offsetAfter = offsetAt(wallSecondMs + dayMs);
+	const early = wallSecondMs - offsetBefore;
+	const late = wallSecondMs - offsetAfter;
+	// A candidate is real when the zone has its offset at that instant. Keep
+	// `early` unless only `late` is real. That reads a repeated hour as its
+	// first pass and a skipped hour forward, as `Date.parse` does for local
+	// times.
+	const instantMs =
+		offsetAt(early) !== offsetBefore && offsetAt(late) === offsetAfter
+			? late
+			: early;
+	return new Date(instantMs + fractionMs).toISOString();
 }
 
 export function parseScheduledAtIso(scheduledAtIso: string): number | null {
@@ -399,4 +461,66 @@ export function resolveTriggerTiming(
 			throw new Error(`Unsupported trigger type: ${exhaustiveCheck}`);
 		}
 	}
+}
+
+/**
+ * Powered-on scheduling. A host whose agent runs only while its device is
+ * powered on (a phone-resident agent) sets this setting to `record`. A
+ * scheduled occurrence that passed while the agent was not running is then
+ * recorded once as missed and never run late, and the next occurrence is
+ * armed as usual. A delay while the agent was running (device doze, a busy
+ * scheduler) is not a missed occurrence: that occurrence still runs. Hosts
+ * without the setting keep running a late occurrence.
+ */
+export const MISSED_SCHEDULED_OCCURRENCES_SETTING =
+	"ELIZA_MISSED_SCHEDULED_OCCURRENCES";
+/** Lateness tolerated before an occurrence can be missed (resident digests use the same window). */
+export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
+export const MISSED_SCHEDULED_OCCURRENCE_TEXT =
+	"The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.";
+
+/**
+ * Whether this host selected the powered-on policy: the runtime setting wins,
+ * then the process environment (the native runtime profile sets it there).
+ */
+export function recordsMissedScheduledOccurrences(
+	runtime?: { getSetting?(key: string): unknown } | null,
+): boolean {
+	// Partial runtimes (tests, narrow hosts) may not expose settings.
+	const configured =
+		typeof runtime?.getSetting === "function"
+			? runtime.getSetting(MISSED_SCHEDULED_OCCURRENCES_SETTING)
+			: undefined;
+	const value =
+		typeof configured === "string"
+			? configured
+			: typeof process !== "undefined"
+				? process.env?.[MISSED_SCHEDULED_OCCURRENCES_SETTING]
+				: undefined;
+	return value === "record";
+}
+
+/** Wall-clock instant at which this agent process started. */
+export function agentProcessStartedAtMs(nowMs: number = Date.now()): number {
+	const uptime =
+		typeof process !== "undefined" && typeof process.uptime === "function"
+			? process.uptime()
+			: 0;
+	return nowMs - Math.round(uptime * 1000);
+}
+
+/**
+ * True when a scheduled occurrence is reached outside its window and its
+ * scheduled instant precedes the start of the agent process, so the agent was
+ * not running when it came due.
+ */
+export function isMissedScheduledOccurrence(
+	scheduledAtMs: number,
+	nowMs: number,
+	agentStartedAtMs: number = agentProcessStartedAtMs(nowMs),
+): boolean {
+	return (
+		nowMs - scheduledAtMs > SCHEDULED_OCCURRENCE_WINDOW_MS &&
+		scheduledAtMs < agentStartedAtMs
+	);
 }

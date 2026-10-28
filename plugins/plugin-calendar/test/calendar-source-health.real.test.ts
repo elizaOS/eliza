@@ -165,6 +165,7 @@ let linkedProviderTitle: string | null = null;
 let linkedProviderDeleted = false;
 let pg: PGlite;
 let calendar: CalendarService;
+let hostGate: CalendarHostGate;
 let runtime: IAgentRuntime;
 let failAccountA = false;
 let failAccountB = false;
@@ -343,7 +344,7 @@ beforeAll(async () => {
           : null,
   } as unknown as IAgentRuntime;
 
-  const gate: CalendarHostGate = {
+  hostGate = {
     getGoogleConnectorAccounts: async () => [status(GRANT_A), status(GRANT_B)],
     resolveGuestAvailabilityGrants: async (request) =>
       request.grantIds.map((grantId) => {
@@ -375,7 +376,7 @@ beforeAll(async () => {
   };
 
   calendar = new CalendarService(runtime);
-  calendar.setGate(gate);
+  calendar.setGate(hostGate);
 });
 
 beforeEach(async () => {
@@ -532,6 +533,64 @@ describe("CalendarService source truth", () => {
     expect(
       feed.sources.find((source) => source.key.grantId === GRANT_B.id)?.status,
     ).toBe("error");
+  });
+
+  it("keeps healthy calendars visible when the managed broker is unavailable", async () => {
+    const endpointKey = "ELIZA_MANAGED_CALENDAR_READ_BROKER";
+    const tokenKey = "ELIZA_API_TOKEN";
+    const previousEndpoint = process.env[endpointKey];
+    const previousToken = process.env[tokenKey];
+    const previousFetch = globalThis.fetch;
+    const brokerCalls: unknown[] = [];
+    process.env[endpointKey] = "http://127.0.0.1:43127/__alpha-owner-gmail";
+    process.env[tokenKey] = "a".repeat(64);
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      brokerCalls.push(args);
+      throw new Error("managed broker unavailable");
+    }) as typeof fetch;
+
+    try {
+      const managedCalendar = new CalendarService(runtime);
+      managedCalendar.setGate(hostGate);
+
+      const listed = await managedCalendar.listCalendars(INTERNAL_URL);
+      expect(listed.map((source) => source.grantId)).toEqual(
+        expect.arrayContaining([GRANT_A.id, GRANT_B.id]),
+      );
+
+      const feed = await managedCalendar.getCalendarFeed(
+        INTERNAL_URL,
+        {
+          timeMin: TIME_MIN,
+          timeMax: TIME_MAX,
+          forceSync: true,
+        },
+        new Date("2026-07-26T12:00:00.000Z"),
+      );
+      expect(feed.state).toBe("partial");
+      expect(feed.events).toHaveLength(2);
+      expect(
+        feed.sources.find(
+          (source) => source.key.grantId === "alpha-google:broker",
+        ),
+      ).toMatchObject({
+        status: "error",
+        error: { code: "CALENDAR_SOURCE_ERROR" },
+      });
+
+      const callsAfterAggregateRead = brokerCalls.length;
+      const scoped = await managedCalendar.listCalendars(INTERNAL_URL, {
+        grantId: GRANT_A.id,
+      });
+      expect(scoped.map((source) => source.grantId)).toEqual([GRANT_A.id]);
+      expect(brokerCalls).toHaveLength(callsAfterAggregateRead);
+    } finally {
+      if (previousEndpoint === undefined) delete process.env[endpointKey];
+      else process.env[endpointKey] = previousEndpoint;
+      if (previousToken === undefined) delete process.env[tokenKey];
+      else process.env[tokenKey] = previousToken;
+      globalThis.fetch = previousFetch;
+    }
   });
 
   it("retains a failed account as explicitly stale when cache exists", async () => {

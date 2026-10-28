@@ -198,7 +198,7 @@ class Parser {
       this.pos++;
       return inner;
     }
-    const match = /^\d(?:\d|[,_](?=\d))*(?:\.\d+)?/.exec(
+    const match = /^(?:\d(?:\d|[,_](?=\d))*(?:\.\d+)?|\.\d+)/.exec(
       this.src.slice(this.pos),
     );
     if (!match) {

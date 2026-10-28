@@ -11,21 +11,25 @@ import path from "node:path";
 import { AgentRuntime, ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { firstSentenceEndIndex } from "../src/aosp-llama-paths";
+import type { AospLlmStreamConfig } from "../src/aosp-llama-streaming";
 import {
   type AospLoader,
   AospLoaderRuntimeService,
   aospAsrAssetsPresent,
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
+  createAospPreparedTextRequestGuard,
   ensureAospLocalInferenceHandlers,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
+  loadAospParadeeWithEspeakFallback,
   makeAospTextToSpeechHandler,
   parseMemAvailableMb,
   readAssignedBundledModels,
   registerAospLlamaLoader,
   registerAospLoaderService,
   removeAospGeneratedStagingDir,
+  resolveAospCompletionBudget,
   shouldEvictChatForAvailMb,
   VOICE_COLOAD_KEEP_AVAIL_MB,
 } from "../src/aosp-local-inference-bootstrap";
@@ -439,6 +443,69 @@ describe("buildGenerateArgsFromParams", () => {
   });
 });
 
+describe("createAospPreparedTextRequestGuard", () => {
+  const streamConfig = (maxTokens: number): AospLlmStreamConfig => ({
+    maxTokens,
+    temperature: 0.7,
+    topP: 0.9,
+    topK: 40,
+    repeatPenalty: 1.1,
+    slotId: -1,
+    promptCacheKey: null,
+    draftMin: 0,
+    draftMax: 0,
+    mtpDrafterPath: null,
+    disableThinking: false,
+    contextSize: 4096,
+  });
+
+  it("admits an uncapped request that may decode into the rest of the context", () => {
+    // REPLY and grounded replies call TEXT_LARGE / TEXT_SMALL without
+    // maxTokens, so the fused loader decodes up to the remaining context.
+    const maxTokens = resolveAospCompletionBudget({
+      contextSize: 4096,
+      promptTokenCount: 1000,
+    });
+    const guard = createAospPreparedTextRequestGuard({
+      modelPath: "/models/chat.gguf",
+      contextWindowTokens: 4096,
+      prompt: "Reply to the user.",
+      promptTokenCount: 1000,
+      config: streamConfig(maxTokens),
+    });
+
+    expect(maxTokens).toBe(3096);
+    expect(guard.budget).toMatchObject({
+      inputTokens: 1000,
+      outputReserveTokens: 1,
+      dispatchThresholdTokens: 4095,
+    });
+    guard.assertBeforeAttempt();
+    expect(guard.attempts).toBe(1);
+  });
+
+  it("reserves an explicit output cap and rejects a prompt that crowds it out", () => {
+    const capped = {
+      modelPath: "/models/chat.gguf",
+      contextWindowTokens: 4096,
+      prompt: "Reply to the user.",
+      requestedMaxTokens: 256,
+      config: streamConfig(256),
+    };
+
+    expect(
+      createAospPreparedTextRequestGuard({ ...capped, promptTokenCount: 1000 })
+        .budget,
+    ).toMatchObject({
+      outputReserveTokens: 256,
+      dispatchThresholdTokens: 3840,
+    });
+    expect(() =>
+      createAospPreparedTextRequestGuard({ ...capped, promptTokenCount: 3900 }),
+    ).toThrow("exceeds its context budget");
+  });
+});
+
 describe("buildAospLoadModelArgs", () => {
   it("leaves bundled MTP disabled by default on stock Android", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-mtp-model-"));
@@ -784,7 +851,7 @@ describe("removeAospGeneratedStagingDir", () => {
   it("removes only generated staging directories under the active bundle", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-staging-cleanup-"));
     const bundleRoot = path.join(root, "local-inference", "models", "2b");
-    const stagingDir = path.join(bundleRoot, "tts", "kokoro.staging");
+    const stagingDir = path.join(bundleRoot, "tts", "paradee.staging");
     mkdirSync(stagingDir, { recursive: true });
     writeFileSync(path.join(stagingDir, "partial.gguf"), "partial");
 
@@ -876,11 +943,11 @@ describe("AOSP embedding gate", () => {
 });
 
 describe("AOSP TEXT_TO_SPEECH backend selection", () => {
-  it("routes every request through the Kokoro FFI handler", async () => {
+  it("routes every request through the Paradee FFI handler", async () => {
     const calls: string[] = [];
     const handler = makeAospTextToSpeechHandler({
-      kokoro: async () => {
-        calls.push("kokoro");
+      paradee: async () => {
+        calls.push("paradee");
         return new Uint8Array([1, 2, 3]);
       },
     });
@@ -888,12 +955,12 @@ describe("AOSP TEXT_TO_SPEECH backend selection", () => {
     await expect(handler({} as never, "hello")).resolves.toEqual(
       new Uint8Array([1, 2, 3]),
     );
-    expect(calls).toEqual(["kokoro"]);
+    expect(calls).toEqual(["paradee"]);
   });
 
-  it("propagates Kokoro failures verbatim (no silent fallback)", async () => {
+  it("propagates Paradee failures verbatim (no silent fallback)", async () => {
     const handler = makeAospTextToSpeechHandler({
-      kokoro: async () => {
+      paradee: async () => {
         throw new Error("missing lib");
       },
     });
@@ -904,7 +971,7 @@ describe("AOSP TEXT_TO_SPEECH backend selection", () => {
   it("invokes the foreground-use hook on every request", async () => {
     let foreground = 0;
     const handler = makeAospTextToSpeechHandler({
-      kokoro: async () => new Uint8Array([0]),
+      paradee: async () => new Uint8Array([0]),
       onForegroundUse: () => {
         foreground++;
       },
@@ -1052,5 +1119,69 @@ describe("shouldEvictChatForAvailMb (memory-gated chat eviction)", () => {
 
   it("evicts on unknown memory (safe default = original always-evict)", () => {
     expect(shouldEvictChatForAvailMb(null)).toBe(true);
+  });
+});
+
+describe("AOSP Paradee eSpeak NG data", () => {
+  it("passes the staged eSpeak data directory to the load", () => {
+    const calls: Array<string | null> = [];
+    const warnings: string[] = [];
+    const result = loadAospParadeeWithEspeakFallback(
+      (dir) => {
+        calls.push(dir);
+        return { rc: 0, message: "" };
+      },
+      "/bundle/tts/paradee",
+      (m) => warnings.push(m),
+    );
+    expect(calls).toEqual(["/bundle/tts/paradee"]);
+    expect(result).toEqual({
+      rc: 0,
+      message: "",
+      espeakDataDir: "/bundle/tts/paradee",
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  it("retries without eSpeak data, loudly, when the load with it fails", () => {
+    const calls: Array<string | null> = [];
+    const warnings: string[] = [];
+    const result = loadAospParadeeWithEspeakFallback(
+      (dir) => {
+        calls.push(dir);
+        return dir
+          ? { rc: -3, message: "eSpeak NG data path is too long (N_PATH_HOME)" }
+          : { rc: 0, message: "" };
+      },
+      "/bundle/tts/paradee",
+      (m) => warnings.push(m),
+    );
+    expect(calls).toEqual(["/bundle/tts/paradee", null]);
+    expect(result).toEqual({ rc: 0, message: "", espeakDataDir: null });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("N_PATH_HOME");
+    expect(warnings[0]).toContain("spelled out");
+  });
+
+  it("does not retry when there is no eSpeak data, and reports both failures", () => {
+    const calls: Array<string | null> = [];
+    const none = loadAospParadeeWithEspeakFallback(
+      (dir) => {
+        calls.push(dir);
+        return { rc: -2, message: "bad gguf" };
+      },
+      null,
+      () => {
+        throw new Error("no warning expected");
+      },
+    );
+    expect(calls).toEqual([null]);
+    expect(none.rc).toBe(-2);
+    const both = loadAospParadeeWithEspeakFallback(
+      () => ({ rc: -2, message: "bad gguf" }),
+      "/bundle/tts/paradee",
+      () => {},
+    );
+    expect(both).toEqual({ rc: -2, message: "bad gguf", espeakDataDir: null });
   });
 });

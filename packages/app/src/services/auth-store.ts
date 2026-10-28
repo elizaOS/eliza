@@ -678,6 +678,18 @@ function isAuthDrizzleDatabase(value: unknown): value is DrizzleDatabase {
     typeof value.delete === "function"
   );
 }
+/** Select only authentication storage explicitly retained by this host. */
+export function authStoreForHost(
+  state:
+    | {
+        current: AuthRuntimeSource | null;
+        stoppedAuthRuntime?: AuthRuntimeSource | null;
+      }
+    | null
+    | undefined,
+): AuthRepository | null {
+  return authStoreForRuntime(state?.current ?? state?.stoppedAuthRuntime);
+}
 /** Select the existing auth contract from the agent's own persistent database. */
 export function authStoreForRuntime(
   runtime: AuthRuntimeSource | null | undefined,

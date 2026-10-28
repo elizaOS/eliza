@@ -1706,19 +1706,28 @@ function mutationQueryFromMessage(
     .replace(LEADING_ADDRESSING_PREFIX, "")
     .replace(MENTION_MARKER_PATTERN, " ");
   if (addressed) {
-    // The agent's own name next to a mention marker is addressing too.
+    // The agent's own name next to a mention marker is addressing too. JS
+    // `\b` is ASCII-only, so names like "Zoë" or "미나" need Unicode edges.
     for (const word of (runtime.character?.name ?? "").split(/\s+/)) {
       if (word.length >= 2)
         text = text.replace(
           new RegExp(
-            `\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-            "gi",
+            `(?<![\\p{L}\\p{N}_])${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`,
+            "giu",
           ),
           " ",
         );
     }
   }
-  text = text.replace(/\s+/g, " ").trim();
+  // Strip only a command prefix from the fallback. Literal words in explicit
+  // queries, quotes, and the target itself remain part of every-term matching.
+  text = text
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(
+      /^(?:(?:can|could|would|will)\s+you\s+)?(?:please\s+)?(?:delete|remove|erase)\b[\s,:-]*/i,
+      "",
+    );
   if (!text || scoreQueryTerms(text).length === 0) return undefined;
   logger.info(
     "[MEMORY] delete carried no query; using the user's message text",

@@ -3,9 +3,7 @@
  */
 export function replaceNameTokens(text: string, name: string): string {
 	if (!text) return text;
-	return text
-		.replace(/\{\{\s*name\s*\}\}/g, () => name)
-		.replace(/\{\{\s*agentName\s*\}\}/g, () => name);
+	return text.replace(/\{\{\s*(?:name|agentName)\s*\}\}/g, () => name);
 }
 /**
  * Resolve indexed example-participant tokens (`{{name1}}` / `{{user1}}` …) in

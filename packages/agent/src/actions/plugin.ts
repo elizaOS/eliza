@@ -103,6 +103,7 @@ interface PluginListEntry {
   loadError?: string;
   category?: string;
   isActive?: boolean;
+  npmName?: string;
 }
 
 interface PluginsListResponse {
@@ -519,7 +520,7 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
   const plugins = listData.plugins;
   const lower = pluginId.toLowerCase();
   const plugin =
-    plugins.find((p) => p.id === pluginId) ??
+    plugins.find((p) => p.id === pluginId || p.npmName === pluginId) ??
     plugins.find(
       (p) =>
         p.id.toLowerCase().includes(lower) ||
@@ -1113,7 +1114,7 @@ export const pluginAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "Plugin: Discord (@elizaos/plugin-discord)\nStatus: enabled | configured: true",
+          text: "Plugin: Discord (discord)\nStatus: enabled | configured: true",
         },
       },
     ],

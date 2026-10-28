@@ -208,3 +208,33 @@ it.each([
   },
   120_000,
 );
+
+it("saves a repaired plugin install record without the boot config's resolved vault secrets", async () => {
+  const file = destination();
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      env: { OPENAI_API_KEY: "vault://OPENAI_API_KEY" },
+      plugins: {
+        installs: {
+          "@elizaos/plugin-openai": {
+            source: "path",
+            installPath: "/old/install/plugin-openai",
+          },
+        },
+      },
+    }),
+  );
+  const { persistRepairedInstallRecords } = await import(
+    "../src/runtime/plugin-resolver.ts"
+  );
+
+  persistRepairedInstallRecords(["@elizaos/plugin-openai"]);
+
+  const saved = JSON.parse(fs.readFileSync(file, "utf8"));
+  expect(saved.env.OPENAI_API_KEY).toBe("vault://OPENAI_API_KEY");
+  expect(saved.plugins.installs["@elizaos/plugin-openai"]).toMatchObject({
+    installPath: "",
+    source: "npm",
+  });
+});

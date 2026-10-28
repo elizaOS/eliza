@@ -64,6 +64,7 @@ export class PromptBatcher {
   private enabled = false;
   private disposed = false;
   private readonly affinityDrains = new Map<string, TaskDrain>();
+  private readonly affinityDrainOps = new Map<string, Promise<void>>();
 
   constructor(
     private readonly runtime: IAgentRuntime,
@@ -128,7 +129,7 @@ export class PromptBatcher {
     const affinityKey = normalized.affinityKey ?? "default";
     void this._ensureAffinityDrain(affinityKey)
       .then(() => this._syncAffinityTask(affinityKey))
-      .catch((error) => {
+      .catch(async (error) => {
         // error-policy:J1 Drain setup is the asynchronous boundary for this
         // request; reject its pending result and report the scheduler failure.
         this.runtime.reportError("PromptBatcher.ensureAffinityDrain", error, {
@@ -138,8 +139,16 @@ export class PromptBatcher {
         const pending = this.pendingResults.get(normalized.id);
         if (pending && !pending.resolved) {
           pending.resolved = true;
+          try {
+            await this._removeSectionAndWait(normalized.id);
+          } catch (cleanupError) {
+            this.runtime.reportError(
+              "PromptBatcher.removeSectionAfterSyncFailure",
+              cleanupError,
+              { sectionId: normalized.id },
+            );
+          }
           pending.deferred.reject(error);
-          this.pendingResults.delete(normalized.id);
         }
         this.runtime.logger.error(
           {
@@ -179,15 +188,23 @@ export class PromptBatcher {
   }
 
   removeSection(id: string): void {
+    void this._removeSectionAndWait(id).catch((error) => {
+      this.runtime.reportError("PromptBatcher.removeSection", error, {
+        sectionId: id,
+      });
+    });
+  }
+
+  private async _removeSectionAndWait(id: string): Promise<void> {
     const section = this.sections.get(id);
     const affinityKey = section?.affinityKey ?? "default";
     this.sections.delete(id);
     this.pendingResults.delete(id);
     this.lastRunAt.delete(id);
     if (this.getSectionCountForAffinity(affinityKey) === 0) {
-      void this._removeAffinityTask(affinityKey);
+      await this._removeAffinityTask(affinityKey);
     } else {
-      void this._syncAffinityTask(affinityKey);
+      await this._syncAffinityTask(affinityKey);
     }
   }
 
@@ -465,6 +482,8 @@ export class PromptBatcher {
       validate: opts.validate,
       maxRetries: opts.maxRetries,
       execOptions: opts.execOptions,
+    }).catch((error) => {
+      this.runtime.reportError("PromptBatcher.think", error, { sectionId: id });
     });
   }
 
@@ -551,29 +570,63 @@ export class PromptBatcher {
    * TaskService already registers `BATCHER_DRAIN`; we only ensure the DB row + interval updates.
    * Same subsystem as embedding drains (`utils/batch-queue.ts` rationale).
    */
-  private async _ensureAffinityDrain(affinityKey: string): Promise<void> {
-    if (this.affinityDrains.has(affinityKey)) {
-      return;
-    }
-    if (
-      typeof this.runtime.getTasksByName !== "function" ||
-      typeof this.runtime.createTask !== "function"
-    ) {
-      return;
-    }
-    const interval = this.getIdealTickInterval(affinityKey);
-    const drain = new TaskDrain(
-      {
-        taskName: "BATCHER_DRAIN",
-        description: `Drain affinity group: ${affinityKey}`,
-        intervalMs: interval,
-        taskMetadata: { affinityKey },
-        skipRegisterWorker: true,
-      },
-      interval,
-    );
-    await drain.start(this.runtime);
-    this.affinityDrains.set(affinityKey, drain);
+  private _ensureAffinityDrain(affinityKey: string): Promise<void> {
+    return this._queueAffinityDrainOp(affinityKey, async () => {
+      // A queued ensure that runs after dispose() must not create a task row
+      // for a batcher that is gone; the same holds if dispose() lands while
+      // the start is in flight, so the just-started drain is torn down.
+      if (this.disposed || this.affinityDrains.has(affinityKey)) {
+        return;
+      }
+      if (
+        typeof this.runtime.getTasksByName !== "function" ||
+        typeof this.runtime.createTask !== "function"
+      ) {
+        return;
+      }
+      const interval = this.getIdealTickInterval(affinityKey);
+      const drain = new TaskDrain(
+        {
+          taskName: "BATCHER_DRAIN",
+          description: `Drain affinity group: ${affinityKey}`,
+          intervalMs: interval,
+          taskMetadata: { affinityKey },
+          skipRegisterWorker: true,
+        },
+        interval,
+      );
+      await drain.start(this.runtime);
+      if (this.disposed) {
+        await drain.dispose(this.runtime);
+        return;
+      }
+      this.affinityDrains.set(affinityKey, drain);
+    });
+  }
+
+  /**
+   * Drain start and dispose for one affinity run one at a time, in call
+   * order. `removeSection` then `addSection` in the same tick (the autonomy
+   * interval change) must end with exactly one repeat task row: without the
+   * queue the re-add sees the drain that is still being disposed, skips its
+   * own start, and the affinity is never drained again.
+   */
+  private _queueAffinityDrainOp(
+    affinityKey: string,
+    op: () => Promise<void>,
+  ): Promise<void> {
+    const previous =
+      this.affinityDrainOps.get(affinityKey) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(op);
+    this.affinityDrainOps.set(affinityKey, next);
+    void next
+      .catch(() => undefined)
+      .then(() => {
+        if (this.affinityDrainOps.get(affinityKey) === next) {
+          this.affinityDrainOps.delete(affinityKey);
+        }
+      });
+    return next;
   }
 
   private async _syncAffinityTask(affinityKey: string): Promise<void> {
@@ -588,20 +641,23 @@ export class PromptBatcher {
     await drain.updateInterval(this.runtime, newInterval);
   }
 
-  private async _removeAffinityTask(affinityKey: string): Promise<void> {
-    const drain = this.affinityDrains.get(affinityKey);
-    if (!drain) return;
-    try {
-      await drain.dispose(this.runtime);
-    } finally {
-      this.affinityDrains.delete(affinityKey);
-    }
+  private _removeAffinityTask(affinityKey: string): Promise<void> {
+    return this._queueAffinityDrainOp(affinityKey, async () => {
+      const drain = this.affinityDrains.get(affinityKey);
+      if (!drain) return;
+      try {
+        await drain.dispose(this.runtime);
+      } finally {
+        this.affinityDrains.delete(affinityKey);
+      }
+    });
   }
 
   async drainAffinityGroup(affinityKey: string): Promise<void> {
-    const existingLock = this.affinityLocks.get(affinityKey);
-    if (existingLock) {
+    let existingLock = this.affinityLocks.get(affinityKey);
+    while (existingLock) {
       await existingLock;
+      existingLock = this.affinityLocks.get(affinityKey);
     }
 
     let release!: () => void;

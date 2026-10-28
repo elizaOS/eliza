@@ -17,6 +17,7 @@ import {
   type World,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { createIsolatedTestDatabase } from "../../../../../plugin-sql/src/__tests__/test-helpers";
 import {
   resolveEffectiveMuteState,
   worldMuteActive,
@@ -58,6 +59,7 @@ function makeRuntime(seed?: {
       memories.push(memory);
       return memory.id;
     },
+    ensureParticipantInRoom: async () => {},
     getParticipantUserState: async (roomId: UUID, entityId: UUID) =>
       states.get(`${roomId}:${entityId}`) ?? null,
     updateParticipantUserState: async (
@@ -68,6 +70,7 @@ function makeRuntime(seed?: {
       states.set(`${roomId}:${entityId}`, state);
     },
     getRoom: async (roomId: UUID) => rooms.get(roomId) ?? null,
+    getRoomsForParticipant: async () => [...rooms.keys()] as UUID[],
     updateRoom: async (room: Room) => {
       rooms.set(room.id, room);
     },
@@ -327,27 +330,56 @@ describe("ROOM action — scope=server (guild-wide mute)", () => {
     );
   });
 
-  it("validate gates on world mute state for scope=server", async () => {
+  it("validate leaves a planner call to the handler, which names the failed precondition", async () => {
     const { runtime } = makeRuntime({
       rooms: [room(ROOM_ID)],
       worlds: [world({ metadata: { agentMuteState: "MUTED" } })],
     });
-    expect(
-      await roomOpAction.validate(
+    for (const [parameters, error] of [
+      [{ action: "mute", scope: "server" }, "ROOM_MUTE_PRECONDITION_FAILED"],
+      [{ action: "unmute" }, "ROOM_UNMUTE_PRECONDITION_FAILED"],
+      [{ action: "unfollow" }, "ROOM_UNFOLLOW_PRECONDITION_FAILED"],
+      [
+        { action: "mute", platform: "discord", chatName: "crypto signals" },
+        "ROOM_NOT_FOUND",
+      ],
+    ] as const) {
+      expect(validateToolArgs(roomOpAction, parameters).errors).toEqual([]);
+      expect(
+        await roomOpAction.validate(
+          runtime,
+          msg("room op"),
+          state,
+          opts(parameters),
+        ),
+      ).toBe(true);
+      const result = await roomOpAction.handler(
         runtime,
-        msg("mute the server"),
+        msg("room op"),
         state,
-        opts({ action: "mute", scope: "server" }),
-      ),
+        opts(parameters),
+      );
+      expect(result?.success).toBe(false);
+      expect(result?.values?.error).toBe(error);
+    }
+  });
+
+  it("a child action is offered only when the current room state allows the operation", async () => {
+    const { runtime } = makeRuntime({
+      rooms: [room(ROOM_ID)],
+      worlds: [world()],
+    });
+    expect(await followRoomAction.validate(runtime, msg("hi"), state)).toBe(
+      true,
+    );
+    const followed = makeRuntime({
+      states: { [`${ROOM_ID}:${AGENT_ID}`]: "FOLLOWED" },
+      rooms: [room(ROOM_ID)],
+      worlds: [world()],
+    });
+    expect(
+      await followRoomAction.validate(followed.runtime, msg("hi"), state),
     ).toBe(false);
-    expect(
-      await roomOpAction.validate(
-        runtime,
-        msg("unmute the server"),
-        state,
-        opts({ action: "unmute", scope: "server" }),
-      ),
-    ).toBe(true);
   });
 });
 
@@ -427,5 +459,60 @@ describe("ROOM action — declared parameters match the handler", () => {
     );
     expect(result?.success).toBe(true);
     expect(ctx.states.get(`${ROOM_ID}:${AGENT_ID}`)).toBe("FOLLOWED");
+  });
+});
+
+describe("ROOM action — room without an agent participant row (real PGlite)", () => {
+  it("mute adds the agent to the room so the mute holds", async () => {
+    const f = await createIsolatedTestDatabase("room-mute-no-participant");
+    const roomId = "00000000-0000-0000-0000-0000000000f1" as UUID;
+    try {
+      await f.runtime.createEntity({
+        id: f.testAgentId,
+        names: ["Agent"],
+        agentId: f.testAgentId,
+      });
+      await f.runtime.ensureWorldExists({
+        id: WORLD_ID,
+        name: "Cozy Devs",
+        agentId: f.testAgentId,
+      });
+      // A connector join creates the room without adding the agent to it.
+      await f.runtime.ensureRoomExists({
+        id: roomId,
+        name: "general",
+        source: "discord",
+        type: "GROUP",
+        channelId: "C1",
+        worldId: WORLD_ID,
+      } as Room);
+      await f.runtime.createEntity({
+        id: USER_ID,
+        names: ["Owner"],
+        agentId: f.testAgentId,
+      });
+      expect(await f.runtime.isRoomParticipant(roomId, f.testAgentId)).toBe(
+        false,
+      );
+
+      const result = await roomOpAction.handler(
+        f.runtime,
+        { ...msg("mute #general"), agentId: f.testAgentId, roomId },
+        state,
+        opts({ action: "mute", platform: "discord", roomId }),
+      );
+
+      expect(result?.success).toBe(true);
+      expect(
+        await f.runtime.getParticipantUserState(roomId, f.testAgentId),
+      ).toBe("MUTED");
+      // The next inbound message joins the agent to the room; the mute stays.
+      await f.runtime.ensureParticipantInRoom(f.testAgentId, roomId);
+      expect(
+        await f.runtime.getParticipantUserState(roomId, f.testAgentId),
+      ).toBe("MUTED");
+    } finally {
+      await f.cleanup();
+    }
   });
 });

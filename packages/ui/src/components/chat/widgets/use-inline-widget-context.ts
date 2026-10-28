@@ -22,7 +22,7 @@ export function useInlineWidgetContext(
   sendActionMessage: (
     text: string,
     options?: { metadata?: Record<string, unknown> },
-  ) => Promise<void>,
+  ) => Promise<boolean>,
   setChatInput: (text: string) => void,
   messageId?: string,
   producerScope?: string,
@@ -33,11 +33,10 @@ export function useInlineWidgetContext(
       producerScope,
       // A choice pick / default followup: send the value back through the
       // action-message pipeline.
-      sendAction: (value: string, metadata?: Record<string, unknown>) => {
-        void (metadata
+      sendAction: (value: string, metadata?: Record<string, unknown>) =>
+        metadata
           ? sendActionMessage(value, { metadata })
-          : sendActionMessage(value));
-      },
+          : sendActionMessage(value),
       // A followup `navigate` chip: deliver the passive view-switch SUGGESTION
       // as the same `eliza:navigate:view` event the VIEWS action uses. A
       // `/`-prefixed payload is a viewPath; anything else is a viewId.

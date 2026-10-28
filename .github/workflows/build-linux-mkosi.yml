@@ -153,7 +153,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
@@ -184,7 +184,7 @@ jobs:
           test -n "$ELIZAOS_DESKTOP_SIGNING_PUBLIC_KEY_SPKI_SHA256"
 
       - name: Download signed native desktop artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           repository: elizaOS/eliza
           run-id: ${{ inputs.desktop_run_id }}
@@ -232,7 +232,7 @@ jobs:
 
       - name: Download checksum-pinned Syft
         id: syft
-        uses: anchore/sbom-action/download-syft@c8069d6c989aca1923b19e135cc3a77937f16d98
+        uses: anchore/sbom-action/download-syft@a61e3c81cfa072d15e731a6c98ab810e75f2e1a6
 
       - name: Build clean snapshot-pinned mkosi release disk
         env:
@@ -388,7 +388,7 @@ jobs:
             ${{ env.WORK_ROOT }}/canonical/*.spdx.json
 
       - name: Upload bounded pre-signing image
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-built-${{ matrix.architecture }}
           path: ${{ env.WORK_ROOT }}/upload/*
@@ -418,12 +418,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Setup Node 24
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: "24.15.0"
 
       - name: Download exact pre-signing images
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           pattern: elizaos-linux-mkosi-built-*
           path: ${{ env.WORK_ROOT }}/unsigned
@@ -561,7 +561,7 @@ jobs:
             ${{ env.WORK_ROOT }}/publish/*/*
 
       - name: Upload x86_64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-x86_64
           path: ${{ env.WORK_ROOT }}/publish/x86_64/*
@@ -570,7 +570,7 @@ jobs:
           retention-days: 30
 
       - name: Upload arm64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-arm64
           path: ${{ env.WORK_ROOT }}/publish/arm64/*
@@ -579,7 +579,7 @@ jobs:
           retention-days: 30
 
       - name: Upload riscv64 publication input
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-mkosi-riscv64
           path: ${{ env.WORK_ROOT }}/publish/riscv64/*
@@ -588,7 +588,7 @@ jobs:
           retention-days: 30
 
       - name: Upload signed image discovery metadata
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: elizaos-linux-image-metadata
           path: ${{ env.WORK_ROOT }}/publish/metadata/*

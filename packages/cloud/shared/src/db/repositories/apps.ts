@@ -1122,6 +1122,62 @@ export class AppsRepository {
   }
 
   /**
+   * Session totals over every page view in the range. Groups exactly like
+   * `AppAnalyticsService.buildSessionAnalytics`: the `session_id` metadata,
+   * else the visitor (`visitor_id` metadata, user, IP) plus the UTC hour.
+   */
+  async getPageviewSessionSummary(
+    appId: string,
+    options: { startDate?: Date; endDate?: Date } = {},
+  ): Promise<{
+    totalSessions: number;
+    uniqueVisitors: number;
+    totalPageViews: number;
+    totalDurationMs: number;
+    bounces: number;
+  }> {
+    const conditions = [eq(appRequests.app_id, appId), eq(appRequests.request_type, "pageview")];
+    if (options.startDate) conditions.push(gte(appRequests.created_at, options.startDate));
+    if (options.endDate) conditions.push(lte(appRequests.created_at, options.endDate));
+    const metadataText = (key: string) =>
+      sql`CASE WHEN jsonb_typeof(${appRequests.metadata} -> ${key}) = 'string'
+        THEN NULLIF(btrim(${appRequests.metadata} ->> ${key}), '') END`;
+    const visitor = sql`COALESCE(${metadataText("visitor_id")}, ${appRequests.user_id}::text, ${appRequests.ip_address}, 'unknown')`;
+    const sessionKey = sql`COALESCE(${metadataText("session_id")}, ${visitor} || ':' || to_char(${appRequests.created_at}, 'YYYY-MM-DD"T"HH24'))`;
+    const [row] = await sqlRows<{
+      total_sessions: number | string;
+      unique_visitors: number | string;
+      total_page_views: number | string;
+      total_duration_ms: number | string;
+      bounces: number | string;
+    }>(
+      dbRead,
+      sql`SELECT
+          count(*) AS total_sessions,
+          count(DISTINCT visitor) AS unique_visitors,
+          COALESCE(sum(pages), 0) AS total_page_views,
+          COALESCE(sum(duration_ms), 0) AS total_duration_ms,
+          count(*) FILTER (WHERE pages = 1) AS bounces
+        FROM (
+          SELECT
+            (array_agg(${visitor} ORDER BY ${appRequests.created_at}))[1] AS visitor,
+            count(*) AS pages,
+            round(extract(epoch FROM max(${appRequests.created_at}) - min(${appRequests.created_at})) * 1000) AS duration_ms
+          FROM ${appRequests}
+          WHERE ${and(...conditions)}
+          GROUP BY ${sessionKey}
+        ) AS sessions`,
+    );
+    return {
+      totalSessions: Number(row?.total_sessions ?? 0),
+      uniqueVisitors: Number(row?.unique_visitors ?? 0),
+      totalPageViews: Number(row?.total_page_views ?? 0),
+      totalDurationMs: Number(row?.total_duration_ms ?? 0),
+      bounces: Number(row?.bounces ?? 0),
+    };
+  }
+
+  /**
    * Gets aggregated request stats for an app.
    */
   async getRequestStats(
@@ -1254,8 +1310,10 @@ export class AppsRepository {
           lte(appRequests.created_at, endDate),
         ),
       )
-      .groupBy(sql`TO_CHAR(${appRequests.created_at}, ${dateFormat})`)
-      .orderBy(sql`TO_CHAR(${appRequests.created_at}, ${dateFormat})`);
+      // By position: a bound format parameter in GROUP BY/ORDER BY is a
+      // different expression from the SELECT one, which Postgres rejects.
+      .groupBy(sql`1`)
+      .orderBy(sql`1`);
 
     return results;
   }

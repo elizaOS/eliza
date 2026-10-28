@@ -333,16 +333,23 @@ function formatSummary(summary: {
   steps: number;
   activeMinutes: number;
   sleepHours: number;
+  sleepUnavailable?: boolean;
   heartRateAvg?: number;
   calories?: number;
   distanceMeters?: number;
   source: string;
 }): string {
+  // A `sleepUnavailable` day carries `sleepHours: 0` only because the sleep
+  // sub-fetch failed; rendering the zero would fabricate a real-looking
+  // reading the bridge contract explicitly forbids (see HealthDailySummary).
+  const sleepLine = summary.sleepUnavailable
+    ? "- Sleep: unavailable (source error; sleep unknown for this day)"
+    : `- Sleep: ${summary.sleepHours.toFixed(1)}h`;
   const parts: string[] = [
     `${summary.date} (${summary.source}):`,
     `- Steps: ${summary.steps.toLocaleString()}`,
     `- Active minutes: ${summary.activeMinutes}`,
-    `- Sleep: ${summary.sleepHours.toFixed(1)}h`,
+    sleepLine,
   ];
   if (summary.heartRateAvg !== undefined) {
     parts.push(`- Heart rate avg: ${summary.heartRateAvg.toFixed(0)} bpm`);
@@ -356,15 +363,25 @@ function formatSummary(summary: {
   return parts.join("\n");
 }
 
+/**
+ * Steps, active minutes and sleep are 0 placeholders in a provider's daily
+ * row when it sent no sample for them (Strava has no steps or sleep), so they
+ * are shown only for metrics the provider reported that day.
+ */
 function formatConnectorDailySummary(
   summary: LifeOpsHealthSummaryResponse["summaries"][number],
+  reportedMetrics: ReadonlySet<string>,
 ): string {
-  const parts = [
-    `${summary.date} (${summary.provider}):`,
-    `- Steps: ${Math.round(summary.steps).toLocaleString()}`,
-    `- Active minutes: ${Math.round(summary.activeMinutes)}`,
-    `- Sleep: ${summary.sleepHours.toFixed(1)}h`,
-  ];
+  const parts = [`${summary.date} (${summary.provider}):`];
+  if (reportedMetrics.has("steps")) {
+    parts.push(`- Steps: ${Math.round(summary.steps).toLocaleString()}`);
+  }
+  if (reportedMetrics.has("active_minutes")) {
+    parts.push(`- Active minutes: ${Math.round(summary.activeMinutes)}`);
+  }
+  if (reportedMetrics.has("sleep_hours")) {
+    parts.push(`- Sleep: ${summary.sleepHours.toFixed(1)}h`);
+  }
   if (summary.heartRateAvg !== null) {
     parts.push(`- Heart rate avg: ${summary.heartRateAvg.toFixed(0)} bpm`);
   }
@@ -380,19 +397,37 @@ function formatConnectorDailySummary(
   return parts.join("\n");
 }
 
+/** The metrics a provider sent samples for on a summary row's day. */
+function reportedConnectorMetrics(
+  summary: LifeOpsHealthSummaryResponse,
+  row: LifeOpsHealthSummaryResponse["summaries"][number],
+): Set<string> {
+  return new Set(
+    summary.samples
+      .filter(
+        (sample) =>
+          sample.provider === row.provider && sample.localDate === row.date,
+      )
+      .map((sample) => sample.metric),
+  );
+}
+
 /**
- * The connector summary for `date`. Only a request that named no date may
- * read the latest synced day instead; an explicit date with no summary is
- * "no data for that day", never another day's numbers.
+ * Every provider's connector summary for `date`. Only a request that named no
+ * date may read the latest synced day instead; an explicit date with no
+ * summary is "no data for that day", never another day's numbers.
  */
-function connectorSummaryForDate(
+function connectorSummariesForDate(
   summary: LifeOpsHealthSummaryResponse,
   date: string,
   explicitDate: boolean,
-): LifeOpsHealthSummaryResponse["summaries"][number] | null {
-  const match = summary.summaries.find((candidate) => candidate.date === date);
-  if (match || explicitDate) return match ?? null;
-  return summary.summaries[0] ?? null;
+): LifeOpsHealthSummaryResponse["summaries"] {
+  const matches = summary.summaries.filter(
+    (candidate) => candidate.date === date,
+  );
+  if (matches.length > 0 || explicitDate) return matches;
+  const latest = summary.summaries[0]?.date;
+  return summary.summaries.filter((candidate) => candidate.date === latest);
 }
 
 export const HEALTH_SIMILES: readonly string[] = [
@@ -727,7 +762,12 @@ export function createHealthActionRunner(
             healthSummary.summaries.length === 0
               ? `No wearable health data recorded in the last ${days} days.`
               : `Health trend (last ${days} days):\n${healthSummary.summaries
-                  .map((entry) => formatConnectorDailySummary(entry))
+                  .map((entry) =>
+                    formatConnectorDailySummary(
+                      entry,
+                      reportedConnectorMetrics(healthSummary, entry),
+                    ),
+                  )
                   .join("\n\n")}`;
           return respond({
             success: true,
@@ -771,8 +811,32 @@ export function createHealthActionRunner(
               data: { subaction, metric, points, healthSummary },
             });
           }
-          const aggregate = aggregateMetricPoints(metric, points);
-          const fallback = `${metric} — ${byMetricWindowLabel}: ${aggregate.label} ${aggregate.value.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
+          // Providers can record the same activity (a Fitbit day total
+          // includes a run Strava also reports), so each provider is
+          // aggregated on its own and never added to another.
+          const byProvider = [
+            ...new Set(points.map((point) => point.provider)),
+          ].map((provider) => {
+            const providerPoints = points.filter(
+              (point) => point.provider === provider,
+            );
+            return {
+              provider,
+              sampleCount: providerPoints.length,
+              ...aggregateMetricPoints(metric, providerPoints),
+            };
+          });
+          const samples = (count: number) =>
+            `${count} sample${count === 1 ? "" : "s"}`;
+          const only = byProvider.length === 1 ? byProvider[0] : undefined;
+          const fallback = only
+            ? `${metric} — ${byMetricWindowLabel}: ${only.label} ${only.value.toFixed(2)} ${firstPoint.unit} across ${samples(points.length)}.`
+            : `${metric} — ${byMetricWindowLabel}, by provider (providers can record the same activity, so these are not added together): ${byProvider
+                .map(
+                  (entry) =>
+                    `${entry.provider} ${entry.label} ${entry.value.toFixed(2)} ${firstPoint.unit} across ${samples(entry.sampleCount)}`,
+                )
+                .join("; ")}.`;
           return respond({
             success: true,
             scenario: "health_connector_by_metric",
@@ -780,7 +844,7 @@ export function createHealthActionRunner(
             context: {
               metric,
               ...byMetricWindowContext,
-              [aggregate.label]: aggregate.value,
+              ...(only ? { [only.label]: only.value } : { byProvider }),
               unit: firstPoint.unit,
               sampleCount: points.length,
             },
@@ -791,13 +855,21 @@ export function createHealthActionRunner(
             data: { subaction, metric, points, healthSummary },
           });
         }
-        const daily = connectorSummaryForDate(
+        const dailyByProvider = connectorSummariesForDate(
           healthSummary,
           params.date ?? localTodayKey(timeZone),
           params.date !== undefined,
         );
+        const daily = dailyByProvider[0] ?? null;
         const fallback = daily
-          ? `Health summary for ${formatConnectorDailySummary(daily)}`
+          ? `Health summary for ${dailyByProvider
+              .map((row) =>
+                formatConnectorDailySummary(
+                  row,
+                  reportedConnectorMetrics(healthSummary, row),
+                ),
+              )
+              .join("\n\n")}`
           : params.date
             ? `Connected health providers have no daily summary for ${params.date}.`
             : "Connected health providers have not synced daily summaries yet.";
@@ -805,7 +877,10 @@ export function createHealthActionRunner(
           success: true,
           scenario: "health_connector_today",
           fallback,
-          context: { daily },
+          context: {
+            daily,
+            ...(dailyByProvider.length > 1 ? { dailyByProvider } : {}),
+          },
           values: {
             success: true,
             healthConnectedProviders: connectedProviders,
@@ -921,12 +996,14 @@ export function createHealthActionRunner(
         steps: summary.steps,
         activeMinutes: summary.activeMinutes,
         sleepHours: summary.sleepHours,
+        ...(summary.sleepUnavailable ? { sleepUnavailable: true } : {}),
       },
       values: {
         success: true,
         steps: summary.steps,
         activeMinutes: summary.activeMinutes,
         sleepHours: summary.sleepHours,
+        ...(summary.sleepUnavailable ? { sleepUnavailable: true } : {}),
       },
       data: { subaction: "today", date, summary },
     });

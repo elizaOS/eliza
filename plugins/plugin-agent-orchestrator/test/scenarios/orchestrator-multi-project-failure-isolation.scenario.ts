@@ -417,7 +417,7 @@ async function runFailureIsolation(): Promise<IsolationResult> {
         ).length;
         const listed = await service.listTasks({
           projectId: project.id,
-          status,
+          statuses: [status],
           includeArchived: status === "archived",
         });
         const scoped = listed.filter((t) => idSet.has(t.id));

@@ -414,9 +414,18 @@ async function missResult(
   entityId: string,
 ): Promise<ActionResult> {
   if (miss?.kind !== "ambiguous") {
+    // The store records the miss under this turn's idempotency key, so the
+    // result must count as a TODO mutation for the next step's key ordinal.
     return {
       ...failure("not_found", notFoundMessage(locator)),
       modelReplyRequired: true,
+      data: {
+        actionName: "TODO",
+        action,
+        op: action,
+        entityId,
+        notFound: true,
+      },
     };
   }
   const candidates = await Promise.all(

@@ -206,6 +206,9 @@ export interface PasswordsClient {
   lock(): Promise<void>;
   list(): Promise<PasswordEntrySummary[]>;
   save(input: PasswordSaveInput): Promise<PasswordSaveResult>;
+  openEditor(): Promise<
+    { status: "saved"; id: string } | { status: "cancelled" }
+  >;
   remove(id: string): Promise<void>;
   reset(): Promise<void>;
   reveal(id: string): Promise<{ hidesAfterMs: number }>;
@@ -258,6 +261,22 @@ export function createPasswordsClient(
         },
       );
     },
+    openEditor: () =>
+      call(
+        () => plugin.openEditor(),
+        (value) => {
+          assertNoSecretFields(value);
+          const item = (value || {}) as Record<string, unknown>;
+          if (item.status === "cancelled")
+            return { status: "cancelled" as const };
+          if (item.status === "saved")
+            return { status: "saved" as const, id: text(item.id, 128) };
+          throw new PasswordsClientError(
+            "unavailable",
+            "Saved passwords are unavailable.",
+          );
+        },
+      ),
     remove: (id) =>
       call(
         () => plugin.remove({ id }),

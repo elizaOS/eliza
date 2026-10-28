@@ -17,7 +17,7 @@ import { describe, it } from "node:test";
 
 const MIRRORED_CONTRACT_SHA256: Record<string, string> = {
   "contract.ts":
-    "8c7e68ff489d33919939890d019787ddf07d64070f867c22d9fe2e3dd88d4b5d",
+    "564b22b222547f47bf11908a7074c7f640f5059925460ccdb2e69d4d2fb20d42",
   "svc-auth.ts":
     "80c561af25581926e6317837f91e92063e4655e5cd9a687597ce4ea8ce297c70",
 };

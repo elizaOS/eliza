@@ -30,6 +30,10 @@ import {
   resolveDevCloudEnvAuthority,
 } from "../config/dev-cloud-env-authority.ts";
 import {
+  clearConfigEnvValue,
+  writeConfigEnvValue,
+} from "../config/env-vars.ts";
+import {
   agentIdentityName,
   buildCharacterFromConfig,
 } from "../runtime/build-character-config.ts";
@@ -193,6 +197,31 @@ const PROVIDER_ENV_KEYS = [
   "OLLAMA_BASE_URL",
 ] as const;
 
+/**
+ * Read a provider credential from a config record the same way the reload
+ * env-sync below does (`env.vars.*` first, legacy direct `env.*` second). A
+ * non-empty trimmed string counts as present; anything else is absent.
+ */
+function readProviderEnvValue(
+  config: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const envSection = config.env as
+    | (Record<string, unknown> & { vars?: Record<string, unknown> })
+    | undefined;
+  const envVars =
+    envSection?.vars && typeof envSection.vars === "object"
+      ? (envSection.vars as Record<string, unknown>)
+      : undefined;
+  const value =
+    typeof envVars?.[key] === "string"
+      ? (envVars[key] as string)
+      : typeof envSection?.[key] === "string"
+        ? (envSection[key] as string)
+        : undefined;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 interface ReloadDiff {
   applied: string[];
   requiresRestart: string[];
@@ -260,24 +289,18 @@ async function applyReloadedConfig(params: {
   const nextRecord = asConfigRecord(next);
 
   // Sync provider API keys into process.env (the runtime reads them at
-  // request time via getSetting → process.env).
-  const envSection = nextRecord.env as
-    | (Record<string, unknown> & { vars?: Record<string, unknown> })
-    | undefined;
-  const envVars =
-    envSection?.vars && typeof envSection.vars === "object"
-      ? (envSection.vars as Record<string, unknown>)
-      : undefined;
+  // request time via getSetting → process.env). Keys removed (or blanked) in
+  // the reloaded config are cleared too, so a deleted credential stops being
+  // served to provider clients — but only when the previous config owned the
+  // live value; an operator-set env var (docker env, shell export) is left
+  // alone.
   for (const key of PROVIDER_ENV_KEYS) {
     if (isBlockedEnvKey(key)) continue;
-    const value =
-      typeof envVars?.[key] === "string"
-        ? (envVars[key] as string)
-        : typeof envSection?.[key] === "string"
-          ? (envSection[key] as string)
-          : undefined;
-    if (typeof value === "string" && value.trim()) {
-      process.env[key] = value.trim();
+    const value = readProviderEnvValue(nextRecord, key);
+    if (value !== undefined) {
+      writeConfigEnvValue(key, value);
+    } else {
+      clearConfigEnvValue(key);
     }
   }
 

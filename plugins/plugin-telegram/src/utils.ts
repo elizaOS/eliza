@@ -118,6 +118,21 @@ export function convertMarkdownToTelegram(markdown: string): string {
     },
   );
 
+  // 1b. An unmatched opening fence: a truncated or streamed message can end
+  //     inside a code block, and the rest of the text is still code. Hold it
+  //     aside like a closed body; the style passes below cannot see fence
+  //     state, so a `#` comment line would become a heading and `**` would
+  //     become bold. Close the Telegram code entity at the message boundary
+  //     while preserving all code content from the input.
+  converted = converted.replace(
+    /```([^\s`]+)?\r?\n([\s\S]*)$/,
+    (_match, lang, code) => {
+      const escapedCode = escapeCode(code);
+      const formatted = `\`\`\`${lang || ""}\n${escapedCode}\`\`\``;
+      return storeReplacement(formatted);
+    },
+  );
+
   // 2. Inline code (`...`)
   converted = converted.replace(/`([^`]+)`/g, (_match, code) => {
     const escapedCode = escapeCode(code);
@@ -137,6 +152,15 @@ export function convertMarkdownToTelegram(markdown: string): string {
       const formatted = `[${formattedText}](${escapedURL})`;
       return storeReplacement(formatted);
     },
+  );
+
+  // 3b. Bare URLs: hold them aside as plain text before the emphasis passes,
+  //     or a `_x_` or `*x*` inside a path becomes italic and Telegram links to
+  //     a different address. Balanced parentheses stay in the URL; trailing
+  //     punctuation and emphasis closers do not.
+  converted = converted.replace(
+    /https?:\/\/(?:[^\s<>()]|\([^\s()]*\))*(?:[^\s<>().,;:!?*_~'"]|\([^\s()]*\))/g,
+    (url) => storeReplacement(escapePlainText(url)),
   );
 
   // Protect escaped asterisks before interpreting emphasis. Consuming pairs

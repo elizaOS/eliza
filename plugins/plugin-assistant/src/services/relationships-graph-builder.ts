@@ -1894,6 +1894,8 @@ async function buildRelevantMemories(
       runtime.getMemories({
         tableName: "messages",
         entityId,
+        // `entityId` names the isolation principal; this selects the author.
+        authorEntityIds: [entityId],
         orderBy: "createdAt",
         orderDirection: "desc",
       }),

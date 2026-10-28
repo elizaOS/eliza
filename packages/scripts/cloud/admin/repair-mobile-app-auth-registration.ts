@@ -7,10 +7,10 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
 import {
-  MOBILE_APP_AUTH_REDIRECT_ORIGIN,
-  MOBILE_APP_AUTH_REDIRECT_URI,
+  type MobileAppAuthRegistrationTarget,
   mobileAppAuthDatabaseConnection,
-  requireMobileAppAuthAppId,
+  PRIMARY_MOBILE_APP_AUTH_TARGET,
+  resolveMobileAppAuthRegistrationSelection,
   verifyDatabaseMobileAppAuthRegistration,
 } from "./verify-mobile-app-auth-registration.ts";
 
@@ -106,9 +106,10 @@ export async function diagnose(
   databaseUrl: string,
   appId: string,
   verify: typeof verifyDatabaseMobileAppAuthRegistration = verifyDatabaseMobileAppAuthRegistration,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
 ): Promise<void> {
   try {
-    await verify(databaseUrl, appId);
+    await verify(databaseUrl, appId, target);
     console.log("[MobileAppAuthRegistration] valid");
   } catch (error) {
     const cause = error instanceof Error ? error.cause : undefined;
@@ -133,6 +134,7 @@ export async function repairRegistrationTransaction(
   appId: string,
   protectedOrganizationId?: string,
   protectedOwnerUserId?: string,
+  target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
 ): Promise<void> {
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
@@ -200,7 +202,7 @@ export async function repairRegistrationTransaction(
           AND is_active = TRUE
           AND is_approved = TRUE
           AND allowed_origins @> jsonb_build_array($2::text)`,
-      [appId, MOBILE_APP_AUTH_REDIRECT_URI],
+      [appId, target.redirectUri],
     );
     if (duplicate.rows[0]?.count !== 0)
       fail("registration.unique_callback_owner");
@@ -243,12 +245,7 @@ export async function repairRegistrationTransaction(
                 api_key_id = $4::uuid,
                 updated_at = NOW()
           WHERE id = $1::uuid`,
-        [
-          appId,
-          MOBILE_APP_AUTH_REDIRECT_ORIGIN,
-          MOBILE_APP_AUTH_REDIRECT_URI,
-          apiKeyId,
-        ],
+        [appId, target.redirectOrigin, target.redirectUri, apiKeyId],
       );
     } else {
       await client.query(
@@ -256,17 +253,19 @@ export async function repairRegistrationTransaction(
            (id, name, description, slug, organization_id, created_by_user_id,
             app_url, allowed_origins, api_key_id, is_active, is_approved)
          VALUES
-           ($1::uuid, 'Eliza Mobile', 'First-party Eliza mobile authentication client',
+           ($1::uuid, $8, $9,
             $2, $3::uuid, $4::uuid, $5, jsonb_build_array($6::text),
             $7::uuid, TRUE, TRUE)`,
         [
           appId,
-          `eliza-mobile-auth-${appId.slice(0, 8)}`,
+          `${target.slugPrefix}-${appId}`,
           organizationId,
           ownerUserId,
-          MOBILE_APP_AUTH_REDIRECT_ORIGIN,
-          MOBILE_APP_AUTH_REDIRECT_URI,
+          target.redirectOrigin,
+          target.redirectUri,
           apiKeyId,
+          target.appName,
+          target.appDescription,
         ],
       );
     }
@@ -281,8 +280,9 @@ export async function repairRegistrationTransaction(
 async function repair(
   databaseUrl: string,
   appId: string,
-  organizationId?: string,
-  ownerUserId?: string,
+  organizationId: string | undefined,
+  ownerUserId: string | undefined,
+  target: MobileAppAuthRegistrationTarget,
 ): Promise<void> {
   const { url, ssl } = mobileAppAuthDatabaseConnection(databaseUrl);
   const client = new Client({ connectionString: url, ...(ssl ? { ssl } : {}) });
@@ -293,13 +293,39 @@ async function repair(
       appId,
       organizationId,
       ownerUserId,
+      target,
     );
   } finally {
     await client.end().catch(() => undefined);
   }
 
-  await diagnose(databaseUrl, appId);
+  await diagnose(databaseUrl, appId, undefined, target);
   console.log("[MobileAppAuthRegistration] repaired_and_verified");
+}
+
+/**
+ * Select the client to diagnose or repair and its app UUID. The primary
+ * client's UUID is its own protected secret; additional clients take theirs
+ * from the Worker registry so the repaired row is exactly the one the Worker
+ * will select. Validation messages name invariants, never values.
+ */
+export function resolveTargetRegistration(env: NodeJS.ProcessEnv): {
+  target: MobileAppAuthRegistrationTarget;
+  appId: string;
+} {
+  try {
+    return resolveMobileAppAuthRegistrationSelection(
+      env.ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID,
+      env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT,
+      env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
+      env.ELIZA_MOBILE_APP_AUTH_APP_ID,
+    );
+  } catch (error) {
+    if (error instanceof RegistrationRepairError) throw error;
+    return fail(
+      `input.${error instanceof Error ? error.message : "target_registration"}`,
+    );
+  }
 }
 
 function parseOperation(value: string | undefined): Operation {
@@ -311,12 +337,11 @@ async function main(): Promise<void> {
   const operation = parseOperation(process.argv[2]);
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) fail("input.database_url");
-  const appId = requireMobileAppAuthAppId(
-    process.env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-  );
+  const { target, appId } = resolveTargetRegistration(process.env);
+  console.log(`[MobileAppAuthRegistration] client=${target.clientId}`);
   if (operation === "diagnose") {
     await diagnoseRequiredRegistrationSchema(databaseUrl);
-    return await diagnose(databaseUrl, appId);
+    return await diagnose(databaseUrl, appId, undefined, target);
   }
   const organizationId = optionalUuid(
     process.env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID,
@@ -326,7 +351,7 @@ async function main(): Promise<void> {
     process.env.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID,
     "input.owner_user_id",
   );
-  await repair(databaseUrl, appId, organizationId, ownerUserId);
+  await repair(databaseUrl, appId, organizationId, ownerUserId, target);
 }
 
 if (import.meta.main) {

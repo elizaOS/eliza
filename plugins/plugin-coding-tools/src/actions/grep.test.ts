@@ -218,6 +218,29 @@ describe("GREP", () => {
     expect(result.text).toMatch(/a\.ts:\d+/);
   });
 
+  it("returns file paths that name the matched files when path is a subdirectory", async (context) => {
+    requireRipgrep(context);
+    const { message } = env;
+    // Same relative name outside the searched directory.
+    await fs.mkdir(path.join(tmpRoot, "sub"), { recursive: true });
+    await fs.writeFile(path.join(tmpRoot, "sub", "c.ts"), "other\n");
+
+    const result = await grepHandler(runtime, message, state, {
+      parameters: { pattern: "needle", path: path.join(tmpRoot, "foo") },
+    });
+
+    expect(result.success).toBe(true);
+    const listed = (result.text ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.endsWith("c.ts"));
+    expect(listed).toHaveLength(1);
+    // The listed path resolves (against the session cwd) to the matched file.
+    expect(path.resolve(tmpRoot, listed[0] ?? "")).toBe(
+      path.join(tmpRoot, "foo", "sub", "c.ts"),
+    );
+  });
+
   it("fails when roomId is missing", async () => {
     const result = await grepHandler(runtime, {} as Memory, state, {
       parameters: { pattern: "NEEDLE" },

@@ -167,6 +167,11 @@ function validateExportNonce(
     };
   }
 
+  if (elapsed > NONCE_TTL_MS) {
+    pendingExportNonces.delete(nonce);
+    return { valid: false, reason: "Export nonce expired." };
+  }
+
   // Nonce consumed — delete it
   pendingExportNonces.delete(nonce);
   return { valid: true };

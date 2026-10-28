@@ -23,9 +23,14 @@ import {
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { workThreadAction } from "../src/actions/work-thread.ts";
+import { LifeOpsRepository } from "../src/lifeops/repository.ts";
 import { registerLifeOpsScheduledTaskRunnerDeps } from "../src/lifeops/scheduled-task/runtime-wiring.js";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
-import { ScheduledTaskRunnerService } from "../src/lifeops/scheduled-task/service.js";
+import {
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+} from "../src/lifeops/scheduled-task/service.js";
+import { executeRawSql, sqlQuote } from "../src/lifeops/sql.js";
 import {
   type ThreadOp,
   threadOpsFieldEvaluator,
@@ -35,6 +40,30 @@ import { workThreadsProvider } from "../src/providers/work-threads.ts";
 import { createMockedTestRuntime } from "./support/helpers/mock-runtime.ts";
 
 let cleanupRuntime: (() => Promise<void>) | undefined;
+
+// Runs once after the scheduler's first thread read returns "active", before
+// the claim, so a thread change can land exactly in that window.
+let afterThreadCheck: (() => Promise<void>) | null = null;
+vi.mock(
+  "../src/lifeops/work-threads/followup-thread-check.ts",
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import("../src/lifeops/work-threads/followup-thread-check.ts")
+      >();
+    const workThreadFollowupInactiveReason: typeof actual.workThreadFollowupInactiveReason =
+      async (runtime, task) => {
+        const reason = await actual.workThreadFollowupInactiveReason(
+          runtime,
+          task,
+        );
+        const hook = afterThreadCheck;
+        if (hook && reason === null) await hook();
+        return reason;
+      };
+    return { ...actual, workThreadFollowupInactiveReason };
+  },
+);
 
 vi.setConfig({ testTimeout: 120_000 });
 
@@ -203,6 +232,386 @@ async function applyThreadOpsField(
 }
 
 describe("LifeOps work threads", () => {
+  it.each([false, true, "remove fails", "remove unavailable"])(
+    "links one follow-up or removes it after exhausted owner conflicts (%s)",
+    async (exhaust) => {
+      const runtime = await createRuntime();
+      const store = createWorkThreadStore(runtime);
+      const roomId = stringToUuid("followup-conflict-room");
+      const thread = await store.create({
+        title: "Check report",
+        summary: "Original summary",
+        primarySourceRef: { connector: "test", roomId, canMutate: true },
+      });
+      const original = LifeOpsRepository.prototype.upsertWorkThread;
+      let conflicts = 0;
+      vi.spyOn(
+        LifeOpsRepository.prototype,
+        "upsertWorkThread",
+      ).mockImplementation(async function (
+        this: LifeOpsRepository,
+        agentId,
+        next,
+        options,
+      ) {
+        if (
+          next.id === thread.id &&
+          next.currentScheduledTaskId &&
+          (exhaust || conflicts === 0)
+        ) {
+          conflicts++;
+          const current = await store.get(thread.id);
+          if (!current) throw new Error("Fixture thread disappeared");
+          await original.call(
+            this,
+            agentId,
+            {
+              ...current,
+              summary: `Owner edit ${conflicts}`,
+              version: current.version + 1,
+            },
+            { expectedVersion: current.version },
+          );
+        }
+        return original.call(this, agentId, next, options);
+      });
+      const runner = getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+      });
+      if (exhaust === "remove fails")
+        vi.spyOn(runner, "remove").mockResolvedValue(false);
+      if (exhaust === "remove unavailable")
+        Object.defineProperty(runner, "remove", {
+          value: undefined,
+          configurable: true,
+        });
+      const action = runThreadAction(
+        runtime,
+        message(runtime, roomId, "Follow up on the report"),
+        [
+          {
+            type: "schedule_followup",
+            workThreadId: thread.id,
+            instruction: "Check the report",
+            trigger: { kind: "manual" },
+          },
+        ],
+      );
+      if (typeof exhaust === "string")
+        await expect(action).rejects.toMatchObject({
+          code: "WORK_THREAD_FOLLOWUP_RECONCILIATION_REQUIRED",
+          context: { workThreadId: thread.id },
+          cause: expect.objectContaining({
+            errors: expect.arrayContaining([
+              expect.objectContaining({
+                code: "WORK_THREAD_FOLLOWUP_REMOVE_UNCONFIRMED",
+              }),
+            ]),
+          }),
+        });
+      else if (exhaust) await expect(action).rejects.toThrow();
+      else expect((await action).success).toBe(true);
+      const tasks = await getScheduledTaskRunner(runtime, {
+        agentId: runtime.agentId,
+      }).list({ kind: "followup" });
+      const final = await store.get(thread.id);
+      expect(final?.summary).toBe(`Owner edit ${conflicts}`);
+      if (exhaust) {
+        expect(tasks).toHaveLength(typeof exhaust === "string" ? 1 : 0);
+        expect(final?.currentScheduledTaskId ?? null).toBeNull();
+        expect(conflicts).toBe(3);
+      } else {
+        expect(tasks).toHaveLength(1);
+        expect(final?.currentScheduledTaskId).toBe(tasks[0].taskId);
+        expect(conflicts).toBe(1);
+      }
+    },
+  );
+
+  it.each(["mark_waiting", "mark_completed"] as const)(
+    "does not overwrite an owner stop with a stale %s request",
+    async (type) => {
+      const runtime = await createRuntime();
+      const store = createWorkThreadStore(runtime);
+      const roomId = stringToUuid("status-owner-stop-race");
+      const thread = await store.create({
+        title: "Check report",
+        summary: "Report",
+        primarySourceRef: { connector: "test", roomId, canMutate: true },
+      });
+      const originalGet = LifeOpsRepository.prototype.getWorkThread;
+      let changed = false;
+      vi.spyOn(LifeOpsRepository.prototype, "getWorkThread").mockImplementation(
+        async function (this: LifeOpsRepository, agentId, id) {
+          const snapshot = await originalGet.call(this, agentId, id);
+          if (id === thread.id && snapshot && !changed) {
+            changed = true;
+            await this.upsertWorkThread(
+              agentId,
+              {
+                ...snapshot,
+                status: "stopped",
+                version: snapshot.version + 1,
+              },
+              { expectedVersion: snapshot.version },
+            );
+          }
+          return snapshot;
+        },
+      );
+      await expect(
+        runThreadAction(runtime, message(runtime, roomId, "Update thread"), [
+          { type, workThreadId: thread.id },
+        ]),
+      ).rejects.toMatchObject({ code: "WORK_THREAD_NOT_ACTIVE" });
+      expect(await store.get(thread.id)).toMatchObject({
+        status: "stopped",
+        version: thread.version + 1,
+      });
+    },
+  );
+
+  it("keeps an already linked follow-up when its event write fails", async () => {
+    const runtime = await createRuntime();
+    const store = createWorkThreadStore(runtime);
+    const roomId = stringToUuid("followup-event-failure");
+    const thread = await store.create({
+      title: "Check report",
+      summary: "Report",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const original = LifeOpsRepository.prototype.appendWorkThreadEvent;
+    vi.spyOn(
+      LifeOpsRepository.prototype,
+      "appendWorkThreadEvent",
+    ).mockImplementation(async function (this: LifeOpsRepository, event) {
+      if (
+        event.workThreadId === thread.id &&
+        event.type === "followup_scheduled"
+      )
+        throw new Error("event write failed");
+      return original.call(this, event);
+    });
+    await expect(
+      runThreadAction(runtime, message(runtime, roomId, "Follow up"), [
+        {
+          type: "schedule_followup",
+          workThreadId: thread.id,
+          instruction: "Check report",
+          trigger: { kind: "manual" },
+        },
+      ]),
+    ).rejects.toThrow("event write failed");
+    const tasks = await getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    }).list({ kind: "followup" });
+    expect(tasks).toHaveLength(1);
+    expect((await store.get(thread.id))?.currentScheduledTaskId).toBe(
+      tasks[0].taskId,
+    );
+  });
+
+  it.each(["stopped", "deleted"])(
+    "does not link a follow-up after the owner %s the thread",
+    async (change) => {
+      const runtime = await createRuntime();
+      const store = createWorkThreadStore(runtime);
+      const roomId = stringToUuid("followup-owner-terminal");
+      const thread = await store.create({
+        title: "Check report",
+        summary: "Report",
+        primarySourceRef: { connector: "test", roomId, canMutate: true },
+      });
+      const original = LifeOpsRepository.prototype.upsertWorkThread;
+      let changed = false;
+      vi.spyOn(
+        LifeOpsRepository.prototype,
+        "upsertWorkThread",
+      ).mockImplementation(async function (
+        this: LifeOpsRepository,
+        agentId,
+        next,
+        options,
+      ) {
+        if (next.id === thread.id && next.currentScheduledTaskId && !changed) {
+          changed = true;
+          if (change === "deleted")
+            await executeRawSql(
+              runtime,
+              `DELETE FROM app_lifeops.life_work_threads WHERE id = ${sqlQuote(thread.id)} AND agent_id = ${sqlQuote(runtime.agentId)}`,
+            );
+          else
+            await original.call(
+              this,
+              agentId,
+              { ...thread, status: "stopped", version: thread.version + 1 },
+              { expectedVersion: thread.version },
+            );
+        }
+        return original.call(this, agentId, next, options);
+      });
+      await expect(
+        runThreadAction(runtime, message(runtime, roomId, "Follow up"), [
+          {
+            type: "schedule_followup",
+            workThreadId: thread.id,
+            instruction: "Check report",
+            trigger: { kind: "manual" },
+          },
+        ]),
+      ).rejects.toMatchObject({
+        code:
+          change === "deleted"
+            ? "WORK_THREAD_NOT_FOUND"
+            : "WORK_THREAD_NOT_ACTIVE",
+      });
+      expect(
+        await getScheduledTaskRunner(runtime, {
+          agentId: runtime.agentId,
+        }).list({ kind: "followup" }),
+      ).toHaveLength(0);
+      if (change === "deleted") expect(await store.get(thread.id)).toBeNull();
+      else
+        expect(await store.get(thread.id)).toMatchObject({
+          status: "stopped",
+          currentScheduledTaskId: null,
+        });
+    },
+  );
+
+  it("preserves an owner summary when a steer retries its version conflict", async () => {
+    const runtime = await createRuntime();
+    const store = createWorkThreadStore(runtime);
+    const roomId = stringToUuid("steer-conflict-room");
+    const thread = await store.create({
+      title: "Check report",
+      summary: "Original summary",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const original = LifeOpsRepository.prototype.upsertWorkThread;
+    let conflicts = 0;
+    vi.spyOn(
+      LifeOpsRepository.prototype,
+      "upsertWorkThread",
+    ).mockImplementation(async function (
+      this: LifeOpsRepository,
+      agentId,
+      next,
+      options,
+    ) {
+      if (next.id === thread.id && conflicts === 0) {
+        conflicts++;
+        const current = await store.get(thread.id);
+        if (!current) throw new Error("Fixture thread disappeared");
+        await original.call(
+          this,
+          agentId,
+          {
+            ...current,
+            summary: "Owner revised summary",
+            version: current.version + 1,
+          },
+          { expectedVersion: current.version },
+        );
+      }
+      return original.call(this, agentId, next, options);
+    });
+    const result = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "Update the plan"),
+      [
+        {
+          type: "steer",
+          workThreadId: thread.id,
+          instruction: "Use the revised plan",
+        },
+      ],
+    );
+    expect(result.success).toBe(true);
+    expect(await store.get(thread.id)).toMatchObject({
+      summary: "Owner revised summary",
+      currentPlanSummary: "Use the revised plan",
+      version: 3,
+    });
+  });
+
+  it.each([undefined, "Explicit merged summary"])(
+    "retries a merge after an owner edit with summary %s",
+    async (summary) => {
+      const runtime = await createRuntime();
+      const store = createWorkThreadStore(runtime);
+      const roomId = stringToUuid("merge-retry-room");
+      const ref = { connector: "test", roomId, canMutate: true };
+      const target = await store.create({
+        title: "Prepare report",
+        summary: "Original target",
+        currentPlanSummary: "Original plan",
+        primarySourceRef: ref,
+      });
+      const source = await store.create({
+        title: "Collect notes",
+        summary: "Source notes",
+        primarySourceRef: ref,
+      });
+      const originalMerge = LifeOpsRepository.prototype.mergeWorkThreadsAtomic;
+      const versions: number[] = [];
+      vi.spyOn(
+        LifeOpsRepository.prototype,
+        "mergeWorkThreadsAtomic",
+      ).mockImplementation(async function (this: LifeOpsRepository, input) {
+        versions.push(input.target.version);
+        if (versions.length === 1) {
+          // Represent a writer outside the action's process-local lock.
+          // The original SQL transaction still produces the real conflict.
+          await store.update(target.id, {
+            summary: "Owner edited summary",
+            currentPlanSummary: "Owner edited plan",
+            eventType: "steered",
+          });
+        }
+        return originalMerge.call(this, input);
+      });
+      const result = await runThreadAction(
+        runtime,
+        message(runtime, roomId, "Merge the notes into the report"),
+        [
+          {
+            type: "merge",
+            workThreadId: target.id,
+            sourceWorkThreadIds: [source.id],
+            ...(summary === undefined ? {} : { summary }),
+          },
+        ],
+      );
+      expect(result.success).toBe(true);
+      expect(versions).toEqual([1, 2]);
+      expect(await store.get(target.id)).toMatchObject({
+        summary: summary ?? "Owner edited summary",
+        currentPlanSummary: "Owner edited plan",
+        version: 3,
+        metadata: { mergedFromWorkThreadIds: [source.id] },
+      });
+      expect(await store.get(source.id)).toMatchObject({
+        status: "stopped",
+        version: 2,
+        metadata: { mergedIntoWorkThreadId: target.id },
+      });
+      const repo = new LifeOpsRepository(runtime);
+      const targetEvents = await repo.listWorkThreadEvents({
+        agentId: runtime.agentId,
+        workThreadId: target.id,
+      });
+      const sourceEvents = await repo.listWorkThreadEvents({
+        agentId: runtime.agentId,
+        workThreadId: source.id,
+      });
+      expect(targetEvents.filter((e) => e.type === "steered")).toHaveLength(1);
+      expect(targetEvents.filter((e) => e.type === "merged")).toHaveLength(1);
+      expect(sourceEvents.filter((e) => e.type === "merged_into")).toHaveLength(
+        1,
+      );
+    },
+  );
   it("defers only the owning message's reply while retaining complete durable results", async () => {
     const runtime = await createRuntime();
     for (const owner of ["direct", "planner", "other-message"] as const) {
@@ -961,5 +1370,649 @@ describe("LifeOps work threads", () => {
     );
     expect(providerAfterStop.text).not.toContain(sharedPlanId);
     expect(providerAfterStop.text).not.toContain(sharedBudgetId);
+  });
+});
+
+describe("work thread follow-up lifecycle", () => {
+  it("drops the follow-up a reschedule replaces and the one a stop leaves behind", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-lifecycle-room");
+    const followup = (atIso: string) => ({
+      type: "schedule_followup",
+      instruction: "Ask for the passport scan.",
+      trigger: { kind: "once", atIso },
+    });
+    const scheduledFollowups = async () =>
+      (await runner.list({ kind: "followup" })).filter(
+        (task) => task.state.status === "scheduled",
+      );
+
+    const rescheduled = await store.create({
+      title: "Visa documents",
+      summary: "Collect the visa documents.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const first = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up on the visa documents"),
+      [
+        {
+          ...followup("2026-05-11T18:00:00.000Z"),
+          workThreadId: rescheduled.id,
+        },
+      ],
+    );
+    const firstTaskId = operationResults(first)[0].taskId as string;
+    const second = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "actually, follow up tomorrow instead"),
+      [
+        {
+          ...followup("2026-05-12T18:00:00.000Z"),
+          workThreadId: rescheduled.id,
+        },
+      ],
+    );
+    const secondTaskId = operationResults(second)[0].taskId as string;
+    expect(secondTaskId).not.toBe(firstTaskId);
+    expect((await scheduledFollowups()).map((task) => task.taskId)).toEqual([
+      secondTaskId,
+    ]);
+    expect((await store.get(rescheduled.id))?.currentScheduledTaskId).toBe(
+      secondTaskId,
+    );
+
+    const stopped = await store.create({
+      title: "Vendor quote",
+      summary: "Chase the vendor quote.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const chased = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up on the quote"),
+      [{ ...followup("2026-05-11T18:00:00.000Z"), workThreadId: stopped.id }],
+    );
+    const stoppedTaskId = operationResults(chased)[0].taskId as string;
+    const stop = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "stop chasing the quote"),
+      [{ type: "stop", workThreadId: stopped.id }],
+    );
+    expect(operationResults(stop)).toMatchObject([
+      { success: true, type: "stop", status: "stopped" },
+    ]);
+    expect(await store.get(stopped.id)).toMatchObject({
+      status: "stopped",
+      currentScheduledTaskId: null,
+    });
+    expect(
+      (await runner.list({ kind: "followup" })).map((task) => task.taskId),
+    ).not.toContain(stoppedTaskId);
+
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-12T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(processed.errors).toEqual([]);
+    expect(processed.fires.map((fire) => fire.taskId)).toEqual([secondTaskId]);
+    expect(notifications).toHaveLength(1);
+  });
+  it("reports a follow-up its stop could not remove, and the follow-up never fires", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-remove-fails-room");
+    const thread = await store.create({
+      title: "Vendor quote",
+      summary: "Chase the vendor quote.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const chased = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up on the quote"),
+      [
+        {
+          type: "schedule_followup",
+          workThreadId: thread.id,
+          instruction: "Ask for the quote.",
+          trigger: { kind: "once", atIso: "2026-05-11T18:00:00.000Z" },
+        },
+      ],
+    );
+    const taskId = operationResults(chased)[0].taskId as string;
+    const remove = vi
+      .spyOn(runner, "remove")
+      .mockRejectedValue(new Error("task store offline"));
+    await expect(
+      runThreadAction(runtime, message(runtime, roomId, "stop this"), [
+        { type: "stop", workThreadId: thread.id },
+      ]),
+    ).rejects.toMatchObject({
+      code: "WORK_THREAD_FOLLOWUP_RECONCILIATION_REQUIRED",
+      context: { workThreadId: thread.id, taskId, status: "stopped" },
+    });
+    remove.mockRestore();
+    // The owner's stop is durable; the task row outlived it.
+    expect(await store.get(thread.id)).toMatchObject({
+      status: "stopped",
+      currentScheduledTaskId: null,
+    });
+    expect(
+      (await runner.list({ kind: "followup" })).map((task) => task.taskId),
+    ).toContain(taskId);
+    // The leftover task cannot notify: the tick reads the thread first.
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(processed.errors).toEqual([]);
+    expect(processed.fires).toEqual([
+      expect.objectContaining({ taskId, status: "dismissed" }),
+    ]);
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("dismisses a follow-up stored before this check when its thread has ended", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-legacy-task-room");
+    const thread = await store.create({
+      title: "Vendor quote",
+      summary: "Chase the vendor quote.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    // The durable shape a deployed agent already holds: a follow-up task
+    // bound to the thread by subject only, linked on the thread row.
+    const legacy = await runner.schedule({
+      kind: "followup",
+      promptInstructions: "Ask for the quote.",
+      trigger: { kind: "once", atIso: "2026-05-11T18:00:00.000Z" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      subject: { kind: "thread", id: thread.id },
+      output: { destination: "channel", target: `in_app:${roomId}` },
+      metadata: { workThreadId: thread.id },
+    });
+    await store.update(thread.id, {
+      currentScheduledTaskId: legacy.taskId,
+      expectedVersion: thread.version,
+    });
+    const remove = vi
+      .spyOn(runner, "remove")
+      .mockRejectedValue(new Error("task store offline"));
+    await expect(
+      runThreadAction(runtime, message(runtime, roomId, "stop this"), [
+        { type: "stop", workThreadId: thread.id },
+      ]),
+    ).rejects.toMatchObject({
+      code: "WORK_THREAD_FOLLOWUP_RECONCILIATION_REQUIRED",
+      context: { workThreadId: thread.id, taskId: legacy.taskId },
+    });
+    remove.mockRestore();
+    expect(await store.get(thread.id)).toMatchObject({
+      status: "stopped",
+      currentScheduledTaskId: null,
+    });
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(processed.errors).toEqual([]);
+    expect(processed.fires).toEqual([
+      expect.objectContaining({
+        taskId: legacy.taskId,
+        status: "dismissed",
+        reason: "work thread is stopped",
+      }),
+    ]);
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("changes nothing when a stop cannot commit the thread", async () => {
+    const runtime = await createRuntime();
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-stop-conflict-room");
+    const thread = await store.create({
+      title: "Vendor quote",
+      summary: "Chase the vendor quote.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const chased = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up on the quote"),
+      [
+        {
+          type: "schedule_followup",
+          workThreadId: thread.id,
+          instruction: "Ask for the quote.",
+          trigger: { kind: "once", atIso: "2026-05-11T18:00:00.000Z" },
+        },
+      ],
+    );
+    const taskId = operationResults(chased)[0].taskId as string;
+    const remove = vi.spyOn(runner, "remove");
+    // Every optimistic attempt loses to an owner edit.
+    const original = LifeOpsRepository.prototype.upsertWorkThread;
+    vi.spyOn(
+      LifeOpsRepository.prototype,
+      "upsertWorkThread",
+    ).mockImplementation(async function (
+      this: LifeOpsRepository,
+      agentId,
+      next,
+      options,
+    ) {
+      if (next.id === thread.id && next.status === "stopped") {
+        const current = await store.get(thread.id);
+        if (!current) throw new Error("Fixture thread disappeared");
+        await original.call(
+          this,
+          agentId,
+          {
+            ...current,
+            summary: `Owner edit ${current.version}`,
+            version: current.version + 1,
+          },
+          { expectedVersion: current.version },
+        );
+      }
+      return original.call(this, agentId, next, options);
+    });
+    await expect(
+      runThreadAction(runtime, message(runtime, roomId, "stop this"), [
+        { type: "stop", workThreadId: thread.id },
+      ]),
+    ).rejects.toThrow();
+    expect(remove).not.toHaveBeenCalled();
+    const unchanged = await store.get(thread.id);
+    expect(unchanged?.status).toBe(thread.status);
+    expect(unchanged?.currentScheduledTaskId).toBe(taskId);
+    expect(
+      (await runner.list({ kind: "followup" })).map((task) => task.taskId),
+    ).toContain(taskId);
+  });
+
+  it("names a replaced follow-up that cannot be removed for reconciliation, and only the replacement delivers", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-replace-remove-fails-room");
+    const thread = await store.create({
+      title: "Visa documents",
+      summary: "Collect the visa documents.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const followup = (atIso: string) => ({
+      type: "schedule_followup",
+      workThreadId: thread.id,
+      instruction: "Ask for the passport scan.",
+      trigger: { kind: "once", atIso },
+    });
+    const first = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up"),
+      [followup("2026-05-11T18:00:00.000Z")],
+    );
+    const firstTaskId = operationResults(first)[0].taskId as string;
+    vi.spyOn(runner, "remove").mockRejectedValue(
+      new Error("task store offline"),
+    );
+    await expect(
+      runThreadAction(runtime, message(runtime, roomId, "tomorrow instead"), [
+        followup("2026-05-12T18:00:00.000Z"),
+      ]),
+    ).rejects.toMatchObject({
+      code: "WORK_THREAD_FOLLOWUP_RECONCILIATION_REQUIRED",
+      context: { workThreadId: thread.id, taskId: firstTaskId },
+    });
+    const linked = await store.get(thread.id);
+    expect(linked?.currentScheduledTaskId).toBeTruthy();
+    expect(linked?.currentScheduledTaskId).not.toBe(firstTaskId);
+    const scheduled = (await runner.list({ kind: "followup" })).map(
+      (task) => task.taskId,
+    );
+    expect(scheduled).toContain(firstTaskId);
+    expect(scheduled).toContain(linked?.currentScheduledTaskId);
+    // Both are due: the replaced task is dismissed, only the current one fires.
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-12T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(processed.errors).toEqual([]);
+    expect(processed.fires.map((fire) => [fire.taskId, fire.status])).toEqual(
+      expect.arrayContaining([
+        [firstTaskId, "dismissed"],
+        [linked?.currentScheduledTaskId, "fired"],
+      ]),
+    );
+    expect(processed.fires).toHaveLength(2);
+    expect(notifications).toHaveLength(1);
+  });
+  it("skips a follow-up whose thread was stopped between the tick's read and the claim", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-stop-race-room");
+    const thread = await store.create({
+      title: "Vendor quote",
+      summary: "Chase the vendor quote.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const chased = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up on the quote"),
+      [
+        {
+          type: "schedule_followup",
+          workThreadId: thread.id,
+          instruction: "Ask for the quote.",
+          trigger: { kind: "once", atIso: "2026-05-11T18:00:00.000Z" },
+        },
+      ],
+    );
+    const taskId = operationResults(chased)[0].taskId as string;
+    // Removal fails, so the task row survives the stop and only the thread
+    // state can keep it from notifying.
+    vi.spyOn(runner, "remove").mockRejectedValue(
+      new Error("task store offline"),
+    );
+    // The stop commits after the tick has read the thread as active and
+    // before it claims the task.
+    afterThreadCheck = async () => {
+      afterThreadCheck = null;
+      await expect(
+        runThreadAction(runtime, message(runtime, roomId, "stop this"), [
+          { type: "stop", workThreadId: thread.id },
+        ]),
+      ).rejects.toMatchObject({
+        code: "WORK_THREAD_FOLLOWUP_RECONCILIATION_REQUIRED",
+      });
+    };
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(afterThreadCheck).toBeNull();
+    expect(processed.errors).toEqual([]);
+    expect(processed.fires).toEqual([
+      expect.objectContaining({
+        taskId,
+        status: "scheduled",
+        reason: "work thread is stopped",
+      }),
+    ]);
+    expect(notifications).toHaveLength(0);
+    expect(
+      (await runner.list({ kind: "followup" })).find(
+        (task) => task.taskId === taskId,
+      )?.state.status,
+    ).toBe("scheduled");
+    // The next tick dismisses the leftover row for good.
+    const again = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:02:00.000Z"),
+      limit: 5,
+    });
+    expect(again.fires).toEqual([
+      expect.objectContaining({ taskId, status: "dismissed" }),
+    ]);
+    expect(notifications).toHaveLength(0);
+  });
+
+  it("delivers only the replacement when a follow-up is rescheduled between the tick's read and the claim", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Which visa document is next?",
+      "test-followup-render",
+    );
+    const store = createWorkThreadStore(runtime);
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    const roomId = stringToUuid("followup-replace-race-room");
+    const thread = await store.create({
+      title: "Vendor quote",
+      summary: "Chase the vendor quote.",
+      primarySourceRef: { connector: "test", roomId, canMutate: true },
+    });
+    const first = await runThreadAction(
+      runtime,
+      message(runtime, roomId, "follow up on the quote"),
+      [
+        {
+          type: "schedule_followup",
+          workThreadId: thread.id,
+          instruction: "Ask for the quote.",
+          trigger: { kind: "once", atIso: "2026-05-11T18:00:00.000Z" },
+        },
+      ],
+    );
+    const firstTaskId = operationResults(first)[0].taskId as string;
+    vi.spyOn(runner, "remove").mockRejectedValue(
+      new Error("task store offline"),
+    );
+    let secondTaskId = "";
+    afterThreadCheck = async () => {
+      afterThreadCheck = null;
+      await expect(
+        runThreadAction(runtime, message(runtime, roomId, "ask again sooner"), [
+          {
+            type: "schedule_followup",
+            workThreadId: thread.id,
+            instruction: "Ask for the quote again.",
+            trigger: { kind: "once", atIso: "2026-05-11T18:00:30.000Z" },
+          },
+        ]),
+      ).rejects.toMatchObject({
+        code: "WORK_THREAD_FOLLOWUP_RECONCILIATION_REQUIRED",
+      });
+      secondTaskId = (await store.get(thread.id))?.currentScheduledTaskId ?? "";
+    };
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(afterThreadCheck).toBeNull();
+    expect(secondTaskId).not.toBe("");
+    expect(processed.errors).toEqual([]);
+    // The replaced follow-up is not claimed; the replacement was created after
+    // this tick listed its due tasks, so it fires on the next tick.
+    expect(processed.fires).toEqual([
+      expect.objectContaining({
+        taskId: firstTaskId,
+        status: "scheduled",
+        reason: "work thread follow-up was replaced",
+      }),
+    ]);
+    expect(notifications).toHaveLength(0);
+    const next = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:02:00.000Z"),
+      limit: 5,
+    });
+    expect(next.errors).toEqual([]);
+    expect(
+      new Map(next.fires.map((fire) => [fire.taskId, fire.status])),
+    ).toEqual(
+      new Map([
+        [firstTaskId, "dismissed"],
+        [secondTaskId, "fired"],
+      ]),
+    );
+    expect(notifications).toHaveLength(1);
+  });
+
+  it("delivers a follow-up another pack scheduled with a thread subject that is not a work thread", async () => {
+    const runtime = await createRuntime();
+    const notifications: unknown[] = [];
+    const sink = {
+      serviceType: "notification",
+      capabilityDescription: "Synthetic test notification sink",
+      async notify(input: unknown) {
+        notifications.push(input);
+        return { id: `test-followup-${notifications.length}` };
+      },
+      async stop() {},
+    };
+    runtime.services.set("notification", [sink as unknown as Service]);
+    runtime.registerModel(
+      ModelType.TEXT_LARGE,
+      async () => "Did the vendor answer the quote question?",
+      "test-followup-render",
+    );
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+    });
+    // The executive-assistant waiting-on watcher schedules follow-ups with
+    // `subject.kind: "thread"` and a stable id from the delegated item, which
+    // is not a work-thread row. No `metadata.workThreadId` marks it.
+    const task = await runner.schedule({
+      kind: "followup",
+      promptInstructions: "Nudge the vendor about the open quote question.",
+      trigger: { kind: "once", atIso: "2026-05-11T18:00:00.000Z" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "default_pack",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      subject: { kind: "thread", id: "sent-question:vendor-quote" },
+      metadata: { createdFrom: "executive_assistant_waiting_on" },
+    });
+    const processed = await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: new Date("2026-05-11T18:01:00.000Z"),
+      limit: 5,
+    });
+    expect(processed.errors).toEqual([]);
+    expect(processed.fires).toEqual([
+      expect.objectContaining({ taskId: task.taskId, status: "fired" }),
+    ]);
+    expect(notifications).toHaveLength(1);
   });
 });

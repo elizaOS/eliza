@@ -46,6 +46,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
+import { locateCompiledShim } from "../aosp/compile-shim.ts";
 import {
   ensureEmbeddingArtifact,
   FUSED_EMBEDDING_ARTIFACT,
@@ -319,11 +320,12 @@ cd "$AGENT_ROOT" || exit 1
 
 # The APK ships its dependency graph. Missing optional packages must fail
 # locally instead of triggering Bun auto-install and network retry delays.
-if [ -n "\${AGENT_COMMAND}" ]; then
-  set -- "\${LD_PATH}" "\${BUN_PATH}" --no-install "\${AGENT_BUNDLE_PATH}" "\${AGENT_COMMAND}"
-else
-  set -- "\${LD_PATH}" "\${BUN_PATH}" --no-install "\${AGENT_BUNDLE_PATH}"
-fi
+case "\${ELIZA_ANDROID_BUN_TARGET:-linux-musl}" in
+  android) set -- "\${BUN_PATH}" --no-install "\${AGENT_BUNDLE_PATH}" ;;
+  linux-musl) set -- "\${LD_PATH}" "\${BUN_PATH}" --no-install "\${AGENT_BUNDLE_PATH}" ;;
+  *) echo "Unsupported Android Bun launch target" >&2; exit 1 ;;
+esac
+if [ -n "\${AGENT_COMMAND}" ]; then set -- "$@" "\${AGENT_COMMAND}"; fi
 
 (
   setsid sh "\${AGENT_ROOT}/launch-child.sh" "\${LOG_FILE}" "\${AGENT_ROOT}" "\${RUNTIME_LD_LIBRARY_PATH}" "\${PORT:-}" "\${DIAGNOSTICS_FILE}" "\${STARTUP_TRACE_ID}" "$@" &
@@ -706,9 +708,15 @@ function defaultBunCacheDir(channel) {
   );
 }
 
-async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
+async function ensureBunBinary({
+  cacheDir,
+  bunArch,
+  bunChannel,
+  bunTarget,
+  log,
+}) {
   if (bunArch !== "riscv64") {
-    const artifact = resolvePinnedBunArtifact(bunChannel, bunArch);
+    const artifact = resolvePinnedBunArtifact(bunChannel, bunArch, bunTarget);
     const configured = firstEnvValue([
       bunArch === "x64" ? "ELIZA_BUN_X64_FILE" : "ELIZA_BUN_AARCH64_FILE",
     ]);
@@ -1076,8 +1084,9 @@ export function autoProvisionSeccompShim({
   if (process.env.ELIZA_SECCOMP_SHIM_NO_AUTOPROVISION === "1") {
     return false;
   }
-  const abiCacheDir = path.join(cacheDir, androidAbi);
-  if (fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"))) {
+  if (
+    locateCompiledShim({ cacheDir, abi: androidAbi, zigVersion: ZIG_VERSION })
+  ) {
     return true;
   }
   const zigToolchain = resolveZigToolchain();
@@ -1154,7 +1163,13 @@ export function autoProvisionSeccompShim({
     );
     return false;
   }
-  return fs.existsSync(path.join(abiCacheDir, "libsigsys-handler.so"));
+  return (
+    locateCompiledShim({
+      cacheDir,
+      abi: androidAbi,
+      zigVersion: ZIG_VERSION,
+    }) !== null
+  );
 }
 
 /** ELF `e_type` for a shared object / dynamic loader (`ET_DYN`). */
@@ -1204,18 +1219,23 @@ export function stageSeccompShimForAbi({
   log,
 }) {
   const abiCacheDir = path.join(cacheDir, androidAbi);
-  const cachedWrap = path.join(abiCacheDir, ldName);
-  const cachedShim = path.join(abiCacheDir, "libsigsys-handler.so");
-  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+  if (
+    !locateCompiledShim({ cacheDir, abi: androidAbi, zigVersion: ZIG_VERSION })
+  ) {
     // Provision in place before refusing: pinned-zig download + compile-shim,
     // the same self-sufficiency this script's bun/Alpine downloads already
     // have, so fresh hosts and CI runners build device-valid APKs without a
     // manual toolchain step.
     autoProvisionSeccompShim({ androidAbi, cacheDir, log });
   }
-  if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
+  const compiled = locateCompiledShim({
+    cacheDir,
+    abi: androidAbi,
+    zigVersion: ZIG_VERSION,
+  });
+  if (!compiled || compiled.realLoaderName !== ldName) {
     throw new Error(
-      `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}. ` +
+      `[stage-android-agent] Missing compiled SIGSYS shim for ${androidAbi}, or cache source/output identity is stale. ` +
         `Stock Android kills the raw Alpine loader with SIGSYS during Bun's ` +
         `event loop startup; refusing to build an APK that cannot boot. Run ` +
         `\`node packages/app/scripts/aosp/compile-shim.ts --abi ${androidAbi}\` ` +
@@ -1242,7 +1262,7 @@ export function stageSeccompShimForAbi({
   const stagedLoaderExists = fs.existsSync(stagedLoader);
   const stagedLoaderIsAlpine =
     stagedLoaderExists &&
-    !fs.readFileSync(stagedLoader).equals(fs.readFileSync(cachedWrap)) &&
+    !fs.readFileSync(stagedLoader).equals(compiled.wrapBytes) &&
     readElfType(stagedLoader) === ELF_TYPE_SHARED_OBJECT;
 
   if (stagedLoaderIsAlpine) {
@@ -1266,10 +1286,20 @@ export function stageSeccompShimForAbi({
     );
   }
 
-  // Stage the wrapper as <ldName>.
-  if (copyIfDifferent(cachedWrap, stagedLoader)) changes += 1;
-  // Stage libsigsys-handler.so alongside.
-  if (copyIfDifferent(cachedShim, stagedShim)) changes += 1;
+  // Use the exact validated buffers, never re-read mutable shared-cache paths.
+  for (const { bytes, destination } of [
+    { bytes: compiled.wrapBytes, destination: stagedLoader },
+    { bytes: compiled.shimBytes, destination: stagedShim },
+  ]) {
+    if (
+      !fs.existsSync(destination) ||
+      !fs.readFileSync(destination).equals(bytes)
+    ) {
+      fs.writeFileSync(destination, bytes);
+      fs.chmodSync(destination, 0o755);
+      changes += 1;
+    }
+  }
 
   if (changes > 0) {
     log?.(
@@ -1294,6 +1324,7 @@ export function stageAndroidPgliteAssets({
     "pglite.wasm",
     "initdb.wasm",
     "pglite.data",
+    "pglite-initdb.bin",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
     "pg_trgm.tar.gz",
@@ -1380,6 +1411,8 @@ export async function stageAndroidEmbeddingArtifact({
  * Optional:
  *   cacheDir    Defaults to ~/.cache/eliza-android-agent/<bun-version>/.
  *   bunChannel  stable | canary. ELIZA_BUN_CHANNEL overrides this option.
+ *   bunTarget   linux-musl (legacy) | android. Explicit target; no ABI fallback.
+ *               ELIZA_ANDROID_BUN_TARGET overrides this option.
  *   log         Defaults to console.log.
  */
 export async function stageAndroidAgentRuntime({
@@ -1387,6 +1420,7 @@ export async function stageAndroidAgentRuntime({
   spikeDir,
   cacheDir,
   bunChannel: preferredBunChannel,
+  bunTarget: preferredBunTarget,
   objective = false,
   log = console.log,
 } = {}) {
@@ -1400,6 +1434,16 @@ export async function stageAndroidAgentRuntime({
   );
   const tlog = logFor(log);
   const bunChannel = resolveBunChannel(preferredBunChannel);
+  const bunTarget =
+    process.env.ELIZA_ANDROID_BUN_TARGET ?? preferredBunTarget ?? "linux-musl";
+  if (bunTarget !== "linux-musl" && bunTarget !== "android")
+    throw new Error(`Unsupported Android Bun target: ${bunTarget}`);
+  // Validate the complete requested ABI set before changing generated output.
+  if (bunTarget === "android") {
+    for (const target of targets)
+      resolvePinnedBunArtifact(bunChannel, target.bunArch, bunTarget);
+  }
+
   const resolvedCacheDir = cacheDir ?? defaultBunCacheDir(bunChannel);
   tlog(`Staging Android agent runtime with ${bunChannelLabel(bunChannel)}.`);
   fs.mkdirSync(resolvedCacheDir, { recursive: true });
@@ -1481,29 +1525,60 @@ export async function stageAndroidAgentRuntime({
       cacheDir: resolvedCacheDir,
       bunArch,
       bunChannel,
+      bunTarget,
       log: tlog,
     });
     const bunPath = bun.bunPath;
-    const extractDir = await ensureAlpineApkExtracted({
-      cacheDir: resolvedCacheDir,
-      alpineArch,
-      log: tlog,
-    });
-
-    const libstdcxxFile = findLibstdcxxRealFile(extractDir);
-
-    const sources = [
-      [bunPath, path.join(abiAssetsDir, "bun")],
-      [path.join(extractDir, "lib", ldName), path.join(abiAssetsDir, ldName)],
-      [
-        path.join(extractDir, "usr", "lib", libstdcxxFile),
-        path.join(abiAssetsDir, libstdcxxFile),
-      ],
-      [
-        path.join(extractDir, "usr", "lib", "libgcc_s.so.1"),
-        path.join(abiAssetsDir, "libgcc_s.so.1"),
-      ],
-    ];
+    const nativeAndroid = bunTarget === "android";
+    let libstdcxxFile;
+    const sources = [[bunPath, path.join(abiAssetsDir, "bun")]];
+    if (nativeAndroid) {
+      // Never mix a native Android executable with an old musl runtime tree.
+      if (
+        fs
+          .readdirSync(abiAssetsDir)
+          .some(
+            (file) =>
+              file.startsWith("ld-musl-") ||
+              file.startsWith("libstdc++.") ||
+              file === "libsigsys-handler.so" ||
+              file === "libgcc_s.so.1",
+          )
+      )
+        throw new Error(
+          "Native Android Bun requires a clean staging directory",
+        );
+      for (const file of [
+        jniLoaderName(ldName),
+        jniRealLoaderName(ldName),
+        "libeliza_stdcpp.so",
+        "libeliza_gcc_s.so",
+        "libsigsys-handler.so",
+      ]) {
+        if (fs.existsSync(path.join(abiJniDir, file)))
+          throw new Error(
+            "Native Android Bun refuses retained musl JNI runtime files",
+          );
+      }
+    } else {
+      const extractDir = await ensureAlpineApkExtracted({
+        cacheDir: resolvedCacheDir,
+        alpineArch,
+        log: tlog,
+      });
+      libstdcxxFile = findLibstdcxxRealFile(extractDir);
+      sources.push(
+        [path.join(extractDir, "lib", ldName), path.join(abiAssetsDir, ldName)],
+        [
+          path.join(extractDir, "usr", "lib", libstdcxxFile),
+          path.join(abiAssetsDir, libstdcxxFile),
+        ],
+        [
+          path.join(extractDir, "usr", "lib", "libgcc_s.so.1"),
+          path.join(abiAssetsDir, "libgcc_s.so.1"),
+        ],
+      );
+    }
 
     let abiChanges = 0;
     for (const [src, dst] of sources) {
@@ -1555,28 +1630,34 @@ export async function stageAndroidAgentRuntime({
     // the .real loader and the shim file (handled by copyIfDifferent's
     // size+mtime check). If shim artifacts are missing we fail here rather
     // than shipping a stock Android APK whose local agent dies with SIGSYS.
-    const shimChanges = stageSeccompShimForAbi({
-      androidAbi,
-      ldName,
-      abiAssetsDir,
-      log: tlog,
-    });
+    const shimChanges = nativeAndroid
+      ? 0
+      : stageSeccompShimForAbi({
+          androidAbi,
+          ldName,
+          abiAssetsDir,
+          log: tlog,
+        });
     abiChanges += shimChanges;
 
     const jniSources = [
       [path.join(abiAssetsDir, "bun"), path.join(abiJniDir, "libeliza_bun.so")],
-      [
-        path.join(abiAssetsDir, ldName),
-        path.join(abiJniDir, jniLoaderName(ldName)),
-      ],
-      [
-        path.join(abiAssetsDir, libstdcxxFile),
-        path.join(abiJniDir, "libeliza_stdcpp.so"),
-      ],
-      [
-        path.join(abiAssetsDir, "libgcc_s.so.1"),
-        path.join(abiJniDir, "libeliza_gcc_s.so"),
-      ],
+      ...(!nativeAndroid
+        ? [
+            [
+              path.join(abiAssetsDir, ldName),
+              path.join(abiJniDir, jniLoaderName(ldName)),
+            ],
+            [
+              path.join(abiAssetsDir, libstdcxxFile),
+              path.join(abiJniDir, "libeliza_stdcpp.so"),
+            ],
+            [
+              path.join(abiAssetsDir, "libgcc_s.so.1"),
+              path.join(abiJniDir, "libeliza_gcc_s.so"),
+            ],
+          ]
+        : []),
     ];
     // When the seccomp-shim is in play (x86_64), `<ldName>` in
     // `abiAssetsDir/` is the loader-wrap binary and the real musl loader
@@ -1607,11 +1688,15 @@ export async function stageAndroidAgentRuntime({
 
     const stagedSource = {
       bun: bun.source,
-      alpine: {
-        branch: ALPINE_BRANCH,
-        arch: alpineArch,
-        packages: APK_PACKAGES.map(({ pkg }) => pkg),
-      },
+      ...(nativeAndroid
+        ? {}
+        : {
+            alpine: {
+              branch: ALPINE_BRANCH,
+              arch: alpineArch,
+              packages: APK_PACKAGES.map(({ pkg }) => pkg),
+            },
+          }),
     };
     const provenancePaths = new Set([
       ...sources.map(([, dst]) => dst),
@@ -1755,17 +1840,32 @@ export async function stageAndroidAgentRuntime({
     claim_boundary:
       "apk_staged_runtime_file_hashes_only_not_android_boot_or_runtime_execution_evidence",
     bun: {
-      version: resolvePinnedBunArtifact(bunChannel, "x64").version,
-      revision: resolvePinnedBunArtifact(bunChannel, "x64").revision,
+      target: bunTarget,
+      version: resolvePinnedBunArtifact(
+        bunChannel,
+        targets.find((target) => target.bunArch !== "riscv64")?.bunArch ??
+          "x64",
+        bunTarget,
+      ).version,
+      revision: resolvePinnedBunArtifact(
+        bunChannel,
+        targets.find((target) => target.bunArch !== "riscv64")?.bunArch ??
+          "x64",
+        bunTarget,
+      ).revision,
       architectures: targets
         .filter((target) => target.bunArch !== "riscv64")
         .map((target) => target.androidAbi),
       channel: bunChannel,
       artifact_lock: "packages/app/scripts/lib/android-bun-artifacts.lock.json",
     },
-    alpine: {
-      branch: ALPINE_BRANCH,
-    },
+    ...(bunTarget === "android"
+      ? {}
+      : {
+          alpine: {
+            branch: ALPINE_BRANCH,
+          },
+        }),
     riscv64_bun_artifact: riscv64Artifact,
     riscv64_bun_build_contract: readJsonIfExists(bunRiscv64VersionPath),
     files: deduplicateProvenanceFiles(stagedFiles),

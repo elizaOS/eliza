@@ -55,11 +55,12 @@ beforeAll(async () => {
   for (const key of ["POSTGRES_URL", "DATABASE_URL", "ELIZA_CLOUD_PROVISIONED"])
     vi.stubEnv(key, undefined);
   fixture = await createTestRuntime({
-    // The capture wire contract requires an RFC UUID, not a name-hashed v0 ID.
-    characterName: randomUUID(),
+    // Normal named agents retain deterministic Core version-0 UUIDs.
+    characterName: `Backup capture regression ${randomUUID()}`,
     pgliteDir: path.join(directory, ".elizadb"),
     settings: { LOAD_DOCS_ON_STARTUP: false },
   });
+  expect(fixture.runtime.agentId.split("-")[2]?.[0]).toBe("0");
   for (const child of ["media", "models", "skills/.cache"])
     await mkdir(path.join(directory, child), { recursive: true });
   await writeFile(path.join(directory, "media", "complete.bin"), media);
@@ -380,6 +381,76 @@ it("rolls back PostgreSQL row restores and preserves other agents over the datab
         { id: "restored", agent_id: owner },
       ],
     );
+  } finally {
+    await db.close();
+  }
+}, 120_000);
+
+it("restores json and jsonb columns of PostgreSQL rows as captured", async () => {
+  const db = await PGlite.create(path.join(directory, "postgres-json-rows"));
+  const owner = randomUUID();
+  try {
+    await db.exec(`
+      CREATE TABLE agents (
+        id uuid PRIMARY KEY,
+        bio jsonb NOT NULL,
+        topics jsonb,
+        settings json,
+        tags text[]
+      );
+      CREATE TABLE memories (
+        id text PRIMARY KEY,
+        agent_id uuid NOT NULL,
+        content jsonb NOT NULL
+      );
+    `);
+    await db.query(
+      `INSERT INTO agents VALUES ($1, '["I am helpful"]', '[]', '{"mode":"x"}', '{a,b}')`,
+      [owner],
+    );
+    await db.query(
+      `INSERT INTO memories VALUES ('m1', $1, '{"text":"hi","tags":["x"]}')`,
+      [owner],
+    );
+    const captured = async () => ({
+      agents: (await db.query("SELECT * FROM agents")).rows,
+      memories: (await db.query("SELECT * FROM memories")).rows,
+    });
+    const before = await captured();
+    const tables = [
+      {
+        name: "agents",
+        columns: ["id", "bio", "topics", "settings", "tags"],
+        rows: before.agents as Record<string, unknown>[],
+      },
+      {
+        name: "memories",
+        columns: ["id", "agent_id", "content"],
+        rows: before.memories as Record<string, unknown>[],
+      },
+    ];
+    const dump = {
+      kind: "postgres-rows",
+      tables,
+      sha256: createHash("sha256")
+        .update(canonicalJsonString(tables, AGENT_BACKUP_CANONICAL_JSON))
+        .digest("hex"),
+    } as AgentBackupPostgresDump;
+    const bridge = new PGLiteSocketServer({ db, host: "127.0.0.1", port: 0 });
+    await bridge.start();
+    try {
+      await restorePostgresRows(
+        `postgresql://postgres@${bridge.getServerConn()}/postgres`,
+        owner,
+        dump,
+      );
+    } finally {
+      await bridge.stop();
+    }
+    expect(await captured()).toEqual(before);
+    expect(
+      (await db.query("SELECT jsonb_typeof(topics) AS t FROM agents")).rows,
+    ).toEqual([{ t: "array" }]);
   } finally {
     await db.close();
   }

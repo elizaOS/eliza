@@ -8,7 +8,7 @@ import type { QueryTweetsResponse } from "./api-types";
 import type { TwitterAuth } from "./auth";
 import type { Profile } from "./profile";
 import { maxResultsFor, X_RECENT_SEARCH_MIN_RESULTS } from "./request-limits";
-import type { Tweet } from "./tweets";
+import { fullTweetText, type Tweet } from "./tweets";
 
 /**
  * The categories that can be used in Twitter searches.
@@ -48,6 +48,7 @@ const SEARCH_TWEET_QUERY: Partial<Tweetv2SearchParams> = {
     "entities",
     "public_metrics",
     "attachments",
+    "note_tweet",
   ],
   "user.fields": ["id", "name", "username", "profile_image_url"],
   "media.fields": ["url", "preview_image_url", "type"],
@@ -90,7 +91,7 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
 
   return {
     id: tweet.id,
-    text: tweet.text || "",
+    text: fullTweetText(tweet),
     timestamp: tweet.created_at
       ? new Date(tweet.created_at).getTime()
       : Date.now(),
@@ -110,7 +111,7 @@ function convertSearchTweet(tweet: TweetV2, includes?: SearchIncludes): Tweet {
     inReplyToStatus: inReplyToStatus
       ? {
           id: inReplyToStatus.id,
-          text: inReplyToStatus.text || "",
+          text: fullTweetText(inReplyToStatus),
           userId: inReplyToStatus.author_id || "",
           name: inReplyToAuthor?.name || "",
           username: inReplyToAuthor?.username || "",
@@ -239,7 +240,7 @@ export async function* searchProfiles(
   auth: TwitterAuth,
 ): AsyncGenerator<Profile, void> {
   const client = await auth.getV2Client();
-  const userIds = new Set<string>();
+  const seenProfileIds = new Set<string>();
   const profiles: Profile[] = [];
 
   try {
@@ -262,15 +263,18 @@ export async function* searchProfiles(
       expansions: ["author_id"],
     });
 
-    for await (const tweet of searchIterator) {
-      if (tweet.author_id) {
-        userIds.add(tweet.author_id);
-      }
-
-      // Also get users from includes
+    for await (const _tweet of searchIterator) {
+      // The iterator yields one tweet at a time but exposes the whole page's
+      // included users on every step, so without a seen set the same users
+      // would be pushed once per tweet and fill the cap with duplicates.
       if (searchIterator.includes?.users) {
         for (const user of searchIterator.includes.users) {
-          if (profiles.length < maxProfiles && user.id) {
+          if (
+            profiles.length < maxProfiles &&
+            user.id &&
+            !seenProfileIds.has(user.id)
+          ) {
+            seenProfileIds.add(user.id);
             const profile: Profile = {
               userId: user.id,
               username: user.username || "",

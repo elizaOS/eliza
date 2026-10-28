@@ -22,11 +22,77 @@
       "import": "./dist/node.js",
       "default": "./dist/node.js"
     },
+    "./device-action-execution": {
+      "eliza-source": "./src/device-action-execution.ts",
+      "types": "./dist/device-action-execution.d.ts",
+      "import": "./dist/device-action-execution.js",
+      "default": "./dist/device-action-execution.js"
+    },
+    "./phone-workflow": {
+      "eliza-source": "./src/phone-workflow.ts",
+      "types": "./dist/phone-workflow.d.ts",
+      "import": "./dist/phone-workflow.js",
+      "default": "./dist/phone-workflow.js"
+    },
+    "./workflow-client": {
+      "eliza-source": "./src/workflow-client.ts",
+      "types": "./dist/workflow-client.d.ts",
+      "import": "./dist/workflow-client.js",
+      "default": "./dist/workflow-client.js"
+    },
+    "./notice-routes": {
+      "eliza-source": "./src/notice-routes.ts",
+      "types": "./dist/notice-routes.d.ts",
+      "import": "./dist/notice-routes.js",
+      "default": "./dist/notice-routes.js"
+    },
+    "./client-turn-observation": {
+      "eliza-source": "./src/client-turn-observation.ts",
+      "types": "./dist/client-turn-observation.d.ts",
+      "import": "./dist/client-turn-observation.js",
+      "default": "./dist/client-turn-observation.js"
+    },
     "./native-notes-query": {
       "eliza-source": "./src/native-notes-query.ts",
       "types": "./dist/native-notes-query.d.ts",
       "import": "./dist/native-notes-query.js",
       "default": "./dist/native-notes-query.js"
+    },
+    "./calendar-linked-sync": {
+      "eliza-source": "./src/calendar-linked-sync.ts",
+      "types": "./dist/calendar-linked-sync.d.ts",
+      "import": "./dist/calendar-linked-sync.js",
+      "default": "./dist/calendar-linked-sync.js"
+    },
+    "./imessage-reaction": {
+      "eliza-source": "./src/imessage-reaction.ts",
+      "types": "./dist/imessage-reaction.d.ts",
+      "import": "./dist/imessage-reaction.js",
+      "default": "./dist/imessage-reaction.js"
+    },
+    "./sms-send": {
+      "eliza-source": "./src/sms-send.ts",
+      "types": "./dist/sms-send.d.ts",
+      "import": "./dist/sms-send.js",
+      "default": "./dist/sms-send.js"
+    },
+    "./mms-send": {
+      "eliza-source": "./src/mms-send.ts",
+      "types": "./dist/mms-send.d.ts",
+      "import": "./dist/mms-send.js",
+      "default": "./dist/mms-send.js"
+    },
+    "./native-telephony": {
+      "eliza-source": "./src/native-telephony.ts",
+      "types": "./dist/native-telephony.d.ts",
+      "import": "./dist/native-telephony.js",
+      "default": "./dist/native-telephony.js"
+    },
+    "./native-telephony-session": {
+      "eliza-source": "./src/native-telephony-session.ts",
+      "types": "./dist/native-telephony-session.d.ts",
+      "import": "./dist/native-telephony-session.js",
+      "default": "./dist/native-telephony-session.js"
     }
   },
   "scripts": {
@@ -44,7 +110,7 @@
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.5"
   },
   "publishConfig": {
     "access": "public"

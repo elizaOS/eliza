@@ -59,7 +59,7 @@ export function createOngoingTasksProvider(): Provider {
 
     async get(
       runtime: IAgentRuntime,
-      _message: Memory,
+      message: Memory,
       _state: State,
     ): Promise<ProviderResult> {
       const sections: string[] = [];
@@ -113,11 +113,16 @@ export function createOngoingTasksProvider(): Provider {
           }
         }
       } catch (err) {
-        runtime.logger.debug(
-          { src: "tasks-provider", error: String(err) },
-          "Failed to load tasks for context",
-        );
-        return { text: "" };
+        // error-policy:J4 a failed task read must not read as "no tasks":
+        // surface it and tell the model the context is missing.
+        runtime.reportError("OngoingTasksProvider.get", err, {
+          roomId: message.roomId,
+        });
+        return {
+          text: "Task and automation context is unavailable because the task store read failed. Do not infer that there are no tasks or automations; state the gap.",
+          values: { tasksUnavailable: true },
+          data: { tasksUnavailable: true },
+        };
       }
 
       if (sections.length === 0) {

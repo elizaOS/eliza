@@ -35,7 +35,20 @@ app.post("/", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
   const body = decodedBody.value;
-  const { name, email, comment } = feedbackSchema.parse(body);
+  let name: string;
+  let email: string | undefined;
+  let comment: string;
+  try {
+    ({ name, email, comment } = feedbackSchema.parse(body));
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return c.json(
+        { success: false, error: "Validation error", details: error.issues },
+        400,
+      );
+    }
+    throw error;
+  }
   const timestamp = new Date().toISOString();
   const displayName = name || "Anonymous";
   const displayEmail = email || "Not provided";

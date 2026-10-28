@@ -67,42 +67,18 @@ async function __hono_PATCH(
       );
     }
 
-    const agent = await elizaSandboxService.getAgentForWrite(
-      agentId,
-      user.organization_id,
-    );
-    if (!agent) {
-      return applyCorsHeaders(
-        Response.json(
-          { success: false, error: "Agent not found" },
-          { status: 404 },
-        ),
-        CORS_METHODS,
-      );
-    }
-
-    const existing =
-      agent.environment_vars && typeof agent.environment_vars === "object"
-        ? (agent.environment_vars as Record<string, string>)
-        : {};
-    const next = { ...existing };
     const updatedKeys: string[] = [];
     const removedKeys: string[] = [];
-
     for (const [key, value] of Object.entries(parsed.data.environmentVars)) {
-      if (value === null) {
-        delete next[key];
-        removedKeys.push(key);
-      } else {
-        next[key] = value;
-        updatedKeys.push(key);
-      }
+      (value === null ? removedKeys : updatedKeys).push(key);
     }
 
-    const updated = await elizaSandboxService.updateAgentEnvironment(
-      agent.id,
+    // The patch is applied to the stored variables under the agent's
+    // lifecycle lock, never to a copy read before it.
+    const updated = await elizaSandboxService.patchAgentEnvironment(
+      agentId,
       user.organization_id,
-      next,
+      parsed.data.environmentVars,
     );
     if (!updated) {
       return applyCorsHeaders(

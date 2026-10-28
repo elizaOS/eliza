@@ -3,6 +3,7 @@ import { getDedicatedComputePriceAcceptance } from "@elizaos/cloud-sdk/browser-c
 import { ElizaError } from "@elizaos/core";
 import {
   and,
+  asc,
   desc,
   eq,
   inArray,
@@ -104,6 +105,7 @@ import {
 } from "./provisioning-job-types";
 import { sendProvisioningWorkerAlert } from "./provisioning-worker-health-monitor";
 import { isContainerBackedExecutionTier } from "./sandbox-provider-types";
+import { tierProvisionsEagerly } from "./shared-runtime/agent-tier";
 import { hasReadyWarmClaimCredential } from "./warm-claim-key-push";
 
 export type {
@@ -546,6 +548,34 @@ export class ProvisioningJobQueue {
   }): Promise<Job> {
     const result = await this.enqueueAgentProvisionOnce(params);
     return result.job;
+  }
+
+  /**
+   * A create request that asks for provisioning and reuses an existing agent
+   * must leave that agent provisioning. An eager-tier agent that is still
+   * pending may have no provision job: its create-time enqueue was lost, or it
+   * was created with `autoProvision: false`. Enqueue its job once; an agent
+   * that already has a live job gets that job back. Returns null when the
+   * agent needs no job.
+   */
+  async enqueueReusedPendingAgentProvision(params: {
+    agent: { id: string; status: string; execution_tier: string; agent_name: string | null };
+    organizationId: string;
+    userId: string;
+  }): Promise<EnqueueAgentProvisionResult | null> {
+    const { agent } = params;
+    if (
+      agent.status !== "pending" ||
+      !tierProvisionsEagerly(agent.execution_tier as Parameters<typeof tierProvisionsEagerly>[0])
+    ) {
+      return null;
+    }
+    return this.enqueueAgentProvisionOnce({
+      agentId: agent.id,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      agentName: agent.agent_name ?? agent.id,
+    });
   }
 
   async enqueueAgentProvisionOnce(params: {
@@ -2116,9 +2146,12 @@ export class ProvisioningJobQueue {
    * Circuit-breaker: a permanently-dead node would otherwise be re-armed every
    * sweep forever. Each exhausted agent_delete bumps the sandbox's `error_count`
    * (see the AGENT_DELETE failure handler), so a row that has already been
-   * re-enqueued `maxReEnqueues` times is SKIPPED — logged once as
-   * `event: "deletion.abandoned_candidate"` for ops to investigate (the
-   * container likely needs a manual node-level teardown) rather than looping.
+   * re-enqueued `maxReEnqueues` times is EXCLUDED from the due set — logged
+   * per row as `event: "deletion.abandoned_candidate"` for ops to
+   * investigate (the container likely needs a manual node-level teardown)
+   * rather than looping. Exclusion, not an in-loop skip: a skipped row is never
+   * written, so it would hold a batch slot on every sweep and starve the rows
+   * behind it.
    *
    * Capacity: `deletion_failed`/`deletion_pending` rows do NOT count toward the
    * org's agent ceiling (`QUOTA_COUNTED_STATUSES` in eliza-sandbox.ts), so a
@@ -2143,56 +2176,53 @@ export class ProvisioningJobQueue {
     const maxReEnqueues = params?.maxReEnqueues ?? 5;
     const cutoff = new Date(Date.now() - minAgeMs);
 
-    const stuck = await dbWrite
-      .select({
-        id: agentSandboxes.id,
-        organizationId: agentSandboxes.organization_id,
-        userId: agentSandboxes.user_id,
-        errorCount: agentSandboxes.error_count,
-      })
-      .from(agentSandboxes)
-      .where(
-        and(
-          // deletion_failed: the agent_delete job exhausted its retries (e.g. a
-          // node was down for a deploy). deletion_pending with NO active
-          // agent_delete job: the worker CLAIMED the delete job then died before
-          // completing it, so recoverStaleJobs marked the JOB failed with no
-          // dependent-row writeback (jobs.ts) — stranding the sandbox in
-          // deletion_pending forever. Re-arm both; enqueueAgentDeleteOnce is
-          // idempotent and re-flips the row to deletion_pending.
-          sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
-          sql`${agentSandboxes.updated_at} < ${cutoff}`,
-          // REQUIRED now that deletion_pending is in scope: never re-arm a delete
-          // that is legitimately in-flight. (deletion_failed rows never have an
-          // active job, so this is a no-op for the original case.)
-          sql`NOT EXISTS (
+    // One due set for both reads. `deletion_failed` rows have no live job by
+    // definition; `deletion_pending` rows need the NOT EXISTS guard so a delete
+    // that is legitimately in flight is never re-armed.
+    const dueSet = and(
+      sql`${agentSandboxes.status} IN ('deletion_failed', 'deletion_pending')`,
+      sql`${agentSandboxes.updated_at} < ${cutoff}`,
+      sql`NOT EXISTS (
             SELECT 1 FROM ${jobs}
             WHERE  ${jobs.agent_id} = ${agentSandboxes.id}::text
             AND    ${jobs.organization_id} = ${agentSandboxes.organization_id}
             AND    ${jobs.type} = ${JOB_TYPES.AGENT_DELETE}
             AND    ${jobs.status} IN ('pending', 'in_progress')
           )`,
-        ),
-      )
+    );
+
+    // Circuit-breaker rows are excluded from the due set instead of skipped
+    // inside the batch. A skipped row is never written, so it never leaves the
+    // due set: it would occupy one slot of every capped sweep forever, and once
+    // `maxAgents` such rows accumulate the sweep reports `scanned` work while
+    // recovering nothing. They are logged per row for ops instead.
+    const stuck = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
+        userId: agentSandboxes.user_id,
+      })
+      .from(agentSandboxes)
+      .where(and(dueSet, sql`COALESCE(${agentSandboxes.error_count}, 0) < ${maxReEnqueues}`))
+      // Oldest first, like enqueueScheduledBackups (#15783): a due set larger
+      // than the batch degrades to round-robin instead of planner-dependent
+      // starvation.
+      .orderBy(asc(agentSandboxes.updated_at), asc(agentSandboxes.id))
       .limit(maxAgents);
+
+    const abandonedRows = await dbWrite
+      .select({
+        id: agentSandboxes.id,
+        organizationId: agentSandboxes.organization_id,
+        errorCount: agentSandboxes.error_count,
+      })
+      .from(agentSandboxes)
+      .where(and(dueSet, sql`COALESCE(${agentSandboxes.error_count}, 0) >= ${maxReEnqueues}`));
+    const abandoned = abandonedRows.length;
 
     let reEnqueued = 0;
     let failed = 0;
-    let abandoned = 0;
     for (const agent of stuck) {
-      // Circuit-breaker: a row that has burned through maxReEnqueues sweeps is a
-      // probably-dead node — stop re-arming it and surface it for ops once.
-      if ((agent.errorCount ?? 0) >= maxReEnqueues) {
-        abandoned += 1;
-        logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
-          event: "deletion.abandoned_candidate",
-          agentId: agent.id,
-          orgId: agent.organizationId,
-          errorCount: agent.errorCount,
-          maxReEnqueues,
-        });
-        continue;
-      }
       try {
         await this.enqueueAgentDeleteOnce({
           agentId: agent.id,
@@ -2207,6 +2237,16 @@ export class ProvisioningJobQueue {
           error: jobErrorText(error),
         });
       }
+    }
+
+    for (const agent of abandonedRows) {
+      logger.warn("[provisioning-jobs] deletion abandoned — exceeded re-enqueue budget", {
+        event: "deletion.abandoned_candidate",
+        agentId: agent.id,
+        orgId: agent.organizationId,
+        errorCount: agent.errorCount,
+        maxReEnqueues,
+      });
     }
 
     if (stuck.length > 0) {

@@ -64,3 +64,32 @@ export async function installBillingCommandEvidenceTestColumns(
     );
   }
 }
+
+/**
+ * Installs the subscription-grant tables and columns (0542) once in a fixture
+ * built from selected billing migrations, so Drizzle reads of the shared
+ * entitlement and allowance tables see the production column set.
+ */
+export async function installSubscriptionGrantTestSchema(
+  execute: (statement: string) => Promise<unknown>,
+): Promise<void> {
+  const migration = (
+    await Promise.all(
+      [
+        "0542_subscription_grant_codes.sql",
+        "0546_lifetime_subscription_grants.sql",
+        "0547_subscription_grant_calendar_terms.sql",
+      ].map((name) => readFile(new URL(`../db/migrations/${name}`, import.meta.url), "utf8")),
+    )
+  ).join("\n--> statement-breakpoint\n");
+  const statements = migration
+    .split("--> statement-breakpoint")
+    .map((statement) => statement.trim())
+    .filter(Boolean)
+    .map((statement) => `EXECUTE $grant_statement$${statement}$grant_statement$;`);
+  await execute(
+    // Check only the fixture's own schema: a search_path fallback to a
+    // migrated public schema must not skip installing the columns here.
+    `DO $install_grants$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = current_schema() AND c.relname = 'subscription_grants') THEN ${statements.join("\n")} END IF; END $install_grants$`,
+  );
+}

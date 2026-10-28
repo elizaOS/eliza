@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {
+import fs, {
   appendFileSync,
   chmodSync,
   mkdtempSync,
@@ -7,6 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -95,6 +96,7 @@ test("outcome insert failure and interrupted completion retry storage only and p
     let result = outcomes.save(decision, "observation");
     assert.equal(result.status, "paid");
     assert.equal(result.saveStatus, "pending");
+    assert.equal(result.reasonCode, "outcome-save-failed");
     assert.equal(outcomes.loadEvidence().persisted, false);
     assert.equal(outcomes.loadEvidence().record.observedAt, result.observedAt);
     assert.equal(runtime.get(task.id).status, "active");
@@ -134,6 +136,19 @@ test("outcome insert failure and interrupted completion retry storage only and p
     assert.equal(
       db.prepare("SELECT COUNT(*) AS n FROM bill_outcomes_v1").get().n,
       1,
+    );
+    const listed = createBillOutcomeStore(db, tasks).listForOwner(owner);
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].taskId, task.id);
+    assert.equal(listed[0].observedAt, result.observedAt);
+    assert.equal(listed[0].decision.reference, "TEST-123");
+    assert.equal(listed[0].decision.totalMinor, 12250);
+    assert.deepEqual(
+      createBillOutcomeStore(db, tasks).listForOwner({
+        ...owner,
+        actorId: "other",
+      }),
+      [],
     );
     assert.throws(
       () =>
@@ -344,6 +359,121 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
     db.close();
     rmSync(f.directory, { recursive: true, force: true });
   }
+
+  for (const rollbackFails of [false, true]) {
+    const f = await journalFixture();
+    let current = f.first;
+    const originalWrite = fs.writeFileSync,
+      originalTruncate = fs.ftruncateSync;
+    try {
+      const store = createBillOutcomeStore(current.db, current.tasks, {
+        journalPath: f.journalPath,
+      });
+      assert.equal(
+        store.forTask(current.runtime, f.task.id).save(observed, "observation")
+          .saveStatus,
+        "saved",
+      );
+      const acknowledged = readFileSync(f.journalPath, "utf8");
+      const next = (id) => {
+        let task = current.runtime.create({
+          id,
+          goalRef: id,
+          authorization: {
+            decisionId: id,
+            policyRevision: "policy",
+            state: "active",
+            decidedAt: new Date().toISOString(),
+            revokedAt: null,
+          },
+          allowedCapabilities: [],
+          allowedOrigins: ["https://example.test"],
+        });
+        const now = Date.now();
+        task = current.tasks.transition(
+          task.id,
+          {
+            owner: current.runtime.owner,
+            expectedRevision: task.revision,
+            now,
+          },
+          {
+            type: "observe",
+            observation: {
+              id,
+              pageId: id,
+              origin: "https://example.test",
+              version: 1,
+              inputRevision: 0,
+              observedAt: now,
+            },
+          },
+        ).task;
+        return store.forTask(current.runtime, task.id);
+      };
+      const second = next("task2");
+      // Real file bytes are written before the controlled disk-full error.
+      fs.writeFileSync = (fd, data, ...args) => {
+        if (
+          typeof fd === "number" &&
+          typeof data === "string" &&
+          data.includes('"ownerKey"')
+        ) {
+          originalWrite(fd, data.slice(0, 20), ...args);
+          throw Object.assign(new Error("Controlled partial append"), {
+            code: "ENOSPC",
+          });
+        }
+        return originalWrite(fd, data, ...args);
+      };
+      if (rollbackFails)
+        fs.ftruncateSync = () => {
+          throw Object.assign(new Error("Controlled rollback failure"), {
+            code: "EIO",
+          });
+        };
+      syncBuiltinESMExports();
+      assert.equal(
+        second.save({ ...observed, reference: "TEST-10" }, "task2").saveStatus,
+        "pending",
+      );
+      fs.writeFileSync = originalWrite;
+      fs.ftruncateSync = originalTruncate;
+      syncBuiltinESMExports();
+      if (!rollbackFails)
+        assert.equal(
+          readFileSync(f.journalPath, "utf8"),
+          acknowledged,
+          "Rollback preserves every acknowledged record",
+        );
+      assert.equal(second.retry().saveStatus, "saved");
+      const third = next("task3");
+      const result = third.save({ ...observed, reference: "TEST-11" }, "task3");
+      assert.equal(result.saveStatus, rollbackFails ? "pending" : "saved");
+      if (rollbackFails) assert.equal(third.retry().saveStatus, "saved");
+      current.db.close();
+      current = f.open();
+      const reopened = createBillOutcomeStore(current.db, current.tasks, {
+        journalPath: f.journalPath,
+      });
+      for (const [id, reference] of [
+        [f.task.id, "TEST-9"],
+        ["task2", "TEST-10"],
+        ["task3", "TEST-11"],
+      ]) {
+        const evidence = reopened.forTask(current.runtime, id).loadEvidence();
+        assert.equal(evidence.persisted, true);
+        assert.equal(evidence.record.decision.reference, reference);
+      }
+      assert.equal(readFileSync(f.journalPath, "utf8"), "");
+    } finally {
+      fs.writeFileSync = originalWrite;
+      fs.ftruncateSync = originalTruncate;
+      syncBuiltinESMExports();
+      current.db.close();
+      rmSync(f.directory, { recursive: true, force: true });
+    }
+  }
 });
 
 test("an invalid company is refused before it is stored", async () => {
@@ -411,6 +541,68 @@ test("a submission attempt whose INSERT fails is journaled first and written at 
       false,
       "the same task is not its own prior payment",
     );
+  } finally {
+    db.close();
+    rmSync(f.directory, { recursive: true, force: true });
+  }
+});
+
+test("a journal codec stores every record encoded and recovers it after a restart", async () => {
+  const f = await journalFixture();
+  let { db, tasks, runtime } = f.first;
+  // A reversible stand-in for a host cipher: no record text is stored as is.
+  const journalCodec = {
+    encode: (line) => `sealed:${Buffer.from(line).toString("base64url")}`,
+    decode: (line) => {
+      if (!line.startsWith("sealed:")) throw new Error("not sealed");
+      return Buffer.from(line.slice(7), "base64url").toString();
+    },
+  };
+  try {
+    assert.throws(
+      () =>
+        createBillOutcomeStore(db, tasks, {
+          journalPath: f.journalPath,
+          journalCodec: { encode: () => "x" },
+        }),
+      /Invalid outcome journal codec/,
+    );
+    const store = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+      journalCodec,
+    });
+    db.exec(
+      "CREATE TRIGGER fail_outcome BEFORE INSERT ON bill_outcomes_v1 BEGIN SELECT RAISE(ABORT, 'injected disk write error'); END;",
+    );
+    assert.equal(
+      store.forTask(runtime, f.task.id).save(observed, "observation")
+        .saveStatus,
+      "pending",
+    );
+    const stored = readFileSync(f.journalPath, "utf8");
+    assert.match(stored, /^sealed:[A-Za-z0-9_-]+\n$/);
+    assert.doesNotMatch(stored, /TEST-9|Water Test/);
+    db.exec("DROP TRIGGER fail_outcome");
+    db.close();
+    ({ db, tasks, runtime } = f.open());
+    // Without the codec the encoded journal is refused, never misread.
+    assert.throws(
+      () => createBillOutcomeStore(db, tasks, { journalPath: f.journalPath }),
+      /Invalid outcome journal/,
+    );
+    const recovered = createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+      journalCodec,
+    }).forTask(runtime, f.task.id);
+    assert.equal(recovered.loadEvidence().record.decision.reference, "TEST-9");
+    assert.equal(recovered.retry().saveStatus, "saved");
+    db.close();
+    ({ db, tasks, runtime } = f.open());
+    createBillOutcomeStore(db, tasks, {
+      journalPath: f.journalPath,
+      journalCodec,
+    });
+    assert.equal(readFileSync(f.journalPath, "utf8"), "");
   } finally {
     db.close();
     rmSync(f.directory, { recursive: true, force: true });

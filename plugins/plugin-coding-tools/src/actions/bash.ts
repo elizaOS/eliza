@@ -211,9 +211,12 @@ const LINUX_DISK_INSPECTION_COMMAND =
 
 // --- macOS — `free` is Linux-only, so synthesize a `free -m`-compatible `Mem:`
 // line from `sysctl`/`vm_stat` (page size via `hw.pagesize`, which is 16384 on
-// Apple Silicon, not 4096). `df`/`du` already behave like the Linux variant. ---
+// Apple Silicon, not 4096). `df`/`du` already behave like the Linux variant.
+// The probe must pass the destructive gate without confirmation: the gate
+// reports a command substitution inside `$(( ))` as a dynamic executable name,
+// so `hw.memsize` is read into a variable first. ---
 const MACOS_MEMORY_COMMAND =
-  'page=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096); total_mb=$(( $(sysctl -n hw.memsize) / 1048576 )); free_pages=$(vm_stat | awk \'/Pages free/{gsub(/[^0-9]/,"",$3);print $3}\'); inactive_pages=$(vm_stat | awk \'/Pages inactive/{gsub(/[^0-9]/,"",$3);print $3}\'); [ -z "$free_pages" ] && free_pages=0; [ -z "$inactive_pages" ] && inactive_pages=0; free_mb=$(( ( free_pages + inactive_pages ) * page / 1048576 )); printf \'Mem: %s %s %s 0 0 %s\\n\' "$total_mb" "$(( total_mb - free_mb ))" "$free_mb" "$free_mb"';
+  'page=$(sysctl -n hw.pagesize 2>/dev/null || echo 4096); mem_bytes=$(sysctl -n hw.memsize); total_mb=$(( mem_bytes / 1048576 )); free_pages=$(vm_stat | awk \'/Pages free/{gsub(/[^0-9]/,"",$3);print $3}\'); inactive_pages=$(vm_stat | awk \'/Pages inactive/{gsub(/[^0-9]/,"",$3);print $3}\'); [ -z "$free_pages" ] && free_pages=0; [ -z "$inactive_pages" ] && inactive_pages=0; free_mb=$(( ( free_pages + inactive_pages ) * page / 1048576 )); printf \'Mem: %s %s %s 0 0 %s\\n\' "$total_mb" "$(( total_mb - free_mb ))" "$free_mb" "$free_mb"';
 const MACOS_DISK_INSPECTION_COMMAND =
   'df -h /; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/Library/Caches" "$HOME/.Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
 
@@ -500,6 +503,106 @@ function asksForMemoryStatus(text: string): boolean {
   );
 }
 
+const READ_ONLY_FILTER_HEADS = new Set([
+  "head",
+  "tail",
+  "grep",
+  "awk",
+  "sort",
+  "cut",
+  "tr",
+  "wc",
+  "column",
+  "jq",
+  "echo",
+  "printf",
+]);
+const MEMORY_PROBE_HEADS = new Set([
+  "free",
+  "top",
+  "htop",
+  "vm_stat",
+  "vmstat",
+  "memory_pressure",
+  "systeminfo",
+]);
+
+function stageHead(stage: string): string {
+  return stage.split(/\s+/u, 1)[0]?.toLowerCase() ?? "";
+}
+
+function isMemoryProbeStage(stage: string): boolean {
+  if (MEMORY_PROBE_HEADS.has(stageHead(stage))) return true;
+  if (/^(?:cat|grep|head|awk)\b.*\s\/proc\/meminfo$/u.test(stage)) return true;
+  if (/^sysctl(?:\s+-n)?(?:\s+hw\.\w+)+$/u.test(stage)) return true;
+  return /^get-ciminstance\b.*\bwin32_(?:operatingsystem|computersystem|physicalmemory)\b/iu.test(
+    stage,
+  );
+}
+
+function isDiskProbeStage(stage: string): boolean {
+  return /^(?:df|du)\b/u.test(stage);
+}
+
+function isLocalHealthProbeStage(stage: string): boolean {
+  if (
+    !/^(?:curl|wget|invoke-webrequest|invoke-restmethod|iwr|irm)\b/iu.test(
+      stage,
+    )
+  ) {
+    return false;
+  }
+  // A request that sends a body, sets a method, or writes a file is not a probe.
+  if (
+    /\s(?:-[a-zA-Z]*[oOdFTX]|--(?:output|data[\w-]*|form|upload-file|request|post-data|post-file))\b/u.test(
+      stage,
+    ) ||
+    /\s-(?:method|body|infile|outfile)\b/iu.test(stage)
+  ) {
+    return false;
+  }
+  return /(?:localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)(?::[^/\s"']+)?\/[^\s"']*health/iu.test(
+    stage,
+  );
+}
+
+/**
+ * True only when the whole command is a read-only status probe: every `;` /
+ * `&&` / `||` / `|` stage starts with a probe or a read-only output filter, at
+ * least one stage is a probe, and nothing redirects to a file, substitutes a
+ * command, or runs in the background. A message-keyed rewrite may replace such
+ * a command with the canonical probe. Any other command is the planner's real
+ * work and runs unchanged.
+ */
+function isReadOnlyProbeCommand(
+  command: string,
+  isProbeStage: (stage: string) => boolean,
+): boolean {
+  if (/[`\n\r]|\$\(/u.test(command)) return false;
+  // A shell operator inside a quoted argument is data (an awk program, a
+  // `grep -E` pattern), not a stage separator or a redirect.
+  const withoutQuotedOperators = command.replace(
+    /'[^']*'|"(?:[^"\\]|\\.)*"/gu,
+    (quoted) => quoted.replace(/[;|&<>]/gu, "_"),
+  );
+  const withoutStderrRedirect = withoutQuotedOperators.replace(
+    /\s*2>\s*(?:\/dev\/null|&1)/gu,
+    " ",
+  );
+  if (/[<>]/u.test(withoutStderrRedirect)) return false;
+  let sawProbe = false;
+  for (const rawStage of withoutStderrRedirect.split(/&&|\|\||[;|]/u)) {
+    const stage = rawStage.trim();
+    if (!stage || stage.includes("&")) return false;
+    if (isProbeStage(stage)) {
+      sawProbe = true;
+    } else if (!READ_ONLY_FILTER_HEADS.has(stageHead(stage))) {
+      return false;
+    }
+  }
+  return sawProbe;
+}
+
 function usesBroadDiskUsageScan(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ").trim();
   if (!/\bdu\b/.test(normalized)) return false;
@@ -519,8 +622,18 @@ export function resolveDiskInspectionCommand(args: {
     return { command: args.command, rewritten: false };
   }
   if (asksForMemoryStatus(args.messageText)) {
-    const canonical = boundedDiskAndMemoryInspectionCommand(platform);
-    return { command: canonical, rewritten: args.command !== canonical };
+    if (
+      !isReadOnlyProbeCommand(
+        args.command,
+        (stage) => isMemoryProbeStage(stage) || isDiskProbeStage(stage),
+      )
+    ) {
+      return { command: args.command, rewritten: false };
+    }
+    return {
+      command: boundedDiskAndMemoryInspectionCommand(platform),
+      rewritten: true,
+    };
   }
   if (!usesBroadDiskUsageScan(args.command)) {
     return { command: args.command, rewritten: false };
@@ -545,10 +658,6 @@ function requestedLocalStatusKind(text: string): LocalStatusKind | undefined {
   return undefined;
 }
 
-function includesDiskProbe(command: string): boolean {
-  return /\b(?:df|du)\b/u.test(command);
-}
-
 export function resolveLocalStatusCommand(args: {
   command: string;
   messageText: string;
@@ -556,27 +665,25 @@ export function resolveLocalStatusCommand(args: {
 }): LocalStatusCommandResolution {
   const platform = args.platform ?? resolveCommandPlatform();
   const kind = requestedLocalStatusKind(args.messageText);
+  // The message text only selects which canonical probe applies. The planner's
+  // command is replaced only when it is itself a probe of that kind, so a turn
+  // that also asks for other work ("how much RAM is free? then create
+  // notes.txt") keeps its real command.
   if (kind === "health") {
-    const canonical = localHealthCommand(platform);
-    return {
-      command: canonical,
-      kind,
-      rewritten: args.command !== canonical,
-    };
+    if (!isReadOnlyProbeCommand(args.command, isLocalHealthProbeStage)) {
+      return { command: args.command, kind, rewritten: false };
+    }
+    return { command: localHealthCommand(platform), kind, rewritten: true };
   }
   if (kind === "memory") {
+    // resolveDiskInspectionCommand owns a combined disk + memory request.
     if (
-      asksForDiskInspection(args.messageText) &&
-      includesDiskProbe(args.command)
+      asksForDiskInspection(args.messageText) ||
+      !isReadOnlyProbeCommand(args.command, isMemoryProbeStage)
     ) {
       return { command: args.command, kind, rewritten: false };
     }
-    const canonical = localMemoryCommand(platform);
-    return {
-      command: canonical,
-      kind,
-      rewritten: args.command !== canonical,
-    };
+    return { command: localMemoryCommand(platform), kind, rewritten: true };
   }
   return { command: args.command, rewritten: false };
 }
@@ -776,7 +883,7 @@ export function resolveSourceInspectionCommand(args: {
   };
 }
 
-function shouldIgnoreUngroundedRuntimeCwd(args: {
+function isUngroundedRuntimeCwd(args: {
   message: Memory;
   requestedCwd: string;
   sessionCwd: string;
@@ -1774,7 +1881,7 @@ export const shellAction: Action = {
       });
     }
 
-    let cwd = "";
+    let cwd: string;
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (v.ok === false) {
@@ -1809,31 +1916,32 @@ export const shellAction: Action = {
       const sessionCwd = await session.getExistingCwd(conversationId);
       if (
         !codingSubAgentShell &&
-        shouldIgnoreUngroundedRuntimeCwd({
+        isUngroundedRuntimeCwd({
           message,
           requestedCwd: v.resolved,
           sessionCwd: sessionCwd.cwd,
         })
       ) {
-        cwd = sessionCwd.cwd;
+        // The command must not run in a directory other than the one the
+        // caller named. Reject before the confirmation gate and any dispatch
+        // so the planner can retry without cwd or ask the user.
+        const requestedCwd = redactShellText(runtime, v.resolved);
+        const activeCwd = redactShellText(runtime, sessionCwd.cwd);
         coreLogger.warn(
-          {
-            requestedCwd: redactShellText(runtime, v.resolved),
-            fallbackCwd: redactShellText(runtime, cwd),
-          },
-          `${CODING_TOOLS_LOG_PREFIX} SHELL ignored ungrounded runtime cwd; using session cwd`,
+          { requestedCwd, sessionCwd: activeCwd },
+          `${CODING_TOOLS_LOG_PREFIX} SHELL rejected ungrounded runtime cwd`,
         );
-        if (sessionCwd.reset && sessionCwd.previousCwd) {
-          coreLogger.warn(
-            {
-              previousCwd: redactShellText(runtime, sessionCwd.previousCwd),
-              fallbackCwd: redactShellText(runtime, cwd),
-            },
-            `${CODING_TOOLS_LOG_PREFIX} SHELL reset missing session cwd`,
-          );
-        }
+        return failureToActionResult(
+          {
+            reason: "invalid_param",
+            message:
+              `cwd ${requestedCwd} is not named in the user's message, and the message asks about the running source. ` +
+              `The command did not run. The session cwd is ${activeCwd}: omit cwd to run there, or ask the user which directory they mean.`,
+          },
+          { cwd: requestedCwd, session_cwd: activeCwd },
+        );
       }
-      if (!cwd) cwd = v.resolved;
+      cwd = v.resolved;
     } else {
       const sessionCwd = await session.getExistingCwd(conversationId);
       cwd = sessionCwd.cwd;

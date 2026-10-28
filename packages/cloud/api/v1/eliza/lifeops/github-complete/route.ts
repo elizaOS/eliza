@@ -75,7 +75,7 @@ async function __hono_GET(
       });
     }
     return Response.redirect(
-      `${dashboardUrl}&github_error=${encodeURIComponent(githubError)}`,
+      `${dashboardUrl}?github_error=${encodeURIComponent(githubError)}`,
     );
   }
 
@@ -101,7 +101,7 @@ async function __hono_GET(
       });
     }
     return Response.redirect(
-      `${dashboardUrl}&github_error=${encodeURIComponent(message)}`,
+      `${dashboardUrl}?github_error=${encodeURIComponent(message)}`,
     );
   }
 
@@ -128,7 +128,7 @@ async function __hono_GET(
   }
 
   return Response.redirect(
-    `${dashboardUrl}&github_connected=true&platform=github&connection_id=${encodeURIComponent(
+    `${dashboardUrl}?github_connected=true&platform=github&connection_id=${encodeURIComponent(
       connectionId,
     )}`,
   );

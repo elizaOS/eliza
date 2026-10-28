@@ -54,7 +54,7 @@
  *   6. **Edge-TTS (`edge-tts`)** — free Microsoft Edge endpoint, no key.
  *
  * Same precedence applies to `TRANSCRIPTION`, with the local side using
- * the fused Gemma ASR path when the active bundle stages eligible ASR
+ * Phonon-2 on libelizainference when the active bundle stages eligible ASR
  * artifacts (no whisper.cpp fallback).
  *
  * Users can override this per slot via the routing-preferences settings
@@ -77,7 +77,10 @@ import {
 	isLocalInferenceUnavailableError,
 	LocalInferenceUnavailableError,
 } from "../provider";
-import { readEffectiveAssignments } from "./assignments";
+import {
+	AssignmentsUnreadableError,
+	readEffectiveAssignments,
+} from "./assignments";
 import { classifyDeviceTier, type DeviceTierAssessment } from "./device-tier";
 import { localInferenceEngine } from "./engine";
 import { handlerRegistry } from "./handler-registry";
@@ -89,7 +92,11 @@ import {
 	type RoutingPolicy,
 	readRoutingPreferences,
 } from "./routing-preferences";
-import { AGENT_MODEL_SLOTS, type AgentModelSlot } from "./types";
+import {
+	AGENT_MODEL_SLOTS,
+	type AgentModelSlot,
+	type ModelAssignments,
+} from "./types";
 
 export const ROUTER_PROVIDER = "eliza-router";
 /**
@@ -325,11 +332,38 @@ export async function filterUnavailableLocalInference(
 		return candidates;
 	}
 
-	const assignments = await readEffectiveAssignments();
+	const forceLocalInference = shouldForceLocalInference(
+		policy,
+		preferredProvider,
+	);
+	let assignments: ModelAssignments;
+	try {
+		assignments = await readEffectiveAssignments();
+	} catch (error) {
+		if (!(error instanceof AssignmentsUnreadableError)) throw error;
+		logger.error(
+			{
+				slot,
+				policy,
+				filePath: error.filePath,
+				error: error.cause instanceof Error ? error.cause.message : error.cause,
+			},
+			"[LocalInferenceRouter] Local inference assignments are unreadable",
+		);
+		// A forced-local policy must never fall back to another provider, so the
+		// unreadable policy is this call's error. Otherwise local has no readable
+		// slot policy for this call and the other providers stay eligible.
+		if (forceLocalInference) throw error;
+		return filterUnavailableLocalInferenceCandidates(
+			candidates,
+			localInferenceEngine.hasLoadedModel(),
+			false,
+		);
+	}
 	return filterUnavailableLocalInferenceCandidates(
 		candidates,
 		Boolean(assignments[slot]) || localInferenceEngine.hasLoadedModel(),
-		shouldForceLocalInference(policy, preferredProvider),
+		forceLocalInference,
 	);
 }
 

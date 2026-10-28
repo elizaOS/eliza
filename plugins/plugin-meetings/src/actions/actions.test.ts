@@ -73,30 +73,18 @@ describe("JOIN_MEETING", () => {
     expect(joinMeetingAction.roleGate).toEqual({ minRole: "OWNER" });
   });
 
-  it("validate is true only for a real meeting URL", async () => {
+  it("validate is gated on the meetings service, not on a link", async () => {
     const v = joinMeetingAction.validate;
-    expect(await v({} as IAgentRuntime, msg(`join ${MEET}`), NO_STATE)).toBe(
-      true,
-    );
+    const up = harness({ service: {} });
+    const down = harness({ service: null });
+    expect(await v(up.runtime, msg(`join ${MEET}`), NO_STATE)).toBe(true);
+    // No link is not a missing capability: the handler asks for one.
     expect(
-      await v(
-        {} as IAgentRuntime,
-        msg("join https://example.com/not-a-meeting"),
-        NO_STATE,
-      ),
-    ).toBe(false);
-    expect(await v({} as IAgentRuntime, msg("no link"), NO_STATE)).toBe(false);
-  });
-
-  it("validate true via explicit option even with no URL in text", async () => {
-    expect(
-      await joinMeetingAction.validate(
-        {} as IAgentRuntime,
-        msg("please join"),
-        NO_STATE,
-        { meetingUrl: MEET },
-      ),
+      await v(up.runtime, msg("join my 3pm standup and take notes"), NO_STATE, {
+        parameters: {},
+      }),
     ).toBe(true);
+    expect(await v(down.runtime, msg(`join ${MEET}`), NO_STATE)).toBe(false);
   });
 
   it("asks for a link when none present", async () => {
@@ -319,6 +307,28 @@ describe("LEAVE_MEETING", () => {
     expect(res.text).toContain("I'm in 2 meetings");
     expect(res.text).toContain("Google Meet abc-defg-hij");
     expect(res.text).toContain("Zoom 1234567890");
+  });
+
+  it("reports a failure when the session ended before the stop landed", async () => {
+    // A session that the host ended stays in the live map until transcript
+    // finalization evicts it. stopSession returns false for it, so the bot did
+    // not leave anything; the reply must not claim that it did.
+    const h = harness({
+      service: {
+        listSessions: () => [session({ id: "ending" })],
+        stopSession: (() => false) as MeetingService["stopSession"],
+      },
+    });
+    const res = await leaveMeetingAction.handler(
+      h.runtime,
+      msg("leave"),
+      NO_STATE,
+      {},
+      h.cb,
+    );
+    expect(res).toMatchObject({ success: false });
+    expect(res.text).toContain("already ended");
+    expect(res.text).not.toContain("Leaving");
   });
 
   it("targets a specific meeting by URL when several are active", async () => {

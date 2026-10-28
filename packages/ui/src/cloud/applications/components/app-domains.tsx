@@ -1,5 +1,5 @@
 /**
- * Application detail — Domains tab (subdomain + custom domain + DNS verify).
+ * Application detail — Domains tab (managed custom domain + DNS TXT verify).
  * The domain list/add/remove/status calls are routed through the typed `api`
  * client.
  */
@@ -12,7 +12,6 @@ import {
   Copy,
   ExternalLink,
   Globe,
-  Info,
   Loader2,
   Lock,
   Plus,
@@ -51,56 +50,52 @@ import { useCloudT } from "../../shell/CloudI18nProvider";
 import { openExternalUrlOnNative } from "../lib/native-cloud-nav";
 import { BuyDomainCard } from "./BuyDomainCard";
 
-interface DomainInfo {
+type SslStatus = "pending" | "provisioning" | "active" | "error";
+
+/** A managed-domain row as `GET /api/v1/apps/:id/domains` returns it. */
+export interface ManagedDomainRow {
   id: string;
-  subdomain: string;
-  subdomainUrl: string;
-  customDomain: string | null;
-  customDomainUrl: string | null;
-  customDomainVerified: boolean;
-  sslStatus: "pending" | "provisioning" | "active" | "error";
-  isPrimary: boolean;
-  verificationRecords: Array<{ type: string; name: string; value: string }>;
-  createdAt: string;
-  verifiedAt: string | null;
-}
-
-interface DnsInstruction {
-  type: "A" | "CNAME" | "TXT";
-  name: string;
-  value: string;
-}
-
-interface DomainStatus {
   domain: string;
-  status: "pending" | "valid" | "invalid" | "unknown";
-  configured: boolean;
+  registrar: "external" | "cloudflare";
+  status: string;
   verified: boolean;
-  sslStatus: "pending" | "provisioning" | "active" | "error";
-  configuredBy: "CNAME" | "A" | "http" | null;
-  records: Array<{ type: string; name: string; value: string }>;
-  isApexDomain: boolean;
-  dnsInstructions: DnsInstruction[];
+  sslStatus: SslStatus;
+  expiresAt: string | null;
+  cloudflareZoneId: string | null;
+  verificationToken: string | null;
 }
 
 interface DomainsListResponse {
   success?: boolean;
-  domains?: DomainInfo[];
-  sandboxUrl?: string | null;
+  error?: string;
+  domains?: ManagedDomainRow[];
 }
 
-interface DomainStatusResponse extends Partial<DomainStatus> {
+interface VerifyResponse {
   success?: boolean;
+  error?: string;
+  verified?: boolean;
 }
 
 interface DomainMutationResponse {
   success?: boolean;
   error?: string;
-  domain?: string;
   verified?: boolean;
-  isApexDomain?: boolean;
-  verificationRecords?: Array<{ type: string; name: string; value: string }>;
-  dnsInstructions?: DnsInstruction[];
+}
+
+type VerificationRecord = { type: "TXT"; name: string; value: string };
+
+/** The TXT record `POST /domains/verify` checks for an unverified external domain. */
+function verificationRecordFor(
+  row: ManagedDomainRow,
+): VerificationRecord | null {
+  return row.registrar === "external" && !row.verified && row.verificationToken
+    ? {
+        type: "TXT",
+        name: `_eliza-cloud-verify.${row.domain}`,
+        value: row.verificationToken,
+      }
+    : null;
 }
 
 interface AppDomainsProps {
@@ -108,19 +103,25 @@ interface AppDomainsProps {
 }
 
 export function AppDomains({ appId }: AppDomainsProps) {
+  return <AppDomainsContent key={appId} appId={appId} />;
+}
+
+function AppDomainsContent({ appId }: AppDomainsProps) {
   const t = useCloudT();
-  const [domains, setDomains] = useState<DomainInfo[]>([]);
-  const [sandboxUrl, setSandboxUrl] = useState<string | null>(null);
+  const [domains, setDomains] = useState<ManagedDomainRow[]>([]);
+  const [listError, setListError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [verificationDomain, setVerificationDomain] = useState<string | null>(
+    null,
+  );
   const [newDomain, setNewDomain] = useState("");
   const [copiedValue, setCopiedValue] = useState<string | null>(null);
-  const [domainStatus, setDomainStatus] = useState<DomainStatus | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchDomains = useCallback(async () => {
@@ -130,44 +131,61 @@ export function AppDomains({ appId }: AppDomainsProps) {
       );
       if (data.success && data.domains) {
         setDomains(data.domains);
-        setSandboxUrl(data.sandboxUrl || null);
+        setListError(null);
+      } else {
+        setListError(data.error || "The server did not return a domain list.");
       }
+    } catch (error) {
+      setListError(error instanceof Error ? error.message : String(error));
     } finally {
       setIsLoading(false);
     }
   }, [appId]);
 
-  const checkDomainStatus = useCallback(
-    async (domain: string, silent = false) => {
-      if (!silent) setIsChecking(true);
+  // Verification state changes only through `/domains/verify`, so it runs on
+  // the user's Verify click; there is no background poll.
+  const verifyDomain = useCallback(
+    async (domain: string) => {
+      setIsChecking(true);
+      setVerificationDomain(domain);
+      setVerifyError(null);
       try {
-        const data = await api<DomainStatusResponse>(
-          `/api/v1/apps/${appId}/domains/status`,
+        const data = await api<VerifyResponse>(
+          `/api/v1/apps/${appId}/domains/verify`,
           { method: "POST", json: { domain } },
         );
-
-        if (data.success) {
-          setDomainStatus(data as DomainStatus);
-          setLastChecked(new Date());
-          if (data.verified) {
-            if (!silent) {
-              toast.success(
-                t("cloud.appDomains.domainVerified", {
-                  defaultValue: "Domain verified!",
-                }),
-                {
-                  description: t("cloud.appDomains.sslProvisioningNow", {
-                    defaultValue: "SSL certificate is now being provisioned",
-                  }),
-                  icon: <CheckCircle2 className="size-4 text-status-success" />,
-                },
-              );
-            }
-            await fetchDomains();
-          }
+        setLastChecked(new Date());
+        if (data.success && data.verified) {
+          setVerifyError(null);
+          toast.success(
+            t("cloud.appDomains.domainVerified", {
+              defaultValue: "Domain verified!",
+            }),
+            {
+              icon: <CheckCircle2 className="size-4 text-status-success" />,
+            },
+          );
+          await fetchDomains();
+        } else {
+          setVerifyError(data.error ?? null);
+          toast.error(
+            t("cloud.appDomains.notVerifiedYet", {
+              defaultValue: "Domain not verified yet",
+            }),
+            { description: data.error },
+          );
         }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setVerifyError(message);
+        toast.error(
+          t("cloud.appDomains.notVerifiedYet", {
+            defaultValue: "Domain not verified yet",
+          }),
+          { description: message },
+        );
       } finally {
-        if (!silent) setIsChecking(false);
+        setIsChecking(false);
       }
     },
     [appId, fetchDomains, t],
@@ -176,26 +194,6 @@ export function AppDomains({ appId }: AppDomainsProps) {
   useEffect(() => {
     void fetchDomains();
   }, [fetchDomains]);
-
-  useEffect(() => {
-    const primaryDomain = domains.find((d) => d.isPrimary);
-    if (primaryDomain?.customDomain && !primaryDomain.customDomainVerified) {
-      pollIntervalRef.current = setInterval(() => {
-        if (
-          typeof document !== "undefined" &&
-          document.visibilityState !== "visible"
-        )
-          return;
-        checkDomainStatus(primaryDomain.customDomain ?? "", true);
-      }, 15000);
-
-      return () => {
-        if (pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-        }
-      };
-    }
-  }, [domains, checkDomainStatus]);
 
   useEffect(() => {
     if (showAddForm && inputRef.current) {
@@ -253,26 +251,13 @@ export function AppDomains({ appId }: AppDomainsProps) {
               }),
           {
             description: data.verified
-              ? t("cloud.appDomains.sslProvisioningAuto", {
-                  defaultValue:
-                    "SSL certificate is being provisioned automatically",
-                })
+              ? undefined
               : t("cloud.appDomains.configureDnsToComplete", {
                   defaultValue: "Configure your DNS records to complete setup",
                 }),
           },
         );
-        setDomainStatus({
-          domain: data.domain ?? domain,
-          status: data.verified ? "valid" : "pending",
-          configured: Boolean(data.verified),
-          verified: Boolean(data.verified),
-          sslStatus: data.verified ? "active" : "pending",
-          configuredBy: null,
-          records: data.verificationRecords ?? [],
-          isApexDomain: Boolean(data.isApexDomain),
-          dnsInstructions: data.dnsInstructions ?? [],
-        });
+        setVerifyError(null);
         setNewDomain("");
         setShowAddForm(false);
         await fetchDomains();
@@ -312,7 +297,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
             defaultValue: "Domain removed successfully",
           }),
         );
-        setDomainStatus(null);
+        setVerifyError(null);
         await fetchDomains();
       } else {
         toast.error(
@@ -336,10 +321,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
     }
   };
 
-  const primaryDomain = domains.find((d) => d.isPrimary);
-  const hasCustomDomain = !!primaryDomain?.customDomain;
-  const needsVerification =
-    hasCustomDomain && !primaryDomain?.customDomainVerified;
+  const canAddDomain = !isLoading && listError === null;
 
   return (
     <TooltipProvider>
@@ -359,107 +341,60 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 })}
               </p>
             </div>
-            {primaryDomain &&
-              !hasCustomDomain &&
-              !showAddForm &&
-              !isLoading && (
-                <Button onClick={() => setShowAddForm(true)} size="sm">
-                  <Plus className="size-4 mr-1.5" />
-                  {t("cloud.appDomains.addDomain", {
-                    defaultValue: "Add Domain",
-                  })}
-                </Button>
-              )}
+            {canAddDomain && !showAddForm && (
+              <Button onClick={() => setShowAddForm(true)} size="sm">
+                <Plus className="size-4 mr-1.5" />
+                {t("cloud.appDomains.addDomain", {
+                  defaultValue: "Add Domain",
+                })}
+              </Button>
+            )}
           </div>
 
-          {/* Loading State */}
           {isLoading ? (
             <div className="space-y-3">
               <div className="h-16 bg-bg-muted rounded-sm animate-pulse motion-reduce:animate-none" />
               <div className="h-16 bg-bg-muted rounded-sm animate-pulse opacity-50 motion-reduce:animate-none" />
             </div>
-          ) : !primaryDomain && sandboxUrl ? (
-            /* Sandbox URL */
-            <div className="space-y-3">
-              <DomainCard
-                domain={new URL(sandboxUrl).hostname}
-                url={sandboxUrl}
-                type="subdomain"
-                status="verified"
-              />
-              <div className="p-3 rounded-sm bg-bg-muted border border-border">
-                <div className="flex items-start gap-2">
-                  <Info className="size-4 text-muted-strong shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-xs text-txt-strong font-medium">
-                      {t("cloud.appDomains.developmentUrl", {
-                        defaultValue: "Development URL",
-                      })}
-                    </p>
-                    <p className="text-xs text-muted mt-0.5">
-                      {t("cloud.appDomains.developmentUrlHint", {
-                        defaultValue:
-                          "Deploy your app to get a permanent subdomain and add custom domains.",
-                      })}
-                    </p>
-                  </div>
-                </div>
+          ) : listError !== null ? (
+            <div
+              role="alert"
+              className="p-4 rounded-sm bg-destructive-subtle border border-destructive/20 flex items-start gap-2"
+            >
+              <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
+              <div>
+                <p className="text-xs text-destructive font-medium">
+                  {t("cloud.appDomains.failedToLoad", {
+                    defaultValue: "Could not load domains",
+                  })}
+                </p>
+                {listError && (
+                  <p className="text-xs text-destructive/80 mt-0.5">
+                    {listError}
+                  </p>
+                )}
               </div>
-            </div>
-          ) : !primaryDomain ? (
-            /* No App Deployed */
-            <div className="p-6 rounded-sm bg-accent-subtle border border-accent/20 text-center">
-              <div className="size-12 rounded-full bg-accent-subtle flex items-center justify-center mx-auto mb-3">
-                <AlertTriangle className="size-6 text-accent" />
-              </div>
-              <h4 className="text-sm font-medium text-txt-strong mb-1">
-                {t("cloud.appDomains.noAppDeployed", {
-                  defaultValue: "No App Deployed",
-                })}
-              </h4>
-              <p className="text-xs text-muted max-w-sm mx-auto">
-                {t("cloud.appDomains.noAppDeployedHint", {
-                  defaultValue:
-                    "Deploy your app first to get a subdomain. Once deployed, you can add custom domains here.",
-                })}
-              </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {/* Subdomain */}
-              {primaryDomain && (
+              {domains.map((appDomain) => (
                 <DomainCard
-                  domain={primaryDomain.subdomain}
-                  url={primaryDomain.subdomainUrl}
-                  type="subdomain"
-                  status="verified"
-                />
-              )}
-
-              {/* Custom Domain */}
-              {hasCustomDomain && primaryDomain?.customDomain && (
-                <DomainCard
-                  domain={primaryDomain.customDomain}
-                  url={primaryDomain.customDomainUrl}
+                  key={appDomain.id}
+                  domain={appDomain.domain}
+                  url={`https://${appDomain.domain}`}
                   type="custom"
-                  status={
-                    primaryDomain.customDomainVerified ? "verified" : "pending"
-                  }
-                  sslStatus={primaryDomain.sslStatus}
-                  onRefresh={() =>
-                    checkDomainStatus(primaryDomain.customDomain ?? "")
-                  }
-                  onRemove={() =>
-                    handleRemoveDomain(primaryDomain.customDomain ?? "")
-                  }
+                  status={appDomain.verified ? "verified" : "pending"}
+                  sslStatus={appDomain.sslStatus}
+                  onRefresh={() => verifyDomain(appDomain.domain)}
+                  onRemove={() => handleRemoveDomain(appDomain.domain)}
                   isChecking={isChecking}
                   isRemoving={isRemoving}
                 />
-              )}
+              ))}
 
               {/* Add Domain Form */}
               <AnimatePresence mode="wait">
-                {showAddForm && primaryDomain && !hasCustomDomain && (
+                {showAddForm && canAddDomain && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
@@ -527,8 +462,8 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 )}
               </AnimatePresence>
 
-              {/* Empty Custom Domain State */}
-              {primaryDomain && !hasCustomDomain && !showAddForm && (
+              {/* Empty State */}
+              {domains.length === 0 && !showAddForm && (
                 <div className="p-6 rounded-sm border border-border bg-bg-muted text-center">
                   <h4 className="text-sm font-medium text-txt-strong">
                     {t("cloud.appDomains.useYourOwnDomain", {
@@ -548,83 +483,39 @@ export function AppDomains({ appId }: AppDomainsProps) {
         </Card>
 
         {/* Buy a domain through Cloudflare (#10246) */}
-        {primaryDomain && !hasCustomDomain && !isLoading && (
+        {canAddDomain && (
           <BuyDomainCard appId={appId} onPurchased={fetchDomains} />
         )}
 
-        {/* DNS Configuration Panel */}
+        {/* DNS verification for an unverified external domain */}
         <AnimatePresence>
-          {needsVerification && (
-            <motion.div
-              initial={{ opacity: 0, transform: "translateY(10px)" }}
-              animate={{ opacity: 1, transform: "translateY(0px)" }}
-              exit={{ opacity: 0, transform: "translateY(-10px)" }}
-            >
-              <DnsConfigPanel
-                domain={primaryDomain?.customDomain || ""}
-                domainStatus={domainStatus}
-                onRefresh={() =>
-                  checkDomainStatus(primaryDomain?.customDomain || "")
-                }
-                isChecking={isChecking}
-                lastChecked={lastChecked}
-                copyToClipboard={copyToClipboard}
-                copiedValue={copiedValue}
-              />
-            </motion.div>
-          )}
+          {domains.map((appDomain) => {
+            const verificationRecord = verificationRecordFor(appDomain);
+            if (!verificationRecord) return null;
+            return (
+              <motion.div
+                key={appDomain.id}
+                initial={{ opacity: 0, transform: "translateY(10px)" }}
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                exit={{ opacity: 0, transform: "translateY(-10px)" }}
+              >
+                <DnsConfigPanel
+                  record={verificationRecord}
+                  verifyError={
+                    verificationDomain === appDomain.domain ? verifyError : null
+                  }
+                  onVerify={() => verifyDomain(appDomain.domain)}
+                  isChecking={isChecking}
+                  lastChecked={
+                    verificationDomain === appDomain.domain ? lastChecked : null
+                  }
+                  copyToClipboard={copyToClipboard}
+                  copiedValue={copiedValue}
+                />
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
-
-        {/* Quick Reference */}
-        <Card variant="flatPadded">
-          <h3 className="text-sm font-medium text-txt-strong mb-4">
-            {t("cloud.appDomains.quickDnsReference", {
-              defaultValue: "Quick DNS Reference",
-            })}
-          </h3>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div className="flex items-center justify-between p-4 rounded-sm bg-bg-muted">
-              <div>
-                <p className="text-sm font-medium text-txt-strong">
-                  {t("cloud.appDomains.subdomains", {
-                    defaultValue: "Subdomains",
-                  })}
-                </p>
-                <p className="text-xs text-muted font-mono mt-1">
-                  app.example.com
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-txt-strong font-mono">CNAME</p>
-                <p className="text-xs text-txt-strong font-mono mt-1">
-                  {"<your-cloudflare-cname>"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4 rounded-sm bg-bg-muted">
-              <div>
-                <p className="text-sm font-medium text-txt-strong">
-                  {t("cloud.appDomains.rootDomains", {
-                    defaultValue: "Root Domains",
-                  })}
-                </p>
-                <p className="text-xs text-muted font-mono mt-1">example.com</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-txt-strong font-mono">A</p>
-                <p className="text-xs text-txt-strong font-mono mt-1">
-                  76.76.21.21
-                </p>
-              </div>
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-muted">
-            {t("cloud.appDomains.dnsPropagationNote", {
-              defaultValue:
-                "DNS changes typically propagate within 5 minutes to 48 hours",
-            })}
-          </p>
-        </Card>
       </div>
     </TooltipProvider>
   );
@@ -675,7 +566,7 @@ function DomainCard({
               </span>
             )}
           </div>
-          {isVerified && (
+          {isVerified && sslStatus === "active" && (
             <div className="flex items-center gap-1 text-status-success mt-2">
               <Lock className="size-3" />
               <span className="text-xs">
@@ -876,38 +767,23 @@ function DomainStatusBadge({
 }
 
 function DnsConfigPanel({
-  domain,
-  domainStatus,
-  onRefresh,
+  record,
+  verifyError,
+  onVerify,
   isChecking,
   lastChecked,
   copyToClipboard,
   copiedValue,
 }: {
-  domain: string;
-  domainStatus: DomainStatus | null;
-  onRefresh: () => void;
+  record: VerificationRecord;
+  verifyError: string | null;
+  onVerify: () => void;
   isChecking: boolean;
   lastChecked: Date | null;
   copyToClipboard: (text: string, label: string) => void;
   copiedValue: string | null;
 }) {
   const t = useCloudT();
-  const isApex = domain.split(".").length === 2;
-  const currentStatus = domainStatus?.status || "pending";
-
-  const dnsRecords: DnsInstruction[] = domainStatus?.dnsInstructions || [
-    isApex
-      ? { type: "A", name: "@", value: "76.76.21.21" }
-      : {
-          type: "CNAME",
-          name: domain.split(".")[0],
-          value: "<your-cloudflare-cname>",
-        },
-  ];
-
-  const txtRecords =
-    domainStatus?.records?.filter((r) => r.type === "TXT") || [];
 
   return (
     <Card stack="default" variant="flatPadded">
@@ -940,7 +816,7 @@ function DnsConfigPanel({
           <Button
             variant="outline"
             size="sm"
-            onClick={onRefresh}
+            onClick={onVerify}
             disabled={isChecking}
           >
             {isChecking ? (
@@ -954,111 +830,51 @@ function DnsConfigPanel({
       </div>
 
       {/* Status Banner */}
-      <div
-        className={`p-3 rounded-sm border flex items-start gap-2 ${
-          currentStatus === "valid"
-            ? "bg-status-success-bg border-status-success/20"
-            : currentStatus === "invalid"
-              ? "bg-destructive-subtle border-destructive/20"
-              : "bg-accent-subtle border-accent/20"
-        }`}
-      >
-        {currentStatus === "valid" ? (
-          <>
-            <CheckCircle2 className="size-4 text-status-success shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-status-success font-medium">
-                {t("cloud.appDomains.dnsVerified", {
-                  defaultValue: "DNS Verified",
-                })}
-              </p>
-              <p className="text-xs text-status-success/80">
-                {t("cloud.appDomains.sslProvisioning", {
-                  defaultValue: "SSL certificate is being provisioned",
-                })}
-              </p>
-            </div>
-          </>
-        ) : currentStatus === "invalid" ? (
-          <>
-            <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-destructive font-medium">
-                {t("cloud.appDomains.dnsConfigIssue", {
-                  defaultValue: "DNS Configuration Issue",
-                })}
-              </p>
-              <p className="text-xs text-destructive/80">
-                {t("cloud.appDomains.dnsConfigIssueHint", {
-                  defaultValue: "Please check your records match exactly",
-                })}
-              </p>
-            </div>
-          </>
-        ) : (
-          <>
-            <Loader2 className="size-4 text-accent animate-spin shrink-0 mt-0.5" />
-            <div>
-              <p className="text-xs text-accent font-medium">
-                {t("cloud.appDomains.waitingForPropagation", {
-                  defaultValue: "Waiting for DNS Propagation",
-                })}
-              </p>
-              <p className="text-xs text-accent/80">
-                {t("cloud.appDomains.waitingFewMinutes", {
-                  defaultValue: "This may take a few minutes",
-                })}
-              </p>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* DNS Records */}
-      <div className="space-y-3">
-        {txtRecords.length > 0 && (
+      {verifyError ? (
+        <div className="p-3 rounded-sm border flex items-start gap-2 bg-destructive-subtle border-destructive/20">
+          <AlertTriangle className="size-4 text-destructive shrink-0 mt-0.5" />
           <div>
-            <h4 className="text-2xs font-medium text-muted uppercase tracking-wider mb-2">
-              {t("cloud.appDomains.verificationRecord", {
-                defaultValue: "Verification Record",
+            <p className="text-xs text-destructive font-medium">
+              {t("cloud.appDomains.dnsConfigIssue", {
+                defaultValue: "DNS Configuration Issue",
               })}
-            </h4>
-            <div className="space-y-2">
-              {txtRecords.map((record) => (
-                <DnsRecordRow
-                  key={record.name}
-                  type="TXT"
-                  name={record.name}
-                  value={record.value}
-                  copyToClipboard={copyToClipboard}
-                  copiedValue={copiedValue}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div>
-          <h4 className="text-2xs font-medium text-muted uppercase tracking-wider mb-2">
-            {isApex
-              ? t("cloud.appDomains.aRecord", { defaultValue: "A Record" })
-              : t("cloud.appDomains.cnameRecord", {
-                  defaultValue: "CNAME Record",
-                })}
-          </h4>
-          <div className="space-y-2">
-            {dnsRecords.map((record) => (
-              <DnsRecordRow
-                key={record.name}
-                type={record.type}
-                name={record.name}
-                value={record.value}
-                copyToClipboard={copyToClipboard}
-                copiedValue={copiedValue}
-              />
-            ))}
+            </p>
+            <p className="text-xs text-destructive/80">{verifyError}</p>
           </div>
         </div>
+      ) : (
+        <div className="p-3 rounded-sm border flex items-start gap-2 bg-accent-subtle border-accent/20">
+          <Clock className="size-4 text-accent shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs text-accent font-medium">
+              {t("cloud.appDomains.dnsVerificationPending", {
+                defaultValue: "DNS verification pending",
+              })}
+            </p>
+            <p className="text-xs text-accent/80">
+              {t("cloud.appDomains.dnsPropagationNote", {
+                defaultValue:
+                  "DNS changes typically propagate within 5 minutes to 48 hours",
+              })}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* The record `POST /domains/verify` checks */}
+      <div>
+        <h4 className="text-2xs font-medium text-muted uppercase tracking-wider mb-2">
+          {t("cloud.appDomains.verificationRecord", {
+            defaultValue: "Verification Record",
+          })}
+        </h4>
+        <DnsRecordRow
+          type={record.type}
+          name={record.name}
+          value={record.value}
+          copyToClipboard={copyToClipboard}
+          copiedValue={copiedValue}
+        />
       </div>
     </Card>
   );

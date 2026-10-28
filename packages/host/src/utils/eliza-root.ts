@@ -13,7 +13,7 @@ const CORE_PACKAGE_NAME = "eliza";
 function readPackageNameSync(dir: string): string | null {
   try {
     const raw = fsSync.readFileSync(path.join(dir, "package.json"), "utf-8");
-    const parsed = JSON.parse(raw) as { name?: unknown };
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, "")) as { name?: unknown };
     return typeof parsed.name === "string" ? parsed.name : null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

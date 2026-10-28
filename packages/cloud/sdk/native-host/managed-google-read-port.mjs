@@ -28,7 +28,9 @@ export function createManagedGoogleReadPort({ accountId, request }) {
       !value ||
       !id(value.externalId) ||
       !id(value.threadId) ||
-      typeof value.fromEmail !== "string" ||
+      // The connector contract allows a null sender address when no address
+      // can be parsed from the From header; pass it through as null.
+      !(typeof value.fromEmail === "string" || value.fromEmail === null) ||
       !Array.isArray(value.to) ||
       !value.to.every((x) => typeof x === "string") ||
       typeof value.receivedAt !== "string"

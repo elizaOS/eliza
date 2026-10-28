@@ -66,7 +66,7 @@ ONNX reference. So a head trained with the rescale is featurized differently
 than it runs at inference.
 
 Measured on the held-out set through the real `libwakeword.so` FFI
-(`verify_ffi.ts`, fresh session per clip, peak P(wake), threshold 0.5):
+(`verify_ffi.ts` — a local uncommitted helper script, fresh session per clip, peak P(wake), threshold 0.5):
 
 | Head featurization        | true-accept | false-accept | positive score shape |
 | ------------------------- | ----------- | ------------ | -------------------- |
@@ -82,7 +82,7 @@ Independently re-confirmed on a larger held-out set (600 positives / 1000 mixed
 negatives / 200 dedicated hard-negatives, disjoint seeds 900–903) through a
 *separate* in-process C harness that links `libwakeword.a` directly (no bun:ffi,
 fresh `wakeword_open`/`process`/`close` session per clip, peak P(wake)) — a
-different code path from `verify_ffi.ts`, so the numbers are corroborated, not
+different code path from the local `verify_ffi.ts` helper script, so the numbers are corroborated, not
 just re-run:
 
 | Set (no-rescale head)       | n    | accept @ t=0.5 | accept @ t=0.7 | score shape |
@@ -130,6 +130,7 @@ python3 packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wake
     --classifier-onnx hey-eliza.onnx --phrase "hey eliza" --out-dir gguf
 
 # 4. build + verify on the HELD-OUT set through the real FFI
+#    (verify_ffi.ts is a local uncommitted helper, not a repo file)
 cmake -S plugins/plugin-local-inference/native/wakeword-cpp -B .../build -DCMAKE_BUILD_TYPE=Release
 cmake --build .../build -j
 bun verify_ffi.ts .../build/libwakeword.so gguf/hey-eliza.{melspec,embedding,classifier}.gguf \
@@ -179,8 +180,7 @@ Publish status:
    `plugins/plugin-native-inference/src/model-catalog/voice-models.ts` (sha256s above +
    that `hfRevision`), via `append_voice_model_version.py`.
 3. ⏳ **REMAINING (gated)** — assemble the three GGUFs into each tier bundle's
-   `wake/` dir through `scripts/publish/publish_all_eliza1.sh` (per
-   `packages/training/AGENTS.md` §6 the bundles reach `elizaos/eliza-1` ONLY
+   `wake/` dir through `packages/training/scripts/publish_all_eliza1.sh` (the `packages/training/AGENTS.md` §6 citation was stale — that file does not exist; the bundles reach `elizaos/eliza-1` ONLY
    through that gated flow — hardware verification + eval gates + manifest
    regeneration; do NOT hand-assemble bundles).
 4. ⏳ **THEN** remove `hey-eliza` from `OPENWAKEWORD_PLACEHOLDER_HEADS`.

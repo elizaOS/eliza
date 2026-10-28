@@ -89,6 +89,9 @@ public abstract class ReminderPlugin extends Plugin {
  @PluginMethod public void consumeReminderTap(PluginCall call) {
   reminderWork(call, "Reminder link changed or could not be saved. Refresh and retry.", () -> { reminderTaps().consume(call.getString("token")); call.resolve(); });
  }
+ @PluginMethod public void releaseReminderQuestion(PluginCall call) {
+  reminderWork(call,"Reminder question could not be retained. Retry after unlocking.",()->{reminderTaps().releaseQuestion(call.getString("token"));call.resolve();});
+ }
  @PluginMethod public void dismissReminderTap(PluginCall call) {
   reminderWork(call, "Reminder link could not be dismissed. Refresh and retry.", () -> { reminderTaps().dismiss(call.getString("token")); call.resolve(); });
  }

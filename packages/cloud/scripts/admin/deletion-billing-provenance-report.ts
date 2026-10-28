@@ -78,7 +78,7 @@ const agentAuthorityFacts = {
     "NULLIF(btrim(a.node_id), '') IS NOT NULL AND NULLIF(btrim(a.container_name), '') IS NOT NULL",
 } as const;
 
-function unresolvedAgentSelector(migration: string): string {
+export function unresolvedAgentSelector(migration: string): string {
   const guard = deletionBillingGuardQueries(migration)[1];
   const prefix = "SELECT count(*)::integer AS unresolved_count";
   if (!guard.startsWith(prefix)) {

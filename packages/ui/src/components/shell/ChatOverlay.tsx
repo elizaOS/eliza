@@ -726,31 +726,9 @@ export function ChatOverlay({
     },
     [handleChatEdit, stopSpeaking],
   );
-  // Durable reply recovery uses the same handler as the panel chat surface.
-  // Other failure kinds retain their existing resend contract. Read the live
-  // list through a ref to keep memoized transcript rows stable during streaming.
-  const messagesRef = React.useRef(messages);
-  messagesRef.current = messages;
-  const handleRetry = React.useCallback(
-    (assistantId: string) => {
-      const list = messagesRef.current;
-      const assistantIdx = list.findIndex(
-        (m) => m.id === assistantId && m.role === "assistant",
-      );
-      if (assistantIdx < 0) return;
-      if (list[assistantIdx].replyRecoveryAvailable === true) {
-        return handleChatRetry(assistantId);
-      }
-      for (let i = assistantIdx - 1; i >= 0; i -= 1) {
-        if (list[i].role === "user") {
-          const retryText = list[i].content.trim();
-          if (retryText) send(retryText);
-          return;
-        }
-      }
-    },
-    [send, handleChatRetry],
-  );
+  // Retry uses the same handler as the panel chat surface: it re-runs the
+  // failed turn in place and re-sends the turn's attachments.
+  const handleRetry = handleChatRetry;
   // Proactive suggestions (#8792) — same semantics as the composite ChatView:
   // dismiss removes the bubble from the live transcript only (the server-side
   // per-surface cooldown keeps the same offer from immediately re-appearing);
@@ -819,7 +797,7 @@ export function ChatOverlay({
     resetMessageHistory();
   }, [activeConversationId, resetMessageHistory]);
   // Live handle to the draft for callbacks that must read the current text
-  // without subscribing (dictation append), same pattern as messagesRef above.
+  // without subscribing (dictation append).
   const draftRef = React.useRef(draft);
   draftRef.current = draft;
   // Finalization drains the capture asynchronously. An immediate ref closes

@@ -371,6 +371,25 @@ function resultText(result: WalletRouterResult): string {
     return `${dryRunText} ${execution.subaction} on ${result.handler.chain}.`;
   }
   const id = execution.transactionHash ?? execution.signature;
+  const metadata = execution.metadata as
+    | { confirmationStatus?: unknown; sendUncertain?: unknown }
+    | undefined;
+  if (metadata?.confirmationStatus === "unconfirmed") {
+    // The transaction was broadcast but on-chain confirmation is uncertain
+    // (e.g. RPC timeout), or the send itself may not have completed.
+    // Do NOT report it as complete and do NOT suggest a retry: the transaction
+    // may have landed, and a new transfer would duplicate the spend.
+    // Preserve the signature for manual verification.
+    const sendNote = metadata.sendUncertain
+      ? `The send request itself did not complete — the transaction may or may not have been broadcast. `
+      : ``;
+    return (
+      `Submitted ${execution.subaction} on ${result.handler.chain}${id ? `: ${id}` : "."} ` +
+      `Confirmation uncertain. ${sendNote}` +
+      `Check the signature on an explorer before acting. ` +
+      `Do not retry the transfer automatically.`
+    );
+  }
   return `Submitted ${execution.subaction} on ${result.handler.chain}${id ? `: ${id}` : "."}`;
 }
 
@@ -528,7 +547,13 @@ async function runWalletRouter(
     text,
     values: routed.ok
       ? {
-          walletActionSucceeded: routed.result.status === "submitted",
+          walletActionSucceeded:
+            routed.result.status === "submitted" &&
+            (
+              routed.result.metadata as
+                | { confirmationStatus?: unknown }
+                | undefined
+            )?.confirmationStatus !== "unconfirmed",
           walletActionPrepared: routed.result.status === "prepared",
           walletActionSimulated: routed.result.status === "simulated",
           walletChain: routed.handler.chain,
@@ -717,7 +742,7 @@ export const walletRouterAction: Action = {
     {
       name: "query",
       description:
-        "Search query, coin id, or token symbol for token_info searches.",
+        "token_info only: token symbol, name, or search text. With target coingecko a token lookup reads this as the CoinGecko coin id (lowercase slug such as bitcoin or ethereum), not a symbol; send operation search to find the id from a symbol or name.",
       required: false,
       schema: { type: "string" },
     },
@@ -739,7 +764,7 @@ export const walletRouterAction: Action = {
     {
       name: "operation",
       description:
-        "token_info only: which lookup to run. token looks up one token by address or query; search matches query text; trending, boosted, and profiles list tokens; new_pairs lists new pairs (optional chain); chain_pairs lists the top pairs on chain. When omitted, a call with address or query runs token.",
+        "token_info only: which lookup to run. token looks up one token by address or query; search matches query text; trending, boosted, and profiles list tokens; new_pairs lists new pairs (optional chain); chain_pairs lists the top pairs on chain. When omitted, a call with address or query runs token. On target coingecko, token takes query as the coin id, or address with chain.",
       required: false,
       subactions: ["token_info"],
       schema: {

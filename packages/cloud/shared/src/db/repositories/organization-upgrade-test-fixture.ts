@@ -103,6 +103,11 @@ export async function seedOrganizationUpgradeTestAccount(
       currentPeriodEnd: f.source.current_period_end.toISOString(),
       targetBaseAmountCents: 10000,
       targetAllowanceUsd: "90.000000",
+      allowanceTerms: {
+        fundingClass: "allowance_eligible",
+        rollover: false,
+        expiresAt: "billing_period_end",
+      },
       additionalAllowanceUsd: `${micros / 1_000_000n}.${String(micros % 1_000_000n).padStart(6, "0")}`,
       dueNow: invoice,
       recurringEstimate: {

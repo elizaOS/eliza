@@ -10,6 +10,9 @@ Node-only SQLite task gateways, research collection and trace transport, databas
 leases, and verified document-runtime packaging. Consumers supply authentication,
 consent, measurement policy and lifecycle ownership. Internal code imports defining files.
 
+`@elizaos/host/voice/ui-context` exposes the small renderer-observation contract
+for browser voice clients without loading host configuration or voice presets.
+
 From the repository root, run `bun run --cwd packages/host build`,
 `bun run --cwd packages/host test` and `bun run --cwd packages/host typecheck`.
 
@@ -17,9 +20,13 @@ From the repository root, run `bun run --cwd packages/host build`,
 
 Consumer hosts can use `@elizaos/host/native-host` for authenticated
 SQLite task lifecycles and explicit domain-route extensions. Document/canvas
-bundling and verified ARM64 packaging live in `native-host/build-document-runtime.mjs`
+bundling and verified Android packaging live in `native-host/build-document-runtime.mjs`
 and `native-host/android-documents.mjs`; consumers supply reviewed source identity,
-canvas version and locked package records. App runtime integrations run with `bun run --cwd packages/app test:consumer-host`.
+canvas version and locked package records. Staging and verification accept
+`targetAbi: "arm64-v8a"` (the default) or `"x86_64"`. Each build admits only the
+selected canvas package, native path and ELF architecture; mixed ABI document
+libraries are refused. Packaging checks do not prove Android canvas execution.
+App runtime integrations run with `bun run --cwd packages/app test:consumer-host`.
 The renderer gateway and Cloud services remain owned by `packages/agent/native-host`
 and `packages/auth/native-host`; these build helpers do not provide device acceptance.
 
@@ -89,3 +96,82 @@ Ink/Sonic adapters, Fish adapter, and canonical conversation SSE bridge. Hosts
 must inject token verification, owner/session authorization, conversation scope,
 revocation and usage storage; importing these modules grants no authority or
 opens provider connections. Cloud retains its JWT and durable Redis policies.
+
+Task gateways accept a trusted host `databaseProvider` with `open({path})` and
+`assertEncryption({db,path})`. `requireEncryptedDatabase: true` refuses startup
+unless the provider explicitly verifies the open connection before the gateway
+writes task schemas or records. It never silently opens ordinary SQLite as a
+fallback. Providers must close partially opened resources when `open` throws;
+the gateway closes a returned connection when admission fails. Provider error
+bodies and key details are not returned. The default remains legacy ordinary
+SQLite for existing consumers; this admission contract is not an encryption
+implementation or a readiness claim.
+
+Encrypted deployments still need the reviewed SQLCipher/other compatible driver
+and packaged native libraries, a dedicated per-account data-key slot wrapped by
+native secure-store custody, active-key/WAL verification, and separate encryption
+for outcome journals/evidence/diagnostics. Migration must stop writers, preserve
+source and all sidecars, copy to a new destination, validate task/outcome counts
+and recovery records, then durably switch an explicit manifest. Never automatically
+delete the source or overwrite a recovery copy. Test interruption at every phase,
+wrong/lost key, new-account admission and revocation before enabling that profile.
+This API does not perform migration, deletion, key export or renderer admission.
+
+The opt-in `createSqlCipherTaskProvider` candidate implements that provider using
+an explicitly admitted N-API SQLCipher artifact and host-owned key callback.
+See [its build and qualification contract](native-host/task-sqlcipher/README.md).
+It has no automatic APK staging, account authorization, migration or fallback;
+source availability alone does not qualify encrypted storage on a consumer device.
+
+### Optional Android verified task custody
+
+`native-host/android/ai/eliza/host/VerifiedTaskCustody.java` is an explicit native
+host source input. A consumer must select it alongside native-agent runtime and
+secure-store native-only sources. No default Gradle dependency or renderer API
+is added. The host supplies its existing dedicated verified-account directory
+and Keystore alias, a separate task-key directory/alias, and an existing private
+0700 no-backup database directory. Resolve the trusted Android Context path with
+`getCanonicalFile()` before supplying that root; Android data-directory aliases
+are not accepted as canonical paths. All account writes must use this composition
+in the one native host process; it does not provide cross-process credential CAS.
+
+Create the adapter inside `NativeRuntimeSession`'s launcher. Its account port and
+bound database port use the same `guard()` in `LocalCredentialBroker`.
+`openBroker` registers broker closure with the launch scope; a null database
+permits verified enrollment with task-key access disabled.
+`bindDatabase` takes a native-selected logical name. The owner directory uses
+the existing gateway's authenticated authority/user/organization tuple hash;
+credential rotation preserves that directory but retires old database ports.
+Never supply decoded token claims, renderer identities, or paths from the wire.
+
+The actual SQLCipher writer must acquire its native lease before requesting a
+key. Read refuses a missing key when any database, WAL, SHM, or rollback journal
+entry exists, even an empty file or dangling symlink. Create and generation-bound
+remove require all those entries to be absent. A durable key left by an
+interrupted first open can be reused; existing data is never treated as new.
+This adapter creates no database and performs no migration or automatic cleanup.
+
+A broker cannot revoke a key already held by Bun. The host must bind the writer's
+session/credential guard and retire the supervised writer on owner change before
+admitting replacement work. `Database.check()` fences native admission against
+the exact captured encrypted account snapshot. It is not a synchronous remote
+replacement for the provider's `checkOwner`. Hosts must finish that lifecycle
+wiring and qualify the actual Android SQLCipher library before enabling storage.
+Returned key JSON is confined to the private native process channel; byte-array
+copies are wiped, but immutable Java JSON/base64 strings are not fully erased.
+The instrumentation cases in `native-host/android-test` exercise real Keystore
+storage, TCP broker requests, account changes, and database recovery refusals.
+
+`native-host/sensitive-text.mjs` provides a session-scoped secret scrubber and
+sensitive-text gate. Hosts supply optional matchers and clear memory only when
+the session ends. Capacity exhaustion refuses new values instead of forgetting
+earlier ones. Object nesting beyond the supported depth is refused rather than
+returned unscrubbed. Detection is conservative, not a guarantee that every
+secret is recognized.
+
+`native-host/public-fetch.mjs` is `fetch()` for public HTTPS websites only.
+It connects through a lookup that refuses private, loopback, link-local,
+carrier-NAT, documentation and transition addresses at connect time, so a DNS
+rebinding answer cannot reach a local service. It never follows redirects,
+sends no cookies and reads at most 8 MB. `resolvesPublic` and `privateAddress`
+let a caller check a name or address before handing it to another fetch.

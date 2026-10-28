@@ -1,0 +1,69 @@
+// Shared, explicitly built image-only listener. The host supplies product and speech-module data.
+apply plugin: 'com.android.application'
+def source = project.hasProperty('elizaSenseSourceDir') ? file(project.elizaSenseSourceDir) : project.projectDir
+def profileFile = project.hasProperty('elizaSenseProfile') ? file(project.elizaSenseProfile) : null
+if (profileFile == null || !profileFile.isFile()) throw new GradleException('[sense] elizaSenseProfile is required')
+def product = new groovy.json.JsonSlurper().parse(profileFile)
+def config = product.sense
+def host = product.launcher?.packageName
+def pkg = ~/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/
+if (product.target != 'pixel10a' || product.releaseQualified != false || !(host ==~ pkg) || config == null ||
+    !(config.componentPackage ==~ pkg) || !(config.assistActivity ==~ /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$/) ||
+    !config.assistActivity.startsWith(host + '.') || !(config.appName ==~ /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$/) ||
+    !(config.storageName ==~ /^[a-z][a-z0-9-]{0,63}$/) || !(config.wakeNames instanceof List) ||
+    config.wakeNames.isEmpty() || config.wakeNames.size() > 8 || config.wakeNames.any { !(it instanceof String) || !(it ==~ /^[a-z][a-z0-9]{0,31}$/) } ||
+    config.wakeNames.toSet().size() != config.wakeNames.size()) throw new GradleException('[sense] invalid product identity or wake names')
+if (!project.hasProperty('elizaSenseSpeechProject')) throw new GradleException('[sense] elizaSenseSpeechProject is required')
+def literal = { value -> groovy.json.JsonOutput.toJson(value) }
+def envValue = { String name -> def value = System.getenv(name); value == null || value.trim().isEmpty() ? null : value.trim() }
+def signingNames = ['ELIZAOS_KEYSTORE_PATH', 'ELIZAOS_KEYSTORE_PASSWORD', 'ELIZAOS_KEY_ALIAS', 'ELIZAOS_KEY_PASSWORD']
+def signingMissing = signingNames.findAll { envValue(it) == null }
+def signingReady = signingMissing.isEmpty()
+if (!signingReady && signingMissing.size() < signingNames.size()) throw new GradleException("[release-signing] incomplete signing environment. Missing: ${signingMissing.join(', ')}.")
+android {
+ namespace 'ai.eliza.sense'
+ compileSdk rootProject.ext.compileSdkVersion
+ ndkVersion '28.2.13676358'
+ androidResources { noCompress += ['gguf', 'lex'] }
+ buildFeatures { buildConfig true }
+ defaultConfig {
+  applicationId host + '.sense'
+  minSdk 34
+  targetSdk rootProject.ext.targetSdkVersion
+  versionCode project.hasProperty('elizaSenseVersionCode') ? Integer.parseInt(project.elizaSenseVersionCode.toString()) : 1
+  versionName project.hasProperty('elizaSenseVersionName') ? project.elizaSenseVersionName.toString() : '1.0'
+  manifestPlaceholders = [senseHostPackage: host, senseComponentPackage: config.componentPackage, senseAppLabel: config.appName]
+  buildConfigField 'String', 'SENSE_HOST_PACKAGE', literal(host)
+  buildConfigField 'String', 'SENSE_ASSIST_ACTIVITY', literal(config.assistActivity)
+  buildConfigField 'String', 'SENSE_APP_NAME', literal(config.appName)
+  buildConfigField 'String', 'SENSE_WAKE_LABEL', literal(config.wakeNames[0])
+  buildConfigField 'String', 'SENSE_WAKE_NAMES', literal(config.wakeNames.join(','))
+  buildConfigField 'String', 'SENSE_COMPONENT_PACKAGE', literal(config.componentPackage)
+  buildConfigField 'String', 'SENSE_STORAGE_NAME', literal(config.storageName)
+ }
+ sourceSets.main {
+  java.srcDirs = [new File(source, 'src/main/java'), new File(project.projectDir, 'src/main/java')].unique()
+  manifest.srcFile new File(source, 'src/main/AndroidManifest.xml')
+  res.srcDirs = [new File(source, 'src/main/res')]
+  if (project.hasProperty('elizaSenseNativeDir')) jniLibs.srcDirs += [file(project.elizaSenseNativeDir)]
+ }
+ signingConfigs {
+  if (signingReady) release {
+   storeFile file(envValue('ELIZAOS_KEYSTORE_PATH'))
+   storePassword envValue('ELIZAOS_KEYSTORE_PASSWORD')
+   keyAlias envValue('ELIZAOS_KEY_ALIAS')
+   keyPassword envValue('ELIZAOS_KEY_PASSWORD')
+  }
+ }
+ buildTypes {
+  debug { ndk { abiFilters 'arm64-v8a', 'x86_64' } }
+  release {
+   minifyEnabled false
+   ndk { abiFilters 'arm64-v8a' }
+   if (signingReady) signingConfig signingConfigs.release
+  }
+ }
+ lint { abortOnError true; disable 'ProtectedPermissions', 'SystemPermissionTypo' }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+dependencies { implementation project(project.elizaSenseSpeechProject) }

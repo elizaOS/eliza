@@ -39,6 +39,8 @@ export function isThinStewardPublicPath(pathname: string): boolean {
  *
  * - POST /steward/auth/email/send — fires on the "Magic Link" click; gates
  *   the "Check your email" screen transition.
+ * - POST /steward/auth/email/code/send — the native in-app (Example Reader)
+ *   code-only email; gates the app's code-entry screen.
  * - POST /steward/auth/email/code/verify — fires on six-digit-code submit;
  *   gates login completion.
  * - POST /steward/auth/email/status — the companion-code 3s status poll.
@@ -47,7 +49,7 @@ export function isThinStewardPublicPath(pathname: string): boolean {
  * - POST /steward/auth/email/otp/verify — verifies that code before passkey
  *   enrollment begins.
  *
- * All five are pre-auth by design: the full app applies no additional
+ * All six are pre-auth by design: the full app applies no additional
  * protection to them — `authMiddleware` and the cookie-mutation CSRF guard
  * both pass every non-`/api/` path straight through — so the thin shell's
  * replicated stack (CORS, secure headers, Redis fail-closed guard, global IP
@@ -65,6 +67,7 @@ export function isThinStewardEmailAuthPath(pathname: string): boolean {
   const normalized = removeTrailingSlashes(pathname);
   return (
     normalized === "/steward/auth/email/send" ||
+    normalized === "/steward/auth/email/code/send" ||
     normalized === "/steward/auth/email/code/verify" ||
     normalized === "/steward/auth/email/status" ||
     normalized === "/steward/auth/email/otp/send" ||
@@ -101,6 +104,14 @@ function isThinCloudOwnerPhonePath(pathname: string): boolean {
   );
 }
 
+function isThinStewardNativeGooglePath(pathname: string): boolean {
+  const path = removeTrailingSlashes(pathname);
+  return (
+    path === "/steward/auth/oauth/google/native/challenge" ||
+    path === "/steward/auth/oauth/google/native/verify"
+  );
+}
+
 export function isThinStewardPath(method: string, pathname: string): boolean {
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD") {
@@ -110,7 +121,8 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
     return (
       isThinStewardEmailAuthPath(pathname) ||
       isThinStewardPasskeyLoginOptionsPath(pathname) ||
-      isThinCloudOwnerPhonePath(pathname)
+      isThinCloudOwnerPhonePath(pathname) ||
+      isThinStewardNativeGooglePath(pathname)
     );
   }
   if (upper === "OPTIONS") {
@@ -118,7 +130,8 @@ export function isThinStewardPath(method: string, pathname: string): boolean {
       isThinStewardPublicPath(pathname) ||
       isThinStewardEmailAuthPath(pathname) ||
       isThinStewardPasskeyLoginOptionsPath(pathname) ||
-      isThinCloudOwnerPhonePath(pathname)
+      isThinCloudOwnerPhonePath(pathname) ||
+      isThinStewardNativeGooglePath(pathname)
     );
   }
   return false;

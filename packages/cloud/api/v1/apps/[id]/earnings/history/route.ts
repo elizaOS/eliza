@@ -91,20 +91,17 @@ async function __hono_GET(
     }
 
     // Get transaction history
-    const transactions = await appEarningsService.getTransactionHistory(id, {
-      limit,
-      offset,
-      type,
-    });
+    const { transactions, hasMore } =
+      await appEarningsService.getTransactionHistory(id, {
+        limit,
+        offset,
+        type,
+      });
 
     return Response.json({
       success: true,
       transactions,
-      pagination: {
-        limit,
-        offset,
-        hasMore: transactions.length === limit,
-      },
+      pagination: { limit, offset, hasMore },
     });
   } catch (error) {
     if (error instanceof ApiError) {

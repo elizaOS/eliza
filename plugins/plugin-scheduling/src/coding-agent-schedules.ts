@@ -366,6 +366,21 @@ function titleFor(pr: PrShepherdPullRequest): string {
   return `PR shepherd: ${pr.owner}/${pr.repo}#${pr.number}`;
 }
 
+/**
+ * Whether `text` names the PR `reference` ends with: `…/pull/1` and `#1` are
+ * prefixes of `…/pull/12` and `#12`, so a following digit means another PR.
+ */
+function mentionsPrReference(text: string, reference: string): boolean {
+  for (
+    let index = text.indexOf(reference);
+    index !== -1;
+    index = text.indexOf(reference, index + 1)
+  ) {
+    if (!/\d/.test(text.charAt(index + reference.length))) return true;
+  }
+  return false;
+}
+
 function buildGoal(
   pr: PrShepherdPullRequest,
   signals: PrShepherdSignal[],
@@ -601,7 +616,10 @@ async function findLiveTaskForReceipt(
       return task.id;
     }
     const haystack = `${task.title ?? ""}\n${task.originalRequest ?? ""}\n${detail?.originalRequest ?? ""}`;
-    if (haystack.includes(pr.url) || haystack.includes(titleFor(pr))) {
+    if (
+      mentionsPrReference(haystack, pr.url) ||
+      mentionsPrReference(haystack, titleFor(pr))
+    ) {
       return task.id;
     }
   }

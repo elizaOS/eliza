@@ -54,14 +54,16 @@ interface RedditEntity {
   id?: string;
 }
 
+/** One row of a `POST /ad_accounts/{id}/reports` result; `spend` is in microcurrency. */
 interface RedditReportRow {
-  SPEND?: number | string | null;
-  IMPRESSIONS?: number | string | null;
-  CLICKS?: number | string | null;
-  CONVERSIONS?: number | string | null;
-  CTR?: number | string | null;
-  CPC?: number | string | null;
-  CPM?: number | string | null;
+  spend?: number | string | null;
+  impressions?: number | string | null;
+  clicks?: number | string | null;
+  key_conversion_total_count?: number | string | null;
+}
+
+interface RedditReport {
+  metrics?: RedditReportRow[];
 }
 
 async function redditRequest<T>(
@@ -178,12 +180,14 @@ function firstNumber(...values: unknown[]): number {
 }
 
 function sumReportRows(rows: RedditReportRow[] = []): CampaignMetrics {
-  const metrics = rows.reduce(
+  const metrics = rows.reduce<
+    Pick<CampaignMetrics, "spend" | "impressions" | "clicks" | "conversions">
+  >(
     (acc, row) => ({
-      spend: acc.spend + firstNumber(row.SPEND),
-      impressions: acc.impressions + firstNumber(row.IMPRESSIONS),
-      clicks: acc.clicks + firstNumber(row.CLICKS),
-      conversions: acc.conversions + firstNumber(row.CONVERSIONS),
+      spend: acc.spend + firstNumber(row.spend) / 1_000_000,
+      impressions: acc.impressions + firstNumber(row.impressions),
+      clicks: acc.clicks + firstNumber(row.clicks),
+      conversions: acc.conversions + firstNumber(row.key_conversion_total_count),
     }),
     { spend: 0, impressions: 0, clicks: 0, conversions: 0 },
   );
@@ -195,16 +199,30 @@ function sumReportRows(rows: RedditReportRow[] = []): CampaignMetrics {
   };
 }
 
-async function listBusinesses(credentials: AdAccountCredentials): Promise<RedditBusiness[]> {
-  const response = await redditRequest<RedditBusiness[]>(
-    "/me/businesses",
-    credentials.accessToken,
-    {
+async function listAllPages<T>(endpoint: string, accessToken: string, label: string): Promise<T[]> {
+  // Reddit pages discovery lists (100 by default); follow pagination.next_token
+  // to the end so items after the first page can be discovered and selected.
+  const items: T[] = [];
+  const seenTokens = new Set<string>();
+  let token: string | undefined;
+  do {
+    const response = await redditRequest<T[]>(endpoint, accessToken, {
       method: "GET",
-      params: { "page.size": "100" },
-    },
-  );
-  return response.data ?? [];
+      params: { "page.size": "100", "page.token": token },
+    });
+    items.push(...(response.data ?? []));
+    const next = response.pagination?.next_token ?? undefined;
+    if (next && seenTokens.has(next)) {
+      throw new Error(`Reddit ${label} listing repeated a page`);
+    }
+    if (next) seenTokens.add(next);
+    token = next;
+  } while (token);
+  return items;
+}
+
+async function listBusinesses(credentials: AdAccountCredentials): Promise<RedditBusiness[]> {
+  return listAllPages<RedditBusiness>("/me/businesses", credentials.accessToken, "business");
 }
 
 async function firstProfileId(
@@ -287,14 +305,13 @@ export const redditAdsProvider: AdProvider = {
   ): Promise<Array<{ id: string; name: string }>> {
     const businesses = await listBusinesses(credentials);
     const accounts = await Promise.all(
-      businesses.map(async (business) => {
-        const response = await redditRequest<RedditAdAccount[]>(
+      businesses.map((business) =>
+        listAllPages<RedditAdAccount>(
           `/businesses/${encodeURIComponent(business.id)}/ad_accounts`,
           credentials.accessToken,
-          { method: "GET", params: { "page.size": "100" } },
-        );
-        return response.data ?? [];
-      }),
+          "ad account",
+        ),
+      ),
     );
     return accounts.flat().map((account) => ({
       id: account.id,
@@ -595,7 +612,7 @@ export const redditAdsProvider: AdProvider = {
       }
       const end = dateRange?.end ?? new Date();
       const start = dateRange?.start ?? new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const response = await redditRequest<RedditReportRow[]>(
+      const response = await redditRequest<RedditReport>(
         `/ad_accounts/${encodeURIComponent(accountId)}/reports`,
         credentials.accessToken,
         {
@@ -604,7 +621,7 @@ export const redditAdsProvider: AdProvider = {
             data: {
               starts_at: isoHour(start),
               ends_at: isoHour(end),
-              fields: ["SPEND", "IMPRESSIONS", "CLICKS", "CONVERSIONS"],
+              fields: ["SPEND", "IMPRESSIONS", "CLICKS", "KEY_CONVERSION_TOTAL_COUNT"],
               breakdowns: ["CAMPAIGN_ID"],
               filter: {
                 field: "CAMPAIGN_ID",
@@ -616,7 +633,12 @@ export const redditAdsProvider: AdProvider = {
           }),
         },
       );
-      return { success: true, metrics: sumReportRows(response.data ?? []) };
+      // `data` is required by the report schema; `data.metrics` is optional and
+      // absent when the campaign had no activity in the window.
+      if (!response.data) {
+        throw new Error("Reddit report response has no data");
+      }
+      return { success: true, metrics: sumReportRows(response.data.metrics ?? []) };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

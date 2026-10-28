@@ -92,6 +92,159 @@ function tokenize(text: string): string[] {
   return n.length ? n.split(" ") : [];
 }
 
+/** A whitespace word of the transcript, plus the offsets needed to read the
+ * user's own words back out of it. */
+interface SourceWord {
+  /** The word exactly as written (original case, punctuation and width). */
+  source: string;
+  /** Index in the transcript just past this word. */
+  sourceEnd: number;
+  /** `normalizeForWake(source)` — the matching currency. */
+  normalized: string;
+  /** `normalized` minus the spaces {@link tokenize} splits on. */
+  chunk: string;
+}
+
+/**
+ * Split the transcript into whitespace words and normalize each one.
+ * Normalizing word by word is equivalent to normalizing the whole string: the
+ * pipeline strips the Latin/Greek/Cyrillic combining block BEFORE NFKC
+ * recomposition, and recomposition cannot span the whitespace between words.
+ */
+function sourceWords(text: string): SourceWord[] {
+  const words: SourceWord[] = [];
+  for (const match of text.matchAll(/\S+/g)) {
+    const normalized = normalizeForWake(match[0]);
+    words.push({
+      source: match[0],
+      sourceEnd: (match.index ?? 0) + match[0].length,
+      normalized,
+      chunk: normalized.replace(/ /g, ""),
+    });
+  }
+  return words;
+}
+
+/**
+ * Flatten the words into the normalized token stream the matcher works on,
+ * remembering the source offset just past each token. Punctuation may split
+ * one source word into a name and command (`Eliza,turn`), so the whitespace
+ * word end cannot stand in for each token end.
+ */
+function tokensFromWords(words: SourceWord[]): {
+  tokens: string[];
+  sourceEnds: number[];
+} {
+  const tokens: string[] = [];
+  const sourceEnds: number[] = [];
+  for (const word of words) {
+    if (!word.normalized.length) continue;
+    let normalizedEnd = 0;
+    for (const token of word.normalized.split(" ")) {
+      normalizedEnd += token.length;
+      tokens.push(token);
+      sourceEnds.push(
+        word.sourceEnd -
+          word.source.length +
+          sourceOffsetForNormalized(word, normalizedEnd),
+      );
+      normalizedEnd += 1;
+    }
+  }
+  return { tokens, sourceEnds };
+}
+
+/**
+ * The source offset just past the first `normalizedOffset` characters of
+ * `word.normalized`. Normalization can change length (`é` → `e`, `ｴﾘｻﾞ` →
+ * `エリザ`), so a normalized offset cannot index the source directly; walk
+ * source code points until their normalization equals the target prefix.
+ */
+function sourceOffsetForNormalized(
+  word: SourceWord,
+  normalizedOffset: number,
+): number {
+  if (normalizedOffset <= 0) return 0;
+  if (normalizedOffset >= word.normalized.length) return word.source.length;
+  const target = word.normalized.slice(0, normalizedOffset);
+  let source = 0;
+  for (const ch of word.source) {
+    source += ch.length;
+    if (normalizeForWake(word.source.slice(0, source)) === target) {
+      // Accent folding can match before the name's trailing combining marks.
+      // Keep those marks with the name rather than leaking them into the command.
+      for (const trailing of word.source.slice(source)) {
+        if (!/\p{M}/u.test(trailing)) break;
+        const end = source + trailing.length;
+        if (normalizeForWake(word.source.slice(0, end)) !== target) break;
+        source = end;
+      }
+      return source;
+    }
+  }
+  return word.source.length;
+}
+
+/**
+ * The source offset just past the first `chunkOffset` characters of
+ * `word.chunk`, accounting for the spaces tokenization inserted where the
+ * source carried punctuation (`what's` → chunk `whats`).
+ */
+function sourceOffsetForChunk(word: SourceWord, chunkOffset: number): number {
+  if (chunkOffset <= 0) return 0;
+  if (chunkOffset >= word.chunk.length) return word.source.length;
+  let seen = 0;
+  let normalizedOffset = 0;
+  for (const ch of word.normalized) {
+    normalizedOffset += ch.length;
+    if (ch === " ") continue;
+    seen += 1;
+    if (seen === chunkOffset) break;
+  }
+  return sourceOffsetForNormalized(word, normalizedOffset);
+}
+
+/**
+ * The source offset just past a match ending at `matchEnd` in the space-less
+ * haystack the fallback searches. A word whose chunk is empty (an emoji-only
+ * word, say) contributes no haystack characters, so it coincides with its
+ * predecessor's end.
+ */
+function sourceOffsetAfterMatch(words: SourceWord[], matchEnd: number): number {
+  let cursor = 0;
+  for (const word of words) {
+    const next = cursor + word.chunk.length;
+    if (matchEnd <= next) {
+      const wordStart = word.sourceEnd - word.source.length;
+      return matchEnd <= cursor
+        ? wordStart
+        : wordStart + sourceOffsetForChunk(word, matchEnd - cursor);
+    }
+    cursor = next;
+  }
+  return words.length ? words[words.length - 1].sourceEnd : 0;
+}
+
+/**
+ * The command that follows the matched name, read from the ORIGINAL transcript
+ * so the agent receives the user's own words: `"hey Eliza what's the weather in
+ * St. Louis?"` yields `"what's the weather in St. Louis?"`, not the normalized
+ * `"what s the weather in st louis"`. This is also what the caller records as
+ * the turn's transcript, so the two no longer disagree. Separators the name
+ * abuts (`"Eliza, do it"`) are dropped.
+ */
+function commandInTranscript(transcript: string, sourceOffset: number): string {
+  return (
+    transcript
+      .slice(sourceOffset)
+      .replace(/^(?:['’]s\b|['’])\s*/iu, "")
+      // Remove speech separators, preserving command symbols such as a minus,
+      // currency sign, quotation mark, hashtag, or emoji.
+      .replace(/^[\s,.:;!?、，。：；！？—–]+/u, "")
+      .trimEnd()
+  );
+}
+
 /** Classic iterative Levenshtein distance. */
 export function levenshtein(a: string, b: string): number {
   if (a === b) return 0;
@@ -152,7 +305,9 @@ export function matchWakeName(
 ): WakeNameMatch {
   const nameTokens = tokenize(name);
   if (!nameTokens.length) return NO_MATCH;
-  const tokens = tokenize(transcript);
+  const words = sourceWords(transcript);
+  if (!words.length) return NO_MATCH;
+  const { tokens, sourceEnds } = tokensFromWords(words);
   if (!tokens.length) return NO_MATCH;
 
   const nameLen = nameTokens.join("").length;
@@ -172,7 +327,7 @@ export function matchWakeName(
       bareAllowed,
     );
     if (hit) {
-      const command = tokens.slice(hit.end).join(" ");
+      const command = commandInTranscript(transcript, sourceEnds[hit.end - 1]);
       return { matched: true, command, distance: hit.distance };
     }
   }
@@ -184,10 +339,13 @@ export function matchWakeName(
   // matching (where it would create false positives like "al" inside "also").
   const joinedName = nameTokens.join("");
   if (NON_SEGMENTING.test(joinedName)) {
-    const haystack = tokens.join("");
+    const haystack = words.map((word) => word.chunk).join("");
     const at = haystack.indexOf(joinedName);
     if (at !== -1) {
-      const command = haystack.slice(at + joinedName.length).trim();
+      const command = commandInTranscript(
+        transcript,
+        sourceOffsetAfterMatch(words, at + joinedName.length),
+      );
       return { matched: true, command, distance: 0 };
     }
   }

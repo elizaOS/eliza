@@ -175,9 +175,18 @@ function parseMailtoUnsubscribe(value: string): {
   if (!recipient) {
     return null;
   }
-  const params = new URLSearchParams(queryPart);
-  const subject = params.get("subject");
-  const body = params.get("body");
+  // RFC 6068: "+" in a mailto URI is the character "+", and a header field
+  // name is case-insensitive. URLSearchParams reads "+" as a space, which
+  // damages an unsubscribe token, so each "+" is protected first.
+  const params = new URLSearchParams(queryPart.replaceAll("+", "%2B"));
+  const headerField = (name: string): string | null => {
+    for (const [fieldName, fieldValue] of params) {
+      if (fieldName.toLowerCase() === name) return fieldValue;
+    }
+    return null;
+  };
+  const subject = headerField("subject");
+  const body = headerField("body");
   return {
     recipient,
     subject: subject?.trim() ? subject : null,
@@ -321,7 +330,9 @@ export class InboxUnsubscribeService {
       if (!message.fromEmail && !listUnsubscribe) {
         continue;
       }
-      const senderEmail = message.fromEmail ?? message.from;
+      // Gmail's from: search ignores case, so one sender can arrive as
+      // "News@Shop.example" and "news@shop.example"; group them together.
+      const senderEmail = (message.fromEmail ?? message.from).toLowerCase();
       const existing = senders.get(senderEmail);
       const options = listUnsubscribeOptions(listUnsubscribe);
       const method = unsubscribeMethod({
@@ -508,7 +519,8 @@ export class InboxUnsubscribeService {
         );
         filterCreated = true;
         filterId = filter.filterId;
-        status = "succeeded";
+        // A filter hides later mail; it does not undo a failed unsubscribe.
+        if (status !== "failed") status = "succeeded";
       }
 
       if (request.trashExisting) {
@@ -517,7 +529,7 @@ export class InboxUnsubscribeService {
           await this.gmail.trashGmailThread(accountId, threadId);
           threadsTrashed += 1;
         }
-        if (threadIds.length > 0) {
+        if (threadIds.length > 0 && status !== "failed") {
           status = "succeeded";
         }
       }

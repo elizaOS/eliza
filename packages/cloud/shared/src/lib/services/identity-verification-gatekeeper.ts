@@ -13,7 +13,7 @@ import type { ApprovalRequestsService } from "./approval-requests";
  *   - "wallet"   — EIP-191 personal_sign over the challenge message text;
  *                  recovered address must match `challengePayload.walletAddress`.
  *                  (Compatible with the SIWE / wallet auth pattern used by
- *                  cloud/packages/lib/auth/wallet-auth.ts.)
+ *                  packages/cloud/shared/src/lib/auth/wallet-auth.ts.)
  *   - "ed25519"  — base64 signature over the challenge message bytes;
  *                  verified against `challengePayload.publicKey` (base64).
  *

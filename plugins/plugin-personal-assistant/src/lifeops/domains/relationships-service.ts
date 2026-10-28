@@ -17,6 +17,8 @@ import {
   type LifeOpsRelationshipInteraction,
   SELF_ENTITY_ID,
 } from "@elizaos/contracts";
+import { ElizaError } from "@elizaos/core";
+import { foldIdentity } from "../entities/index.js";
 import type { LifeOpsContext } from "../lifeops-context.js";
 import {
   contactAttributes,
@@ -72,19 +74,46 @@ export class RelationshipsDomain {
         confidence: 1,
         suggestedType: "person",
       });
+      if (observed.conflict) {
+        throw new ElizaError(
+          "[RelationshipsDomain] Contact identity matches multiple entities",
+          {
+            code: "LIFEOPS_CONTACT_IDENTITY_CONFLICT",
+            context: {
+              platform: input.primaryChannel,
+              candidateCount: observed.mergedFrom?.length ?? 0,
+            },
+          },
+        );
+      }
       entityId = observed.entity.entityId;
     }
 
     const existing = await entityStore.get(entityId);
+    // `EntityStore.upsert` replaces identities, attributes and tags. An edit
+    // by id passes the full contact, but a re-add matched by handle names
+    // only part of the person: keep what the graph already knows about them.
+    const kept = input.id ? null : existing;
+    const identities = contactIdentities(fields, now).reduce(
+      foldIdentity,
+      kept?.identities ?? [],
+    );
     const tags = Array.from(
-      new Set([...userTags(input.tags), LIFEOPS_CONTACT_TAG]),
+      new Set([
+        ...(kept?.tags ?? []),
+        ...userTags(input.tags),
+        LIFEOPS_CONTACT_TAG,
+      ]),
     );
     const entity = await entityStore.upsert({
       entityId,
       type: "person",
       preferredName: input.name,
-      identities: contactIdentities(fields, now),
-      attributes: contactAttributes(fields, now),
+      identities,
+      attributes: {
+        ...(kept?.attributes ?? {}),
+        ...contactAttributes(fields, now),
+      },
       tags,
       visibility: "owner_agent_admin",
       state: input.lastContactedAt
@@ -105,19 +134,22 @@ export class RelationshipsDomain {
     const existingEdge = await relationshipStore.get(
       contactEdgeId(entity.entityId),
     );
+    const keptEdge = input.id ? null : existingEdge;
     const edge = await relationshipStore.upsert({
       relationshipId: contactEdgeId(entity.entityId),
       fromEntityId: SELF_ENTITY_ID,
       toEntityId: entity.entityId,
-      type: input.relationshipType || "contact",
-      metadata: { ...input.metadata },
+      type: keptEdge?.type || input.relationshipType || "contact",
+      metadata: { ...(keptEdge?.metadata ?? {}), ...input.metadata },
       state: {
         ...(existingEdge?.state ?? {}),
         ...(input.lastContactedAt
           ? { lastInteractionAt: input.lastContactedAt }
           : {}),
       },
-      evidence: [LIFEOPS_CONTACT_TAG],
+      evidence: Array.from(
+        new Set([...(keptEdge?.evidence ?? []), LIFEOPS_CONTACT_TAG]),
+      ),
       confidence: 1,
       source: "import",
     });

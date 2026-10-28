@@ -9,8 +9,8 @@
  *     owner ownership (`user_lifeops` / `owner` / `owner_only` /
  *     `explicit_only`, subjectId = the agent's admin entity) that PA's
  *     `normalizeOwnership` produces for the owner case.
- *   - `recordAudit` — writes the goal audit event into PA's shared
- *     `app_lifeops.life_audit_events` table via {@link GoalsRepository}.
+ *   - `recordAudit` — writes the goal audit event into this plugin's
+ *     `app_goals.life_goal_audit_events` table via {@link GoalsRepository}.
  *
  * When PA is loaded it constructs the {@link GoalsService} with its own
  * `recordAudit` / `normalizeOwnership` bound from the LifeOps service base, so

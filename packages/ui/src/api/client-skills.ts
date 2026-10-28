@@ -599,7 +599,7 @@ ElizaClient.prototype.setAppPermissions = async function (
 ) {
   // Body shape derived from the zod schema so a server-side rename
   // surfaces as a TS error here at compile time. See
-  // packages/core/src/contracts/app-permissions-routes.ts for the
+  // packages/contracts/src/contracts/app-permissions-routes.ts for the
   // schema this type comes from.
   const body: PutAppPermissionsRequest = {
     namespaces: Array.from(namespaces),

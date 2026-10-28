@@ -1,7 +1,16 @@
 /**
  * Bridges fused inference into the Android bionic host through JNI.
- * Encoder byte-array methods preserve standard UTF-8 across Java and native
- * tokenization; chat and voice retain their existing ABI entry points.
+ *
+ * The natives are bound with RegisterNatives from JNI_OnLoad, so the library
+ * exports JNI_OnLoad and nothing else. Consumers choose the Java class at
+ * build time and do not rewrite this file:
+ *   ELIZA_VOICE_JNI_CLASS   JNI class name, default ai/elizaos/app/ElizaVoiceNative
+ *   ELIZA_VOICE_JNI_FULL    1 registers every native (the app host); 0 registers
+ *                           only the voice subset (context, Paradee TTS, ASR
+ *                           batch + streaming, cancel, memory regions) for
+ *                           library consumers.
+ * Text crosses the boundary as standard UTF-8 byte arrays, never JNI modified
+ * UTF-8. Voice failures log the stage and status code only, never text.
  */
 
 #include <jni.h>
@@ -13,10 +22,22 @@
 #include <cstring>
 #include <dlfcn.h>
 #include <memory>
+#include <new>
 #include <string>
 #include <vector>
 
 #include "eliza-inference-ffi.h"
+
+#if ELIZA_INFERENCE_ABI_VERSION < 19
+#error "elizavoice-jni needs eliza-inference-ffi.h ABI 19 or newer (Paradee streaming)"
+#endif
+
+#ifndef ELIZA_VOICE_JNI_CLASS
+#define ELIZA_VOICE_JNI_CLASS "ai/elizaos/app/ElizaVoiceNative"
+#endif
+#ifndef ELIZA_VOICE_JNI_FULL
+#define ELIZA_VOICE_JNI_FULL 1
+#endif
 
 #define LOG_TAG "ElizaVoiceJni"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -24,13 +45,8 @@
 
 namespace {
 
-// Sample-rate / window constants (must mirror the JS contract).
+// ASR input rate when the caller passes none (must mirror the JS contract).
 constexpr int kSampleRate = 16000;
-constexpr size_t kVadWindow = 512;       // Silero v5 window @ 16 kHz
-constexpr size_t kWakeFrame = 1280;      // openWakeWord 80 ms frame @ 16 kHz
-constexpr size_t kSpeakerEmbeddingDim = 256;
-constexpr size_t kDiarizWindow = 80000;  // pyannote 5 s window @ 16 kHz
-constexpr size_t kDiarizLabelCap = 2048;
 
 jstring to_jstring(JNIEnv* env, const std::string& s) {
     return env->NewStringUTF(s.c_str());
@@ -69,12 +85,121 @@ std::vector<float> read_float_array(JNIEnv* env, jfloatArray arr) {
     return out;
 }
 
-float rms_of(const float* pcm, size_t n) {
-    if (n == 0) return 0.0f;
-    double acc = 0.0;
-    for (size_t i = 0; i < n; ++i) acc += static_cast<double>(pcm[i]) * pcm[i];
-    return static_cast<float>(std::sqrt(acc / static_cast<double>(n)));
+// Read a Java byte[] holding standard UTF-8. Returns false with a pending
+// exception when the array is missing.
+bool read_utf8(JNIEnv* env, jbyteArray input, const char* stage, std::string& out) {
+    if (input == nullptr) {
+        throw_runtime(env, std::string(stage) + ": missing UTF-8 input", nullptr);
+        return false;
+    }
+    const jsize length = env->GetArrayLength(input);
+    out.resize(static_cast<size_t>(length));
+    if (length > 0) {
+        env->GetByteArrayRegion(input, 0, length, reinterpret_cast<jbyte*>(out.data()));
+    }
+    return !env->ExceptionCheck();
 }
+
+// Build a java.lang.String from standard UTF-8. NewStringUTF expects modified
+// UTF-8 and aborts under CheckJNI on 4-byte sequences (emoji in a transcript),
+// so decode to UTF-16 here. Invalid sequences become U+FFFD.
+jstring utf8_to_jstring(JNIEnv* env, const char* data, size_t size) {
+    std::u16string out;
+    out.reserve(size);
+    const auto* p = reinterpret_cast<const unsigned char*>(data);
+    size_t i = 0;
+    while (i < size) {
+        const unsigned char c = p[i];
+        uint32_t cp = 0xFFFD;
+        size_t len = 1;
+        if (c < 0x80) {
+            cp = c;
+        } else if ((c >> 5) == 0x6 && i + 1 < size && (p[i + 1] & 0xC0) == 0x80) {
+            cp = ((c & 0x1Fu) << 6) | (p[i + 1] & 0x3Fu);
+            len = 2;
+            if (cp < 0x80) cp = 0xFFFD;
+        } else if ((c >> 4) == 0xE && i + 2 < size && (p[i + 1] & 0xC0) == 0x80 &&
+                   (p[i + 2] & 0xC0) == 0x80) {
+            cp = ((c & 0x0Fu) << 12) | ((p[i + 1] & 0x3Fu) << 6) | (p[i + 2] & 0x3Fu);
+            len = 3;
+            if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) cp = 0xFFFD;
+        } else if ((c >> 3) == 0x1E && i + 3 < size && (p[i + 1] & 0xC0) == 0x80 &&
+                   (p[i + 2] & 0xC0) == 0x80 && (p[i + 3] & 0xC0) == 0x80) {
+            cp = ((c & 0x07u) << 18) | ((p[i + 1] & 0x3Fu) << 12) |
+                 ((p[i + 2] & 0x3Fu) << 6) | (p[i + 3] & 0x3Fu);
+            len = 4;
+            if (cp < 0x10000 || cp > 0x10FFFF) cp = 0xFFFD;
+        }
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            out.push_back(static_cast<char16_t>(0xD800 + (cp >> 10)));
+            out.push_back(static_cast<char16_t>(0xDC00 + (cp & 0x3FF)));
+        } else {
+            out.push_back(static_cast<char16_t>(cp));
+        }
+        i += len;
+    }
+    return env->NewString(reinterpret_cast<const jchar*>(out.data()),
+                          static_cast<jsize>(out.size()));
+}
+
+// Throw for a failed voice call. ELIZA_ERR_CANCELLED becomes a typed
+// java.util.concurrent.CancellationException so callers can tell a requested
+// stop from a failure, and ELIZA_ERR_INVALID_ARG becomes
+// IllegalArgumentException (a rejected input that leaves the context usable,
+// so a host need not drop its resident state). Everything else is a
+// RuntimeException. The log carries the stage and status code only: native
+// diagnostics can quote the input text, so they go to the exception message.
+void throw_voice(JNIEnv* env, const char* stage, int rc, char* outError) {
+    std::string msg = std::string("[elizavoice-jni] ") + stage + " rc=" + std::to_string(rc);
+    if (outError) {
+        msg += ": ";
+        msg += outError;
+        std::free(outError);
+    }
+    LOGE("%s failed rc=%d", stage, rc);
+    jclass cls = env->FindClass(rc == ELIZA_ERR_CANCELLED
+                                    ? "java/util/concurrent/CancellationException"
+                                    : rc == ELIZA_ERR_INVALID_ARG
+                                        ? "java/lang/IllegalArgumentException"
+                                        : "java/lang/RuntimeException");
+    if (cls) env->ThrowNew(cls, msg.c_str());
+}
+
+EliInferenceContext* voice_context(JNIEnv* env, jlong handle, const char* stage) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(handle);
+    if (!ctx) throw_voice(env, stage, ELIZA_ERR_INVALID_ARG, nullptr);
+    return ctx;
+}
+
+// Hand a library-owned PCM buffer to Java and release it. A successful call
+// with no speakable input (punctuation or symbols only) yields zero samples
+// and a null buffer; that is an empty array, not a failure.
+jfloatArray take_pcm(JNIEnv* env, const char* stage, float* pcm, size_t samples) {
+    if (samples == 0) {
+        eliza_inference_free_pcm(pcm);
+        return env->NewFloatArray(0);
+    }
+    if (!pcm || samples > static_cast<size_t>(INT32_MAX)) {
+        eliza_inference_free_pcm(pcm);
+        throw_voice(env, stage, ELIZA_ERR_FFI_FAULT, nullptr);
+        return nullptr;
+    }
+    const jsize n = static_cast<jsize>(samples);
+    jfloatArray out = env->NewFloatArray(n);
+    if (out) env->SetFloatArrayRegion(out, 0, n, pcm);
+    eliza_inference_free_pcm(pcm);
+    return out;
+}
+
+#if ELIZA_VOICE_JNI_FULL
+
+// Window constants (must mirror the JS contract).
+constexpr size_t kVadWindow = 512;       // Silero v5 window @ 16 kHz
+constexpr size_t kWakeFrame = 1280;      // openWakeWord 80 ms frame @ 16 kHz
+constexpr size_t kSpeakerEmbeddingDim = 256;
+constexpr size_t kDiarizWindow = 80000;  // pyannote 5 s window @ 16 kHz
+constexpr size_t kDiarizLabelCap = 2048;
 
 // --- Native turn-segmentation state machine (ports VadDetector core) ------
 //
@@ -443,43 +568,38 @@ void arm_bionic_text_cfg(eliza_llm_stream_config_t& cfg,
     }
 }
 
-}  // namespace
-
-extern "C" {
+#endif  // ELIZA_VOICE_JNI_FULL
 
 // ── ABI / capability probes (Phase 3a, retained) ─────────────────────────
 
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVoiceAbiVersion(JNIEnv* env, jclass) {
+jstring nativeVoiceAbiVersion(JNIEnv* env, jclass) {
     const char* abi = eliza_inference_abi_version();
     LOGI("eliza_inference_abi_version() = %s", abi ? abi : "(null)");
     return to_jstring(env, abi ? std::string(abi) : std::string());
 }
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVadSupported(JNIEnv*, jclass) {
+#if ELIZA_VOICE_JNI_FULL
+jint nativeVadSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_vad_supported());
 }
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordSupported(JNIEnv*, jclass) {
+jint nativeWakewordSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_wakeword_supported());
 }
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeSpeakerSupported(JNIEnv*, jclass) {
+jint nativeSpeakerSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_speaker_supported());
 }
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizSupported(JNIEnv*, jclass) {
+jint nativeDiarizSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_diariz_supported());
 }
 
+#endif  // ELIZA_VOICE_JNI_FULL
+
 // ── Context lifecycle ────────────────────────────────────────────────────
 
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeContextCreate(JNIEnv* env, jclass,
+jlong nativeContextCreate(JNIEnv* env, jclass,
                                                          jstring jBundleDir) {
     const std::string bundleDir = from_jstring(env, jBundleDir);
     if (bundleDir.empty()) {
@@ -497,17 +617,17 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeContextCreate(JNIEnv* env, jclass,
     return reinterpret_cast<jlong>(ctx);
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeContextDestroy(JNIEnv*, jclass,
+void nativeContextDestroy(JNIEnv*, jclass,
                                                           jlong handle) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(handle);
     if (ctx) eliza_inference_destroy(ctx);
 }
 
+#if ELIZA_VOICE_JNI_FULL
+
 // ── VAD direct ops (evidence / self-test) ────────────────────────────────
 
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVadOpen(JNIEnv* env, jclass,
+jlong nativeVadOpen(JNIEnv* env, jclass,
                                                    jlong ctxHandle) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
     char* outError = nullptr;
@@ -522,8 +642,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadOpen(JNIEnv* env, jclass,
 // Process N 512-sample windows in one call; returns the per-window
 // probabilities as a Java float[] (length samples/512). Zero per-window
 // bridge calls — the whole batch runs natively.
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVadProcessBatch(JNIEnv* env, jclass,
+jfloatArray nativeVadProcessBatch(JNIEnv* env, jclass,
                                                            jlong vadHandle,
                                                            jfloatArray jPcm) {
     auto* vad = reinterpret_cast<EliVad*>(vadHandle);
@@ -553,8 +672,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadProcessBatch(JNIEnv* env, jclass,
     return out;
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVadReset(JNIEnv*, jclass,
+void nativeVadReset(JNIEnv*, jclass,
                                                     jlong vadHandle) {
     auto* vad = reinterpret_cast<EliVad*>(vadHandle);
     char* outError = nullptr;
@@ -562,16 +680,14 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadReset(JNIEnv*, jclass,
     if (outError) std::free(outError);
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVadClose(JNIEnv*, jclass,
+void nativeVadClose(JNIEnv*, jclass,
                                                     jlong vadHandle) {
     eliza_inference_vad_close(reinterpret_cast<EliVad*>(vadHandle));
 }
 
 // ── Wake-word ops ────────────────────────────────────────────────────────
 
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordOpen(JNIEnv* env, jclass,
+jlong nativeWakewordOpen(JNIEnv* env, jclass,
                                                         jlong ctxHandle,
                                                         jstring jHead) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
@@ -588,8 +704,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordOpen(JNIEnv* env, jclass,
 
 // Score N 1280-sample frames in one call; returns the per-frame P(wake) as a
 // Java float[] (length samples/1280).
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordScoreBatch(JNIEnv* env,
+jfloatArray nativeWakewordScoreBatch(JNIEnv* env,
                                                               jclass,
                                                               jlong wakeHandle,
                                                               jfloatArray jPcm) {
@@ -623,8 +738,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordScoreBatch(JNIEnv* env,
     return out;
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordReset(JNIEnv*, jclass,
+void nativeWakewordReset(JNIEnv*, jclass,
                                                          jlong wakeHandle) {
     auto* wake = reinterpret_cast<EliWakeWord*>(wakeHandle);
     char* outError = nullptr;
@@ -632,16 +746,14 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordReset(JNIEnv*, jclass,
     if (outError) std::free(outError);
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordClose(JNIEnv*, jclass,
+void nativeWakewordClose(JNIEnv*, jclass,
                                                          jlong wakeHandle) {
     eliza_inference_wakeword_close(reinterpret_cast<EliWakeWord*>(wakeHandle));
 }
 
 // ── Speaker encoder ops ──────────────────────────────────────────────────
 
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeSpeakerOpen(JNIEnv* env, jclass,
+jlong nativeSpeakerOpen(JNIEnv* env, jclass,
                                                        jlong ctxHandle,
                                                        jstring jGgufPath) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
@@ -657,8 +769,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeSpeakerOpen(JNIEnv* env, jclass,
 }
 
 // Embed a turn's PCM into a 256-float L2-normalized speaker embedding.
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeSpeakerEmbed(JNIEnv* env, jclass,
+jfloatArray nativeSpeakerEmbed(JNIEnv* env, jclass,
                                                         jlong spHandle,
                                                         jfloatArray jPcm) {
     auto* sp = reinterpret_cast<EliSpeaker*>(spHandle);
@@ -679,16 +790,14 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeSpeakerEmbed(JNIEnv* env, jclass,
     return out;
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeSpeakerClose(JNIEnv*, jclass,
+void nativeSpeakerClose(JNIEnv*, jclass,
                                                         jlong spHandle) {
     eliza_inference_speaker_close(reinterpret_cast<EliSpeaker*>(spHandle));
 }
 
 // ── Diarizer ops ─────────────────────────────────────────────────────────
 
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizOpen(JNIEnv* env, jclass,
+jlong nativeDiarizOpen(JNIEnv* env, jclass,
                                                       jlong ctxHandle,
                                                       jstring jGgufPath) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
@@ -705,8 +814,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizOpen(JNIEnv* env, jclass,
 
 // Segment a fixed 80000-sample (5 s) window into per-frame int8 powerset
 // labels; returns the labels as a Java byte[].
-JNIEXPORT jbyteArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizSegment(JNIEnv* env, jclass,
+jbyteArray nativeDiarizSegment(JNIEnv* env, jclass,
                                                          jlong diHandle,
                                                          jfloatArray jPcm) {
     auto* di = reinterpret_cast<EliDiariz*>(diHandle);
@@ -736,8 +844,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizSegment(JNIEnv* env, jclass,
     return ja;
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizClose(JNIEnv*, jclass,
+void nativeDiarizClose(JNIEnv*, jclass,
                                                        jlong diHandle) {
     eliza_inference_diariz_close(reinterpret_cast<EliDiariz*>(diHandle));
 }
@@ -746,8 +853,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeDiarizClose(JNIEnv*, jclass,
 
 // Open a pipeline session on a context. VAD, speaker and diariz are required;
 // failure releases already-opened classifiers and rejects the request.
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineOpen(JNIEnv* env, jclass,
+jlong nativePipelineOpen(JNIEnv* env, jclass,
                                                         jlong ctxHandle) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
     if (!ctx) {
@@ -788,8 +894,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineOpen(JNIEnv* env, jclass,
 // hot-loop + segmentation natively; on each speech-end runs speaker+diariz.
 // Returns a JSON array of turns completed in THIS call (may be empty). The
 // heavy embedding/labels payloads are read per-index via the getters below.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineProcess(JNIEnv* env, jclass,
+jstring nativePipelineProcess(JNIEnv* env, jclass,
                                                            jlong handle,
                                                            jfloatArray jPcm) {
     auto* s = reinterpret_cast<PipelineSession*>(handle);
@@ -818,8 +923,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineProcess(JNIEnv* env, jclass,
 
 // Force-finalize any open turn (call at end-of-capture). Returns the JSON array
 // of any turn completed by the flush.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineFlush(JNIEnv* env, jclass,
+jstring nativePipelineFlush(JNIEnv* env, jclass,
                                                          jlong handle) {
     auto* s = reinterpret_cast<PipelineSession*>(handle);
     if (!s) {
@@ -846,8 +950,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineFlush(JNIEnv* env, jclass,
 
 // Read the speaker embedding (256 floats) for the i-th turn produced by the
 // last process()/flush() call. Empty array when that turn had no embedding.
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnEmbedding(JNIEnv* env,
+jfloatArray nativePipelineTurnEmbedding(JNIEnv* env,
                                                                  jclass,
                                                                  jlong handle,
                                                                  jint index) {
@@ -866,8 +969,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnEmbedding(JNIEnv* env,
 }
 
 // Read the diariz int8 frame labels for the i-th turn.
-JNIEXPORT jbyteArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnLabels(JNIEnv* env,
+jbyteArray nativePipelineTurnLabels(JNIEnv* env,
                                                               jclass,
                                                               jlong handle,
                                                               jint index) {
@@ -886,8 +988,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnLabels(JNIEnv* env,
 }
 
 // Read the segmented turn PCM for the i-th turn. Empty array when unavailable.
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnPcm(JNIEnv* env,
+jfloatArray nativePipelineTurnPcm(JNIEnv* env,
                                                            jclass,
                                                            jlong handle,
                                                            jint index) {
@@ -905,8 +1006,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineTurnPcm(JNIEnv* env,
     return out;
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
+void nativePipelineReset(JNIEnv*, jclass,
                                                          jlong handle) {
     auto* s = reinterpret_cast<PipelineSession*>(handle);
     if (!s) return;
@@ -921,8 +1021,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineReset(JNIEnv*, jclass,
     if (outError) std::free(outError);
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineClose(JNIEnv*, jclass,
+void nativePipelineClose(JNIEnv*, jclass,
                                                          jlong handle) {
     auto* s = reinterpret_cast<PipelineSession*>(handle);
     if (!s) return;
@@ -940,8 +1039,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineClose(JNIEnv*, jclass,
 // (the per-op TURN logcat lines are the in-process evidence). Single call so it
 // does not depend on chained Capacitor awaits. `feedSamples` chunks the feed to
 // mimic the live audioFrame batching (0 = feed the whole buffer at once).
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineSelfTest(JNIEnv* env, jclass,
+jstring nativePipelineSelfTest(JNIEnv* env, jclass,
                                                             jstring jBundleDir,
                                                             jfloatArray jPcm,
                                                             jint feedSamples) {
@@ -1018,8 +1116,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativePipelineSelfTest(JNIEnv* env, jclass,
 // (reset between them) and logs both max P(wake) to logcat. Single call so the
 // JS side does not chain awaits across the broken-under-CDP Capacitor result
 // delivery — the in-process evidence is the logcat line.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordSelfTest(JNIEnv* env, jclass,
+jstring nativeWakewordSelfTest(JNIEnv* env, jclass,
                                                             jstring jBundleDir,
                                                             jfloatArray jPos,
                                                             jfloatArray jNeg) {
@@ -1091,8 +1188,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeWakewordSelfTest(JNIEnv* env, jclass,
 
 // ── VAD self-test (Phase 3a, retained for the existing harness) ──────────
 
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVadSelfTest(JNIEnv* env, jclass,
+jstring nativeVadSelfTest(JNIEnv* env, jclass,
                                                        jstring jBundleDir) {
     const char* abi = eliza_inference_abi_version();
     const std::string abiStr = abi ? std::string(abi) : std::string();
@@ -1165,25 +1261,21 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVadSelfTest(JNIEnv* env, jclass,
 // staged alongside it), llm_stream_open offloads the model to the GPU in the
 // bionic app process automatically — the path the musl bun agent cannot take.
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamSupported(JNIEnv*, jclass) {
+jint nativeLlmStreamSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_llm_stream_supported());
 }
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedSupported(JNIEnv*, jclass) {
+jint nativeEmbedSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_embed_supported());
 }
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEotSupported(JNIEnv*, jclass) {
+jint nativeEotSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_llm_eot_supported());
 }
 
 // Tokenize text -> int[] token ids. addSpecial adds BOS; parseSpecial renders
 // special tokens (<|im_start|> etc.) from the input.
-JNIEXPORT jintArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenize(JNIEnv* env, jclass,
+jintArray nativeTokenize(JNIEnv* env, jclass,
                                                     jlong ctxHandle,
                                                     jstring jText,
                                                     jboolean addSpecial,
@@ -1211,8 +1303,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenize(JNIEnv* env, jclass,
 
 // Pooled, L2-normalized sentence embedding (pooling: 1=MEAN default) ->
 // float[n_embd].
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbed(JNIEnv* env, jclass,
+jfloatArray nativeEmbed(JNIEnv* env, jclass,
                                                  jlong ctxHandle, jstring jText,
                                                  jint pooling) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
@@ -1232,22 +1323,9 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbed(JNIEnv* env, jclass,
     return ja;
 }
 
-// Encoder transport uses standard UTF-8 bytes, never JNI modified UTF-8.
-static bool embedding_bytes(JNIEnv* env, jbyteArray input, std::string& out) {
-    if (!input) {
-        throw_runtime(env, "embedding: missing UTF-8 input", nullptr);
-        return false;
-    }
-    const jsize length = env->GetArrayLength(input);
-    out.resize(static_cast<size_t>(length));
-    if (length > 0) env->GetByteArrayRegion(input, 0, length, reinterpret_cast<jbyte*>(out.data()));
-    return !env->ExceptionCheck();
-}
-
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeContextCreateUtf8(JNIEnv* env, jclass, jbyteArray input) {
+jlong nativeContextCreateUtf8(JNIEnv* env, jclass, jbyteArray input) {
     std::string bundle;
-    if (!embedding_bytes(env, input, bundle)) return 0;
+    if (!read_utf8(env, input, "embedding", bundle)) return 0;
     if (bundle.empty() || bundle.find('\0') != std::string::npos) {
         throw_runtime(env, "embedding: invalid bundle path", nullptr);
         return 0;
@@ -1263,7 +1341,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeContextCreateUtf8(JNIEnv* env, jclass
 
 static jintArray tokenize_embedding_utf8(JNIEnv* env, jlong handle, jbyteArray input, bool parse_special) {
     std::string text;
-    if (!embedding_bytes(env, input, text)) return nullptr;
+    if (!read_utf8(env, input, "embedding", text)) return nullptr;
     int* tokens = nullptr;
     size_t count = 0;
     char* error = nullptr;
@@ -1283,7 +1361,7 @@ static jintArray tokenize_embedding_utf8(JNIEnv* env, jlong handle, jbyteArray i
 
 static jfloatArray embed_utf8(JNIEnv* env, jlong handle, jbyteArray input, jint pooling, bool with_options, bool parse_special) {
     std::string text;
-    if (!embedding_bytes(env, input, text)) return nullptr;
+    if (!read_utf8(env, input, "embedding", text)) return nullptr;
     std::vector<float> values(384);
     int dimension = 0;
     char* error = nullptr;
@@ -1320,29 +1398,24 @@ static jfloatArray embed_utf8(JNIEnv* env, jlong handle, jbyteArray input, jint 
     return result;
 }
 
-JNIEXPORT jintArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input) {
+jintArray nativeTokenizeUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input) {
     return tokenize_embedding_utf8(env, handle, input, false);
 }
 
-JNIEXPORT jintArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeTokenizeWithOptionsUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jboolean parse_special) {
+jintArray nativeTokenizeWithOptionsUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jboolean parse_special) {
     return tokenize_embedding_utf8(env, handle, input, parse_special == JNI_TRUE);
 }
 
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling) {
+jfloatArray nativeEmbedUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling) {
     return embed_utf8(env, handle, input, pooling, false, false);
 }
 
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEmbedWithOptionsUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling, jboolean parse_special) {
+jfloatArray nativeEmbedWithOptionsUtf8(JNIEnv* env, jclass, jlong handle, jbyteArray input, jint pooling, jboolean parse_special) {
     return embed_utf8(env, handle, input, pooling, true, parse_special == JNI_TRUE);
 }
 
 // End-of-turn score: next-token P(targetToken | tokens) -> float.
-JNIEXPORT jfloat JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeEotScore(JNIEnv* env, jclass,
+jfloat nativeEotScore(JNIEnv* env, jclass,
                                                     jlong ctxHandle,
                                                     jintArray jTokens,
                                                     jint targetToken) {
@@ -1370,8 +1443,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeEotScore(JNIEnv* env, jclass,
 // (the lib ignores 0 when libggml-vulkan is linked; the CPU/GPU choice is the
 // staged LIB VARIANT, see the per-device selection). drafterPath ("" = none)
 // enables MTP speculative decoding.
-JNIEXPORT jlong JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
+jlong nativeLlmStreamOpen(
     JNIEnv* env, jclass, jlong ctxHandle, jint maxTokens, jfloat temperature,
     jfloat topP, jint topK, jint nGpuLayers, jstring jDrafterPath) {
     auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
@@ -1403,8 +1475,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamOpen(
     return reinterpret_cast<jlong>(s);
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamPrefill(JNIEnv* env, jclass,
+void nativeLlmStreamPrefill(JNIEnv* env, jclass,
                                                             jlong streamHandle,
                                                             jintArray jTokens) {
     auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
@@ -1430,8 +1501,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamPrefill(JNIEnv* env, jclass,
 // the previous signature always passed the full 256-token buffer as the cap,
 // so one native call decoded ~256 tokens regardless of the caller's per-turn
 // maxTokens, and the Java-side cap check only ran after all that eval work.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamNext(JNIEnv* env, jclass,
+jstring nativeLlmStreamNext(JNIEnv* env, jclass,
                                                          jlong streamHandle,
                                                          jint maxStepTokens) {
     auto* s = reinterpret_cast<EliLlmStream*>(streamHandle);
@@ -1477,8 +1547,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamNext(JNIEnv* env, jclass,
     return to_jstring(env, json);
 }
 
-JNIEXPORT void JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamClose(JNIEnv*, jclass,
+void nativeLlmStreamClose(JNIEnv*, jclass,
                                                           jlong streamHandle) {
     eliza_inference_llm_stream_close(
         reinterpret_cast<EliLlmStream*>(streamHandle));
@@ -1486,8 +1555,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamClose(JNIEnv*, jclass,
 
 // Reset a persistent stream (clear KV + sampler + counters) for warm reuse.
 // Returns 1 on success, 0 if the stream can't be reset (MTP / null).
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamReset(JNIEnv*, jclass,
+jint nativeLlmStreamReset(JNIEnv*, jclass,
                                                           jlong streamHandle) {
     const int rc = eliza_inference_llm_stream_reset(
         reinterpret_cast<EliLlmStream*>(streamHandle));
@@ -1497,8 +1565,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamReset(JNIEnv*, jclass,
 // Prefix-preserving reset: keep the first nKeep tokens of KV resident, drop the
 // rest. Returns the n_keep actually applied (>= 0), or a negative ELIZA_* on a
 // NULL / MTP / unopened stream (caller falls back to a full reset + prefill).
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamResetKeep(JNIEnv*, jclass,
+jint nativeLlmStreamResetKeep(JNIEnv*, jclass,
                                                               jlong streamHandle,
                                                               jint nKeep) {
     const int rc = eliza_inference_llm_stream_reset_keep(
@@ -1513,8 +1580,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmStreamResetKeep(JNIEnv*, jclass,
 // into jniLibs. When that lib is the dynamic-Vulkan variant, ggml-vulkan logs
 // "Found 1 Vulkan devices: Mali-G715" + "offloaded N/N layers to GPU" to
 // logcat (the in-process GPU evidence). Returns JSON {ok,text,tokens,ms,tokS}.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
+jstring nativeLlmSelfTest(JNIEnv* env, jclass,
                                                        jstring jBundleDir,
                                                        jstring jPrompt,
                                                        jint maxTokens) {
@@ -1636,129 +1702,387 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeLlmSelfTest(JNIEnv* env, jclass,
     return to_jstring(env, json);
 }
 
-// ── Kokoro TTS (ABI v10) ─────────────────────────────────────────────────
-// Synthesize speech in-process via the fused Kokoro-82M head. This is what lets
-// the Android app speak with the real on-device voice instead of falling back to
-// the platform TextToSpeech: TalkMode (this bionic process) → bionic host "tts"
-// op → here. Returns a float[] of 24 kHz PCM (the model's native rate).
+#endif  // ELIZA_VOICE_JNI_FULL
 
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSampleRate(JNIEnv*, jclass,
-                                                            jlong ctxHandle) {
-    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
-    return ctx ? eliza_inference_kokoro_sample_rate(ctx) : -1;
+// ── Paradee-8M TTS with native misaki G2P (ABI v17) ──────────────────────
+//
+// Paradee speaks one English voice at 24 kHz from misaki phonemes. The fused
+// library turns text into misaki phonemes itself (lexicon + rules, eSpeak NG
+// only for out-of-lexicon words when its data is given), so no caller needs a
+// phonemizer. The model stays loaded on the context; nativeParadeeLoad is
+// cheap when the same files are already loaded.
+
+jint nativeParadeeSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_paradee_supported());
 }
 
-JNIEXPORT jfloatArray JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeKokoroSynthesizeIpa(JNIEnv* env, jclass,
-                                                            jlong ctxHandle,
-                                                            jstring jGguf,
-                                                            jstring jVoiceBin,
-                                                            jstring jIpa,
-                                                            jfloat speed) {
-    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
-    if (!ctx) {
-        throw_runtime(env, "kokoroSynthesize: null context", nullptr);
-        return nullptr;
-    }
+jint nativeParadeeLoad(JNIEnv* env, jclass, jlong ctxHandle, jstring jGguf,
+                       jstring jLexicon, jstring jEspeakDir) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_load");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
     const std::string gguf = from_jstring(env, jGguf);
-    const std::string voiceBin = from_jstring(env, jVoiceBin);
-    // Native input is capped at 510 tokens including two padding tokens.
-    if (!jIpa || env->GetStringLength(jIpa) == 0 || env->GetStringLength(jIpa) > 508) {
-        throw_runtime(env, "kokoroSynthesizeIpa: expected 1..508 IPA symbols", nullptr);
-        return nullptr;
+    const std::string lexicon = from_jstring(env, jLexicon);
+    const std::string espeak = from_jstring(env, jEspeakDir);
+    if (gguf.empty() || lexicon.empty()) {
+        throw_voice(env, "paradee_load: model and lexicon paths", ELIZA_ERR_INVALID_ARG, nullptr);
+        return ELIZA_ERR_INVALID_ARG;
     }
-    const std::string ipa = from_jstring(env, jIpa);
     char* err = nullptr;
-    // style_dim 256 for Kokoro v1.0. Reloads only when the model/voice changed
-    // (the FFI caches the resident model + voice preset).
-    if (eliza_inference_kokoro_load(ctx, gguf.c_str(), voiceBin.c_str(), 256, &err) != 0) {
-        throw_runtime(env, "kokoro_load failed", err);
+    const int rc = eliza_inference_paradee_load(
+        ctx, gguf.c_str(), lexicon.c_str(), espeak.empty() ? nullptr : espeak.c_str(), &err);
+    if (rc != ELIZA_OK) {
+        throw_voice(env, "paradee_load", rc, err);
+        return rc;
+    }
+    return ELIZA_OK;
+}
+
+jint nativeParadeeSampleRate(JNIEnv*, jclass, jlong ctxHandle) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    return ctx ? eliza_inference_paradee_sample_rate(ctx) : ELIZA_ERR_INVALID_ARG;
+}
+
+jint nativeParadeeG2pKind(JNIEnv*, jclass, jlong ctxHandle) {
+    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
+    return ctx ? eliza_inference_paradee_g2p_kind(ctx) : ELIZA_ERR_INVALID_ARG;
+}
+
+jstring nativeParadeePhonemize(JNIEnv* env, jclass, jlong ctxHandle, jbyteArray jText) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_phonemize");
+    std::string text;
+    if (!ctx || !read_utf8(env, jText, "paradee_phonemize", text)) return nullptr;
+    char* phonemes = nullptr;
+    char* err = nullptr;
+    // Returns the phoneme byte length on success.
+    const int rc = eliza_inference_paradee_phonemize(ctx, text.data(), text.size(), &phonemes, &err);
+    if (rc < 0) {
+        if (phonemes) eliza_inference_free_string(phonemes);
+        throw_voice(env, "paradee_phonemize", rc, err);
         return nullptr;
     }
+    jstring out = utf8_to_jstring(env, phonemes ? phonemes : "", phonemes ? static_cast<size_t>(rc) : 0);
+    if (phonemes) eliza_inference_free_string(phonemes);
+    return out;
+}
+
+jfloatArray nativeParadeeSynthesize(JNIEnv* env, jclass, jlong ctxHandle, jbyteArray jText,
+                                    jfloat speed) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_synthesize");
+    std::string text;
+    if (!ctx || !read_utf8(env, jText, "paradee_synthesize", text)) return nullptr;
     float* pcm = nullptr;
     size_t samples = 0;
-    err = nullptr;
-    const int rc = eliza_inference_kokoro_synthesize_ipa_alloc(
-        ctx, ipa.c_str(), ipa.size(), speed, &pcm, &samples, &err);
-    if (rc != 0) {
-        throw_runtime(env, "kokoro_synthesize_ipa failed", err);
-        return nullptr;
-    }
-    if (!pcm || samples == 0 || samples > static_cast<size_t>(INT32_MAX)) {
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_synthesize_alloc(
+        ctx, text.data(), text.size(), speed, &pcm, &samples, &err);
+    if (rc != ELIZA_OK) {
         eliza_inference_free_pcm(pcm);
-        throw_runtime(env, "kokoro_synthesize_ipa returned invalid sample count", nullptr);
+        throw_voice(env, "paradee_synthesize", rc, err);
         return nullptr;
     }
-    const jsize n = static_cast<jsize>(samples);
-    jfloatArray out = env->NewFloatArray(n);
-    if (out) env->SetFloatArrayRegion(out, 0, n, pcm);
-    eliza_inference_free_pcm(pcm);
-    LOGI("nativeKokoroSynthesizeIpa: %zu IPA bytes -> %d samples", ipa.size(), n);
-    return out;
+    LOGI("paradee_synthesize: %zu text bytes -> %zu samples", text.size(), samples);
+    return take_pcm(env, "paradee_synthesize: no audio", pcm, samples);
+}
+
+jfloatArray nativeParadeeSynthesizePhonemes(JNIEnv* env, jclass, jlong ctxHandle,
+                                            jbyteArray jPhonemes, jfloat speed) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_synthesize_phonemes");
+    std::string phonemes;
+    if (!ctx || !read_utf8(env, jPhonemes, "paradee_synthesize_phonemes", phonemes)) return nullptr;
+    float* pcm = nullptr;
+    size_t samples = 0;
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_synthesize_phonemes_alloc(
+        ctx, phonemes.data(), phonemes.size(), speed, &pcm, &samples, &err);
+    if (rc != ELIZA_OK) {
+        eliza_inference_free_pcm(pcm);
+        throw_voice(env, "paradee_synthesize_phonemes", rc, err);
+        return nullptr;
+    }
+    LOGI("paradee_synthesize_phonemes: %zu phoneme bytes -> %zu samples", phonemes.size(), samples);
+    return take_pcm(env, "paradee_synthesize_phonemes: no audio", pcm, samples);
+}
+
+struct ParadeeStreamSink {
+    JNIEnv * env;
+    jobject sink;
+    jmethodID method;
+};
+
+static int paradee_stream_chunk(const float * pcm, size_t samples, int final, void * user) {
+    auto & target = *static_cast<ParadeeStreamSink *>(user);
+    JNIEnv * env = target.env;
+    if (env->ExceptionCheck()) return 1;
+    if (samples > 24000 || (samples && !pcm)) {
+        throw_voice(env, "paradee stream: invalid PCM window", ELIZA_ERR_FFI_FAULT, nullptr);
+        return 1;
+    }
+    jfloatArray chunk = env->NewFloatArray(static_cast<jsize>(samples));
+    if (!chunk) return 1;
+    if (samples) env->SetFloatArrayRegion(chunk, 0, static_cast<jsize>(samples), pcm);
+    jboolean accepted = JNI_FALSE;
+    if (!env->ExceptionCheck()) accepted = env->CallBooleanMethod(target.sink, target.method, chunk, final ? JNI_TRUE : JNI_FALSE);
+    env->DeleteLocalRef(chunk);
+    return env->ExceptionCheck() || accepted != JNI_TRUE ? 1 : 0;
+}
+
+jint nativeParadeeStreamSupported(JNIEnv *, jclass) {
+    return eliza_inference_paradee_stream_supported();
+}
+
+void nativeParadeeSynthesizeStream(JNIEnv * env, jclass, jlong ctxHandle,
+        jbyteArray text, jfloat speed, jobject sink) {
+    auto * ctx = voice_context(env, ctxHandle, "paradee stream");
+    if (!ctx) return;
+    if (!sink) {
+        throw_voice(env, "paradee stream: missing sink", ELIZA_ERR_INVALID_ARG, nullptr);
+        return;
+    }
+    std::string utf8;
+    if (!read_utf8(env, text, "paradee stream", utf8)) return;
+    jclass type = env->GetObjectClass(sink);
+    if (!type) return;
+    jmethodID method = env->GetMethodID(type, "onChunk", "([FZ)Z");
+    env->DeleteLocalRef(type);
+    if (!method || env->ExceptionCheck()) return;
+    ParadeeStreamSink target{env, sink, method};
+    char * error = nullptr;
+    const int rc = eliza_inference_paradee_synthesize_stream(
+        ctx, utf8.data(), utf8.size(), speed, paradee_stream_chunk, &target, &error);
+    if (env->ExceptionCheck()) { eliza_inference_free_string(error); return; }
+    if (rc != ELIZA_OK) throw_voice(env, "paradee stream", rc, error);
+}
+
+// Stop the TTS forward pass running on another thread. The running call
+// throws CancellationException. Cancelling nothing is not an error.
+jint nativeCancelTts(JNIEnv* env, jclass, jlong ctxHandle) {
+    auto* ctx = voice_context(env, ctxHandle, "cancel_tts");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    char* err = nullptr;
+    const int rc = eliza_inference_cancel_tts(ctx, &err);
+    if (rc != ELIZA_OK) throw_voice(env, "cancel_tts", rc, err);
+    return rc;
 }
 
 // ── Batch ASR (synchronous, VAD-free) ────────────────────────────────────
 //
-// The streaming pipeline (nativePipelineProcess) is VAD-gated and needs the
-// VAD/diariz/speaker GGUFs staged; this is the DIRECT audio-in/text-out
-// transcribe the fused lib exposes (eliza_inference_asr_transcribe), which
-// only mmap-acquires the `asr/` weights on the resident context. The bionic
-// host's op="asr" calls this so the agent's TRANSCRIPTION delegate gets a
-// real on-device transcript without the full attribution pipeline.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeAsrTranscribe(JNIEnv* env, jclass,
-                                                         jlong ctxHandle,
-                                                         jfloatArray jPcm,
-                                                         jint sampleRate) {
-    auto* ctx = reinterpret_cast<EliInferenceContext*>(ctxHandle);
-    if (!ctx) {
-        throw_runtime(env, "asrTranscribe: null context", nullptr);
+// The DIRECT audio-in/text-out transcribe of the fused lib
+// (eliza_inference_asr_transcribe). It acquires the `asr/` weights on the
+// context on first use. The bionic host's op="asr" and the paradee-voice
+// NativeAsr call this.
+
+jint nativeAsrSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_asr_supported());
+}
+
+jstring nativeAsrTranscribe(JNIEnv* env, jclass, jlong ctxHandle, jfloatArray jPcm,
+                            jint sampleRate) {
+    auto* ctx = voice_context(env, ctxHandle, "asr_transcribe");
+    if (!ctx) return nullptr;
+    if (!jPcm) {
+        throw_voice(env, "asr_transcribe: missing PCM", ELIZA_ERR_INVALID_ARG, nullptr);
         return nullptr;
     }
-    const jsize n = env->GetArrayLength(jPcm);
-    jfloat* pcm = env->GetFloatArrayElements(jPcm, nullptr);
-    if (!pcm) {
-        throw_runtime(env, "asrTranscribe: null PCM", nullptr);
-        return nullptr;
-    }
-    // The ASR weights are a voice-only mmap region that must be armed before
-    // transcribe (VoiceLifecycle normally does this on voice-on). The agent's
-    // one-shot transcribe path has no lifecycle, so arm it here (idempotent if
-    // already acquired).
+    // The ASR weights are a voice-only region that must be acquired before
+    // transcribe. Idempotent when already acquired; reloads after an evict.
     char* acqErr = nullptr;
-    if (eliza_inference_mmap_acquire(ctx, "asr", &acqErr) != 0) {
-        env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
-        throw_runtime(env, "asr mmap_acquire", acqErr);
+    const int acquired = eliza_inference_mmap_acquire(ctx, "asr", &acqErr);
+    if (acquired != ELIZA_OK) {
+        throw_voice(env, "asr mmap_acquire", acquired, acqErr);
         return nullptr;
     }
+    const std::vector<float> pcm = read_float_array(env, jPcm);
     // Caller-owned storage is required by the ABI. Saturation is rejected below
     // so this boundary never returns a transcript prefix as a successful result.
     std::vector<char> out(1024 * 1024, 0);
     char* err = nullptr;
     const int rc = eliza_inference_asr_transcribe(
-        ctx, reinterpret_cast<const float*>(pcm), static_cast<size_t>(n),
-        sampleRate > 0 ? sampleRate : kSampleRate, out.data(), out.size(),
-        &err);
-    env->ReleaseFloatArrayElements(jPcm, pcm, JNI_ABORT);
+        ctx, pcm.data(), pcm.size(), sampleRate > 0 ? sampleRate : kSampleRate,
+        out.data(), out.size(), &err);
     if (rc < 0) {
-        throw_runtime(env, "asr_transcribe", err);
+        throw_voice(env, "asr_transcribe", rc, err);
         return nullptr;
     }
     if (static_cast<size_t>(rc) >= out.size() - 1 || out.back() != 0) {
-        throw_runtime(env,
-                      "asr_transcribe result-too-large: native transcript capture saturated",
-                      nullptr);
+        throw_voice(env, "asr_transcribe: transcript capture saturated", ELIZA_ERR_OOM, nullptr);
         return nullptr;
     }
-    LOGI("nativeAsrTranscribe: %d samples @ %d Hz -> %d transcript bytes",
-         (int)n, (int)sampleRate, rc);
-    return to_jstring(env, std::string(out.data()));
+    LOGI("asr_transcribe: %zu samples @ %d Hz -> %d transcript bytes", pcm.size(),
+         (int)sampleRate, rc);
+    return utf8_to_jstring(env, out.data(), static_cast<size_t>(rc));
 }
 
+// Stop a transcribe running on another thread; it throws
+// CancellationException. Cancelling nothing is not an error.
+jint nativeAsrCancel(JNIEnv* env, jclass, jlong ctxHandle) {
+    auto* ctx = voice_context(env, ctxHandle, "asr_cancel");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    char* err = nullptr;
+    const int rc = eliza_inference_asr_cancel(ctx, &err);
+    if (rc != ELIZA_OK) throw_voice(env, "asr_cancel", rc, err);
+    return rc;
+}
+
+// ── Streaming ASR (Parakeet-TDT backend, ABI v18 fork) ───────────────────
+//
+// open → feed* → partial* → finish → close, on a context whose "asr" region
+// holds a parakeet-tdt GGUF (Phonon-2 under <bundle>/asr/). The Java handle
+// is a bridge-owned AsrStream that remembers the context, so cancel only
+// needs the stream handle. Thread rules (from the ABI): feed only buffers and
+// may run on the audio thread while partial/finish decode on another;
+// partial/finish/cancel never race close on the same handle — the caller
+// closes once, after the last call returns. Token ids are never returned.
+
+struct AsrStream {
+    EliInferenceContext* ctx;
+    EliAsrStream* stream;
+};
+
+// Running transcripts are short; 64 KiB covers well over the 60 s cap.
+constexpr size_t kAsrStreamTextBytes = 64 * 1024;
+
+AsrStream* asr_stream(JNIEnv* env, jlong handle, const char* stage) {
+    auto* s = reinterpret_cast<AsrStream*>(handle);
+    if (!s || !s->stream) throw_voice(env, stage, ELIZA_ERR_INVALID_ARG, nullptr);
+    return s;
+}
+
+// 1 when this library can stream: the parakeet backend is compiled in and
+// some context has it loaded (0 before the first "asr" acquire and after an
+// evict).
+jint nativeAsrStreamSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_asr_stream_supported());
+}
+
+// Acquire the "asr" region (idempotent) and open a stream for PCM at
+// `sampleRate` Hz (the library resamples). Throws when the bundle's ASR is
+// not the parakeet backend; callers then keep the batch path.
+jlong nativeAsrStreamOpen(JNIEnv* env, jclass, jlong ctxHandle, jint sampleRate) {
+    auto* ctx = voice_context(env, ctxHandle, "asr_stream_open");
+    if (!ctx) return 0;
+    if (sampleRate <= 0) {
+        throw_voice(env, "asr_stream_open: sample rate", ELIZA_ERR_INVALID_ARG, nullptr);
+        return 0;
+    }
+    char* acqErr = nullptr;
+    const int acquired = eliza_inference_mmap_acquire(ctx, "asr", &acqErr);
+    if (acquired != ELIZA_OK) {
+        throw_voice(env, "asr mmap_acquire", acquired, acqErr);
+        return 0;
+    }
+    auto* wrapper = new (std::nothrow) AsrStream{ctx, nullptr};
+    if (!wrapper) {
+        throw_voice(env, "asr_stream_open", ELIZA_ERR_OOM, nullptr);
+        return 0;
+    }
+    char* err = nullptr;
+    wrapper->stream = eliza_inference_asr_stream_open(ctx, static_cast<int>(sampleRate), &err);
+    if (!wrapper->stream) {
+        delete wrapper;
+        // Not the parakeet backend (or evicted): a rejected request, not a fault.
+        throw_voice(env, "asr_stream_open", ELIZA_ERR_INVALID_ARG, err);
+        return 0;
+    }
+    LOGI("asr_stream_open: %d Hz", (int)sampleRate);
+    return reinterpret_cast<jlong>(wrapper);
+}
+
+// Buffer fp32 mono PCM at the stream's rate. Never decodes, so it is safe on
+// the audio thread. Returns the samples consumed.
+jint nativeAsrStreamFeed(JNIEnv* env, jclass, jlong streamHandle, jfloatArray jPcm) {
+    auto* s = asr_stream(env, streamHandle, "asr_stream_feed");
+    if (!s) return ELIZA_ERR_INVALID_ARG;
+    if (!jPcm) {
+        throw_voice(env, "asr_stream_feed: missing PCM", ELIZA_ERR_INVALID_ARG, nullptr);
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    const std::vector<float> pcm = read_float_array(env, jPcm);
+    if (pcm.empty()) return 0;
+    char* err = nullptr;
+    const int rc = eliza_inference_asr_stream_feed(s->stream, pcm.data(), pcm.size(), &err);
+    if (rc < 0) throw_voice(env, "asr_stream_feed", rc, err);
+    return rc;
+}
+
+jstring asr_stream_text(JNIEnv* env, jlong streamHandle, bool finish) {
+    const char* stage = finish ? "asr_stream_finish" : "asr_stream_partial";
+    auto* s = asr_stream(env, streamHandle, stage);
+    if (!s) return nullptr;
+    std::vector<char> out(kAsrStreamTextBytes, 0);
+    size_t nTokens = 0;
+    char* err = nullptr;
+    const int rc = finish
+        ? eliza_inference_asr_stream_finish(s->stream, out.data(), out.size(), nullptr, &nTokens, &err)
+        : eliza_inference_asr_stream_partial(s->stream, out.data(), out.size(), nullptr, &nTokens, &err);
+    if (rc < 0) {
+        throw_voice(env, stage, rc, err);
+        return nullptr;
+    }
+    const size_t n = std::min(static_cast<size_t>(rc), out.size() - 1);
+    return utf8_to_jstring(env, out.data(), n);
+}
+
+// Decode what has been fed and return the running transcript.
+jstring nativeAsrStreamPartial(JNIEnv* env, jclass, jlong streamHandle) {
+    return asr_stream_text(env, streamHandle, false);
+}
+
+// Drain buffered audio, run the last decode and return the final transcript.
+// Later feeds fail; the handle stays valid until close.
+jstring nativeAsrStreamFinish(JNIEnv* env, jclass, jlong streamHandle) {
+    return asr_stream_text(env, streamHandle, true);
+}
+
+// Stop a partial/finish decoding on another thread; it throws
+// CancellationException. Uses the stream's context, so it also stops a batch
+// transcribe on that context. Cancelling nothing is not an error.
+jint nativeAsrStreamCancel(JNIEnv* env, jclass, jlong streamHandle) {
+    auto* s = asr_stream(env, streamHandle, "asr_stream_cancel");
+    if (!s) return ELIZA_ERR_INVALID_ARG;
+    char* err = nullptr;
+    const int rc = eliza_inference_asr_cancel(s->ctx, &err);
+    if (rc != ELIZA_OK) throw_voice(env, "asr_stream_cancel", rc, err);
+    return rc;
+}
+
+// Free the stream. Idempotent on 0. Must not race other calls on the handle.
+void nativeAsrStreamClose(JNIEnv*, jclass, jlong streamHandle) {
+    auto* s = reinterpret_cast<AsrStream*>(streamHandle);
+    if (!s) return;
+    eliza_inference_asr_stream_close(s->stream);
+    delete s;
+}
+
+// ── Voice memory regions ─────────────────────────────────────────────────
+//
+// Region names are the ABI set ("tts", "asr", "vad", "text", "dflash").
+// Evicting "tts" or "asr" frees those weights and keeps the context, so the
+// host can answer onTrimMemory without a full reload; the next voice call
+// loads them again.
+
+jint nativeMmapAcquire(JNIEnv* env, jclass, jlong ctxHandle, jstring jRegion) {
+    auto* ctx = voice_context(env, ctxHandle, "mmap_acquire");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    const std::string region = from_jstring(env, jRegion);
+    char* err = nullptr;
+    const int rc = eliza_inference_mmap_acquire(ctx, region.c_str(), &err);
+    if (rc != ELIZA_OK) throw_voice(env, "mmap_acquire", rc, err);
+    return rc;
+}
+
+jint nativeMmapEvict(JNIEnv* env, jclass, jlong ctxHandle, jstring jRegion) {
+    auto* ctx = voice_context(env, ctxHandle, "mmap_evict");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    const std::string region = from_jstring(env, jRegion);
+    char* err = nullptr;
+    const int rc = eliza_inference_mmap_evict(ctx, region.c_str(), &err);
+    if (rc != ELIZA_OK) throw_voice(env, "mmap_evict", rc, err);
+    return rc;
+}
+
+#if ELIZA_VOICE_JNI_FULL
 // ── mmproj vision (ABI v9) ───────────────────────────────────────────────
-JNIEXPORT jint JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeVisionSupported(JNIEnv*, jclass) {
+jint nativeVisionSupported(JNIEnv*, jclass) {
     return static_cast<jint>(eliza_inference_vision_supported());
 }
 
@@ -1766,8 +2090,7 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeVisionSupported(JNIEnv*, jclass) {
 // projector (eliza_inference_describe_image). The bionic host's op="image"
 // calls this so the agent's IMAGE_DESCRIPTION delegate runs screen/vision
 // recognition fully on-device.
-JNIEXPORT jstring JNICALL
-Java_ai_elizaos_app_ElizaVoiceNative_nativeDescribeImage(JNIEnv* env, jclass,
+jstring nativeDescribeImage(JNIEnv* env, jclass,
                                                          jlong ctxHandle,
                                                          jbyteArray jImage,
                                                          jstring jMmproj,
@@ -1803,4 +2126,132 @@ Java_ai_elizaos_app_ElizaVoiceNative_nativeDescribeImage(JNIEnv* env, jclass,
     return to_jstring(env, std::string(out.data()));
 }
 
-}  // extern "C"
+#endif  // ELIZA_VOICE_JNI_FULL
+
+// ── Registration ─────────────────────────────────────────────────────────
+
+#define ELIZA_NATIVE(name, signature) \
+    JNINativeMethod { const_cast<char*>(#name), const_cast<char*>(signature), reinterpret_cast<void*>(name) }
+
+const JNINativeMethod kVoiceMethods[] = {
+    ELIZA_NATIVE(nativeVoiceAbiVersion, "()Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeContextCreate, "(Ljava/lang/String;)J"),
+    ELIZA_NATIVE(nativeContextDestroy, "(J)V"),
+    ELIZA_NATIVE(nativeParadeeSupported, "()I"),
+    ELIZA_NATIVE(nativeParadeeLoad, "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)I"),
+    ELIZA_NATIVE(nativeParadeeSampleRate, "(J)I"),
+    ELIZA_NATIVE(nativeParadeeG2pKind, "(J)I"),
+    ELIZA_NATIVE(nativeParadeePhonemize, "(J[B)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeParadeeSynthesize, "(J[BF)[F"),
+    ELIZA_NATIVE(nativeParadeeStreamSupported, "()I"),
+    ELIZA_NATIVE(nativeParadeeSynthesizeStream, "(J[BFLjava/lang/Object;)V"),
+    ELIZA_NATIVE(nativeParadeeSynthesizePhonemes, "(J[BF)[F"),
+    ELIZA_NATIVE(nativeCancelTts, "(J)I"),
+    ELIZA_NATIVE(nativeAsrSupported, "()I"),
+    ELIZA_NATIVE(nativeAsrTranscribe, "(J[FI)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeAsrCancel, "(J)I"),
+    ELIZA_NATIVE(nativeAsrStreamSupported, "()I"),
+    ELIZA_NATIVE(nativeAsrStreamOpen, "(JI)J"),
+    ELIZA_NATIVE(nativeAsrStreamFeed, "(J[F)I"),
+    ELIZA_NATIVE(nativeAsrStreamPartial, "(J)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeAsrStreamFinish, "(J)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeAsrStreamCancel, "(J)I"),
+    ELIZA_NATIVE(nativeAsrStreamClose, "(J)V"),
+    ELIZA_NATIVE(nativeMmapAcquire, "(JLjava/lang/String;)I"),
+    ELIZA_NATIVE(nativeMmapEvict, "(JLjava/lang/String;)I"),
+};
+
+#if ELIZA_VOICE_JNI_FULL
+const JNINativeMethod kHostMethods[] = {
+    ELIZA_NATIVE(nativeVadSupported, "()I"),
+    ELIZA_NATIVE(nativeWakewordSupported, "()I"),
+    ELIZA_NATIVE(nativeSpeakerSupported, "()I"),
+    ELIZA_NATIVE(nativeDiarizSupported, "()I"),
+    ELIZA_NATIVE(nativeVadOpen, "(J)J"),
+    ELIZA_NATIVE(nativeVadProcessBatch, "(J[F)[F"),
+    ELIZA_NATIVE(nativeVadReset, "(J)V"),
+    ELIZA_NATIVE(nativeVadClose, "(J)V"),
+    ELIZA_NATIVE(nativeWakewordOpen, "(JLjava/lang/String;)J"),
+    ELIZA_NATIVE(nativeWakewordScoreBatch, "(J[F)[F"),
+    ELIZA_NATIVE(nativeWakewordReset, "(J)V"),
+    ELIZA_NATIVE(nativeWakewordClose, "(J)V"),
+    ELIZA_NATIVE(nativeSpeakerOpen, "(JLjava/lang/String;)J"),
+    ELIZA_NATIVE(nativeSpeakerEmbed, "(J[F)[F"),
+    ELIZA_NATIVE(nativeSpeakerClose, "(J)V"),
+    ELIZA_NATIVE(nativeDiarizOpen, "(JLjava/lang/String;)J"),
+    ELIZA_NATIVE(nativeDiarizSegment, "(J[F)[B"),
+    ELIZA_NATIVE(nativeDiarizClose, "(J)V"),
+    ELIZA_NATIVE(nativePipelineOpen, "(J)J"),
+    ELIZA_NATIVE(nativePipelineProcess, "(J[F)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativePipelineFlush, "(J)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativePipelineTurnEmbedding, "(JI)[F"),
+    ELIZA_NATIVE(nativePipelineTurnLabels, "(JI)[B"),
+    ELIZA_NATIVE(nativePipelineTurnPcm, "(JI)[F"),
+    ELIZA_NATIVE(nativePipelineReset, "(J)V"),
+    ELIZA_NATIVE(nativePipelineClose, "(J)V"),
+    ELIZA_NATIVE(nativeVadSelfTest, "(Ljava/lang/String;)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeWakewordSelfTest, "(Ljava/lang/String;[F[F)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativePipelineSelfTest, "(Ljava/lang/String;[FI)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeLlmStreamSupported, "()I"),
+    ELIZA_NATIVE(nativeEmbedSupported, "()I"),
+    ELIZA_NATIVE(nativeEotSupported, "()I"),
+    ELIZA_NATIVE(nativeTokenize, "(JLjava/lang/String;ZZ)[I"),
+    ELIZA_NATIVE(nativeEmbed, "(JLjava/lang/String;I)[F"),
+    ELIZA_NATIVE(nativeContextCreateUtf8, "([B)J"),
+    ELIZA_NATIVE(nativeTokenizeUtf8, "(J[B)[I"),
+    ELIZA_NATIVE(nativeEmbedUtf8, "(J[BI)[F"),
+    ELIZA_NATIVE(nativeTokenizeWithOptionsUtf8, "(J[BZ)[I"),
+    ELIZA_NATIVE(nativeEmbedWithOptionsUtf8, "(J[BIZ)[F"),
+    ELIZA_NATIVE(nativeEotScore, "(J[II)F"),
+    ELIZA_NATIVE(nativeLlmStreamOpen, "(JIFFIILjava/lang/String;)J"),
+    ELIZA_NATIVE(nativeLlmStreamPrefill, "(J[I)V"),
+    ELIZA_NATIVE(nativeLlmStreamNext, "(JI)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeLlmStreamClose, "(J)V"),
+    ELIZA_NATIVE(nativeLlmStreamReset, "(J)I"),
+    ELIZA_NATIVE(nativeLlmStreamResetKeep, "(JI)I"),
+    ELIZA_NATIVE(nativeLlmSelfTest, "(Ljava/lang/String;Ljava/lang/String;I)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeVisionSupported, "()I"),
+    ELIZA_NATIVE(nativeDescribeImage, "(J[BLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;"),
+};
+#endif  // ELIZA_VOICE_JNI_FULL
+
+#undef ELIZA_NATIVE
+
+// Register one method at a time so a failure names the exact method. A class
+// without one of these natives fails the whole library load.
+bool register_natives(JNIEnv* env, jclass cls, const JNINativeMethod* methods, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        if (env->RegisterNatives(cls, &methods[i], 1) != JNI_OK || env->ExceptionCheck()) {
+            env->ExceptionClear();
+            LOGE("RegisterNatives failed: %s has no native %s%s", ELIZA_VOICE_JNI_CLASS,
+                 methods[i].name, methods[i].signature);
+            return false;
+        }
+    }
+    return true;
+}
+
+}  // namespace
+
+extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
+    JNIEnv* env = nullptr;
+    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK || !env) {
+        LOGE("JNI_OnLoad: no JNI 1.6 environment");
+        return JNI_ERR;
+    }
+    jclass cls = env->FindClass(ELIZA_VOICE_JNI_CLASS);
+    if (!cls) {
+        env->ExceptionClear();
+        LOGE("JNI_OnLoad: class %s not found", ELIZA_VOICE_JNI_CLASS);
+        return JNI_ERR;
+    }
+    bool ok = register_natives(env, cls, kVoiceMethods, sizeof(kVoiceMethods) / sizeof(kVoiceMethods[0]));
+#if ELIZA_VOICE_JNI_FULL
+    ok = ok && register_natives(env, cls, kHostMethods, sizeof(kHostMethods) / sizeof(kHostMethods[0]));
+#endif
+    env->DeleteLocalRef(cls);
+    if (!ok) return JNI_ERR;
+    LOGI("registered %s natives on %s", ELIZA_VOICE_JNI_FULL ? "host" : "voice",
+         ELIZA_VOICE_JNI_CLASS);
+    return JNI_VERSION_1_6;
+}

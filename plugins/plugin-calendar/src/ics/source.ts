@@ -18,7 +18,11 @@ import {
 } from "../internal/recurrence.js";
 import { getZonedDateParts } from "../internal/time.js";
 import type { IcsCalendarSourceRecord } from "../service/CalendarRepository.js";
-import { readIcsExceptionDates } from "./parser.js";
+import {
+  endAtFromIcsDuration,
+  readIcsExceptionDates,
+  startAtBeforeIcsDurationEnd,
+} from "./parser.js";
 import type { IcsParsedEvent } from "./types.js";
 
 export function publicIcsCalendarSource(
@@ -71,6 +75,31 @@ export function icsEventIdentity(event: IcsParsedEvent): string {
     .digest("hex");
 }
 
+/**
+ * One copy per event identity. A feed can repeat a VEVENT (merged or
+ * re-exported calendars), and the snapshot upsert can write each id only
+ * once. Keep the newest copy by the order the upsert uses: SEQUENCE, then
+ * revision time; on a full tie the first copy stays.
+ */
+export function newestIcsEventPerIdentity(
+  events: readonly IcsParsedEvent[],
+): IcsParsedEvent[] {
+  const byIdentity = new Map<string, IcsParsedEvent>();
+  for (const event of events) {
+    const identity = icsEventIdentity(event);
+    const kept = byIdentity.get(identity);
+    if (
+      !kept ||
+      event.sequence > kept.sequence ||
+      (event.sequence === kept.sequence &&
+        (event.revisionAt ?? "") > (kept.revisionAt ?? ""))
+    ) {
+      byIdentity.set(identity, event);
+    }
+  }
+  return [...byIdentity.values()];
+}
+
 export function lifeOpsCalendarEventFromIcs(args: {
   event: IcsParsedEvent;
   source: IcsCalendarSourceRecord;
@@ -119,6 +148,7 @@ export function lifeOpsCalendarEventFromIcs(args: {
       icsRecurrenceId: args.event.recurrenceId,
       icsSequence: args.event.sequence,
       icsRevisionAt: args.event.revisionAt,
+      icsDuration: args.event.duration,
       icsTransparency: args.event.transparency,
       icsClassification: args.event.classification,
       icsEventUrl: args.event.url,
@@ -204,6 +234,7 @@ export function expandIcsCalendarEvents(args: {
             monthlyByDay: true,
             yearlyByMonth: true,
             bySetPos: true,
+            dailyByDay: true,
           })
         : null;
     if (!rule || rule.beyondExpansionSubset || hasRdate) {
@@ -212,6 +243,10 @@ export function expandIcsCalendarEvents(args: {
       continue;
     }
     const durationMs = endMs - startMs;
+    const icsDuration =
+      typeof event.metadata.icsDuration === "string"
+        ? event.metadata.icsDuration
+        : null;
     const excluded = readIcsExceptionDates(recurrence, event.timezone);
     if (excluded.invalidValueCount > 0) {
       complete = false;
@@ -224,8 +259,22 @@ export function expandIcsCalendarEvents(args: {
         rule,
         startAt: new Date(startMs),
         timeZone: seriesTimeZone,
-        rangeStart: new Date(minMs - durationMs + (durationMs === 0 ? 0 : 1)),
+        rangeStart: new Date(
+          icsDuration
+            ? Date.parse(
+                startAtBeforeIcsDurationEnd({
+                  endAt: new Date(minMs).toISOString(),
+                  timezone: seriesTimeZone,
+                  isAllDay: event.isAllDay,
+                  duration: icsDuration,
+                }),
+              ) + 1
+            : minMs - durationMs + (durationMs === 0 ? 0 : 1),
+        ),
         rangeEnd: new Date(maxMs),
+        // RFC 5545 §3.3.10: a feed occurrence at a nonexistent local time
+        // is ignored and does not count toward COUNT.
+        nonexistentLocalTime: "skip",
       });
     } catch (error) {
       if (
@@ -244,7 +293,16 @@ export function expandIcsCalendarEvents(args: {
     }
     for (const start of starts) {
       const occurrenceMs = start.getTime();
-      if (!overlaps(occurrenceMs, occurrenceMs + durationMs)) continue;
+      const occurrenceEndAt = icsDuration
+        ? endAtFromIcsDuration({
+            startAt: start.toISOString(),
+            timezone: seriesTimeZone,
+            isAllDay: event.isAllDay,
+            duration: icsDuration,
+          })
+        : new Date(occurrenceMs + durationMs).toISOString();
+      const occurrenceEndMs = Date.parse(occurrenceEndAt);
+      if (!overlaps(occurrenceMs, occurrenceEndMs)) continue;
       if (excluded.instants.has(occurrenceMs)) continue;
       // A DATE EXDATE names a day. It excludes the occurrence that starts on
       // that day in the series time zone (UTC for an all-day series).
@@ -268,7 +326,7 @@ export function expandIcsCalendarEvents(args: {
         ...event,
         id: `${event.id}:${occurrenceStart}`,
         startAt: occurrenceStart,
-        endAt: new Date(occurrenceMs + durationMs).toISOString(),
+        endAt: occurrenceEndAt,
         recurringEventId: event.id,
         metadata: { ...event.metadata, originalStartTime: occurrenceStart },
       });

@@ -112,7 +112,6 @@ export class Cascade {
         captures: args.captures,
       },
       brainOut,
-      /*allowMissing*/ true,
     );
   }
 
@@ -194,11 +193,7 @@ export class Cascade {
       const dx = Number(action.args?.dx ?? 0);
       const dy = Number(action.args?.dy ?? 0);
       // Anchor scroll on the ROI if present, else display center.
-      const anchor = await this.resolveCoords(
-        input,
-        brainOut,
-        /*allowMissing*/ true,
-      );
+      const anchor = await this.resolveCoords(input, brainOut);
       const display = input.scene.displays.find((d) => d.id === targetDisplay);
       const cx = anchor?.x ?? Math.round((display?.bounds[2] ?? 0) / 2);
       const cy = anchor?.y ?? Math.round((display?.bounds[3] ?? 0) / 2);
@@ -219,10 +214,17 @@ export class Cascade {
     if (action.kind === "drag") {
       const from = action.args?.from as { x?: number; y?: number } | undefined;
       const to = action.args?.to as { x?: number; y?: number } | undefined;
+      // An explicit endpoint wins over grounding on both sides. Without
+      // args.from the ref is the drag source, so the drop point must come from
+      // args.to or the ROI; grounding the same ref again gives start == end.
       const start =
-        (await this.coordsForRef(input, brainOut, action.ref, /*from*/ true)) ??
-        from;
-      const end = (await this.resolveCoords(input, brainOut, false)) ?? to;
+        from ??
+        (await this.coordsForRef(input, brainOut, action.ref, /*from*/ true));
+      const end =
+        to ??
+        (from
+          ? await this.resolveCoords(input, brainOut)
+          : await this.roiCoords(input, brainOut));
       if (
         !start ||
         !end ||
@@ -248,7 +250,7 @@ export class Cascade {
       };
     }
     // click / double_click / right_click — all need a single point.
-    const coords = await this.resolveCoords(input, brainOut, false);
+    const coords = await this.resolveCoords(input, brainOut);
     if (!coords) {
       throw new Error(
         `[computeruse/cascade] could not resolve coordinates for action.kind="${action.kind}"`,
@@ -271,7 +273,6 @@ export class Cascade {
   private async resolveCoords(
     input: CascadeInput,
     brainOut: BrainOutput,
-    allowMissing: boolean,
   ): Promise<{ displayId: number; x: number; y: number } | null> {
     // GROUND fast-path: a target already grounded on this Scene is reused.
     const action0 = brainOut.proposed_action;
@@ -283,11 +284,7 @@ export class Cascade {
       this.groundStats.hits += 1;
       return cached;
     }
-    const resolved = await this.resolveCoordsUncached(
-      input,
-      brainOut,
-      allowMissing,
-    );
+    const resolved = await this.resolveCoordsUncached(input, brainOut);
     if (resolved) {
       this.groundStats.misses += 1;
       this.rememberGround(input.scene.timestamp, cacheKey, resolved);
@@ -311,7 +308,6 @@ export class Cascade {
   private async resolveCoordsUncached(
     input: CascadeInput,
     brainOut: BrainOutput,
-    allowMissing: boolean,
   ): Promise<{ displayId: number; x: number; y: number } | null> {
     // Strategy 1: if Brain emitted a ref, the OCR/AX grounding (or any
     // registered actor) resolves it directly.
@@ -320,6 +316,13 @@ export class Cascade {
       const grounded = await this.groundReference(input, brainOut, action.ref);
       if (grounded) return grounded;
     }
+    return this.roiCoords(input, brainOut);
+  }
+
+  private async roiCoords(
+    input: CascadeInput,
+    brainOut: BrainOutput,
+  ): Promise<{ displayId: number; x: number; y: number } | null> {
     // Strategy 2: fine grounding on the first ROI via the registered actor.
     if (this.deps.actor && brainOut.roi.length > 0) {
       const roi = brainOut.roi[0];
@@ -338,7 +341,6 @@ export class Cascade {
         y: Math.round(y + h / 2),
       };
     }
-    if (allowMissing) return null;
     return null;
   }
 

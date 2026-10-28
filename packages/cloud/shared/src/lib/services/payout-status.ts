@@ -382,9 +382,9 @@ class PayoutStatusService {
 
   private getEvmWalletAddress(privateKey: string): string | null {
     try {
-      const key = privateKey.startsWith("0x")
-        ? (privateKey as `0x${string}`)
-        : (`0x${privateKey}` as `0x${string}`);
+      const key = (
+        /^0x/i.test(privateKey) ? `0x${privateKey.slice(2)}` : `0x${privateKey}`
+      ) as `0x${string}`;
       const account = privateKeyToAccount(key);
       return account.address;
     } catch (error) {
@@ -586,9 +586,7 @@ export function getHotWalletAddresses(): { evm: string | null; solana: string | 
   let evm: string | null = null;
   const evmKey = env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY;
   if (evmKey) {
-    const key = evmKey.startsWith("0x")
-      ? (evmKey as `0x${string}`)
-      : (`0x${evmKey}` as `0x${string}`);
+    const key = (/^0x/i.test(evmKey) ? `0x${evmKey.slice(2)}` : `0x${evmKey}`) as `0x${string}`;
     evm = privateKeyToAccount(key).address;
   }
 

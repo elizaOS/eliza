@@ -801,7 +801,7 @@ export function createSchedulingSqlScheduledTaskLogStore(
         `SELECT *
            FROM ${LOG_TABLE}
           WHERE ${clauses.join(" AND ")}
-          ORDER BY occurred_at ASC
+          ORDER BY occurred_at ASC, id ASC
           ${limit}`,
       );
       return rows.map(parseScheduledTaskLogRow);

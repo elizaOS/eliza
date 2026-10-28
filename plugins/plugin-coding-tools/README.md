@@ -15,3 +15,9 @@ Install dependencies with `bun install` at the repository root. Run from that ro
 bun run --cwd plugins/plugin-coding-tools build  # build
 bun run --cwd plugins/plugin-coding-tools test   # tests
 ```
+
+### Public Worker URL reads
+
+`createWebFetchEdgeAction` from `@elizaos/plugin-coding-tools/edge` registers only the canonical public `WEB_FETCH` action. It reads through the anonymous Parallel provider and does not load shell, filesystem or browser capabilities. Source-bound provider extracts have no claimed origin HTTP status or freshness; `extract` is not applied to them. The default Node action preserves direct DNS-pinned HTTP, JSON-path extraction, retrieval metadata and upstream recovery hints.
+
+When a caller supplies `signal` or `abortSignal`, cancellation rejects with the caller’s abort reason. This applies to both Node and edge actions; callers must handle the rejected promise.

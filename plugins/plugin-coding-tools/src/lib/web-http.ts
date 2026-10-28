@@ -13,6 +13,8 @@ import {
   type PinnedLookupFetchLike,
 } from "@elizaos/core";
 
+import { readTextWithinLimit } from "./web-response.js";
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BYTES = 256 * 1024;
 const DEFAULT_MAX_REDIRECTS = 3;
@@ -47,6 +49,7 @@ export function __resetWebHttpTestOverrides(): void {
 }
 
 export interface GuardedTextHttpOptions {
+  signal?: AbortSignal;
   method?: "GET" | "POST";
   body?: string;
   headers?: Record<string, string>;
@@ -79,41 +82,6 @@ function isTextualContentType(contentType: string): boolean {
     return true;
   }
   return false;
-}
-
-async function readTextWithinLimit(
-  response: Response,
-  maxBytes: number,
-): Promise<string> {
-  if (!response.body) return "";
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  const chunks: Uint8Array[] = [];
-  let bytes = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (bytes + value.byteLength > maxBytes) {
-        await reader.cancel();
-        throw new Error(
-          `Response body exceeds the ${maxBytes}-byte safety ceiling`,
-        );
-      }
-      chunks.push(value);
-      bytes += value.byteLength;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  let text = "";
-  for (const chunk of chunks) {
-    text += decoder.decode(chunk, { stream: true });
-  }
-  text += decoder.decode();
-  return text;
 }
 
 /**
@@ -187,6 +155,7 @@ export async function guardedTextHttpRequest(
     ...transport,
     maxRedirects: DEFAULT_MAX_REDIRECTS,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    signal: options.signal,
     init: {
       method: options.method ?? "GET",
       headers,
@@ -209,6 +178,7 @@ export async function guardedTextHttpRequest(
     const text = await readTextWithinLimit(
       guarded.response,
       options.maxBytes ?? DEFAULT_MAX_BYTES,
+      options.signal,
     );
     return {
       ok: guarded.response.ok,

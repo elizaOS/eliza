@@ -24,7 +24,7 @@ jobs:
       PYTHONPATH: ${{ github.workspace }}/packages
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24.15.0'
       - uses: ./.github/actions/setup-bun-workspace
@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24.15.0'
       - uses: ./.github/actions/setup-bun-workspace
@@ -67,7 +67,7 @@ jobs:
         run: |
           test -n "$OPENAI_API_KEY" || { echo 'OPENAI_API_KEY is required'; exit 1; }
           bun packages/benchmarks/framework/typescript/src/bench.ts --real-llm --scenarios=single-message --iterations=1 --warmup=0 --output=/tmp/framework-live.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: framework-live
           path: /tmp/framework-live.json

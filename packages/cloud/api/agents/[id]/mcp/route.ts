@@ -62,7 +62,7 @@ const MCPRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
   params: z.record(z.string(), z.unknown()).optional(),
-  id: z.union([z.string(), z.number()]),
+  id: z.union([z.string(), z.number(), z.null()]).optional(),
 });
 
 const ProviderUsageSchema = z.object({
@@ -82,6 +82,13 @@ const ChatArgumentsSchema = z.object({
 });
 
 const app = new Hono<AppEnv>();
+
+export function respondMcpResponse(
+  response: Response,
+  isNotification: boolean,
+) {
+  return isNotification ? new Response(null, { status: 202 }) : response;
+}
 
 function mcpAuthError(
   c: AppContext,
@@ -211,6 +218,7 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 app.post("/", async (c) => {
   const id = c.req.param("id");
   const executionCtx = getGenerativeExecutionContext(c);
+  let isNotification = false;
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: "hono",
@@ -303,73 +311,84 @@ app.post("/", async (c) => {
     }
 
     const { method, params, id: rpcId } = validation.data;
+    isNotification = rpcId === undefined;
+    const respond = (response: Response) =>
+      respondMcpResponse(response, isNotification);
     switch (method) {
       case "initialize":
-        return c.json({
-          jsonrpc: "2.0",
-          result: {
-            protocolVersion: "2024-11-05",
-            serverInfo: { name: character.name, version: "1.0.0" },
-            capabilities: { tools: {} },
-          },
-          id: rpcId,
-        });
+        return respond(
+          c.json({
+            jsonrpc: "2.0",
+            result: {
+              protocolVersion: "2024-11-05",
+              serverInfo: { name: character.name, version: "1.0.0" },
+              capabilities: { tools: {} },
+            },
+            id: rpcId,
+          }),
+        );
 
       case "tools/list":
-        return c.json({
-          jsonrpc: "2.0",
-          result: {
-            tools: [
-              {
-                name: "chat",
-                description: `Send a message to ${character.name}`,
-                inputSchema: {
-                  type: "object",
-                  properties: {
-                    message: { type: "string" },
-                    model: { type: "string" },
+        return respond(
+          c.json({
+            jsonrpc: "2.0",
+            result: {
+              tools: [
+                {
+                  name: "chat",
+                  description: `Send a message to ${character.name}`,
+                  inputSchema: {
+                    type: "object",
+                    properties: {
+                      message: { type: "string" },
+                      model: { type: "string" },
+                    },
+                    required: ["message"],
                   },
-                  required: ["message"],
                 },
-              },
-              {
-                name: "get_info",
-                description: `Get information about ${character.name}`,
-                inputSchema: { type: "object", properties: {} },
-              },
-            ],
-          },
-          id: rpcId,
-        });
+                {
+                  name: "get_info",
+                  description: `Get information about ${character.name}`,
+                  inputSchema: { type: "object", properties: {} },
+                },
+              ],
+            },
+            id: rpcId,
+          }),
+        );
 
       case "tools/call":
         // The handler must settle its admission handoff before the using scope
         // checks a terminal exit, so this intentionally awaits before return.
-        return await handleToolCall(c, character, params ?? {}, rpcId, {
-          id: caller.user.id,
-          organization_id: caller.user.organization_id,
-          apiKeyId: caller.apiKeyId,
-          admissionSnapshot: caller.admissionSnapshot,
-          credentialForAdmission: () =>
-            credentialGuard.credentialForAdmission(),
-          executionCtx,
-        });
+        return respond(
+          await handleToolCall(c, character, params ?? {}, rpcId ?? null, {
+            id: caller.user.id,
+            organization_id: caller.user.organization_id,
+            apiKeyId: caller.apiKeyId,
+            admissionSnapshot: caller.admissionSnapshot,
+            credentialForAdmission: () =>
+              credentialGuard.credentialForAdmission(),
+            executionCtx,
+          }),
+        );
 
       case "ping":
-        return c.json({ jsonrpc: "2.0", result: {}, id: rpcId });
+        return respond(c.json({ jsonrpc: "2.0", result: {}, id: rpcId }));
 
       default:
-        return c.json(
-          {
-            jsonrpc: "2.0",
-            error: { code: -32601, message: "Method not found" },
-            id: rpcId,
-          },
-          400,
+        return respond(
+          c.json(
+            {
+              jsonrpc: "2.0",
+              error: { code: -32601, message: "Method not found" },
+              id: rpcId,
+            },
+            400,
+          ),
         );
     }
   } catch (error) {
-    return mcpAuthError(c, error, null);
+    return respondMcpResponse(mcpAuthError(c, error, null), isNotification);
   }
 });
 
@@ -387,7 +406,7 @@ export async function handleToolCall(
     settings: Record<string, unknown>;
   },
   params: Record<string, unknown>,
-  rpcId: string | number,
+  rpcId: string | number | null | undefined,
   authUser: {
     id: string;
     organization_id: string;
@@ -648,7 +667,7 @@ export async function handleToolCall(
         );
       }
       if (asGenerativeCacheApiError(error)) {
-        return mcpAuthError(c, error, rpcId);
+        return mcpAuthError(c, error, rpcId ?? null);
       }
       logger.error("[Agent MCP] Error generating response", {
         error: error instanceof Error ? error.message : "Unknown error",

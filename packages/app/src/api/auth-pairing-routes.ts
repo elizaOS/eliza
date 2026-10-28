@@ -18,7 +18,7 @@ import { loadElizaConfig } from "@elizaos/agent";
 import { normalizeHostPairingCode } from "@elizaos/agent/host-use-cases";
 import { logger } from "@elizaos/core";
 import { readAliasedEnv } from "@elizaos/host/protocol";
-import { authStoreForRuntime } from "../services/auth-store";
+import { authStoreForHost } from "../services/auth-store";
 import {
   createMachineSession,
   denyOnAuthStoreError,
@@ -308,7 +308,7 @@ export async function handleAuthPairingCompatRoutes(
   // is configured and whether pairing is currently open.
   if (method === "GET" && url.pathname === "/api/auth/status") {
     const localAccess = isTrustedLocalRequest(req);
-    const store = authStoreForRuntime(state.current);
+    const store = authStoreForHost(state);
     let passwordConfigured = false;
     let sessionAuthenticated = false;
     if (store) {
@@ -522,7 +522,7 @@ export async function handleAuthPairingCompatRoutes(
     // full-authority bearer. If the DB isn't ready yet, fail closed with a
     // retryable 503 and leave the pairing code intact — its TTL gives the
     // client headroom to retry once the runtime is up.
-    const store = authStoreForRuntime(state.current);
+    const store = authStoreForHost(state);
     if (!store) {
       sendPairingError(
         res,

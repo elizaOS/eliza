@@ -8,8 +8,8 @@
  *
  * Behavior:
  * - Batches up to ~10 messages per call to keep prompts small.
- * - Caches results in-memory keyed by `(messageId, contentHash, model)` so
- *   re-fetches inside a single runtime are free.
+ * - Caches results in-memory by agent, prompt context, message input, and
+ *   model so identical re-fetches inside a single runtime are free.
  * - Concurrency-capped to 4 parallel batches.
  * - If the LLM call or parser fails, reports the failure and returns `null` per
  *   message instead of fabricating priorities.
@@ -91,9 +91,23 @@ function contentHash(text: string): string {
   return (h >>> 0).toString(36);
 }
 
-function cacheKey(message: LifeOpsInboxMessage, modelId: string): string {
-  const text = `${message.subject ?? ""}|${message.snippet}`;
-  return `${modelId}::${message.id}::${contentHash(text)}`;
+function cacheKey(
+  runtime: IAgentRuntime,
+  message: LifeOpsInboxMessage,
+  modelId: string,
+  opts: ScoreInboxMessagesOptions,
+): string {
+  const scoringInput = JSON.stringify([
+    opts.ownerName ?? null,
+    opts.topRelationships ?? null,
+    message.sender.displayName,
+    message.channel,
+    message.chatType ?? "dm",
+    message.participantCount ?? null,
+    message.subject ?? null,
+    message.snippet,
+  ]);
+  return `${String(runtime.agentId)}::${modelId}::${message.id}::${contentHash(scoringInput)}`;
 }
 
 const VALID_CATEGORIES = new Set<PriorityCategory>([
@@ -179,7 +193,7 @@ function buildPrompt(
 }
 
 const STRUCTURED_CODE_FENCE_PATTERN =
-  /^\s*```(?:json|json|json5)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
+  /^\s*```(?:json5|json)?\s*\r?\n?([\s\S]*?)\r?\n?```\s*$/i;
 
 function stripModelWrapper(raw: string): string {
   let candidate = raw.trim();
@@ -326,9 +340,8 @@ async function scoreBatch(
  * scores; entries are `null` when the LLM call or parser fails for that
  * batch — callers should fall back to a heuristic for those messages.
  *
- * The scorer is cache-aware: messages whose `(id, content, model)` was
- * already scored within this process are returned from cache without
- * triggering a model call.
+ * The scorer is cache-aware: identical agent, prompt-context, message, and
+ * model inputs are returned from cache without triggering a model call.
  */
 export async function scoreInboxMessages(
   runtime: IAgentRuntime,
@@ -352,7 +365,7 @@ export async function scoreInboxMessages(
   for (let i = 0; i < messages.length; i += 1) {
     const m = messages[i];
     if (!m) continue;
-    const cached = cacheGet(cacheKey(m, modelId));
+    const cached = cacheGet(cacheKey(runtime, m, modelId, opts));
     if (cached) {
       results[i] = cached;
     } else {
@@ -396,7 +409,7 @@ export async function scoreInboxMessages(
               const score = scored[j];
               if (!score) continue;
               results[idx] = score;
-              cacheSet(cacheKey(message, modelId), score);
+              cacheSet(cacheKey(runtime, message, modelId, opts), score);
             }
           } catch (error) {
             logger.warn(

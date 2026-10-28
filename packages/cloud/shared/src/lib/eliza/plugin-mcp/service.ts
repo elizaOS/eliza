@@ -57,6 +57,8 @@ export class McpService extends Service {
   private toolCompatibility: McpToolCompatibility | null = null;
   private initPromise: Promise<void> | null = null;
   private registeredActions = new Map<string, McpToolAction>();
+  /** Set by stop(): once true, no new connection state or retry timer may be created. */
+  private stopped = false;
   private tier2Index = new Tier2ToolIndex();
   private tier2Tools: Tier2ToolEntry[] = [];
   private schemaCache = getSchemaCache();
@@ -79,7 +81,14 @@ export class McpService extends Service {
     await this.initPromise;
   }
   async stop(): Promise<void> {
-    for (const name of this.connections.keys()) {
+    // Mark shutdown BEFORE scanning the maps: an in-flight retry callback can be
+    // paused inside connect() at the awaited leading disconnect(), which has
+    // already deleted the old state while the new one is not yet created. A
+    // snapshot taken without the flag would miss such a callback, and it would
+    // then resurrect state and schedule a new retry timer after stop() returns.
+    this.stopped = true;
+    // Failed transport creation can leave retry state without a live connection.
+    for (const name of new Set([...this.connections.keys(), ...this.connectionStates.keys()])) {
       await this.disconnect(name);
     }
   }
@@ -179,18 +188,40 @@ export class McpService extends Service {
     return s && typeof s === "object" && "servers" in s ? (s as McpSettings) : undefined;
   }
   // ─── Connection Management ─────────────────────────────────────────────────
+  /**
+   * Builds (or rebuilds) one server's connection.
+   *
+   * `disconnect` drops this server's `ConnectionState`, so the retry ladder in
+   * `handleDisconnect` only survives when the caller asks for it: a reconnect
+   * passes `preserveReconnectAttempts` so the count keeps climbing toward
+   * `MAX_RECONNECT_ATTEMPTS` and the backoff keeps doubling, while a fresh
+   * connect, a key rotation, or an operator-driven `restartConnection` starts
+   * a fresh ladder. The count is reset to 0 below on every successful connect,
+   * so a server that comes back is never penalised for an earlier outage.
+   */
   private async connect(
     name: string,
     config: McpServerConfig,
     options?: {
       skipActionRegistration?: boolean;
+      preserveReconnectAttempts?: boolean;
     },
   ): Promise<void> {
+    const carriedReconnectAttempts = options?.preserveReconnectAttempts
+      ? (this.connectionStates.get(name)?.reconnectAttempts ?? 0)
+      : 0;
     await this.disconnect(name);
+    // A retry callback can be paused at the awaited disconnect() above while
+    // stop() runs and marks shutdown. Bail out before rebuilding any state so
+    // no retry ladder survives shutdown.
+    if (this.stopped) {
+      throw new Error(`McpService stopped; not connecting "${name}"`);
+    }
     const state: ConnectionState = {
       status: "connecting",
-      reconnectAttempts: 0,
+      reconnectAttempts: carriedReconnectAttempts,
       consecutivePingFailures: 0,
+      config: JSON.stringify(config),
     };
     this.connectionStates.set(name, state);
     try {
@@ -299,10 +330,10 @@ export class McpService extends Service {
         /* ignore invalid URLs */
       }
     }
-    // Track API key used for this connection so we can detect rotation later
-    if (apiKey && typeof apiKey === "string") {
-      this.connectionApiKeys.set(name, apiKey);
-    }
+    // Track API key used for this connection so we can detect rotation later.
+    // Always record (empty string when no key was present) so that a missing
+    // map entry reliably means "stdio", which never records a key.
+    this.connectionApiKeys.set(name, apiKey && typeof apiKey === "string" ? apiKey : "");
     const opts = Object.keys(headers).length > 0 ? { requestInit: { headers } } : undefined;
     return new StreamableHTTPClientTransport(url, opts);
   }
@@ -358,6 +389,9 @@ export class McpService extends Service {
     }, this.pingConfig.intervalMs);
   }
   private handleDisconnect(name: string, error: unknown): void {
+    // No retries after shutdown: stop() clears every pending timer, and a
+    // callback that fired just before shutdown must not schedule a new one.
+    if (this.stopped) return;
     const state = this.connectionStates.get(name);
     if (!state) return;
     state.status = "disconnected";
@@ -370,14 +404,23 @@ export class McpService extends Service {
     }
     const delay = INITIAL_RETRY_DELAY * BACKOFF_MULTIPLIER ** state.reconnectAttempts;
     state.reconnectTimeout = setTimeout(async () => {
+      // A timer that fired just before stop() cleared it must not resurrect
+      // state or schedule another retry.
+      if (this.stopped) return;
       state.reconnectAttempts++;
-      const config = this.connections.get(name)?.server.config;
-      if (config) {
-        try {
-          await this.connect(name, JSON.parse(config));
-        } catch (e) {
-          this.handleDisconnect(name, e);
-        }
+      // Reconnect from the config kept on the ConnectionState, never from
+      // `this.connections.get(name)`: `connect` begins by calling `disconnect`,
+      // which removes the live McpConnection. When a retry's transport build
+      // throws before the connection is re-added, the map entry stays gone, so
+      // a map lookup would read undefined and the ladder would silently die
+      // after a single failed attempt instead of climbing to
+      // MAX_RECONNECT_ATTEMPTS.
+      try {
+        await this.connect(name, JSON.parse(state.config), {
+          preserveReconnectAttempts: true,
+        });
+      } catch (e) {
+        this.handleDisconnect(name, e);
       }
     }, delay);
   }
@@ -554,8 +597,13 @@ export class McpService extends Service {
         : null;
     if (matchedKey) {
       const currentKey = this.runtime.getSetting("ELIZAOS_API_KEY") ?? "";
-      const storedKey = this.connectionApiKeys.get(matchedKey) ?? "";
-      if (currentKey !== storedKey) {
+      // connectionApiKeys is written by createHttpTransport for every HTTP
+      // connection (empty string when no key was present) and never for stdio.
+      // A missing entry therefore means "stdio": it must not count as a key
+      // rotation, otherwise every call tears down stdio connections whenever
+      // ELIZAOS_API_KEY is set.
+      const storedKey = this.connectionApiKeys.get(matchedKey);
+      if (storedKey !== undefined && currentKey !== storedKey) {
         logger.info(`[MCP] API key changed for ${matchedKey}, reconnecting`);
         await this.disconnect(matchedKey);
       } else {

@@ -35,7 +35,7 @@
  *
  * Selected by `INFERENCE_BILLING_LEDGER="db"` (default `kv` = the existing backstop
  * in `inference-billing-fast-path.ts`); both are gated behind
- * `INFERENCE_OPTIMISTIC_BILLING`. See `packages/cloud/api/docs/inference-hot-path.md`.
+ * `INFERENCE_OPTIMISTIC_BILLING`.
  */
 
 import { sql } from "drizzle-orm";

@@ -5,6 +5,7 @@
  */
 
 import { PGlite } from "@electric-sql/pglite";
+import { linkedCalendarSemanticDigest } from "@elizaos/contracts";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { IGoogleWorkspaceService } from "@elizaos/plugin-google-workspace";
 import { drizzle } from "drizzle-orm/pglite";
@@ -13,7 +14,9 @@ import {
   GoogleLinkedCalendarProviderPort,
   type LinkedCalendarCheckpointStore,
   type LinkedCalendarEventRecord,
+  type LinkedCalendarLocalPort,
   type LinkedCalendarLocalSnapshot,
+  type LinkedCalendarProviderPort,
   type LinkedCalendarProviderSnapshot,
   LinkedCalendarReconciler,
   LinkedCalendarRepository,
@@ -32,6 +35,117 @@ const baseEvent: LinkedCalendarSemanticEvent = {
   isAllDay: false,
   attendees: [],
 };
+
+it("keeps semantic text and digest identical across English and Swedish default collation", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { fileURLToPath } = await import("node:url");
+  const path = fileURLToPath(
+    new URL(
+      "../../../../packages/contracts/src/calendar-linked-sync.ts",
+      import.meta.url,
+    ),
+  );
+  const event = {
+    ...baseEvent,
+    attendees: [
+      "z@example.com",
+      "ä@example.com",
+      "a@example.com",
+      "å@example.com",
+      "ö@example.com",
+    ].map((email) => ({ email })),
+  };
+  const script = `import {readFileSync} from 'node:fs';import {stripTypeScriptTypes} from 'node:module';const source=stripTypeScriptTypes(readFileSync(${JSON.stringify(path)},'utf8'),{mode:'transform'});const {linkedCalendarSemanticText,linkedCalendarSemanticDigest}=await import('data:text/javascript,'+encodeURIComponent(source));const event=${JSON.stringify(event)};console.log(JSON.stringify({collation:event.attendees.map(a=>a.email).sort((a,b)=>a.localeCompare(b)),text:linkedCalendarSemanticText(event),digest:await linkedCalendarSemanticDigest(event)}));`;
+  const run = (locale: string) =>
+    JSON.parse(
+      execFileSync(
+        process.execPath,
+        ["--no-warnings", "--input-type=module", "-e", script],
+        {
+          encoding: "utf8",
+          env: { ...process.env, LANG: locale, LC_ALL: locale },
+        },
+      ),
+    );
+  const english = run("en_US.UTF-8"),
+    swedish = run("sv_SE.UTF-8");
+  expect(english.collation).not.toEqual(swedish.collation);
+  expect(english.text).toBe(swedish.text);
+  expect(english.digest).toBe(swedish.digest);
+});
+
+it("the shared engine preserves opaque phone revisions through push and pull", async () => {
+  let current: LinkedCalendarEventRecord<string> = {
+    ...record(),
+    localRevision: "phone-rev-1",
+  };
+  let local: LinkedCalendarLocalSnapshot<string> = {
+    eventId: current.localEventId,
+    revision: "phone-rev-1",
+    event: structuredClone(baseEvent),
+  };
+  let remote: LinkedCalendarProviderSnapshot | null = null,
+    creates = 0;
+  const checkpoints: LinkedCalendarCheckpointStore<string> = {
+    async save(expected, patch) {
+      expect(expected.updatedAt).toBe(current.updatedAt);
+      current = { ...current, ...patch, updatedAt: crypto.randomUUID() };
+      return current;
+    },
+  };
+  const localPort: LinkedCalendarLocalPort<string> = {
+    async get() {
+      return local;
+    },
+    async applyProviderEvent(id, event, expected) {
+      expect(id).toBe(local.eventId);
+      expect(expected).toBe(local.revision);
+      local = { eventId: id, event, revision: "phone-rev-2" };
+      return local;
+    },
+    async delete() {
+      throw Error("Not requested");
+    },
+  };
+  const provider: LinkedCalendarProviderPort<string> = {
+    async get() {
+      return remote;
+    },
+    async create(_record, event) {
+      creates++;
+      remote = { eventId: "google-event", etag: '"v1"', event };
+      return remote;
+    },
+    async update() {
+      throw Error("Not requested");
+    },
+    async delete() {
+      throw Error("Not requested");
+    },
+  };
+  const sync = new LinkedCalendarReconciler<string>(
+    checkpoints,
+    localPort,
+    provider,
+  );
+  expect(await sync.reconcile(current)).toBe("pushed");
+  expect(creates).toBe(1);
+  expect(current.localRevision).toBe("phone-rev-1");
+  expect(await linkedCalendarSemanticDigest(baseEvent)).toBe(
+    linkedCalendarSemanticHash(baseEvent),
+  );
+  expect(await sync.reconcile(current)).toBe("clean");
+  expect(creates).toBe(1);
+  if (!remote) throw new Error("Provider create was not captured");
+  remote = {
+    ...remote,
+    etag: '"v2"',
+    event: { ...baseEvent, title: "Updated in Google" },
+  };
+  expect(await sync.reconcile(current)).toBe("pulled");
+  expect(local.event.title).toBe("Updated in Google");
+  expect(current.localRevision).toBe("phone-rev-2");
+});
 
 function record(
   overrides: Partial<LinkedCalendarEventRecord> = {},
@@ -82,6 +196,7 @@ function ports(args: {
   local?: LinkedCalendarLocalSnapshot | null;
   provider?: LinkedCalendarProviderSnapshot | null;
   createError?: unknown;
+  updateExpectedEtag?: string;
   localApplyError?: unknown;
   localDeleteError?: unknown;
 }) {
@@ -129,6 +244,14 @@ function ports(args: {
         event: LinkedCalendarSemanticEvent,
       ) {
         updates += 1;
+        if (
+          args.updateExpectedEtag &&
+          _record.providerEtag !== args.updateExpectedEtag
+        )
+          throw Object.assign(new Error("Provider revision changed"), {
+            outcome: "precondition_failed",
+            code: "GOOGLE_CALENDAR_PRECONDITION_FAILED",
+          });
         provider = { eventId: "google-event-1", etag: '"g2"', event };
         return provider;
       },
@@ -724,6 +847,50 @@ describe("LinkedCalendarReconciler", () => {
     });
   });
 
+  it.each(['"g5"', null])(
+    "keeps the selected local value only against a fresh provider revision (%s)",
+    async (etag) => {
+      const store = new MemoryStore(
+        record({
+          state: "conflicted",
+          providerEventId: "google-event-1",
+          providerEtag: '"g1"',
+          lastCommonSemanticHash: "old",
+        }),
+      );
+      const testPorts = ports({
+        local: {
+          eventId: "local-1",
+          revision: 4,
+          event: { ...baseEvent, title: "Local wins" },
+        },
+        provider: {
+          eventId: "google-event-1",
+          etag,
+          event: { ...baseEvent, title: "Provider edit" },
+        },
+        updateExpectedEtag: '"g5"',
+      });
+      const result = await new LinkedCalendarReconciler(
+        store,
+        testPorts.localPort,
+        testPorts.providerPort,
+      ).resolveConflict(store.current, "keep_eliza");
+      expect(result).toBe(etag ? "pushed" : "quarantined");
+      expect(testPorts.counts().updates).toBe(etag ? 1 : 0);
+      if (etag)
+        expect(store.current).toMatchObject({
+          state: "clean",
+          localRevision: 4,
+          providerEtag: '"g2"',
+        });
+      else
+        expect(store.current.lastErrorCode).toBe(
+          "LINKED_PROVIDER_REVISION_MISSING",
+        );
+    },
+  );
+
   it("resolves a stale two-sided conflict using the owner's selected provider value", async () => {
     const store = new MemoryStore(
       record({
@@ -1007,6 +1174,32 @@ describe("GoogleLinkedCalendarProviderPort", () => {
     });
   });
 
+  it("never clears a provider recurrence when the local event has none", async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const google = {
+      async updateEvent(input: Record<string, unknown>) {
+        calls.push(input);
+        return {
+          id: "google-series",
+          calendarId: "primary",
+          title: input.title,
+          start: input.start,
+          end: input.end,
+          recurrence: ["RRULE:FREQ=WEEKLY"],
+          metadata: { etag: '"series-2"' },
+        };
+      },
+    } as unknown as IGoogleWorkspaceService;
+    const port = new GoogleLinkedCalendarProviderPort(google);
+    const updated = await port.update(
+      record({ providerEventId: "google-series", providerEtag: '"series-1"' }),
+      { ...baseEvent, title: "Kept from Eliza" },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toHaveProperty("recurrence");
+    expect(updated.event.recurrence).toEqual(["RRULE:FREQ=WEEKLY"]);
+  });
+
   it("maps provider 410 to an absent snapshot for watch/full-resync reconciliation", async () => {
     const google = {
       async getEvent() {
@@ -1017,5 +1210,438 @@ describe("GoogleLinkedCalendarProviderPort", () => {
     await expect(
       port.get(record({ providerEventId: "deleted-google-event" })),
     ).resolves.toBeNull();
+  });
+});
+
+it("recurrence changes are part of linked event semantics without changing ordinary checkpoints", async () => {
+  expect(linkedCalendarSemanticHash({ ...baseEvent, recurrence: [] })).toBe(
+    linkedCalendarSemanticHash(baseEvent),
+  );
+  expect(
+    linkedCalendarSemanticHash({
+      ...baseEvent,
+      recurrence: ["RRULE:FREQ=DAILY"],
+    }),
+  ).not.toBe(linkedCalendarSemanticHash(baseEvent));
+  expect(
+    await linkedCalendarSemanticDigest({
+      ...baseEvent,
+      recurrence: ["RRULE:FREQ=WEEKLY"],
+    }),
+  ).toBe(
+    linkedCalendarSemanticHash({
+      ...baseEvent,
+      recurrence: ["RRULE:FREQ=WEEKLY"],
+    }),
+  );
+});
+
+import {
+  CalendarAgentWriteRefused,
+  type CalendarSyncRequest,
+  calendarAgentWrite,
+  type ManagedCalendarHostApi,
+} from "./managed-calendar-host.js";
+// The real private transport and shared host adapter surround the existing reconciler.
+import { createManagedCalendarRead } from "./managed-calendar-read.js";
+import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
+
+function managedFixture() {
+  const scope = "a".repeat(64),
+    grantId = `alpha-google:${scope}`;
+  let accountId = "managed-account",
+    remote: LinkedCalendarProviderSnapshot | null = null;
+  let lostReply = false,
+    swapAccountAfterCapabilities = false,
+    changeCapabilityProtocol = false;
+  const capabilityVersions: number[] = [];
+  let alterReply:
+    | ((result: Record<string, unknown>) => Record<string, unknown>)
+    | undefined;
+  const commands: CalendarSyncRequest[] = [];
+  const client: ManagedCalendarHostApi = {
+    async googleCalendarFeed() {
+      throw Error("Linked sync must use the exact sync endpoint");
+    },
+    async googleCalendarSync(command) {
+      commands.push(structuredClone(command));
+      const envelope = (value: Record<string, unknown>) => ({
+        version: 1,
+        calendarId: command.selection.calendarId,
+        providerExactlyOnce: false,
+        ...value,
+      });
+      if (command.kind === "capabilities") {
+        const result = {
+          calendarId: command.selection.calendarId,
+          accountId,
+          read: true,
+          write: true,
+          idempotentCreate: true,
+          conditionalWrites: true,
+          providerExactlyOnce: false,
+        };
+        if (swapAccountAfterCapabilities) {
+          swapAccountAfterCapabilities = false;
+          accountId = "different-account";
+        }
+        const version =
+          changeCapabilityProtocol && capabilityVersions.length ? 2 : 1;
+        capabilityVersions.push(version);
+        return envelope({ ...result, version });
+      }
+      if (
+        command.selection.grantId !== "real-owner-grant" ||
+        command.selection.accountId !== accountId
+      )
+        throw Error("Wrong owner binding");
+      if (command.kind === "get") return envelope({ event: remote });
+      if (command.kind === "update" || command.kind === "delete") {
+        if (command.expectedEtag !== remote?.etag)
+          throw Object.assign(new Error("Precondition failed"), {
+            name: "CloudProtocolError",
+            code: "http",
+            status: 412,
+            data: {
+              code: "CALENDAR_SYNC_PRECONDITION_FAILED",
+              outcome: "precondition_failed",
+            },
+          });
+      }
+      if (command.kind === "delete") {
+        remote = null;
+        return envelope({ deleted: true });
+      }
+      remote = Object.assign(
+        {
+          eventId: "managed-event",
+          etag: '"managed-v1"',
+          event: structuredClone(command.event),
+        },
+        { visibility: "private", remindersDisabled: true },
+      );
+      if (lostReply) {
+        lostReply = false;
+        throw TypeError("Synthetic lost acknowledgement after acceptance");
+      }
+      return envelope({ event: remote });
+    },
+  };
+  const request = (async (_url, init) => {
+    const input = JSON.parse(String(init?.body)).calendar;
+    try {
+      const result = await calendarAgentWrite(
+        client,
+        "real-owner-grant",
+        scope,
+        input,
+        new AbortController().signal,
+        "alpha-google",
+      );
+      return Response.json(
+        input.operation === "linked-sync" && alterReply
+          ? alterReply(result as Record<string, unknown>)
+          : result,
+      );
+    } catch (error) {
+      return error instanceof CalendarAgentWriteRefused
+        ? Response.json({ calendarFailure: error.refusal })
+        : Response.json({ error: "Synthetic host refusal" }, { status: 409 });
+    }
+  }) as typeof fetch;
+  const transport = createManagedCalendarRead(
+    {
+      ELIZA_MANAGED_CALENDAR_READ_BROKER:
+        "http://127.0.0.1:1/__alpha-owner-gmail",
+      ELIZA_API_TOKEN: "a".repeat(64),
+    },
+    request,
+  );
+  if (!transport) throw Error("Missing fixture transport");
+  return {
+    grantId,
+    client,
+    transport,
+    commands,
+    provider: new ManagedLinkedCalendarProviderPort(transport, false),
+    capabilityVersions,
+    changeCapabilityProtocol: () => {
+      changeCapabilityProtocol = true;
+    },
+    alterReply: (
+      alter: (result: Record<string, unknown>) => Record<string, unknown>,
+    ) => {
+      alterReply = alter;
+    },
+    loseReply: () => {
+      lostReply = true;
+    },
+    swapAccount: () => {
+      swapAccountAfterCapabilities = true;
+    },
+    setRemote: (event: LinkedCalendarProviderSnapshot) => {
+      remote = event;
+    },
+  };
+}
+
+describe("managed owner linked Calendar provider", () => {
+  it.each(["create", "update"] as const)(
+    "rejects malformed %s event fields before provider dispatch",
+    async (kind) => {
+      for (const patch of [
+        { title: undefined },
+        { startAt: "not-a-date" },
+        { endAt: baseEvent.startAt },
+        { timeZone: 12 },
+        { isAllDay: "false" },
+        { attendees: [{ email: 42 }] },
+        { attendees: [{ email: "guest@acme.com", optional: "yes" }] },
+        { recurrence: [12] },
+        { deleted: "false" },
+      ]) {
+        const f = managedFixture();
+        await expect(
+          calendarAgentWrite(
+            f.client,
+            "real-owner-grant",
+            "a".repeat(64),
+            {
+              operation: "linked-sync",
+              grantId: f.grantId,
+              calendarId: "calendar",
+              accountId: "managed-account",
+              command: {
+                kind,
+                ...(kind === "create"
+                  ? { idempotencyKey: "stable-key" }
+                  : { eventId: "managed-event", expectedEtag: '"managed-v1"' }),
+                event: { ...baseEvent, ...patch },
+              },
+            },
+            new AbortController().signal,
+            "alpha-google",
+          ),
+        ).rejects.toThrow("Invalid linked Calendar semantic event");
+        expect(f.commands.some((command) => command.kind === kind)).toBe(false);
+      }
+    },
+  );
+
+  it("refuses a fresh capability protocol change before linked-sync dispatch", async () => {
+    const f = managedFixture();
+    f.changeCapabilityProtocol();
+    await expect(
+      f.provider.create(
+        { ...record(), connectorAccountId: f.grantId },
+        baseEvent,
+      ),
+    ).rejects.toThrow();
+    expect(f.capabilityVersions).toEqual([1, 2]);
+    expect(
+      f.commands.filter((command) =>
+        ["create", "update", "delete"].includes(command.kind),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    ["version", 2],
+    ["calendarId", "different-calendar"],
+    ["providerExactlyOnce", true],
+  ] as const)(
+    "refuses a mismatched %s even when the event result is absent",
+    async (field, value) => {
+      const f = managedFixture();
+      f.alterReply((result) => ({ ...result, [field]: value }));
+      await expect(
+        f.provider.get({
+          ...record(),
+          connectorAccountId: f.grantId,
+          providerEventId: null,
+        }),
+      ).rejects.toThrow("selected protocol and calendar");
+    },
+  );
+
+  it.each([
+    ["visibility", "default"],
+    ["remindersDisabled", false],
+  ] as const)(
+    "refuses an unconfirmed create %s receipt without repeating the create",
+    async (field, value) => {
+      const f = managedFixture();
+      f.alterReply((result) => ({
+        ...result,
+        event: { ...(result.event as Record<string, unknown>), [field]: value },
+      }));
+      await expect(
+        f.provider.create(
+          { ...record(), connectorAccountId: f.grantId },
+          baseEvent,
+        ),
+      ).rejects.toThrow("create privacy");
+      expect(
+        f.commands.filter((command) => command.kind === "create"),
+      ).toHaveLength(1);
+    },
+  );
+
+  it("pushes through the existing reconciler and preserves the exact grant, stable key and checkpoint", async () => {
+    const f = managedFixture();
+    let current = {
+      ...record(),
+      connectorAccountId: f.grantId,
+      providerEventId: null,
+      providerEtag: null,
+      state: "dirty" as const,
+      pendingOperation: "create" as const,
+      lastCommonSemanticHash: null,
+    } as LinkedCalendarEventRecord;
+    const store: LinkedCalendarCheckpointStore = {
+      async save(_expected, patch) {
+        current = { ...current, ...patch };
+        return current;
+      },
+    };
+    const local: LinkedCalendarLocalPort = {
+      async get() {
+        return {
+          eventId: current.localEventId,
+          revision: current.localRevision,
+          event: baseEvent,
+        };
+      },
+      async applyProviderEvent() {
+        throw Error("Unexpected local replacement");
+      },
+      async delete() {
+        throw Error("Unexpected local deletion");
+      },
+    };
+    const engine = new LinkedCalendarReconciler(store, local, f.provider);
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(current).toMatchObject({
+      state: "clean",
+      providerEventId: "managed-event",
+      providerEtag: '"managed-v1"',
+      pendingOperation: null,
+    });
+    const creates = f.commands.filter((command) => command.kind === "create");
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toMatchObject({
+      selection: {
+        grantId: "real-owner-grant",
+        calendarId: current.providerCalendarId,
+        accountId: "managed-account",
+      },
+      idempotencyKey: current.idempotencyKey,
+      event: baseEvent,
+    });
+    await engine.reconcile(current);
+    expect(
+      f.commands.filter((command) => command.kind === "create"),
+    ).toHaveLength(1);
+  });
+
+  it("quarantines a lost acknowledgement without repeating the provider create", async () => {
+    const f = managedFixture();
+    f.loseReply();
+    let current = {
+      ...record(),
+      connectorAccountId: f.grantId,
+      providerEventId: null,
+      providerEtag: null,
+      state: "dirty",
+      pendingOperation: "create",
+      lastCommonSemanticHash: null,
+    } as LinkedCalendarEventRecord;
+    const engine = new LinkedCalendarReconciler(
+      {
+        async save(_expected, patch) {
+          current = { ...current, ...patch };
+          return current;
+        },
+      },
+      {
+        async get() {
+          return {
+            eventId: current.localEventId,
+            revision: current.localRevision,
+            event: baseEvent,
+          };
+        },
+        async applyProviderEvent() {
+          throw Error("Unexpected replacement");
+        },
+        async delete() {
+          throw Error("Unexpected deletion");
+        },
+      },
+      f.provider,
+    );
+    expect(await engine.reconcile(current)).toBe("quarantined");
+    expect(await engine.reconcile(current)).toBe("quarantined");
+    expect(
+      f.commands.filter((command) => command.kind === "create"),
+    ).toHaveLength(1);
+    expect((await f.provider.get(current))?.eventId).toBe("managed-event");
+    expect(
+      f.commands.filter((command) => command.kind === "get").at(-1),
+    ).toMatchObject({ reference: { idempotencyKey: current.idempotencyKey } });
+  });
+
+  it("refuses an account swap and nested selection before a provider mutation", async () => {
+    const f = managedFixture();
+    f.swapAccount();
+    await expect(
+      f.provider.create(
+        { ...record(), connectorAccountId: f.grantId },
+        baseEvent,
+      ),
+    ).rejects.toThrow();
+    expect(f.commands.some((command) => command.kind === "create")).toBe(false);
+    await expect(
+      calendarAgentWrite(
+        f.client,
+        "real-owner-grant",
+        "a".repeat(64),
+        {
+          operation: "linked-sync",
+          grantId: f.grantId,
+          calendarId: "calendar",
+          accountId: "different-account",
+          command: {
+            kind: "create",
+            idempotencyKey: "stable-key",
+            event: baseEvent,
+            selection: { accountId: "attacker" },
+          },
+        },
+        new AbortController().signal,
+        "alpha-google",
+      ),
+    ).rejects.toThrow("Unsupported");
+    expect(f.commands.some((command) => command.kind === "create")).toBe(false);
+  });
+
+  it("preserves conditional-write refusal and keeps managed deletion off by default", async () => {
+    const f = managedFixture();
+    f.setRemote({ eventId: "managed-event", etag: '"new"', event: baseEvent });
+    const current = {
+      ...record(),
+      connectorAccountId: f.grantId,
+      providerEventId: "managed-event",
+      providerEtag: '"old"',
+    };
+    await expect(f.provider.update(current, baseEvent)).rejects.toMatchObject({
+      outcome: "precondition_failed",
+      code: "CALENDAR_SYNC_PRECONDITION_FAILED",
+    });
+    await expect(f.provider.delete(current)).rejects.toMatchObject({
+      outcome: "not_accepted",
+      code: "CALENDAR_SYNC_DELETE_UNAVAILABLE",
+    });
+    expect(f.commands.some((command) => command.kind === "delete")).toBe(false);
   });
 });

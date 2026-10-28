@@ -3,7 +3,7 @@
  * temporary VoiceProfileStore and synthetic enrollment samples.
  */
 
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { tmpdir } from "node:os";
@@ -14,6 +14,10 @@ import {
 	type VoiceProfileRecord,
 	VoiceProfileStore,
 } from "../services/voice/profile-store";
+import {
+	__resetSharedVoiceProfileStoresForTest,
+	getSharedVoiceProfileStore,
+} from "../services/voice/speaker/profile-store-factory";
 import {
 	handleVoiceProfilesManagementRoutes,
 	setVoiceProfilesManagementStore,
@@ -251,5 +255,67 @@ describe("voice profile management routes", () => {
 			original: { id: guest.profileId, samples: [{ id: "guest-a" }] },
 			split: { entityId: null, samples: [{ id: "guest-b" }] },
 		});
+	});
+});
+
+describe("voice profile delete with the live voice store", () => {
+	let stateDir: string;
+	let previousStateDir: string | undefined;
+
+	beforeEach(() => {
+		setVoiceProfilesManagementStore(null);
+		previousStateDir = process.env.ELIZA_STATE_DIR;
+		stateDir = mkdtempSync(path.join(tmpdir(), "voice-profile-shared-"));
+		process.env.ELIZA_STATE_DIR = stateDir;
+		__resetSharedVoiceProfileStoresForTest();
+	});
+
+	afterEach(() => {
+		__resetSharedVoiceProfileStoresForTest();
+		if (previousStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+		else process.env.ELIZA_STATE_DIR = previousStateDir;
+		rmSync(stateDir, { recursive: true, force: true });
+	});
+
+	it("a deleted profile is gone from the store the voice pipeline uses", async () => {
+		// The live pipeline holds the shared store, warm with the guest profile.
+		const live = await getSharedVoiceProfileStore();
+		const speaker = await live.createProfile({
+			centroid: unit([0, 0, 1, 0]),
+			embeddingModel: "test-speaker-model",
+			confidence: 0.8,
+			durationMs: 1000,
+			audioRef: sample("speaker-a"),
+			metadata: { displayName: "Guest" },
+		});
+
+		const deleted = await call(
+			"DELETE",
+			`/api/voice/profiles/${speaker.profileId}`,
+		);
+		expect(deleted.status).toBe(200);
+
+		// The next turn from that speaker must not refine (and rewrite) it.
+		const refined = await live.refine({
+			profileId: speaker.profileId,
+			embedding: unit([0, 0, 1, 0]),
+			durationMs: 1000,
+			confidence: 0.8,
+		});
+		expect(refined).toBeNull();
+		const records = await live.list();
+		expect(records.map((record) => record.profileId)).not.toContain(
+			speaker.profileId,
+		);
+		expect(
+			existsSync(
+				path.join(
+					stateDir,
+					"voice-profiles",
+					"profiles",
+					`${speaker.profileId}.json`,
+				),
+			),
+		).toBe(false);
 	});
 });

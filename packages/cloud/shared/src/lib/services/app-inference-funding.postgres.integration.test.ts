@@ -6,7 +6,10 @@ import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from "
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Client } from "pg";
-import { installBillingCommandEvidenceTestColumns } from "../../testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 
 const postgresUrl = process.env.APP_FUNDING_TEST_POSTGRES_URL;
 const schema = `app_funding_${randomUUID().replaceAll("-", "_")}`;
@@ -95,6 +98,10 @@ beforeAll(async () => {
     "0430_billing_identity_references",
     "0511_organization_plan_change_quotes",
     "0512_organization_upgrade_dispatch",
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0542_subscription_grant_codes",
+    "0543_app_pilot_allowance",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -104,6 +111,7 @@ beforeAll(async () => {
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
   await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
+  await installSubscriptionGrantTestSchema((statement) => client.exec(statement));
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES ($1,$2,'platform','acct_platform',false,true)`,
     [merchant, org],
@@ -165,56 +173,14 @@ async function prepare(
   return { account, scope, command };
 }
 
-async function fixture(options: { creditBalance?: string; expiresSoon?: boolean } = {}) {
-  const developer = randomUUID();
-  const principal = randomUUID();
-  const buyerOrg = randomUUID();
-  const merchantId = randomUUID();
-  const providerAccountId = `acct_${randomUUID().replaceAll("-", "")}`;
-  await client.query("INSERT INTO organizations(id,credit_balance) VALUES ($1,$2),($3,0)", [
-    developer,
-    options.creditBalance ?? "42.000000",
-    buyerOrg,
-  ]);
-  await client.query("INSERT INTO users(id,organization_id) VALUES ($1,$2)", [principal, buyerOrg]);
-  await client.query(
-    "INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES ($1,$2,$3,$3,false,true)",
-    [merchantId, developer, providerAccountId],
-  );
-  const app = randomUUID();
-  const plan = randomUUID();
-  await client.query("INSERT INTO apps(id,organization_id) VALUES ($1,$2)", [app, developer]);
-  const { dbWrite } = await import("../../db/helpers");
-  const { appBillingPlanRevisions, appSubscriptionTrials } = await import(
-    "../../db/schemas/app-billing"
-  );
-  const original = await repository.getPlan({ appId: appA, planRevisionId: planA });
-  await dbWrite
-    .insert(appBillingPlanRevisions)
-    .values({ ...original, id: plan, app_id: app, merchant_id: merchantId });
-  const prepared = await prepare(app, plan, merchantId, principal);
-  const trialEnd = new Date(Math.floor((Date.now() + 2500) / 1000) * 1000);
-  const trial = options.expiresSoon
-    ? (
-        await dbWrite
-          .insert(appSubscriptionTrials)
-          .values({
-            app_id: app,
-            eligibility_principal_id: principal,
-            billing_scope_id: prepared.scope.scopeId,
-            livemode: false,
-            command_id: prepared.command.id,
-            plan_revision_id: plan,
-            starts_at: new Date(trialEnd.getTime() - 604800000),
-            ends_at: trialEnd,
-          })
-          .returning()
-      )[0]
-    : await repository.claimTrial({
-        scopeId: prepared.scope.scopeId,
-        commandId: prepared.command.id,
-        planRevisionId: plan,
-      });
+async function projectTrial(
+  prepared: Pick<Awaited<ReturnType<typeof prepare>>, "scope" | "command">,
+  trial: import("../../db/schemas/app-billing").AppTrialClaim,
+  plan: string,
+  merchantId: string,
+  providerAccountId: string,
+  principal: string,
+) {
   if (!trial) throw new Error("Trial fixture insertion returned no row");
   const command = await repository.beginCommand({
     scopeId: prepared.scope.scopeId,
@@ -278,6 +244,68 @@ async function fixture(options: { creditBalance?: string; expiresSoon?: boolean 
     "../../db/repositories/app-subscription-finalizer"
   );
   const projection = await appSubscriptionFinalizer.applyObservation(input);
+  return projection;
+}
+
+async function fixture(options: { creditBalance?: string; expiresSoon?: boolean } = {}) {
+  const developer = randomUUID();
+  const principal = randomUUID();
+  const buyerOrg = randomUUID();
+  const merchantId = randomUUID();
+  const providerAccountId = `acct_${randomUUID().replaceAll("-", "")}`;
+  await client.query("INSERT INTO organizations(id,credit_balance) VALUES ($1,$2),($3,0)", [
+    developer,
+    options.creditBalance ?? "42.000000",
+    buyerOrg,
+  ]);
+  await client.query("INSERT INTO users(id,organization_id) VALUES ($1,$2)", [principal, buyerOrg]);
+  await client.query(
+    "INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES ($1,$2,$3,$3,false,true)",
+    [merchantId, developer, providerAccountId],
+  );
+  const app = randomUUID();
+  const plan = randomUUID();
+  await client.query("INSERT INTO apps(id,organization_id) VALUES ($1,$2)", [app, developer]);
+  const { dbWrite } = await import("../../db/helpers");
+  const { appBillingPlanRevisions, appSubscriptionTrials } = await import(
+    "../../db/schemas/app-billing"
+  );
+  const original = await repository.getPlan({ appId: appA, planRevisionId: planA });
+  await dbWrite
+    .insert(appBillingPlanRevisions)
+    .values({ ...original, id: plan, app_id: app, merchant_id: merchantId });
+  const prepared = await prepare(app, plan, merchantId, principal);
+  const trialEnd = new Date(Math.floor((Date.now() + 2500) / 1000) * 1000);
+  const trial = options.expiresSoon
+    ? (
+        await dbWrite
+          .insert(appSubscriptionTrials)
+          .values({
+            app_id: app,
+            eligibility_principal_id: principal,
+            billing_scope_id: prepared.scope.scopeId,
+            livemode: false,
+            command_id: prepared.command.id,
+            plan_revision_id: plan,
+            starts_at: new Date(trialEnd.getTime() - 604800000),
+            ends_at: trialEnd,
+          })
+          .returning()
+      )[0]
+    : await repository.claimTrial({
+        scopeId: prepared.scope.scopeId,
+        commandId: prepared.command.id,
+        planRevisionId: plan,
+      });
+  if (!trial) throw new Error("Trial fixture insertion returned no row");
+  const projection = await projectTrial(
+    prepared,
+    trial,
+    plan,
+    merchantId,
+    providerAccountId,
+    principal,
+  );
   const actor: import("./app-inference-funding").AppInferenceFundingActor = {
     appId: app,
     billingAccountId: prepared.account.id,
@@ -297,7 +325,7 @@ async function fixture(options: { creditBalance?: string; expiresSoon?: boolean 
 
 async function balances(developer: string, scopeId: string) {
   const { rows } = await client.query(
-    `SELECT o.credit_balance::text cash,p.available_amount::text available,p.reserved_amount::text reserved,p.settled_amount::text settled,p.expired_amount::text expired FROM organizations o JOIN subscription_allowance_periods p ON p.organization_id=o.id WHERE o.id=$1 AND p.billing_scope_id=$2`,
+    `SELECT o.credit_balance::text cash,p.available_amount::text available,p.reserved_amount::text reserved,p.settled_amount::text settled,p.expired_amount::text expired FROM organizations o JOIN subscription_allowance_periods p ON p.organization_id=o.id WHERE o.id=$1 AND p.billing_scope_id=$2 ORDER BY p.period_start`,
     [developer, scopeId],
   );
   return rows[0];
@@ -586,159 +614,486 @@ test("one callback owns dispatch while an unknown provider result retains both o
   });
 });
 
-test("registered delegation HTTP boundary and real DB admission preserve payer isolation across known failure, retry and mode denial", async () => {
-  const f = await fixture();
-  const clientId = randomUUID(),
-    consentId = randomUUID();
-  const secret = randomBytes(32).toString("base64url"),
-    token = `ead_${randomBytes(32).toString("base64url")}`;
-  const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-  await client.query("INSERT INTO app_users(id,app_id,user_id) VALUES ($1,$2,$3)", [
-    consentId,
-    f.request.actor.appId,
-    f.request.actor.actorUserId,
-  ]);
-  await client.query(
-    `INSERT INTO app_client_registrations(id,app_id,owner_organization_id,billing_environment,secret_hashes,redirect_uris,allowed_scopes) VALUES ($1,$2,$3,'test',$4::jsonb,'["https://example.test/callback"]','["identity","inference"]')`,
-    [clientId, f.request.actor.appId, f.developer, JSON.stringify([hash(secret)])],
-  );
-  await client.query(
-    `INSERT INTO app_delegations(token_hash,authorization_code_hash,client_id,app_id,user_id,consent_id,organization_id,registration_revision,scopes,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,1,'["identity","inference"]',now()+interval '1 day')`,
-    [
-      hash(token),
-      hash(randomUUID()),
-      clientId,
+test.each(["trial", "pilot"])(
+  "registered %s delegation HTTP boundary preserves payer isolation across failure, retry and mode denial",
+  async (kind) => {
+    const f = kind === "pilot" ? await pilotFixture() : await fixture();
+    const clientId = randomUUID(),
+      consentId = randomUUID();
+    const secret = randomBytes(32).toString("base64url"),
+      token = `ead_${randomBytes(32).toString("base64url")}`;
+    const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+    await client.query("INSERT INTO app_users(id,app_id,user_id) VALUES ($1,$2,$3)", [
+      consentId,
       f.request.actor.appId,
       f.request.actor.actorUserId,
-      consentId,
-      f.buyerOrg,
-    ],
-  );
-  const { Hono } = await import("hono");
-  const { createAppInferenceRoute } = await import(
-    "../../../../api/v1/apps/[id]/inference/chat/completions/route"
-  );
-  const { admitAppSubscriptionInference, appInferenceErrorResponse } = await import(
-    "./app-subscription-inference-admission"
-  );
-  const { settlementDigest } = await import("./settlement-digest");
-  const { ElizaCloudClient } = await import("../../../../sdk/src/client");
-  let providerCalls = 0;
-  // The external provider and infrastructure credential are controlled fixtures; delegation and money repositories are real.
-  const router = new Hono<import("../../types/cloud-worker-env").AppEnv>();
-  router.route(
-    "/api/v1/apps/:id/inference/chat/completions",
-    createAppInferenceRoute(async (request, options) => {
-      if (
-        request.headers.get("Authorization") !== "Bearer eliza_controlled_developer" ||
-        request.headers.has("X-App-Delegation") ||
-        request.headers.has("Cookie")
-      )
-        return new Response("Credential transport failed", { status: 401 });
-      if (!options?.appFundingActor) throw new Error("Missing delegated actor");
-      const body = await request.json();
-      try {
-        const admission = await admitAppSubscriptionInference({
-          actor: options.appFundingActor,
-          developerOrganizationId: f.developer,
-          developerAppScopeId: f.request.actor.appId,
-          logicalOperationId: request.headers.get("Idempotency-Key") ?? "",
-          requestDigest: settlementDigest(body),
-          estimatedCostUsd: 2,
-          revalidateDeveloperCredential: async () => {},
-        });
-        await admission.markProviderDispatched();
-        providerCalls++;
-        if (request.headers.get("Idempotency-Key") === "operation:known-failure") {
-          await admission.settle(0);
-          return Response.json(
-            { error: { message: "Controlled provider rejected request" } },
-            { status: 422 },
-          );
-        }
-        await admission.settle(1.25);
-        return Response.json({
-          choices: [{ message: { role: "assistant", content: "controlled model receipt" } }],
-        });
-      } catch (error) {
-        // error-policy:J1 This harness translates the same typed money failures as the production gateway.
-        const response = appInferenceErrorResponse(error);
-        if (response) return response;
-        throw error;
-      }
-    }),
-  );
-  const executionContext = {
-    waitUntil: (_promise: Promise<unknown>) => {},
-    passThroughOnException: () => {},
-  };
-  let mode: "test" | "live" = "test";
-  const server = Bun.serve({
-    hostname: "127.0.0.1",
-    port: 0,
-    fetch: (request) =>
-      router.fetch(
-        request,
-        {
-          DATABASE_URL: process.env.DATABASE_URL,
-          APP_INFERENCE_EXECUTION_ENVIRONMENT: mode,
-        } as import("../../types/cloud-worker-env").Bindings,
-        executionContext,
-      ),
-  });
-  try {
-    const sdk = new ElizaCloudClient({ apiBaseUrl: server.url.href }).appInference(
-      f.request.actor.appId,
-      { clientId, clientSecret: secret, developerApiKey: "eliza_controlled_developer" },
-    );
-    const operation = {
-      billingAccountId: f.request.actor.billingAccountId,
-      productFamilyKey: "main",
-      delegationToken: token,
-      operationId: "operation:known-failure",
-    };
-    const body = {
-      model: "controlled-model",
-      messages: [{ role: "user" as const, content: "Preserved customer request" }],
-    };
-    await expect(sdk.createChatCompletion(operation, body)).rejects.toMatchObject({
-      statusCode: 422,
-    });
-    expect(providerCalls).toBe(1);
-    expect(await balances(f.developer, f.scopeId)).toMatchObject({
-      cash: "42.000000",
-      available: "5.000000",
-      reserved: "0.000000",
-    });
-    await expect(sdk.createChatCompletion(operation, body)).rejects.toMatchObject({
-      statusCode: 409,
-      errorBody: { code: "APP_INFERENCE_OPERATION_COMPLETE" },
-    });
-    expect(providerCalls).toBe(1);
-    mode = "live";
-    await expect(
-      sdk.createChatCompletion({ ...operation, operationId: "operation:mode-denied" }, body),
-    ).rejects.toMatchObject({ statusCode: 403, errorBody: { code: "APP_INFERENCE_ENVIRONMENT" } });
-    expect(providerCalls).toBe(1);
-    mode = "test";
-    const successful = { ...operation, operationId: "operation:succeeded" };
-    expect((await sdk.createChatCompletion(successful, body)).choices?.[0]?.message?.content).toBe(
-      "controlled model receipt",
-    );
-    expect(providerCalls).toBe(2);
-    expect(await balances(f.developer, f.scopeId)).toMatchObject({
-      cash: "40.750000",
-      available: "3.750000",
-      reserved: "0.000000",
-    });
-    await client.query("UPDATE app_delegations SET revoked_at=now() WHERE token_hash=$1", [
-      hash(token),
     ]);
+    await client.query(
+      `INSERT INTO app_client_registrations(id,app_id,owner_organization_id,billing_environment,secret_hashes,redirect_uris,allowed_scopes) VALUES ($1,$2,$3,'test',$4::jsonb,'["https://example.test/callback"]','["identity","inference"]')`,
+      [clientId, f.request.actor.appId, f.developer, JSON.stringify([hash(secret)])],
+    );
+    await client.query(
+      `INSERT INTO app_delegations(token_hash,authorization_code_hash,client_id,app_id,user_id,consent_id,organization_id,registration_revision,scopes,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,1,'["identity","inference"]',now()+interval '1 day')`,
+      [
+        hash(token),
+        hash(randomUUID()),
+        clientId,
+        f.request.actor.appId,
+        f.request.actor.actorUserId,
+        consentId,
+        f.buyerOrg,
+      ],
+    );
+    const { Hono } = await import("hono");
+    const { createAppInferenceRoute } = await import(
+      "../../../../api/v1/apps/[id]/inference/chat/completions/route"
+    );
+    const { admitAppSubscriptionInference, appInferenceErrorResponse } = await import(
+      "./app-subscription-inference-admission"
+    );
+    const { settlementDigest } = await import("./settlement-digest");
+    const { ElizaCloudClient } = await import("../../../../sdk/src/client");
+    let providerCalls = 0;
+    // The external provider and infrastructure credential are controlled fixtures; delegation and money repositories are real.
+    const router = new Hono<import("../../types/cloud-worker-env").AppEnv>();
+    router.route(
+      "/api/v1/apps/:id/inference/chat/completions",
+      createAppInferenceRoute(async (request, options) => {
+        if (
+          request.headers.get("Authorization") !== "Bearer eliza_controlled_developer" ||
+          request.headers.has("X-App-Delegation") ||
+          request.headers.has("Cookie")
+        )
+          return new Response("Credential transport failed", { status: 401 });
+        if (!options?.appFundingActor) throw new Error("Missing delegated actor");
+        const body = await request.json();
+        try {
+          const admission = await admitAppSubscriptionInference({
+            actor: options.appFundingActor,
+            developerOrganizationId: f.developer,
+            developerAppScopeId: f.request.actor.appId,
+            logicalOperationId: request.headers.get("Idempotency-Key") ?? "",
+            requestDigest: settlementDigest(body),
+            estimatedCostUsd: 2,
+            revalidateDeveloperCredential: async () => {},
+          });
+          await admission.markProviderDispatched();
+          providerCalls++;
+          if (request.headers.get("Idempotency-Key") === "operation:known-failure") {
+            await admission.settle(0);
+            return Response.json(
+              { error: { message: "Controlled provider rejected request" } },
+              { status: 422 },
+            );
+          }
+          await admission.settle(1.25);
+          return Response.json({
+            choices: [{ message: { role: "assistant", content: "controlled model receipt" } }],
+          });
+        } catch (error) {
+          // error-policy:J1 This harness translates the same typed money failures as the production gateway.
+          const response = appInferenceErrorResponse(error);
+          if (response) return response;
+          throw error;
+        }
+      }),
+    );
+    const executionContext = {
+      waitUntil: (_promise: Promise<unknown>) => {},
+      passThroughOnException: () => {},
+    };
+    let mode: "test" | "live" = "test";
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: (request) =>
+        router.fetch(
+          request,
+          {
+            DATABASE_URL: process.env.DATABASE_URL,
+            APP_INFERENCE_EXECUTION_ENVIRONMENT: mode,
+          } as import("../../types/cloud-worker-env").Bindings,
+          executionContext,
+        ),
+    });
+    try {
+      const sdk = new ElizaCloudClient({ apiBaseUrl: server.url.href }).appInference(
+        f.request.actor.appId,
+        { clientId, clientSecret: secret, developerApiKey: "eliza_controlled_developer" },
+      );
+      const operation = {
+        billingAccountId: f.request.actor.billingAccountId,
+        productFamilyKey: "main",
+        delegationToken: token,
+        operationId: "operation:known-failure",
+      };
+      const body = {
+        model: "controlled-model",
+        messages: [{ role: "user" as const, content: "Preserved customer request" }],
+      };
+      await expect(sdk.createChatCompletion(operation, body)).rejects.toMatchObject({
+        statusCode: 422,
+      });
+      expect(providerCalls).toBe(1);
+      expect(await balances(f.developer, f.scopeId)).toMatchObject({
+        cash: "42.000000",
+        available: kind === "pilot" ? "25.000000" : "5.000000",
+        reserved: "0.000000",
+      });
+      await expect(sdk.createChatCompletion(operation, body)).rejects.toMatchObject({
+        statusCode: 409,
+        errorBody: { code: "APP_INFERENCE_OPERATION_COMPLETE" },
+      });
+      expect(providerCalls).toBe(1);
+      mode = "live";
+      await expect(
+        sdk.createChatCompletion({ ...operation, operationId: "operation:mode-denied" }, body),
+      ).rejects.toMatchObject({
+        statusCode: 403,
+        errorBody: { code: "APP_INFERENCE_ENVIRONMENT" },
+      });
+      expect(providerCalls).toBe(1);
+      mode = "test";
+      const successful = { ...operation, operationId: "operation:succeeded" };
+      expect(
+        (await sdk.createChatCompletion(successful, body)).choices?.[0]?.message?.content,
+      ).toBe("controlled model receipt");
+      expect(providerCalls).toBe(2);
+      expect(await balances(f.developer, f.scopeId)).toMatchObject({
+        cash: "40.750000",
+        available: kind === "pilot" ? "23.750000" : "3.750000",
+        reserved: "0.000000",
+      });
+      await client.query("UPDATE app_delegations SET revoked_at=now() WHERE token_hash=$1", [
+        hash(token),
+      ]);
+      await expect(
+        sdk.createChatCompletion({ ...operation, operationId: "operation:revoked" }, body),
+      ).rejects.toMatchObject({ statusCode: 401, errorBody: { code: "APP_GRANT_REVOKED" } });
+      expect(providerCalls).toBe(2);
+    } finally {
+      server.stop(true);
+    }
+  },
+);
+
+async function pilotFixture(creditBalance = "42.000000", expiresSoon = false) {
+  const developer = randomUUID();
+  const buyerOrg = randomUUID();
+  const principal = randomUUID();
+  const merchantId = randomUUID();
+  const app = randomUUID();
+  const plan = randomUUID();
+  await client.query("INSERT INTO organizations(id,credit_balance) VALUES ($1,$2)", [
+    developer,
+    creditBalance,
+  ]);
+  await client.query("INSERT INTO organizations(id,credit_balance) VALUES ($1,0)", [buyerOrg]);
+  await client.query("INSERT INTO users(id,organization_id) VALUES ($1,$2)", [principal, buyerOrg]);
+  await client.query("INSERT INTO apps(id,organization_id) VALUES ($1,$2)", [app, developer]);
+  await client.query(
+    "INSERT INTO billing_merchants(id,organization_id,provider_account_key,stripe_account_id,livemode,enabled) VALUES ($1,$2,$3,$3,false,true)",
+    [merchantId, developer, `acct_${randomUUID().replaceAll("-", "")}`],
+  );
+  const { dbWrite } = await import("../../db/helpers");
+  const { appBillingPlanRevisions } = await import("../../db/schemas/app-billing");
+  const original = await repository.getPlan({ appId: appA, planRevisionId: planA });
+  await dbWrite
+    .insert(appBillingPlanRevisions)
+    .values({ ...original, id: plan, app_id: app, merchant_id: merchantId });
+  const account = await repository.createAccount({
+    appId: app,
+    externalAccountKey: randomUUID(),
+    displayName: "Pilot",
+    principalUserId: principal,
+  });
+  const scope = await repository.resolveScope({
+    appId: app,
+    billingAccountId: account.id,
+    productFamilyKey: "main",
+    merchantId,
+    actorUserId: principal,
+  });
+  const campaign = randomUUID();
+  const code = randomBytes(24).toString("base64url");
+  const { appPilotCodeDigest, appPilotRedemptionsRepository } = await import(
+    "../../db/repositories/app-pilot-redemptions"
+  );
+  await client.query(
+    "INSERT INTO app_pilot_campaigns(id,app_id,plan_revision_id,livemode,code_digest,maximum_redemptions,opens_at,closes_at) VALUES ($1,$2,$3,false,$4,1,now()-interval '1 day',now()+interval '1 day')",
+    [campaign, app, plan, appPilotCodeDigest(code)],
+  );
+  await client.query(
+    "INSERT INTO app_pilot_invitations(campaign_id,eligibility_principal_id) VALUES ($1,$2)",
+    [campaign, scope.eligibilityPrincipalId],
+  );
+  const input = {
+    appId: app,
+    livemode: false,
+    scopeId: scope.scopeId,
+    actorUserId: principal,
+    code,
+  };
+  let redeemed;
+  if (expiresSoon) {
+    // Retained six-month source near expiry; production redemption uses the current DB clock.
+    const [redemption] = (
+      await client.query(
+        `WITH starts AS (SELECT clock_timestamp() - interval '6 months' + interval '3 seconds' AS at)
+      INSERT INTO app_pilot_redemptions(campaign_id,app_id,livemode,eligibility_principal_id,billing_scope_id,plan_revision_id,redeemed_by_user_id,starts_at,ends_at)
+      SELECT $1,$2,false,$3,$4,$5,$6,at,((at AT TIME ZONE 'UTC') + interval '6 months') AT TIME ZONE 'UTC' FROM starts RETURNING *`,
+        [campaign, app, scope.eligibilityPrincipalId, scope.scopeId, plan, principal],
+      )
+    ).rows as import("../../db/schemas/app-pilot-redemptions").AppPilotRedemption[];
+    if (!redemption) throw new Error("Missing retained pilot fixture");
+    const { writeTransaction } = await import("../../db/helpers");
+    const { publishAppPilotAccess } = await import("../../db/repositories/app-pilot-access");
+    await writeTransaction((tx) => publishAppPilotAccess(tx, scope, redemption.id));
+    redeemed = { redemption, replayed: false };
+  } else redeemed = await appPilotRedemptionsRepository.redeem(input);
+  const request: import("./app-inference-funding").AppInferenceFundingRequest = {
+    actor: {
+      appId: app,
+      billingAccountId: account.id,
+      productFamilyKey: "main",
+      environment: "test",
+      developerOrganizationId: developer,
+      actorUserId: principal,
+    },
+    logicalOperationId: `pilot-inference:${randomUUID()}`,
+    requestDigest: digest,
+    estimatedAmountUsd: "2.000000",
+  };
+  return {
+    request,
+    scope,
+    scopeId: scope.scopeId,
+    developer,
+    buyerOrg,
+    campaign,
+    redeemed,
+    input,
+    plan,
+  };
+}
+
+describe("sponsored pilot funding", () => {
+  test("redemption atomically publishes six months, funds real usage once and has no Stripe obligation", async () => {
+    const f = await pilotFixture();
+    const funding = await service();
+    const periods = (
+      await client.query(
+        "SELECT granted_amount::text,available_amount::text FROM subscription_allowance_periods WHERE pilot_redemption_id=$1",
+        [f.redeemed.redemption.id],
+      )
+    ).rows;
+    expect(periods).toHaveLength(6);
+    expect(
+      periods.every((row) => (row as { granted_amount: string }).granted_amount === "25.000000"),
+    ).toBe(true);
+    const reservations = await Promise.all([
+      funding.reserve(f.request),
+      funding.reserve(f.request),
+    ]);
+    expect(reservations.filter((r) => r.dispatchGranted)).toHaveLength(1);
+    await funding.assertDispatchCurrent(f.request);
+    expect(await funding.settle({ ...f.request, actualAmountUsd: "1.250000" })).toMatchObject({
+      status: "finalized",
+      collectedAmountUsd: "1.250000",
+    });
+    expect(await funding.settle({ ...f.request, actualAmountUsd: "1.250000" })).toMatchObject({
+      replayed: true,
+    });
+    expect(
+      (
+        await client.query("SELECT credit_balance::text cash FROM organizations WHERE id=$1", [
+          f.developer,
+        ])
+      ).rows,
+    ).toEqual([{ cash: "40.750000" }]);
+    expect(
+      (
+        await client.query(
+          "SELECT count(*)::integer n FROM billing_subscriptions WHERE billing_scope_id=$1",
+          [f.scope.scopeId],
+        )
+      ).rows,
+    ).toEqual([{ n: 0 }]);
     await expect(
-      sdk.createChatCompletion({ ...operation, operationId: "operation:revoked" }, body),
-    ).rejects.toMatchObject({ statusCode: 401, errorBody: { code: "APP_GRANT_REVOKED" } });
-    expect(providerCalls).toBe(2);
-  } finally {
-    server.stop(true);
-  }
+      repository.prepareCommand({
+        scopeId: f.scope.scopeId,
+        actorUserId: f.request.actor.actorUserId,
+        kind: "checkout",
+        payload: {
+          version: 1,
+          domain: "buyer",
+          action: "trial",
+          planRevisionId: f.plan,
+          quantity: 1,
+        },
+        targetPlanRevisionId: f.plan,
+        quantity: 1,
+        idempotencyKey: randomUUID(),
+        requestDigest: digest,
+        expectedSubscriptionRevision: null,
+      }),
+    ).rejects.toThrow("Pilot access is active");
+    const replay = await (
+      await import("../../db/repositories/app-pilot-redemptions")
+    ).appPilotRedemptionsRepository.redeem(f.input);
+    expect(replay).toEqual({ ...f.redeemed, replayed: true });
+    expect(
+      (
+        await client.query(
+          "SELECT count(*)::integer n FROM subscription_allowance_periods WHERE pilot_redemption_id=$1",
+          [f.redeemed.redemption.id],
+        )
+      ).rows,
+    ).toEqual([{ n: 6 }]);
+  });
+  test("campaign revocation stops a reserved dispatch and new spending while cancellation preserves accounting", async () => {
+    const f = await pilotFixture();
+    const funding = await service();
+    await funding.reserve(f.request);
+    await client.query("UPDATE app_pilot_campaigns SET revoked_at=clock_timestamp() WHERE id=$1", [
+      f.campaign,
+    ]);
+    await expect(funding.assertDispatchCurrent(f.request)).rejects.toThrow("expired or changed");
+    await expect(
+      funding.reserve({ ...f.request, logicalOperationId: `pilot-inference:${randomUUID()}` }),
+    ).rejects.toThrow("does not currently grant");
+    await funding.release(f.request);
+    expect(
+      (
+        await client.query("SELECT credit_balance::text cash FROM organizations WHERE id=$1", [
+          f.developer,
+        ])
+      ).rows,
+    ).toEqual([{ cash: "42.000000" }]);
+  });
+  test("a later provider subscription cannot revive a revoked pilot reservation", async () => {
+    const f = await pilotFixture();
+    const funding = await service();
+    await funding.reserve(f.request);
+    await client.query("UPDATE app_pilot_campaigns SET revoked_at=clock_timestamp() WHERE id=$1", [
+      f.campaign,
+    ]);
+    const command = await repository.prepareCommand({
+      scopeId: f.scope.scopeId,
+      actorUserId: f.request.actor.actorUserId,
+      kind: "checkout",
+      payload: {
+        version: 1,
+        domain: "buyer",
+        action: "trial",
+        planRevisionId: f.plan,
+        quantity: 1,
+      },
+      targetPlanRevisionId: f.plan,
+      quantity: 1,
+      idempotencyKey: randomUUID(),
+      requestDigest: digest,
+      expectedSubscriptionRevision: null,
+    });
+    const trial = await repository.claimTrial({
+      scopeId: f.scope.scopeId,
+      commandId: command.id,
+      planRevisionId: f.plan,
+    });
+    await projectTrial(
+      { scope: f.scope, command },
+      trial,
+      f.plan,
+      f.scope.merchantId,
+      f.scope.merchantKey,
+      f.request.actor.actorUserId,
+    );
+    const fresh = { ...f.request, logicalOperationId: `new-subscription:${randomUUID()}` };
+    expect((await funding.reserve(fresh)).dispatchGranted).toBe(true);
+    await funding.assertDispatchCurrent(fresh);
+    await expect(funding.assertDispatchCurrent(f.request)).rejects.toThrow("expired or changed");
+    await funding.release(f.request);
+    await funding.release(fresh);
+  });
+  test("unfunded developer cannot spend a participant's pilot allowance", async () => {
+    const f = await pilotFixture("1.000000");
+    await expect((await service()).reserve(f.request)).rejects.toThrow(
+      "insufficient infrastructure",
+    );
+    expect(
+      (
+        await client.query(
+          "SELECT sum(reserved_amount)::text reserved FROM subscription_allowance_periods WHERE pilot_redemption_id=$1",
+          [f.redeemed.redemption.id],
+        )
+      ).rows,
+    ).toEqual([{ reserved: "0.000000" }]);
+  });
+  test("six-month expiry denies dispatch and releases into expired funds without rollover", async () => {
+    const f = await pilotFixture("42.000000", true);
+    const funding = await service();
+    // Some calendar dates cannot be a six-month anniversary (for example March 31).
+    // On those dates the retained fixture is already expired; exercise immediate denial.
+    if (new Date(f.redeemed.redemption.ends_at).getTime() <= Date.now()) {
+      await expect(funding.reserve(f.request)).rejects.toThrow("does not currently grant");
+      return;
+    }
+    await funding.reserve(f.request);
+    await new Promise((resolve) =>
+      setTimeout(
+        resolve,
+        Math.max(0, new Date(f.redeemed.redemption.ends_at).getTime() - Date.now()) + 150,
+      ),
+    );
+    await expect(funding.assertDispatchCurrent(f.request)).rejects.toThrow("expired or changed");
+    await expect(
+      funding.reserve({ ...f.request, logicalOperationId: `expired:${randomUUID()}` }),
+    ).rejects.toThrow("does not currently grant");
+    await funding.release(f.request);
+    expect(
+      (
+        await client.query(
+          "SELECT reserved_amount::text reserved,expired_amount::text expired FROM subscription_allowance_periods WHERE pilot_redemption_id=$1 ORDER BY period_start DESC LIMIT 1",
+          [f.redeemed.redemption.id],
+        )
+      ).rows,
+    ).toEqual([{ reserved: "0.000000", expired: "2.000000" }]);
+  });
+  test("future monthly allowance cannot be reserved early or increased after publication", async () => {
+    const f = await pilotFixture();
+    const rows = (
+      await client.query(
+        "SELECT id FROM subscription_allowance_periods WHERE pilot_redemption_id=$1 ORDER BY period_start",
+        [f.redeemed.redemption.id],
+      )
+    ).rows as { id: string }[];
+    await expect(
+      client.query(
+        "UPDATE subscription_allowance_periods SET granted_amount=26,available_amount=26 WHERE id=$1",
+        [rows[1]!.id],
+      ),
+    ).rejects.toThrow("immutable");
+    const { writeTransaction } = await import("../../db/helpers");
+    const { subscriptionAllowanceRepository } = await import(
+      "../../db/repositories/subscription-allowance"
+    );
+    const { microsToMoney } = await import(
+      "../../db/repositories/subscription-funding-reservations"
+    );
+    await expect(
+      writeTransaction((tx) =>
+        subscriptionAllowanceRepository.reserve(tx, {
+          organizationId: f.developer,
+          billingScope: { scopeId: f.scope.scopeId, merchantKey: f.scope.merchantKey },
+          periodId: rows[1]!.id,
+          logicalOperationId: `future:${randomUUID()}`,
+          requestDigest: digest,
+          requestedAmount: microsToMoney(1000000n),
+          allowanceAmount: microsToMoney(1000000n),
+          purchasedCreditAmount: microsToMoney(0n),
+          purchasedCreditReservationTransactionId: null,
+        }),
+      ),
+    ).rejects.toThrow("expired at post-lock");
+  });
 });

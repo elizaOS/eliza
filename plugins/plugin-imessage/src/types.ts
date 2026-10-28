@@ -108,6 +108,12 @@ export interface IMessageMessage {
   hasAttachments: boolean;
   /** Attachment paths */
   attachmentPaths?: string[];
+  /** Chat kind from chat.db (`chat_style`); AppleScript rows do not carry it. */
+  chatType?: IMessageChatType;
+  /** chat.db message guid; the live path keys stored messages on it. */
+  guid?: string;
+  /** chat.db guid of the message this one replies to. */
+  replyToGuid?: string;
 }
 
 export interface IMessageListMessagesOptions {
@@ -308,9 +314,39 @@ export function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// The pinned runtimes provide Intl.Segmenter, while the declaration library
+// does not expose its type.
+const GraphemeSegmenter = (
+  Intl as unknown as {
+    Segmenter: new (
+      locale: string,
+      options: { granularity: "grapheme" }
+    ) => { segment(text: string): Iterable<{ segment: string }> };
+  }
+).Segmenter;
+
+const graphemeSegmenter = new GraphemeSegmenter("en", {
+  granularity: "grapheme",
+});
+
 /**
- * Split text for iMessage
+ * `truncateWellFormed` that also never ends inside a grapheme cluster (a ZWJ
+ * emoji sequence, a regional-indicator flag, a combining mark, or a skin-tone
+ * modifier), so a cluster is never split across two iMessage parts. When a
+ * single cluster alone exceeds `maxLength`, fall back to the surrogate-safe
+ * cut; it is the only case with no clean boundary.
  */
+function truncateGraphemeSafe(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  let end = 0;
+  for (const { segment } of graphemeSegmenter.segment(text)) {
+    if (end + segment.length > maxLength) break;
+    end += segment.length;
+  }
+  if (end > 0) return text.slice(0, end);
+  return truncateWellFormed(text, maxLength);
+}
+
 // truncateWellFormed(text, 1) returns "" when text opens with a surrogate
 // pair (backing the one-unit cut off to 0): an astral scalar needs both
 // code units to stay well-formed, so no head chunk can honor a 1-unit
@@ -320,10 +356,13 @@ export function formatPhoneNumber(phone: string): string {
 // bound is unaffected since truncateWellFormed only ever backs off by one
 // unit, which stays non-empty for any limit >= 2.
 function takeAtLeastOneUnit(text: string, limit: number): string {
-  const chunk = truncateWellFormed(text, limit);
+  const chunk = truncateGraphemeSafe(text, limit);
   return chunk.length > 0 ? chunk : truncateWellFormed(text, limit + 1);
 }
 
+/**
+ * Split text for iMessage
+ */
 export function splitMessageForIMessage(
   text: string,
   maxLength: number = MAX_IMESSAGE_MESSAGE_LENGTH
@@ -362,8 +401,9 @@ export function splitMessageForIMessage(
       }
     }
 
-    // truncateWellFormed backs the cut off by one unit instead of splitting
-    // a surrogate pair (emoji) when no newline/space break point was found.
+    // takeAtLeastOneUnit backs the cut off to a grapheme boundary instead of
+    // splitting a surrogate pair or a grapheme cluster (emoji) when no
+    // newline/space break point was found.
     const head = takeAtLeastOneUnit(remaining, breakPoint);
     chunks.push(head.trimEnd());
     remaining = remaining.slice(head.length).trimStart();

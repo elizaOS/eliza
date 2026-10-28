@@ -96,7 +96,7 @@ export const secretsManagerPlugin: Plugin = {
 
   // Actions for natural language secret management and setup.
   // The planner sees exactly two actions: `SECRETS` (the umbrella that
-  // dispatches to get|set|delete|list|check|mirror|request via the `action`
+  // dispatches to get|set|delete|list|check|request via the `action`
   // discriminator) and `SECRETS_UPDATE_SETTINGS` (a settings mutation, not
   // a secret operation). No virtual promoted subactions are registered.
   actions: [secretsAction, updateSettingsAction],

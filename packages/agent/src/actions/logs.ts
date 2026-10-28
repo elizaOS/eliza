@@ -1,31 +1,33 @@
 /**
- * LOGS — polymorphic action for log inspection and runtime log-level control.
+ * LOGS — polymorphic action for log inspection.
  *
  *   search    → GET /api/logs   (filter by source/level/tag/since; HTTP because the log
  *                                buffer lives on server state, not the runtime)
  *   delete    → DELETE /api/logs (clears the in-memory log buffer; HTTP for the same reason)
- *   set_level → in-process per-room override on `runtime.logLevelOverrides`
  */
 
 import {
   type Action,
   type ActionResult,
-  elizaLogger,
-  type HandlerCallback,
   type HandlerOptions,
-  type IAgentRuntime,
   logger,
-  type Memory,
 } from "@elizaos/core";
 import {
   createSelfApiRequestHeaders,
   resolveSelfApiBaseUrl,
 } from "@elizaos/host/protocol";
 
-const LOGS_OPS = ["search", "delete", "set_level"] as const;
+const LOGS_OPS = ["search", "delete"] as const;
 type LogsOp = (typeof LOGS_OPS)[number];
 
-const LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;
+const LOG_LEVELS = [
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "error",
+  "fatal",
+] as const;
 type LogLevel = (typeof LOG_LEVELS)[number];
 /** Parameters that narrow a search. The clear route accepts none of them. */
 const LOGS_SEARCH_FILTERS = [
@@ -35,7 +37,6 @@ const LOGS_SEARCH_FILTERS = [
   "since",
   "limit",
 ] as const satisfies ReadonlyArray<keyof LogsParams>;
-type RuntimeLoggerWithLevel = typeof logger & { level: string };
 
 interface LogsParams {
   action?: LogsOp;
@@ -47,14 +48,6 @@ interface LogsParams {
   tags?: string[];
   since?: string;
   limit?: number;
-  // set_level-only
-  roomId?: string;
-}
-
-function hasMutableLogLevel(
-  value: typeof logger,
-): value is RuntimeLoggerWithLevel {
-  return "level" in value && typeof value.level === "string";
 }
 
 interface LogEntry {
@@ -74,10 +67,6 @@ interface LogsResponseShape {
 interface ClearResponseShape {
   cleared?: unknown;
 }
-
-type RuntimeWithOverrides = IAgentRuntime & {
-  logLevelOverrides?: Map<string, string>;
-};
 
 function getApiBase(): string {
   return resolveSelfApiBaseUrl(process.env);
@@ -187,7 +176,13 @@ async function searchLogs(params: LogsParams): Promise<ActionResult> {
   // filtered buffer in both the preview and structured payload.
   const shown = limit === undefined ? entries : entries.slice(-limit);
   const filterNote = describeLogFilters(params, tagFilter, sinceMs);
-  const windowNote = `Searched the complete current in-memory log buffer. Filters applied: ${filterNote}.`;
+  // source is an exact match, so a miss usually means a wrong module name.
+  // Name the sources the buffer holds instead of implying nothing was logged.
+  const sourceNote =
+    shown.length === 0 && params.source
+      ? ` Sources in the buffer: ${data.sources.length > 0 ? data.sources.join(", ") : "none"}.`
+      : "";
+  const windowNote = `Searched the complete current in-memory log buffer. Filters applied: ${filterNote}.${sourceNote}`;
   const header =
     shown.length === 0
       ? `No log entries match. ${windowNote}`
@@ -257,52 +252,6 @@ async function deleteLogs(): Promise<ActionResult> {
   };
 }
 
-function setLogLevel(
-  runtime: IAgentRuntime,
-  message: Memory,
-  params: LogsParams,
-  _callback: HandlerCallback | undefined,
-): ActionResult {
-  const requested =
-    typeof params.level === "string" ? params.level.toLowerCase() : "";
-  if (!LOG_LEVELS.includes(requested as LogLevel)) {
-    // Planner-facing only: the canned level list read as tool-speak in chat
-    // next to the evaluator's in-voice reply. The evaluator owns asking.
-    return failure(
-      `No valid log level in the request; ask the user for one of: ${LOG_LEVELS.join(", ")}.`,
-      "LOGS_SET_LEVEL_FAILED",
-      { validLevels: [...LOG_LEVELS] },
-    );
-  }
-  const level = requested as LogLevel;
-  const targetRoomId = params.roomId ?? message.roomId;
-
-  const overrides = (runtime as RuntimeWithOverrides).logLevelOverrides;
-  if (!overrides) {
-    return failure(
-      "Dynamic log levels are not supported by this runtime version; tell the user log-level changes are unavailable here.",
-      "LOGS_SET_LEVEL_FAILED",
-    );
-  }
-
-  overrides.set(String(targetRoomId), level);
-  // Also raise the process-wide pino logger so emitted records are not filtered
-  // out before they reach the per-room override listener.
-  if (hasMutableLogLevel(logger)) {
-    logger.level = level;
-  }
-  elizaLogger.info(`[LOGS] level set to ${level} for room ${targetRoomId}`);
-
-  const changedText = `Log level changed to **${level.toUpperCase()}** for this room.`;
-  return {
-    success: true,
-    text: changedText,
-    modelReplyRequired: true,
-    values: { level },
-    data: { actionName: "LOGS", op: "set_level", level, roomId: targetRoomId },
-  };
-}
-
 export const logsAction: Action = {
   name: "LOGS",
   contexts: ["admin", "agent_internal", "settings"],
@@ -311,7 +260,6 @@ export const logsAction: Action = {
     // Old leaf action names
     "SEARCH_LOGS",
     "DELETE_LOGS",
-    "LOG_LEVEL",
     // Common aliases
     "QUERY_LOGS",
     "READ_LOGS",
@@ -323,23 +271,16 @@ export const logsAction: Action = {
     "WIPE_LOGS",
     "RESET_LOGS",
     "EMPTY_LOGS",
-    "SET_LOG_LEVEL",
-    "CHANGE_LOG_LEVEL",
-    "DEBUG_MODE",
-    "SET_DEBUG",
-    "CONFIGURE_LOGGING",
   ],
   description:
-    "Polymorphic log control: action='search' tails the in-memory log buffer (filterable by source/level/tag/since), action='delete' clears that whole buffer (it takes no filter), action='set_level' overrides the per-room log level (trace/debug/info/warn/error).",
-  descriptionCompressed:
-    "search/delete in-mem agent logs or set_level per-room owner-only",
+    "Polymorphic log control: action='search' tails the in-memory log buffer (filterable by source/level/tag/since), action='delete' clears that whole buffer (it takes no filter).",
+  descriptionCompressed: "search/delete in-mem agent logs owner-only",
   validate: async () => true,
   handler: async (
-    runtime,
-    message,
+    _runtime,
+    _message,
     _state,
     options,
-    callback,
   ): Promise<ActionResult> => {
     const params =
       ((options as HandlerOptions | undefined)?.parameters as
@@ -351,10 +292,6 @@ export const logsAction: Action = {
       return failure(`Unknown LOGS op: ${String(op)}`, "LOGS_INVALID", {
         validOps: [...LOGS_OPS],
       });
-    }
-
-    if (op === "set_level") {
-      return setLogLevel(runtime, message, params, callback);
     }
 
     if (op === "delete") {
@@ -385,28 +322,28 @@ export const logsAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Operation: search | delete | set_level.",
+      description: "Operation: search | delete.",
       required: true,
       schema: { type: "string" as const, enum: [...LOGS_OPS] },
     },
     {
       name: "source",
       description:
-        "[search] Optional source filter (e.g. agent, server, plugins).",
+        "[search] Exact name of the emitting module: the log line's [bracket] prefix or its src field (e.g. eliza-api, runtime, web-fetch). Lines with neither have source 'agent'. For broad groups such as agent, server or plugins use tags.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "level",
       description:
-        "[search] Filter by exact log level. [set_level] New level to set. One of trace/debug/info/warn/error.",
+        "[search] Filter by exact log level. One of trace/debug/info/warn/error/fatal. level=error does not include fatal.",
       required: false,
       schema: { type: "string" as const, enum: [...LOG_LEVELS] },
     },
     {
       name: "tags",
       description:
-        "[search] Optional tag filter list. Server applies the first; remaining are intersected client-side.",
+        "[search] Optional tag filter list; an entry must carry every tag. Tags hold the broad groups (e.g. agent, server, plugins) and each entry's source.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
@@ -424,24 +361,17 @@ export const logsAction: Action = {
       required: false,
       schema: { type: "number" as const },
     },
-    {
-      name: "roomId",
-      description:
-        "[set_level] Optional room id to scope the override; defaults to the active room.",
-      required: false,
-      schema: { type: "string" as const },
-    },
   ],
   examples: [
     [
       {
         name: "{{name1}}",
-        content: { text: "Show me the last 20 error logs from the agent." },
+        content: { text: "Show me the last 20 error logs." },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "Showing recent agent error log entries...",
+          text: "Showing recent error log entries...",
           action: "LOGS",
         },
       },
@@ -455,19 +385,6 @@ export const logsAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Cleared the in-memory log buffer.",
-          action: "LOGS",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Set log level to debug" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Log level changed to **DEBUG** for this room.",
           action: "LOGS",
         },
       },

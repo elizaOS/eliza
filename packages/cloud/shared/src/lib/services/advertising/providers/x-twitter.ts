@@ -187,6 +187,37 @@ function iso(date: Date): string {
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+const HOUR_MS = 60 * 60 * 1000;
+/** The synchronous stats endpoint allows at most seven days per request. */
+const X_STATS_MAX_WINDOW_MS = 7 * 24 * HOUR_MS;
+
+function floorToHour(date: Date): Date {
+  return new Date(Math.floor(date.getTime() / HOUR_MS) * HOUR_MS);
+}
+
+function ceilToHour(date: Date): Date {
+  return new Date(Math.ceil(date.getTime() / HOUR_MS) * HOUR_MS);
+}
+
+/**
+ * Contiguous windows covering `[start, end)` the way `GET stats/accounts/:id`
+ * accepts them: boundaries on whole hours, the end exclusive, and no window
+ * longer than seven days. The endpoint only reports whole hours, so a partial
+ * hour at either edge is read as the hour that contains it; an empty range
+ * needs no request.
+ */
+function xStatsWindows(start: Date, end: Date): Array<{ start: Date; end: Date }> {
+  if (end <= start) return [];
+  const last = ceilToHour(end);
+  const windows: Array<{ start: Date; end: Date }> = [];
+  for (let from = floorToHour(start); from < last; ) {
+    const to = new Date(Math.min(from.getTime() + X_STATS_MAX_WINDOW_MS, last.getTime()));
+    windows.push({ start: from, end: to });
+    from = to;
+  }
+  return windows;
+}
+
 function mapObjective(objective: string): string {
   const mapping: Record<string, string> = {
     awareness: "REACH",
@@ -622,25 +653,33 @@ export const xTwitterAdsProvider: AdProvider = {
       if (!accountId || !lineItemId) {
         throw new Error("X Ads metrics require a composite account/campaign/line-item id");
       }
-      const end = dateRange?.end ?? new Date();
-      const start = dateRange?.start ?? new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const response = await xAdsRequest<XStatsRow[]>(
-        `/stats/accounts/${encodeURIComponent(accountId)}`,
-        credentials,
-        {
-          params: {
-            entity: "LINE_ITEM",
-            entity_ids: lineItemId,
-            start_time: iso(start),
-            end_time: iso(end),
-            granularity: "TOTAL",
-            placement: "ALL_ON_TWITTER",
-            metric_groups: "ENGAGEMENT,BILLING,WEB_CONVERSION",
+      const end = dateRange?.end ?? ceilToHour(new Date());
+      const start = dateRange?.start ?? new Date(end.getTime() - X_STATS_MAX_WINDOW_MS);
+      // One TOTAL row per window; the per-window metric arrays are joined so
+      // `sumMetrics` adds them up across the whole range.
+      const combined: Record<string, Array<number | null>> = {};
+      for (const window of xStatsWindows(start, end)) {
+        const response = await xAdsRequest<XStatsRow[]>(
+          `/stats/accounts/${encodeURIComponent(accountId)}`,
+          credentials,
+          {
+            params: {
+              entity: "LINE_ITEM",
+              entity_ids: lineItemId,
+              start_time: iso(window.start),
+              end_time: iso(window.end),
+              granularity: "TOTAL",
+              placement: "ALL_ON_TWITTER",
+              metric_groups: "ENGAGEMENT,BILLING,WEB_CONVERSION",
+            },
           },
-        },
-      );
-      const metrics = response.data?.[0]?.id_data?.[0]?.metrics;
-      return { success: true, metrics: sumMetrics(metrics) };
+        );
+        const metrics = response.data?.[0]?.id_data?.[0]?.metrics ?? {};
+        for (const [key, values] of Object.entries(metrics)) {
+          if (Array.isArray(values)) combined[key] = [...(combined[key] ?? []), ...values];
+        }
+      }
+      return { success: true, metrics: sumMetrics(combined) };
     } catch (error) {
       // error-policy:J1 provider boundary — translate a thrown metrics-fetch failure into a
       // structured { success:false } result for the caller.

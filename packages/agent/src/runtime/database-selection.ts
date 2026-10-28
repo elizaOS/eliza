@@ -5,6 +5,24 @@ import type { ElizaConfig } from "@elizaos/host/protocol";
 export const SQLITE_PLUGIN = "@elizaos/plugin-sqlite";
 export const SQL_PLUGIN = "@elizaos/plugin-sql";
 
+/** PGlite's in-memory data directory: the database lives in the process and nothing is written to disk. */
+export const MEMORY_PGLITE_DATA_DIR = "memory://";
+
+/**
+ * Whether a PGlite data directory setting selects in-memory storage (`memory://`, or the
+ * SQLite-style `:memory:` that plugin-sql maps to it). Such a setting is not a path: it must
+ * never be resolved against the working directory or created on disk.
+ */
+export function isMemoryPgliteDataDir(
+  value: string | null | undefined,
+): boolean {
+  const trimmed = value?.trim();
+  return (
+    trimmed === ":memory:" ||
+    trimmed?.startsWith(MEMORY_PGLITE_DATA_DIR) === true
+  );
+}
+
 export function isSQLiteSelected(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {

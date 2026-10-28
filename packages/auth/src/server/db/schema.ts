@@ -14,7 +14,6 @@ import {
   pgEnum,
   pgTable,
   primaryKey,
-  serial,
   text,
   timestamp,
   uniqueIndex,
@@ -69,7 +68,9 @@ import type {
 // Postgres BYTEA column. Typed as Uint8Array to avoid the Node `Buffer` vs
 // Cloudflare workers-types Buffer conflict that bites when both type packs
 // are in scope. The runtime value is whatever the driver returns; callers
-// normalize it (see packages/api/src/services/audit.ts toU8 helper).
+// normalize it (see the toU8 helper in
+// packages/auth/src/server/db/audit-codec.ts;
+// packages/auth/src/server/api/services/audit.ts is one caller).
 const bytea = customType<{ data: Uint8Array; default: false; notNull: false }>({
   dataType() {
     return "bytea";
@@ -517,7 +518,6 @@ export const agents = pgTable(
     name: varchar("name", { length: 255 }).notNull(),
     walletAddress: varchar("wallet_address", { length: 128 }).notNull(),
     platformId: varchar("platform_id", { length: 255 }),
-    erc8004TokenId: varchar("erc8004_token_id", { length: 255 }),
     ownerUserId: uuid("owner_user_id"),
     walletType: varchar("wallet_type", { length: 32 }).default("agent"),
     ...timestamps,
@@ -1661,86 +1661,6 @@ export type NewConditionSetRow = typeof conditionSets.$inferInsert;
 export type ConditionSetItemRow = typeof conditionSetItems.$inferSelect;
 export type NewConditionSetItemRow = typeof conditionSetItems.$inferInsert;
 
-// ─── ERC-8004 registration and discovery tables ──────────────────────────────
-
-export const agentRegistrations = pgTable(
-  "agent_registrations",
-  {
-    id: serial("id").primaryKey(),
-    tenantId: varchar("tenant_id", { length: 64 })
-      .notNull()
-      .references(() => tenants.id, { onDelete: "cascade" }),
-    agentId: varchar("agent_id", { length: 64 })
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
-    chainId: integer("chain_id").notNull(),
-    tokenId: varchar("token_id", { length: 256 }),
-    txHash: varchar("tx_hash", { length: 128 }),
-    registryAddress: varchar("registry_address", { length: 64 }).notNull(),
-    agentCardUri: text("agent_card_uri"),
-    agentCardJson: jsonb("agent_card_json").$type<Record<string, unknown>>(),
-    status: varchar("status", { length: 32 }).notNull().default("pending"),
-    ...timestamps,
-  },
-  (table) => ({
-    tenantAgentChainUnique: uniqueIndex(
-      "agent_registrations_tenant_agent_chain_idx",
-    ).on(table.tenantId, table.agentId, table.chainId),
-    tenantIdx: index("agent_registrations_tenant_idx").on(table.tenantId),
-    agentIdx: index("agent_registrations_agent_idx").on(table.agentId),
-  }),
-);
-
-export const reputationCache = pgTable(
-  "reputation_cache",
-  {
-    id: serial("id").primaryKey(),
-    agentId: varchar("agent_id", { length: 64 })
-      .notNull()
-      .references(() => agents.id, { onDelete: "cascade" }),
-    chainId: integer("chain_id").notNull(),
-    tokenId: varchar("token_id", { length: 256 }).notNull(),
-    scoreOnchain: numeric("score_onchain", { precision: 5, scale: 2 })
-      .notNull()
-      .default("0"),
-    scoreInternal: numeric("score_internal", { precision: 5, scale: 2 })
-      .notNull()
-      .default("0"),
-    scoreCombined: numeric("score_combined", { precision: 5, scale: 2 })
-      .notNull()
-      .default("0"),
-    feedbackCount: integer("feedback_count").notNull().default(0),
-    lastUpdated: timestamp("last_updated", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => ({
-    agentChainUnique: uniqueIndex("reputation_cache_agent_chain_idx").on(
-      table.agentId,
-      table.chainId,
-    ),
-    agentIdx: index("reputation_cache_agent_idx").on(table.agentId),
-  }),
-);
-
-export const registryIndex = pgTable(
-  "registry_index",
-  {
-    id: serial("id").primaryKey(),
-    chainId: integer("chain_id").notNull(),
-    name: varchar("name", { length: 64 }).notNull(),
-    rpcUrl: text("rpc_url").notNull(),
-    registryAddress: varchar("registry_address", { length: 64 }).notNull(),
-    isActive: boolean("is_active").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-  },
-  (table) => ({
-    chainUnique: uniqueIndex("registry_index_chain_id_idx").on(table.chainId),
-  }),
-);
-
 // ─── Webhook configuration table ──────────────────────────────────────────────
 
 export const webhookConfigs = pgTable(
@@ -1867,30 +1787,6 @@ export const policyTemplateRelations = relations(
   }),
 );
 
-export const agentRegistrationRelations = relations(
-  agentRegistrations,
-  ({ one }) => ({
-    tenant: one(tenants, {
-      fields: [agentRegistrations.tenantId],
-      references: [tenants.id],
-    }),
-    agent: one(agents, {
-      fields: [agentRegistrations.agentId],
-      references: [agents.id],
-    }),
-  }),
-);
-
-export const reputationCacheRelations = relations(
-  reputationCache,
-  ({ one }) => ({
-    agent: one(agents, {
-      fields: [reputationCache.agentId],
-      references: [agents.id],
-    }),
-  }),
-);
-
 export const webhookConfigRelations = relations(webhookConfigs, ({ one }) => ({
   tenant: one(tenants, {
     fields: [webhookConfigs.tenantId],
@@ -1915,7 +1811,6 @@ export const tenantRelations = relations(tenants, ({ many, one }) => ({
     references: [tenantConfigs.tenantId],
   }),
   policyTemplates: many(policyTemplates),
-  agentRegistrations: many(agentRegistrations),
   webhookConfigs: many(webhookConfigs),
   appClients: many(tenantAppClients),
   appClientSecrets: many(tenantAppClientSecrets),
@@ -1998,8 +1893,6 @@ export const agentRelations = relations(agents, ({ one, many }) => ({
   intents: many(intents),
   signers: many(agentSigners),
   keyQuorums: many(agentKeyQuorums),
-  registrations: many(agentRegistrations),
-  reputationEntries: many(reputationCache),
 }));
 
 export const encryptedKeyRelations = relations(encryptedKeys, ({ one }) => ({
@@ -2133,12 +2026,6 @@ export type EncryptedChainKey = typeof encryptedChainKeys.$inferSelect;
 export type NewEncryptedChainKey = typeof encryptedChainKeys.$inferInsert;
 export type PolicyTemplateRow = typeof policyTemplates.$inferSelect;
 export type NewPolicyTemplateRow = typeof policyTemplates.$inferInsert;
-export type AgentRegistration = typeof agentRegistrations.$inferSelect;
-export type NewAgentRegistration = typeof agentRegistrations.$inferInsert;
-export type ReputationCache = typeof reputationCache.$inferSelect;
-export type NewReputationCache = typeof reputationCache.$inferInsert;
-export type RegistryIndex = typeof registryIndex.$inferSelect;
-export type NewRegistryIndex = typeof registryIndex.$inferInsert;
 export type WebhookDelivery = typeof webhookDeliveries.$inferSelect;
 export type NewWebhookDelivery = typeof webhookDeliveries.$inferInsert;
 export type WebhookConfig = typeof webhookConfigs.$inferSelect;
@@ -2271,10 +2158,9 @@ export const secretRoutes = pgTable(
 //       lifetimeCheck (which IS declared in-schema because expires_at is NOT
 //       NULL on grants).
 //
-//    The regression test `packages/db/src/__tests__/provider-authority-migration.test.ts`
-//    ("schema-only invariants ..." cases) asserts all five triggers, the trigger
-//    function, and the lifetime CHECK exist after migration so accidental
-//    removal fails CI.
+//    These triggers live only in raw SQL migrations, which drizzle-kit cannot
+//    see. No current automated test asserts their presence, so deleting the
+//    trigger SQL would fail nothing in CI and only surface at runtime.
 
 export const providerEnvironmentEnum = pgEnum("provider_environment", [
   "development",
@@ -3375,7 +3261,7 @@ export type NewAgentPolicyRow = typeof agentPolicies.$inferInsert;
 // historical row invalidates verification of every subsequent row. The HMAC
 // key is held in app config (STEWARD_AUDIT_HMAC_KEY) separately from DB
 // credentials, so DB-only write access cannot forge rows that verify.
-// See packages/api/src/services/audit.ts for the writer and verifier.
+// See packages/auth/src/server/api/services/audit.ts for the writer and verifier.
 export const auditEvents = pgTable(
   "audit_events",
   {

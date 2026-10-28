@@ -4,7 +4,7 @@
  * Mirrors siwe/nonce/route.ts; see it for the per-request Redis rationale.
  */
 
-import { buildRedisClient } from "@elizaos/cloud-shared/lib/cache/redis-factory";
+import { buildAuthenticationState } from "@elizaos/cloud-shared/lib/auth/authentication-state";
 import {
   RateLimitPresets,
   rateLimit,
@@ -57,7 +57,7 @@ app.get("/", async (c) => {
   }
   const chainId = parsedChainId.chainId;
 
-  const redis = buildRedisClient(c.env);
+  const redis = buildAuthenticationState(c.env, c.env.AUTHENTICATION_STATE);
   if (!redis) {
     return c.json({ error: "Nonce storage unavailable" }, 503);
   }

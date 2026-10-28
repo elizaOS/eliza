@@ -136,6 +136,7 @@ export function inferenceIngressRateLimit(): MiddlewareHandler<AppEnv> {
         code: "rate_limit_exceeded" as const,
         message: `Inference ingress limit exceeded. Maximum ${MAX_REQUESTS} requests per minute.`,
         retryAfter,
+        retryAfterSeconds: retryAfter,
       },
       429,
       {

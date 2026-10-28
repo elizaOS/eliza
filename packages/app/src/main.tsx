@@ -1777,8 +1777,8 @@ const ManagedCloudPage = lazy(async () => {
 });
 
 /**
- * The Network home page for the eliza.app apex `/` (DRAFT copy, pending founder
- * approval). Built in only when VITE_NETWORK_HOME=1; otherwise undefined and
+ * The Network home page for the eliza.app apex `/` (copy approved by the founder
+ * on 2026-10-11). Built in only when VITE_NETWORK_HOME=1; otherwise undefined and
  * the apex `/` keeps redirecting to /login as before.
  */
 const NetworkHomePage = NETWORK_HOME_ENABLED
@@ -1865,6 +1865,7 @@ function mountReactApp(): void {
       <ChatWidgetHarness />
     ) : shouldMountWebShell() && !isSpecialWindowShell ? (
       <CloudRouterShell
+        branding={APP_BRANDING}
         cloudManagementElement={<ManagedCloudPage />}
         marketingHomeElement={NetworkHomePage ? <NetworkHomePage /> : undefined}
         appElement={

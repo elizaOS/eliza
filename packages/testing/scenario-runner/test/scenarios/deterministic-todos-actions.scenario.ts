@@ -173,8 +173,22 @@ function expectTodoNotFound(
     if (result.text !== expected) {
       return `expected ${JSON.stringify(expected)}, saw ${JSON.stringify(result.text)}`;
     }
-    if (result.data !== undefined) {
-      return `not_found must not expose fabricated success data: ${JSON.stringify(result.data)}`;
+    const data = resultData(execution);
+    if (
+      data?.actionName !== "TODO" ||
+      data.action !== "update" ||
+      data.op !== "update" ||
+      data.notFound !== true ||
+      typeof data.entityId !== "string" ||
+      data.entityId.length === 0
+    ) {
+      return `not_found must retain failed mutation identity: ${JSON.stringify(result.data)}`;
+    }
+    // A committed miss needs its identity for the next turn-step key, but
+    // must not claim a changed todo, a mutation count, or another outcome.
+    const allowedKeys = ["actionName", "action", "op", "entityId", "notFound"];
+    if (Object.keys(data).some((key) => !allowedKeys.includes(key))) {
+      return `not_found must contain only failure metadata: ${JSON.stringify(data)}`;
     }
     const raw = isRecord(result.raw) ? result.raw : null;
     if (Array.isArray(raw?.effectReceipts) && raw.effectReceipts.length > 0) {

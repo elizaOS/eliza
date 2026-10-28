@@ -1,5 +1,5 @@
 /** Exercises host message preparation, exact durable storage and request-scoped shell routing through the real assistant ingress and SQLite runtime. No model or transport is substituted. */
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -314,10 +314,11 @@ it("round-trips explicit user text format through real HTTP and disk SQLite with
     };
     const shown = history.messages.filter((row) => row.role === "user");
     expect(shown).toHaveLength(cases.length);
-    for (const item of cases) {
+    for (const [index, item] of cases.entries()) {
       const row = shown.find((row) => row.text === item.text);
       expect(row).toBeDefined();
       expect(row?.userTextFormat).toBe(item.expected);
+      expect(row?.clientMessageId).toBe(`format-request-${index}`);
       expect(row).not.toHaveProperty("metadata");
       expect(JSON.stringify(row)).not.toContain("not-public");
       expect(row?.id).toBe(
@@ -332,6 +333,110 @@ it("round-trips explicit user text format through real HTTP and disk SQLite with
       }),
     ).toEqual(stored);
     expect(inference).not.toHaveBeenCalled();
+  } finally {
+    if (server) await server.close();
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
+
+it("rejects an unstored chat attachment and accepts the same request after storage recovers", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "eliza-chat-media-failure-"));
+  for (const [key, value] of Object.entries({
+    ELIZA_STATE_DIR: directory,
+    ELIZA_CONFIG_PATH: join(directory, "config.json"),
+    ELIZA_PERSIST_CONFIG_PATH: join(directory, "config.json"),
+    ELIZA_API_BIND_HOST: "127.0.0.1",
+    ELIZA_API_TOKEN: "",
+    ELIZA_REQUIRE_LOCAL_AUTH: "0",
+  }))
+    vi.stubEnv(key, value);
+  const runtime = new AgentRuntime({
+    character: {
+      name: "Media persistence",
+      bio: [],
+      settings: { BASIC_CAPABILITIES_DEFLLMOFF: true },
+    },
+    plugins: [createAssistantPlugin()],
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  runtime.registerDatabaseAdapter(
+    SQLiteDatabaseAdapter.create(
+      join(directory, "state.sqlite"),
+      runtime.agentId,
+    ),
+  );
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    await runtime.initialize();
+    server = await startApiServer({
+      port: 0,
+      runtime,
+      skipDeferredStartupWork: true,
+    });
+    const base = `http://127.0.0.1:${server.port}`;
+    const created = await fetch(`${base}/api/conversations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Media failure" }),
+    });
+    expect(created.status).toBe(200);
+    const { conversation } = (await created.json()) as {
+      conversation: { id: string; roomId: string };
+    };
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+      "base64",
+    );
+    const body = JSON.stringify({
+      text: "Keep this image",
+      clientMessageId: "media-retry",
+      images: [
+        {
+          data: png.toString("base64"),
+          mimeType: "image/png",
+          name: "red.png",
+        },
+      ],
+    });
+    const media = join(directory, "media");
+    await rm(media, { recursive: true, force: true });
+    await writeFile(media, "not a directory");
+    const send = () =>
+      fetch(`${base}/api/conversations/${conversation.id}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+    const failed = await send();
+    expect(failed.status).toBe(500);
+    expect(await failed.text()).toContain(
+      "Failed to store uploaded attachment",
+    );
+    expect(
+      await runtime.getMemories({
+        roomId: conversation.roomId,
+        tableName: "messages",
+        unique: false,
+      }),
+    ).toHaveLength(0);
+    await rm(media);
+    const recovered = await send();
+    expect(recovered.status).toBe(200);
+    await recovered.text();
+    const stored = await runtime.getMemories({
+      roomId: conversation.roomId,
+      tableName: "messages",
+      unique: false,
+    });
+    const attachment = stored.find((m) => m.content.text === "Keep this image")
+      ?.content.attachments?.[0];
+    expect(attachment?.id).toBe(
+      "b1ff9c8ea3a780bad09b346c423d2d0e46815926879b18e841d928376a946640",
+    );
+    expect(await readFile(join(media, `${attachment?.id}.png`))).toEqual(png);
   } finally {
     if (server) await server.close();
     await runtime.close();

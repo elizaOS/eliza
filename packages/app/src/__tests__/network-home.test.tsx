@@ -20,8 +20,8 @@ describe("network home flag", () => {
 });
 
 describe("network home copy", () => {
-  it("stays a draft until the founder approves the wording", () => {
-    expect(NETWORK_HOME_COPY_STATUS).toBe("DRAFT");
+  it("is founder-approved (2026-10-11)", () => {
+    expect(NETWORK_HOME_COPY_STATUS).toBe("APPROVED");
   });
 
   it("links ntwrk.party and every app over https", () => {

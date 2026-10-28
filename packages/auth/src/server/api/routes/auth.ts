@@ -1,10 +1,14 @@
+import {
+  googleNativeClientIds,
+  verifyGoogleNativeIdToken,
+} from "../../auth/google-native";
+import { buildPhoneAuthProvidersFromEnvironment } from "../../auth/phone-provider";
 import { fetchPinnedResponse } from "../../shared/pinned-response";
 import {
   assertAllowedOAuthRedirectUri,
   authAppClientSubjects,
   authTenantConfigSubject,
   bootstrapRows,
-  buildTwilioVerifyProviderFromEnvironment,
   claimSmsVerifyAttempt,
   clearSmsVerifyFailures,
   createSessionToken,
@@ -22,17 +26,22 @@ import {
   getPasskeyAuth,
   getPhoneAuth,
   isMockEmailEnabled,
+  type LoginMethodName,
+  loginMethodProviderKey,
+  loginMethodRefusal,
   normalizePublicClientId,
   OAUTH_CODE_TTL_MS,
   releaseUnattemptedSmsVerifyClaim,
   SMS_VERIFY_MAX_FAILED_ATTEMPTS,
   smsVerifyAttemptSlotKey,
+  tenantSwitchLoginRefusal,
 } from "../services/auth-lifecycle";
 import {
   checkAuthRateLimit,
   trustedClientIp,
 } from "../services/auth-rate-limit";
 import { verifySolanaMessageSignature } from "../services/wallet-proof";
+import { buildOAuthAppErrorReturn } from "./oauth-app-error-return";
 /**
  * Serves identity login, account enrollment, MFA and session lifecycle endpoints.
  * Tenant policy gates every login method; one-time challenges and refresh tokens
@@ -40,7 +49,7 @@ import { verifySolanaMessageSignature } from "../services/wallet-proof";
  */
 
 import { randomBytes } from "node:crypto";
-import { assertPublicHttpsEndpoint, logger } from "@elizaos/core";
+import { assertPublicHttpsEndpoint, ElizaError, logger } from "@elizaos/core";
 import { and, eq, gte, inArray, isNull, lt, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { errors as joseErrors } from "jose";
@@ -56,6 +65,7 @@ import {
   type EmailAuth,
   EmailDeliveryError,
   EmailDeliveryNotConfiguredError,
+  type EmailLoginDelivery,
   evaluateSiwePolicy,
   type FarcasterLoginPayload,
   generateApiKey,
@@ -121,6 +131,7 @@ import {
   writeAuditEvent as appendAuthAuditEvent,
 } from "../services/audit";
 import {
+  normalizeEmailDomain,
   publicAuthAbuseConfig,
   validateEmailAbusePolicy,
   validatePhoneAbusePolicy,
@@ -221,21 +232,6 @@ function isReservedTenantId(value: string): boolean {
   );
 }
 
-function normalizeEmailDomain(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const email = value.trim().toLowerCase();
-  const at = email.lastIndexOf("@");
-  if (at <= 0 || at >= email.length - 1) return null;
-  const domain = email.slice(at + 1);
-  if (
-    !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/.test(
-      domain,
-    )
-  ) {
-    return null;
-  }
-  return domain;
-}
 const TOTP_VERIFY_MAX_FAILED_ATTEMPTS = 5;
 const TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS = 10 * 60 * 1000;
 const FACTOR_ENROLLMENT_STEP_UP_MAX_AGE_MS = 5 * 60 * 1000;
@@ -259,29 +255,47 @@ export async function recordSmsVerifyFailure(
   await claimSmsVerifyAttempt(phone, purpose);
 }
 
-function totpVerifyAttemptKey(scope: string): string {
-  return `totp-verify-attempts:${hashSha256Hex(scope)}`;
+function totpVerifyAttemptSlotKey(scope: string, slot: number): string {
+  return `totp-verify-attempts:${hashSha256Hex(scope)}:${slot}`;
 }
 
-async function getTotpVerifyFailedAttempts(scope: string): Promise<number> {
-  const raw = await getMfaBackend().get(totpVerifyAttemptKey(scope));
-  if (!raw) return 0;
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+/**
+ * Claim one attempt slot before a code is checked. A read-then-write counter
+ * lets a parallel burst read the same count and all reach verification, so
+ * each attempt takes its own slot atomically, like SMS verification. A
+ * failed attempt keeps its slot; success clears them all.
+ */
+async function claimTotpVerifyAttempt(scope: string): Promise<boolean> {
+  const token = `totp-verify-attempt:${randomBytes(16).toString("hex")}`;
+  for (let slot = 1; slot <= TOTP_VERIFY_MAX_FAILED_ATTEMPTS; slot++) {
+    if (
+      await getMfaBackend().setIfNotExists(
+        totpVerifyAttemptSlotKey(scope, slot),
+        token,
+        TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
-async function recordTotpVerifyFailure(scope: string): Promise<number> {
-  const next = (await getTotpVerifyFailedAttempts(scope)) + 1;
-  await getMfaBackend().set(
-    totpVerifyAttemptKey(scope),
-    String(next),
-    TOTP_VERIFY_FAILED_ATTEMPT_TTL_MS,
+async function countTotpVerifyAttempts(scope: string): Promise<number> {
+  const slots = await Promise.all(
+    Array.from({ length: TOTP_VERIFY_MAX_FAILED_ATTEMPTS }, (_, index) =>
+      getMfaBackend().get(totpVerifyAttemptSlotKey(scope, index + 1)),
+    ),
   );
-  return next;
+  return slots.filter((value) => value !== null).length;
 }
 
 async function clearTotpVerifyFailures(scope: string): Promise<void> {
-  await getMfaBackend().delete(totpVerifyAttemptKey(scope));
+  await Promise.all(
+    Array.from({ length: TOTP_VERIFY_MAX_FAILED_ATTEMPTS }, (_, index) =>
+      getMfaBackend().delete(totpVerifyAttemptSlotKey(scope, index + 1)),
+    ),
+  );
 }
 
 async function getTenantAuthAbuseConfig(tenantId: string) {
@@ -321,21 +335,16 @@ async function getTenantAppClientLoginMethods(
   );
 }
 
-type LoginMethodName =
-  | "passkey"
-  | "email"
-  | "sms"
-  | "whatsapp"
-  | "totp"
-  | "siwe"
-  | "siws"
-  | "telegram"
-  | "farcaster"
-  | "oauth"
-  | "oidc";
-
-function loginMethodProviderKey(providerId: string | undefined): string {
-  return providerId?.trim().toLowerCase() ?? "";
+function withoutTenantMfaClaims(
+  claims: Record<string, unknown>,
+): Record<string, unknown> {
+  const {
+    mfaVerifiedAt: _mfaVerifiedAt,
+    mfaMethod: _mfaMethod,
+    factorEnrollmentVerifiedAt: _factorEnrollmentVerifiedAt,
+    ...rest
+  } = claims;
+  return rest;
 }
 
 async function requireTenantLoginMethodAllowed(
@@ -349,37 +358,10 @@ async function requireTenantLoginMethodAllowed(
   const loginMethods =
     (await getTenantAppClientLoginMethods(tenantId, clientId)) ??
     (await getTenantAuthAbuseConfig(tenantId)).loginMethods;
-  if (!loginMethods) return null;
-  if (
-    method !== "oauth" &&
-    method !== "oidc" &&
-    loginMethods[method] === false
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: `${method} login is disabled for this tenant` },
-      403,
-    );
-  }
-  const normalizedProviderId = loginMethodProviderKey(providerId);
-  if (
-    method === "oauth" &&
-    loginMethods.oauth?.[normalizedProviderId] === false
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: "OAuth login is disabled for this tenant" },
-      403,
-    );
-  }
-  if (
-    method === "oidc" &&
-    loginMethods.oidc?.[normalizedProviderId] === false
-  ) {
-    return c.json<ApiResponse>(
-      { ok: false, error: "OIDC login is disabled for this tenant" },
-      403,
-    );
-  }
-  return null;
+  const refusal = loginMethodRefusal(loginMethods, method, providerId);
+  return refusal
+    ? c.json<ApiResponse>({ ok: false, error: refusal }, 403)
+    : null;
 }
 
 async function isSsoRequiredForEmailDomain(
@@ -612,7 +594,13 @@ type RefreshRotationResult =
   | { status: "invalid" }
   | { status: "deactivated"; userId: string; tenantId: string }
   | { status: "not_member"; userId: string; tenantId: string }
-  | { status: "revoked"; userId: string; tenantId: string };
+  | { status: "revoked"; userId: string; tenantId: string }
+  | {
+      status: "login_method_disabled";
+      userId: string;
+      tenantId: string;
+      error: string;
+    };
 
 type UsedRefreshTokenRecord = {
   userId?: string;
@@ -770,16 +758,21 @@ async function rotateRefreshTokenInsideTenant(
     }
 
     const targetTenantId = requestedTenantId ?? record.tenantId;
+    const switchesTenant = targetTenantId !== record.tenantId;
     const membership = await authTenantSubject(targetTenantId, record.userId);
     if (!membership?.membership_role) {
-      await tx
-        .delete(refreshTokens)
-        .where(
-          and(
-            eq(refreshTokens.userId, record.userId),
-            eq(refreshTokens.tenantId, record.tenantId),
-          ),
-        );
+      // A refused switch leaves the caller's current session as it was; only
+      // a token whose own tenant dropped the user is spent.
+      if (!switchesTenant) {
+        await tx
+          .delete(refreshTokens)
+          .where(
+            and(
+              eq(refreshTokens.userId, record.userId),
+              eq(refreshTokens.tenantId, record.tenantId),
+            ),
+          );
+      }
       return {
         status: "not_member",
         userId: record.userId,
@@ -806,11 +799,33 @@ async function rotateRefreshTokenInsideTenant(
 
     const walletAddress = user?.walletAddress ?? "";
     const email = user?.email ?? undefined;
-    const sessionClaims =
+    const storedClaims =
       (await readMfaJson<Record<string, unknown>>(
         `refresh:claims:${record.tokenHash}`,
       )) ?? {};
+    // A switch into another tenant is a sign-in to it: that tenant's login
+    // methods apply, checked before anything is spent so a refusal keeps the
+    // current session.
+    if (switchesTenant) {
+      const refusal = await tenantSwitchLoginRefusal(
+        targetTenantId,
+        storedClaims,
+      );
+      if (refusal) {
+        return {
+          status: "login_method_disabled",
+          userId: record.userId,
+          tenantId: record.tenantId,
+          error: refusal,
+        };
+      }
+    }
     await getMfaBackend().delete(`refresh:claims:${record.tokenHash}`);
+    // MFA freshness is scoped to the tenant where it was performed, as on
+    // /user/me/tenants/switch: the switched tenant needs its own step-up.
+    const sessionClaims = switchesTenant
+      ? withoutTenantMfaClaims(storedClaims)
+      : storedClaims;
 
     const newAccessToken = await createSessionToken(
       walletAddress,
@@ -1430,13 +1445,37 @@ async function findOrCreateWalletUserWithStatus(
 
 async function findOrCreatePhoneUserWithStatus(
   phone: string,
+  provider: "phone" | "whatsapp" = "phone",
 ): Promise<UserProvisionResult> {
   const phoneSubject = `phone:${hashSha256Hex(phone)}`;
   const db = getDb();
+  // SMS and WhatsApp share one subject, so a link made through either channel
+  // marks the number as owned.
+  const links = await db
+    .select({ provider: accounts.provider, user: users })
+    .from(accounts)
+    .innerJoin(users, eq(accounts.userId, users.id))
+    .where(
+      and(
+        inArray(accounts.provider, ["phone", "whatsapp"]),
+        eq(accounts.providerAccountId, phoneSubject),
+      ),
+    );
+  const linked = links.find((link) => link.provider === provider);
   const [existing] = await db
     .select()
     .from(users)
     .where(eq(users.walletAddress, phoneSubject));
+  // Every link and the original phone account must name one user, so neither
+  // channel can sign the number in to a different account.
+  const owners = new Set(links.map((link) => link.user.id));
+  if (existing) owners.add(existing.id);
+  if (owners.size > 1 || (!linked && !existing && links.length > 0)) {
+    throw new ElizaError("Phone login identity needs reconciliation", {
+      code: "PHONE_IDENTITY_CONFLICT",
+    });
+  }
+  if (linked) return { user: linked.user, isNew: false };
   if (existing) return { user: existing, isNew: false };
 
   const [created] = await db
@@ -1943,8 +1982,7 @@ async function requireRecentFactorEnrollmentStepUp(
 export function validatePhoneAuthProviderEnvironment(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  if (env.SMS_PROVIDER === "mock" && env.NODE_ENV !== "production") return;
-  buildTwilioVerifyProviderFromEnvironment(env);
+  buildPhoneAuthProvidersFromEnvironment(env);
 }
 
 function isWhatsAppOtpEnabled(): boolean {
@@ -3472,6 +3510,15 @@ function oauthCallbackFailure(
   c: Context,
   options: OAuthCallbackFailureOptions,
 ): Response {
+  if (options.redirectUrl && options.appState) {
+    const target = buildOAuthAppErrorReturn(
+      options.redirectUrl.toString(),
+      options.appState,
+      options.code,
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
+    );
+    if (target) return c.redirect(target, 302);
+  }
   if (!oauthCallbackPrefersHtml(c)) {
     return c.json<ApiResponse>(
       {
@@ -4038,6 +4085,16 @@ auth.get("/providers", async (c) => {
     siwe: methodEnabled("siwe"),
     siws: methodEnabled("siws"),
     google: enabledOauth.includes("google"),
+    googleNative:
+      enabledOauth.includes("google") &&
+      Boolean(
+        tenantId &&
+          (await authAppClientSubjects(tenantId)).some(
+            (client) =>
+              googleNativeClientIds(client.id).length > 0 &&
+              client.login_methods?.oauth?.google !== false,
+          ),
+      ),
     discord: enabledOauth.includes("discord"),
     github: enabledOauth.includes("github"),
     twitter: enabledOauth.includes("twitter"),
@@ -4055,6 +4112,194 @@ auth.get("/providers", async (c) => {
     oidc,
     captcha: publicAuthAbuseConfig(authAbuseConfig).captcha,
   });
+});
+
+type GoogleNativeChallenge = {
+  tenantId: string;
+  clientId: string;
+  audience: string;
+  nonce: string;
+  codeChallenge: string;
+  expiresAt: number;
+};
+
+// This exchanges identity only. Cloud mobile connect/token/ack still owns the
+// device credential, and provisionOAuthUser still enforces tenant policy/MFA.
+auth.post("/oauth/google/native/:operation", async (c) => {
+  setAuthNoStoreHeaders(c);
+  const operation = c.req.param("operation");
+  if (operation !== "challenge" && operation !== "verify") return c.notFound();
+  const rl = await checkAuthRateLimit(
+    c,
+    `google-native-${operation}`,
+    60_000,
+    20,
+  );
+  if (!rl.allowed)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Too many sign-in attempts. Try again later." },
+      429,
+      { "Retry-After": String(rl.retryAfterSecs ?? 60) },
+    );
+  const body = await safeJsonParse<Record<string, unknown>>(c);
+  const tenantId =
+    typeof body?.tenantId === "string" ? body.tenantId.trim() : "";
+  const clientId = normalizePublicClientId(body?.clientId);
+  if (!body || !isValidTenantId(tenantId) || !clientId)
+    return c.json<ApiResponse>(
+      { ok: false, error: "A valid tenantId and clientId are required" },
+      400,
+    );
+  const headerTenant = c.req.header("X-Steward-Tenant")?.trim();
+  if (headerTenant && headerTenant !== tenantId)
+    return c.json<ApiResponse>(
+      { ok: false, error: "tenantId does not match X-Steward-Tenant" },
+      400,
+    );
+  if (!(await getEnabledTenantAppClient(tenantId, clientId)))
+    return c.json<ApiResponse>(
+      { ok: false, error: "App client not found or disabled" },
+      404,
+    );
+  const refusal = await requireTenantLoginMethodAllowed(
+    c,
+    tenantId,
+    "oauth",
+    "google",
+    clientId,
+  );
+  if (refusal) return refusal;
+  const androidClientIds = googleNativeClientIds(clientId);
+  if (
+    !getEnabledProviders().includes("google") ||
+    androidClientIds.length === 0
+  )
+    return c.json<ApiResponse>(
+      {
+        ok: false,
+        error: "Native Google sign-in is not configured for this app",
+      },
+      503,
+    );
+  const audience = getProviderConfig("google").clientId;
+  if (operation === "challenge") {
+    if (
+      body.codeChallengeMethod !== "S256" ||
+      typeof body.codeChallenge !== "string" ||
+      !/^[A-Za-z0-9_-]{43}$/.test(body.codeChallenge)
+    )
+      return c.json<ApiResponse>(
+        { ok: false, error: "An S256 code challenge is required" },
+        400,
+      );
+    const challengeId = randomBase64Url(32);
+    const nonce = randomBase64Url(32);
+    const expiresAt = Date.now() + 5 * 60_000;
+    const challenge: GoogleNativeChallenge = {
+      tenantId,
+      clientId,
+      audience,
+      nonce,
+      codeChallenge: body.codeChallenge,
+      expiresAt,
+    };
+    await getChallengeStore().set(
+      `google-native:${challengeId}`,
+      JSON.stringify(challenge),
+    );
+    return c.json({
+      ok: true,
+      challengeId,
+      nonce,
+      serverClientId: audience,
+      expiresAt: new Date(expiresAt).toISOString(),
+    });
+  }
+  if (
+    typeof body.challengeId !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(body.challengeId) ||
+    typeof body.idToken !== "string" ||
+    !body.idToken ||
+    typeof body.codeVerifier !== "string" ||
+    !isValidPkceCodeVerifier(body.codeVerifier)
+  )
+    return c.json<ApiResponse>(
+      {
+        ok: false,
+        error: "challengeId, idToken and codeVerifier are required",
+      },
+      400,
+    );
+  const key = `google-native:${body.challengeId}`;
+  const raw = await getChallengeStore().get(key);
+  if (!raw)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Sign-in challenge expired or was already used" },
+      401,
+    );
+  const challenge = JSON.parse(raw) as GoogleNativeChallenge;
+  if (
+    challenge.tenantId !== tenantId ||
+    challenge.clientId !== clientId ||
+    challenge.audience !== audience ||
+    challenge.expiresAt <= Date.now() ||
+    challenge.codeChallenge !==
+      (await pkceChallengeForVerifier(body.codeVerifier, "S256"))
+  )
+    return c.json<ApiResponse>(
+      { ok: false, error: "Sign-in challenge does not match this request" },
+      401,
+    );
+  let verified: Awaited<ReturnType<typeof verifyGoogleNativeIdToken>>;
+  try {
+    verified = await verifyGoogleNativeIdToken(
+      body.idToken,
+      audience,
+      androidClientIds,
+      challenge.nonce,
+    );
+  } catch {
+    return c.json<ApiResponse>(
+      { ok: false, error: "Google identity could not be verified" },
+      401,
+    );
+  }
+  // Invalid identity/proof never consumes state. Only one concurrent verified
+  // request may cross the atomic consume boundary and provision a session.
+  if ((await getChallengeStore().consume(key)) !== raw)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Sign-in challenge was already used" },
+      401,
+    );
+  const replay = await markOidcIdTokenUsedOnce(
+    tenantId,
+    "google",
+    body.idToken,
+    verified.claims.exp,
+  );
+  if (!replay.ok)
+    return c.json<ApiResponse>(
+      { ok: false, error: "Google identity token was already used or expired" },
+      401,
+    );
+  const result = await provisionOAuthUser({
+    c,
+    providerName: "google",
+    tenantId,
+    providerUser: {
+      id: verified.subject,
+      email: verified.email,
+      verified_email: true,
+      name: verified.name,
+      picture: verified.picture,
+    },
+  });
+  if (!result.ok)
+    return c.json<ApiResponse>(
+      { ok: false, error: result.error },
+      result.status ?? 500,
+    );
+  return authExchangeJson(c, result.response);
 });
 
 auth.post("/telegram/challenge", async (c) => {
@@ -5795,7 +6040,10 @@ auth.post("/whatsapp/verify", async (c) => {
   }
   await clearSmsVerifyFailures(body.phone, otpPurpose);
 
-  const { user, isNew } = await findOrCreatePhoneUserWithStatus(body.phone);
+  const { user, isNew } = await findOrCreatePhoneUserWithStatus(
+    body.phone,
+    "whatsapp",
+  );
   const tenantResult = await resolveAndValidateTenant(
     c,
     user.id,
@@ -7120,10 +7368,7 @@ auth.post("/mfa/totp/complete", async (c) => {
     );
   }
   const attemptScope = `login:${challenge.userId}:${body.challengeId}`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     await getMfaBackend().delete(challengeKey);
     return c.json<ApiResponse>(
       {
@@ -7164,7 +7409,7 @@ auth.post("/mfa/totp/complete", async (c) => {
       !verified.stored ||
       typeof verified.acceptedStep !== "number"
     ) {
-      const failures = await recordTotpVerifyFailure(attemptScope);
+      const failures = await countTotpVerifyAttempts(attemptScope);
       if (failures >= TOTP_VERIFY_MAX_FAILED_ATTEMPTS)
         await getMfaBackend().delete(challengeKey);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
@@ -7260,10 +7505,7 @@ auth.post("/mfa/totp/step-up", async (c) => {
   }
 
   const attemptScope = `step-up:${session.payload.userId}`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -7278,7 +7520,6 @@ auth.post("/mfa/totp/step-up", async (c) => {
       body?.recoveryCode ?? "",
     );
     if (!verified.valid) {
-      await recordTotpVerifyFailure(attemptScope);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
     }
     method = "recovery_code";
@@ -7292,7 +7533,6 @@ auth.post("/mfa/totp/step-up", async (c) => {
       !verified.stored ||
       typeof verified.acceptedStep !== "number"
     ) {
-      await recordTotpVerifyFailure(attemptScope);
       return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
     }
     await writeMfaJson(mfaKey("totp:enabled", session.payload.userId), {
@@ -7338,10 +7578,7 @@ auth.post("/mfa/recovery-codes/regenerate", async (c) => {
   }
 
   const attemptScope = `manage:${session.payload.userId}:recovery-regenerate`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -7353,7 +7590,6 @@ auth.post("/mfa/recovery-codes/regenerate", async (c) => {
     !verified.stored ||
     typeof verified.acceptedStep !== "number"
   ) {
-    await recordTotpVerifyFailure(attemptScope);
     return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
   }
   await clearTotpVerifyFailures(attemptScope);
@@ -8267,10 +8503,7 @@ auth.post("/mfa/totp/unenroll", async (c) => {
   }
 
   const attemptScope = `manage:${session.payload.userId}:totp-unenroll`;
-  if (
-    (await getTotpVerifyFailedAttempts(attemptScope)) >=
-    TOTP_VERIFY_MAX_FAILED_ATTEMPTS
-  ) {
+  if (!(await claimTotpVerifyAttempt(attemptScope))) {
     return c.json<ApiResponse>(
       { ok: false, error: "Too many invalid codes. Please try again later." },
       429,
@@ -8278,7 +8511,6 @@ auth.post("/mfa/totp/unenroll", async (c) => {
   }
   const verified = await verifyStoredTotp(session.payload.userId, body.code);
   if (!verified.valid) {
-    await recordTotpVerifyFailure(attemptScope);
     return c.json<ApiResponse>({ ok: false, error: "Invalid code" }, 401);
   }
   await clearTotpVerifyFailures(attemptScope);
@@ -8506,6 +8738,9 @@ auth.post("/refresh", async (c) => {
       { ok: false, error: "Session was revoked. Please sign in again." },
       401,
     );
+  }
+  if (rotatedRefresh.status === "login_method_disabled") {
+    return c.json<ApiResponse>({ ok: false, error: rotatedRefresh.error }, 403);
   }
 
   const { record, newAccessToken, newRefreshToken } = rotatedRefresh;
@@ -9425,10 +9660,121 @@ auth.post("/passkey/login/verify", async (c) => {
 
 // ── Email magic link ──────────────────────────────────────────────────────────
 
+/** Tenant-wide ceiling on code-only emails per minute (all IPs, all addresses). */
+const EMAIL_CODE_SEND_TENANT_MAX_PER_MINUTE = 120;
+
+async function checkEmailCodeSendTenantBudget(
+  c: Context,
+  tenantId: string,
+): Promise<Response | null> {
+  const tenantRl = await checkAuthRateLimit(
+    c,
+    "email-code-send-tenant",
+    60_000,
+    EMAIL_CODE_SEND_TENANT_MAX_PER_MINUTE,
+    `tenant:${tenantId}`,
+  );
+  if (tenantRl.allowed) return null;
+  return c.json<ApiResponse>(
+    { ok: false, error: "Too many requests. Please try again later." },
+    429,
+  );
+}
+
+type EmailSignInSendPreflight =
+  | { ok: true; email: string; tenantId: string }
+  | { ok: false; response: Response };
+
+/**
+ * Checks shared by every email sign-in send: tenant hint, login method, SSO
+ * domain, tenant email policy, captcha and the per-address budget (5 per 10
+ * minutes, one bucket for every email sign-in endpoint so they cannot be
+ * combined to exceed it).
+ */
+async function preflightEmailSignInSend(
+  c: Context,
+  body: { email: string; tenantId?: string; captchaToken?: string },
+): Promise<EmailSignInSendPreflight> {
+  const email = body.email.toLowerCase().trim();
+  const headerTenantId = c.req.header("X-Steward-Tenant")?.trim();
+  const bodyTenantId = body.tenantId?.trim();
+  const resolvedTenantId =
+    headerTenantId || bodyTenantId || defaultAuthTenantId();
+  const tenantHintError = await validateExplicitAuthTenantHint(
+    resolvedTenantId,
+    Boolean(headerTenantId || bodyTenantId),
+  );
+  if (tenantHintError) {
+    return {
+      ok: false,
+      response: c.json<ApiResponse>({ ok: false, error: tenantHintError }, 404),
+    };
+  }
+  const methodResponse = await requireTenantLoginMethodAllowed(
+    c,
+    resolvedTenantId,
+    "email",
+  );
+  if (methodResponse) return { ok: false, response: methodResponse };
+  const ssoRequiredResponse = await requireNonSsoEmailLoginAllowed(
+    c,
+    resolvedTenantId,
+    email,
+    "Email",
+  );
+  if (ssoRequiredResponse) return { ok: false, response: ssoRequiredResponse };
+  const authAbuseConfig = await getTenantAuthAbuseConfig(resolvedTenantId);
+  const emailPolicyError = validateEmailAbusePolicy(email, authAbuseConfig);
+  if (emailPolicyError) {
+    return {
+      ok: false,
+      response: c.json<ApiResponse>(
+        { ok: false, error: emailPolicyError },
+        400,
+      ),
+    };
+  }
+  const captcha = await verifyCaptchaToken(
+    authAbuseConfig,
+    "email_otp",
+    body.captchaToken,
+    trustedClientIp(c),
+  );
+  if (!captcha.ok) {
+    return {
+      ok: false,
+      response: c.json<ApiResponse>(
+        { ok: false, error: captcha.error },
+        captcha.status as 400 | 502 | 503,
+      ),
+    };
+  }
+  const emailRl = await checkAuthRateLimit(
+    c,
+    "email-send-destination",
+    10 * 60_000,
+    5,
+    email,
+  );
+  if (!emailRl.allowed) {
+    return {
+      ok: false,
+      response: c.json<ApiResponse>(
+        { ok: false, error: "Too many requests. Please try again later." },
+        429,
+      ),
+    };
+  }
+  return { ok: true, email, tenantId: resolvedTenantId };
+}
+
 /**
  * POST /email/send
- * Body: { email, tenantId? }
- * Sends a magic link email, returns expiry time.
+ * Body: { email, tenantId?, captchaToken?, delivery? }
+ * Sends a sign-in email, returns expiry time. By default the email carries a
+ * magic link and a six-digit code. `delivery: "code"` sends only the code (no
+ * link token is issued); it is kept for compatibility, and native apps should
+ * call POST /email/code/send, which applies the same checks and limits.
  */
 auth.post("/email/send", async (c) => {
   // Tiered limits: the per-IP burst is generous (30/min) because one IP is
@@ -9445,70 +9791,41 @@ auth.post("/email/send", async (c) => {
     email: string;
     tenantId?: string;
     captchaToken?: string;
+    delivery?: unknown;
   }>(c);
   if (!body?.email) {
     return c.json<ApiResponse>({ ok: false, error: "email is required" }, 400);
   }
+  if (
+    body.delivery !== undefined &&
+    body.delivery !== "code" &&
+    body.delivery !== "link_and_code"
+  ) {
+    return c.json<ApiResponse>(
+      { ok: false, error: 'delivery must be "code" or "link_and_code"' },
+      400,
+    );
+  }
+  const delivery: EmailLoginDelivery =
+    body.delivery === "code" ? "code" : "link_and_code";
 
-  const email = body.email.toLowerCase().trim();
-  const headerTenantId = c.req.header("X-Steward-Tenant")?.trim();
-  const bodyTenantId = body.tenantId?.trim();
-  const resolvedTenantId =
-    headerTenantId || bodyTenantId || defaultAuthTenantId();
-  const tenantHintError = await validateExplicitAuthTenantHint(
-    resolvedTenantId,
-    Boolean(headerTenantId || bodyTenantId),
-  );
-  if (tenantHintError) {
-    return c.json<ApiResponse>({ ok: false, error: tenantHintError }, 404);
-  }
-  const methodResponse = await requireTenantLoginMethodAllowed(
-    c,
-    resolvedTenantId,
-    "email",
-  );
-  if (methodResponse) return methodResponse;
-  const ssoRequiredResponse = await requireNonSsoEmailLoginAllowed(
-    c,
-    resolvedTenantId,
-    email,
-    "Email",
-  );
-  if (ssoRequiredResponse) return ssoRequiredResponse;
-  const authAbuseConfig = await getTenantAuthAbuseConfig(resolvedTenantId);
-  const emailPolicyError = validateEmailAbusePolicy(email, authAbuseConfig);
-  if (emailPolicyError) {
-    return c.json<ApiResponse>({ ok: false, error: emailPolicyError }, 400);
-  }
-  const captcha = await verifyCaptchaToken(
-    authAbuseConfig,
-    "email_otp",
-    body.captchaToken,
-    trustedClientIp(c),
-  );
-  if (!captcha.ok) {
-    return c.json<ApiResponse>(
-      { ok: false, error: captcha.error },
-      captcha.status as 400 | 502 | 503,
+  const preflight = await preflightEmailSignInSend(c, body);
+  if (!preflight.ok) return preflight.response;
+  const { email, tenantId: resolvedTenantId } = preflight;
+  if (delivery === "code") {
+    const tenantLimited = await checkEmailCodeSendTenantBudget(
+      c,
+      resolvedTenantId,
     );
-  }
-  const emailRl = await checkAuthRateLimit(
-    c,
-    "email-send-destination",
-    10 * 60_000,
-    5,
-    email,
-  );
-  if (!emailRl.allowed) {
-    return c.json<ApiResponse>(
-      { ok: false, error: "Too many requests. Please try again later." },
-      429,
-    );
+    if (tenantLimited) return tenantLimited;
   }
   const emailAuth = await getEmailAuthForTenant(resolvedTenantId);
   let sent: Awaited<ReturnType<EmailAuth["sendMagicLink"]>>;
   try {
-    sent = await emailAuth.sendMagicLink(email, { tenantId: resolvedTenantId });
+    sent = await emailAuth.sendMagicLink(email, {
+      tenantId: resolvedTenantId,
+      delivery,
+    });
   } catch (err) {
     // Fail closed: ok:true only after the provider accepted the message. On
     // typed delivery failures the challenge is not redeemable (never issued
@@ -9524,6 +9841,74 @@ auth.post("/email/send", async (c) => {
   >({
     ok: true,
     data: { expiresAt: expiresAt.toISOString(), challengeId, pollSecret },
+  });
+});
+
+/**
+ * POST /email/code/send
+ * Body: { email, tenantId?, captchaToken? }
+ * Returns 200 { ok: true, data: { expiresAt, codeLength: 6 } }
+ *
+ * Native in-app email sign-in. Emails ONLY a six-digit code,
+ * rendered with the sign-in code template: the email has no link, and no link
+ * token is ever published, so nothing in it can sign in a browser or consume
+ * the challenge. The app redeems the code through POST /email/code/verify,
+ * which returns the Steward session the app passes as Bearer to Cloud's
+ * mobile_pkce connect.
+ *
+ * The code: crypto-random, 10-minute TTL, stored only as an HMAC keyed by a
+ * server secret and bound to {email, tenant} (the lookup is by that HMAC, so
+ * no stored secret is compared byte by byte), single use (consumed on
+ * success), superseded by any later send to the same address, and locked
+ * after 5 failed attempts. Limits: 30/min per IP, 5 per 10 min per address
+ * (shared with /email/send), EMAIL_CODE_SEND_TENANT_MAX_PER_MINUTE per tenant;
+ * verify adds 10/min per IP and 5 per 10 min per tenant+address. No poll
+ * secret is returned: a native client never polls.
+ */
+auth.post("/email/code/send", async (c) => {
+  setAuthNoStoreHeaders(c);
+  const rl = await checkAuthRateLimit(c, "email-code-send", 60_000, 30);
+  if (!rl.allowed) {
+    return c.json<ApiResponse>(
+      { ok: false, error: "Too many requests. Please try again later." },
+      429,
+    );
+  }
+  const body = await safeJsonParse<{
+    email?: unknown;
+    tenantId?: unknown;
+    captchaToken?: unknown;
+  }>(c);
+  if (
+    typeof body?.email !== "string" ||
+    !body.email.trim() ||
+    (body.tenantId !== undefined && typeof body.tenantId !== "string") ||
+    (body.captchaToken !== undefined && typeof body.captchaToken !== "string")
+  ) {
+    return c.json<ApiResponse>({ ok: false, error: "email is required" }, 400);
+  }
+
+  const preflight = await preflightEmailSignInSend(c, {
+    email: body.email,
+    tenantId: body.tenantId,
+    captchaToken: body.captchaToken,
+  });
+  if (!preflight.ok) return preflight.response;
+  const { email, tenantId } = preflight;
+  const tenantLimited = await checkEmailCodeSendTenantBudget(c, tenantId);
+  if (tenantLimited) return tenantLimited;
+  const emailAuth = await getEmailAuthForTenant(tenantId);
+  let sent: Awaited<ReturnType<EmailAuth["sendMagicLink"]>>;
+  try {
+    sent = await emailAuth.sendMagicLink(email, { tenantId, delivery: "code" });
+  } catch (err) {
+    const deliveryFailure = emailDeliveryFailureResponse(c, err);
+    if (deliveryFailure) return deliveryFailure;
+    throw err;
+  }
+  return c.json<ApiResponse<{ expiresAt: string; codeLength: number }>>({
+    ok: true,
+    data: { expiresAt: sent.expiresAt.toISOString(), codeLength: 6 },
   });
 });
 
@@ -10495,12 +10880,92 @@ auth.post("/guest/upgrade", async (c) => {
 // ── OAuth authorization-code flow ─────────────────────────────────────────────
 
 /**
+ * Provider `prompt` values an /authorize caller may pass through. Native
+ * clients use `select_account` so the provider always shows an account picker:
+ * the user picks the intended Google account, and the final redirect follows a
+ * user gesture, which is what lets Android deliver it to a verified App Link.
+ * Anything not listed (including `none`, which would silently reuse a session)
+ * is rejected rather than dropped, so a caller never believes a prompt was
+ * honoured when it was not.
+ */
+const OAUTH_PROMPT_PASSTHROUGH: Readonly<Record<string, ReadonlySet<string>>> =
+  {
+    google: new Set(["select_account", "consent", "select_account consent"]),
+  };
+
+export function resolveOAuthPromptPassthrough(
+  providerName: string,
+  rawPrompt: string | undefined,
+): { ok: true; prompt?: string } | { ok: false; error: string } {
+  if (rawPrompt === undefined) return { ok: true };
+  const prompt = rawPrompt.trim().replace(/\s+/g, " ");
+  if (!prompt) return { ok: true };
+  if (!OAUTH_PROMPT_PASSTHROUGH[providerName]?.has(prompt)) {
+    return { ok: false, error: "prompt is not supported for this provider" };
+  }
+  return { ok: true, prompt };
+}
+
+/**
  * GET /oauth/:provider/authorize
  * Query: ?redirect_uri=<url>&tenant_id=<id>
  *
  * Generates an OAuth authorization URL, stores the CSRF state in the challenge
  * store (keyed as `oauth:<state>`), then redirects the user to the provider.
  */
+// Read-only readiness for any registered application. Never issues a credential.
+auth.get("/oauth/google/app-readiness", async (c) => {
+  c.header("Cache-Control", "no-store");
+  const tenantId = c.req.query("tenant_id");
+  const redirectUri = c.req.query("redirect_uri");
+  if (
+    !tenantId ||
+    tenantId.length > 100 ||
+    !redirectUri ||
+    redirectUri.length > 2048
+  ) {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+  }
+  try {
+    const target = new URL(redirectUri);
+    if (
+      target.protocol !== "https:" ||
+      target.username ||
+      target.password ||
+      target.hash ||
+      target.search
+    ) {
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+    }
+  } catch {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 400);
+  }
+  const rl = await checkAuthRateLimit(c, "app-auth-readiness", 60_000, 30);
+  if (!rl.allowed) return c.json({ ok: false, error: "Try again later" }, 429);
+  try {
+    const denied = await requireTenantLoginMethodAllowed(
+      c,
+      tenantId,
+      "oauth",
+      "google",
+    );
+    if (denied)
+      return c.json({ ok: false, error: "App sign-in unavailable" }, 403);
+    await assertAllowedOAuthRedirectUri(redirectUri, tenantId);
+    getProviderConfig("google");
+    const errorReturn = buildOAuthAppErrorReturn(
+      redirectUri,
+      "s".repeat(43),
+      "access_denied",
+      process.env.STEWARD_OAUTH_APP_ERROR_REDIRECTS,
+    );
+    if (!errorReturn) throw new Error("App error returns are not configured");
+    return c.json({ ok: true, appAuth: 1, tenantId, redirectUri });
+  } catch {
+    return c.json({ ok: false, error: "App sign-in unavailable" }, 503);
+  }
+});
+
 auth.get("/oauth/:provider/authorize", async (c) => {
   const providerName = c.req.param("provider");
   if (!isBuiltInProvider(providerName)) {
@@ -10527,6 +10992,26 @@ auth.get("/oauth/:provider/authorize", async (c) => {
 
   const redirectUri = c.req.query("redirect_uri");
   const appState = c.req.query("state")?.trim() || undefined;
+  const promptResult = resolveOAuthPromptPassthrough(
+    providerName,
+    c.req.query("prompt"),
+  );
+  if (!promptResult.ok) {
+    return c.json<ApiResponse>({ ok: false, error: promptResult.error }, 400);
+  }
+  // `mfa=exchange` (native apps): when the account needs a second factor, the
+  // callback returns an ordinary one-time code to redirect_uri instead of the
+  // HTML error page, and POST /oauth/exchange (PKCE-checked as usual) answers
+  // with the MFA challenge so the app can finish through /auth/mfa/*/complete
+  // in its own screens. Without it, MFA accounts keep the error page.
+  const rawMfaMode = c.req.query("mfa");
+  if (rawMfaMode !== undefined && rawMfaMode !== "exchange") {
+    return c.json<ApiResponse>(
+      { ok: false, error: "mfa must be 'exchange' when present" },
+      400,
+    );
+  }
+  const mfaMode = rawMfaMode === "exchange" ? "exchange" : undefined;
   // Accept both `tenant_id` (snake_case, canonical) and `tenantId` (camelCase)
   // so integrators sending either shape land on the right tenant. Whitespace
   // is trimmed defensively for the same reason we trim headers elsewhere.
@@ -10648,6 +11133,11 @@ auth.get("/oauth/:provider/authorize", async (c) => {
     url.searchParams.set("nonce", oidcNonce);
     authUrl = url.toString();
   }
+  if (promptResult.prompt) {
+    const url = new URL(authUrl);
+    url.searchParams.set("prompt", promptResult.prompt);
+    authUrl = url.toString();
+  }
 
   // Store state metadata in the challenge store — include PKCE verifier when present
   const statePayload = JSON.stringify({
@@ -10659,6 +11149,7 @@ auth.get("/oauth/:provider/authorize", async (c) => {
     appState,
     codeChallenge,
     codeChallengeMethod,
+    ...(mfaMode ? { mfaMode } : {}),
     ...(oidcNonce ? { oidcNonce } : {}),
     ...(codeVerifier ? { codeVerifier } : {}),
   });
@@ -10748,6 +11239,7 @@ auth.get("/oauth/:provider/callback", async (c) => {
     codeChallengeMethod?: string;
     codeVerifier?: string;
     oidcNonce?: string;
+    mfaMode?: "exchange";
   };
   try {
     stateData = JSON.parse(rawPayload) as typeof stateData;
@@ -10950,6 +11442,32 @@ auth.get("/oauth/:provider/callback", async (c) => {
   }
 
   if (result.response.mfaRequired) {
+    if (stateData.mfaMode === "exchange" && stateData.codeChallenge) {
+      // Same one-time, PKCE-bound, redirect- and tenant-bound code as a
+      // success; it redeems to the MFA challenge instead of tokens.
+      const mfaExchangeCode = uint8ArrayToBase64url(
+        crypto.getRandomValues(new Uint8Array(32)),
+      );
+      await getOAuthCodeStore().set(
+        `oauth-code:${mfaExchangeCode}`,
+        JSON.stringify({
+          providerName,
+          mfaRequired: true,
+          mfa: result.response.mfa,
+          user: result.response.user,
+          redirectUri: stateData.redirectUri,
+          tenantId: stateData.tenantId ?? null,
+          codeChallenge: stateData.codeChallenge,
+          codeChallengeMethod: stateData.codeChallengeMethod ?? "S256",
+          expiresAt: Date.now() + OAUTH_CODE_TTL_MS,
+        }),
+      );
+      setRedirectFragment(redirectUrl, {
+        code: mfaExchangeCode,
+        state: stateData.appState,
+      });
+      return c.redirect(redirectUrl.toString(), 302);
+    }
     return oauthCallbackFailure(c, {
       code: "mfa_required",
       message: "Additional verification is required to complete sign-in.",
@@ -11087,6 +11605,9 @@ auth.post("/oauth/exchange", async (c) => {
     codeChallengeMethod?: string;
     expiresAt: number;
     expiresIn: number;
+    /** Set only for `mfa=exchange` codes, which carry no tokens. */
+    mfaRequired?: true;
+    mfa?: unknown;
   };
   try {
     payload = JSON.parse(raw);
@@ -11195,6 +11716,15 @@ auth.post("/oauth/exchange", async (c) => {
     }
   } finally {
     await releaseOAuthCodeRedemptionLock(code);
+  }
+
+  if (payload.mfaRequired === true) {
+    return c.json({
+      ok: true,
+      mfaRequired: true,
+      mfa: payload.mfa,
+      ...(payload.user ? { user: payload.user } : {}),
+    });
   }
 
   return c.json({
@@ -11485,7 +12015,7 @@ async function provisionOAuthUser(opts: {
   c: Context;
   providerName: string;
   providerUser: OAuthUserInfoWithEmailSource;
-  tokenResponse: OAuthTokenResponse;
+  tokenResponse?: OAuthTokenResponse;
   tenantId?: string;
 }): Promise<
   | {
@@ -11633,20 +12163,26 @@ async function provisionOAuthUser(opts: {
     // If STEWARD_MASTER_PASSWORD changes, operators must run a decrypt +
     // re-encrypt rotation pass before switching the application to the new
     // password, otherwise existing OAuth provider tokens cannot be decrypted.
-    const encryptedProviderTokens = encryptOAuthProviderTokens(
-      tokenResponse.access_token,
-      tokenResponse.refresh_token ?? null,
-    );
+    // Native ID-token sign-in establishes identity, not Google API access.
+    // Omit token fields so an existing Gmail/Calendar grant stays intact.
+    const providerCredentials = tokenResponse
+      ? {
+          ...encryptOAuthProviderTokens(
+            tokenResponse.access_token,
+            tokenResponse.refresh_token ?? null,
+          ),
+          expiresAt: tokenResponse.expires_in
+            ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
+            : null,
+        }
+      : {};
     const [insertedAccount] = await db
       .insert(accounts)
       .values({
         userId: user.id,
         provider: providerName,
         providerAccountId: providerUser.id,
-        ...encryptedProviderTokens,
-        expiresAt: tokenResponse.expires_in
-          ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
-          : null,
+        ...providerCredentials,
       })
       .onConflictDoNothing({
         target: [accounts.provider, accounts.providerAccountId],
@@ -11669,24 +12205,26 @@ async function provisionOAuthUser(opts: {
           error: "OAuth account is already linked to another user",
         };
       }
-      const [updatedAccount] = await db
-        .update(accounts)
-        .set({
-          ...encryptedProviderTokens,
-          expiresAt: tokenResponse.expires_in
-            ? Math.floor(Date.now() / 1000) + tokenResponse.expires_in
-            : null,
-        })
-        .where(
-          and(eq(accounts.id, currentAccount.id), eq(accounts.userId, user.id)),
-        )
-        .returning({ id: accounts.id });
-      if (!updatedAccount) {
-        return {
-          ok: false as const,
-          status: 403,
-          error: "OAuth account ownership changed during sign-in",
-        };
+      if (tokenResponse) {
+        const [updatedAccount] = await db
+          .update(accounts)
+          .set({
+            ...providerCredentials,
+          })
+          .where(
+            and(
+              eq(accounts.id, currentAccount.id),
+              eq(accounts.userId, user.id),
+            ),
+          )
+          .returning({ id: accounts.id });
+        if (!updatedAccount) {
+          return {
+            ok: false as const,
+            status: 403,
+            error: "OAuth account ownership changed during sign-in",
+          };
+        }
       }
     }
 
@@ -11726,6 +12264,7 @@ async function provisionOAuthUser(opts: {
           userId: user.id,
           email,
           authMethod: "oauth",
+          oauthProviderId: providerName,
         },
         { id: user.id, email, walletAddress },
         c,

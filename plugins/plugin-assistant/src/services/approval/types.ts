@@ -1,3 +1,4 @@
+import type { CalendarNoteSourceReference } from "@elizaos/contracts";
 import type { DeviceActionPayload } from "../device-actions/contract.ts";
 /**
  * Approval-queue transport types — the runtime contract for the
@@ -133,6 +134,17 @@ export type ApprovalPayload =
     }
   | ({
       action: "schedule_event";
+      sourceNote?: CalendarNoteSourceReference;
+      allDay?: {
+        readonly startDate: string;
+        readonly endDateExclusive: string;
+      } | null;
+      travelBuffer?: {
+        readonly bufferMinutes: number;
+        readonly method: string;
+        readonly originAddress: string | null;
+        readonly destinationAddress: string | null;
+      } | null;
       calendarId: string;
       title: string;
       startsAtMs: number;
@@ -175,6 +187,10 @@ export type ApprovalPayload =
       notifyAttendees?: boolean;
       editorRequestSha256?: string;
       patch: {
+        allDay?: {
+          readonly startDate: string;
+          readonly endDateExclusive: string;
+        } | null;
         title: string | null;
         startsAtMs: number | null;
         endsAtMs: number | null;

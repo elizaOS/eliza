@@ -99,7 +99,7 @@ public abstract class PackageInstallCoordinator {
   }
   private void verify(File file,UpdateJournal.Identity expected,String distribution,byte[] runtime)throws Exception {
     Path privateRoot=context.getNoBackupFilesDir().toPath().toRealPath();Path resolved=file.toPath().toRealPath();
-    if(!resolved.startsWith(privateRoot)||!Files.isRegularFile(file.toPath(),LinkOption.NOFOLLOW_LINKS)||file.length()>1024L*1024*1024)throw new IOException("APK must be a bounded private cached file");
+    if(!resolved.startsWith(privateRoot)||!Files.isRegularFile(file.toPath(),LinkOption.NOFOLLOW_LINKS)||file.length()>2L*1024*1024*1024)throw new IOException("APK must be a bounded private cached file");
     if(!expected.digest.equals(hash(file)))throw new IOException("Cached APK digest mismatch");
     PackageInfo info=context.getPackageManager().getPackageArchiveInfo(file.getAbsolutePath(),PackageManager.GET_SIGNING_CERTIFICATES|PackageManager.GET_META_DATA);
     if(info==null||!target.equals(info.packageName)||info.getLongVersionCode()!=expected.code||info.applicationInfo==null||info.signingInfo==null)throw new IOException("Wrong APK identity");

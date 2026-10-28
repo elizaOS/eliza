@@ -1,6 +1,6 @@
 // Persists user mcps records for cloud services through the shared DB boundary.
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, ne, or, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import {
@@ -102,9 +102,10 @@ export const userMcpsRepository = {
       limit?: number;
       offset?: number;
       orderBy?: "name";
+      excludeOrganizationId?: string;
     } = {},
   ): Promise<UserMcp[]> {
-    const { category, status = "live", search } = options;
+    const { category, status = "live", search, excludeOrganizationId } = options;
     const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
     const offset = Math.max(options.offset ?? 0, 0);
 
@@ -121,6 +122,9 @@ export const userMcpsRepository = {
           ilike(userMcps.description, `%${escapeLikePattern(search)}%`),
         )!,
       );
+    }
+    if (excludeOrganizationId) {
+      conditions.push(ne(userMcps.organization_id, excludeOrganizationId));
     }
 
     return (
@@ -185,11 +189,18 @@ export const userMcpsRepository = {
   /**
    * Count MCPs by organization
    */
-  async countByOrganization(organizationId: string): Promise<number> {
+  async countByOrganization(
+    organizationId: string,
+    options: { status?: UserMcp["status"] } = {},
+  ): Promise<number> {
+    const conditions = [eq(userMcps.organization_id, organizationId)];
+    if (options.status) {
+      conditions.push(eq(userMcps.status, options.status));
+    }
     const [result] = await dbRead
       .select({ count: sql<number>`count(*)` })
       .from(userMcps)
-      .where(eq(userMcps.organization_id, organizationId));
+      .where(and(...conditions));
     return Number(result?.count ?? 0);
   },
 

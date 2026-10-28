@@ -237,9 +237,9 @@ const MAX_LEASE_AGE_MS = 20 * 60_000;
 const RECOVERY_RETRY_MS = 60_000;
 const MAX_ACTIVE_LEASES = 2_048;
 const MAX_SETTLED_REQUEST_IDS = 2_048;
-const RATE_LIMIT_OPERATION_VALIDITY_MS = 3_000;
-// Both internal attempts finish within three seconds. Retaining every receipt
-// for ten seconds covers all retryable in-flight operations without imposing a
+const RATE_LIMIT_OPERATION_VALIDITY_MS = 5_000;
+// Rate operations expire within five seconds. Retaining every receipt
+// for ten seconds covers repeated in-flight operations without imposing a
 // concurrency-sensitive FIFO cap; the next request prunes expired receipts.
 const RATE_LIMIT_RECEIPT_TTL_MS = 10_000;
 const MAX_ALARM_LEASE_MUTATIONS = 32;
@@ -273,11 +273,11 @@ function nonNegativeFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
-function validId(value: unknown): value is string {
+export function validId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= 256;
 }
 
-function validRequestId(value: unknown): value is string {
+export function validRequestId(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length > 0 &&
@@ -308,7 +308,7 @@ function sessionBindingStorageKey(
   return `${revocationStorageKey(REVOKED_SESSION_BINDING_PREFIX, userId)}:${encodeURIComponent(stewardUserId)}`;
 }
 
-function validRecoveryContext(
+export function validRecoveryContext(
   value: unknown,
   requestId: string,
   organizationId: string,
@@ -658,6 +658,54 @@ export class InferenceAdmissionGate {
   // This queue orders calls within a rate-only identity. Cross-lane isolation
   // comes from the distinct Durable Object identity selected by the caller.
   private rateLimitOperationQueue: Promise<void> = Promise.resolve();
+  private fundedBudgetController?: import("./inference-funded-budget-controller").InferenceFundedBudgetController;
+
+  private async fundedBudgets() {
+    if (!this.fundedBudgetController) {
+      const { InferenceFundedBudgetController } = await import(
+        "./inference-funded-budget-controller"
+      );
+      this.fundedBudgetController = new InferenceFundedBudgetController(
+        this.state.storage,
+        this.env as Record<string, unknown>,
+        {
+          withAuthority: (operation) => this.serializeRevocation(operation),
+          checkCredential: async (value) => {
+            if (!value || typeof value !== "object")
+              return jsonError("Invalid budget credential", 400);
+            const credential = value as CredentialCheckRequest;
+            return this.credentialDenial(credential);
+          },
+          consumeRate: async (value) => {
+            if (!value || typeof value !== "object")
+              return jsonError("Invalid budget rate policy", 400);
+            const rate = value as RateLimitRequest & {
+              credential?: { credentialId?: string };
+              credentialLimit?: number;
+              requestId?: string;
+            };
+            return this.serializeRateLimit(() =>
+              this.rateLimit({
+                ...rate,
+                operationId: rate.requestId,
+                operationDeadlineAt:
+                  rate.operationDeadlineAt ?? Date.now() + 3_000,
+                ...(rate.credential?.credentialId && rate.credentialLimit
+                  ? {
+                      apiKey: {
+                        id: rate.credential.credentialId,
+                        maxRequests: rate.credentialLimit,
+                      },
+                    }
+                  : {}),
+              }),
+            );
+          },
+        },
+      );
+    }
+    return this.fundedBudgetController;
+  }
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -798,10 +846,18 @@ export class InferenceAdmissionGate {
           leaseExpiryIndex(entry.requestId, entry.lease),
         );
       }
+      const existingAlarm =
+        this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true"
+          ? await transaction.getAlarm()
+          : null;
       if (scheduledAlarm === null) {
-        await transaction.deleteAlarm();
+        if (existingAlarm === null) await transaction.deleteAlarm();
       } else {
-        await transaction.setAlarm(scheduledAlarm);
+        await transaction.setAlarm(
+          existingAlarm === null
+            ? scheduledAlarm
+            : Math.min(existingAlarm, scheduledAlarm),
+        );
       }
     });
     this.ledger = snapshot;
@@ -1782,6 +1838,11 @@ export class InferenceAdmissionGate {
     }
     if (!body) return jsonError("Invalid JSON body", 400);
     const path = new URL(request.url).pathname;
+    if (path.startsWith("/budget/") || path.startsWith("/policy-mutation/")) {
+      if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION !== "true")
+        return jsonError("Funded inference admission is not enabled", 503);
+      return (await this.fundedBudgets()).handle(path, body);
+    }
     if (path === "/lease") {
       return await this.serialize(() => this.lease(body as LeaseRequest));
     }
@@ -1817,6 +1878,21 @@ export class InferenceAdmissionGate {
           this.authorizedLease(dispatch, dispatch.preProviderCancellationToken),
         ),
       );
+    }
+    if (path === "/maps/admit" || path === "/maps/usage") {
+      const { MapsRequestAllowanceController } = await import(
+        "./maps-request-allowance-controller"
+      );
+      return this.serializeRevocation(async () => {
+        const controller = new MapsRequestAllowanceController(
+          this.state.storage,
+          this.env as Record<string, unknown>,
+          {
+            credential: (value) => this.credentialDenial(value),
+          },
+        );
+        return controller.handle(path, body);
+      });
     }
     if (path === "/hydrate") {
       return await this.serialize(() => this.hydrate(body as HydrateRequest));
@@ -2097,6 +2173,8 @@ export class InferenceAdmissionGate {
   }
 
   async alarm(): Promise<void> {
+    if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true")
+      await (await this.fundedBudgets()).alarm();
     const expired = await this.serialize(() => this.claimExpiredLeases());
     if (expired.length === 0) return;
     const results = await Promise.allSettled(

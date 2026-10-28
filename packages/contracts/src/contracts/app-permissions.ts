@@ -1,9 +1,8 @@
 /**
  * Parser and types for the `elizaos.app.permissions` manifest block declared
- * by third-party apps in their `package.json`. Spec lives at
- * `eliza/packages/docs/architecture/app-permissions-manifest.md` and is the
- * source of truth — this module implements the validation rules described
- * there. The manifest is advisory in this slice (no enforcement).
+ * by third-party apps in their `package.json`. This module implements the
+ * validation rules and is the source of truth for them. The manifest is
+ * advisory in this slice (no enforcement).
  *
  * Forward compatibility: only the recognised namespaces (`fs`, `net`) are
  * validated and surfaced as typed slices. Unrecognised keys inside the
@@ -28,8 +27,7 @@ export const MAX_PATTERN_LENGTH = 256;
  * recognises them adds them here).
  *
  * Source of truth for the granted-permission store's namespace
- * intersection — see
- * `eliza/packages/docs/architecture/app-permissions-granted-store.md`.
+ * intersection.
  */
 export const RECOGNISED_PERMISSION_NAMESPACES = ["fs", "net"] as const;
 export type RecognisedPermissionNamespace =

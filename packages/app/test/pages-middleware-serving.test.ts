@@ -5,12 +5,17 @@
  * Cloudflare Pages actually supports. Drives the real onRequest handler with a
  * hand-rolled next() — no module mocks.
  */
+
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  buildNativeSignInIntentUrl,
+  NATIVE_CALLBACK_SCRUB_SCRIPT,
   onRequest,
   resolveCanonicalPageRedirect,
+  selectNativeAuthCallback,
 } from "../functions/_middleware";
 import {
   type PagesProxyEnv,
@@ -18,6 +23,14 @@ import {
   resolveApiWorkerTarget,
 } from "../functions/_proxy";
 
+const CALLBACK_CONFIG = ["eliza.app", "staging.eliza.app"].map((host) => ({
+  redirectUri: `https://${host}/reader/auth/callback`,
+  androidPackage: "org.example.reader",
+  appName: "Example Reader",
+}));
+const CALLBACK_ENV = {
+  ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(CALLBACK_CONFIG),
+};
 const ORIGIN = "https://cloud.eliza.app";
 
 // The Pages static layer bakes `public/_headers` values into next() responses;
@@ -62,7 +75,7 @@ const assetHit = () =>
 const run = (
   request: Request,
   next: (input?: Request) => Promise<Response>,
-  env: PagesProxyEnv = {},
+  env: PagesProxyEnv = CALLBACK_ENV,
 ): Promise<Response> => onRequest({ request, env, next });
 
 describe("pages middleware /assets/* serving", () => {
@@ -242,6 +255,7 @@ describe("unified host migration", () => {
       "/steward",
       "/.well-known/openid-configuration",
       "/.well-known/oidc/jwks.json",
+      "/.well-known/assetlinks.json",
     ]) {
       const response = await run(
         new Request(`${ORIGIN}${path}`),
@@ -256,7 +270,56 @@ describe("unified host migration", () => {
       "/steward",
       "/.well-known/openid-configuration",
       "/.well-known/oidc/jwks.json",
+      "/.well-known/assetlinks.json",
     ]);
+  });
+
+  it("never redirects App Link verification or the native callback on the link hosts", () => {
+    for (const host of ["https://eliza.app", "https://staging.eliza.app"]) {
+      for (const path of [
+        "/.well-known/assetlinks.json",
+        "/reader/auth/callback?code=a&state=b",
+      ]) {
+        expect(resolveCanonicalPageRedirect(`${host}${path}`)).toBeNull();
+      }
+    }
+  });
+
+  it("serves assetlinks.json from the API Worker on eliza.app and staging.eliza.app, never the SPA", async () => {
+    for (const origin of ["https://eliza.app", "https://staging.eliza.app"]) {
+      const forwarded: Request[] = [];
+      let nextCalled = false;
+      const response = await run(
+        new Request(`${origin}/.well-known/assetlinks.json`),
+        async () => {
+          nextCalled = true;
+          return spaFallback();
+        },
+        {
+          API_WORKER: {
+            fetch: async (request: Request) => {
+              forwarded.push(request);
+              return Response.json([], {
+                headers: { "Cache-Control": "public, max-age=3600" },
+              });
+            },
+          },
+        },
+      );
+      expect(nextCalled).toBe(false);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Type")).toContain(
+        "application/json",
+      );
+      expect(await response.json()).toEqual([]);
+      expect(forwarded).toHaveLength(1);
+      expect(new URL(forwarded[0]?.url ?? "").origin).toBe(
+        origin === "https://eliza.app"
+          ? "https://api.eliza.app"
+          : "https://api-staging.eliza.app",
+      );
+      expect(forwarded[0]?.redirect).toBe("manual");
+    }
   });
 
   it("preserves the canonical browser origin across the Steward service binding", async () => {
@@ -463,5 +526,180 @@ describe("pages config files stay within Cloudflare Pages semantics", () => {
     const lines = configLines(redirects);
 
     expect(lines.at(-1)).toBe("/*  /index.html  200");
+  });
+});
+
+describe("native sign-in callback fallback", () => {
+  const CALLBACK = "https://eliza.app/reader/auth/callback";
+  const BARE =
+    "intent://eliza.app/reader/auth/callback#Intent;scheme=https;package=org.example.reader;end";
+
+  it("serves a static no-store, noindex page that forwards no sign-in result", async () => {
+    let nextCalled = false;
+    const response = await run(
+      new Request(`${CALLBACK}?code=abc_DEF-123&state=s7ate~value.x`),
+      async () => {
+        nextCalled = true;
+        return spaFallback();
+      },
+    );
+    expect(nextCalled).toBe(false);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY");
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toContain("default-src 'none'");
+    // Exactly one script may run: the pinned history scrub.
+    const scriptHash = createHash("sha256")
+      .update(NATIVE_CALLBACK_SCRUB_SCRIPT)
+      .digest("base64");
+    expect(csp).toContain(`script-src 'sha256-${scriptHash}';`);
+    const html = await response.text();
+    expect(html.match(/<script>/g)).toHaveLength(1);
+    expect(html).toContain(`<script>${NATIVE_CALLBACK_SCRUB_SCRIPT}</script>`);
+    expect(html).not.toMatch(/fetch\(|XMLHttpRequest|document\.cookie/);
+    // The code and state never appear anywhere on the page.
+    expect(html).not.toContain("abc_DEF-123");
+    expect(html).not.toContain("s7ate~value.x");
+    expect(html).toContain(`href="${BARE}"`);
+    expect(html).toContain("Return to Example Reader");
+    expect(html).toContain("start sign-in again");
+  });
+
+  it("never forwards code, state or error into the app hand-off", () => {
+    const intent = (query: string) =>
+      buildNativeSignInIntentUrl(
+        new URL(`${CALLBACK}${query}`),
+        CALLBACK_CONFIG[0],
+      );
+    for (const query of [
+      "",
+      "?code=a&state=b",
+      "?error=oauth_state_expired&state=abc",
+      "?code=a&state=b&token=c",
+      '?code=a"><script>&state=b',
+      "#code=a&state=b",
+    ]) {
+      expect(intent(query)).toBe(BARE);
+    }
+  });
+
+  it("keeps the staging host in the hand-off link", () => {
+    expect(
+      buildNativeSignInIntentUrl(
+        new URL(
+          "https://staging.eliza.app/reader/auth/callback?code=a&state=b",
+        ),
+        CALLBACK_CONFIG[1],
+      ),
+    ).toBe(
+      "intent://staging.eliza.app/reader/auth/callback#Intent;scheme=https;package=org.example.reader;end",
+    );
+  });
+
+  it("drops Steward's fragment and any query from history and never puts a code in the link", () => {
+    const state = "-XpdaBcldq8nhHvl3cGAo65cM3lLV1bF7rBO_fi3hDI";
+    const code = "L14j9ZUPE0a3DJXAF5pmQiJ9yfl9Mkz2oiEWIlLHbZ0";
+    const runScript = (hash: string, search = "") => {
+      const anchor = { href: BARE };
+      const replaced: string[] = [];
+      new Function(
+        "document",
+        "location",
+        "history",
+        NATIVE_CALLBACK_SCRUB_SCRIPT,
+      )(
+        { getElementById: (id: string) => (id === "open" ? anchor : null) },
+        {
+          hash,
+          host: "eliza.app",
+          pathname: "/reader/auth/callback",
+          search,
+        },
+        {
+          replaceState: (_state: unknown, _title: string, url: string) =>
+            replaced.push(url),
+        },
+      );
+      return { href: anchor.href, replaced };
+    };
+    const withState = `intent://eliza.app/reader/auth/callback?error=app_link_unverified&state=${state}#Intent;scheme=https;package=org.example.reader;end`;
+    expect(runScript(`#code=${code}&state=${state}`)).toEqual({
+      href: withState,
+      replaced: ["/reader/auth/callback"],
+    });
+    expect(runScript("", `?error=oauth_state_consumed&state=${state}`)).toEqual(
+      { href: withState, replaced: ["/reader/auth/callback"] },
+    );
+    // A malformed state leaves the parameterless server link in place.
+    expect(runScript("#code=Ab-_9&state=s~t.1")).toEqual({
+      href: BARE,
+      replaced: ["/reader/auth/callback"],
+    });
+    expect(runScript("")).toEqual({ href: BARE, replaced: [] });
+    expect(runScript(`#code=${code}&state=${state}`).href).not.toContain(code);
+  });
+
+  it("selects independent callbacks by exact origin and path and escapes app names", async () => {
+    const other = {
+      redirectUri: "https://cloud.eliza.app/notes/return",
+      androidPackage: "com.example.notes",
+      appName: '<Notes & "Friends">',
+    };
+    const env = {
+      ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify([
+        ...CALLBACK_CONFIG,
+        other,
+      ]),
+    };
+    const response = await run(
+      new Request(`${other.redirectUri}?package=attacker&code=secret`),
+      async () => spaFallback(),
+      env,
+    );
+    const html = await response.text();
+    expect(html).toContain("package=com.example.notes;end");
+    expect(html).toContain("&lt;Notes &amp; &quot;Friends&quot;&gt;");
+    expect(html).not.toContain("secret");
+    expect(html).not.toContain("package=attacker");
+    expect(
+      selectNativeAuthCallback(
+        env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON,
+        new URL("https://eliza.app/notes/return"),
+      ),
+    ).toBeNull();
+    expect(selectNativeAuthCallback(undefined, new URL(CALLBACK))).toBeNull();
+  });
+
+  it("fails closed for duplicate callbacks and invalid configuration", async () => {
+    for (const entries of [
+      [CALLBACK_CONFIG[0], CALLBACK_CONFIG[0]],
+      [{ ...CALLBACK_CONFIG[0], androidPackage: "evil;end" }],
+      [
+        {
+          ...CALLBACK_CONFIG[0],
+          redirectUri: "http://eliza.app/reader/auth/callback",
+        },
+      ],
+    ]) {
+      const response = await run(
+        new Request(CALLBACK),
+        async () => spaFallback(),
+        { ELIZA_NATIVE_AUTH_CALLBACKS_JSON: JSON.stringify(entries) },
+      );
+      expect(response.status).toBe(503);
+    }
+  });
+
+  it("does not claim neighbouring paths", async () => {
+    const response = await run(
+      new Request("https://eliza.app/reader/auth/callback/extra"),
+      async () => spaFallback(),
+    );
+    expect(response.headers.get("Content-Type")).toContain("text/html");
+    expect(await response.text()).toContain("app");
+    expect(response.headers.get("X-Robots-Tag")).toBeNull();
   });
 });

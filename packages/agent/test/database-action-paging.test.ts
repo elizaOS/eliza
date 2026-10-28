@@ -65,6 +65,29 @@ it("returns every tied row once and ignores another schema's primary key", async
       return (rows ?? []).map((row) => Number(row.id));
     }
 
+    // list_tables counts the rows in each table. The statistics view it used
+    // before reads 0 for freshly written tables, which dropped both of these.
+    const counted = await handler(
+      runtime,
+      {} as never,
+      undefined,
+      {
+        parameters: {
+          action: "list_tables",
+          filter: "action_paging_ties",
+          includeEmpty: false,
+        },
+      },
+      undefined,
+    );
+    expect(counted.success, counted.text).toBe(true);
+    expect(counted.text).toContain(
+      "plugin_x.action_paging_ties (2 cols, 1 rows)",
+    );
+    expect(counted.text).toContain(
+      "public.action_paging_ties (3 cols, 40 rows)",
+    );
+
     // item_key is a column of plugin_x.action_paging_ties only. The read of the
     // public table must refuse it, not fall back to primary-key order.
     const foreignSort = await handler(

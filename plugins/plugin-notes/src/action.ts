@@ -27,8 +27,13 @@ import {
   type State,
   stringToUuid,
 } from "@elizaos/core";
-import { getNotesService, type NotesService } from "./service.js";
 import {
+  getNotesService,
+  type NotesService,
+  normalizedLookup,
+} from "./service.js";
+import {
+  noteTextEditSchema,
   projectNoteForModel,
   reconstructNoteContent,
   type StickyNote,
@@ -138,7 +143,7 @@ function failure(
  * model-authored closing reply. Durable receipts remain available if reply
  * generation fails.
  */
-function committed(data: Record<string, unknown>): ActionResult {
+function committed(data: NonNullable<ActionResult["data"]>): ActionResult {
   // Content reuse is a successful no-op, not a new durable write. Completion
   // must receive the same outcome the store returned rather than fresh commit
   // evidence for an existing note.
@@ -176,14 +181,21 @@ function committed(data: Record<string, unknown>): ActionResult {
         }),
       ]
     : undefined;
-  const modelData: Record<string, unknown> = { actionName: "NOTES", ...data };
-  const project = (value: unknown) =>
+  const modelData: NonNullable<ActionResult["data"]> = {
+    actionName: "NOTES",
+    ...data,
+  };
+  const project = (value: NonNullable<ActionResult["data"]>[string]) =>
     isObjectRecord(value) &&
     typeof value.title === "string" &&
     typeof value.body === "string"
-      ? projectNoteForModel(
-          value as Record<string, unknown> & Pick<StickyNote, "title" | "body">,
-        )
+      ? {
+          ...projectNoteForModel(
+            value as Record<string, unknown> &
+              Pick<StickyNote, "title" | "body">,
+          ),
+          ...(value.sourceNote ? { sourceNote: value.sourceNote } : {}),
+        }
       : value;
   if (data.note) modelData.note = project(data.note);
   if (Array.isArray(data.notes)) modelData.notes = data.notes.map(project);
@@ -202,7 +214,7 @@ function committed(data: Record<string, unknown>): ActionResult {
           promptData: {
             ...modelData,
             noteContentFormat:
-              "Model note parts reconstruct exact content as title + bodySeparator + body. bodySeparator is the codec's framing LF, not an authored blank line. body excludes only that framing LF; any leading LF still in body is authored content and must remain. Compare body with a separately requested body and complete content with a requested complete note. An empty bodySeparator with a nonempty body is a continuation of a length-limited title prefix; preserve it through complete content or literal textEdit, not a structured body replacement. notesRevision comes from the same complete commit/read snapshot as these records; any later Notes mutation requires a fresh complete read and reconciliation before PATCH. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
+              "Model plain note parts reconstruct as title + bodySeparator + body. For list/voice/link notes, authored contains the additional exact checklist/transcript/summary/action/clip text from the current rich source; body is not a flattened copy. For NEW checklist entries use authoredEdit={field:checklist,action:append,text:exact item} and expectedRevision=notesRevision; append never modifies an existing item and starts unchecked. Use field/index/exact expectedText to REPLACE only existing entries; do not append via an out-of-range index or newline merge. Choose noteId OR existing-note lookup content, not both. Use notesRevision to change those entries; preserve completion flags and unknown metadata. bodySeparator is the codec's framing LF, not an authored blank line. body excludes only that framing LF; any leading LF still in body is authored content and must remain. Compare body with a separately requested body and complete content with a requested complete note. An empty bodySeparator with a nonempty body is a continuation of a length-limited title prefix; preserve it through complete content or literal textEdit, not a structured body replacement. notesRevision comes from the same complete commit/read snapshot as these records; any later Notes mutation requires a fresh complete read and reconciliation before PATCH. Timestamp fields are UTC instants, not local calendar-date labels. Use noteTimestampDisplay or selection.display for local dates. If the user did not ask for a date, omit an extra date label; preserve the exact user-authored title.",
           },
           promptDataMode: "replace-data" as const,
         }
@@ -265,7 +277,11 @@ async function updateNoteResult(
           awaitingUserInput: true,
           requiresInput: true,
           ...(typeof target === "string"
-            ? { candidates: service.findNotesByQuery(target) }
+            ? {
+                candidates: service
+                  .findNotesByQuery(target)
+                  .map(projectNoteForModel),
+              }
             : {}),
         },
       };
@@ -275,6 +291,7 @@ async function updateNoteResult(
       error instanceof ElizaError &&
       [
         "NOTES_EDIT_CONFLICT",
+        "NOTES_RICH_EDIT_REQUIRED",
         "NOTES_EDIT_REVISION_REQUIRED",
         "NOTES_EDIT_TEXT_NOT_FOUND",
         "NOTES_EDIT_TEXT_AMBIGUOUS",
@@ -324,9 +341,9 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch edits selected title/body fields or exact text, preserving other content; action=update supports legacy complete-note replacement; action=delete removes one found by its text. The first line is the note's label and later lines are its body. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch edits selected title/body fields or exact text, preserving other content; action=update appends text, edits authored checklist/transcript entries or replaces complete plain-note content; action=delete removes one by exact noteId or matching title/body text. The first line is the note's label and later lines are its body. For append/add use textEdit append with only the new suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
   descriptionCompressed:
-    "notes: create, list/search, patch title/body or exact text, legacy whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
+    "notes: create, list/search, patch title/body or exact text, authored checklist append/edit or whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
     "Use the Notes store for saved-note work; MEMORY, documents, files and DATABASE do not search it. Do not use raw SQL. Prefer available NOTES child operations; discover the required operation when missing. Never substitute a read for a requested edit or deletion. A title index is not body or timestamp evidence; use supplied current complete records or the appropriate read. Keep exact wording, punctuation and line breaks. Dates inside note text are content unless scheduling or a reminder is explicitly requested. Opening Notes is separate navigation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
@@ -462,14 +479,14 @@ export const notesAction: Action = {
         params.dateRange === undefined
           ? undefined
           : parseNoteDateRange(params.dateRange);
-      const normalizedTopic = topic?.toLocaleLowerCase();
+      const normalizedTopic = topic ? normalizedLookup(topic) : undefined;
       const candidates = noteId
         ? notes.filter((note) => note.id === noteId)
         : normalizedTopic
           ? notes.filter((note) =>
-              reconstructNoteContent(note)
-                .toLocaleLowerCase()
-                .includes(normalizedTopic),
+              normalizedLookup(reconstructNoteContent(note)).includes(
+                normalizedTopic,
+              ),
             )
           : notes;
       if (
@@ -610,8 +627,15 @@ export const notesAction: Action = {
     // may preserve an explicitly requested title and body as separate tool
     // arguments, so normalize that losslessly before deriving the label.
     const content = alternatives.value;
-    const noteId = op === "update" ? readString(params.noteId) : undefined;
-    if (op === "update" && params.noteId !== undefined && !noteId) {
+    const noteId =
+      op === "update" || op === "delete"
+        ? readString(params.noteId)
+        : undefined;
+    if (
+      (op === "update" || op === "delete") &&
+      params.noteId !== undefined &&
+      !noteId
+    ) {
       return failure(
         "Supply a nonempty exact note ID.",
         "NOTES_INVALID_ID",
@@ -663,16 +687,18 @@ export const notesAction: Action = {
     }
 
     if (op === "delete") {
-      const removed = await service.deleteNoteByLookupWithCommit(
-        "query",
-        target,
-      );
+      const removed = noteId
+        ? await service.deleteNoteWithCommit(noteId)
+        : await service.deleteNoteByLookupWithCommit("query", target);
       return committed({
         op,
         noteId: removed.value.id,
         note: removed.value,
+        deletedAt: removed.snapshot.trash?.findLast(
+          (entry) => entry.note.id === removed.value.id,
+        )?.deletedAt,
         notesRevision: removed.snapshot.revision,
-        removedCount: removed.removedCount,
+        removedCount: removed.removedIds.length,
       });
     }
 
@@ -686,22 +712,31 @@ export const notesAction: Action = {
     const replacement = replacements.value;
     const hasTextEdit =
       params.textEdit !== undefined && params.textEdit !== null;
+    const hasAuthoredEdit =
+      params.authoredEdit !== undefined && params.authoredEdit !== null;
+    if (hasAuthoredEdit && (hasTextEdit || replacement))
+      return failure(
+        "Pass authoredEdit alone with the current revision.",
+        "NOTES_CONFLICTING_PATCH",
+      );
     if (hasTextEdit && replacement) {
       return failure(
         "Pass either textEdit or replacementContent, not both. Nothing changed.",
         "NOTES_CONFLICTING_PATCH",
       );
     }
-    if (!hasTextEdit && !replacement) {
+    if (!hasAuthoredEdit && !hasTextEdit && !replacement) {
       return failure(
-        "Pass textEdit for an exact substitution, or replacementContent for the complete updated note.",
+        "Pass textEdit for an append or exact substitution, or replacementContent for the complete updated note.",
         "NOTES_MISSING_PATCH",
         "replacementContent",
       );
     }
-    const patch = hasTextEdit
-      ? { textEdit: params.textEdit }
-      : { content: replacement };
+    const patch = hasAuthoredEdit
+      ? { authoredEdit: params.authoredEdit }
+      : hasTextEdit
+        ? { textEdit: params.textEdit }
+        : { content: replacement };
     return updateNoteResult(
       () =>
         noteId
@@ -723,9 +758,52 @@ export const notesAction: Action = {
   },
   parameters: [
     {
+      name: "authoredEdit",
+      description:
+        "Append a NEW checklist item with {field:checklist,action:append,text:exact new item}; it starts unchecked and needs current expectedRevision. Indexed field/index/expectedText edits REPLACE existing text or done state only; never use an out-of-range index, empty expectedText or newline merge to append. Identify existing note with noteId OR content, never both. New item text belongs only in authoredEdit.text.",
+      subactions: ["update"],
+      required: false,
+      schema: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              field: { type: "string", enum: ["checklist"] },
+              action: { type: "string", enum: ["append"] },
+              text: { type: "string", minLength: 1, maxLength: 20001 },
+            },
+            required: ["field", "action", "text"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              field: {
+                type: "string",
+                enum: [
+                  "checklist",
+                  "voice-line",
+                  "voice-summary",
+                  "voice-action",
+                  "link-clip",
+                ],
+              },
+              action: { type: "string", enum: ["replace"] },
+              index: { type: "integer", minimum: 0 },
+              expectedText: { type: "string" },
+              text: { type: "string" },
+              done: { type: "boolean" },
+            },
+            required: ["field", "index", "expectedText"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+    {
       name: "expectedRevision",
       description:
-        "Required for every PATCH, including textEdit, and for UPDATE replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
+        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
       subactions: ["update", "patch"],
       required: false,
       requiredForSubactions: ["patch"],
@@ -790,7 +868,7 @@ export const notesAction: Action = {
     {
       name: "changes",
       description:
-        "Requested title/body replacements. Body value is the user-visible body after the title line: the store adds one framing LF, so copy projected body, not bodySeparator + body. Preserve every authored leading LF and space in the value. Empty body clears it. If bodySeparator is empty with a nonempty body, use complete-note UPDATE or literal textEdit to preserve that continuation. Use [] with textEdit for exact substring substitution; otherwise supply at least one entry. Never combine nonempty changes with textEdit.",
+        "Requested title/body replacements. Body value is the user-visible body after the title line: the store adds one framing LF, so copy projected body, not bodySeparator + body. Preserve every authored leading LF and space in the value. Empty body clears it. If bodySeparator is empty with a nonempty body, use complete-note UPDATE or literal textEdit to preserve that continuation. Use [] with textEdit for append or exact substring substitution; otherwise supply at least one entry. Never combine nonempty changes with textEdit.",
       required: false,
       subactions: ["patch"],
       requiredForSubactions: ["patch"],
@@ -816,10 +894,10 @@ export const notesAction: Action = {
     {
       name: "content",
       description:
-        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, identify the EXISTING note by text. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
+        "For list, pass a title or topic to search note text; use noteId instead for an exact ID. Omit only for all notes, unfiltered counts, or recency comparisons without a title/topic; use latestBy for an explicit creation/update recency selection, never search for 'latest' or 'most recently updated'. For update, use either noteId or content identifying the EXISTING note, never both. For delete, put a known exact note ID in noteId; content searches the EXISTING note by title or body text, not by ID. For create, first resolve what the user wants stored versus instructions to the app. Do not assume every word after body is note content. An unquoted trailing app instruction can be ambiguous: ask before creating if it could belong to either. Quotation delimiters are not content unless explicitly requested; embedded or explicitly literal quote characters are content. Then preserve the resolved note text exactly, including punctuation, spaces and line breaks. A single-line note stays one line; do not invent a title/body split. If the user supplies a separate title and body, join those exact values with one newline.",
       required: false,
       subactions: ["create", "list", "update", "delete"],
-      requiredForSubactions: ["create", "update", "delete"],
+      requiredForSubactions: ["create"],
       legacyRequiredAlternatives: ["text", "note", "title", "query", "noteId"],
       // Notes validates content-or-alternative before any write.
       // Strict providers may serialize an omitted optional string as "". The
@@ -851,8 +929,8 @@ export const notesAction: Action = {
     {
       name: "noteId",
       description:
-        "Exact, case-sensitive note ID. Required for get; use instead of content for list or update. A text search cannot establish whether an ID exists.",
-      subactions: ["list", "get", "update"],
+        "Exact, case-sensitive note ID. Required for get. For update or delete choose this exact-ID target OR the content title/body text lookup, never both; omit content/text/note/title/query entirely when noteId is supplied. Update and delete validate this target choice before a write. A text search cannot establish whether an ID exists.",
+      subactions: ["list", "get", "update", "delete"],
       required: false,
       requiredForSubactions: ["get"],
       modelOmissionSentinels: [""],
@@ -864,12 +942,16 @@ export const notesAction: Action = {
         "For create: optional body only when the user supplies a separate title and body. Preserve both exactly and join them with one newline. For a complete supplied note, put its unchanged text in content and omit body; punctuation does not define a field boundary. For update, body remains a supported alternative to replacementContent for the complete updated note.",
       subactions: ["create", "update"],
       required: false,
+      // A strict provider's unset placeholder must not become create's
+      // title/body join, which would store a framing LF the owner never wrote.
+      // Update already reads an empty body as absent.
+      modelOmissionSentinels: [""],
       schema: { type: "string" },
     },
     {
       name: "replacementContent",
       description:
-        "For full rewrites only: the COMPLETE updated note, including its first-line label and every unedited line. Read the note first if its full content is unknown. For an exact substitution use textEdit instead; omit replacementContent. Supply exactly one of these two update forms.",
+        "For full rewrites only: the COMPLETE updated note, including its first-line label and every unedited line. Read the note first if its full content is unknown. For an append or exact substitution use textEdit instead; omit replacementContent. Supply exactly one of these two update forms.",
       subactions: ["update"],
       required: false,
       schema: { type: "string" },
@@ -877,19 +959,10 @@ export const notesAction: Action = {
     {
       name: "textEdit",
       description:
-        "For an exact substitution, prefer this instead of reading and rewriting the full note. noteId or content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
+        "For append/add, use {action:append,field:body,text:exact suffix} with current expectedRevision. Include any desired newline or space in text; the service appends it verbatim and preserves all old content. Never retype the existing body for an append. For an exact substitution, prefer this instead of reading and rewriting the full note. noteId or content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
       subactions: ["update", "patch"],
       required: false,
-      schema: {
-        type: "object",
-        properties: {
-          field: { type: "string", enum: ["title", "body"] },
-          oldText: { type: "string", minLength: 1 },
-          newText: { type: "string" },
-        },
-        required: ["field", "oldText", "newText"],
-        additionalProperties: false,
-      },
+      schema: noteTextEditSchema,
     },
   ],
   examples: [],

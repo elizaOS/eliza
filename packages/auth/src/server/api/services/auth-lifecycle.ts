@@ -1,6 +1,10 @@
+import { buildPhoneAuthProvidersFromEnvironment } from "../../auth/phone-provider";
+
+export { buildTwilioVerifyProviderFromEnvironment } from "../../auth/phone-provider";
+
 /** Owns login stores and configuration-dependent providers across runtime restarts. */
 import { randomBytes } from "node:crypto";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import { sql } from "drizzle-orm";
 import {
   ACCESS_TOKEN_EXPIRY,
@@ -10,11 +14,10 @@ import {
   type EmailAuthConfig,
   hashSha256Hex,
   isDevSecretAllowed,
+  isSmsDestinationAllowed,
   type MagicLinkTemplateData,
-  type ManagedSmsOtpProvider,
   MemoryBackend,
   MockEmailProvider,
-  MockSmsProvider,
   magicLinkTemplateValues,
   type OtpTemplateData,
   otpTemplateValues,
@@ -23,14 +26,15 @@ import {
   ResendProvider,
   renderCustomTemplate,
   SmsChallengeInProgressError,
-  type SmsProvider,
+  SmsDestinationNotAllowedError,
+  SmsSendBudgetExceededError,
   SmsVerificationNotAttemptedError,
   type StoreBackend,
   signAccessToken,
+  smsSendGlobalMaxPerHour,
   TokenStore,
-  TwilioSmsProvider,
-  TwilioVerifyProvider,
 } from "../../auth/index.ts";
+import { revocationStore } from "../../auth/revocation";
 import {
   type accounts,
   getDb,
@@ -43,6 +47,7 @@ import type {
 import { runtimeEnvironmentValue } from "../../shared/runtime-env.ts";
 import { KeyStore } from "../../wallet/index.ts";
 import { defaultAuthTenantId } from "../services/default-auth-tenant";
+import { checkGlobalAuthBudget } from "./auth-rate-limit";
 
 export const SMS_VERIFY_MAX_FAILED_ATTEMPTS = 5;
 
@@ -177,12 +182,117 @@ export async function authAppClientSubjects(
   return bootstrapRows<AuthAppClientSubject>(result);
 }
 
+export type LoginMethodName =
+  | "passkey"
+  | "email"
+  | "sms"
+  | "whatsapp"
+  | "totp"
+  | "siwe"
+  | "siws"
+  | "telegram"
+  | "farcaster"
+  | "oauth"
+  | "oidc";
+
+const LOGIN_METHOD_NAMES = new Set<string>([
+  "passkey",
+  "email",
+  "sms",
+  "whatsapp",
+  "totp",
+  "siwe",
+  "siws",
+  "telegram",
+  "farcaster",
+  "oauth",
+  "oidc",
+]);
+
+export function loginMethodProviderKey(providerId: string | undefined): string {
+  return providerId?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * The refusal a tenant's login methods give a sign-in by `method` (through
+ * `providerId` for OAuth and OIDC), or null when the sign-in is allowed.
+ */
+export function loginMethodRefusal(
+  loginMethods: TenantAuthAbuseConfig["loginMethods"] | undefined,
+  method: LoginMethodName,
+  providerId?: string,
+): string | null {
+  if (!loginMethods) return null;
+  if (method === "oauth" || method === "oidc") {
+    const disabled =
+      loginMethods[method]?.[loginMethodProviderKey(providerId)] === false;
+    if (!disabled) return null;
+    return `${method === "oauth" ? "OAuth" : "OIDC"} login is disabled for this tenant`;
+  }
+  return loginMethods[method] === false
+    ? `${method} login is disabled for this tenant`
+    : null;
+}
+
+/**
+ * A switch into another tenant is a sign-in to it, so the target tenant's
+ * login methods apply to the method (and provider) recorded on the session.
+ * Returns the refusal, or null when the switch is allowed.
+ */
+export async function tenantSwitchLoginRefusal(
+  tenantId: string,
+  claims: Record<string, unknown>,
+): Promise<string | null> {
+  const method = claims.authMethod;
+  if (typeof method !== "string" || !LOGIN_METHOD_NAMES.has(method)) {
+    return null;
+  }
+  const providerId =
+    method === "oidc"
+      ? claims.oidcProviderId
+      : method === "oauth"
+        ? claims.oauthProviderId
+        : undefined;
+  return loginMethodRefusal(
+    (await authTenantConfigSubject(tenantId))?.auth_abuse_config?.loginMethods,
+    method as LoginMethodName,
+    typeof providerId === "string" ? providerId : undefined,
+  );
+}
+
 export async function createSessionToken(
   address: string,
   tenantId: string,
   extra?: Record<string, unknown>,
   expiresIn: string = ACCESS_TOKEN_EXPIRY,
 ): Promise<string> {
+  if (typeof extra?.userId === "string") {
+    const cutoff = await revocationStore.getUserRevokedBefore(extra.userId);
+    if (cutoff !== null && Math.floor(Date.now() / 1000) <= cutoff) {
+      // JWT timestamps have second precision. A successful sign-in immediately
+      // after enrollment must not mint another token at the revoked timestamp.
+      // Unlink deliberately places its cutoff one second ahead, so allow that
+      // existing fence as well, with a bounded wait of at most two seconds.
+      // Never future-date it or weaken the inclusive revocation comparison.
+      const delay = (cutoff + 1) * 1000 - Date.now();
+      if (delay > 2000) {
+        throw new ElizaError(
+          "Session clock is behind the revocation timestamp",
+          {
+            code: "LOGIN_SESSION_CLOCK_BEHIND",
+          },
+        );
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, Math.max(0, delay) + 1),
+      );
+      if (Math.floor(Date.now() / 1000) <= cutoff) {
+        throw new ElizaError("Session clock did not advance past revocation", {
+          code: "LOGIN_SESSION_CLOCK_BEHIND",
+        });
+      }
+    }
+  }
   return signAccessToken({ address, tenantId, ...extra }, expiresIn);
 }
 
@@ -193,9 +303,8 @@ export function getNonceBackend(): import("../../auth/index.ts").StoreBackend {
   // Lazily fall back to a fresh in-memory backend if initAuthStores() hasn't
   // been called yet (e.g. tests or Workers cold-boot before middleware runs).
   // initAuthStores() will replace this with a Redis or Postgres-backed one.
-  // Imported via require to avoid a circular dep with @stwd/auth at module init.
-  const { MemoryBackend } =
-    require("../../auth/index.ts") as typeof import("../../auth/index.ts");
+  // `MemoryBackend` is imported at the top of this ESM module; a bare `require`
+  // is not defined under Node, so the fallback threw before it could build one.
   _nonceBackend = new MemoryBackend();
   return _nonceBackend;
 }
@@ -374,16 +483,12 @@ function getTokenStore(): TokenStore {
 
 export function getMfaBackend(): StoreBackend {
   if (_mfaBackend) return _mfaBackend;
-  const { MemoryBackend } =
-    require("../../auth/index.ts") as typeof import("../../auth/index.ts");
   _mfaBackend = new MemoryBackend();
   return _mfaBackend;
 }
 
 export function getImportSessionBackend(): StoreBackend {
   if (_importSessionBackend) return _importSessionBackend;
-  const { MemoryBackend } =
-    require("../../auth/index.ts") as typeof import("../../auth/index.ts");
   _importSessionBackend = new MemoryBackend();
   return _importSessionBackend;
 }
@@ -878,52 +983,49 @@ export function invalidateEmailAuthForTenant(tenantId: string): void {
 export function getPhoneAuth(): PhoneAuth {
   if (_phoneAuth) return _phoneAuth;
 
-  let provider: SmsProvider | undefined;
-  let managedProvider: ManagedSmsOtpProvider | undefined;
-  if (
-    process.env.SMS_PROVIDER === "mock" &&
-    process.env.NODE_ENV !== "production"
-  ) {
-    provider = new MockSmsProvider();
-  } else {
-    managedProvider = buildTwilioVerifyProviderFromEnvironment();
-    if (
-      !managedProvider &&
-      process.env.TWILIO_ACCOUNT_SID &&
-      process.env.TWILIO_AUTH_TOKEN &&
-      process.env.TWILIO_FROM
-    ) {
-      provider = new TwilioSmsProvider({
-        accountSid: process.env.TWILIO_ACCOUNT_SID,
-        authToken: process.env.TWILIO_AUTH_TOKEN,
-        from: process.env.TWILIO_FROM,
-      });
-    } else if (!managedProvider && process.env.NODE_ENV === "production") {
-      throw new Error("SMS provider not configured");
-    }
-  }
+  const { provider, managedProvider } =
+    buildPhoneAuthProvidersFromEnvironment();
+  if (!provider && !managedProvider && process.env.NODE_ENV === "production")
+    throw new Error("SMS provider not configured");
 
   _phoneAuth = new PhoneAuth({
     provider,
     managedProvider,
     tokenStore: new TokenStore({ backend: getMfaBackend() }),
+    sendGuard: guardSmsSend,
   });
   return _phoneAuth;
 }
 
-export function buildTwilioVerifyProviderFromEnvironment(
-  env: NodeJS.ProcessEnv = process.env,
-): TwilioVerifyProvider | undefined {
-  const verifyConfigured =
-    env.TWILIO_VERIFY_SERVICE_SID !== undefined ||
-    env.TWILIO_VERIFY_TOKEN_TTL_SECONDS !== undefined;
-  if (!verifyConfigured) return undefined;
-  return new TwilioVerifyProvider({
-    accountSid: env.TWILIO_ACCOUNT_SID ?? "",
-    authToken: env.TWILIO_AUTH_TOKEN ?? "",
-    serviceSid: env.TWILIO_VERIFY_SERVICE_SID ?? "",
-    tokenTtlSeconds: Number(env.TWILIO_VERIFY_TOKEN_TTL_SECONDS),
-  });
+/**
+ * SMS pumping guard for every OTP send: a deployment-wide destination policy
+ * (default US + Canada) and a deployment-wide hourly ceiling. Per-IP and
+ * per-destination limits stay at the routes; pumping rotates both.
+ */
+async function guardSmsSend(phone: string): Promise<void> {
+  if (!isSmsDestinationAllowed(phone)) {
+    logger.warn(
+      {
+        details: [`[SmsGuard] refused destination prefix ${phone.slice(0, 4)}`],
+      },
+      "[Login:auth] warn",
+    );
+    throw new SmsDestinationNotAllowedError();
+  }
+  const max = smsSendGlobalMaxPerHour();
+  if (max === 0) return;
+  const budget = await checkGlobalAuthBudget("sms-send-global", 3_600_000, max);
+  if (!budget.allowed) {
+    logger.error(
+      {
+        details: [
+          `[SmsGuard] ALERT: deployment-wide SMS budget of ${max}/hour is used up; OTP sends are refused until the window resets`,
+        ],
+      },
+      "[Login:auth] error",
+    );
+    throw new SmsSendBudgetExceededError(budget.retryAfterSecs);
+  }
 }
 
 const OAUTH_REDIRECT_ALLOWLIST_ENV_KEYS = [

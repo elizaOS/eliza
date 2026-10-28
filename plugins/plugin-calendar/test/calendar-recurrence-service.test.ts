@@ -424,6 +424,81 @@ describe("updateCalendarEvent — instance vs series", () => {
     });
   });
 
+  it("series time change through an occurrence keeps the series start date", async () => {
+    // Series: Wednesdays 09:00 New York from Jul 1. "Move all standups to
+    // 3pm" picked on the Jul 8 occurrence.
+    await calendar.updateCalendarEvent(INTERNAL_URL, {
+      eventId: "standup_20260708T130000Z",
+      startAt: "2026-07-08T19:00:00.000Z",
+      endAt: "2026-07-08T19:30:00.000Z",
+      recurrenceScope: "series",
+    });
+    expect(google.updateEvent.mock.calls[0]?.[0]).toMatchObject({
+      eventId: "standup-master",
+      start: "2026-07-01T19:00:00.000Z",
+      end: "2026-07-01T19:30:00.000Z",
+      timeZone: "America/New_York",
+    });
+  });
+
+  it("refuses a series day change that the rule's BYDAY would contradict", async () => {
+    // Rule: weekly on Wednesdays. "Move all standups to Thursday" without a
+    // new rule would give the series a Thursday start its rule never names.
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        eventId: "standup_20260715T130000Z",
+        startAt: "2026-07-16T13:00:00.000Z",
+        endAt: "2026-07-16T13:30:00.000Z",
+        recurrenceScope: "series",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "CALENDAR_RECURRENCE_SERIES_DAY_CHANGE_NEEDS_RULE",
+    });
+    expect(google.updateEvent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a series end time before the occurrence's start", async () => {
+    await expect(
+      calendar.updateCalendarEvent(INTERNAL_URL, {
+        eventId: "standup_20260708T130000Z",
+        endAt: "2026-07-08T12:00:00.000Z",
+        recurrenceScope: "series",
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "CALENDAR_RECURRENCE_SERIES_INVALID_RANGE",
+    });
+    expect(google.updateEvent).not.toHaveBeenCalled();
+  });
+
+  it("series end-only change through a moved occurrence keeps the chosen end time", async () => {
+    // The Jul 8 standup (slot 09:00 New York) was moved to 14:00. Through it
+    // the owner sets only the end: 17:00 for the whole series.
+    const getEvent = google.getEvent.getMockImplementation();
+    google.getEvent.mockImplementation(async (input: { eventId: string }) =>
+      input.eventId === "standup_20260708T130000Z"
+        ? googleWireEvent({
+            id: input.eventId,
+            recurringEventId: "standup-master",
+            start: "2026-07-08T18:00:00.000Z",
+            originalStartTime: "2026-07-08T13:00:00.000Z",
+            etag: '"occurrence-etag"',
+          })
+        : getEvent?.(input),
+    );
+    await calendar.updateCalendarEvent(INTERNAL_URL, {
+      eventId: "standup_20260708T130000Z",
+      endAt: "2026-07-08T21:00:00.000Z",
+      recurrenceScope: "series",
+    });
+    expect(google.updateEvent.mock.calls[0]?.[0]).toMatchObject({
+      eventId: "standup-master",
+      start: "2026-07-01T13:00:00.000Z",
+      end: "2026-07-01T21:00:00.000Z",
+    });
+  });
+
   it("instance scope patches exactly the addressed occurrence", async () => {
     await calendar.updateCalendarEvent(INTERNAL_URL, {
       eventId: "standup_20260708T130000Z",

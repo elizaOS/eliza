@@ -121,7 +121,7 @@ export interface AppBillingEntitlement {
 }
 
 export interface AppBillingAllowance {
-  source: "trial" | "paid_invoice";
+  source: "trial" | "paid_invoice" | "pilot";
   amountUsd: string;
   usedUsd: string;
   reservedUsd: string;
@@ -243,7 +243,7 @@ export interface AppBillingInvoice {
 
 export interface AppBillingUsage {
   operationId: string;
-  fundingSource: "trial" | "paid_invoice";
+  fundingSource: "trial" | "paid_invoice" | "pilot";
   amountUsd: string;
   occurredAt: string;
 }

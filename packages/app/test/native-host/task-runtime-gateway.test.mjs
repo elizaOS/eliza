@@ -285,39 +285,49 @@ test("missing credentials revoke tasks and late authentication cannot replace or
   }
 });
 
-test("an extension cannot publish a former-account result after an owner change", async (t) => {
-  const directory = await mkdtemp(join(tmpdir(), "eliza-task-extension-"));
-  const bundlePath = join(directory, "task-runtime.mjs");
-  buildTaskRuntime(bundlePath);
-  let account = "owner-a",
-    release,
-    entered;
-  const pending = new Promise((resolve) => (release = resolve)),
-    started = new Promise((resolve) => (entered = resolve));
-  const gateway = await createTaskGateway({
-    bundlePath,
-    databasePath: join(directory, "journal.sqlite"),
-    credentialGate: async () => account,
-    extensionFactory: () => async () => {
-      entered();
-      await pending;
-      return Response.json({ private: "former-owner-result" });
-    },
+for (const boundary of ["extension", "observer"])
+  test(`a delayed ${boundary} cannot publish a former-account result`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-task-extension-"));
+    const bundlePath = join(directory, "task-runtime.mjs");
+    buildTaskRuntime(bundlePath);
+    let account = "owner-a",
+      release,
+      entered;
+    const pending = new Promise((resolve) => (release = resolve)),
+      started = new Promise((resolve) => (entered = resolve));
+    const gateway = await createTaskGateway({
+      bundlePath,
+      databasePath: join(directory, "journal.sqlite"),
+      credentialGate: async () => account,
+      extensionFactory: () => async () => {
+        if (boundary === "extension") {
+          entered();
+          await pending;
+        }
+        return Response.json({ private: "former-owner-result" });
+      },
+      onResponse:
+        boundary === "observer"
+          ? async () => {
+              entered();
+              await pending;
+            }
+          : undefined,
+    });
+    t.after(async () => {
+      await gateway.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+    const response = gateway.handle(
+      new Request("http://localhost/tasks/extension"),
+    );
+    await started;
+    account = "owner-b";
+    release();
+    const denied = await response;
+    assert.equal(denied.status, 401);
+    assert.doesNotMatch(await denied.text(), /former-owner-result/);
   });
-  t.after(async () => {
-    await gateway.close();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const response = gateway.handle(
-    new Request("http://localhost/tasks/extension"),
-  );
-  await started;
-  account = "owner-b";
-  release();
-  const denied = await response;
-  assert.equal(denied.status, 401);
-  assert.doesNotMatch(await denied.text(), /former-owner-result/);
-});
 
 test("concurrent same-account reads and planner access remain authorized", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-task-concurrent-"));
@@ -359,7 +369,113 @@ test("concurrent same-account reads and planner access remain authorized", async
   assert.equal((await older).status, 200);
 });
 
-async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
+for (const transition of ["account", "revision"])
+  test(`host hooks preserve answers and fence a delayed ${transition} change`, async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), "eliza-task-hooks-"));
+    const bundlePath = join(directory, "task-runtime.mjs");
+    buildTaskRuntime(bundlePath);
+    const observed = [];
+    let failHooks = false;
+    let decorationWait;
+    let decorationEntered;
+    let account = "account";
+    const gateway = await createTaskGateway({
+      bundlePath,
+      databasePath: join(directory, "journal.sqlite"),
+      credentialGate: async () => account,
+      actuator: { capabilities: ["fill"] },
+      authorizeGoal: async (goalRef) => ({
+        id: "task-hooks",
+        goalRef,
+        authorization: {
+          decisionId: "grant",
+          policyRevision: "policy",
+          state: "active",
+          decidedAt: new Date().toISOString(),
+          revokedAt: null,
+        },
+        allowedCapabilities: ["fill"],
+        allowedOrigins: ["https://example.org"],
+      }),
+      decoratePresentation: async ({ presentation, db, owner, runtime }) => {
+        if (decorationWait) {
+          decorationEntered();
+          await decorationWait;
+        }
+        if (failHooks) throw new Error("decorator failed");
+        assert.equal(typeof db.prepare, "function");
+        assert.equal(runtime.get(presentation.taskId).id, "task-hooks");
+        return { ...presentation, actor: owner.actorId };
+      },
+      onResponse: async ({ request, response, durationMs }) => {
+        if (failHooks) throw new Error("observer failed");
+        await response.json();
+        response.headers.set("x-observer", "private");
+        observed.push([
+          request.method,
+          new URL(request.url).pathname,
+          response.status,
+          durationMs >= 0,
+        ]);
+      },
+    });
+    t.after(async () => {
+      await gateway.close();
+      await rm(directory, { recursive: true, force: true });
+    });
+    const created = await gateway.handle(
+      new Request("http://localhost/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: '{"goalRef":"bill"}',
+      }),
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.headers.get("x-observer"), null);
+    assert.equal((await created.json()).task.id, "task-hooks");
+    assert.deepEqual(observed, [["POST", "/tasks", 201, true]]);
+    const task = (await gateway.forCurrentOwner()).current();
+    const read = () =>
+      gateway.presentationForConversation({
+        taskId: task.id,
+        expectedEpoch: task.epoch,
+        actorId: "account",
+      });
+    const decorated = await read();
+    assert.equal(decorated.taskId, "task-hooks");
+    assert.equal(decorated.actor, "account");
+    failHooks = true;
+    const { actor, ...undecorated } = decorated;
+    assert.deepEqual(await read(), undecorated);
+    assert.equal(
+      (await gateway.handle(new Request("http://localhost/tasks/current")))
+        .status,
+      200,
+    );
+    assert.equal(observed.length, 1);
+    failHooks = false;
+    {
+      let release;
+      decorationWait = new Promise((resolve) => {
+        release = resolve;
+      });
+      const entered = new Promise((resolve) => {
+        decorationEntered = resolve;
+      });
+      const pendingRead = read();
+      const refused = assert.rejects(pendingRead, /Task changed/);
+      await entered;
+      if (transition === "account") account = "another-account";
+      else {
+        const runtime = await gateway.forCurrentOwner();
+        runtime.control(task.id, runtime.get(task.id).revision, "pause");
+      }
+      release();
+      await refused;
+    }
+  });
+
+async function actuatorFixture(t, { leaseMs = 60000, commitGrant } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "eliza-native-refusal-"));
   const bundlePath = join(directory, "task-runtime.mjs");
   buildTaskRuntime(bundlePath);
@@ -404,6 +520,9 @@ async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
                       elements: [{ selector: `${snapshotId}:0:0` }],
                       ...(state.violation && state.effects
                         ? { effectViolation: state.violation }
+                        : {}),
+                      ...(state.consented && state.effects
+                        ? { consentedCommit: state.consented }
                         : {}),
                     },
                   ],
@@ -451,6 +570,7 @@ async function actuatorFixture(t, { leaseMs = 60000 } = {}) {
         },
         verify: async () => "succeeded",
         recordEvidence: async () => "evidence:test",
+        ...(commitGrant ? { commitGrant } : {}),
       }),
   });
   t.after(async () => {
@@ -512,13 +632,15 @@ test("a browser refusal before the effect is a failed operation, not an unknown 
 });
 
 test("observing after the browser lease expires renews it with a new binding revision", async (t) => {
+  // The actuator and task runtime must observe the same advancing clock.
+  t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
   const f = await actuatorFixture(t, { leaseMs: 300 });
   let current = f.runtime.current();
   current = await f.runtime.observe(current.id, current.revision);
   // Within the lease, the binding is reused.
   current = await f.runtime.observe(current.id, current.revision);
   assert.equal(f.state.bindings.length, 1);
-  await new Promise((resolve) => setTimeout(resolve, 350));
+  t.mock.timers.tick(350);
   const renewedAt = Date.now();
   current = await f.runtime.observe(current.id, current.revision);
   assert.deepEqual(
@@ -563,4 +685,97 @@ test("a host-chosen target must be a reviewed target, and a stopped page submit 
   const stopped = await f.click("set-off-submit");
   assert.equal(stopped.operations.at(-1).status, "unknown");
   assert.equal(stopped.status, "blocked");
+});
+
+test("a host commit grant reaches the browser only for its exact action, and its consented commit is trusted", async (t) => {
+  let issue = () => undefined;
+  const f = await actuatorFixture(t, {
+    commitGrant: (task, proposal) => issue(task, proposal),
+  });
+  const grantFor = (task, proposal, extra = {}) => ({
+    grantId: `yes:${proposal.id}`,
+    taskId: task.id,
+    epoch: task.epoch,
+    origin: "https://example.org",
+    targetRef: proposal.targetRef,
+    selector: "#ordinary",
+    subaction: "click",
+    expiresAt: Date.now() + 30000,
+    ...extra,
+  });
+  // Without a grant nothing extra is sent: commits stay blocked in the page.
+  assert.equal(
+    (await f.click("plain", { expectedSelector: "#ordinary" })).operations.at(
+      -1,
+    ).status,
+    "succeeded",
+  );
+  assert.equal(f.state.options.commitGrant, undefined);
+  // A grant for another control, origin, epoch or a long life is refused
+  // before anything reaches the browser.
+  for (const extra of [
+    { selector: "#other" },
+    { origin: "https://evil.example" },
+    { epoch: 99 },
+    { expiresAt: Date.now() + 120000 },
+    { subaction: "fill" },
+  ]) {
+    const effects = f.state.effects;
+    issue = (task, proposal) => grantFor(task, proposal, extra);
+    const refused = await f.click(`bad-${Object.keys(extra)[0]}`, {
+      expectedSelector: "#ordinary",
+    });
+    assert.equal(refused.operations.at(-1).status, "failed");
+    assert.equal(refused.operations.at(-1).evidenceRef, "not-dispatched");
+    assert.equal(f.state.effects, effects);
+  }
+  // A grant needs the reviewed control the person said yes to.
+  issue = (task, proposal) => grantFor(task, proposal);
+  assert.equal(
+    (await f.click("no-target")).operations.at(-1).evidenceRef,
+    "not-dispatched",
+  );
+  // The matching grant is sent with the action; the browser's consented
+  // commit for that grant is a verified result, not an unknown one.
+  issue = (task, proposal) => {
+    f.state.consented = { grantId: `yes:${proposal.id}`, kind: "submit" };
+    return grantFor(task, proposal);
+  };
+  const committed = await f.click("pay", { expectedSelector: "#ordinary" });
+  assert.equal(committed.operations.at(-1).status, "succeeded");
+  assert.equal(f.state.options.commitGrant.grantId, "yes:pay");
+  assert.equal(f.state.options.expectedSelector, "#ordinary");
+  // A grant bound to a request and form contents reaches the browser with
+  // them; a consented commit reporting the same form hash is trusted.
+  const formHash = "d".repeat(64);
+  const requestTarget = { path: "/api/pay", method: "POST" };
+  issue = (task, proposal) => {
+    f.state.consented = {
+      grantId: `yes:${proposal.id}`,
+      kind: "submit",
+      formHash,
+    };
+    return grantFor(task, proposal, { requestTarget, formHash });
+  };
+  const bound = await f.click("bound", { expectedSelector: "#ordinary" });
+  assert.equal(bound.operations.at(-1).status, "succeeded");
+  assert.deepEqual(f.state.options.commitGrant.requestTarget, requestTarget);
+  assert.equal(f.state.options.commitGrant.formHash, formHash);
+  // A malformed request target never reaches the browser.
+  const before = f.state.effects;
+  issue = (task, proposal) =>
+    grantFor(task, proposal, { requestTarget: { path: "//evil.example" } });
+  assert.equal(
+    (
+      await f.click("bad-request-target", { expectedSelector: "#ordinary" })
+    ).operations.at(-1).evidenceRef,
+    "not-dispatched",
+  );
+  assert.equal(f.state.effects, before);
+  // A consented commit the host did not grant for this action is unknown.
+  issue = () => undefined;
+  f.state.consented = { grantId: "yes:someone-else", kind: "submit" };
+  const foreign = await f.click("foreign", { expectedSelector: "#ordinary" });
+  assert.equal(foreign.operations.at(-1).status, "unknown");
+  assert.equal(foreign.status, "blocked");
 });

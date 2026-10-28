@@ -2,14 +2,14 @@
 import { execFileSync, execSync } from "node:child_process";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { platform, tmpdir } from "node:os";
+import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
 import {
   readJsonBody as parseJsonBody,
   readRequestBody,
   sendJson as sendJsonResponse,
 } from "@elizaos/host";
+import { listWindows } from "../platform/windows-list.js";
 
 interface SandboxExecResult {
   exitCode: number;
@@ -825,102 +825,6 @@ function captureScreenshot(region?: {
     throw err;
   }
 }
-function listWindows(): Array<{
-  id: string;
-  title: string;
-  app: string;
-}> {
-  const os = platform();
-  if (os === "darwin") {
-    try {
-      const script = `
-        tell application "System Events"
-          set windowList to {}
-          repeat with proc in (every process whose visible is true)
-            try
-              repeat with w in (every window of proc)
-                set end of windowList to (name of proc) & "|||" & (name of w) & "|||" & (id of w as text)
-              end repeat
-            end try
-          end repeat
-          return windowList as text
-        end tell`;
-      const output = execSync(`osascript -e '${script}'`, {
-        encoding: "utf-8",
-        timeout: 10000,
-        stdio: ["ignore", "pipe", "ignore"],
-      });
-      return output
-        .split(", ")
-        .filter(Boolean)
-        .map((entry) => {
-          const parts = entry.split("|||");
-          return {
-            app: parts[0] ?? "unknown",
-            title: parts[1] ?? "unknown",
-            id: parts[2] ?? "0",
-          };
-        });
-    } catch (err) {
-      // error-policy:J4 [] is the explicit "window list unavailable" degrade
-      // for this diagnostic sandbox route; warned so an Accessibility denial
-      // is not read as a desktop with no windows.
-      logger.warn(
-        `[sandbox-routes] macOS window enumeration failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return [];
-    }
-  }
-  if (os === "linux") {
-    try {
-      const output = execSync(
-        'wmctrl -l 2>/dev/null || xdotool search --name "" getwindowname 2>/dev/null',
-        {
-          encoding: "utf-8",
-          timeout: 5000,
-        },
-      );
-      return output
-        .split("\n")
-        .filter(Boolean)
-        .map((line, i) => ({
-          id: String(i),
-          title: line.trim(),
-          app: "unknown",
-        }));
-    } catch (err) {
-      // error-policy:J4 [] is the explicit "window list unavailable" degrade
-      // for this diagnostic sandbox route; the tool failure is warned.
-      logger.warn(
-        `[sandbox-routes] X11 window enumeration failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return [];
-    }
-  }
-  if (os === "win32") {
-    try {
-      const output = execSync(
-        `powershell -Command "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object Id, MainWindowTitle | ConvertTo-Json"`,
-        { encoding: "utf-8", timeout: 10000 },
-      );
-      const processes = JSON.parse(output);
-      const list = Array.isArray(processes) ? processes : [processes];
-      return list.map((p: { Id: number; MainWindowTitle: string }) => ({
-        id: String(p.Id),
-        title: p.MainWindowTitle,
-        app: "unknown",
-      }));
-    } catch (err) {
-      // error-policy:J4 [] is the explicit "window list unavailable" degrade
-      // for this diagnostic sandbox route; the PowerShell failure is warned.
-      logger.warn(
-        `[sandbox-routes] PowerShell window enumeration failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return [];
-    }
-  }
-  return [];
-}
 async function recordAudio(durationMs: number): Promise<Buffer> {
   const os = platform();
   const durationSec = Math.ceil(durationMs / 1000);
@@ -1303,7 +1207,7 @@ function getPlatformInfo(): Record<string, string | boolean> {
   }
   return {
     platform: os,
-    arch: require("node:os").arch(),
+    arch: arch(),
     dockerInstalled,
     dockerRunning,
     // Compatibility field: dockerAvailable mirrors the running daemon state.

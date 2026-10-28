@@ -26,13 +26,17 @@
 
 import { createHash, timingSafeEqual } from "node:crypto";
 import { ElizaError } from "@elizaos/core";
-import { getErrorStatusCode } from "../api/errors";
+import { dbWrite } from "../../db/helpers";
+import { AuthenticationError, getErrorStatusCode } from "../api/errors";
 import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
 import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
-import { loadInferenceAdmissionSnapshot } from "./inference-admission-snapshot";
+import {
+  inferenceAdmissionSnapshotInTransaction,
+  loadInferenceAdmissionSnapshot,
+} from "./inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import { loadInferenceAppKeyScope } from "./inference-app-key-scope";
 import type { InferenceAuthRejectionReason } from "./inference-auth-cache";
@@ -53,8 +57,10 @@ import {
   inferenceCredentialRevocationReason,
   isInferenceStrongRevocationEnabled,
 } from "./inference-credential-revocation";
+import { isFundedBudgetAdmissionEnabled } from "./inference-funded-budget-admission";
 import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
+import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
 
 export type {
   InferenceAuthContext,
@@ -464,6 +470,8 @@ function getOrCreateApiKeyHydration(
           kind: "api_key",
           credentialId: result.ctx.apiKeyId,
           userId: result.ctx.userId,
+          rateLimit: result.ctx.apiKeyRateLimit,
+          expiresAt: result.ctx.apiKeyExpiresAt,
         };
         try {
           await assertInferenceCredentialActive(result.ctx.orgId, credential);
@@ -739,7 +747,7 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
-    const authCacheEnabled = isInferenceAuthCacheEnabled();
+    let authCacheEnabled = isInferenceAuthCacheEnabled();
     const deferStrongCredentialCheck =
       authCacheEnabled &&
       options.deferStrongCredentialCheck === true &&
@@ -824,9 +832,10 @@ export async function resolveInferenceAuthContext(
       return session;
     }
     trace.authSource = credential.source;
-    if (isMobileApiKeySecret(credential.rawKey)) {
-      return { kind: "slow_path", reason: "mobile_api_key" };
-    }
+    // Mobile credentials must re-read primary lifecycle state on every request.
+    // They still need an authorized result on Workers, where generic slow-path
+    // authentication is deliberately rejected. Never read or publish an IAC entry.
+    if (isMobileApiKeySecret(credential.rawKey)) authCacheEnabled = false;
     trace.result = "error";
     const probeDiscriminator = controlledProbeDiscriminator(req);
     trace.controlledProbe = probeDiscriminator ? "on" : "off";
@@ -853,6 +862,8 @@ export async function resolveInferenceAuthContext(
           kind: "api_key",
           credentialId: cached.ctx.apiKeyId,
           userId: cached.ctx.userId,
+          rateLimit: cached.ctx.apiKeyRateLimit,
+          expiresAt: cached.ctx.apiKeyExpiresAt,
         };
         // Aged hits refresh through one coalesced, retained hydration so an
         // active key never falls off the physical TTL into a cold
@@ -947,6 +958,8 @@ export async function resolveInferenceAuthContext(
                 kind: "api_key",
                 credentialId: continued.ctx.apiKeyId,
                 userId: continued.ctx.userId,
+                rateLimit: continued.ctx.apiKeyRateLimit,
+                expiresAt: continued.ctx.apiKeyExpiresAt,
               });
             } catch (error) {
               if (error instanceof InferenceCredentialRevokedError) {
@@ -1018,7 +1031,7 @@ export async function resolveInferenceAuthContext(
 
     trace.authoritative = "error";
     trace.result = "error";
-    const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
+    let { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
       timing: {
         identityLookup: (durationMs) => {
           trace.timings.identityLookupMs = Math.round(durationMs * 100) / 100;
@@ -1049,18 +1062,68 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: user.id, reason: "moderation_blocked" };
     }
 
+    // One MVCC snapshot binds identity, moderation and limits to the policy
+    // epoch. Dispatch validates that epoch with the Durable Object authority.
+    const coherent = isFundedBudgetAdmissionEnabled()
+      ? await dbWrite.transaction(
+          async (tx) => {
+            const fresh = await requireInferenceApiKeyWithOrg(credential.rawKey, {
+              tx,
+              rejected: (reason) => {
+                authoritativeStandingReason = reason;
+                options.onAuthoritativeRejection?.(reason);
+                trace.authoritative = "rejected";
+                trace.result = "rejected";
+              },
+            });
+            if (
+              fresh.apiKey.id !== apiKey.id ||
+              fresh.user.id !== user.id ||
+              fresh.apiKey.organization_id !== fresh.user.organization_id ||
+              fresh.user.organization_id !== user.organization_id
+            ) {
+              throw new AuthenticationError("API key identity changed; retry authentication");
+            }
+            const blocked = await adminService.shouldBlockUserConsistent(fresh.user.id, tx);
+            const policy = blocked
+              ? undefined
+              : await readOrganizationQuotaPolicyInTransaction(tx, fresh.user.organization_id);
+            return {
+              ...fresh,
+              blocked,
+              admission: policy
+                ? await inferenceAdmissionSnapshotInTransaction(
+                    tx,
+                    fresh.user.organization_id,
+                    policy,
+                  )
+                : undefined,
+            };
+          },
+          { isolationLevel: "repeatable read", accessMode: "read only" },
+        )
+      : undefined;
+    if (coherent?.blocked) {
+      trace.authoritative = "suspended";
+      trace.result = "suspended";
+      logStandingDenial({ status: 403, reason: "moderation_blocked", source: "authoritative" });
+      return { kind: "suspended", userId: coherent.user.id, reason: "moderation_blocked" };
+    }
+    if (coherent) ({ user, apiKey } = coherent);
     const [admission, appScopeId] = authCacheEnabled
       ? await Promise.all([
-          loadInferenceAdmissionSnapshot(user.organization_id),
+          coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
           loadInferenceAppKeyScope(apiKey.id),
         ])
-      : [undefined, null];
+      : [coherent?.admission, null];
     const ctx: InferenceAuthContext = {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),
       userId: user.id,
       orgId: user.organization_id,
       apiKeyId: apiKey.id,
+      apiKeyRateLimit: apiKey.rate_limit,
+      apiKeyExpiresAt: apiKey.expires_at?.getTime() ?? null,
       keyHash,
       appScopeId,
       ...(admission ? { admission } : {}),
@@ -1071,6 +1134,8 @@ export async function resolveInferenceAuthContext(
           kind: "api_key",
           credentialId: ctx.apiKeyId,
           userId: ctx.userId,
+          rateLimit: ctx.apiKeyRateLimit,
+          expiresAt: ctx.apiKeyExpiresAt,
         });
       }
     } catch (error) {
@@ -1116,6 +1181,8 @@ export async function resolveInferenceAuthContext(
                 kind: "api_key" as const,
                 credentialId: ctx.apiKeyId,
                 userId: ctx.userId,
+                rateLimit: ctx.apiKeyRateLimit,
+                expiresAt: ctx.apiKeyExpiresAt,
               },
             }
           : {}),
@@ -1133,6 +1200,8 @@ export async function resolveInferenceAuthContext(
                 kind: "api_key" as const,
                 credentialId: ctx.apiKeyId,
                 userId: ctx.userId,
+                rateLimit: ctx.apiKeyRateLimit,
+                expiresAt: ctx.apiKeyExpiresAt,
               },
             }
           : {}),
@@ -1175,6 +1244,8 @@ export async function resolveInferenceAuthContext(
               kind: "api_key" as const,
               credentialId: ctx.apiKeyId,
               userId: ctx.userId,
+              rateLimit: ctx.apiKeyRateLimit,
+              expiresAt: ctx.apiKeyExpiresAt,
             },
           }
         : {}),

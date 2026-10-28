@@ -5,7 +5,10 @@
  *   1. Launcher-owned canonical env when development Cloud authority is valid
  *   2. Explicit `config.cloud.apiKey` / `config.cloud.baseUrl`
  *   3. Runtime settings + character secrets (`ELIZAOS_CLOUD_API_KEY`)
- *   4. Process env (`ELIZAOS_CLOUD_API_KEY`, `ELIZAOS_CLOUD_BASE_URL`)
+ *   4. Sealed in-process secret store, then process env
+ *      (`ELIZAOS_CLOUD_API_KEY`, `ELIZAOS_CLOUD_BASE_URL`) — the key is
+ *      scrubbed from process.env into the sealed store after login, so the
+ *      store must be consulted before the raw env read.
  *
  * Previously these helpers lived in `packages/agent/src/api/wallet-rpc.ts`
  * because the wallet uses Cloud RPC proxies. They are NOT wallet-specific —
@@ -14,6 +17,7 @@
  * `cloud/` matches their actual ownership.
  */
 import { defaultCloudSiteUrl } from "../cloud-config/base-url.js";
+import { getCloudSecret } from "../cloud-config/cloud-secrets.js";
 import { resolveDevCloudAuthorityEnvValue } from "../cloud-config/dev-cloud-env-authority.js";
 import { resolveDevCloudEnvAuthority } from "../cloud-config/dev-cloud-env-authority.js";
 import { type ElizaConfig } from "../lib/config-like";
@@ -77,7 +81,7 @@ export function resolveCloudApiKey(config?: Pick<ElizaConfig, "cloud"> | null, r
     }
     return normalizeCloudSecret(config?.cloud?.apiKey ??
         resolveRuntimeCloudApiKey(runtime) ??
-        process.env.ELIZAOS_CLOUD_API_KEY);
+        getCloudSecret("ELIZAOS_CLOUD_API_KEY")); // sealed store first, then process.env
 }
 /**
  * Preserve a live CloudAuth-service key outside dev authority while making the

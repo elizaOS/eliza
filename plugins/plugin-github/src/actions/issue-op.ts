@@ -80,7 +80,13 @@ interface RepoParts {
  * router wraps it in `{ success: true, data }` and emits a callback message.
  */
 export type GitHubIssueOpResult =
-  | { op: "create"; number: number; url: string }
+  | {
+      op: "create";
+      number: number;
+      url: string;
+      /** Requested labels or assignees GitHub did not apply. */
+      notApplied?: { labels: string[]; assignees: string[] };
+    }
   | { op: "assign"; number: number; assignees: string[] }
   | { op: "close"; number: number; title: string }
   | { op: "reopen"; number: number; title: string }
@@ -163,6 +169,27 @@ function parseRequest(
   }
 }
 
+/**
+ * Requested names missing from GitHub's response. GitHub returns success and
+ * silently ignores labels and assignees the caller may not set.
+ */
+function missingNames(
+  requested: readonly string[] | undefined,
+  applied: ReadonlyArray<
+    string | { name?: string | null; login?: string | null } | null
+  >,
+): string[] {
+  const present = new Set(
+    applied
+      .map((item) =>
+        typeof item === "string" ? item : (item?.login ?? item?.name),
+      )
+      .filter((name): name is string => typeof name === "string")
+      .map((name) => name.toLowerCase()),
+  );
+  return (requested ?? []).filter((name) => !present.has(name.toLowerCase()));
+}
+
 async function runRequest(
   resolved: ResolvedClient,
   parts: RepoParts,
@@ -180,8 +207,25 @@ async function runRequest(
         labels: request.labels,
         assignees: request.assignees,
       });
+      const labels = missingNames(request.labels, resp.data.labels ?? []);
+      const assignees = missingNames(
+        request.assignees,
+        resp.data.assignees ?? [],
+      );
+      const notApplied =
+        labels.length > 0 || assignees.length > 0
+          ? { labels, assignees }
+          : undefined;
+      const skipped = notApplied
+        ? ` GitHub did not apply ${[
+            labels.length > 0 ? `labels [${labels.join(", ")}]` : "",
+            assignees.length > 0 ? `assignees [${assignees.join(", ")}]` : "",
+          ]
+            .filter(Boolean)
+            .join(" or ")}; this account may lack push access.`
+        : "";
       await callback?.({
-        text: `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}`,
+        text: `Created issue ${repo}#${resp.data.number}: ${resp.data.html_url}${skipped}`,
       });
       return {
         success: true,
@@ -189,6 +233,7 @@ async function runRequest(
           op: "create",
           number: resp.data.number,
           url: resp.data.html_url,
+          ...(notApplied ? { notApplied } : {}),
         },
       };
     }
@@ -203,6 +248,12 @@ async function runRequest(
       const actual = (resp.data.assignees ?? [])
         .map((a) => a?.login)
         .filter((x): x is string => typeof x === "string");
+      const notAssigned = missingNames(request.assignees, actual);
+      if (notAssigned.length > 0) {
+        const error = `GitHub did not assign [${notAssigned.join(", ")}] to ${repo}#${number}; this account may lack push access, or they cannot be assigned. Current assignees: [${actual.join(", ")}]`;
+        await callback?.({ text: error });
+        return { success: false, error };
+      }
       await callback?.({
         text: `Assigned [${actual.join(", ")}] to ${repo}#${number}`,
       });
@@ -392,7 +443,9 @@ export const issueOpAction: Action = {
     runtime: IAgentRuntime,
     _message: Memory,
   ): Promise<boolean> => {
-    const r = buildResolvedClient(runtime, "agent");
+    const r = await buildResolvedClient(runtime, "agent", {
+      refresh: "on-miss",
+    });
     return !("error" in r);
   },
 
@@ -430,7 +483,7 @@ export const issueOpAction: Action = {
       await callback?.({ text: request.error });
       return { success: false, error: request.error };
     }
-    const resolved = buildResolvedClient(runtime, selection);
+    const resolved = await buildResolvedClient(runtime, selection);
     if ("error" in resolved) {
       await callback?.({ text: resolved.error });
       return { success: false, error: resolved.error };

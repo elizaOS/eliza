@@ -14,6 +14,10 @@ import {
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
+import {
+  IN_FLIGHT_TASK_STATUSES,
+  type TaskListFilter,
+} from "../services/orchestrator-task-types.js";
 import { TASK_WATCHDOG_SERVICE_TYPE } from "../services/task-watchdog-service.js";
 import {
   type AcpCapacity,
@@ -285,7 +289,7 @@ interface AdmissionSnapshot {
 /** Structural task rows the provider needs from the orchestrator task service
  * for the in-flight section. Read by serviceType like the admission snapshot. */
 interface InFlightTaskService {
-  listTasks?(filter: Record<string, unknown>): Promise<
+  listTasks?(filter: TaskListFilter): Promise<
     Array<{
       id: string;
       title: string;
@@ -294,20 +298,6 @@ interface InFlightTaskService {
     }>
   >;
 }
-
-/** Task statuses that are CURRENT state even with no live session attached:
- * the work exists and has not reached a terminal verdict. Excluding these made
- * "is my build done?" turns answer from chat vibes (observed live: a task
- * parked `validating` was described as "stopped before shipping" while its
- * deliverable was live), because nothing in stage-1's context carried the
- * store's ground truth. */
-const IN_FLIGHT_TASK_STATUSES: ReadonlySet<string> = new Set([
-  "open",
-  "active",
-  "validating",
-  "waiting_on_user",
-  "blocked",
-]);
 
 /** Non-terminal tasks as compact structural lines (title — status — id).
  * No timestamps, so the provider segment stays cache-stable turn over turn. */
@@ -321,10 +311,9 @@ async function readInFlightTaskLines(
     return [];
   }
   try {
-    const tasks = await orchestrator.listTasks({});
-    const inFlight = tasks
-      .filter((task) => IN_FLIGHT_TASK_STATUSES.has(task.status))
-      .sort((a, b) => a.id.localeCompare(b.id));
+    const inFlight = (
+      await orchestrator.listTasks({ statuses: IN_FLIGHT_TASK_STATUSES })
+    ).sort((a, b) => a.id.localeCompare(b.id));
     if (inFlight.length === 0) return [];
     return [
       "## In-flight tasks (durable store — ground truth for task status)",

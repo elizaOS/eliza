@@ -11,11 +11,13 @@
  * active deployment's hash so the user can redeploy; the bytes are not embedded.
  */
 
+import { appFrontendDeploymentsRepository } from "../../db/repositories/app-frontend-deployments";
 import type { App } from "../../db/repositories/apps";
 import { logger } from "../utils/logger";
 import { parseAppMonetizationNumber } from "./app-credit-math";
 import { appCreditsService } from "./app-credits";
 import { appsService } from "./apps";
+import { charactersService } from "./characters";
 
 export const APP_BACKUP_VERSION = 1 as const;
 
@@ -50,7 +52,8 @@ export interface AppBackup {
 export class AppBackupService {
   /** Build a secret-free config snapshot of an app. */
   async exportApp(app: App): Promise<AppBackup> {
-    const contentHash: string | null = null;
+    const activeDeployment = await appFrontendDeploymentsRepository.getActive(app.id);
+    const contentHash = activeDeployment?.content_hash ?? null;
 
     return {
       version: APP_BACKUP_VERSION,
@@ -108,6 +111,16 @@ export class AppBackupService {
     if (backup.version !== APP_BACKUP_VERSION) {
       throw new Error(`Unsupported backup version: ${backup.version}`);
     }
+    const inferenceMarkupPercentage = parseAppMonetizationNumber(
+      "inference_markup_percentage",
+      backup.monetization.inference_markup_percentage,
+      { min: 0, max: 1000 },
+    );
+    const purchaseSharePercentage = parseAppMonetizationNumber(
+      "purchase_share_percentage",
+      backup.monetization.purchase_share_percentage,
+      { min: 0, max: 100 },
+    );
     const warnings: string[] = [];
     const created = await appsService.create({
       name: overrideName?.trim() || `${backup.app.name} (restored)`,
@@ -121,8 +134,29 @@ export class AppBackupService {
       contact_email: backup.app.contact_email ?? undefined,
     });
 
+    // Linked characters follow the same rule as PUT /apps/:id/characters: the
+    // restoring user owns them or they are public. Others are dropped, not
+    // trusted from the client-supplied blob.
+    const linkedCharacterIds: string[] = [];
+    for (const characterId of backup.app.linked_character_ids ?? []) {
+      const character = await charactersService.getByIdForAccessCheck(characterId);
+      if (!character) {
+        warnings.push(`Linked character ${characterId} was not restored: it no longer exists.`);
+      } else if (
+        charactersService.isLinkedCharacterVisible(character, {
+          userId,
+          organizationId,
+        })
+      ) {
+        linkedCharacterIds.push(characterId);
+      } else {
+        warnings.push(
+          `Linked character ${characterId} was not restored: it is not yours and not public.`,
+        );
+      }
+    }
     await appsService.update(created.app.id, {
-      linked_character_ids: backup.app.linked_character_ids ?? [],
+      linked_character_ids: linkedCharacterIds,
       discord_automation: backup.automation?.discord ?? null,
       telegram_automation: backup.automation?.telegram ?? null,
       twitter_automation: backup.automation?.twitter ?? null,
@@ -134,20 +168,23 @@ export class AppBackupService {
     // never from a client-supplied backup blob (#11834).
     if (
       backup.monetization.enabled ||
-      backup.monetization.inference_markup_percentage > 0 ||
-      backup.monetization.purchase_share_percentage > 0
+      inferenceMarkupPercentage > 0 ||
+      purchaseSharePercentage > 0
     ) {
       try {
         await appCreditsService.updateMonetizationSettings(created.app.id, {
           monetizationEnabled: false,
-          inferenceMarkupPercentage: backup.monetization.inference_markup_percentage,
-          purchaseSharePercentage: backup.monetization.purchase_share_percentage,
+          inferenceMarkupPercentage,
+          purchaseSharePercentage,
         });
       } catch (error) {
         logger.warn("[AppBackup] failed to reapply monetization on restore", {
           appId: created.app.id,
           error: error instanceof Error ? error.message : String(error),
         });
+        warnings.push(
+          "Monetization pricing could not be restored. Update it manually before submitting the app for review.",
+        );
       }
       if (backup.monetization.enabled) {
         warnings.push(

@@ -1,4 +1,8 @@
-import type { RecordedStage, TrajectoryRecorder } from "@elizaos/core";
+import type {
+  RecordedStage,
+  ToolDefinition,
+  TrajectoryRecorder,
+} from "@elizaos/core";
 import { expect, it, vi } from "vitest";
 import { getSourceReplyBinding } from "../services/message/source-reply.ts";
 import { runPlannerLoop } from "./planner-loop.ts";
@@ -9,6 +13,80 @@ const scope = {
   messageId: "original-request",
 };
 const context = { id: "owned-approved-read", metadata: scope, events: [] };
+
+it("offers only restorable provider scope when the original dialogue is already complete", async () => {
+  let calls = 0;
+  const execute = vi.fn(() => {
+    throw Error("Restoring context must not execute an effect");
+  });
+  const output = await runPlannerLoop({
+    context: {
+      id: "provider-only",
+      metadata: { providerDiscoveryEnabled: true },
+      events: [
+        {
+          id: "facts",
+          type: "provider",
+          name: "FACTS",
+          text: "Complete provider facts retained in the original context.",
+          discoveryText: "Facts available",
+        },
+      ],
+    },
+    tools: [{ name: "READ", description: "Read a record" }],
+    runtime: {
+      useModel: async (_type, params) => {
+        calls++;
+        const restore = (params.tools as ToolDefinition[] | undefined)?.find(
+          (tool) => tool.name === "RESTORE_CONTEXT",
+        );
+        if (calls === 1) {
+          expect(restore).toMatchObject({
+            parameters: {
+              properties: { scope: { enum: ["providers", "full"] } },
+            },
+          });
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "restore",
+                name: "RESTORE_CONTEXT",
+                arguments: {
+                  scope: "providers",
+                  reason: "Read the deferred facts",
+                },
+              },
+            ],
+          };
+        }
+        expect(calls).toBe(2);
+        expect(restore).toBeUndefined();
+        expect(JSON.stringify(params)).toContain(
+          "Complete provider facts retained",
+        );
+        return {
+          text: "",
+          toolCalls: [
+            {
+              id: "reply",
+              name: "REPLY",
+              arguments: { text: "Provider context restored." },
+            },
+          ],
+        };
+      },
+    },
+    executeToolCall: execute,
+    evaluate: async () => ({
+      success: true,
+      decision: "FINISH",
+      messageToUser: "Provider context restored.",
+    }),
+  });
+  expect(output.finalMessage).toBe("Provider context restored.");
+  expect(execute).not.toHaveBeenCalled();
+});
 async function compose(
   body: string,
   parts: unknown,

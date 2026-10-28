@@ -8,7 +8,10 @@ import { readFile } from "node:fs/promises";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Hono } from "hono";
 import { Client } from "pg";
-import { installBillingCommandEvidenceTestColumns } from "../../testing";
+import {
+  installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
+} from "../../testing";
 import type { AppEnv } from "../../types/cloud-worker-env";
 
 const postgresUrl = process.env.APP_FUNDING_TEST_POSTGRES_URL;
@@ -118,6 +121,10 @@ beforeAll(async () => {
     "0430_billing_identity_references",
     "0511_organization_plan_change_quotes",
     "0512_organization_upgrade_dispatch",
+    "0534_subscription_allowance_invoice_authority",
+    "0541_app_pilot_redemptions",
+    "0542_subscription_grant_codes",
+    "0543_app_pilot_allowance",
   ]) {
     const migration = await readFile(
       new URL(`../../db/migrations/${tag}.sql`, import.meta.url),
@@ -127,6 +134,7 @@ beforeAll(async () => {
       if (statement.trim()) await client.exec(statement.replaceAll('"public".', ""));
   }
   await installBillingCommandEvidenceTestColumns((statement) => client.exec(statement));
+  await installSubscriptionGrantTestSchema((statement) => client.exec(statement));
   await client.query(
     `INSERT INTO billing_merchants(id,organization_id,provider_account_key,livemode,enabled) VALUES ($1,$2,'platform',false,true)`,
     [merchant, org],

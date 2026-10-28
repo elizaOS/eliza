@@ -480,6 +480,7 @@ export class Client {
           "public_metrics",
           "attachments",
           "conversation_id",
+          "note_tweet",
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
@@ -536,6 +537,7 @@ export class Client {
           "public_metrics",
           "attachments",
           "conversation_id",
+          "note_tweet",
         ],
         "user.fields": ["id", "name", "username", "profile_image_url"],
         "media.fields": ["url", "preview_image_url", "type"],
@@ -1128,9 +1130,9 @@ export class Client {
    * @param userId The user ID of the user to follow.
    * @returns A promise that resolves when the user is followed.
    */
-  public async followUser(userName: string): Promise<void> {
+  public async followUser(userId: string): Promise<void> {
     await this.withAuthenticatedSession(() =>
-      followUser(userName, this.requireAuth()),
+      followUser(userId, this.requireAuth()),
     );
   }
 

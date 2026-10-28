@@ -6,6 +6,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { matchAllowlist } from "./allowlist";
 import type {
@@ -79,13 +80,18 @@ function isExecutableFile(filePath: string): boolean {
 }
 
 /**
- * Expand home directory
+ * Expand home directory.
+ *
+ * Uses the static `node:os` import (like the sibling `./allowlist` and
+ * `services/sandbox-service` copies of this helper): a bare `require` is
+ * undefined in this ESM module, so every command whose executable starts with
+ * `~` aborted with `ReferenceError: require is not defined` under Node's ESM
+ * loader.
  */
 function expandHome(value: string): string {
   if (!value) return value;
-  if (value === "~") return require("node:os").homedir();
-  if (value.startsWith("~/"))
-    return path.join(require("node:os").homedir(), value.slice(2));
+  if (value === "~") return os.homedir();
+  if (value.startsWith("~/")) return path.join(os.homedir(), value.slice(2));
   return value;
 }
 

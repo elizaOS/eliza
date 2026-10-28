@@ -1,5 +1,7 @@
 // Persists organizations records for cloud services through the shared DB boundary.
+
 import { desc, eq } from "drizzle-orm";
+import type { DbTransaction } from "../client";
 import { dbRead, dbWrite } from "../helpers";
 import type { CreditTransaction } from "../schemas/credit-transactions";
 import { creditTransactions } from "../schemas/credit-transactions";
@@ -129,8 +131,9 @@ export class OrganizationsRepository {
   async update(
     id: string,
     data: Partial<Omit<NewOrganization, "stripe_customer_id">>,
+    tx?: DbTransaction,
   ): Promise<Organization | undefined> {
-    const [updated] = await dbWrite
+    const [updated] = await (tx ?? dbWrite)
       .update(organizations)
       .set({
         ...data,

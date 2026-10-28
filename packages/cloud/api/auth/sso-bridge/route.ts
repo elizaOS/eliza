@@ -486,8 +486,14 @@ app.post("/network-exchange", async (c) => {
       errorBody("Network handoff unavailable", "invalid_authority"),
       403,
     );
+  let rawBody: unknown;
   try {
-    const body = (await c.req.json()) as {
+    rawBody = await c.req.json();
+  } catch {
+    return c.json(errorBody("Invalid JSON body", "invalid_json"), 400);
+  }
+  try {
+    const body = rawBody as {
       code?: unknown;
       codeVerifier?: unknown;
     };
@@ -560,8 +566,14 @@ app.post("/network-validate", async (c) => {
       errorBody("Network handoff unavailable", "invalid_authority"),
       403,
     );
+  let rawValidateBody: unknown;
   try {
-    const body = (await c.req.json()) as {
+    rawValidateBody = await c.req.json();
+  } catch {
+    return c.json(errorBody("Invalid JSON body", "invalid_json"), 400);
+  }
+  try {
+    const body = rawValidateBody as {
       userId?: unknown;
       organizationId?: unknown;
       e164?: unknown;

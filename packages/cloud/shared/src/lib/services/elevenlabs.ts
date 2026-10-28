@@ -114,6 +114,18 @@ export interface STTOptions {
 }
 
 /**
+ * Speech-to-text result. `audioDurationSeconds` is the audio the provider
+ * transcribed, when the response reports it. Without it, `minAudioDurationSeconds`
+ * is the last word end: the audio was at least that long, and trailing audio
+ * after the last word is not counted in it.
+ */
+export interface STTResult {
+  transcript: string;
+  audioDurationSeconds?: number;
+  minAudioDurationSeconds?: number;
+}
+
+/**
  * Service for ElevenLabs TTS and STT functionality.
  */
 export class ElevenLabsService {
@@ -210,7 +222,7 @@ export class ElevenLabsService {
   /**
    * Convert speech to text
    */
-  async speechToText(options: STTOptions): Promise<string> {
+  async speechToText(options: STTOptions): Promise<STTResult> {
     const modelId: Parameters<ElevenLabsClient["speechToText"]["convert"]>[0]["modelId"] =
       options.modelId === "scribe_v1" ? "scribe_v1" : "scribe_v2";
 
@@ -231,27 +243,24 @@ export class ElevenLabsService {
       languageCode: options.languageCode,
     });
 
-    // Handle response type (union of single/multichannel/webhook)
-    let transcript = "";
-
-    if ("text" in result) {
-      // Single channel response
-      transcript = result.text || "";
-    } else if ("transcripts" in result) {
-      // Multi-channel response - combine all channels
-      const transcripts =
-        (
-          result as {
-            transcripts?: Record<string, { text?: string }>;
-          }
-        ).transcripts || {};
-      transcript = Object.values(transcripts)
-        .map((t: { text?: string }) => t?.text || "")
-        .filter(Boolean)
-        .join(" ");
+    // Without `useMultiChannel` or `webhook` the SDK returns one chunk.
+    const transcript = result.text || "";
+    // Responses without audio_duration_secs still time each word; the last
+    // word end is a lower bound on the audio length, not the length itself.
+    const lastWordEnd = (result.words ?? []).reduce(
+      (last, word) => Math.max(last, word.end ?? 0),
+      0,
+    );
+    if (
+      typeof result.audioDurationSecs === "number" &&
+      Number.isFinite(result.audioDurationSecs) &&
+      result.audioDurationSecs > 0
+    ) {
+      return { transcript, audioDurationSeconds: result.audioDurationSecs };
     }
-
-    return transcript;
+    return Number.isFinite(lastWordEnd) && lastWordEnd > 0
+      ? { transcript, minAudioDurationSeconds: lastWordEnd }
+      : { transcript };
   }
 
   /**

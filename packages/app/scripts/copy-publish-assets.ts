@@ -29,6 +29,7 @@ export const PUBLISH_ASSET_PATHS = Object.freeze([
   "scripts/aosp/zig-toolchain.ts",
   "scripts/aosp/load-variant-config.ts",
   "scripts/aosp/seccomp-shim/loader-wrap.c",
+  "scripts/aosp/seccomp-shim/preserve-sigsys.h",
   "scripts/aosp/seccomp-shim/sigsys-handler-arm64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler-riscv64.c",
   "scripts/aosp/seccomp-shim/sigsys-handler.c",

@@ -20,7 +20,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
 > = {
   name: "calendarReadBindings",
   description:
-    "Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
+    "Preserve the user-requested operation as the intent. Bind only Calendar reads the user requested, not an invented lookup intent for a create, update or delete request; prerequisite record lookup belongs to normal planning for that operation. Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a requested bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. check_availability checks whether a specified interval is free; propose_times finds concrete free slots for the requested duration and search window without booking. Bind the requested outcome, not the agenda lookup it might require: a slot proposal is propose_times, never feed, and an interval availability check is check_availability. A feed success cannot complete either of those outcomes. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. Provider, account, grant and calendar identity select which calendar to read; they are not event-content filters. A request for one nearest event from a named calendar remains next_event unless it also asks for matching event content. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
   priority: 40,
   schema: {
     type: "array",
@@ -29,7 +29,9 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
       additionalProperties: false,
       required: ["intentId", "operation", "execution"],
       properties: {
-        intentId: { type: "string", pattern: "^intent:[1-9][0-9]*$" },
+        // Intents are generated in this same response, so no finite ID enum exists.
+        // The host parser below validates the canonical ID and handle binds its index.
+        intentId: { type: "string" },
         operation: { type: "string", enum: Object.keys(CALENDAR_READ_ACTIONS) },
         execution: { type: "string", enum: ["required", "conditional"] },
       },
@@ -122,13 +124,22 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
         ? { requiresTool: true }
         : {}),
       addContexts: ["calendar"],
-      clearCandidateActions: true,
-      addCandidateActions: [
-        ...otherCandidates,
-        ...bindings.map((binding) => CALENDAR_READ_ACTIONS[binding.operation]),
-      ],
+      // Conditional dependency reads must not replace normal discovery for
+      // the whole intent (for example, creating after an existing event).
+      // Required reads retain their existing exact-operation routing.
+      ...(bindings.some((binding) => binding.execution === "required")
+        ? {
+            clearCandidateActions: true,
+            addCandidateActions: [
+              ...otherCandidates,
+              ...bindings.map(
+                (binding) => CALENDAR_READ_ACTIONS[binding.operation],
+              ),
+            ],
+          }
+        : {}),
       addContextSlices: [
-        `Current-request Calendar read bindings: ${JSON.stringify(bindings)}. These select read operations, not permissions or receipts. A bounded agenda cannot satisfy next_event. Preserve every requested constraint and other intent; if the matching operation is unavailable, report the bounded/partial result honestly.`,
+        `Current-request Calendar read bindings: ${JSON.stringify(bindings)}. These select read operations, not permissions or receipts. A bounded agenda cannot satisfy next_event, an interval availability check, or a concrete slot proposal. For propose_times, preserve the requested duration and window and return actual exact-duration options; broad free windows are not concrete proposed slots. Preserve every requested constraint and other intent; if the matching operation is unavailable, report the bounded/partial result honestly.`,
       ],
     };
   },

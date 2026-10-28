@@ -20,16 +20,6 @@ subscription updates. Trial updates preserve the original subscription and trial
 end. Trial claims carry their original seven-day UTC interval into dispatch;
 a delayed request never starts a fresh seven-day promise.
 
-Run the controlled HTTP boundary suite from the repository root:
-
-```sh
-bun test packages/cloud/shared/src/lib/services/generic-billing-provider.test.ts packages/cloud/shared/src/lib/services/generic-billing-merchant-provider.test.ts packages/cloud/scripts/shared/certify-generic-billing-stripe.test.ts
-```
-
-These tests use the installed Stripe SDK and a controlled HTTP transport. They
-validate account headers, Acacia payloads, ownership, quote revalidation, trial
-preservation and provider failures. They are not evidence of real Stripe behavior.
-
 For a real test-mode trial-expiry smoke, configure these environment variables
 through a secret manager or private shell environment:
 

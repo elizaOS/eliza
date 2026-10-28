@@ -81,7 +81,10 @@ import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
-import { setCustomActionsRuntime } from "./custom-actions.ts";
+import {
+  registerSavedCustomActions,
+  setCustomActionsRuntime,
+} from "./custom-actions.ts";
 import { preparePluginForSelectedDatabase } from "./database-selection.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
@@ -89,6 +92,7 @@ import { MemoryRetentionService } from "./memory-retention-service.ts";
 import { retainedPendantSchema } from "./retained-pendant-schema.ts";
 import { activeViewSourceEvaluator } from "./view-action-affinity.ts";
 import {
+  registerViewNavigationRoutingRule,
   viewNavigationEvaluator,
   viewNavigationField,
 } from "./view-navigation.ts";
@@ -154,9 +158,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       PairingService as ServiceClass,
     ],
     init: async (_pluginConfig, runtime: IAgentRuntime) => {
+      registerViewNavigationRoutingRule(runtime);
       registerTriggerTaskWorker(runtime);
       registerErrorEscalation(runtime);
       setCustomActionsRuntime(runtime);
+      registerSavedCustomActions();
       // Media store: persist inline data: URLs out of context/history, and
       // sweep orphaned files daily. The serving route is declared below.
       registerMediaPipelineHook(runtime);

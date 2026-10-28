@@ -101,9 +101,8 @@ app.get("/", async (c) => {
         const allocated = budget ? Number(budget.allocated_budget) : 0;
         const spent = budget ? Number(budget.spent_budget) : 0;
         const available = allocated - spent;
-        const dailyLimit = budget?.daily_limit
-          ? Number(budget.daily_limit)
-          : null;
+        const dailyLimit =
+          budget?.daily_limit != null ? Number(budget.daily_limit) : null;
         const dailySpent = budget ? Number(budget.daily_spent) : 0;
         return {
           id: agent.id,
@@ -116,7 +115,7 @@ app.get("/", async (c) => {
           available,
           dailyLimit,
           dailySpent,
-          dailyRemaining: dailyLimit ? dailyLimit - dailySpent : null,
+          dailyRemaining: dailyLimit !== null ? dailyLimit - dailySpent : null,
           isPaused: budget?.is_paused ?? false,
           pauseReason: budget?.pause_reason ?? null,
           totalEarnings: Number(agent.total_creator_earnings),

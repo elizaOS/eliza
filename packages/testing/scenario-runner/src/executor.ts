@@ -339,8 +339,8 @@ function isSynthesizedReplyAction(
   return action.actionName === "REPLY" && data?.source === "synthesized-reply";
 }
 // The runtime message callback receives full `Content`; the executor only
-// needs the reply text plus the structural failure marker set by
-// `buildStructuredFailureReply` (packages/core/src/services/message.ts).
+// needs the reply text plus the `elizaSyntheticFailure` structural failure
+// marker the runtime sets on synthesized failure replies.
 type SyntheticFailureAwareContent = {
   text?: string;
   elizaSyntheticFailure?: boolean;

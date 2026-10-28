@@ -80,4 +80,25 @@ public final class JsonCredentialSlotsInstrumentedTest {
    try{store.slotFile("../escape");fail("Unsafe filename accepted");}catch(IllegalArgumentException expected){}
   }
  }
+ @Test public void loweredLimitKeepsOlderDataReadableAndAcceptsOnlyShrinkingWrites()throws Exception{
+  try(Fixture f=new Fixture()){
+   // A host lowers a slot from 2048 to 1024 bytes while a 1502-byte document is stored.
+   JsonCredentialSlots before=new JsonCredentialSlots(f.root,f.alias,slot->2048);
+   String stored="\""+new String(new char[1500]).replace('\0','d')+"\"";before.write("lowered",stored);
+   JsonCredentialSlots after=new JsonCredentialSlots(f.root,f.alias,slot->1024,slot->2048);
+   assertEquals(stored,after.read("lowered"));
+   String grown="\""+new String(new char[1501]).replace('\0','e')+"\"";
+   try{after.write("lowered",grown);fail("Growth above the lowered limit accepted");}catch(JsonCredentialSlots.CapacityException expected){}
+   assertEquals(stored,after.read("lowered"));
+   String shrunk="\""+new String(new char[1200]).replace('\0','f')+"\"";after.write("lowered",shrunk);assertEquals(shrunk,after.read("lowered"));
+   try{after.write("lowered",stored);fail("Regrowth above the lowered limit accepted");}catch(JsonCredentialSlots.CapacityException expected){}
+   assertEquals(shrunk,after.read("lowered"));
+   assertTrue(after.compareExchange("lowered",shrunk,"{}"));
+   try{after.write("lowered",shrunk);fail("A slot below the lowered limit grew above it");}catch(JsonCredentialSlots.CapacityException expected){}
+   try{after.write("empty",shrunk);fail("A missing slot was created above the lowered limit");}catch(JsonCredentialSlots.CapacityException expected){}
+   assertNull(after.read("empty"));
+   try{new JsonCredentialSlots(f.root,f.alias,slot->1024,slot->512).read("lowered");fail("Retained limit below the limit accepted");}catch(IllegalArgumentException expected){}
+   assertEquals("{}",after.read("lowered"));
+  }
+ }
 }

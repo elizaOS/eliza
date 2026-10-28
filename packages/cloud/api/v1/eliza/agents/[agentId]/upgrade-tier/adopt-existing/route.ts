@@ -508,7 +508,9 @@ async function __hono_POST(
       alreadyAdopted: result.alreadyAdopted,
       message: result.job
         ? "Existing Dedicated agent adopted. Poll the same-id provisioning job, then run personal cutover."
-        : "Existing running Dedicated agent adopted. Run personal cutover to make it authoritative.",
+        : result.agent.status === "disconnected"
+          ? "Existing disconnected Dedicated agent adopted. Disconnected recovery will reconnect it; run personal cutover once it is running."
+          : "Existing running Dedicated agent adopted. Run personal cutover to make it authoritative.",
       data: {
         dedicatedAgentId: result.agent.id,
         sharedAgentId: sourceAgentId,

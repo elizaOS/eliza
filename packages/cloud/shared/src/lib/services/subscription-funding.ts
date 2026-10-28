@@ -4,11 +4,15 @@
  * exact source that funded the reservation.
  */
 import { ElizaError } from "@elizaos/core";
+import Decimal from "decimal.js";
 import { and, asc, eq, isNull, like, notInArray, or, sql } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
-import { subscriptionAllowanceRepository } from "../../db/repositories/subscription-allowance";
+import {
+  type AllowanceFundingAuthority,
+  subscriptionAllowanceRepository,
+} from "../../db/repositories/subscription-allowance";
 import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscription-allowance-eligibility";
 import {
   type CanonicalMoney,
@@ -25,7 +29,7 @@ import { generations } from "../../db/schemas/generations";
 import { organizations } from "../../db/schemas/organizations";
 import { logger } from "../utils/logger";
 import { enqueueCollectedAffiliatePayout } from "./affiliate-payout-outbox";
-import { creditsService } from "./credits";
+import { creditsService, RESERVATION_SWEEP_GRACE_MS } from "./credits";
 import {
   SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION,
   SUBSCRIPTION_FUNDING_LOGICAL_OPERATION_KEY_PATTERN,
@@ -126,6 +130,8 @@ export interface SubscriptionFundingReservationResult {
 
 export interface TransactionalFundingReservationResult
   extends SubscriptionFundingReservationResult {
+  /** Rows created and locked by the allowance owner in this transaction. */
+  allowanceAuthority?: AllowanceFundingAuthority;
   /** The transaction owner must invalidate credit caches after committing this debit. */
   purchasedCreditDebited: boolean;
 }
@@ -133,6 +139,8 @@ export interface TransactionalFundingReservationResult
 export interface SubscriptionFundingSettlementResult extends SubscriptionFundingReservationResult {
   collectedAmount: CanonicalMoney;
   uncollectedOverageAmount: CanonicalMoney;
+  /** Finalized funding for usage beyond the reservation, collected in the same transaction. */
+  overageReservation?: BillingFundingReservation;
 }
 
 export interface FundingSourceSplit {
@@ -215,6 +223,41 @@ async function lockOrganization(tx: DbTransaction, organizationId: string): Prom
       { organizationId },
     );
   }
+}
+
+/**
+ * Funding capacity for usage beyond a reservation, read under the organization
+ * lock: spendable allowance (allowance-eligible work only) plus non-negative
+ * purchased credit. This matches the split reserveInTransaction applies.
+ */
+async function readOverageCapacity(
+  tx: DbTransaction,
+  organizationId: string,
+  fundingClass: "allowance_eligible" | "cash_only",
+  now: Date,
+): Promise<bigint> {
+  const [org] = await tx
+    .select({ credit_balance: organizations.credit_balance })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId));
+  if (!org) {
+    fundingError(
+      SUBSCRIPTION_FUNDING_ORGANIZATION_NOT_FOUND,
+      "Subscription funding organization does not exist",
+      { organizationId },
+    );
+  }
+  const credit = Decimal.max(new Decimal(org.credit_balance), 0)
+    .toDecimalPlaces(6, Decimal.ROUND_DOWN)
+    .toFixed(6);
+  const period =
+    fundingClass === "allowance_eligible"
+      ? await readEligibleSubscriptionAllowance(tx, organizationId, now, true)
+      : undefined;
+  return (
+    moneyToMicros(credit, "creditBalance") +
+    (period ? moneyToMicros(period.available_amount, "period.availableAmount") : 0n)
+  );
 }
 
 /** Converts canonical money to the numeric credit writer only when it round-trips exactly. */
@@ -480,23 +523,27 @@ export class SubscriptionFundingService {
     };
     // The caller's deadline is persisted on every reservation; the allowance
     // period expiry only limits new allowance spending.
-    const authority =
+    const allowanceAuthority =
       period && allowance > 0n
         ? await subscriptionAllowanceRepository.reserve(tx, {
             ...common,
             periodId: period.id,
             expiresAt,
           })
-        : await subscriptionFundingReservationsRepository.createPrerequisite(tx, {
-            ...common,
-            fundingClass,
-            allowancePeriodId: null,
-            expiresAt,
-          });
+        : undefined;
+    const authority =
+      allowanceAuthority ??
+      (await subscriptionFundingReservationsRepository.createPrerequisite(tx, {
+        ...common,
+        fundingClass,
+        allowancePeriodId: null,
+        expiresAt,
+      }));
     return {
       reservation: authority.reservation,
       replayed: authority.replayed,
       purchasedCreditDebited: purchasedDebit && !authority.replayed,
+      ...(allowanceAuthority && { allowanceAuthority }),
     };
   }
 
@@ -507,22 +554,27 @@ export class SubscriptionFundingService {
     if (result.purchasedCreditRefunded) {
       await creditsService.invalidateCreditCaches(input.organizationId);
     }
-    return {
-      reservation: result.reservation,
-      replayed: result.replayed,
-      collectedAmount: result.collectedAmount,
-      uncollectedOverageAmount: result.uncollectedOverageAmount,
-    };
+    const { purchasedCreditRefunded: _, ...settlement } = result;
+    return settlement;
   }
 
   /**
    * Settles a pinned reservation in the caller's work-completion transaction.
    * The caller takes workload locks first and invalidates credit caches only
-   * after commit when purchasedCreditRefunded is true.
+   * after commit when purchasedCreditRefunded is true (any purchased-credit
+   * change). The optional authority comes from the immediately preceding
+   * reserve in this same transaction.
+   *
+   * Usage beyond the reservation is funded allowance first, then purchased
+   * credit, up to the capacity available under the same organization lock.
+   * That funding is a separate finalized reservation keyed by the original
+   * logical operation, so a replay can never charge it twice. Only the part
+   * capacity cannot cover is recorded as uncollected overage.
    */
   async settleInTransaction(
     tx: DbTransaction,
     input: SettleSubscriptionFundingInput,
+    authority?: AllowanceFundingAuthority,
   ): Promise<SubscriptionFundingSettlementResult & { purchasedCreditRefunded: boolean }> {
     validateOperationId(input.logicalOperationId);
     const actualAmount = canonicalMoney(input.actualAmount, "actualAmount", true);
@@ -535,9 +587,21 @@ export class SubscriptionFundingService {
       input.occurredAt.toISOString(),
     ]);
     let purchasedMutation = false;
-    await lockOrganization(tx, input.organizationId);
+    if (authority) {
+      subscriptionAllowanceRepository.assertLockedAuthority(tx, input.organizationId, authority);
+      if (authority.reservation.logical_operation_id !== input.logicalOperationId)
+        fundingError(
+          SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
+          "Funding authority belongs to another operation",
+          { organizationId: input.organizationId },
+        );
+    } else {
+      await lockOrganization(tx, input.organizationId);
+    }
     const now = await readPostLockDatabaseNow(tx);
-    const reservation = await findReservation(tx, input.organizationId, input.logicalOperationId);
+    const reservation =
+      authority?.reservation ??
+      (await findReservation(tx, input.organizationId, input.logicalOperationId));
     if (reservation.funding_class !== SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation]) {
       fundingError(
         SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
@@ -545,11 +609,13 @@ export class SubscriptionFundingService {
         { logicalOperationId: input.logicalOperationId },
       );
     }
-    const locked = await subscriptionFundingReservationsRepository.lockById(
-      tx,
-      input.organizationId,
-      reservation.id,
-    );
+    const locked =
+      authority ??
+      (await subscriptionFundingReservationsRepository.lockById(
+        tx,
+        input.organizationId,
+        reservation.id,
+      ));
     const allowanceAllocation = locked.allocations.find((row) => row.source === "allowance");
     const purchasedAllocation = locked.allocations.find((row) => row.source === "purchased_credit");
     const allowanceReserved = allowanceAllocation
@@ -563,13 +629,22 @@ export class SubscriptionFundingService {
       requestedActualAmount: actualAmount,
       reservedAmount: microsToMoney(reserved),
     });
-    const collected = moneyToMicros(settlementCap.collectedAmount, "collectedAmount");
-    const uncollectedOverage = moneyToMicros(
+    const reservedCollected = moneyToMicros(settlementCap.collectedAmount, "collectedAmount");
+    const excess = moneyToMicros(
       settlementCap.uncollectedOverageAmount,
       "uncollectedOverageAmount",
     );
-    const actualAllowance = collected < allowanceReserved ? collected : allowanceReserved;
-    const actualPurchased = collected - actualAllowance;
+    // A terminal reservation is a replay or a conflict; it never funds again.
+    const capacity =
+      excess > 0n && locked.reservation.status === "reserved"
+        ? await readOverageCapacity(tx, input.organizationId, reservation.funding_class, now)
+        : 0n;
+    const overageFunded = excess < capacity ? excess : capacity;
+    const collected = reservedCollected + overageFunded;
+    const uncollectedOverage = excess - overageFunded;
+    const actualAllowance =
+      reservedCollected < allowanceReserved ? reservedCollected : allowanceReserved;
+    const actualPurchased = reservedCollected - actualAllowance;
     let refundId: string | null = null;
     if (purchasedReserved > actualPurchased) {
       const refund = await creditsService.refundCredits({
@@ -612,36 +687,88 @@ export class SubscriptionFundingService {
         collectedTotalCost: Number(microsToMoney(collected)),
       });
     };
-    if (allowanceAllocation) {
-      const terminal = await subscriptionAllowanceRepository.finalize(tx, terminalInput);
-      await enqueuePayout(terminal.replayed);
-      return {
-        reservation: terminal.reservation,
-        replayed: terminal.replayed,
-        purchasedCreditRefunded: purchasedMutation && !terminal.replayed,
-        collectedAmount: microsToMoney(collected),
-        uncollectedOverageAmount: microsToMoney(uncollectedOverage),
-      };
-    }
-    const terminal = await subscriptionFundingReservationsRepository.persistTerminal(tx, locked, {
-      kind: "settlement",
-      key: terminalInput.idempotencyKey,
-      digest,
-      actualAllowanceAmount: terminalInput.actualAllowanceAmount,
-      actualPurchasedCreditAmount: terminalInput.actualPurchasedCreditAmount,
-      uncollectedOverageAmount: terminalInput.uncollectedOverageAmount,
-      allowanceExpired: false,
-      purchasedCreditSettlementTransactionId: terminalInput.purchasedCreditSettlementTransactionId,
-      purchasedCreditRefundTransactionId: refundId,
-      databaseNow: now,
-    });
+    const terminal = allowanceAllocation
+      ? await subscriptionAllowanceRepository.finalize(tx, terminalInput, authority)
+      : await subscriptionFundingReservationsRepository.persistTerminal(tx, locked, {
+          kind: "settlement",
+          key: terminalInput.idempotencyKey,
+          digest,
+          actualAllowanceAmount: terminalInput.actualAllowanceAmount,
+          actualPurchasedCreditAmount: terminalInput.actualPurchasedCreditAmount,
+          uncollectedOverageAmount: terminalInput.uncollectedOverageAmount,
+          allowanceExpired: false,
+          purchasedCreditSettlementTransactionId:
+            terminalInput.purchasedCreditSettlementTransactionId,
+          purchasedCreditRefundTransactionId: refundId,
+          databaseNow: now,
+        });
     await enqueuePayout(terminal.replayed);
+    const overage =
+      excess === 0n
+        ? undefined
+        : terminal.replayed
+          ? await findSettlementOverage(tx, input)
+          : overageFunded > 0n
+            ? await this.fundSettlementOverage(tx, input, microsToMoney(overageFunded))
+            : undefined;
+    // A replay reports the persisted outcome of the first settlement.
+    const storedUncollected = moneyToMicros(
+      terminal.reservation.uncollected_overage_amount,
+      "storedUncollectedOverageAmount",
+    );
     return {
       reservation: terminal.reservation,
       replayed: terminal.replayed,
-      purchasedCreditRefunded: purchasedMutation && !terminal.replayed,
-      collectedAmount: microsToMoney(collected),
-      uncollectedOverageAmount: microsToMoney(uncollectedOverage),
+      purchasedCreditRefunded:
+        (purchasedMutation && !terminal.replayed) || (overage?.purchasedCreditMutated ?? false),
+      collectedAmount: microsToMoney(
+        moneyToMicros(actualAmount, "actualAmount") - storedUncollected,
+      ),
+      uncollectedOverageAmount: microsToMoney(storedUncollected),
+      ...(overage && { overageReservation: overage.reservation }),
+    };
+  }
+
+  /**
+   * Funds usage beyond a just-finalized reservation under a key derived from
+   * the original logical operation, in the caller's locked transaction. The
+   * affiliate payout was already enqueued for the whole collected charge.
+   */
+  private async fundSettlementOverage(
+    tx: DbTransaction,
+    input: SettleSubscriptionFundingInput,
+    amount: CanonicalMoney,
+  ): Promise<{ reservation: BillingFundingReservation; purchasedCreditMutated: boolean }> {
+    const logicalOperationId = await settlementOverageOperationId(input);
+    const metadata = {
+      ...input.metadata,
+      affiliatePayout: undefined,
+      overage_of_logical_operation_id: input.logicalOperationId,
+    };
+    const reserved = await this.reserveInTransaction(tx, {
+      organizationId: input.organizationId,
+      logicalOperationId,
+      operation: input.operation,
+      amount,
+      description: "Subscription funding usage beyond reservation",
+      reservationTtlMs: RESERVATION_SWEEP_GRACE_MS,
+      metadata,
+    });
+    const settled = await this.settleInTransaction(
+      tx,
+      {
+        organizationId: input.organizationId,
+        logicalOperationId,
+        operation: input.operation,
+        actualAmount: reserved.reservation.requested_amount,
+        occurredAt: input.occurredAt,
+        metadata,
+      },
+      reserved.allowanceAuthority,
+    );
+    return {
+      reservation: settled.reservation,
+      purchasedCreditMutated: reserved.purchasedCreditDebited || settled.purchasedCreditRefunded,
     };
   }
 
@@ -849,6 +976,34 @@ export class SubscriptionFundingService {
     }
     return stats;
   }
+}
+
+/** Retry-stable: derived from the original operation, never from settlement time or amount. */
+async function settlementOverageOperationId(
+  input: Pick<SettleSubscriptionFundingInput, "organizationId" | "logicalOperationId">,
+): Promise<string> {
+  return `overage.${await requestDigest(["overage", input.organizationId, input.logicalOperationId])}`;
+}
+
+/** Returns the overage funding a replayed settlement made the first time, if any. */
+async function findSettlementOverage(
+  tx: DbTransaction,
+  input: SettleSubscriptionFundingInput,
+): Promise<{ reservation: BillingFundingReservation; purchasedCreditMutated: false } | undefined> {
+  const [reservation] = await tx
+    .select()
+    .from(billingFundingReservations)
+    .where(
+      and(
+        eq(billingFundingReservations.organization_id, input.organizationId),
+        eq(
+          billingFundingReservations.logical_operation_id,
+          await settlementOverageOperationId(input),
+        ),
+      ),
+    )
+    .limit(1);
+  return reservation && { reservation, purchasedCreditMutated: false };
 }
 
 const SWEEP_OPERATION_BY_PREFIX: Readonly<

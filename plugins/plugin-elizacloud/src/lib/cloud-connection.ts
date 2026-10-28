@@ -103,6 +103,7 @@ export type RuntimeCloudLike = AgentRuntime & {
     };
     updateAgent?: (agentId: string, update: {
         secrets: Record<string, string | number | boolean>;
+        settings?: Record<string, unknown>;
     }) => Promise<unknown>;
     setSetting?: (key: string, value: string | null) => unknown;
     getService?: (name: string) => unknown;
@@ -452,10 +453,24 @@ async function clearRuntimeCloudState(runtime: AgentRuntime | null): Promise<voi
         delete nextSecrets[key];
     }
     runtimeWithCloud.character.secrets = nextSecrets;
-    if (runtimeWithCloud.character.settings &&
-        typeof runtimeWithCloud.character.settings === "object") {
+    const settings = runtimeWithCloud.character.settings &&
+        typeof runtimeWithCloud.character.settings === "object"
+        ? runtimeWithCloud.character.settings
+        : undefined;
+    // Boot leaves settings.secrets holding the same secrets (it is the
+    // object character.secrets pointed to before the swap above), and
+    // getSetting falls back to it, so the key must leave that copy too.
+    const settingsSecrets = settings?.secrets && typeof settings.secrets === "object"
+        ? (settings.secrets as Record<string, unknown>)
+        : undefined;
+    if (settings) {
         for (const key of CLOUD_RUNTIME_SETTING_KEYS) {
-            delete runtimeWithCloud.character.settings[key];
+            delete settings[key];
+        }
+    }
+    if (settingsSecrets) {
+        for (const key of CLOUD_RUNTIME_SECRET_KEYS) {
+            delete settingsSecrets[key];
         }
     }
     if (typeof runtimeWithCloud.setSetting === "function") {
@@ -470,8 +485,19 @@ async function clearRuntimeCloudState(runtime: AgentRuntime | null): Promise<voi
     }
     if (typeof runtimeWithCloud.updateAgent === "function") {
         try {
+            // The agent row stores settings.secrets too, and boot restores
+            // character.secrets from it. Null removes a key where settings
+            // are merged (plugin-sql); the full object replaces them where
+            // they are not (plugin-sqlite).
+            const clearedSettings = Object.fromEntries(CLOUD_RUNTIME_SETTING_KEYS.map((key) => [key, null]));
+            const clearedSecrets = Object.fromEntries(CLOUD_RUNTIME_SECRET_KEYS.map((key) => [key, null]));
             await runtimeWithCloud.updateAgent(runtimeWithCloud.agentId, {
                 secrets: { ...nextSecrets },
+                settings: {
+                    ...(settings ?? {}),
+                    ...clearedSettings,
+                    secrets: { ...(settingsSecrets ?? {}), ...clearedSecrets },
+                },
             });
         }
         catch (err) {

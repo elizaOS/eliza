@@ -20,7 +20,10 @@ import {
   type ManageResult,
   type MessageAdapter,
   type MessageAdapterCapabilities,
+  type MessageDraftContext,
+  type MessageManageContext,
   type MessageRef,
+  type MessageSendContext,
   type MessageSource,
   NotYetImplementedError,
   type ReadMessageRequest,
@@ -110,36 +113,39 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
     runtime: IAgentRuntime,
     messageId: string,
     op: ManageOperation,
+    context?: MessageManageContext,
   ): Promise<ManageResult> {
     if (!this.isAvailable(runtime)) {
       this.logUnavailableOnce();
       return { ok: false, reason: `${this.source} adapter unavailable` };
     }
-    return this.manageMessageImpl(runtime, messageId, op);
+    return this.manageMessageImpl(runtime, messageId, op, context);
   }
 
   async createDraft(
     runtime: IAgentRuntime,
     draft: DraftRequest,
+    context?: MessageDraftContext,
   ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
     if (!this.isAvailable(runtime)) {
       throw new NotYetImplementedError(
         `${this.source} adapter is unavailable for createDraft`,
       );
     }
-    return this.createDraftImpl(runtime, structuredClone(draft));
+    return this.createDraftImpl(runtime, structuredClone(draft), context);
   }
 
   async sendDraft(
     runtime: IAgentRuntime,
     draftId: string,
+    context?: MessageSendContext,
   ): Promise<{ externalId: string }> {
     if (!this.isAvailable(runtime)) {
       throw new NotYetImplementedError(
         `${this.source} adapter is unavailable for sendDraft`,
       );
     }
-    return this.sendDraftImpl(runtime, draftId);
+    return this.sendDraftImpl(runtime, draftId, context);
   }
 
   async scheduleSend(
@@ -196,6 +202,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
     _runtime: IAgentRuntime,
     _messageId: string,
     _op: ManageOperation,
+    _context?: MessageManageContext,
   ): Promise<ManageResult> {
     return Promise.resolve({
       ok: false,
@@ -206,6 +213,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   protected createDraftImpl(
     _runtime: IAgentRuntime,
     _draft: DraftRequest,
+    _context?: MessageDraftContext,
   ): Promise<{ draftId: string; preview: string; snapshot?: DraftRequest }> {
     throw new NotYetImplementedError(
       `${this.source} adapter does not support draft creation`,
@@ -215,6 +223,7 @@ export abstract class BaseMessageAdapter implements MessageAdapter {
   protected sendDraftImpl(
     _runtime: IAgentRuntime,
     _draftId: string,
+    _context?: MessageSendContext,
   ): Promise<{ externalId: string }> {
     throw new NotYetImplementedError(
       `${this.source} adapter does not support draft delivery`,
@@ -243,6 +252,7 @@ export async function searchByListing(
   filters: SearchMessagesFilters,
 ): Promise<MessageRef[]> {
   const listed = await adapter.listMessages(runtime, {
+    requester: filters.requester,
     sinceMs: filters.sinceMs,
     worldIds: filters.worldIds,
     channelIds: filters.channelIds,

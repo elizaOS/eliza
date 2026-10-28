@@ -629,7 +629,13 @@ function base58DecodeBrowser(value: string): Buffer {
     number = number * 58n + BigInt(index);
   }
   const hex = number.toString(16);
-  const bytes = Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
+  // number === 0n means the input was all "1"s (empty numeric section);
+  // the hex conversion above would emit a spurious zero byte, so start
+  // from empty bytes and let the leading-zero prefix carry the value.
+  const bytes =
+    number === 0n
+      ? Buffer.alloc(0)
+      : Buffer.from(hex.length % 2 === 0 ? hex : `0${hex}`, "hex");
   let leadingZeroes = 0;
   for (const character of value) {
     if (character !== "1") {
@@ -848,24 +854,19 @@ async function signLocalBrowserSolanaTransaction(
     const versioned = VersionedTransaction.deserialize(txBytes);
     versioned.sign([keypair]);
     signedBytes = versioned.serialize();
-    if (broadcast) {
-      const connection = new Connection(
-        browserSolanaClusterRpcUrl(cluster),
-        "confirmed",
-      );
-      broadcastSignature = await connection.sendRawTransaction(signedBytes);
-    }
-  } catch (_error) {
+  } catch {
+    // The fallback only covers the serialization format: a versioned
+    // transaction that fails to deserialize is retried as a legacy one.
     const legacy = Transaction.from(txBytes);
     legacy.partialSign(keypair);
     signedBytes = legacy.serialize();
-    if (broadcast) {
-      const connection = new Connection(
-        browserSolanaClusterRpcUrl(cluster),
-        "confirmed",
-      );
-      broadcastSignature = await connection.sendRawTransaction(signedBytes);
-    }
+  }
+  if (broadcast) {
+    const connection = new Connection(
+      browserSolanaClusterRpcUrl(cluster),
+      "confirmed",
+    );
+    broadcastSignature = await connection.sendRawTransaction(signedBytes);
   }
   return {
     address,

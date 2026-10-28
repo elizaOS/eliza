@@ -26,7 +26,11 @@ import {
   enforceOrgRateLimit,
   OrgRateLimitCacheNotReadyError,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit";
-import { recordCloudStreamMilestones } from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
+import {
+  beginSdkStreamTiming,
+  bindSdkStreamTiming,
+  recordCloudStreamMilestones,
+} from "@elizaos/cloud-shared/lib/observability/cloud-backend-observability";
 import {
   bindGatewayHandoffTelemetry,
   type GatewayHandoffTelemetry,
@@ -112,6 +116,7 @@ import {
   inferenceCredentialRevocationReason,
   isInferenceStrongRevocationEnabled,
 } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isFundedBudgetAdmissionEnabled } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
 import {
   createPassthroughStreamMeter,
   isPassthroughStreamingEnabled,
@@ -161,6 +166,11 @@ import {
   modelNotAvailableMessage,
   summarizeFinishedStepUsage,
 } from "@/api-app/lib/inference-usage";
+import {
+  type CallerLlmPurpose,
+  getSafeCallerLlmPurpose,
+  getSafeProviderErrorMetadata,
+} from "./provider-error-metadata";
 
 /**
  * Write the durable billing ledger row for one settled inference. Credits are
@@ -1281,6 +1291,9 @@ export async function handleChatCompletionsPOST(
       },
       { status: 403 },
     );
+  const callerPurpose = getSafeCallerLlmPurpose(
+    req.headers.get("X-Eliza-Llm-Purpose"),
+  );
   const startTime = Date.now();
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
@@ -1441,7 +1454,21 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
-      admissionCredential = resolution.credential;
+      const resolvedCredential = resolution.credential;
+      admissionCredential =
+        resolvedCredential?.kind === "api_key"
+          ? {
+              ...resolvedCredential,
+              rateLimit:
+                "apiKeyRateLimit" in resolution.ctx
+                  ? resolution.ctx.apiKeyRateLimit
+                  : undefined,
+              expiresAt:
+                "apiKeyExpiresAt" in resolution.ctx
+                  ? resolution.ctx.apiKeyExpiresAt
+                  : undefined,
+            }
+          : resolvedCredential;
       appScopeId =
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
       // The resolver already verified not-suspended (cache hit = at populate;
@@ -1474,6 +1501,25 @@ export async function handleChatCompletionsPOST(
     // cache-only dependency decisions vs admission) so production telemetry
     // catches any regression before a provider invocation.
     const tAuth = performance.now();
+    let fundedBudgetRateReceipt: string | undefined;
+    const fundedBudget =
+      options.executionCtx &&
+      isFundedBudgetAdmissionEnabled() &&
+      admissionSnapshot?.fundedBudget?.enabled &&
+      admissionSnapshot.fundedBudget.organizationId === user.organization_id &&
+      admissionCredential?.kind === "api_key" &&
+      Number.isSafeInteger(admissionCredential.rateLimit) &&
+      (admissionCredential.rateLimit ?? 0) > 0 &&
+      admissionCredential.expiresAt !== undefined
+        ? {
+            policy: admissionSnapshot.fundedBudget,
+            credential: admissionCredential,
+            requestId,
+            onReceipt: (receipt: string) => {
+              fundedBudgetRateReceipt = receipt;
+            },
+          }
+        : undefined;
 
     // 1b. Per-org tier rate limit. Start the authoritative decision now, then
     // overlap it with the independent cache-only preparation below. We still
@@ -1487,6 +1533,8 @@ export async function handleChatCompletionsPOST(
             executionCtx: options.executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
             apiKeyId: apiKey?.id,
+            userId: user.id,
+            fundedBudget,
           })
         : Promise.resolve(null),
     );
@@ -1625,7 +1673,7 @@ export async function handleChatCompletionsPOST(
     // signals), so for a name-pattern match the catalog cannot change
     // computeEffectiveMaxTokens — the read is pure latency. Default now (the
     // hot-path cache is no longer flag-gated); pinned to the name-pattern set.
-    const skipCatalogLookup = modelUsesReasoningTokens(model);
+    const skipCatalogLookup = modelUsesReasoningTokens(model) && !fundedBudget;
     const monetizedAppPromise = requestedAppId
       ? options.executionCtx
         ? options.requiredAppId
@@ -1796,6 +1844,36 @@ export async function handleChatCompletionsPOST(
       modelSupportedParameters,
       reasoningEffort,
     );
+    // This provider-owned catalog describes the accepted Cerebras request
+    // ceiling. It bounds all prompt tokens, including hidden serialization;
+    // the character-based estimate remains an estimate, never escrow authority.
+    const catalogModel =
+      modelCatalogResolution.kind === "ready"
+        ? modelCatalogResolution.model
+        : null;
+    const contextLimit =
+      catalogModel?.context_length ?? catalogModel?.context_window;
+    const hasBudgetTokenBounds = Boolean(
+      fundedBudget &&
+        !pooledCredential &&
+        provider.startsWith("cerebras") &&
+        catalogModel?.owned_by === "cerebras" &&
+        Number.isSafeInteger(contextLimit) &&
+        (contextLimit ?? 0) > 0 &&
+        !request.webSearchEnabled &&
+        !request.tools?.length,
+    );
+    const maximumInputTokens = hasBudgetTokenBounds ? contextLimit : undefined;
+    const catalogOutputLimit = catalogModel?.max_tokens ?? contextLimit;
+    const maximumOutputTokens =
+      hasBudgetTokenBounds &&
+      Number.isSafeInteger(catalogOutputLimit) &&
+      (catalogOutputLimit ?? 0) > 0
+        ? Math.min(
+            effectiveMaxTokens ?? catalogOutputLimit!,
+            catalogOutputLimit!,
+          )
+        : undefined;
     const webSearchEnabled = request.webSearchEnabled === true;
     const webSearchActive = isAnthropicWebSearchEnabled(
       provider,
@@ -1999,6 +2077,9 @@ export async function handleChatCompletionsPOST(
           },
           estimatedInputTokens,
           estimatedOutputTokens,
+          maximumInputTokens,
+          maximumOutputTokens,
+          fundedBudgetRateReceipt,
           apiKeyId: apiKey?.id ?? null,
           affiliateCode,
           executionCtx: options.executionCtx,
@@ -2081,14 +2162,36 @@ export async function handleChatCompletionsPOST(
       }
       if (error instanceof InsufficientCreditsError) {
         const creditKind = useMonetizedAppBilling ? "cloud credits" : "credits";
+        // A plan subscriber (paid or grant) has spent its period allowance and
+        // credit: name that state and when the allowance resets. Status and
+        // type stay 402 / insufficient_quota for existing OpenAI-style clients.
+        const exhaustion = useMonetizedAppBilling
+          ? null
+          : await import(
+              "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
+            )
+              .then(({ readAllowanceExhaustion }) =>
+                readAllowanceExhaustion(user.organization_id),
+              )
+              .catch(() => null);
         return addCorsHeaders(
           Response.json(
             {
-              error: {
-                message: `Insufficient ${creditKind}. Required: $${error.required.toFixed(4)}`,
-                type: "insufficient_quota",
-                code: "insufficient_credits",
-              },
+              error: exhaustion
+                ? {
+                    message:
+                      "Plan allowance is used up for this period. Nothing is purchased automatically.",
+                    type: "insufficient_quota",
+                    code: "allowance_exhausted",
+                    ...(exhaustion.resetsAt && {
+                      resetsAt: exhaustion.resetsAt.toISOString(),
+                    }),
+                  }
+                : {
+                    message: `Insufficient ${creditKind}. Required: $${error.required.toFixed(4)}`,
+                    type: "insufficient_quota",
+                    code: "insufficient_credits",
+                  },
             },
             { status: 402 },
           ),
@@ -2265,6 +2368,7 @@ export async function handleChatCompletionsPOST(
           gatewayHandoffTelemetry,
           markProviderDispatched,
           traceId,
+          callerPurpose,
         )
       : await handleNonStreamingRequest(
           model,
@@ -2380,6 +2484,10 @@ export async function handleChatCompletionsPOST(
     );
     logger.error("[Chat Completions] Error", {
       traceId,
+      ...getSafeProviderErrorMetadata(
+        unwrapProviderError(error),
+        callerPurpose,
+      ),
       error: rawMessage,
       cause:
         error instanceof Error && error.cause
@@ -2958,14 +3066,13 @@ async function tryPassthroughStreamingRequest(params: {
           totalCost: billing.totalCost,
         });
       } catch (error) {
-        // The provider reported usage, so a local billing failure cannot be
-        // treated as proof of zero cost. The conservative terminal preserves
-        // the admitted estimate and is first-call-wins with a partial success.
-        await params.settleUnknown();
+        // Preserve the first chosen charge after an unknown acknowledgement.
+        // Record the original failure before retrying so a retry cannot hide it.
         logger.error("[Chat Completions] Passthrough settle error", {
           model,
           error: error instanceof Error ? error.message : String(error),
         });
+        await params.settleUnknown();
       }
       return;
     }
@@ -3124,6 +3231,7 @@ async function handleStreamingRequest(
   markProviderDispatched?: () => Promise<void>,
   /** Shared trace id (#16079) correlating the milestone event with the caller. */
   traceId?: string,
+  callerPurpose?: CallerLlmPurpose,
 ) {
   // #15428 pass-through fast path: qualifying plain streamed chat against a
   // direct OpenAI-compatible upstream pipes the provider bytes straight
@@ -3249,12 +3357,26 @@ async function handleStreamingRequest(
   );
 
   const languageModel = getLanguageModel(model, pooledCredential ?? undefined);
+  await markProviderDispatched?.();
+  const sdkTiming = provider.startsWith("cerebras")
+    ? beginSdkStreamTiming(traceId ?? requestId, model)
+    : undefined;
   const invokeStreamText = bindGatewayHandoffTelemetry(
     gatewayHandoffTelemetry,
-    (options: Parameters<typeof streamText>[0]) => streamText(options),
+    bindSdkStreamTiming(
+      sdkTiming,
+      (options: Parameters<typeof streamText>[0]) => {
+        try {
+          return streamText(options);
+        } catch (error) {
+          sdkTiming?.finish(true);
+          throw error;
+        }
+      },
+    ),
   );
-  await markProviderDispatched?.();
   const result = invokeStreamText({
+    ...(sdkTiming ? { includeRawChunks: true } : {}),
     model: languageModel,
     system: systemPrompt,
     messages,
@@ -3394,7 +3516,12 @@ async function handleStreamingRequest(
       logger.error(
         "[Chat Completions] Stream provider error — admission settled",
         {
+          traceId,
           model,
+          ...getSafeProviderErrorMetadata(
+            unwrapProviderError(error),
+            callerPurpose,
+          ),
           conservative: deliveredProviderOutput,
           error: redactPromptCacheKey(
             error instanceof Error ? error.message : String(error),
@@ -3416,8 +3543,12 @@ async function handleStreamingRequest(
   const includeUsage = request.stream_options?.include_usage === true;
   const usageFieldOnChunks = includeUsage ? { usage: null } : {};
 
-  const openAIStream = new ReadableStream({
-    async start(controller) {
+  const streamSource = {
+    async start(controller: ReadableStreamDefaultController<Uint8Array>) {
+      const enqueue = (bytes: Uint8Array) => {
+        controller.enqueue(bytes);
+        sdkTiming?.enqueue();
+      };
       const responseId = `chatcmpl-${Date.now()}`;
       const toolCallIndexes = new Map<string, number>();
       // Argument chars already delivered per tool call id via
@@ -3431,8 +3562,10 @@ async function handleStreamingRequest(
       let finishReason = "stop";
       let finishUsage: unknown;
 
+      let streamCompleted = false;
       try {
         for await (const part of result.fullStream) {
+          sdkTiming?.part(part);
           if (part.type === "text-delta") {
             deliveredProviderOutput ||= part.text.length > 0;
             const chunk = {
@@ -3449,9 +3582,7 @@ async function handleStreamingRequest(
                 },
               ],
             };
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
-            );
+            enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             deliveredText += part.text;
             continue;
           }
@@ -3461,7 +3592,7 @@ async function handleStreamingRequest(
             const index = nextToolCallIndex++;
             toolCallIndexes.set(part.id, index);
             toolCallArgsDelivered.set(part.id, 0);
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3498,7 +3629,7 @@ async function handleStreamingRequest(
               part.id,
               (toolCallArgsDelivered.get(part.id) ?? 0) + part.delta.length,
             );
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3541,7 +3672,7 @@ async function handleStreamingRequest(
               finishReason = "tool_calls";
               continue;
             }
-            controller.enqueue(
+            enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
                   id: responseId,
@@ -3617,15 +3748,13 @@ async function handleStreamingRequest(
             },
           ],
         };
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`),
-        );
+        enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
         // Terminal usage-only chunk (empty choices) per stream_options
         // .include_usage. Only ever built from the SDK's reported usage — if
         // the finish part never arrived there is nothing honest to report, so
         // the frame is omitted rather than fabricated as zeros.
         if (includeUsage && hasReportedUsageTokens(finishUsage)) {
-          controller.enqueue(
+          enqueue(
             encoder.encode(
               `data: ${JSON.stringify({
                 id: responseId,
@@ -3641,8 +3770,9 @@ async function handleStreamingRequest(
             ),
           );
         }
-        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
+        streamCompleted = true;
       } catch (error) {
         // Finding #11: a provider error mid-stream (e.g. the cerebras 429/5xx
         // surfaced as a `fullStream` error part) would otherwise leave the
@@ -3711,10 +3841,8 @@ async function handleStreamingRequest(
               code: status,
             },
           };
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`),
-          );
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          enqueue(encoder.encode(`data: ${JSON.stringify(errorChunk)}\n\n`));
+          enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (enqueueError) {
           // The stream was already torn down (client disconnected / controller
@@ -3730,8 +3858,13 @@ async function handleStreamingRequest(
           );
           controller.error(error);
         }
+      } finally {
+        sdkTiming?.finish(!streamCompleted);
       }
     },
+  };
+  const openAIStream = new ReadableStream({
+    start: bindSdkStreamTiming(sdkTiming, streamSource.start),
   });
 
   return addCorsHeaders(

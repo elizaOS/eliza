@@ -10,14 +10,23 @@
 import { existsSync } from "node:fs";
 import { totalmem } from "node:os";
 import { join as pathJoin } from "node:path";
-import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
+import {
+	type AgentRuntime,
+	ElizaError,
+	logger,
+	type UUID,
+} from "@elizaos/core";
 import { isAndroidMobile, isIosMobile } from "@elizaos/host/protocol";
 import { renderMessageHandlerStablePrefix } from "@elizaos/plugin-assistant";
 import {
 	ActiveModelCoordinator,
 	type LocalInferenceLoadOverrides,
 } from "./active-model";
-import { readEffectiveAssignments, setAssignment } from "./assignments";
+import {
+	clearAssignmentsForModel,
+	readEffectiveAssignments,
+	setAssignment,
+} from "./assignments";
 import { registerBundledModels } from "./bundled-models";
 import { MODEL_CATALOG } from "./catalog";
 import { Downloader } from "./downloader";
@@ -396,6 +405,15 @@ export class LocalInferenceService {
 			installed,
 			overrides,
 		);
+		// A failed switch keeps (or restores) the previous model as ready. That
+		// is not an activation of the requested model: do not route chat to it,
+		// prewarm it, or report success.
+		if (state.status === "ready" && state.modelId !== modelId) {
+			throw new ElizaError(state.error ?? `Could not switch to "${modelId}".`, {
+				code: "LOCAL_MODEL_SWITCH_FAILED",
+				context: { requestedModelId: modelId, activeModelId: state.modelId },
+			});
+		}
 		if (state.status === "ready") {
 			await routeActivatedModelToLocalText();
 		}
@@ -756,7 +774,9 @@ export class LocalInferenceService {
 		if (this.activeModel.snapshot().modelId === modelId) {
 			await this.activeModel.unload(null);
 		}
-		return removeElizaModel(modelId);
+		const result = await removeElizaModel(modelId);
+		if (result.removed) await clearAssignmentsForModel(modelId);
+		return result;
 	}
 }
 

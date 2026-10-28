@@ -16,9 +16,9 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { isMobilePlatform } from "@elizaos/host/protocol";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { FIELD_PURPOSES, runAutofillHandler } from "./autofill.js";
-import { runPasswordManagerHandler } from "./password-manager.js";
 
 const ACTION_NAME = "CREDENTIALS";
 
@@ -70,12 +70,12 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
-      content: { text: "Yes, trust notion.so for autofill going forward." },
+      content: { text: "Trust mybank.example for autofill going forward." },
     },
     {
       name: "{{agentName}}",
       content: {
-        text: "Added notion.so to the autofill whitelist.",
+        text: "Add mybank.example to the autofill whitelist? Reply yes to confirm or no to cancel.",
         actions: [ACTION_NAME],
       },
     },
@@ -147,7 +147,7 @@ export const credentialsAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
 
-  validate: async () => true,
+  validate: async () => !isMobilePlatform(),
 
   parameters: [
     {
@@ -213,6 +213,13 @@ export const credentialsAction: Action & {
     state: State | undefined,
     options: HandlerOptions | undefined,
   ): Promise<ActionResult> => {
+    if (isMobilePlatform()) {
+      return {
+        success: false,
+        text: "This desktop password-manager integration is unavailable on mobile.",
+        data: { actionName: ACTION_NAME, error: "CAPABILITY_UNAVAILABLE" },
+      };
+    }
     if (!(await hasLifeOpsAccess(runtime, message))) {
       return {
         success: false,
@@ -234,6 +241,9 @@ export const credentialsAction: Action & {
     if (AUTOFILL_SUBACTIONS.has(subaction)) {
       return runAutofillHandler(runtime, message, state, forwardedOptions);
     }
+    // Desktop CLIs and clipboard access are loaded only in their owning host.
+    // Mobile credentials remain owned by the native password provider.
+    const { runPasswordManagerHandler } = await import("./password-manager.js");
     return runPasswordManagerHandler(runtime, message, state, forwardedOptions);
   },
 };

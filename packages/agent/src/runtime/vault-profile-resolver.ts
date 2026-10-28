@@ -31,8 +31,8 @@ import {
 } from "../config/dev-cloud-env-authority.ts";
 
 export interface ResolveProfilesResult {
-  /** Number of keys whose env value was overridden. */
-  readonly overridden: number;
+  /** Keys whose env value was overridden. */
+  readonly overridden: ReadonlyArray<string>;
   /** Keys that had profiles but every candidate profile was empty. */
   readonly skipped: ReadonlyArray<string>;
   /** Keys where resolution failed (vault read error). */
@@ -52,7 +52,7 @@ export async function applyVaultProfilesForAgent(
   agentId: string,
 ): Promise<ResolveProfilesResult> {
   if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER === "1") {
-    return { overridden: 0, skipped: [], failed: [] };
+    return { overridden: [], skipped: [], failed: [] };
   }
 
   let entries: readonly VaultEntryMeta[];
@@ -62,10 +62,10 @@ export async function applyVaultProfilesForAgent(
     logger.warn(
       `[vault-profile-resolver] inventory listing failed for agent="${agentId}": ${err instanceof Error ? err.message : String(err)}`,
     );
-    return { overridden: 0, skipped: [], failed: [] };
+    return { overridden: [], skipped: [], failed: [] };
   }
 
-  let overridden = 0;
+  const overridden: string[] = [];
   const skipped: string[] = [];
   const failed: string[] = [];
   const devCloudAuthority = resolveDevCloudEnvAuthority();
@@ -95,7 +95,7 @@ export async function applyVaultProfilesForAgent(
         continue;
       }
       process.env[entry.key] = value;
-      overridden += 1;
+      overridden.push(entry.key);
     } catch (err) {
       // resolveActiveValue throws when no profile and no bare value
       // resolves. Don't try to fall back to legacy env — the user
@@ -108,14 +108,14 @@ export async function applyVaultProfilesForAgent(
     }
   }
 
-  if (overridden > 0 || failed.length > 0) {
+  if (overridden.length > 0 || failed.length > 0) {
     logger.info(
-      `[vault-profile-resolver] agent="${agentId}" overridden=${overridden} skipped=${skipped.length} failed=${failed.length}`,
+      `[vault-profile-resolver] agent="${agentId}" overridden=${overridden.length} skipped=${skipped.length} failed=${failed.length}`,
     );
   }
 
   return {
-    overridden,
+    overridden: Object.freeze(overridden),
     skipped: Object.freeze(skipped),
     failed: Object.freeze(failed),
   };

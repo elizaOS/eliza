@@ -1105,15 +1105,18 @@ export class RelationshipsService extends Service {
       lastModified: new Date().toISOString(),
     };
 
-    // Update component
+    // Update component. A contact with no stored component (its entity was
+    // deleted) is not updated: report it as not found, not as saved.
     const contactComponent = await this.getStoredContactComponent(entityId);
-
-    if (contactComponent) {
-      await this.runtime.updateComponent({
-        ...contactComponent,
-        data: contactInfoToMetadata(updated),
-      });
+    if (!contactComponent) {
+      this.contactInfoCache.delete(entityId);
+      logger.warn(`[RelationshipsService] Contact ${entityId} not stored`);
+      return null;
     }
+    await this.runtime.updateComponent({
+      ...contactComponent,
+      data: contactInfoToMetadata(updated),
+    });
 
     this.setCacheWithLimit(
       this.contactInfoCache,

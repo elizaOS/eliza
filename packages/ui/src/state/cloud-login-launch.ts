@@ -26,6 +26,7 @@
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { configuredStewardApiUrlOverride } from "../cloud/shell/steward-config";
 import { ELIZA_CLOUD_DIRECT_API_BY_HOST } from "../cloud/shell/steward-url";
+import { currentOwnedElizaPagesOrigin } from "../utils/cloud-agent-base";
 import { preOpenWindow } from "../utils/openExternalUrl";
 import {
   isPlainWebPlatform,
@@ -168,6 +169,7 @@ export function isTouchPrimaryWebBrowser(): boolean {
  */
 export function hasSameOriginStewardLogin(): boolean {
   if (typeof window === "undefined") return false;
+  if (currentOwnedElizaPagesOrigin()) return true;
   const host = window.location.hostname.toLowerCase();
   if (ELIZA_CLOUD_DIRECT_API_BY_HOST[host]) return true;
   return Boolean(configuredStewardApiUrlOverride());
@@ -256,6 +258,7 @@ export function shouldUseSameTabCloudLogin(
   options: { hasAgentProxy?: boolean } = {},
 ): boolean {
   if (!isPlainWebPlatform()) return false;
+  if (!options.hasAgentProxy && currentOwnedElizaPagesOrigin()) return true;
   if (!hasSameOriginStewardLogin()) return false;
   const loopbackTarget = loopbackStewardDevelopmentTarget();
   if (loopbackTarget !== null) return false;

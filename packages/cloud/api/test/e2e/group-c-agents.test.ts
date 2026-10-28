@@ -363,13 +363,15 @@ describeE2E("/api/agents/:id/a2a", () => {
       );
     }
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    const card = await response.json();
+    expect(card).toMatchObject({
       name: agentName,
-      capabilities: { streaming: true },
+      capabilities: { streaming: false },
       authentication: {
         schemes: [{ scheme: "bearer" }],
       },
       pricing: { currency: "USD" },
+      skills: [{ id: "chat" }],
     });
   });
 

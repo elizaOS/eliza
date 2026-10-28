@@ -774,24 +774,26 @@ export async function handleCharacterRoutes(
 
   if (method === "GET" && pathname === "/api/character") {
     const runtime = state.runtime;
+    if (!runtime) {
+      error(res, "Agent runtime not available. Start the agent first.", 503);
+      return true;
+    }
     const merged: Record<string, unknown> = {};
-    if (runtime) {
-      const character = runtime.character;
-      if (character.name) merged.name = character.name;
-      if (character.username) merged.username = character.username;
-      if (character.bio) merged.bio = character.bio;
-      if (character.system) merged.system = character.system;
-      if (character.adjectives) merged.adjectives = character.adjectives;
-      if (Array.isArray((character as { topics?: string[] }).topics)) {
-        merged.topics = (character as { topics?: string[] }).topics;
-      }
-      if (character.style) merged.style = character.style;
-      if (character.messageExamples) {
-        merged.messageExamples = character.messageExamples;
-      }
-      if (character.postExamples) {
-        merged.postExamples = character.postExamples;
-      }
+    const character = runtime.character;
+    if (character.name) merged.name = character.name;
+    if (character.username) merged.username = character.username;
+    if (character.bio) merged.bio = character.bio;
+    if (character.system) merged.system = character.system;
+    if (character.adjectives) merged.adjectives = character.adjectives;
+    if (Array.isArray((character as { topics?: string[] }).topics)) {
+      merged.topics = (character as { topics?: string[] }).topics;
+    }
+    if (character.style) merged.style = character.style;
+    if (character.messageExamples) {
+      merged.messageExamples = character.messageExamples;
+    }
+    if (character.postExamples) {
+      merged.postExamples = character.postExamples;
     }
 
     json(res, { character: merged, agentName: state.agentName });
@@ -799,6 +801,12 @@ export async function handleCharacterRoutes(
   }
 
   if (method === "PUT" && pathname === "/api/character") {
+    // A stopped agent has no live character to change, and its saved config
+    // is rebuilt on start: answering ok here would drop the edit silently.
+    if (!state.runtime) {
+      error(res, "Agent runtime not available. Start the agent first.", 503);
+      return true;
+    }
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
 
@@ -891,6 +899,37 @@ export async function handleCharacterRoutes(
         throw err;
       }
 
+      // Persist the staged character BEFORE changing the live character or the
+      // config: `updateAgent` reports false when the agent row was not written
+      // (for example a restored database that has no row for this agent), and
+      // the persistence service already treats that result as a failure. Do not
+      // answer "saved" for a write storage never confirmed.
+      const storedName =
+        staged.submitted.has("name") && typeof staged.values.name === "string"
+          ? staged.values.name
+          : character.name;
+      try {
+        const updated = await runtime.updateAgent(runtime.agentId, {
+          name: storedName,
+          metadata: {
+            ...(runtime.character as { metadata?: Record<string, unknown> })
+              .metadata,
+            character: charData,
+          },
+        });
+        if (!updated) {
+          error(res, "Character storage update was not confirmed.", 500);
+          return true;
+        }
+      } catch (err) {
+        // error-policy:J3 Zod-accepted passthrough extras can still overflow.
+        if (isCharacterHistoryUnbounded(err)) {
+          error(res, "Character payload exceeds the history walk budget", 400);
+          return true;
+        }
+        throw err;
+      }
+
       if (
         nextStoredCharacterName !== undefined &&
         nextStoredCharacterName !== previousCharacterName
@@ -899,16 +938,7 @@ export async function handleCharacterRoutes(
       }
       commitStagedCharacter(character as CharacterPutTarget, staged);
 
-      // Persist character fields to DB so edits survive restarts
       try {
-        await runtime.updateAgent(runtime.agentId, {
-          name: character.name,
-          metadata: {
-            ...(runtime.character as { metadata?: Record<string, unknown> })
-              .metadata,
-            character: charData,
-          },
-        });
         await recordCharacterHistory(runtime, {
           previousCharacter,
           nextCharacter: character as RuntimeCharacterLike,

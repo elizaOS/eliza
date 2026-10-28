@@ -2,15 +2,22 @@
  * Idempotency Utility for Webhook Handlers
  *
  * Database-backed deduplication to prevent replay attacks.
- * TTL matches the 2-minute webhook signature validity window.
  */
 
-import { count, eq, gt, lt, sql } from "drizzle-orm";
+import { count, eq, gt, lt } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import { idempotencyKeys } from "../../db/schemas/idempotency-keys";
 import { logger } from "./logger";
 
 const IDEMPOTENCY_TTL_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
+ * How long a delivered message stays deduplicated. The 2-minute claim only
+ * lets a crashed delivery be retried; after the work succeeded, a provider
+ * retry or a replay of the signed request (Blooio signatures stay valid for
+ * 300 s) must still be refused, or the agent replies and bills twice.
+ */
+const DELIVERED_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * Check if a message has already been processed within the TTL window.
@@ -43,13 +50,14 @@ export async function isAlreadyProcessed(key: string): Promise<boolean> {
 
 /**
  * Atomically claim a key for processing. Returns true if THIS caller claimed it.
- * Uses INSERT ... ON CONFLICT DO NOTHING so only one concurrent caller wins.
+ * Uses a conditional upsert so a live claim cannot be acquired again.
  * Unlike isAlreadyProcessed + markAsProcessed, this is a single atomic operation
  * with no TOCTOU race window.
  */
 export async function tryClaimForProcessing(key: string, source = "unknown"): Promise<boolean> {
   try {
-    const expires_at = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
+    const now = new Date();
+    const expires_at = new Date(now.getTime() + IDEMPOTENCY_TTL_MS);
     const rows = await dbWrite
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })
@@ -58,11 +66,11 @@ export async function tryClaimForProcessing(key: string, source = "unknown"): Pr
         set: { source, expires_at },
         // Reclaim keys whose TTL has passed: a crashed claimer must not block
         // retries until the cleanup cron runs. Live keys stay claimed.
-        where: sql`${idempotencyKeys.expires_at} < now()`,
+        setWhere: lt(idempotencyKeys.expires_at, now),
       })
       .returning({ key: idempotencyKeys.key });
 
-    // length === 1 means we inserted (claimed), 0 means key already exists (conflict)
+    // A returned row means inserted or reclaimed; a live conflict returns none.
     return rows.length === 1;
   } catch {
     logger.error("[Idempotency] Error claiming key", {
@@ -90,14 +98,17 @@ export async function processOnce<T>(
 ): Promise<ProcessOnceOutcome<T>> {
   const claimed = await tryClaimForProcessing(key, source);
   if (!claimed) return { status: "duplicate" };
+  let result: T;
   try {
-    return { status: "processed", result: await work() };
+    result = await work();
   } catch (error) {
     // error-policy:J2 the claim is released so the provider's retry is not
     // refused as a duplicate; the failure itself is rethrown unchanged.
     await releaseProcessingClaim(key);
     throw error;
   }
+  await markAsProcessed(key, source, DELIVERED_TTL_MS);
+  return { status: "processed", result };
 }
 
 /**
@@ -117,9 +128,13 @@ export async function releaseProcessingClaim(key: string): Promise<void> {
 /**
  * Mark a message as processed. Uses upsert to handle race conditions.
  */
-export async function markAsProcessed(key: string, source = "unknown"): Promise<void> {
+export async function markAsProcessed(
+  key: string,
+  source = "unknown",
+  ttlMs = IDEMPOTENCY_TTL_MS,
+): Promise<void> {
   try {
-    const expires_at = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
+    const expires_at = new Date(Date.now() + ttlMs);
     await dbWrite
       .insert(idempotencyKeys)
       .values({ key, source, expires_at })

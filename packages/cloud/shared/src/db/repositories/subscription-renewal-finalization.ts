@@ -252,6 +252,8 @@ export async function publishPaidRenewalInTransaction(
       settlementDetails: verified.settlementDetails,
       databaseNow: now,
     });
+    if (existing.subscription_revision === null)
+      renewalUnavailable("renewal_period_identity_mismatch");
     return { replayed: true, subscriptionRevision: existing.subscription_revision };
   }
   // Command start and all publication owners hold the organization lock. A replay above

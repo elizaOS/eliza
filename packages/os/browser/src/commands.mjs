@@ -1,692 +1,9 @@
 /** Executes fixed browser operations against explicit tabs and isolated-world snapshot references. */
+
+import { blockerSelectors, pageCommand } from "./page-command.mjs";
 import { BridgeError } from "./protocol.mjs";
 
-/**
- * Words on a control that commits a payment, sign-in, submission or other
- * irreversible step. A task policy can never click such a control; the person
- * presses it. Products that plan clicks should use this same vocabulary.
- */
-export const COMMIT_CONTROL =
-  /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i;
-
-export function pageCommand(command, snapshotId, validateOnly = false) {
-  const policy = command.taskPolicy;
-  const denied = () => ({
-    error: {
-      kind: "POLICY_BLOCKED",
-      message:
-        "This action requires the person or a new authorized task observation.",
-    },
-  });
-  if (
-    policy &&
-    (window !== window.top ||
-      location.origin !== policy.origin ||
-      Date.now() >= policy.expiresAt)
-  )
-    return denied();
-  const key = "__elizaBrowserControlV1";
-  const monitorKey = "__elizaBrowserObservationV1";
-  const watchKey = "__elizaTaskEffectWatchV1";
-  let monitor = globalThis[monitorKey];
-  if (!monitor || monitor.document !== document) {
-    monitor = {
-      document,
-      domRevision: 0,
-      inputRevision: 0,
-      ownedHosts: new WeakSet(),
-      editedFields: new WeakSet(),
-    };
-    monitor.recordMutations = (records) => {
-      if (
-        records.some(
-          (record) =>
-            !(
-              record.type === "childList" &&
-              record.target === document.documentElement &&
-              [...record.addedNodes, ...record.removedNodes].length > 0 &&
-              [...record.addedNodes, ...record.removedNodes].every((node) =>
-                monitor.ownedHosts.has(node),
-              )
-            ),
-        )
-      )
-        monitor.domRevision++;
-    };
-    monitor.observer = new MutationObserver(monitor.recordMutations);
-    monitor.observer.observe(document, {
-      subtree: true,
-      childList: true,
-      attributes: true,
-      characterData: true,
-    });
-    const input = (event) => {
-      monitor.inputRevision++;
-      if (
-        ["input", "change"].includes(event?.type) &&
-        event.target instanceof Element
-      )
-        monitor.editedFields.add(event.target);
-    };
-    document.addEventListener("beforeinput", input, true);
-    document.addEventListener("input", input, true);
-    document.addEventListener("change", input, true);
-    document.addEventListener(
-      "pointerdown",
-      (event) => {
-        if (event.isTrusted) input();
-      },
-      true,
-    );
-    globalThis[monitorKey] = monitor;
-  }
-  // Drain queued mutations synchronously as an effect may arrive before the
-  // MutationObserver microtask. Never store or return form values in this monitor.
-  monitor.recordMutations(monitor.observer.takeRecords());
-  const bounds = (node) => {
-    const rect = node.getBoundingClientRect();
-    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-  };
-  const viewport = () => ({
-    width: innerWidth,
-    height: innerHeight,
-    scrollX,
-    scrollY,
-    devicePixelRatio,
-    scale: visualViewport?.scale ?? 1,
-    offsetLeft: visualViewport?.offsetLeft ?? 0,
-    offsetTop: visualViewport?.offsetTop ?? 0,
-  });
-  // Shared by the snapshot and the commit guard so both name a node alike.
-  const readVisibleText = (root) => {
-    const visibleText = [];
-    const collectText = (node) => {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const visibility = node.parentElement
-          ? getComputedStyle(node.parentElement).visibility
-          : "visible";
-        if (
-          visibility !== "hidden" &&
-          visibility !== "collapse" &&
-          node.textContent.trim()
-        )
-          visibleText.push(node.textContent);
-        return;
-      }
-      if (!(node instanceof Element)) return;
-      if (
-        node.matches("input,textarea,select,script,style,noscript") ||
-        node.isContentEditable
-      )
-        return;
-      const style = getComputedStyle(node);
-      if (style.display === "none") return;
-      if (node instanceof HTMLDetailsElement && !node.open) {
-        const summary = node.querySelector(":scope > summary");
-        if (summary) collectText(summary);
-        return;
-      }
-      for (const child of node.childNodes) collectText(child);
-    };
-    collectText(root);
-    return visibleText.join("\n").trim();
-  };
-  // Accessible name in the usual order. Never reads a form control value
-  // except the visible caption of a button-type input.
-  const idText = (value) =>
-    (value || "")
-      .split(/\s+/)
-      .map((id) => id && document.getElementById(id))
-      .filter(Boolean)
-      .map((ref) => readVisibleText(ref) || ref.getAttribute("aria-label"))
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-  const accessibleName = (node) => {
-    const labelled = idText(node.getAttribute("aria-labelledby"));
-    if (labelled) return labelled;
-    const aria = node.getAttribute("aria-label")?.trim();
-    if (aria) return aria;
-    const labels = [...(node.labels ?? [])]
-      .map((label) => readVisibleText(label))
-      .filter(Boolean)
-      .join(" ");
-    if (labels) return labels;
-    if (
-      node instanceof HTMLInputElement &&
-      ["button", "submit", "reset"].includes(node.type)
-    )
-      return node.value || (node.type === "submit" ? "Submit" : "");
-    if (node instanceof HTMLInputElement && node.type === "image")
-      return node.alt || node.title || "";
-    if (node instanceof HTMLInputElement && node.type === "password")
-      return node.getAttribute("placeholder") || node.title || "Password";
-    if (
-      node instanceof HTMLInputElement ||
-      node instanceof HTMLTextAreaElement ||
-      node instanceof HTMLSelectElement ||
-      node.isContentEditable
-    )
-      return node.getAttribute("placeholder") || node.title || "";
-    return readVisibleText(node) || node.title || "";
-  };
-  if (command.subaction === "snapshot") {
-    // Marks fields whose value is a secret. The value itself is never read.
-    const sensitivity = (node) => {
-      const autocomplete = (node.getAttribute("autocomplete") || "")
-        .toLowerCase()
-        .split(/\s+/);
-      if (
-        (node instanceof HTMLInputElement && node.type === "password") ||
-        autocomplete.some((token) => token.endsWith("password"))
-      )
-        return "password";
-      if (autocomplete.includes("one-time-code")) return "one-time-code";
-      if (autocomplete.some((token) => token.startsWith("cc-")))
-        return "payment-card";
-      return null;
-    };
-    const controlState = (node) => {
-      const flag = (name) => node.getAttribute(name) === "true";
-      return {
-        focused: document.activeElement === node,
-        disabled: node.matches(":disabled") || flag("aria-disabled"),
-        ...(node instanceof HTMLInputElement &&
-        ["checkbox", "radio"].includes(node.type)
-          ? { checked: node.checked }
-          : node.hasAttribute("aria-checked")
-            ? { checked: flag("aria-checked") }
-            : {}),
-        ...(node.hasAttribute("aria-expanded")
-          ? { expanded: flag("aria-expanded") }
-          : {}),
-        required: node.required === true || flag("aria-required"),
-        invalid: flag("aria-invalid"),
-        // Field help and error text the page ties to this control.
-        description:
-          [
-            idText(node.getAttribute("aria-describedby")),
-            flag("aria-invalid")
-              ? idText(node.getAttribute("aria-errormessage"))
-              : "",
-          ]
-            .filter(Boolean)
-            .join(" ") || null,
-        sensitive: sensitivity(node),
-        ...(node instanceof HTMLInputElement ||
-        node instanceof HTMLSelectElement ||
-        node instanceof HTMLTextAreaElement ||
-        node.isContentEditable
-          ? { edited: monitor.editedFields.has(node) }
-          : {}),
-        // A select can have a valid choice whose internal value is empty.
-        // Only selection/occupancy leaves the page, never the field value.
-        ...(node instanceof HTMLSelectElement
-          ? {
-              hasInput:
-                node.selectedIndex >= 0 &&
-                !node.validity.valueMissing &&
-                !node.options[node.selectedIndex].disabled &&
-                (node.value !== "" || monitor.editedFields.has(node)),
-            }
-          : (node instanceof HTMLInputElement &&
-                ![
-                  "button",
-                  "submit",
-                  "reset",
-                  "image",
-                  "checkbox",
-                  "radio",
-                  "file",
-                  "hidden",
-                  "range",
-                  "color",
-                ].includes(node.type)) ||
-              node instanceof HTMLTextAreaElement
-            ? { hasInput: node.value !== "" }
-            : node.isContentEditable
-              ? { hasInput: (node.textContent ?? "").trim() !== "" }
-              : {}),
-      };
-    };
-    // A page can copy what was typed in a secret field into its own text, its
-    // title or a control's name. The values are compared here, in the page, and
-    // every copy is replaced before anything is returned. Very short values are
-    // not compared: they would match ordinary words.
-    const secrets = [
-      ...new Set(
-        [...document.querySelectorAll("input,textarea")]
-          .filter((node) => sensitivity(node) !== null)
-          .map((node) => node.value)
-          .filter((value) => typeof value === "string" && value.length >= 4),
-      ),
-    ].sort((left, right) => right.length - left.length);
-    const withoutSecrets = (value) =>
-      typeof value === "string"
-        ? secrets.reduce(
-            (text, secret) => text.split(secret).join("[hidden]"),
-            value,
-          )
-        : value;
-    const nodes = new Map();
-    const elements = [];
-    const candidates = document.querySelectorAll(
-      "a,button,input,textarea,select,[role=button],[role=textbox],[contenteditable=true],summary",
-    );
-    for (const node of candidates) {
-      if (!node.checkVisibility({ checkVisibilityCSS: true })) continue;
-      const id = String(nodes.size);
-      const geometry = bounds(node);
-      // This equality sentinel never leaves the isolated page realm.
-      nodes.set(id, {
-        node,
-        bounds: geometry,
-        value: typeof node.value === "string" ? node.value : null,
-      });
-      const state = controlState(node);
-      elements.push({
-        bounds: geometry,
-        id,
-        tag: node.tagName.toLowerCase(),
-        role: node.getAttribute("role"),
-        label: withoutSecrets(accessibleName(node)),
-        type: node.getAttribute("type"),
-        ...state,
-        description: withoutSecrets(state.description),
-        heading: node.querySelector("h1,h2,h3,h4,h5,h6")
-          ? withoutSecrets(
-              readVisibleText(node.querySelector("h1,h2,h3,h4,h5,h6")),
-            )
-          : null,
-        href:
-          node instanceof HTMLAnchorElement && /^https?:/.test(node.href)
-            ? node.href
-            : null,
-      });
-    }
-    globalThis[key] = {
-      snapshotId,
-      nodes,
-      document,
-      url: location.href,
-      domRevision: monitor.domRevision,
-      inputRevision: monitor.inputRevision,
-      viewport: viewport(),
-    };
-    // A submit or page change that a task fill or click set off in this
-    // document, under this binding. The watch below stopped it.
-    const violation = globalThis[watchKey]?.violation;
-    return {
-      ...(policy && violation && violation.scope === policy.guidanceScope
-        ? { effectViolation: violation.kind }
-        : {}),
-      url: location.href,
-      title: withoutSecrets(document.title),
-      readyState: document.readyState,
-      domRevision: monitor.domRevision,
-      inputRevision: monitor.inputRevision,
-      viewport: viewport(),
-      text: withoutSecrets(
-        readVisibleText(document.body ?? document.documentElement),
-      ),
-      complete: true,
-      omitted: [
-        "form control values and editable region contents (credential boundary)",
-        "page text, title and control names equal to the value of a password, code or card field",
-      ],
-      elements,
-    };
-  }
-  const state = globalThis[key];
-  if (
-    !state ||
-    state.snapshotId !== command.snapshotId ||
-    state.document !== document ||
-    state.url !== location.href ||
-    state.domRevision !== monitor.domRevision ||
-    state.inputRevision !== monitor.inputRevision ||
-    JSON.stringify(state.viewport) !== JSON.stringify(viewport())
-  )
-    return {
-      error: {
-        kind: "STALE_REF",
-        message: "Read a fresh snapshot of this tab.",
-      },
-    };
-  const recorded = state.nodes.get(command.nodeId);
-  const node = recorded?.node;
-  if (
-    !node?.isConnected ||
-    recorded.value !== (typeof node.value === "string" ? node.value : null) ||
-    JSON.stringify(recorded.bounds) !== JSON.stringify(bounds(node))
-  )
-    return {
-      error: {
-        kind: "STALE_REF",
-        message: "The referenced page element changed; read a fresh snapshot.",
-      },
-    };
-  if (policy) {
-    // The native host supplies reviewed target permissions; DOM text cannot
-    // grant an action. Re-check the actual node immediately before the effect.
-    if (
-      !policy.targets.some((target) => {
-        // A host can bind one action to the one reviewed control it chose.
-        if (
-          policy.expectedSelector !== undefined &&
-          target.selector !== policy.expectedSelector
-        )
-          return false;
-        const permission =
-          command.subaction === "fill" &&
-          policy.protectedValueKind === "verification-code"
-            ? "fill-code"
-            : command.subaction;
-        if (target.action !== permission) return false;
-        try {
-          const matches = document.querySelectorAll(target.selector);
-          return matches.length === 1 && matches[0] === node;
-        } catch {
-          return false;
-        }
-      })
-    )
-      return denied();
-    const label = [
-      accessibleName(node),
-      node.getAttribute("aria-label"),
-      node.textContent,
-      node.title,
-      node instanceof HTMLInputElement ? node.value : "",
-      ...[...(node.labels ?? [])].map((item) => item.textContent),
-    ].join(" ");
-    // A control that commits something stays with the person, whatever its
-    // element or role. Keep this literal equal to COMMIT_CONTROL above; the
-    // function runs in the page, so it cannot read a module constant.
-    if (
-      command.subaction === "click" &&
-      (node.matches(
-        "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
-      ) ||
-        /\b(pay|pays|paying|payments?|submit|confirm|sign\s*in|log\s*in|sign\s*up|verify|send|delete|remove|cancel|close\s+account|authori[sz]e|agree|accept|save|continue|proceed|buy|purchase|place\s+(?:my\s+|your\s+|the\s+)?order|order\s+now|check\s*out|schedule|transfer|donate|subscribe)\b/i.test(
-          label,
-        ))
-    )
-      return denied();
-    if (
-      command.subaction === "fill" &&
-      (!(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-      ) ||
-        (node instanceof HTMLInputElement &&
-          !["text", "email", "tel", "number", "search", "url", "date"].includes(
-            node.type,
-          )) ||
-        // A date field takes only a real calendar day, as YYYY-MM-DD.
-        (node instanceof HTMLInputElement &&
-          node.type === "date" &&
-          (!/^\d{4}-\d{2}-\d{2}$/.test(command.text) ||
-            command.text.startsWith("0000-") ||
-            Number.isNaN(Date.parse(`${command.text}T00:00:00Z`)) ||
-            new Date(`${command.text}T00:00:00Z`).toISOString().slice(0, 10) !==
-              command.text)) ||
-        (policy.protectedValueKind === "verification-code"
-          ? !(node instanceof HTMLInputElement) ||
-            node.autocomplete !== "one-time-code" ||
-            !/^[A-Za-z0-9]{4,12}$/.test(command.text)
-          : /(?:password|one-time-code|cc-)/i.test(node.autocomplete || "")))
-    )
-      return denied();
-  }
-  if (command.subaction === "fill" && (node.disabled || node.readOnly))
-    return denied();
-  // A control the provider disabled stays as the provider left it. A script
-  // click on an aria-disabled control would still run the page's handlers.
-  if (
-    policy &&
-    command.subaction === "click" &&
-    node.matches(':disabled,[aria-disabled="true"]')
-  )
-    return denied();
-  if (validateOnly) return { validated: true };
-  if (policy?.actionId) {
-    const feedback = globalThis.__elizaPageGuidanceV1;
-    if (
-      !feedback?.actionReady?.(
-        policy.actionId,
-        command.snapshotId,
-        command.nodeId,
-        command.subaction,
-      )
-    )
-      return denied();
-    feedback.markActed();
-  }
-  delete globalThis[key];
-  if (policy && ["click", "fill"].includes(command.subaction)) {
-    // A task fill or click must not submit a form or leave the page, also
-    // not through the page's own script (an auto-submitting code field, or
-    // a button that calls form.submit()). For 30 seconds, or until the next
-    // task fill or click, watch what the page does before the person takes
-    // over by activating a control:
-    // - a form submit or a page change to another document is stopped,
-    //   except a click on a link that opens that link;
-    // - a same-document address change (history.pushState) is recorded;
-    // - a fetch, XMLHttpRequest or beacon to the page's own site is recorded.
-    //   It cannot be stopped from here and may already have committed
-    //   something (a code field that verifies itself with fetch).
-    // Snapshots report the first of these, so the host treats the outcome as
-    // unknown and pauses the task. A request still in flight when a snapshot
-    // is read shows up in a later snapshot.
-    globalThis[watchKey]?.stop();
-    const anchor =
-      command.subaction === "click" ? node.closest("a[href]") : null;
-    let personAt = Number.NEGATIVE_INFINITY;
-    let activationAt = Number.POSITIVE_INFINITY;
-    const startedAt = performance.now();
-    const controller = new AbortController();
-    const watch = {
-      violation:
-        globalThis[watchKey]?.violation?.scope === policy.guidanceScope
-          ? (globalThis[watchKey]?.violation ?? null)
-          : null,
-      stop: () => controller.abort(),
-    };
-    // A person's activated control can finish after the short typing window.
-    // Stray taps, scrolling and ordinary typing do not create that handoff.
-    // Resource start times still expose older requests delivered afterward.
-    const byPerson = (at) =>
-      at >= activationAt || (at - personAt >= 0 && at - personAt <= 1500);
-    const record = (kind) => {
-      watch.violation ??= { kind, scope: policy.guidanceScope };
-    };
-    const report = (kind, event) => {
-      if (byPerson(performance.now())) return;
-      if (event.cancelable) event.preventDefault();
-      event.stopImmediatePropagation();
-      record(kind);
-    };
-    const options = { capture: true, signal: controller.signal };
-    const person = (event) => {
-      if (event.isTrusted) personAt = performance.now();
-    };
-    const personForms = new WeakSet();
-    window.addEventListener("pointerdown", person, options);
-    window.addEventListener("keydown", person, options);
-    const activate = (event) => {
-      if (!event.isTrusted || !(event.target instanceof Element)) return;
-      const target = event.target;
-      const control = target.closest(
-        'button,input[type="submit"],input[type="button"],input[type="reset"],a[href],[role="button"],[role="link"]',
-      );
-      if (control?.matches(':disabled,[aria-disabled="true"]')) return;
-      const keyboard = event.type === "keydown";
-      const fields =
-        "textarea,select,input:not([type=submit]):not([type=button]):not([type=reset])";
-      const field = target.isContentEditable || target.matches(fields);
-      // A custom control (no button element or button role) can send its form
-      // from script seconds later. Her press on such a control makes that form
-      // hers for the rest of this watch. Only an element that presents itself
-      // as a control counts: a widget role, a tabindex, an inline click
-      // handler, or a pointer cursor on the pressed element. A press on the
-      // form's own padding, on plain text, on a field, on a label, or on an
-      // element that wraps a field is a stray tap and releases nothing.
-      const form = target.closest("form");
-      if (
-        !keyboard &&
-        form &&
-        target !== form &&
-        !field &&
-        !target.closest("label")
-      ) {
-        for (
-          let item = target;
-          item && item !== form;
-          item = item.parentElement
-        ) {
-          if (item.querySelector(fields) || item.querySelector("label")) break;
-          if (
-            item === control ||
-            item.matches(
-              '[tabindex],[onclick],[role="menuitem"],[role="option"],[role="switch"],[role="checkbox"],[role="radio"],[role="tab"]',
-            ) ||
-            (item === target && getComputedStyle(item).cursor === "pointer")
-          ) {
-            if (!item.matches('[aria-disabled="true"]')) personForms.add(form);
-            break;
-          }
-        }
-      }
-      const enterForm =
-        event.key === "Enter" &&
-        target instanceof HTMLInputElement &&
-        target.form;
-      const controlKey =
-        control &&
-        !field &&
-        (event.key === "Enter" ||
-          (event.key === " " && !control.matches('a[href],[role="link"]')));
-      if (keyboard ? !controlKey && !enterForm : !control) return;
-      activationAt = Math.min(activationAt, performance.now());
-    };
-    window.addEventListener("click", activate, options);
-    window.addEventListener("keydown", activate, options);
-    window.addEventListener(
-      "submit",
-      (event) => {
-        if (!personForms.has(event.target)) report("submit", event);
-      },
-      options,
-    );
-    globalThis.navigation?.addEventListener(
-      "navigate",
-      (event) => {
-        if (
-          event.userInitiated ||
-          (anchor &&
-            !event.formData &&
-            event.destination.url === anchor.href) ||
-          personForms.has(event.sourceElement?.form ?? event.sourceElement)
-        )
-          return;
-        if (event.destination.sameDocument) {
-          // Recorded, not stopped: the page's own state has already moved.
-          if (!byPerson(performance.now())) record("navigation");
-          return;
-        }
-        report(event.formData ? "submit" : "navigation", event);
-      },
-      { signal: controller.signal },
-    );
-    // The page's own site, without public-suffix data: a request host counts
-    // when its last two or its last three labels match the page's. This errs
-    // toward recording (a.co.uk and b.co.uk match), never toward missing a
-    // sibling host such as api.dkb.de for banking.dkb.de.
-    const tail = (host, count) => host.split(".").slice(-count).join(".");
-    const sameSite = (host) =>
-      host === location.hostname ||
-      tail(host, 2) === tail(location.hostname, 2) ||
-      tail(host, 3) === tail(location.hostname, 3);
-    if (typeof PerformanceObserver === "function") {
-      const requests = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (
-            entry.startTime < startedAt ||
-            !["fetch", "xmlhttprequest", "beacon"].includes(
-              entry.initiatorType,
-            ) ||
-            byPerson(entry.startTime)
-          )
-            continue;
-          let host = "";
-          try {
-            host = new URL(entry.name).hostname;
-          } catch {
-            continue;
-          }
-          if (sameSite(host)) {
-            record("request");
-            break;
-          }
-        }
-      });
-      requests.observe({ type: "resource" });
-      controller.signal.addEventListener("abort", () => requests.disconnect());
-    }
-    setTimeout(() => controller.abort(), 30000);
-    globalThis[watchKey] = watch;
-  }
-  if (command.subaction === "click") {
-    node.click();
-  } else if (command.subaction === "fill") {
-    if (
-      !(
-        node instanceof HTMLInputElement ||
-        node instanceof HTMLTextAreaElement ||
-        node instanceof HTMLSelectElement
-      ) ||
-      node.disabled ||
-      node.readOnly
-    )
-      return {
-        error: {
-          kind: "UNSUPPORTED",
-          message: "The target is not an editable form control.",
-        },
-      };
-    const prototype =
-      node instanceof HTMLInputElement
-        ? HTMLInputElement.prototype
-        : node instanceof HTMLTextAreaElement
-          ? HTMLTextAreaElement.prototype
-          : HTMLSelectElement.prototype;
-    Object.getOwnPropertyDescriptor(prototype, "value").set.call(
-      node,
-      command.text,
-    );
-    node.dispatchEvent(new Event("input", { bubbles: true }));
-    node.dispatchEvent(new Event("change", { bubbles: true }));
-  } else if (command.subaction === "scroll") {
-    node.scrollBy({
-      top:
-        command.direction === "up"
-          ? -500
-          : command.direction === "down"
-            ? 500
-            : 0,
-      left:
-        command.direction === "left"
-          ? -500
-          : command.direction === "right"
-            ? 500
-            : 0,
-      behavior: "instant",
-    });
-  }
-  return { dispatched: true, completed: false, requiresReadback: true };
-}
+export { COMMIT_CONTROL, pageCommand } from "./page-command.mjs";
 
 /** Resolves required browser context without admitting or performing an effect. */
 export async function prepareCommand(api, command) {
@@ -784,6 +101,7 @@ export async function executeCommand(
       throw new BridgeError(
         "UNAVAILABLE",
         "The exact browser tab is still loading; read it again without repeating navigation.",
+        "page-loading",
       );
   }
   if (!/^https?:/.test(tab.url ?? ""))
@@ -799,9 +117,18 @@ export async function executeCommand(
   else if (action === "reload") await effect(() => api.tabs.reload(tabId));
   else if (action === "snapshot") {
     const snapshotId = crypto.randomUUID();
-    const before = (
-      await read(() => api.webNavigation.getAllFrames({ tabId }))
-    )?.filter((frame) => !command.taskPolicy || frame.frameId === 0);
+    // The page she sees is the tab's active document. Chromium also lists documents it has
+    // not shown (a prerendered search warmup, a cached page); script injection never reaches
+    // them, so counting them failed every read while one was attached.
+    const pageFrames = (inventory) =>
+      inventory?.filter(
+        (frame) =>
+          (frame.documentLifecycle ?? "active") === "active" &&
+          (!command.taskPolicy || frame.frameId === 0),
+      );
+    const before = pageFrames(
+      await read(() => api.webNavigation.getAllFrames({ tabId })),
+    );
     if (
       !before?.length ||
       before.some((frame) => frame.errorOccurred || !frame.documentId)
@@ -809,6 +136,7 @@ export async function executeCommand(
       throw new BridgeError(
         "INCOMPLETE_SNAPSHOT",
         "The browser could not inventory every frame document.",
+        "frame-inventory-incomplete",
       );
     const frames = await read(() =>
       api.scripting.executeScript({
@@ -820,9 +148,9 @@ export async function executeCommand(
         world: "ISOLATED",
       }),
     );
-    const after = (
-      await read(() => api.webNavigation.getAllFrames({ tabId }))
-    )?.filter((frame) => !command.taskPolicy || frame.frameId === 0);
+    const after = pageFrames(
+      await read(() => api.webNavigation.getAllFrames({ tabId })),
+    );
     if (
       !after ||
       before.length !== after.length ||
@@ -844,6 +172,7 @@ export async function executeCommand(
       throw new BridgeError(
         "INCOMPLETE_SNAPSHOT",
         "A frame was inaccessible or changed during the read; no partial snapshot is returned.",
+        "frame-identity-changed",
       );
     return {
       id: command.id,
@@ -853,6 +182,7 @@ export async function executeCommand(
           throw new BridgeError(
             "INCOMPLETE_SNAPSHOT",
             "A frame could not be read completely; no partial snapshot is returned.",
+            "frame-read-incomplete",
           );
         return {
           frameId,
@@ -862,6 +192,10 @@ export async function executeCommand(
             ...element,
             selector: `${snapshotId}:${frameId}:${id}`,
           })),
+          blockers: blockerSelectors(
+            result.blockers,
+            `${snapshotId}:${frameId}`,
+          ),
         };
       }),
     };

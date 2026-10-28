@@ -9,6 +9,7 @@ apply plugin: 'com.android.application'
 // project lives outside the eliza tree and the relative walk overshoots.
 // Keep the variable name and single definition, or that pin silently misses.
 def elizaRepoRoot = rootProject.projectDir.toPath().resolve('../../../..').normalize().toFile()
+apply from: new File(elizaRepoRoot, 'packages/app/platforms/android/runtime-abis.gradle')
 def elizaVoiceFfiIncludeDir = System.getenv('ELIZA_INFERENCE_FFI_INCLUDE_DIR')
     ? new File(System.getenv('ELIZA_INFERENCE_FFI_INCLUDE_DIR'))
     : new File(elizaRepoRoot, 'plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/include')
@@ -26,12 +27,18 @@ def resolveElizaVoiceArm64SourceDir = {
 }
 
 def resolveElizaVoiceProbePrebuilt = {
-    def sourceDir = resolveElizaVoiceArm64SourceDir()
-    if (sourceDir) {
-        def sourcePrebuilt = new File(sourceDir.toString(), 'libelizainference.so')
-        if (sourcePrebuilt.isFile()) return sourcePrebuilt
+    def abis = android.defaultConfig.ndk.abiFilters ?: ['arm64-v8a', 'x86_64']
+    for (def abi : abis) {
+        def sourceDir = abi == 'arm64-v8a' ? resolveElizaVoiceArm64SourceDir() :
+            (project.findProperty("eliza.mtp.android.libdir.${abi}") ?: System.getenv("ELIZA_MTP_ANDROID_LIBDIR_${abi.replace('-', '_').toUpperCase()}"))
+        if (sourceDir) {
+            def sourcePrebuilt = new File(sourceDir.toString(), 'libelizainference.so')
+            if (sourcePrebuilt.isFile()) return sourcePrebuilt
+        }
+        def stagedPrebuilt = file("src/main/jniLibs/${abi}/libelizainference.so")
+        if (stagedPrebuilt.isFile()) return stagedPrebuilt
     }
-    return file("src/main/jniLibs/arm64-v8a/libelizainference.so")
+    return file("src/main/jniLibs/${abis.first()}/libelizainference.so")
 }
 
 android {
@@ -71,6 +78,11 @@ android {
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
         versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // libelizainference ASR decode threads; ElizaVoiceNative exports them
+        // (and ELIZA_ASR_BACKEND=ggml, Phonon-2 being the only ASR) before
+        // loading the library. Empty means one per big core, measured on the device.
+        def asrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
+        buildConfigField "String", "ELIZA_ASR_THREADS", "\"${asrThreads ==~ /[0-9]{1,2}/ ? asrThreads : ''}\""
         // AOSP-only build gate. The ElizaOS AOSP product build sets
         // -PelizaAospBuild=true via scripts/elizaos/build-aosp.ts; the
         // Capacitor APK build path (`bun run build:android`) leaves it
@@ -225,7 +237,7 @@ android {
     // writing them to disk as `.tar.gz` so PGlite's runtime loader
     // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
     androidResources {
-        noCompress += ['gguf', 'so']
+        noCompress += ['gguf', 'lex', 'so']
     }
 
     compileOptions {
@@ -356,10 +368,11 @@ task copyForkLlamaLib {
             return
         }
         def stagedAbis = [] as Set
-        def requiredAbis = project.ext.elizaRequiredJniAbis
+        def selectedAbis = android.defaultConfig.ndk.abiFilters
+        def requiredAbis = project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }
         int totalCopied = 0
         boolean stagedKernels = false
-        project.ext.elizaForkLlamaAbis.each { abi ->
+        project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each { abi ->
             def libDir = resolveForkLlamaLibDir(abi)
             if (!libDir) {
                 // No fresh source configured. If the fused lib set is already
@@ -581,6 +594,7 @@ repositories {
 }
 
 dependencies {
+    implementation project(':voice-assets')
     implementation "com.squareup.okhttp3:okhttp:5.3.2"
     implementation "com.google.code.gson:gson:2.13.2"
     implementation fileTree(include: ['*.jar'], dir: 'libs')

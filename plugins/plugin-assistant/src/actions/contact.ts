@@ -227,8 +227,10 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     if (typeof value === "string") {
       const result: Record<string, string> = {};
       for (const entry of value.split(",")) {
-        const [key, val] = entry.split(":").map((s) => s.trim());
-        if (key && val) result[key] = val;
+        const [key, ...rest] = entry.split(":");
+        const k = key?.trim();
+        const v = rest.join(":").trim();
+        if (k && v) result[k] = v;
       }
       return Object.keys(result).length > 0 ? result : undefined;
     }
@@ -1023,11 +1025,17 @@ export function createContactActions(dependencies: ContactActionDependencies): {
       );
     }
 
-    let existing: Entity | null = null;
+    let existing: Entity | null;
     try {
       existing = await runtime.getEntityById(entityId as UUID);
-    } catch {
-      existing = null;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      runtime.reportError("contact:update:lookup", error, { entityId });
+      return fail(
+        `Failed to load contact for update: ${errMsg}`,
+        error instanceof ElizaError ? error.code : "UPDATE_FAILED",
+        "update",
+      );
     }
     if (!existing) {
       return fail(`Contact ${entityId} was not found.`, "NOT_FOUND", "update");
@@ -1548,6 +1556,9 @@ export function createContactActions(dependencies: ContactActionDependencies): {
     // Path B: DELETE_CONTACT semantics — id-based with runtime.deleteEntities.
     try {
       await rt.deleteEntities?.([entityId as UUID]);
+      // The contact service serves name lookups from its cache; drop the
+      // deleted entity there too, or later name operations find it again.
+      await relationships?.removeContact?.(entityId as UUID);
       return {
         text: `Deleted ${deleteTarget}.`,
         success: true,

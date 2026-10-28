@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { apiKeys } from "../../db/schemas/api-keys";
 import type { RouteParams } from "../api/hono-next-style-params";
+import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import {
   consumeInferenceRateLimit,
   InferenceAdmissionGateUnavailableError,
@@ -29,9 +30,19 @@ import {
   sameOrganizationPolicyStamp,
 } from "../services/organization-policy-stamp";
 import { requireOrganizationRateTier } from "../services/organization-quota-policy";
+import { enforcePlanRequestLimit } from "../services/plan-request-limiter";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
 import { checkRateLimitRedis, type RateLimitResult } from "./rate-limit-redis";
+
+function durableRateStateSelected(): boolean {
+  const backend = getCloudAwareEnv().CLOUD_RATE_STATE_BACKEND;
+  return Boolean(backend && backend !== "redis");
+}
+
+function sharedRateStateEnabled(): boolean {
+  return durableRateStateSelected() || getCloudAwareEnv().REDIS_RATE_LIMITING === "true";
+}
 
 interface RateLimitConfig {
   windowMs: number; // Time window in milliseconds
@@ -86,7 +97,7 @@ function validateRateLimitConfig() {
   }
 
   if (process.env.NODE_ENV === "production") {
-    if (process.env.REDIS_RATE_LIMITING !== "true") {
+    if (!sharedRateStateEnabled()) {
       // ⚠️  IMPORTANT: On a single-server VPS, in-memory rate limiting is safe
       // because there is only one process. Multi-instance/serverless deployments
       // SHOULD configure Redis so limits are shared across instances.
@@ -254,7 +265,7 @@ export async function checkRateLimitAsync(
   resetAt: number;
   retryAfter?: number;
 }> {
-  const useRedis = process.env.REDIS_RATE_LIMITING === "true";
+  const useRedis = sharedRateStateEnabled();
   const keyGenerator = config.keyGenerator || getDefaultKey;
   const key = keyGenerator(request);
 
@@ -296,6 +307,7 @@ export function rateLimitExceededPayload(
     code: "rate_limit_exceeded";
     message: string;
     retryAfter?: number;
+    retryAfterSeconds: number;
   };
   headers: Record<string, string>;
 } {
@@ -305,6 +317,8 @@ export function rateLimitExceededPayload(
     code: "rate_limit_exceeded" as const,
     message: `Rate limit exceeded. Maximum ${maxRequests} requests per ${Math.ceil(windowMs / 1000)} seconds.`,
     retryAfter: result.retryAfter,
+    // Native clients read retry timing from the body only (no headers).
+    retryAfterSeconds: result.retryAfter ?? 60,
   };
   const headers: Record<string, string> = {
     "X-RateLimit-Limit": maxRequests.toString(),
@@ -346,7 +360,12 @@ export async function enforceMcpOrganizationRateLimit(
   const key = mcpOrgRateLimitRedisKey(organizationId, integrationSlug);
   const result = await checkRateLimitRedis(key, windowMs, maxRequests);
   if (result.allowed) return null;
-  return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
+  return rateLimitExceededResponse(
+    result,
+    maxRequests,
+    windowMs,
+    durableRateStateSelected() ? "durable-object" : "redis",
+  );
 }
 
 /**
@@ -480,6 +499,11 @@ export async function readApiKeyRateLimit(
  *
  * With `apiKeyId`, the key's own `rate_limit` (requests per minute across all
  * endpoints) is enforced as a cap under the plan tier in the same decision.
+ *
+ * Completions first pass the configured plan burst and sustained buckets
+ * (`plan-request-limiter`). That check is in memory and runs before the
+ * policy transaction, so a refused request does no database or Durable Object
+ * work and an admitted one gains no round trip.
  */
 export async function enforceOrgRateLimit(
   organizationId: string,
@@ -491,9 +515,59 @@ export async function enforceOrgRateLimit(
     config?: OrgRateLimitConfig;
     /** Presenting API key; its `rate_limit` caps requests under the plan tier. */
     apiKeyId?: string | null;
+    /** Authenticated user; with the organization and plan it keys the plan buckets. */
+    userId?: string | null;
+    fundedBudget?: {
+      policy: import("../services/inference-funded-budget-admission").InferenceBudgetPolicy;
+      credential: import("../services/inference-credential-revocation").InferenceCredentialCheck;
+      requestId: string;
+      onReceipt(receipt: string): void;
+    };
   } = {},
 ): Promise<Response | null> {
+  if (endpointType === "completions") {
+    const planLimited = enforcePlanRequestLimit({
+      organizationId,
+      userId: options.userId,
+      planKey: options.config?.planKey,
+      planEffectiveUntil: options.config?.authority?.effectiveUntil,
+    });
+    if (planLimited) return planLimited;
+  }
   try {
+    if (options.fundedBudget) {
+      const { inferenceBudgetGateRequest, isFundedBudgetAdmissionEnabled } = await import(
+        "../services/inference-funded-budget-admission"
+      );
+      const proof = options.fundedBudget;
+      if (!isFundedBudgetAdmissionEnabled() || proof.policy.organizationId !== organizationId)
+        return rateLimitUnavailableResponse();
+      try {
+        const result = await inferenceBudgetGateRequest<{ rateReceipt?: string }>(
+          organizationId,
+          "/budget/rate",
+          {
+            requestId: proof.requestId,
+            policyEpoch: proof.policy.epoch,
+            policyGeneration: proof.policy.policyGeneration,
+            credential: proof.credential,
+            endpointType,
+            windowMs: 60_000,
+          },
+        );
+        if (typeof result.rateReceipt !== "string") return rateLimitUnavailableResponse();
+        proof.onReceipt(result.rateReceipt);
+        return null;
+      } catch (error) {
+        const { RateLimitError } = await import("../api/errors");
+        if (error instanceof RateLimitError)
+          return Response.json(
+            { error: "Rate limit exceeded" },
+            { status: 429, headers: { "Retry-After": "60" } },
+          );
+        throw error;
+      }
+    }
     const admitOrganizationPolicy = options.cacheOnly
       ? withOrganizationPolicyReadAdmission
       : withOrganizationPolicyAdmission;
@@ -517,6 +591,60 @@ export async function enforceOrgRateLimit(
         // The key authenticated this request but is gone from the primary
         // (revoked or deleted mid-flight): refuse rather than drop its cap.
         if (apiKeyCap === "missing") return rateLimitUnavailableResponse();
+        const { readInferenceBudgetPolicy, inferenceBudgetGateRequest } = await import(
+          "../services/inference-funded-budget-admission"
+        );
+        const budgetPolicy = await readInferenceBudgetPolicy(tx, organizationId, policy);
+        if (budgetPolicy) {
+          // Compatibility callers use the same counters as delegated callers.
+          // Their current primary read supplies the key cap; this signature
+          // grants only a rate decision, never permission to spend or dispatch.
+          const { signBudgetEffect } = await import(
+            "../services/inference-funding-budget-protocol"
+          );
+          const { getCloudAwareEnv } = await import("../runtime/cloud-bindings");
+          const signingSecret = getCloudAwareEnv().INFERENCE_FUNDING_BUDGET_SEAL_SECRET;
+          if (!signingSecret) return rateLimitUnavailableResponse();
+          const requestId = crypto.randomUUID();
+          const windowStartedAt = Math.floor(Date.now() / 60_000) * 60_000;
+          const keyId = apiKeyCap?.id ?? null;
+          const keyLimit = apiKeyCap?.maxRequests ?? null;
+          const signature = await signBudgetEffect(
+            JSON.stringify([
+              "inference-budget-primary-rate-v1",
+              organizationId,
+              requestId,
+              budgetPolicy.epoch,
+              budgetPolicy.policyGeneration,
+              endpointType,
+              keyId,
+              keyLimit,
+              windowStartedAt,
+            ]),
+            signingSecret,
+          );
+          try {
+            await inferenceBudgetGateRequest(organizationId, "/budget/authoritative-rate", {
+              requestId,
+              policyEpoch: budgetPolicy.epoch,
+              policyGeneration: budgetPolicy.policyGeneration,
+              endpointType,
+              keyId,
+              keyLimit,
+              windowStartedAt,
+              signature,
+            });
+            return null;
+          } catch (error) {
+            const { RateLimitError } = await import("../api/errors");
+            if (error instanceof RateLimitError)
+              return Response.json(
+                { error: "Rate limit exceeded" },
+                { status: 429, headers: { "Retry-After": "60" } },
+              );
+            throw error;
+          }
+        }
         if (options.cacheOnly) {
           // A supplied observation must still agree with current authority.
           // With no observation, the locked primary read already owns the
@@ -560,8 +688,8 @@ export async function enforceOrgRateLimit(
           }
         }
 
-        // Mirror withRateLimit: skip when Redis is not configured (dev/staging)
-        if (process.env.REDIS_RATE_LIMITING !== "true") return null;
+        // Mirror withRateLimit: skip when no shared backend is selected (development).
+        if (!sharedRateStateEnabled()) return null;
 
         if (apiKeyCap) {
           const keyResult = await checkRateLimitRedis(
@@ -574,11 +702,11 @@ export async function enforceOrgRateLimit(
               keyResult,
               apiKeyCap.maxRequests,
               API_KEY_RATE_LIMIT_WINDOW_MS,
-              "redis",
+              durableRateStateSelected() ? "durable-object" : "redis",
             );
         }
 
-        const leaseEnabled = isHotPathCachesEnabled();
+        const leaseEnabled = !durableRateStateSelected() && isHotPathCachesEnabled();
         const leaseKey = `${organizationId}:${endpointType}`;
         const now = Date.now();
         // Read the lease even when the flag is off: a flag flip must still flush any
@@ -646,7 +774,12 @@ export async function enforceOrgRateLimit(
           orgRateLimitLeases.delete(leaseKey);
         }
         if (result.allowed) return null;
-        return rateLimitExceededResponse(result, maxRequests, windowMs, "redis");
+        return rateLimitExceededResponse(
+          result,
+          maxRequests,
+          windowMs,
+          durableRateStateSelected() ? "durable-object" : "redis",
+        );
       },
     );
   } catch (error) {
@@ -701,7 +834,7 @@ export function withRateLimit<T extends Record<string, string | string[]> = Reco
   config: RateLimitConfig,
 ) {
   return async (request: Request, context?: RouteParams<T>): Promise<Response> => {
-    const useRedis = process.env.REDIS_RATE_LIMITING === "true";
+    const useRedis = sharedRateStateEnabled();
     const keyGenerator = config.keyGenerator || getDefaultKey;
     const key = keyGenerator(request);
 
@@ -723,7 +856,11 @@ export function withRateLimit<T extends Record<string, string | string[]> = Reco
       "X-RateLimit-Limit": config.maxRequests.toString(),
       "X-RateLimit-Remaining": result.remaining.toString(),
       "X-RateLimit-Reset": new Date(result.resetAt).toISOString(),
-      "X-RateLimit-Policy": useRedis ? "redis" : "in-memory",
+      "X-RateLimit-Policy": durableRateStateSelected()
+        ? "durable-object"
+        : useRedis
+          ? "redis"
+          : "in-memory",
     };
 
     if (!result.allowed) {
@@ -731,7 +868,11 @@ export function withRateLimit<T extends Record<string, string | string[]> = Reco
         `[Rate Limit] Request blocked for key=${maskKeyForLogging(key)}, limit=${config.maxRequests}, window=${config.windowMs}ms`,
       );
 
-      const policy: "redis" | "in-memory" = useRedis ? "redis" : "in-memory";
+      const policy: RateLimitPolicy = durableRateStateSelected()
+        ? "durable-object"
+        : useRedis
+          ? "redis"
+          : "in-memory";
       return rateLimitExceededResponse(result, config.maxRequests, config.windowMs, policy);
     }
 

@@ -362,6 +362,26 @@ export class WorkflowsDomain {
     return nextRunMs === null ? null : new Date(nextRunMs).toISOString();
   }
 
+  /**
+   * Store the scheduler cursor on the workflow as it is now, not on the copy
+   * the tick read before its runs: the owner may have paused or edited the
+   * workflow while a run was in flight, and writing the old copy back would
+   * undo that.
+   */
+  private async persistWorkflowSchedulerState(
+    workflow: LifeOpsWorkflowDefinition,
+    state: LifeOpsWorkflowSchedulerState,
+  ): Promise<void> {
+    const current = await this.ctx.repository.getWorkflow(
+      this.ctx.agentId(),
+      workflow.id,
+    );
+    if (!current) return;
+    await this.ctx.repository.updateWorkflow(
+      this.withWorkflowSchedulerState(current, state),
+    );
+  }
+
   withWorkflowSchedulerState(
     workflow: LifeOpsWorkflowDefinition,
     state: LifeOpsWorkflowSchedulerState | null,
@@ -457,7 +477,7 @@ export class WorkflowsDomain {
         continue;
       }
 
-      let nextWorkflow = workflow;
+      const nextWorkflow = workflow;
       const existingSchedulerState =
         this.readWorkflowSchedulerState(nextWorkflow);
       let schedulerState =
@@ -534,7 +554,7 @@ export class WorkflowsDomain {
         }
         runs.push(run);
         await this.deps.emitWorkflowRunNudge(nextWorkflow, run);
-        const nextDueAt =
+        let nextDueAt =
           nextWorkflow.schedule.kind === "relative_to_wake" ||
           nextWorkflow.schedule.kind === "relative_to_bedtime" ||
           nextWorkflow.schedule.kind === "during_morning" ||
@@ -549,6 +569,16 @@ export class WorkflowsDomain {
                 nowMs: Date.parse(args.now),
               })
             : this.computeWorkflowNextDueAt(nextWorkflow, dueAt);
+        if (
+          (nextWorkflow.schedule.kind === "interval" ||
+            nextWorkflow.schedule.kind === "cron") &&
+          nextDueAt &&
+          Date.parse(nextDueAt) <= nowMs
+        ) {
+          // The agent was off for more slots: count from now, so the gap
+          // runs the workflow once, not once per missed slot.
+          nextDueAt = this.computeWorkflowNextDueAt(nextWorkflow, args.now);
+        }
         schedulerState = {
           managedBy: "task_worker",
           nextDueAt,
@@ -569,11 +599,7 @@ export class WorkflowsDomain {
       }
 
       if (stateChanged) {
-        nextWorkflow = this.withWorkflowSchedulerState(
-          nextWorkflow,
-          schedulerState,
-        );
-        await this.ctx.repository.updateWorkflow(nextWorkflow);
+        await this.persistWorkflowSchedulerState(nextWorkflow, schedulerState);
       }
     }
 
@@ -607,7 +633,7 @@ export class WorkflowsDomain {
         continue;
       }
       const eventSchedule = workflow.schedule as WorkflowEventSchedule;
-      let nextWorkflow = workflow;
+      const nextWorkflow = workflow;
       const existingState = this.readWorkflowSchedulerState(nextWorkflow);
       let schedulerState: LifeOpsWorkflowSchedulerState = existingState ?? {
         managedBy: "task_worker",
@@ -808,11 +834,7 @@ export class WorkflowsDomain {
       }
 
       if (stateChanged) {
-        nextWorkflow = this.withWorkflowSchedulerState(
-          nextWorkflow,
-          schedulerState,
-        );
-        await this.ctx.repository.updateWorkflow(nextWorkflow);
+        await this.persistWorkflowSchedulerState(nextWorkflow, schedulerState);
       }
     }
 
@@ -947,9 +969,23 @@ export class WorkflowsDomain {
             },
       updatedAt: new Date().toISOString(),
     };
+    // A resume anchors a recurring schedule and an event trigger at the
+    // resume, like an edit anchors them at the edit: the cursor kept while
+    // paused would otherwise replay every slot, or every matching event, that
+    // came in between on the first tick. A one-shot schedule keeps its
+    // cursor: re-seeding would re-arm a slot that already ran. A manual
+    // trigger has no cursor.
+    const resumed =
+      current.status !== "active" &&
+      nextDefinition.status === "active" &&
+      (nextDefinition.triggerType === "event" ||
+        (nextDefinition.triggerType === "schedule" &&
+          nextDefinition.schedule.kind !== "once" &&
+          nextDefinition.schedule.kind !== "manual"));
     if (
       request.triggerType !== undefined ||
       request.schedule !== undefined ||
+      resumed ||
       this.readWorkflowSchedulerState(nextDefinition) === null
     ) {
       nextDefinition = this.initializeWorkflowSchedulerState(nextDefinition);

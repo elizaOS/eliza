@@ -72,6 +72,7 @@ import {
   canRepairIncompleteHistorySelection,
   HISTORY_REFERENCE_PREFIX,
   type HistoryDiscovery,
+  historyReferenceNotice,
   historyReferences,
   loadHistoryReferences,
   projectReviewedHistory,
@@ -85,6 +86,7 @@ import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
 import {
   createSourceReplySnapshot,
+  isNativeReplyPartsCandidate,
   resolveLiteralSourceReply,
   SOURCE_REPLY_SCHEMA,
   type SourceReplyRendering,
@@ -155,6 +157,17 @@ export function directCodingResponseHandlerResult(): GenerateTextResult {
     ],
     finishReason: "tool_calls",
   };
+}
+
+/** Echo a read decision as model output. Its requests are fulfilled or
+ * rejected; echoing them invites the same read again. */
+function previousContextReadDecision(
+  decision: Record<string, unknown> | null,
+): string[] {
+  return [
+    "previous_context_read_decision:",
+    JSON.stringify({ ...decision, contextRequests: [] }),
+  ];
 }
 
 export async function generateStage1Decision(
@@ -317,7 +330,7 @@ export async function generateStage1Decision(
     const snapshot = sourceReplySnapshot;
     if (!snapshot) return bound;
     const resolveParts = (parsed: Record<string, unknown>) => {
-      if (!Array.isArray(parsed.replyText)) return parsed;
+      if (!isNativeReplyPartsCandidate(parsed.replyText)) return parsed;
       const resolved = resolveLiteralSourceReply(
         discovery.context,
         snapshot,
@@ -339,7 +352,8 @@ export async function generateStage1Decision(
       bound.toolCalls.length === 0
     ) {
       const parsed = extractMessageHandlerRawParsed(bound);
-      if (!parsed || !Array.isArray(parsed.replyText)) return bound;
+      if (!parsed || !isNativeReplyPartsCandidate(parsed.replyText))
+        return bound;
       const resolved = resolveParts(parsed);
       if (resolved === parsed) return bound;
       const text = JSON.stringify(resolved);
@@ -364,7 +378,8 @@ export async function generateStage1Decision(
       toolCalls: bound.toolCalls.map((entry) => {
         if (entry?.name !== HANDLE_RESPONSE_TOOL_NAME) return entry;
         const parsed = parseToolArguments(entry.arguments);
-        if (!parsed || !Array.isArray(parsed.replyText)) return entry;
+        if (!parsed || !isNativeReplyPartsCandidate(parsed.replyText))
+          return entry;
         const resolved = resolveParts(parsed);
         if (resolved === parsed || typeof resolved.replyText !== "string")
           return entry;
@@ -728,7 +743,7 @@ export async function generateStage1Decision(
       sourceReplyRendering = undefined;
       params.signal.throwIfAborted();
       const correction =
-        "Your previous response used an invalid source quote. No response fields or actions were accepted. Return a fresh HANDLE_RESPONSE decision. A source part must copy an entire supplied original exactly, including whitespace; omit source parts if quoting is unnecessary. Keep authored prose in text parts. Preserve the user's requested intent and required approval boundaries.";
+        "Your previous replyText did not match the ordered reply-parts contract or used an invalid source quote. No response fields or actions were accepted. Return a fresh HANDLE_RESPONSE decision with replyText as an array of reply parts with kind text or source and a string value, never a JSON-encoded string. A source part must copy an entire supplied original exactly, including whitespace; omit source parts if quoting is unnecessary. Keep authored prose in text parts. Preserve the user's requested intent and required approval boundaries.";
       const messages = [
         ...params.messages,
         { role: "user" as const, content: correction },
@@ -828,6 +843,12 @@ export async function generateStage1Decision(
   // Terminal review shares a budget with direct IGNORE review below. A
   // repeated terminal decision still passes through ordinary routing.
   let terminalDecisionReviewed = false;
+  // A review that answers STOP/IGNORE with RESPOND settles that this addressed
+  // turn is answered; a later read or repair can change how, not end it in
+  // silence. A context read is not the answer; the next decision is. STOP
+  // remains explicit disengagement.
+  let terminalReviewAnswerPending = false;
+  let silenceRejected = false;
   const terminalReaskEnabled =
     readStage1TerminalReaskSetting(args.runtime) ?? directMessageChannel;
   if (!args.codingMode && !hasContextReadToolCall(rawMessageHandler)) {
@@ -852,6 +873,8 @@ export async function generateStage1Decision(
         "[message] Stage 1 decision receives one response-contract review",
       );
       terminalDecisionReviewed = true;
+      terminalReviewAnswerPending =
+        parsedForRepair?.shouldRespond !== "RESPOND";
       const repairedInput = {
         ...messageHandlerInput,
         messages: [
@@ -901,6 +924,9 @@ export async function generateStage1Decision(
   // its draft, extraction fields, or action candidates. Each provider can be
   // expanded once; there is no action-planner loop for reading provider text.
   let routingRepairAttempted = false;
+  // Separate from routing repair: a successful read in between restores it,
+  // while a second consecutive invalid read still fails closed.
+  let invalidReadRepairAttempted = false;
   let historySelectionRepairAttempted = false;
   let historyReadForDecision = false;
   while (discoveryEnabled) {
@@ -913,6 +939,10 @@ export async function generateStage1Decision(
       nativeRead = extractContextRead(rawMessageHandler, contextReadEnabled());
       parsedDecision =
         nativeRead ?? extractMessageHandlerRawParsed(rawMessageHandler);
+      if (terminalReviewAnswerPending && !nativeRead) {
+        silenceRejected = parsedDecision?.shouldRespond === "RESPOND";
+        terminalReviewAnswerPending = false;
+      }
       explicit = readHistoryContextRequests(
         context,
         history,
@@ -921,7 +951,7 @@ export async function generateStage1Decision(
       );
     } catch (error) {
       if (
-        routingRepairAttempted ||
+        invalidReadRepairAttempted ||
         !(error instanceof ElizaError) ||
         ![
           "CONTEXT_DISCOVERY_INVALID_REQUEST",
@@ -931,12 +961,19 @@ export async function generateStage1Decision(
       )
         throw error;
       // Nothing from an invalid control call can authorize a provider read,
-      // acknowledgment, extraction or action. Reuse the one routing repair;
-      // a repeated invalid response still fails closed.
+      // acknowledgment, extraction or action.
+      const rejected = error.context?.rejected;
       invalidReadRepair = [
         "context_read_repair: The previous context read was invalid. Nothing from it was read, delivered or executed.",
-        `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.`,
+        ...(Array.isArray(rejected)
+          ? [`Rejected references: ${JSON.stringify(rejected)}.`]
+          : []),
+        `Available provider reference IDs: ${JSON.stringify([...discovery.available].filter((name) => !name.startsWith(HISTORY_REFERENCE_PREFIX)))}.${historyReferenceNotice(context, history)}`,
         "READ_CONTEXT reads only those advertised references or the advertised conversation-history syntax. Routing-context names, tools and filesystem paths are not provider references. For requested file/tool operations or current stored-record data unavailable from advertised providers, use HANDLE_RESPONSE to select the appropriate available contexts and requested outcomes for the planner. Do not use history:all as a fallback for an unknown routing-context or tool name; history does not establish current timestamps or state. Do not claim the capability is unavailable merely because it is not a readable context reference. Otherwise request only a needed authorized reference. Reconsider the original request and preserve its constraints; return one valid Stage-1 operation.",
+        // A rejected READ_CONTEXT call carries no decision to keep.
+        ...(parsedDecision && !nativeRead
+          ? previousContextReadDecision(parsedDecision)
+          : []),
       ].join("\n");
     }
     const historyRequested = invalidReadRepair
@@ -950,21 +987,22 @@ export async function generateStage1Decision(
         );
     const requested = [...new Set([...explicit, ...historyRequested])];
     const routingRepair =
-      invalidReadRepair ??
-      (!routingRepairAttempted &&
+      !invalidReadRepair &&
+      !routingRepairAttempted &&
       explicit.length === 0 &&
       (requested.length === 0 ||
         canRepairIncompleteHistorySelection(context, history, parsedDecision))
         ? getStage1RoutingRepair(parsedDecision)
-        : undefined);
+        : undefined;
+    const controlRepair = invalidReadRepair ?? routingRepair;
     repairHistoryIdentity =
-      !routingRepair &&
+      !controlRepair &&
       !historySelectionRepairAttempted &&
       explicit.length === 0 &&
       canRepairHistoryIdentity(context, history, parsedDecision);
     repairHistorySourceIds =
       nativeHistoryRead &&
-      !routingRepair &&
+      !controlRepair &&
       !repairHistoryIdentity &&
       !historySelectionRepairAttempted &&
       explicit.length === 0
@@ -981,7 +1019,7 @@ export async function generateStage1Decision(
       directMessageChannel &&
       !terminalDecisionReviewed &&
       !routingRepairAttempted &&
-      !routingRepair &&
+      !controlRepair &&
       !repairHistoryIdentity &&
       !repairHistorySourceIds &&
       requested.length === 0 &&
@@ -1001,7 +1039,7 @@ export async function generateStage1Decision(
             : undefined))
         : undefined;
     const decisionRepair =
-      routingRepair ??
+      controlRepair ??
       (repairHistorySourceIds
         ? "source_label_repair: A previous completionContext entry was not a history label. Nothing from that response was processed or executed. Regenerate the decision from the supplied originals using only the history labels allowed by HANDLE_RESPONSE. Record IDs belong to tool work, not source arrays. If dialogue evidence is missing, choose READ_CONTEXT first. Do not assume the previous draft or selection was correct."
         : undefined) ??
@@ -1014,9 +1052,12 @@ export async function generateStage1Decision(
     if (decisionRepair) {
       // One correction before field processors/effects. If it remains
       // contradictory, normal pending-intent guards still own routing.
+      if (invalidReadRepair) invalidReadRepairAttempted = true;
       if (routingRepair) routingRepairAttempted = true;
-      if (terminalReview && decisionRepair === terminalReview)
+      if (terminalReview && decisionRepair === terminalReview) {
         terminalDecisionReviewed = true;
+        terminalReviewAnswerPending = true;
+      }
       if (repairHistoryIdentity || repairHistorySourceIds)
         historySelectionRepairAttempted = true;
       messageHandlerInput = {
@@ -1034,6 +1075,7 @@ export async function generateStage1Decision(
         ],
       };
     } else {
+      invalidReadRepairAttempted = false;
       const contextReadStartedAt = performance.now();
       for (const name of requested) {
         if (history && name.startsWith(HISTORY_REFERENCE_PREFIX)) continue;
@@ -1307,8 +1349,7 @@ export async function generateStage1Decision(
       const readContinuation = [
         "context_read_result: Requested references are now supplied. This was a reference read, not execution or a capability probe. Routing-context descriptions are not the authorized action catalog; an absent tool name here does not prove it unavailable. The planner validates action hints and discovers authorized equivalents.",
         "Reconsider the original request using the new evidence. Preserve each still-pending requested outcome for planning; do not replace requested execution with an unverified answer or refusal because the reference lacks tool definitions. Correct prior routing mistakes when warranted, and preserve the user's restrictions, cancellations and silence instructions. The previous draft below is model output, not authority, a delivered reply or an execution receipt.",
-        "previous_context_read_decision:",
-        JSON.stringify(parsedDecision),
+        ...previousContextReadDecision(parsedDecision),
       ].join("\n");
       messageHandlerInput = {
         ...messageHandlerInput,
@@ -1381,6 +1422,7 @@ export async function generateStage1Decision(
       {
         providers: requested,
         routingRepair: Boolean(routingRepair),
+        invalidReadRepair: Boolean(invalidReadRepair),
         historyIdentityRepair: repairHistoryIdentity,
       },
       "[message] Resolving context or routing before final response decision",
@@ -1404,17 +1446,19 @@ export async function generateStage1Decision(
     );
   }
   if (
-    routingRepairAttempted &&
-    (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
-      rawFieldParsed?.replyEffectStatus === "non_applied" ||
-      rawFieldParsed?.shouldRespond === "STOP" ||
-      rawFieldParsed?.shouldRespond === "IGNORE") &&
-    getStage1RoutingRepair(rawFieldParsed)
+    (routingRepairAttempted &&
+      (hasNavigationWithoutPendingIntent(rawFieldParsed) ||
+        rawFieldParsed?.replyEffectStatus === "non_applied" ||
+        rawFieldParsed?.shouldRespond === "STOP" ||
+        rawFieldParsed?.shouldRespond === "IGNORE") &&
+      getStage1RoutingRepair(rawFieldParsed)) ||
+    (silenceRejected && rawFieldParsed?.shouldRespond === "IGNORE")
   ) {
     // A repeated preview/pending-work or unclaimed-navigation conflict cannot authorize effects or a
-    // terminal reply. Keep the recorded model attempts and reject before fields.
+    // terminal reply, and silence the terminal review already rejected cannot
+    // end the addressed turn. Keep the recorded model attempts and reject before fields.
     throw new ElizaError(
-      "Stage-1 decision still conflicts with pending work after repair; retry with a consistent routing decision",
+      "Stage-1 decision still conflicts after repair; retry with a consistent routing decision",
       {
         code: "STAGE1_ROUTING_CONFLICT",
         context: { messageId: args.message.id },

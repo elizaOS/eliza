@@ -9,12 +9,13 @@ import {
   ChannelType,
   type Content,
   ContentType,
+  chunkMarkdownText,
   createUniqueUuid,
-  EventType,
   type Media,
   Memory,
   MemoryType,
   stringToUuid,
+  textIncludesKeywordTerm,
   type UUID,
   type World,
 } from "@elizaos/core";
@@ -27,7 +28,6 @@ import { runtimeFactory } from "../../eliza/runtime-factory";
 import { userContextService } from "../../eliza/user-context";
 import { DISCORD_API_BASE, discordBotHeaders } from "../../utils/discord-api";
 import { logger } from "../../utils/logger";
-import { splitMessageLosslessly } from "../../utils/message-chunking";
 import { getEncryptionService } from "../secrets/encryption";
 import {
   DISCORD_RATE_LIMIT_DEFAULT_RETRY_MS,
@@ -322,16 +322,10 @@ async function handleMessageCreate(
         return { processed: true };
       }
     } else if (metadata.responseMode === "keyword") {
-      // Only respond if message contains keywords (word boundary matching)
-      const contentLower = data.content.toLowerCase();
-      const hasKeyword = metadata.keywords?.some((k) => {
-        const keywordLower = k.toLowerCase();
-        // Use word boundary regex to avoid false positives (e.g., "or" matching "organization")
-        const wordBoundaryRegex = new RegExp(
-          `\\b${keywordLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-        );
-        return wordBoundaryRegex.test(contentLower);
-      });
+      // Only respond if message contains keywords. ASCII keywords keep word
+      // boundaries ("or" must not match "organization"); keywords in other
+      // scripts ("엘리자", "café") match as NFKC substrings.
+      const hasKeyword = metadata.keywords?.some((k) => textIncludesKeywordTerm(data.content, k));
       if (!hasKeyword) {
         return { processed: true };
       }
@@ -462,7 +456,9 @@ async function sendToRuntime(
 ): Promise<string | undefined> {
   const roomUuid = message.roomId as UUID;
   const entityUuid = message.entityId as UUID;
-  const worldId = stringToUuid("discord-world") as UUID;
+  // Agent-scoped: world ids are a global key and world reads are
+  // agent-scoped, so one shared id would collide across agents.
+  const worldId = createUniqueUuid(runtime, "discord-world");
   const serverId = stringToUuid("discord-server") as UUID;
   // Ensure world exists
   try {
@@ -556,45 +552,73 @@ async function sendToRuntime(
       error: error instanceof Error ? error.message : String(error),
     });
   }
-  let responseText: string | undefined;
-  // Emit message event and capture response
-  await runtime.emitEvent(EventType.MESSAGE_RECEIVED, {
-    runtime,
-    message: userMessage,
-    callback: async (content: Content) => {
-      if (content.text) {
-        responseText = content.text;
-        // Create response memory
-        const responseMemory: Memory = {
-          id: createUniqueUuid(runtime, userMessage.id as UUID),
-          entityId: runtime.agentId,
-          agentId: runtime.agentId,
-          roomId: roomUuid,
-          createdAt: Date.now(),
-          content: {
-            ...content,
-            source: "agent",
-            inReplyTo: userMessage.id,
-          },
-          metadata: {
-            type: MemoryType.MESSAGE,
-            role: "agent",
-            dialogueType: "message",
-            visibility: "visible",
-          },
-        };
-        try {
-          await runtime.createMemory(responseMemory, "messages");
-        } catch (error) {
-          logger.error("[DiscordRouter] Failed to save response memory", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
+  // A turn can answer in several callbacks (text, then a tool follow-up or an
+  // image); every part is sent and stored, in order.
+  const replyParts: string[] = [];
+  // Run the agent's message pipeline, as the cloud chat handler does. No cloud
+  // runtime plugin turns MESSAGE_RECEIVED into a pipeline run, so emitting it
+  // produced no reply. A runtime without a message service is a broken
+  // runtime, not an empty reply.
+  const messageService = runtime.messageService;
+  if (!messageService) {
+    throw new Error("Discord router runtime has no message service");
+  }
+  const callback = async (content: Content): Promise<Memory[]> => {
+    // Discord embeds an HTTPS link to an image or file, so attachments the
+    // agent produced travel as links after the text.
+    const reply = [content.text?.trim(), ...httpsAttachmentLinks(content)]
+      .filter(Boolean)
+      .join("\n");
+    if (reply) {
+      replyParts.push(reply);
+      // Create response memory
+      const responseMemory: Memory = {
+        id: createUniqueUuid(
+          runtime,
+          replyParts.length === 1
+            ? (userMessage.id as UUID)
+            : `${userMessage.id}:reply:${replyParts.length}`,
+        ),
+        entityId: runtime.agentId,
+        agentId: runtime.agentId,
+        roomId: roomUuid,
+        createdAt: Date.now(),
+        content: {
+          ...content,
+          source: "agent",
+          inReplyTo: userMessage.id,
+        },
+        metadata: {
+          type: MemoryType.MESSAGE,
+          role: "agent",
+          dialogueType: "message",
+          visibility: "visible",
+        },
+      };
+      try {
+        await runtime.createMemory(responseMemory, "messages");
+      } catch (error) {
+        logger.error("[DiscordRouter] Failed to save response memory", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
+    }
+    return [];
+  };
+  await messageService.handleMessage(runtime, userMessage, callback);
+  return replyParts.length > 0 ? replyParts.join("\n\n") : undefined;
+}
+function httpsAttachmentLinks(content: Content): string[] {
+  const links = (content.attachments ?? []).flatMap((attachment) => {
+    try {
+      const url = new URL(attachment.url);
+      return url.protocol === "https:" ? [url.toString()] : [];
+    } catch {
+      // error-policy:J3 a malformed attachment reference has no link to send.
       return [];
-    },
+    }
   });
-  return responseText;
+  return [...new Set(links)].filter((link) => !content.text?.includes(link));
 }
 /**
  * Send a response message back to Discord with rate limiting.
@@ -649,7 +673,8 @@ async function sendDiscordResponse(
       clearTimeout(timeoutId);
     }
   };
-  const chunks = splitMessageLosslessly(content, MAX_DISCORD_MESSAGE_LENGTH);
+  // Fence-aware: a code block cut between messages is closed and reopened.
+  const chunks = chunkMarkdownText(content, MAX_DISCORD_MESSAGE_LENGTH);
   for (const [index, chunk] of chunks.entries()) {
     await sendChunk(chunk, index === 0 ? replyToMessageId : undefined);
   }

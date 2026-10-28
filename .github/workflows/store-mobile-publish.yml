@@ -120,7 +120,7 @@ jobs:
           chmod 600 "$RUNNER_TEMP/play-store-key.json"
 
       - name: Setup Java
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad
         with:
           distribution: temurin
           java-version: "21"
@@ -146,7 +146,7 @@ jobs:
           bun run build:android:cloud
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -161,7 +161,7 @@ jobs:
         run: bundle exec fastlane publish_aab
 
       - name: Upload Android release evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-google-play-${{ inputs.version }}
           path: packages/app/platforms/android/app/build/outputs/bundle/release/app-release.aab
@@ -292,7 +292,7 @@ jobs:
         run: bun run preflight:ios:store
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8
+        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -305,7 +305,7 @@ jobs:
         run: bundle exec fastlane "$APPLE_LANE"
 
       - name: Upload iOS release evidence
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eliza-ios-${{ inputs.version }}
           path: packages/app/ios/build/Eliza.ipa

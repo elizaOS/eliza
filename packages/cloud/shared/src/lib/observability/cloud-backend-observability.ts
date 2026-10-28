@@ -55,7 +55,18 @@ export interface CloudStreamMilestoneTelemetry {
   /** Bounded echo of the provider's own request id header, when present. */
   providerRequestId?: string;
   /** Upstream fetch start → upstream response headers, from the Worker. */
-  upstreamHeadersMs?: number;
+  upstreamHeadersMs?: number | null;
+  /** Observer installation before SDK invocation → first native fetch dispatch. */
+  sdkToProviderDispatchMs?: number | null;
+  firstToolArgumentsMs?: number | null;
+  firstEnqueueMs?: number | null;
+  providerAttempts?: Array<{
+    dispatchMs: number | null;
+    headersMs: number | null;
+    status: number | null;
+  }>;
+  providerAttemptsOverflow?: boolean;
+  providerTimeInfoMs?: Record<string, number | null>;
   firstEventMs: number | null;
   firstReasoningMs: number | null;
   firstContentMs: number | null;
@@ -102,6 +113,7 @@ interface RequestContext {
 }
 
 const requestAls = new AsyncLocalStorage<RequestContext>();
+const sdkStreamAls = new AsyncLocalStorage<SdkStreamTiming>();
 const requests: CloudRequestTelemetry[] = [];
 const dbEvents: CloudDbTelemetry[] = [];
 const streamMilestones: CloudStreamMilestoneTelemetry[] = [];
@@ -344,4 +356,180 @@ export function clearCloudTelemetry(): void {
   requests.length = 0;
   dbEvents.length = 0;
   streamMilestones.length = 0;
+}
+
+const MAX_PROVIDER_ATTEMPTS = 3;
+const MAX_PROVIDER_SECONDS = 3_600;
+const PROVIDER_TIME_FIELDS = [
+  ["queue_time", "queueMs"],
+  ["prompt_time", "promptMs"],
+  ["completion_time", "generationMs"],
+  ["total_time", "totalMs"],
+] as const;
+
+interface SdkProviderAttemptTiming {
+  startedAt: number;
+  headersAt: number | null;
+  status: number | null;
+}
+
+/** Request-scoped diagnostics only; never reads or retains provider body bytes. */
+class SdkStreamTiming {
+  private readonly attempts: SdkProviderAttemptTiming[] = [];
+  private overflow = false;
+  private firstPartAt: number | null = null;
+  private firstTextAt: number | null = null;
+  private firstArgumentsAt: number | null = null;
+  private firstEnqueueAt: number | null = null;
+  private completionAt: number | null = null;
+  private readonly providerMs: Record<string, number | null> = {
+    queueMs: null,
+    promptMs: null,
+    generationMs: null,
+    totalMs: null,
+  };
+  private finished = false;
+  private readonly sdkStartedAt: number | null;
+
+  constructor(
+    private readonly traceId: string,
+    private readonly model: string,
+  ) {
+    try {
+      this.sdkStartedAt = performance.now();
+    } catch {
+      // error-policy:J7 missing clock data remains unknown, not a stream failure.
+      this.sdkStartedAt = null;
+    }
+  }
+
+  async fetch(input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) {
+    let attempt: SdkProviderAttemptTiming | undefined;
+    try {
+      attempt = { startedAt: performance.now(), headersAt: null, status: null };
+      if (this.attempts.length < MAX_PROVIDER_ATTEMPTS) this.attempts.push(attempt);
+      else this.overflow = true;
+    } catch {
+      /* error-policy:J7 a timing failure must not prevent the original fetch. */
+    }
+    const response = await fetch(input, init);
+    try {
+      if (attempt) {
+        attempt.headersAt = performance.now();
+        attempt.status = response.status;
+      }
+    } catch {
+      /* error-policy:J7 preserve the exact successful Response. */
+    }
+    return response;
+  }
+
+  part(part: { type: string; text?: unknown; delta?: unknown; rawValue?: unknown }): void {
+    try {
+      const now = performance.now();
+      if (part.type === "finish") this.completionAt ??= now;
+      if (
+        part.type === "raw" ||
+        part.type === "text-delta" ||
+        part.type === "reasoning-delta" ||
+        part.type === "tool-input-start" ||
+        part.type === "tool-input-delta" ||
+        part.type === "tool-call"
+      ) {
+        this.firstPartAt ??= now;
+      }
+      if (part.type === "text-delta" && typeof part.text === "string" && part.text.length)
+        this.firstTextAt ??= now;
+      if (part.type === "tool-input-delta" && typeof part.delta === "string" && part.delta.length)
+        this.firstArgumentsAt ??= now;
+      if (part.type !== "raw" || !part.rawValue || typeof part.rawValue !== "object") return;
+      const info = (part.rawValue as Record<string, unknown>).time_info;
+      if (!info || typeof info !== "object" || Array.isArray(info)) return;
+      for (const [source, target] of PROVIDER_TIME_FIELDS) {
+        const seconds = (info as Record<string, unknown>)[source];
+        if (
+          typeof seconds === "number" &&
+          Number.isFinite(seconds) &&
+          seconds >= 0 &&
+          seconds <= MAX_PROVIDER_SECONDS
+        ) {
+          this.providerMs[target] = Math.round(seconds * 100_000) / 100;
+        }
+      }
+    } catch {
+      /* error-policy:J7 provider diagnostics never alter stream delivery. */
+    }
+  }
+  enqueue(): void {
+    try {
+      this.firstEnqueueAt ??= performance.now();
+    } catch {
+      /* error-policy:J7 preserve stream delivery when timing is unavailable. */
+    }
+  }
+
+  finish(aborted: boolean): void {
+    if (this.finished) return;
+    this.finished = true;
+    try {
+      const origin = this.attempts[0]?.startedAt;
+      const elapsed = (at: number | null) =>
+        origin !== undefined && at !== null && at >= origin
+          ? Math.round((at - origin) * 100) / 100
+          : null;
+      const event: CloudStreamMilestoneTelemetry = {
+        traceId: this.traceId,
+        path: "sdk",
+        model: this.model,
+        sdkToProviderDispatchMs:
+          this.sdkStartedAt !== null && origin !== undefined
+            ? Math.round((origin - this.sdkStartedAt) * 100) / 100
+            : null,
+        upstreamHeadersMs: elapsed(this.attempts[0]?.headersAt ?? null),
+        firstEventMs: elapsed(this.firstPartAt),
+        firstReasoningMs: null,
+        firstContentMs: elapsed(this.firstTextAt),
+        completionMs: elapsed(this.completionAt),
+        firstToolArgumentsMs: elapsed(this.firstArgumentsAt),
+        firstEnqueueMs: elapsed(this.firstEnqueueAt),
+        providerAttempts: this.attempts.map((attempt) => ({
+          dispatchMs: elapsed(attempt.startedAt),
+          headersMs:
+            attempt.headersAt === null
+              ? null
+              : Math.round((attempt.headersAt - attempt.startedAt) * 100) / 100,
+          status: attempt.status,
+        })),
+        providerAttemptsOverflow: this.overflow,
+        providerTimeInfoMs: { ...this.providerMs },
+        aborted,
+        createdAt: nowIso(),
+      };
+      recordCloudStreamMilestones(event);
+      logger.audit("[InferenceStream] SDK provider timing", event);
+    } catch {
+      /* error-policy:J7 diagnostics must not change stream delivery or settlement. */
+    }
+  }
+}
+
+/** The trace comes from the request; the observer stays in its own child scope. */
+export function beginSdkStreamTiming(traceId: string, model: string): SdkStreamTiming {
+  return new SdkStreamTiming(traceId, model);
+}
+
+export function bindSdkStreamTiming<Args extends unknown[], Result>(
+  timing: SdkStreamTiming | undefined,
+  operation: (...args: Args) => Result,
+): (...args: Args) => Result {
+  return timing ? (...args) => sdkStreamAls.run(timing, () => operation(...args)) : operation;
+}
+
+/** Native Cerebras fetch hook; all other provider clients remain unchanged. */
+export function observeCerebrasFetch(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Promise<Response> {
+  const timing = sdkStreamAls.getStore();
+  return timing ? timing.fetch(input, init) : fetch(input, init);
 }

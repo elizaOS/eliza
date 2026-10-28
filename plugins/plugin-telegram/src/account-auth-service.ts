@@ -757,7 +757,9 @@ export class TelegramAccountAuthSession
       case "waiting_for_provisioning_code": {
         const provisioningCode = input.provisioningCode?.trim();
         if (!provisioningCode) {
-          throw new Error("Telegram provisioning code is required");
+          throw new ElizaError("Telegram provisioning code is required", {
+            code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+          });
         }
         if (!this.snapshot.phone || !this.provisioningRandomHash) {
           throw new Error("Telegram provisioning session is missing state");
@@ -779,7 +781,9 @@ export class TelegramAccountAuthSession
       case "waiting_for_telegram_code": {
         const telegramCode = input.telegramCode?.trim();
         if (!telegramCode) {
-          throw new Error("Telegram login code is required");
+          throw new ElizaError("Telegram login code is required", {
+            code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+          });
         }
         await this.ensureClientConnected();
         await this.completeTelegramCode(telegramCode);
@@ -788,14 +792,18 @@ export class TelegramAccountAuthSession
       case "waiting_for_password": {
         const password = input.password ?? "";
         if (!password.trim()) {
-          throw new Error("Telegram two-factor password is required");
+          throw new ElizaError("Telegram two-factor password is required", {
+            code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+          });
         }
         await this.ensureClientConnected();
         await this.completePassword(password);
         return this.getSnapshot();
       }
       default:
-        throw new Error("Telegram login is not waiting for input");
+        throw new ElizaError("Telegram login is not waiting for input", {
+          code: "TELEGRAM_ACCOUNT_INVALID_INPUT",
+        });
     }
   }
 

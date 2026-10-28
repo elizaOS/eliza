@@ -32,3 +32,18 @@ describe("PhraseAggregator decimal numbers", () => {
     expect(phrases("I have 3.")).toEqual(["I have 3."]);
   });
 });
+
+it("emits a final short response or tail exactly once", () => {
+  for (const tail of ["A", "7", "好"]) {
+    expect(phrases(tail)).toEqual([tail]);
+    expect(phrases(`The answer is. ${tail}`)).toEqual(["The answer is.", tail]);
+  }
+  const aggregator = new PhraseAggregator({ minEmitChars: 8 });
+  expect(aggregator.push("okay")).toEqual([]);
+  expect(aggregator.flush()).toBe("okay");
+  expect(aggregator.emitted).toBe(1);
+  expect(aggregator.flush()).toBeNull();
+  expect(aggregator.emitted).toBe(1);
+  aggregator.push("   ");
+  expect(aggregator.flush()).toBeNull();
+});

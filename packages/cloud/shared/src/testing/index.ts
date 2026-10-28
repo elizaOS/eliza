@@ -3,4 +3,5 @@ export {
   applyBillingFixtureMigrations,
   BILLING_CATALOG_FIXTURE_MIGRATIONS,
   installBillingCommandEvidenceTestColumns,
+  installSubscriptionGrantTestSchema,
 } from "./billing-migrations";

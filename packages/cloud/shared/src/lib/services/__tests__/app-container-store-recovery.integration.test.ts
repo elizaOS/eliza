@@ -10,6 +10,8 @@ import {
   type AppContainerStoreRepository,
   ContainerRepoAppContainerStore,
 } from "../app-container-store";
+import { removeAppRoute } from "../apps-ingress-provisioner";
+import { executeContainerDelete } from "../container-job-executors";
 import { countAllocatedWorkloadsOnNodeWithDatabase } from "../docker-node-workload-queries";
 
 const ORG_ONE = "00000000-0000-0000-0000-0000000000a1";
@@ -219,5 +221,127 @@ describe("app-container persistence transactions", () => {
         network: "app-network",
       }),
     ).rejects.toMatchObject({ name: "APP_CONTAINER_ROW_MISSING" });
+  });
+
+  test("deleting a redeployed app's old generation keeps the DB ambassador the new one uses", async () => {
+    const oldId = "00000000-0000-0000-0000-0000000000d1";
+    const newId = "00000000-0000-0000-0000-0000000000d2";
+    await client.exec(`
+      INSERT INTO containers
+        (id, name, project_name, image_tag, port, organization_id, user_id, status, node_id, metadata)
+      VALUES
+        ('${oldId}', 'app-3f6c2a1e9b7d-g00000001', 'app-7', 'image:1', 3000, '${ORG_ONE}', '${USER_ID}', 'deleting', 'node-1', '{"hostContainerId":"docker-old"}'),
+        ('${newId}', 'app-3f6c2a1e9b7d-g00000002', 'app-7', 'image:2', 3000, '${ORG_ONE}', '${USER_ID}', 'running', 'node-1', '{"hostContainerId":"docker-new"}');
+    `);
+    const removed: string[] = [];
+    const provider = {
+      deleteById: async (hostContainerId: string, containerName: string) => {
+        removed.push(hostContainerId, `ambassador-of:${containerName}`);
+      },
+      deletePrimaryById: async (hostContainerId: string) => {
+        removed.push(hostContainerId);
+      },
+    };
+
+    await executeContainerDelete(
+      {
+        id: "job-1",
+        organization_id: ORG_ONE,
+        data: { containerId: oldId, organizationId: ORG_ONE },
+      } as never,
+      { provider, store } as never,
+    );
+
+    expect(removed).toEqual(["docker-old"]);
+  });
+
+  test("deleting an app's last generation also removes its DB ambassador", async () => {
+    const lastId = "00000000-0000-0000-0000-0000000000d3";
+    await client.exec(`
+      INSERT INTO containers
+        (id, name, project_name, image_tag, port, organization_id, user_id, status, node_id, metadata)
+      VALUES
+        ('${lastId}', 'app-8a8a8a8a8a8a-g00000001', 'app-8', 'image:1', 3000, '${ORG_ONE}', '${USER_ID}', 'deleting', 'node-1', '{"hostContainerId":"docker-last"}');
+    `);
+    const removed: string[] = [];
+    const provider = {
+      deleteById: async (hostContainerId: string, containerName: string) => {
+        removed.push(hostContainerId, `ambassador-of:${containerName}`);
+      },
+      deletePrimaryById: async (hostContainerId: string) => {
+        removed.push(hostContainerId);
+      },
+    };
+
+    await executeContainerDelete(
+      {
+        id: "job-2",
+        organization_id: ORG_ONE,
+        data: { containerId: lastId, organizationId: ORG_ONE },
+      } as never,
+      { provider, store } as never,
+    );
+
+    expect(removed).toEqual(["docker-last", "ambassador-of:app-8a8a8a8a8a8a-g00000001"]);
+  });
+
+  test("a failed ingress route removal keeps the row until the route is gone", async () => {
+    const appId = "00000000-0000-0000-0000-0000000000d4";
+    await client.exec(`
+      INSERT INTO containers
+        (id, name, project_name, image_tag, port, organization_id, user_id, status, node_id, metadata)
+      VALUES
+        ('${appId}', 'app-9b9b9b9b9b9b-g00000001', 'app-9', 'image:1', 3000, '${ORG_ONE}', '${USER_ID}', 'deleting', 'node-1', '{"hostContainerId":"docker-route"}');
+    `);
+    const previousBaseDomain = process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+    process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = "apps.example.test";
+    // Caddy admin double: the route exists; the first DELETE times out.
+    const routes = new Set(["app-00000000"]);
+    let failNextDelete = true;
+    const caddyFetch = async (url: string | URL, init?: { method?: string }) => {
+      const routeId = decodeURIComponent(String(url).split("/id/")[1] ?? "");
+      if (init?.method === "DELETE" && failNextDelete) {
+        failNextDelete = false;
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      }
+      if (init?.method === "DELETE" && routes.delete(routeId)) {
+        return new Response("{}", { status: 200 });
+      }
+      return new Response("{}", { status: 404 });
+    };
+    const deps = {
+      provider: { deleteById: async () => {}, deletePrimaryById: async () => {} },
+      store,
+      onRouteRemoved: (route: { hostname: string }) =>
+        removeAppRoute({
+          ...route,
+          adminBase: "http://caddy-admin:2019",
+          fetchImpl: caddyFetch as never,
+        }),
+    };
+    const job = {
+      id: "job-3",
+      organization_id: ORG_ONE,
+      data: { containerId: appId, organizationId: ORG_ONE },
+    };
+    const status = async () =>
+      (
+        await client.query<{ status: string }>(
+          `SELECT status FROM containers WHERE id = '${appId}'`,
+        )
+      ).rows[0]?.status;
+    try {
+      await expect(executeContainerDelete(job as never, deps as never)).rejects.toThrow();
+      expect(await status()).toBe("deleting");
+      expect(routes.size).toBe(1);
+
+      // The job retry removes the route, then marks the row deleted.
+      await executeContainerDelete(job as never, deps as never);
+      expect(routes.size).toBe(0);
+      expect(await status()).toBe("deleted");
+    } finally {
+      if (previousBaseDomain === undefined) delete process.env.CONTAINERS_PUBLIC_BASE_DOMAIN;
+      else process.env.CONTAINERS_PUBLIC_BASE_DOMAIN = previousBaseDomain;
+    }
   });
 });

@@ -986,12 +986,29 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				plain = "";
 			}
 		};
+		const closeTruncated = () => {
+			// The stream ended mid-string with no closing quote. Emit what
+			// arrived and close the string implicitly so drain() can finish
+			// instead of looping forever on the same span.
+			this.activeStringField = null;
+			if (advanceSpan) {
+				this.spanIndex++;
+			}
+		};
 
 		while (this.buffer.length > 0) {
 			if (this.pendingEscape) {
+				if (this.pendingEscape === "\\" && this.buffer[0] === "u") {
+					this.pendingEscape = "\\u";
+					this.buffer = this.buffer.slice(1);
+					continue;
+				}
 				const needed = this.pendingEscape === "\\u" ? 4 : 1;
 				if (this.buffer.length < needed) {
 					flushPlain();
+					if (final) {
+						closeTruncated();
+					}
 					return final;
 				}
 				const raw = this.pendingEscape + this.buffer.slice(0, needed);
@@ -1020,6 +1037,9 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 				if (this.buffer.length === 0) {
 					this.pendingEscape = "\\";
 					flushPlain();
+					if (final) {
+						closeTruncated();
+					}
 					return final;
 				}
 				const next = this.buffer[0];
@@ -1037,6 +1057,9 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 		}
 
 		flushPlain();
+		if (final) {
+			closeTruncated();
+		}
 		return final;
 	}
 

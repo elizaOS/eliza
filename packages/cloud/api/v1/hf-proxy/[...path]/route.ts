@@ -23,6 +23,7 @@
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   createHfProxyEgressQuotaStore,
+  HfEgressStateError,
   type HfProxyEgressQuotaStore,
 } from "@elizaos/cloud-shared/lib/services/hf-proxy-egress-quota";
 import { logger, redact } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -136,6 +137,14 @@ function egressLimitResponse(
   };
 }
 
+/**
+ * Stream the upstream body and charge the org's monthly bucket for the bytes
+ * sent. The known Content-Length is reserved before the first byte; whatever
+ * part of it is not sent is released when the stream ends, fails, or is
+ * cancelled by a client that disconnects. A cancelled download is resumed with
+ * a Range request that reserves its own remainder, so keeping the unsent part
+ * would charge the same file again on every resume.
+ */
 function streamWithEgressAccounting(args: {
   body: ReadableStream<Uint8Array>;
   quota: HfProxyEgressQuotaStore;
@@ -147,11 +156,39 @@ function streamWithEgressAccounting(args: {
   path: string;
   status: number;
   cacheStatus: string | null;
+  waitUntil?: (promise: Promise<unknown>) => void;
 }): ReadableStream<Uint8Array> {
+  const reader = args.body.getReader();
   let bytes = 0;
-  return args.body.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      async transform(chunk, controller) {
+  let settled: Promise<void> | null = null;
+  const settle = (): Promise<void> => {
+    settled ??= (async () => {
+      const excess = args.reservedBytes - bytes;
+      if (excess > 0) {
+        await args.quota.release(args.organizationId, args.month, excess);
+      }
+      logger.info("[hf-proxy] egress metric", {
+        organizationId: args.organizationId,
+        repo: args.repo,
+        path: args.path,
+        bytes,
+        status: args.status,
+        cacheStatus: args.cacheStatus,
+        cacheHit: cacheHit(args.cacheStatus),
+      });
+    })();
+    args.waitUntil?.(settled);
+    return settled;
+  };
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const { done, value: chunk } = await reader.read();
+        if (done) {
+          await settle();
+          controller.close();
+          return;
+        }
         const nextBytes = bytes + chunk.byteLength;
         if (nextBytes > args.reservedBytes) {
           const decision = await args.quota.reserve(
@@ -167,26 +204,19 @@ function streamWithEgressAccounting(args: {
           }
           args.reservedBytes = nextBytes;
         }
-        bytes += chunk.byteLength;
+        bytes = nextBytes;
         controller.enqueue(chunk);
-      },
-      async flush() {
-        const excess = args.reservedBytes - bytes;
-        if (excess > 0) {
-          await args.quota.release(args.organizationId, args.month, excess);
-        }
-        logger.info("[hf-proxy] egress metric", {
-          organizationId: args.organizationId,
-          repo: args.repo,
-          path: args.path,
-          bytes,
-          status: args.status,
-          cacheStatus: args.cacheStatus,
-          cacheHit: cacheHit(args.cacheStatus),
-        });
-      },
-    }),
-  );
+      } catch (error) {
+        await reader.cancel(error).catch(() => undefined);
+        await settle();
+        controller.error(error);
+      }
+    },
+    async cancel(reason) {
+      await reader.cancel(reason).catch(() => undefined);
+      await settle();
+    },
+  });
 }
 
 app.get("/*", async (c) => {
@@ -209,7 +239,14 @@ app.get("/*", async (c) => {
       );
     }
 
-    const path = (c.req.param("*") ?? "").replace(/^\/+/, "");
+    // Build the upstream URL first and check the path the request will really
+    // fetch: the router decodes `%2F`, and `..` segments resolve only inside
+    // `new URL`, so the raw param can name one repo while the request leaves
+    // for another.
+    const upstream = new URL(
+      `${HF_UPSTREAM_HOST}/${(c.req.param("*") ?? "").replace(/^\/+/, "")}`,
+    );
+    const path = upstream.pathname.replace(/^\/+/, "");
     // Only forward genuine HuggingFace download paths.
     if (!path.includes("/resolve/")) {
       return c.json(
@@ -262,10 +299,8 @@ app.get("/*", async (c) => {
       );
     }
 
-    const incomingUrl = new URL(c.req.url);
-    const upstream = new URL(`${HF_UPSTREAM_HOST}/${path}`);
     // Preserve the original query (e.g. ?download=true) verbatim.
-    upstream.search = incomingUrl.search;
+    upstream.search = new URL(c.req.url).search;
 
     const headers = new Headers();
     headers.set("authorization", `Bearer ${hfToken}`);
@@ -367,6 +402,7 @@ app.get("/*", async (c) => {
       if (value) responseHeaders.set(name, value);
     }
 
+    const streamCtx = getGenerativeExecutionContext(c);
     const body = upstreamResponse.body
       ? streamWithEgressAccounting({
           body: upstreamResponse.body,
@@ -379,6 +415,7 @@ app.get("/*", async (c) => {
           path,
           status: upstreamResponse.status,
           cacheStatus: cacheStatus(upstreamResponse.headers),
+          waitUntil: streamCtx && ((promise) => streamCtx.waitUntil(promise)),
         })
       : null;
 
@@ -388,6 +425,17 @@ app.get("/*", async (c) => {
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof HfEgressStateError) {
+      // error-policy:J1 Refuse provider admission when the selected quota owner is unavailable.
+      logger.error("[hf-proxy] quota state unavailable", {
+        error: error.message,
+      });
+      return c.json(
+        { error: "HuggingFace proxy quota service is unavailable." },
+        503,
+        { "Retry-After": "1" },
+      );
+    }
     return failureResponse(c, asGenerativeCacheApiError(error) ?? error);
   }
 });

@@ -9,6 +9,7 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   ModelType,
+  Service,
   ServiceType,
   TaskService,
 } from '@elizaos/core';
@@ -65,6 +66,20 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
           },
         },
       });
+    }
+  }
+  class FailingCloudGoogleDelegation extends Service {
+    static serviceType = 'cloud_google_delegation';
+    capabilityDescription = 'Failing hosted Google discovery fixture';
+
+    static async start(runtime: IAgentRuntime) {
+      return new FailingCloudGoogleDelegation(runtime);
+    }
+
+    async stop() {}
+
+    async list() {
+      throw new Error('Synthetic cloud delegation outage');
     }
   }
 
@@ -281,6 +296,11 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
       (await call('/hosted/live-accounts', undefined, 'fixture-other')).body.accounts
     ).toHaveLength(0);
     const descriptor = offered.body.accounts[0];
+    await state!.runtime.registerService(FailingCloudGoogleDelegation);
+    await state!.runtime.getServiceLoadPromise(FailingCloudGoogleDelegation.serviceType);
+    const failedCloudDiscovery = await call('/hosted/live-accounts');
+    expect(failedCloudDiscovery.status).toBe(503);
+    expect(failedCloudDiscovery.body.error).toBe('Hosted Google account discovery failed');
     const foreignCalendars = await call(
       '/hosted/live-calendars',
       {

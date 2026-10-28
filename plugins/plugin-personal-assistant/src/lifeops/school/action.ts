@@ -14,6 +14,11 @@ import {
   lifeOpsFailedEffect,
 } from "../action-effect-result.js";
 import {
+  SCHOOL_ARTIFACT_SCHEMA,
+  SCHOOL_CANDIDATES_SCHEMA,
+  SCHOOL_NOTICE_INPUT_SCHEMA,
+} from "./action-schema.js";
+import {
   getSchoolSourceFactRuntimeService,
   type SchoolSourceFactRuntimeService,
 } from "./service.js";
@@ -26,6 +31,8 @@ import {
   normalizeSourceVersion,
   SchoolSourceFactError,
   SOURCE_AUTHORITY_CLASSES,
+  type SourceArtifactInput,
+  sha256,
 } from "./types.js";
 
 const ACTION_NAME = "SCHOOL_SOURCES";
@@ -138,6 +145,21 @@ function failedReceipt(input: {
   });
 }
 
+/**
+ * The planner supplies the source text, not a digest it cannot compute, so the
+ * artifact hash is derived here. A supplied contentSha256 is kept and still
+ * has to match the content when the repository stores the artifact.
+ */
+function artifactInput(value: unknown): SourceArtifactInput {
+  const record = objectValue(value, "artifact");
+  return normalizeSourceArtifactInput(
+    record.contentSha256 === undefined &&
+      typeof record.untrustedContent === "string"
+      ? { ...record, contentSha256: sha256(record.untrustedContent) }
+      : record,
+  );
+}
+
 function ingestInput(value: unknown): IngestSchoolNoticeInput {
   const record = objectValue(value, "input");
   const confidence = record.confidence;
@@ -165,7 +187,7 @@ function ingestInput(value: unknown): IngestSchoolNoticeInput {
     );
   }
   return {
-    artifact: normalizeSourceArtifactInput(record.artifact),
+    artifact: artifactInput(record.artifact),
     extraction: normalizeSchoolNoticeExtraction(record.extraction),
     confidence,
     authority,
@@ -225,26 +247,23 @@ export function createSchoolSourceFactAction(
       {
         name: "artifact",
         description:
-          "Immutable source snapshot provenance for capture_candidates.",
+          "Immutable source snapshot for capture_candidates: provenance plus the exact source text.",
         subactions: ["capture_candidates"],
-        schema: { type: "object", additionalProperties: true },
+        schema: SCHOOL_ARTIFACT_SCHEMA,
       },
       {
         name: "candidates",
         description:
           "Separate extractor candidates; each becomes an immutable proposed source fact.",
         subactions: ["capture_candidates"],
-        schema: {
-          type: "array",
-          items: { type: "object", additionalProperties: true },
-        },
+        schema: SCHOOL_CANDIDATES_SCHEMA,
       },
       {
         name: "input",
         description:
           "School notice artifact, extraction, authority/version, confidence, and optional structural C/P/E/M assignment.",
         subactions: ["ingest_notice"],
-        schema: { type: "object", additionalProperties: true },
+        schema: SCHOOL_NOTICE_INPUT_SCHEMA,
       },
       {
         name: "noticeKey",
@@ -310,7 +329,7 @@ export function createSchoolSourceFactAction(
           );
         }
         const result = await service.captureCandidates(
-          normalizeSourceArtifactInput(resolved.params.artifact),
+          artifactInput(resolved.params.artifact),
           candidatesValue.map(normalizeSourceFactCandidate),
         );
         const operation = "lifeops.school_source_candidates.capture";

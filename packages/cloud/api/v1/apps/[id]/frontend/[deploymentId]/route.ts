@@ -91,8 +91,17 @@ app.delete("/", async (c) => {
       );
     }
 
-    await appFrontendHostingService.deleteArtifacts(deployment);
-    await appFrontendDeploymentsRepository.delete(deployment.id);
+    // The row is deleted only while it is not active, in one statement: an
+    // activation that lands after the check above keeps its deployment.
+    if (!(await appFrontendHostingService.deleteDeployment(deployment))) {
+      return c.json(
+        {
+          success: false,
+          error: "Cannot delete the active deployment; activate another first",
+        },
+        409,
+      );
+    }
 
     logger.info("[Apps Frontend API] Deleted frontend deployment", {
       appId: id,

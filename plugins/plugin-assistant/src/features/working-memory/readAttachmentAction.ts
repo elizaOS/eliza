@@ -1394,7 +1394,7 @@ export const readAttachmentAction: Action = {
     {
       name: "attachmentId",
       description:
-        "Optional attachment ID or owner-bound reference from a prior read. Omit to read current or recent attachments.",
+        "Attachment ID or owner-bound reference from a prior read. action=read needs it when the message carries more than one attachment; without it the read returns the candidate IDs and ends the turn. Omit only when there is exactly one current or recent attachment.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -1413,8 +1413,7 @@ export const readAttachmentAction: Action = {
     },
     {
       name: "limit",
-      description:
-        "Maximum UTF-8 bytes per selected attachment. Multiple attachments each receive the same fair page allowance.",
+      description: "Maximum UTF-8 bytes for the attachment read page.",
       required: false,
       schema: {
         type: "number" as const,
@@ -1452,7 +1451,7 @@ export const readAttachmentAction: Action = {
           text: "Reading the attachment.",
           actions: ["ATTACHMENT"],
           thought:
-            "User refers to a recently-attached file; ATTACHMENT action=read auto-selects the latest attachment when no id is given.",
+            "User refers to a recently-attached file; ATTACHMENT action=read auto-selects the attachment when exactly one is available and no id is given.",
         },
       },
     ],

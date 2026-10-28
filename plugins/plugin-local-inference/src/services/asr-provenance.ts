@@ -5,8 +5,23 @@
  * ASR base or source models still carry Qwen provenance (a pre-cutover
  * stand-in). Paired with `text-provenance.ts`, which reads the same guarantee
  * out of the GGUF header bytes.
+ *
+ * Scope: this block reads ONLY the Eliza-1 bundle manifest's own ASR lineage
+ * (`lineage.asr.base`, `provenance.sourceModels.asr.repo`). The local ASR is
+ * Phonon-2 (`asr/phonon-2-fv5.gguf`, Parakeet-TDT, not Qwen): the pinned
+ * mobile voice bundle (`mobile-voice` in plugin-native-inference's
+ * voice-model-versions.json) stages it into `asr/` with an
+ * `asr/voice-files.json` record, and the Eliza-1 manifest says nothing about
+ * it. A strict Eliza-1 text bundle can therefore transcribe with Phonon-2.
  */
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import {
+	closeSync,
+	existsSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	readSync,
+} from "node:fs";
 import path from "node:path";
 import { claimsStrictRelease } from "./manifest/release-policy";
 
@@ -51,31 +66,134 @@ export function readBundleAsrProvenanceBlockers(bundleRoot: string): string[] {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
-	} catch {
-		return [];
+	} catch (error) {
+		// A bundle without an Eliza-1 manifest is legitimately non-strict.
+		// A manifest that exists but cannot be read or parsed is not "no
+		// provenance": surface it instead of claiming there are no blockers.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw new Error(
+			`failed to read ASR provenance manifest at ${manifestPath}`,
+			{ cause: error },
+		);
 	}
 	if (!claimsStrictRelease(parsed, { allowVersionStaging: true })) return [];
 	return collectQwenAsrProvenanceBlockers(parsed);
 }
 
+/** GGUF `general.architecture` of the fused library's Parakeet-TDT backend. */
+export const PARAKEET_TDT_ARCHITECTURE = "parakeet-tdt";
+
+const GGUF_SCALAR_BYTES: Readonly<Record<number, number>> = {
+	0: 1,
+	1: 1,
+	2: 2,
+	3: 2,
+	4: 4,
+	5: 4,
+	6: 4,
+	7: 1,
+	10: 8,
+	11: 8,
+	12: 8,
+};
+
+/**
+ * `ENOENT` only: the entry was removed between the directory listing and the
+ * read, which is legitimately "absent". Every other read failure (`EACCES`,
+ * `EIO`, `EMFILE`) means a staged file exists but cannot be inspected.
+ */
+function isMissingPath(error: unknown): boolean {
+	return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
+/**
+ * Read `general.architecture` from a GGUF header, or null when the file is
+ * not a GGUF or the key is not among the leading scalar/string entries
+ * (converters write it first). Reads at most the first 64 KiB.
+ *
+ * Throws when the file exists but cannot be read, so callers never mistake a
+ * broken artifact for a missing one.
+ */
+export function readGgufArchitecture(file: string): string | null {
+	let fd: number | undefined;
+	try {
+		fd = openSync(file, "r");
+		const head = Buffer.alloc(64 * 1024);
+		const length = readSync(fd, head, 0, head.length, 0);
+		const buf = head.subarray(0, length);
+		if (buf.length < 24 || buf.toString("ascii", 0, 4) !== "GGUF") return null;
+		const kvCount = buf.readBigUInt64LE(16);
+		let offset = 24;
+		const readString = (): string | null => {
+			if (offset + 8 > buf.length) return null;
+			const size = Number(buf.readBigUInt64LE(offset));
+			offset += 8;
+			if (size > buf.length - offset) return null;
+			const value = buf.toString("utf8", offset, offset + size);
+			offset += size;
+			return value;
+		};
+		for (let i = 0n; i < kvCount; i++) {
+			const key = readString();
+			if (key === null || offset + 4 > buf.length) return null;
+			const type = buf.readUInt32LE(offset);
+			offset += 4;
+			if (type === 8) {
+				const value = readString();
+				if (value === null) return null;
+				if (key === "general.architecture") return value;
+			} else if (type in GGUF_SCALAR_BYTES) {
+				offset += GGUF_SCALAR_BYTES[type] as number;
+			} else {
+				// An array before the architecture key: stop rather than walk it.
+				return null;
+			}
+		}
+		return null;
+	} catch (error) {
+		// error-policy:J3 the entry was removed between the listing and this read,
+		// which is legitimately "not a parakeet GGUF". Any other I/O failure
+		// (EACCES, EIO, EMFILE) means a staged model cannot be inspected: throw
+		// so callers do not report "no ASR model is staged" for a broken bundle.
+		if (isMissingPath(error)) return null;
+		throw new Error(`failed to read GGUF header at ${file}`, { cause: error });
+	} finally {
+		if (fd !== undefined) closeSync(fd);
+	}
+}
+
+/**
+ * True when `<bundle>/asr/` holds a model the fused library can load: a
+ * Parakeet-TDT GGUF (Phonon-2). No other local ASR is supported.
+ */
 export function bundleHasAsrModelFiles(bundleRoot: string): boolean {
 	const asrDir = path.join(bundleRoot, "asr");
 	if (!existsSync(asrDir)) return false;
 	try {
-		let hasTextModel = false;
-		let hasProjector = false;
+		// A readable Parakeet GGUF wins regardless of listing order; an
+		// unreadable sibling only matters when no usable model is present.
+		let unreadable: unknown;
 		for (const entry of readdirSync(asrDir, { withFileTypes: true })) {
-			if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".gguf")) {
+			if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".gguf"))
 				continue;
-			}
-			if (/mmproj|proj/i.test(entry.name)) {
-				hasProjector = true;
-			} else {
-				hasTextModel = true;
+			try {
+				if (
+					readGgufArchitecture(path.join(asrDir, entry.name)) ===
+					PARAKEET_TDT_ARCHITECTURE
+				)
+					return true;
+			} catch (error) {
+				unreadable ??= error;
 			}
 		}
-		return hasTextModel && hasProjector;
-	} catch {
+		if (unreadable !== undefined) throw unreadable;
 		return false;
+	} catch (error) {
+		// error-policy:J3 an `asr/` directory removed mid-scan is legitimately
+		// "no model staged". An unreadable directory, or an unreadable GGUF
+		// inside a present directory, is a broken bundle and must not be
+		// flattened into the same answer.
+		if (isMissingPath(error)) return false;
+		throw error;
 	}
 }

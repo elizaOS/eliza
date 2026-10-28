@@ -11,10 +11,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  asObjectRecord as asRecord,
-  readViewInteractionClientId,
-} from "@elizaos/core/protocol";
+import { readViewInteractionClientId } from "@elizaos/core/protocol";
 import LinkifyIt from "linkify-it";
 import {
   BROWSER_SERVICE_TYPE,
@@ -24,6 +21,7 @@ import {
   type BrowserDispatchFailure,
   isBrowserDispatchFailure,
 } from "../dispatch-types.js";
+import { isNativeBrowserRequest } from "../native-browser-request.js";
 import {
   type BrowserWorkspaceCommand,
   type BrowserWorkspaceCommandResult,
@@ -717,6 +715,7 @@ async function executeBrowserWaitForUrl(
   params: BrowserActionParameters | undefined,
   messageText: string,
   callback: HandlerCallback | undefined,
+  signal: AbortSignal | undefined,
 ): Promise<ReturnType<NonNullable<Action["handler"]>>> {
   const pattern = (params?.pattern ?? "").trim();
   if (!pattern) {
@@ -786,6 +785,7 @@ async function executeBrowserWaitForUrl(
       emitStatus: async (text) => {
         await callback?.({ text });
       },
+      signal,
     },
   );
 
@@ -810,6 +810,7 @@ async function executeBrowserWaitForUrl(
 
 export const browserAction: Action = {
   name: "BROWSER",
+  egress: ["owner-device", "public-network"],
   contexts: ["browser", "web", "automation", "secrets"],
   roleGate: { minRole: "OWNER" },
   similes: [
@@ -843,7 +844,12 @@ export const browserAction: Action = {
   // Wait for the browser result before the model writes its reply. A speculative
   // Stage-1 acknowledgement would race the result and duplicate text/voice.
   suppressEarlyReply: true,
-  validate: async () => true,
+  // The requesting native Browser is its own target.
+  validate: async (runtime, message) => {
+    const service = runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
+    if (!service) return false;
+    return isNativeBrowserRequest(message) || service.hasActionableTarget();
+  },
   handler: async (
     runtime,
     message,
@@ -856,8 +862,7 @@ export const browserAction: Action = {
       | undefined;
     const messageText = getMessageText(message);
     const subaction = inferBrowserSubaction(params, messageText);
-    const nativePage =
-      asRecord(message.content.metadata)?.uiBrowserSurface === "native";
+    const nativePage = isNativeBrowserRequest(message);
 
     if (
       nativePage &&
@@ -892,7 +897,13 @@ export const browserAction: Action = {
     }
 
     if (subaction === "wait-for-url") {
-      return executeBrowserWaitForUrl(runtime, params, messageText, callback);
+      return executeBrowserWaitForUrl(
+        runtime,
+        params,
+        messageText,
+        callback,
+        (options as HandlerOptions | undefined)?.abortSignal,
+      );
     }
 
     // A wait treats url as a condition ("tab URL contains"), so a URL quoted
@@ -1341,8 +1352,9 @@ export const browserAction: Action = {
     },
     {
       name: "replace",
-      subactions: ["fill", "clear", "type", "realistic_fill", "realistic_type"],
-      description: "For realistic-fill: replace existing input, not append.",
+      subactions: ["realistic_type"],
+      description:
+        "realistic_type only: replace the existing value instead of appending. fill and realistic_fill always replace; type always appends.",
       required: false,
       schema: { type: "boolean" as const },
     },

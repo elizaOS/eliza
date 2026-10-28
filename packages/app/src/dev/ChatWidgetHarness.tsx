@@ -222,6 +222,7 @@ export function ChatWidgetHarness() {
       setEvents((current) => [`widget → ${text}`, ...current].slice(0, 4));
       append("user", text);
       append("assistant", "Captured locally — no backend request was made.");
+      return true;
     },
     [append],
   );

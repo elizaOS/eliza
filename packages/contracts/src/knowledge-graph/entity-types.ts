@@ -49,6 +49,46 @@ export function normalizeEntityConnectorAccountId(
   const normalized = value?.trim();
   return normalized ? normalized : DEFAULT_CONNECTOR_ACCOUNT_ID;
 }
+/** The key an identity platform is matched on: trimmed and lowercased. */
+export function normalizeEntityIdentityPlatform(platform: string): string {
+  return platform.trim().toLowerCase();
+}
+/** Platforms whose handle is always a phone number. */
+const PHONE_HANDLE_PLATFORMS = new Set(["phone", "sms"]);
+/**
+ * An international phone number: a leading "+" then digits and the usual
+ * separators. Without the "+", digits and dots can be a username, an id or an
+ * IP address, so only phone platforms strip separators from those.
+ */
+const INTERNATIONAL_PHONE_HANDLE = /^\+[\d\s\-().]{7,}$/;
+
+/**
+ * The key an identity handle is matched on: trimmed, lowercased, and without
+ * a leading "@" on platforms where the "@" is only a mention prefix. A contact
+ * saved as "@priya" and a message from username "priya" are one identity.
+ * A phone number keeps its digits and "+" but drops spaces, dashes, dots and
+ * parentheses, so a contact saved as "+1 (415) 555-0134" and a connector's
+ * E.164 "+14155550134" are one identity. On other platforms only a handle
+ * that starts with "+" is read as a phone number. Email and website handles
+ * keep their syntax.
+ */
+export function normalizeEntityIdentityHandle(
+  platform: string,
+  handle: string,
+): string {
+  const key = handle.trim().toLowerCase();
+  const platformKey = normalizeEntityIdentityPlatform(platform);
+  if (platformKey === "email" || platformKey === "website") {
+    return key;
+  }
+  if (
+    PHONE_HANDLE_PLATFORMS.has(platformKey) ||
+    INTERNATIONAL_PHONE_HANDLE.test(key)
+  ) {
+    return key.replace(/[\s\-().]/g, "");
+  }
+  return key.replace(/^@+/, "");
+}
 /**
  * Per-connector identity claim. An Entity carries N of these — one per
  * account-bound platform handle the runtime has observed or imported. Identity

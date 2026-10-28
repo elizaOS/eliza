@@ -32,7 +32,9 @@ const certificate = "A".repeat(64);
 function assets() {
   return {
     "background.mjs": Buffer.from('import "./commands.mjs";\n'),
+    "task-bindings.mjs": Buffer.from("export const authority = true;\n"),
     "command-handler.mjs": Buffer.from("export const cancellation = true;\n"),
+    "page-command.mjs": Buffer.from("export function pageCommand() {}\n"),
     "commands.mjs": Buffer.from('export const context = "完整🙂";\n'),
     "figtree-OFL.txt": Buffer.from("SIL Open Font License, Version 1.1\n"),
     "guide-font.mjs": Buffer.from(
@@ -190,6 +192,54 @@ test("both platforms emit the reviewed order-independent IndexedDB fix and nativ
     assert.doesNotMatch(connection, /STLSetIntersection/);
     assert.match(connection, /held_lock_ids.contains\(id\)/);
   }
+});
+
+test("Android connects to an address only through a navigation the protection rules see", async () => {
+  const warmup =
+    "chrome/android/java/src/org/chromium/chrome/browser/WarmupManager.java";
+  const customTabs =
+    "chrome/android/java/src/org/chromium/chrome/browser/customtabs/CustomTabsConnection.java";
+  const prefs = "chrome/browser/preloading/preloading_prefs.cc";
+  const android = await generateComponentOverlay(request());
+  // No preloading by default: LoadingPredictor's navigation-start preconnect follows this pref.
+  assert.match(
+    android.files[prefs],
+    /prefs::kNetworkPredictionOptions,\n.*\n\s+static_cast<int>\(NetworkPredictionOptions::kDisabled\)/,
+  );
+  assert.doesNotMatch(
+    android.files[prefs],
+    /NetworkPredictionOptions::kDefault\)/,
+  );
+  // Intent and Custom Tab speculation: DNS prefetch, preconnect, hidden tabs, prefetch, parallel requests.
+  assert.match(
+    android.files[warmup],
+    /public static boolean isEarlyConnectionAllowed\(\) \{\n\s+return false;/,
+  );
+  assert.equal(
+    android.files[warmup].match(/if \(!isEarlyConnectionAllowed\(\)\) return;/g)
+      .length,
+    3,
+  );
+  assert.equal(
+    android.files[customTabs].match(
+      /if \(!WarmupManager\.isEarlyConnectionAllowed\(\)\) return/g,
+    ).length,
+    4,
+  );
+  for (const filename of [warmup, customTabs, prefs])
+    assert.equal(
+      android.report.outputs[filename],
+      sha256(android.files[filename]),
+    );
+  // Desktop builds keep Chromium's behavior: none of these files is changed.
+  const input = request();
+  input.platform = "linux";
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  const linux = await generateComponentOverlay(input);
+  for (const filename of [warmup, customTabs, prefs])
+    assert.equal(linux.files[filename], undefined);
 });
 
 test("source mutations, unsupported revisions, identity changes, and unexpected resources fail before output", async () => {
@@ -386,7 +436,7 @@ test("Linux and Android resource additions fit the reviewed GRIT allocation", as
     count + protectionAssetNames.length <=
       Number(allocation[2]) - Number(allocation[1]),
   );
-  assert.equal(count, 23); // Includes both optional Hangouts entries, conservatively.
+  assert.equal(count, 25); // Includes both optional Hangouts entries, conservatively.
   const structures = [
     ...overlay.files[
       "chrome/browser/resources/component_extension_resources.grd"
@@ -470,6 +520,7 @@ test("optional protection embeds a complete reviewed inventory without broadenin
   const input = request();
   for (const name of [
     "protection.mjs",
+    "advisory.mjs",
     "policy.mjs",
     "warning.html",
     "warning.mjs",
@@ -486,7 +537,7 @@ test("optional protection embeds a complete reviewed inventory without broadenin
   const overlay = await generateComponentOverlay(input);
   assert.equal(
     Object.keys(overlay.report.resources).length,
-    assetNames.length + 6,
+    assetNames.length + protectionAssetNames.length,
   );
   assert.match(
     overlay.files[

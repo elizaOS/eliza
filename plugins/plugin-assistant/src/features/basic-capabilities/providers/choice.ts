@@ -74,7 +74,7 @@ export const choiceProvider: Provider = {
     let output = "# Pending Tasks\n\n";
     output += "The following tasks are awaiting your selection:\n\n";
     tasksWithOptions.forEach((task, index) => {
-      output += `${index + 1}. **${task.name}**\n`;
+      output += `${index + 1}. **${task.name}** (taskId: ${task.id})\n`;
       if (task.description) {
         output += `   ${task.description}\n`;
       }
@@ -99,7 +99,7 @@ export const choiceProvider: Provider = {
       output += "\n";
     });
     output +=
-      "To select an option, reply with the option name (e.g., 'post' or 'cancel').\n";
+      "To select an option, call CHOOSE_OPTION with that task's taskId and the exact option name.\n";
     return {
       data: {
         tasks: tasksWithOptions,

@@ -47,7 +47,11 @@ import {
 	ELIZA_ERR_CANCELLED,
 	ELIZA_ERR_NOT_IMPLEMENTED,
 	ELIZA_INFERENCE_ABI_VERSION,
+	ELIZA_INFERENCE_V17_SYMBOLS,
 	ELIZA_OK,
+	ELIZA_PARADEE_G2P_ESPEAK,
+	ELIZA_PARADEE_G2P_LEXICON_ONLY,
+	ELIZA_PARADEE_G2P_RULES,
 	loadElizaInferenceFfi,
 	recoverAsrWords,
 } from "./ffi-bindings";
@@ -434,6 +438,23 @@ describeGeneratedStub("ffi-stub stub library — ABI v3 symbol audit", () => {
 	// The source-built platform library must export the ABI v3 baseline symbol
 	// set declared in ffi.h — the same set verify-symbols.mjs requires of a
 	// compatible fused libelizainference.
+	it("matches the copied native header for the ABI version and every v17 symbol", () => {
+		const header = readFileSync(path.join(FFI_STUB_DIR, "ffi.h"), "utf8");
+		expect(
+			header.match(/^#define ELIZA_INFERENCE_ABI_VERSION (\d+)$/m)?.[1],
+		).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+		for (const name of ELIZA_INFERENCE_V17_SYMBOLS) {
+			expect(header).toMatch(new RegExp(`\\b${name}\\(`));
+		}
+		const g2p = (name: string) =>
+			Number(header.match(new RegExp(`^#define ${name}\\s+(\\d+)`, "m"))?.[1]);
+		expect(g2p("ELIZA_PARADEE_G2P_LEXICON_ONLY")).toBe(
+			ELIZA_PARADEE_G2P_LEXICON_ONLY,
+		);
+		expect(g2p("ELIZA_PARADEE_G2P_RULES")).toBe(ELIZA_PARADEE_G2P_RULES);
+		expect(g2p("ELIZA_PARADEE_G2P_ESPEAK")).toBe(ELIZA_PARADEE_G2P_ESPEAK);
+	});
+
 	it("exports every eliza_inference_* ABI v3 symbol", () => {
 		const symbols = readFileSync(STUB_DYLIB);
 		for (const name of ABI_V3_SYMBOLS) {
@@ -475,6 +496,11 @@ describeGeneratedStubIntegration(
 				ELIZA_INFERENCE_ABI_VERSION,
 			);
 			expect(report.contextWasNonNull).toBe(true);
+			// No v17 family on the v5 stub: the probes report false and the
+			// Paradee entry points refuse instead of calling an absent symbol.
+			expect(report.paradeeSupported).toBe(false);
+			expect(report.asrSupported).toBe(false);
+			expect(report.paradeeLoadError).toMatch(/pre-v17/);
 		});
 
 		it("refuses explicit GPU selection on a legacy native library", () => {
@@ -559,6 +585,9 @@ interface HarnessReport {
 	errorCode?: string;
 	errorMessage?: string;
 	vadSupported?: boolean;
+	paradeeSupported?: boolean;
+	asrSupported?: boolean;
+	paradeeLoadError?: string;
 	unexpectedError?: string;
 }
 
@@ -653,6 +682,14 @@ function asLifecycleErr(e) {
     const ffi = loadElizaInferenceFfi(DYLIB);
     const ctx = ffi.create("/tmp/elizainference-test-bundle");
     const ok = ctx !== null && ctx !== undefined && ctx !== 0n && ctx !== 0;
+    let paradeeLoadError;
+    try {
+      ffi.paradeeLoad({ ctx, ggufPath: "/missing.gguf", lexiconPath: "/missing.lex" });
+    } catch (e) {
+      paradeeLoadError = asLifecycleErr(e)?.message;
+    }
+    const paradeeSupported = ffi.paradeeSupported();
+    const asrSupported = ffi.asrSupported();
     ffi.destroy(ctx);
     ffi.close();
     emit({
@@ -660,6 +697,9 @@ function asLifecycleErr(e) {
       scenario: SCENARIO,
       libraryAbiVersion: ffi.libraryAbiVersion,
       contextWasNonNull: ok,
+      paradeeSupported,
+      asrSupported,
+      paradeeLoadError,
     });
     return;
   }

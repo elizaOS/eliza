@@ -18,6 +18,9 @@ import (
 
 func bytesHash(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
 func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
+	return runtimeAPKFixtureForABI(t, mutation, "arm64-v8a")
+}
+func runtimeAPKFixtureForABI(t *testing.T, mutation, abi string) (string, []byte) {
 	t.Helper()
 	v := admissionVectors(t)[0]
 	var release releaseDescriptor
@@ -25,12 +28,26 @@ func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
 		t.Fatal(err)
 	}
 	a := release.Candidate
-	assets := map[string][]byte{"assets/agent/agent-bundle.js": []byte("agent"), "assets/agent/gateway/local-agent-gateway.mjs": []byte("gateway"), "assets/agent/gateway/task-runtime.mjs": []byte("policy"), "assets/agent/gateway/bootstrap.mjs": []byte("bootstrap"), "lib/arm64-v8a/libeliza_bun.so": fixtureELF(183), "lib/arm64-v8a/libeliza_ld_musl_aarch64.so": fixtureELF(183)}
+	a.Android.ABIs = []string{abi}
+	machine, otherMachine, loader := uint16(183), uint16(62), "libeliza_ld_musl_aarch64.so"
+	if abi == "x86_64" {
+		machine, otherMachine, loader = 62, 183, "libeliza_ld_musl_x86_64.so"
+	}
+	bunPath := "lib/" + abi + "/libeliza_bun.so"
+	loaderPath := "lib/" + abi + "/" + loader
+	assets := map[string][]byte{"assets/agent/agent-bundle.js": []byte("agent"), "assets/agent/gateway/local-agent-gateway.mjs": []byte("gateway"), "assets/agent/gateway/task-runtime.mjs": []byte("policy"), "assets/agent/gateway/bootstrap.mjs": []byte("bootstrap"), bunPath: fixtureELF(machine), loaderPath: fixtureELF(machine)}
+	if mutation == "mixed-loaders" {
+		other := "libeliza_ld_musl_x86_64.so"
+		if abi == "x86_64" {
+			other = "libeliza_ld_musl_aarch64.so"
+		}
+		assets["lib/"+abi+"/"+other] = fixtureELF(machine)
+	}
 	if mutation == "empty-agent" {
 		assets["assets/agent/agent-bundle.js"] = []byte{}
 	}
 	if mutation == "wrong-native-abi" {
-		assets["lib/arm64-v8a/libeliza_bun.so"] = fixtureELF(62)
+		assets[bunPath] = fixtureELF(otherMachine)
 	}
 	a.Runtime.Agent = bytesHash(assets["assets/agent/agent-bundle.js"])
 	a.Runtime.Gateway = bytesHash(assets["assets/agent/gateway/local-agent-gateway.mjs"])
@@ -70,7 +87,7 @@ func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
 	case "wrong-agent":
 		assets["assets/agent/agent-bundle.js"] = []byte("wrong")
 	case "wrong-library":
-		assets["lib/arm64-v8a/libeliza_bun.so"] = []byte("wrong-runtime!")
+		assets[bunPath] = []byte("wrong-runtime!")
 	case "wrong-inventory":
 		a.Runtime.Inventory = strings.Repeat("0", 64)
 	case "wrong-policy":
@@ -123,24 +140,31 @@ func runtimeAPKFixture(t *testing.T, mutation string) (string, []byte) {
 	return name, artifact
 }
 func TestPackagedRuntimeVerification(t *testing.T) {
-	for _, mutation := range []string{"valid", "empty-agent", "wrong-native-abi", "unlisted", "missing-file", "wrong-agent", "wrong-library", "wrong-inventory", "wrong-policy", "extra-library", "duplicate-zip", "duplicate-destination", "traversal", "wrong-apk", "directory-count"} {
-		t.Run(mutation, func(t *testing.T) {
-			name, artifact := runtimeAPKFixture(t, mutation)
-			err := VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", "arm64-v8a")
-			if mutation == "valid" {
-				if err != nil {
-					t.Fatal(err)
+	for _, abi := range []string{"arm64-v8a", "x86_64"} {
+		for _, mutation := range []string{"valid", "mixed-loaders", "empty-agent", "wrong-native-abi", "unlisted", "missing-file", "wrong-agent", "wrong-library", "wrong-inventory", "wrong-policy", "extra-library", "duplicate-zip", "duplicate-destination", "traversal", "wrong-apk", "directory-count"} {
+			t.Run(abi+"/"+mutation, func(t *testing.T) {
+				name, artifact := runtimeAPKFixtureForABI(t, mutation, abi)
+				err := VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", abi)
+				if mutation == "valid" {
+					if err != nil {
+						t.Fatal(err)
+					}
+					other := "x86_64"
+					if abi == "x86_64" {
+						other = "arm64-v8a"
+					}
+					if err = VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", other); err == nil {
+						t.Fatal("unqualified ABI accepted")
+					}
+					return
 				}
-				if err = VerifyRuntimeArtifact(name, artifact, "github.com,updates.example.com", "x86_64"); err == nil {
-					t.Fatal("unqualified ABI accepted")
+				if err == nil {
+					t.Fatal("unsafe packaged runtime accepted")
 				}
-				return
-			}
-			if err == nil {
-				t.Fatal("unsafe packaged runtime accepted")
-			}
-		})
+			})
+		}
 	}
+
 }
 
 // Opt-in inspection of retained real native APKs. Expectations are derived from

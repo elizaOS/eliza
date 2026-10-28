@@ -72,7 +72,15 @@ export interface BridgeRpcParams {
     metadata?: Record<string, unknown>;
   };
   metadata?: Record<string, unknown>;
+  /** Inbound files from the cloud gateway: `{ type, url }` per file, in order. */
+  attachments?: unknown;
 }
+/** A gateway attachment as message content: the core ContentType values. */
+export type BridgeAttachment = {
+  id: string;
+  url: string;
+  contentType?: "image" | "video" | "audio" | "document";
+};
 export type NormalizedBridgeMessage = {
   text: string;
   roomKey: string;
@@ -86,6 +94,7 @@ export type NormalizedBridgeMessage = {
     metadata?: Record<string, unknown>;
   };
   metadata?: Record<string, unknown>;
+  attachments?: BridgeAttachment[];
 };
 export type BridgeMessageResult = {
   text: string;
@@ -324,6 +333,7 @@ export function normalizeBridgeMessage(
             : {}),
         }
       : undefined;
+  const attachments = normalizeBridgeAttachments(params?.attachments);
   return {
     text: typeof params?.text === "string" ? params.text : "",
     roomKey: trimmedRoomId,
@@ -336,6 +346,58 @@ export function normalizeBridgeMessage(
     !Array.isArray(params.metadata)
       ? { metadata: params.metadata }
       : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
+}
+
+const BRIDGE_ATTACHMENT_TYPES = new Set([
+  "image",
+  "video",
+  "audio",
+  "document",
+]);
+
+/** Keep each gateway attachment that has a URL, with its type when known. */
+function normalizeBridgeAttachments(value: unknown): BridgeAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry, index): BridgeAttachment[] => {
+    if (!entry || typeof entry !== "object") return [];
+    const record = entry as Record<string, unknown>;
+    const url = typeof record.url === "string" ? record.url.trim() : "";
+    if (!url) return [];
+    const type =
+      typeof record.type === "string" ? record.type.trim().toLowerCase() : "";
+    return [
+      {
+        id: `${index}:${url}`,
+        url,
+        ...(BRIDGE_ATTACHMENT_TYPES.has(type)
+          ? { contentType: type as BridgeAttachment["contentType"] }
+          : {}),
+      },
+    ];
+  });
+}
+
+/**
+ * Message content for a bridge turn. Both the plain and the streaming bridge
+ * build the runtime message from it, so gateway attachments (MMS, WhatsApp,
+ * Blooio files) reach the message pipeline with their types.
+ */
+export function buildBridgeMessageContent(
+  normalized: NormalizedBridgeMessage,
+  channelType: string,
+  enableChatMode: boolean,
+) {
+  return {
+    text: normalized.text,
+    ...(enableChatMode
+      ? { mode: normalized.mode, simple: normalized.mode === "simple" }
+      : {}),
+    source: normalized.source,
+    channelType,
+    ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
+    ...(normalized.attachments ? { attachments: normalized.attachments } : {}),
   };
 }
 export interface CloudAgentConfig {
@@ -649,18 +711,11 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             id: crypto.randomUUID() as ReturnType<typeof stringToUuid>,
             entityId,
             roomId,
-            content: {
-              text: normalized.text,
-              ...(enableChatMode
-                ? {
-                    mode: normalized.mode,
-                    simple: normalized.mode === "simple",
-                  }
-                : {}),
-              source: normalized.source,
+            content: buildBridgeMessageContent(
+              normalized,
               channelType,
-              ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
-            },
+              enableChatMode,
+            ),
           });
           const response: BridgeMessageResult = { text: "" };
           await runtime.messageService?.handleMessage(
@@ -707,18 +762,11 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
             id: crypto.randomUUID() as ReturnType<typeof stringToUuid>,
             entityId,
             roomId,
-            content: {
-              text: normalized.text,
-              ...(enableChatMode
-                ? {
-                    mode: normalized.mode,
-                    simple: normalized.mode === "simple",
-                  }
-                : {}),
-              source: normalized.source,
+            content: buildBridgeMessageContent(
+              normalized,
               channelType,
-              ...(normalized.metadata ? { metadata: normalized.metadata } : {}),
-            },
+              enableChatMode,
+            ),
           });
           const response: BridgeMessageResult = { text: "" };
           await runtime.messageService?.handleMessage(

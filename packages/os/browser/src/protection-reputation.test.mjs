@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import {
+  PHISHING_COMMIT_FEED,
+  parseLatestCommitFeed,
+} from "../protection/policy.mjs";
 import { createWebsiteReputation as create } from "../protection/reputation.mjs";
 
 const PHISHING_FEED = "https://phish.co.za/latest/phishing-domains-ACTIVE.txt";
@@ -73,12 +77,11 @@ test("free local matching protects subdomains without sending addresses or secre
     assert.equal((await check(url)).status, "unavailable");
   assert.equal(calls, 2);
 });
-test("unavailable, stale, empty and malformed feeds never produce a clean verdict", async () => {
+test("unavailable, empty and malformed feeds never produce a clean verdict", async () => {
   for (const response of [
     () => new Response("error", { status: 503 }),
     () => feed("", start),
     () => feed("<html>oops</html>"),
-    () => feed(undefined, start - 49 * 3600000),
     () => new Response("bad.example"),
   ]) {
     const check = createWebsiteReputation({
@@ -89,7 +92,55 @@ test("unavailable, stale, empty and malformed feeds never produce a clean verdic
     assert.equal((await check("https://example.org")).status, "unavailable");
   }
 });
-test("failed refresh cannot renew a stale snapshot; failures have a retry cooldown", async () => {
+test("verdicts have exactly the shapes declared in reputation.d.mts", async () => {
+  const check = createWebsiteReputation({
+    minEntries: 2,
+    now: () => start,
+    fetchImpl: async () => feed(),
+  });
+  assert.deepEqual(await check("https://sub.bad.example/path"), {
+    status: "blocked",
+    source: "Phishing.Database",
+    scope: "domain",
+    threats: ["SOCIAL_ENGINEERING"],
+  });
+  assert.deepEqual(await check("https://example.org"), {
+    status: "no-known-threat",
+    source: "Phishing.Database",
+    scope: "domain",
+  });
+  assert.deepEqual(await check("http://example.org"), {
+    status: "unavailable",
+    reason: "invalid-address",
+  });
+  assert.deepEqual(await check("https://localhost/"), {
+    status: "unavailable",
+    reason: "local-address",
+  });
+  const offline = createWebsiteReputation({
+    now: () => start,
+    fetchImpl: async () => new Response("error", { status: 503 }),
+  });
+  assert.deepEqual(await offline("https://example.org"), {
+    status: "unavailable",
+    reason: "feed-unavailable",
+  });
+});
+test("old feeds and a failed refresh keep the last-good snapshot at any age; failures have a retry cooldown", async () => {
+  // A feed published 13 days ago, or with no date, is used like a new one.
+  for (const response of [
+    () => feed(undefined, start - 13 * 24 * 3600000),
+    () => new Response("bad.example\nphishing.example\n"),
+  ]) {
+    const old = createWebsiteReputation({
+      minEntries: 2,
+      now: () => start,
+      fetchImpl: async () => response(),
+    });
+    assert.equal((await old("https://bad.example")).status, "blocked");
+    assert.equal((await old("https://example.org")).status, "no-known-threat");
+  }
+
   let time = start,
     calls = 0;
   const check = createWebsiteReputation({
@@ -106,10 +157,11 @@ test("failed refresh cannot renew a stale snapshot; failures have a retry cooldo
   await check.warmup();
   await check("https://example.org");
   assert.equal(calls, 2);
-  time += 42 * 3600000;
-  assert.equal((await check("https://bad.example")).status, "unavailable");
+  time += 365 * 24 * 3600000;
+  assert.equal((await check("https://bad.example")).status, "blocked");
+  assert.equal((await check("https://example.org")).status, "no-known-threat");
 });
-test("disk cache survives offline restart and rejects expiry, corrupt bytes and source substitution", async () => {
+test("disk cache survives offline restart at any age and rejects corrupt bytes and source substitution", async () => {
   const { mkdtemp, readFile, writeFile, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
@@ -136,15 +188,16 @@ test("disk cache survives offline restart and rejects expiry, corrupt bytes and 
       (await offline()("https://example.org")).status,
       "no-known-threat",
     );
-    const expired = createWebsiteReputation({
+    const old = createWebsiteReputation({
       cacheDir: directory,
       minEntries: 2,
-      now: () => start + 49 * 3600000,
+      now: () => start + 365 * 24 * 3600000,
       fetchImpl: async () => {
         throw Error("offline");
       },
     });
-    assert.equal((await expired("https://example.org")).status, "unavailable");
+    assert.equal((await old("https://bad.example")).status, "blocked");
+    assert.equal((await old("https://example.org")).status, "no-known-threat");
     const file = join(directory, "phishing.json"),
       original = JSON.parse(await readFile(file, "utf8"));
     for (const change of [
@@ -183,7 +236,7 @@ test("a current cache serves immediately while refresh runs in the background", 
   release(feed());
   await check.warmup();
 });
-test("both feeds are required for a clean result; either fresh threat still blocks", async () => {
+test("one loaded feed is enough for a clean result; a threat from any loaded feed blocks", async () => {
   const check = create({
     feeds: REPUTATION_FEEDS,
     cacheDir: null,
@@ -199,9 +252,11 @@ test("both feeds are required for a clean result; either fresh threat still bloc
   const verdict = await check("https://malware.example");
   assert.equal(verdict.status, "blocked");
   assert.equal(verdict.source, "HaGeZi TIF Mini");
-  assert.equal((await check("https://example.org")).status, "unavailable");
+  const clean = await check("https://example.org");
+  assert.equal(clean.status, "no-known-threat");
+  assert.equal(clean.source, "HaGeZi TIF Mini");
 });
-test("primary outage uses immutable official mirror bytes with source-age validation", async () => {
+test("primary outage uses immutable official mirror bytes; an old commit is accepted", async () => {
   const urls = [],
     sha = "a".repeat(40);
   const check = create({
@@ -212,13 +267,13 @@ test("primary outage uses immutable official mirror bytes with source-age valida
     fetchImpl: async (url) => {
       urls.push(url);
       if (url === PHISHING_FEED) return new Response("", { status: 403 });
-      if (url.startsWith("https://api.github.com/"))
-        return Response.json([
-          {
-            sha,
-            commit: { committer: { date: new Date(start).toISOString() } },
-          },
-        ]);
+      assert.ok(!url.startsWith("https://api.github.com/"));
+      if (url === PHISHING_COMMIT_FEED)
+        return new Response(
+          `<?xml version="1.0"?><feed><updated>2020-01-01T00:00:00Z</updated><entry><id>tag:github.com,2008:Grit::Commit/${sha}</id><updated>${new Date(
+            start - 13 * 24 * 3600000,
+          ).toISOString()}</updated></entry></feed>`,
+        );
       assert.equal(
         url,
         `https://raw.githubusercontent.com/Phishing-Database/Phishing.Database/${sha}/phishing-domains-ACTIVE.txt`,
@@ -242,4 +297,69 @@ test("feed policy must be explicit and cache filenames cannot traverse the host 
     [REPUTATION_FEEDS[0], REPUTATION_FEEDS[0]],
   ])
     assert.throws(() => create({ feeds }), /configuration/);
+});
+
+test("local-only checks return during a stalled feed download and use the result after refresh", async () => {
+  const { createServer } = await import("node:http");
+  const { once } = await import("node:events");
+  let finish;
+  const requested = new Promise((resolve) => {
+    finish = resolve;
+  });
+  const server = createServer((_request, response) => finish(response));
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const url = `http://127.0.0.1:${server.address().port}/feed`;
+  const check = createWebsiteReputation({
+    feeds: [{ ...REPUTATION_FEEDS[0], url, mirror: false }],
+    waitForRefresh: false,
+    minEntries: 2,
+    now: () => start,
+  });
+  try {
+    const verdict = await Promise.race([
+      check("https://bad.example"),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(Error("lookup waited for the feed")),
+          1000,
+        ).unref(),
+      ),
+    ]);
+    assert.equal(verdict.status, "unavailable");
+    const response = await requested;
+    response.writeHead(200, { "last-modified": new Date(start).toUTCString() });
+    response.end("bad.example\nphishing.example\n");
+    await check.warmup();
+    assert.equal((await check("https://bad.example")).status, "blocked");
+    assert.equal(
+      (await check("https://notbad.example")).status,
+      "no-known-threat",
+    );
+  } finally {
+    check.stop();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("the commit feed parser reads only the latest entry and rejects feeds without a commit", () => {
+  const sha = "b".repeat(40);
+  assert.deepEqual(
+    parseLatestCommitFeed(
+      `<feed><updated>2020-01-01T00:00:00Z</updated><entry><id>tag:github.com,2008:Grit::Commit/${sha}</id><updated>2026-10-02T15:30:28Z</updated></entry><entry><id>tag:github.com,2008:Grit::Commit/${"c".repeat(40)}</id></entry></feed>`,
+    ),
+    { sha, publishedAt: Date.parse("2026-10-02T15:30:28Z") },
+  );
+  const undated = parseLatestCommitFeed(
+    `<feed><entry><id>tag:github.com,2008:Grit::Commit/${sha}</id></entry></feed>`,
+  );
+  assert.equal(undated.sha, sha);
+  assert.ok(Number.isNaN(undated.publishedAt));
+  for (const atom of [
+    "",
+    "<html>rate limited</html>",
+    "<feed><entry><id>tag:github.com,2008:Grit::Commit/short</id></entry></feed>",
+  ])
+    assert.equal(parseLatestCommitFeed(atom), null);
 });

@@ -1,6 +1,9 @@
 // Handles webhook gateway whatsapp behavior for authenticated connector fan-in.
 import crypto from "node:crypto";
-import { splitTelegramMessage } from "@elizaos/cloud-services-common/telegram";
+import {
+  splitTelegramMessage,
+  telegramReplyWithMedia,
+} from "@elizaos/cloud-services-common/telegram";
 import { z } from "zod";
 import { logger } from "../logger";
 import { boundedGatewayFetch } from "./bounded-fetch";
@@ -311,8 +314,15 @@ export const whatsappAdapter: PlatformAdapter = {
     await sendWhatsAppReply(config, event, text);
   },
 
-  async sendReplyWithReceipt(config, event, text) {
-    return { providerMessageIds: await sendWhatsAppReply(config, event, text) };
+  // Generated media travels as HTTPS links in the text body, as on Twilio.
+  async sendReplyWithReceipt(config, event, text, _deliveryHooks, mediaUrls) {
+    return {
+      providerMessageIds: await sendWhatsAppReply(
+        config,
+        event,
+        telegramReplyWithMedia(text, mediaUrls),
+      ),
+    };
   },
 
   async sendTypingIndicator(

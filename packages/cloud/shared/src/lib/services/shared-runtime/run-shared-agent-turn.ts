@@ -29,6 +29,8 @@ import {
   type MessageExampleGroup,
   replaceNameTokens,
   stableStringify,
+  stringToUuid,
+  type TypedReadEgressReceipt,
   type UUID,
 } from "@elizaos/core";
 import type { NetworkAppId, NetworkRouting, NetworkStore } from "@elizaos/plugin-network";
@@ -67,6 +69,7 @@ import {
   runCurrentUsWeatherSearch,
 } from "./shared-current-weather";
 import type { SharedMemoryStore } from "./shared-memory-store";
+import { formatSharedMessageText, SHARED_MESSAGE_STYLE } from "./shared-message-style";
 import {
   finalizeSharedRealtimeReply,
   hasSharedRealtimeIntent,
@@ -97,6 +100,14 @@ export interface SharedTurnMessage {
   id?: string;
   role: "system" | "user" | "assistant";
   content: string;
+  /** Accepted selected-photo receipt refs only; never URLs, private scores or access authority. */
+  relayPhotoRefs?: Array<{
+    photoId: string;
+    itemId: string;
+    sha256: string;
+    bytes: number;
+    contentType: string;
+  }>;
   /** Epoch-ms timestamp used by REST chat clients to reconcile persisted turns. */
   createdAt?: number;
   /**
@@ -185,6 +196,8 @@ export interface RunSharedAgentTurnInput {
   recallContext?: string;
   /** Server-owned execution authority for the canonical edge AgentRuntime. */
   execution?: {
+    /** Default-off exact-owner QA attestation; never populated by RPC input. */
+    typedPublicReadReplies?: true;
     agentKey: string;
     /** Trusted canonical conversation identity used for runtime room/world projection. */
     roomKey: string;
@@ -244,6 +257,8 @@ function resolveRuntimeExecution(input: RunSharedAgentTurnInput): SharedRuntimeE
 export type RunSharedAgentTurnStreamInput = Omit<RunSharedAgentTurnInput, "memory">;
 
 export interface RunSharedAgentTurnResult {
+  /** Server-selected quiet acknowledgment candidate; not proof of provider delivery. */
+  acknowledgementReaction?: string;
   reply: string;
   /** False when the canonical runtime deliberately chose IGNORE/STOP. */
   responded?: boolean;
@@ -260,6 +275,8 @@ export interface RunSharedAgentTurnResult {
   usage?: SharedAgentTurnUsage;
   /** Genuine plugin results, including applied effect receipts, for clients and replay. */
   actionResults?: ActionResult[];
+  /** Opaque in-process proof; verify against server input and never serialize to clients. */
+  internalTypedReadEgress?: TypedReadEgressReceipt;
   /** Complete current-turn evidence for internal persistence; transports must never serialize it. */
   internalGrounding?: SharedRuntimePublicGrounding;
   /** Typed refusal for a tool or device action Shared cannot execute. */
@@ -397,10 +414,15 @@ function buildSharedRuntimeSystem(
   const parts: string[] = [];
   const system = replaceNameTokens(character.system ?? "", character.name).trim();
   if (system) parts.push(system);
+  if (capabilities.transport === "sms" || capabilities.transport === "telegram") {
+    parts.push(SHARED_MESSAGE_STYLE);
+  }
   const catalog = buildSharedCapabilityCatalog(capabilities);
   parts.push(
     `Shared runtime capabilities:\n${formatSharedCapabilityCatalogForPrompt(catalog)}\n` +
       "- Never claim that you performed, scheduled, sent, booked, bought, saved, opened, or changed anything unless a registered action returned a successful result for that exact effect.\n" +
+      "- Public web research is for fresh public information. Search is intentionally omitted from ordinary conversation turns; that does not mean search is broken or permanently unavailable. When asked about search behavior, explain this briefly using actual recorded calls and the user's request. Do not invent a past lookup or its reason.\n" +
+      "- Network is currently collecting profiles; matching and proactive introductions are deferred. Explain that plainly when asked. A saved profile or opt-in is not an active matching or monitoring job. Never promise to watch for people or plans, handle matching in the background, or reach out later unless a registered action returned a successful result for that exact ongoing service. Previous assistant promises are not evidence that a service is running.\n" +
       "- When setup is needed, preserve the user's intent, offer the smallest valid handoff, and continue useful planning or drafting now.",
   );
   if (blockedCapabilities.length) {
@@ -1247,9 +1269,29 @@ export async function runSharedAgentTurn(
       : false;
   const untrustedRealtimeIntent =
     actionsEnabled && !publicSearchText ? hasSharedRealtimeIntent(message, input.history) : false;
+  const execution = resolveRuntimeExecution(input);
+  let typedReadExpected: ReturnType<
+    typeof import("./shared-typed-read-reply").createSharedTypedReadTurn
+  >;
+  if (execution.typedPublicReadReplies === true) {
+    const { createSharedTypedReadTurn } = await import("./shared-typed-read-reply");
+    typedReadExpected = createSharedTypedReadTurn({
+      enabled: execution.typedPublicReadReplies,
+      authenticatedPersonalSharedUser: execution.authenticatedPersonalSharedUser,
+      channelSource: execution.channel.source,
+      channelType: execution.channel.type,
+      agentKey: execution.agentKey,
+      roomKey: execution.roomKey,
+      userEntityId: execution.todos?.scope.entityId ?? stringToUuid(`${execution.agentKey}:owner`),
+      turnId: input.messageIds?.user,
+      message: input.capabilityText ?? input.message,
+      history: input.history,
+    });
+  }
   let realtimeActionResults: ActionResult[] | undefined;
   let realtimeGrounding: SharedRuntimePublicGrounding | undefined;
-  if (realtimeRequirement) {
+  if (realtimeRequirement && !typedReadExpected) {
+    const preflightRequestedAt = Date.now();
     let searchResult: ActionResult;
     try {
       searchResult =
@@ -1262,6 +1304,17 @@ export async function runSharedAgentTurn(
           : await runWebSearchEdge(realtimeRequirement.query, {
               signal: input.abortSignal,
             });
+      observeOwnerCapture(input.ownerCapture, (capture) =>
+        capture.observe("preflight", {
+          stage: "provider-result",
+          path: "primary",
+          query: realtimeRequirement.query,
+          domain: realtimeRequirement.domain,
+          requestedAt: preflightRequestedAt,
+          observedAt: Date.now(),
+          result: searchResult,
+        }),
+      );
       input.abortSignal?.throwIfAborted();
     } catch (error) {
       input.abortSignal?.throwIfAborted();
@@ -1290,6 +1343,9 @@ export async function runSharedAgentTurn(
     );
     observeOwnerCapture(input.ownerCapture, (capture) =>
       capture.observe("preflight", {
+        stage: "authority-result",
+        requestedAt: preflightRequestedAt,
+        observedAt: Date.now(),
         query: realtimeRequirement.query,
         domain: realtimeRequirement.domain,
         result: traceableResult,
@@ -1300,8 +1356,8 @@ export async function runSharedAgentTurn(
   }
 
   let turn: RunSharedAgentTurnResult;
+  let typedReadEgressVerified = false;
   try {
-    const execution = resolveRuntimeExecution(input);
     const { runSharedElizaRuntimeTurn } = await import("./shared-eliza-runtime");
     turn = withCapabilityResolution(
       await runSharedElizaRuntimeTurn({
@@ -1311,7 +1367,7 @@ export async function runSharedAgentTurn(
           system: buildSharedRuntimeSystem(
             input.character,
             {
-              webSearch: Boolean(publicSearchIntent),
+              webSearch: Boolean(publicSearchIntent || typedReadExpected),
               reminders: remindersEnabled,
               todos: todosEnabled,
               googleContext:
@@ -1346,7 +1402,23 @@ export async function runSharedAgentTurn(
       capabilityWall,
       blockedSecondary,
     );
-    if (realtimeActionResults) {
+    if (typedReadExpected && turn.internalTypedReadEgress) {
+      const { verifyTypedReadEgressReceipt } = await import("@elizaos/plugin-assistant");
+      typedReadEgressVerified = verifyTypedReadEgressReceipt(turn.internalTypedReadEgress, {
+        ownerScope: typedReadExpected.scope.ownerScope,
+        turnId: typedReadExpected.scope.turnId,
+        requirementIds: typedReadExpected.requirementIds,
+        reply: turn.reply,
+      });
+      logger.audit("[shared-typed-read] egress verification", {
+        ...(input.traceId && /^[0-9a-f]{32}$/.test(input.traceId)
+          ? { traceId: input.traceId }
+          : {}),
+        verified: typedReadEgressVerified,
+        requirementCount: typedReadExpected.requirementIds.length,
+      });
+    }
+    if (realtimeActionResults && !typedReadEgressVerified) {
       const runtimeActionResults = (turn.actionResults ?? []).filter(
         (result) => !isWebSearchActionResult(result),
       );
@@ -1375,7 +1447,7 @@ export async function runSharedAgentTurn(
       error,
     );
   }
-  if (publicSearchIntent) {
+  if (publicSearchIntent && !typedReadEgressVerified) {
     realtimeGrounding ??= sharedPublicWebGrounding(turn.actionResults ?? []);
     const groundedReply = finalizeSharedRealtimeReply(
       turn.reply,
@@ -1388,6 +1460,7 @@ export async function runSharedAgentTurn(
           ...diagnostic,
         });
       },
+      publicSearchIntent.kind === "general" ? "general_public" : "realtime",
     );
     const history = [...turn.history];
     let replaced = false;
@@ -1424,7 +1497,7 @@ export async function runSharedAgentTurn(
       ...(actionResults.length ? { actionResults } : {}),
       ...(realtimeGrounding ? { internalGrounding: realtimeGrounding } : {}),
     };
-  } else if (trustedRealtimeIntent || untrustedRealtimeIntent) {
+  } else if (!typedReadEgressVerified && (trustedRealtimeIntent || untrustedRealtimeIntent)) {
     const groundedReply = finalizeSharedRealtimeReply(turn.reply, undefined);
     const history = [...turn.history];
     const assistantIndex = history.findLastIndex((entry) => entry.role === "assistant");
@@ -1446,6 +1519,35 @@ export async function runSharedAgentTurn(
   // The durable memory commit runs OUTSIDE the provider try/catch: its failure
   // is a storage fault on an already-landed reply and must not be re-labeled
   // as a provider outcome for the caller's settlement classification.
+  if (
+    !publicSearchIntent &&
+    !typedReadEgressVerified &&
+    ["sms", "telegram"].includes(
+      sharedCapabilityTransportForSource(
+        input.execution?.channel.source,
+        input.execution?.channel.type,
+      ),
+    )
+  ) {
+    const reply = formatSharedMessageText(turn.reply);
+    if (reply !== turn.reply) {
+      const history = [...turn.history];
+      const index = history.findLastIndex((entry) => entry.role === "assistant");
+      if (index >= 0) history[index] = { ...history[index], content: reply };
+      turn = { ...turn, reply, history };
+    }
+  }
+  // A quiet acknowledgment is only a candidate while the turn stays silent.
+  // Source or capability recovery must not leave a reaction beside a text reply.
+  if (
+    turn.acknowledgementReaction !== undefined &&
+    (turn.responded !== false || turn.reply.trim())
+  ) {
+    turn = { ...turn };
+    delete turn.acknowledgementReaction;
+  }
+  // This in-process capability is never part of a client or persisted DTO.
+  if (turn.internalTypedReadEgress) delete turn.internalTypedReadEgress;
   turn = withReminderActionProvenance(turn, input);
   await commitSharedTurnMemory(input, turn.reply);
   return turn;

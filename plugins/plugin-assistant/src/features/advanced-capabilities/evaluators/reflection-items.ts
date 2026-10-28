@@ -1085,6 +1085,9 @@ async function applyDecay(ctx: ApplyContext, op: DecayOp): Promise<boolean> {
     if (!fact?.id) return false;
   }
   if (hasExtractionEvidence(fact.metadata, ctx.extraction)) return false;
+  // A fact the user asked to keep (or confirmed) is changed only by the user,
+  // like the extraction reconciliation paths; decay would delete it.
+  if (isProtectedMemoryEvidence(fact)) return false;
   const nextConfidence = clamp01(pickFactConfidence(fact) - DECAY_DELTA);
   if (ctx.extraction?.isBackfill) {
     await updateExtractedFact(ctx.runtime, fact, {

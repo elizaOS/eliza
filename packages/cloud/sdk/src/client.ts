@@ -120,6 +120,7 @@ import {
   type GetX402PaymentRequestResponse,
   type HttpMethod,
   type JobStatus,
+  type JobStatusResponse,
   type JsonObject,
   type LinkAffiliateRequest,
   type LinkAffiliateResponse,
@@ -147,6 +148,8 @@ import {
   type OrganizationSubscriptionUpgradeQuoteRequest,
   type OrganizationSubscriptionUpgradeQuoteResponse,
   type PairingTokenResponse,
+  type PairingTokenResult,
+  type PairingTokenStarting,
   type PendingOrganizationPlanChangeCommandsResponse,
   type PendingSubscriptionCommandsResponse,
   type PollGatewayRelayResponse,
@@ -167,6 +170,9 @@ import {
   type SubscriptionCheckoutResponse,
   type SubscriptionPlansResponse,
   type SubscriptionPortalResponse,
+  type UpdateAgentEnvironmentRequest,
+  type UpdateAgentEnvironmentResponse,
+  type UpdateAgentRequest,
   type UpdateAppInput,
   type UpdateAppMonetizationInput,
   type UpdateCampaignDaypartingInput,
@@ -437,7 +443,7 @@ export class ElizaCloudClient {
     // require one, but never fall back to it if the response is malformed.
     const requestSessionId = createCliLoginRequestId();
     const query = options.returnTo
-      ? `?returnTo=${encodeURIComponent(options.returnTo)}`
+      ? `&returnTo=${encodeURIComponent(options.returnTo)}`
       : "";
 
     return this.requestData<{
@@ -1632,11 +1638,27 @@ export class ElizaCloudClient {
 
   updateAgent(
     agentId: string,
-    request: Partial<CreateAgentRequest>,
+    request: UpdateAgentRequest,
   ): Promise<AgentResponse> {
     return this.requestData<AgentResponse>(
       "PATCH",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
+      { json: request },
+    );
+  }
+
+  /**
+   * Set or remove the named environment variables; a `null` value removes that
+   * variable and variables not named are kept. The agent route itself does not
+   * accept environment variables.
+   */
+  updateAgentEnvironment(
+    agentId: string,
+    request: UpdateAgentEnvironmentRequest,
+  ): Promise<UpdateAgentEnvironmentResponse> {
+    return this.requestData<UpdateAgentEnvironmentResponse>(
+      "PATCH",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/environment`,
       { json: request },
     );
   }
@@ -1703,13 +1725,23 @@ export class ElizaCloudClient {
     );
   }
 
-  getAgentPairingToken(agentId: string): Promise<PairingTokenResponse> {
-    return this.requestData<
-      PairingTokenResponse | { data: PairingTokenResponse }
-    >(
+  /**
+   * Issue a one-time token for the agent web UI. While the agent is not
+   * running the route answers 202 with a "starting" body and asks the caller
+   * to retry after `retryAfterMs`; that answer carries no token.
+   */
+  getAgentPairingToken(agentId: string): Promise<PairingTokenResult> {
+    type PairingBody = PairingTokenResponse | PairingTokenStarting;
+    return this.requestData<PairingBody | { data: PairingBody }>(
       "POST",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}/pairing-token`,
-    ).then((response) => ("data" in response ? response.data : response));
+    ).then((response) => {
+      // Older deployments answered with the bare body; current ones wrap it.
+      const body = "data" in response ? response.data : response;
+      return "token" in body
+        ? { kind: "ready", ...body }
+        : { kind: "starting", ...body };
+    });
   }
 
   registerGatewayRelaySession(request: {
@@ -1758,7 +1790,7 @@ export class ElizaCloudClient {
   getJob(
     jobId: string,
     options?: Pick<CloudRequestOptions, "signal" | "timeoutMs">,
-  ): Promise<JobStatus> {
+  ): Promise<JobStatusResponse> {
     return this.requestData(
       "GET",
       `/api/v1/jobs/${encodePathParam(jobId)}`,
@@ -1770,14 +1802,15 @@ export class ElizaCloudClient {
     jobId: string,
     options: { timeoutMs?: number; intervalMs?: number } = {},
   ): Promise<JobStatus> {
-    return pollUntil({
+    const response = await pollUntil({
       read: (requestOptions) => this.getJob(jobId, requestOptions),
-      isComplete: (job) =>
-        job.status === "completed" || job.status === "failed",
+      isComplete: ({ data }) =>
+        data.status === "completed" || data.status === "failed",
       timeoutMs: options.timeoutMs ?? 120_000,
       intervalMs: options.intervalMs ?? 2_000,
       timeoutMessage: `Timed out waiting for Eliza Cloud job ${jobId}`,
     });
+    return response.data;
   }
 
   getUser(): Promise<UserProfileResponse> {

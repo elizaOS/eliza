@@ -4,6 +4,7 @@
  * ensures the LifeOps scheduler task exists so the profile drives scheduling.
  */
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
+import { CALENDAR_NEW_SLOT_DURATION_MINUTES } from "@elizaos/contracts";
 import {
   ElizaError,
   type IAgentRuntime,
@@ -532,13 +533,18 @@ export function normalizeLifeOpsMeetingPreferencesPatch(
     if (tz.length > 0 && tz.length <= 64) out.timeZone = tz;
   }
   const s = normalizeTimeOfDay(patch.preferredStartLocal);
-  if (s) out.preferredStartLocal = s;
   const e = normalizeTimeOfDay(patch.preferredEndLocal);
-  if (e) out.preferredEndLocal = e;
+  if (s && e && s >= e) {
+    // Overnight windows (e.g. 22:00-06:00) can never match a slot in the
+    // current read path; reject like normalizeBlackoutWindow does.
+  } else {
+    if (s) out.preferredStartLocal = s;
+    if (e) out.preferredEndLocal = e;
+  }
   if (
     typeof patch.defaultDurationMinutes === "number" &&
-    patch.defaultDurationMinutes >= 5 &&
-    patch.defaultDurationMinutes <= 480
+    patch.defaultDurationMinutes >= CALENDAR_NEW_SLOT_DURATION_MINUTES.min &&
+    patch.defaultDurationMinutes <= CALENDAR_NEW_SLOT_DURATION_MINUTES.max
   ) {
     out.defaultDurationMinutes = Math.floor(patch.defaultDurationMinutes);
   }
@@ -602,12 +608,54 @@ export async function readLifeOpsMeetingPreferences(
   );
 }
 
+function assertValidMeetingWindow(
+  prefs: Pick<
+    LifeOpsMeetingPreferences,
+    "preferredStartLocal" | "preferredEndLocal"
+  >,
+): void {
+  // A one-field patch can still form an invalid window against the saved
+  // value (e.g. saved 09:00-17:00 plus { preferredStartLocal: "18:00" }).
+  if (prefs.preferredStartLocal >= prefs.preferredEndLocal) {
+    throw new ElizaError(
+      "Meeting preferences update rejected: preferredStartLocal must be earlier than preferredEndLocal",
+      {
+        code: "LIFEOPS_MEETING_PREFERENCES_INVALID_RANGE",
+        context: {
+          preferredStartLocal: prefs.preferredStartLocal,
+          preferredEndLocal: prefs.preferredEndLocal,
+        },
+        severity: "ephemeral",
+      },
+    );
+  }
+}
+
 export async function updateLifeOpsMeetingPreferences(
   runtime: IAgentRuntime,
   patch: LifeOpsMeetingPreferencesPatch | Record<string, unknown>,
 ): Promise<LifeOpsMeetingPreferencesUpdate | null> {
+  const preferredStartLocal = normalizeTimeOfDay(patch.preferredStartLocal);
+  const preferredEndLocal = normalizeTimeOfDay(patch.preferredEndLocal);
+  if (preferredStartLocal && preferredEndLocal) {
+    assertValidMeetingWindow({ preferredStartLocal, preferredEndLocal });
+  }
   const normalizedPatch = normalizeLifeOpsMeetingPreferencesPatch(patch);
   if (Object.keys(normalizedPatch).length === 0) return null;
+
+  const timeZone = resolveConfiguredTimeZone(runtime);
+  // Validate the merged window BEFORE ensureLifeOpsSchedulerTask: that helper
+  // always writes (updateTask and sometimes patchTaskMetadata on an existing
+  // scheduler, or agent + task creation when missing), so an invalid one-field
+  // patch must be rejected before any scheduler state changes.
+  const preTask = await readLifeOpsSchedulerTask(runtime);
+  const preMetadata = isRecord(preTask?.metadata)
+    ? preTask.metadata
+    : buildFallbackSchedulerMetadata(runtime.agentId);
+  assertValidMeetingWindow({
+    ...resolveMeetingPreferences(preMetadata, timeZone),
+    ...normalizedPatch,
+  });
 
   const taskId = await ensureLifeOpsSchedulerTask(runtime);
   const task = await readLifeOpsSchedulerTask(runtime);
@@ -617,10 +665,15 @@ export async function updateLifeOpsMeetingPreferences(
       : buildFallbackSchedulerMetadata(runtime.agentId);
 
   const next: LifeOpsMeetingPreferences = {
-    ...resolveMeetingPreferences(metadata, resolveConfiguredTimeZone(runtime)),
+    ...resolveMeetingPreferences(metadata, timeZone),
     ...normalizedPatch,
     updatedAt: new Date().toISOString(),
   };
+  // Re-validate after initialization: if ensure ever changed the source
+  // preferences, the pre-check above would be stale. Reject before the
+  // preference write below; the read-back persistence proof after it only
+  // fires once updateTask has already mutated the stored task.
+  assertValidMeetingWindow(next);
   await runtime.updateTask(taskId, {
     metadata: { ...metadata, meetingPreferences: next },
   });

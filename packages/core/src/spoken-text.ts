@@ -17,6 +17,7 @@
  */
 
 import { REASONING_TAG_NAMES } from "./utils/reasoning-tags";
+import { looksLikeStageDirection } from "./utils/stage-directions";
 
 const NON_SPEECH_TAGS = [...REASONING_TAG_NAMES, "tool_calls?", "tools?"].join(
 	"|",
@@ -43,6 +44,8 @@ function stripThinkingAndMarkup(input: string): string {
 	text = text.replace(NON_SPEECH_BLOCK, " ");
 	text = text.replace(INCOMPLETE_NON_SPEECH_TAG, " ");
 	text = text.replace(/```[\s\S]*?```/g, " ");
+	// An unterminated fence swallows to end-of-input; TTS must never speak code.
+	text = text.replace(/```[\s\S]*$/, " ");
 	text = text.replace(/`([^`]+)`/g, "$1");
 	text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
 	text = text.replace(/<(?:\/?[A-Za-z]|!)[^<>\n]*>/g, " ");
@@ -50,7 +53,30 @@ function stripThinkingAndMarkup(input: string): string {
 	return text;
 }
 
-const STAR_DIRECTION_PATTERN = /\*{1,2}[^*\n]+\*{1,2}/g;
+// A star span is either a stage direction (`*sighs*`, not spoken) or markdown
+// emphasis (`**Settings**`, `***very important***`, `I *love* it`), whose words
+// must still be spoken. A known action word is a direction anywhere. Otherwise
+// bold is emphasis, and a single-star span is a direction only where roleplay
+// puts actions: a multi-word span at the start of the reply or of a sentence
+// (`*adjusts glasses* Let me check.`). A bold-italic span keeps its `**` form
+// here: peeling only two of its three markers on the first pass left a
+// single-star span that the next pass dropped as an action.
+const STAR_SPAN_PATTERN = /\*{1,3}([^*\n]+)\*{1,3}/g;
+
+function peelStarSpan(
+	match: string,
+	inner: string,
+	offset: number,
+	source: string,
+): string {
+	if (looksLikeStageDirection(inner)) return " ";
+	if (match.startsWith("**")) return inner;
+	// A lone emphasized word (`*Carefully* read`, `choices: *yes*`) is spoken;
+	// only a multi-word span opening a sentence reads as a roleplay action.
+	const before = source.slice(0, offset).trimEnd();
+	const opensSentence = before === "" || /[.!?。！？\n]$/u.test(before);
+	return opensSentence && /\s/u.test(inner.trim()) ? " " : inner;
+}
 
 const BALANCED_DIRECTION_PATTERNS = [
 	/\([^()]*\)/g,
@@ -145,7 +171,7 @@ function stripNonSpeechDirections(input: string): string {
 	let stabilized = false;
 	for (let pass = 0; pass < MAX_NON_SPEECH_STRIP_PASSES; pass += 1) {
 		const previous = text;
-		text = text.replace(STAR_DIRECTION_PATTERN, " ");
+		text = text.replace(STAR_SPAN_PATTERN, peelStarSpan);
 		for (const pattern of BALANCED_DIRECTION_PATTERNS) {
 			text = text.replace(pattern, " ");
 		}

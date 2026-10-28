@@ -35,7 +35,13 @@ export type VoiceModelId =
   | "vad"
   | "wakeword"
   | "embedding"
-  | "asr";
+  /**
+   * The Android/AOSP/desktop device voice stack: Paradee-8M v1.1 TTS and
+   * Phonon-2 ASR on libelizainference. Device ASR lives only here; the old
+   * standalone `asr` id (the retired eliza-1-asr / Qwen3-ASR line and its
+   * Gemma ASR placeholder) is gone.
+   */
+  | "mobile-voice";
 
 /**
  * Quant labels mirror `CatalogQuantizationVariant` ids used by the text
@@ -48,6 +54,8 @@ export type VoiceModelQuant =
   | "q5_k_m"
   | "q6_k"
   | "q8_0"
+  | "fv5-pair16-v1"
+  | "fv5-b5x3t7-v1"
   | "gguf-fp32"
   | "fp16"
   | "onnx-fp32"
@@ -162,6 +170,127 @@ export interface VoiceModelVersion {
   readonly changelogEntry: string;
   /** Minimum `eliza1Manifest.version` this voice version is compatible with. */
   readonly minBundleVersion: string;
+  /**
+   * Per-file pins for a multi-repo bundle (`mobile-voice` only). The files
+   * come from several Hugging Face repos, so each row carries its own
+   * repository, revision and URL instead of the version-level `hfRepo`.
+   */
+  readonly files?: ReadonlyArray<MobileVoiceFile>;
+}
+
+/** What a mobile voice bundle file is for. */
+export type MobileVoiceFileRole =
+  | "tts"
+  | "g2p-lexicon"
+  /** One file of the eSpeak NG English data misaki uses for words outside its lexicon. */
+  | "g2p-espeak-data"
+  | "asr-parakeet"
+  | "vad"
+  /**
+   * Retired Qwen3-ASR text GGUF and audio projector. They occur only in the
+   * `mobile-voice` 1.0.0 and 1.1.0 history rows; `mobileVoiceBundle()`
+   * refuses a latest version that still lists them.
+   */
+  | RetiredMobileVoiceFileRole;
+
+/** Roles of the retired Qwen3-ASR pair (catalog history only). */
+export type RetiredMobileVoiceFileRole = "asr-text" | "asr-mmproj";
+
+const RETIRED_MOBILE_VOICE_ROLES: ReadonlySet<MobileVoiceFileRole> =
+  new Set<MobileVoiceFileRole>(["asr-text", "asr-mmproj"]);
+
+/**
+ * The libelizainference ASR backend an `asr/` row feeds. Phonon-2 on the
+ * Parakeet-TDT backend (batch and streaming) is the only local ASR; `qwen3`
+ * appears only on retired history rows.
+ */
+export type MobileAsrBackend = "parakeet";
+
+/** The `asr/` group: the Phonon-2 GGUF. */
+export const MOBILE_ASR_ROLES: ReadonlyArray<MobileVoiceFileRole> = [
+  "asr-parakeet",
+];
+
+/**
+ * One pinned file of the Android/AOSP voice bundle. `path` is relative to the
+ * bundle root the agent stages into (`tts/paradee/`,
+ * `tts/paradee/espeak-ng-data/`, `asr/`, `vad/`).
+ *
+ * A `published` row has a resolvable `url`, `revision`, `sha256` and `bytes`.
+ * An `unpublished` row has no `url` or `revision`: the file is built locally
+ * from the pinned `source` (see `localFrom`) and must be supplied by path
+ * until the owner publishes it. Downloaders never fetch an unpublished row.
+ * When the build is byte-reproducible (Paradee GGUF, misaki lexicon, eSpeak NG
+ * data, Phonon-2) the row still carries the
+ * expected `sha256` and `bytes`, and a local copy must match them; otherwise
+ * they are null and the pins come with the local source.
+ */
+export interface MobileVoiceFile {
+  readonly id: string;
+  readonly role: MobileVoiceFileRole;
+  /** For `asr-*` rows: the backend this file belongs to (`qwen3` only on retired rows). */
+  readonly asrBackend?: MobileAsrBackend | "qwen3";
+  readonly path: string;
+  readonly hfRepo: string;
+  readonly hfPath: string;
+  readonly url: string | null;
+  readonly revision: string | null;
+  readonly sha256: string | null;
+  readonly bytes: number | null;
+  readonly license: string;
+  readonly status: "published" | "unpublished";
+  readonly localFrom?: string;
+  /** Attribution text the app must show for this file (CC-BY rows). */
+  readonly attribution?: string;
+  /** Licence NOTICE that must ship with the file, pinned in the source repo. */
+  readonly notice?: {
+    readonly path: string;
+    readonly sha256: string;
+    readonly bytes: number;
+    /** GGUF metadata key that carries the same NOTICE text. */
+    readonly ggufKey?: string;
+  };
+  /** Licence points flagged for review. They never block a build. */
+  readonly licenseFlags?: ReadonlyArray<string>;
+  readonly source: {
+    readonly repo: string;
+    readonly revision: string;
+    readonly files?: ReadonlyArray<{
+      readonly path: string;
+      readonly sha256: string;
+      readonly bytes?: number;
+    }>;
+    readonly converter?: string;
+    /** Exact converter invocation that reproduces `sha256` from `files`. */
+    readonly converterCommand?: string;
+  };
+}
+
+/** A mobile voice file that is safe to download: every pin is present. */
+export type PublishedMobileVoiceFile = MobileVoiceFile & {
+  readonly status: "published";
+  readonly url: string;
+  readonly revision: string;
+  readonly sha256: string;
+  readonly bytes: number;
+};
+
+export function isPublishedMobileVoiceFile(
+  file: MobileVoiceFile,
+): file is PublishedMobileVoiceFile {
+  return (
+    file.status === "published" &&
+    typeof file.url === "string" &&
+    typeof file.revision === "string" &&
+    file.url.startsWith(
+      `https://huggingface.co/${file.hfRepo}/resolve/${file.revision}/`,
+    ) &&
+    typeof file.sha256 === "string" &&
+    /^[0-9a-f]{64}$/.test(file.sha256) &&
+    typeof file.bytes === "number" &&
+    Number.isSafeInteger(file.bytes) &&
+    file.bytes > 0
+  );
 }
 
 /**
@@ -265,4 +394,32 @@ export function findVoiceModelVersion(
   version: string,
 ): VoiceModelVersion | undefined {
   return VOICE_MODEL_VERSIONS.find((v) => v.id === id && v.version === version);
+}
+
+/**
+ * The pinned Android/AOSP voice bundle (Paradee TTS + misaki lexicon,
+ * Phonon-2 ASR, Silero VAD). Throws when the catalog has no `mobile-voice`
+ * entry with file rows, or when the latest entry still lists a retired
+ * Qwen3-ASR row, so a broken catalog cannot silently ship no voice or a
+ * removed model.
+ */
+export function mobileVoiceBundle(): VoiceModelVersion & {
+  readonly files: ReadonlyArray<MobileVoiceFile>;
+} {
+  const latest = latestVoiceModelVersion("mobile-voice");
+  if (!latest?.files?.length) {
+    throw new Error("voice-model-versions.json has no mobile-voice file rows");
+  }
+  const retired = latest.files.filter(
+    (file) =>
+      RETIRED_MOBILE_VOICE_ROLES.has(file.role) || file.asrBackend === "qwen3",
+  );
+  if (retired.length > 0) {
+    throw new Error(
+      `mobile-voice ${latest.version} lists retired ASR rows: ${retired.map((file) => file.id).join(", ")}`,
+    );
+  }
+  return latest as VoiceModelVersion & {
+    readonly files: ReadonlyArray<MobileVoiceFile>;
+  };
 }

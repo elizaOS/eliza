@@ -115,7 +115,7 @@ export const searchMessagesAction: Action = {
 
   handler: async (
     runtime: IAgentRuntime,
-    _message: Memory,
+    message: Memory,
     _state?: State,
     options?: HandlerOptions,
     _callback?: HandlerCallback,
@@ -126,10 +126,10 @@ export const searchMessagesAction: Action = {
       return { success: false, text: filters.error, error: filters.error };
     }
     const service = getDefaultTriageService();
-    const { refs: hits, receipt } = await service.searchWithReceipt(
-      runtime,
-      filters,
-    );
+    const { refs: hits, receipt } = await service.searchWithReceipt(runtime, {
+      ...filters,
+      requester: message,
+    });
 
     const sourcesHit = new Set(hits.map((m) => m.source));
     const gaps = [
@@ -146,7 +146,7 @@ export const searchMessagesAction: Action = {
           : " No result cap was probed; connector-internal completeness is unknown.";
     const text = `${
       hits.length === 0
-        ? "No matching messages were returned."
+        ? "No matches were returned for the exact appliedFilters shown below. This does not establish that the mailbox has no matching messages under different filters."
         : `Found ${hits.length} match(es) from ${sourcesHit.size} source(s).`
     } ${coverage}${capEvidence}`;
 
@@ -167,6 +167,14 @@ export const searchMessagesAction: Action = {
           unregisteredSources: receipt.unregistered,
           unavailableSources: receipt.unavailable,
           failedSources: receipt.failed,
+          appliedFilters: {
+            query: filters.content ?? null,
+            sender: filters.sender ?? null,
+            tags: filters.tags ?? [],
+            sinceMs: filters.sinceMs ?? null,
+            untilMs: filters.untilMs ?? null,
+            limit: filters.limit ?? null,
+          },
           filtersApplied: {
             worldIds: (filters.worldIds?.length ?? 0) > 0,
             channelIds: (filters.channelIds?.length ?? 0) > 0,
@@ -189,6 +197,11 @@ export const searchMessagesAction: Action = {
           subject: m.subject ?? null,
           snippet: m.snippet,
           receivedAtMs: m.receivedAtMs,
+          receivedAt:
+            Number.isFinite(m.receivedAtMs) &&
+            Number.isFinite(new Date(m.receivedAtMs).getTime())
+              ? new Date(m.receivedAtMs).toISOString()
+              : null,
           tags: m.tags ?? [],
           contactWeight: m.triageScore?.contactWeight ?? null,
         })),

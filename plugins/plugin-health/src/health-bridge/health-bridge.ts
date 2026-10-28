@@ -651,6 +651,13 @@ function enumerateGoogleFitDates(
   return dates;
 }
 
+/**
+ * Google Fit `com.google.sleep.segment` stages that count as sleep: 2 sleep,
+ * 4 light, 5 deep, 6 REM. 1 (awake) and 3 (out of bed) do not.
+ * https://developers.google.com/fit/scenarios/read-sleep-data
+ */
+const GOOGLE_FIT_SLEEP_STAGES = new Set([2, 4, 5, 6]);
+
 async function googleFitDailySummary(
   date: string,
   accessToken: string,
@@ -713,6 +720,12 @@ async function googleFitDailySummary(
       let sleepMs = 0;
       for (const ds of sleepBucket.dataset ?? []) {
         for (const point of ds.point ?? []) {
+          // Each segment's intVal is its sleep stage. Awake (1) and out of
+          // bed (3) segments are part of the session but are not sleep.
+          const stage = point.value?.[0]?.intVal;
+          if (stage === undefined || !GOOGLE_FIT_SLEEP_STAGES.has(stage)) {
+            continue;
+          }
           const startNs = Number(point.startTimeNanos ?? "0");
           const endNs = Number(point.endTimeNanos ?? "0");
           if (

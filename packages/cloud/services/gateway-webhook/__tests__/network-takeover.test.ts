@@ -22,10 +22,34 @@ import type {
   TurnResponse,
 } from "@elizaos/plugin-network/contract";
 import { svcVerify } from "@elizaos/plugin-network/svc-auth";
-import type { ChatEvent, PlatformAdapter } from "../src/adapters/types";
+import { blooioAdapter } from "../src/adapters/blooio";
+import {
+  type ChatEvent,
+  type PlatformAdapter,
+  PlatformDeliveryError,
+} from "../src/adapters/types";
 import { redisNetworkConsentLedger } from "../src/network-compliance";
 import { createRedis, type GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
+
+// Restore this fixture's process settings before the next gateway suite.
+const savedEnvironment = Object.fromEntries(
+  [
+    "ELIZA_APP_BLOOIO_API_KEY",
+    "ELIZA_APP_BLOOIO_PHONE_NUMBER",
+    "MOCK_REDIS",
+    "NETWORK_OWNED_INGRESS_POLICY",
+    "NETWORK_PERSONAL_CONTINUITY_ENABLED",
+    "NETWORK_SERVICE_URL",
+    "NETWORK_SHARED_PROJECT",
+    "NETWORK_TAKEOVER",
+    "NETWORK_TAKEOVER_ALLOWLIST",
+    "NETWORK_TWILIO_ACCOUNT_SID",
+    "NETWORK_TWILIO_AUTH_TOKEN",
+    "NETWORK_TWILIO_PHONE_NUMBER",
+    "SERVICE_TURN_SECRET",
+  ].map((name) => [name, process.env[name]]),
+);
 
 process.env.MOCK_REDIS = "1";
 process.env.NETWORK_TWILIO_ACCOUNT_SID = "ACnetwork";
@@ -38,6 +62,11 @@ let redis: GatewayRedis;
 let service: ReturnType<typeof Bun.serve>;
 let cloud: ReturnType<typeof Bun.serve>;
 const turns: Array<{ req: TurnRequest; verified: boolean }> = [];
+const turnBodies: string[] = [];
+let duringCloudTurn:
+  | ((body: Record<string, unknown>) => Promise<Response | undefined>)
+  | undefined;
+let rejectNextReply = false;
 const acknowledgements: Array<Record<string, unknown>> = [];
 const cloudBodies: Array<Record<string, unknown>> = [];
 const sent: Array<{ to: string; text: string }> = [];
@@ -50,9 +79,25 @@ const fakeTwilio: PlatformAdapter = {
   extractEvent: async (rawBody) => JSON.parse(rawBody) as ChatEvent,
   sendReply: async () => undefined,
   sendReplyWithReceipt: async (_config, event, text) => {
+    if (rejectNextReply) {
+      rejectNextReply = false;
+      throw new PlatformDeliveryError(
+        "controlled rejection",
+        "failed",
+        "REJECTED",
+        false,
+      );
+    }
     sent.push({ to: event.senderId, text });
     return { providerMessageIds: [`SMout${sent.length}`] };
   },
+  sendTypingIndicator: async () => undefined,
+};
+
+const fakeBlooio: PlatformAdapter = {
+  ...fakeTwilio,
+  platform: "blooio",
+  getDedupeScope: blooioAdapter.getDedupeScope,
   sendTypingIndicator: async () => undefined,
 };
 
@@ -75,16 +120,26 @@ async function inbound(
   text: string,
   from: string,
   chatType?: string,
+  options: {
+    project?: string;
+    messageId?: string;
+    adapter?: PlatformAdapter;
+    configuredService?: boolean;
+    protocol?: string;
+  } = {},
 ): Promise<string | null> {
   sequence += 1;
-  const messageId = `SMtk${sequence}`;
+  const messageId = options.messageId ?? `SMtk${sequence}`;
+  const project = options.project ?? "network";
+  const adapter = options.adapter ?? fakeTwilio;
   const event: ChatEvent = {
-    platform: "twilio",
+    platform: adapter.platform,
     messageId,
     chatId: from,
     senderId: from,
     text,
     ...(chatType ? { chatType } : {}),
+    ...(options.protocol ? { protocol: options.protocol } : {}),
     rawPayload: {},
   };
   const response = await handleWebhook(
@@ -92,12 +147,22 @@ async function inbound(
       method: "POST",
       body: JSON.stringify(event),
     }),
-    fakeTwilio,
-    deps(),
-    "network",
+    adapter,
+    {
+      ...deps(),
+      ...(options.configuredService ? { networkService: undefined } : {}),
+    },
+    project,
   );
   expect(response.status).toBe(200);
-  const key = `webhook:twilio:${messageId}`;
+  const scope = adapter.getDedupeScope?.(
+    { fromNumber: process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER },
+    event,
+    project,
+  );
+  const key = scope
+    ? `webhook:${adapter.platform}:${scope}:message:${messageId}`
+    : `webhook:${adapter.platform}:${messageId}`;
   for (let attempt = 0; attempt < 400; attempt++) {
     const state = await redis.get<string>(key);
     if (state !== "processing") return state === null ? null : String(state);
@@ -127,6 +192,7 @@ beforeAll(() => {
         return Response.json({ ok: true, replayed: false });
       }
       const req = JSON.parse(body) as TurnRequest;
+      turnBodies.push(body);
       turns.push({ req, verified: v.id === req.messageId });
       const out = respond(req);
       return out instanceof Response
@@ -149,6 +215,12 @@ beforeAll(() => {
     fetch: async (request) => {
       const rawBody = await request.text();
       const body = JSON.parse(rawBody) as Record<string, unknown>;
+      if (
+        new URL(request.url).pathname === "/api/eliza-app/identity-link/confirm"
+      ) {
+        cloudBodies.push(body);
+        return Response.json({ success: true, data: { status: "linked" } });
+      }
       if (body.networkHandled) {
         const verified = await svcVerify(SECRET, {
           method: "POST",
@@ -176,7 +248,18 @@ beforeAll(() => {
           },
         });
       }
+      if (body.networkTurn) {
+        const verified = await svcVerify(SECRET, {
+          method: "POST",
+          path: new URL(request.url).pathname,
+          headers: request.headers,
+          body: rawBody,
+        });
+        expect(verified.ok).toBe(true);
+      }
       cloudBodies.push(body);
+      const override = await duringCloudTurn?.(body);
+      if (override) return override;
       return Response.json({
         success: true,
         data: { reply: `agent reply to: ${String(body.message)}` },
@@ -188,9 +271,22 @@ beforeAll(() => {
 afterAll(() => {
   service.stop(true);
   cloud.stop(true);
+  for (const [name, value] of Object.entries(savedEnvironment)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
 });
 
 beforeEach(() => {
+  process.env.SERVICE_TURN_SECRET = SECRET;
+  delete process.env.NETWORK_PERSONAL_CONTINUITY_ENABLED;
+  delete process.env.NETWORK_OWNED_INGRESS_POLICY;
+  delete process.env.NETWORK_SHARED_PROJECT;
+  delete process.env.NETWORK_TAKEOVER_ALLOWLIST;
+  process.env.NETWORK_TAKEOVER = "1";
+  turnBodies.length = 0;
+  duringCloudTurn = undefined;
+  rejectNextReply = false;
   turns.length = 0;
   acknowledgements.length = 0;
   cloudBodies.length = 0;
@@ -441,5 +537,375 @@ describe("Network takeover: the service owns the turn", () => {
       providerMessageIds: [],
       historyRecorded: false,
     });
+  });
+});
+
+function admitOwnedShared(phone: string, connectorAccountId: string): void {
+  process.env.NETWORK_PERSONAL_CONTINUITY_ENABLED = "true";
+  process.env.NETWORK_OWNED_INGRESS_POLICY = JSON.stringify({
+    phoneNumber: phone,
+    project: "eliza-app",
+    platform: "blooio",
+    connectorAccountId,
+    messageIdPrefix: "blooio:eliza-app:",
+    userId: "00000000-0000-4000-8000-000000000001",
+    organizationId: "00000000-0000-4000-8000-000000000002",
+  });
+}
+
+describe("Network admission on the existing Shared project", () => {
+  test("owned allowlisted Shared ingress retains its canonical envelope and dedupes the open turn", async () => {
+    const phone = "+14155550730";
+    process.env.NETWORK_SHARED_PROJECT = "eliza-app";
+    process.env.NETWORK_TAKEOVER_ALLOWLIST = phone;
+    admitOwnedShared(phone, "+14155550030");
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+14155550030";
+    process.env.ELIZA_APP_BLOOIO_API_KEY = "owned-test-key";
+    respond = (req) => ({
+      outcome: "open",
+      channel: req.channel,
+      app: "slop",
+      memberId: "slop_owned",
+      context: {
+        firstName: "Ada",
+        city: "nyc",
+        state: "open",
+        stateFrom: null,
+        stateUntil: null,
+        facets: [],
+        activeItems: [],
+        singlePlayer: true,
+      },
+    });
+    expect(
+      await inbound("hello", phone, "private", {
+        project: "eliza-app",
+        messageId: "owned-replay",
+        adapter: fakeBlooio,
+      }),
+    ).toBe("delivered");
+    expect(turns).toHaveLength(1);
+    expect(cloudBodies[0]).toMatchObject({
+      project: "eliza-app",
+      connectorAccountId: "+14155550030",
+      messageId: "blooio:eliza-app:owned-replay",
+      networkTurn: { memberId: "slop_owned" },
+    });
+    expect(
+      await inbound("hello", phone, "private", {
+        project: "eliza-app",
+        messageId: "owned-replay",
+        adapter: fakeBlooio,
+      }),
+    ).toBe("delivered");
+    expect(turns).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+  });
+});
+
+describe("Shared Network admission and consent boundaries", () => {
+  const phone = "+14155550740";
+  const options = { project: "eliza-app", adapter: fakeBlooio };
+  beforeEach(async () => {
+    await redis.del(`network-consent:eliza-app:${phone}`);
+    await redis.del(`network-consent:eliza-app:app:slop:${phone}`);
+    process.env.NETWORK_SHARED_PROJECT = "eliza-app";
+    process.env.NETWORK_TAKEOVER_ALLOWLIST = phone;
+    admitOwnedShared(phone, "+14155550040");
+    process.env.ELIZA_APP_BLOOIO_PHONE_NUMBER = "+14155550040";
+    process.env.ELIZA_APP_BLOOIO_API_KEY = "owned-test-key";
+    respond = (req) => ({
+      outcome: "open",
+      channel: req.channel,
+      app: "slop",
+      memberId: "slop_owned",
+      context: {
+        firstName: "Ada",
+        city: "nyc",
+        state: "open",
+        stateFrom: null,
+        stateUntil: null,
+        facets: [],
+        activeItems: [],
+        singlePlayer: true,
+      },
+    });
+  });
+  for (const invalid of [
+    "connector",
+    "prefix",
+    "platform",
+    "empty-message-id",
+    "continuity",
+    "missing-policy",
+    "partial-policy",
+    "short-secret",
+    "array-user-id",
+    "array-organization-id",
+  ] as const) {
+    test(`refuses owned Shared ${invalid} before Network intake or Cloud inference`, async () => {
+      const policy = JSON.parse(process.env.NETWORK_OWNED_INGRESS_POLICY!);
+      if (invalid === "connector") policy.connectorAccountId = "+14155550999";
+      if (invalid === "prefix") policy.messageIdPrefix = "blooio:other:";
+      if (invalid === "platform") {
+        policy.platform = "twilio";
+        policy.messageIdPrefix = "twilio:eliza-app:";
+      }
+      if (invalid === "partial-policy") delete policy.organizationId;
+      if (invalid === "array-user-id") policy.userId = [policy.userId];
+      if (invalid === "array-organization-id")
+        policy.organizationId = [policy.organizationId];
+      process.env.NETWORK_OWNED_INGRESS_POLICY = JSON.stringify(policy);
+      if (invalid === "missing-policy")
+        delete process.env.NETWORK_OWNED_INGRESS_POLICY;
+      if (invalid === "continuity")
+        process.env.NETWORK_PERSONAL_CONTINUITY_ENABLED = "1";
+      if (invalid === "short-secret") process.env.SERVICE_TURN_SECRET = "short";
+      expect(
+        await inbound("hello", phone, "private", {
+          ...options,
+          messageId: invalid === "empty-message-id" ? "" : `scope-${invalid}`,
+        }),
+      ).toBeNull();
+      expect(turns).toHaveLength(0);
+      expect(cloudBodies).toHaveLength(0);
+      expect(sent).toHaveLength(0);
+    });
+  }
+  test("an owned Shared identity-link challenge is confirmed before intake", async () => {
+    expect(await inbound("LINK-ABCD2345", phone, "private", options)).toBe(
+      "delivered",
+    );
+    expect(turns).toHaveLength(0);
+    expect(cloudBodies).toHaveLength(1);
+    expect(cloudBodies[0]).toMatchObject({
+      code: "LINK-ABCD2345",
+      platform: "blooio",
+      platformId: phone,
+    });
+    expect(sent).toHaveLength(1);
+  });
+  for (const protocol of ["imessage", "sms", "rcs", "unknown"] as const) {
+    test(`signed Shared open and handled envelopes retain ${protocol} transport`, async () => {
+      expect(
+        await inbound("hello", phone, "private", { ...options, protocol }),
+      ).toBe("delivered");
+      expect(turns[0]?.req.transport).toBe(protocol);
+      expect(cloudBodies[0]?.transport).toBe(protocol);
+      respond = () => ({
+        outcome: "handled",
+        delivery: "collected",
+        replyKind: "reply",
+        accountEligible: true,
+        app: "slop",
+        memberId: "slop_owned",
+        reason: "profile_intake",
+        replies: ["Saved."],
+        replyIds: [],
+      });
+      expect(
+        await inbound("profile", phone, "private", { ...options, protocol }),
+      ).toBe("delivered");
+      expect(turns[1]?.req.transport).toBe(protocol);
+      expect(cloudBodies[1]?.transport).toBe(protocol);
+      expect(cloudBodies[1]).toMatchObject({
+        networkHandled: { request: { transport: protocol } },
+      });
+    });
+  }
+  test("handled STOP belongs to the canonical Cloud owner once and projects Shared consent", async () => {
+    respond = () => ({
+      outcome: "handled",
+      delivery: "collected",
+      replyKind: "compliance",
+      accountEligible: true,
+      app: "ntwrk",
+      memberId: "owned_member",
+      reason: "stop",
+      replies: ["Stopped."],
+      replyIds: [],
+      consent: { scope: "all", app: null, state: "opted_out", at: Date.now() },
+    });
+    expect(
+      await inbound("STOP", phone, "private", {
+        ...options,
+        messageId: "shared-stop",
+      }),
+    ).toBe("delivered");
+    expect(cloudBodies[0]).toMatchObject({
+      project: "eliza-app",
+      messageId: "blooio:eliza-app:shared-stop",
+      connectorAccountId: "+14155550040",
+      networkHandled: { request: { messageId: "shared-stop" } },
+    });
+    expect(acknowledgements).toHaveLength(1);
+    expect(sent).toHaveLength(1);
+    expect(
+      await redisNetworkConsentLedger(redis).current("eliza-app", phone),
+    ).toMatchObject({ state: "opted_out" });
+    expect(
+      await inbound("STOP", phone, "private", {
+        ...options,
+        messageId: "shared-stop",
+      }),
+    ).toBe("delivered");
+    expect(sent).toHaveLength(1);
+  });
+  test("ignored Shared STOP still uses the local consent fallback and never calls Cloud", async () => {
+    respond = () => ({ outcome: "ignored", reason: "unknown" });
+    await inbound("STOP", phone, "private", options);
+    expect(cloudBodies).toHaveLength(0);
+    expect(sent).toHaveLength(1);
+    expect(
+      await redisNetworkConsentLedger(redis).current("eliza-app", phone),
+    ).toMatchObject({ state: "opted_out" });
+  });
+  test("disabled, unconfigured, unlisted and group traffic never gains a signed Network capability", async () => {
+    const cases = [
+      () => {
+        process.env.NETWORK_TAKEOVER = "0";
+      },
+      () => {
+        process.env.NETWORK_TAKEOVER_ALLOWLIST = "";
+      },
+      () => {
+        process.env.NETWORK_TAKEOVER_ALLOWLIST = "+14155550999";
+      },
+      () => {
+        process.env.NETWORK_SHARED_PROJECT = "other";
+      },
+    ];
+    for (const configure of cases) {
+      process.env.NETWORK_TAKEOVER = "1";
+      process.env.NETWORK_TAKEOVER_ALLOWLIST = phone;
+      process.env.NETWORK_SHARED_PROJECT = "eliza-app";
+      configure();
+      await inbound("hello", phone, "private", options);
+    }
+    process.env.NETWORK_SHARED_PROJECT = "eliza-app";
+    process.env.NETWORK_TAKEOVER_ALLOWLIST = phone;
+    duringCloudTurn = async () =>
+      Response.json({ success: true, data: { reply: "", responded: false } });
+    await inbound("hello group", phone, "group", options);
+    expect(turns).toHaveLength(0);
+    expect(cloudBodies).toHaveLength(5);
+    for (const body of cloudBodies) expect(body.networkTurn).toBeUndefined();
+  });
+  test("enabled Shared takeover without service authority fails closed before ordinary inference", async () => {
+    delete process.env.NETWORK_SERVICE_URL;
+    expect(
+      await inbound("hello", phone, "private", {
+        ...options,
+        configuredService: true,
+      }),
+    ).toBe("delivered");
+    expect(cloudBodies).toHaveLength(0);
+    // Upstream sends its existing truthful failure notice; no ordinary inference.
+    expect(sent).toHaveLength(1);
+  });
+  test("an idempotent retry retains the exact signed service request and first ingress time", async () => {
+    const open = respond;
+    rejectNextReply = true;
+    respond = () => Response.json({ error: "unavailable" }, { status: 503 });
+    expect(
+      await inbound("hello retry", phone, "private", {
+        ...options,
+        messageId: "fixed-turn",
+      }),
+    ).toBeNull();
+    await Bun.sleep(10);
+    respond = open;
+    expect(
+      await inbound("hello retry", phone, "private", {
+        ...options,
+        messageId: "fixed-turn",
+      }),
+    ).toBe("delivered");
+    expect(turnBodies).toHaveLength(2);
+    expect(turnBodies[1]).toBe(turnBodies[0]);
+    expect(turns.every((turn) => turn.verified)).toBe(true);
+    expect(sent).toHaveLength(1);
+  });
+
+  test("a concurrent STOP suppresses the existing terminal failure notice", async () => {
+    duringCloudTurn = async () => {
+      await redisNetworkConsentLedger(redis).record({
+        project: "eliza-app",
+        channel: "blooio",
+        address: phone,
+        state: "opted_out",
+        source: "service:stop",
+        at: new Date().toISOString(),
+      });
+      return Response.json(
+        { error: "terminal" },
+        { status: 503, headers: { "X-Eliza-Retryable": "false" } },
+      );
+    };
+    expect(await inbound("hello failing", phone, "private", options)).toBe(
+      "delivered",
+    );
+    expect(sent).toHaveLength(0);
+    // Preserve upstream Blooio retry policy; all attempts precede the refused notice.
+    expect(cloudBodies).toHaveLength(3);
+  });
+  test("an ignored admitted Shared turn still honors a concurrent channel STOP without member context", async () => {
+    respond = () => ({ outcome: "ignored", reason: "unknown" });
+    duringCloudTurn = async (body) => {
+      expect(body.networkTurn).toBeUndefined();
+      await redisNetworkConsentLedger(redis).record({
+        project: "eliza-app",
+        channel: "blooio",
+        address: phone,
+        state: "opted_out",
+        source: "service:stop",
+        at: new Date().toISOString(),
+      });
+    };
+    expect(
+      await inbound("ordinary ignored text", phone, "private", options),
+    ).toBe("delivered");
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("identity-link codes on per-agent routes", () => {
+  test("a link code on a tenant-keyed per-agent route is not confirmed", async () => {
+    const agentId = "00000000-0000-4000-8000-0000000000a1";
+    // A per-agent connector is verified with the tenant's own secrets, so the
+    // sender id it reports is not attested by the platform.
+    await redis.set(
+      `webhook-config:twilio:agent:${agentId}`,
+      JSON.stringify({
+        agentId,
+        accountSid: "ACtenant",
+        authToken: "tenant-token",
+        phoneNumber: "+14155550001",
+      }),
+    );
+    const event: ChatEvent = {
+      platform: "twilio",
+      messageId: "SMagent-link",
+      chatId: "+14155550123",
+      senderId: "+14155550123",
+      text: "LINK-ABCD2345",
+      rawPayload: {},
+    };
+    const response = await handleWebhook(
+      new Request(`https://gateway.test/webhook/app/twilio/${agentId}`, {
+        method: "POST",
+        body: JSON.stringify(event),
+      }),
+      fakeTwilio,
+      deps(),
+      "app",
+      agentId,
+    );
+    expect(response.status).toBe(200);
+    await Bun.sleep(300);
+
+    expect(cloudBodies.some((body) => body.code === "LINK-ABCD2345")).toBe(
+      false,
+    );
   });
 });
