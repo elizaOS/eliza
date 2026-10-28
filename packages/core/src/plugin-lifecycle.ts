@@ -4,6 +4,7 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 import { unregisterConnectorSourceMetadataOwner } from "./connectors";
+import { normalizeConnectorAccountId } from "./runtime/connector-registration";
 import { roleRank } from "./runtime/context-gates";
 import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
@@ -16,7 +17,11 @@ import type {
 	PluginOwnership,
 	PluginServiceRegistration,
 } from "./types/plugin";
-import type { IAgentRuntime } from "./types/runtime";
+import type {
+	IAgentRuntime,
+	MessageConnectorRegistration,
+	PostConnectorRegistration,
+} from "./types/runtime";
 import type { Service, ServiceTypeName } from "./types/service";
 import {
 	lookupProviderCatalogContexts,
@@ -93,6 +98,7 @@ type RuntimeWithPluginLifecycle = IAgentRuntime &
 	RuntimePrivateState & {
 		__elizaPluginLifecycleInstalled?: boolean;
 		__elizaPluginOwnership?: Map<string, PluginOwnership>;
+		__elizaPendingPluginOwnership?: Set<PluginOwnership>;
 		// The concrete runtime owns the chat pre-handler registry; the lifecycle
 		// wrapper only needs to know whether an id is already registered.
 		chatPreHandlerRegistry?: { has(id: string): boolean };
@@ -119,7 +125,6 @@ type RuntimePrivateState = {
 		ServiceTypeName,
 		RuntimeServiceRegistrationStatus
 	>;
-	sendHandlers: Map<string, RuntimeSendHandler>;
 	models: Map<string, RuntimeModelHandlerRecord[]>;
 	_runServiceStart?: (
 		key: ServiceTypeName,
@@ -189,6 +194,17 @@ function getPluginOwnershipStore(
 	return runtime.__elizaPluginOwnership;
 }
 
+/** Ownership of plugins whose registration is still running; it joins the
+ * store only when the registration finishes. */
+function getPendingPluginOwnership(
+	runtime: RuntimeWithPluginLifecycle,
+): Set<PluginOwnership> {
+	if (!runtime.__elizaPendingPluginOwnership) {
+		runtime.__elizaPendingPluginOwnership = new Set();
+	}
+	return runtime.__elizaPendingPluginOwnership;
+}
+
 function getOwnershipTarget(
 	runtime: RuntimeWithPluginLifecycle,
 	pluginName: string,
@@ -198,6 +214,83 @@ function getOwnershipTarget(
 		return activeCapture.ownership;
 	}
 	return getPluginOwnershipStore(runtime).get(pluginName) ?? null;
+}
+
+/** Ownership of the plugin whose registration or service start is running. */
+function getCapturingOwnership(
+	runtime: RuntimeWithPluginLifecycle,
+): PluginOwnership | null {
+	const pluginName =
+		pluginServiceStartContext.getStore()?.pluginName ??
+		pluginRegistrationContext.getStore()?.ownership.pluginName;
+	return pluginName ? getOwnershipTarget(runtime, pluginName) : null;
+}
+
+/**
+ * The connector registry keeps the latest registration for a
+ * (source, accountId) key, so the plugin that made it owns the key: an
+ * earlier owner's unload must not remove a connector it no longer provides.
+ * `registerSendHandler` writes the same key as a default-account message
+ * connector, so a registration through either API takes the default key from
+ * both ownership lists. A registration outside plugin context releases the key
+ * from every plugin and records no owner. Plugins whose registration is still
+ * running count too, because runtime boot registers plugins concurrently.
+ */
+function releaseConnectorKey(
+	runtime: RuntimeWithPluginLifecycle,
+	owner: PluginOwnership | null,
+	kind: "messageConnectors" | "postConnectors",
+	source: string,
+	accountId: string | undefined,
+): void {
+	const sameKey = (connector: { source: string; accountId?: string }) =>
+		connector.source === source && connector.accountId === accountId;
+	const defaultMessageKey = kind === "messageConnectors" && !accountId;
+	const owners = [
+		...getPluginOwnershipStore(runtime).values(),
+		...getPendingPluginOwnership(runtime),
+	];
+	for (const other of owners) {
+		if (other === owner) continue;
+		const index = other[kind].findIndex(sameKey);
+		if (index >= 0) other[kind].splice(index, 1);
+		const sourceIndex = defaultMessageKey
+			? other.sendHandlerSources.indexOf(source)
+			: -1;
+		if (sourceIndex >= 0) other.sendHandlerSources.splice(sourceIndex, 1);
+	}
+}
+
+function claimConnector(
+	runtime: RuntimeWithPluginLifecycle,
+	kind: "messageConnectors" | "postConnectors",
+	registration: MessageConnectorRegistration | PostConnectorRegistration,
+): void {
+	const source = registration.source.trim();
+	const accountId =
+		normalizeConnectorAccountId(registration.accountId) ??
+		normalizeConnectorAccountId(registration.account?.accountId);
+	const sameKey = (connector: { source: string; accountId?: string }) =>
+		connector.source === source && connector.accountId === accountId;
+	const ownership = getCapturingOwnership(runtime);
+	releaseConnectorKey(runtime, ownership, kind, source, accountId);
+	if (!ownership || ownership[kind].some(sameKey)) return;
+	ownership[kind].push(accountId ? { source, accountId } : { source });
+}
+
+function claimSendHandlerSource(
+	runtime: RuntimeWithPluginLifecycle,
+	source: string,
+): void {
+	const ownership = getCapturingOwnership(runtime);
+	releaseConnectorKey(
+		runtime,
+		ownership,
+		"messageConnectors",
+		source,
+		undefined,
+	);
+	if (ownership) pushUniqueString(ownership.sendHandlerSources, source);
 }
 
 function pushUniqueRef<T extends object>(items: T[], item: T): void {
@@ -452,6 +545,8 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		models: [],
 		services: [],
 		sendHandlerSources: [],
+		messageConnectors: [],
+		postConnectors: [],
 		hasAdapter: false,
 		chatPreHandlerIds: [],
 		responseHandlerEvaluatorNames: [],
@@ -639,12 +734,23 @@ function removeOwnedPlugins(
 	}
 }
 
-function removeOwnedSendHandlers(
-	privateState: RuntimePrivateState,
+/** Unregistering through the connector registry also drops the connector
+ * entry that MESSAGE, POST and scheduled dispatch read, not only the handler.
+ * `exactAccount` keeps a default-account unload from removing the other
+ * accounts that other plugins registered on the same source. */
+function removeOwnedConnectors(
+	runtime: RuntimeWithPluginLifecycle,
 	ownership: PluginOwnership,
 ): void {
+	const exact = { exactAccount: true };
 	for (const source of ownership.sendHandlerSources) {
-		privateState.sendHandlers.delete(source);
+		runtime.unregisterMessageConnector(source, undefined, exact);
+	}
+	for (const { source, accountId } of ownership.messageConnectors) {
+		runtime.unregisterMessageConnector(source, accountId, exact);
+	}
+	for (const { source, accountId } of ownership.postConnectors) {
+		runtime.unregisterPostConnector(source, accountId, exact);
 	}
 }
 
@@ -722,7 +828,7 @@ async function teardownPluginOwnership(
 	}
 
 	try {
-		removeOwnedSendHandlers(privateState, ownership);
+		removeOwnedConnectors(runtime, ownership);
 	} catch (error) {
 		// error-policy:J6 Teardown attempts every owned resource and aggregates failures.
 		errors.push(error instanceof Error ? error : new Error(String(error)));
@@ -813,6 +919,10 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerResponseHandlerFieldEvaluator.bind(
 			runtimeWithLifecycle,
 		);
+	const originalRegisterMessageConnector =
+		runtimeWithLifecycle.registerMessageConnector.bind(runtimeWithLifecycle);
+	const originalRegisterPostConnector =
+		runtimeWithLifecycle.registerPostConnector.bind(runtimeWithLifecycle);
 	const originalRegisterSendHandler =
 		typeof privateState.registerSendHandler === "function"
 			? privateState.registerSendHandler.bind(runtimeWithLifecycle)
@@ -1037,19 +1147,20 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 
 	if (originalRegisterSendHandler) {
 		privateState.registerSendHandler = ((source, handler) => {
-			const hadSourceAlready = privateState.sendHandlers.has(source);
 			originalRegisterSendHandler(source, handler);
-			if (hadSourceAlready) return;
-
-			const pluginName =
-				pluginServiceStartContext.getStore()?.pluginName ??
-				pluginRegistrationContext.getStore()?.ownership.pluginName;
-			if (!pluginName) return;
-			const ownership = getOwnershipTarget(runtimeWithLifecycle, pluginName);
-			if (!ownership) return;
-			pushUniqueString(ownership.sendHandlerSources, source);
+			claimSendHandlerSource(runtimeWithLifecycle, source.trim());
 		}) as typeof privateState.registerSendHandler;
 	}
+
+	runtimeWithLifecycle.registerMessageConnector = ((registration) => {
+		originalRegisterMessageConnector(registration);
+		claimConnector(runtimeWithLifecycle, "messageConnectors", registration);
+	}) as typeof runtimeWithLifecycle.registerMessageConnector;
+
+	runtimeWithLifecycle.registerPostConnector = ((registration) => {
+		originalRegisterPostConnector(registration);
+		claimConnector(runtimeWithLifecycle, "postConnectors", registration);
+	}) as typeof runtimeWithLifecycle.registerPostConnector;
 
 	if (originalRunServiceStart) {
 		privateState._runServiceStart = (async (key, serviceType, serviceClass) => {
@@ -1101,6 +1212,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 			}
 		};
 
+		const pendingOwnership = getPendingPluginOwnership(runtimeWithLifecycle);
+		pendingOwnership.add(capture.ownership);
 		try {
 			await pluginRegistrationContext.run(capture, async () => {
 				await originalRegisterPlugin(plugin);
@@ -1116,6 +1229,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				capture.ownership.models.length > 0 ||
 				capture.ownership.services.length > 0 ||
 				capture.ownership.sendHandlerSources.length > 0 ||
+				capture.ownership.messageConnectors.length > 0 ||
+				capture.ownership.postConnectors.length > 0 ||
 				capture.ownership.chatPreHandlerIds.length > 0 ||
 				capture.ownership.responseHandlerEvaluatorNames.length > 0 ||
 				capture.ownership.responseHandlerFieldEvaluatorNames.length > 0 ||
@@ -1137,6 +1252,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				adapterBefore: capture.adapterBefore,
 			});
 			throw error;
+		} finally {
+			pendingOwnership.delete(capture.ownership);
 		}
 	}) as typeof runtimeWithLifecycle.registerPlugin;
 

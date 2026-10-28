@@ -942,6 +942,21 @@ async function handleBuiltinOptionalRoutes(
       error(res, "script is required", 400);
       return true;
     }
+    // Mirror the plugin route's opt-in check: eval with a user script
+    // stays off unless ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT is set.
+    // The plugin route runs first when the plugin is registered; this
+    // inline path serves the same route when it is not, and must not
+    // skip the check. script_forbidden maps to 403, as in the route.
+    try {
+      browserPlugin.assertBrowserWorkspaceUserScriptAllowed(
+        body.script,
+        "eval",
+        "desktop",
+      );
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : "script forbidden", 403);
+      return true;
+    }
     json(res, {
       value: await browserPlugin.evaluateBrowserWorkspaceTab({
         id: tabId,
@@ -1124,6 +1139,8 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
         under("/api/mcp") ||
         under("/api/config") ||
         under("/api/character") ||
+        // Model selection writes into the same config the owner gate protects.
+        under("/api/models/config") ||
         // Deleting a stored file removes the owner's attachments for good.
         under("/api/files") ||
         // A GitHub token lets its holder act as the owner on GitHub.

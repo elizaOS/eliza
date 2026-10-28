@@ -25,3 +25,7 @@
 export * from "./browser-capture.js";
 export * from "./browser-workspace.js";
 export * from "./browser-workspace-errors.js";
+// Re-exported singly (not star) so the server's inline browser-tab
+// dispatch can run the same user-script opt-in check as the plugin
+// route without pulling in the helpers' other names.
+export { assertBrowserWorkspaceUserScriptAllowed } from "./browser-workspace-helpers.js";
