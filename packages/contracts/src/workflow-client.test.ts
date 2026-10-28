@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { validatePhoneWorkflowSpec } from "./phone-workflow.ts";
 import {
+  isRecordedMissedExecution,
   parseRemoteWorkflow,
   parseWorkflowApprovalReceipt,
   parseWorkflowRun,
@@ -150,19 +151,42 @@ test("execution receipts bind events to their run and keep interruption and occu
   );
 });
 
-test("a generic schedule's missed occurrence is recorded from its settlement alone", () => {
+test("a generic schedule's missed occurrence needs the engine-recorded missedOccurrenceAt", () => {
   const output = {
     status: "missed",
     scheduledAt: "2026-10-28T07:30:00.000Z",
     text: "Not run: the agent was not running at the scheduled time",
   };
   assert.deepEqual(workflowOccurrenceNotRun(output), output);
-  const run = parseWorkflowRun(execution({ output }));
+  const run = parseWorkflowRun(
+    execution({ output, finished: true, missedOccurrenceAt: output.scheduledAt }),
+  );
   assert.deepEqual(run.occurrence, {
     scheduledAt: "2026-10-28T07:30:00.000Z",
     status: "missed",
   });
   assert.equal(run.output, output.text);
+  // A workflow whose own output is shaped like the missed record ran: it is not missed.
+  for (const over of [
+    {},
+    { missedOccurrenceAt: "soon" },
+    { missedOccurrenceAt: 1_793_000_000_000 },
+    { finished: false, missedOccurrenceAt: output.scheduledAt },
+  ]) {
+    const forged = parseWorkflowRun(
+      execution({ output, finished: true, ...over }),
+    );
+    assert.equal(forged.occurrence, undefined);
+    assert.equal(forged.output, output.text);
+  }
+  assert.equal(isRecordedMissedExecution(null), false);
+  assert.equal(isRecordedMissedExecution([]), false);
+  // An overlap settlement on a generic schedule needs no missed marker.
+  assert.deepEqual(
+    parseWorkflowRun(execution({ output: { ...output, status: "overlap" } }))
+      .occurrence,
+    { scheduledAt: output.scheduledAt, status: "overlap" },
+  );
   // Ordinary outputs and malformed settlements never read as a skipped occurrence.
   for (const value of [
     undefined,
