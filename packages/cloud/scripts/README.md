@@ -15,6 +15,13 @@ cutover for the canonical Cloud CF release. Set it only after state transfer and
 backend readiness. The release checks the exact environment origin, probes that
 staging upstream, and publishes `LOGIN_API_URL` with the certified Worker source.
 Blank retains the repository routing default. Cross-environment URLs fail closed.
+The canonical upstream is the Cloudflare login Worker's custom domain
+(`https://login-staging.eliza.app`, `https://login.eliza.app`); its workers.dev
+origin is also accepted. Once `ELIZA_LOGIN_API_URL` is set, Railway-era upstreams
+(as `ELIZA_LOGIN_API_URL` or the legacy `STEWARD_API_URL` secret) pass only with
+`ELIZA_LOGIN_ALLOW_RAILWAY_TRANSITION=true`, a one-release transition or rollback
+opt-in. Rename the hosts in `verify-steward-upstream-binding.ts` and
+`packages/auth/cloudflare/wrangler.toml` together.
 
 Run Cloud Latency Certification from `staging` for staging or `main` for
 production. Select the matching environment and exact served commit. Both use

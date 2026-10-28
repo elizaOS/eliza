@@ -12,6 +12,7 @@ import {
   type NativeTaskBinding,
   type NativeTaskGuidance,
   validActionText,
+  validCommitGrant,
 } from "./native-socket-target.js";
 import type {
   BrowserWorkspaceCommand,
@@ -35,6 +36,8 @@ export class NativeSurfaceBrowserTarget {
     "task-guide-keep-clear",
     "task-expected-target",
     "task-action-feedback",
+    "task-origins",
+    "task-commit-grant",
   ]);
   private stopped = false;
   private readonly lifetime = new AbortController();
@@ -146,7 +149,7 @@ export class NativeSurfaceBrowserTarget {
     command: BrowserWorkspaceCommand,
     options: Parameters<NativeSocketBrowserTarget["execute"]>[1] = {},
   ): Promise<BrowserWorkspaceCommandResult> {
-    const effect = ["click", "fill", "select", "scroll"].includes(
+    const effect = ["click", "fill", "select", "scroll", "follow"].includes(
       command.subaction,
     );
     if (
@@ -158,6 +161,20 @@ export class NativeSurfaceBrowserTarget {
       throw this.fail(
         "UNSUPPORTED",
         "The embedded target requires a bound main-frame page command.",
+      );
+    if (
+      options.commitGrant !== undefined &&
+      !validCommitGrant(options.commitGrant, {
+        taskContext: options.taskContext,
+        subaction: command.subaction,
+        targetRef: command.selector,
+        selector: options.expectedSelector,
+        now: Date.now(),
+      })
+    )
+      throw this.fail(
+        "POLICY_BLOCKED",
+        "A commit grant must match this bound task action and be current.",
       );
     if (
       options.actionText !== undefined &&
@@ -182,6 +199,7 @@ export class NativeSurfaceBrowserTarget {
       taskExpiresAt: options.taskExpiresAt,
       expectedSelector: options.expectedSelector,
       actionText: options.actionText,
+      commitGrant: options.commitGrant,
     };
     const profileId = this.getProfileId();
     const result = await this.send(

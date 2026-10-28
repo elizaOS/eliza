@@ -40,6 +40,7 @@ import {
   type TriggerFormState,
   validateCronExpression,
 } from "./trigger-form-utils";
+import { triggerRunMissed } from "./workflow-run-occurrence";
 
 const EVENT_KIND_OPTIONS = [
   {
@@ -1421,42 +1422,58 @@ function TriggerRunHistory({
               {runs
                 .slice()
                 .reverse()
-                .map((run) => (
-                  <div key={run.triggerRunId} className="text-sm">
-                    <div className="flex items-start gap-3">
-                      <StatusDot
-                        status={run.status}
-                        className="mt-1 shrink-0"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-                          <span className="font-medium text-txt">
-                            {localizedExecutionStatus(run.status, t)}
-                          </span>
-                          <span className="text-xs text-muted">
-                            {formatDateTime(run.finishedAt, {
-                              fallback: t("triggersview.emDash"),
-                            })}
-                          </span>
+                .map((run) => {
+                  const missed = triggerRunMissed(run, (at) =>
+                    formatDateTime(at, { fallback: t("triggersview.emDash") }),
+                  );
+                  return (
+                    <div
+                      key={run.triggerRunId}
+                      className="text-sm"
+                      data-run-occurrence={missed ? "missed" : undefined}
+                    >
+                      <div className="flex items-start gap-3">
+                        <StatusDot
+                          status={run.status}
+                          className="mt-1 shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
+                            <span className="font-medium text-txt">
+                              {missed
+                                ? missed.label
+                                : localizedExecutionStatus(run.status, t)}
+                            </span>
+                            <span className="text-xs text-muted">
+                              {formatDateTime(run.finishedAt, {
+                                fallback: t("triggersview.emDash"),
+                              })}
+                            </span>
+                          </div>
+                          <div className="text-xs-tight text-muted/80">
+                            {formatDurationMs(run.latencyMs)} &middot;{" "}
+                            <span className="font-mono text-muted/60">
+                              {run.source}
+                            </span>
+                          </div>
+                          {missed && (
+                            <div className="mt-1 text-xs-tight text-muted">
+                              {missed.notice}
+                            </div>
+                          )}
+                          {run.error && (
+                            <Alert
+                              variant="inlineDanger"
+                              className="mt-2.5 whitespace-pre-wrap leading-relaxed"
+                            >
+                              {run.error}
+                            </Alert>
+                          )}
                         </div>
-                        <div className="text-xs-tight text-muted/80">
-                          {formatDurationMs(run.latencyMs)} &middot;{" "}
-                          <span className="font-mono text-muted/60">
-                            {run.source}
-                          </span>
-                        </div>
-                        {run.error && (
-                          <Alert
-                            variant="inlineDanger"
-                            className="mt-2.5 whitespace-pre-wrap leading-relaxed"
-                          >
-                            {run.error}
-                          </Alert>
-                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           );
         })()}

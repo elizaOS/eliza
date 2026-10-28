@@ -81,8 +81,8 @@ internal class SurfaceControlChannel(private val webView: WebView, script: Strin
 
     fun execute(call: PluginCall, command: JSONObject, expectedDocument: String?, isCurrent: () -> Boolean) {
         val action = command.optString("subaction")
-        val input = action in setOf("click", "fill", "select", "scroll")
-        val effect = input && command.opt("validateOnly") != true
+        val input = action in setOf("click", "fill", "select", "scroll", "follow")
+        val effect = action == "native-history" || (input && command.opt("validateOnly") != true)
         val observation = action == "snapshot"
         val guidance = command.optJSONObject("guidance")
         val referenced = input || (action == "guide" && guidance?.optString("kind") in setOf("show", "action-status"))

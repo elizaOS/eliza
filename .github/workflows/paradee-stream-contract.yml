@@ -34,7 +34,7 @@ jobs:
           fi
           merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           git diff --name-only "$merge_base" "$HEAD_SHA" > "$RUNNER_TEMP/paradee-changed.txt"
-          if grep -Eq '^(packages/app/platforms/android/paradee-voice/|packages/app/platforms/android/app/src/main/elizavoice-jni/|packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java$|packages/app/scripts/paradee-voice/stream-contract|plugins/plugin-local-inference/native/llama.cpp$|\.github/workflows/(paradee-stream-contract|pr-validation)\.yml$)' "$RUNNER_TEMP/paradee-changed.txt"; then
+          if grep -Eq '^(plugins/plugin-local-inference/native/android/|packages/app/platforms/android/paradee-voice/|packages/app/platforms/android/app/src/main/elizavoice-jni/|packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java$|packages/app/scripts/paradee-voice/(stream|plugin)-contract|packages/app/scripts/voice-quality/wer\.ts$|plugins/plugin-local-inference/native/llama.cpp$|\.github/workflows/(paradee-stream-contract|pr-validation)\.yml$)' "$RUNNER_TEMP/paradee-changed.txt"; then
             echo 'run=true' >> "$GITHUB_OUTPUT"
           else
             echo 'run=false' >> "$GITHUB_OUTPUT"
@@ -48,14 +48,21 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      # Before the JVM contracts: they compile Android-facing classes against android-36.
+      - name: Setup Android SDK platform 36
+        if: steps.changes.outputs.run == 'true'
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+        with:
+          packages: platforms;android-36
       - name: Exercise actual Java wrapper with a controlled native boundary
         if: steps.changes.outputs.run == 'true'
         run: node --test packages/app/scripts/paradee-voice/stream-contract.test.mjs
+      - name: Check plugin rules and device WER parity on the JVM
+        if: steps.changes.outputs.run == 'true'
+        run: node --test packages/app/scripts/paradee-voice/plugin-contract.test.mjs
       - name: Load exact native headers
         if: steps.changes.outputs.run == 'true'
         run: git submodule update --init --depth 1 plugins/plugin-local-inference/native/llama.cpp
-      - if: steps.changes.outputs.run == 'true'
-        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
       - name: Install fixed Android compiler
         if: steps.changes.outputs.run == 'true'
         run: sdkmanager 'ndk;28.2.13676358'

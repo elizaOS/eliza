@@ -122,6 +122,11 @@ export class BrowserSurfaceWeb
   ): Promise<{ status: "dispatched" }> {
     throw this.unavailable(UNAVAILABLE);
   }
+  async setTaskOrigins(
+    _options: SurfaceIdOptions & { origins: string[] },
+  ): Promise<void> {
+    throw this.unavailable(UNAVAILABLE);
+  }
   async setTextZoom(
     _options: SurfaceIdOptions & { percent: number },
   ): Promise<void> {
@@ -138,6 +143,16 @@ export class BrowserSurfaceWeb
   async captureSurface(
     _options: CaptureSurfaceOptions,
   ): Promise<SurfaceCapture> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async observeHistory(
+    _options: SurfaceIdOptions,
+  ): ReturnType<ElizaSurfaceManagerPlugin["observeHistory"]> {
+    throw this.unavailable(UNAVAILABLE);
+  }
+  async navigateHistory(
+    _options: Parameters<ElizaSurfaceManagerPlugin["navigateHistory"]>[0],
+  ): ReturnType<ElizaSurfaceManagerPlugin["navigateHistory"]> {
     throw this.unavailable(UNAVAILABLE);
   }
   async readPage(

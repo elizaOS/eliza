@@ -31,7 +31,7 @@ import {
 import { loadElizaInferenceFfi } from "./services/voice/ffi-bindings";
 
 /**
- * Paradee-8M v1.0 GGUF converted from sahilmahendrakar/Paradee-8M-v1.0 and the
+ * Paradee-8M v1.1 GGUF converted from sahilmahendrakar/Paradee-8M-v1.1 and the
  * misaki en-US lexicon, as recorded by `tools/paradee/pins.json` and
  * `tools/misaki-g2p/pins.json` in the pinned llama.cpp fork.
  */
@@ -39,7 +39,7 @@ export const PARADEE_ASSETS: readonly PinnedSpeechAsset[] = [
 	{
 		path: "paradee-8m-v1_1.gguf",
 		sha256: "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e",
-		bytes: 32_072_768,
+		bytes: 31_275_232,
 	},
 	{
 		path: "misaki-en-us.lex",

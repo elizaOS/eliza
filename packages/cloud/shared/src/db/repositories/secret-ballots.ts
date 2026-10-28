@@ -210,7 +210,20 @@ export class SecretBallotsRepository {
       participant_identity_id: input.participantIdentityId,
       value_ciphertext: input.valueCiphertext,
     };
-    const [inserted] = await db.insert(secretBallotVotes).values(dbRow).returning();
+    let inserted: SecretBallotVoteDbRow | undefined;
+    try {
+      [inserted] = await db.insert(secretBallotVotes).values(dbRow).returning();
+    } catch (error) {
+      // A concurrent identical submit can pass the lookup above and then lose
+      // the unique index (ballot_id, participant_identity_id). The loser must
+      // resolve to the documented replay/conflict outcome, not surface a raw
+      // insert failure as a 500 and lose the caller's retry semantics.
+      const winner = await this.findVoteByIdentity(input.ballotId, input.participantIdentityId);
+      if (!winner) throw error;
+      return winner.valueCiphertext === input.valueCiphertext
+        ? { outcome: "replay_same_value", vote: winner }
+        : { outcome: "conflict_different_value", existing: winner };
+    }
     return { outcome: "recorded", vote: voteToDomain(inserted) };
   }
 

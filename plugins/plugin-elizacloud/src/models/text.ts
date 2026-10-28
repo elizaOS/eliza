@@ -1,5 +1,6 @@
 import { createModelHttpTiming } from "../utils/model-http-timing";
 import { readCloudTextFailureDiagnostic } from "../utils/cloud-text-failure-diagnostic";
+import {resolveCloudSdkAuthorityTuple} from "../utils/config";
 /**
  * Eliza Cloud text-model handlers for Responses API calls and native
  * OpenAI-compatible chat completions. The native path preserves tool identity,
@@ -1280,9 +1281,34 @@ function buildNativeRequestBody(
 ): Record<string, unknown> {
   const providerOptions = resolveNativeProviderOptions(params, modelName);
   const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions, modelName) : undefined;
-  const tools = normalizeNativeTools(params.tools);
+  let tools = normalizeNativeTools(params.tools);
+  // The registered provider and selected canonical route attest Cerebras compatibility;
+  // a model name or caller providerOptions alone cannot select this behavior.
+  // Normalize before final serialization/quote/hash; never rewrite after quote.
+  if (runtime && normalizeCerebrasModelId(modelName) === "qwen-3.8-27b" &&
+      usesCanonicalCerebrasNativeSerialization(runtime)) {
+    // Cerebras accepts one strictness mode for the entire tool batch. If any
+    // tool needs non-strict provider decoding, retain every schema and use
+    // non-strict decoding consistently; execution still validates arguments.
+    const needsCompatibleToolBatch = tools?.some(tool => {
+      const definition = asRecord(asRecord(tool).function);
+      return definition.strict !== true || hasQwenUnsupportedStrictStringKeywords(definition.parameters);
+    });
+    if (needsCompatibleToolBatch) tools = tools?.map(tool => {
+      const entry = asRecord(tool), definition = asRecord(entry.function);
+      return { ...entry, function: { ...definition, strict: false } };
+    });
+  }
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
-  const responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
+  let responseFormat = buildNativeResponseFormat(params.responseSchema, modelName);
+  // The canonical Qwen endpoint supports JSON-object output. Keep the complete
+  // schema in the prompt and validate it locally; other transports retain their
+  // existing format policy, and explicit caller formats always win.
+  if (responseFormat === undefined && params.responseSchema && !tools?.length && runtime &&
+      normalizeCerebrasModelId(modelName) === "qwen-3.8-27b" &&
+      usesCanonicalCerebrasNativeSerialization(runtime)) {
+    responseFormat = { type: "json_object" };
+  }
   const requestBody: Record<string, unknown> = {
     model: modelName,
     messages: buildNativeMessages(params, promptText, systemPrompt, responseFormat),
@@ -1324,7 +1350,10 @@ function buildNativeRequestBody(
   if (responseFormat) {
     requestBody.response_format = responseFormat;
   }
-  if (providerOptions) {
+  // The canonical Cerebras converter rebuilds provider cache hints from the
+  // canonical prompt_cache_key. Its SDK-only cache plan is not model input.
+  // Unknown namespaces/fields and noncanonical/custom transports stay intact.
+  if (providerOptions && !(runtime&&normalizeCerebrasModelId(modelName)==="qwen-3.8-27b"&&promptCacheKey&&usesCanonicalCerebrasNativeSerialization(runtime)&&onlyNativeCacheBookkeeping(providerOptions,params.providerOptions,promptCacheKey))) {
     requestBody.providerOptions = providerOptions;
     requestBody.provider_options = providerOptions;
   }
@@ -2597,4 +2626,63 @@ export async function handleActionPlanner(
   params: GenerateTextParams
 ): Promise<string | TextStreamResult> {
   return withNativeFundingAuthority(runtime, () => generateTextWithModel(runtime, ACTION_PLANNER_MODEL_TYPE, params));
+}
+
+
+function hasQwenUnsupportedStrictStringKeywords(value: unknown, seen = new WeakSet<object>()): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (seen.has(value)) return false;
+  seen.add(value);
+  if (Array.isArray(value)) return value.some(item => hasQwenUnsupportedStrictStringKeywords(item, seen));
+  const schema = value as Record<string, unknown>;
+  if (["pattern", "minLength", "maxLength"].some(key => Object.hasOwn(schema, key) && schema[key] !== undefined)) return true;
+  for (const key of ["items", "prefixItems", "additionalItems", "contains", "propertyNames", "not", "if", "then", "else", "anyOf", "oneOf", "allOf", "additionalProperties", "unevaluatedProperties", "unevaluatedItems", "contentSchema"]) {
+    if (hasQwenUnsupportedStrictStringKeywords(schema[key], seen)) return true;
+  }
+  for (const key of ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas", "dependencies"]) {
+    if (Object.values(asRecord(schema[key])).some(item => hasQwenUnsupportedStrictStringKeywords(item, seen))) return true;
+  }
+  return false;
+}
+
+
+function nativeCacheData(value:unknown):Record<string,unknown>|undefined{
+ try{if(!value||typeof value!=='object'||Array.isArray(value)||![Object.prototype,null].includes(Object.getPrototypeOf(value)))return;
+ const descriptors=Object.getOwnPropertyDescriptors(value);if(Reflect.ownKeys(descriptors).some(key=>typeof key!=='string'||!('value'in descriptors[key])||descriptors[key].enumerable!==true))return;
+ return Object.fromEntries(Object.entries(descriptors).map(([key,entry])=>[key,entry.value]));}catch{return;}
+}
+
+
+function onlyNativeCacheBookkeeping(options:Record<string,unknown>,raw:unknown,key:string):boolean{
+ if(!key||key.length>1024||key.includes("\0"))return false;
+ const data=nativeCacheData(options),eliza=nativeCacheData(nativeCacheData(raw)?.eliza),plan=nativeCacheData(eliza?.cachePlan);if(!data||!plan||plan.version!==1)return false;
+ const control=(value:unknown)=>{const item=nativeCacheData(value);return !!item&&Object.keys(item).every(key=>['type','ttl'].includes(key))&&item.type==='ephemeral'&&(item.ttl===undefined||item.ttl==='1h');};
+ const breakpoints=(value:unknown)=>{if(!Array.isArray(value)||value.length>3)return false;return value.every(item=>{const row=nativeCacheData(item);return !!row&&Object.keys(row).every(key=>['id','segmentIndex','segmentHash','ttl','cacheControl'].includes(key))&&(row.id===undefined||typeof row.id==='string'&&row.id.length<=256)&&Number.isSafeInteger(row.segmentIndex)&&(row.segmentIndex as number)>=0&&(row.segmentHash===undefined||typeof row.segmentHash==='string'&&/^[0-9a-f]{64}$/.test(row.segmentHash))&&['short','long'].includes(row.ttl as string)&&control(row.cacheControl);});};
+ for(const [namespace,value]of Object.entries(data)){
+  const row=nativeCacheData(value);if(!row)return false;
+  if(['openai','openrouter','cerebras'].includes(namespace)){
+   if(!Object.entries(row).every(([name,item])=>['promptCacheKey','prompt_cache_key'].includes(name)&&(item===key||(namespace==='cerebras'&&name==='promptCacheKey'&&typeof item==='string'&&/^eliza-workflow-v1:[a-f0-9]{64}$/.test(item)))))return false;
+  }else if(namespace==='gateway'){
+   if(Object.keys(row).length!==1||row.caching!=='auto')return false;
+  }else if(namespace==='anthropic'){
+   if(Object.keys(row).sort().join(',')!=='cacheBreakpoints,cacheControl,cacheSystem,maxBreakpoints'||!control(row.cacheControl)||row.cacheSystem!==true||row.maxBreakpoints!==4||!breakpoints(row.cacheBreakpoints)||!breakpoints(plan.anthropicBreakpoints)||JSON.stringify(row.cacheBreakpoints)!==JSON.stringify(plan.anthropicBreakpoints))return false;
+  }else return false;
+ }
+ return true;
+}
+
+/** Formatting only. Reuse Core's actual selected handlers and the normal Cloud
+ * transport tuple; no mirrored registry, lease, financial or permission state. */
+function usesCanonicalCerebrasNativeSerialization(runtime: IAgentRuntime): boolean {
+  try {
+    const tuple = resolveCloudSdkAuthorityTuple(runtime);
+    if (!tuple.outboundAllowed || !tuple.apiKey || tuple.apiBaseUrl.replace(/\/+$/, "") !== "https://api.eliza.app/api/v1") return false;
+    const ownHandlers: ReadonlyArray<readonly [ModelTypeName, unknown]> = [
+      [TEXT_NANO_MODEL_TYPE, handleTextNano], [TEXT_SMALL_MODEL_TYPE, handleTextSmall],
+      [TEXT_MEDIUM_MODEL_TYPE, handleTextMedium], [TEXT_LARGE_MODEL_TYPE, handleTextLarge],
+      [TEXT_MEGA_MODEL_TYPE, handleTextMega], [RESPONSE_HANDLER_MODEL_TYPE, handleResponseHandler],
+      [ACTION_PLANNER_MODEL_TYPE, handleActionPlanner],
+    ];
+    return ownHandlers.some(([type, handler]) => runtime.getModel(type) === handler);
+  } catch { return false; }
 }

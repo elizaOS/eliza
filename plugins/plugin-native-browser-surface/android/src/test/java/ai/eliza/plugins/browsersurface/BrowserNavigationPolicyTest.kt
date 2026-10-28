@@ -37,6 +37,17 @@ class BrowserNavigationPolicyTest {
     }
 
     @Test
+    fun hostExtendedTaskOriginsReachEachOther() {
+        val task = setOf("https://www.ssa.gov", "https://secure.login.gov")
+        assertEquals(Decision.ALLOW, BrowserNavigationPolicy.decide("https://www.ssa.gov/", "https://secure.login.gov/sign-in", true, task))
+        assertEquals(Decision.ALLOW, BrowserNavigationPolicy.decide("https://secure.login.gov/x", "https://www.ssa.gov/back", true, task))
+        assertEquals(Decision.REQUEST, BrowserNavigationPolicy.decide("https://www.ssa.gov/", "https://evil.example.net/", true, task))
+        assertEquals(Decision.REQUEST, BrowserNavigationPolicy.decide("https://evil.example.net/", "https://www.ssa.gov/", true, task))
+        assertEquals(Decision.REQUEST, decide("https://www.ssa.gov/", "https://secure.login.gov/"))
+        assertEquals(Decision.BLOCK, BrowserNavigationPolicy.decide("https://www.ssa.gov/", "javascript:alert(1)", true, task))
+    }
+
+    @Test
     fun subframesAreNotHeld() {
         assertEquals(Decision.ALLOW, decide("https://example.com/", "https://ads.example.net/frame", mainFrame = false))
     }

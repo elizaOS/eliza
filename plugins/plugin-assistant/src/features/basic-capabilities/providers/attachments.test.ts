@@ -131,6 +131,42 @@ describe("attachmentsProvider", () => {
     }
   });
 
+  it("advertises a read for an earlier room image without stored text whatever the wording of the request (#37027)", async () => {
+    // A generated image from an earlier turn carries no stored text. A
+    // follow-up regeneration request (no inspection verb, or not English)
+    // must still see it and its satisfiable ATTACHMENT read.
+    const generatedImageMemory = {
+      ...attachmentMemory(1),
+      content: {
+        text: "here is your image",
+        attachments: [
+          {
+            id: "generated-image",
+            url: "https://example.test/generated.png",
+            title: "generated.png",
+            source: "Image",
+            contentType: "image",
+            text: "",
+          },
+        ],
+      },
+    } as Memory;
+    for (const text of [
+      "can u try to gen that image again pls",
+      "¿puedes volver a generar esa imagen?",
+    ]) {
+      const result = await attachmentsProvider.get(
+        makeRuntime([generatedImageMemory], { hasImageDescriptionModel: true }),
+        makeMessage({ text }),
+      );
+
+      expect(result.text).toContain("ID: generated-image");
+      expect(result.text).toContain(
+        "Stored Content: available via ATTACHMENT action=read",
+      );
+    }
+  });
+
   it("lists the room's attachments on a turn that does not mention media, and nothing for a room without attachments", async () => {
     const withAttachments = await attachmentsProvider.get(
       makeRuntime([attachmentMemory()]),

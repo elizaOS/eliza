@@ -55,7 +55,7 @@ export function createCommandHandler(api) {
       let feedback;
       if (
         request.command.taskPolicy &&
-        ["click", "fill", "select", "scroll"].includes(
+        ["click", "fill", "select", "scroll", "follow"].includes(
           request.command.subaction,
         )
       ) {
@@ -117,6 +117,9 @@ export function createCommandHandler(api) {
         error: {
           kind: error instanceof BridgeError ? error.kind : "UNCERTAIN_OUTCOME",
           message: error instanceof Error ? error.message : String(error),
+          ...(error instanceof BridgeError && error.reason
+            ? { reason: error.reason }
+            : {}),
         },
       };
       await sender.send(reply);

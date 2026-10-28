@@ -50,6 +50,19 @@ A field is secret (`sensitive`) by its type and autocomplete tokens, or by
 words in its name, id, placeholder or label: password and PIN, one-time code,
 card, bank account and government ID numbers. Task fills never reach a secret
 field, even when a host grants it.
+Snapshots also report `blockers`: what stands in front of the page, as
+`{ kind, ref?, rejectRef?, covers, text? }`. `kind` is `modal`, `cookie-consent`,
+`captcha` (reCAPTCHA, hCaptcha, Turnstile or a "verify you are human" check),
+`login-wall` or `paywall`. `covers` is `viewport` (a modal dialog, most of the
+viewport, or an interstitial page), `target` (the centre of a listed control
+outside it) or `partial`. `ref` is a close control that agrees to nothing, and a
+consent banner offers only its reject or necessary-only control as `rejectRef`;
+both are selectors of the same snapshot. A person check never has a ref. The
+snapshot reports blockers and never presses, solves or dismisses one. Detection
+is heuristic (dialog semantics, fixed layers hit-tested on a viewport grid,
+known consent and challenge markers, and page phrases); it is qualified on the
+local fixtures in `scripts/fixtures/page-blockers` with
+`bun run --cwd packages/os test:browser:blockers`, not on arbitrary sites.
 Large native messages use ordered lossless chunks below the Android Binder limit.
 Incomplete or out-of-order messages never execute. Repeated
 request IDs fail closed; interrupted effects are never replayed automatically.
@@ -281,6 +294,36 @@ watch lasts 30 seconds or until the next task fill or click. Same-site
 `fetch`, `XMLHttpRequest` and beacon requests each have a fixture. It also checks date fills (`YYYY-MM-DD`, real days only), the
 `expectedSelector` target check and the value-free `hasInput` field flag.
 
+`task-commit-grant` lets a host-issued, single-use grant authorize one commit
+the person said yes to (see the plugin-browser README). `task-bindings.mjs`
+checks the grant against the live binding (task, epoch, origin, reviewed
+control, observed `targetRef`, the value hash a fill or select must carry, at
+most 60 seconds left),
+checks the optional `requestTarget` (`{ path | url, method }`) and `formHash`
+(64 lowercase hex), records it as spent under `commit-grant:<id>`, and hands
+the page only its ID, selector, expiry, request target and form hash. The page refuses a grant it has used in this document and
+reports the commit as `consentedCommit`. Run `node --conditions=eliza-source
+packages/os/browser/scripts/test-commit-grant.mjs` for the Chromium checks:
+no grant, an expired grant or one for another control is refused; a granted
+POST or GET form submit reaches its own origin; a script commit's one request
+is consented while its `pushState` is still recorded; a grant does not cross
+origins; another form sent by the same click is stopped, also when the granted
+form is not sent; a cancelled granted submit cannot be sent later from script;
+another submitter of the granted form (`requestSubmit(alt)` or a script click,
+with a `formaction`, `formmethod` or `formenctype` override), a script
+`form.submit()`, an action moved after the click and a swapped-in copy of the
+control are refused; a submit with no submitter is consented only from the
+default button that overrides nothing; and a second own-site request is
+recorded as a violation; a same-site fetch to another path than the form's
+action, a non-form control's request with no or another declared
+`requestTarget`, and a beacon for a declared GET are reported, while the
+declared target (by path or URL) and the form's own action sent by the page
+are consented; a field changed or a hidden input added after the click, and
+form data changed by a `formdata` handler for the page load only, are refused
+under a `formHash`, a matching one is consented, and the page's reported hash
+equals `commitFormHash` from plugin-browser; a script `form.submit()` into a
+new window is reported. The fixtures need `text/html; charset=utf-8`.
+
 Show-only guides scroll an off-screen target into view and report `placement`.
 Action guides never scroll. A trusted Dismiss sends only the guide ID; the
 extension keeps the step dismissed for that tab, task and epoch, also after a
@@ -352,10 +395,16 @@ bundle the extension engine into their admitted worker resource and include the
 Node module in the verified native gateway dependency closure. Run the protection
 regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
 
-`buildBrowserProtection(output, {warningDirectory, feeds, refreshAlarm, exceptionAlarm})`
+`buildBrowserProtection(output, {warningDirectory, warning, feeds, refreshAlarm, exceptionAlarm})`
 builds the optional unpacked worker using the shared engine. HTML/CSS overrides
-preserve shared messaging and enforcement. The optional builder defaults to the
-reviewed Phishing.Database and HaGeZi lists and ships their license notices.
+preserve shared messaging and enforcement. The default warning style supports dark,
+high-contrast and forced-colors modes. `warning: {assistantName, copy}` fills the
+page's `{{title}}`, `{{heading}}`, `{{stopped}}`, `{{mistake}}`, `{{feeds}}` and
+`{{limits}}` slots as plain text; an override page may use the same slots. The feed
+sentence and `licenses.html` are built from `feeds`; each feed names its `homepage`
+and a license `notice` (a file in `protection/licenses/` or an absolute path), both read
+only at build time and left out of the shipped worker.
+The optional builder defaults to the reviewed Phishing.Database and HaGeZi lists.
 `composeProtectionAssets` adds the complete admitted resource inventory to an
 existing component without changing its other capabilities. Keep existing alarm
 names when upgrading an installed consumer. Run `test:browser:protection:network`
@@ -418,3 +467,15 @@ baseline. Run `bun --conditions=eliza-source browser/protection/test-advisory.mj
 from `packages/os` to exercise the same flow through the actual Linux native host
 and socket target, including disconnect reset. These controlled pages do not
 establish Android, TalkBack, or a full owned Chromium build.
+
+Task click snapshots can include a one-use `clickReadback` with the observed
+`targetRef` and `synchronousTextChange`. The isolated command compares visible
+text immediately before and after the click handler, then checks that the same
+text remains at readback. Timer updates, later request results, hidden text and
+form values do not establish this response. A different task scope consumes the
+receipt without exposing it. The receipt proves a visible UI response to that
+click, not goal completion, a provider result or a payment. Product policy must
+still check effect violations and verify the requested outcome separately.
+Chromium page-freshness and generated surface control-channel tests cover this
+protocol; installed native input and asynchronous result attribution are separate
+gates.

@@ -17,6 +17,7 @@ import { readProviderOriginalMessages } from "../../runtime/provider-originals.t
 import { resolveExplicitContinuationRequestText } from "./direct-action-heuristics.ts";
 import {
   historicalActionResults,
+  historicalGmailReadContinuations,
   historicalNavigationReceipts,
   historicalReceiptGroups,
 } from "./navigation-history.ts";
@@ -213,7 +214,11 @@ export function appendPriorDialogueEvents(
       const text =
         typeof m.content?.text === "string" ? m.content.text.trim() : "";
       if (looksLikePriorDialogueArtifact(text)) return isInterruptedReply(m);
-      return text.length > 0 || isInterruptedReply(m);
+      return (
+        text.length > 0 ||
+        (m.content?.attachments?.length ?? 0) > 0 ||
+        isInterruptedReply(m)
+      );
     })
     .sort((a, b) => {
       const aTime = Number.isFinite(a.createdAt as unknown as number)
@@ -239,6 +244,29 @@ export function appendPriorDialogueEvents(
         ? historicalActionResults(memory, currentMessage, runtime.agentId)
         : [];
     const navigation = historicalNavigationReceipts(historicalResults);
+    const readContinuations = historicalGmailReadContinuations(
+      historicalResults,
+      runtime.actions ?? [],
+    );
+    if (readContinuations.length)
+      events.push({
+        id: `historical-read-continuations:${memory.id}`,
+        type: "segment",
+        source: "message-service",
+        createdAt: memory.createdAt,
+        segment: {
+          id: `historical-read-continuations:${memory.id}`,
+          label: "runtime:historical_read_continuations",
+          content: JSON.stringify({
+            requestSourceEventId: `history:${memory.id}`,
+            scope:
+              "Past exact read ranges and revision-bound continuation controls only. This metadata grants no access and starts no work. When the current user asks to continue this same read, use its recorded reference, offset, unit, limit and expectedRevision through the authorized reader. Do not invent identifiers, reread an earlier page, or treat partial coverage as complete. A changed or unavailable source must be reported, not substituted.",
+            reads: readContinuations,
+          }),
+          stable: false,
+        },
+      });
+
     const { effects, observations } = historicalReceiptGroups(
       historicalResults,
       runtime.actions ?? [],
@@ -342,7 +370,12 @@ export function appendPriorDialogueEvents(
     }
     const text =
       priorDialogueOriginalText(memory) ?? getUserMessageText(memory);
-    if (!text || looksLikePriorDialogueArtifact(text)) continue;
+    // History discovery strips this exact suffix to recover the quotable text.
+    const attachmentSummary = priorDialogueAttachmentSummary(memory);
+    // An attachment-only message (e.g. a generated image with no caption) is
+    // still part of the dialogue.
+    if (text ? looksLikePriorDialogueArtifact(text) : !attachmentSummary)
+      continue;
     const isOwnReply = memory.entityId === runtime.agentId;
     const speakerName = isOwnReply
       ? (runtime.character?.name ?? priorDialogueSpeakerName(memory))
@@ -360,8 +393,6 @@ export function appendPriorDialogueEvents(
     const sourceReplyReferences = storedReferences
       ? { ...storedReferences, replySha256: sourceReplyTextHash(text) }
       : undefined;
-    // History discovery strips this exact suffix to recover the quotable text.
-    const attachmentSummary = priorDialogueAttachmentSummary(memory);
     events.push({
       id: `history:${memory.id}`,
       type: "segment",
@@ -371,7 +402,7 @@ export function appendPriorDialogueEvents(
         id: `history:${memory.id}`,
         label: isOwnReply ? "prior_message:agent" : "prior_message:user",
         content: priorDialogueContent(
-          attachmentSummary ? `${text} ${attachmentSummary}` : text,
+          [text, attachmentSummary].filter(Boolean).join(" "),
           speakerName ?? (isOwnReply ? "assistant" : "user"),
         ),
         stable: false,

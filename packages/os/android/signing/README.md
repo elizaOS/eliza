@@ -90,7 +90,11 @@ Run on an ephemeral machine with no external IP, gated by required reviewers.
    node packages/os/scripts/android/decrypt-release-keys.ts --input bundle \
      --output /dev/shm/keys --passphrase-file /dev/shm/pass
    ```
-3. Sign and build the OTA:
+3. Sign and build the OTA. For a Pixel 10a product use the checked job in
+   [`aosp-release-signing.mjs`](../../scripts/android/aosp-release-signing.mjs)
+   (Eliza: `sign-pixel10a-release.mjs`; see [releases/](../releases/README.md)): it
+   refuses unmapped or unreviewed keys, verifies the signed packages and writes the
+   compatibility record. The underlying releasetools steps are:
    ```sh
    sign_target_files_apks -o -d /dev/shm/keys \
      --avb_vbmeta_key /dev/shm/keys/avb.pem --avb_vbmeta_algorithm SHA256_RSA4096 \

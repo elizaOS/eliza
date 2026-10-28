@@ -326,7 +326,7 @@ try {
       "beforeend",
       '<label for="full">Full name</label><input id="full" autocomplete="name" required aria-invalid="true" aria-describedby="hint" aria-errormessage="problem" value="private-name-value"><span id="hint">As shown on your bill</span><span id="problem">Enter your name</span><label>Card number <input id="card" autocomplete="cc-number" value="4242424242424242"></label><span id="pin-name">PIN</span><input id="pin" aria-labelledby="pin-name" autocomplete="current-password"><input id="agree" type="checkbox" checked aria-label="Paperless"><button id="more" type="button" aria-expanded="false" disabled>More</button>',
     );
-    document.querySelector("#full").focus();
+    document.querySelector("#full").focus({ preventScroll: true });
   });
   state = await snapshot();
   const named = (label) =>
@@ -591,6 +591,14 @@ try {
   cases.push(
     "observed document and nested scrolling, viewport guidance, manual-scroll freshness and end-of-region refusal",
   );
+  // The last scroll's own scroll event fires on a later frame; let it pass
+  // before the effect handler is added, or it changes the address early.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
   await page.evaluate(() =>
     document
       .querySelector("#region")
@@ -633,6 +641,149 @@ try {
     "A scroll handler that navigates must leave uncertainty evidence",
   );
   cases.push("task scrolling retains the navigation/effect watch");
+  // Click response evidence is produced in the isolated command, not by the
+  // host guessing from two unrelated page reads.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<button id="show" type="button">Show details</button><output></output><input id="entry"><span hidden id="hidden">old</span>';
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("output").textContent =
+        "Library address: 10 Maple Street";
+    };
+  });
+  const clickPolicy = {
+    origin: new URL(page.url()).origin,
+    expiresAt: Date.now() + 60000,
+    guidanceScope: "click-readback",
+    targets: [{ selector: "#show", action: "click" }],
+  };
+  const clickRead = async (scope = "click-readback") =>
+    run(
+      {
+        subaction: "snapshot",
+        taskPolicy: { ...clickPolicy, guidanceScope: scope },
+      },
+      `snapshot-${++sequence}`,
+    );
+  const perform = async () => {
+    const observed = await snapshot();
+    const ref = `${observed.id}:0:${observed.value.elements.find((element) => element.targetSelector === "#show").id}`;
+    assert.equal(
+      (
+        await act(observed, "click", "Show details", {
+          taskPolicy: clickPolicy,
+        })
+      ).dispatched,
+      true,
+    );
+    return ref;
+  };
+  const clicked = await perform();
+  assert.deepEqual((await clickRead()).clickReadback, {
+    targetRef: clicked,
+    synchronousTextChange: true,
+  });
+  assert.equal(
+    (await clickRead()).clickReadback,
+    undefined,
+    "Readback is consumed once",
+  );
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead("another-task")).clickReadback,
+    undefined,
+    "A different task cannot read the receipt",
+  );
+  assert.equal((await clickRead()).clickReadback, undefined);
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "old";
+  });
+  await perform();
+  await page.evaluate(() => {
+    document.querySelector("output").textContent = "Later unrelated text";
+  });
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Changed-again text is not the click readback",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () => {
+      document.querySelector("#entry").value = "private-field-value";
+      document.querySelector("#hidden").textContent = "hidden result";
+    };
+    document.querySelector("output").textContent =
+      "Carousel changed before the click";
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Unrelated updates, hidden text and input values do not prove visible click results",
+  );
+  await page.evaluate(() => {
+    document.querySelector("#show").onclick = () =>
+      queueMicrotask(() => {
+        document.querySelector("output").textContent = "Asynchronous result";
+      });
+  });
+  await perform();
+  assert.equal(
+    (await clickRead()).clickReadback.synchronousTextChange,
+    false,
+    "Asynchronous changes require separate outcome evidence",
+  );
+  cases.push(
+    "one-use task-bound synchronous text response excludes unrelated, hidden and edited values",
+  );
+  // A guide inside a native modal must not stale its own snapshot. A mixed
+  // insertion or ordinary page edit must still fence the observed action.
+  await page.evaluate(() => {
+    document.body.innerHTML =
+      '<dialog><button type="button">Modal action</button></dialog>';
+    document.querySelector("dialog").showModal();
+    window.scrollTo(0, 0);
+  });
+  for (const mutation of ["owned-only", "mixed", "attribute", "text"]) {
+    state = await snapshot();
+    const node = state.value.elements.find(
+      (element) => element.label === "Modal action",
+    );
+    assert.ok(node);
+    const shown = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(${pageGuidance.toString()})(${JSON.stringify({ kind: "show", id: `modal-${mutation}`, origin: new URL(page.url()).origin, snapshotId: state.id, nodeId: node.id, text: "Use this control", expiresAt: Date.now() + 60000 })})`,
+      returnByValue: true,
+    });
+    assert.equal(shown.exceptionDetails, undefined);
+    assert.equal(shown.result.value.placement, "in-view");
+    const changed = await cdp.send("Runtime.evaluate", {
+      contextId: executionContextId,
+      expression: `(() => {
+        const guide = globalThis.__elizaPageGuidanceV1;
+        const dialog = document.querySelector('dialog');
+        const button = dialog.querySelector('button');
+        if (${JSON.stringify(mutation)} === 'mixed') dialog.append(guide.host, document.createElement('span'));
+        if (${JSON.stringify(mutation)} === 'attribute') button.setAttribute('aria-description','Changed instruction');
+        if (${JSON.stringify(mutation)} === 'text') button.firstChild.data = 'Changed action';
+        guide.destroy();
+      })()`,
+      returnByValue: true,
+    });
+    assert.equal(changed.exceptionDetails, undefined);
+    const result = await act(state, "click", "Modal action");
+    if (mutation === "owned-only") assert.equal(result.dispatched, true);
+    else assert.equal(result.error.kind, "STALE_REF", mutation);
+    await page.evaluate(() => {
+      document.querySelector("dialog button").textContent = "Modal action";
+    });
+  }
+  cases.push(
+    "modal owned-host insertion/removal preserves refs; mixed insertion and page attribute/text edits invalidate them",
+  );
   const out = testOutputPath("browser-page-freshness");
   await mkdir(out, { recursive: true });
   await writeFile(

@@ -21,5 +21,6 @@ export { PhoneView } from "./components/PhoneView.js";
 export { appPhonePlugin, default } from "./plugin.js";
 export { phoneCallLogProvider } from "./providers/call-log.js";
 export * from "./register.js";
+export * from "./telephony-profile.js";
 export * from "./twilio.js";
 export * from "./ui.js";

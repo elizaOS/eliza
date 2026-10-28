@@ -49,7 +49,9 @@ export function pageGuidance(request) {
     keepClear.length > 8 ||
     keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
     (request.action !== undefined &&
-      !["click", "fill", "select", "scroll"].includes(request.action)) ||
+      !["click", "fill", "select", "scroll", "follow"].includes(
+        request.action,
+      )) ||
     (request.restore !== undefined && typeof request.restore !== "boolean") ||
     window !== window.top ||
     request.origin !== location.origin ||
@@ -222,7 +224,7 @@ export function pageGuidance(request) {
   style.replaceSync(
     ".ring{position:fixed;box-sizing:border-box;border-radius:8px;pointer-events:none;box-shadow:0 0 0 3px #fff,0 0 0 6px #4a3428}.ring.pulse{animation:ring .9s ease-in-out 3}@keyframes ring{50%{box-shadow:0 0 0 3px #fff,0 0 0 7px #4a34288c}}" +
       ".label{font:500 20px/1.4 var(--face);position:fixed;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;background:#fff;color:#141414;border:2px solid #b3aad3;border-radius:16px;padding:18px;box-shadow:0 8px 24px #14141324;pointer-events:none;opacity:0;transform:translateY(-8px);transition:opacity .3s ease-out,transform .3s ease-out}.label.shown{opacity:1;transform:none;pointer-events:auto}.label.tone-success{border-color:#265b19}" +
-      ".label.compact{flex-direction:row;align-items:center;gap:12px;padding:0 12px}.label.compact .row{flex:1;min-width:0}.label.compact .mark{display:none}.label.compact .title{font-size:20px;line-height:24px}.label.compact .close{flex:none;min-width:92px;padding:0 16px}" +
+      ".label.compact{flex-direction:row;align-items:center;gap:12px;padding:0 12px}.label.compact .row{flex:1;min-width:0}.label.compact .mark{display:none}.label.compact .title{font-size:20px;line-height:24px}.label.compact .close{flex:none;min-width:92px;height:48px;padding:0 16px}" +
       ".tail{position:absolute;left:28px;top:-10px;width:16px;height:16px;box-sizing:border-box;background:#fff;border:2px solid;border-color:inherit;border-right:0;border-bottom:0;transform:rotate(45deg)}.tail.up{top:auto;bottom:-10px;border:2px solid;border-color:inherit;border-left:0;border-top:0}" +
       ".row{display:flex;gap:12px;align-items:flex-start}.mark{flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:#d4ceea;color:#141414;font:700 20px/1 var(--face)}.tone-active .mark{background:#b3aad3}.tone-success .mark{border-radius:17px;background:#265b19;color:#fff}" +
       ".words{display:flex;flex-direction:column;gap:4px;min-width:0}.title{margin:0;font:700 22px/28px var(--face);overflow-wrap:anywhere}.detail{margin:0;font:500 17px/22px var(--face);color:#4a3428;overflow-wrap:anywhere}" +
@@ -355,7 +357,8 @@ export function pageGuidance(request) {
   label.append(...offered, close);
   // Measures the bottom inset the page is drawn under (the navigation bar on Android).
   const inset = element("div", "inset");
-  root.append(ring, label, pointer, tap, inset);
+  // The cursor shadow must not paint over the preview or its Cancel button.
+  root.append(ring, pointer, label, tap, inset);
   shadow.adoptedStyleSheets = [style];
   shadow.append(root);
   pointer.style.display = "none";
@@ -363,7 +366,13 @@ export function pageGuidance(request) {
   ring.hidden = true;
   label.hidden = true;
   monitor.ownedHosts.add(host);
-  document.documentElement.append(host);
+  // Keep guidance above a website modal and inside its non-inert subtree.
+  // A manual popover does not dismiss the site's dialog or steal its modality.
+  const parent = target.closest("dialog:modal") ?? document.documentElement;
+  if (typeof host.showPopover === "function")
+    host.setAttribute("popover", "manual");
+  parent.append(host);
+  if (typeof host.showPopover === "function") host.showPopover();
   // Taps count only while Chromium reports the label as fully visible: not
   // covered by page content (including the top layer), transformed or faded.
   const visibility = new IntersectionObserver(
@@ -419,18 +428,37 @@ export function pageGuidance(request) {
       left,
       Math.min(cursorRect.left + 24, left + width - tagRect.width),
     );
-    const below = cursorRect.top + 28;
-    const y = Math.max(
-      top,
-      Math.min(
-        below + tagRect.height <= top + height
-          ? below
-          : cursorRect.top - tagRect.height - 4,
-        top + height - tagRect.height,
-      ),
-    );
-    tag.style.left = `${x - cursorRect.left}px`;
-    tag.style.top = `${y - cursorRect.top}px`;
+    // Keep the identity readable without covering the preview or its target.
+    // Either may be above or below the cursor in a compact viewport.
+    const avoid = [
+      targetRect(),
+      ...(label.hidden ? [] : [label.getBoundingClientRect()]),
+    ];
+    const positions = [
+      { x, y: cursorRect.top + 28 },
+      { x, y: cursorRect.top - tagRect.height - 4 },
+      ...avoid.flatMap((rect) => [
+        { x, y: rect.bottom + 8 },
+        { x, y: rect.top - tagRect.height - 8 },
+        { x: rect.right + 8, y: cursorRect.top },
+        { x: rect.left - tagRect.width - 8, y: cursorRect.top },
+      ]),
+    ].map((point) => ({
+      x: Math.max(left, Math.min(point.x, left + width - tagRect.width)),
+      y: Math.max(top, Math.min(point.y, top + height - tagRect.height)),
+    }));
+    const position =
+      positions.find((point) =>
+        avoid.every(
+          (rect) =>
+            point.x + tagRect.width <= rect.left - 4 ||
+            point.x >= rect.right + 4 ||
+            point.y + tagRect.height <= rect.top - 4 ||
+            point.y >= rect.bottom + 4,
+        ),
+      ) ?? positions[0];
+    tag.style.left = `${position.x - cursorRect.left}px`;
+    tag.style.top = `${position.y - cursorRect.top}px`;
   };
   const hide = () => {
     ring.hidden = true;
@@ -498,6 +526,8 @@ export function pageGuidance(request) {
           !state.paused &&
           !state.dismissed &&
           state.visible &&
+          unobscured &&
+          Date.now() - unobscuredSince >= 800 &&
           visibleSince &&
           Date.now() - visibleSince >= 800 &&
           Date.now() < request.expiresAt &&

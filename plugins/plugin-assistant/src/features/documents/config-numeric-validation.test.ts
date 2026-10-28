@@ -4,7 +4,7 @@
  * setting inputs.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { validateModelConfig } from "./config.ts";
 import { ModelConfigSchema } from "./types.ts";
@@ -257,5 +257,49 @@ describe("validateModelConfig numeric boundary", () => {
       TOKENS_PER_MINUTE: 1_000_000,
       BATCH_DELAY_MS: 100,
     });
+  });
+});
+
+describe("validateModelConfig boolean settings", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // AgentRuntime.getSetting turns "true"/"false" into booleans, so the config
+  // must read boolean values from character settings, not only strings.
+  const configWith = (settings: Record<string, string>) => {
+    vi.stubEnv("OPENAI_API_KEY", "sk-test");
+    vi.stubEnv("LOAD_DOCS_ON_STARTUP", "");
+    vi.stubEnv("CTX_DOCUMENTS_ENABLED", "");
+    vi.stubEnv("RATE_LIMIT_ENABLED", "");
+    const runtime = new AgentRuntime({
+      character: { name: "Agent", bio: ["test"], settings },
+    });
+    return validateModelConfig(runtime);
+  };
+
+  it.each([
+    ["true", true],
+    ["1", true],
+    ["yes", true],
+    ["false", false],
+    ["0", false],
+  ])(
+    "reads LOAD_DOCS_ON_STARTUP=%s from character settings as %s",
+    (value, expected) => {
+      expect(
+        configWith({ LOAD_DOCS_ON_STARTUP: value }).LOAD_DOCS_ON_STARTUP,
+      ).toBe(expected);
+    },
+  );
+
+  it("reads RATE_LIMIT_ENABLED=false from character settings as off", () => {
+    expect(configWith({ RATE_LIMIT_ENABLED: "false" }).RATE_LIMIT_ENABLED).toBe(
+      false,
+    );
+  });
+
+  it("keeps RATE_LIMIT_ENABLED on when it is not set", () => {
+    expect(configWith({}).RATE_LIMIT_ENABLED).toBe(true);
   });
 });

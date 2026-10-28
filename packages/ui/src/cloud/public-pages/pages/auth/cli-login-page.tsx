@@ -360,11 +360,11 @@ function CliLoginConfirmation({
         clientLabel
           ? t("cloud.cliLogin.confirmDescriptionNamed", {
               client: clientLabel,
-              defaultValue: `"${clientLabel}" is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.`,
+              defaultValue: `"${clientLabel}" is asking for an API key with access to your {{cloudName}} organization. Continue only if you started this sign-in yourself.`,
             })
           : t("cloud.cliLogin.confirmDescription", {
               defaultValue:
-                "A command-line application is asking for an API key with access to your Eliza Cloud organization. Continue only if you started this sign-in yourself.",
+                "A command-line application is asking for an API key with access to your {{cloudName}} organization. Continue only if you started this sign-in yourself.",
             })
       }
       icon={Key}
@@ -532,7 +532,7 @@ export default function CliLoginPage() {
   }, [sessionAccountId]);
   useDocumentTitle(
     t("cloud.cliLogin.metaTitle", {
-      defaultValue: "Sign in | Eliza Cloud",
+      defaultValue: "Sign in | {{cloudName}}",
     }),
   );
   useEffect(() => {
@@ -829,11 +829,12 @@ export default function CliLoginPage() {
           </Button>
         }
         description={t("cloud.cliLogin.waitingAuthDescription", {
-          defaultValue: "Sign in to connect your Eliza app to Eliza Cloud",
+          defaultValue:
+            "Sign in to connect your {{appName}} app to {{cloudName}}",
         })}
         icon={Key}
         title={t("cloud.cliLogin.cliAuthentication", {
-          defaultValue: "Sign in to Eliza Cloud",
+          defaultValue: "Sign in to {{cloudName}}",
         })}
         tone="accent"
       />
@@ -859,7 +860,7 @@ export default function CliLoginPage() {
                 defaultValue: "Returning to app",
               })
             : t("cloud.cliLogin.generatingApiKey", {
-                defaultValue: "Returning to Eliza",
+                defaultValue: "Returning to {{appName}}",
               })
         }
         tone="accent"

@@ -43,6 +43,29 @@
     // Consume before execution. A lost reply must never replay an effect.
     sequence = request.sequence;
     const command = request.command;
+    // Only the native observed-history entrypoint can send this command. The
+    // public controlPage whitelist excludes it; no page/model offset is accepted.
+    if (command?.subaction === "native-history") {
+      if (
+        ![-1, 1].includes(command.offset) ||
+        command.url !== location.href ||
+        command.length !== history.length
+      ) {
+        reject("STALE_REF", "The observed history changed before dispatch.");
+        return;
+      }
+      try {
+        pageGuidance({ kind: "hide" });
+        History.prototype.go.call(history, command.offset);
+        reply({ dispatched: true, requiresReadback: true });
+      } catch {
+        reject(
+          "UNCERTAIN_OUTCOME",
+          "Read the page before continuing after history navigation.",
+        );
+      }
+      return;
+    }
     if (command?.subaction === "guide") {
       const guidance = command.guidance;
       if (
@@ -64,7 +87,7 @@
     }
     if (
       !command ||
-      !["snapshot", "click", "fill", "select", "scroll"].includes(
+      !["snapshot", "click", "fill", "select", "scroll", "follow"].includes(
         command.subaction,
       )
     ) {
@@ -91,8 +114,31 @@
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "select", "scroll"].includes(target.action),
-          )))
+              ["click", "fill", "select", "scroll", "follow"].includes(
+                target.action,
+              ),
+          ) ||
+          // The host spent this grant for one commit of the reviewed control.
+          (policy.commitGrant !== undefined &&
+            (!policy.commitGrant ||
+              typeof policy.commitGrant !== "object" ||
+              typeof policy.commitGrant.grantId !== "string" ||
+              !Number.isSafeInteger(policy.commitGrant.expiresAt) ||
+              typeof policy.expectedSelector !== "string" ||
+              policy.commitGrant.selector !== policy.expectedSelector ||
+              // The bridge checked these; a malformed one is never ignored.
+              (policy.commitGrant.requestTarget !== undefined &&
+                (!policy.commitGrant.requestTarget ||
+                  typeof policy.commitGrant.requestTarget !== "object" ||
+                  typeof (
+                    policy.commitGrant.requestTarget.url ??
+                    policy.commitGrant.requestTarget.path
+                  ) !== "string" ||
+                  typeof policy.commitGrant.requestTarget.method !==
+                    "string")) ||
+              (policy.commitGrant.formHash !== undefined &&
+                !/^[0-9a-f]{64}$/.test(policy.commitGrant.formHash)) ||
+              !["click", "fill", "select"].includes(command.subaction)))))
     ) {
       reject(
         "INVALID_REQUEST",
@@ -156,6 +202,24 @@
     const key = "__elizaBrowserControlV1";
     const monitorKey = "__elizaBrowserObservationV1";
     const watchKey = "__elizaTaskEffectWatchV1";
+    const grantKey = "__elizaCommitGrantsV1";
+    // A host-issued grant for the one commit the person said yes to. The bridge
+    // checked task, epoch, origin, observation and value and spent it there; the
+    // page checks the control, the time and that this document never used it.
+    const grant =
+      policy?.commitGrant &&
+      ["click", "fill", "select"].includes(command.subaction) &&
+      typeof policy.commitGrant.grantId === "string" &&
+      policy.commitGrant.selector === policy.expectedSelector &&
+      Date.now() < policy.commitGrant.expiresAt &&
+      !(
+        globalThis[grantKey]?.document === document &&
+        globalThis[grantKey].used.has(policy.commitGrant.grantId)
+      )
+        ? policy.commitGrant
+        : null;
+    if (policy?.commitGrant && !grant && command.subaction !== "snapshot")
+      return denied();
     let monitor = globalThis[monitorKey];
     if (!monitor || monitor.document !== document) {
       monitor = {
@@ -170,8 +234,10 @@
           records.some(
             (record) =>
               !(
+                // A registered guide can live inside a modal's non-inert
+                // subtree. Only changes consisting entirely of owned hosts
+                // are excluded; ordinary page mutations still invalidate refs.
                 record.type === "childList" &&
-                record.target === document.documentElement &&
                 [...record.addedNodes, ...record.removedNodes].length > 0 &&
                 [...record.addedNodes, ...record.removedNodes].every((node) =>
                   monitor.ownedHosts.has(node),
@@ -640,6 +706,7 @@
         nodes.set(id, {
           node,
           bounds: geometry,
+          href: node instanceof HTMLAnchorElement ? node.href : null,
           scroll,
           scrollOnly,
           value: typeof node.value === "string" ? node.value : null,
@@ -733,6 +800,257 @@
               : null,
         });
       }
+      const pageText = readVisibleText(
+        document.body ?? document.documentElement,
+      );
+      // What stands between the person and the page: a modal, a cookie or
+      // consent banner, a person check (CAPTCHA), a sign-in wall or a paywall.
+      // These are reported, never answered. Nothing here presses a control, and
+      // a person check has no ref at all: only the person can do it. `ref` is a
+      // control that closes the blocker without agreeing to anything; for a
+      // consent banner only the reject or necessary-only control is offered, as
+      // `rejectRef`. `covers` says what it takes: most of the viewport, the
+      // centre of a listed control outside it, or only part of the page.
+      const blockers = (() => {
+        const idOf = new Map([...nodes].map(([id, entry]) => [entry.node, id]));
+        const labelOf = new Map(
+          elements.map((element) => [element.id, element.label ?? ""]),
+        );
+        const owned = (node) => {
+          for (let item = node; item; item = item.parentElement)
+            if (monitor.ownedHosts.has(item)) return true;
+          return false;
+        };
+        const visible = (node) =>
+          node.checkVisibility({ checkVisibilityCSS: true }) &&
+          node.getBoundingClientRect().width > 0 &&
+          node.getBoundingClientRect().height > 0;
+        const textOf = (node) =>
+          withoutSecrets(readVisibleText(node).replace(/\s+/g, " ").trim());
+        // A fixed layer that holds almost all of the page is the site's own
+        // frame, not something in front of the page.
+        const shells = new Map();
+        const shell = (node) => {
+          if (!shells.has(node))
+            shells.set(
+              node,
+              pageText.length - readVisibleText(node).length < 40 &&
+                !elements.some(
+                  (element) =>
+                    !element.scrollOnly &&
+                    !node.contains(nodes.get(element.id).node),
+                ),
+            );
+          return shells.get(node);
+        };
+        // The outermost fixed layer a node sits in, below any site frame.
+        const layerOf = (node) => {
+          let layer = null;
+          for (
+            let item = node;
+            item && item !== document.body && item !== document.documentElement;
+            item = item.parentElement
+          )
+            if (getComputedStyle(item).position === "fixed" && !shell(item))
+              layer = item;
+          return layer;
+        };
+        const GRID = 9;
+        const hits = [];
+        for (let row = 0; row < GRID; row++)
+          for (let column = 0; column < GRID; column++) {
+            const hit = document.elementFromPoint(
+              ((column + 0.5) * innerWidth) / GRID,
+              ((row + 0.5) * innerHeight) / GRID,
+            );
+            if (hit && !owned(hit)) hits.push(hit);
+          }
+        const share = (root) =>
+          hits.filter((hit) => root.contains(hit)).length / (GRID * GRID);
+        const DIALOG =
+          "dialog[open],[role=dialog],[role=alertdialog],[aria-modal=true]";
+        const CONSENT =
+          "#onetrust-banner-sdk,#onetrust-consent-sdk,#CybotCookiebotDialog,#usercentrics-root,#truste-consent-track,#didomi-host,#qc-cmp2-container,.qc-cmp2-container,#cookie-law-info-bar,.cc-window,.cky-consent-container,#cmpbox,[id^=sp_message_container],[aria-label*=cookie i],[id*=cookie-banner i],[class*=cookie-banner i],[id*=cookie-consent i],[class*=cookie-consent i],[id*=cookieconsent i],[class*=cookieconsent i],[id*=consent-banner i],[class*=consent-banner i]";
+        const CAPTCHA =
+          'iframe[src*="recaptcha" i],iframe[src*="hcaptcha" i],iframe[src*="challenges.cloudflare.com" i],iframe[title*="captcha" i],iframe[title*="security challenge" i],.g-recaptcha,.h-captcha,.cf-turnstile,#cf-turnstile,#challenge-form,#challenge-stage,[data-hcaptcha-widget-id]';
+        const PAYWALL = "[id*=paywall i],[class*=paywall i]";
+        const CAPTCHA_TEXT =
+          /\b(?:verify(?:ing)? (?:that )?you(?:'re| are) (?:a )?human|i'?m not a robot|are you a robot|human verification|confirm you(?:'re| are) (?:a )?human|press (?:and|&) hold|complete the security check|checking (?:if the site connection is secure|your browser))/i;
+        const LOGIN_TEXT =
+          /\b(?:(?:sign|log) ?in (?:to|now to) (?:continue|view|see|read|access|keep reading|proceed)|(?:sign|log) ?in (?:is )?required|you (?:must|need to) (?:be )?(?:signed|logged) ?in|please (?:sign|log) ?in\b|create (?:a |an )?(?:free )?account to (?:continue|view|see|read|keep reading))/i;
+        const PAYWALL_TEXT =
+          /\b(?:subscribe (?:now |today )?to (?:continue|keep reading|read|unlock)|(?:reached|used) (?:your|all(?: of)? your) (?:\w+ )?(?:free )?(?:articles?|stories|story)|free (?:articles?|stories) (?:remaining|left)|(?:this|the rest of this) (?:article|story|content) is (?:only )?(?:for|available to|exclusive to|reserved for) (?:paid )?(?:subscribers|members)|unlock (?:this|the full) (?:article|story)|become a (?:member|subscriber) to (?:continue|read))/i;
+        const CONSENT_TEXT =
+          /\b(?:cookies?|consent|privacy (?:choices|preferences|settings)|tracking technologies)\b/i;
+        const REJECT =
+          /^(?:reject|decline|refuse|deny|disagree)(?: all| optional| non-essential| additional| unnecessary)?(?: cookies)?$|\b(?:strictly )?(?:necessary|essential|required) (?:cookies )?only\b|\bonly (?:allow |accept |use )?(?:strictly )?(?:necessary|essential|required)(?: cookies)?\b|\bcontinue without (?:accepting|agreeing)\b|\breject all\b/i;
+        const CLOSE =
+          /^(?:close|dismiss|no,? thanks|not now|maybe later|skip|×|✕|✖|x)$|^close\b/i;
+        // A "Close and accept" or "Dismiss and continue" control agrees to
+        // something; it is never offered as the way out.
+        const AGREES =
+          /\b(?:accept|agree|allow|consent|ok(?:ay)?|got it|continue|subscribe|sign|log|buy|pay|confirm)\b/i;
+        // An invisible reCAPTCHA or hCaptcha is bound to a page's own button
+        // and is not in the way until the site shows a challenge.
+        const captchas = [...document.querySelectorAll(CAPTCHA)].filter(
+          (node) =>
+            !node.matches("button,input,a,[data-size=invisible]") &&
+            !node.closest(".grecaptcha-badge") &&
+            !owned(node) &&
+            visible(node),
+        );
+        const roots = new Map();
+        const add = (root, found) => {
+          if (root && !roots.has(root) && !owned(root)) roots.set(root, found);
+        };
+        for (const hit of hits) add(layerOf(hit), { overlay: true });
+        // A "Cookie settings" link in the footer is not a banner.
+        for (const node of [
+          ...document.querySelectorAll(`${DIALOG},${CONSENT}`),
+          ...captchas,
+        ])
+          if (
+            visible(node) &&
+            !node.matches(
+              "a,button,input,select,textarea,[role=button],[role=link]",
+            )
+          ) {
+            const layer = layerOf(node);
+            add(layer ?? node, { overlay: !!layer || node.matches(DIALOG) });
+          }
+        // A sign-in wall, paywall or person check written into the page itself.
+        const walker = document.createTreeWalker(
+          document.body ?? document.documentElement,
+          NodeFilter.SHOW_TEXT,
+        );
+        const inline = new Set();
+        for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+          const parent = text.parentElement;
+          const words = text.textContent.replace(/\s+/g, " ");
+          const kind = CAPTCHA_TEXT.test(words)
+            ? "captcha"
+            : LOGIN_TEXT.test(words)
+              ? "login-wall"
+              : PAYWALL_TEXT.test(words)
+                ? "paywall"
+                : null;
+          if (
+            !kind ||
+            inline.has(kind) ||
+            !parent ||
+            parent.closest("script,style,noscript,template") ||
+            owned(parent) ||
+            !visible(parent)
+          )
+            continue;
+          inline.add(kind);
+          const root =
+            parent.closest(
+              `${DIALOG},form,section,article,aside,main,[role=main]`,
+            ) ?? parent;
+          add(layerOf(root) ?? root, {
+            overlay: !!layerOf(root),
+            kind,
+            text: words.trim(),
+          });
+        }
+        const result = [];
+        for (const [root, found] of roots) {
+          // One report per blocker: an inner element of another is part of it.
+          if (
+            [...roots.keys()].some(
+              (other) => other !== root && other.contains(root),
+            )
+          )
+            continue;
+          const has = (selector) =>
+            root.matches(selector) || !!root.querySelector(selector);
+          const text = textOf(root);
+          const dialog = has(DIALOG);
+          const kind =
+            found.kind === "captcha" ||
+            captchas.some((node) => root.contains(node)) ||
+            CAPTCHA_TEXT.test(text)
+              ? "captcha"
+              : has(CONSENT)
+                ? "cookie-consent"
+                : found.kind === "login-wall" ||
+                    [...root.querySelectorAll("input[type=password]")].some(
+                      visible,
+                    ) ||
+                    LOGIN_TEXT.test(text)
+                  ? "login-wall"
+                  : found.kind === "paywall" ||
+                      has(PAYWALL) ||
+                      PAYWALL_TEXT.test(text)
+                    ? "paywall"
+                    : found.overlay && CONSENT_TEXT.test(text)
+                      ? "cookie-consent"
+                      : dialog || (found.overlay && share(root) >= 0.25)
+                        ? "modal"
+                        : null;
+          if (!kind) continue;
+          let covers = "partial";
+          let modal = false;
+          try {
+            modal =
+              root.matches("dialog:modal") ||
+              !!root.querySelector("dialog:modal");
+          } catch {}
+          if (modal || share(root) >= 0.5) covers = "viewport";
+          else if (
+            !found.overlay &&
+            kind !== "modal" &&
+            kind !== "cookie-consent" &&
+            pageText.length - readVisibleText(root).length < 300
+          )
+            // The page is little more than this wall: an interstitial.
+            covers = "viewport";
+          else if (
+            [...nodes.values()].some(({ node, bounds: box, scrollOnly }) => {
+              if (scrollOnly || root.contains(node) || node.contains(root))
+                return false;
+              const x = box.x + box.width / 2;
+              const y = box.y + box.height / 2;
+              if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight)
+                return false;
+              const hit = document.elementFromPoint(x, y);
+              return !!hit && root.contains(hit);
+            })
+          )
+            covers = "target";
+          const control = (pattern) => {
+            for (const [node, id] of idOf)
+              if (
+                root.contains(node) &&
+                node !== root &&
+                pattern.test((labelOf.get(id) ?? "").trim()) &&
+                (pattern === REJECT ||
+                  !AGREES.test((labelOf.get(id) ?? "").trim()))
+              )
+                return id;
+            return undefined;
+          };
+          const ref =
+            kind === "captcha" || kind === "cookie-consent"
+              ? undefined
+              : control(CLOSE);
+          const rejectRef =
+            kind === "cookie-consent" ? control(REJECT) : undefined;
+          const summary = (found.text ?? text).slice(0, 200);
+          result.push({
+            kind,
+            ...(ref !== undefined ? { ref } : {}),
+            ...(rejectRef !== undefined ? { rejectRef } : {}),
+            covers,
+            ...(summary ? { text: withoutSecrets(summary) } : {}),
+          });
+        }
+        const rank = { viewport: 0, target: 1, partial: 2 };
+        return result.sort(
+          (left, right) => rank[left.covers] - rank[right.covers],
+        );
+      })();
       globalThis[key] = {
         snapshotId,
         nodes,
@@ -745,11 +1063,27 @@
       // A submit or page change that a task fill or click set off in this
       // document, under this binding. The watch below stopped it.
       const violation = globalThis[watchKey]?.violation;
+      // The commit the person said yes to, which the watch let through once.
+      const consented = globalThis[watchKey]?.consented;
       // A one-shot comparison from the actual fill, kept in this isolated realm.
       // Neither the expected text nor the field value leaves the page.
       const inputReadback = monitor.inputReadback;
       delete monitor.inputReadback;
+      const clickReadback = monitor.clickReadback;
+      delete monitor.clickReadback;
       return {
+        ...(policy &&
+        clickReadback &&
+        clickReadback.scope === policy.guidanceScope
+          ? {
+              clickReadback: {
+                targetRef: clickReadback.targetRef,
+                synchronousTextChange:
+                  clickReadback.before !== clickReadback.after &&
+                  clickReadback.after === pageText,
+              },
+            }
+          : {}),
         ...(policy &&
         inputReadback &&
         inputReadback.scope === policy.guidanceScope
@@ -766,15 +1100,23 @@
         ...(policy && violation && violation.scope === policy.guidanceScope
           ? { effectViolation: violation.kind }
           : {}),
+        ...(policy && consented && consented.scope === policy.guidanceScope
+          ? {
+              consentedCommit: {
+                grantId: consented.grantId,
+                kind: consented.kind,
+                ...(consented.formHash ? { formHash: consented.formHash } : {}),
+              },
+            }
+          : {}),
         url: location.href,
         title: withoutSecrets(document.title),
         readyState: document.readyState,
         domRevision: monitor.domRevision,
         inputRevision: monitor.inputRevision,
         viewport: viewport(),
-        text: withoutSecrets(
-          readVisibleText(document.body ?? document.documentElement),
-        ),
+        text: withoutSecrets(pageText),
+        blockers,
         complete: true,
         omitted: [
           "form control values and editable region contents (credential boundary)",
@@ -865,10 +1207,12 @@
         ...[...(node.labels ?? [])].map((item) => item.textContent),
       ].join(" ");
       // A control that commits something stays with the person, whatever its
-      // element or role. Keep this literal equal to COMMIT_CONTROL above; the
-      // function runs in the page, so it cannot read a module constant.
+      // element or role, unless she said yes to this exact commit. Keep this
+      // literal equal to COMMIT_CONTROL above; the function runs in the page,
+      // so it cannot read a module constant.
       if (
         command.subaction === "click" &&
+        !grant &&
         (node.matches(
           "button:not([type=button]):not([type=reset]),input[type=submit],input[type=image],input[type=password]",
         ) ||
@@ -941,6 +1285,34 @@
       node.matches(':disabled,[aria-disabled="true"]')
     )
       return denied();
+    // Follow the observed address without activating website click handlers.
+    // This is distinct from a click or a consented form submission. The snapshot
+    // retains the exact destination privately; model-supplied URLs are not used.
+    let destination = null;
+    if (command.subaction === "follow") {
+      if (
+        !policy ||
+        !(node instanceof HTMLAnchorElement) ||
+        !node.hasAttribute("href") ||
+        node.hasAttribute("download") ||
+        (node.target && node.target !== "_self") ||
+        node.matches('[aria-disabled="true"]') ||
+        node.href !== recorded.href
+      )
+        return denied();
+      try {
+        destination = new URL(recorded.href);
+        if (
+          destination.protocol !== "https:" ||
+          destination.origin !== policy.origin ||
+          destination.username ||
+          destination.password
+        )
+          return denied();
+      } catch {
+        return denied();
+      }
+    }
     if (validateOnly) return { validated: true };
     if (policy?.actionId) {
       const feedback = globalThis.__elizaPageGuidanceV1;
@@ -956,6 +1328,16 @@
       feedback.markActed();
     }
     delete globalThis[key];
+    if (destination) {
+      globalThis[watchKey]?.stop();
+      location.assign(destination.href);
+      return { dispatched: true, requiresReadback: true };
+    }
+    if (grant) {
+      if (globalThis[grantKey]?.document !== document)
+        globalThis[grantKey] = { document, used: new Set() };
+      globalThis[grantKey].used.add(grant.grantId);
+    }
     if (
       policy &&
       ["click", "fill", "select", "scroll"].includes(command.subaction)
@@ -974,6 +1356,25 @@
       // Snapshots report the first of these, so the host treats the outcome as
       // unknown and pauses the task. A request still in flight when a snapshot
       // is read shows up in a later snapshot.
+      //
+      // With a commit grant, the one commit the person said yes to goes ahead,
+      // once: either the submit the granted control itself sends (and the page
+      // load it sends) to the page's origin, or, when no such page load is under
+      // way, the one own-site request the grant names (a script form or a button
+      // that sends with fetch). That request is the grant's requestTarget or,
+      // without one, the granted submit button's form action; a control that is
+      // no submit button and names no requestTarget has none. Its URL must be
+      // equal; its method only where the page can see it (a beacon is a POST;
+      // fetch and XHR methods are not observable here). A grant with a formHash
+      // consents a submit only when the form data actually sent hashes the
+      // same, and a request only after such a submit. Snapshots report it as a
+      // consented commit, with the hash of the form data sent. A submit from
+      // another submitter of the same form, a request that differs from the
+      // granted control's (action, method, target or encoding), changed or
+      // added form data, a script form.submit() (also one into another window,
+      // which is reported), a second submit, another form, another origin, any
+      // other own-site request and every other page change, same-document
+      // address changes included, are still stopped or recorded as above.
       globalThis[watchKey]?.stop();
       const anchor =
         command.subaction === "click" ? node.closest("a[href]") : null;
@@ -986,7 +1387,240 @@
           globalThis[watchKey]?.violation?.scope === policy.guidanceScope
             ? (globalThis[watchKey]?.violation ?? null)
             : null,
+        // A receipt belongs to this dispatch, not an earlier approved action.
+        consented: null,
         stop: () => controller.abort(),
+      };
+      // The granted control's own form: the only form the grant can send.
+      const grantedForm = grant
+        ? (node.form ?? node.closest("form") ?? null)
+        : null;
+      const submitControl = (element) =>
+        (element instanceof HTMLButtonElement && element.type === "submit") ||
+        (element instanceof HTMLInputElement &&
+          ["submit", "image"].includes(element.type));
+      const overrides = [
+        "formaction",
+        "formmethod",
+        "formtarget",
+        "formenctype",
+      ];
+      // The request a submit sends: a submitter's form* attributes override
+      // the form's action, method, target and encoding.
+      const requestOf = (submitter, form) => {
+        const own = (attribute, value, fallback) =>
+          submitter?.hasAttribute(attribute) ? value : fallback;
+        return {
+          action: own("formaction", submitter?.formAction, form.action),
+          method: own("formmethod", submitter?.formMethod, form.method),
+          target: own("formtarget", submitter?.formTarget, form.target),
+          enctype: own("formenctype", submitter?.formEnctype, form.enctype),
+        };
+      };
+      const sameRequest = (a, b) =>
+        a.action === b.action &&
+        a.method === b.method &&
+        a.target === b.target &&
+        a.enctype === b.enctype;
+      // Read before the click, so a script that runs after it cannot move the
+      // granted request. Only a submit button of the granted form has one.
+      const grantedRequest =
+        grantedForm !== null && submitControl(node) && node.form === grantedForm
+          ? requestOf(node, grantedForm)
+          : null;
+      // A submit with no submitter (requestSubmit() with no argument, or an
+      // implicit submission) sends what the granted control would only when that
+      // control is the form's default button and overrides nothing.
+      const implicitAllowed =
+        grantedRequest !== null &&
+        [...document.querySelectorAll("button,input")].find(
+          (element) => element.form === grantedForm && submitControl(element),
+        ) === node &&
+        !overrides.some((attribute) => node.hasAttribute(attribute));
+      // The one request the grant consents besides its form's page load. A
+      // declared target is matched exactly; a GET form's action by origin and
+      // path, since the submit replaces its query.
+      const declared = grant?.requestTarget ?? null;
+      const expectedRequest = (() => {
+        try {
+          if (declared)
+            return {
+              url: new URL(declared.url ?? declared.path, location.origin).href,
+              method: declared.method,
+              exact: true,
+            };
+          if (grantedRequest === null || grantedRequest.method === "dialog")
+            return null;
+          return {
+            url: new URL(grantedRequest.action, location.href).href,
+            method: grantedRequest.method.toUpperCase(),
+            exact: grantedRequest.method !== "get",
+          };
+        } catch {
+          return null;
+        }
+      })();
+      const sameUrl = (url, expected) => {
+        try {
+          const a = new URL(url, location.href);
+          const b = new URL(expected.url);
+          a.hash = "";
+          b.hash = "";
+          return expected.exact
+            ? a.href === b.href
+            : a.origin === b.origin && a.pathname === b.pathname;
+        } catch {
+          return false;
+        }
+      };
+      // Keep identical to commitFormHash in plugin-browser's
+      // commit-form-hash.ts: hosts compute a grant's formHash with it.
+      const commitFormHash = (entries) => {
+        const pairs = [];
+        const normal = (text) => text.replace(/\r\n?/g, "\n").normalize("NFC");
+        for (const [name, value] of entries)
+          if (typeof value === "string")
+            pairs.push([normal(name), normal(value)]);
+        const bytes = new TextEncoder().encode(
+          `eliza-commit-form-v1\n${JSON.stringify(pairs)}`,
+        );
+        const k = [
+          0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b,
+          0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
+          0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7,
+          0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+          0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152,
+          0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+          0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+          0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+          0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+          0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+          0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+          0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+          0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        ];
+        const hash = [
+          0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f,
+          0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        ];
+        const padded = new Uint8Array(((bytes.length + 72) >> 6) << 6);
+        padded.set(bytes);
+        padded[bytes.length] = 0x80;
+        const view = new DataView(padded.buffer);
+        view.setUint32(
+          padded.length - 8,
+          Math.floor((bytes.length * 8) / 2 ** 32),
+        );
+        view.setUint32(padded.length - 4, (bytes.length * 8) >>> 0);
+        const w = new Uint32Array(64);
+        const rotate = (x, n) => (x >>> n) | (x << (32 - n));
+        for (let offset = 0; offset < padded.length; offset += 64) {
+          for (let i = 0; i < 16; i++) w[i] = view.getUint32(offset + i * 4);
+          for (let i = 16; i < 64; i++)
+            w[i] =
+              w[i - 16] +
+              (rotate(w[i - 15], 7) ^
+                rotate(w[i - 15], 18) ^
+                (w[i - 15] >>> 3)) +
+              w[i - 7] +
+              (rotate(w[i - 2], 17) ^ rotate(w[i - 2], 19) ^ (w[i - 2] >>> 10));
+          let [a, b, c, d, e, f, g, h] = hash;
+          for (let i = 0; i < 64; i++) {
+            const t1 =
+              (h +
+                (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) +
+                ((e & f) ^ (~e & g)) +
+                k[i] +
+                w[i]) |
+              0;
+            const t2 =
+              ((rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) +
+                ((a & b) ^ (a & c) ^ (b & c))) |
+              0;
+            h = g;
+            g = f;
+            f = e;
+            e = (d + t1) | 0;
+            d = c;
+            c = b;
+            b = a;
+            a = (t1 + t2) | 0;
+          }
+          [a, b, c, d, e, f, g, h].forEach((value, i) => {
+            hash[i] = (hash[i] + value) | 0;
+          });
+        }
+        return hash
+          .map((value) => (value >>> 0).toString(16).padStart(8, "0"))
+          .join("");
+      };
+      // Our own FormData read fires the form's formdata event; it is no submit.
+      let reading = false;
+      const formDataHash = (form, submitter) => {
+        reading = true;
+        try {
+          let data;
+          try {
+            data = new FormData(form, submitter);
+          } catch {
+            data = new FormData(form);
+            if (submitter?.name) data.append(submitter.name, submitter.value);
+          }
+          return commitFormHash(data);
+        } catch {
+          return null;
+        } finally {
+          reading = false;
+        }
+      };
+      // The hash of the form data sent is reported unless the granted form has a
+      // password, code or card field and the host did not name the hash itself.
+      const reportHash =
+        grant?.formHash !== undefined ||
+        (grantedForm !== null &&
+          ![...grantedForm.elements].some((element) => sensitivity(element)));
+      // submits: 0 until the granted control's submit event; its page load may
+      // then follow once (pending, to action by method). spent: the one commit
+      // went through.
+      const consent = grant
+        ? {
+            grantId: grant.grantId,
+            submits: 0,
+            pending: false,
+            action: "",
+            method: "",
+            implicit: false,
+            spent: false,
+            formHash: null,
+            formMatched: false,
+          }
+        : null;
+      const consentTo = (kind) => {
+        watch.consented ??= {
+          grantId: consent.grantId,
+          kind,
+          scope: policy.guidanceScope,
+        };
+        if (reportHash && consent.formHash) {
+          watch.consented.formHash = consent.formHash;
+        }
+      };
+      const sameOrigin = (url) => {
+        try {
+          return new URL(url, location.href).origin === location.origin;
+        } catch {
+          return false;
+        }
+      };
+      // A GET submit replaces the query, so only origin and path identify it.
+      const samePath = (url, other) => {
+        try {
+          const a = new URL(url, location.href);
+          const b = new URL(other, location.href);
+          return a.origin === b.origin && a.pathname === b.pathname;
+        } catch {
+          return false;
+        }
       };
       // A person's activated control can finish after the short typing window.
       // Stray taps, scrolling and ordinary typing do not create that handoff.
@@ -1069,18 +1703,92 @@
       };
       window.addEventListener("click", activate, options);
       window.addEventListener("keydown", activate, options);
+      // The last submit event, so the form data it sends is not taken for a
+      // script form.submit(), which sends no submit event.
+      let lastSubmit = null;
       window.addEventListener(
         "submit",
         (event) => {
-          if (!personForms.has(event.target)) report("submit", event);
+          lastSubmit = event;
+          if (personForms.has(event.target)) return;
+          const form = event.target;
+          const submitter = event.submitter ?? null;
+          const sent =
+            form instanceof HTMLFormElement ? requestOf(submitter, form) : null;
+          // The form data this submit sends, as the person saw it or not.
+          const sentHash =
+            consent && form === grantedForm
+              ? formDataHash(form, submitter)
+              : null;
+          if (
+            consent &&
+            !consent.spent &&
+            consent.submits === 0 &&
+            grantedRequest !== null &&
+            form === grantedForm &&
+            (submitter === node || (submitter === null && implicitAllowed)) &&
+            sameRequest(sent, grantedRequest) &&
+            sent.method !== "dialog" &&
+            sameOrigin(sent.action) &&
+            ["", "_self"].includes(sent.target) &&
+            (grant.formHash === undefined || sentHash === grant.formHash)
+          ) {
+            consent.submits = 1;
+            consent.pending = true;
+            consent.action = sent.action;
+            consent.method = sent.method;
+            consent.implicit = submitter === null;
+            consent.formHash = sentHash;
+            consent.formMatched = grant.formHash !== undefined;
+            consentTo("submit");
+            // A page handler that cancels this submit sends no page load, so
+            // none may follow it later; one own-site request still may.
+            setTimeout(() => {
+              if (event.defaultPrevented) consent.pending = false;
+            }, 0);
+            return;
+          }
+          report("submit", event);
+        },
+        options,
+      );
+      // A script form.submit() sends no submit event. Into this window its page
+      // load is stopped below; into another window or frame (target=_blank) it
+      // is not seen there, so its form data being read is reported here.
+      window.addEventListener(
+        "formdata",
+        (event) => {
+          if (reading) return;
+          const form = event.target;
+          const submitted =
+            lastSubmit?.target === form && !lastSubmit.defaultPrevented;
+          lastSubmit = null;
+          if (
+            submitted ||
+            !(form instanceof HTMLFormElement) ||
+            personForms.has(form) ||
+            byPerson(performance.now()) ||
+            ["", "_self", "_top", "_parent"].includes(
+              form.target.trim().toLowerCase(),
+            )
+          )
+            return;
+          record("submit");
         },
         options,
       );
       globalThis.navigation?.addEventListener(
         "navigate",
         (event) => {
+          // Chromium marks the page load of a script click on a submit button
+          // as user initiated; for a form submission only her own press counts.
+          const formLoad =
+            event.formData != null ||
+            event.sourceElement instanceof HTMLFormElement ||
+            event.sourceElement?.form !== undefined;
           if (
-            event.userInitiated ||
+            (event.userInitiated &&
+              (!formLoad || byPerson(performance.now()))) ||
             (anchor &&
               !event.formData &&
               event.destination.url === anchor.href) ||
@@ -1091,6 +1799,60 @@
             // Recorded, not stopped: the page's own state has already moved.
             if (!byPerson(performance.now())) record("navigation");
             return;
+          }
+          // A form submission's source is its submitter, or the form itself
+          // when it has none (also a script form.submit()).
+          const source = event.sourceElement;
+          const fromGranted =
+            source === node ||
+            (consent?.implicit === true &&
+              grantedForm !== null &&
+              source === grantedForm);
+          if (
+            consent &&
+            !consent.spent &&
+            sameOrigin(event.destination.url) &&
+            // Only the page load of the granted submit (POST or GET). A script
+            // form.submit() sends no submit event and is never consented.
+            consent.pending &&
+            samePath(event.destination.url, consent.action) &&
+            (consent.method === "post"
+              ? event.formData != null
+              : event.formData == null) &&
+            (fromGranted || !("sourceElement" in event)) &&
+            // A declared request target binds the page load too.
+            (!declared ||
+              (samePath(event.destination.url, expectedRequest?.url ?? "") &&
+                declared.method === consent.method.toUpperCase()))
+          ) {
+            // The form data this page load actually sends: what page handlers
+            // left in it after the submit event, or a GET submit's query.
+            let loaded = null;
+            try {
+              loaded = commitFormHash(
+                event.formData ?? new URL(event.destination.url).searchParams,
+              );
+            } catch {}
+            if (grant.formHash === undefined || loaded === grant.formHash) {
+              consent.submits = 1;
+              consent.pending = false;
+              consent.spent = true;
+              consent.formHash = loaded;
+              consentTo("submit");
+              if (reportHash && loaded) watch.consented.formHash = loaded;
+              return;
+            }
+          }
+          // The granted submit's own page load is not the one she said yes to
+          // (its form data changed after the submit event): no receipt.
+          if (
+            consent?.pending &&
+            !consent.spent &&
+            (fromGranted || (grantedForm !== null && source === grantedForm))
+          ) {
+            consent.pending = false;
+            consent.spent = true;
+            watch.consented = null;
           }
           report(event.formData ? "submit" : "navigation", event);
         },
@@ -1107,7 +1869,11 @@
         tail(host, 3) === tail(location.hostname, 3);
       if (typeof PerformanceObserver === "function") {
         const requests = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries()) {
+          // Oldest first, so the granted action's own request is the one used.
+          const entries = [...list.getEntries()].sort(
+            (a, b) => a.startTime - b.startTime,
+          );
+          for (const entry of entries) {
             if (
               entry.startTime < startedAt ||
               !["fetch", "xmlhttprequest", "beacon"].includes(
@@ -1123,6 +1889,23 @@
               continue;
             }
             if (sameSite(host)) {
+              // The granted request may carry the commit when no granted page
+              // load is under way or done; every other is recorded. Under a
+              // formHash it follows a submit whose form data matched.
+              if (
+                consent &&
+                !consent.spent &&
+                !consent.pending &&
+                expectedRequest !== null &&
+                sameUrl(entry.name, expectedRequest) &&
+                (entry.initiatorType !== "beacon" ||
+                  expectedRequest.method === "POST") &&
+                (grant.formHash === undefined || consent.formMatched)
+              ) {
+                consent.spent = true;
+                consentTo("request");
+                continue;
+              }
               record("request");
               break;
             }
@@ -1137,7 +1920,24 @@
       globalThis[watchKey] = watch;
     }
     if (command.subaction === "click") {
+      // Only text changed during this exact synchronous activation is eligible.
+      // Timers and later requests are not attributed to this click. Retain the
+      // visible text privately until one snapshot confirms it is still present;
+      // neither text nor input values are included in the receipt. This proves
+      // a UI response, never a completed goal or a committed payment.
+      delete monitor.clickReadback;
+      const before =
+        policy && typeof policy.guidanceScope === "string"
+          ? readVisibleText(document.body ?? document.documentElement)
+          : null;
       node.click();
+      if (before !== null)
+        monitor.clickReadback = {
+          targetRef: `${state.snapshotId}:0:${command.nodeId}`,
+          scope: policy.guidanceScope,
+          before,
+          after: readVisibleText(document.body ?? document.documentElement),
+        };
     } else if (command.subaction === "fill") {
       if (
         !(
@@ -1249,7 +2049,9 @@
       keepClear.length > 8 ||
       keepClear.some((id) => typeof id !== "string" || !/^\d+$/.test(id)) ||
       (request.action !== undefined &&
-        !["click", "fill", "select", "scroll"].includes(request.action)) ||
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          request.action,
+        )) ||
       (request.restore !== undefined && typeof request.restore !== "boolean") ||
       window !== window.top ||
       request.origin !== location.origin ||
@@ -1424,7 +2226,7 @@
     style.replaceSync(
       ".ring{position:fixed;box-sizing:border-box;border-radius:8px;pointer-events:none;box-shadow:0 0 0 3px #fff,0 0 0 6px #4a3428}.ring.pulse{animation:ring .9s ease-in-out 3}@keyframes ring{50%{box-shadow:0 0 0 3px #fff,0 0 0 7px #4a34288c}}" +
         ".label{font:500 20px/1.4 var(--face);position:fixed;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;background:#fff;color:#141414;border:2px solid #b3aad3;border-radius:16px;padding:18px;box-shadow:0 8px 24px #14141324;pointer-events:none;opacity:0;transform:translateY(-8px);transition:opacity .3s ease-out,transform .3s ease-out}.label.shown{opacity:1;transform:none;pointer-events:auto}.label.tone-success{border-color:#265b19}" +
-        ".label.compact{flex-direction:row;align-items:center;gap:12px;padding:0 12px}.label.compact .row{flex:1;min-width:0}.label.compact .mark{display:none}.label.compact .title{font-size:20px;line-height:24px}.label.compact .close{flex:none;min-width:92px;padding:0 16px}" +
+        ".label.compact{flex-direction:row;align-items:center;gap:12px;padding:0 12px}.label.compact .row{flex:1;min-width:0}.label.compact .mark{display:none}.label.compact .title{font-size:20px;line-height:24px}.label.compact .close{flex:none;min-width:92px;height:48px;padding:0 16px}" +
         ".tail{position:absolute;left:28px;top:-10px;width:16px;height:16px;box-sizing:border-box;background:#fff;border:2px solid;border-color:inherit;border-right:0;border-bottom:0;transform:rotate(45deg)}.tail.up{top:auto;bottom:-10px;border:2px solid;border-color:inherit;border-left:0;border-top:0}" +
         ".row{display:flex;gap:12px;align-items:flex-start}.mark{flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:#d4ceea;color:#141414;font:700 20px/1 var(--face)}.tone-active .mark{background:#b3aad3}.tone-success .mark{border-radius:17px;background:#265b19;color:#fff}" +
         ".words{display:flex;flex-direction:column;gap:4px;min-width:0}.title{margin:0;font:700 22px/28px var(--face);overflow-wrap:anywhere}.detail{margin:0;font:500 17px/22px var(--face);color:#4a3428;overflow-wrap:anywhere}" +
@@ -1560,7 +2362,8 @@
     label.append(...offered, close);
     // Measures the bottom inset the page is drawn under (the navigation bar on Android).
     const inset = element("div", "inset");
-    root.append(ring, label, pointer, tap, inset);
+    // The cursor shadow must not paint over the preview or its Cancel button.
+    root.append(ring, pointer, label, tap, inset);
     shadow.adoptedStyleSheets = [style];
     shadow.append(root);
     pointer.style.display = "none";
@@ -1568,7 +2371,13 @@
     ring.hidden = true;
     label.hidden = true;
     monitor.ownedHosts.add(host);
-    document.documentElement.append(host);
+    // Keep guidance above a website modal and inside its non-inert subtree.
+    // A manual popover does not dismiss the site's dialog or steal its modality.
+    const parent = target.closest("dialog:modal") ?? document.documentElement;
+    if (typeof host.showPopover === "function")
+      host.setAttribute("popover", "manual");
+    parent.append(host);
+    if (typeof host.showPopover === "function") host.showPopover();
     // Taps count only while Chromium reports the label as fully visible: not
     // covered by page content (including the top layer), transformed or faded.
     const visibility = new IntersectionObserver(
@@ -1624,18 +2433,37 @@
         left,
         Math.min(cursorRect.left + 24, left + width - tagRect.width),
       );
-      const below = cursorRect.top + 28;
-      const y = Math.max(
-        top,
-        Math.min(
-          below + tagRect.height <= top + height
-            ? below
-            : cursorRect.top - tagRect.height - 4,
-          top + height - tagRect.height,
-        ),
-      );
-      tag.style.left = `${x - cursorRect.left}px`;
-      tag.style.top = `${y - cursorRect.top}px`;
+      // Keep the identity readable without covering the preview or its target.
+      // Either may be above or below the cursor in a compact viewport.
+      const avoid = [
+        targetRect(),
+        ...(label.hidden ? [] : [label.getBoundingClientRect()]),
+      ];
+      const positions = [
+        { x, y: cursorRect.top + 28 },
+        { x, y: cursorRect.top - tagRect.height - 4 },
+        ...avoid.flatMap((rect) => [
+          { x, y: rect.bottom + 8 },
+          { x, y: rect.top - tagRect.height - 8 },
+          { x: rect.right + 8, y: cursorRect.top },
+          { x: rect.left - tagRect.width - 8, y: cursorRect.top },
+        ]),
+      ].map((point) => ({
+        x: Math.max(left, Math.min(point.x, left + width - tagRect.width)),
+        y: Math.max(top, Math.min(point.y, top + height - tagRect.height)),
+      }));
+      const position =
+        positions.find((point) =>
+          avoid.every(
+            (rect) =>
+              point.x + tagRect.width <= rect.left - 4 ||
+              point.x >= rect.right + 4 ||
+              point.y + tagRect.height <= rect.top - 4 ||
+              point.y >= rect.bottom + 4,
+          ),
+        ) ?? positions[0];
+      tag.style.left = `${position.x - cursorRect.left}px`;
+      tag.style.top = `${position.y - cursorRect.top}px`;
     };
     const hide = () => {
       ring.hidden = true;
@@ -1703,6 +2531,8 @@
             !state.paused &&
             !state.dismissed &&
             state.visible &&
+            unobscured &&
+            Date.now() - unobscuredSince >= 800 &&
             visibleSince &&
             Date.now() - visibleSince >= 800 &&
             Date.now() < request.expiresAt &&

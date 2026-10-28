@@ -5,7 +5,7 @@
  */
 
 import { pathToFileURL } from "node:url";
-import { CANONICAL_LOGIN_UPSTREAM_URLS } from "./verify-steward-upstream-binding.ts";
+import { APPROVED_LOGIN_UPSTREAM_URLS } from "./verify-steward-upstream-binding.ts";
 
 export type ProviderDiscoverySurface = "upstream" | "proxy";
 
@@ -59,7 +59,9 @@ const DANGEROUS_JSON_KEYS = new Set(["__proto__", "prototype", "constructor"]);
 const ENVIRONMENT_CONTRACTS = Object.freeze({
   staging: Object.freeze({
     tenantId: "elizacloud-staging",
-    upstreamOrigins: CANONICAL_LOGIN_UPSTREAM_URLS.staging,
+    // Read-only probe: the Cloudflare login Worker is canonical; the
+    // Railway-era origin stays probeable while it is still the live default.
+    upstreamOrigins: APPROVED_LOGIN_UPSTREAM_URLS.staging,
     proxyOrigins: Object.freeze([
       "https://api-staging.eliza.app",
       "https://cloud-staging.eliza.app",

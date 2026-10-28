@@ -6,6 +6,7 @@
  * per-test ELIZA_OAUTH_DIR.
  */
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { LifeOpsConnectorGrant } from "@elizaos/plugin-health";
@@ -591,5 +592,88 @@ describe("HealthDomain connector lifecycle and summaries", () => {
         { timeZone: "UTC" },
       ),
     ).rejects.toMatchObject({ status: 503 });
+  });
+});
+
+describe("HealthDomain sync after a disconnect", () => {
+  let oauthDir: string | null = null;
+  let server: http.Server | null = null;
+
+  afterEach(async () => {
+    for (const key of HEALTH_ENV_KEYS) {
+      delete process.env[key];
+    }
+    delete process.env.ELIZA_MOCK_STRAVA_BASE;
+    if (oauthDir) fs.rmSync(oauthDir, { recursive: true, force: true });
+    oauthDir = null;
+    await new Promise<void>((resolve) =>
+      server ? server.close(() => resolve()) : resolve(),
+    );
+    server = null;
+  });
+
+  it("does not write the grant back when the owner disconnects during the sync", async () => {
+    oauthDir = fs.mkdtempSync(path.join(os.tmpdir(), "health-oauth-"));
+    process.env.ELIZA_OAUTH_DIR = oauthDir;
+    process.env.ELIZA_STRAVA_CLIENT_ID = "client-id";
+    process.env.ELIZA_STRAVA_CLIENT_SECRET = "client-secret";
+    const grant = makeGrant();
+    if (!grant.tokenRef) throw new Error("test grant must carry a tokenRef");
+    writeEncryptedToken(oauthDir, grant.tokenRef);
+
+    // The Strava API answers only after the owner has disconnected.
+    let releaseSync: () => void = () => undefined;
+    const syncHeld = new Promise<void>((resolve) => {
+      releaseSync = resolve;
+    });
+    let syncStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      syncStarted = resolve;
+    });
+    server = http.createServer(async (request, response) => {
+      syncStarted();
+      await syncHeld;
+      response.setHeader("content-type", "application/json");
+      response.end(
+        request.url?.startsWith("/athlete/activities")
+          ? "[]"
+          : JSON.stringify({ id: 1, username: "runner" }),
+      );
+    });
+    await new Promise<void>((resolve) =>
+      server?.listen(0, "127.0.0.1", () => resolve()),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    process.env.ELIZA_MOCK_STRAVA_BASE = `http://127.0.0.1:${address.port}`;
+
+    let stored: LifeOpsConnectorGrant | null = grant;
+    const repository = {
+      listConnectorGrants: vi.fn(async () => (stored ? [stored] : [])),
+      getConnectorGrant: vi.fn(async () => stored),
+      getHealthSyncState: vi.fn(async () => null),
+      upsertHealthMetricSample: vi.fn(async () => undefined),
+      upsertHealthWorkout: vi.fn(async () => undefined),
+      upsertHealthSleepEpisode: vi.fn(async () => undefined),
+      upsertHealthSyncState: vi.fn(async () => undefined),
+      listHealthMetricSamples: vi.fn(async () => []),
+      listHealthWorkouts: vi.fn(async () => []),
+      listHealthSleepEpisodes: vi.fn(async () => []),
+      upsertConnectorGrant: vi.fn(async () => undefined),
+      deleteConnectorGrant: vi.fn(async () => {
+        stored = null;
+      }),
+    };
+    const domain = makeDomain(repository);
+
+    const sync = domain.syncHealthConnectors({ provider: "strava" });
+    await started;
+    await domain.disconnectHealthConnector({ provider: "strava" }, REQUEST_URL);
+    releaseSync();
+    await sync;
+
+    expect(repository.deleteConnectorGrant).toHaveBeenCalled();
+    expect(repository.upsertHealthSyncState).toHaveBeenCalled();
+    expect(repository.upsertConnectorGrant).not.toHaveBeenCalled();
   });
 });

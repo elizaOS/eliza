@@ -5,7 +5,11 @@ import {
   SURFACE_CHANNEL_PATHS,
   SurfaceChannelError,
 } from "./surface-channel.mjs";
+import { TASK_ID_PATTERN } from "./task-id.mjs";
 
+const taskEventsPath = new RegExp(
+  `^/tasks/${TASK_ID_PATTERN.source.slice(1, -1)}/events$`,
+);
 const MAX_BODY = 64 * 1024;
 const uuid =
   "[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}";
@@ -44,6 +48,7 @@ export function createLocalAgentGateway({
   inboundToken,
   hostPolicy,
   origins = hostPolicy?.origins,
+  isAllowedOrigin = hostPolicy?.isAllowedOrigin,
   cloudHandler,
   credentialGate,
   ownershipStore,
@@ -55,7 +60,7 @@ export function createLocalAgentGateway({
 } = {}) {
   if (
     !hostPolicy ||
-    !Array.isArray(origins) ||
+    Array.isArray(origins) === (typeof isAllowedOrigin === "function") ||
     typeof hostPolicy.prepareMessage !== "function" ||
     typeof hostPolicy.validateTitle !== "function" ||
     typeof hostPolicy.isPaidAction !== "function" ||
@@ -72,7 +77,10 @@ export function createLocalAgentGateway({
   )
     throw new Error(message("error1"));
   if (!token?.trim()) throw new Error(message("error2"));
-  const allowed = new Set(origins);
+  const allowed =
+    typeof isAllowedOrigin === "function"
+      ? isAllowedOrigin
+      : Set.prototype.has.bind(new Set(origins));
   const inferenceAvailable = async () => {
     try {
       return (await inferenceConfigured()) === true;
@@ -122,11 +130,19 @@ export function createLocalAgentGateway({
   const server = http.createServer(async (req, res) => {
     const origin = req.headers.origin;
     // Host validation also rejects DNS rebinding requests without an Origin.
+    let originAllowed = !origin;
+    if (origin) {
+      try {
+        originAllowed = allowed(origin) === true;
+      } catch {
+        // A host policy failure must deny the request, not escape the HTTP handler.
+        originAllowed = false;
+      }
+    }
     const trustedCaller =
       /^(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/.test(
         req.headers.host || "",
-      ) &&
-      (!origin || allowed.has(origin));
+      ) && originAllowed;
     // Browsers never attach credentials to a CORS preflight. Answer one from an
     // allowlisted origin before bearer authentication, or the renderer can
     // never send its authenticated request. It reaches no route.
@@ -226,10 +242,7 @@ export function createLocalAgentGateway({
         await persist();
       }
       const taskEventRead =
-        req.method === "GET" &&
-        /^\/tasks\/[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}\/events$/.test(
-          url.pathname,
-        );
+        req.method === "GET" && taskEventsPath.test(url.pathname);
       if (url.search && !url.pathname.startsWith("/cloud/") && !taskEventRead)
         return json(res, 400, { error: message("error10") });
       if (SURFACE_CHANNEL_PATHS.has(url.pathname)) {
@@ -461,6 +474,42 @@ export function createLocalAgentGateway({
   return server;
 }
 
+/**
+ * The stable owner of a verified Cloud account: `cloud-owner-v1:` and the
+ * SHA-256 of the JSON tuple `[authority, userId, organizationId]`. The owner
+ * must come from an authenticated record (see `createCredentialGate`), never
+ * from a renderer value or a decoded token claim. Throws a TypeError for an
+ * invalid owner.
+ */
+export function verifiedOwnerIdentity(owner) {
+  if (!owner || typeof owner !== "object" || Object.keys(owner).length !== 3)
+    throw new TypeError("Invalid verified account owner");
+  const tuple = [owner.authority, owner.userId, owner.organizationId];
+  if (
+    tuple.some(
+      (v) =>
+        typeof v !== "string" ||
+        !v ||
+        Array.from(v).some(
+          (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127,
+        ) ||
+        !v.isWellFormed(),
+    )
+  )
+    throw new TypeError("Invalid verified account owner");
+  const authority = new URL(tuple[0]);
+  if (
+    authority.origin !== tuple[0] ||
+    !(
+      authority.protocol === "https:" ||
+      (authority.protocol === "http:" &&
+        ["127.0.0.1", "localhost", "[::1]"].includes(authority.hostname))
+    )
+  )
+    throw new TypeError("Invalid verified account authority");
+  return `cloud-owner-v1:${createHash("sha256").update(JSON.stringify(tuple)).digest("hex")}`;
+}
+
 export function createCredentialGate({
   readBinding,
   readCredential,
@@ -502,41 +551,10 @@ export function createCredentialGate({
             Object.keys(record).length !== 4 ||
             typeof record.credentialId !== "string" ||
             !record.credentialId ||
-            record.credential !== key ||
-            !record.owner ||
-            Object.keys(record.owner).length !== 3
+            record.credential !== key
           )
             throw Error();
-          const tuple = [
-            record.owner.authority,
-            record.owner.userId,
-            record.owner.organizationId,
-          ];
-          if (
-            tuple.some(
-              (v) =>
-                typeof v !== "string" ||
-                !v ||
-                Array.from(v).some(
-                  (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127,
-                ) ||
-                !v.isWellFormed(),
-            )
-          )
-            throw Error();
-          const authority = new URL(tuple[0]);
-          if (
-            authority.origin !== tuple[0] ||
-            !(
-              authority.protocol === "https:" ||
-              (authority.protocol === "http:" &&
-                ["127.0.0.1", "localhost", "[::1]"].includes(
-                  authority.hostname,
-                ))
-            )
-          )
-            throw Error();
-          owner = `cloud-owner-v1:${createHash("sha256").update(JSON.stringify(tuple)).digest("hex")}`;
+          owner = verifiedOwnerIdentity(record.owner);
         }
       } catch {
         throw Object.assign(new Error(staleMessage), { status: 409 });

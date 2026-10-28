@@ -14,7 +14,8 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "23cf6feaeaa541f6a0675053c33da768"
 workers_dev = false
 minify = true
-# Voice routing/provider values are environment-managed plain-text bindings.
+# Voice routing/provider values and app OAuth return allowlists are
+# environment-managed plain-text bindings.
 # Preserve those bindings when publishing the committed vars block; without
 # this Wrangler deletes them and every configured Twilio line fails closed.
 keep_vars = true
@@ -276,12 +277,11 @@ storage = "sqlite"
 # transition the database control durable -> paused, then remove/false this
 # secondary switch; keep the durable binary deployed so recovery can converge.
 [vars]
-CLOUD_A2A_STATE_BACKEND = "redis"
-CLOUD_RATE_STATE_BACKEND = "redis"
-CLOUD_VOICE_USAGE_BACKEND = "redis"
-CLOUD_HF_EGRESS_BACKEND = "redis"
-# Switch only after quiescing and transferring live auth state.
-CLOUD_AUTH_STATE_BACKEND = "redis"
+# CLOUD_{A2A_STATE,RATE_STATE,VOICE_USAGE,HF_EGRESS,AUTH_STATE}_BACKEND are
+# unset here: every reader treats unset as "redis", and each one costs a text
+# binding against Cloudflare's 350 limit. The release workflow sets them from
+# protected variables. Switch auth only after quiescing and transferring live
+# auth state.
 NODE_ENV = "production"
 # Compact Shared-runtime receipts contain timings and routing decisions only,
 # never prompt/response text. Keep a bounded production sample so first-turn,
@@ -310,8 +310,6 @@ ELIZA_FRONTEND_HOST_SUFFIX = "sites.eliza.app"
 # Internal Worker-to-agent calls must target the control-plane origin directly;
 # same-zone fetches to a UUID host bypass its Worker route and hit wildcard DNS.
 AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app"
-WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
-WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"
@@ -522,7 +520,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #                                      hashes (>= 32 chars). POST /api/v1/subscription/redeem
 #                                      returns 503 while unset. Changing it invalidates
 #                                      every unredeemed code.
-#   ELIZA_MAPS_ROUTER_API_KEY          Optional GraphHopper key for ELIZA_MAPS_ROUTER_URL.
+#   ELIZA_MAPS_ROUTER_API_KEY          Optional router key for ELIZA_MAPS_ROUTER_URL.
+#   ELIZA_MAPS_GEOCODER_API_KEY        Optional geocoder key for ELIZA_MAPS_GEOCODER_URL.
 #                                      Maps settings are listed in the cloud-api README.
 #   OIDC_SIGNING_JWKS                  OIDC provider key ring: JSON array of PRIVATE JWKs
 #                                      (element 0 signs, all published at jwks_uri).
@@ -562,8 +561,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   ELIZA_APNS_TEAM_ID                 Apple Developer team id
 #   ELIZA_APNS_TOPIC                   Signed iOS bundle id (ai.elizaos.app)
 #   ELIZA_APNS_PRODUCTION              Explicit host selector: 0 sandbox, 1 production
-#   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
-#   WAIFU_BRIDGE_ORG_ID                Required owner org for waifu bridge user provisioning
+#   AGENT_SERVER_SHARED_SECRET
 # -----------------------------------------------------------------------------
 
 # =============================================================================
@@ -608,6 +606,26 @@ routes = [
 ]
 
 # Complete staging override: exports is inherited as one map, not merged.
+[env.staging.exports.AuthenticationState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.HfEgressState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.VoiceUsageState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.RateLimitState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.staging.exports.A2ATaskState]
+type = "durable-object"
+storage = "sqlite"
+
 [env.staging.exports.SharedRuntimeConversation]
 type = "durable-object"
 storage = "sqlite"
@@ -656,15 +674,9 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.staging.vars]
-CLOUD_A2A_STATE_BACKEND = "redis"
-CLOUD_RATE_STATE_BACKEND = "redis"
-CLOUD_VOICE_USAGE_BACKEND = "redis"
-CLOUD_HF_EGRESS_BACKEND = "redis"
-# Switch only after quiescing and transferring live auth state.
-CLOUD_AUTH_STATE_BACKEND = "redis"
-APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/staging/callback"
 NODE_ENV = "production"
-LOGIN_API_URL = "https://steward-api-staging.up.railway.app"
+# Cloudflare login upstream; ELIZA_LOGIN_API_URL can select the same environment's workers.dev origin.
+LOGIN_API_URL = "https://login-staging.eliza.app"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
 # HTTPS origin, never a request-derived host. Keep this committed so any
 # Wrangler deployment preserves inbound voice instead of failing closed.
@@ -693,8 +705,7 @@ ELIZA_INFERENCE_TIMING = "info"
 SHARED_MEMORY_TABLES_ENABLED = "true"
 SHARED_RECALL_ENABLED = "true"
 # POST /api/v1/decisions answers through Workers AI Clef (clef-flash) on the
-# existing AI binding. Production stays off (503 "unavailable") until staging
-# qualification records latency and answers.
+# existing AI binding. Mirrored in [env.production.vars].
 CLEF_DECISIONS_ENABLED = "true"
 # Apps (Product 2): wire the real deploy trigger so POST /api/v1/apps/:id/deploy
 # enqueues an APP_DEPLOY job the provisioning-worker daemon runs (instead of the
@@ -723,6 +734,8 @@ OIDC_ISSUER_URL = "https://api-staging.eliza.app"
 # this environment (Alpha Phone staging authority). A var, not a secret, so a
 # missing secret push cannot silently change the issuer.
 ELIZA_ENTITLEMENT_ISSUER = "https://api-staging.eliza.app"
+# Preserve the published client contract; other deployments select their own audience.
+ELIZA_ENTITLEMENT_AUDIENCE = "eliza-alpha-phone"
 # Per-tenant `magicLinkBaseUrl` (set in Steward Neon `tenant_configs.email_config`)
 # redirects email magic-link callbacks to staging.elizacloud.ai instead of the
 # prod fallback (www.elizacloud.ai). Tenant row provisioned manually.
@@ -738,12 +751,10 @@ ELIZA_CLOUD_AGENT_BASE_DOMAIN = "cloud-staging.eliza.app"
 # packages/cloud/api/src/index.ts (= eliza-production-1.elizacloud.ai) so
 # staging agent requests would silently hit the prod CP.
 AGENT_ROUTER_ORIGIN_HOST = "eliza-staging-1.eliza.app"
-WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
-WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud-staging.eliza.app"
 # Shared reminder cron dispatches Discord occurrences to the stateful gateway;
 # keep the public destination committed so a Worker redeploy cannot remove it.
-ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-staging-staging.up.railway.app"
+ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://eliza-gateway-discord-staging.square-rain-7251.workers.dev/discord/event-webhook"
 # Onboarding and billing links land in the hosted agent application's in-app
 # Cloud view. This host is distinct from staging.eliza.app, which owns the
 # public homepage and login entrypoint.
@@ -1015,14 +1026,8 @@ binding = "AI"
 binding = "BROWSER"
 
 [env.production.vars]
-CLOUD_A2A_STATE_BACKEND = "redis"
-CLOUD_RATE_STATE_BACKEND = "redis"
-CLOUD_VOICE_USAGE_BACKEND = "redis"
-CLOUD_HF_EGRESS_BACKEND = "redis"
-# Switch only after quiescing and transferring live auth state.
-CLOUD_AUTH_STATE_BACKEND = "redis"
-APP_OAUTH_RETURN_URLS = "https://alphacompute.ai/alphaphone/gmail/callback"
-LOGIN_API_URL = "https://steward-api-production-115d.up.railway.app"
+# Cloudflare login upstream (see the staging block above).
+LOGIN_API_URL = "https://login.eliza.app"
 NODE_ENV = "production"
 # Signed Twilio callbacks and media-stream URLs must use the externally routed
 # HTTPS origin, never a request-derived host. Keep this committed so any
@@ -1041,6 +1046,11 @@ PERSONAL_SHARED_TELEGRAM_EDGE_ENABLED = "false"
 # environment-pinned: the helper honors it only when ENVIRONMENT is production,
 # and it must be exactly true to opt in.
 THIN_INFERENCE_ENTRY_ENABLED = "true"
+# POST /api/v1/decisions answers through Workers AI Clef
+# (@cf/cloudflare/clef-flash) on [env.production.ai]. Mirrors
+# [env.staging.vars]. A Clef suggestion never lowers a client's ask floor, and
+# a failing provider answers 503 "unavailable" so clients keep their own rules.
+CLEF_DECISIONS_ENABLED = "true"
 # Apps deploy (Product 2): arms the Worker-side deploy trigger (configureAppsDeployTrigger,
 # bootstrap-app.ts) so POST /api/v1/apps/:id/deploy enqueues a real APP_DEPLOY job instead of
 # the no-op stub. Mirrors [env.staging.vars]. CUTOVER GATE — only effective once the prod
@@ -1071,6 +1081,8 @@ OIDC_ENABLED = "true"
 OIDC_ISSUER_URL = "https://api.eliza.app"
 # Subscription entitlement `iss`; see the staging block.
 ELIZA_ENTITLEMENT_ISSUER = "https://api.eliza.app"
+# Preserve the published client contract; other deployments select their own audience.
+ELIZA_ENTITLEMENT_AUDIENCE = "eliza-alpha-phone"
 OIDC_REDIRECT_URI_ALIASES = '{"elizahub":["https://git.slop.cash/user/oauth2/elizacloud/callback"]}'
 # Pin the prod Steward tenant explicitly instead of leaning on the implicit
 # DEFAULT_STEWARD_TENANT_ID ("elizacloud") in steward-tenant-config.ts. That
@@ -1079,10 +1091,8 @@ OIDC_REDIRECT_URI_ALIASES = '{"elizahub":["https://git.slop.cash/user/oauth2/eli
 STEWARD_TENANT_ID = "elizacloud"
 NEXT_PUBLIC_STEWARD_TENANT_ID = "elizacloud"
 AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.eliza.app"
-WAIFU_SERVICE_ORG_ID = "d96d3fc8-cc07-40be-b81c-ba7a7b4e8028"
-WAIFU_SERVICE_USER_ID = "90101225-836f-4fa7-a69c-f70691dcf256"
 ELIZA_APP_URL = "https://cloud.eliza.app"
-ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://gateway-discord-production.up.railway.app"
+ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL = "https://eliza-gateway-discord-production.square-rain-7251.workers.dev/discord/event-webhook"
 ELIZA_ONBOARDING_APP_URL = "https://cloud.eliza.app"
 ELIZA_ONBOARDING_LOGIN_APP_URL = "https://eliza.app"
 NEXT_PUBLIC_NETWORK = "base"

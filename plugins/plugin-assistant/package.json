@@ -47,6 +47,12 @@
       "import": "./dist/device-clock-review.js",
       "default": "./dist/device-clock-review.js"
     },
+    "./device-reminder-journal": {
+      "eliza-source": "./src/services/device-actions/reminder-journal.ts",
+      "types": "./dist/device-reminder-journal.d.ts",
+      "import": "./dist/device-reminder-journal.js",
+      "default": "./dist/device-reminder-journal.js"
+    },
     "./actions/context-signal": {
       "eliza-source": "./src/actions/context-signal.ts",
       "types": "./dist/actions/context-signal.d.ts",
@@ -64,6 +70,24 @@
       "types": "./dist/html-entities.d.ts",
       "import": "./dist/html-entities.js",
       "default": "./dist/html-entities.js"
+    },
+    "./device-calendar-contract": {
+      "eliza-source": "./src/services/device-actions/calendar-contract.ts",
+      "types": "./dist/device-calendar-contract.d.ts",
+      "import": "./dist/device-calendar-contract.js",
+      "default": "./dist/device-calendar-contract.js"
+    },
+    "./device-photo-library-contract": {
+      "eliza-source": "./src/services/device-actions/photo-library-contract.ts",
+      "types": "./dist/device-photo-library-contract.d.ts",
+      "import": "./dist/device-photo-library-contract.js",
+      "default": "./dist/device-photo-library-contract.js"
+    },
+    "./device-foreground-review": {
+      "eliza-source": "./src/services/device-actions/foreground-review-contract.ts",
+      "types": "./dist/device-foreground-review.d.ts",
+      "import": "./dist/device-foreground-review.js",
+      "default": "./dist/device-foreground-review.js"
     }
   },
   "files": [
@@ -72,7 +96,7 @@
   "scripts": {
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
+    "test": "vitest run && node --test --import=tsx --conditions=eliza-source src/services/message/*.test.mjs",
     "test:device-actions": "node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts",
     "lint": "bunx @biomejs/biome check --write src",
     "lint:check": "bunx @biomejs/biome check src",
@@ -108,7 +132,7 @@
     "tsup": "^9.0.0",
     "vitest": "^5.0.5",
     "@elizaos/testing": "workspace:*",
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/plugin-sql": "workspace:*",
     "esbuild": "^0.28.0",
     "@electric-sql/pglite": "^0.4.0"

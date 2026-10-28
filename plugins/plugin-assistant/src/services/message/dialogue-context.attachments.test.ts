@@ -122,6 +122,26 @@ describe("attachments in prior dialogue", () => {
     ).toEqual(["h1", "h2"]);
   });
 
+  it("keeps an attachment-only message in history", () => {
+    const uncaptioned = {
+      ...generated,
+      id: "uncaptioned",
+      content: { ...generated.content, text: "" },
+    } as Memory;
+    const events = render([request, uncaptioned]);
+    expect(content(events, "history:uncaptioned")).toBe(
+      `Eliza: [attachment: Generated_Image_2026-10-18T18-24-25.jpg; image/png; ${GENERATED_PROMPT}]`,
+    );
+    const empty = {
+      ...uncaptioned,
+      id: "empty",
+      content: { ...uncaptioned.content, attachments: [] },
+    } as Memory;
+    expect(
+      render([request, empty]).some((event) => event.id === "history:empty"),
+    ).toBe(false);
+  });
+
   it("adds same-room descriptions and preserves complete cross-room attachment text", () => {
     const withText = {
       ...generated,

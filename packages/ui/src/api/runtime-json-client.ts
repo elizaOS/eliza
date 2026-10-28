@@ -23,6 +23,11 @@ export interface RuntimeJsonBridge {
     path: string;
     method: "GET" | "POST";
     body?: unknown;
+    /**
+     * Opaque request ID that a wrapping bridge adds for native host logs.
+     * The client never sets it. It must not carry content or credentials.
+     */
+    correlation?: string;
   }): Promise<RuntimeJsonResponse>;
 }
 export class RuntimeRequestError extends Error {

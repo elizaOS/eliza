@@ -1,6 +1,6 @@
 /**
  * Explicit standalone host speech on libelizainference: Paradee-8M speech
- * output (`/api/tts/paradee`) and Qwen3-ASR speech input
+ * output (`/api/tts/paradee`) and Phonon-2 speech input
  * (`/api/asr/libelizainference`). Each runs in its own host worker and needs no
  * agent text model or Eliza-1 bundle.
  */
@@ -200,7 +200,7 @@ export async function handleStandaloneSpeechRoute(
               ready: service.initialized,
               busy: host.asrActive,
               provider,
-              model: "qwen3-asr-0.6b-q8_0",
+              model: "phonon-2-fv5",
               language: "en",
               format: "pcm16-wav",
               maxDurationSeconds: 60,

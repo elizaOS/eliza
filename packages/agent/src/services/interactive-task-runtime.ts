@@ -10,6 +10,7 @@ import {
   type TaskActionProposal,
   type TaskObservation,
   type TaskOwner,
+  type TaskTransition,
   transitionInteractiveTask,
 } from "@elizaos/core/protocol";
 import type { SqliteInteractiveTaskStore } from "./interactive-task-store.ts";
@@ -38,6 +39,17 @@ export interface InteractiveTaskActuator {
     taskId: string;
     signal: AbortSignal;
   }): Promise<TaskObservation>;
+  /**
+   * The task's origin scope changed (a host extension or retraction, already
+   * persisted under a new epoch). Drop page state from the old scope and apply
+   * `allowedOrigins` to the page's navigation policy; resolve only once applied.
+   */
+  scopeChanged?(context: {
+    owner: TaskOwner;
+    taskId: string;
+    epoch: number;
+    allowedOrigins: readonly string[];
+  }): Promise<void>;
   /** Trusted readback only; must never repeat the effect or accept client receipts. */
   reconcile?(
     proposal: TaskActionProposal,
@@ -70,6 +82,8 @@ export type AuthorizedTaskGoal = Pick<
 
 export class InteractiveTaskRuntime {
   private readonly pending = new Map<string, AbortController>();
+  /** One scope apply per task at a time; each applies the latest persisted scope. */
+  private readonly scopeApplies = new Map<string, Promise<void>>();
   private poisoned = false;
   private cleanup = new Map<
     string,
@@ -187,13 +201,27 @@ export class InteractiveTaskRuntime {
     expectedRevision: number,
     type: TaskCleanupReason,
   ): InteractiveTask {
+    return this.fence(
+      id,
+      expectedRevision,
+      { type: type === "close" ? "pause" : type },
+      type,
+    );
+  }
+  /** A transition that ends in-flight work: abort it and clean up even on storage failure. */
+  private fence(
+    id: string,
+    expectedRevision: number,
+    transition: TaskTransition,
+    reason?: TaskCleanupReason,
+  ): InteractiveTask {
     this.requireHealthy();
     let shouldAbort = false;
     try {
       const result = this.options.store.transition(
         id,
         { owner: this.owner, expectedRevision, now: this.now() },
-        { type: type === "close" ? "pause" : type },
+        transition,
       ).task;
       shouldAbort = true;
       return result;
@@ -211,9 +239,118 @@ export class InteractiveTaskRuntime {
     } finally {
       if (shouldAbort) {
         this.pending.get(id)?.abort();
-        this.startCleanup(id, type);
+        this.startCleanup(id, reason);
       }
     }
+  }
+  private applyScope(id: string): Promise<void> {
+    const scopeChanged = this.options.actuator.scopeChanged;
+    if (!scopeChanged) return Promise.resolve();
+    // Scope changes can commit while an earlier apply is still awaiting the
+    // page. Applies run one at a time and each reads the persisted scope when
+    // it starts, so an older origin list can never be written last.
+    const run = (this.scopeApplies.get(id) ?? Promise.resolve())
+      .catch(() => undefined)
+      .then(async () => {
+        const task = this.get(id);
+        try {
+          await scopeChanged.call(this.options.actuator, {
+            owner: this.owner,
+            taskId: task.id,
+            epoch: task.epoch,
+            allowedOrigins: Object.freeze([...task.allowedOrigins]),
+          });
+        } catch (cause) {
+          throw new ElizaError(
+            "Task scope changed, but the page policy was not confirmed",
+            { code: "TASK_SCOPE_UNCONFIRMED", cause },
+          );
+        }
+      });
+    this.scopeApplies.set(id, run);
+    run
+      .finally(() => {
+        if (this.scopeApplies.get(id) === run) this.scopeApplies.delete(id);
+      })
+      .catch(() => undefined);
+    return run;
+  }
+  /**
+   * Trusted host only, never a renderer route: extend a running task to one
+   * more exact HTTPS origin, for example the sign-in service a site hands the
+   * person to. `checkOrigin` is the host's own safety check (blocklist,
+   * look-alike) for that origin; it returns an opaque reference to the passed
+   * check, or null to refuse. Never call this for a page the task merely
+   * reached: every extension is an explicit host decision, audited per origin.
+   */
+  async extendOrigin(
+    id: string,
+    expectedRevision: number,
+    origin: string,
+    checkOrigin: (origin: string) => Promise<string | null>,
+  ): Promise<InteractiveTask> {
+    await this.settle(id);
+    const before = this.get(id);
+    if (before.revision !== expectedRevision)
+      throw new ElizaError("Task revision changed", { code: "TASK_CONFLICT" });
+    if (
+      before.authorization.state !== "active" ||
+      !["active", "paused"].includes(before.status)
+    )
+      throw new ElizaError("Task scope cannot change now", {
+        code: "TASK_NOT_ACTIVE",
+      });
+    const controller = this.begin(id);
+    let task: InteractiveTask;
+    try {
+      const checkRef = await checkOrigin(origin);
+      if (checkRef === null)
+        throw new ElizaError("The host did not allow this website", {
+          code: "TASK_ORIGIN_REFUSED",
+        });
+      controller.signal.throwIfAborted();
+      task = this.options.store.transition(
+        id,
+        { owner: this.owner, expectedRevision, now: this.now() },
+        { type: "extend-origin", origin, checkRef },
+      ).task;
+    } finally {
+      this.pending.delete(id);
+    }
+    await this.applyScope(id);
+    return task;
+  }
+  /**
+   * Remove an origin `extendOrigin` added; the starting origins stay. Like
+   * pause, it fences in-flight work: an action that was dispatched becomes an
+   * unknown outcome and the task pauses. It works after the task ended too.
+   */
+  async retractOrigin(
+    id: string,
+    expectedRevision: number,
+    origin: string,
+  ): Promise<InteractiveTask> {
+    const task = this.fence(id, expectedRevision, {
+      type: "retract-origin",
+      origin,
+    });
+    // The fence's cleanup hides guidance; let it finish before the scope change
+    // quiesces again, so the two never race on the same guidance revision.
+    // The narrower scope is applied to the page even if that cleanup failed.
+    let cleanupError: unknown;
+    try {
+      await this.settle(id);
+    } catch (error) {
+      cleanupError = error;
+    }
+    await this.applyScope(id);
+    if (cleanupError !== undefined) throw cleanupError;
+    return task;
+  }
+  /** Re-apply the persisted origin scope, for example after a host restart. */
+  async syncScope(id: string): Promise<InteractiveTask> {
+    await this.applyScope(id);
+    return this.get(id);
   }
   /** Trusted host only: verify and save the requested result before calling this.
    * Completion records task state, not proof that the goal was achieved. The

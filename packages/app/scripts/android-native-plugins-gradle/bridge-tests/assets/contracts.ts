@@ -1816,8 +1816,21 @@
           `data:text/html;charset=utf-8,${encodeURIComponent(
             `<html><head><title>${title}</title></head><body><main>${text}</main><div id="loaded"></div><script>document.querySelector("#loaded").textContent=String(performance.timeOrigin)+"-"+Math.random()</script><span hidden>hidden fixture</span><input value="private fixture"></body></html>`,
           )}`;
-        const firstUrl = page("First fixture", "First visible café 漢字");
-        const secondUrl = page("Second fixture", "Second visible page");
+        if (descriptor.surfaceControl) {
+          window.nativeBrowserFixtureOriginRequested = true;
+          const deadline = Date.now() + 5000;
+          while (!window.nativeBrowserControlOrigin) {
+            if (Date.now() >= deadline)
+              throw new Error("Native HTTP fixture did not start");
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+        }
+        const firstUrl = descriptor.surfaceControl
+          ? `${window.nativeBrowserControlOrigin}/first`
+          : page("First fixture", "First visible café 漢字");
+        const secondUrl = descriptor.surfaceControl
+          ? `${window.nativeBrowserControlOrigin}/second`
+          : page("Second fixture", "Second visible page");
         const waitForPage = async (title, previousText) => {
           const deadline = Date.now() + 8000;
           let result;
@@ -2126,12 +2139,12 @@
             (event) => requested.push(event),
           );
           try {
-            const clickLink = async (selector) => {
+            const clickLink = async (selector, action = "click") => {
               const read = await snapshot();
-              const input = command(read, "click", selector);
+              const input = command(read, action, selector);
               input.command.taskPolicy = {
                 ...taskPolicy,
-                targets: [{ selector, action: "click" }],
+                targets: [{ selector, action }],
               };
               try {
                 assert(
@@ -2143,7 +2156,7 @@
                 if (error.code !== "UNCERTAIN_OUTCOME") throw error;
               }
             };
-            await clickLink("#same-origin");
+            await clickLink("#same-origin", "follow");
             const sameDeadline = Date.now() + 5000;
             let same;
             do {
@@ -2156,6 +2169,154 @@
                 requested.length === 0,
               `same-origin page link loads without host approval: ${JSON.stringify({ same, requested })}`,
             );
+            await waitForPage("Same fixture");
+            const history = () => call("observeHistory", { ...identity, id });
+            const move = async (reference) => {
+              try {
+                return await call("navigateHistory", {
+                  ...identity,
+                  id,
+                  reference,
+                });
+              } catch (error) {
+                if (error.code !== "UNCERTAIN_OUTCOME") throw error;
+                return { uncertain: true, result: { requiresReadback: true } };
+              }
+            };
+            await rejects("controlPage", {
+              ...identity,
+              id,
+              command: {
+                subaction: "native-history",
+                offset: -1,
+                url: `${taskPolicy.origin}/same`,
+              },
+            });
+            const initialHistory = await history();
+            const backEntry = initialHistory.destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            assert(
+              backEntry?.url === `${taskPolicy.origin}/`,
+              "Back names the observed previous document",
+            );
+            await rejects("navigateHistory", {
+              ...identity,
+              session: "wrong-session",
+              id,
+              reference: backEntry.reference,
+            });
+            const backReceipt = await move(backEntry.reference);
+            assert(
+              (backReceipt.result.dispatched || backReceipt.uncertain) &&
+                backReceipt.result.requiresReadback,
+              "history receipt requires arrival readback",
+            );
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: backEntry.reference,
+            });
+            await waitForPage("Control fixture");
+            const restoredHistoryPage = await snapshot();
+            assert(
+              restoredHistoryPage.result.elements.find(
+                (element) => element.targetSelector === "#query",
+              ).hasInput,
+              "Back restores the entered form state",
+            );
+            assert(
+              restoredHistoryPage.result.elements
+                .find((element) => element.targetSelector === "#language")
+                .options.find((option) => option.selected).label === "French",
+              "Back restores the selected option",
+            );
+            const forwardEntry = (await history()).destinations.find(
+              (entry) => entry.direction === "forward",
+            );
+            assert(
+              forwardEntry?.url === `${taskPolicy.origin}/same`,
+              "Forward names the observed next document",
+            );
+            await call("presentSurface", { ...identity });
+            await rejects("observeHistory", { ...identity, id });
+            await call("presentSurface", { ...identity, id });
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: forwardEntry.reference,
+            });
+            const refreshedForward = (await history()).destinations.find(
+              (entry) => entry.direction === "forward",
+            );
+            await move(refreshedForward.reference);
+            await waitForPage("Same fixture");
+            assert(
+              !(await history()).destinations.some(
+                (entry) => entry.direction === "forward",
+              ),
+              "exhausted Forward is not advertised",
+            );
+            const beforeSameDocument = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            await clickLink("#history-state");
+            const hashDeadline = Date.now() + 5000;
+            while (
+              !(
+                await call("getSurfaceState", { ...identity, id })
+              ).currentUrl.endsWith("#updated")
+            ) {
+              if (Date.now() >= hashDeadline)
+                throw new Error("Same-document history did not commit");
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: beforeSameDocument.reference,
+            });
+            const sameDocumentBack = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            assert(
+              sameDocumentBack.url === `${taskPolicy.origin}/same`,
+              "same-document Back retains its observed entry",
+            );
+            await move(sameDocumentBack.reference);
+            const returnDeadline = Date.now() + 5000;
+            while (
+              (await call("getSurfaceState", { ...identity, id }))
+                .currentUrl !== `${taskPolicy.origin}/same`
+            ) {
+              if (Date.now() >= returnDeadline)
+                throw new Error("Same-document Back did not arrive");
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            const beforePause = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            window.nativeBrowserPauseComplete = false;
+            window.nativeBrowserPauseRequested = true;
+            const historyPauseDeadline = Date.now() + 8000;
+            while (!window.nativeBrowserPauseComplete) {
+              if (Date.now() >= historyPauseDeadline)
+                throw new Error("History pause test did not resume");
+              await new Promise((resolve) => setTimeout(resolve, 50));
+            }
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: beforePause.reference,
+            });
+            window.nativeBrowserEvidence.history = {
+              initialHistory,
+              backReceipt,
+              forwardEntry,
+              sameDocumentBack,
+              restored: true,
+              pauseFenced: true,
+            };
             await clickLink("#cross-origin");
             const requestDeadline = Date.now() + 5000;
             while (!requested.length && Date.now() < requestDeadline)
@@ -2178,6 +2339,10 @@
             await call("navigate", { ...identity, id, url: requested[0].url });
             await waitForPage("Approved fixture");
             assert(
+              (await history()).destinations.length === 0,
+              "cross-origin history requires the host approval path, not an observed same-origin move",
+            );
+            assert(
               requested.length === 1,
               "explicit host navigation is not intercepted again",
             );
@@ -2196,6 +2361,38 @@
               "cross-origin HTTP redirect waits for another host decision",
             );
             window.nativeBrowserEvidence.interception = { same, requested };
+            await call("navigate", {
+              ...identity,
+              id,
+              url: `${taskPolicy.origin}/same`,
+            });
+            await waitForPage("Same fixture");
+            window.nativeBrowserPostFixtureRequested = true;
+            await waitForPage("Submitted fixture");
+            await call("navigate", {
+              ...identity,
+              id,
+              url: `${taskPolicy.origin}/same`,
+            });
+            await waitForPage("Same fixture");
+            const postBack = (await history()).destinations.find(
+              (entry) => entry.direction === "back",
+            );
+            assert(
+              postBack?.url === `${taskPolicy.origin}/submitted`,
+              "history observes the submitted document",
+            );
+            await move(postBack.reference);
+            await rejects("navigateHistory", {
+              ...identity,
+              id,
+              reference: postBack.reference,
+            });
+            // Let the real provider deliver its resubmission callback. Native
+            // instrumentation independently asserts exactly one server POST.
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            window.nativeBrowserEvidence.history.postTraversalReadback =
+              await call("getSurfaceState", { ...identity, id });
           } finally {
             (await navigationListener).remove();
           }

@@ -43,6 +43,29 @@ export function installControlChannel(pageCommand, pageGuidance) {
     // Consume before execution. A lost reply must never replay an effect.
     sequence = request.sequence;
     const command = request.command;
+    // Only the native observed-history entrypoint can send this command. The
+    // public controlPage whitelist excludes it; no page/model offset is accepted.
+    if (command?.subaction === "native-history") {
+      if (
+        ![-1, 1].includes(command.offset) ||
+        command.url !== location.href ||
+        command.length !== history.length
+      ) {
+        reject("STALE_REF", "The observed history changed before dispatch.");
+        return;
+      }
+      try {
+        pageGuidance({ kind: "hide" });
+        History.prototype.go.call(history, command.offset);
+        reply({ dispatched: true, requiresReadback: true });
+      } catch {
+        reject(
+          "UNCERTAIN_OUTCOME",
+          "Read the page before continuing after history navigation.",
+        );
+      }
+      return;
+    }
     if (command?.subaction === "guide") {
       const guidance = command.guidance;
       if (
@@ -64,7 +87,7 @@ export function installControlChannel(pageCommand, pageGuidance) {
     }
     if (
       !command ||
-      !["snapshot", "click", "fill", "select", "scroll"].includes(
+      !["snapshot", "click", "fill", "select", "scroll", "follow"].includes(
         command.subaction,
       )
     ) {
@@ -91,8 +114,31 @@ export function installControlChannel(pageCommand, pageGuidance) {
             (target) =>
               target &&
               typeof target.selector === "string" &&
-              ["click", "fill", "select", "scroll"].includes(target.action),
-          )))
+              ["click", "fill", "select", "scroll", "follow"].includes(
+                target.action,
+              ),
+          ) ||
+          // The host spent this grant for one commit of the reviewed control.
+          (policy.commitGrant !== undefined &&
+            (!policy.commitGrant ||
+              typeof policy.commitGrant !== "object" ||
+              typeof policy.commitGrant.grantId !== "string" ||
+              !Number.isSafeInteger(policy.commitGrant.expiresAt) ||
+              typeof policy.expectedSelector !== "string" ||
+              policy.commitGrant.selector !== policy.expectedSelector ||
+              // The bridge checked these; a malformed one is never ignored.
+              (policy.commitGrant.requestTarget !== undefined &&
+                (!policy.commitGrant.requestTarget ||
+                  typeof policy.commitGrant.requestTarget !== "object" ||
+                  typeof (
+                    policy.commitGrant.requestTarget.url ??
+                    policy.commitGrant.requestTarget.path
+                  ) !== "string" ||
+                  typeof policy.commitGrant.requestTarget.method !==
+                    "string")) ||
+              (policy.commitGrant.formHash !== undefined &&
+                !/^[0-9a-f]{64}$/.test(policy.commitGrant.formHash)) ||
+              !["click", "fill", "select"].includes(command.subaction)))))
     ) {
       reject(
         "INVALID_REQUEST",

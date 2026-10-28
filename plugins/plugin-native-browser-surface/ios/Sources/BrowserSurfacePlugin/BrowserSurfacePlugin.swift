@@ -24,6 +24,8 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
         CAPPluginMethod(name: "setOcclusionRects", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "navigate", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "reloadSurface", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "observeHistory", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "navigateHistory", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "goBack", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "readPage", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "controlPage", returnType: CAPPluginReturnPromise),
@@ -393,6 +395,14 @@ public class ElizaSurfaceManagerPlugin: CAPPlugin, CAPBridgedPlugin, WKNavigatio
             if surface.webView.canGoBack { surface.webView.goBack() }
             call.resolve()
         }
+    }
+
+    @objc func observeHistory(_ call: CAPPluginCall) {
+        call.reject("Observed history navigation is not supported on iOS", "UNSUPPORTED")
+    }
+
+    @objc func navigateHistory(_ call: CAPPluginCall) {
+        call.reject("Observed history navigation is not supported on iOS", "UNSUPPORTED")
     }
 
     @objc func controlPage(_ call: CAPPluginCall) {

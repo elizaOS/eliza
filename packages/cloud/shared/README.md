@@ -377,3 +377,12 @@ A failed publication rolls back redemption and campaign capacity. The public
 redemption/readback API and product UI are still required before enabling a
 pilot campaign. Real providers, registered app configuration and device/user
 acceptance remain separate gates.
+
+Subscription entitlement signing uses `ELIZA_ENTITLEMENT_ISSUER` and
+`ELIZA_ENTITLEMENT_AUDIENCE` for the deployment's client contract. The audience
+is a nonempty token of up to 128 letters, digits, dots, underscores or hyphens;
+its default is `cloud-subscription`. Eliza's staging and production Worker
+configuration explicitly retains the existing audience for installed clients.
+Other deployments must configure their clients to verify their chosen audience
+and issuer. Change these together during a client migration. This token presents
+plan state; it does not grant API access or replace per-request authorization.

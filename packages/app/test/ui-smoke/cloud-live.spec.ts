@@ -292,10 +292,15 @@ async function requireDeployedRendererIdentity(
       "playwrightTestAuth",
       "runtimeMode",
       "schema",
+      "startedAt",
       "variant",
     ].sort(),
   );
   expect(observed.schema).toBe(DEPLOYED_RENDERER_MANIFEST_SCHEMA);
+  expect(observed.startedAt).toEqual(expect.any(String));
+  expect(new Date(observed.startedAt as string).toISOString()).toBe(
+    observed.startedAt,
+  );
   expect(observed.commit).toBe(sourceSha);
   expect(observed.buildId).toMatch(/^[0-9a-f]{64}$/);
   expect(observed.indexHtmlSha256).toMatch(/^[0-9a-f]{64}$/);

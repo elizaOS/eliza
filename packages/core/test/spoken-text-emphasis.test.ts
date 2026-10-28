@@ -56,4 +56,29 @@ describe("sanitizeSpeechText star spans", () => {
 			"Your flight leaves at nine.",
 		);
 	});
+
+	it("speaks a bold-italic phrase at the start of a sentence", () => {
+		expect(sanitizeSpeechText("***Very important***: read this.")).toBe(
+			"Very important: read this.",
+		);
+		expect(sanitizeSpeechText("***Do not share the code*** with anyone.")).toBe(
+			"Do not share the code with anyone.",
+		);
+	});
+
+	it("speaks a line with more emphasis spans than the peel budget", () => {
+		const items = Array.from(
+			{ length: 17 },
+			(_, index) => `**Item${index + 1}** value`,
+		);
+		expect(sanitizeSpeechText(`Report: ${items.join(", ")}.`)).toBe(
+			`Report: ${items.map((_, index) => `Item${index + 1} value`).join(", ")}.`,
+		);
+	});
+
+	it("still drops a line whose emphasis layers exceed the peel budget", () => {
+		expect(sanitizeSpeechText(`${"*".repeat(20)}hello${"*".repeat(20)}`)).toBe(
+			"",
+		);
+	});
 });

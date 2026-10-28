@@ -59,6 +59,15 @@ import {
 	resolvePowerSourceState,
 } from "./optimistic-policy";
 import {
+	createParadeeSpeakerPreset,
+	createParadeeTtsBackend,
+	ParadeeTtsBackend,
+} from "./paradee/paradee-backend";
+import {
+	PARADEE_SAMPLE_RATE,
+	type ParadeeEngineConfig,
+} from "./paradee/paradee-engine-discovery";
+import {
 	type CachedPhraseAudio,
 	DEFAULT_PHRASE_CACHE_SEED,
 	FIRST_AUDIO_FILLERS,
@@ -630,7 +639,7 @@ export interface EngineVoiceBridgeOptions {
 	/**
 	 * Override only the TTS backend while keeping the fused bundle lifecycle
 	 * and ASR FFI loaded. Used when a bundle falls back from OmniVoice speech
-	 * to Kokoro speech but still needs bundled Gemma ASR for mic input.
+	 * to Kokoro speech but still needs the bundled Phonon-2 ASR for mic input.
 	 */
 	ttsBackendOverride?: TtsBackend;
 	/** Optional speaker preset paired with `ttsBackendOverride`. */
@@ -660,6 +669,15 @@ export interface EngineVoiceBridgeOptions {
 	 * mmap-evict).
 	 */
 	kokoroOnly?: KokoroEngineDiscoveryResult;
+	/**
+	 * Product desktop TTS: Paradee-8M v1.1 through the host TTS worker
+	 * (`host-tts-worker.ts` on libelizainference). Like `kokoroOnly` it skips
+	 * the bundle-root / speaker-preset / FFI checks and serves no ASR.
+	 * Mutually exclusive with `kokoroOnly`, `useFfiBackend: true` and
+	 * `backendOverride`. `ttsBackendOverride` replaces the worker-backed
+	 * backend (tests).
+	 */
+	paradeeOnly?: ParadeeEngineConfig;
 	/**
 	 * Optional pre-loaded fused inference handle for the `kokoroOnly` path. When
 	 * set, the Kokoro FFI runtime reuses it instead of dlopen-ing a second copy
@@ -1026,6 +1044,10 @@ export class EngineVoiceBridge {
 			}
 		}
 		this.bargeInBindings.clear();
+		// The Paradee backend owns a host worker process; stop it with the bridge.
+		if (this.backend instanceof ParadeeTtsBackend) {
+			this.backend.dispose();
+		}
 		if (this.cancellationCoordinator) {
 			try {
 				this.cancellationCoordinator.dispose();
@@ -1051,6 +1073,21 @@ export class EngineVoiceBridge {
 	 * the call throws.
 	 */
 	static start(opts: EngineVoiceBridgeOptions): EngineVoiceBridge {
+		if (opts.paradeeOnly) {
+			if (opts.kokoroOnly || opts.useFfiBackend || opts.backendOverride) {
+				throw new VoiceStartupError(
+					"invalid-options",
+					"[voice] paradeeOnly cannot be combined with kokoroOnly, useFfiBackend or backendOverride. Caller must pick exactly one backend path.",
+				);
+			}
+			return EngineVoiceBridge.startStandaloneTts(
+				opts,
+				opts.ttsBackendOverride ?? createParadeeTtsBackend(opts.paradeeOnly),
+				opts.speakerPresetOverride ?? createParadeeSpeakerPreset(),
+				opts.sampleRate ?? PARADEE_SAMPLE_RATE,
+				"paradee",
+			);
+		}
 		if (opts.kokoroOnly) {
 			if (opts.useFfiBackend || opts.backendOverride) {
 				throw new VoiceStartupError(
@@ -1210,6 +1247,10 @@ export class EngineVoiceBridge {
 			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef, {
 				skipTtsRegion: Boolean(opts.ttsBackendOverride),
 			});
+		if (!opts.lifecycleLoaders && backend instanceof ParadeeTtsBackend) {
+			const paradeeBackend = backend;
+			loaders.loadTtsRegion = () => paradeeBackend.acquireMemoryRegion();
+		}
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
 		// Wire speaker-attribution when a profile store is provided. The
@@ -1366,11 +1407,6 @@ export class EngineVoiceBridge {
 		}
 		const kokoro = opts.kokoroOnly;
 		const sampleRate = opts.sampleRate ?? kokoro.layout.sampleRate;
-		const workDir =
-			opts.bundleRoot && existsSync(opts.bundleRoot)
-				? opts.bundleRoot
-				: localInferenceRoot();
-
 		// Synthesize a minimal preset. Kokoro's `resolveVoice(preset)` looks
 		// up `preset.voiceId` against `KOKORO_VOICE_PACKS`; the embedding +
 		// bytes fields are ignored on this path (voice cloning is OmniVoice-only).
@@ -1385,6 +1421,33 @@ export class EngineVoiceBridge {
 					: undefined,
 			...(opts.kokoroFfi ? { ffi: opts.kokoroFfi } : {}),
 		});
+
+		return EngineVoiceBridge.startStandaloneTts(
+			opts,
+			backend,
+			preset,
+			sampleRate,
+			"kokoro",
+		);
+	}
+
+	/**
+	 * Shared tail of the TTS-only paths (`paradeeOnly`, `kokoroOnly`): a
+	 * scheduler over `backend` with no bundle, no fused handle and no ASR.
+	 * Paradee registers its worker with the shared model registry. Disarm and
+	 * memory pressure stop that worker; the next request reloads it.
+	 */
+	private static startStandaloneTts(
+		opts: EngineVoiceBridgeOptions,
+		backend: TtsBackend,
+		preset: SpeakerPreset,
+		sampleRate: number,
+		label: "paradee" | "kokoro",
+	): EngineVoiceBridge {
+		const workDir =
+			opts.bundleRoot && existsSync(opts.bundleRoot)
+				? opts.bundleRoot
+				: localInferenceRoot();
 
 		const phraseCache = new PhraseCache();
 		for (const entry of opts.prewarmedPhrases ?? []) {
@@ -1417,7 +1480,12 @@ export class EngineVoiceBridge {
 		);
 
 		const registry = opts.sharedResources ?? new SharedResourceRegistry();
-		const loaders = opts.lifecycleLoaders ?? kokoroOnlyLifecycleLoaders();
+		const loaders =
+			opts.lifecycleLoaders ?? standaloneTtsLifecycleLoaders(label);
+		if (!opts.lifecycleLoaders && backend instanceof ParadeeTtsBackend) {
+			const paradeeBackend = backend;
+			loaders.loadTtsRegion = () => paradeeBackend.acquireMemoryRegion();
+		}
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
 		const wiring = buildCancellationWiring(opts);
@@ -1427,11 +1495,11 @@ export class EngineVoiceBridge {
 			backend,
 			workDir,
 			lifecycle,
-			null, // no FFI handle on Kokoro-only
-			null, // no FFI context on Kokoro-only
+			null, // no FFI handle on the TTS-only paths
+			null, // no FFI context on the TTS-only paths
 			false, // ASR is not served from this path
 			phraseCache,
-			null, // no profile store on Kokoro-only
+			null, // no profile store on the TTS-only paths
 			null, // no self-voice imprint without live attribution
 			wiring?.coordinator ?? null,
 			wiring?.policy ?? null,
@@ -2240,16 +2308,18 @@ function noopMmapRegion(id: string): MmapRegionHandle {
 	};
 }
 
-function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
+function standaloneTtsLifecycleLoaders(
+	label: "paradee" | "kokoro",
+): VoiceLifecycleLoaders {
 	return {
-		loadTtsRegion: async () => noopMmapRegion("kokoro:tts"),
-		loadAsrRegion: async () => noopMmapRegion("kokoro:asr"),
+		loadTtsRegion: async () => noopMmapRegion(`${label}:tts`),
+		loadAsrRegion: async () => noopMmapRegion(`${label}:asr`),
 		loadVoiceCaches: async () => ({
-			id: "kokoro:voice-caches",
+			id: `${label}:voice-caches`,
 			async release() {},
 		}),
 		loadVoiceSchedulerNodes: async () => ({
-			id: "kokoro:voice-scheduler-nodes",
+			id: `${label}:voice-scheduler-nodes`,
 			async release() {},
 		}),
 	};

@@ -159,14 +159,16 @@ export function createTaskGuidance(
       if (
         !policy ||
         !match ||
-        !["click", "fill", "select", "scroll"].includes(command.subaction)
+        !["click", "fill", "select", "scroll", "follow"].includes(
+          command.subaction,
+        )
       )
         throw stale();
       const ticket = { id };
       active.set(tabId, ticket);
       const valid = () => current() && active.get(tabId) === ticket;
-      const actionId = `action:${id}`,
-        expiresAt = Math.min(Date.now() + 5000, policy.expiresAt);
+      const actionId = `action:${id}`;
+      let expiresAt = policy.expiresAt;
       const inject = async (func, args) => {
         if (!valid()) throw stale();
         const results = await api.scripting.executeScript({
@@ -191,6 +193,11 @@ export function createTaskGuidance(
             throw new BridgeError(result.error.kind, result.error.message);
           if (result.validated !== true) throw stale();
           await track(tabId, true);
+          // Native validation and metadata round trips are not preview time.
+          // Preserve the original authorization deadline while leaving room
+          // for slow native painting, cursor travel, visible dwell and Cancel.
+          // This wait never renews the original task authorization.
+          expiresAt = Math.min(Date.now() + 15000, policy.expiresAt);
           const shown = await inject(pageGuidance, [
             {
               kind: "show",
@@ -207,6 +214,7 @@ export function createTaskGuidance(
                 actionSentence(command.actionText) ??
                 {
                   click: "I will select this control.",
+                  follow: "I will open this link.",
                   fill: "I will enter the approved information here.",
                   select: "I will choose the approved option here.",
                   scroll: "I will scroll this area.",
@@ -215,6 +223,7 @@ export function createTaskGuidance(
           ]);
           if (shown.accepted !== true) throw stale();
         });
+        let pollDelay = 50;
         while (Date.now() < expiresAt) {
           const status = await enqueue(tabId, () =>
             inject(pageGuidance, [
@@ -229,7 +238,15 @@ export function createTaskGuidance(
           );
           if (status.ready === true) return { actionId, current: valid };
           if (status.cancelled) throw stale();
-          await new Promise((resolve) => setTimeout(resolve, 50));
+          // Slow painting must not spend the task budget on readiness checks.
+          // Keep Cancel responsive and never extend the authorization deadline.
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              Math.min(pollDelay, Math.max(0, expiresAt - Date.now())),
+            ),
+          );
+          pollDelay = Math.min(pollDelay * 2, 500);
         }
         throw stale();
       } catch (error) {

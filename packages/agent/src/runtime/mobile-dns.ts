@@ -73,7 +73,10 @@ function needsResolution(hostname: string): boolean {
  *     downloader already relies on. Loopback/IP requests keep using native fetch.
  */
 export function configureMobileDnsIfNeeded(): void {
-  if (configured || !isMobilePlatform()) return;
+  // Native Android Bun uses Bionic/netd. Never replace its VPN/private-DNS path
+  // or native fetch with the legacy musl explicit-resolver adapter.
+  if (configured || process.platform === "android" || !isMobilePlatform())
+    return;
   const servers = mobileDnsServers();
   configured = true;
 

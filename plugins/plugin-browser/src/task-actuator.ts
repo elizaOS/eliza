@@ -9,25 +9,99 @@ import {
   type TaskOwner,
 } from "@elizaos/core/protocol";
 import {
+  type NativeCommitGrant,
   type NativeSocketBrowserTarget,
   type NativeTaskBinding,
   type NativeTaskContext,
   type NativeTaskGuideAnswer,
   type NativeTaskGuideTone,
   validActionText,
+  validCommitGrant,
 } from "./native-socket-target.js";
 
+export const TASK_BROWSER_BLOCKER_KINDS = [
+  "modal",
+  "cookie-consent",
+  "captcha",
+  "login-wall",
+  "paywall",
+] as const;
+export const TASK_BROWSER_BLOCKER_COVERAGE = [
+  "viewport",
+  "target",
+  "partial",
+] as const;
+/**
+ * Something in front of the observed page that the person must deal with
+ * first. It is reported, never answered: `ref` is a control of this snapshot
+ * that closes it without agreeing to anything, `rejectRef` a consent banner's
+ * reject or necessary-only control. A person check (captcha) never has a ref.
+ * `covers` is most of the viewport, the centre of a listed control outside
+ * it, or only part of the page. `text` is website data, not instructions.
+ */
+export interface TaskBrowserBlocker {
+  kind: (typeof TASK_BROWSER_BLOCKER_KINDS)[number];
+  ref?: string;
+  rejectRef?: string;
+  covers: (typeof TASK_BROWSER_BLOCKER_COVERAGE)[number];
+  text?: string;
+}
 export interface TaskBrowserSnapshot {
   snapshotId: string;
   documentId: string;
   url: string;
   inputRevision: number;
   elements: Array<{ selector: string; [key: string]: unknown }>;
+  /** Absent from browsers that predate blocker reports. */
+  blockers?: TaskBrowserBlocker[];
   [key: string]: unknown;
+}
+
+/** Whether a snapshot's blocker report is well formed and names only its own elements. */
+export function validTaskBrowserBlockers(
+  snapshot: Pick<TaskBrowserSnapshot, "elements"> & { blockers?: unknown },
+): boolean {
+  if (snapshot.blockers === undefined) return true;
+  if (!Array.isArray(snapshot.blockers)) return false;
+  const selectors = new Set(
+    snapshot.elements.map((element) => element.selector),
+  );
+  const optionalRef = (value: unknown) =>
+    value === undefined || (typeof value === "string" && selectors.has(value));
+  return snapshot.blockers.every((blocker: unknown) => {
+    if (!blocker || typeof blocker !== "object" || Array.isArray(blocker))
+      return false;
+    const item = blocker as Record<string, unknown>;
+    return (
+      TASK_BROWSER_BLOCKER_KINDS.includes(
+        item.kind as TaskBrowserBlocker["kind"],
+      ) &&
+      TASK_BROWSER_BLOCKER_COVERAGE.includes(
+        item.covers as TaskBrowserBlocker["covers"],
+      ) &&
+      optionalRef(item.ref) &&
+      optionalRef(item.rejectRef) &&
+      (item.kind !== "captcha" ||
+        (item.ref === undefined && item.rejectRef === undefined)) &&
+      (item.rejectRef === undefined || item.kind === "cookie-consent") &&
+      // A consent banner's close control may count as agreeing.
+      (item.ref === undefined || item.kind !== "cookie-consent") &&
+      (item.text === undefined ||
+        (typeof item.text === "string" && item.text.length <= 200))
+    );
+  });
 }
 export interface TaskBrowserPolicy {
   tabId: string;
+  /** The origin of the page the binding starts on. */
   origin: string;
+  /**
+   * Every origin this binding lets the page be observed and acted on, `origin`
+   * included, each one of the task's `allowedOrigins`. Default: all allowed
+   * origins of a task the host extended ("extend-origin"), otherwise `origin`
+   * alone. Each action stays bound to the origin of its observation.
+   */
+  origins?: string[];
   leaseMs: number;
   targets: NativeTaskBinding["targets"];
 }
@@ -47,6 +121,7 @@ const PRE_EFFECT_REFUSALS = new Set(["STALE_REF", "POLICY_BLOCKED"]);
 export class NativeTaskActuator {
   readonly capabilities = [
     "browser.click",
+    "browser.follow",
     "browser.fill",
     "browser.select",
     "browser.scroll.up",
@@ -112,6 +187,14 @@ export class NativeTaskActuator {
       /** Product display name for the browser overlay; host configuration. */
       assistantName?: string;
       /**
+       * Apply a changed task origin scope to the page's own navigation policy,
+       * for example the native surface's `setTaskOrigins`. Resolve once applied.
+       */
+      applyOrigins?: (
+        task: InteractiveTask,
+        allowedOrigins: readonly string[],
+      ) => Promise<void>;
+      /**
        * Trusted host wording for the action preview, for example "I will
        * choose your saved Visa." Without it the browser uses a generic line.
        */
@@ -119,6 +202,17 @@ export class NativeTaskActuator {
         task: InteractiveTask,
         proposal: TaskActionProposal,
       ) => string | undefined;
+      /**
+       * The host's single-use grant for this exact commit, issued only after
+       * it recorded the person's explicit yes to this step, control and value.
+       * Return undefined for every other action; the browser then keeps
+       * blocking commits. The proposal must name its reviewed control
+       * (`expectedSelector`).
+       */
+      commitGrant?: (
+        task: InteractiveTask,
+        proposal: TaskActionProposal,
+      ) => NativeCommitGrant | undefined;
     },
   ) {}
   private now() {
@@ -148,13 +242,20 @@ export class NativeTaskActuator {
     )
       return cached;
     const policy = structuredClone(this.options.policy(task));
+    const origins =
+      policy.origins ??
+      (task.originGrants ? [...task.allowedOrigins] : [policy.origin]);
     if (
-      !task.allowedOrigins.includes(policy.origin) ||
+      !Array.isArray(origins) ||
+      !origins.includes(policy.origin) ||
+      new Set(origins).size !== origins.length ||
+      origins.some((origin) => !task.allowedOrigins.includes(origin)) ||
       !Number.isSafeInteger(policy.leaseMs) ||
       policy.leaseMs < 1 ||
       policy.leaseMs > 300000
     )
       fail("Invalid task browser policy");
+    policy.origins = origins;
     if (readOnly) policy.targets = [];
     const context = {
       actorId: task.owner.actorId,
@@ -168,6 +269,8 @@ export class NativeTaskActuator {
       tabId: policy.tabId,
       bindingRevision: this.options.nextBindingRevision(policy.tabId),
       origin: policy.origin,
+      // Single-origin bindings keep their original wire form.
+      ...(origins.length > 1 ? { origins } : {}),
       expiresAt: this.now() + policy.leaseMs,
       targets: policy.targets,
       revoked: false,
@@ -212,7 +315,7 @@ export class NativeTaskActuator {
       frame.complete !== true ||
       typeof frame.documentId !== "string" ||
       typeof frame.url !== "string" ||
-      new URL(frame.url).origin !== binding.policy.origin ||
+      !binding.policy.origins?.includes(new URL(frame.url).origin) ||
       !Number.isSafeInteger(frame.inputRevision) ||
       Number(frame.inputRevision) < 0 ||
       !Array.isArray(frame.elements)
@@ -231,6 +334,8 @@ export class NativeTaskActuator {
       )
     )
       fail("Invalid browser target references");
+    if (!validTaskBrowserBlockers(snapshot))
+      fail("Invalid browser page blocker report");
     return snapshot;
   }
   async observe(context: {
@@ -247,7 +352,8 @@ export class NativeTaskActuator {
     const observation = {
       id: snapshot.snapshotId,
       pageId: snapshot.documentId,
-      origin: binding.policy.origin,
+      // The observed page's own origin; actions stay bound to this observation.
+      origin: new URL(snapshot.url).origin,
       version: (task.observation?.version ?? 0) + 1,
       inputRevision: snapshot.inputRevision,
       observedAt: this.now(),
@@ -258,6 +364,30 @@ export class NativeTaskActuator {
       epoch: task.epoch,
     });
     return observation;
+  }
+  /**
+   * The runtime persisted a new origin scope under a new epoch. Remove guidance
+   * and page facts from the old scope; the next observation binds the new one.
+   * Then the host applies the scope to the page's navigation policy.
+   */
+  async scopeChanged(context: {
+    owner: TaskOwner;
+    taskId: string;
+    epoch: number;
+    allowedOrigins: readonly string[];
+  }): Promise<void> {
+    const task = this.options.getTask(context.taskId);
+    if (
+      !sameTaskOwner(task.owner, context.owner) ||
+      task.epoch !== context.epoch
+    )
+      fail("Task scope changed again");
+    this.observations.delete(task.id);
+    await this.quiesce({ owner: context.owner, taskId: task.id });
+    // Never write an origin list a newer scope change already replaced.
+    if (this.options.getTask(task.id).epoch !== context.epoch)
+      fail("Task scope changed again");
+    await this.options.applyOrigins?.(task, [...context.allowedOrigins]);
   }
   /** Trusted planner/guide read; this is page data, never authorization. */
   readObservation(taskId: string, owner: TaskOwner) {
@@ -528,6 +658,7 @@ export class NativeTaskActuator {
       command,
       protectedValueKind,
       actionText,
+      commitGrant,
     } = prepared;
     // Preparation awaits host callbacks; authority may end before this continuation.
     if (
@@ -536,6 +667,7 @@ export class NativeTaskActuator {
       binding.expiresAt <= this.now()
     )
       notDispatched(new Error("Action authority ended before dispatch"));
+    let uncertainFollow = false;
     try {
       await this.options.target.execute(command, {
         taskContext: binding.context,
@@ -545,6 +677,7 @@ export class NativeTaskActuator {
         ...(proposal.expectedSelector === undefined
           ? {}
           : { expectedSelector: proposal.expectedSelector }),
+        ...(commitGrant ? { commitGrant } : {}),
         signal: context.signal,
       });
     } catch (error) {
@@ -552,7 +685,15 @@ export class NativeTaskActuator {
       const kind = (error as { kind?: unknown } | null)?.kind;
       if (typeof kind === "string" && PRE_EFFECT_REFUSALS.has(kind))
         notDispatched(error);
-      throw error;
+      // A same-origin observed follow can destroy its reply channel. Never
+      // repeat it. Only this navigation operation may continue to fresh
+      // destination readback; other uncertain effects retain explicit recovery.
+      if (
+        proposal.capability !== "browser.follow" ||
+        kind !== "UNCERTAIN_OUTCOME"
+      )
+        throw error;
+      uncertainFollow = true;
     }
     await this.quiesce({ owner: context.owner, taskId: task.id });
     if (!current()) return { status: "unknown" };
@@ -561,6 +702,45 @@ export class NativeTaskActuator {
     // The page tried to submit or leave because of this action. The browser
     // stopped it, but the page state is no longer the one that was reviewed.
     if (after.effectViolation !== undefined) return { status: "unknown" };
+    if (uncertainFollow) {
+      const targets = cached.snapshot.elements.filter(
+        (element) =>
+          element.selector === proposal.targetRef &&
+          element.targetSelector === proposal.expectedSelector,
+      );
+      try {
+        if (targets.length !== 1 || typeof targets[0].href !== "string")
+          return { status: "unknown" };
+        const destination = new URL(targets[0].href);
+        if (
+          destination.protocol !== "https:" ||
+          destination.username ||
+          destination.password ||
+          destination.origin !== new URL(cached.snapshot.url).origin ||
+          destination.href === new URL(cached.snapshot.url).href ||
+          destination.href !== new URL(after.url).href
+        )
+          return { status: "unknown" };
+      } catch {
+        return { status: "unknown" };
+      }
+    }
+    // A commit the browser let through must be the one this grant named.
+    // The page's report then reaches verify and evidence with the snapshot.
+    const consented = after.consentedCommit as
+      | { grantId?: unknown; kind?: unknown; formHash?: unknown }
+      | undefined;
+    if (
+      consented !== undefined &&
+      (!commitGrant ||
+        consented.grantId !== commitGrant.grantId ||
+        // The page refuses a submit whose form data differs; a report that
+        // still differs is not the commit the person said yes to.
+        (commitGrant.formHash !== undefined &&
+          consented.formHash !== undefined &&
+          consented.formHash !== commitGrant.formHash))
+    )
+      return { status: "unknown" };
     // Occupancy alone cannot verify a public fill: page handlers can replace it.
     // The isolated page compares against the text from the actual dispatched fill.
     if (proposal.capability === "browser.fill" && !protectedValueKind) {
@@ -654,7 +834,8 @@ export class NativeTaskActuator {
       | "click"
       | "fill"
       | "select"
-      | "scroll";
+      | "scroll"
+      | "follow";
     const resolved = ["fill", "select"].includes(subaction)
       ? await this.options.resolveValue(
           proposal.valueRef ||
@@ -692,6 +873,25 @@ export class NativeTaskActuator {
     const actionText = this.options.describeAction?.(task, proposal);
     if (actionText !== undefined && !validActionText(actionText))
       fail("Invalid action sentence");
+    const commitGrant = this.options.commitGrant
+      ? structuredClone(this.options.commitGrant(task, proposal))
+      : undefined;
+    if (
+      commitGrant !== undefined &&
+      (["scroll", "follow"].includes(subaction) ||
+        !validCommitGrant(commitGrant, {
+          taskContext: binding.context,
+          subaction,
+          targetRef: proposal.targetRef,
+          selector: proposal.expectedSelector,
+          now: this.now(),
+        }) ||
+        // The page the person said yes on: for an extended task this is the
+        // observed origin, never just the binding's starting origin.
+        commitGrant.origin !== cached.observation.origin)
+    )
+      fail("The commit grant does not match this action");
+    if (!current()) fail("Action cancelled before dispatch");
     return {
       task,
       cached,
@@ -699,6 +899,7 @@ export class NativeTaskActuator {
       current,
       protectedValueKind,
       actionText,
+      commitGrant,
       command: {
         subaction,
         id: binding.policy.tabId,

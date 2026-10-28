@@ -32,7 +32,7 @@ await writeFile(
     {
       manifest_version: 3,
       name: "Eliza Browser Control",
-      version: "2.0.26",
+      version: "2.0.33",
       key: identity.chromeDevManifestKey,
       description:
         "Native, authenticated control of this Chromium profile for your Eliza agent.",

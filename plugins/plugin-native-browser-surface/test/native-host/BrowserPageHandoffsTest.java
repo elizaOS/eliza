@@ -96,6 +96,30 @@ public final class BrowserPageHandoffsTest {
     gate.approve("javascript:alert(1)");
     check(!gate.admit("javascript:alert(1)"), "non-web approvals are ignored");
 
+    // A task the host extended: its origins reach each other, nothing else does.
+    BrowserMainFrameGate task = new BrowserMainFrameGate();
+    task.approve("https://www.ssa.gov/");
+    task.commit("https://www.ssa.gov/");
+    // The initial host-approved navigation has finished before the task moves between origins.
+    task.settle("https://www.ssa.gov/");
+    check(!task.admit("https://secure.login.gov/"), "the sign-in origin waits until the host extends the task");
+    check(!task.setTaskOrigins(java.util.List.of("https://www.ssa.gov", "https://secure.login.gov/path")),
+        "a path is not an origin");
+    check(!task.setTaskOrigins(java.util.List.of("https://www.ssa.gov", "http://secure.login.gov")),
+        "task origins are HTTPS only");
+    check(!task.admit("https://secure.login.gov/"), "a refused list changes nothing");
+    check(task.setTaskOrigins(java.util.List.of("https://www.ssa.gov", "https://secure.login.gov")),
+        "exact HTTPS origins are accepted");
+    check(task.admit("https://secure.login.gov/sign-in"), "a POST to the extended origin goes out");
+    check(!task.admit("https://collector.evil.example/"), "other origins are still held");
+    task.commit("https://secure.login.gov/sign-in");
+    check(task.admit("https://www.ssa.gov/myaccount"), "the return to the starting origin goes out");
+    task.commit("https://collector.evil.example/");
+    check(!task.admit("https://www.ssa.gov/"), "a page outside the task cannot use its origins");
+    task.commit("https://www.ssa.gov/");
+    check(task.setTaskOrigins(java.util.List.of()), "an empty list ends the extension");
+    check(!task.admit("https://secure.login.gov/"), "a retracted origin is held again");
+
     System.out.println(assertions + " assertions passed");
   }
 }
