@@ -496,7 +496,16 @@ export class GmailDomain {
     const googleMessages = await searchMessages({
       accountId,
       query: args.query,
-      maxResults: args.maxResults,
+      // Without a default every feed request re-ran the full
+      // search to provider exhaustion — list plus a rich get
+      // per message — and upserted the whole match set into the
+      // store. The provider lists newest-first, so the default
+      // takes the newest 15000, matching the triage adapter cap,
+      // and explicit maxResults stays honored. Deletions are
+      // reconciled by the history path above, untouched here;
+      // the search only upserts, so rows outside the cap simply
+      // keep their last-synced state.
+      maxResults: args.maxResults ?? 15000,
       selfEmail: grant.identityEmail,
     });
     const messages = googleMessages.map((message) =>
