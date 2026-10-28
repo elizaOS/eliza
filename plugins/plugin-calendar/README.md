@@ -64,6 +64,12 @@ Browser-safe, erasable-TypeScript controllers for device and browser hosts:
   and withdrawn when enabling fails. `readGoogleCalendarSyncDestination`
   verifies the calendar offers readback, conditional writes and idempotent
   creates, and names the account and calendar the review shows.
+  `GoogleCalendarReader` shows one owner-chosen Google calendar read-only:
+  only while the connection holds Calendar read access and Google grants at
+  least reader access, bound to the exact Cloud owner, session and
+  connection (a change after any await aborts the read), with the
+  calendar's metadata checked before and after the feed read; cancelled
+  events are omitted and all-day events keep their civil dates.
 - `@elizaos/plugin-calendar/client/availability-review`: a reviewed foreground
   free/busy read. Only owner-chosen calendars are read at their reviewed
   revisions, the exact result is confirmed and re-read before sharing, free,
