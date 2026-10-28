@@ -6,6 +6,7 @@ export {
   type NotesClient,
   type NotesInteractResult,
 } from "./notes-api.js";
+export * from "./notes-audio-store.ts";
 export * from "./notes-contract.ts";
 export {
   NotesController,
