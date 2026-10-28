@@ -217,7 +217,11 @@ export class OsmMapsProvider implements MapsProviderAdapter {
 
   async details(request: MapsPlaceDetailsRequest, signal?: AbortSignal): Promise<MapsPlace | null> {
     const candidate = await this.geocoder.details(request.id, signal);
-    return candidate ? this.place(candidate) : null;
+    if (!candidate) return null;
+    // A geocoder can know places beyond the configured extracts (a hosted
+    // service, for example); like search, details serves covered places only.
+    this.requireCovered(candidate.coordinate);
+    return this.place(candidate);
   }
 
   async routes(request: MapsRoutesRequest, signal?: AbortSignal): Promise<MapsRoute[]> {

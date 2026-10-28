@@ -195,7 +195,11 @@ describe("Eliza Cloud Maps provider configuration", () => {
       ],
       reverse: async () => null,
       details: async (id) =>
-        id === "fx:1" ? { id, name: "Casino", coordinate: CASINO } : null,
+        id === "fx:1"
+          ? { id, name: "Casino", coordinate: CASINO }
+          : id === "fx:2"
+            ? { id, name: "Elsewhere", coordinate: outside }
+            : null,
     };
     const remove = registerMapsGeocoder("fixture-geocoder", () => geocoder);
     try {
@@ -211,6 +215,10 @@ describe("Eliza Cloud Maps provider configuration", () => {
       expect(places?.map((place) => place.id)).toEqual(["fx:1"]);
       expect((await provider?.details({ id: "fx:1" }))?.name).toBe("Casino");
       expect(await provider?.details({ id: "fx:9" })).toBeNull();
+      // Details, like search, serve only places inside the configured coverage.
+      await expect(provider?.details({ id: "fx:2" })).rejects.toMatchObject({
+        code: "unsupported_region",
+      });
     } finally {
       remove();
     }
