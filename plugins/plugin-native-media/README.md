@@ -58,6 +58,22 @@ Selected documents:
   last retained, across restarts.
 - `DocumentBytes` – bounded reads, type/name/signature agreement for PDF, PNG, JPEG, WebP and
   UTF-8 text, opaque save-only copies and the bounded PDF export payload.
+- `DocumentFolderTree` / `FolderSession` – one folder tree the owner chose in Android's folder
+  picker, browsed through opaque entry ids in a bounded session (a folder too large for the bound
+  stops listing instead of evicting its own rows). Paged listing, create, rename, move, permanent
+  delete of empty folders and files, per-item batches and one share sheet; every change names the
+  revision the renderer listed and deletion needs explicit confirmation. Android grants the folder
+  in place: nothing is copied or imported, and no broad storage permission is used. Choosing
+  another tree releases only the previous tree's grant.
+
+Recordings:
+
+- `RecordingStore` – durable device-local recordings (for example voice notes) whose metadata
+  lives in the host's encrypted slot store. Only a native recorder can hand a stopped clip to it;
+  renderers name recordings by id and never see paths or bytes. Deletion is two-step and fenced by
+  the owning item and one operation identity: `remove` trashes, only the same operation can
+  `restore` or `purge`, every answer is a durable receipt and a retired operation never regains
+  permission. Older plaintext metadata migrates into the slot only after the slot reads back.
 
 The Android library has no components and declares no permissions. A host that uses the
 permitted catalog declares `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`,
@@ -88,7 +104,17 @@ SourceReferenceStore links =
     new SourceReferenceStore(context, "myapp-source-references", "myapp-source-reference-times");
 SelectedDocuments documents =
     new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains);
+DocumentFolderTree folders =
+    new DocumentFolderTree(context, "myapp-files-tree", uri -> documents.authorize(uri, 0));
+RecordingStore recordings = new RecordingStore(
+    new File(context.getNoBackupFilesDir(), "recordings"), "myapp-recording:v1:", "ownerId", slots);
 ```
+
+`DocumentFolderTree` methods run on one serial worker through `guarded(...)`; launch
+`DocumentFolderTree.pickerIntent()` from the host's own activity-result path and pass the result to
+`adopt(uri, flags)`. `RecordingStore.Slots` is the host's encrypted store (for example a
+Keystore-backed slot store); playback, recorders and any background sweep of the owning items stay
+host code and call the store, which serializes every change on one process-wide lock.
 
 Call `OwnedPhotoEdits` from one serial worker thread. Preference names are
 `<namespace>-photo-edit-results` and `<namespace>-video-copy-results-v1`, and the video snapshot
