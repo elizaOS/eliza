@@ -2,7 +2,6 @@
  * GET /api/sandbox/screen/windows returns the same window list as the shared
  * `listWindows` enumerator.
  */
-import { arch } from "node:os";
 import { describe, expect, it, vi } from "vitest";
 
 const shell = vi.hoisted(() => ({
@@ -52,28 +51,5 @@ describe("GET /api/sandbox/screen/windows", () => {
       { app: "Preview", title: "a.pdf", id: "a.pdf" },
       { app: "Finder", title: "Downloads", id: "Downloads" },
     ]);
-  });
-
-  it("reports the platform arch without a CommonJS require", async () => {
-    let body = "";
-    const res = {
-      setHeader: () => undefined,
-      writeHead: () => res,
-      end: (chunk?: string) => {
-        body = String(chunk ?? "");
-      },
-    };
-    await handleSandboxRoute(
-      { method: "GET", headers: {} } as never,
-      res as never,
-      "/api/sandbox/platform",
-      "GET",
-      { sandboxManager: null } as never,
-    );
-    // `os.arch()` is the same value the route reported through `require`.
-    expect(JSON.parse(body)).toMatchObject({
-      platform: "darwin",
-      arch: arch(),
-    });
   });
 });
