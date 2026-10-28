@@ -30,6 +30,7 @@ import {
   type MentionContext,
   type MessagePayload,
   ModelType,
+  parseFenceSpans,
   type ResolvedAttachmentBytes,
   type ResolveOutboundAttachmentOptions,
   resolveAttachmentBytes,
@@ -169,38 +170,17 @@ const CODE_FENCE = "```";
 
 /** The opener (```lang) of a backtick code block left open at the end of `text`. */
 function openCodeFence(text: string): string | null {
-  // Walk fence lines with the CommonMark rules discord's chunker uses: a fence
-  // opens on a line of 3+ backticks or tildes (up to 3 leading spaces); a
-  // backtick fence's info string may not contain a backtick, so a line like
-  // "```js" inside an open block is content, not a closer; a closer uses the
-  // same marker, at least as many characters, and only spaces/tabs after it.
-  // Counting every ``` occurrence instead miscounts that line as a closer, so
-  // a chunk cut after it loses the reopened opener: the rest of the block is
-  // sent as prose and the true closer opens a new block over the text after it.
-  // Tilde blocks are tracked so a ``` line inside one is not mistaken for a
-  // backtick fence, but only backtick openers are returned: the Telegram
-  // converter only closes ``` fences.
-  let open: { markerChar: string; markerLen: number; info: string } | null =
-    null;
-  for (const line of text.split("\n")) {
-    const match = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line);
-    if (!match) continue;
-    const marker = match[2] ?? "";
-    const info = match[3] ?? "";
-    if (marker[0] === "`" && info.includes("`")) continue;
-    if (open === null) {
-      open = { markerChar: marker[0] ?? "`", markerLen: marker.length, info };
-    } else if (
-      marker[0] === open.markerChar &&
-      marker.length >= open.markerLen &&
-      /^[ \t\r]*$/.test(info)
-    ) {
-      open = null;
-    }
+  // Core's CommonMark fence parser: a "```js" line inside an open block is
+  // content, not a closer. Counting every ``` occurrence miscounted it, so a
+  // chunk cut after it lost its reopened opener. The added newline makes an
+  // unclosed span end past `text`, while a closer on the last line ends at it.
+  // Only backtick openers are returned: the Telegram converter only closes ```.
+  const last = parseFenceSpans(`${text}\n`).at(-1);
+  if (!last || last.end <= text.length || !last.marker.startsWith("`")) {
+    return null;
   }
-  if (!open || open.markerChar !== "`") return null;
-  const lang = /^[^\s`]*/.exec(open.info)?.[0] ?? "";
-  return `${CODE_FENCE}${lang}`;
+  const info = last.openLine.slice(last.indent.length + last.marker.length);
+  return `${CODE_FENCE}${/^[^\s`]*/.exec(info)?.[0] ?? ""}`;
 }
 const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";
