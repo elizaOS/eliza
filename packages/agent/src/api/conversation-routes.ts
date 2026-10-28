@@ -7208,11 +7208,19 @@ async function patchConversation(
     return true;
   }
   if (body.generate) {
-    // Get the last user message to use as the prompt for generation
+    // Get the last user message to use as the prompt for generation.
+    // Bound to the newest window: the adapter defaults to
+    // newest-first, so the find below already selects the newest
+    // user message, and fetching the whole room history just to
+    // extract one line scales with room age per click. If the
+    // window holds no user message, the pre-existing generic
+    // fallback below applies, as it did for an empty room.
     let prompt = "A generic conversation";
     const memories = await state.runtime.getMemories({
       roomId: conv.roomId,
       tableName: "messages",
+      orderDirection: "desc",
+      limit: CONVERSATION_MESSAGE_WINDOW,
     });
     const lastUserMemory = memories.find(
       (m) => m.entityId !== state.runtime?.agentId,
