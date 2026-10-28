@@ -5,6 +5,40 @@ import type {
   LinkedCalendarProviderSnapshot,
   LinkedCalendarSemanticEvent,
 } from "@elizaos/contracts";
+/** Validate the semantic event carried across the managed Calendar host boundary. */
+export function isLinkedCalendarSemanticEvent(
+  value: unknown,
+): value is LinkedCalendarSemanticEvent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const event = value as Record<string, unknown>;
+  return (
+    typeof event.title === "string" &&
+    typeof event.description === "string" &&
+    typeof event.location === "string" &&
+    typeof event.startAt === "string" &&
+    Number.isFinite(Date.parse(event.startAt)) &&
+    typeof event.endAt === "string" &&
+    Number.isFinite(Date.parse(event.endAt)) &&
+    Date.parse(event.endAt) > Date.parse(event.startAt) &&
+    (event.timeZone === null || typeof event.timeZone === "string") &&
+    typeof event.isAllDay === "boolean" &&
+    Array.isArray(event.attendees) &&
+    event.attendees.every((attendee: unknown) => {
+      if (!attendee || typeof attendee !== "object" || Array.isArray(attendee))
+        return false;
+      const item = attendee as Record<string, unknown>;
+      return (
+        typeof item.email === "string" &&
+        (item.optional === undefined || typeof item.optional === "boolean")
+      );
+    }) &&
+    (event.recurrence === undefined ||
+      (Array.isArray(event.recurrence) &&
+        event.recurrence.every((rule: unknown) => typeof rule === "string"))) &&
+    (event.deleted === undefined || typeof event.deleted === "boolean")
+  );
+}
+
 export type CalendarSyncSelection = {
   grantId: string;
   calendarId: string;
@@ -224,34 +258,37 @@ export async function calendarAgentWrite(
       );
     }
     if (command.kind === "create") {
+      if (!isLinkedCalendarSemanticEvent(command.event))
+        throw Error("Invalid linked Calendar semantic event");
       if (!exact(command.idempotencyKey))
         throw Error("Stable linked Calendar operation key required");
       bound = {
         kind: "create",
         selection: selected,
         idempotencyKey: command.idempotencyKey,
-        event: record(command.event) as unknown as LinkedCalendarSemanticEvent,
+        event: command.event,
       };
     } else {
       if (!exact(command.eventId) || !exact(command.expectedEtag))
         throw Error("Exact linked Calendar revision required");
-      bound =
-        command.kind === "update"
-          ? {
-              kind: "update",
-              selection: selected,
-              eventId: command.eventId,
-              expectedEtag: command.expectedEtag,
-              event: record(
-                command.event,
-              ) as unknown as LinkedCalendarSemanticEvent,
-            }
-          : {
-              kind: "delete",
-              selection: selected,
-              eventId: command.eventId,
-              expectedEtag: command.expectedEtag,
-            };
+      if (command.kind === "update") {
+        if (!isLinkedCalendarSemanticEvent(command.event))
+          throw Error("Invalid linked Calendar semantic event");
+        bound = {
+          kind: "update",
+          selection: selected,
+          eventId: command.eventId,
+          expectedEtag: command.expectedEtag,
+          event: command.event,
+        };
+      } else {
+        bound = {
+          kind: "delete",
+          selection: selected,
+          eventId: command.eventId,
+          expectedEtag: command.expectedEtag,
+        };
+      }
     }
     return write(bound);
   }

@@ -432,7 +432,30 @@ export async function runPlannerLoop(
     // Failure-aware synthesis is the final authority. Its grounded answer must
     // not re-enter the pre-tool acknowledgement heuristic and be replaced by
     // another synthesis that lacks the recorded failure context.
-    const final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    let final = await ensureFailedTurnFinalMessage(trackedParams, withReply);
+    if (
+      final.status === "finished" &&
+      final.evaluator?.success === true &&
+      latestUnresolvedFailedNonTerminalToolStep(final.trajectory)
+    ) {
+      // The returned verdict is consumed as authority by parent planners.
+      // Keep the raw model output in trajectory.evaluatorOutputs unchanged;
+      // preserve successful sibling receipts and the normal reply postpasses.
+      final = {
+        ...final,
+        evaluator: {
+          ...final.evaluator,
+          success: false,
+          requestFullyCovered: false,
+          // This status disclaims the failed overall completion described by
+          // the reply; successful sibling receipts still prove their effects.
+          replyEffectStatus: "non_applied",
+          effectReceiptIds: undefined,
+          outcomeCoverage: undefined,
+          messageToUser: final.finalMessage,
+        },
+      };
+    }
     const binding = params.resolveTypedReadReply?.({
       trajectory: final.trajectory,
       nowMs: Date.now(),
