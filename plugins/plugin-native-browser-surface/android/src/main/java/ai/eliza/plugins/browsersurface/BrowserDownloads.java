@@ -86,10 +86,15 @@ public final class BrowserDownloads {
     final String userAgent;
 
     /**
+     * @param tab the requesting tab's id; required for a private tab, whose entries are forgotten
+     *     when that tab closes.
      * @param cookies reads the tab's own profile cookie for the download address at confirmation;
      *     returns null once the tab is closed.
      */
     public Source(String tab, boolean priv, String pageOrigin, Supplier<String> cookies, String userAgent) {
+      // Checked here, in the host's call, rather than when a finished file is listed.
+      if (priv && (tab == null || tab.isEmpty()))
+        throw new IllegalArgumentException("a private download source needs its tab");
       this.tab = tab;
       this.priv = priv;
       this.pageOrigin = pageOrigin;

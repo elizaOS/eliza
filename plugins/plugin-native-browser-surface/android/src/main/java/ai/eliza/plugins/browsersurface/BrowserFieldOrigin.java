@@ -200,7 +200,7 @@ public final class BrowserFieldOrigin {
   public enum Kind { FOCUS, BLUR, GONE, SUBMIT }
 
   /**
-   * One message from the isolated-world reporter ({@code resources/login-fields.js}). Grammar
+   * One message from the isolated-world reporter ({@code BrowserLoginFields.SCRIPT}). Grammar
    * (nothing else is accepted):
    *
    * <pre>

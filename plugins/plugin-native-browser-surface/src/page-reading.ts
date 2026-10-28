@@ -39,7 +39,7 @@ const passwordServices = [
 const sensitiveRoute =
   /(?:^|[^a-z0-9])(?:api[\s_-]*key|vault|passwords?|passphrase|signin|sign-in|login|log-in|logout|auth|oauth|sso|account|accounts|security|mfa|2fa|otp|recovery|reset-password|credentials?|access_token|id_token|refresh_token|secret|token)(?:$|[^a-z0-9])/;
 const normalize = (value: string) =>
-  value.normalize("NFKC").replace(/[​-‍﻿]/g, "");
+  value.normalize("NFKC").replace(/[\u200B-\u200D\uFEFF]/g, "");
 
 /** Credential prose or an unlabelled six-to-eight digit code. */
 export function sensitiveReadingText(text: string): boolean {

@@ -17,7 +17,7 @@ describe("credential refusal", () => {
       "API key: SYNTHETIC",
       "refresh_token: x",
       "Ｐａｓｓｗｏｒｄ: synthetic",
-      "pass​word: synthetic",
+      "pass\u200Bword: synthetic",
       "Verification code 001122",
       "001122",
       "Sign in to continue",
