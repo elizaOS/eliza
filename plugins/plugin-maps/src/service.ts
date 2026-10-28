@@ -11,11 +11,13 @@ import {
   type Coordinates,
   coordinatesSchema,
   MAX_MAPS_PROVIDER_GENERATION,
+  type MapsCoverage,
   type MapsPlacePageResult,
   type MapsPlaceResult,
   type MapsProviderDescription,
   type MapsRouteResult,
   mapsAttributionSchema,
+  mapsCoverageSchema,
   mapsProviderIdSchema,
   mapsProviderIdsSchema,
   type PlacePage,
@@ -374,6 +376,39 @@ export class MapsService extends Service {
       place: place
         ? assertProviderPlace(place, adapter, "reverse geocode")
         : null,
+      provider: this.currentDescription(registration),
+    };
+  }
+
+  /**
+   * What the provider reports it serves (regions, modes, location recipients),
+   * or null when it publishes no coverage. Nothing is inferred for it.
+   */
+  async coverageResult(
+    provider?: string,
+    expectedGeneration?: number,
+  ): Promise<{
+    coverage: MapsCoverage | null;
+    provider: MapsProviderDescription;
+  }> {
+    const registration = this.provider(provider, expectedGeneration);
+    const { adapter } = registration;
+    if (!adapter.coverage) {
+      return {
+        coverage: null,
+        provider: this.currentDescription(registration),
+      };
+    }
+    const parsed = mapsCoverageSchema.safeParse(await adapter.coverage());
+    if (!parsed.success || parsed.data.provider !== adapter.id) {
+      throw new MapsError("Maps provider returned invalid coverage.", {
+        code: "MAPS_MALFORMED_RESPONSE",
+        context: { adapterId: adapter.id, surface: "coverage" },
+        ...(parsed.success ? {} : { cause: parsed.error }),
+      });
+    }
+    return {
+      coverage: parsed.data,
       provider: this.currentDescription(registration),
     };
   }

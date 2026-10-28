@@ -20,6 +20,8 @@ import {
 } from "./managed-provider/index.js";
 import {
   coordinatesSchema,
+  type MapsCoverage,
+  mapsCoverageSchema,
   type PlacePage,
   type PlaceRef,
   type PlaceSearchRequest,
@@ -82,10 +84,51 @@ const placeResponse = z
 const routesResponse = z
   .object({ ...envelope, routes: z.array(cloudRoute).min(1).max(3) })
   .strip();
+const label = z.string().trim().min(1).max(100);
+// Coverage facts are informational: a malformed one is dropped (`catch`) so
+// it can never refuse a search or route that the binding fields allow.
 const capabilitiesResponse = z
   .object({
     providerId: z.string().min(1).max(80),
     attribution: z.string().trim().min(1).max(500),
+    revision: z.string().trim().min(1).max(200).optional().catch(undefined),
+    regions: z
+      .array(
+        z
+          .object({
+            id: z.string().trim().min(1).max(64),
+            name: label,
+            bounds: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+          })
+          .strip(),
+      )
+      .max(64)
+      .optional()
+      .catch(undefined),
+    sources: z
+      .object({ data: label, search: label, routing: label })
+      .strip()
+      .optional()
+      .catch(undefined),
+    disclosure: z
+      .object({
+        recipients: z
+          .array(
+            z
+              .object({
+                role: z.enum(["gateway", "search", "routing"]),
+                name: label,
+                operator: label,
+              })
+              .strip(),
+          )
+          .min(1)
+          .max(8),
+        cloudRecords: z.literal("operation-and-result-code"),
+      })
+      .strip()
+      .optional()
+      .catch(undefined),
     capabilities: z
       .object({
         modes: z
@@ -93,6 +136,18 @@ const capabilitiesResponse = z
           .min(1)
           .max(4),
         reverseGeocode: z.boolean().optional(),
+        alternatives: z.boolean().optional().catch(undefined),
+        traffic: z.string().max(40).optional().catch(undefined),
+        transit: z.string().max(40).optional().catch(undefined),
+        offline: z
+          .object({
+            map: z.boolean(),
+            search: z.boolean(),
+            routing: z.boolean(),
+          })
+          .strip()
+          .optional()
+          .catch(undefined),
       })
       .strip(),
   })
@@ -258,6 +313,60 @@ export class ElizaCloudMapsAdapter implements MapsProviderAdapter {
       });
     }
     return this.binding;
+  }
+
+  /**
+   * What Cloud serves now: regions, dataset revision, travel modes and who
+   * receives locations. It reads capabilities afresh (an operator can widen
+   * coverage without changing attribution); Cloud does not count that read
+   * against the Maps request allowance.
+   */
+  async coverage(): Promise<MapsCoverage> {
+    this.binding = null;
+    const read = await this.capabilities();
+    const served = read.capabilities;
+    const parsed = mapsCoverageSchema.safeParse({
+      provider: this.id,
+      ...(read.revision ? { revision: read.revision } : {}),
+      regions: (read.regions ?? []).map(({ id, name, bounds }) => ({
+        id,
+        name,
+        bounds,
+      })),
+      travelModes: served.modes,
+      alternatives: served.alternatives === true,
+      reverseGeocode: served.reverseGeocode !== false,
+      liveTraffic: served.traffic === "live",
+      transitSchedules:
+        served.transit !== undefined && served.transit !== "none",
+      offline:
+        served.offline !== undefined &&
+        (served.offline.map || served.offline.search || served.offline.routing),
+      ...(read.sources
+        ? {
+            sources: {
+              data: read.sources.data,
+              search: read.sources.search,
+              routing: read.sources.routing,
+            },
+          }
+        : {}),
+      ...(read.disclosure
+        ? {
+            recipients: read.disclosure.recipients.map(
+              ({ role, name, operator }) => ({ role, name, operator }),
+            ),
+            gatewayRecords: read.disclosure.cloudRecords,
+          }
+        : {}),
+    });
+    if (!parsed.success) {
+      throw new MapsError("Eliza Cloud Maps reported invalid coverage.", {
+        code: "MAPS_MALFORMED_RESPONSE",
+        cause: parsed.error,
+      });
+    }
+    return parsed.data;
   }
 
   private async readCapabilities(): Promise<CloudCapabilities> {

@@ -122,21 +122,34 @@ export function cloudMapsServiceLimit(
   };
 }
 
+/** Names each service that receives search text and route points, or "" for none. */
+export function describeLocationRecipients(
+  recipients: CloudMapsDisclosure["recipients"],
+  gatewayFallback?: string,
+): string {
+  const gateway =
+    recipients.find((recipient) => recipient.role === "gateway")?.name ??
+    gatewayFallback;
+  const targets = [
+    ...(gateway ? [gateway] : []),
+    ...recipients
+      .filter((recipient) => recipient.role !== "gateway")
+      .map(
+        (recipient) =>
+          `${recipient.name} for ${recipient.role}, operated by ${recipient.operator}`,
+      ),
+  ];
+  return targets.length
+    ? `Searches and route points are sent to ${targets.join(" and ")}.`
+    : "";
+}
+
 /** One sentence for location controls: who receives search text and coordinates. */
 export function describeMapsDisclosure(
   disclosure: CloudMapsDisclosure | undefined,
 ): string {
   if (!disclosure) return "";
-  const gateway =
-    disclosure.recipients.find((recipient) => recipient.role === "gateway")
-      ?.name ?? "Cloud Maps";
-  const services = disclosure.recipients
-    .filter((recipient) => recipient.role !== "gateway")
-    .map(
-      (recipient) =>
-        `${recipient.name} for ${recipient.role}, operated by ${recipient.operator}`,
-    );
-  return `Searches and route points are sent to ${gateway}${services.length ? ` and ${services.join(" and ")}` : ""}. Cloud keeps only the request type and result, not your searches or locations.`;
+  return `${describeLocationRecipients(disclosure.recipients, "Cloud Maps")} Cloud keeps only the request type and result, not your searches or locations.`;
 }
 
 function disclosureOf(value: unknown): CloudMapsDisclosure | undefined {

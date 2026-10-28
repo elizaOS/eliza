@@ -26,6 +26,7 @@ test("guidance presents the next maneuver, the following step and the remaining 
         step: step("Turn left onto Rue A", "left"),
         distanceMeters: 120,
       },
+      // biome-ignore lint/suspicious/noThenProperty: RouteProgress names the following maneuver `then`.
       then: { index: 2, step: step("Turn right", "right") },
     },
     new Date(2026, 9, 8, 12, 0),

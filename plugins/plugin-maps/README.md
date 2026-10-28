@@ -54,7 +54,12 @@ search, details, reverse geocoding (`MAPS` place with only coordinates) and rout
 with alternatives. Cloud supplies data only. Cloud's operator chooses the data
 provider: the adapter binds its attribution and travel modes from `capabilities`,
 refreshes the service's provider description when they change, and refuses a
-response from a provider that changed after that read. The phone host
+response from a provider that changed after that read. `MAPS_COVERAGE` reads
+`capabilities` afresh (Cloud does not count it against the Maps allowance) and
+states the covered regions and dataset revision, travel modes and alternatives,
+what is not served (live traffic, transit schedules, offline use) and who receives
+search text and coordinates; a provider without coverage is reported as such. A
+malformed coverage fact is dropped and never refuses a search or route. The phone host
 registers a `MapsDeviceNavigation` with `MapsService.registerDeviceNavigation`; the
 `MAPS_SELECT` and `MAPS_NAVIGATION_START`, `_REROUTE` and `_STOP` actions ask it and
 report its state. Without one they return `MAPS_DEVICE_UNAVAILABLE`. GPS, the active

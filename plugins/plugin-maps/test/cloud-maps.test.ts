@@ -437,6 +437,170 @@ describe("Cloud provider binding", () => {
   });
 });
 
+describe("Cloud Maps coverage", () => {
+  const MONACO = {
+    id: "monaco",
+    name: "Monaco",
+    bounds: [7.409, 43.724, 7.449, 43.752],
+  };
+  const FULL = {
+    ...COVERAGE,
+    connectionId: "conn_eliza_cloud_maps_osm",
+    revision: "osm-monaco-2026-09-29",
+    regions: [MONACO],
+    sources: {
+      data: "OpenStreetMap",
+      search: "Nominatim",
+      routing: "GraphHopper",
+    },
+    disclosure: {
+      recipients: [
+        { role: "gateway", name: "Eliza Cloud Maps", operator: "Eliza Labs" },
+        { role: "search", name: "Nominatim", operator: "Acme" },
+        { role: "routing", name: "GraphHopper", operator: "Acme" },
+      ],
+      cloudRecords: "operation-and-result-code",
+    },
+    capabilities: {
+      map: false,
+      search: true,
+      placeDetails: true,
+      geocode: true,
+      reverseGeocode: true,
+      modes: ["drive", "walk", "bicycle"],
+      alternatives: true,
+      traffic: "none",
+      transit: "none",
+      offline: { map: false, search: false, routing: false },
+    },
+  };
+
+  it("reads coverage afresh and reports only what Cloud serves", async () => {
+    let served: Record<string, unknown> = FULL;
+    const { adapter, capabilityReads } = cloud(
+      () => Response.json({}, { status: 500 }),
+      { coverage: () => served },
+    );
+    expect(await adapter.coverage()).toEqual({
+      provider: "eliza-cloud",
+      revision: "osm-monaco-2026-09-29",
+      regions: [MONACO],
+      travelModes: ["drive", "walk", "bicycle"],
+      alternatives: true,
+      reverseGeocode: true,
+      liveTraffic: false,
+      transitSchedules: false,
+      offline: false,
+      sources: FULL.sources,
+      recipients: FULL.disclosure.recipients,
+      gatewayRecords: "operation-and-result-code",
+    });
+    // The operator widened coverage without changing attribution.
+    served = {
+      ...FULL,
+      regions: [
+        MONACO,
+        { id: "nice", name: "Nice", bounds: [7.18, 43.65, 7.32, 43.76] },
+      ],
+    };
+    expect((await adapter.coverage()).regions.map((r) => r.name)).toEqual([
+      "Monaco",
+      "Nice",
+    ]);
+    expect(capabilityReads).toEqual(["GET", "GET"]);
+  });
+
+  it("drops malformed coverage facts without refusing searches", async () => {
+    const { adapter, requests } = cloud(
+      () =>
+        Response.json({
+          providerId: "eliza-cloud-osm",
+          attribution: ELIZA_CLOUD_MAPS_ATTRIBUTION,
+          places: [PLACE],
+        }),
+      {
+        coverage: () => ({
+          ...FULL,
+          regions: [{ id: "x", name: "", bounds: "everywhere" }],
+          disclosure: { recipients: [], cloudRecords: "everything" },
+          capabilities: { ...FULL.capabilities, alternatives: "yes" },
+        }),
+      },
+    );
+    const page = await adapter.searchPlaces({ query: "Casino" });
+    expect(page.places).toHaveLength(1);
+    expect(requests).toHaveLength(1);
+    const coverage = await adapter.coverage();
+    expect(coverage.regions).toEqual([]);
+    expect(coverage.recipients).toBeUndefined();
+    expect(coverage.alternatives).toBe(false);
+  });
+
+  it("answers MAPS coverage with regions, modes, absences, recipients and credit", async () => {
+    const service = new MapsService(undefined, unusedStore);
+    const { adapter } = cloud(() => Response.json({}, { status: 500 }), {
+      coverage: () => FULL,
+    });
+    service.registerAdapter(adapter);
+    const reply = await mapsAction.handler(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      { parameters: { action: "coverage" } },
+    );
+    expect(reply).toMatchObject({
+      success: true,
+      data: { action: "coverage", status: "reported" },
+    });
+    expect(reply?.text).toBe(
+      "Maps covers Monaco (dataset osm-monaco-2026-09-29). Routes: driving, walking and cycling, with alternatives. No live traffic, transit schedules or offline use. Searches and route points are sent to Eliza Cloud Maps and Nominatim for search, operated by Acme and GraphHopper for routing, operated by Acme. Cloud keeps only the request type and result, not your searches or locations. " +
+        `Data: ${ELIZA_CLOUD_MAPS_ATTRIBUTION}`,
+    );
+  });
+
+  it("says so when a provider publishes no coverage, and refuses a spoofed one", async () => {
+    const service = new MapsService(undefined, unusedStore);
+    const silent = {
+      id: "local-gateway",
+      connectionId: "conn_local_gateway_0001",
+      attribution: "Local data",
+      searchPlaces: async () => ({ places: [], nextCursor: null }),
+      getPlace: async () => null,
+      planRoute: async () => {
+        throw new MapsError("unused", { code: "MAPS_NOT_FOUND" });
+      },
+    };
+    service.registerAdapter(silent);
+    const reply = await mapsAction.handler(
+      runtimeWith(service),
+      message({}),
+      undefined,
+      { parameters: { action: "coverage" } },
+    );
+    expect(reply).toMatchObject({
+      success: true,
+      text: "The local-gateway maps provider does not report its coverage. Data: Local data",
+      data: { status: "unreported", coverage: null },
+    });
+    service.registerAdapter({
+      ...silent,
+      coverage: async () => ({
+        provider: "someone-else",
+        regions: [],
+        travelModes: [],
+        alternatives: false,
+        reverseGeocode: false,
+        liveTraffic: false,
+        transitSchedules: false,
+        offline: false,
+      }),
+    });
+    await expect(service.coverageResult()).rejects.toMatchObject({
+      code: "MAPS_MALFORMED_RESPONSE",
+    });
+  });
+});
+
 describe("phone navigation actions", () => {
   function device(): MapsDeviceNavigation & { calls: unknown[] } {
     const calls: unknown[] = [];

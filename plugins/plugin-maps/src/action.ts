@@ -22,6 +22,7 @@ import {
   routeCard,
   toCardPlace,
 } from "./card.js";
+import { describeMapsCoverage } from "./coverage.js";
 import { MapsError } from "./errors.js";
 import type { MapsDeviceNavigationStatus } from "./navigation.js";
 import { getMapsService, type MapsService } from "./service.js";
@@ -40,6 +41,7 @@ const MAPS_SUBACTIONS = [
   "save",
   "share",
   "navigate",
+  "coverage",
 ] as const;
 type MapsSubaction = (typeof MAPS_SUBACTIONS)[number];
 const MAPS_SAVE_VIRTUAL_EXECUTION = Symbol(
@@ -832,6 +834,36 @@ async function execute(
           callback,
         );
       }
+      case "coverage": {
+        // Read-only: what the provider reports it serves. Nothing is inferred
+        // for a provider that publishes no coverage.
+        const { coverage, provider } = await service.coverageResult(
+          text(params.provider),
+        );
+        const summary = coverage
+          ? describeMapsCoverage(coverage)
+          : `The ${provider.id} maps provider does not report its coverage.`;
+        const prose = provider.attribution
+          ? `${summary} Data: ${provider.attribution}`
+          : summary;
+        return result(
+          action,
+          {
+            success: true,
+            text: prose,
+            userFacingText: prose,
+            verifiedUserFacing: true,
+            data: {
+              actionName: "MAPS",
+              action,
+              status: coverage ? "reported" : "unreported",
+              coverage,
+              provider,
+            },
+          },
+          callback,
+        );
+      }
       case "share":
       case "navigate": {
         const place = await resolvedPlace(service, params, message.entityId);
@@ -911,12 +943,12 @@ export const mapsAction: Action = {
     "NAVIGATION",
   ],
   description:
-    "Look up places, plan routes, save places, create shareable geo links, or hand a destination to navigation. Use the specific promoted MAPS_* action when the requested operation is known. Saving a place runs only through MAPS_SAVE.",
+    "Look up places, plan routes, save places, create shareable geo links, hand a destination to navigation, or report which regions and travel modes Maps covers. Use the specific promoted MAPS_* action when the requested operation is known. Saving a place runs only through MAPS_SAVE.",
   descriptionCompressed:
-    "Place search, routes, saved places, sharing, and navigation.",
+    "Place search, routes, saved places, sharing, navigation, and coverage.",
   contexts: ["location", "travel", "productivity"],
   routingHint:
-    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SHARE for a geo share link, and MAPS_NAVIGATE for a navigation handoff. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
+    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SHARE for a geo share link, MAPS_NAVIGATE for a navigation handoff, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
   // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
   // owns the write and receipt contract in plugin.ts.
   tags: ["domain:maps"],
@@ -924,7 +956,7 @@ export const mapsAction: Action = {
     {
       name: "action",
       description:
-        "Maps operation: place | select | route | share | navigate. MAPS rejects save; call MAPS_SAVE to save a place.",
+        "Maps operation: place | select | route | share | navigate | coverage. MAPS rejects save; call MAPS_SAVE to save a place.",
       required: false,
       schema: { type: "string", enum: [...MAPS_SUBACTIONS] },
     },

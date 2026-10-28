@@ -19,6 +19,7 @@ import {
 } from "./managed-provider/index.js";
 import {
   type Coordinates,
+  type MapsCoverage,
   mapsAttributionSchema,
   mapsProviderIdSchema,
   type PlacePage,
@@ -46,6 +47,8 @@ export interface MapsProviderAdapter {
   planRouteAlternatives?(request: RoutePlanRequest): Promise<RoutePlan[]>;
   /** Optional reverse geocoding: the place at a coordinate, or null when none is known. */
   reverseGeocode?(coordinates: Coordinates): Promise<PlaceRef | null>;
+  /** Optional coverage the provider reports: regions, modes and location recipients. */
+  coverage?(): Promise<MapsCoverage>;
 }
 
 export interface JsonMapsHttpAdapterOptions {
