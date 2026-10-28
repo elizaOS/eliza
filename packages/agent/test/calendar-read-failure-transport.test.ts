@@ -71,7 +71,16 @@ it("keeps one unchanged Calendar answer and fixed diagnostic on JSON, SSE and sa
           outcome: { status: "failed", error: failure, effects: [] },
         };
       },
-    } as IMessageService;
+      shouldRespond: () => {
+        throw new Error("Unexpected response decision in transport fixture");
+      },
+      deleteMessage: async () => {
+        throw new Error("Unexpected message deletion in transport fixture");
+      },
+      clearChannel: async () => {
+        throw new Error("Unexpected channel clearing in transport fixture");
+      },
+    } satisfies IMessageService;
     server = await startApiServer({
       port: 0,
       runtime,

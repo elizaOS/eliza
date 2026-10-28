@@ -1493,32 +1493,67 @@ describe("NotificationService", () => {
 	});
 });
 
-
 describe("durable notification read evidence", () => {
-  it("waits for the actual read write before exposing readAt", async () => {
-    const {runtime,cleanup}=await createRuntime([NotificationService]);
-    const service=await runtime.getServiceLoadPromise(ServiceType.NOTIFICATION) as NotificationService;
-    const notice=await service.notify({title:"Read evidence"});
-    let release!:()=>void;
-    const pending=new Promise<void>(resolve=>{release=resolve;});
-    const original=runtime.setCache.bind(runtime);
-    const write=vi.spyOn(runtime,"setCache").mockImplementation(async(...args)=>{await pending;return original(...args);});
-    try{
-      const mark=service.markRead(notice.id);await Promise.resolve();await Promise.resolve();
-      let observed=false;const snapshot=service.listDurableIncludingExpired().then(rows=>{observed=true;return rows;});
-      await Promise.resolve();expect(observed).toBe(false);
-      release();await mark;expect((await snapshot).find(row=>row.id===notice.id)?.readAt).toEqual(expect.any(Number));
-    }finally{release();write.mockRestore();await cleanup();}
-  });
-  it("does not expose uncommitted read evidence after ambiguous persistence fails", async () => {
-    const {runtime,cleanup}=await createRuntime([NotificationService]);
-    const service=await runtime.getServiceLoadPromise(ServiceType.NOTIFICATION) as NotificationService;
-    const notice=await service.notify({title:"Failed read evidence"});
-    const write=vi.spyOn(runtime,"setCache").mockRejectedValue(new Error("Synthetic persistence failure"));
-    const read=vi.spyOn(runtime,"getCache").mockRejectedValue(new Error("Synthetic reconciliation failure"));
-    try{
-      await expect(service.markRead(notice.id)).rejects.toThrow();
-      await expect(service.listDurableIncludingExpired()).rejects.toThrow("not durably available");
-    }finally{write.mockRestore();read.mockRestore();await cleanup();}
-  });
+	it("waits for the actual read write before exposing readAt", async () => {
+		const { runtime, cleanup } = await createRuntime([NotificationService]);
+		const service = (await runtime.getServiceLoadPromise(
+			ServiceType.NOTIFICATION,
+		)) as NotificationService;
+		const notice = await service.notify({ title: "Read evidence" });
+		let release!: () => void;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const original = runtime.setCache.bind(runtime);
+		const write = vi
+			.spyOn(runtime, "setCache")
+			.mockImplementation(async (...args) => {
+				await pending;
+				return original(...args);
+			});
+		try {
+			const mark = service.markRead(notice.id);
+			await Promise.resolve();
+			await Promise.resolve();
+			let observed = false;
+			const snapshot = service.listDurableIncludingExpired().then((rows) => {
+				observed = true;
+				return rows;
+			});
+			await Promise.resolve();
+			expect(observed).toBe(false);
+			release();
+			await mark;
+			expect(
+				(await snapshot).find((row) => row.id === notice.id)?.readAt,
+			).toEqual(expect.any(Number));
+		} finally {
+			release();
+			write.mockRestore();
+			await cleanup();
+		}
+	});
+	it("does not expose uncommitted read evidence after ambiguous persistence fails", async () => {
+		const { runtime, cleanup } = await createRuntime([NotificationService]);
+		const service = (await runtime.getServiceLoadPromise(
+			ServiceType.NOTIFICATION,
+		)) as NotificationService;
+		const notice = await service.notify({ title: "Failed read evidence" });
+		const write = vi
+			.spyOn(runtime, "setCache")
+			.mockRejectedValue(new Error("Synthetic persistence failure"));
+		const read = vi
+			.spyOn(runtime, "getCache")
+			.mockRejectedValue(new Error("Synthetic reconciliation failure"));
+		try {
+			await expect(service.markRead(notice.id)).rejects.toThrow();
+			await expect(service.listDurableIncludingExpired()).rejects.toThrow(
+				"not durably available",
+			);
+		} finally {
+			write.mockRestore();
+			read.mockRestore();
+			await cleanup();
+		}
+	});
 });
