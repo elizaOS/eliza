@@ -10,7 +10,8 @@
   "releaseConfig": "cp2a",
   "launcher": {
     "moduleName": "AlphaPhone",
-    "packageName": "ai.elizaresearch.alphaphone"
+    "packageName": "ai.elizaresearch.alphaphone",
+    "refuseLockScreenSurfaces": true
   },
   "releaseQualified": false,
   "sense": {

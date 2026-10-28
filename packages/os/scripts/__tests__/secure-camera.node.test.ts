@@ -8,6 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   assertNoLockScreenSurface,
+  changedPaths,
   loadSecureCameraContract,
   secureCameraActions,
   secureCameraComponent,
@@ -137,7 +138,32 @@ test("source admission rejects missing path, unreviewed revisions, dirty sources
     /not clean/,
   );
   fs.appendFileSync(path.join(dir, "Android.bp"), "dirty");
-  assert.throws(() => verifySecureCameraSource(root, contract), /not clean/);
+  assert.throws(
+    () => verifySecureCameraSource(root, contract),
+    /not clean: Camera2; unreviewed changes: Camera2\/Android.bp/,
+  );
+  git("checkout", "--", "Android.bp");
+  // A staged rename is one porcelain row plus its origin; both paths must be reviewed.
+  git("mv", "Android.bp", "Moved.bp");
+  assert.throws(
+    () => verifySecureCameraSource(root, contract),
+    /unreviewed changes: Camera2\/Android.bp, Camera2\/Moved.bp$/,
+  );
+  git("mv", "Moved.bp", "Android.bp");
+  assert.equal(verifySecureCameraSource(root, contract).sourceVerified, true);
+});
+
+test("git status parsing keeps rename origins and refuses malformed rows", () => {
+  assert.deepEqual(changedPaths(""), []);
+  assert.deepEqual(changedPaths(" M a.java\0R  b.java\0c.java\0?? d.java\0"), [
+    "a.java",
+    "b.java",
+    "c.java",
+    "d.java",
+  ]);
+  assert.deepEqual(changedPaths("C  e.java\0f.java\0"), ["e.java", "f.java"]);
+  assert.throws(() => changedPaths("R  b.java\0"), /rename entry/);
+  assert.throws(() => changedPaths("bad\0"), /Unexpected git status entry/);
 });
 
 const LAUNCHER = "ai.elizaos.app";

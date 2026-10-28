@@ -16,6 +16,7 @@ import {
 } from "./launcher-provisioning.mjs";
 import {
   composePixel10aProduct,
+  enforceLauncherLockScreenPolicy,
   validatePixel10aProduct,
 } from "./pixel10a-product.ts";
 import { stageSenseApk, validateSenseProduct } from "./sense-listener.mjs";
@@ -107,6 +108,7 @@ export async function stagePixel10aProduct(options) {
       ],
       { encoding: "utf8", env: options.env },
     );
+    enforceLauncherLockScreenPolicy(product, xml);
     const components = provisioningComponents(xml, launcher.packageName);
     writeProvisioningOverlay(output, launcher.packageName, components);
     const nativeStagingEvidence = stageAndroidNative({

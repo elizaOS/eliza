@@ -233,6 +233,13 @@ HOME and assistant component names from that admitted APK. Autofill is offered
 only when its guarded service is present. The current Eliza manifest has no such
 service. The original stock launcher remains installed.
 
+A product that leaves capture over Keyguard to the system Camera2 sets
+`launcher.refuseLockScreenSurfaces: true` (the Alpha product does). Staging then
+refuses a launcher APK whose manifest shows an activity over Keyguard
+(`showWhenLocked`, `showOnLockScreen`, `turnScreenOn`) or handles a secure-capture
+action, before any output is moved into place. Eliza's product leaves it unset
+because its launcher keeps an alarm ringing activity over Keyguard.
+
 The output must be installed at `vendor/alphaphone`: the immutable generated
 `stallion.mk` references `vendor/alphaphone/stallion/device.mk`. This compatibility
 path and the retained `AlphaPixelConfig` internal module names are provenance,

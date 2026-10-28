@@ -9,6 +9,7 @@ import { renderProvisioningOverlay } from "../android/launcher-provisioning.mjs"
 import { inspectBootAnimationArchive } from "../android/pixel10a-brand-assets.mjs";
 import {
   composePixel10aProduct,
+  enforceLauncherLockScreenPolicy,
   renderSensePermissions,
   validatePixel10aProduct,
 } from "../android/pixel10a-product.ts";
@@ -278,6 +279,40 @@ test("changed privilege policy, product identity and qualified claims fail befor
   fs.appendFileSync(path.join(f.output, "Android.bp"), "\nprivileged: true\n");
   assert.throws(() => composePixel10aProduct(f), /nonprivileged/);
   assert.equal(fs.existsSync(path.join(f.output, "stallion")), false);
+});
+
+test("a brand that leaves lock-screen capture to Camera2 refuses a launcher shown over Keyguard", (t) => {
+  const alpha = fixture(t, "alpha").product;
+  const eliza = fixture(t, "eliza").product;
+  const manifest = (attrs) =>
+    [
+      "N: android=http://schemas.android.com/apk/res/android",
+      "  E: manifest (line=2)",
+      "    E: application (line=3)",
+      "      E: activity (line=4)",
+      `        A: android:name(0x01010003)="${alpha.launcher.packageName}.Ringing" (Raw: "${alpha.launcher.packageName}.Ringing")`,
+      ...attrs,
+    ].join("\n");
+  const locked = manifest([
+    "        A: android:showWhenLocked(0x01010003)=(type 0x12)0xffffffff",
+  ]);
+  assert.equal(alpha.launcher.refuseLockScreenSurfaces, true);
+  assert.equal(enforceLauncherLockScreenPolicy(alpha, manifest([])), true);
+  assert.throws(
+    () => enforceLauncherLockScreenPolicy(alpha, locked),
+    /Alpha does not implement[\s\S]*Ringing sets android:showWhenLocked/,
+  );
+  // Eliza's own launcher keeps its alarm activity over Keyguard.
+  assert.equal(eliza.launcher.refuseLockScreenSurfaces, undefined);
+  assert.equal(enforceLauncherLockScreenPolicy(eliza, locked), false);
+  assert.throws(
+    () =>
+      validatePixel10aProduct({
+        ...alpha,
+        launcher: { ...alpha.launcher, refuseLockScreenSurfaces: "yes" },
+      }),
+    /refuseLockScreenSurfaces must be a boolean/,
+  );
 });
 
 test("shared provisioning takes actual component names and leaves absent Autofill unset", () => {

@@ -48,6 +48,30 @@ export function loadSecureCameraContract(file = SECURE_CAMERA_CONTRACT) {
   return contract;
 }
 
+/**
+ * Paths changed in `git status --porcelain=v1 -z` output. A rename or copy
+ * entry is followed by a separate NUL-terminated origin path; both paths are
+ * changes the reviewed overrides must account for.
+ */
+export function changedPaths(porcelain) {
+  const entries = porcelain.split("\0");
+  const paths = [];
+  for (let index = 0; index < entries.length; index += 1) {
+    const row = entries[index];
+    if (!row) continue;
+    if (row.length < 4 || row[2] !== " ")
+      throw new Error("Unexpected git status entry");
+    paths.push(row.slice(3));
+    if (/[RC]/.test(row.slice(0, 2))) {
+      index += 1;
+      const origin = entries[index];
+      if (!origin) throw new Error("Unexpected git status rename entry");
+      paths.push(origin);
+    }
+  }
+  return [...new Set(paths)];
+}
+
 /** Authenticate source inputs only. A clean pinned checkout is not a built-image receipt. */
 export function verifySecureCameraSource(
   root,
@@ -80,31 +104,32 @@ export function verifySecureCameraSource(
     if (git("ls-files", "--others", "--ignored", "--exclude-standard"))
       throw new Error(`Ignored source inputs present: ${module.path}`);
     // Includes untracked sources because Camera2 compiles src/**/*.java.
-    const changes = execFileSync(
-      "git",
-      [
-        "-C",
-        directory,
-        "status",
-        "--porcelain=v1",
-        "-z",
-        "--untracked-files=all",
-      ],
-      { encoding: "utf8", env, timeout: 60_000, maxBuffer: 64 << 20 },
-    )
-      .split("\0")
-      .filter(Boolean);
+    const changes = changedPaths(
+      execFileSync(
+        "git",
+        [
+          "-C",
+          directory,
+          "status",
+          "--porcelain=v1",
+          "-z",
+          "--untracked-files=all",
+        ],
+        { encoding: "utf8", env, timeout: 60_000, maxBuffer: 64 << 20 },
+      ),
+    );
     const allowed = reviewedOverrides.filter((entry) =>
       entry.path.startsWith(`${module.path}/`),
     );
-    const actual = changes
-      .map((row) => `${module.path}/${row.slice(3)}`)
-      .sort();
-    if (
-      JSON.stringify(actual) !==
-      JSON.stringify(allowed.map((entry) => entry.path).sort())
-    )
-      throw new Error(`Source module is not clean: ${module.path}`);
+    const actual = changes.map((file) => `${module.path}/${file}`).sort();
+    const expected = allowed.map((entry) => entry.path).sort();
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+      const unexpected = actual.filter((file) => !expected.includes(file));
+      const missing = expected.filter((file) => !actual.includes(file));
+      throw new Error(
+        `Source module is not clean: ${module.path}${unexpected.length ? `; unreviewed changes: ${unexpected.join(", ")}` : ""}${missing.length ? `; reviewed overrides not present: ${missing.join(", ")}` : ""}`,
+      );
+    }
     for (const entry of allowed) {
       const file = fs.realpathSync(path.join(base, entry.path));
       if (

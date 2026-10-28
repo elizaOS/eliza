@@ -12,6 +12,7 @@ import {
   validateBrandAssets,
   writeBrandAssets,
 } from "./pixel10a-brand-assets.mjs";
+import { assertNoLockScreenSurface } from "./secure-camera.mjs";
 import { renderOverlay, validateDescriptor } from "./stage-launcher-overlay.ts";
 
 const hardwareRoot = fileURLToPath(
@@ -42,6 +43,11 @@ export function validatePixel10aProduct(value) {
     !packageName.test(value.launcher?.packageName)
   )
     throw new Error("Invalid Pixel 10a product or launcher identity");
+  if (
+    value.launcher.refuseLockScreenSurfaces !== undefined &&
+    typeof value.launcher.refuseLockScreenSurfaces !== "boolean"
+  )
+    throw new Error("launcher.refuseLockScreenSurfaces must be a boolean");
   for (const name of ["model", "brand", "manufacturer"]) {
     if (
       typeof value[name] !== "string" ||
@@ -51,6 +57,18 @@ export function validatePixel10aProduct(value) {
   }
   validateBrandAssets(value.brandAssets);
   return value;
+}
+
+/**
+ * A brand that leaves capture over Keyguard to the system Camera2 sets
+ * launcher.refuseLockScreenSurfaces; its launcher manifest (aapt xmltree)
+ * must then declare no activity shown over Keyguard and no secure-capture
+ * handler. Brands with their own lock-screen surfaces (for example an alarm
+ * ringing activity) leave it unset.
+ */
+export function enforceLauncherLockScreenPolicy(product, xmltree) {
+  if (product.launcher.refuseLockScreenSurfaces !== true) return false;
+  return assertNoLockScreenSurface(xmltree, { brand: product.brand });
 }
 
 /** The only privileged package in this product is its separately admitted listener. */
