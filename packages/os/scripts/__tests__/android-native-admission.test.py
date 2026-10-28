@@ -83,6 +83,42 @@ class NativeAdmission(unittest.TestCase):
         self.assertEqual([row['apkEntry'] for row in result['libraries']], ['lib/arm64-v8a/libeliza_bun.so'])
         self.assertNotIn('musl', (self.output / 'Android.mk').read_text())
 
+    def test_soong_finalizer_preserves_companions_and_refuses_generated_name_collision(self):
+        for companion in ['ElizaSense', 'Eliza_native_0']:
+            with self.subTest(companion=companion):
+                entries, admission = self.fixture(target='android')
+                suffix = ('\nprebuilt_etc {\n    name: "ElizaDefaultPermissions",\n'
+                          '    src: "default-permissions.xml",\n}\n'
+                          '\nandroid_app_import {\n    name: "'+companion+'",\n'
+                          '    apk: "'+companion+'.apk",\n    presigned: true,\n'
+                          '    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n')
+                self.output = self.root / companion
+                self.output.mkdir()
+                (self.output / 'Android.bp').write_text(self.bp + suffix)
+                admission.update(launcherBlueprint=self.bp + suffix, remainingBlueprint=suffix)
+                report = self.run_stage(entries, admission)
+                (self.output / 'Launcher.apk').write_bytes(self.apk.read_bytes())
+                before = {str(path.relative_to(self.output)): path.read_bytes()
+                          for path in self.output.rglob('*') if path.is_file()}
+                if companion == 'Eliza_native_0':
+                    with self.assertRaisesRegex(ValueError, 'native module name collides'):
+                        native.finalize_soong(self.output, 'Eliza', report, suffix)
+                    self.assertEqual({str(path.relative_to(self.output)): path.read_bytes()
+                                      for path in self.output.rglob('*') if path.is_file()}, before)
+                else:
+                    result = native.finalize_soong(self.output, 'Eliza', report, suffix)
+                    blueprint = (self.output / 'Android.bp').read_text()
+                    self.assertIn('    required: ["Eliza_native_0"],', blueprint)
+                    self.assertIn('prebuilt_app_native {\n    name: "Eliza_native_0",', blueprint)
+                    self.assertTrue(blueprint.endswith(suffix))
+                    self.assertEqual(blueprint.count('    required:'), 1)
+                    self.assertFalse((self.output / 'Android.mk').exists())
+                    self.assertEqual((self.output / 'Launcher.apk').read_bytes(), before['Launcher.apk'])
+                    self.assertEqual((self.output / 'config.fs').read_bytes(), before['config.fs'])
+                    self.assertEqual((self.output / 'native-arm64/libeliza_bun.so').read_bytes(), before['native-arm64/libeliza_bun.so'])
+                    self.assertFalse(result['runtimeVerified'])
+                    self.assertFalse(result['deployReady'])
+
     def test_unbound_source_package_and_final_file_closure_fail_before_write(self):
         original, admission = self.fixture()
         source_entry = admission['source']['entry']
