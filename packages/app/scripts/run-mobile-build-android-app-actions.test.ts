@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { auditAndroidBionicInferenceLibraries } from "./mobile/artifact-inspection/android-audit.ts";
 
 import {
   ANDROID_APP_ACTION_CAPABILITIES,
@@ -34,6 +35,32 @@ test("Android bionic inference audit rejects Linux libc symbols", () => {
     ),
     [],
   );
+});
+
+test("Android bionic audit rejects an incompatible x86 library in single and multiple ABI APKs", () => {
+  const x86 = "lib/x86_64/libelizainference.so";
+  for (const entries of [[x86], ["lib/arm64-v8a/libelizainference.so", x86]]) {
+    let checked: string[] = [];
+    assert.throws(
+      () =>
+        auditAndroidBionicInferenceLibraries(
+          "fixture.apk",
+          entries,
+          undefined,
+          (_artifact, names) => {
+            checked = names;
+            return names.map((name) =>
+              Buffer.from(name === x86 ? "__errno_location" : "bionic"),
+            );
+          },
+        ),
+      /lib\/x86_64\/libelizainference\.so/,
+    );
+    assert.deepEqual(checked, entries);
+  }
+  auditAndroidBionicInferenceLibraries("fixture.apk", [x86], undefined, () => [
+    Buffer.from("bionic"),
+  ]);
 });
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -301,6 +328,27 @@ android {
     ),
     /local-inference\/bin\/mtp/,
   );
+});
+
+test("Android JNI staging honors selected app ABIs in fresh and existing templates", () => {
+  const generated = injectCopyForkLlamaLibTask("android {}\n");
+  const legacy = generated
+    .replace(
+      "        def selectedAbis = android.defaultConfig.ndk.abiFilters\n",
+      "",
+    )
+    .replace(
+      "project.ext.elizaRequiredJniAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }",
+      "project.ext.elizaRequiredJniAbis",
+    )
+    .replace(
+      "project.ext.elizaForkLlamaAbis.findAll { selectedAbis.isEmpty() || selectedAbis.contains(it) }.each",
+      "project.ext.elizaForkLlamaAbis.each",
+    );
+  const upgraded = injectCopyForkLlamaLibTask(legacy);
+  assert.equal(upgraded, generated);
+  assert.equal(injectCopyForkLlamaLibTask(upgraded), upgraded);
+  assert.equal(upgraded.split("def selectedAbis =").length, 2);
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {

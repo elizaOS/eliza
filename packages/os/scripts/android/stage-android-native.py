@@ -357,6 +357,11 @@ def finalize_soong(output, module, report, remaining_blueprint=""):
             raise ValueError('Admitted native bytes changed')
     records = report['libraries']
     native_modules = [f'{module}_native_{index}' for index in range(len(records))]
+    # An admitted companion can legally use the generated native naming pattern.
+    # Refuse before replacing either build file rather than emit duplicate modules.
+    declared_names = set(re.findall(r'\bname\s*:\s*"([^"\n]+)"\s*,', remaining_blueprint))
+    if declared_names.intersection([module, *native_modules]):
+        raise ValueError('Generated native module name collides with admitted blueprint')
     blueprint = ('// Generated from a hash- and signer-verified downstream launcher.\n'
         'android_app_import {\n' + f'    name: "{module}",\n' +
         '    apk: "Launcher.apk",\n    presigned: true,\n'
