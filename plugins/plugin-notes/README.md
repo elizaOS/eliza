@@ -69,6 +69,23 @@ collection. The host owns the slot name, recovery export and presentation.
 share, export and email drafts from its stored authored content only; a voice note's
 audio is never attached and a missing transcript is stated as missing.
 
+Deleting a voice note has two durable effects, the note's tombstone and its recording.
+`createNotesRecordingDeletionJournal` keeps one recovery row per reviewed deletion over a
+host compare-and-exchange store: rows are bound to the exact reviewed revision, every
+change is checked against the row it expects and read back, and `noteState` reports from
+authoritative saved storage whether this operation's own tombstone committed. After process
+death, `planInterruptedPermanentDeletion` names the single next step that finishes a
+confirmed permanent deletion or returns to the state before it, and keeps anything with
+inexact ownership under review. `leasedDeletionRow`/`deletionLeaseDue` keep native passes
+away from a row a live view is working on (a host's native pass must use the same
+`PERMANENT_DELETION_LEASE_MS`), `createNotesDeletionClaims` stops one view settling a row
+another live view started, and `createNotesDeletionLock` is the exclusive same-origin lock
+these steps share. Hosts own the slots, the recording store, the lock and claim names and
+the order of their effects; nothing here dispatches or repeats a deletion.
+
+`proposedRecordingSummary` turns a model answer about a recording into an editable summary
+and action list only when the answer is exactly that JSON object within the note limits;
+anything else is reviewed as text. Saving remains a separate owner action.
 
 `NotesSnapshotState` shares owner-bound, monotonic snapshot publication across the
 React view and embedded hosts. The host supplies an opaque current authority;

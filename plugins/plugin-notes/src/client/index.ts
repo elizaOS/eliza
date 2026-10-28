@@ -19,6 +19,8 @@ export {
   type NotesEditorHooks,
 } from "./notes-editor.js";
 export * from "./notes-query.ts";
+export * from "./notes-recording-deletion.ts";
+export * from "./notes-recording-summary.ts";
 export * from "./notes-secure-store.ts";
 export { NotesSnapshotState } from "./notes-snapshot-state.js";
 export * from "./notes-store.ts";
