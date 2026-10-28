@@ -10,8 +10,6 @@ export interface IStorage {
     predicate: (item: T) => boolean,
   ): Promise<T[]>;
   set<T>(collection: string, id: string, data: T): Promise<void>;
-  /** Inserts in one statement only when absent; resolves true when this call created the row. */
-  setIfAbsent?<T>(collection: string, id: string, data: T): Promise<boolean>;
   delete(collection: string, id: string): Promise<boolean>;
   deleteMany(collection: string, ids: string[]): Promise<void>;
   deleteWhere<T = Record<string, unknown>>(
