@@ -12,6 +12,7 @@ import {
   WorkflowLifecycleRejected,
   WorkflowMetadataRejected,
   WorkflowTypedRejected,
+  workflowOccurrenceNotRun,
   workflowSpecDigest,
 } from "./workflow-client.ts";
 
@@ -147,6 +148,36 @@ test("execution receipts bind events to their run and keep interruption and occu
     () => parseWorkflowRun(execution({ reconciliation: { state: "done" } })),
     /Invalid execution reconciliation/,
   );
+});
+
+test("a generic schedule's missed occurrence is recorded from its settlement alone", () => {
+  const output = {
+    status: "missed",
+    scheduledAt: "2026-10-28T07:30:00.000Z",
+    text: "Not run: the agent was not running at the scheduled time",
+  };
+  assert.deepEqual(workflowOccurrenceNotRun(output), output);
+  const run = parseWorkflowRun(execution({ output }));
+  assert.deepEqual(run.occurrence, {
+    scheduledAt: "2026-10-28T07:30:00.000Z",
+    status: "missed",
+  });
+  assert.equal(run.output, output.text);
+  // Ordinary outputs and malformed settlements never read as a skipped occurrence.
+  for (const value of [
+    undefined,
+    "done",
+    [output],
+    { status: "finished", scheduledAt: output.scheduledAt, text: "x" },
+    { status: "missed", scheduledAt: "not a time", text: "x" },
+    { status: "missed", scheduledAt: output.scheduledAt },
+  ]) {
+    assert.equal(workflowOccurrenceNotRun(value), undefined);
+    assert.equal(
+      parseWorkflowRun(execution({ output: value })).occurrence,
+      undefined,
+    );
+  }
 });
 
 test("a run records its submission identity before sending and accepts only that receipt", async () => {

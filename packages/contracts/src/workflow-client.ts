@@ -255,17 +255,35 @@ export async function workflowSpecDigest(value: unknown): Promise<string> {
   ).join("");
 }
 
-/** The agent's settlement of a scheduled occurrence that did not run (`{status,scheduledAt,text}`). */
-function occurrenceSettlement(
+/**
+ * A scheduled occurrence that the agent settled without running anything
+ * (`{status: "missed" | "overlap", scheduledAt, text}` as the execution output).
+ * `missed` is an occurrence that came due while the agent was not running
+ * (powered-on scheduling records it once and never replays it); `overlap` is one
+ * skipped because an earlier run of the same workflow was still active.
+ */
+export interface WorkflowOccurrenceNotRun {
+  status: "missed" | "overlap";
+  scheduledAt: string;
+  text: string;
+}
+
+/** Reads a raw execution output as an occurrence that did not run, or undefined for any other output. */
+export function workflowOccurrenceNotRun(
   value: unknown,
-): { status: "missed" | "overlap"; text: string } | undefined {
+): WorkflowOccurrenceNotRun | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value))
     return undefined;
   const p = value as Bag;
   return (p.status === "missed" || p.status === "overlap") &&
     typeof p.text === "string" &&
-    typeof p.scheduledAt === "string"
-    ? { status: p.status, text: p.text.slice(0, 1000) }
+    typeof p.scheduledAt === "string" &&
+    Number.isFinite(Date.parse(p.scheduledAt))
+    ? {
+        status: p.status,
+        scheduledAt: p.scheduledAt,
+        text: p.text.slice(0, 1000),
+      }
     : undefined;
 }
 function runOccurrence(
@@ -276,10 +294,14 @@ function runOccurrence(
     input && typeof input === "object" && !Array.isArray(input)
       ? (input as Bag).typedSchedule
       : undefined;
-  if (record === undefined) return undefined;
+  const settled = workflowOccurrenceNotRun(output);
+  // A generic schedule's occurrence carries no typed admission: its settlement alone records it.
+  if (record === undefined)
+    return settled
+      ? { scheduledAt: settled.scheduledAt, status: settled.status }
+      : undefined;
   const admitted = parsePhoneScheduledOccurrence(record);
   if (!admitted) return undefined;
-  const settled = occurrenceSettlement(output);
   return {
     scheduledAt: admitted.scheduledAt,
     status: settled?.status ?? admitted.status,
@@ -300,7 +322,7 @@ function reconciliation(value: unknown): WorkflowRunReconciliation | undefined {
 /** Present the typed worker's final text; intermediate step inputs remain in the agent receipt. */
 function workflowOutput(value: unknown, runId: string): string {
   if (typeof value === "string") return value.slice(0, 4000);
-  const settled = occurrenceSettlement(value);
+  const settled = workflowOccurrenceNotRun(value);
   if (settled) return settled.text;
   if (Array.isArray(value) && value.length === 1) {
     const item = value[0];
