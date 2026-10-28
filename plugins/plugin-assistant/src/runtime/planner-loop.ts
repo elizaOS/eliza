@@ -3486,7 +3486,7 @@ const RESTORE_CONTEXT_TOOL = {
   // required turn-scope arguments on the surrounding action tools.
   strict: true,
   description:
-    "Read deferred original dialogue, retrieval diagnostics or provider bodies using only the available scopes in this schema. scope=full (default) restores all remaining deferred context. A note-read tool already supplies note bodies. This performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
+    "Read deferred original dialogue, retrieval diagnostics or provider bodies using only the available scopes in this schema. scope=full (default) restores all remaining deferred context. Complete inline provider evidence is already visible; do not restore it again. Restore only deferred or missing context needed for this request. Restoration is not a live saved-record read: use the registered read tool when the user requests current saved records. A note-read tool already supplies note bodies. This performs no domain action and emits no user reply. Call it alone before planning effects; other calls in the same response will not execute.",
   parameters: {
     type: "object",
     additionalProperties: false,
