@@ -90,6 +90,16 @@ public class CloudSignInReadinessTest {
   }
   CloudSignInReadinessTest positive = scripted(); positive.readiness.put(e.name, new CloudSignInReadiness.Result(true, true, false, System.now + CloudSignInReadiness.READY_TTL_MS));
   PluginCall hot = call(true); positive.status(hot); check(hot.resolved == 1 && positive.measures == 0, "a positive cache survives an explicit retry");
+  CloudSignInReadinessTest partial = scripted(); partial.readiness.put(e.name, new CloudSignInReadiness.Result(true, false, false, System.now + CloudSignInReadiness.NOT_READY_TTL_MS));
+  PluginCall partialRetry = call(true); partial.status(partialRetry);
+  check(partial.prober.tasks.size() == 1 && partialRetry.resolved == 0, "partial readiness is measured again on an explicit retry");
+  partial.next = new CloudSignInReadiness.Result(true, true, false, System.now + CloudSignInReadiness.READY_TTL_MS); partial.prober.drain();
+  check(partial.measures == 1 && Boolean.TRUE.equals(partialRetry.result.values.get("google")), "Google is enabled only by a fresh full measurement");
+  CloudSignInReadinessTest warming = scripted(); warming.probe(e, null, false);
+  PluginCall duringWarm = call(true); warming.status(duringWarm);
+  check(warming.prober.tasks.size() == 1 && duringWarm.resolved == 0, "an explicit retry joins the warm-up probe");
+  warming.next = CloudSignInReadiness.Result.notReady(System.now); warming.prober.drain();
+  check(warming.measures == 1 && duringWarm.resolved == 1 && !ready(duringWarm) && warming.prober.tasks.isEmpty(), "a failed warm-up answers its waiters once and never retries itself");
   CloudSignInReadinessTest failed = scripted(); failed.readiness.put(e.name, CloudSignInReadiness.Result.notReady(System.now)); failed.measureFails = true;
   PluginCall retry = call(true); failed.status(retry); failed.prober.drain();
   check(retry.resolved == 1 && !ready(retry) && failed.measures == 1 && failed.prober.tasks.isEmpty() && failed.readiness.get(e.name).until == System.now + CloudSignInReadiness.NOT_READY_TTL_MS, "a failed measurement stays negative and never retries itself");
