@@ -15,7 +15,12 @@ const ACTIONS = new Set([
   "scroll.right",
 ]);
 
-const blocked = (reason) => ({ kind: "blocked", reason });
+/** Fixed workflow words carry a `reasonCode`, so a host never matches the words. */
+const blocked = (reason, reasonCode) => ({
+  kind: "blocked",
+  reason,
+  reasonCode,
+});
 const digest = (value) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -354,6 +359,10 @@ const DEFAULT_WORDS = {
   notFilled: "That box was not filled in. Check it on the website.",
   fillUnknown:
     "I could not check that box after filling it in. Check the website before you go on.",
+  actionNotSent: "The browser action was not sent. Observe the page again.",
+  actionUnexpected: "The browser action did not produce the expected result.",
+  actionUnverified:
+    "The browser action could not be verified. Check the page before continuing.",
 };
 const PROTECTED_KIND = {
   password: "human-sign-in",
@@ -474,6 +483,7 @@ export class GuidedWebsiteWorkflow {
     return {
       kind: "paused",
       taskId: this.taskId,
+      reasonCode: "effect-violation",
       message: this.words.effectViolation,
     };
   }
@@ -499,6 +509,7 @@ export class GuidedWebsiteWorkflow {
       return {
         result: {
           kind: "unknown-outcome",
+          reasonCode: "previous-action-unverified",
           message: "Check the previous action before continuing.",
         },
       };
@@ -508,6 +519,7 @@ export class GuidedWebsiteWorkflow {
       return {
         result: {
           kind: "unavailable",
+          reasonCode: "task-unavailable",
           message: "This task cannot currently observe the website.",
         },
       };
@@ -542,7 +554,7 @@ export class GuidedWebsiteWorkflow {
       current.revision !== revision
     ) {
       await this.clearGuidance();
-      return { result: blocked(taskChanged) };
+      return { result: blocked(taskChanged, "task-changed") };
     }
     await this.runtime.observe(
       current.id,
@@ -558,13 +570,13 @@ export class GuidedWebsiteWorkflow {
     const observed = this.runtime.get(this.taskId);
     if (observed.status !== "active" || observed.epoch !== epoch) {
       await this.clearGuidance();
-      return { result: blocked(taskChanged) };
+      return { result: blocked(taskChanged, "task-changed") };
     }
     if (fresh.snapshot.effectViolation !== undefined)
       return { result: await this.pauseForEffectViolation() };
     if (snapshotKey !== policySnapshotKey(fresh.snapshot)) {
       await this.clearGuidance();
-      return { result: blocked(pageChanged) };
+      return { result: blocked(pageChanged, "page-changed") };
     }
     if (decision?.guidanceTarget !== undefined) {
       const index = snapshot.elements.findIndex(
@@ -750,7 +762,7 @@ export class GuidedWebsiteWorkflow {
     const control = matches.length === 1 ? matches[0] : null;
     if (!control || control.element.disabled === true) {
       await this.clearGuidance();
-      return blocked(this.words.noTarget);
+      return blocked(this.words.noTarget, "no-target");
     }
     const view = pageView(snapshot, {
       controls: [control],
@@ -796,7 +808,7 @@ export class GuidedWebsiteWorkflow {
     // dispatch rechecks the exact observed page and the runtime's capability grant.
     if (plan.kind === "agent-action" && !agentAction) {
       await this.clearGuidance();
-      return blocked(this.words.noTarget);
+      return blocked(this.words.noTarget, "no-target");
     }
     const offer =
       agentAction ||
@@ -927,7 +939,7 @@ export class GuidedWebsiteWorkflow {
       if (checked.result) return checked.result;
       if (checked.decision !== true) {
         this.offer = null;
-        return blocked(this.words.noTarget);
+        return blocked(this.words.noTarget, "no-target");
       }
       ({ observation, snapshot } = checked);
       target = pageControls(snapshot).controls.find(
@@ -961,22 +973,22 @@ export class GuidedWebsiteWorkflow {
     if (operation?.status === "succeeded") return this.refresh();
     if (kind === "agent-action")
       return operation?.status === "failed"
-        ? blocked(
-            operation.evidenceRef === "not-dispatched"
-              ? "The browser action was not sent. Observe the page again."
-              : "The browser action did not produce the expected result.",
-          )
+        ? operation.evidenceRef === "not-dispatched"
+          ? blocked(this.words.actionNotSent, "action-not-sent")
+          : blocked(this.words.actionUnexpected, "action-failed")
         : {
             kind: "unknown-outcome",
-            message:
-              "The browser action could not be verified. Check the page before continuing.",
+            reasonCode: "action-unverified",
+            message: this.words.actionUnverified,
           };
     if (operation?.status === "failed")
-      return blocked(
-        operation.evidenceRef === "not-dispatched"
-          ? this.words.notSent
-          : this.words.notFilled,
-      );
-    return { kind: "unknown-outcome", message: this.words.fillUnknown };
+      return operation.evidenceRef === "not-dispatched"
+        ? blocked(this.words.notSent, "fill-not-sent")
+        : blocked(this.words.notFilled, "fill-failed");
+    return {
+      kind: "unknown-outcome",
+      reasonCode: "fill-unverified",
+      message: this.words.fillUnknown,
+    };
   }
 }

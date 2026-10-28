@@ -2588,4 +2588,39 @@ describe("durable background memory", () => {
     expect(runtime.useModel).toHaveBeenCalledTimes(1);
     expect(process).toHaveBeenCalledTimes(1);
   });
+  it("composes background provider state without the stored turn's closed trajectory step", async () => {
+    const { runtime, service, message } = await setup();
+    const owned = {
+      ...message,
+      metadata: {
+        type: "message",
+        trajectoryStepId: "closed-step",
+        trajectoryId: "closed-trajectory",
+      },
+    } as Memory;
+    await runtime.upsertMemory(owned, "messages");
+    runtime.registerEvaluator({
+      ...evaluator(),
+      providers: ["CONVERSATION_PROXIMITY"],
+    });
+    runtime.useModel = vi.fn(
+      async () => '{"memory":{"ok":true}}',
+    ) as AgentRuntime["useModel"];
+    await service.enqueue(owned, state, { phase: "post_turn" });
+    await execute(runtime, await job(runtime));
+
+    const composed = vi
+      .mocked(runtime.composeState)
+      .mock.calls.map(([composedMessage]) => composedMessage.metadata);
+    expect(composed).not.toHaveLength(0);
+    for (const metadata of composed) {
+      expect(metadata).not.toHaveProperty("trajectoryStepId");
+      expect(metadata).not.toHaveProperty("trajectoryId");
+    }
+    // The stored row keeps its provenance.
+    expect(
+      (await runtime.getMemoryById(owned.id as NonNullable<Memory["id"]>))
+        ?.metadata,
+    ).toMatchObject({ trajectoryStepId: "closed-step" });
+  });
 });

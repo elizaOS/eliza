@@ -1247,6 +1247,10 @@ export class EngineVoiceBridge {
 			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef, {
 				skipTtsRegion: Boolean(opts.ttsBackendOverride),
 			});
+		if (!opts.lifecycleLoaders && backend instanceof ParadeeTtsBackend) {
+			const paradeeBackend = backend;
+			loaders.loadTtsRegion = () => paradeeBackend.acquireMemoryRegion();
+		}
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
 		// Wire speaker-attribution when a profile store is provided. The
@@ -1430,9 +1434,8 @@ export class EngineVoiceBridge {
 	/**
 	 * Shared tail of the TTS-only paths (`paradeeOnly`, `kokoroOnly`): a
 	 * scheduler over `backend` with no bundle, no fused handle and no ASR.
-	 * Lifecycle loaders default to empty handles — the backend owns its model
-	 * memory (the Paradee worker releases its region after idling; Kokoro's
-	 * runtime holds its own).
+	 * Paradee registers its worker with the shared model registry. Disarm and
+	 * memory pressure stop that worker; the next request reloads it.
 	 */
 	private static startStandaloneTts(
 		opts: EngineVoiceBridgeOptions,
@@ -1479,6 +1482,10 @@ export class EngineVoiceBridge {
 		const registry = opts.sharedResources ?? new SharedResourceRegistry();
 		const loaders =
 			opts.lifecycleLoaders ?? standaloneTtsLifecycleLoaders(label);
+		if (!opts.lifecycleLoaders && backend instanceof ParadeeTtsBackend) {
+			const paradeeBackend = backend;
+			loaders.loadTtsRegion = () => paradeeBackend.acquireMemoryRegion();
+		}
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
 		const wiring = buildCancellationWiring(opts);

@@ -1,6 +1,8 @@
 package ai.eliza.plugins.wifi
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -45,6 +47,22 @@ class WiFiStateReaderInstrumentedTest {
             )
         } else {
             assertEquals(null, state.rssi)
+        }
+    }
+
+    @Test
+    fun readConnectivity_reflectsActiveNetworkValidation() {
+        val state = WiFiStateReader(context).readConnectivity()
+
+        // Compare with an independent read of the live active network.
+        val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val caps = manager.activeNetwork?.let { manager.getNetworkCapabilities(it) }
+        val online = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        assertEquals(online, state.online)
+        assertEquals(online && caps!!.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED), state.validated)
+        assertEquals(online && caps!!.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL), state.captivePortal)
+        if (caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) {
+            assertEquals("only a Wi-Fi network has a name", null, state.ssid)
         }
     }
 

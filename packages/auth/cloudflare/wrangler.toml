@@ -25,10 +25,21 @@ new_sqlite_classes = ["LoginAggregations"]
 tag = "v4"
 new_sqlite_classes = ["LoginSpendMetrics"]
 
+# Canonical public origins. Cloud's API Worker reaches login through these
+# custom domains (Workers can fetch another Worker's custom domain; zone routes
+# cannot be fetched Worker-to-Worker). `wrangler deploy` creates the proxied DNS
+# record and certificate, and fails if a conflicting DNS record already exists.
+# To rename a host, change it here and in CLOUDFLARE_LOGIN_HOSTS in
+# packages/cloud/scripts/verify-steward-upstream-binding.ts; the
+# login-release-routing test keeps them in sync. workers.dev stays enabled
+# for pre-DNS checks and rollback.
 [env.staging]
 name = "eliza-login-staging"
 workers_dev = true
 preview_urls = false
+routes = [
+  { pattern = "login-staging.eliza.app", custom_domain = true },
+]
 
 [env.staging.vars]
 LOGIN_ENABLED = "false"
@@ -55,6 +66,9 @@ class_name = "LoginRateLimits"
 name = "eliza-login-production"
 workers_dev = true
 preview_urls = false
+routes = [
+  { pattern = "login.eliza.app", custom_domain = true },
+]
 
 [env.production.vars]
 LOGIN_ENABLED = "false"

@@ -1,6 +1,6 @@
 /**
- * Declares the deterministic owner-reminder creation boundary so explicit
- * “remind me” requests reach the definition-owning OWNER_REMINDERS surface.
+ * Declares owner-reminder read and creation availability so complete reads
+ * and explicit “remind me” requests reach the definition-owning surface.
  * Core still applies role, capability-tag, connector, and action validation
  * gates before promoting the turn to planning.
  */
@@ -9,14 +9,16 @@ import {
   type DirectActionRoutingRule,
   extractUserText,
   getUserMessageText,
+  type IAgentRuntime,
   isObjectRecord,
   type ResponseHandlerEvaluator,
+  registerDirectActionRoutingRule,
   validateUuid,
 } from "@elizaos/core";
 
 const REMINDER_CREATE_PATTERNS: readonly RegExp[] = [
   /^remind\s+(?:me|myself)\b[\s\S]{0,120}\b(?:to|about|in|at|on|by|for|every|each|tomorrow|tonight|today|next)\b/iu,
-  /^(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:an?\s+)?reminder\b/iu,
+  /^(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:(?:an?|one)\s+)?reminder\b/iu,
   /^(?:don['’]?t|do\s+not)\s+forget\s+to\s+(?:please\s+)?remind\s+(?:me|myself)\b[\s\S]{0,120}\b(?:to|about|in|at|on|by|for|every|each|tomorrow|tonight|today|next)\b/iu,
 ];
 
@@ -26,9 +28,9 @@ const DIRECT_REQUEST_LEAD_IN =
 const REMINDER_META_PREFIX =
   /^(?:(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?(?:what|when|where|who|why|how|is|are|explain|define|tell me(?: about| how| what| whether| if)|give (?:me )?an? example|write (?:a )?story|tell (?:me )?a story|quote)|(?:suppose|imagine|if i say)|(?:in|as)\s+(?:(?:this|that|an?|the)\s+)?(?:example|story|quote))\b/iu;
 const REMINDER_META_SUFFIX =
-  /\b(?:remind\s+me|(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:an?\s+)?reminder)\b[\s\S]{0,120}\b(?:is|was|would be)\s+(?:an?\s+|the\s+)?(?:(?:sample|example|test|valid|invalid)\s+)?(?:example|command|phrase|quote|syntax)\b/iu;
+  /\b(?:remind\s+me|(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:(?:an?|one)\s+)?reminder)\b[\s\S]{0,120}\b(?:is|was|would be)\s+(?:an?\s+|the\s+)?(?:(?:sample|example|test|valid|invalid)\s+)?(?:example|command|phrase|quote|syntax)\b/iu;
 const REMINDER_META_CONTEXT =
-  /\b(?:explain|describe|define|know|understand|tell\s+me)\b[\s\S]{0,60}\b(?:how|what|whether|meaning|phrase|command|syntax|words?)\b[\s\S]{0,80}\b(?:remind\s+(?:me|myself)|(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:an?\s+)?reminder)\b/iu;
+  /\b(?:explain|describe|define|know|understand|tell\s+me)\b[\s\S]{0,60}\b(?:how|what|whether|meaning|phrase|command|syntax|words?)\b[\s\S]{0,80}\b(?:remind\s+(?:me|myself)|(?:add|create|schedule|set)\s+(?:(?:me|my)\s+)?(?:(?:an?|one)\s+)?reminder)\b/iu;
 const REMINDER_NEGATION =
   /\b(?:don['’]?t|do not|never|no longer|stop|cancel|remove|delete|disable|skip)\b(?![\s\S]{0,20}\bforget\b)[\s\S]{0,60}\b(?:remind(?:er)?|remind\s+(?:me|myself))\b|\bremind\s+(?:me|myself)\b[\s\S]{0,40}\b(?:not|don['’]?t|do not|never|cancel|stop)\b/iu;
 const REMINDER_RECALL =
@@ -37,8 +39,26 @@ const THIRD_PARTY_REMINDER =
   /\bremind\s+(?!me\b|myself\b)(?:him|her|them|us|my\b|[A-Za-z][\p{L}'’-]*)\b/iu;
 const MIXED_RECIPIENT_REMINDER =
   /\bremind\s+(?:me|myself)(?:\s*,?\s*(?:(?:and|&|plus|as\s+well\s+as)\s+|(?:along|together)\s+with\s+)(?!me\b|myself\b)(?:@|<@|\d|[\p{L}])|\s*,\s*[\p{Lu}][\p{L}'’-]*(?:\s*,|\s+(?:and|&|to)\b))/iu;
-const QUOTED_REMINDER =
-  /["“”‘’`]([^"“”‘’`]*\b(?:remind\s+(?:me|myself)|add\s+(?:an?\s+)?reminder|create\s+(?:an?\s+)?reminder|set\s+(?:an?\s+)?reminder|schedule\s+(?:an?\s+)?reminder)\b[^"“”‘’`]*)["“”‘’`]/iu;
+// Match complete quoted spans first. Searching for a command inside the same
+// regex can otherwise treat a title's closing quote as the next opening quote.
+const QUOTED_SPANS =
+  /"((?:\\.|[^"\\])*)"|“([^”]*)”|‘((?:(?<=[\p{L}\p{N}])’(?=[\p{L}\p{N}])|[^’])*)’|`((?:\\.|[^`\\])*)`|(?<![\p{L}\p{N}])'((?:\\.|(?<=[\p{L}\p{N}])'(?=[\p{L}\p{N}])|[^'\\])*)'(?![\p{L}\p{N}])/gu;
+/** Shared complete-span quote boundaries; quoted record fields are data, not request grammar. */
+export function ownerReminderQuotedSpans(text: string) {
+  return [...text.matchAll(QUOTED_SPANS)].map((match) => ({
+    start: match.index!,
+    end: match.index! + match[0].length,
+    content: match.slice(1).find((value) => value !== undefined) ?? "",
+  }));
+}
+const QUOTED_REMINDER_COMMAND =
+  /\b(?:remind\s+(?:me|myself)|(?:add|create|set|schedule)\s+(?:(?:an?|one)\s+)?reminder)\b/iu;
+function containsQuotedReminderCommand(text: string): boolean {
+  for (const span of ownerReminderQuotedSpans(text)) {
+    if (QUOTED_REMINDER_COMMAND.test(span.content)) return true;
+  }
+  return false;
+}
 const REPORTED_REMINDER =
   /\bremind\s+(?:me|myself)\b[\s\S]{0,160}(?:,\s*(?:said|wrote|asked|replied)\s+[\p{L}]|\b(?:those|these|that)\s+(?:are|were)\s+(?:[\p{L}'’-]+['’]s\s+)?exact\s+words\b|\b(?:appears?|appeared|is|was)\s+(?:(?:written|posted|printed|displayed|shown)\s+)?(?:on|in)\b\s+(?:an?\s+|the\s+)?(?:whiteboard|screen|document|example|story|quote)\b)/iu;
 const RESCINDED_REMINDER =
@@ -52,7 +72,7 @@ export function isOwnerReminderNonCommandContext(text: string): boolean {
     REMINDER_META_CONTEXT.test(normalized) ||
     THIRD_PARTY_REMINDER.test(normalized) ||
     MIXED_RECIPIENT_REMINDER.test(normalized) ||
-    QUOTED_REMINDER.test(normalized) ||
+    containsQuotedReminderCommand(normalized) ||
     REPORTED_REMINDER.test(normalized) ||
     RESCINDED_REMINDER.test(normalized)
   );
@@ -74,7 +94,7 @@ export function createOwnerReminderDirectRoutingRule(): DirectActionRoutingRule 
   return {
     id: "lifeops.owner-reminder-create",
     actionNames: ["OWNER_REMINDERS"],
-    replacesActionNames: ["TRIGGER", "TRIGGER_CREATE"],
+    replacesActionNames: ["TRIGGER", "TRIGGER_CREATE", "OWNER_GOALS"],
     requiredActionTags: [
       "domain:reminders",
       "capability:write",
@@ -83,6 +103,48 @@ export function createOwnerReminderDirectRoutingRule(): DirectActionRoutingRule 
     ],
     contexts: ["tasks", "productivity"],
     matches: looksLikeOwnerReminderCreateRequest,
+  };
+}
+
+/** Complete owner-inventory reads belong to saved reminder records, not raw triggers.
+ * This declares availability only; ordinary role, source and action admission
+ * still apply. Extra clauses, quoted commands and scoped/ambiguous reads keep
+ * normal planning rather than replacing another requested operation.
+ */
+export function createOwnerReminderReadRoutingRule(): DirectActionRoutingRule {
+  return {
+    id: "lifeops.owner-reminder-read",
+    actionNames: ["OWNER_REMINDERS_REVIEW"],
+    replacesActionNames: ["OWNER_REMINDERS", "TRIGGER_LIST"],
+    requiredActionTags: [
+      "domain:reminders",
+      "resource:reminders-records",
+      "capability:read",
+      "effect:receipt-required",
+    ],
+    contexts: ["tasks", "productivity"],
+    matches(text, message) {
+      if (
+        message &&
+        !["DM", "VOICE_DM"].includes(String(message.content.channelType))
+      )
+        return false;
+      let request = extractUserText(text)
+        .trim()
+        .replace(DIRECT_REQUEST_LEAD_IN, "")
+        .replace(/[.!?]+$/u, "")
+        .trim();
+      // The typed intent describes this already matched owner's request in
+      // third person. Do not reinterpret a human's third-party request.
+      if (!message)
+        request = request.replace(/\b(?:the\s+)?(?:user|owner)['’]s\b/iu, "my");
+      return [
+        /^(?:list|read|review|show)(?:\s+me)?\s+(?:(?:all|my|saved|existing|current)\s+)*reminders$/iu,
+        /^(?:what|which)\s+(?:(?:saved|existing|current)\s+)*reminders\s+do\s+i\s+have$/iu,
+        /^(?:what|which)\s+are\s+my\s+(?:(?:saved|existing|current)\s+)*reminders$/iu,
+        /^do\s+i\s+have\s+(?:any\s+)?(?:saved\s+)?reminders$/iu,
+      ].some((pattern) => pattern.test(request));
+    },
   };
 }
 
@@ -160,3 +222,20 @@ export const ownerReminderChoiceRoutingEvaluator: ResponseHandlerEvaluator = {
     };
   },
 };
+
+/** Both plugin assemblies enroll the same canonical request and typed-choice routes. */
+export function registerOwnerReminderDirectRouting(
+  runtime: IAgentRuntime,
+): void {
+  registerDirectActionRoutingRule(
+    runtime,
+    createOwnerReminderDirectRoutingRule(),
+  );
+  registerDirectActionRoutingRule(
+    runtime,
+    createOwnerReminderReadRoutingRule(),
+  );
+  for (const rule of ownerReminderChoiceDirectRoutingRules) {
+    registerDirectActionRoutingRule(runtime, rule);
+  }
+}

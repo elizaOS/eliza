@@ -146,6 +146,24 @@ export interface VoiceCaptureFactoryOptions {
    * and a manual stop must NOT submit a partial turn.
    */
   finalizeOnStop?: boolean;
+  /**
+   * Always-local speech profile (for example a native AOSP profile with
+   * on-device STT): capture uses only the on-device `local-inference` WAV
+   * route. The platform recognizer (TalkMode), browser SpeechRecognition and
+   * cloud STT are never selected. When local inference is not ready, `start()`
+   * fails with {@link LocalSpeechUnavailableError} so the host offers recovery
+   * and typing instead of switching routes. Default `false`: existing routing.
+   */
+  localOnly?: boolean;
+}
+
+/** `localOnly` capture could not use on-device recognition; no other route was tried. */
+export class LocalSpeechUnavailableError extends Error {
+  readonly code = "local-speech-unavailable";
+  constructor(message = "On-device speech recognition is not ready") {
+    super(message);
+    this.name = "LocalSpeechUnavailableError";
+  }
 }
 
 export interface VoiceCaptureHandle {
@@ -195,7 +213,15 @@ function isNativeTalkModeCaptureAvailable(): boolean {
 async function resolveBackendKind(
   preferred: AsrProvider | "browser" | undefined,
   cloudConnected: boolean,
+  localOnly = false,
 ): Promise<VoiceCaptureBackend> {
+  if (localOnly) {
+    // No platform, browser or cloud recognizer may stand in for local speech.
+    if (isLocalAsrCaptureSupported() && (await isLocalInferenceAsrReady())) {
+      return "local-inference";
+    }
+    throw new LocalSpeechUnavailableError();
+  }
   if (preferred === "browser") {
     return "browser";
   }
@@ -246,6 +272,7 @@ export function createVoiceCapture(
     lang = "en-US",
     localAsrAutoStop,
     finalizeOnStop = false,
+    localOnly = false,
   } = options;
   // Resolved on start() — the server-readiness probe is async, so the backend
   // choice is deferred from construction to the first start() call.
@@ -420,7 +447,11 @@ export function createVoiceCapture(
     if (active) return;
     setState("starting");
     try {
-      backendKind = await resolveBackendKind(asrProvider, cloudConnected);
+      backendKind = await resolveBackendKind(
+        asrProvider,
+        cloudConnected,
+        localOnly,
+      );
       if (backendKind === "talkmode") {
         await startTalkMode();
       } else if (backendKind === "local-inference" || backendKind === "cloud") {

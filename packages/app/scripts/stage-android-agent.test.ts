@@ -15,6 +15,7 @@ import {
 import {
   __testables,
   selectAndroidRuntimeTargets,
+  stageAndroidAgentRuntime,
   stageSeccompShimForAbi,
 } from "./lib/stage-android-agent.ts";
 
@@ -880,5 +881,85 @@ test("staging keeps the admitted pair when another worktree replaces the cache",
     assert.equal(locateCompiledShim({ cacheDir, abi }), null);
   } finally {
     removePathRecursive(tmp);
+  }
+});
+
+test("native Android Bun resolves only the reviewed same-version ARM64 artifact", () => {
+  const native = resolvePinnedBunArtifact("stable", "aarch64", "android");
+  assert.equal(native.version, "1.4.2");
+  assert.equal(native.filename, "bun-linux-aarch64-android.zip");
+  assert.equal(native.entry, "bun-linux-aarch64-android/bun");
+  assert.equal(
+    native.archiveSha256,
+    "a1c7e2983f1bb65146beb256a4d72449f23042412bc2cf278aa6397ba27e0274",
+  );
+  assert.equal(
+    native.binarySha256,
+    "f2970336bfccf36e4e8a408b25c627122f210e941672f184198c31f4dbd377a0",
+  );
+  assert.notEqual(
+    native.binarySha256,
+    resolvePinnedBunArtifact("stable", "aarch64").binarySha256,
+  );
+  assert.throws(() => resolvePinnedBunArtifact("stable", "x64", "android"));
+  assert.throws(() => resolvePinnedBunArtifact("canary", "aarch64", "android"));
+  assert.throws(() => resolvePinnedBunArtifact("stable", "aarch64", "unknown"));
+});
+
+test("native Android launcher uses direct argv with the same no-install and command boundaries", () => {
+  const setup = __testables.LAUNCH_SCRIPT.split("\n(\n  setsid ")[0];
+  for (const command of ["", "android-bridge"]) {
+    const result = execFileSync("sh", ["-c", setup + '\nprintf "%s\\n" "$@"'], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AGENT_ROOT: os.tmpdir(),
+        ELIZA_ANDROID_BUN_TARGET: "android",
+        LD_PATH: "/must-not-execute/musl",
+        BUN_PATH: "/apk/native bun",
+        AGENT_BUNDLE_PATH: "/app/agent bundle.js",
+        AGENT_COMMAND: command,
+      },
+    });
+    assert.deepEqual(result.trim().split("\n"), [
+      "/apk/native bun",
+      "--no-install",
+      "/app/agent bundle.js",
+      ...(command ? [command] : []),
+    ]);
+  }
+  assert.throws(() =>
+    execFileSync("sh", ["-c", setup], {
+      stdio: "pipe",
+      env: {
+        ...process.env,
+        AGENT_ROOT: os.tmpdir(),
+        ELIZA_ANDROID_BUN_TARGET: "unknown",
+      },
+    }),
+  );
+});
+
+test("native target rejects an unverified ABI before any staging or download", async () => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "native-target-refused-"),
+  );
+  const prior = process.env.ELIZA_ANDROID_TARGET_ABIS;
+  try {
+    process.env.ELIZA_ANDROID_TARGET_ABIS = "x86_64";
+    await assert.rejects(
+      stageAndroidAgentRuntime({
+        androidDir: directory,
+        spikeDir: directory,
+        bunTarget: "android",
+        log: () => {},
+      }),
+      /Missing or invalid pinned Android Bun artifact/,
+    );
+    assert.deepEqual(fs.readdirSync(directory), []);
+  } finally {
+    if (prior === undefined) delete process.env.ELIZA_ANDROID_TARGET_ABIS;
+    else process.env.ELIZA_ANDROID_TARGET_ABIS = prior;
+    removePathRecursive(directory);
   }
 });

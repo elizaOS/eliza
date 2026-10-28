@@ -131,6 +131,40 @@ export class HostTtsClient {
 		return run;
 	}
 
+	/** Release native memory after admitted requests finish; the next use reloads. */
+	unload(): Promise<void> {
+		const release = async () => {
+			// A separate warm-up may still be starting. Kill it too; waiting
+			// for readiness would prevent reclaiming a stalled startup.
+			const child = this.child;
+			if (!child) return;
+			await new Promise<void>((resolve, reject) => {
+				const cleanup = () => {
+					child.removeListener("exit", exited);
+					child.removeListener("error", failed);
+				};
+				const exited = () => {
+					cleanup();
+					resolve();
+				};
+				const failed = (error: Error) => {
+					cleanup();
+					reject(error);
+				};
+				child.once("exit", exited);
+				child.once("error", failed);
+				if (!this.stop(new Error("[paradee] speech worker unloaded"))) {
+					failed(new Error("[paradee] could not stop speech worker"));
+				} else if (child.exitCode !== null || child.signalCode !== null) {
+					exited();
+				}
+			});
+		};
+		const unloaded = this.queue.then(release, release);
+		this.queue = unloaded.catch(() => undefined);
+		return unloaded;
+	}
+
 	/** Kill the worker; queued and in-flight requests reject. */
 	dispose(): void {
 		this.disposed = true;
@@ -209,13 +243,12 @@ export class HostTtsClient {
 			let ready = false;
 			let text = "";
 			const failed = () => {
-				if (this.child !== child) return;
 				const error = new Error(
 					ready
 						? "[paradee] speech worker exited"
 						: "[paradee] speech worker failed to start (library or model refused, or unsupported ABI)",
 				);
-				this.stop(error);
+				if (this.child === child) this.stop(error);
 				if (!ready) reject(error);
 			};
 			child.once("error", failed);
@@ -287,13 +320,20 @@ export class HostTtsClient {
 		});
 	}
 
-	private stop(error: Error): void {
+	private stop(error: Error): boolean {
 		const child = this.child;
-		this.child = null;
-		this.boot = null;
+		const stopped =
+			!child ||
+			child.exitCode !== null ||
+			child.signalCode !== null ||
+			child.kill("SIGKILL");
+		if (stopped) {
+			this.child = null;
+			this.boot = null;
+		}
 		const pending = this.pending;
 		this.pending = null;
 		pending?.reject(error);
-		child?.kill("SIGKILL");
+		return stopped;
 	}
 }

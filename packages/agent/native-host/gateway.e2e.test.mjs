@@ -547,9 +547,18 @@ for (const transition of ["reset", "rotate"]) {
   });
 }
 
-test("allowlisted renderer preflight is answered before bearer authentication", async () => {
+const predicatePolicy = {
+  ...policy,
+  origins: undefined,
+  isAllowedOrigin: (origin) => {
+    if (origin === "https://policy-error.example")
+      throw new Error("policy failed");
+    return origin === "https://example.org";
+  },
+};
+const preflightBeforeAuthentication = (hostPolicy) => async () => {
   const gateway = createLocalAgentGateway({
-    hostPolicy: policy,
+    hostPolicy,
     upstream: "http://127.0.0.1:9",
     token: "upstream-authority",
     inboundToken: "host-authority",
@@ -587,6 +596,10 @@ test("allowlisted renderer preflight is answered before bearer authentication", 
     );
     assert.equal((await options("https://untrusted.example")).statusCode, 403);
     assert.equal(
+      (await options("https://policy-error.example")).statusCode,
+      403,
+    );
+    assert.equal(
       (await options("https://example.org", { Host: "attacker.example" }))
         .statusCode,
       403,
@@ -604,6 +617,25 @@ test("allowlisted renderer preflight is answered before bearer authentication", 
   } finally {
     await close(gateway);
   }
+};
+test(
+  "allowlisted renderer preflight is answered before bearer authentication",
+  preflightBeforeAuthentication(policy),
+);
+test("an origin predicate gates the renderer preflight like an origin list", async () => {
+  // A host gives an origin list or an origin predicate, never both.
+  assert.throws(
+    () =>
+      createLocalAgentGateway({
+        hostPolicy: {
+          ...policy,
+          isAllowedOrigin: predicatePolicy.isAllowedOrigin,
+        },
+        token: "upstream-authority",
+      }),
+    /Explicit gateway host policy is required/,
+  );
+  await preflightBeforeAuthentication(predicatePolicy)();
 });
 
 test("read-only private JSON enforces real file owner, mode, symlink and byte boundaries", async (t) => {

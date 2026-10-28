@@ -24,11 +24,11 @@ import {
 } from "node:fs";
 import { createServer } from "node:https";
 import { createRequire } from "node:module";
-import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { pathToFileURL } from "node:url";
+import { connectNativeSocket } from "../../../packages/os/browser/scripts/native-socket-port.mjs";
 import { createCommandHandler } from "../../../packages/os/browser/src/command-handler.mjs";
 import { NativeConnection } from "../../../packages/os/browser/src/native-connection.mjs";
 import { testOutputPath } from "../../../packages/scripts/lib/test-output.ts";
@@ -240,37 +240,7 @@ try {
     runtime: {
       id: EXTENSION_ID,
       lastError: undefined,
-      connectNative: () => {
-        const socket = createConnection(socketPath);
-        const listeners = { message: [], disconnect: [] };
-        let buffer = Buffer.alloc(0);
-        socket.on("data", (chunk) => {
-          buffer = Buffer.concat([buffer, chunk]);
-          while (buffer.length >= 4) {
-            const length = buffer.readUInt32LE(0);
-            if (buffer.length < length + 4) break;
-            const message = JSON.parse(
-              buffer.subarray(4, length + 4).toString("utf8"),
-            );
-            buffer = buffer.subarray(length + 4);
-            for (const listener of listeners.message) listener(message);
-          }
-        });
-        socket.on("close", () => {
-          for (const listener of listeners.disconnect) listener();
-        });
-        return {
-          postMessage(message) {
-            const body = Buffer.from(JSON.stringify(message));
-            const header = Buffer.alloc(4);
-            header.writeUInt32LE(body.length);
-            socket.write(Buffer.concat([header, body]));
-          },
-          disconnect: () => socket.destroy(),
-          onMessage: { addListener: (f) => listeners.message.push(f) },
-          onDisconnect: { addListener: (f) => listeners.disconnect.push(f) },
-        };
-      },
+      connectNative: () => connectNativeSocket(socketPath),
     },
     alarms: {
       get: async () => alarm,

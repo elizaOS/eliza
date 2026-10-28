@@ -33,6 +33,15 @@ public final class PrivateOAuthCallbackTest {
       catch (IllegalArgumentException expected) { rejected = true; }
       check(rejected);
     }
+    var fragmentQueued = new ArrayList<Runnable>();
+    var fragment = new PrivateOAuthCallback("https://product.example/link", PrivateOAuthCallback.ResponseMode.FRAGMENT, fragmentQueued::add, delivered::add, () -> failures[0]++);
+    check(fragment.redirect().toString().equals("https://product.example/link"));
+    for (String admitted : new String[]{"https://product.example/link#state=synthetic&code=synthetic", "https://product.example/link?error=access_denied&state=synthetic"})
+      check(fragment.accept(admitted) == PrivateOAuthCallback.Admission.QUEUED);
+    for (String invalid : new String[]{"https://product.example/link", "https://product.example/link#", "https://product.example/link?#code=x", valid + "#code=x"})
+      check(fragment.accept(invalid) == PrivateOAuthCallback.Admission.REJECTED);
+    check(fragment.accept("https://attacker.example/link#code=x") == PrivateOAuthCallback.Admission.NOT_MATCHED);
+    check(fragmentQueued.size() == 2);
     System.out.println("Private OAuth callback contract passed");
   }
 }

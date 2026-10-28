@@ -56,4 +56,13 @@ describe("sanitizeSpeechText star spans", () => {
 			"Your flight leaves at nine.",
 		);
 	});
+
+	it("speaks a bold-italic phrase at the start of a sentence", () => {
+		expect(sanitizeSpeechText("***Very important***: read this.")).toBe(
+			"Very important: read this.",
+		);
+		expect(sanitizeSpeechText("***Do not share the code*** with anyone.")).toBe(
+			"Do not share the code with anyone.",
+		);
+	});
 });

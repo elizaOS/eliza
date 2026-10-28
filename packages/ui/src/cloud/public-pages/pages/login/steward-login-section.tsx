@@ -205,7 +205,7 @@ async function persistStewardToken(token: string): Promise<void> {
   await writeStoredStewardToken(token);
   if (readStoredStewardToken() !== token) {
     throw new Error(
-      "Eliza Cloud sign-in needs browser storage. Enable storage for this site and try again.",
+      "Sign-in needs browser storage. Enable storage for this site and try again.",
     );
   }
   clearSsoLoggedOut();
@@ -357,7 +357,7 @@ function describeCodeExchangeError(error: unknown, t: LoginTranslator): string {
         "That sign-in link expired or was already used. Please sign in again below.",
     });
   }
-  return getErrorMessage(error, "Could not complete Eliza Cloud sign-in.");
+  return getErrorMessage(error, "Could not complete sign-in.");
 }
 
 function getCallbackReasonMessage(
@@ -1133,7 +1133,7 @@ export default function StewardLoginSection({
         setAccountSwitchError(
           getErrorMessage(
             accountSwitchError,
-            "Could not end the previous Eliza Cloud session",
+            "Could not end the previous sign-in session",
           ),
         );
       });
@@ -2114,7 +2114,7 @@ export default function StewardLoginSection({
                   defaultValue: "Opening your assistant…",
                 })
               : t("cloud.login.redirecting", {
-                  defaultValue: "Redirecting to Eliza...",
+                  defaultValue: "Redirecting to {{appName}}...",
                 })}
           </p>
         </div>
@@ -2701,7 +2701,7 @@ export default function StewardLoginSection({
             <p className="text-xs leading-relaxed text-muted">
               {t("cloud.login.providerDiscovery.message", {
                 defaultValue:
-                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+                  "Retry to load the sign-in methods enabled for this {{cloudName}} account.",
               })}
             </p>
           </div>
@@ -2877,7 +2877,7 @@ export default function StewardLoginSection({
             <p>
               {t("cloud.login.providerDiscovery.message", {
                 defaultValue:
-                  "Retry to load the sign-in methods enabled for this Eliza Cloud account.",
+                  "Retry to load the sign-in methods enabled for this {{cloudName}} account.",
               })}
             </p>
             <Button

@@ -40,9 +40,7 @@ export function normalizeTodoContent(content: string): string {
   );
 }
 
-function stem(token: string): string {
-  if (token.length > 5 && token.endsWith("ing")) return token.slice(0, -3);
-  if (token.length > 4 && token.endsWith("ed")) return token.slice(0, -2);
+function singularize(token: string): string {
   // "es" is the plural only after a sibilant or "o" (boxes, dishes, watches,
   // heroes). Stripping it from every longer word turned "notes" into "not"
   // and "files" into "fil", so a chat command resolved a different todo.
@@ -55,6 +53,22 @@ function stem(token: string): string {
   return token;
 }
 
+function stem(token: string): string {
+  // Reduce the plural before the verb suffix. Both sides of a match run this
+  // function, so a word family must collapse to one token: stripping only the
+  // plural left "meetings" as "meeting" while the singular "meeting" became
+  // "meet", so the same visible todo addressed in either form did not count as
+  // one row and a create added a silent duplicate instead of asking.
+  const singular = singularize(token);
+  if (singular.length > 5 && singular.endsWith("ing")) {
+    return singular.slice(0, -3);
+  }
+  if (singular.length > 4 && singular.endsWith("ed")) {
+    return singular.slice(0, -2);
+  }
+  return singular;
+}
+
 function contentTokens(content: string): string[] {
   const tokens = normalizeTodoContent(content).split(" ").filter(Boolean);
   const meaningful = tokens.filter((token) => !FILLER_TOKENS.has(token));
@@ -62,7 +76,12 @@ function contentTokens(content: string): string[] {
 }
 
 function tokenKey(content: string): string {
-  return [...new Set(contentTokens(content))].sort().join(" ");
+  const tokens = contentTokens(content);
+  // Reordering quantities changes the task, even when its word set is unchanged.
+  return JSON.stringify([
+    [...new Set(tokens)].sort(),
+    tokens.filter((token) => /\p{N}/u.test(token)),
+  ]);
 }
 
 /** Dice similarity over stemmed content tokens. */

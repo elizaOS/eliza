@@ -606,6 +606,8 @@ test("a sign-in 429 answer carries the reported wait in seconds, and nothing inv
 test("native Google sign-in relays only the return address to the private attempt", async (t) => {
   const handled = [];
   const routes = createCloudRoutes({
+    // A native-only host: no browser sign-in, so no Cloud web origin.
+    browserSignIn: false,
     hostPolicy: {
       ...policy,
       createNativeCloudAuth: () => ({
@@ -663,6 +665,15 @@ test("native Google sign-in relays only the return address to the private attemp
     ["start", { method: "google" }],
     ["google-return", { callbackUrl }],
   ]);
+  assert.equal((await post("/cloud/login", {})).status, 404);
+  assert.equal(
+    (
+      await fetch(
+        `http://127.0.0.1:${server.address().port}/cloud/login/status?sessionId=12345678-1234-1234-1234-123456789012`,
+      )
+    ).status,
+    404,
+  );
 });
 
 test("a service-only host composes CLI login and provider-default voice without billing routes", async (t) => {

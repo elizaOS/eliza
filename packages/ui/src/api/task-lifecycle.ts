@@ -1,3 +1,5 @@
+import { TASK_ID_PATTERN } from "@elizaos/core/protocol";
+
 export type TaskView = {
   schemaVersion: 1;
   id: string;
@@ -36,7 +38,7 @@ function taskFrom(value: unknown): TaskView | null {
   if (
     t.schemaVersion !== 1 ||
     typeof t.id !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9_.:@-]{0,255}$/.test(t.id) ||
+    !TASK_ID_PATTERN.test(t.id) ||
     !Number.isSafeInteger(t.revision) ||
     t.revision < 0 ||
     !Number.isSafeInteger(t.epoch) ||
@@ -94,6 +96,20 @@ export class TaskLifecycle {
     this.request = request;
     this.changed = changed;
     this.messages = { ...messages };
+  }
+  /** The state last sent to `changed`. */
+  snapshot(): Readonly<TaskLifecycleState> {
+    return this.state;
+  }
+  /** The confirmed task's id, or null while a request is pending or failed. */
+  currentTaskId(): string | null {
+    const { task, pending, error } = this.state;
+    return !pending && !error ? (task?.id ?? null) : null;
+  }
+  /** True only for a confirmed paused task, with no request pending or failed. */
+  isPaused(): boolean {
+    const { task, pending, error } = this.state;
+    return !pending && !error && task?.status === "paused";
   }
   private publish(next: TaskLifecycleState) {
     this.state = next;

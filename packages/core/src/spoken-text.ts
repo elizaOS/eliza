@@ -54,12 +54,14 @@ function stripThinkingAndMarkup(input: string): string {
 }
 
 // A star span is either a stage direction (`*sighs*`, not spoken) or markdown
-// emphasis (`**Settings**`, `I *love* it`), whose words must still be spoken.
-// A known action word is a direction anywhere. Otherwise bold is emphasis, and
-// a single-star span is a direction only where roleplay puts actions: a
-// multi-word span at the start of the reply or of a sentence
-// (`*adjusts glasses* Let me check.`).
-const STAR_SPAN_PATTERN = /\*{1,2}([^*\n]+)\*{1,2}/g;
+// emphasis (`**Settings**`, `***very important***`, `I *love* it`), whose words
+// must still be spoken. A known action word is a direction anywhere. Otherwise
+// bold is emphasis, and a single-star span is a direction only where roleplay
+// puts actions: a multi-word span at the start of the reply or of a sentence
+// (`*adjusts glasses* Let me check.`). A bold-italic span keeps its `**` form
+// here: peeling only two of its three markers on the first pass left a
+// single-star span that the next pass dropped as an action.
+const STAR_SPAN_PATTERN = /\*{1,3}([^*\n]+)\*{1,3}/g;
 
 function peelStarSpan(
 	match: string,

@@ -25,7 +25,7 @@ dependencies = [
     "elizaos-benchmark-support==0.1.0",
     "eliza-adapter",
     "datasets==5.1.0",
-    "gitpython==3.2.0",
+    "gitpython==3.2.1",
     "unidiff==0.7.5",
     "docker==7.1.0",
     "swebench==4.1.0",

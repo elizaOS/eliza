@@ -53,6 +53,13 @@ function wavOfSeconds(seconds: number, rate = RATE): Buffer {
 class FakeSynth implements ParadeeSynthesizer {
 	readonly texts: string[] = [];
 	disposed = false;
+	running = false;
+	async initialize() {
+		this.running = true;
+	}
+	async unload() {
+		this.running = false;
+	}
 	constructor(
 		private readonly impl: (
 			text: string,
@@ -249,6 +256,8 @@ describe("ParadeeTtsBackend", () => {
 });
 
 class FakeChild extends EventEmitter {
+	exitCode: number | null = null;
+	signalCode: string | null = null;
 	stdin = new PassThrough();
 	output = new PassThrough();
 	stdio = [this.stdin, null, null, this.output];
@@ -376,6 +385,46 @@ describe("HostTtsClient", () => {
 		child.send({ id: child.requests[0]?.id, error: "failed" });
 		await expect(retry).rejects.toThrow(/synthesis failed/);
 		client.dispose();
+	});
+
+	it("waits for worker exit on unload and reloads on next initialization", async () => {
+		const client = new HostTtsClient({
+			config,
+			workerPath: "/w.js",
+			spawnImpl,
+		});
+		const boot = client.initialize();
+		const child = children[0] as FakeChild;
+		child.send({ ready: true });
+		await boot;
+		let released = false;
+		const unloaded = client.unload().then(() => {
+			released = true;
+		});
+		await flush();
+		expect(child.kill).toHaveBeenCalledWith("SIGKILL");
+		expect(released).toBe(false);
+		child.signalCode = "SIGKILL";
+		child.emit("exit", null, "SIGKILL");
+		await unloaded;
+		const reboot = client.initialize();
+		expect(children).toHaveLength(2);
+		(children[1] as FakeChild).send({ ready: true });
+		await reboot;
+		client.dispose();
+	});
+
+	it("settles startup when disposed before readiness", async () => {
+		const client = new HostTtsClient({
+			config,
+			workerPath: "/w.js",
+			spawnImpl,
+		});
+		const boot = client.initialize();
+		const rejected = expect(boot).rejects.toThrow(/failed to start/);
+		client.dispose();
+		(children[0] as FakeChild).emit("exit", null, "SIGKILL");
+		await rejected;
 	});
 
 	it("passes no source condition to a built worker", () => {

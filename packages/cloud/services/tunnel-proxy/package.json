@@ -17,6 +17,6 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "bun-types": "1.4.2",
     "typescript": "^6.0.3",
-    "@biomejs/biome": "2.5.15"
+    "@biomejs/biome": "2.6.3"
   }
 }
