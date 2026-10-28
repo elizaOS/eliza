@@ -4,6 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { requireClockProduct } from "./aosp-clock-handlers.mjs";
 import {
+  stagedImageFeature,
+  writeImageCapability,
+} from "./image-capability.mjs";
+import {
   admitBrandAssets,
   validateBrandAssets,
   writeBrandAssets,
@@ -160,6 +164,7 @@ export function composePixel10aProduct({
   nativeStagingEvidence,
   production = false,
   bootAnimation = null,
+  vendorApi = null,
 }) {
   product = validatePixel10aProduct(product);
   launcher = validateDescriptor(launcher);
@@ -226,6 +231,11 @@ export function composePixel10aProduct({
   const withClock = requireClockProduct(launcherProduct);
   if (withClock !== launcherProduct)
     fs.writeFileSync(productMakefile, withClock);
+  // Image-only surfaces (Phone, Contacts, SMS) need the launcher's image
+  // feature; every brand's Pixel image declares it exactly once.
+  if (!stagedImageFeature(output, launcher.packageName))
+    writeImageCapability(output, launcher.packageName);
+  const imageFeature = stagedImageFeature(output, launcher.packageName);
   const evidence = {
     schema: 1,
     target: "pixel10a",
@@ -236,6 +246,8 @@ export function composePixel10aProduct({
     nativeLibrariesStaged,
     brandAssets: brandAssets.evidence,
     sourceEvidence,
+    vendorApi,
+    imageFeature,
     imageBuilt: false,
     imageSigned: false,
     releaseQualified: false,

@@ -82,6 +82,16 @@ for (const brand of ["alpha", "eliza"]) {
       fs.readFileSync(path.join(f.output, "AndroidProducts.mk"), "utf8"),
       new RegExp(`${f.product.productName}-cp2a-user\\b`),
     );
+    // Every brand's Pixel image declares its launcher's image feature once.
+    const feature = `${f.launcher.packageName}.aosp_image`;
+    assert.deepEqual(result.imageFeature, { feature, version: 1 });
+    assert.equal(
+      fs
+        .readFileSync(path.join(f.output, "product.mk"), "utf8")
+        .split(`/etc/permissions/${feature}.xml`).length - 1,
+      1,
+    );
+    assert.equal(result.vendorApi, null, "staging records the checked API");
     const source = new URL("../../android/devices/pixel10a/", import.meta.url);
     for (const name of fs.readdirSync(source, { recursive: true })) {
       const file = new URL(name, source);

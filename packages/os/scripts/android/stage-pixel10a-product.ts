@@ -22,6 +22,7 @@ import { stageSenseApk, validateSenseProduct } from "./sense-listener.mjs";
 import { senseSystemuiPatch } from "./sense-systemui.mjs";
 import { soongAppNativePatch } from "./soong-app-native.mjs";
 import { stageLauncher, validateDescriptor } from "./stage-launcher-overlay.ts";
+import { assertStockVendorApi } from "./vendor-api.mjs";
 import { loadProfile, verifyProfileSource } from "./verify-source-lock.ts";
 
 export async function stagePixel10aProduct(options) {
@@ -74,17 +75,22 @@ export async function stagePixel10aProduct(options) {
     packageName: launcher.packageName,
     bunTarget: options.bunTarget ?? "linux-musl",
   });
-  const sourceEvidence = await verifyProfileSource(
-    loadProfile(product.sourceProfile),
-    {
-      aospRoot: options.aospRoot,
-      archivePath: options.archivePath,
-      appliedPatches: [
-        soongAppNativePatch(),
-        ...(options.appliedSensePatch ? [senseSystemuiPatch()] : []),
-      ],
-    },
-  );
+  const sourceProfile = loadProfile(product.sourceProfile);
+  const sourceEvidence = await verifyProfileSource(sourceProfile, {
+    aospRoot: options.aospRoot,
+    archivePath: options.archivePath,
+    appliedPatches: [
+      soongAppNativePatch(),
+      ...(options.appliedSensePatch ? [senseSystemuiPatch()] : []),
+    ],
+  });
+  // The product keeps the stock stallion vendor partition: its lunch release
+  // and the generated vendor VINTF manifest must both carry the locked API.
+  const vendorApi = assertStockVendorApi(options.aospRoot, {
+    codename: sourceProfile.device.codename,
+    releaseConfig: product.releaseConfig,
+    vendorApiLevel: sourceProfile.device.vendorApiLevel,
+  });
   const parent = path.dirname(path.resolve(options.output));
   fs.mkdirSync(parent, { recursive: true });
   const temporary = fs.mkdtempSync(path.join(parent, ".pixel10a-product-"));
@@ -135,6 +141,7 @@ export async function stagePixel10aProduct(options) {
       nativeStagingEvidence,
       production: !options.development,
       bootAnimation: options.bootAnimation ?? null,
+      vendorApi,
     });
     finalizeAndroidNative({
       apk: path.join(output, "Launcher.apk"),
