@@ -443,7 +443,7 @@ export function buildActiveReminders(
   return reminders;
 }
 
-function ownerDeclinedEvent(event: LifeOpsCalendarEvent): boolean {
+export function ownerDeclinedEvent(event: LifeOpsCalendarEvent): boolean {
   return event.attendees.some(
     (attendee) =>
       attendee.self &&

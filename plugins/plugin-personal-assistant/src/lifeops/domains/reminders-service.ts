@@ -220,6 +220,7 @@ import {
   isWithinQuietHours as isWithinQuietHoursPolicy,
   normalizeGeneratedReminderBody,
   normalizeGeneratedWorkflowBody,
+  ownerDeclinedEvent,
 } from "../service-helpers-misc.js";
 import { computeDefinitionPerformance } from "../service-helpers-occurrence.js";
 import {
@@ -1140,14 +1141,6 @@ function collectNearbyReminderTitles(args: {
     }
   }
   return titles;
-}
-
-function ownerDeclinedEvent(event: LifeOpsCalendarEvent): boolean {
-  return event.attendees.some(
-    (attendee) =>
-      attendee.self &&
-      attendee.responseStatus?.trim().toLowerCase() === "declined",
-  );
 }
 
 function buildActiveCalendarEventReminders(
