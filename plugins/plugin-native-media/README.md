@@ -26,7 +26,17 @@ Owned media (items the host package published, `OWNER_PACKAGE_NAME`):
 - `PhotoFilter` / `PhotoFilterMath` – CSS reference filters (`vivid`, `warm`, `cool`, `mono`,
   `fade`, `noir`) in encoded sRGB with per-primitive clipping. The math is pure Java.
 - `OwnedCaptures` – explicit capture publication with one durable operation identity.
-- `OwnedMediaSelection` – owned, published media queries with album and trash selection.
+- `OwnedMediaSelection` – owned, published media queries with album and trash selection, owned item
+  names (`<id>` or `v:<id>`), the shared share type and custom album name rules. Pure Java.
+- `OwnedMediaLibrary` – the host's published photos and videos: paged listing (all, favorites,
+  videos, Recently deleted) with bounded previews, reads, favorite and trash changes that apply only
+  to the listed revision and MediaStore generation and are read back, bounded per-item batches that
+  report `complete` or `partial`, counts, and a two-step permanent removal of trashed items whose
+  confirmation (two minutes) names each item's generation, so a restored or changed item is skipped.
+  The host injects playback-grant revocation for trashed and removed videos.
+- `OwnedAlbums` – device-local custom albums over owned and permitted items. Albums store member
+  names and identities, never bytes; a changed or no longer accessible member is withheld but keeps
+  its membership. Every change names the album revision, and listings hold the permitted fence.
 - `MediaBytes` – exact provider readback after a write.
 
 Full permitted library (other apps' media, as far as Android grants it):
