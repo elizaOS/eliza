@@ -162,7 +162,6 @@ export class DiscordInstallWelcomeQueue {
     private readonly redis: DiscordInstallWelcomeRedis,
     private readonly botToken: string,
     private readonly fetchImpl: typeof fetch = fetch,
-    private readonly now: () => number = Date.now,
   ) {}
 
   async enqueue(job: DiscordInstallWelcomeJob): Promise<void> {
@@ -231,7 +230,7 @@ export class DiscordInstallWelcomeQueue {
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
       return true;
     }
-    if (job.retryAt && Date.parse(job.retryAt) > this.now()) {
+    if (job.retryAt && Date.parse(job.retryAt) > Date.now()) {
       // Still backing off: back to the pending list untouched.
       await this.redis.lpush(QUEUE_KEY, raw);
       await this.redis.lrem(PROCESSING_KEY, 1, raw);
@@ -265,7 +264,7 @@ export class DiscordInstallWelcomeQueue {
       const retry: DiscordInstallWelcomeJob = {
         ...job,
         attempts,
-        retryAt: new Date(this.now() + retryDelayMs(attempts)).toISOString(),
+        retryAt: new Date(Date.now() + retryDelayMs(attempts)).toISOString(),
       };
       // Requeue before removing the processing claim. A crash between these
       // operations creates a harmless duplicate rather than losing the job.
