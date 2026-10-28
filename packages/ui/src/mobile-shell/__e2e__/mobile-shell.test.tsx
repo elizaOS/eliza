@@ -14,18 +14,21 @@ import type {
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ELIZA_DEFAULT_THEME } from "../../config/theme";
+import { BUILTIN_ROUTE_DESCRIPTORS } from "../../navigation/builtin-route-descriptors";
 import {
   applyMobileShellTheme,
   createMobileShellLauncher,
   createMobileViewRegistry,
   defineMobileProductRegistration,
   MOBILE_SHELL_HOME,
+  MOBILE_SHELL_VIEW_IDS,
   type MobileProductRegistration,
   MobileAllAppsDrawer,
   MobileHomeScreen,
   MobileViewHost,
   migrateLauncherViewIds,
   mobileShellThemeVariables,
+  mobileShellViewPath,
   mobileShellViewPaths,
   navigateMobileShell,
   resolveMobileShellAppearance,
@@ -207,6 +210,25 @@ describe("view registry", () => {
     expect(registry.fromLauncherKey("example:automations")).toBe(automations);
     expect(registry.fromLauncherKey("example:workflows")).toBeUndefined();
     expect(mobileShellViewPaths("chat")).toEqual(["/chat", "/apps/chat", "/"]);
+  });
+
+  it("names builtin views by the builtin route registry's ids and paths", () => {
+    const builtins: Record<string, { path: string }> =
+      BUILTIN_ROUTE_DESCRIPTORS;
+    const shared = MOBILE_SHELL_VIEW_IDS.filter((id) =>
+      Object.hasOwn(builtins, id),
+    );
+    expect(shared).toEqual(
+      expect.arrayContaining([
+        "chat",
+        "phone",
+        "files",
+        "inventory",
+        "settings",
+      ]),
+    );
+    for (const id of shared)
+      expect(mobileShellViewPath(id), id).toBe(builtins[id]?.path);
   });
 
   it("offers available views in product order and refuses navigation to the rest", () => {
