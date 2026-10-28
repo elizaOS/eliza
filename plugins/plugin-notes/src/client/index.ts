@@ -1,4 +1,5 @@
 export * from "./note-dates.ts";
+export * from "./note-origin.ts";
 export * from "./note-share-text.ts";
 export {
   createNotesClient,
