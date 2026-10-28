@@ -866,6 +866,36 @@ describe("local inference downloader status", () => {
 		).toHaveLength(1);
 	});
 
+	it("releases the reserved job when the staging directory cannot be created", async () => {
+		const model = ELIZA_2B_MODEL;
+		// A file where downloads/ must go makes the staging mkdir fail, as a
+		// read-only or full state volume does.
+		const blocker = path.join(root, "local-inference", "downloads");
+		fs.mkdirSync(path.dirname(blocker), { recursive: true });
+		fs.writeFileSync(blocker, "not a directory");
+		installFetchFixture(freshBundleFixtureFiles());
+		const downloader = new Downloader({
+			probeDeviceCaps: async () => cpuOnlyCaps,
+			probeHardware: async () => fakeProbe(100),
+		});
+
+		await expect(downloader.start(model.id)).rejects.toThrow();
+		expect(downloader.isActive(model.id)).toBe(false);
+		expect(downloader.snapshot().filter((j) => j.modelId === model.id)).toEqual(
+			[],
+		);
+
+		// Once the volume is writable, a retry runs a new job instead of handing
+		// back the failed start's reservation.
+		fs.rmSync(blocker);
+		const completed = waitForTerminal(downloader, model.id);
+		await downloader.start(model.id);
+		await completed;
+		expect(
+			readOwnedRegistryModels().filter((m) => m.id === model.id),
+		).toHaveLength(1);
+	});
+
 	it("rejects a non-GGUF (HTML) body on the single-file path", async () => {
 		const base = ELIZA_2B_MODEL;
 		// Decorate a default-eligible id as a single-file (non-bundle) download so

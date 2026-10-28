@@ -744,8 +744,17 @@ export class Downloader {
 		this.active.set(modelId, record);
 
 		// Slot is held — now safe to await; a concurrent caller short-circuits above.
-		await ensureDirs();
-		job.received = await partialSize(stagingPath);
+		try {
+			await ensureDirs();
+			job.received = await partialSize(stagingPath);
+		} catch (err) {
+			// No job runs for this reservation, so release it: a held slot would
+			// report a queued download and hand it to every retry.
+			if (this.active.get(modelId) === record) {
+				this.active.delete(modelId);
+			}
+			throw err;
+		}
 
 		// Fire-and-forget; errors are captured and emitted as a "failed" event.
 		void this.runJob(catalogEntry, record).catch(() => {
