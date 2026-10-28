@@ -183,10 +183,7 @@ export async function requireConfirmation(
 		existing.requestMessageId !== undefined &&
 		args.message.id !== undefined &&
 		String(args.message.id) === existing.requestMessageId;
-	const olderThanPrompt =
-		typeof args.message.createdAt === "number" &&
-		args.message.createdAt <= existing.createdAt;
-	if (sameMessage || olderThanPrompt) {
+	if (sameMessage) {
 		return { status: "pending" };
 	}
 
