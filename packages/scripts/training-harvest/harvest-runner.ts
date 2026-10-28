@@ -34,6 +34,10 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  parseHarvestShard,
+  parseItemTimeoutMs,
+} from "./bench-e2e-harvest-runner.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
@@ -79,9 +83,8 @@ const FAMILY = opt("--family", "scenario");
 // --shard i/n : deterministic split of the discovered scenario list across N
 // parallel workers (worker i takes items where globalIndex % N === i). Lets the
 // big packages/testing/scenarios dir run across several codex workers at once.
-const SHARD = opt("--shard", null); // "i/n"
-const [SHARD_I, SHARD_N] = SHARD
-  ? SHARD.split("/").map((x) => Number(x))
+const [SHARD_I, SHARD_N] = flag("--shard")
+  ? parseHarvestShard(optRaw("--shard", ""))
   : [0, 1];
 // --resume : skip an item whose verdict.json already exists, so a killed /
 // rate-limited harvest picks up where it left off without re-spending on
@@ -96,8 +99,9 @@ const HARVEST_ROOT = path.resolve(
   ),
 );
 const TSCONFIG = path.join(REPO_ROOT, "tsconfig.json");
-const SCENARIO_TIMEOUT_MS =
-  Number(opt("--item-timeout-ms", "300000")) || 300000;
+const SCENARIO_TIMEOUT_MS = parseItemTimeoutMs(
+  optRaw("--item-timeout-ms", "300000"),
+);
 
 /** Load the provider env object per the precedence documented above. */
 function loadProviderEnv() {
