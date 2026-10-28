@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   CUTTLEFISH_TARGETS,
   cuttlefishProductProblems,
+  OS_SHARED_LOCK_PATH,
   profileAdmitsProduct,
 } from "../android/cuttlefish-product.mjs";
 
@@ -36,7 +37,6 @@ function fixture(t) {
     lunchTarget: "example_cf_x86_64_phone-trunk_staging-user",
     architecture: "x86_64",
     aospLockProfile: "cuttlefish",
-    aospLockPath: SHARED,
     aospDeviceTreePaths: [
       "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk",
     ],
@@ -103,6 +103,26 @@ test("a downstream product on the shared reviewed Cuttlefish tree is admitted", 
       productName: "eliza_cf_x86_64_phone",
     }),
     true,
+  );
+});
+
+test("a brand on the shared lock names it as the OS build tools resolve it", (t) => {
+  const f = fixture(t);
+  // build-aosp.ts and deploy-pixel.ts resolve aospLockPath against
+  // packages/os, so the consumer-relative descriptor path is refused.
+  f.write(f.product.brandConfig, { ...f.brand, aospLockPath: SHARED });
+  assert.ok(
+    cuttlefishProductProblems(f.product, f.options).some((problem) =>
+      /aospLockPath must be omitted or android\/aosp\.lock\.json/.test(problem),
+    ),
+  );
+  f.write(f.product.brandConfig, {
+    ...f.brand,
+    aospLockPath: OS_SHARED_LOCK_PATH,
+  });
+  assert.deepEqual(cuttlefishProductProblems(f.product, f.options), []);
+  assert.ok(
+    fs.existsSync(new URL(`../../${OS_SHARED_LOCK_PATH}`, import.meta.url)),
   );
 });
 

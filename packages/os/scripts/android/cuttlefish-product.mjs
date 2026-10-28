@@ -24,6 +24,13 @@ export const CUTTLEFISH_TARGETS = Object.freeze([
   "cuttlefish_arm64",
 ]);
 const HEX64 = /^[0-9a-f]{64}$/;
+/**
+ * The shared lock as the OS build tools name it. build-aosp.ts and
+ * deploy-pixel.ts resolve a brand config's aospLockPath against this package,
+ * so a brand on the shared lock omits aospLockPath or names this path, never
+ * the consumer-relative path its product descriptor uses.
+ */
+export const OS_SHARED_LOCK_PATH = "android/aosp.lock.json";
 
 /**
  * Whether the selected profile admits this product: the profile lists it, or
@@ -98,7 +105,17 @@ export function cuttlefishProductProblems(
         problems.push(
           `${product.brandConfig}: aospLockProfile is not the descriptor's source-lock profile`,
         );
-      if (brand.aospLockPath !== product.sourceLock?.file)
+      const onSharedLock =
+        sharedSourceLock && product.sourceLock?.file === sharedSourceLock;
+      if (onSharedLock) {
+        if (
+          brand.aospLockPath !== undefined &&
+          brand.aospLockPath !== OS_SHARED_LOCK_PATH
+        )
+          problems.push(
+            `${product.brandConfig}: aospLockPath must be omitted or ${OS_SHARED_LOCK_PATH} on the shared lock; the OS build tools resolve it against packages/os`,
+          );
+      } else if (brand.aospLockPath !== product.sourceLock?.file)
         problems.push(
           `${product.brandConfig}: aospLockPath is not the descriptor's source lock`,
         );
