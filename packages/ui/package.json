@@ -200,6 +200,18 @@
       "types": "./dist/components/pages/InstalledAppsLauncher.d.ts",
       "import": "./dist/components/pages/InstalledAppsLauncher.js",
       "default": "./dist/components/pages/InstalledAppsLauncher.js"
+    },
+    "./mobile-shell": {
+      "eliza-source": "./src/mobile-shell/index.ts",
+      "types": "./dist/mobile-shell/index.d.ts",
+      "import": "./dist/mobile-shell/index.js",
+      "default": "./dist/mobile-shell/index.js"
+    },
+    "./mobile-shell/core": {
+      "eliza-source": "./src/mobile-shell/core.ts",
+      "types": "./dist/mobile-shell/core.d.ts",
+      "import": "./dist/mobile-shell/core.js",
+      "default": "./dist/mobile-shell/core.js"
     }
   },
   "peerDependencies": {

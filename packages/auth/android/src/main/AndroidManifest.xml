@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The library declares no component. Hosts declare INTERNET and, for browser returns, their own
+     verified App Link on their registered callback path. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
