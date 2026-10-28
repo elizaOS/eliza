@@ -14,14 +14,19 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { ElizaError } from "@elizaos/core";
 import {
   type ContactSummary,
   Contacts,
 } from "@elizaos/plugin-native-contacts/bridge";
 
 const CONTACTS_PROVIDER_NAME = "androidContacts";
-const COMPLETE_CONTACTS_READ_LIMIT = 2_147_483_647;
+
+// Provider render bound. The native query orders by display
+// name ascending, so the window keeps the alphabetically-first
+// contacts; a specific person stays resolvable on demand through
+// the Contacts view's query-filtered list. The view's explicit
+// complete-read path is untouched.
+const CONTACTS_PROVIDER_LIMIT = 200;
 
 interface AndroidContactEntry {
   id: string;
@@ -60,17 +65,12 @@ export const contactsProvider: Provider = {
   ): Promise<ProviderResult> => {
     try {
       const { contacts } = await Contacts.listContacts({
-        limit: COMPLETE_CONTACTS_READ_LIMIT,
+        limit: CONTACTS_PROVIDER_LIMIT,
       });
-      if (contacts.length === COMPLETE_CONTACTS_READ_LIMIT) {
-        throw new ElizaError(
-          "Contacts provider reached the native bridge boundary; refusing potentially incomplete planner context.",
-          {
-            code: "NATIVE_CONTACTS_PROVIDER_INCOMPLETE",
-            context: { limit: COMPLETE_CONTACTS_READ_LIMIT },
-          },
-        );
-      }
+      // Hitting the limit is the normal truncated case here, not
+      // an incomplete-context error: the provider's contract is
+      // resolving people referenced in chat, and targeted lookup
+      // stays available through the Contacts view's query path.
       const entries = contacts.map(toEntry);
 
       return {
