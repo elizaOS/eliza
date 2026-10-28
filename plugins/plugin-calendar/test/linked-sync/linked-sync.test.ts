@@ -182,11 +182,11 @@ describe("CalendarLinkedStore", () => {
   it("keeps the idempotency key and checkpoint across reopening after an uncertain write", async () => {
     const slots = storage();
     const store = await CalendarLinkedStore.open(binding, () => true, slots, {
-      idempotencyNamespace: "alpha-calendar-sync",
+      idempotencyNamespace: "example-calendar-sync",
     });
     const link = await store.link("event-1", "rev-1");
     expect(link.idempotencyKey).toMatch(
-      /^alpha-calendar-sync:[a-f0-9]{64}:event-1$/,
+      /^example-calendar-sync:[a-f0-9]{64}:event-1$/,
     );
     const pending = await store.save(link, {
       state: "quarantined",
@@ -199,7 +199,7 @@ describe("CalendarLinkedStore", () => {
       () => true,
       slots,
       {
-        idempotencyNamespace: "alpha-calendar-sync",
+        idempotencyNamespace: "example-calendar-sync",
       },
     );
     expect(await reopened.list()).toEqual([pending]);
@@ -366,7 +366,7 @@ describe("CalendarSyncController", () => {
           enabled.set(scope, value);
         },
       },
-      { idempotencyNamespace: "alpha-calendar-sync" },
+      { idempotencyNamespace: "example-calendar-sync" },
     );
     return {
       remote,
