@@ -83,6 +83,16 @@ another live view started, and `createNotesDeletionLock` is the exclusive same-o
 these steps share. Hosts own the slots, the recording store, the lock and claim names and
 the order of their effects; nothing here dispatches or repeats a deletion.
 
+`createNotesRecordingEffects` runs the recording side of those deletions over a host
+recording store (describe, remove, restore, purge and per-operation receipts): an approved
+deletion outside the editor that trashes note and recording together under one operation
+(`trashWithRecording`), confirmed erase after a committed tombstone (`eraseForever`), Trash
+expiry that never erases a recording a saved note or recovery row still holds
+(`purgeTrashed`), the interrupted permanent-deletion backstop (`settleInterrupted`), one
+status pass per row that leaves another live view's row alone (`reconcile`) and lease
+renewal (`renewLeases`). Every step is confirmed by readback and never retried; the caller
+holds the deletion lock.
+
 `proposedRecordingSummary` turns a model answer about a recording into an editable summary
 and action list only when the answer is exactly that JSON object within the note limits;
 anything else is reviewed as text. Saving remains a separate owner action.
