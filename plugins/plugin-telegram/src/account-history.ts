@@ -120,6 +120,7 @@ export async function readTelegramAccountHistory(
     }
     if (response.messages.length === 0) break;
     let previousId = offsetId || Number.POSITIVE_INFINITY;
+    let pastWindow = false;
     for (const message of response.messages) {
       if (
         !Number.isSafeInteger(message.id) ||
@@ -142,7 +143,16 @@ export async function readTelegramAccountHistory(
           );
         }
         if (before !== undefined && message.date >= before) continue;
-        if (after !== undefined && message.date <= after) continue;
+        // Pages arrive newest-first and the loop above enforces
+        // strictly decreasing ids, which are time-ordered within
+        // a peer, so once a dated message falls at or below
+        // `after`, every later message is also outside the
+        // window: stop paging instead of walking the peer's
+        // entire remaining history to return one window.
+        if (after !== undefined && message.date <= after) {
+          pastWindow = true;
+          break;
+        }
       } else if (before !== undefined || after !== undefined) {
         // Deleted placeholders carry no timestamp and cannot satisfy a date bound.
         continue;
@@ -153,6 +163,7 @@ export async function readTelegramAccountHistory(
         return result;
       }
     }
+    if (pastWindow) break;
     offsetId = previousId;
   }
   await assertAdmission();
