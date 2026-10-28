@@ -24,7 +24,6 @@ import {
   type MessageConnectorTarget,
   type MessageConnectorUserContext,
   parseBooleanFromText,
-  parseBooleanValue,
   Service,
   type TargetInfo,
   type UUID,
@@ -343,14 +342,14 @@ export class TwitterClientInstance implements ITwitterClient {
     }
 
     // Discovery service for autonomous content discovery
-    // An explicit value wins; an unset value follows timeline actions. A
-    // string comparison against "false" cannot tell "off" from "unset", so
-    // an explicit off used to leave discovery on while actions were on.
+    // An explicit value wins; an unset value follows timeline actions.
+    const discoverySetting =
+      getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
+      process.env.TWITTER_ENABLE_DISCOVERY;
     const discoveryEnabled =
-      parseBooleanValue(
-        getSetting(runtime, "TWITTER_ENABLE_DISCOVERY") ??
-          process.env.TWITTER_ENABLE_DISCOVERY,
-      ) ?? actionsEnabled;
+      discoverySetting === undefined
+        ? actionsEnabled
+        : parseBooleanFromText(discoverySetting);
 
     if (discoveryEnabled) {
       logger.info("Twitter discovery service is ENABLED");
