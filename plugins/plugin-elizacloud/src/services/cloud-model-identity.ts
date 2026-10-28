@@ -79,6 +79,7 @@ export function isCloudCatalogModelAvailable(
   const requested = parseModelId(configuredId);
   if (!requested) return false;
   const candidates = new Set<string>();
+  const exactCandidates = new Set<string>();
   for (const entry of models) {
     const identity = cloudCatalogModelIdentity(entry.id, entry.provider);
     if (requested.provider) {
@@ -90,8 +91,14 @@ export function isCloudCatalogModelAvailable(
         continue;
       if (entry.id === configuredId || requested.provider === "cerebras") return true;
     } else if (identity?.model === requested.model) {
-      candidates.add(JSON.stringify([identity.provider, identity.model]));
+      const key = JSON.stringify([identity.provider, identity.model]);
+      candidates.add(key);
+      if (entry.id === configuredId) exactCandidates.add(key);
     }
   }
-  return !requested.provider && candidates.size === 1;
+  // A literal catalog id selects that route, even when a qualified route on
+  // another provider has the same model name. Conflicting owners for the
+  // literal id remain ambiguous; only absent literal ids use name matching.
+  return !requested.provider &&
+    (exactCandidates.size > 0 ? exactCandidates.size === 1 : candidates.size === 1);
 }

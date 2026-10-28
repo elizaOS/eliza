@@ -141,6 +141,21 @@ describe("CloudModelRegistryService.getTextModelReadiness", () => {
 describe("provider-bound catalog transport identities", () => {
   const pinned = "cerebras/qwen-3.8-27b";
   const settings = () => ({ ELIZAOS_CLOUD_SMALL_MODEL: pinned, ELIZAOS_CLOUD_LARGE_MODEL: pinned });
+  it("accepts the literal public catalog id when another provider has the same model name", async () => {
+    catalog.entries = [
+      { id: "gpt-oss-120b", owned_by: "cerebras" },
+      { id: "openai/gpt-oss-120b", owned_by: "openai" },
+    ];
+    const selected = {
+      ELIZAOS_CLOUD_SMALL_MODEL: "gpt-oss-120b",
+      ELIZAOS_CLOUD_LARGE_MODEL: "gpt-oss-120b",
+    };
+    const original = { ...selected };
+    const registry = await startRegistry(selected);
+    expect(registry.getTextModelReadiness().status).toBe("available");
+    expect(selected).toEqual(original);
+    expect(modelRequests).toBe(1);
+  });
   it("accepts the actual public bare and colon Cerebras entries for the unchanged native slash binding", async () => {
     catalog.entries = [
       { id: "qwen-3.8-27b", owned_by: "cerebras" },
