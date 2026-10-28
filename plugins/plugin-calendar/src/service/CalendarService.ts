@@ -7941,10 +7941,7 @@ export class CalendarService extends Service {
       "calendar_event_updated",
     );
     if (request.responseStatus === "declined") {
-      // A decline must stop the follow-ups immediately, not at the next
-      // feed sync: drop the reminder plans and reconcile the auto-join
-      // tasks against the declined event.
-      await this.deleteCalendarReminderPlansForEvents([event.id]);
+      // A decline must stop auto-join at once, not at the next feed sync.
       await reconcileMeetingAutoJoin({
         runtime: this.runtime,
         agentId: this.agentId(),
