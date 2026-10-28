@@ -14,7 +14,7 @@ public final class CloudSignInEnvironment {
  public final String apiHost;
  /** Web host that serves the app's verified return link. */
  public final String callbackHost;
- /** Steward tenant for this deployment. */
+ /** Steward tenant for this deployment, in Steward's own tenant id shape. */
  public final String tenant;
  /** Public name of the deployment, shown in the authorization dialog. */
  public final String serviceName;
@@ -24,7 +24,8 @@ public final class CloudSignInEnvironment {
  public CloudSignInEnvironment(String name, String apiHost, String callbackHost, String tenant, String serviceName, String callbackPath) {
   if (name == null || !name.matches("[a-z][a-z0-9-]{0,31}")) throw new IllegalArgumentException("Invalid Cloud environment name");
   if (apiHost == null || !apiHost.matches(HOST) || callbackHost == null || !callbackHost.matches(HOST)) throw new IllegalArgumentException("Invalid Cloud host");
-  if (tenant == null || !tenant.matches("[a-z0-9][a-z0-9-]{0,63}")) throw new IllegalArgumentException("Invalid Steward tenant");
+  // Every tenant id Steward accepts (its isValidTenantId), so a host never refuses a real tenant.
+  if (tenant == null || !tenant.matches("[A-Za-z0-9_.:-]{1,64}")) throw new IllegalArgumentException("Invalid Steward tenant");
   if (serviceName == null || serviceName.trim().isEmpty() || serviceName.length() > 80 || !serviceName.matches("[^\\p{Cc}\\p{Cf}]+")) throw new IllegalArgumentException("Invalid service name");
   if (callbackPath == null || !callbackPath.matches("(/[A-Za-z0-9._~-]+)+")) throw new IllegalArgumentException("Invalid callback path");
   this.name = name; this.apiHost = apiHost; this.callbackHost = callbackHost; this.tenant = tenant; this.serviceName = serviceName.trim(); this.callbackPath = callbackPath;

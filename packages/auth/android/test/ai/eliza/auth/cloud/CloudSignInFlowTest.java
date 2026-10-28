@@ -28,6 +28,11 @@ public final class CloudSignInFlowTest {
   refused(() -> new CloudSignInEnvironment("production", "API.eliza.app", "eliza.app", "elizacloud", "Eliza Cloud", "/a"), "upper-case host");
   refused(() -> new CloudSignInEnvironment("production", "api.eliza.app", "eliza.app", "elizacloud", "Eliza Cloud", "a/b"), "relative callback path");
   refused(() -> new CloudSignInEnvironment("production", "api.eliza.app", "eliza.app", "elizacloud", "Eliza\nCloud", "/a"), "control character in a name");
+  refused(() -> new CloudSignInEnvironment("production", "api.eliza.app", "eliza.app", "elizacloud", "Eliza‮Cloud", "/a"), "format character in a name");
+  // Any tenant id Steward accepts is admitted; nothing that could change the providers query or a body.
+  check("Org_Tenant.v2:eu-1".equals(new CloudSignInEnvironment("production", "api.eliza.app", "eliza.app", "Org_Tenant.v2:eu-1", "Eliza Cloud", "/a").tenant), "Steward tenant id shape");
+  for (String tenant : new String[]{"", "tenant id", "tenant&x=1", "tenant/x", "t".repeat(65), null})
+   refused(() -> new CloudSignInEnvironment("production", "api.eliza.app", "eliza.app", tenant, "Eliza Cloud", "/a"), "refused tenant " + tenant);
   refused(() -> TestRegistration.base().build(), "no environment");
   refused(() -> TestRegistration.base().environment(production).environment(production).build(), "duplicate environment");
   refused(() -> TestRegistration.base().clientId("Example App").environment(production).build(), "client id shape");

@@ -294,6 +294,15 @@ test("the plugin owns every secret, compares state before burning and logs only 
     plugin.replace(diagnostic, ""),
     /android\.util\.Log|System\.out|printStackTrace|Log\.[dewiv]\(/,
   );
+  // The tenant is encoded in both provider reads.
+  assert.equal(
+    (
+      plugin.match(
+        /\/steward\/auth\/providers\?tenantId=" \+ Uri\.encode\(environment\.tenant\)/g,
+      ) || []
+    ).length,
+    2,
+  );
   // Results carry no secret.
   for (const resolved of plugin.match(/\.resolve\([^;]*;/g) || [])
     assert.doesNotMatch(
@@ -474,4 +483,23 @@ public class NativeGoogleObserverTest {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("the Gradle library declares what its plugin compiles against", () => {
+  const gradle = read(join(root, "build.gradle"));
+  assert.match(gradle, /namespace 'ai\.eliza\.auth\.cloud'/);
+  assert.match(gradle, /implementation project\(':capacitor-android'\)/);
+  // Plugin.getActivity() returns an AppCompatActivity, and Capacitor does not export AppCompat.
+  assert.match(gradle, /implementation "androidx\.appcompat:appcompat:/);
+  for (const dependency of [
+    "androidx.credentials:credentials:",
+    "androidx.credentials:credentials-play-services-auth:",
+    "com.google.android.libraries.identity.googleid:googleid:",
+  ])
+    assert.ok(gradle.includes(dependency), dependency);
+  assert.doesNotMatch(
+    read(join(root, "src/main/AndroidManifest.xml")),
+    /<(activity|service|receiver|provider|uses-permission|intent-filter)\b/,
+    "the library declares no component, permission or link; hosts do",
+  );
 });

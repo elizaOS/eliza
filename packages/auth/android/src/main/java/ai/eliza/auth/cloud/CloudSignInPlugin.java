@@ -53,7 +53,6 @@ import org.json.JSONTokener;
  */
 public abstract class CloudSignInPlugin extends Plugin {
  private static final int RESPONSE_LIMIT = 256 * 1024;
- private static final long RETURN_GRACE_MS = 1500;
 
  /** Thrown with a stable, non-secret code the renderer maps to copy. */
  public static final class SignInFailure extends Exception {
@@ -66,7 +65,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   final long startedAt = System.currentTimeMillis();
   final CloudSignInEnvironment environment;
   final boolean google;
-  volatile boolean cancelled, browserLaunched, browserPaused, callbackReceived;
+  volatile boolean cancelled, callbackReceived;
   volatile HttpURLConnection connection;
   volatile android.os.CancellationSignal googleCancellation;
   String googleVerifier, googleChallengeId;
@@ -114,33 +113,15 @@ public abstract class CloudSignInPlugin extends Plugin {
 
  @Override public void load() {
   super.load();
-  // A return that starts the process (the app was stopped while the Custom Tab was open) is matched
-  // against the encrypted pending record. A plain start leaves that record alone: it expires on its
-  // own, and a launcher restart must not discard a sign-in still in the browser.
+  // A browser return that starts the process (a sign-in an earlier build began in the browser) is
+  // matched against the encrypted pending record. A plain start leaves that record alone: it expires
+  // on its own, and a launcher restart must not discard a sign-in still in the browser.
   captureCallback(getActivity().getIntent());
   run(this::resumeAcknowledgements);
   // Warm the cached readiness answer so opening sign-in rarely waits for it.
   probe(config().defaultEnvironment(), null, false);
  }
  @Override protected void handleOnNewIntent(Intent intent) { super.handleOnNewIntent(intent); captureCallback(intent); }
- @Override protected void handleOnPause() { synchronized (lock) { if (attempt != null && attempt.google && attempt.browserLaunched) attempt.browserPaused = true; } super.handleOnPause(); }
- /**
-  * Android delivers a returning App Link with onNewIntent before onResume. Coming back to the app
-  * after the Custom Tab opened, without a return, ends the waiting step (after a short grace for a
-  * late intent). The pending record is kept until it expires or the owner starts again, so a return
-  * that still arrives from the browser completes the sign-in (signInCompleted).
-  */
- @Override protected void handleOnResume() {
-  super.handleOnResume();
-  final Attempt current;
-  synchronized (lock) { current = attempt; }
-  if (current == null || !current.google || !current.browserPaused) return;
-  main.postDelayed(() -> {
-   boolean closed;
-   synchronized (lock) { closed = attempt == current && !current.callbackReceived && !current.cancelled; }
-   if (closed) end(current, "browser-closed", false);
-  }, RETURN_GRACE_MS);
- }
  @Override protected void handleOnDestroy() {
   destroyed = true;
   synchronized (lock) { if (attempt != null) attempt.cancel(); attempt = null; }
@@ -234,7 +215,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   boolean registered = CloudSignInReadiness.registered(registration.status, registration.data.opt("success"), registration.data.optString("clientId", null),
    registration.data.optString("environment", null), registration.data.optString("redirectUri", null), registration.data.optString("codeChallengeMethod", null), config(), environment);
   if (!registered) return CloudSignInReadiness.Result.notReady(now);
-  Response providers = get(environment.api() + "/steward/auth/providers?tenantId=" + environment.tenant);
+  Response providers = get(environment.api() + "/steward/auth/providers?tenantId=" + Uri.encode(environment.tenant));
   if (providers.status != 200) return CloudSignInReadiness.Result.notReady(now);
   JSONObject captcha = providers.data.optJSONObject("captcha");
   JSONArray required = captcha == null ? null : captcha.optJSONArray("requiredFor");
@@ -441,7 +422,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   synchronized (lock) {
    long now = System.currentTimeMillis();
    if (attempt != null && (attempt.google || attempt.busy)) { call.reject("Another sign-in is in progress", "login-active"); return; }
-   // One send a minute from this device, whatever the address (Steward also limits sends server-side).
+   // The send interval applies across email and SMS, whatever the address (Steward also limits sends server-side).
    if (now < lastEmailSendAt + CloudSignInFlow.RESEND_COOLDOWN_MS) { call.reject("Wait before requesting another code", "cooldown"); return; }
    if (attempt != null) attempt.cancel();
    current = new Attempt(environment, false);
@@ -472,7 +453,7 @@ public abstract class CloudSignInPlugin extends Plugin {
   if (!CloudSignInReadiness.registered(registration.status, registration.data.opt("success"), registration.data.optString("clientId", null),
    registration.data.optString("environment", null), registration.data.optString("redirectUri", null), registration.data.optString("codeChallengeMethod", null), config(), environment))
    throw new SignInFailure("unavailable");
-  Response providers = get(environment.api() + "/steward/auth/providers?tenantId=" + environment.tenant);
+  Response providers = get(environment.api() + "/steward/auth/providers?tenantId=" + Uri.encode(environment.tenant));
   JSONObject captcha = providers.data.optJSONObject("captcha");
   JSONArray required = captcha == null ? null : captcha.optJSONArray("requiredFor");
   List<String> requiredFor = required == null ? null : new ArrayList<>();
