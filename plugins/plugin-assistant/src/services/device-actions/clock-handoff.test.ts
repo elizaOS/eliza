@@ -130,10 +130,10 @@ describe("owner-facing review text", () => {
   it("names the product and never claims creation or ringing", () => {
     const text = describeClockHandoff(
       validateClockHandoffDispatch(set({ days: [6, 2, 3, 4, 5] })),
-      "Alpha",
+      "Acme Phone",
     );
     expect(text).toBe(
-      "Ask Clock to set 07:05 in Europe/London, repeating weekdays named “Gym”. Review the alarm in Clock; Alpha cannot confirm creation or ringing.",
+      "Ask Clock to set 07:05 in Europe/London, repeating weekdays named “Gym”. Review the alarm in Clock; Acme Phone cannot confirm creation or ringing.",
     );
     const dismiss = describeClockHandoff(
       { type: "clock_handoff", action: "dismiss" },
