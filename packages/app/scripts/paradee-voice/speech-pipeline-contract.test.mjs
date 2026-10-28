@@ -108,6 +108,7 @@ test("validated speech over the shared session: bounds, silence, streamed chunks
           "NativeAsr",
           "InferenceSession",
           "VoiceAssets",
+          "VoiceBundleAssets",
           "LocalSpeechEngine",
           "SpeechStreamValidation",
           "SessionSpeech",
