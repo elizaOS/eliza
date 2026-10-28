@@ -29,7 +29,7 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
 ]);
 
 const SENSITIVE_RESPONSE_KEY_RE =
-  /password|secret|api.?key|private.?key|passphrase|mnemonic|seed|authorization|connection.?string|credential|(?<!max)tokens?$|(?:^|_)pat$/i;
+  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
 
 /** Honest GET /api/config payloads are a handful of objects deep. */
 export const MAX_CONFIG_FILTER_DEPTH = 32;
