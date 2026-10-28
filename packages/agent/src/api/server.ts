@@ -1060,12 +1060,9 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
-        // Telegram connector setup: a guest session can swap in its own
-        // bot token, hijack the user-account login, or wipe the owner's
-        // Telegram credentials. Scoped to these two prefixes only; other
-        // connectors' setup routes are a separate audit surface.
-        under("/api/setup/telegram") ||
-        under("/api/setup/telegram-account") ||
+        // Connector setup (Telegram, Discord, iMessage): saves, replaces or
+        // clears the owner's connector credentials and sessions.
+        under("/api/setup") ||
         under("/api/config") ||
         under("/api/character") ||
         // Deleting a stored file removes the owner's attachments for good.
