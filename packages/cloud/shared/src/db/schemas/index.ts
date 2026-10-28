@@ -47,7 +47,6 @@ export * from "./agent-compute-stop-intents";
 export * from "./agent-compute-subjects";
 export * from "./agent-events";
 export * from "./agent-funding-retentions";
-export * from "./agent-identities";
 export * from "./agent-node-incarnation-histories";
 export * from "./agent-pairing-tokens";
 export * from "./agent-phone-contacts";
