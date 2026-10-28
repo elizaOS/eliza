@@ -183,7 +183,20 @@ export function validateCalendarCreateAuthority(
         .toLowerCase()
         .split(/[^\p{L}\p{N}@._+-]+/u)
         .map((word) => word.replace(/^[._+-]+|[._+-]+$/g, ""));
-      if (!words.includes(email.toLowerCase())) return invalid();
+      if (!words.includes(email.toLowerCase())) {
+        // A guest the owner named without an address, given an address the
+        // owner never wrote, is a missing address: ask for it instead of
+        // reporting the whole extraction as invalid evidence.
+        const name = typeof item.name === "string" ? item.name.trim() : "";
+        if (
+          name &&
+          guest.texts.some((text) =>
+            text.toLowerCase().includes(name.toLowerCase()),
+          )
+        )
+          return clarify("CALENDAR_ATTENDEE_IDENTITY_REQUIRED");
+        return invalid();
+      }
       attendees.push({
         email,
         optional: item.optional === true,
