@@ -1,11 +1,13 @@
 /**
  * Renders the open view when its registration carries a lazy component.
  * Views a product still renders itself have no loader and render nothing
- * here. A failed load stays visible with a retry; it is never shown as empty.
+ * here. A failed load, or a view that throws while rendering, stays visible
+ * with a retry; it is never shown as empty, and the error reaches `onError`.
  */
 import {
   Component,
   type ComponentType,
+  type ErrorInfo,
   type LazyExoticComponent,
   lazy,
   type ReactNode,
@@ -33,13 +35,30 @@ function lazyView(loader: MobileViewLoader, attempt: number): LazyView {
   return view;
 }
 
+export type MobileViewError = (
+  error: unknown,
+  context: { viewId: string; componentStack?: string | null },
+) => void;
+
 class LoadBoundary extends Component<
-  { label: string; onRetry: () => void; children: ReactNode },
+  {
+    label: string;
+    viewId: string;
+    onRetry: () => void;
+    onError?: MobileViewError;
+    children: ReactNode;
+  },
   { failed: boolean }
 > {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    this.props.onError?.(error, {
+      viewId: this.props.viewId,
+      componentStack: info.componentStack,
+    });
   }
   render() {
     if (!this.state.failed) return this.props.children;
@@ -64,6 +83,7 @@ export function MobileViewHost({
   registry,
   view,
   onClose,
+  onError,
   fallback = null,
 }: {
   registry: MobileViewRegistry;
@@ -71,16 +91,25 @@ export function MobileViewHost({
   view: string | null;
   onClose: () => void;
   fallback?: ReactNode;
+  /** Receives each load or render failure of the open view, for reporting. */
+  onError?: MobileViewError;
 }) {
-  const [attempt, setAttempt] = useState(0);
+  // Retries are counted per view, so retrying one view never reloads another.
+  const [attempts, setAttempts] = useState<Record<string, number>>({});
   const registration = view === null ? undefined : registry.find(view);
   if (!registration?.loader) return null;
+  const { id } = registration;
+  const attempt = attempts[id] ?? 0;
   const View = lazyView(registration.loader, attempt);
   return (
     <LoadBoundary
-      key={`${registration.id}:${attempt}`}
+      key={`${id}:${attempt}`}
       label={registration.label}
-      onRetry={() => setAttempt((value) => value + 1)}
+      viewId={id}
+      onError={onError}
+      onRetry={() =>
+        setAttempts((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }))
+      }
     >
       <Suspense fallback={fallback}>
         <View viewId={registration.id} onClose={onClose} />

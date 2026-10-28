@@ -583,9 +583,23 @@ describe("launcher join", () => {
         throw new Error("SecurityError");
       },
     });
+    const registry = registryFor();
     shell.syncViews();
     expect(shell.migration).toMatchObject({ status: "failed" });
-    expect(shell.homeEntries()).toEqual([]);
+    const home = shell.homeEntries();
+    expect(home.map((entry) => entry.key)).toEqual(
+      registry.available().map((view) => registry.launcherKey(view)),
+    );
+    expect(home.length).toBeGreaterThan(0);
+    // Nothing can be saved, and the launcher says so instead of dropping the choice.
+    const first = shell.launcher.favoriteApps()[0];
+    shell.launcher.toggleFavorite(first);
+    expect(shell.launcher.snapshot().launchError).toBe(
+      "Favorites could not be saved. Nothing changed.",
+    );
+    expect(shell.homeEntries().map((entry) => entry.key)).toEqual(
+      home.map((entry) => entry.key),
+    );
   });
 
   it("reads the inventory for Home only when an installed app is a favorite", () => {
@@ -690,11 +704,21 @@ describe("Home, All apps and view host", () => {
       views: [{ id: "notes", loader }],
     });
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const onError = vi.fn();
     render(
-      <MobileViewHost registry={registry} view="notes" onClose={() => {}} />,
+      <MobileViewHost
+        registry={registry}
+        view="notes"
+        onClose={() => {}}
+        onError={onError}
+      />,
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Notes could not be opened.",
+    );
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "chunk" }),
+      expect.objectContaining({ viewId: "notes" }),
     );
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
@@ -708,6 +732,38 @@ describe("Home, All apps and view host", () => {
       <MobileViewHost registry={registry} view="calendar" onClose={() => {}} />,
     );
     expect(container.innerHTML).toBe("");
+  });
+
+  it("counts retries per view, so retrying one view never reloads another", async () => {
+    let failNotes = true;
+    const notes = vi.fn(async () => {
+      if (failNotes) throw new Error("chunk");
+      return { default: () => <p>Notes view</p> };
+    });
+    const calendar = vi.fn(async () => ({
+      default: () => <p>Calendar view</p>,
+    }));
+    const registry = createMobileViewRegistry(product(), {
+      views: [
+        { id: "notes", loader: notes },
+        { id: "calendar", loader: calendar },
+      ],
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = (view: string) => (
+      <MobileViewHost registry={registry} view={view} onClose={() => {}} />
+    );
+    const { rerender } = render(host("calendar"));
+    await screen.findByText("Calendar view");
+    rerender(host("notes"));
+    await screen.findByRole("alert");
+    failNotes = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByText("Notes view");
+    rerender(host("calendar"));
+    expect(screen.getByText("Calendar view")).toBeTruthy();
+    expect(calendar).toHaveBeenCalledTimes(1);
+    quiet.mockRestore();
   });
 });
 

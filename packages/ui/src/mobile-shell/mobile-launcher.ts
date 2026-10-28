@@ -72,10 +72,23 @@ export function createMobileShellLauncher(options: {
       // Storage itself is unavailable; the launcher then reads no favorites either.
       migration = { status: "failed", message: String(error) };
     }
-    store = localFavorites(storage, {
+    const local = localFavorites(storage, {
       key: names.launcherFavorites,
       defaultPolicy: names.launcherDefaultPolicy,
     });
+    // Unavailable storage holds no saved choice, so Home starts from the
+    // product's defaults; saving still fails visibly through the launcher.
+    store = {
+      ...local,
+      read() {
+        try {
+          storage().getItem(names.launcherFavorites);
+        } catch {
+          return null;
+        }
+        return local.read();
+      },
+    };
   }
   // Native plugin proxies resolve methods when they are read, so each method
   // is delegated by name; spreading the bridge would drop them.
