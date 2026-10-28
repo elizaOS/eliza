@@ -9,6 +9,7 @@ import {
   llmTrajectoryService,
   type TrajectoryExportOptions,
 } from "@elizaos/cloud-shared/lib/services/llm-trajectory";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -110,6 +111,7 @@ async function __hono_GET(request: Request) {
       return Response.json(error.toJSON(), { status: error.status });
     }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
+    logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
         error: "Failed to export trajectories",
@@ -145,6 +147,7 @@ async function __hono_POST(request: Request) {
       return Response.json(error.toJSON(), { status: error.status });
     }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
+    logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
         error: "Failed to export trajectories",

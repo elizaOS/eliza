@@ -5,6 +5,7 @@ import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/pr
 import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
 import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -86,6 +87,7 @@ async function __hono_PATCH(
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    logger.error("[Google Calendar] Failed to update event:", error);
     return Response.json(
       {
         error: "Failed to update Google Calendar event.",
@@ -146,6 +148,7 @@ async function __hono_DELETE(
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    logger.error("[Google Calendar] Failed to delete event:", error);
     return Response.json(
       {
         error: "Failed to delete Google Calendar event.",

@@ -7,6 +7,7 @@ import {
 } from "@elizaos/cloud-shared/lib/auth";
 import { vertexModelRegistryService } from "@elizaos/cloud-shared/lib/services/vertex-model-registry";
 import type { VertexTuningSlot } from "@elizaos/cloud-shared/lib/services/vertex-tuning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -114,6 +115,7 @@ async function __hono_GET(request: Request) {
     if (error instanceof ApiError) {
       return Response.json(error.toJSON(), { status: error.status });
     }
+    logger.error("[Training] Failed to list tuned-model assignments:", error);
     return Response.json(
       {
         error: "Failed to list tuned-model assignments",

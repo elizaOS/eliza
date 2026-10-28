@@ -12,6 +12,7 @@ import {
   oauthService,
 } from "@elizaos/cloud-shared/lib/services/oauth";
 import { getProvider } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -83,6 +84,7 @@ app.post("/", async (c) => {
         error.httpStatus as 400,
       );
     }
+    logger.error("[Eliza App] Failed to initiate OAuth:", error);
     return c.json(
       {
         error: "Failed to initiate OAuth",

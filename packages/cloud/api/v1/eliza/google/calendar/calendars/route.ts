@@ -3,6 +3,7 @@ import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/pr
 // Handles v1 cloud API v1 eliza google calendar calendars route traffic with route-local auth expectations.
 
 import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -43,6 +44,7 @@ async function __hono_GET(request: Request, env: AppEnv["Bindings"]) {
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    logger.error("[Google Calendar] Failed to list calendars:", error);
     return Response.json(
       {
         error: "Failed to list Google calendars.",

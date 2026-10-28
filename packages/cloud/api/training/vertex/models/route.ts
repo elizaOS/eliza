@@ -7,6 +7,7 @@ import type {
   VertexTuningScope,
   VertexTuningSlot,
 } from "@elizaos/cloud-shared/lib/services/vertex-tuning";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -92,6 +93,7 @@ async function __hono_GET(request: Request) {
     if (error instanceof ApiError) {
       return Response.json(error.toJSON(), { status: error.status });
     }
+    logger.error("[Training] Failed to list tuned models:", error);
     return Response.json(
       {
         error: "Failed to list tuned models",
