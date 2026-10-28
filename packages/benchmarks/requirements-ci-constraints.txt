@@ -48,7 +48,7 @@ rank-bm25==0.2.2
 RapidFuzz==3.14.6
 requests==2.34.2
 rich==14.3.4
-setuptools==84.1.0
+setuptools==84.2.1
 soupsieve==2.10
 sympy==1.14.0
 thefuzz==0.22.1
