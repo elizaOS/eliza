@@ -571,7 +571,9 @@ export function subPlannerResultToPlannerToolResult(
     ...subResult.trajectory.steps,
   ];
   const lastStep = allSteps[allSteps.length - 1];
-  const success = evaluator?.success ?? lastStep?.result?.success ?? true;
+  const success = subResult.terminalFailure
+    ? false
+    : (evaluator?.success ?? lastStep?.result?.success ?? true);
   const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
   const internalTerminalPayload =
     lastStep?.result?.transcriptVisibility === "internal" &&
@@ -643,10 +645,9 @@ export function subPlannerResultToPlannerToolResult(
       ? {
           subPlannerEvaluation: {
             decision: "FINISH" as const,
-            success: evaluator.success === true,
-            ...(typeof evaluator.messageToUser === "string" &&
-            evaluator.messageToUser.trim()
-              ? { messageToUser: evaluator.messageToUser }
+            success: success === true,
+            ...(typeof userFacingText === "string" && userFacingText.trim()
+              ? { messageToUser: userFacingText }
               : {}),
           },
         }
