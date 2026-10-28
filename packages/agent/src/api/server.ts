@@ -1062,10 +1062,7 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
       (pathname.startsWith("/api/wallet/") ||
         under("/api/config") ||
         under("/api/character") ||
-        // Driving the owner's agent browser (navigate, click, type,
-        // screenshots, cookies, storage, clipboard) and model selection
-        // writes into the same config the owner gate protects.
-        under("/api/browser-workspace") ||
+        // Model selection writes into the same config the owner gate protects.
         under("/api/models/config") ||
         // Deleting a stored file removes the owner's attachments for good.
         under("/api/files") ||
