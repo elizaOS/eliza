@@ -1367,9 +1367,17 @@ async function runPlannerLoopIterations(
     if (trajectory.plannedQueue.length === 0) {
       const contextBeforePlanner = trajectory.context;
       let synthesizingRequiredModelReply = pendingRequiredModelReply;
-      // Keep the terminal contract byte-stable across rounds. Required text and
-      // receipt proof are state-dependent runtime checks, not schema variants
-      // that invalidate every following cached tool-definition prefix.
+      // An omitted reply can only release the immediately preceding verified
+      // answer. Ordinary planning must supply text instead of terminating with
+      // an empty REPLY and spending separate recovery/grounding model calls.
+      // The contract stays stable until a verified answer is actually held;
+      // release still revalidates context, evidence and scope after planning.
+      const canReleaseHeldReply =
+        !codingDrainQueue &&
+        pendingScopeRejectedFinish?.iteration === iteration - 1 &&
+        pendingScopeRejectedFinish.output.protocolFailure !== true &&
+        Boolean(pendingScopeRejectedFinish.output.messageToUser?.trim()) &&
+        !latestUnresolvedFailedNonTerminalToolStep(trajectory);
       const plannerTools = params.tools?.map((tool) => {
         const schema = tool.parameters;
         if (tool.name !== "REPLY" || !schema?.properties?.text) return tool;
@@ -1381,6 +1389,7 @@ async function runPlannerLoopIterations(
               ...schema.properties,
               text: {
                 ...schema.properties.text,
+                minLength: canReleaseHeldReply ? 0 : 1,
                 description:
                   "Complete grounded user-facing reply. Omit only to release an already verified held reply; without one, provide nonempty text.",
               },
@@ -1391,9 +1400,12 @@ async function runPlannerLoopIterations(
                   "Supplied committed receipt IDs for changes claimed in text; [] for no change claims. Never invent IDs.",
               },
             },
-            required: (schema.required ?? []).filter(
-              (name) => name !== "text" && name !== "effectReceiptIds",
-            ),
+            required: [
+              ...(schema.required ?? []).filter(
+                (name) => name !== "text" && name !== "effectReceiptIds",
+              ),
+              ...(!canReleaseHeldReply ? ["text"] : []),
+            ],
           },
         };
       });
