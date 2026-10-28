@@ -99,7 +99,23 @@ test("identifiers carry no prose, URLs, paths or control characters", () => {
       /identifier is invalid/,
       id,
     );
-  for (const revision of ['"unterminated', "W/x", "a b", "x".repeat(257)])
+  // Provider entity tags share the 256-character revision bound.
+  const longest = `W/"${"e".repeat(252)}"`;
+  assert.equal(
+    parseClientTurnObservation({
+      view: "calendar",
+      revision: 1,
+      selectedObject: { kind: "calendar-event", id: "e1", revision: longest },
+    }).selectedObject?.revision,
+    longest,
+  );
+  for (const revision of [
+    '"unterminated',
+    "W/x",
+    "a b",
+    "x".repeat(257),
+    `W/"${"e".repeat(253)}"`,
+  ])
     assert.throws(
       () =>
         parseClientTurnObservation({

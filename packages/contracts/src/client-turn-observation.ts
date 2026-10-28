@@ -48,7 +48,9 @@ const NAME = /^[a-z][a-z0-9-]{0,63}$/;
 const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,511}$/;
 const TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@=+-]{0,255}$/;
 // Provider versions may be strong or weak HTTP entity tags.
-const ENTITY_TAG = /^(?:W\/)?"[!#-~]{1,250}"$/;
+// Bounded by REVISION_MAX_LENGTH like every other revision form.
+const ENTITY_TAG = /^(?:W\/)?"[!#-~]+"$/;
+const REVISION_MAX_LENGTH = 256;
 const TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z0-9_+-]+){0,3}$/;
 const OBSERVATION_KEYS = new Set([
   "view",
@@ -127,6 +129,7 @@ function selectedObject(value: unknown): ClientSelectedObject {
   if (input.revision !== undefined) {
     if (
       typeof input.revision !== "string" ||
+      input.revision.length > REVISION_MAX_LENGTH ||
       !(TOKEN.test(input.revision) || ENTITY_TAG.test(input.revision))
     )
       throw new ClientTurnObservationError(
