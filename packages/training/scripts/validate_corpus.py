@@ -650,13 +650,15 @@ def _record_id(rec: dict, line_no: int) -> str:
 
 
 def iter_records(path: Path, max_records: int | None) -> Iterable[tuple[int, dict]]:
+    records = 0
     with path.open("r", encoding="utf-8", errors="strict") as f:
         for i, line in enumerate(f, start=1):
-            if max_records is not None and i > max_records:
-                return
             line = line.strip()
             if not line:
                 continue
+            if max_records is not None and records >= max_records:
+                return
+            records += 1
             try:
                 yield i, json.loads(line)
             except json.JSONDecodeError as e:
