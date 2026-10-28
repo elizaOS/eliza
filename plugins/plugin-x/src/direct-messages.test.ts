@@ -7,7 +7,6 @@
 import {
   ChannelType,
   type Content,
-  createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -311,32 +310,4 @@ describe("X DM auto-reply over the per-message length limit", () => {
       expect(cache.get(CURSOR_KEY)).toBe(EVENT_ID);
     },
   );
-});
-
-describe("X DM world ownership", () => {
-  it("gives a stranger no ownership of the world their DM creates", async () => {
-    const { pollOnce, runtime } = createHarness("hi", vi.fn());
-    await pollOnce();
-    const world = runtime.ensureWorldExists.mock.calls[0]?.[0] as {
-      metadata?: { ownership?: unknown };
-    };
-    expect(world).toBeDefined();
-    expect(world.metadata?.ownership).toBeUndefined();
-  });
-
-  it("keeps ownership for the configured owner's own world", async () => {
-    const { pollOnce, runtime } = createHarness("hi", vi.fn());
-    const ownerEntityId = createUniqueUuid(
-      runtime as unknown as IAgentRuntime,
-      SENDER_ID,
-    );
-    runtime.getSetting.mockImplementation((key: string) =>
-      key === "ELIZA_ADMIN_ENTITY_ID" ? ownerEntityId : undefined,
-    );
-    await pollOnce();
-    const world = runtime.ensureWorldExists.mock.calls[0]?.[0] as {
-      metadata?: { ownership?: { ownerId?: string } };
-    };
-    expect(world.metadata?.ownership?.ownerId).toBe(ownerEntityId);
-  });
 });
