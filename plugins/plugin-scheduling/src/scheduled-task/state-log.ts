@@ -105,7 +105,7 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
         }
       }
       const summaries: ScheduledTaskLogEntry[] = [];
-      const replacedIds = new Set<string>();
+      const replaced = new Set<ScheduledTaskLogEntry>();
       for (const summary of summaryByKey.values()) {
         // The summary identity carries no pass counter: one row per task, day
         // and transition, exactly as the SQL and record stores key it. A later
@@ -116,26 +116,10 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
           summary.dayIso,
           summary.transition,
         ])}`;
-        const previous = rows.find((row) => row.logId === logId);
-        if (
-          previous &&
-          (!previous.rolledUp ||
-            previous.agentId !== agentId ||
-            previous.taskId !== summary.taskId ||
-            previous.transition !== summary.transition)
-        ) {
-          throw new Error(
-            `Scheduling rollup identity ${logId} collides with another log`,
-          );
-        }
-        const previousCount = previous?.detail?.rollupCount;
-        const carried =
-          typeof previousCount === "number" &&
-          Number.isSafeInteger(previousCount) &&
-          previousCount > 0
-            ? previousCount
-            : 0;
-        if (previous) replacedIds.add(logId);
+        const previous = rows.find(
+          (row) => row.logId === logId && row.agentId === agentId,
+        );
+        if (previous) replaced.add(previous);
         summaries.push({
           logId,
           taskId: summary.taskId,
@@ -144,13 +128,16 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
           transition: summary.transition,
           reason: summary.firstReason,
           rolledUp: true,
-          detail: { rollupCount: carried + summary.count },
+          detail: {
+            rollupCount:
+              Number(previous?.detail?.rollupCount ?? 0) + summary.count,
+          },
         });
       }
       // Replace the expired raw rows and the summaries they fold into.
       const expiredIds = new Set(expired.map((r) => r.logId));
       const remaining = rows.filter(
-        (r) => !expiredIds.has(r.logId) && !replacedIds.has(r.logId),
+        (r) => !expiredIds.has(r.logId) && !replaced.has(r),
       );
       rows.length = 0;
       rows.push(...remaining, ...summaries);
