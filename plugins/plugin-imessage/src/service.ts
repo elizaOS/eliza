@@ -1124,6 +1124,15 @@ export class IMessageService extends Service implements IIMessageService {
                   roomId: target.roomId,
                   orderBy: "createdAt",
                   orderDirection: "desc",
+                  // The platform path is capped at 15000; the
+                  // fallback had no cap at all, so a search on a
+                  // room whose platform read came back empty
+                  // materialized its entire stored history to
+                  // filter in memory. The read is already
+                  // newest-first, so the cap keeps the newest
+                  // 15000 — the same tradeoff the platform path
+                  // accepts.
+                  limit: 15000,
                 })
               : [];
         return filterMemoriesByQuery(memories, params.query, limit);
