@@ -5,7 +5,11 @@
  * uploaded or handed off implicitly. The lock-screen secure camera stays a system surface and is
  * not served through these ports.
  */
-import type { PhotoResult } from "./definitions";
+import type {
+  PhotoResult,
+  VideoCaptureOptions,
+  VideoResult,
+} from "./definitions";
 
 export type CameraAccessKind = "camera" | "microphone";
 
@@ -99,6 +103,11 @@ export interface CameraHostPorts {
     label: string;
     run(photo: PhotoResult, operationId: string): Promise<CameraKeepOutcome>;
   };
+  /**
+   * Video mode. Present only when the host can keep a recording; without it the surface offers
+   * photos only. Same identity rules as `keep`.
+   */
+  video?: CameraVideoPort;
   /** Other explicit hand-offs of the reviewed capture (for example scan review or a question). */
   actions?: readonly CameraCaptureAction[];
   /**
@@ -108,22 +117,37 @@ export interface CameraHostPorts {
   checkAccess?: () => Promise<{ camera?: string }>;
 }
 
+/**
+ * Host port for recordings. A finished recording is only reviewed until the owner keeps it; the
+ * host's storage port decides where a kept recording lives (for example its own owned-media
+ * store). A recording the owner retakes, or one that finished after the surface closed, is handed
+ * to `discard` so the host can release the bridge's file; nothing is kept implicitly.
+ */
+export interface CameraVideoPort {
+  /** Recording options for the next recording (limits, audio). Defaults to the bridge's. */
+  options?(): VideoCaptureOptions;
+  keep: {
+    label: string;
+    run(video: VideoResult, operationId: string): Promise<CameraKeepOutcome>;
+  };
+  /** Release a recording that was not kept. Failures are the host's to report. */
+  discard?(video: VideoResult): Promise<void> | void;
+}
+
 /** A fresh operation identity for one capture's Keep. */
 export function captureOperationId(): string {
   return globalThis.crypto.randomUUID();
 }
 
-/**
- * Runs the host's Keep port. A thrown port or a malformed answer is an unknown outcome, never a
- * claimed save; the caller keeps the same operation identity for a retry.
- */
-export async function keepCapture(
-  keep: NonNullable<CameraHostPorts["keep"]>,
-  photo: PhotoResult,
+/** Runs one Keep port; a thrown port or malformed answer is unknown, never a claimed save. */
+async function runKeep<T>(
+  run: (item: T, operationId: string) => Promise<CameraKeepOutcome>,
+  item: T,
   operationId: string,
+  noun: "photo" | "video",
 ): Promise<CameraKeepOutcome> {
   try {
-    const outcome = await keep.run(photo, operationId);
+    const outcome = await run(item, operationId);
     if (outcome?.status === "saved") return outcome;
     if (outcome?.status === "failed" || outcome?.status === "unknown")
       return {
@@ -131,14 +155,34 @@ export async function keepCapture(
         message:
           typeof outcome.message === "string" && outcome.message
             ? outcome.message
-            : "The photo was not kept.",
+            : `The ${noun} was not kept.`,
       };
   } catch {
     // Fall through: the store's answer was lost.
   }
   return {
     status: "unknown",
-    message:
-      "Keeping this photo could not be confirmed. Check the library before trying again.",
+    message: `Keeping this ${noun} could not be confirmed. Check the library before trying again.`,
   };
+}
+
+/**
+ * Runs the host's Keep port. A thrown port or a malformed answer is an unknown outcome, never a
+ * claimed save; the caller keeps the same operation identity for a retry.
+ */
+export function keepCapture(
+  keep: NonNullable<CameraHostPorts["keep"]>,
+  photo: PhotoResult,
+  operationId: string,
+): Promise<CameraKeepOutcome> {
+  return runKeep((item, id) => keep.run(item, id), photo, operationId, "photo");
+}
+
+/** Runs the host's video Keep port under the same rules as `keepCapture`. */
+export function keepRecording(
+  keep: CameraVideoPort["keep"],
+  video: VideoResult,
+  operationId: string,
+): Promise<CameraKeepOutcome> {
+  return runKeep((item, id) => keep.run(item, id), video, operationId, "video");
 }

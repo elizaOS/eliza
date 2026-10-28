@@ -11,25 +11,39 @@
  *
  * Hosts pass `ports` to decide where an explicit capture goes (keep it in their
  * own media store, hand it to a scan review or a question). Without ports a
- * capture is only previewed; nothing is kept or handed off implicitly. The
- * lock-screen secure camera stays a system surface.
+ * capture is only previewed; nothing is kept or handed off implicitly. A host
+ * that passes `ports.video` also gets a video mode: a finished recording is
+ * reviewed, kept only through the host's video Keep port, and handed back to
+ * the host's `discard` when it is retaken or left unkept. The lock-screen
+ * secure camera stays a system surface.
  */
 import {
   Camera,
   type CameraDirection,
   type CameraHostPorts,
   type CameraKeepOutcome,
+  type CameraPreviewOptions,
   type CameraSession,
   type CameraStartOutcome,
   cameraAccessDenied,
   captureOperationId,
   createCameraSession,
   keepCapture,
+  keepRecording,
   type PhotoResult,
   restartAfterResume,
+  type VideoCaptureOptions,
+  type VideoResult,
 } from "@elizaos/capacitor-camera";
 import { AlertTriangle, Loader2, RotateCcw, SwitchCamera } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { appNameInterpolationVars } from "../../config/branding-base";
 import { useBranding } from "../../config/branding-react.hooks";
 import { useTranslation } from "../../state/TranslationContext.hooks";
@@ -37,6 +51,7 @@ import { PermissionRecoveryCallout } from "../permissions/PermissionRecoveryCall
 import { Button } from "../ui/button";
 
 type PreviewStatus = "starting" | "live" | "denied" | "error";
+type CaptureMode = "photo" | "video";
 
 function photoDataUrl(photo: PhotoResult): string {
   if (photo.base64.startsWith("data:")) return photo.base64;
@@ -56,6 +71,18 @@ function isPermissionDeniedError(err: unknown): boolean {
 }
 
 const UNAVAILABLE = "Camera is not available on this device.";
+
+/** Hand an unkept recording back to the host; a failed release is the host's to report. */
+async function discardRecording(
+  port: CameraHostPorts["video"],
+  video: VideoResult,
+): Promise<void> {
+  try {
+    await port?.discard?.(video);
+  } catch {
+    // Nothing further: the host owns the recording's file.
+  }
+}
 
 export interface CameraPageViewProps {
   /** Host capture/storage ports; see `CameraHostPorts`. */
@@ -77,6 +104,20 @@ export function CameraPageView({
   const [operationId, setOperationId] = useState<string | null>(null);
   const [kept, setKept] = useState<CameraKeepOutcome | null>(null);
   const [handing, setHanding] = useState(false);
+  const [mode, setMode] = useState<CaptureMode>("photo");
+  const [video, setVideo] = useState<VideoResult | null>(null);
+  const [recordingFailed, setRecordingFailed] = useState(false);
+  // Re-render when the shared session's recording state changes.
+  const [, sessionChanged] = useReducer((tick: number) => tick + 1, 0);
+  const videoPort = ports?.video;
+  const videoPortRef = useRef(videoPort);
+  videoPortRef.current = videoPort;
+  // The reviewed recording, read by the unmount cleanup and session hooks.
+  const reviewRef = useRef<{ video: VideoResult | null; saved: boolean }>({
+    video: null,
+    saved: false,
+  });
+  reviewRef.current = { video, saved: kept?.status === "saved" };
   const statusRef = useRef<PreviewStatus>("starting");
   const disposedRef = useRef(false);
   statusRef.current = status;
@@ -87,7 +128,11 @@ export function CameraPageView({
   // and drops answers that arrive after the view unmounted.
   const session: CameraSession = useMemo(
     () =>
-      createCameraSession({
+      createCameraSession<
+        CameraPreviewOptions,
+        VideoCaptureOptions,
+        VideoResult
+      >({
         camera: Camera,
         active: () => !disposedRef.current && !!previewRef.current,
         preview: () => ({
@@ -95,7 +140,24 @@ export function CameraPageView({
           direction: facingRef.current,
           mirror: false,
         }),
-        recording: () => ({}),
+        recording: () => videoPortRef.current?.options?.() ?? {},
+        hooks: {
+          changed: sessionChanged,
+          recordingSaved: (receipt) => {
+            // A recording that finished after the view closed is never kept implicitly.
+            if (disposedRef.current) {
+              void discardRecording(videoPortRef.current, receipt);
+              return;
+            }
+            setRecordingFailed(false);
+            setVideo(receipt);
+            setOperationId(captureOperationId());
+            setKept(null);
+          },
+          recordingFailed: () => {
+            if (!disposedRef.current) setRecordingFailed(true);
+          },
+        },
       }),
     [],
   );
@@ -155,6 +217,9 @@ export function CameraPageView({
     void startPreview(false);
     return () => {
       disposedRef.current = true;
+      const review = reviewRef.current;
+      if (review.video && !review.saved)
+        void discardRecording(videoPortRef.current, review.video);
       // The session releases the preview after any start in flight; a failed
       // stop has no further recourse and the next start resets native state.
       void session.stop();
@@ -231,19 +296,55 @@ export function CameraPageView({
     }
   }, [busy, session, status]);
 
+  const handleRecord = useCallback(async () => {
+    if (status !== "live") return;
+    if (session.recording) {
+      await session.finishRecording();
+      return;
+    }
+    if (busy || session.busy) return;
+    setError(null);
+    setRecordingFailed(false);
+    const started = await session.startRecording();
+    if (disposedRef.current) return;
+    if (started === "denied")
+      setError(
+        t("camera.microphoneDenied", {
+          defaultValue:
+            "Microphone access is off. Allow it in Settings to record video with sound.",
+        }),
+      );
+    else if (started === "failed")
+      setError(
+        t("camera.recordingStartFailed", {
+          defaultValue: "Recording could not start.",
+        }),
+      );
+  }, [busy, session, status, t]);
+
   const handleRetake = useCallback(() => {
+    const review = reviewRef.current;
+    if (review.video && !review.saved)
+      void discardRecording(videoPortRef.current, review.video);
     setPhoto(null);
+    setVideo(null);
     setOperationId(null);
     setKept(null);
   }, []);
 
   const keep = ports?.keep;
   const handleKeep = useCallback(async () => {
-    if (!keep || !photo || !operationId || handing || kept?.status === "saved")
-      return;
+    if (!operationId || handing || kept?.status === "saved") return;
+    let run: () => Promise<CameraKeepOutcome>;
+    if (video && videoPort) {
+      const port = videoPort.keep;
+      run = () => keepRecording(port, video, operationId);
+    } else if (photo && keep) {
+      run = () => keepCapture(keep, photo, operationId);
+    } else return;
     setHanding(true);
     try {
-      const outcome = await keepCapture(keep, photo, operationId);
+      const outcome = await run();
       setKept(outcome);
       // A definite failure kept nothing, and a store keeps that receipt for its identity, so the
       // next Keep uses a fresh one. An unknown outcome keeps this identity, so a retry resolves
@@ -252,7 +353,7 @@ export function CameraPageView({
     } finally {
       setHanding(false);
     }
-  }, [handing, keep, kept, operationId, photo]);
+  }, [handing, keep, kept, operationId, photo, video, videoPort]);
 
   const handleAction = useCallback(
     async (run: (photo: PhotoResult) => Promise<void> | void) => {
@@ -404,15 +505,72 @@ export function CameraPageView({
         </div>
       ) : null}
 
-      {/* Live controls — only while the preview is running and no photo is up. */}
-      {status === "live" && !photo ? (
+      {/* Recorded-video review overlay. The recording stays with the host's
+          bridge until the owner keeps or retakes it. */}
+      {video && videoPort ? (
+        <div
+          data-testid="camera-video"
+          className="absolute inset-0 grid place-items-center bg-black"
+        >
+          <p className="text-sm text-white/80">
+            {t("camera.videoRecorded", {
+              defaultValue: "Video recorded ({{seconds}} s)",
+              seconds: Math.max(1, Math.round(video.duration)),
+            })}
+          </p>
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-2 p-[calc(env(safe-area-inset-bottom,0px)+1.5rem)]">
+            {kept ? (
+              <p
+                data-testid="camera-keep-status"
+                role="status"
+                className="rounded-full bg-black/70 px-3 py-1.5 text-center text-xs text-white"
+              >
+                {kept.status === "saved"
+                  ? (kept.message ??
+                    t("camera.videoKept", { defaultValue: "Video kept." }))
+                  : kept.message}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Button
+                variant="secondary"
+                onClick={handleRetake}
+                disabled={handing}
+                data-testid="camera-retake"
+              >
+                <RotateCcw className="size-4" aria-hidden />
+                {t("camera.retake", { defaultValue: "Retake" })}
+              </Button>
+              <Button
+                onClick={handleKeep}
+                disabled={handing || kept?.status === "saved"}
+                data-testid="camera-keep"
+              >
+                {videoPort.keep.label}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Live controls — only while the preview is running and nothing is up for review. */}
+      {status === "live" && !photo && !video ? (
         <>
+          {session.recording ? (
+            <div
+              data-testid="camera-recording"
+              role="status"
+              className="absolute left-4 top-[calc(env(safe-area-inset-top,0px)+1rem)] rounded-full bg-danger/90 px-3 py-1.5 text-xs text-danger-foreground"
+            >
+              {t("camera.recording", { defaultValue: "Recording" })}
+            </div>
+          ) : null}
           <div className="absolute right-4 top-[calc(env(safe-area-inset-top,0px)+1rem)]">
             <Button
               data-testid="camera-switch"
               aria-label={t("camera.switch", { defaultValue: "Switch camera" })}
               onClick={handleSwitch}
-              disabled={busy}
+              disabled={busy || session.busy}
               variant="surface"
               size="icon-lg"
               shape="circle"
@@ -421,30 +579,94 @@ export function CameraPageView({
             </Button>
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center p-[calc(env(safe-area-inset-bottom,0px)+1.75rem)]">
-            <Button
-              data-testid="camera-capture"
-              aria-label={t("camera.capture", { defaultValue: "Take photo" })}
-              onClick={handleCapture}
-              disabled={busy}
-              variant="surface"
-              size="icon-lg"
-              shape="circle"
-            >
-              {busy ? (
-                <Loader2
-                  className="size-6 animate-spin text-white"
-                  aria-hidden
-                />
-              ) : (
-                <span className="size-14 rounded-full bg-white" />
-              )}
-            </Button>
+          <div className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-center gap-3 p-[calc(env(safe-area-inset-bottom,0px)+1.75rem)]">
+            {videoPort && !session.busy ? (
+              <div className="flex gap-2">
+                {(["photo", "video"] as const).map((option) => (
+                  <Button
+                    key={option}
+                    data-testid={`camera-mode-${option}`}
+                    aria-pressed={mode === option}
+                    variant={mode === option ? "default" : "secondary"}
+                    size="sm"
+                    onClick={() => setMode(option)}
+                    disabled={busy}
+                  >
+                    {option === "photo"
+                      ? t("camera.modePhoto", { defaultValue: "Photo" })
+                      : t("camera.modeVideo", { defaultValue: "Video" })}
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+            {videoPort && mode === "video" ? (
+              <Button
+                data-testid="camera-record"
+                aria-label={
+                  session.recording
+                    ? t("camera.stopRecording", {
+                        defaultValue: "Stop recording",
+                      })
+                    : t("camera.record", { defaultValue: "Record video" })
+                }
+                onClick={() => void handleRecord()}
+                disabled={
+                  busy ||
+                  session.recordingStarting ||
+                  session.finalizing ||
+                  (!session.recording && session.busy)
+                }
+                variant="surface"
+                size="icon-lg"
+                shape="circle"
+              >
+                {session.recordingStarting || session.finalizing ? (
+                  <Loader2
+                    className="size-6 animate-spin text-white"
+                    aria-hidden
+                  />
+                ) : session.recording ? (
+                  <span className="size-8 rounded-md bg-danger" />
+                ) : (
+                  <span className="size-14 rounded-full bg-danger" />
+                )}
+              </Button>
+            ) : (
+              <Button
+                data-testid="camera-capture"
+                aria-label={t("camera.capture", { defaultValue: "Take photo" })}
+                onClick={handleCapture}
+                disabled={busy}
+                variant="surface"
+                size="icon-lg"
+                shape="circle"
+              >
+                {busy ? (
+                  <Loader2
+                    className="size-6 animate-spin text-white"
+                    aria-hidden
+                  />
+                ) : (
+                  <span className="size-14 rounded-full bg-white" />
+                )}
+              </Button>
+            )}
           </div>
         </>
       ) : null}
 
       {/* Non-fatal error toast over a live preview. */}
+      {recordingFailed && !error && status === "live" ? (
+        <div
+          data-testid="camera-error"
+          role="alert"
+          className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+1rem)] mx-auto w-fit max-w-[90%] rounded-full bg-danger/90 px-3 py-1.5 text-center text-xs text-danger-foreground"
+        >
+          {t("camera.recordingFailed", {
+            defaultValue: "The recording could not be saved.",
+          })}
+        </div>
+      ) : null}
       {error && status === "live" ? (
         <div
           data-testid="camera-error"

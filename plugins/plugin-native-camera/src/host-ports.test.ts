@@ -3,11 +3,12 @@
  * recovery that never re-prompts, and Keep outcomes that never claim an unconfirmed save.
  */
 import { describe, expect, it, vi } from "vitest";
-import type { PhotoResult } from "./definitions";
+import type { PhotoResult, VideoResult } from "./definitions";
 import {
   cameraAccessDenied,
   captureOperationId,
   keepCapture,
+  keepRecording,
   restartAfterResume,
 } from "./host-ports";
 
@@ -140,5 +141,47 @@ describe("keepCapture", () => {
         "op",
       ),
     ).toMatchObject({ status: "unknown" });
+  });
+});
+
+describe("keepRecording", () => {
+  const video: VideoResult = {
+    path: "/cache/rec.mp4",
+    duration: 3,
+    width: 4,
+    height: 3,
+    fileSize: 10,
+    mimeType: "video/mp4",
+  };
+  it("passes the recording and identity, and never claims an unconfirmed save", async () => {
+    const run = vi.fn(async () => ({ status: "saved" as const, id: "v:7" }));
+    expect(await keepRecording({ label: "Keep", run }, video, "op")).toEqual({
+      status: "saved",
+      id: "v:7",
+    });
+    expect(run).toHaveBeenCalledWith(video, "op");
+    expect(
+      await keepRecording(
+        { label: "Keep", run: async () => ({ status: "failed", message: "" }) },
+        video,
+        "op",
+      ),
+    ).toEqual({ status: "failed", message: "The video was not kept." });
+    expect(
+      await keepRecording(
+        {
+          label: "Keep",
+          run: async () => {
+            throw new Error("bridge closed");
+          },
+        },
+        video,
+        "op",
+      ),
+    ).toEqual({
+      status: "unknown",
+      message:
+        "Keeping this video could not be confirmed. Check the library before trying again.",
+    });
   });
 });
