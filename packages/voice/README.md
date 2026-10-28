@@ -28,6 +28,24 @@ stop, binding changes and owner-input pauses are handled; approvals are never gi
 has no DOM, storage, network or platform speech imports, and `bun run --cwd packages/voice test`
 covers it with fake ports (not microphone, recognition, playback or latency evidence).
 
+## Live ASR and voice-turn route clients
+
+`@elizaos/voice/live-session` is the client of plugin-local-inference's on-device live ASR route
+(`POST /api/asr/local-inference/live`). `createLiveVoiceSession` forwards the host's 16 kHz mono
+frames and VAD edges in order, shows `voice-transcript` partials as display-only interim text
+when the transport carries the agent event stream, and delivers each turn's final once (from the
+response or the event). `createLiveSegmentStream` maps one continuous capture onto it: one result
+per closed VAD segment (null when the segment produced no transcript), stop reconciliation
+(`cutoff` drops audio stamped after the stop, `close` ends the open segment at it) and `cancel`
+(discard). Its handlers are the `listen` port of `VoiceAssistantSession`.
+
+`@elizaos/voice/turn-routes` holds the clients for the resident's end-of-turn route
+(`residentEndpoint`, the controller's `endpoint` port: unavailable, malformed or over-long input is
+never complete) and the heard route (`createHeardReporter`: after a barge-in only the played
+prefix is kept, with one retry and never blocking the next turn). Hosts supply the owner-bound
+request port; neither module carries audio anywhere else, stores or logs text. Vitest covers them
+against stub agents; this is not microphone, recognition, scorer or latency evidence.
+
 ## Browser voice capture
 
 `@elizaos/voice/browser-capture` records one MediaRecorder clip at a time. The host admits

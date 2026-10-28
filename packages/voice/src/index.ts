@@ -44,6 +44,30 @@ export {
   wordCount,
 } from "./first-sentence-snip.js";
 export type {
+  LiveAudioFrame,
+  LiveFinal,
+  LiveMode,
+  LiveSegmentHandlers,
+  LiveSegmentStream,
+  LiveTranscriptEvent,
+  LiveVadEdge,
+  LiveVoiceLatency,
+  LiveVoiceSession,
+  LiveVoiceSessionOptions,
+  LiveVoiceTransport,
+} from "./live-voice-session.js";
+export {
+  createLiveSegmentStream,
+  createLiveVoiceSession,
+  encodeLiveFrame,
+  LIVE_ASR_PATH,
+  LIVE_ASR_STATUS_PATH,
+  LIVE_SAMPLE_RATE,
+  parseLiveFinal,
+  parseVoiceTranscriptEnvelope,
+  webSocketAgentEvents,
+} from "./live-voice-session.js";
+export type {
   NlmsEchoCancellerOptions,
   ResidualSuppressionOptions,
 } from "./nlms-echo-canceller.js";
@@ -93,6 +117,21 @@ export {
   VoiceAssistantSession,
 } from "./voice-assistant-session.js";
 export { scoreEndOfTurnHeuristic } from "./voice-eot.js";
+export type {
+  EndOfTurnUnavailableReason,
+  HeardOutcome,
+  HeardReport,
+  HeardReporterPorts,
+  ResidentRequest,
+} from "./voice-turn-routes.js";
+export {
+  createHeardReporter,
+  END_OF_TURN_MAX_CHARS,
+  END_OF_TURN_PATH,
+  heardPath,
+  readEndOfTurn,
+  residentEndpoint,
+} from "./voice-turn-routes.js";
 export {
   MAX_WER_EDIT_CELLS,
   MAX_WER_INPUT_CHARS,
