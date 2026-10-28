@@ -1319,7 +1319,7 @@ export class RemindersDomain {
     subjectType: LifeOpsSubjectType;
     scheduledFor: string;
     dueAt: string | null;
-  }): Promise<void> {
+  }): Promise<string | undefined> {
     const metadata = {
       ownerType: args.ownerType,
       ownerId: args.ownerId,
@@ -1328,6 +1328,7 @@ export class RemindersDomain {
       dueAt: args.dueAt,
     };
     const chatText = args.text.trim();
+    let notificationId: string | undefined;
     let notificationDelivery: AutonomyNotificationDelivery | undefined;
     // Also push onto the unified notification rail so the reminder lands in
     // the notification center and reaches desktop/mobile (focus-gated) — not
@@ -1369,6 +1370,9 @@ export class RemindersDomain {
               deepLink: "/chat",
               groupKey: `reminder:${args.ownerType}:${args.ownerId}`,
               data: { ...metadata, ...target },
+            }).then((result) => {
+              if (isRecord(result) && typeof result.id === "string") notificationId = result.id;
+              return result;
             })),
         };
       } catch (error) {
@@ -1421,6 +1425,7 @@ export class RemindersDomain {
       );
       throw error;
     }
+    return notificationId;
   }
 
   public async readRecentReminderConversation(args: {
@@ -3288,6 +3293,27 @@ export class RemindersDomain {
     activityProfile: ReminderActivityProfileSnapshot | null,
     now: Date,
   ): Promise<void> {
+    const notifier = this.ctx.runtime.getService(ServiceType.NOTIFICATION) as {
+      listIncludingExpired?: () => { id: string; agentId?: string; source: string; category: string; groupKey?: string; data?: Record<string, unknown>; createdAt: number; readAt?: number | null }[];
+    } | null;
+    const notifications = notifier?.listIncludingExpired?.() ?? [];
+    for (const attempt of attempts) {
+      if (attempt.channel !== "in_app" || attempt.outcome !== "delivered" || attempt.agentId !== this.ctx.agentId()) continue;
+      const id = attempt.deliveryMetadata.notificationId;
+      if (typeof id !== "string") continue;
+      const notification = notifications.find((row) => row.id === id);
+      const attemptedAt = Date.parse(attempt.attemptedAt ?? "");
+      if (!notification || notification.agentId !== attempt.agentId || notification.source !== "lifeops" || notification.category !== "reminder"
+        || notification.groupKey !== `reminder:${attempt.ownerType}:${attempt.ownerId}`
+        || notification.data?.ownerType !== attempt.ownerType || notification.data?.ownerId !== attempt.ownerId
+        || notification.data?.scheduledFor !== attempt.scheduledFor
+        || typeof notification.readAt !== "number" || !Number.isFinite(notification.readAt) || notification.readAt < attemptedAt
+        || notification.createdAt < attemptedAt || notification.readAt > now.getTime()) continue;
+      await this.ctx.repository.updateReminderAttemptOutcome(attempt.id, "delivered_read", {
+        notificationId: id, readDetectedAt: new Date(notification.readAt).toISOString(), readEvidence: "notification_read",
+      });
+      attempt.outcome = "delivered_read";
+    }
     if (!activityProfile?.lastSeenAt) {
       return;
     }
@@ -5340,7 +5366,7 @@ export class RemindersDomain {
     let deliveryError: unknown;
     if (awaitInAppAcceptance) {
       try {
-        await this.emitInAppReminderNudge({
+        const notificationId = await this.emitInAppReminderNudge({
           text: reminderBody,
           presentation,
           ownerType: args.ownerType,
@@ -5349,7 +5375,7 @@ export class RemindersDomain {
           scheduledFor: args.scheduledFor,
           dueAt: args.dueAt,
         });
-        Object.assign(attempt.deliveryMetadata, { reason: null, error: null });
+        Object.assign(attempt.deliveryMetadata, { reason: null, error: null, ...(notificationId ? { notificationId } : {}) });
         await this.ctx.repository.updateReminderAttemptOutcome(
           attempt.id,
           "delivered",
@@ -5422,7 +5448,7 @@ export class RemindersDomain {
       args.channel === "in_app" &&
       !awaitInAppAcceptance
     ) {
-      await this.emitInAppReminderNudge({
+      const notificationId = await this.emitInAppReminderNudge({
         text: reminderBody,
         presentation,
         ownerType: args.ownerType,
@@ -5431,6 +5457,10 @@ export class RemindersDomain {
         scheduledFor: args.scheduledFor,
         dueAt: args.dueAt,
       });
+      if (notificationId) {
+        attempt.deliveryMetadata.notificationId = notificationId;
+        await this.ctx.repository.updateReminderAttemptOutcome(attempt.id, attempt.outcome, attempt.deliveryMetadata);
+      }
     }
     return attempt;
   }
