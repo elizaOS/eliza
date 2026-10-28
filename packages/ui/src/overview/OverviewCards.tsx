@@ -4,9 +4,10 @@
  * read nothing themselves: no provider read, sync or digest run starts here.
  *
  * Presentation is brand-neutral. Every part carries `data-overview-part`;
- * hosts theme the cards with their own classes (`classNames`) and may add
- * compatibility attributes to the root and to any part (`dataAttributes`,
- * `partAttributes`) so installed selectors keep working.
+ * hosts theme the cards with their own classes (`classNames`) or inline styles
+ * (`styles`, `style` for the root) and may add compatibility attributes to the
+ * root and to any part (`dataAttributes`, `partAttributes`) so installed
+ * selectors keep working.
  */
 import type { CSSProperties, ReactNode } from "react";
 import type { OverviewInboxCardState } from "./daily-overview";
@@ -24,6 +25,8 @@ interface OverviewCardBaseProps<Part extends string> {
   classNames?: Partial<Record<Part | "card", string>>;
   /** Host attributes per part; `card` is the root button. */
   partAttributes?: Partial<Record<Part | "card", OverviewPartAttributes>>;
+  /** Host inline styles per part (theme tokens, layout); the root uses `style`. */
+  styles?: Partial<Record<Part, CSSProperties>>;
   /** Root `data-*` attributes (state flags are added by each card). */
   dataAttributes?: OverviewPartAttributes;
   style?: CSSProperties;
@@ -32,12 +35,17 @@ interface OverviewCardBaseProps<Part extends string> {
 }
 
 function partProps<Part extends string>(
-  props: Pick<OverviewCardBaseProps<Part>, "classNames" | "partAttributes">,
+  props: Pick<
+    OverviewCardBaseProps<Part>,
+    "classNames" | "partAttributes" | "styles"
+  >,
   part: Part | "card",
 ) {
+  const style = part === "card" ? undefined : props.styles?.[part as Part];
   return {
     "data-overview-part": part,
     ...(props.classNames?.[part] ? { className: props.classNames[part] } : {}),
+    ...(style ? { style } : {}),
     ...(props.partAttributes?.[part] ?? {}),
   };
 }

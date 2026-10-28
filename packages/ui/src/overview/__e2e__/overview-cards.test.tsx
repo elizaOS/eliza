@@ -124,6 +124,7 @@ describe("OverviewAttentionCard", () => {
           description={model.description}
           state={model.state}
           classNames={{ card: "inbox-card", rows: "inbox-rows" }}
+          styles={{ head: { display: "flex" }, rowTitle: { fontSize: 18 } }}
           partAttributes={{ rows: { "data-host-rows": "" } }}
           dataAttributes={{ "data-host-inbox": "" }}
         />,
@@ -141,6 +142,8 @@ describe("OverviewAttentionCard", () => {
     expect(ready).toMatch(/^<button type="button" data-overview-part="card" class="inbox-card" data-overview-card="attention" data-overview-state="ready" data-host-inbox=""/);
     expect(ready).toContain('<div data-overview-part="rows" class="inbox-rows" data-host-rows="">');
     expect(ready).toContain('data-overview-part="rowDetail">Billing<');
+    expect(ready).toContain('<div data-overview-part="head" style="display:flex">');
+    expect(ready).toContain('<div data-overview-part="rowTitle" style="font-size:18px">Invoice</div>');
     expect(ready).not.toContain("Private body");
     expect(ready).not.toContain('data-overview-part="title"');
     const failed = render(presentOverviewInboxCard({ ...base, failure: "revoked" }, f));
