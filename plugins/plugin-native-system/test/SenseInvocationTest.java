@@ -44,6 +44,25 @@ public final class SenseInvocationTest {
             check("listener".equals(state.take(2,1,OWNER,A,101,false)),"old plugin bind and destroy cannot reset new plugin");
             try {state.bind(1, 1, OWNER, "credential");throw new AssertionError("invalid key");} catch (IllegalArgumentException expected) {}
         }
+        SenseInvocation power=new SenseInvocation();
+        check(!power.recordProtectedPower(1,100,false),"cold power never queues");
+        power.bind(1,1,OWNER,A);check(power.take(1,1,OWNER,A,101,false)==null,"first bind cannot promote power");
+        check(power.recordProtectedPower(1,100,false),"warm bound power recorded");
+        check("power".equals(power.take(1,1,OWNER,A,101,false)),"warm matching power");
+        check(power.take(1,1,OWNER,A,102,false)==null,"power consumed once");
+        power.recordProtectedPower(1,100,false);power.discardProtectedPower(1,1,NEXT,A);
+        check("power".equals(power.take(1,1,OWNER,A,101,false)),"foreign discard cannot consume");
+        power.recordProtectedPower(1,100,false);power.discardProtectedPower(1,1,OWNER,A);
+        check(power.take(1,1,OWNER,A,101,false)==null,"matching blocked power discarded");
+        power.record("ai.elizaos.app","ai.elizaos.app.sense",true,100,false);power.discardProtectedPower(1,1,OWNER,A);
+        check("listener".equals(power.take(1,1,OWNER,A,101,false)),"power discard preserves listener");
+        power.recordProtectedPower(1,100,false);power.bind(1,1,OWNER,B);check(power.take(1,1,OWNER,B,101,false)==null,"account switch clears power");
+        power.bind(1,1,OWNER,A);power.recordProtectedPower(1,100,false);power.bind(2,1,NEXT,A);check(power.take(2,1,NEXT,A,101,false)==null,"new bridge clears power");
+        power.recordProtectedPower(2,100,false);power.bind(2,2,OWNER,A);check(power.take(2,2,OWNER,A,101,false)==null,"new renderer clears power");
+        power.recordProtectedPower(2,100,true);check("assist".equals(power.take(2,2,OWNER,A,101,false)),"locked arrival never deferred");
+        power.recordProtectedPower(2,100,false);check("assist".equals(power.take(2,2,OWNER,A,5101,false)),"power expires");
+        power.recordProtectedPower(2,100,false);check("assist".equals(power.take(2,2,OWNER,A,101,true)),"locked read cannot capture");
+        power.release(2);check(!power.recordProtectedPower(2,100,false),"released bridge cannot mint power");
         System.out.println("PASS native Sense invocation ownership and replay fences");
     }
 }

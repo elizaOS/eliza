@@ -224,3 +224,54 @@ app in front. `test/reset.test.mjs` covers authorization, bounded admission,
 background starts, interrupted dispatch and single dispatch against host-JVM
 stand-ins. Real self-clear, the listener's provider IPC and the recovery task
 returning instead of HOME require installed and device qualification.
+
+### Protected Power entry
+
+A native permission-protected host activity may call
+`SenseListenerClient.recordProtectedPower()` only for a fresh warm invocation on
+its already bound bridge. A weak Activity-to-bridge association is registered only
+after a matching bind, and the native hook verifies the actual exported, enabled,
+nonalias Activity component requires `STATUS_BAR_SERVICE`. An old Activity cannot
+mint or clear an invocation belonging to a newer bridge. It is not a JavaScript method and accepts no caller
+Intent extras. The existing bridge, renderer generation, binding id and owner/session
+lease must already exist. A new activity/WebView, cold start, owner change, reset,
+unbind or disposal clears authority; no pending gesture is promoted at first bind.
+The warm API never promotes a cold invocation. Hosts may separately opt into the
+protected launch authorization below; otherwise cold entry stays surface-only.
+
+The typed controller treats a matching fresh Power receipt as one-shot, just like
+an authenticated listener receipt. If hidden, modal, not ready or already recording,
+it calls the optional owner-bound `discardProtectedPowerInvocation` bridge method.
+Native foreground refusal also discards only that matching pending Power receipt,
+so later focus cannot revive it. That method can clear only the current lease's pending Power origin, never create
+an origin, clear another binding, reset a session or discard listener delivery.
+Actual OS caller permission enforcement, hardware dispatch and speech require
+separate native/device qualification.
+
+
+### Fresh protected launch authorization
+
+A host can authorize a first Power press separately from the warm invocation
+receipt. Its protected Activity calls native-only `beginProtectedPowerLaunch`
+exactly once on a fresh creation, with a native `PowerLaunchValidator`. No
+JavaScript method can create or refresh that grant. It is Activity-local,
+process-local and valid for five seconds from the actual launch. It is never
+saved in an Intent, saved state, or storage.
+
+The native validator pins an already admitted account and a monotonic account
+mutation epoch. `authorize(accountRef, consume)` must check that pin and match
+the renderer's canonical verified account identity under the host's existing
+authorization locks, then invoke `consume` synchronously under those locks.
+The SDK calls host policy without holding SDK locks. The guarded action checks
+the exact current bridge, renderer, binding and session, foreground focus,
+unlocked keyguard and deadline, and can succeed once. A failed attempt spends
+the grant too. The first plugin bridge attaches once; replacement, pause,
+destruction, changed renderer/session or focus loss invalidates it.
+
+Hosts must forward native window focus changes and cancel on their native
+lifecycle changes. The optional controller fields `initialRestorePending` and
+`powerAccountRef` distinguish bounded automatic restoration from interactive
+authentication. A modal, hidden page, active recording, interactive sign-in,
+failed readiness or account change discards the launch. Ordinary listener
+receipts, cold binds, public Assist and the legacy UI hint gain no new authority.
+Source tests do not prove Binder enforcement or installed-device audio.

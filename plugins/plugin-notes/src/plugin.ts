@@ -13,7 +13,11 @@ import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { notesAction } from "./action.js";
 import { NOTES_CAPABILITIES } from "./capabilities.js";
 import { serverInteract } from "./interact.js";
-import { namedNotesProvider, notesProvider } from "./provider.js";
+import {
+  namedNotesProvider,
+  namedNotesRoutingProvider,
+  notesProvider,
+} from "./provider.js";
 import { notesRoutes } from "./routes.js";
 import { NotesService } from "./service.js";
 import { NOTES_SURFACE } from "./surface.js";
@@ -111,7 +115,7 @@ export const notesPlugin: Plugin = {
       },
     }),
   ],
-  providers: [notesProvider, namedNotesProvider],
+  providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,
   views: [

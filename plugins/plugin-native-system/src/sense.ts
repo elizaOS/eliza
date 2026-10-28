@@ -30,13 +30,31 @@ export type ListenerStatus =
       listening: boolean;
       microphoneOpen: boolean;
     };
-export type AssistantInvocation = "listener" | "assist" | null;
+export type AssistantInvocation = "listener" | "power" | "assist" | null;
 export interface SensePlugin {
   status(): Promise<ListenerStatus>;
   pause(): Promise<ListenerStatus>;
   turnOff(): Promise<ListenerStatus>;
   openSettings(): Promise<{ opened: boolean }>;
   bindInvocationSession(options: {
+    generation: number;
+    bindingId: string;
+    sessionKey: string | null;
+  }): Promise<void>;
+  /** Drop only the current owner's pending Power receipt when capture cannot start now. */
+  discardProtectedPowerInvocation?(options: {
+    generation: number;
+    bindingId: string;
+    sessionKey: string;
+  }): Promise<void>;
+  /** Consume only a native-created protected launch grant; this method cannot mint one. */
+  claimProtectedPowerLaunch?(options: {
+    generation: number;
+    bindingId: string;
+    sessionKey: string;
+    accountRef: string;
+  }): Promise<unknown>;
+  discardProtectedPowerLaunch?(options: {
     generation: number;
     bindingId: string;
     sessionKey: string | null;
@@ -71,8 +89,8 @@ export function parseListenerStatus(raw: unknown): ListenerStatus {
 export function parseAssistantInvocation(raw: unknown): AssistantInvocation {
   const value = record(raw);
   return value.assistant === true
-    ? value.invocation === "listener"
-      ? "listener"
+    ? value.invocation === "listener" || value.invocation === "power"
+      ? value.invocation
       : "assist"
     : null;
 }
@@ -88,7 +106,7 @@ export function listenerStartsVoice(input: {
   voiceActive: boolean;
 }): boolean {
   return (
-    input.invocation === "listener" &&
+    (input.invocation === "listener" || input.invocation === "power") &&
     input.unlocked &&
     !input.hidden &&
     !input.dialogOpen &&
@@ -104,6 +122,10 @@ export interface SenseInvocationHost {
   /** Opaque authenticated owner/agent/session tuple. Never include bearer or credential values. */
   authority(): string | null;
   ready(): boolean;
+  /** True only during automatic initial restoration, never interactive authentication. */
+  initialRestorePending?(): boolean;
+  /** Canonical noncredential verified account identity, matched against native launch admission. */
+  powerAccountRef?(): string | null;
   voiceActive(): boolean;
   startVoice(): void;
   subscribe?(changed: () => void): () => void;
@@ -154,7 +176,14 @@ function serializeInvocation<T>(run: () => Promise<T>): Promise<T> {
 
 /** Bind before consuming. Cold-start, changed-owner and stale async results cannot open the mic. */
 export function createSenseInvocationController(
-  native: Pick<SensePlugin, "bindInvocationSession" | "takeInvocation">,
+  native: Pick<
+    SensePlugin,
+    | "bindInvocationSession"
+    | "takeInvocation"
+    | "discardProtectedPowerInvocation"
+    | "claimProtectedPowerLaunch"
+    | "discardProtectedPowerLaunch"
+  >,
   host: SenseInvocationHost,
 ) {
   const bindingId = crypto.randomUUID();
@@ -167,6 +196,7 @@ export function createSenseInvocationController(
     dirty = false,
     initialized = false,
     bound: string | null = null;
+  let coldLaunchAttempted = false;
   const current = (authority: string | null) =>
     !disposed &&
     activeInvocationBinding === bindingId &&
@@ -202,20 +232,66 @@ export function createSenseInvocationController(
         bound = key;
         initialized = true;
       }
+      const initialRestore = host.initialRestorePending?.() === true;
+      const blocked =
+        document.hidden ||
+        host.voiceActive() ||
+        !!document.querySelector(SENSE_MODAL_SELECTOR);
+      if (blocked || (!initialRestore && (key === null || !host.ready()))) {
+        coldLaunchAttempted = true;
+        await serializeInvocation(async () => {
+          if (current(authority))
+            await native.discardProtectedPowerLaunch?.({
+              generation,
+              bindingId,
+              sessionKey: key,
+            });
+        });
+      }
+      if (key === null) return;
       if (
-        key === null ||
         document.hidden ||
         !host.ready() ||
         host.voiceActive() ||
         document.querySelector(SENSE_MODAL_SELECTOR)
+      ) {
+        await serializeInvocation(async () => {
+          if (current(authority))
+            await native.discardProtectedPowerInvocation?.({
+              generation,
+              bindingId,
+              sessionKey: key,
+            });
+        });
+        return;
+      }
+      const accountRef = host.powerAccountRef?.() ?? null;
+      const receipt = await serializeInvocation(async () => {
+        if (!current(authority)) return undefined;
+        if (!initialRestore && !coldLaunchAttempted && host.powerAccountRef) {
+          coldLaunchAttempted = true;
+          const launch =
+            accountRef === null
+              ? undefined
+              : await native.claimProtectedPowerLaunch?.({
+                  generation,
+                  bindingId,
+                  sessionKey: key,
+                  accountRef,
+                });
+          if (parseAssistantInvocation(launch) === "power") return launch;
+        }
+        return current(authority)
+          ? native.takeInvocation({ generation, bindingId, sessionKey: key })
+          : undefined;
+      });
+      if (
+        !current(authority) ||
+        !host.ready() ||
+        host.voiceActive() ||
+        (host.powerAccountRef && host.powerAccountRef() !== accountRef)
       )
         return;
-      const receipt = await serializeInvocation(async () =>
-        current(authority)
-          ? native.takeInvocation({ generation, bindingId, sessionKey: key })
-          : undefined,
-      );
-      if (!current(authority) || !host.ready() || host.voiceActive()) return;
       if (
         listenerStartsVoice({
           invocation: parseAssistantInvocation(receipt),
@@ -259,13 +335,18 @@ export function createSenseInvocationController(
       unsubscribe?.();
       for (const event of events) window.removeEventListener(event, changed);
       document.removeEventListener("visibilitychange", changed);
-      void serializeInvocation(() =>
-        native.bindInvocationSession({
+      void serializeInvocation(async () => {
+        await native.discardProtectedPowerLaunch?.({
+          generation,
+          bindingId,
+          sessionKey: bound,
+        });
+        await native.bindInvocationSession({
           generation,
           bindingId,
           sessionKey: null,
-        }),
-      ).catch(() => {});
+        });
+      }).catch(() => {});
     },
   };
 }

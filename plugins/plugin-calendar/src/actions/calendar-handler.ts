@@ -4014,7 +4014,9 @@ async function inferCreateEventDetails(
     `Calendar context:\n${formatCreateEventCalendarContext(calendarContext)}`,
     `Original user evidence source IDs (quote the matching original above; current: IDs refer to FINAL CURRENT REQUEST below): ${JSON.stringify(userSources.map(({ id }) => id))}`,
     `Verified note references: ${JSON.stringify(verifiedNoteReferences)}`,
-    "Return explicit guestIntent and noteIntent with state none/requested/unresolved and evidence [{sourceId,quote}] copied exactly from the original user catalog. For none cite the complete current original; missing fields are not none. A request that names no guest, invitee or other person to add is none with guests []: never add the owner, a contact, a planner suggestion or an example address as a guest. Requested guests must list every name and email, null when unknown. Missing guest addresses or ambiguous pronouns require clarification, never a guestless event. Planner-proposed identities are not evidence. Requested sourceNote must copy an exact verified reference for the note the user named or selected; if unavailable or ambiguous, clarify. Set noteIntent.descriptionMode to verbatim only when the user asks to copy the source note body exactly; otherwise use extracted. Never use a planner description as the note body.",
+    "Return explicit guestIntent and noteIntent with state none/requested/unresolved and evidence [{sourceId,quote}] copied exactly from the original user catalog. For none cite the complete current original; missing fields are not none.",
+    "guestIntent describes requested recipients or calendar invitations, not people named in a private event's subject or title. Recording a meeting with someone on the owner's calendar does not by itself request an invitation: preserve the person in the title, and use none with guests [] when no recipient effect was requested. Never add the owner, a contact, a planner suggestion or an example address as a guest. Use requested when the original user asks to invite or add someone as a guest; use unresolved when that recipient intent is unclear. A planner-proposed attendee or address cannot establish this intent.",
+    "Requested guests must list every name and email, null when unknown. A missing requested guest address or ambiguous guest reference requires clarification, never a guestless event. Do not change a requested invitation to none to avoid asking for its address. Planner-proposed identities are not evidence. Requested sourceNote must copy an exact verified reference for the note the user named or selected; if unavailable or ambiguous, clarify. Set noteIntent.descriptionMode to verbatim only when the user asks to copy the source note body exactly; otherwise use extracted. Never use a planner description as the note body.",
     nativeConstraints
       ? "Destination: owner-confirmed native phone calendar; no managed account identifiers."
       : `Proposed destination (not authority): ${JSON.stringify({ grantId: connectorGrantIdDetail(proposedDetails) ?? ELIZA_CALENDAR_GRANT_ID, calendarId: calendarIdDetail(proposedDetails) ?? ELIZA_CALENDAR_ID })}`,
@@ -7326,34 +7328,52 @@ export function createCalendarActionRunner(
           // validation or provider call rejected the turn (live 2026-08-09: a
           // swallowed "mode must be one of ..." surfaced only as
           // CALENDAR_SERVICE_400).
-          runtime.reportError("calendar:action", error, {
-            // The action owns this clarification; keep diagnostics without
-            // escalating repeated missing guest details into a second reply.
-            diagnosticOnly:
-              error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
-              error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
-              error.code === "CALENDAR_CREATE_EVIDENCE_INVALID",
-            subaction: subaction ?? "none",
-            status: error.status,
-            code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
-            detail: error.message,
-            // Raw, deliberately: this diagnostic exists to show the operator what
-            // the planner actually authored. Reporting the sanitized values would
-            // render a placeholder id or a reversed window as "unset" and delete
-            // the evidence for the exact input class the sanitizers absorb, so
-            // both are reported — raw for diagnosis, effective for what ran.
-            calendarId: detailString(details, "calendarId") ?? "unset",
-            effectiveCalendarId: calendarIdDetail(details) ?? "unset",
-            timeMin: detailString(details, "timeMin") ?? "unset",
-            timeMax: detailString(details, "timeMax") ?? "unset",
-            effectiveWindow: plannerWindowDetail(details, planningTimeZone)
-              ? `${plannerWindowDetail(details, planningTimeZone)?.timeMin}..${plannerWindowDetail(details, planningTimeZone)?.timeMax}`
-              : "unset",
-            timeZone: detailString(details, "timeZone") ?? "unset",
-            mode: detailString(details, "mode") ?? "unset",
-            side: detailString(details, "side") ?? "unset",
-            grantId: detailString(details, "grantId") ?? "unset",
-          });
+          const coachingFailure =
+            error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
+            error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+            error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||
+            (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
+              explicitSubaction === "search_events" &&
+              searchQueries.length === 0) ||
+            ((subaction === "feed" || subaction === "search_events") &&
+              (error.code === "CALENDAR_READ_DATE_INVALID" ||
+                error.code === "CALENDAR_READ_DATE_CONFLICT"));
+          runtime.reportError(
+            "calendar:action",
+            new ElizaError(error.message, {
+              code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+              cause: error,
+            }),
+            {
+              // The action owns this clarification; keep diagnostics without
+              // escalating repeated missing guest details into a second reply.
+              diagnosticOnly:
+                error.code === "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" ||
+                error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
+                error.code === "CALENDAR_CREATE_EVIDENCE_INVALID" ||
+                (error.status === 400 && coachingFailure),
+              subaction: subaction ?? "none",
+              status: error.status,
+              code: error.code ?? `CALENDAR_SERVICE_${error.status}`,
+              detail: error.message,
+              // Raw, deliberately: this diagnostic exists to show the operator what
+              // the planner actually authored. Reporting the sanitized values would
+              // render a placeholder id or a reversed window as "unset" and delete
+              // the evidence for the exact input class the sanitizers absorb, so
+              // both are reported — raw for diagnosis, effective for what ran.
+              calendarId: detailString(details, "calendarId") ?? "unset",
+              effectiveCalendarId: calendarIdDetail(details) ?? "unset",
+              timeMin: detailString(details, "timeMin") ?? "unset",
+              timeMax: detailString(details, "timeMax") ?? "unset",
+              effectiveWindow: plannerWindowDetail(details, planningTimeZone)
+                ? `${plannerWindowDetail(details, planningTimeZone)?.timeMin}..${plannerWindowDetail(details, planningTimeZone)?.timeMax}`
+                : "unset",
+              timeZone: detailString(details, "timeZone") ?? "unset",
+              mode: detailString(details, "mode") ?? "unset",
+              side: detailString(details, "side") ?? "unset",
+              grantId: detailString(details, "grantId") ?? "unset",
+            },
+          );
           const fallback = buildCalendarServiceErrorFallback(error, intent);
           const rejectedArgument = rejectedArgumentForCalendarServiceError(
             error.code,
@@ -7367,17 +7387,7 @@ export function createCalendarActionRunner(
             data: {
               // This typed preflight rejection performed no read or effect. Keep
               // its receipt and evaluation while allowing a corrected plan to finish.
-              ...(error.code === "CALENDAR_TARGET_SELECTOR_INVALID" ||
-              error.code === "CALENDAR_ATTENDEE_ARGUMENT_INVALID" ||
-              error.code === "CALENDAR_TRIP_LOCATION_REQUIRED" ||
-              (error.code === "CALENDAR_SEARCH_QUERY_REQUIRED" &&
-                explicitSubaction === "search_events" &&
-                searchQueries.length === 0) ||
-              ((subaction === "feed" || subaction === "search_events") &&
-                (error.code === "CALENDAR_READ_DATE_INVALID" ||
-                  error.code === "CALENDAR_READ_DATE_CONFLICT"))
-                ? { coachingFailure: true }
-                : {}),
+              ...(coachingFailure ? { coachingFailure: true } : {}),
               actionName: "CALENDAR",
               subaction,
               error: error.code ?? `CALENDAR_SERVICE_${error.status}`,
