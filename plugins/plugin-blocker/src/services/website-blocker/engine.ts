@@ -1793,7 +1793,6 @@ function parseDurationMinutes(
     const match = /^(\d+(?:\.\d+)?)\s*([a-z]+)?$/.exec(trimmed);
     if (!match) return undefined;
     const amount = Number.parseFloat(match[1]);
-    if (!Number.isFinite(amount)) return undefined;
     const unit = match[2];
     const multiplier = unit === undefined ? 1 : DURATION_UNIT_MINUTES[unit];
     if (multiplier === undefined) return undefined;

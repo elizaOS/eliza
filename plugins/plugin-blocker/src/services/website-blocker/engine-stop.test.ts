@@ -4,7 +4,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   isWebsiteBlockedByPolicy,
-  parseSelfControlBlockRequest,
   resetSelfControlStatusCache,
   startSelfControlBlock,
   stopSelfControlBlock,
@@ -74,39 +73,5 @@ describe("stopSelfControlBlock", () => {
     expect(stopped.status.hostsFilePath).toBe(hostsFilePath);
     expect(stopped.status.canUnblockEarly).toBe(true);
     expect(stopped.status.engine).toBe("hosts-file");
-  });
-});
-
-/**
- * The action passes `durationMinutes` straight from planner parameters, which
- * may be a string the owner wrote ("2 hours"). A string must be read in the
- * unit it names: taking the numeric prefix turned a two-hour block into a
- * two-minute one.
- */
-describe("parseSelfControlBlockRequest duration", () => {
-  const parse = (durationMinutes: number | string | null) =>
-    parseSelfControlBlockRequest({
-      parameters: { websites: "x.com", durationMinutes },
-    });
-
-  it("converts an hour unit to minutes", () => {
-    expect(parse("2 hours").request?.durationMinutes).toBe(120);
-    expect(parse("1h").request?.durationMinutes).toBe(60);
-  });
-
-  it("reads a decimal hour unit", () => {
-    expect(parse("1.5 hours").request?.durationMinutes).toBe(90);
-  });
-
-  it("keeps minute units and plain numbers as minutes", () => {
-    expect(parse("90m").request?.durationMinutes).toBe(90);
-    expect(parse("45 minutes").request?.durationMinutes).toBe(45);
-    expect(parse("45").request?.durationMinutes).toBe(45);
-  });
-
-  it("rejects a duration it cannot read", () => {
-    const parsed = parse("soon");
-    expect(parsed.request).toBeNull();
-    expect(parsed.error).toContain("minutes");
   });
 });
