@@ -315,14 +315,14 @@ export function validatePendingReminderActions(
 ): PendingReminderActions {
   if (raw === null) return {};
   if (bytes(raw) > REMINDER_JOURNAL_LIMIT_BYTES)
-    throw Error("Pending deletion store is full");
+    throw Error("Pending reminder action store is full");
   if (
     !raw ||
     typeof raw !== "object" ||
     Array.isArray(raw) ||
     Object.keys(raw).length > REMINDER_ACTION_LIMIT
   )
-    throw Error("Invalid pending deletion store");
+    throw Error("Invalid pending reminder action store");
   for (const [id, input] of Object.entries(raw)) {
     const op = validateReminderOperation(input?.operation);
     if (
@@ -331,7 +331,7 @@ export function validatePendingReminderActions(
       !/^[A-Za-z0-9_-]{1,128}$/.test(input.operationId) ||
       !/^[a-f0-9]{64}$/.test(input.bindingHash)
     )
-      throw Error("Invalid pending deletion");
+      throw Error("Invalid pending reminder action");
   }
   return raw;
 }
@@ -414,7 +414,7 @@ export function createReminderActionJournal(ports: ReminderActionJournalPorts) {
       id,
       expected,
       value,
-      "Pending deletion changed",
+      "Pending reminder action changed",
     );
   async function acknowledge(input: PendingReminderAction, result: unknown) {
     assertReminderActionOutcome(input, result);

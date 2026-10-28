@@ -165,7 +165,9 @@ export function addNoteOrigin(
 ): NoteOriginIndex {
   const origin = noteOriginOf(value);
   const key = noteOriginKey(kind, id);
-  if (!origin || !id || key.length > 256 + kind.length + 1) {
+  // The same key check the index reader applies, so one bad id never makes the
+  // persisted index need recovery.
+  if (!origin || !id || !validLinkKey(key)) {
     throw new Error("Invalid note link.");
   }
   if (index.links[key]) return index;

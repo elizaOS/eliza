@@ -177,8 +177,25 @@ test("restore respects retention, recordings and unconfirmed commits", async () 
   const { state, collection, actions } = world({
     notes: [note("v", { kind: "voice", audio: { audioId: "rec" } }), note("b")],
   });
-  await actions.moveToTrash(collection, state.saved[0], 0);
-  state.trash.entries[0].audio = { audioId: "rec" };
+  assert.deepEqual(await actions.moveToTrash(collection, state.saved[0], 0), {
+    status: "owned-content",
+  });
+  assert.equal(state.trash.entries.length, 0, "no row without its recording");
+  assert.deepEqual(
+    state.saved.map((n) => n.id),
+    ["v", "b"],
+  );
+  // The host's reviewed recording path writes the row with its audio.
+  state.trash.entries.push({
+    id: "op-1",
+    note: state.saved[0],
+    audio: { audioId: "rec" },
+    index: 0,
+    deletedAt: t0,
+  });
+  state.saved = [note("b")];
+  state.stored = structuredClone(state.saved);
+  state.visible = structuredClone(state.saved);
   assert.equal(await actions.restore(collection, "op-1"), "owned-content");
   delete state.trash.entries[0].audio;
   state.commitOk = false;
@@ -196,8 +213,18 @@ test("erase purges owned content first and keeps what could not be erased", asyn
       note("b"),
     ],
   });
-  await actions.moveToTrash(collection, state.saved[0], 0);
-  state.trash.entries[0].audio = { audioId: "rec" };
+  // The host's reviewed recording path writes the voice row with its audio.
+  state.trash.entries.push({
+    id: "op-1",
+    note: state.saved[0],
+    audio: { audioId: "rec" },
+    index: 0,
+    deletedAt: t0,
+  });
+  state.ids = 1;
+  state.saved = [note("a"), note("b")];
+  state.stored = structuredClone(state.saved);
+  state.visible = structuredClone(state.saved);
   await actions.moveToTrash(collection, note("a"), 0);
   state.purgeOk = false;
   assert.deepEqual(await actions.erase("all"), {

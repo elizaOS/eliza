@@ -74,7 +74,14 @@ export interface NotesAudioStore {
     noteId: string,
     operation: string,
   ): Promise<NotesAudioReceipt>;
-  migrateAudio(): Promise<NotesAudioMigration>;
+  /**
+   * Normalizes every row and erases trashed recordings past retention. A row whose
+   * active deletion operation is in `keep` (a recovery row or lease still covers it)
+   * is left as it is; its deletion's owner restores or purges it.
+   */
+  migrateAudio(options?: {
+    keep?: Iterable<string>;
+  }): Promise<NotesAudioMigration>;
 }
 
 export const NOTES_AUDIO_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -92,6 +99,26 @@ const operationId = (value: unknown) => {
   if (typeof value !== "string" || !OPERATION_ID.test(value))
     throw Error("Invalid deletion operation");
 };
+
+const sameBytes = (a: ArrayBuffer, b: ArrayBuffer) => {
+  if (a.byteLength !== b.byteLength) return false;
+  const x = new Uint8Array(a);
+  const y = new Uint8Array(b);
+  for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
+  return true;
+};
+/** The clip a saved row already holds (rows without stored bytes compare by shape). */
+const sameClip = (
+  row: NotesAudioRow,
+  clip: { blob: Blob; durationMs: number },
+  bytes: ArrayBuffer,
+) =>
+  row.durationMs === clip.durationMs &&
+  (row.mimeType || "application/octet-stream") ===
+    (clip.blob.type || "application/octet-stream") &&
+  (row.bytes instanceof ArrayBuffer
+    ? sameBytes(row.bytes, bytes)
+    : row.blob.size === clip.blob.size);
 
 /** Recording metadata without its bytes, safe to keep in note records. */
 export function notesAudioMetadata({
@@ -213,6 +240,9 @@ export function createNotesAudioStore(
         if (prior && (prior.noteId !== noteId || prior.deletedAt))
           throw Error("This recording is not available for this note.");
         if (!prior && !clip) throw Error("Record a clip first.");
+        // A saved recording keeps its bytes; a different clip is refused, not dropped.
+        if (prior && clip && !sameClip(prior, clip, bytes as ArrayBuffer))
+          throw Error("This recording already has a different clip.");
         const row = normalize(
           prior
             ? { ...prior, transcript }
@@ -328,7 +358,8 @@ export function createNotesAudioStore(
         };
       });
     },
-    async migrateAudio() {
+    async migrateAudio(migration) {
+      const keep = new Set(migration?.keep ?? []);
       const d = await db();
       return new Promise<NotesAudioMigration>((resolve, reject) => {
         const tx = d.transaction(STORE, "readwrite");
@@ -347,7 +378,14 @@ export function createNotesAudioStore(
           if (!cursor) return;
           try {
             const row = normalize(cursor.value);
-            if (row.deletedAt && now() - row.deletedAt > retention) {
+            const covered =
+              !!row.activeDeletionOperation &&
+              keep.has(row.activeDeletionOperation);
+            if (
+              row.deletedAt &&
+              !covered &&
+              now() - row.deletedAt > retention
+            ) {
               if (!row.deletionOperations) cursor.delete();
               else
                 cursor.update(

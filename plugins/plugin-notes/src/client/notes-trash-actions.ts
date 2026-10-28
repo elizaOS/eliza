@@ -72,6 +72,11 @@ export type NotesTrashMoveOutcome<
   | { status: "unconfirmed"; entry: NotesTrashEntry<N, T> }
   /** Trash has no room for a restorable copy. Nothing was written. */
   | { status: "full" }
+  /**
+   * The note owns content outside its record (a recording). The host moves it
+   * through its reviewed path so the Trash row records that content; nothing was written.
+   */
+  | { status: "owned-content" }
   /** This view's copy or Trash changed in another view. Nothing was deleted. */
   | { status: "changed" }
   | { status: "unavailable" }
@@ -132,6 +137,9 @@ export function createNotesTrashActions<
         if (!collection.ready()) return { status: "unavailable" as const };
         const stored = collection.stored().find((item) => item.id === note.id);
         if (!same(stored, note)) throw Error("Note changed");
+        // A row without the recording would let erase drop it while the bytes stay live.
+        if (host.ownsContent?.(stored as N))
+          return { status: "owned-content" as const };
         const saved = (await host.savedNotes()).find(
           (item) => item.id === note.id,
         );

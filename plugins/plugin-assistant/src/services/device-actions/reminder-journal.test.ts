@@ -240,7 +240,7 @@ describe("reminder action journal", () => {
       validatePendingReminderActions({
         op1: { ...action("reminder_cancel"), bindingHash: "bad" },
       }),
-    ).toThrow("Invalid pending deletion");
+    ).toThrow("Invalid pending reminder action");
   });
 });
 

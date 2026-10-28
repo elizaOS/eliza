@@ -134,6 +134,13 @@ test("links are keyed by the saved record; a record keeps the note it was create
     () => addNoteOrigin(index, "event", "", origin, 12),
     /Invalid note link/,
   );
+  // An id the index reader would refuse is refused on write, so the saved index stays readable.
+  for (const bad of ["e\u0007x", "e\nx", "x".repeat(257)])
+    assert.throws(
+      () => addNoteOrigin(index, "reminder", bad, origin, 12),
+      /Invalid note link/,
+    );
+  assert.deepEqual(noteOriginIndex(structuredClone(index)), index);
   index = removeNoteOrigin(index, "event", "e1");
   assert.equal(findNoteOrigin(index, "event", "e1"), undefined);
   assert.deepEqual(

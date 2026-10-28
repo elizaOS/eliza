@@ -226,3 +226,48 @@ test("trashed recordings expire after the retention window", async () => {
   assert.equal(row.expired, true);
   assert.equal(row.transcript, "");
 });
+
+test("a saved recording keeps its clip; a different clip is refused, not dropped", async () => {
+  const audio = store();
+  await audio.retainAudio("a1", "n1", "First", clip());
+  // The same capture saved again only updates the transcript.
+  await audio.retainAudio("a1", "n1", "Again", clip());
+  await assert.rejects(
+    audio.retainAudio("a1", "n1", "Other", {
+      blob: new Blob([new Uint8Array([9, 9, 9, 9])], { type: "audio/wav" }),
+      durationMs: 1000,
+    }),
+    /already has a different clip/,
+  );
+  await assert.rejects(
+    audio.retainAudio("a1", "n1", "Other", { ...clip(), durationMs: 2000 }),
+    /already has a different clip/,
+  );
+  const row = await audio.audioRecord("a1");
+  assert.equal(row.transcript, "Again");
+  assert.deepEqual(
+    [...new Uint8Array(await row.blob.arrayBuffer())],
+    [0, 255, 128, 1],
+  );
+});
+
+test("expiry leaves a recording a recovery row still covers", async () => {
+  let clock = 1_000;
+  const audio = store(() => clock);
+  await audio.retainAudio("a1", "n1", "Covered", clip());
+  await audio.retainAudio("a2", "n2", "Orphaned", clip());
+  const covered = op();
+  await audio.changeAudioDeleted("a1", "n1", true, covered);
+  await audio.changeAudioDeleted("a2", "n2", true, op());
+  clock += NOTES_AUDIO_RETENTION_MS + 1;
+  assert.deepEqual(await audio.migrateAudio({ keep: [covered] }), {
+    state: "complete",
+    failedRecords: 0,
+  });
+  const kept = await audio.audioRecord("a1", true);
+  assert.equal(kept.expired, undefined);
+  assert.equal(kept.transcript, "Covered");
+  assert.equal((await audio.audioRecord("a2", true)).expired, true);
+  // Its deletion's owner still purges it.
+  assert.equal((await audio.purgeAudio("a1", "n1", covered)).status, "purged");
+});
