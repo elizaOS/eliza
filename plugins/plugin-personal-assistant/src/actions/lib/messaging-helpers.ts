@@ -214,10 +214,19 @@ export async function prepareCrossChannelSend(args: {
             provider: "imessage",
             messageId: sent.messageId ?? null,
             ...(sent.messageIds ? { messageIds: sent.messageIds } : {}),
+            ...(sent.localEffectIds
+              ? { localEffectIds: sent.localEffectIds }
+              : {}),
           };
-          if (!sent.messageId?.trim()) {
+          const hasProviderReceipt =
+            Boolean(sent.messageId?.trim()) ||
+            Boolean(sent.messageIds?.some((id) => id.trim()));
+          const hasLocalCompletion = Boolean(
+            sent.localEffectIds?.some((id) => id.trim()),
+          );
+          if (!hasProviderReceipt && !hasLocalCompletion) {
             throw new ApprovalAmbiguousDeliveryError(
-              "iMessage returned no provider message identifier; reconcile before sending again.",
+              "iMessage returned no completion evidence; reconcile before sending again.",
               receipt,
             );
           }

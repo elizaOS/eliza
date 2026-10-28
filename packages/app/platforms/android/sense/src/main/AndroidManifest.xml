@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ Shared always-on listener. Ships only in an explicitly selected AOSP image as a privileged, persistent system_ext app. It deliberately declares NO
+ android.permission.INTERNET and NO network-state permission: the process gets no inet group, so
+ audio and transcripts cannot leave the phone from here. tools:node="remove" strips any network
+ permission a library might merge in; scripts/aosp-listener.mjs re-checks the built APK.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+ <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+ <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+ <uses-permission android:name="android.permission.RECORD_AUDIO" />
+ <!-- signature|privileged: granted only through the image's privapp allowlist. The capture then yields to every other microphone client. -->
+ <uses-permission android:name="android.permission.CAPTURE_AUDIO_HOTWORD" />
+ <!-- signature|privileged: lets the persistent listener open the host's assistant surface from the background. -->
+ <uses-permission android:name="android.permission.START_ACTIVITIES_FROM_BACKGROUND" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+ <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+ <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+ <uses-permission android:name="android.permission.HIDE_OVERLAY_WINDOWS" />
+
+ <!-- Held by the host (same signer) to read status and pause or turn off. It cannot turn listening on. -->
+ <permission android:name="${applicationId}.permission.LISTENER_CONTROL"
+     android:protectionLevel="signature"
+     android:label="Control always-on listening" />
+
+ <queries><package android:name="${senseHostPackage}" /></queries>
+
+ <application
+     android:name="${senseComponentPackage}.SenseApplication"
+     android:label="${senseAppLabel} listening"
+     android:icon="@drawable/ic_listening"
+     android:persistent="true"
+     android:directBootAware="true"
+     android:allowBackup="false"
+     android:fullBackupContent="false"
+     android:hasFragileUserData="true"
+     android:usesCleartextTraffic="false"
+     tools:ignore="DataExtractionRules">
+  <meta-data android:name="ai.eliza.sense.SETTINGS_ACTIVITY" android:value="${senseComponentPackage}.ConsentActivity" />
+  <service android:name="${senseComponentPackage}.ListeningService" android:exported="false"
+      android:foregroundServiceType="microphone" android:directBootAware="true" />
+  <service android:name="${senseComponentPackage}.ListenerTileService" android:exported="true"
+      android:label="Listening" android:icon="@drawable/ic_listening"
+      android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+   <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+   <meta-data android:name="android.service.quicksettings.TOGGLEABLE_TILE" android:value="true" />
+  </service>
+  <receiver android:name="${senseComponentPackage}.ListenerActionReceiver" android:exported="false" android:directBootAware="true" />
+  <provider android:name="${senseComponentPackage}.ListenerControlProvider" android:exported="true" android:directBootAware="true"
+      android:authorities="${applicationId}.control"
+      android:permission="${applicationId}.permission.LISTENER_CONTROL" />
+  <!-- SystemUI's indicator health lease (docs/aosp-listening-chip.md). Platform signature permission only;
+       call() re-checks the SystemUI UID, package and platform signer. Visibility acknowledgements only:
+       it cannot start, resume or enable listening. -->
+  <provider android:name="${senseComponentPackage}.IndicatorLeaseProvider" android:exported="true" android:directBootAware="true"
+      android:authorities="${applicationId}.indicator"
+      android:permission="android.permission.STATUS_BAR_SERVICE" />
+  <!-- Consent and settings. Exported so the host settings and the tile's long-press can open it; it only
+       explains and records an explicit tap, and ignores touches while obscured. -->
+  <activity android:name="${senseComponentPackage}.ConsentActivity" android:exported="true" android:excludeFromRecents="true"
+      android:label="Always-on listening"
+      android:theme="@android:style/Theme.DeviceDefault.DayNight">
+   <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" /></intent-filter>
+  </activity>
+ </application>
+</manifest>

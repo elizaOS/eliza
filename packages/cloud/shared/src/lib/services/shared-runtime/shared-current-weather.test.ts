@@ -179,6 +179,39 @@ describe("current US weather evidence", () => {
       ).success,
     ).toBe(false);
   });
+  it("allows cold geocoding beyond a NWS hop without increasing the total budget", async () => {
+    const f = fixture();
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input)).hostname === "dashboard.waterdata.usgs.gov") {
+        await new Promise((resolve) => setTimeout(resolve, 1700));
+        expect(init?.signal?.aborted).toBe(false);
+      }
+      return f.fetchImpl(input, init);
+    }) as typeof fetch;
+    const result = await runCurrentUsWeatherSearch(query, { ...options(f), fetchImpl });
+    expect(result.success).toBe(true);
+    expect(f.calls.length).toBe(4);
+    expect(CURRENT_WEATHER_LIMITS.totalMs).toBe(6000);
+    expect(CURRENT_WEATHER_LIMITS.requests).toBe(5);
+  });
+  it("clamps a geocoder request to the remaining overall deadline", async () => {
+    let clockReads = 0;
+    let calls = 0;
+    const started = performance.now();
+    const result = await runCurrentUsWeatherSearch(query, {
+      cache: false,
+      now: () => now + (clockReads++ === 0 ? 0 : 5950),
+      fetchImpl: (async () => {
+        calls++;
+        return new Promise(() => {});
+      }) as typeof fetch,
+    });
+    expect(result.success).toBe(false);
+    expect(calls).toBe(1);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(result.data!.sourceDiagnostics[0].outcome).toBe("timeout");
+    expect(result.data!.unavailableReason).toBe("CURRENT_WEATHER_SOURCE_UNAVAILABLE");
+  });
   it("resolves genuine place/station identity and observation age; faithfully derives Fahrenheit", async () => {
     const f = fixture();
     const result = await runCurrentUsWeatherSearch(query, options(f));

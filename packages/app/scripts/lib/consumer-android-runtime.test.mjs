@@ -7,8 +7,12 @@ import path from "node:path";
 import test from "node:test";
 import { buildConsumerAndroidRuntime } from "./consumer-android-runtime.mjs";
 
-for (const targetAbi of ["arm64-v8a", "x86_64"])
-  test(`runtime orchestration stages ${targetAbi} pinned bytes and rejects mutation`, () => {
+for (const [targetAbi, bunTarget] of [
+  ["arm64-v8a", "linux-musl"],
+  ["x86_64", "linux-musl"],
+  ["arm64-v8a", "android"],
+])
+  test(`runtime orchestration stages ${targetAbi}/${bunTarget} pinned bytes and rejects mutation`, () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "consumer-runtime-"));
     try {
       const source = path.join(root, "source");
@@ -26,7 +30,7 @@ for (const targetAbi of ["arm64-v8a", "x86_64"])
       );
       put(
         "packages/app/scripts/lib/stage-android-agent.ts",
-        `import fs from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';export function stageAndroidAgentRuntime({androidDir}){const main=path.join(androidDir,'app/src/main');const files=[];const abi=process.env.ELIZA_ANDROID_TARGET_ABIS;const arch=abi==='x86_64'?'x86_64':'aarch64';const b=Buffer.alloc(64);b.writeUInt32BE(0x7f454c46);b[4]=2;b[5]=1;b.writeUInt16LE(abi==='x86_64'?62:183,18);for(const n of ['libeliza_bun.so','libeliza_ld_musl_'+arch+'.so','libeliza_ld_musl_'+arch+'_real.so','libeliza_stdcpp.so','libeliza_gcc_s.so','libsigsys-handler.so']){const p=path.join(main,'jniLibs',abi,n);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,b);files.push({path:'lib/'+abi+'/'+n,size_bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')});}const dest=path.join(main,'assets/agent');fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(path.join(dest,'android-agent-runtime-provenance.json'),JSON.stringify({schema:'eliza.android_agent_runtime_provenance.v1',files}));}`,
+        `import fs from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';export function stageAndroidAgentRuntime({androidDir}){const main=path.join(androidDir,'app/src/main');const files=[];const abi=process.env.ELIZA_ANDROID_TARGET_ABIS;const arch=abi==='x86_64'?'x86_64':'aarch64';const b=Buffer.alloc(64);b.writeUInt32BE(0x7f454c46);b[4]=2;b[5]=1;b.writeUInt16LE(abi==='x86_64'?62:183,18);for(const n of (process.env.ELIZA_ANDROID_BUN_TARGET==='android'?['libeliza_bun.so']:['libeliza_bun.so','libeliza_ld_musl_'+arch+'.so','libeliza_ld_musl_'+arch+'_real.so','libeliza_stdcpp.so','libeliza_gcc_s.so','libsigsys-handler.so'])){const p=path.join(main,'jniLibs',abi,n);fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,b);files.push({path:'lib/'+abi+'/'+n,size_bytes:b.length,sha256:createHash('sha256').update(b).digest('hex')});}const dest=path.join(main,'assets/agent');fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(path.join(dest,'android-agent-runtime-provenance.json'),JSON.stringify({schema:'eliza.android_agent_runtime_provenance.v1',bun:{target:process.env.ELIZA_ANDROID_BUN_TARGET},files}));}`,
       );
       const git = (...args) =>
         execFileSync("git", ["-C", source, ...args], {
@@ -48,7 +52,13 @@ for (const targetAbi of ["arm64-v8a", "x86_64"])
         skillsDirectory = path.join(root, "skills");
       fs.mkdirSync(skillsDirectory);
       fs.writeFileSync(path.join(skillsDirectory, "policy.md"), "consumer");
-      const options = { source, expectedCommit, skillsDirectory, targetAbi };
+      const options = {
+        source,
+        expectedCommit,
+        skillsDirectory,
+        targetAbi,
+        bunTarget,
+      };
       const link = path.join(root, "output-link");
       fs.symlinkSync(root, link, "dir");
       const { provenance } = buildConsumerAndroidRuntime({

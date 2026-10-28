@@ -195,7 +195,12 @@ it.each([
       if (scenario === "native-replaced") {
         const policy = process.env.ELIZA_NATIVE_VIEW_DECLARATIONS;
         vi.stubEnv("ELIZA_NATIVE_VIEW_DECLARATIONS", "invalid-policy");
-        expect(() => server?.updateRuntime(runtime)).toThrow(
+        const invalidReplacement = new AgentRuntime({
+          character: createCharacter({ name: "Invalid launch policy fixture" }),
+          enableAutonomy: false,
+          logLevel: "fatal",
+        });
+        expect(() => server?.updateRuntime(invalidReplacement)).toThrow(
           "Invalid trusted native view declarations",
         );
         const stillCurrent = await fetch(

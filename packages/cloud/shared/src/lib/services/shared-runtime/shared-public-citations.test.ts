@@ -22,8 +22,8 @@ const grounding: SharedRuntimePublicGrounding = {
 };
 const marker = `[[SOURCE_URL:${source.url}]]`;
 const claim = "The price of Bitcoin is 84354.17 USD.";
-const REFUSAL = "couldn’t safely bind";
-const OMISSION = "I left out part of the draft";
+const REFUSAL = "couldn’t verify an answer from the sources I found";
+const OMISSION = "I found part of the answer:";
 
 for (const [name, citation] of [
   ["Markdown link", `[source](${source.url})`],
@@ -36,7 +36,9 @@ for (const [name, citation] of [
   test(`a supported claim cited with a ${name} is delivered`, () => {
     const reply = finalizeSharedRealtimeReply(`${claim} ${citation}`, grounding);
     expect(reply).toContain(claim);
-    expect(reply).toContain(`Source: example.com — ${source.url} (parallel, checked `);
+    expect(reply).toContain(`Source: ${source.url}`);
+    expect(reply).not.toContain("parallel");
+    expect(reply).not.toContain("checked ");
     expect(reply).not.toContain("[[SOURCE_URL:");
     expect(reply).not.toContain(REFUSAL);
     expect(reply).not.toContain(OMISSION);
@@ -103,5 +105,5 @@ test("punctuation after a rejected final claim is not attached to earlier text",
     `${claim} ${marker} Ethereum is 4000 USD ${marker}!`,
     grounding,
   );
-  expect(reply).toStartWith(`${claim}\n\n${OMISSION}`);
+  expect(reply).toStartWith(`${OMISSION}\n\n${claim}`);
 });

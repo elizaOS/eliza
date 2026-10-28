@@ -654,9 +654,10 @@ export class PromptBatcher {
   }
 
   async drainAffinityGroup(affinityKey: string): Promise<void> {
-    const existingLock = this.affinityLocks.get(affinityKey);
-    if (existingLock) {
+    let existingLock = this.affinityLocks.get(affinityKey);
+    while (existingLock) {
       await existingLock;
+      existingLock = this.affinityLocks.get(affinityKey);
     }
 
     let release!: () => void;

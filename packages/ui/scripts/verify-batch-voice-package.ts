@@ -23,6 +23,7 @@ const run = (command: string, args: string[], cwd = repo) =>
     maxBuffer: 16 * 1024 * 1024,
   });
 const uiEntries = [
+  "voice/voice-session-client",
   "voice/batch-conversation",
   "text-control-editing",
   "voice/draft-transcript-guard",
@@ -32,15 +33,16 @@ const uiEntries = [
   "voice/recorded-transcription-controller",
   "voice/segmented-speech-playback",
 ];
-for (const owner of ["core", "voice", "cloud/sdk", "ui"])
+for (const owner of ["core", "voice", "host", "cloud/sdk", "ui"])
   process.stdout.write(
     run("bun", ["run", "--cwd", `packages/${owner}`, "build"]),
   );
 const consumer = mkdtempSync(path.join(output, "consumer-"));
 try {
   for (const [owner, entries] of [
-    ["core", ["speech"]],
+    ["core", ["speech", "logging", "view-interaction"]],
     ["voice", ["turn"]],
+    ["host", ["voice/ui-context"]],
     ["cloud/sdk", ["native-speech-stream"]],
     ["ui", uiEntries],
   ] as const) {
@@ -141,7 +143,7 @@ try {
       `Consumer escaped its packed modules: ${input}`,
     );
     assert(
-      !/(?:core|ui)\/(?:dist\/)?(?:index|protocol)\.js$|\/auth\/|\/host\//.test(
+      !/(?:core|ui|host)\/(?:dist\/)?(?:index|protocol)\.js$|\/auth\/|\/voice-session-fetch\.js$|\/voice-chat-types\.js$/.test(
         input,
       ),
       `Broad host entry leaked: ${input}`,
@@ -171,10 +173,12 @@ try {
     path.join(output, "receipt.json"),
     `${JSON.stringify(
       {
-        normalBuilds: ["core", "voice", "cloud/sdk", "ui"],
+        normalBuilds: ["core", "voice", "host", "cloud/sdk", "ui"],
         packedUiEntries: uiEntries,
         packedConsumerTypes: true,
         packedRuntimeTurn: true,
+        packedRealtimeSessionHandshake: true,
+        packedRealtimeSessionRetirement: true,
         packedOwnerInputPause: true,
         packedExactReplyResume: true,
         browserTargetNoNodeRealmTurn: true,

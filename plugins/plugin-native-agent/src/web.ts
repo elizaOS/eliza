@@ -348,7 +348,9 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
   async chat(options: { text: string }): Promise<ChatResult> {
     const text = assertNonEmptyText(options.text);
     if (!this.canReachApi()) {
-      return { text: "Agent API not available", agentName: "System" };
+      // The native plugins reject this call when no endpoint is configured.
+      // A fabricated reply would reach the host as a real agent message.
+      throw new Error("Agent.chat requires a reachable Agent API endpoint");
     }
     return this.chatViaConversation(text);
   }

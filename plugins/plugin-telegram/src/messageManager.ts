@@ -495,6 +495,24 @@ export class MessageManager {
   private activeTurnRooms = new Map<UUID, number>();
 
   /**
+   * Attachments Telegram refused for a reply, keyed by the reply content object
+   * that `sendMessageInChunks` and `persistSentMessageMemories` both receive.
+   */
+  private readonly undeliveredAttachments = new WeakMap<object, Set<Media>>();
+
+  /** The reply as the user received it: attachments Telegram refused are left out. */
+  private deliveredContent<T extends Content>(content: T): T {
+    const undelivered = this.undeliveredAttachments.get(content);
+    if (!undelivered) return content;
+    return {
+      ...content,
+      attachments: content.attachments?.filter(
+        (attachment) => !undelivered.has(attachment),
+      ),
+    };
+  }
+
+  /**
    * Constructor for creating a new instance of a BotAgent.
    *
    * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
@@ -1257,6 +1275,7 @@ export class MessageManager {
     replyToMessageId?: number,
     messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
+    const undelivered = new Set<Media>();
     if (content.attachments && content.attachments.length > 0) {
       await Promise.all(
         content.attachments.map(async (attachment: Media) => {
@@ -1303,6 +1322,8 @@ export class MessageManager {
           } catch (error) {
             // error-policy:J4 an undeliverable attachment must not drop the
             // accompanying prose; log a URL summary, never a data-URL payload.
+            // It is kept out of the reply memory (persistSentMessageMemories).
+            undelivered.add(attachment);
             logger.warn(
               {
                 src: "plugin:telegram",
@@ -1318,6 +1339,7 @@ export class MessageManager {
       );
       // Fall through to the text path below so an attachment reply never drops
       // the agent's accompanying prose (sent as a follow-up message).
+      this.undeliveredAttachments.set(content, undelivered);
     }
 
     {
@@ -1346,6 +1368,21 @@ export class MessageManager {
       // Nothing textual to send (e.g. an attachments-only reply that already
       // dispatched its media above) — don't post an empty trailing message.
       if (textToSend.trim().length === 0 && !hasKeyboardRows) {
+        const attachmentCount = content.attachments?.length ?? 0;
+        if (attachmentCount > 0 && undelivered.size === attachmentCount) {
+          // Nothing reached the user; an empty result would read as "nothing to send".
+          throw new ElizaError(
+            "Telegram refused every attachment of the reply",
+            {
+              code: "TELEGRAM_ATTACHMENTS_NOT_DELIVERED",
+              context: {
+                accountId: this.accountId,
+                chatId: String(ctx.chat?.id ?? ""),
+                attachments: attachmentCount,
+              },
+            },
+          );
+        }
         return sentMessages;
       }
 
@@ -1464,6 +1501,7 @@ export class MessageManager {
     inReplyTo: UUID;
   }): Promise<Memory[]> {
     const memories: Memory[] = [];
+    const content = this.deliveredContent(args.content);
     for (const sentMessage of args.sentMessages) {
       const responseMemory: Memory = {
         id: createUniqueUuid(
@@ -1477,7 +1515,7 @@ export class MessageManager {
         agentId: this.runtime.agentId,
         roomId: args.roomId,
         content: {
-          ...args.content,
+          ...content,
           source: "telegram",
           text: sentMessage.text,
           inReplyTo: args.inReplyTo,
@@ -2507,6 +2545,34 @@ export class MessageManager {
   }
 
   /**
+   * Emits an observer event. The update, memory row, or provider send that
+   * produced the event is already durable, so a rejecting listener is
+   * reported and never becomes an unhandled rejection or a retry trigger.
+   */
+  private observeEvent(
+    scope: string,
+    event: string,
+    payload: EventPayload,
+    context: Record<string, unknown> = {},
+  ): void {
+    const reportFailure = (error: unknown) =>
+      this.runtime.reportError(scope, error, {
+        event,
+        accountId: this.accountId,
+        ...context,
+      });
+    try {
+      // error-policy:J7 The effect that produced this event already
+      // succeeded. Event listeners are observers, so a rejected listener is
+      // reported without creating an unhandled rejection or making the
+      // accepted update look retryable.
+      void this.runtime.emitEvent(event, payload).catch(reportFailure);
+    } catch (error) {
+      reportFailure(error);
+    }
+  }
+
+  /**
    * Handles the reaction event triggered by a user reacting to a message.
    * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
    * @returns {Promise<void>} A Promise that resolves when the reaction handling is complete
@@ -2663,32 +2729,40 @@ export class MessageManager {
       };
 
       // Let the bootstrap plugin handle the reaction
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        callback,
-        source: "telegram",
-        accountId: this.accountId,
-        metadata: { accountId: this.accountId },
-        ctx,
-        originalMessage: syntheticReactionMessage,
-        reactionString: reactionLabel,
-        originalReaction: firstReaction as ReactionType,
-      } as TelegramReactionReceivedPayload);
+      this.observeEvent(
+        "MessageManager.emitReaction",
+        EventType.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          callback,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          ctx,
+          originalMessage: syntheticReactionMessage,
+          reactionString: reactionLabel,
+          originalReaction: firstReaction as ReactionType,
+        } as TelegramReactionReceivedPayload,
+      );
 
       // Also emit the platform-specific event
-      this.runtime.emitEvent(TelegramEventTypes.REACTION_RECEIVED, {
-        runtime: this.runtime,
-        message: memory,
-        callback,
-        source: "telegram",
-        accountId: this.accountId,
-        metadata: { accountId: this.accountId },
-        ctx,
-        originalMessage: syntheticReactionMessage,
-        reactionString: reactionLabel,
-        originalReaction: firstReaction as ReactionType,
-      } as TelegramReactionReceivedPayload);
+      this.observeEvent(
+        "MessageManager.emitReaction",
+        TelegramEventTypes.REACTION_RECEIVED,
+        {
+          runtime: this.runtime,
+          message: memory,
+          callback,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          ctx,
+          originalMessage: syntheticReactionMessage,
+          reactionString: reactionLabel,
+          originalReaction: firstReaction as ReactionType,
+        } as TelegramReactionReceivedPayload,
+      );
     } catch (error) {
       logger.error(
         {
@@ -2715,10 +2789,15 @@ export class MessageManager {
     messageThreadId?: number,
   ): Promise<void> {
     const formatted = convertMarkdownToTelegram(text);
+    // Route through the same migration retry as the send path: a group
+    // upgraded to a supergroup rejects the old chat id with
+    // migrate_to_chat_id, and without the mutable chat object the retry
+    // branch can never fire.
+    const chat = { id: this.currentChatId(chatId) };
     await this.sendWithRetry(
       () =>
         this.bot.telegram.editMessageText(
-          chatId,
+          chat.id,
           messageId,
           undefined,
           formatted,
@@ -2728,11 +2807,12 @@ export class MessageManager {
       // the user sees the content unformatted rather than a stale message.
       () =>
         this.bot.telegram.editMessageText(
-          chatId,
+          chat.id,
           messageId,
           undefined,
           cleanText(text),
         ),
+      chat,
     );
     logger.info(
       {
@@ -2960,6 +3040,7 @@ export class MessageManager {
         !Array.isArray(content.metadata)
           ? content.metadata
           : {};
+      const delivered = this.deliveredContent(content);
       for (const sentMessage of sentMessages) {
         const memory: Memory = {
           id: createUniqueUuid(
@@ -2973,7 +3054,7 @@ export class MessageManager {
           agentId: this.runtime.agentId,
           roomId,
           content: {
-            ...content,
+            ...delivered,
             text: sentMessage.text,
             source: "telegram",
             metadata: { ...contentMetadata, accountId: this.accountId },
@@ -3019,23 +3100,10 @@ export class MessageManager {
       // Emit both generic and platform-specific message sent events
       if (memories.length > 0) {
         const firstMemory = memories[0];
-        const observeEvent = (event: string, payload: EventPayload) => {
-          const reportFailure = (error: unknown) =>
-            this.runtime.reportError("MessageManager.emitMessageSent", error, {
-              event,
-              accountId: this.accountId,
-              chatId: String(chatId),
-            });
-          try {
-            // error-policy:J7 The provider send and memory write are already
-            // durable. Event listeners are observers, so report a rejected
-            // listener without creating an unhandled rejection or making the
-            // accepted message look retryable.
-            void this.runtime.emitEvent(event, payload).catch(reportFailure);
-          } catch (error) {
-            reportFailure(error);
-          }
-        };
+        const observeEvent = (event: string, payload: EventPayload) =>
+          this.observeEvent("MessageManager.emitMessageSent", event, payload, {
+            chatId: String(chatId),
+          });
         observeEvent(EventType.MESSAGE_SENT, {
           runtime: this.runtime,
           message: firstMemory,

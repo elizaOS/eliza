@@ -161,6 +161,64 @@ describe("DefaultRuntimeOperationManager", () => {
     const succeeded = await waitForTerminal(repository, second.operation.id);
     expect(succeeded.status).toBe("succeeded");
   });
+  it("releases the busy gate left by a crashed process that had the same PID", async () => {
+    // The first process stops mid-operation: its strategy never settles.
+    const hung: ReloadStrategy = {
+      tier: "cold",
+      apply: () => new Promise<AgentRuntime>(() => {}),
+    };
+    const crashed = new DefaultRuntimeOperationManager({
+      repository,
+      runtime: () => runtime,
+      classifyContext: () => ({}),
+      healthChecker: healthChecker(async () => OK_REPORT),
+      strategies: { cold: hung },
+    });
+    const first = await crashed.start({
+      intent: { kind: "restart", reason: "before crash" },
+    });
+    if (first.kind !== "accepted") throw new Error(first.kind);
+    await vi.waitFor(async () => {
+      expect((await repository.get(first.operation.id))?.status).toBe(
+        "running",
+      );
+    });
+
+    // The restarted process (a container's PID 1 again) reads the same
+    // state. Same host and PID; only the process incarnation differs.
+    const recordPath = path.join(
+      stateDir,
+      "runtime-operations",
+      `${first.operation.id}.json`,
+    );
+    const record = JSON.parse(await fs.readFile(recordPath, "utf8"));
+    expect(record.processOwner).toMatchObject({ pid: process.pid });
+    record.processOwner.incarnation = "earlier-process";
+    await fs.writeFile(recordPath, JSON.stringify(record));
+    const restartedRepository = new FilesystemRuntimeOperationRepository(
+      stateDir,
+    );
+    const restarted = new DefaultRuntimeOperationManager({
+      repository: restartedRepository,
+      runtime: () => runtime,
+      classifyContext: () => ({}),
+      healthChecker: healthChecker(async () => OK_REPORT),
+      strategies: { cold: strategy("cold") },
+    });
+    const next = await restarted.start({
+      intent: { kind: "restart", reason: "after restart" },
+    });
+    if (next.kind !== "accepted") throw new Error(next.kind);
+    const succeeded = await waitForTerminal(
+      restartedRepository,
+      next.operation.id,
+    );
+    expect(succeeded.status).toBe("succeeded");
+    const abandoned = await restartedRepository.get(first.operation.id);
+    expect(abandoned?.status).toBe("failed");
+    expect(abandoned?.error?.code).toBe("abandoned");
+  });
+
   it("closes a strategy-reported running phase when the strategy throws", async () => {
     const cold: ReloadStrategy = {
       tier: "cold",

@@ -31,6 +31,7 @@ import { computeNextFireAt } from "@elizaos/plugin-scheduling";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createLifeOpsTestRuntime,
+  getRecordedTestNotifications,
   type RealTestRuntimeResult,
 } from "../../../test/helpers/runtime.ts";
 import { resolveOwnerFactStore } from "../owner/fact-store.ts";
@@ -1089,3 +1090,54 @@ describe("processDueScheduledTasks — production wiring", () => {
     warnSpy.mockRestore();
   });
 });
+
+it("does not deliver a scheduled task the owner dismissed while its message was rendered", async () => {
+  const fixture = await createLifeOpsTestRuntime();
+  const { runtime } = fixture;
+  try {
+    const repo = new LifeOpsRepository(runtime);
+    const tickAt = new Date("2026-05-09T12:01:00.000Z");
+    const taskId = "st_dismissed_during_render";
+    await repo.upsertScheduledTask(runtime.agentId, {
+      taskId,
+      kind: "reminder",
+      promptInstructions: "Remind the owner to call the pharmacy.",
+      trigger: { kind: "once", atIso: "2026-05-09T12:00:00.000Z" },
+      priority: "medium",
+      respectsGlobalPause: true,
+      source: "user_chat",
+      createdBy: runtime.agentId,
+      ownerVisible: true,
+      state: { status: "scheduled", followupCount: 0 },
+    } as never);
+    if (typeof runtime.getModel === "function") {
+      vi.spyOn(runtime, "getModel").mockReturnValue((async () => "x") as never);
+    }
+    let dismissed = false;
+    vi.spyOn(runtime, "useModel").mockImplementation(async () => {
+      if (!dismissed) {
+        dismissed = true;
+        await getScheduledTaskRunner(runtime, {
+          agentId: runtime.agentId,
+          now: () => tickAt,
+        }).apply(taskId, "dismiss", { reason: "owner cancelled" });
+      }
+      return "Hey, don't forget to call the pharmacy.";
+    });
+
+    await processDueScheduledTasks({
+      runtime,
+      agentId: runtime.agentId,
+      now: tickAt,
+      limit: 10,
+    });
+
+    expect(dismissed).toBe(true);
+    expect(
+      (await repo.getScheduledTask(runtime.agentId, taskId))?.state.status,
+    ).toBe("dismissed");
+    expect(getRecordedTestNotifications(runtime)).toEqual([]);
+  } finally {
+    await fixture.cleanup();
+  }
+}, 180_000);

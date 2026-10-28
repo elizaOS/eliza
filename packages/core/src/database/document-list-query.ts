@@ -961,6 +961,16 @@ export function queryDocumentsInMemory(
 	validateDocumentListQueryParams(params);
 	const documents = memories.filter(isDocumentMemory);
 	assertUniqueDocumentIds(documents);
+	// The search index only exposes a segment when it belongs to the
+	// document's current revision and winning update attempt, mirroring the
+	// fragment query and the SQL search join. Without this fence, a document
+	// matches terms that exist only in superseded text.
+	const parents = new Map<string, Memory>();
+	for (const document of documents) {
+		if (document.agentId === params.agentId && isUuid(document.id)) {
+			parents.set(String(document.id), document);
+		}
+	}
 	const sourceSegmentsByDocument = new Map<string, Memory[]>();
 	for (const memory of memories) {
 		const metadata = (memory.metadata ?? {}) as Record<string, unknown>;
@@ -969,6 +979,26 @@ export function queryDocumentsInMemory(
 			metadata.type !== MemoryType.FRAGMENT ||
 			metadata.fragmentRole !== "source-segment" ||
 			typeof metadata.documentId !== "string"
+		) {
+			continue;
+		}
+		const parent = parents.get(metadata.documentId);
+		if (!parent) continue;
+		const parentSnapshot = readDocumentMutationSnapshot(parent);
+		const segmentRevision = readDocumentRevision(metadata);
+		if (
+			!parentSnapshot ||
+			segmentRevision === null ||
+			segmentRevision !== parentSnapshot.revision
+		) {
+			continue;
+		}
+		const parentAttempt = (
+			parent.metadata as Record<string, unknown> | undefined
+		)?.revisionAttemptId;
+		if (
+			typeof parentAttempt === "string" &&
+			metadata.revisionAttemptId !== parentAttempt
 		) {
 			continue;
 		}

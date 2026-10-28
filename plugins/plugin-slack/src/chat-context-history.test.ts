@@ -150,3 +150,83 @@ describe("Slack platform chat context", () => {
     ]);
   });
 });
+
+describe("Slack history date bounds", () => {
+  it("sends ISO date bounds to conversations.history as Unix timestamps", async () => {
+    // Slack documents latest/oldest as Unix timestamps and answers
+    // invalid_ts_latest / invalid_ts_oldest for any other value.
+    const bounds: Array<{ latest: string | null; oldest: string | null }> = [];
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const params = new URLSearchParams(body);
+        const latest = params.get("latest");
+        const oldest = params.get("oldest");
+        bounds.push({ latest, oldest });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        const isTs = (value: string | null) =>
+          value === null || /^\d+(\.\d+)?$/.test(value);
+        if (!isTs(latest) || !isTs(oldest)) {
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: isTs(latest) ? "invalid_ts_oldest" : "invalid_ts_latest",
+            }),
+          );
+          return;
+        }
+        res.end(JSON.stringify({ ok: true, messages: [] }));
+      });
+    });
+    servers.push(server);
+    const apiUrl = await new Promise<string>((resolve) => {
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        const port = typeof address === "object" ? address?.port : 0;
+        resolve(`http://127.0.0.1:${port}/api/`);
+      });
+    });
+    const service = Object.assign(
+      Object.create(SlackService.prototype) as SlackService,
+      {
+        defaultAccountId: ACCOUNT_ID,
+        accountStates: new Map([
+          [
+            normalizeAccountId(ACCOUNT_ID),
+            {
+              accountId: ACCOUNT_ID,
+              client: new WebClient("xoxb-test-token", {
+                slackApiUrl: apiUrl,
+                retryConfig: { retries: 0 },
+              }),
+            },
+          ],
+        ]),
+      },
+    );
+
+    await (
+      service as unknown as {
+        readHistory: (
+          channelId: string,
+          options: { before?: string; after?: string },
+          accountId: string,
+        ) => Promise<unknown>;
+      }
+    ).readHistory(
+      CHANNEL_ID,
+      { before: "2026-10-24T00:00:00Z", after: "2026-10-23" },
+      ACCOUNT_ID,
+    );
+
+    expect(bounds).toEqual([
+      {
+        latest: (Date.parse("2026-10-24T00:00:00Z") / 1000).toFixed(6),
+        oldest: (Date.parse("2026-10-23") / 1000).toFixed(6),
+      },
+    ]);
+  });
+});

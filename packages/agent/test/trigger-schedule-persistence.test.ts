@@ -88,9 +88,13 @@ it("does not persist an invented interval when captured reminder arguments omit 
   expect(result?.effectReceipts).toBeUndefined();
   expect(await fixture.runtime.getTasks({ tags: ["trigger"] })).toEqual(before);
 });
-it.each([true, false])(
-  "keeps actual schedule rejection evidence and reports creation truthfully (corrected=%s)",
-  async (corrected) => {
+it.each([
+  { corrected: true, changeInstructions: false },
+  { corrected: false, changeInstructions: false },
+  { corrected: true, changeInstructions: true },
+])(
+  "keeps actual schedule rejection evidence and reports creation truthfully (%j)",
+  async ({ corrected, changeInstructions }) => {
     const before = await fixture.runtime.getTasks({ tags: ["trigger"] });
     const roomId = randomUUID() as UUID;
     const instructions = `Send a short shoulder-stretch nudge ${randomUUID()}`;
@@ -118,8 +122,10 @@ it.each([true, false])(
                 name: "TRIGGER_CREATE",
                 arguments: {
                   displayName: "Stretch your shoulders",
+                  // Repair timing for the same requested reminder. A different
+                  // instruction body must not discharge the original rejection.
                   instructions:
-                    plans === 1
+                    plans === 1 && changeInstructions
                       ? "Remind the user to stretch their shoulders. Message: Stretch your shoulders."
                       : instructions,
                   ...(plans === 2 ? { delayMinutes: 2 } : {}),
@@ -174,9 +180,15 @@ it.each([true, false])(
         };
       },
     });
-    expect(result.finalMessage).toBe(expectedMessage);
-    if (corrected) expect(result.evaluator?.success).toBe(true);
-    else expect(result.evaluator?.success).not.toBe(true);
+    if (changeInstructions) {
+      expect(result.finalMessage).not.toBe(expectedMessage);
+      expect(result.evaluator?.success).not.toBe(true);
+      expect(result.trajectory.evaluatorOutputs.at(-1)?.success).toBe(true);
+    } else {
+      expect(result.finalMessage).toBe(expectedMessage);
+      if (corrected) expect(result.evaluator?.success).toBe(true);
+      else expect(result.evaluator?.success).not.toBe(true);
+    }
     expect(
       result.trajectory.steps.some(
         (step) => step.result?.error === "MISSING_SCHEDULE",
@@ -671,6 +683,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         error: (_res: http.ServerResponse, message: string) => {
           throw new Error(message);
         },
+        getTriggerLimit,
         listTriggerTasks: async () => {
           const task = await fixture.runtime.getTask(taskId);
           return task ? [task] : [];
