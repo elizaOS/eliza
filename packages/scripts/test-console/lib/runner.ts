@@ -242,10 +242,15 @@ export class RunManager extends EventEmitter {
       };
       child.stdout.on("data", capture);
       child.stderr.on("data", capture);
+      child.once("error", (error) => {
+        capture(
+          Buffer.from(`Failed to start ${cmd}: ${error.message}\n`, "utf8"),
+        );
+      });
 
-      child.once("close", (code, signal) => {
+      child.once("close", async (code, signal) => {
         run.children.delete(child);
-        logStream.end();
+        await new Promise((resolve) => logStream.end(resolve));
         entry.exitCode = code;
         entry.durationMs = Date.now() - started;
         entry.finishedAt = new Date().toISOString();
