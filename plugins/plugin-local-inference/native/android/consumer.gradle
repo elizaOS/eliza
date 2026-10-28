@@ -2,74 +2,106 @@ apply plugin: 'com.android.library'
 
 // Consumers set ext.elizaParadeeSourceDir to this directory and apply this file.
 def paradeeSource = project.hasProperty('elizaParadeeSourceDir') ? file(project.elizaParadeeSourceDir) : project.projectDir
-// Output of packages/app/scripts/paradee-voice/build-native.ts. Generated, never source.
 def paradeeNative = project.hasProperty('elizaParadeeNativeDir') ? file(project.elizaParadeeNativeDir) : new File(paradeeSource, 'native')
-// An app that already packages libelizainference.so links against its own
-// staged copy and sets elizaParadeePackageInference=false.
-def packageInference = !project.hasProperty('elizaParadeePackageInference') || project.elizaParadeePackageInference.toString() != 'false'
+// Hosts with their own bionic inference owner need only the shared installer and model assets.
+def assetsOnly = project.findProperty('elizaParadeeAssetsOnly')?.toString() == 'true'
+def omittedAssets = assetsOnly && (project.findProperty('elizaCloudBuild') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1')
+def packageInference = !assetsOnly && (!project.hasProperty('elizaParadeePackageInference') || project.elizaParadeePackageInference.toString() != 'false')
 def inferenceLibDir = project.hasProperty('elizaParadeeInferenceLibDir') ? file(project.elizaParadeeInferenceLibDir) : new File(paradeeNative, 'jniLibs')
-def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project.elizaParadeeFfiIncludeDir) :
-    new File(paradeeSource, '../llama.cpp/tools/omnivoice/include')
-// The JNI bridge source is shared with the app module; this library builds it
-// for ai.eliza.voice.VoiceNative with the full fused inference API.
+def ffiInclude = project.hasProperty('elizaParadeeFfiIncludeDir') ? file(project.elizaParadeeFfiIncludeDir) : new File(paradeeSource, '../llama.cpp/tools/omnivoice/include')
 def jniSource = new File(paradeeSource, '../../../../packages/app/platforms/android/app/src/main/elizavoice-jni')
 def paradeeAbis = project.findProperty('elizaParadeeAbis')?.toString()?.split(',', -1)?.toList() ?: ['arm64-v8a', 'x86_64']
 if (!paradeeAbis || paradeeAbis.toSet().size() != paradeeAbis.size() || paradeeAbis.any { !(it in ['arm64-v8a', 'x86_64']) }) throw new GradleException('Invalid elizaParadeeAbis')
 
+// AGP's Java source collection does not honor SourceDirectorySet include filters.
+// Give the asset-only module an exact generated source directory instead.
+def installerSource = layout.buildDirectory.dir('generated/source/voiceAssets')
+def stageInstaller = tasks.register('stageVoiceAssetInstaller', Sync) {
+    from(new File(paradeeSource, 'src/main/java')) { include 'ai/eliza/voice/VoiceBundleAssets.java' }
+    into(installerSource)
+}
+
 android {
-    namespace 'ai.eliza.voice'
+    namespace assetsOnly ? 'ai.eliza.voice.assets' : 'ai.eliza.voice'
     compileSdk 36
-    ndkVersion '28.2.13676358'
+    if (!assetsOnly) { ndkVersion '28.2.13676358' }
     defaultConfig {
         minSdk 26
         consumerProguardFiles new File(paradeeSource, 'consumer-rules.pro')
-        externalNativeBuild {
-            cmake {
-                abiFilters(*paradeeAbis)
-                arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${ffiInclude.canonicalPath}",
-                    "-DELIZAVOICE_INFERENCE_LIB_DIR=${inferenceLibDir.canonicalPath}",
-                    "-DELIZA_VOICE_JNI_SOURCE_DIR=${jniSource.canonicalPath}",
-                    '-DANDROID_STL=c++_shared'
+        if (!assetsOnly) {
+            externalNativeBuild {
+                cmake {
+                    abiFilters(*paradeeAbis)
+                    arguments "-DELIZAVOICE_FFI_INCLUDE_DIR=${ffiInclude.canonicalPath}",
+                        "-DELIZAVOICE_INFERENCE_LIB_DIR=${inferenceLibDir.canonicalPath}",
+                        "-DELIZA_VOICE_JNI_SOURCE_DIR=${jniSource.canonicalPath}",
+                        '-DANDROID_STL=c++_shared'
+                }
             }
         }
     }
-    externalNativeBuild {
-        cmake {
-            path new File(paradeeSource, 'src/main/cpp/CMakeLists.txt')
-            version '3.22.1'
+    if (!assetsOnly) {
+        externalNativeBuild {
+            cmake {
+                path new File(paradeeSource, 'src/main/cpp/CMakeLists.txt')
+                version '3.22.1'
+            }
         }
     }
     sourceSets.main {
-        java.srcDirs = [new File(paradeeSource, 'src/main/java')]
+        java.srcDirs = assetsOnly ? [installerSource] : [new File(paradeeSource, 'src/main/java')]
         manifest.srcFile new File(paradeeSource, 'src/main/AndroidManifest.xml')
-        assets.srcDirs = [new File(paradeeNative, 'assets')]
+        assets.srcDirs = omittedAssets ? [] : [new File(paradeeNative, 'assets')]
         jniLibs.srcDirs = packageInference ? [new File(paradeeNative, 'jniLibs')] : []
     }
     if (!packageInference) {
-        // CMake contributes imported libraries and the NDK C++ runtime even
-        // when jniLibs is empty.
-        // Hosts that own libelizainference also own its admitted C++ runtime;
-        // do not let this library introduce a second copy into their APK.
         packaging.jniLibs.excludes += ['**/libc++_shared.so', '**/libelizainference.so']
     }
+    androidResources { noCompress += ['gguf', 'lex'] }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21
     }
 }
 
-// Refuse to build from native outputs or a model bundle that differ from the
-// hash-pinned build record (build-native.ts writes it).
+if (assetsOnly) { preBuild.dependsOn(stageInstaller) }
+
+// One hash-pinned input contract for the full JNI consumer and the assets-only host.
 preBuild.doFirst {
+    if (omittedAssets) return
     def record = new File(paradeeNative, 'build-record.json')
     if (!record.isFile()) throw new GradleException("[paradee-voice] ${record} missing; run packages/app/scripts/paradee-voice/build-native.ts")
     def approved = new groovy.json.JsonSlurper().parse(record)
-    if (!(approved.abis instanceof List) || !approved.abis.containsAll(paradeeAbis)) throw new GradleException('[paradee-voice] missing requested ABI in build-record.json')
+    if (!(approved.abis instanceof List) || (!assetsOnly && !approved.abis.containsAll(paradeeAbis))) throw new GradleException('[paradee-voice] missing requested ABI in build-record.json')
+    if (!(approved.files instanceof List) || approved.files.any { !(it.path instanceof String) } || approved.files*.path.toSet().size() != approved.files.size()) throw new GradleException('[paradee-voice] invalid or duplicate build-record paths')
+    // Package exactly the recorded files, including notices and the manifest.
+    // Reject symlinks before walking into them, so neither an unrecorded file nor
+    // an aliased directory can silently extend the APK's model payload.
+    def assetRoot = new File(paradeeNative, 'assets').toPath()
+    def actualAssets = [] as Set
+    if (java.nio.file.Files.isDirectory(assetRoot)) {
+        def paths = java.nio.file.Files.walk(assetRoot)
+        try {
+            paths.forEach { path ->
+                if (java.nio.file.Files.isSymbolicLink(path)) throw new GradleException('[paradee-voice] symlink in model assets')
+                if (java.nio.file.Files.isRegularFile(path)) actualAssets.add('assets/' + assetRoot.relativize(path).toString().replace(File.separator, '/'))
+            }
+        } finally { paths.close() }
+    }
+    def recordedAssets = approved.files.findAll { it.path.startsWith('assets/') }.collect { it.path }.toSet()
+    if (actualAssets != recordedAssets) throw new GradleException('[paradee-voice] model asset inventory differs from build-record.json')
+    def pins = new groovy.json.JsonSlurper().parse(new File(paradeeSource, 'inputs.json'))
+    for (def kind : ['paradee', 'lexicon', 'asr', 'vad']) {
+        def pin = pins[kind]
+        def entries = approved.files.findAll { it.path == "assets/paradee-voice/v1/${pin.path}" }
+        if (entries.size() != 1 || entries[0].bytes != pin.bytes || entries[0].sha256 != pin.sha256) throw new GradleException("[paradee-voice] ${kind} differs from pinned model inputs")
+    }
     approved.files.each { entry ->
         if (!packageInference && entry.path.startsWith('jniLibs/')) return
         def target = new File(paradeeNative, entry.path)
+        if (!target.canonicalPath.startsWith(paradeeNative.canonicalPath + File.separator)) throw new GradleException('[paradee-voice] input path escaped native output')
         def digest = java.security.MessageDigest.getInstance('SHA-256')
-        if (!target.isFile()) throw new GradleException("[paradee-voice] missing ${target}")
+        if (!target.isFile() || target.length() != entry.bytes) throw new GradleException("[paradee-voice] missing or resized ${target}")
         target.withInputStream { stream -> byte[] buffer = new byte[1 << 16]; int count; while ((count = stream.read(buffer)) > 0) digest.update(buffer, 0, count) }
         if (digest.digest().encodeHex().toString() != entry.sha256) throw new GradleException("[paradee-voice] ${target} differs from build-record.json")
     }
@@ -78,7 +110,7 @@ preBuild.doFirst {
 // One optional Capacitor transport; the legacy flag selects the same owner.
 def capacitorEnabled = (project.hasProperty('elizaInferenceCapacitor') && project.elizaInferenceCapacitor.toString() == 'true') ||
     (project.hasProperty('elizaParadeeCapacitor') && project.elizaParadeeCapacitor.toString() == 'true')
-if (capacitorEnabled) {
+if (capacitorEnabled && !assetsOnly) {
     android.sourceSets.main.java.srcDir new File(paradeeSource, 'capacitor/src/main/java')
     dependencies { compileOnly project(':capacitor-android') }
 }

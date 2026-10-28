@@ -115,7 +115,8 @@
 		"native:clean": "make -C native/verify clean",
 		"bench:streaming": "bun scripts/streaming-pipeline-bench.ts",
 		"bench:stt": "bun scripts/local-stt-bench.ts",
-		"voice:hardware": "bun scripts/voice-e2e-hardware.ts"
+		"voice:hardware": "bun scripts/voice-e2e-hardware.ts",
+		"test:android-assets": "node native/android/test/voice-assets.node.mjs"
 	},
 	"dependencies": {
 		"@elizaos/cloud-routing": "workspace:*",
