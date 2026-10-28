@@ -64,5 +64,8 @@ test("the owned library never reads a missing selection as the whole trash", () 
     library,
     /prepareDeleteTrash\(JSONArray requested\)[^{]*\{\s*return prepareDeleteTrash\(TrashDeleteRequest\.named\(requested\)\)/,
   );
-  assert.ok(!/requested\s*[!=]=\s*null/.test(library), "no null-means-all branch");
+  assert.ok(
+    !/requested\s*[!=]=\s*null/.test(library),
+    "no null-means-all branch",
+  );
 });
