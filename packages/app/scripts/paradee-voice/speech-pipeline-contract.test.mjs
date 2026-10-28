@@ -178,53 +178,51 @@ test("validated speech over the shared session: bounds, silence, streamed chunks
   }
 });
 
-test(
-  "live capture controller orders the agent session, microphone, cancellation and teardown",
-  { skip: jsonSkip },
-  () => {
-    const sdk = path.join(
-      process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
-      "platforms/android-36/android.jar",
+test("live capture controller orders the agent session, microphone, cancellation and teardown", {
+  skip: jsonSkip,
+}, () => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "live-capture-"));
+  // org.json precedes android.jar so the real implementation replaces its stubs.
+  const classpath = `${jsonJar}${path.delimiter}${sdk}`;
+  try {
+    const sources = fs
+      .readdirSync(voice)
+      .filter((name) => name.endsWith(".java"))
+      .map((name) => path.join(voice, name));
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        classpath,
+        "-d",
+        temp,
+        ...sources,
+        path.join(fixtures, "LiveCaptureControllerTest.java"),
+      ],
+      { stdio: "pipe", timeout: 120000 },
     );
-    assert.ok(fs.existsSync(sdk), "Android 36 platform required");
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), "live-capture-"));
-    // org.json precedes android.jar so the real implementation replaces its stubs.
-    const classpath = `${jsonJar}${path.delimiter}${sdk}`;
-    try {
-      const sources = fs
-        .readdirSync(voice)
-        .filter((name) => name.endsWith(".java"))
-        .map((name) => path.join(voice, name));
-      execFileSync(
-        java("javac"),
-        [
-          "--release",
-          "21",
-          "-cp",
-          classpath,
-          "-d",
-          temp,
-          ...sources,
-          path.join(fixtures, "LiveCaptureControllerTest.java"),
-        ],
-        { stdio: "pipe", timeout: 120000 },
-      );
-      // android.jar only satisfies signatures; the fake source never reaches an Android method.
-      const output = execFileSync(
-        java("java"),
-        [
-          "-cp",
-          `${temp}${path.delimiter}${classpath}`,
-          "ai.eliza.voice.LiveCaptureControllerTest",
-        ],
-        { encoding: "utf8", timeout: 60000 },
-      );
-      assert.match(output, /^PASS live capture controller/);
-    } finally {
-      fs.rmSync(temp, { recursive: true, force: true });
-    }
-  },
-);
+    // android.jar only satisfies signatures; the fake source never reaches an Android method.
+    const output = execFileSync(
+      java("java"),
+      [
+        "-cp",
+        `${temp}${path.delimiter}${classpath}`,
+        "ai.eliza.voice.LiveCaptureControllerTest",
+      ],
+      { encoding: "utf8", timeout: 60000 },
+    );
+    assert.match(output, /^PASS live capture controller/);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+});
 
 test("the shared speech library compiles against Android 36", () => {
   const sdk = path.join(
