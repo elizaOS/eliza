@@ -536,6 +536,36 @@ describe("DurableDraftController sending across restarts and windows", () => {
     });
   });
 
+  it("keeps the mark when the page goes away with the send unsettled", async () => {
+    const slot = rawSlot();
+    const first = editorRun(slot);
+    await first.c.open("test");
+    first.set("Sent as the page closed");
+    await first.c.hold("Sent as the page closed");
+    first.set("");
+    const writes = slot.writes();
+    // Teardown fails the request; its outcome is shown to no one.
+    first.c.abandon();
+    expect(first.c.holding).toBe(false);
+    await first.c.commit();
+    first.c.release();
+    await tick();
+    expect(slot.writes()).toBe(writes);
+    expect(first.get()).toBe("");
+    expect(savedRow(slot)).toMatchObject({
+      text: "Sent as the page closed",
+      sending: true,
+    });
+    const restarted = editorRun(slot);
+    await restarted.c.open("test");
+    expect(restarted.get()).toBe("");
+    expect(restarted.c.state).toMatchObject({
+      conflict: true,
+      unsettled: true,
+      savedText: "Sent as the page closed",
+    });
+  });
+
   it("puts an unsettled message back on request as an ordinary draft", async () => {
     const slot = rawSlot();
     const first = editorRun(slot);

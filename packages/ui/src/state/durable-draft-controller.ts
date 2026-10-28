@@ -665,6 +665,17 @@ export class DurableDraftController<Recovery = unknown> {
   }
 
   /**
+   * The page is going away (unload, Activity teardown) with the send held
+   * and its outcome not shown to anyone. Nothing is written: the saved copy
+   * keeps its sending mark, so the next start offers it for review instead
+   * of clearing it (as {@link commit} would) or restoring it as a draft (as
+   * {@link release} would). Writes already queued for the binding still run.
+   */
+  abandon(): void {
+    this.held = undefined;
+  }
+
+  /**
    * Clear the saved copy for a form whose own save is the effect, only while
    * the editor still holds `expectedText` (compared trimmed).
    */
