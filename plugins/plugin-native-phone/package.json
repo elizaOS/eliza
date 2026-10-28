@@ -58,6 +58,7 @@
     "@capacitor/haptics": "8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",
+    "@elizaos/contracts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
     "@elizaos/ui": "workspace:*",

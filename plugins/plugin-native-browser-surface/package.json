@@ -28,6 +28,21 @@
       "eliza-source": "./src/submitted-navigation.ts",
       "types": "./dist/esm/submitted-navigation.d.ts",
       "import": "./dist/esm/submitted-navigation.js"
+    },
+    "./browsing-session": {
+      "eliza-source": "./src/browsing-session.ts",
+      "types": "./dist/esm/browsing-session.d.ts",
+      "import": "./dist/esm/browsing-session.js"
+    },
+    "./page-reading": {
+      "eliza-source": "./src/page-reading.ts",
+      "types": "./dist/esm/page-reading.d.ts",
+      "import": "./dist/esm/page-reading.js"
+    },
+    "./page-source": {
+      "eliza-source": "./src/page-source.ts",
+      "types": "./dist/esm/page-source.d.ts",
+      "import": "./dist/esm/page-source.js"
     }
   },
   "unpkg": "dist/plugin.js",

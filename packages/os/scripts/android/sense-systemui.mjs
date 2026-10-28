@@ -11,12 +11,16 @@ const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../..",
 );
+// ops: microphone indicator op lists; chip: Listening chip and indicator lease;
+// assist: SystemUI shares its identity with the assistant it launches, so a
+// press-and-hold power or assist gesture is distinguishable from an app intent.
 const bundleDirectory = (bundle) => {
-  if (!["ops", "chip"].includes(bundle)) throw Error("Unknown SystemUI bundle");
+  if (!["ops", "chip", "assist"].includes(bundle))
+    throw Error("Unknown SystemUI bundle");
   return path.join(
     root,
     "android/sense/systemui",
-    bundle === "chip" ? "chip" : "",
+    bundle === "ops" ? "" : bundle,
   );
 };
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");

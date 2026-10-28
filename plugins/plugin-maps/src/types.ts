@@ -179,7 +179,66 @@ export const routePlanRequestSchema = z
   })
   .strict();
 
+/** One region a provider serves; bounds are west, south, east, north in degrees. */
+export const mapsCoverageRegionSchema = z
+  .object({
+    id: boundedText(64),
+    name: boundedText(100),
+    bounds: z
+      .tuple([
+        z.number().finite().min(-180).max(180),
+        z.number().finite().min(-90).max(90),
+        z.number().finite().min(-180).max(180),
+        z.number().finite().min(-90).max(90),
+      ])
+      .refine(([west, south, east, north]) => west < east && south < north, {
+        message: "Coverage bounds are invalid.",
+      }),
+  })
+  .strict();
+
+/** A service that receives a request's query text and coordinates. */
+export const mapsLocationRecipientSchema = z
+  .object({
+    role: z.enum(["gateway", "search", "routing"]),
+    name: boundedText(100),
+    operator: boundedText(100),
+  })
+  .strict();
+
+/**
+ * What a provider says it serves: regions, travel modes, the data and services
+ * behind it and who receives locations. Facts it does not report stay absent.
+ */
+export const mapsCoverageSchema = z
+  .object({
+    provider: mapsProviderIdSchema,
+    /** Dataset revision, e.g. an extract date. */
+    revision: boundedText(200).optional(),
+    regions: z.array(mapsCoverageRegionSchema).max(64),
+    travelModes: z.array(travelModeSchema).max(4),
+    alternatives: z.boolean(),
+    reverseGeocode: z.boolean(),
+    liveTraffic: z.boolean(),
+    transitSchedules: z.boolean(),
+    offline: z.boolean(),
+    sources: z
+      .object({
+        data: boundedText(100),
+        search: boundedText(100),
+        routing: boundedText(100),
+      })
+      .strict()
+      .optional(),
+    recipients: z.array(mapsLocationRecipientSchema).min(1).max(8).optional(),
+    /** What the provider's gateway keeps about a request, when it says. */
+    gatewayRecords: z.literal("operation-and-result-code").optional(),
+  })
+  .strict();
+
 export type Coordinates = z.infer<typeof coordinatesSchema>;
+export type MapsCoverage = z.infer<typeof mapsCoverageSchema>;
+export type MapsLocationRecipient = z.infer<typeof mapsLocationRecipientSchema>;
 export type MapsProviderDescription = z.infer<
   typeof mapsProviderDescriptionSchema
 >;

@@ -1,5 +1,5 @@
 /** Exercises production keypad ownership with deterministic deadlines and a recording Telecom output boundary. */
-package ai.elizaos.app;
+package ai.eliza.plugins.phone;
 
 import static org.junit.Assert.assertEquals;
 import java.util.ArrayList;
@@ -7,11 +7,11 @@ import java.util.Arrays;
 import java.util.List;
 import org.junit.Test;
 
-public class ElizaInCallToneTest {
+public class TelecomCallToneTest {
     private final List<String> effects = new ArrayList<>();
     private boolean accepted = true;
-    private final ElizaInCallActivity.ToneSession tones = new ElizaInCallActivity.ToneSession(
-        new ElizaInCallActivity.ToneSession.Output() {
+    private final TelecomCallActivity.ToneSession tones = new TelecomCallActivity.ToneSession(
+        new TelecomCallActivity.ToneSession.Output() {
             @Override public boolean play(String id, char digit) {
                 effects.add("play " + id + " " + digit);
                 return accepted;

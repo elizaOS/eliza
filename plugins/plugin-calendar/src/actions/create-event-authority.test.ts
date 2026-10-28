@@ -95,6 +95,71 @@ describe("canonical Calendar create authority", () => {
       { email: "dana@acme.com", displayName: "Dana", optional: false },
     ]);
   });
+  it("asks for the address of a named guest given an address the owner never wrote", () => {
+    const original = {
+      id: source.id,
+      text: "Lunch with Dana tomorrow at noon.",
+    };
+    const evidence = [{ sourceId: original.id, quote: original.text }];
+    expect(() =>
+      validateCalendarCreateAuthority(
+        {
+          guestIntent: {
+            state: "requested",
+            evidence,
+            guests: [
+              { name: "Dana", email: "dana@gmail.com", optional: false },
+            ],
+          },
+          noteIntent: { state: "none", evidence, sourceNote: null },
+        },
+        [original],
+        [],
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "CALENDAR_ATTENDEE_IDENTITY_REQUIRED" }),
+    );
+  });
+  it("rejects an invented guest whose name is only part of another word", () => {
+    const original = { id: source.id, text: "Call the dentist at noon." };
+    const evidence = [{ sourceId: original.id, quote: original.text }];
+    expect(() =>
+      validateCalendarCreateAuthority(
+        {
+          guestIntent: {
+            state: "requested",
+            evidence,
+            guests: [{ name: "Al", email: "al@gmail.com", optional: false }],
+          },
+          noteIntent: { state: "none", evidence, sourceNote: null },
+        },
+        [original],
+        [],
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "CALENDAR_CREATE_EVIDENCE_INVALID" }),
+    );
+  });
+  it("rejects a guest invented for a solo request", () => {
+    expect(() =>
+      validateCalendarCreateAuthority(
+        {
+          ...solo,
+          guestIntent: {
+            state: "requested",
+            evidence: [{ sourceId: source.id, quote: source.text }],
+            guests: [
+              { name: "Jordan", email: "jordan@gmail.com", optional: false },
+            ],
+          },
+        },
+        [source],
+        [],
+      ),
+    ).toThrow(
+      expect.objectContaining({ code: "CALENDAR_CREATE_EVIDENCE_INVALID" }),
+    );
+  });
   it("requires clarification for unresolved continuations", () => {
     expect(() =>
       validateCalendarCreateAuthority(

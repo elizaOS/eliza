@@ -47,6 +47,12 @@
       "import": "./dist/device-clock-review.js",
       "default": "./dist/device-clock-review.js"
     },
+    "./device-reminder-journal": {
+      "eliza-source": "./src/services/device-actions/reminder-journal.ts",
+      "types": "./dist/device-reminder-journal.d.ts",
+      "import": "./dist/device-reminder-journal.js",
+      "default": "./dist/device-reminder-journal.js"
+    },
     "./actions/context-signal": {
       "eliza-source": "./src/actions/context-signal.ts",
       "types": "./dist/actions/context-signal.d.ts",
@@ -70,6 +76,12 @@
       "types": "./dist/device-calendar-contract.d.ts",
       "import": "./dist/device-calendar-contract.js",
       "default": "./dist/device-calendar-contract.js"
+    },
+    "./device-photo-library-contract": {
+      "eliza-source": "./src/services/device-actions/photo-library-contract.ts",
+      "types": "./dist/device-photo-library-contract.d.ts",
+      "import": "./dist/device-photo-library-contract.js",
+      "default": "./dist/device-photo-library-contract.js"
     },
     "./device-foreground-review": {
       "eliza-source": "./src/services/device-actions/foreground-review-contract.ts",

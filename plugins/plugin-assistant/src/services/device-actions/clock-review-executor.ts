@@ -11,6 +11,9 @@ export type {
   ClockAlarmOperation,
   ClockAlarmRecord,
   ClockAlarmResult,
+  ClockDay,
+  ClockHandoffOperation,
+  ClockHandoffResult,
   ClockOperation,
   ClockResult,
 } from "./clock-contract.ts";
@@ -26,6 +29,42 @@ export {
   validateClockOperation,
   validateClockResult,
 } from "./clock-contract.ts";
+export type {
+  ClockHandoffForm,
+  ClockHandoffHostSupport,
+  ClockHandoffRequest,
+  ClockHandoffSetRequest,
+} from "./clock-handoff.ts";
+export {
+  assertClockHandoffObservation,
+  assertClockHandoffTimeZone,
+  buildClockHandoffRequest,
+  CLOCK_DAY_NAMES,
+  clockHandoffCapabilities,
+  clockHandoffFormDays,
+  clockHandoffReceipt,
+  currentClockTimeZone,
+  describeClockDays,
+  describeClockHandoff,
+  isClockHandoffOperation,
+  normalizeClockTimeZone,
+  validateClockHandoffDispatch,
+  validateClockHandoffResult,
+} from "./clock-handoff.ts";
+export type {
+  ClockHandoffEnvelope,
+  ClockHandoffHistory,
+  ClockHandoffHistoryOptions,
+  ClockHandoffHistoryStorage,
+  ClockHandoffRecord,
+  ClockHandoffSnapshot,
+} from "./clock-handoff-history.ts";
+export {
+  CLOCK_HANDOFF_HISTORY_ACTIONS,
+  CLOCK_HANDOFF_HISTORY_STATUSES,
+  createClockHandoffHistory,
+  validateClockHandoffRecord,
+} from "./clock-handoff-history.ts";
 export interface ClockJournalIdentity {
   scope: string;
   proposalId: string;
