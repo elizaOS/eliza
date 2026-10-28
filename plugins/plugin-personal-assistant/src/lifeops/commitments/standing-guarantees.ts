@@ -136,15 +136,7 @@ export async function listCommitmentClassGuarantees(
   args: { agentId: string; obligationKind: LifeOpsCommitmentKind },
 ): Promise<ScheduledTask[]> {
   const runner = getScheduledTaskRunner(runtime, { agentId: args.agentId });
-  // An event-triggered guarantee stays installed after it dispatches once: the
-  // bridge only pushes `scheduled` rows, so the `fired` row is the durable
-  // guarantee, not a spent one. Excluding it would drop the lead-time warning
-  // for every later obligation of that class. A dismissed or completed row is
-  // a real opt-out and stays excluded.
-  const tasks = await runner.list({
-    kind: "watcher",
-    status: ["scheduled", "fired"],
-  });
+  const tasks = await runner.list({ kind: "watcher", status: "scheduled" });
   return tasks.filter((task) => isGuaranteeForClass(task, args.obligationKind));
 }
 
@@ -178,28 +170,10 @@ export async function applyCommitmentClassGuarantees(
   }
 
   const warnTaskIds: string[] = [];
-  // Exactly one pending lead-time watcher per document and class. A moved
-  // deadline must retire the previous watcher, otherwise the old date still
-  // notifies the owner about a deadline that no longer exists.
-  const retireWarnWatchers = async (keepTaskId?: string): Promise<void> => {
-    const pending = await runner.list({ kind: "watcher", status: "scheduled" });
-    for (const task of pending) {
-      if (task.taskId === keepTaskId) continue;
-      if (task.trigger.kind !== "once") continue;
-      if (task.metadata?.documentId !== artifact.documentId) continue;
-      if (task.metadata?.obligationKind !== artifact.obligationKind) continue;
-      await runner.apply(task.taskId, "dismiss", {
-        reason: `deadline moved to ${artifact.deadline}`,
-      });
-    }
-  };
   for (const guarantee of guarantees) {
     const warnDays = guaranteeWarnDays(guarantee);
     const warnAtMs = deadlineMs - warnDays * DAY_MS;
-    if (warnAtMs <= Date.now()) {
-      await retireWarnWatchers();
-      continue;
-    }
+    if (warnAtMs <= Date.now()) continue;
     const warnAtIso = new Date(warnAtMs).toISOString();
     const warnTask = await runner.schedule({
       kind: "watcher",
@@ -220,8 +194,20 @@ export async function applyCommitmentClassGuarantees(
         warnDaysBefore: warnDays,
       },
     });
-    await retireWarnWatchers(warnTask.taskId);
     warnTaskIds.push(warnTask.taskId);
+  }
+
+  // A moved deadline must retire the warnings for the old deadline, or the
+  // owner is warned about a date that no longer applies.
+  const pending = await runner.list({ kind: "watcher", status: "scheduled" });
+  for (const task of pending) {
+    if (warnTaskIds.includes(task.taskId)) continue;
+    if (task.trigger.kind !== "once") continue;
+    if (task.metadata?.documentId !== artifact.documentId) continue;
+    if (task.metadata?.obligationKind !== artifact.obligationKind) continue;
+    await runner.apply(task.taskId, "dismiss", {
+      reason: `deadline moved to ${artifact.deadline}`,
+    });
   }
 
   const obligationPayload: CommitmentObligationEventPayload = {
