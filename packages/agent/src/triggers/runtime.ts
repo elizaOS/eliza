@@ -281,12 +281,14 @@ export function readTriggerRuns(task: Task): TriggerRunRecord[] {
 
 export function triggersFeatureEnabled(runtime?: IAgentRuntime): boolean {
   const runtimeSetting = runtime?.getSetting("ELIZA_TRIGGERS_ENABLED");
-  if (
-    runtimeSetting === false ||
-    runtimeSetting === "false" ||
-    runtimeSetting === "0"
-  ) {
-    return false;
+  if (runtimeSetting === false) return false;
+  // A settings UI or config file can spell the disable value in any letter
+  // case ("FALSE", "False", " false "). Normalize it exactly like the
+  // environment-variable branch below; an exact-match comparison here let an
+  // explicit settings-level disable fail OPEN and left triggers running.
+  if (typeof runtimeSetting === "string") {
+    const setting = runtimeSetting.trim().toLowerCase();
+    if (setting === "false" || setting === "0") return false;
   }
   const env = process.env.ELIZA_TRIGGERS_ENABLED;
   if (!env) return true;

@@ -161,6 +161,66 @@ describe("standalone Calendar owner approval", () => {
     });
     expect(a.idempotencyKey).not.toBe(b.idempotencyKey);
   });
+  describe("recurring series scope in the owner's approval text", () => {
+    const targetEvent = {
+      id: "google-owner-grant:event-1",
+      externalId: "event-1",
+      grantId: "google-owner-grant",
+      calendarId: "primary",
+      provider: "google",
+      side: "owner",
+      title: "Standup",
+      startAt: "2026-10-14T18:00:00Z",
+      endAt: "2026-10-14T18:15:00Z",
+      updatedAt: "2026-10-14T17:00:00Z",
+      organizer: { self: true },
+      attendees: [],
+      recurringEventId: "series-1",
+      metadata: { etag: '"v1"', recurringEventId: "series-1" },
+    } as unknown as Parameters<
+      ReturnType<typeof createCalendarMutationApprovalGateway>["cancel"]
+    >[0]["targetEvent"];
+    it("tells the owner a series cancel removes every occurrence", async () => {
+      const { enqueue, gateway } = setup();
+      await gateway.cancel({
+        runtime,
+        message,
+        request: {
+          grantId: "google-owner-grant",
+          side: "owner",
+          calendarId: "primary",
+          eventId: "event-1",
+          recurrenceScope: "series",
+          notifyAttendees: false,
+        } as never,
+        targetEvent,
+      });
+      const reason = String(enqueue.mock.calls[0][0].reason);
+      expect(reason).toMatch(/every occurrence|whole recurring series/i);
+      expect(reason).not.toMatch(/ on 2026-10-14T18:00:00/);
+    });
+    it("tells the owner a series modify changes every occurrence", async () => {
+      const { enqueue, gateway } = setup();
+      await gateway.modify({
+        runtime,
+        message,
+        request: {
+          grantId: "google-owner-grant",
+          side: "owner",
+          calendarId: "primary",
+          eventId: "event-1",
+          recurrenceScope: "series",
+          notifyAttendees: false,
+          title: "Daily sync",
+        } as never,
+        targetEvent,
+      });
+      const reason = String(enqueue.mock.calls[0][0].reason);
+      expect(reason).toMatch(/every occurrence|whole recurring series/i);
+      expect(reason).not.toMatch(/ on 2026-10-14T18:00:00/);
+    });
+  });
+
   describe("managed Google Calendar deletion", () => {
     const managedGrant = `alpha-google:${"c".repeat(64)}`;
     const targetEvent = {

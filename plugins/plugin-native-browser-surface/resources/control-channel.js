@@ -1037,13 +1037,17 @@
               : control(CLOSE);
           const rejectRef =
             kind === "cookie-consent" ? control(REJECT) : undefined;
-          const summary = (found.text ?? text).slice(0, 200);
+          // Hide secrets before cutting: a cut can split a secret, and "[hidden]" can
+          // be longer than the value it replaces.
+          const summary = (
+            found.text === undefined ? text : withoutSecrets(found.text)
+          ).slice(0, 200);
           result.push({
             kind,
             ...(ref !== undefined ? { ref } : {}),
             ...(rejectRef !== undefined ? { rejectRef } : {}),
             covers,
-            ...(summary ? { text: withoutSecrets(summary) } : {}),
+            ...(summary ? { text: summary } : {}),
           });
         }
         const rank = { viewport: 0, target: 1, partial: 2 };

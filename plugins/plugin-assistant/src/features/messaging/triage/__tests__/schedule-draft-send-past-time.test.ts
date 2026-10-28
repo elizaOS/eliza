@@ -65,3 +65,29 @@ it("schedules a future time", async () => {
     Date.parse(future),
   );
 });
+
+it("reads an offset-free sendAt in the message's time zone, not the host's", async () => {
+  const scheduled = stubService();
+  // "Send it Monday at 9am" arrives as a wall clock in the user's zone;
+  // New York is on EST (-05:00) in November.
+  const message = {
+    content: {
+      text: "send it monday 9am",
+      metadata: { uiTimeZone: "America/New_York" },
+    },
+  } as unknown as Memory;
+  const result = await scheduleDraftSendAction.handler(
+    createFakeRuntime(),
+    message,
+    undefined,
+    {
+      parameters: { draftId: "d1", sendAt: "2030-11-04T09:00:00" },
+    } as unknown as HandlerOptions,
+  );
+  expect(result?.success).toBe(true);
+  expect(scheduled).toHaveBeenCalledWith(
+    expect.anything(),
+    "d1",
+    Date.parse("2030-11-04T14:00:00Z"),
+  );
+});

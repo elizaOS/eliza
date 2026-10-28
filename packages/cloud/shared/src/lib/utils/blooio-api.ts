@@ -217,7 +217,7 @@ export async function verifyBlooioSignature(
 
   try {
     // Parse signature header: t=timestamp,v1=signature
-    const parts = signatureHeader.split(",");
+    const parts = signatureHeader.split(",").map((part) => part.trim());
     const timestampPart = parts.find((p) => p.startsWith("t="));
     const signaturePart = parts.find((p): p is string => p.startsWith("v1="));
 

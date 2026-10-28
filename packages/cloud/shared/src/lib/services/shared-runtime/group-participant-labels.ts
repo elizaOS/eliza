@@ -159,7 +159,9 @@ export function redactGroupParticipantHandles(
     .sort((a, b) => b.variant.length - a.variant.length);
   let guarded = text;
   for (const { variant, label } of replacements) {
-    guarded = guarded.replace(handleMatcher(variant), label);
+    // The label is a connector-supplied name, and `replace` reads `$` patterns
+    // in a string replacement: a name with `$&` would put the handle back.
+    guarded = guarded.replace(handleMatcher(variant), () => label);
   }
   return guarded;
 }

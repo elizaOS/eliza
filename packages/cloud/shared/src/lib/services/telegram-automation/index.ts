@@ -300,8 +300,13 @@ class TelegramAutomationService {
   /**
    * Set webhook for receiving updates from Telegram.
    * Requires HTTPS URL - use ELIZA_API_URL with ngrok for local development.
+   * `dropPendingUpdates: false` keeps updates that arrived while the webhook
+   * was off, so Telegram delivers them to the new webhook.
    */
-  async setWebhook(organizationId: string): Promise<{ success: boolean; error?: string }> {
+  async setWebhook(
+    organizationId: string,
+    options: { dropPendingUpdates?: boolean } = {},
+  ): Promise<{ success: boolean; error?: string }> {
     const botToken = await this.getBotToken(organizationId);
     if (!botToken) {
       return { success: false, error: "Bot token not found" };
@@ -328,7 +333,7 @@ class TelegramAutomationService {
 
       await bot.telegram.setWebhook(webhookUrl, {
         allowed_updates: ["message", "callback_query", "channel_post", "my_chat_member"],
-        drop_pending_updates: true,
+        drop_pending_updates: options.dropPendingUpdates ?? true,
         secret_token: webhookSecret || undefined,
       });
 
