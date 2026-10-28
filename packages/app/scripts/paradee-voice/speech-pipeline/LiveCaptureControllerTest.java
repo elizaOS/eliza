@@ -99,6 +99,17 @@ public final class LiveCaptureControllerTest {
    Result unrouted=new Result();controller.start(controller.reserve(A,4),false,()->{throw new SecurityException("no owner");},null,unrouted);await(unrouted.done);
    check(unrouted.refused!=null&&!host.events.contains("mic:"+A),"no owner route, no microphone");
 
+   // A Stop while the agent session warms is a cancellation, never an enrollment failure.
+   host.events.clear();CountDownLatch warming=new CountDownLatch(1),cancelledInFlight=new CountDownLatch(1);
+   LiveSegmentPipe.Transport slow=new LiveSegmentPipe.Transport(){
+    public void check(){}
+    public JSONObject post(JSONObject body)throws Exception{if(body.optBoolean("close"))return new JSONObject().put("status",200).put("body","{\"closed\":true}");warming.countDown();LiveCaptureControllerTest.check(cancelledInFlight.await(5,TimeUnit.SECONDS),"warm cancelled");throw new java.io.IOException("cancelled");}
+    public void cancelInFlight(){cancelledInFlight.countDown();}
+   };
+   Result warmStopped=new Result();controller.start(controller.reserve(B,4),false,()->slow,null,warmStopped);
+   await(warming);controller.stop(B,false,System.currentTimeMillis(),new Stop());await(warmStopped.done);
+   check(LiveCaptureController.CANCELLED.equals(warmStopped.refused)&&!host.events.contains("mic:"+B),"stop during warm-up is a cancellation");
+
    // Interruption ends the running capture with its reason; cancelAll closes its pipe.
    host.events.clear();host.ended=new CountDownLatch(1);Transport third=new Transport(host.events);Result running=new Result();
    controller.start(controller.reserve(A,5),true,()->third,null,running);await(running.done);check(running.refused==null,"second capture");

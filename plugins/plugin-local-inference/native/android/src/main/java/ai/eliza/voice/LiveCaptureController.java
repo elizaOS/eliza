@@ -93,7 +93,11 @@ public final class LiveCaptureController {
      if(!pipe.start(pipeWorker)){pipes.remove(id,pipe);result.refused("Native voice transport busy",null);return;}
      if(!pipe.ready().get(PIPE_READY_MS,TimeUnit.MILLISECONDS))throw new IllegalStateException("Agent voice session unavailable");
     }
-   }catch(Exception unavailable){closePipe(id,true,now());result.refused("Native voice enrollment unavailable",null);return;}
+   }catch(Exception unavailable){
+    closePipe(id,true,now());
+    // A Stop, pause or replacement while the agent session warmed is a cancellation, not an enrollment failure.
+    result.refused(host.open(epoch)&&admission.current(ticket)?"Native voice enrollment unavailable":CANCELLED,null);return;
+   }
    final LiveVoiceCapture next;
    try{
     next=host.capture(id,new LiveVoiceCapture.Sink(){

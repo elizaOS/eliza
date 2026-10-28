@@ -539,6 +539,7 @@ function fakeOpener() {
   const closes: (number | undefined)[] = [];
   let cancels = 0;
   let segmentsOnClose: string[] = [];
+  let closeFailure: Error | undefined;
   const open = async (
     input: LiveCaptureOpenOptions,
   ): Promise<LiveCaptureStream> => {
@@ -549,6 +550,7 @@ function fakeOpener() {
       speaking: () => false,
       async close(at) {
         closes.push(at);
+        if (closeFailure) throw closeFailure;
         for (const text of segmentsOnClose) input.onSegment(text);
         return { durationMs: 1234 };
       },
@@ -566,6 +568,9 @@ function fakeOpener() {
     },
     finalOnClose(texts: string[]) {
       segmentsOnClose = texts;
+    },
+    failClose(error: Error | undefined) {
+      closeFailure = error;
     },
   };
 }
@@ -631,6 +636,28 @@ describe("live dictation over a host capture", () => {
     expect(Number.isNaN(stopped[0]?.durationMs)).toBe(true);
     // Transcribe can start again after a lost capture.
     await expect(dictation.startRecording()).resolves.toBeTruthy();
+  });
+
+  it("releases the recording when the host cannot confirm the finalize", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    const first = await dictation.startRecording();
+    host.opened[0]?.onSegment("unconfirmed");
+    host.failClose(new Error("close not confirmed"));
+    await expect(dictation.stopRecording()).rejects.toThrow(
+      "close not confirmed",
+    );
+    expect(host.cancels).toBe(1);
+    await expect(
+      dictation.transcribe(first.recordingId, new AbortController().signal),
+    ).rejects.toThrow("no longer available");
+    host.failClose(undefined);
+    host.finalOnClose(["again"]);
+    const second = await dictation.startRecording();
+    await dictation.stopRecording();
+    await expect(
+      dictation.transcribe(second.recordingId, new AbortController().signal),
+    ).resolves.toEqual({ text: "again", local: true });
   });
 
   it("stops by itself at the duration limit", async () => {

@@ -744,7 +744,18 @@ export function createLiveDictation(
   const finish = (current: Recording, at?: number) => {
     current.stopping ??= (async () => {
       if (current.timer) clearTimeout(current.timer);
-      const result = await (current.capture as LiveCaptureStream).close(at);
+      const capture = current.capture as LiveCaptureStream;
+      let result: { durationMs: number };
+      try {
+        result = await capture.close(at);
+      } catch (error) {
+        // An unconfirmed finalize leaves no transcript to trust: release the recording so
+        // Transcribe can start again, and discard whatever the host still holds.
+        if (recording === current) recording = undefined;
+        current.texts.length = 0;
+        await capture.cancel().catch(() => {});
+        throw error;
+      }
       const clip = { recordingId: current.id, durationMs: result.durationMs };
       current.clip = clip;
       return clip;
