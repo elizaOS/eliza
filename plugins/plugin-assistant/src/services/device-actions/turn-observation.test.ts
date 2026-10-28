@@ -45,8 +45,10 @@ describe("device-action turn observation", () => {
       { ...valid, title: "Dentist" },
       // A selection without a view is not an observation.
       { revision: 1, sensitive: false, selectedObject: valid.selectedObject },
-      // Clock alarm snapshots share the slot but are not view observations.
-      { sensitive: false, revision: 0, alarmsStatus: "available", alarms: [] },
+      // A screen-less context that claims privacy, or carries a selection.
+      { sensitive: true, revision: 1, timeZone: "Europe/Berlin" },
+      { revision: 1, timeZone: "Europe/Berlin" },
+      { sensitive: false, revision: -1, timeZone: "Europe/Berlin" },
       "calendar",
     ]) {
       const metadata = { clientDevice: { context } };
@@ -59,5 +61,40 @@ describe("device-action turn observation", () => {
     expect(UNREADABLE_TURN_OBSERVATION.sensitive).toBe(true);
     expect(UNREADABLE_TURN_OBSERVATION.selectedObject).toBeUndefined();
     expect(UNREADABLE_TURN_OBSERVATION.timeZone).toBeUndefined();
+  });
+
+  it("projects a native host's screen-less device context without a view or selection", () => {
+    for (const context of [
+      { sensitive: false, revision: 3, timeZone: "Europe/Berlin" },
+      // The Clock host's alarm snapshot shares the slot.
+      {
+        sensitive: false,
+        revision: 3,
+        timeZone: "Europe/Berlin",
+        alarmsStatus: "available",
+        alarmsObservedAt: 1,
+        alarmsRevision: "a1",
+        alarms: [],
+      },
+    ]) {
+      const metadata = { clientDevice: { context } };
+      const observation = turnObservation(metadata);
+      expect(observation).toEqual({
+        view: "",
+        revision: 3,
+        sensitive: false,
+        timeZone: "Europe/Berlin",
+      });
+      expect(Object.isFrozen(observation)).toBe(true);
+      expect(requireTurnObservation(metadata)).toEqual(observation);
+    }
+    // An unadmitted zone is dropped rather than trusted.
+    expect(
+      turnObservation({
+        clientDevice: {
+          context: { sensitive: false, revision: 3, timeZone: "Not/AZone" },
+        },
+      }),
+    ).toEqual({ view: "", revision: 3, sensitive: false });
   });
 });
