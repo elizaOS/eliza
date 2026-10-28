@@ -1,0 +1,123 @@
+package ai.eliza.auth.cloud;
+
+import java.util.*;
+import java.time.Instant;
+import org.json.JSONObject;
+
+/** Executes the exact injected CloudSignInPlugin methods with synthetic HTTPS/store/bridge facades.
+ * No browser, real account, secret, mailbox or device is used. */
+public class CloudSignInChainTest {
+ final Object lock=new Object(); boolean destroyed; Attempt attempt; String mode="valid";
+ String issuedState, issuedChallenge; int requests; long intent, reserved;
+ static final String ID="00000000-0000-4000-8000-000000000001";
+ static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
+ static final Map<String,String> slots=new HashMap<>();
+ static final List<String> events=new ArrayList<>();
+ static class SignInFailure extends Exception { final String code;SignInFailure(String c){code=c;} }
+ static class JSObject extends JSONObject { @Override public JSObject put(String k,Object v){super.put(k,v);return this;} }
+ static class PluginCall {
+  final Map<String,String> input=new HashMap<>();JSObject result;String error;
+  String getString(String key){return input.get(key);}
+  void resolve(JSObject value){result=value;}
+  void reject(String message,String code){error=code;}
+ }
+ static class Attempt {
+  final CloudSignInEnvironment environment=TestRegistration.PRODUCTION;
+  final String id=UUID.randomUUID().toString();String email="owner@example.invalid",emailVerifier=CloudSignInFlow.newVerifier(),mfaType,mfaChallenge,phone;
+  long expiresAt=System.currentTimeMillis()+60000;boolean google,busy,cancelled;int failedVerifies;PluginCall waiting;
+  void cancel(){cancelled=true;}
+ }
+ static class Response { final int status;final JSONObject data;Response(int s,JSONObject d){status=s;data=d;} }
+ static class CloudKeyRevocation { static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");return true;} }
+ CloudSignInConfig config(){return TestRegistration.PRODUCT;}
+ CloudCredentialSlots credentials(Runnable guard){
+  return new CloudCredentialSlots(){
+   public String read(String key){return slots.get(key);}
+   public void write(String key,String value){guard.run();slots.put(key,value);events.add(key.startsWith("cloud:")?"key":"receipt");}
+   public void remove(String key){guard.run();slots.remove(key);}
+  };
+ }
+ /** A newer credential intent supersedes this sign-in only when the fixture says so. */
+ Runnable reserveCredentialCommit(){long mine=++intent;return ()->{if(mode.equals("superseded"))intent++;if(mine!=intent)throw new IllegalStateException("stale intent");};}
+ CloudCredentialSlots store(){return credentials(()->{if(destroyed)throw new IllegalStateException("closed");});}
+ void run(Runnable task){task.run();}
+ void refused(CloudSignInEnvironment environment,String code){}
+ void burnUnclaimedPending(){}
+ void requireAuthorization(Attempt current)throws Exception{events.add("authorization");}
+ void notifyListeners(String event,JSObject value,boolean retained){throw new AssertionError("fixture owns waiting call");}
+
+ Response post(Attempt current,String path,JSONObject body,String bearer)throws Exception{
+  return post(current,current.environment,path,body,bearer);
+ }
+ Response post(Attempt current,CloudSignInEnvironment environment,String path,JSONObject body,String bearer)throws Exception{
+  requests++;
+  if(path.equals(CloudEmailCode.VERIFY_PATH)||path.startsWith("/steward/auth/mfa/")){
+   if(mode.equals("bad-code")||mode.equals("mfa-denied"))return new Response(401,new JSONObject());
+   if(mode.equals("invalid-mfa"))return new Response(200,new JSONObject().put("mfaRequired",true).put("mfa",new JSONObject().put("type","unknown").put("challengeId","fixture").put("expiresAt",System.currentTimeMillis()+60000)));
+   return new Response(200,new JSONObject().put("token","synthetic-steward-token-for-fixture"));
+  }
+  if(path.equals("/api/v1/app-auth/connect")){
+   check(events.contains("authorization"),"native authorization precedes account connection");
+   if(mode.equals("config-denied"))return new Response(503,new JSONObject());
+   check("ai.example.signin".equals(body.getString("clientId")),"client binding");
+   check("Example Phone".equals(body.getString("deviceName")),"device label");
+   check(environment.name.equals(body.getString("environment")),"environment binding");
+   check(environment.callback().equals(body.getString("redirectUri")),"redirect binding");
+   check("S256".equals(body.getString("codeChallengeMethod")),"S256 required");
+   issuedState=body.getString("state");issuedChallenge=body.getString("codeChallenge");
+   check(CloudSignInFlow.validState(issuedState),"fresh state");
+   return new Response(200,new JSONObject().put("codeType","mobile_app_auth_code").put("code","emac_"+"a".repeat(64)).put("accountCreated",false));
+  }
+  if(path.equals("/api/v1/app-auth/mobile/token")){
+   check(issuedState.equals(body.getString("state")),"token state");
+   check(issuedChallenge.equals(CloudSignInFlow.s256(body.getString("codeVerifier"))),"token PKCE");
+   if(mode.equals("token-denied"))return new Response(401,new JSONObject());
+   if(mode.equals("cancelled"))current.cancelled=true;
+   return new Response(200,new JSONObject().put("secret",mode.equals("bad-secret")?"wrong-prefix":NEW).put("credentialId",ID).put("expiresAt",System.currentTimeMillis()+(mode.equals("expired-token")?-1:60000)).put("acknowledgeBy",System.currentTimeMillis()+30000).put("acknowledgementRequired",!mode.equals("missing-ack-contract")).put("tokenType","Bearer"));
+  }
+  if(path.equals("/api/v1/app-auth/mobile/ack")){
+   events.add("ack");check(issuedState.equals(body.getString("state")),"ack state");
+   check(issuedChallenge.equals(CloudSignInFlow.s256(body.getString("codeVerifier"))),"ack PKCE");
+   return new Response(200,new JSONObject().put("status","acknowledged").put("credentialId",mode.equals("wrong-ack")?UUID.randomUUID().toString():ID));
+  }
+  if(path.equals("/steward/auth/logout")){events.add("logout");return new Response(200,new JSONObject());}
+  throw new AssertionError("unexpected route");
+ }
+
+ /* ACTUAL_VERIFY */
+ /* ACTUAL_RELEASE */
+ /* ACTUAL_COMPLETE */
+ /* ACTUAL_PREVIOUS_TOKEN */
+ /* ACTUAL_ACK */
+ /* ACTUAL_OUTCOMES */
+ /* ACTUAL_INSTANT */
+
+ static void check(boolean value,String label){if(!value)throw new AssertionError(label);}
+ static void scenario(String mode,boolean authenticated,boolean committed)throws Exception{
+  slots.clear();events.clear();
+  slots.put("cloud:production",new JSONObject().put("token",OLD).toString());
+  slots.put("cloud:staging","preserved-other-environment");
+  CloudSignInChainTest host=new CloudSignInChainTest();host.mode=mode;
+  Attempt request=new Attempt();host.attempt=request;
+  PluginCall call=new PluginCall();call.input.put("attemptId",request.id);call.input.put("code","123456");
+  boolean mfa=mode.startsWith("mfa-");
+  if(mfa){request.mfaType=mode.equals("mfa-unsupported")?"passkey":"totp";request.mfaChallenge="fixture";}
+  if(mode.equals("expired-attempt"))request.expiresAt=0;
+  host.verify(call,mfa);
+  boolean actual=call.result!=null&&"authenticated".equals(call.result.optString("status"));
+  check(actual==authenticated,"authentication outcome "+mode);
+  String stored=slots.get("cloud:production");check(NEW.equals(new JSONObject(stored).optString("token"))==committed,"key commit "+mode);
+  check("preserved-other-environment".equals(slots.get("cloud:staging")),"environment isolation "+mode);
+  if(events.contains("authorization"))check(events.get(events.size()-1).equals("logout")||events.contains("logout"),"the Steward session is revoked "+mode);
+  if(authenticated){check(events.indexOf("receipt")<events.indexOf("key")&&events.indexOf("key")<events.indexOf("ack"),"durable receipt ordering");check(events.indexOf("revoke")>events.indexOf("ack"),"old key revoked only after ack");}
+  else check(call.error!=null,"failure is explicit "+mode);
+  if(mode.equals("wrong-ack"))check("activation-pending".equals(call.error)&&slots.containsKey(TestRegistration.PRODUCT.receiptSlot(request.environment)),"unacknowledged receipt retained");
+  if(mode.equals("superseded"))check(!events.contains("ack")&&!events.contains("key"),"a superseded commit writes no key and sends no ack");
+ }
+ public static void main(String[] args)throws Exception{
+  scenario("valid",true,true);
+  for(String mode:List.of("bad-code","invalid-mfa","mfa-denied","mfa-unsupported","config-denied","token-denied","bad-secret","expired-token","missing-ack-contract","cancelled","expired-attempt","superseded"))scenario(mode,false,false);
+  scenario("wrong-ack",false,true);
+  System.out.println("PASS native sign-in chain (14 scenarios; no browser facilities)");
+ }
+}

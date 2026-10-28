@@ -706,6 +706,7 @@ export class MessageProcessor {
         },
         providers: state.data.providers,
         request: getUserMessageText(message),
+        contexts: event.messageHandler.plan.contexts,
         reply: proposedText,
         actionResults: [],
         actions: runtime.actions,
@@ -832,6 +833,14 @@ export class MessageProcessor {
         const [outcome] = await Promise.all([
           timeInferenceSpan("message:planner", () =>
             runV5MessageRuntimeStage1({
+              ...(opts.resolveTypedReadReply
+                ? {
+                    resolveTypedReadReply: opts.resolveTypedReadReply,
+                    ...(opts.onTypedReadEgress
+                      ? { onTypedReadEgress: opts.onTypedReadEgress }
+                      : {}),
+                  }
+                : {}),
               runtime,
               message,
               state,
@@ -865,6 +874,7 @@ export class MessageProcessor {
               },
               onStage1RespondDecision: () => {
                 stage1DecidedRespond = true;
+                opts.onResponseDecision?.();
               },
             }),
           ),

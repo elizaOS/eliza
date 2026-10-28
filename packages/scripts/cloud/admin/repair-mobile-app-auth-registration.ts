@@ -10,9 +10,7 @@ import {
   type MobileAppAuthRegistrationTarget,
   mobileAppAuthDatabaseConnection,
   PRIMARY_MOBILE_APP_AUTH_TARGET,
-  requireMobileAppAuthAppId,
-  requireRegisteredMobileClientAppId,
-  resolveMobileAppAuthRegistrationTarget,
+  resolveMobileAppAuthRegistrationSelection,
   verifyDatabaseMobileAppAuthRegistration,
 } from "./verify-mobile-app-auth-registration.ts";
 
@@ -316,21 +314,12 @@ export function resolveTargetRegistration(env: NodeJS.ProcessEnv): {
   appId: string;
 } {
   try {
-    const target = resolveMobileAppAuthRegistrationTarget(
+    return resolveMobileAppAuthRegistrationSelection(
       env.ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID,
       env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT,
       env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
       env.ELIZA_MOBILE_APP_AUTH_APP_ID,
     );
-    const appId =
-      target === PRIMARY_MOBILE_APP_AUTH_TARGET
-        ? requireMobileAppAuthAppId(env.ELIZA_MOBILE_APP_AUTH_APP_ID)
-        : requireRegisteredMobileClientAppId(
-            env.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON,
-            target,
-            env.ELIZA_MOBILE_APP_AUTH_APP_ID,
-          );
-    return { target, appId };
   } catch (error) {
     if (error instanceof RegistrationRepairError) throw error;
     return fail(

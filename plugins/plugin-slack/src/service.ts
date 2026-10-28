@@ -622,6 +622,24 @@ class SlackTextPartialDeliveryError extends ElizaError {
   }
 }
 
+/**
+ * Slack history bounds (latest/oldest) are Unix timestamps in seconds; the
+ * connector contract leaves the format open, and callers often pass ISO dates.
+ * A Slack ts or epoch value passes through; a date is converted.
+ */
+function slackTimestampBound(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (/^\d+(?:\.\d+)?$/.test(trimmed)) return trimmed;
+  const ms = Date.parse(trimmed);
+  if (!Number.isFinite(ms)) {
+    throw new Error(
+      `Slack message bound must be a Unix timestamp or an ISO date, got "${trimmed}"`,
+    );
+  }
+  return (ms / 1000).toFixed(6);
+}
+
 export class SlackService extends Service implements ISlackService {
   static serviceType: string = SLACK_SERVICE_NAME;
   capabilityDescription =
@@ -1502,6 +1520,34 @@ export class SlackService extends Service implements ISlackService {
     accountId = this.defaultAccountId,
     body?: unknown,
   ): Promise<void> {
+    // Slack delivers membership changes and channel metadata edits as
+    // `message` events with a system subtype, not as user-authored
+    // messages. Nothing downstream distinguishes them, so without this
+    // early return a join/leave/topic notice runs a full agent turn
+    // and posts a thread reply under the system message. Member
+    // joins/leaves are still covered by the dedicated
+    // member_joined_channel / member_left_channel handlers, and
+    // real user content (no subtype, file_share, thread_broadcast,
+    // me_message, bot_message) flows unchanged.
+    const SYSTEM_MESSAGE_SUBTYPES = new Set([
+      "channel_join",
+      "channel_leave",
+      "channel_topic",
+      "channel_name",
+      "channel_purpose",
+      "channel_archive",
+      "channel_unarchive",
+      "group_join",
+      "group_leave",
+      "group_topic",
+      "group_name",
+      "group_purpose",
+      "group_archive",
+      "group_unarchive",
+    ]);
+    if (message.subtype && SYSTEM_MESSAGE_SUBTYPES.has(message.subtype)) {
+      return;
+    }
     if (
       !isValidChannelId(message.channel) ||
       !isValidMessageTs(message.ts) ||
@@ -4358,7 +4404,9 @@ export class SlackService extends Service implements ISlackService {
     await client.chat.update({
       channel: channelId,
       ts: messageTs,
-      text,
+      // Send uses markdownToSlackMrkdwn for the same agent content; an edit
+      // must render the same way instead of showing raw markdown syntax.
+      text: markdownToSlackMrkdwn(text),
     });
   }
 
@@ -4481,8 +4529,8 @@ export class SlackService extends Service implements ISlackService {
       const result = await client.conversations.history({
         channel: channelId,
         limit: Math.min(15, requestedLimit ?? 15),
-        latest: options?.before,
-        oldest: options?.after,
+        latest: slackTimestampBound(options?.before),
+        oldest: slackTimestampBound(options?.after),
         cursor,
       });
       rawMessages.push(
@@ -4551,8 +4599,8 @@ export class SlackService extends Service implements ISlackService {
         channel: channelId,
         ts: threadTs,
         limit: 15,
-        latest: options?.before,
-        oldest: options?.after,
+        latest: slackTimestampBound(options?.before),
+        oldest: slackTimestampBound(options?.after),
         cursor,
       });
       rawMessages.push(

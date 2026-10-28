@@ -87,7 +87,7 @@ export function formatCalendarEventDateTime(
   return `${datePart}, ${timePart}`;
 }
 
-function formatEventTime(
+export function formatCalendarEventTimeRange(
   event: LifeOpsCalendarEvent,
   reference?: { asOf: Date; timeZone: string },
 ): string {
@@ -165,7 +165,7 @@ export function formatCalendarFeed(
   }
   const lines: string[] = [`Events ${label}:`];
   for (const event of feed.events) {
-    const time = formatEventTime(event);
+    const time = formatCalendarEventTimeRange(event);
     const parts = [`- **${event.title}** (${time})`];
     if (event.location) {
       parts.push(`  Location: ${event.location}`);
@@ -216,12 +216,31 @@ export function formatNextEventContextForUser(
         start < end
       ) {
         const zone = context.timeReference?.timeZone ?? "UTC";
-        const date = {
+        const midnight = (value: Date) => {
+          const parts = getZonedDateParts(value, zone);
+          return (
+            parts.hour === 0 &&
+            parts.minute === 0 &&
+            parts.second === 0 &&
+            value.getUTCMilliseconds() === 0
+          );
+        };
+        const timed = !midnight(start) || !midnight(end);
+        const date: Intl.DateTimeFormatOptions = {
+          weekday: "long",
           year: "numeric",
           month: "short",
           day: "numeric",
-        } as const;
-        return `No upcoming event was found in ${sources} from ${formatCalendarDatePart(start, zone, date)} to before ${formatCalendarDatePart(end, zone, date)}.`;
+        };
+        if (timed) {
+          date.hour = "numeric";
+          date.minute = "2-digit";
+          date.second = "2-digit";
+          date.timeZoneName = "short";
+        }
+        if (timed && (start.getUTCMilliseconds() || end.getUTCMilliseconds()))
+          date.fractionalSecondDigits = 3;
+        return `No upcoming event was found in ${sources} from ${formatCalendarDatePart(start, zone, date)} to before ${formatCalendarDatePart(end, zone, date)}. This read covers only those sources and dates; it does not establish that the whole calendar is clear.`;
       }
       return `No upcoming event was found in ${sources} within the checked dates.`;
     }
@@ -269,7 +288,7 @@ export function formatNextEventContextForUser(
     }
   }
   const lines = [
-    `**Next event: ${context.event.title}** (${formatEventTime(context.event, reference)}${relativeDay ? `; ${relativeDay}` : ""})`,
+    `**Next event: ${context.event.title}** (${formatCalendarEventTimeRange(context.event, reference)}${relativeDay ? `; ${relativeDay}` : ""})`,
   ];
   if (context.startsInMinutes !== null) {
     lines[0] += ` — ${formatRelativeMinutes(context.startsInMinutes)}`;

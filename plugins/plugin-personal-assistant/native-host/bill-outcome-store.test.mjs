@@ -389,12 +389,13 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
           allowedCapabilities: [],
           allowedOrigins: ["https://example.test"],
         });
+        const now = Date.now();
         task = current.tasks.transition(
           task.id,
           {
             owner: current.runtime.owner,
             expectedRevision: task.revision,
-            now: Date.now(),
+            now,
           },
           {
             type: "observe",
@@ -404,7 +405,7 @@ test("a failed journal write keeps the outcome pending and asks for a retry", as
               origin: "https://example.test",
               version: 1,
               inputRevision: 0,
-              observedAt: Date.now(),
+              observedAt: now,
             },
           },
         ).task;

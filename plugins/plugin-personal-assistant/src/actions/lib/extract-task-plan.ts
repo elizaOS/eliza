@@ -47,6 +47,8 @@ import { UNDATED_TODO_EXTRACTION_GUIDANCE } from "./undated-todo-intent.js";
 export interface ExtractedTaskParams {
   requestKind: "alarm" | "reminder" | null;
   nativeProjection?: "in_app_only" | "apple_reminders" | null;
+  /** Explicit alert preference; null means unresolved, never permission for an alert. */
+  notificationMode?: "default" | "none" | null;
   title: string | null;
   description: string | null;
   cadenceKind:
@@ -165,6 +167,7 @@ const EMPTY_TASK_CREATE_PLAN: ExtractedTaskCreatePlan = {
   mode: "respond",
   response: DEFAULT_CREATE_PLAN_RESPONSE,
   requestKind: null,
+  notificationMode: null,
   title: null,
   description: null,
   cadenceKind: null,
@@ -211,6 +214,7 @@ export function taskCreatePlanGuidance(nativeTool = false): string {
     '- mode: "create" when the request is specific enough to create or preview a LifeOps item now, "respond" when you should reply without creating anything yet',
     '  Choose mode="create" whenever the user gives a title and cadence, even if they say "preview the plan", "don\'t save yet", "just show it first", or similar — the handler (not you) controls whether it is saved or previewed. Only use mode="respond" when the user hasn\'t specified what to track or when.',
     `- response: short natural-language reply when mode is respond, otherwise ${unknownField}`,
+    '- notificationMode: "none" when the owner asks for no alert, no notification or a silent due item; "default" when normal reminder notification is wanted; null only when unclear. Preserve this independently of due date/time and native destination.',
     `- requestKind: "alarm" when this is explicitly an alarm/wake-up request, "reminder" when it is explicitly a reminder request, otherwise ${unknownRequestKind}`,
     "- title: short name for the task (2-5 words)",
     "- description: for a reminder, copy an explicitly requested alert body verbatim, independently of title; use null when no separate alert body was requested. Do not summarize the body, replace it with title, or include schedule/delivery instructions. For other task kinds, retain brief owner-provided context.",
@@ -263,10 +267,10 @@ function buildExtractionPrompt(
     "Return ONLY a JSON object with these fields (use null for unknown):",
     taskCreatePlanGuidance(),
     "",
-    'Example quota: {"mode":"create","response":null,"requestKind":null,"title":"Pushups","description":null,"cadenceKind":"count_per_day","windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":3,"quotaTargetCount":3,"quotaUnit":"set","perOccurrenceWork":"25 pushups","checkInRequested":true,"checkInWindows":["afternoon","evening"],"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
-    'Example create: {"mode":"create","response":null,"requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"quotaTargetCount":null,"quotaUnit":null,"perOccurrenceWork":null,"checkInRequested":null,"checkInWindows":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
-    'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"requestKind":"reminder","nativeProjection":null,"title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
-    'Example respond: {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
+    'Example quota: {"mode":"create","response":null,"notificationMode":"default","requestKind":null,"title":"Pushups","description":null,"cadenceKind":"count_per_day","windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":3,"quotaTargetCount":3,"quotaUnit":"set","perOccurrenceWork":"25 pushups","checkInRequested":true,"checkInWindows":["afternoon","evening"],"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
+    'Example create: {"mode":"create","response":null,"notificationMode":"default","requestKind":"reminder","title":"Brush teeth","description":null,"cadenceKind":"daily","windows":["morning","night"],"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"quotaTargetCount":null,"quotaUnit":null,"perOccurrenceWork":null,"checkInRequested":null,"checkInWindows":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null,"multiStep":false}',
+    'Example once ("remind me friday at 5pm to call mom"): {"mode":"create","response":null,"notificationMode":"default","requestKind":"reminder","nativeProjection":null,"title":"Call mom","description":null,"cadenceKind":"once","windows":null,"weekdays":null,"timeOfDay":"17:00","timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":5,"dueInMinutes":null}',
+    'Example respond: {"mode":"respond","response":"What do you want the todo to be, and when should it happen?","notificationMode":null,"requestKind":null,"title":null,"description":null,"cadenceKind":null,"windows":null,"weekdays":null,"timeOfDay":null,"timeZone":null,"everyMinutes":null,"timesPerDay":null,"priority":null,"durationMinutes":null,"dueDate":null,"dueInDays":null,"dueWeekday":null,"dueInMinutes":null}',
     "",
     "",
     "Return ONLY valid JSON. No prose, markdown, code fences, or any other format.",
@@ -360,6 +364,12 @@ export function buildTaskCreatePlan(
   if (!mode) {
     return null;
   }
+  if (
+    parsed.notificationMode != null &&
+    parsed.notificationMode !== "default" &&
+    parsed.notificationMode !== "none"
+  )
+    return null;
   const requestKind = validateRequestKind(parsed.requestKind);
   const cadenceKind = validateCadenceKind(
     parsed.cadenceKind,
@@ -372,6 +382,11 @@ export function buildTaskCreatePlan(
         ? (validateResponse(parsed.response) ?? DEFAULT_CREATE_PLAN_RESPONSE)
         : null,
     requestKind,
+    notificationMode:
+      parsed.notificationMode === "default" ||
+      parsed.notificationMode === "none"
+        ? parsed.notificationMode
+        : null,
     nativeProjection:
       parsed.nativeProjection === "in_app_only" ||
       parsed.nativeProjection === "apple_reminders"
@@ -421,11 +436,12 @@ function buildRepairPrompt(args: {
   return [
     "Your last reply for the LifeOps create-definition planner was invalid.",
     "Return ONLY valid JSON with these exact fields:",
-    "mode, response, requestKind, nativeProjection, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, quotaTargetCount, quotaUnit, perOccurrenceWork, checkInRequested, checkInWindows, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
+    "mode, response, requestKind, nativeProjection, notificationMode, title, description, cadenceKind, windows, weekdays, timeOfDay, timeZone, everyMinutes, timesPerDay, quotaTargetCount, quotaUnit, perOccurrenceWork, checkInRequested, checkInWindows, priority, durationMinutes, dueDate, dueInDays, dueWeekday, dueInMinutes, multiStep",
     "",
     'mode must be "create" or "respond".',
     "If mode is respond, include a short clarifying response.",
     "If mode is create, response must be null.",
+    'notificationMode must preserve the owner alert choice: "none" for no alert, "default" for normal notification, null only when genuinely unclear.',
     "For a once reminder or alarm, nativeProjection must be present: in_app_only for Eliza/chat and its OS notifications, apple_reminders only when requested, or null when genuinely unknown. Never omit the destination decision or infer it from the reminder body.",
     "",
     UNDATED_TODO_EXTRACTION_GUIDANCE,

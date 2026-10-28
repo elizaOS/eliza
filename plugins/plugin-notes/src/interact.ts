@@ -31,6 +31,7 @@ export interface NotesInteractResult {
 const EXPECTED_FAILURE_CODES = new Set([
   "NOTES_EDIT_REVISION_REQUIRED",
   "NOTES_EDIT_CONFLICT",
+  "NOTES_RICH_EDIT_REQUIRED",
   "NOTES_VALIDATION_FAILED",
   "NOTES_NOT_FOUND",
   "NOTES_AMBIGUOUS_NOTE",
@@ -298,10 +299,14 @@ async function dispatchCapability(
     });
   }
   if (capability === "create-note") {
-    assertOnlyParams(params, ["content", "color"]);
+    assertOnlyParams(params, ["content", "color", "format"]);
     const input = {
       content: params.content,
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
+      ...(Object.hasOwn(params, "format") ? { format: params.format } : {}),
+      ...(Object.hasOwn(params, "authoredEdit")
+        ? { authoredEdit: params.authoredEdit }
+        : {}),
     };
     const {
       value: note,
@@ -327,6 +332,8 @@ async function dispatchCapability(
       "content",
       "color",
       "expectedRevision",
+      "format",
+      "authoredEdit",
     ]);
     const target = parseLookupTarget(params, capability, [
       "id",
@@ -336,6 +343,10 @@ async function dispatchCapability(
     const patch: Record<string, unknown> = {
       ...(Object.hasOwn(params, "content") ? { content: params.content } : {}),
       ...(Object.hasOwn(params, "color") ? { color: params.color } : {}),
+      ...(Object.hasOwn(params, "format") ? { format: params.format } : {}),
+      ...(Object.hasOwn(params, "authoredEdit")
+        ? { authoredEdit: params.authoredEdit }
+        : {}),
     };
     const updated =
       target.selector === "id"
@@ -391,6 +402,30 @@ async function dispatchCapability(
         : `Deleted note ${quoted(note.title)}.`,
       { note, removedCount: removedIds.length, removedIds },
     );
+  }
+  if (capability === "restore-note") {
+    assertOnlyParams(params, ["id", "expectedRevision"]);
+    const { value: note, snapshot } = await service.restoreNoteWithCommit(
+      params.id,
+      params.expectedRevision,
+    );
+    return mutationSuccess(
+      snapshot,
+      capability,
+      { kind: "notes.note", id: note.id },
+      `Restored note ${quoted(note.title)}.`,
+      { note },
+    );
+  }
+  if (capability === "get-notes-trash") {
+    assertOnlyParams(params, []);
+    const state = service.snapshot();
+    return {
+      success: true,
+      text: "Notes Trash read.",
+      state,
+      data: { trash: state.trash ?? [] },
+    };
   }
   if (capability === "clear-notes") {
     // The synchronous check is a fast path against the current snapshot; the

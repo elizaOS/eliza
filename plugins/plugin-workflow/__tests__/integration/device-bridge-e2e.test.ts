@@ -418,6 +418,8 @@ test('typed workflow HTTP and real SQL canonical device approval bridge binds No
     expect(completed.status).toBe('finished');
 
     await embedded.stop();
+    // fetch keeps its connections alive; close them so the listener can stop.
+    server!.closeAllConnections();
     await new Promise<void>((resolve) => server!.close(() => resolve()));
     server = undefined;
     await db.close();
@@ -437,7 +439,10 @@ test('typed workflow HTTP and real SQL canonical device approval bridge binds No
     ).toBe('done');
   } finally {
     await embedded?.stop();
-    if (server) await new Promise<void>((resolve) => server!.close(() => resolve()));
+    if (server) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server!.close(() => resolve()));
+    }
     await db.close();
     await rm(directory, { recursive: true, force: true });
     for (const id of owned)
