@@ -13,6 +13,7 @@ import {
   resolveBrowserCommandTimeoutMs,
   resolveBrowserWorkspaceCommandElementRefs,
 } from "./browser-workspace-helpers.js";
+import { trimBrowserWorkspaceNetworkRequests } from "./browser-workspace-network.js";
 import {
   appendBrowserWorkspaceProfilerEntry,
   appendBrowserWorkspaceTraceEntry,
@@ -1288,6 +1289,7 @@ export function createDesktopBrowserWorkspaceUtilityScript(
       timestamp: new Date().toISOString()
     };
     state.networkRequests.push(entry);
+    trimBrowserWorkspaceNetworkRequests(state);
     if (state.networkHar.active) state.networkHar.entries.push(entry);
     return entry;
   };

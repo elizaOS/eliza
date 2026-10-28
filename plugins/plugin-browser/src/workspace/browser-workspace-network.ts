@@ -77,10 +77,28 @@ export function recordBrowserWorkspaceNetworkRequest(
     timestamp: getBrowserWorkspaceTimestamp(),
   };
   state.networkRequests.push(entry);
+  trimBrowserWorkspaceNetworkRequests(state);
   if (state.networkHar.active) {
     state.networkHar.entries.push(entry);
   }
   return entry;
+}
+
+// Max retained network records. Each record can carry a full
+// response body, and the network list returns the whole log, so
+// an untrimmed log grows memory and every list return with
+// session length. The opt-in HAR capture is a separate,
+// deliberate complete log and is not trimmed here.
+export const BROWSER_WORKSPACE_NETWORK_REQUESTS_MAX = 500;
+
+export function trimBrowserWorkspaceNetworkRequests(
+  state: BrowserWorkspaceRuntimeState,
+): void {
+  while (
+    state.networkRequests.length > BROWSER_WORKSPACE_NETWORK_REQUESTS_MAX
+  ) {
+    state.networkRequests.shift();
+  }
 }
 
 export async function fetchBrowserWorkspaceTrackedResponse(
