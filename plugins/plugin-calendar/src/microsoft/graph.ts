@@ -20,6 +20,12 @@ import {
 
 const DEFAULT_GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0/";
 const GRAPH_MAX_PAGE_SIZE = 1_000;
+// Mirror the Google sync bound (MAX_GOOGLE_CALENDAR_EVENTS): a
+// calendar-view delta walk with no total cap materializes every
+// change in the window before a single upsert runs. Fail closed
+// past this count; the feed aggregator already degrades a failed
+// source to an explicit error source instead of crashing.
+const MAX_MICROSOFT_GRAPH_CALENDAR_EVENTS = 10_000;
 const GRAPH_MAX_SCHEDULES_PER_REQUEST = 20;
 const GRAPH_MAX_RETRIES = 3;
 const GRAPH_RETRY_CAP_MS = 30_000;
@@ -764,6 +770,20 @@ export class DefaultMicrosoftGraphCalendarPort
         },
       });
       for (const entry of valueArray(page.body, "calendar_view_delta")) {
+        if (changes.length >= MAX_MICROSOFT_GRAPH_CALENDAR_EVENTS) {
+          throw new ElizaError(
+            "Microsoft Graph calendar sync exceeded the retained event limit.",
+            {
+              code: "MICROSOFT_GRAPH_EVENT_LIMIT_EXCEEDED",
+              context: {
+                connectorAccountId: args.account.account.id,
+                calendarId: args.calendarId,
+                maxEvents: MAX_MICROSOFT_GRAPH_CALENDAR_EVENTS,
+              },
+              severity: "fatal",
+            },
+          );
+        }
         try {
           changes.push(parseGraphEvent(entry));
         } catch (cause) {
