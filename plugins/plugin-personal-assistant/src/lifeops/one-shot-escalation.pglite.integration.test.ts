@@ -6,7 +6,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createTestRuntime } from "@elizaos/testing/runtime";
 import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/plugin-relationships";
 import { schedulingPlugin } from "@elizaos/plugin-scheduling";
-import { personalAssistantPlugin } from "../plugin.js";
+import { lifeOpsSchema } from "./schema.js";
+import { createChannelRegistry, registerChannelRegistry, registerDefaultChannelPack } from "./channels/index.js";
+import { registerLifeOpsScheduledTaskRunnerDeps } from "./scheduled-task/runtime-wiring.js";
 import { createLifeOpsReminderAttempt } from "./repository.js";
 import { LifeOpsService } from "./service.js";
 import {
@@ -48,9 +50,15 @@ async function createLifeOpsTestRuntime() {
     fixture=await createTestRuntime({plugins:[
       {name:"reminder-test-knowledge",description:"Canonical reminder knowledge",schema:knowledgeGraphSchema,services:[KnowledgeGraphService]},
       {name:"reminder-test-notifications",description:"Canonical persisted notifications",services:[NotificationService]},
-      schedulingPlugin,personalAssistantPlugin,
+      schedulingPlugin,
+      {name:"@elizaos/plugin-personal-assistant",description:"Exact reminder domain test composition",schema:lifeOpsSchema,
+        init:async(_config,runtime)=>{
+          const registry=createChannelRegistry();registerDefaultChannelPack(registry,runtime);registerChannelRegistry(runtime,registry);
+          (runtime as typeof runtime & {channelRegistry:typeof registry}).channelRegistry=registry;
+          registerLifeOpsScheduledTaskRunnerDeps(runtime);
+        }},
     ]});
-    for(const plugin of [schedulingPlugin,personalAssistantPlugin])
+    for(const plugin of [schedulingPlugin])
       for(const service of plugin.services??[])await fixture.runtime.getServiceLoadPromise(service.serviceType);
   } finally {
     if(previous===undefined)delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
