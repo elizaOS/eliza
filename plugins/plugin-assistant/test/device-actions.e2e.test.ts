@@ -359,6 +359,7 @@ test("device approval REST lifecycle survives restart and never duplicates claim
             context: {
               view: "notes",
               sensitive: false,
+              revision: 1,
               selectedObject: {
                 kind: "note-source",
                 id: "fixture-notes",
@@ -4109,6 +4110,7 @@ test("selected native Notes authority blocks backend writes without affecting ca
           context: {
             view: "notes",
             sensitive: false,
+            revision: 1,
             selectedObject: {
               kind: "note-source",
               id: "fixture-notes",
@@ -4314,6 +4316,7 @@ test("executor decodes typed phone operation JSON before validation and preserve
           context: {
             view: "notes",
             sensitive: false,
+            revision: 1,
             selectedObject: {
               kind: "note-source",
               id: "fixture-notes",

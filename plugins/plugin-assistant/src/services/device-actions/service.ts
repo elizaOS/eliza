@@ -148,6 +148,7 @@ import {
   smsReceiptOutcome,
   validateSmsResult,
 } from "./sms-contract.ts";
+import { requireTurnObservation, turnObservation } from "./turn-observation.ts";
 import {
   type DeviceViewProfile,
   enabledDeviceViews,
@@ -446,25 +447,10 @@ export function currentReminderRecordSource(
     message.entityId !== current.credential.subjectUserId
   )
     return "runtime";
-  const metadata = message.content.metadata;
-  const device =
-    metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? Reflect.get(metadata, "clientDevice")
-      : undefined;
-  const context =
-    device && typeof device === "object" && !Array.isArray(device)
-      ? Reflect.get(device, "context")
-      : undefined;
-  if (
-    !context ||
-    typeof context !== "object" ||
-    Array.isArray(context) ||
-    Reflect.get(context, "sensitive") === true
-  )
-    return "runtime";
-  const selected = Reflect.get(context, "selectedObject");
-  if (!selected || typeof selected !== "object" || Array.isArray(selected))
-    return "runtime";
+  const context = turnObservation(message.content.metadata);
+  if (!context || context.sensitive) return "runtime";
+  const selected = context.selectedObject;
+  if (!selected) return "runtime";
   if (Reflect.get(selected, "kind") === "reminder-source")
     return typeof Reflect.get(selected, "id") === "string" &&
       typeof Reflect.get(selected, "revision") === "string"
@@ -528,26 +514,11 @@ export function currentAppRecordSource(
       current.replyConversation.roomId !== message.roomId)
   )
     return "unavailable";
-  const metadata = message.content.metadata;
-  const device =
-    metadata && typeof metadata === "object" && !Array.isArray(metadata)
-      ? Reflect.get(metadata, "clientDevice")
-      : undefined;
-  const context =
-    device && typeof device === "object" && !Array.isArray(device)
-      ? Reflect.get(device, "context")
-      : undefined;
-  if (
-    !context ||
-    typeof context !== "object" ||
-    Array.isArray(context) ||
-    Reflect.get(context, "sensitive") === true
-  )
-    return "unavailable";
-  if (Reflect.get(context, "view") !== domain) return "runtime";
-  const selected = Reflect.get(context, "selectedObject");
-  if (!selected || typeof selected !== "object" || Array.isArray(selected))
-    return "runtime";
+  const context = turnObservation(message.content.metadata);
+  if (!context || context.sensitive) return "unavailable";
+  if (context.view !== domain) return "runtime";
+  const selected = context.selectedObject;
+  if (!selected) return "runtime";
   const kind = Reflect.get(selected, "kind");
   if (
     domain === "notes"
@@ -1031,9 +1002,8 @@ export class DeviceActionService {
         "calendar_read_selected" &&
       originalRequestsCalendarTimeUpdate(active.replyContext.message);
     if (originalCalendarTimeUpdate) {
-      const metadata = object(active.replyContext.message.content.metadata),
-        device = object(metadata.clientDevice),
-        context = object(device.context);
+      const metadata = active.replyContext.message.content.metadata,
+        context = requireTurnObservation(metadata);
       if (typeof context.timeZone !== "string")
         throw new DeviceActionError("Original Calendar timezone unavailable");
       new Intl.DateTimeFormat("en-US", { timeZone: context.timeZone });
@@ -1054,9 +1024,8 @@ export class DeviceActionService {
         )
       )
         throw new DeviceActionError("Original Calendar update read changed");
-      const metadata = object(active.replyContext.message.content.metadata),
-        device = object(metadata.clientDevice),
-        context = object(device.context);
+      const metadata = active.replyContext.message.content.metadata,
+        context = requireTurnObservation(metadata);
       if (typeof context.timeZone !== "string")
         throw new DeviceActionError("Original Calendar timezone unavailable");
       new Intl.DateTimeFormat("en-US", { timeZone: context.timeZone });
@@ -3175,7 +3144,7 @@ export async function requestLocalCalendarAgenda(
   origin.assertCurrent();
   const metadata = object(args.message.content.metadata),
     device = object(metadata.clientDevice),
-    context = object(device.context);
+    context = requireTurnObservation(metadata);
   if (context.sensitive === true)
     throw new DeviceActionError("Calendar context is private");
   if (!device.calendarAgendaSource)
@@ -3261,9 +3230,8 @@ export async function requestLocalCalendarUpdate(args: {
       turnComplete: false,
       modelReplyRequired: true,
     });
-    const metadata = object(args.message.content.metadata),
-      device = object(metadata.clientDevice),
-      context = object(device.context);
+    const metadata = args.message.content.metadata,
+      context = requireTurnObservation(metadata);
     if (
       active.replyContext?.message !== args.message ||
       !active.isCurrent() ||
@@ -3320,9 +3288,8 @@ export async function requestLocalCalendarUpdate(args: {
     };
   }
   const timeOnly = originalRequestsCalendarTimeUpdate(args.message);
-  const metadata = object(args.message.content.metadata),
-    device = object(metadata.clientDevice),
-    context = object(device.context),
+  const metadata = args.message.content.metadata,
+    context = requireTurnObservation(metadata),
     selected = context.selectedObject;
   if (
     context.view !== "calendar" ||
@@ -3445,8 +3412,7 @@ export function registerLocalCalendarTimeUpdateRouting(
     )
       return false;
     try {
-      const device = object(Reflect.get(metadata, "clientDevice")),
-        context = object(device.context),
+      const context = requireTurnObservation(metadata),
         selected = object(context.selectedObject);
       if (
         context.view !== "calendar" ||
@@ -3495,9 +3461,8 @@ export async function requestLocalNotesUpdate(args: {
 }) {
   const active = getDeviceActionTurn();
   if (!active || active.runtime !== args.runtime) return;
-  const metadata = object(args.message.content.metadata),
-    device = object(metadata.clientDevice),
-    context = object(device.context),
+  const metadata = args.message.content.metadata,
+    context = requireTurnObservation(metadata),
     named = args.name !== undefined;
   if (
     context.sensitive === true ||
@@ -3647,9 +3612,8 @@ export async function requestLocalCalendarAvailability(args: {
     return fail(
       "The app-calendar read cannot verify the requested guest calendars. Guest availability remains unknown; no calendar was read.",
     );
-  const metadata = object(args.message.content.metadata),
-    device = object(metadata.clientDevice),
-    context = object(device.context);
+  const metadata = args.message.content.metadata,
+    context = requireTurnObservation(metadata);
   if (context.sensitive === true || context.timeZone !== request.timeZone)
     return fail(
       "The current Calendar time zone or private context changed. Availability was not checked.",
@@ -3735,9 +3699,8 @@ export async function requestOriginalNativeCalendarAvailability(args: {
     return fail(
       "Current requesting-device availability access is unavailable. No calendar was read.",
     );
-  const metadata = object(args.message.content.metadata),
-    device = object(metadata.clientDevice),
-    context = object(device.context);
+  const metadata = args.message.content.metadata,
+    context = requireTurnObservation(metadata);
   if (context.sensitive === true || typeof context.timeZone !== "string")
     return fail(
       "The current private context or time zone is unavailable. No calendar was read.",
@@ -3822,9 +3785,8 @@ export async function requestLocalCalendarCreate(args: {
   const active = getDeviceActionTurn();
   if (!active || active.runtime !== args.runtime) return;
   const type = args.type ?? "calendar_create_local",
-    metadata = object(args.message.content.metadata),
-    device = object(metadata.clientDevice),
-    context = object(device.context);
+    metadata = args.message.content.metadata,
+    context = requireTurnObservation(metadata);
   const fail = (text: string) => ({
     success: false,
     text,
