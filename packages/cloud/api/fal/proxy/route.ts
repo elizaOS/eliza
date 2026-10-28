@@ -74,27 +74,6 @@ function normalizeFalPricingModel(endpoint: string): string | null {
   return endpoint;
 }
 
-function readNumber(body: unknown, keys: string[]): number | undefined {
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return undefined;
-  }
-
-  for (const key of keys) {
-    const value = (body as Record<string, unknown>)[key];
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return value;
-    }
-    if (typeof value === "string" && value.trim().length > 0) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return parsed;
-      }
-    }
-  }
-
-  return undefined;
-}
-
 function readH3Duration(
   body: Record<string, unknown>,
   defaultDuration: number,
@@ -115,6 +94,33 @@ function readH3Duration(
     throw new ApiError(400, "validation_error", "Invalid provider duration");
   }
   return duration;
+}
+
+function readProviderDuration(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+(?:\.\d+)?s?$/.test(value.trim())
+        ? Number(value.trim().replace(/s$/, ""))
+        : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new ApiError(400, "validation_error", "Invalid provider duration");
+  }
+  return parsed;
+}
+
+// The raw proxy forwards provider JSON unchanged, so the quote reads only the
+// field the provider reads.
+function readBilledDuration(body: unknown, defaultDuration: number): number {
+  if (
+    !body ||
+    typeof body !== "object" ||
+    Array.isArray(body) ||
+    !("duration" in body)
+  ) {
+    return defaultDuration;
+  }
+  return readProviderDuration((body as Record<string, unknown>).duration);
 }
 
 function readBoolean(body: unknown, keys: string[]): boolean | undefined {
@@ -205,19 +211,16 @@ async function priceFalMutation(c: Context<AppEnv>): Promise<{
   }
   const durationSeconds = h3Body
     ? readH3Duration(h3Body, defaults.durationSeconds)
-    : (readNumber(body, ["durationSeconds", "duration_seconds", "duration"]) ??
-      defaults.durationSeconds);
+    : readBilledDuration(body, defaults.durationSeconds);
+  const audio = readBoolean(body, ["generate_audio"]);
+  const voiceControl = readBoolean(body, ["voice_control"]);
   const dimensions = {
     ...defaults.dimensions,
     ...(readString(body, ["resolution"])
       ? { resolution: readString(body, ["resolution"]) }
       : {}),
-    ...(readBoolean(body, ["audio", "generate_audio"]) !== undefined
-      ? { audio: readBoolean(body, ["audio", "generate_audio"]) }
-      : {}),
-    ...(readBoolean(body, ["voiceControl", "voice_control"]) !== undefined
-      ? { voiceControl: readBoolean(body, ["voiceControl", "voice_control"]) }
-      : {}),
+    ...(audio !== undefined ? { audio } : {}),
+    ...(voiceControl !== undefined ? { voiceControl } : {}),
     ...(defaults.dimensions.durationSeconds !== undefined
       ? { durationSeconds }
       : {}),

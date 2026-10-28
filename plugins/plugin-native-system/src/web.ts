@@ -8,7 +8,11 @@ import type {
   DeviceSettingsStatus,
   FlashlightStatus,
   LauncherApp,
+  NotificationShadeOutcome,
+  SystemFacts,
   SystemPlugin,
+  SystemSettingsPage,
+  SystemSettingsPageResult,
   SystemStatus,
   SystemVolumeStatus,
   SystemVolumeStream,
@@ -107,6 +111,21 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
 
   async openSoundSettings(): Promise<void> {
     throw new Error("Sound settings are only available on Android.");
+  }
+
+  async getSystemFacts(): Promise<SystemFacts> {
+    // A browser reports no Android switch: every fact is unknown, never off.
+    return {};
+  }
+
+  async openSettingsPage(_options: {
+    page: SystemSettingsPage;
+  }): Promise<SystemSettingsPageResult> {
+    throw new Error("Android settings pages are only available on Android.");
+  }
+
+  async openNotificationShade(): Promise<{ status: NotificationShadeOutcome }> {
+    return { status: "unsupported" };
   }
 
   async requestRole(options: {

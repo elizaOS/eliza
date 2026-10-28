@@ -537,6 +537,9 @@ async function resolveWritablePath(
   rawPath: string,
 ): Promise<{ fsPath: string; containerPath: string }> {
   const resolved = resolveCandidatePath(config, rawPath);
+  // Containment is decided lexically before the filesystem is probed: a
+  // rejected write must not create directories outside the workspace.
+  ensureInsideRoot(nodePath.resolve(config.workspaceRoot), resolved.fsPath);
   const root = await realpath(config.workspaceRoot);
   const parent = nodePath.dirname(resolved.fsPath);
   await mkdir(parent, { recursive: true });

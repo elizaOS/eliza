@@ -19,18 +19,19 @@ const anyCase = (words: string) =>
 const PATTERNS: Array<{ kind: NetworkSignal["kind"]; re: RegExp }> = [
   {
     kind: "opt_out",
-    re: /\b(stop texting|unsubscribe|leave (?:the )?network|remove me)\b/i,
+    re: /\b(stop texting|unsubscribe|leave (?:the )?network|remove me)\b/gi,
   },
   {
     kind: "travel",
     // Cue in any case, place capitalized: "I'm in a meeting" is not travel.
     re: new RegExp(
       `\\b(?:${anyCase("i'?m|i am|will be")}) (?:${anyCase("in|visiting|traveling to|flying to")}) ([A-Z][\\w .'-]{1,40})`,
+      "g",
     ),
   },
   {
     kind: "safety_concern",
-    re: /\b(made me uncomfortable|felt unsafe|harass\w*|creep(?:y|ed))\b/i,
+    re: /\b(made me uncomfortable|felt unsafe|harass\w*|creep(?:y|ed))\b/gi,
   },
 ];
 
@@ -40,15 +41,18 @@ const NEGATED =
 /**
  * Signals from the member's own words only (audit plugin-prototypes-8): quoted, reported and
  * forwarded text is removed first, and a negated match ("he wasn't creepy", "don't remove me")
- * is not a signal.
+ * is not a signal. A later match of the same kind still is: "it wasn't creepy at first, but then
+ * he harassed me" records the harassment.
  */
 export function detectNetworkSignals(text: string): NetworkSignal[] {
   const own = ownWords(text);
   const out: NetworkSignal[] = [];
   for (const { kind, re } of PATTERNS) {
-    const m = re.exec(own);
-    if (m && !NEGATED.test(own.slice(0, m.index)))
+    for (const m of own.matchAll(re)) {
+      if (NEGATED.test(own.slice(0, m.index))) continue;
       out.push({ kind, evidence: m[0] });
+      break;
+    }
   }
   return out;
 }

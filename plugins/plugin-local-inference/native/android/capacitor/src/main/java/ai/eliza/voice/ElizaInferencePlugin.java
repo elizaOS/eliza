@@ -12,7 +12,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import java.io.UncheckedIOException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -43,23 +42,16 @@ public class ElizaInferencePlugin extends Plugin {
 
     private static final class Request {
         private boolean cancelled;
-        private InferenceSession active;
-        private Runnable alternative;
-        synchronized void begin(InferenceSession session) {
+        private InferenceSession.Client active;
+        synchronized void begin(InferenceSession.Client client) {
             if (cancelled) throw new CancellationException();
-            active = session;
+            active = client;
         }
         synchronized void cancel() {
             cancelled = true;
             if (active != null) active.cancel();
-            if (alternative != null) alternative.run();
         }
-        synchronized void alternative(Runnable cancel) {
-            if (cancelled) { cancel.run(); throw new CancellationException(); }
-            alternative = cancel;
-        }
-        synchronized void clearAlternative() { alternative = null; }
-        synchronized void finish() { active = null; alternative = null; }
+        synchronized void finish() { active = null; }
         synchronized void check() {
             if (cancelled) throw new CancellationException();
         }
@@ -111,12 +103,11 @@ public class ElizaInferencePlugin extends Plugin {
         models.worker.execute(() -> {
             try {
                 if (destroyed) throw new IllegalStateException("Inference bridge closed");
-                boolean platform = OnDeviceRecognizer.available(getContext());
                 boolean packaged = packaged("manifest.json");
                 if (packaged) models.session(null);
                 JSObject result = new JSObject();
                 result.put("speech", packaged && VoiceNative.nativeParadeeSupported() == 1);
-                result.put("transcription", platform ? "android" : packaged && packaged("asr/phonon-2-fv5.gguf") && VoiceNative.nativeAsrSupported() == 1 ? "asr" : "none");
+                result.put("transcription", packaged && packaged("asr/phonon-2-fv5.gguf") && VoiceNative.nativeAsrSupported() == 1 ? "asr" : "none");
                 result.put("provider", "libelizainference");
                 call.resolve(result);
             } catch (Exception failure) {
@@ -165,25 +156,16 @@ public class ElizaInferencePlugin extends Plugin {
             float[] pcm = new float[bytes.length / 2];
             for (int i = 0; i < pcm.length; i++) pcm[i] = input.getShort() / 32768f;
             long start = SystemClock.elapsedRealtime();
-            TranscriptionRoute.Heard heard = TranscriptionRoute.transcribe(bytes,
-                    OnDeviceRecognizer.available(getContext()),
-                    () -> {
-                        OnDeviceRecognizer recognizer = new OnDeviceRecognizer(getContext());
-                        request.alternative(recognizer::cancel);
-                        try { return recognizer.transcribe(bytes, TranscriptionRoute.limitMillis(bytes.length)); }
-                        finally { request.clearAlternative(); }
-                    },
-                    () -> {
-                        request.check();
-                        try { return models.session(request).transcribe(pcm); }
-                        catch (IOException failure) { throw new UncheckedIOException(failure); }
-                    }, OnDeviceRecognizer::demote, line -> Log.i("ElizaInference", line));
+            // This is the local-inference endpoint. Use its admitted Phonon
+            // session rather than selecting a platform recognizer.
+            String heard = models.session(request).transcribe(pcm);
             if (heard == null) throw new IllegalStateException("Transcription unavailable");
             JSObject result = new JSObject();
-            result.put("text", heard.text == null ? "" : heard.text.trim());
-            result.put("engine", heard.engine);
-            result.put("fellBack", heard.fellBack);
-            result.put("demoted", heard.demoted);
+            result.put("text", heard.trim());
+            result.put("engine", "asr");
+            // Keep the response shape for older consumers.
+            result.put("fellBack", false);
+            result.put("demoted", false);
             result.put("ms", SystemClock.elapsedRealtime() - start);
             return result;
         });
@@ -258,6 +240,8 @@ public class ElizaInferencePlugin extends Plugin {
         final ScheduledExecutorService worker = Executors.newSingleThreadScheduledExecutor();
         final Context context;
         volatile InferenceSession current;
+        /** This transport's client of the shared session; worker thread only writes it. */
+        volatile InferenceSession.Client client;
         volatile Request activeRequest;
         volatile boolean pressure;
         volatile long lastActivity = SystemClock.elapsedRealtime();
@@ -272,15 +256,23 @@ public class ElizaInferencePlugin extends Plugin {
                 if (SystemClock.elapsedRealtime() - lastActivity >= 120000) trim();
             }, 30, 30, TimeUnit.SECONDS);
         }
-        InferenceSession session(Request request) throws IOException {
+        InferenceSession.Client session(Request request) throws IOException {
             if (request != null) request.check();
-            if (current == null) current = VoiceAssets.install(context).openInference();
-            if (request != null) request.begin(current);
+            // The process-wide owner, through this transport's own client: other native
+            // consumers (capture VAD, streamed speech) share its context lifecycle instead
+            // of loading a second copy, and this transport's cancellation and idle or
+            // memory-pressure release never fence or unload their calls.
+            if (current == null || current.isClosed() || client == null) {
+                current = VoiceAssets.sharedInference(context);
+                client = current.client();
+            }
+            InferenceSession.Client active = client;
+            if (request != null) request.begin(active);
             lastActivity = SystemClock.elapsedRealtime();
-            return current;
+            return active;
         }
         void trim() {
-            try { if (current != null) current.trimMemory(); }
+            try { InferenceSession.Client active = client; if (active != null) active.release(); }
             catch (RuntimeException failure) { Log.e("ElizaInference", "Native memory release failed", failure); }
             finally { pressure = false; }
         }
@@ -288,8 +280,8 @@ public class ElizaInferencePlugin extends Plugin {
             pressure = true;
             Request request = activeRequest;
             if (request != null) request.cancel();
-            InferenceSession session = current;
-            if (session != null) session.cancel();
+            InferenceSession.Client active = client;
+            if (active != null) active.cancel();
             worker.execute(this::trim);
         }
         @Override public void onTrimMemory(int level) {

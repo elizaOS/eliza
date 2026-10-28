@@ -2,7 +2,7 @@
  * Tests for VoiceProfileStore persistence and cluster management operations.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -57,6 +57,55 @@ describe("VoiceProfileStore persistence", () => {
     const restarted = new VoiceProfileStore({ rootDir: tmpRoot });
 
     await expect(restarted.init()).rejects.toThrow();
+  });
+
+  it("reports an unreadable profile record as a failure, not as a missing profile", async () => {
+    const created = await store.createProfile({
+      centroid: unit([1, 0, 0, 0]),
+      embeddingModel: MODEL,
+      confidence: 0.8,
+      durationMs: 1000,
+    });
+    writeFileSync(
+      path.join(tmpRoot, "profiles", `${created.profileId}.json`),
+      "{",
+      "utf8",
+    );
+
+    const restarted = new VoiceProfileStore({ rootDir: tmpRoot });
+
+    await expect(restarted.get(created.profileId)).rejects.toThrow();
+  });
+
+  it("keeps a profile file it cannot read instead of evicting it", async () => {
+    const capped = new VoiceProfileStore({
+      rootDir: tmpRoot,
+      hotCacheSize: 1,
+      coldDiskMax: 1,
+    });
+    await capped.init();
+    const victim = await capped.createProfile({
+      centroid: unit([1, 0, 0, 0]),
+      embeddingModel: MODEL,
+      confidence: 0.2,
+      durationMs: 500,
+    });
+    const victimPath = path.join(
+      tmpRoot,
+      "profiles",
+      `${victim.profileId}.json`,
+    );
+    writeFileSync(victimPath, "{", "utf8");
+
+    await expect(
+      capped.createProfile({
+        centroid: unit([0, 1, 0, 0]),
+        embeddingModel: MODEL,
+        confidence: 0.2,
+        durationMs: 500,
+      }),
+    ).rejects.toThrow();
+    expect(existsSync(victimPath)).toBe(true);
   });
 });
 

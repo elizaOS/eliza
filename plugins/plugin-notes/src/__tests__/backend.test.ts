@@ -252,7 +252,7 @@ describe("NotesStore", () => {
     const second = await serviceFor(filePath);
     expect(second.snapshot()).toEqual(expected);
     expect(JSON.parse(await fs.readFile(filePath, "utf8")).schemaVersion).toBe(
-      2,
+      3,
     );
     await second.stop();
   });
@@ -431,11 +431,11 @@ describe("NotesStore", () => {
 
     const persisted = JSON.parse(await fs.readFile(filePath, "utf8"));
     expect(persisted).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       revision: 2,
     });
     expect(Object.keys(persisted).sort()).toEqual(
-      ["notes", "persistedAt", "revision", "schemaVersion"].sort(),
+      ["notes", "persistedAt", "revision", "schemaVersion", "trash"].sort(),
     );
   });
 
@@ -588,6 +588,37 @@ describe("NotesStore", () => {
     });
     expect(() => store.snapshot()).toThrow("not valid JSON");
   });
+
+  it("keeps reads and later writes working after one failed write", async () => {
+    const filePath = await temporaryStateFile();
+    const store = new NotesStore({ filePath });
+    const service = new NotesService(undefined, { store });
+    await service.initialize();
+    await service.createNote({ title: "first" });
+
+    // One rename fails (for example EBUSY while another program holds the
+    // file); the next one is real.
+    const rename = vi.spyOn(fs, "rename").mockImplementationOnce(async () => {
+      throw Object.assign(new Error("EBUSY: resource busy, rename"), {
+        code: "EBUSY",
+        syscall: "rename",
+      });
+    });
+    try {
+      await expect(
+        service.createNote({ title: "second" }),
+      ).rejects.toMatchObject({ code: "NOTES_STORE_WRITE_FAILED" });
+    } finally {
+      rename.mockRestore();
+    }
+
+    expect(service.listNotes().map((note) => note.title)).toEqual(["first"]);
+    await service.createNote({ title: "third" });
+    expect(
+      (await store.persistedSnapshot()).notes.map((note) => note.title),
+    ).toEqual(["third", "first"]);
+    await service.stop();
+  });
 });
 
 describe("NotesStore on filesystems that deny hard links (#30725)", () => {
@@ -690,7 +721,7 @@ describe("NotesStore on filesystems that deny hard links (#30725)", () => {
     );
     // Exactly one candidate won; both stores adopted the same bytes.
     for (const store of stores) {
-      expect(store.snapshot()).toEqual({ revision: 0, notes: [] });
+      expect(store.snapshot()).toEqual({ revision: 0, notes: [], trash: [] });
       expect((await store.persistedSnapshot()).revision).toBe(0);
     }
     expect(persisted.revision).toBe(0);

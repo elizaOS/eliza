@@ -154,6 +154,14 @@ export interface AppBootConfig {
   envAliases?: readonly (readonly [string, string])[];
   /** Client middleware flags — replaces the post-construction patches. */
   clientMiddleware?: ClientMiddleware;
+  /**
+   * Whether the workflow surface may be served by a linked Cloud agent when the
+   * bundled mobile runtime cannot host plugin-workflow (default true). A host
+   * whose agent orchestration must stay on the device sets false: its workflow,
+   * schedule, approval and run-history requests then stay on the active local
+   * agent and never fall back to a Cloud agent.
+   */
+  workflowSurfaceCloudFallback?: boolean;
 }
 // ---------------------------------------------------------------------------
 // Defaults (brand-agnostic — no product-specific references)

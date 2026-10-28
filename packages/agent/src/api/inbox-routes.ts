@@ -1353,14 +1353,12 @@ async function resolveStoredDiscordEntityProfile(
   if (typeof runtimeWithEntityLookup.getEntityById !== "function") {
     return null;
   }
-  try {
-    const entity = await runtimeWithEntityLookup.getEntityById(
-      entityId as UUID,
-    );
-    return readStoredDiscordEntityProfile(entity);
-  } catch {
-    return null;
-  }
+  // A null return from getEntityById means "no stored entity", which the
+  // inbox legitimately renders without a stored profile. A rejected read is
+  // a storage fault and must not be flattened into that same "no profile"
+  // shape, or the sender silently loses their name and avatar.
+  const entity = await runtimeWithEntityLookup.getEntityById(entityId as UUID);
+  return readStoredDiscordEntityProfile(entity);
 }
 async function cacheInboxDiscordAvatar(
   runtime: AgentRuntime,
@@ -1757,38 +1755,33 @@ async function loadLatestRoomMemory(
   runtime: AgentRuntime,
   roomId: UUID,
 ): Promise<Memory | null> {
-  try {
-    const memories = await runtime.getMemories({
-      tableName: "messages",
-      roomId,
-      limit: 10,
-      unique: false,
-    });
-    if (!Array.isArray(memories) || memories.length === 0) {
-      return null;
-    }
-    const candidates = memories
-      .filter((memory) => !extractDiscordReactionEvent(memory))
-      .filter((memory) => extractText(memory).trim().length > 0)
-      .sort((left, right) => {
-        const rightCreated =
-          typeof right.createdAt === "number" &&
-          Number.isFinite(right.createdAt)
-            ? right.createdAt
-            : 0;
-        const leftCreated =
-          typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
-            ? left.createdAt
-            : 0;
-        return (
-          rightCreated - leftCreated ||
-          (left.id ?? "").localeCompare(right.id ?? "")
-        );
-      });
-    return candidates[0] ?? null;
-  } catch {
+  const memories = await runtime.getMemories({
+    tableName: "messages",
+    roomId,
+    limit: 10,
+    unique: false,
+  });
+  if (!Array.isArray(memories) || memories.length === 0) {
     return null;
   }
+  const candidates = memories
+    .filter((memory) => !extractDiscordReactionEvent(memory))
+    .filter((memory) => extractText(memory).trim().length > 0)
+    .sort((left, right) => {
+      const rightCreated =
+        typeof right.createdAt === "number" && Number.isFinite(right.createdAt)
+          ? right.createdAt
+          : 0;
+      const leftCreated =
+        typeof left.createdAt === "number" && Number.isFinite(left.createdAt)
+          ? left.createdAt
+          : 0;
+      return (
+        rightCreated - leftCreated ||
+        (left.id ?? "").localeCompare(right.id ?? "")
+      );
+    });
+  return candidates[0] ?? null;
 }
 async function augmentRoomsFromRecentMemories(
   runtime: AgentRuntime,

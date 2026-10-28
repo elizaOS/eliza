@@ -1326,9 +1326,18 @@ export function buildPlannerActionGrammarStrict(
 		actionSchemas,
 	};
 	plannerStrictCache.set(cacheKey, result);
+	// The key carries each action's full parameter schema, and the planner's
+	// schemas include a per-message source-set id, so most keys are unique.
+	// Evict the oldest entries beyond the cap.
+	while (plannerStrictCache.size > PLANNER_STRICT_CACHE_LIMIT) {
+		const oldest = plannerStrictCache.keys().next().value;
+		if (oldest === undefined) break;
+		plannerStrictCache.delete(oldest);
+	}
 	return result;
 }
 
+const PLANNER_STRICT_CACHE_LIMIT = 64;
 const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
 
 /**

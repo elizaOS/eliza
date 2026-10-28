@@ -55,17 +55,27 @@ const SCHEMA_WORKER_SOURCE = `
     try {
       const schema = JSON.parse(schemaJson);
       const data = JSON.parse(dataJson);
+      // A dialect URI names the dialect, not the scheme that serves it:
+      // draft-07 and 2020-12 are published over both http:// and https://.
+      // Compare the URI without its scheme or trailing fragment so every
+      // published form of one dialect selects the same Ajv.
       const dialect = typeof schema.$schema === "string"
-        ? schema.$schema.replace(/#$/, "") : schema.$schema;
+        ? schema.$schema.replace(/#$/, "").replace(/^https?:/, "") : schema.$schema;
       // MCP defaults to 2020-12. Keep draft-07 only when it is declared.
       // Each request still has its own bounded worker and Ajv instance.
       let Ajv = Ajv2020;
-      if (dialect !== undefined && dialect !== "https://json-schema.org/draft/2020-12/schema") {
-        if (dialect !== "http://json-schema.org/draft-07/schema") {
-          throw new Error("Unsupported MCP JSON Schema dialect: " + String(dialect));
+      let registeredSchemaUri = "https://json-schema.org/draft/2020-12/schema";
+      if (dialect !== undefined && dialect !== "//json-schema.org/draft/2020-12/schema") {
+        if (dialect !== "//json-schema.org/draft-07/schema") {
+          throw new Error("Unsupported MCP JSON Schema dialect: " + String(schema.$schema));
         }
         Ajv = AjvLegacy;
+        registeredSchemaUri = "http://json-schema.org/draft-07/schema#";
       }
+      // Each Ajv registers its meta-schema under one URI only, and it refuses a
+      // schema that names another. Point the declared dialect at the URI this
+      // instance registers so the other published form compiles.
+      if (typeof schema.$schema === "string") schema.$schema = registeredSchemaUri;
       // "format" is an annotation by default; without format definitions Ajv
       // refuses the whole schema ("unknown format"), so every call fails.
       // Unknown keywords ("discriminator", vendor "x-*" keys) are ignored per

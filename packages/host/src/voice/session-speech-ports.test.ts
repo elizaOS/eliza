@@ -27,8 +27,9 @@ async function until(read: () => boolean) {
   for (let i = 0; i < 100 && !read(); i++) await sleep(5);
   expect(read()).toBe(true);
 }
-async function setup(prepared = false, bounded = false) {
+async function setup(prepared = false, bounded = false, selfAdmission = false) {
   let policyClosed = 0;
+  const usageStore = new InMemoryVoiceUsageStore();
   const control: ServerControlFrame[] = [],
     audio: Uint8Array[] = [],
     requests: { url: string; headers: Headers; body: unknown }[] = [],
@@ -146,9 +147,9 @@ async function setup(prepared = false, bounded = false) {
       agentId: "local-agent",
       conversationId: "local-conversation",
     }),
-    usageStore: new InMemoryVoiceUsageStore(),
+    usageStore,
     usageLimits: { organizationDailyMinutes: 10, userDailyMinutes: 10 },
-    initialUsageAdmissionMinutes: 1 / 12,
+    ...(selfAdmission ? {} : { initialUsageAdmissionMinutes: 1 / 12 }),
     registry: createVoiceSessionRegistry(),
     downlink: {
       sendControl: (frame) => control.push(frame),
@@ -172,6 +173,7 @@ async function setup(prepared = false, bounded = false) {
   cleanups.push(() => session.bye());
   return {
     session,
+    usageStore,
     get policyClosed() {
       return policyClosed;
     },
@@ -558,4 +560,23 @@ test("barge-in keeps the actual VoiceSession trial scope for the next caller tur
   ).toEqual([f.config.sessionId, f.config.sessionId]);
   f.session.bye();
   expect(f.policyClosed).toBe(1);
+});
+test("a self-admitted session does not bill the first metering window twice", async () => {
+  const f = await setup(false, false, true);
+  const identity = { organizationId: "local-org", userId: "local-user" };
+  const limits = f.config.usageLimits;
+  f.session.start();
+  f.emit({ type: "connected", raw: {} });
+  // The first chunk triggers the session's own admission charge (one window).
+  f.session.pushUplinkAudio(new Uint8Array(3200));
+  await until(() => f.order.includes("uplink"));
+  // Exactly one metering window of caller audio, already covered by admission.
+  for (let i = 0; i < 50; i += 1)
+    f.session.pushUplinkAudio(new Uint8Array(3200));
+  await sleep(50);
+  const probed = await f.usageStore.checkAndRecord(identity, 1e-9, limits);
+  if (!probed.allowed) throw Error("usage probe was denied");
+  // One admission window (5 s = 1/12 min), not two.
+  expect(probed.userUsedMinutes).toBeCloseTo(5 / 60, 6);
+  expect(probed.organizationUsedMinutes).toBeCloseTo(5 / 60, 6);
 });

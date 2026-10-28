@@ -349,7 +349,14 @@ export async function handleTextToSpeech(
       const mimeType = format === "mp3" ? "audio/mpeg" : `audio/${format}`;
       return buildAudioStreamResult(speechStream, mimeType);
     }
-    return ttsStreamToBytes(speechStream);
+    const bytes = await ttsStreamToBytes(speechStream);
+    // A 200 with an empty body is a failed synthesis, not a silent clip.
+    // Returning it as audio makes byte-expecting callers write or play a
+    // zero-byte file while reporting success.
+    if (bytes.byteLength === 0) {
+      throw new Error("ElizaOS Cloud TTS returned an empty audio response");
+    }
+    return bytes;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error(`Error in TEXT_TO_SPEECH: ${message}`);

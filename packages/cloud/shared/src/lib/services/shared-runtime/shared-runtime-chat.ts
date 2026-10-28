@@ -1,3 +1,4 @@
+import { parseImessageReaction } from "@elizaos/contracts/imessage-reaction";
 import { SHARED_RUNTIME_TURN_DEADLINE_MS } from "./coordinator-fetch";
 import type { VerifiedNetworkAdmission } from "./network-shared-admission";
 import {
@@ -5,6 +6,7 @@ import {
   isPersonalGooglePrivateAudience,
 } from "./shared-google-owner-binding";
 import type { OwnerModelCapture } from "./shared-owner-model-capture";
+import { matchesTypedPublicReadQaPolicy } from "./shared-public-read-qa";
 /**
  * Cache-only shared-tier chat execution for Cloudflare Workers.
  *
@@ -321,6 +323,7 @@ function isProviderFreeTurn(
 /** Terminal result of a landed shared turn, durably replayable by claim key. */
 export interface SharedTurnTerminalResult {
   text: string;
+  acknowledgementReaction?: string;
   responded?: boolean;
   messageId: string;
   userMessageId: string;
@@ -625,12 +628,29 @@ export function sharedElizaRuntimeExecution(
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
   trustedNetworkTurn?: unknown,
   trustedNetworkAdmission?: VerifiedNetworkAdmission,
+  /** Server-derived lifecycle/account context, never caller RPC parameters. */
+  trustedTurn?: { messageRole: "user" | "system"; fallback: boolean; transient: boolean },
 ): NonNullable<RunSharedAgentTurnInput["execution"]> {
   const personalShared = funding === "platform" && isCanonicalPersonalSharedAgent(agent);
   const runtimeChannel = channel ?? {
     type: ChannelType.DM,
     source: personalShared ? MESSAGE_SOURCE_CLIENT_CHAT : "shared-runtime",
   };
+  const typedPublicReadReplies =
+    trustedTurn?.messageRole === "user" &&
+    trustedTurn.fallback === false &&
+    trustedTurn.transient === false &&
+    personalShared &&
+    runtimeChannel.type === ChannelType.DM &&
+    runtimeChannel.source === "blooio" &&
+    roomId === sharedRuntimeRoomKey(agent.id, agent.id) &&
+    matchesTypedPublicReadQaPolicy(getCloudAwareEnv().SHARED_TYPED_PUBLIC_READ_QA_POLICY, {
+      organizationId: agent.organization_id,
+      userId: agent.user_id,
+      agentId: agent.id,
+      roomKey: roomId,
+      channelSource: "blooio",
+    });
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
   const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
   const network = sharedNetworkExecution(
@@ -651,6 +671,7 @@ export function sharedElizaRuntimeExecution(
     // Personal funding is selected by the server-owned coordinator only after
     // account/tenant resolution; RPC params cannot grant this attestation.
     ...(personalShared ? { authenticatedPersonalSharedUser: true as const } : {}),
+    ...(typedPublicReadReplies ? { typedPublicReadReplies: true as const } : {}),
     ...(personalShared && runtimeChannel.type === ChannelType.DM && agent.owner_name
       ? { participantName: agent.owner_name }
       : {}),
@@ -1539,6 +1560,11 @@ export class SharedRuntimeChatService {
           options.channel,
           options.trustedNetworkTurn,
           options.trustedNetworkAdmission,
+          {
+            messageRole,
+            fallback: options.trustedAccountState !== undefined,
+            transient: options.transientInput === true,
+          },
         ),
       });
     } catch (error) {
@@ -1599,8 +1625,13 @@ export class SharedRuntimeChatService {
         originalIntent: text,
         ...(claimKey ? { clientMessageId: claimKey } : {}),
       });
+      const acknowledgementReaction =
+        turn.responded === false && !turn.reply && !actionResults?.length
+          ? parseImessageReaction(turn.acknowledgementReaction)
+          : undefined;
       const result: SharedTurnTerminalResult = {
         text: turn.reply,
+        ...(acknowledgementReaction !== undefined ? { acknowledgementReaction } : {}),
         ...(turn.responded === false ? { responded: false } : {}),
         messageId: messageIds.assistant,
         userMessageId: messageIds.user,
@@ -1863,6 +1894,11 @@ export class SharedRuntimeChatService {
             options.channel,
             options.trustedNetworkTurn,
             options.trustedNetworkAdmission,
+            {
+              messageRole,
+              fallback: options.trustedAccountState !== undefined,
+              transient: options.transientInput === true,
+            },
           ),
         }),
       );

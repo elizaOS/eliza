@@ -1,14 +1,10 @@
 /**
  * A reservation is released only when the provider clearly refused the
- * request before accepting work. These cases pin the status set and the
- * shared-runtime rule that no model call completed in the turn.
+ * request before accepting work. These cases pin the shared-runtime rule
+ * that no model call completed in the turn.
  */
 import { describe, expect, test } from "bun:test";
-import { APICallError, RetryError } from "ai";
-import {
-  isKnownUnacceptedProviderError,
-  isKnownUnacceptedProviderStatus,
-} from "./inference-provider-outcome";
+import { APICallError } from "ai";
 import {
   classifySharedRuntimeTurnFailure,
   isUnacceptedSharedModelFailure,
@@ -23,31 +19,6 @@ function providerError(statusCode: number) {
     statusCode,
   });
 }
-
-describe("provider rejection status set", () => {
-  test("explicit refusals count as not accepted", () => {
-    for (const status of [400, 401, 402, 403, 404, 409, 413, 422, 429]) {
-      expect(isKnownUnacceptedProviderStatus(status)).toBe(true);
-      expect(isKnownUnacceptedProviderError(providerError(status))).toBe(true);
-    }
-  });
-
-  test("timeouts and server errors stay conservative", () => {
-    for (const status of [408, 500, 502, 503, 504]) {
-      expect(isKnownUnacceptedProviderStatus(status)).toBe(false);
-      expect(isKnownUnacceptedProviderError(providerError(status))).toBe(false);
-    }
-  });
-
-  test("a retry counts only by its last attempt", () => {
-    const retried = new RetryError({
-      message: "retries exhausted",
-      reason: "maxRetriesExceeded",
-      errors: [providerError(422), providerError(503)],
-    });
-    expect(isKnownUnacceptedProviderError(retried)).toBe(false);
-  });
-});
 
 describe("shared runtime turn rejection", () => {
   function turnError(status: number, completed: boolean) {

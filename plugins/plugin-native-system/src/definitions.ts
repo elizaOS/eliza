@@ -47,6 +47,61 @@ export interface FlashlightStatus {
   enabled: boolean;
 }
 
+/**
+ * System switch, network and power facts Android reported to an ordinary app. A key Android did
+ * not answer is absent, which means unknown, never off. These are read-only: settings surfaces
+ * show them and hand off to the matching Android page.
+ */
+export interface SystemFacts {
+  wifiEnabled?: boolean;
+  bluetoothEnabled?: boolean;
+  airplaneMode?: boolean;
+  locationEnabled?: boolean;
+  mobileDataEnabled?: boolean;
+  interruptionFilter?: "all" | "priority" | "alarms" | "none";
+  adaptiveBrightness?: boolean;
+  /** An active Wi-Fi transport proves Wi-Fi is on; no active transport never proves it is off. */
+  wifiActive?: boolean;
+  cellularActive?: boolean;
+  internetValidated?: boolean;
+  batteryPercent?: number;
+  charging?: boolean;
+  powerSave?: boolean;
+}
+
+/** Allowlisted Android settings pages (`SystemSettingsPages.PAGES`). */
+export type SystemSettingsPage =
+  | "accounts"
+  | "wifi"
+  | "bluetooth"
+  | "mobile"
+  | "airplane"
+  | "location"
+  | "display"
+  | "sound"
+  | "battery"
+  | "about"
+  | "developer"
+  | "notifications"
+  | "privacy"
+  | "default-apps"
+  | "dnd";
+
+/** `specific` is false when only a broader fallback page opened. Nothing was changed. */
+export interface SystemSettingsPageResult {
+  status: "opened";
+  page: SystemSettingsPage;
+  specific: boolean;
+}
+
+/** `opened` means Android accepted the request, not that the shade is on screen. */
+export type NotificationShadeOutcome =
+  | "opened"
+  | "standalone"
+  | "permission-missing"
+  | "unsupported"
+  | "not-in-front";
+
 /** Android profile kind of a launcher entry outside the current user. */
 export type LauncherProfile = "work" | "private" | "clone" | "other";
 
@@ -196,4 +251,9 @@ export interface SystemPlugin {
   openWriteSettings(): Promise<void>;
   openDisplaySettings(): Promise<void>;
   openSoundSettings(): Promise<void>;
+  getSystemFacts(): Promise<SystemFacts>;
+  openSettingsPage(options: {
+    page: SystemSettingsPage;
+  }): Promise<SystemSettingsPageResult>;
+  openNotificationShade(): Promise<{ status: NotificationShadeOutcome }>;
 }

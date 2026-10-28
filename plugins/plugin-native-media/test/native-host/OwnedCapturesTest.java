@@ -58,6 +58,23 @@ public final class OwnedCapturesTest {
     rejects(() -> OwnedMediaSelection.cursor("0"));
     rejects(() -> OwnedMediaSelection.cursor("-5"));
     rejects(() -> OwnedMediaSelection.cursor("abc"));
+    check(OwnedMediaSelection.isOwnedKey("42") && OwnedMediaSelection.isOwnedKey("v:7"));
+    check(!OwnedMediaSelection.isOwnedKey("0") && !OwnedMediaSelection.isOwnedKey("v:0"));
+    check(!OwnedMediaSelection.isOwnedKey("m:external:i:5") && !OwnedMediaSelection.isOwnedKey(null));
+    check(!OwnedMediaSelection.isOwnedKey("content://media/external/images/media/5"));
+    check(OwnedMediaSelection.id("v:7") == 7 && OwnedMediaSelection.id("42") == 42);
+    rejects(() -> OwnedMediaSelection.id("m:external:i:5"));
+    check(OwnedMediaSelection.shareType(null, "image/png").equals("image/png"));
+    check(OwnedMediaSelection.shareType("image/png", "image/png").equals("image/png"));
+    check(OwnedMediaSelection.shareType("image/png", "image/jpeg").equals("image/*"));
+    check(OwnedMediaSelection.shareType("video/mp4", "video/webm").equals("video/*"));
+    check(OwnedMediaSelection.shareType("image/*", "video/mp4").equals("*/*"));
+    check(OwnedMediaSelection.albumName("  Trip  ").equals("Trip"));
+    rejects(() -> OwnedMediaSelection.albumName("   "));
+    rejects(() -> OwnedMediaSelection.albumName(null));
+    rejects(() -> OwnedMediaSelection.albumName("a\u0007b"));
+    rejects(() -> OwnedMediaSelection.albumName("x".repeat(81)));
+    check(OwnedMediaSelection.albumName("x".repeat(80)).length() == 80);
     System.out.println(checks + " assertions passed");
   }
 }

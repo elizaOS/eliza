@@ -20,6 +20,9 @@ public final class OwnedMediaConfig {
   public final String editNamePrefix;
   public final String captureRelativePath;
   public final String captureNamePrefix;
+  /** MediaStore placement of video edit copies, or null when the host does not edit videos. */
+  public final String videoEditRelativePath;
+  public final String videoEditNamePrefix;
 
   private OwnedMediaConfig(Builder builder) {
     storageNamespace = builder.namespace;
@@ -27,6 +30,8 @@ public final class OwnedMediaConfig {
     editNamePrefix = builder.editNamePrefix;
     captureRelativePath = builder.captureRelativePath;
     captureNamePrefix = builder.captureNamePrefix;
+    videoEditRelativePath = builder.videoEditRelativePath;
+    videoEditNamePrefix = builder.videoEditNamePrefix;
   }
 
   /** Starts a configuration for one host storage namespace, for example {@code "myapp"}. */
@@ -41,6 +46,14 @@ public final class OwnedMediaConfig {
     return storageNamespace + "-" + purpose;
   }
 
+  /**
+   * Host-namespaced private directory or file-name stem for one shared-code purpose, for example
+   * {@code "<namespace>-video-edits"} under the host's cache directory.
+   */
+  public String privateName(String purpose) {
+    return preferences(purpose);
+  }
+
   /** Deterministic owned display name for an edit copy; closes publish/receipt crash ambiguity. */
   public String editName(String operationId) {
     return editNamePrefix + operation(operationId) + ".png";
@@ -49,6 +62,13 @@ public final class OwnedMediaConfig {
   /** Deterministic owned display name for an explicitly kept capture. */
   public String captureName(String operationId) {
     return captureNamePrefix + operation(operationId) + ".jpg";
+  }
+
+  /** Deterministic owned display name for a video edit copy. */
+  public String videoEditName(String operationId) {
+    if (videoEditNamePrefix == null)
+      throw new IllegalStateException("Configure video edits");
+    return videoEditNamePrefix + operation(operationId) + ".mp4";
   }
 
   /** Accepts only a canonical lowercase UUID as an operation identity. */
@@ -60,11 +80,16 @@ public final class OwnedMediaConfig {
   }
 
   static String relativePath(String value) {
+    return relativePath(value, "Pictures", "DCIM");
+  }
+
+  static String relativePath(String value, String... roots) {
     if (value == null || !value.endsWith("/"))
       throw new IllegalArgumentException("Relative path must end with /");
     String[] parts = value.substring(0, value.length() - 1).split("/", -1);
-    if (!(parts[0].equals("Pictures") || parts[0].equals("DCIM")))
-      throw new IllegalArgumentException("Owned media must live under Pictures/ or DCIM/");
+    if (!java.util.Arrays.asList(roots).contains(parts[0]))
+      throw new IllegalArgumentException(
+          "Owned media must live under " + String.join("/ or ", roots) + "/");
     for (String part : parts)
       if (!SEGMENT.matcher(part).matches() || part.endsWith(".") || part.endsWith(" "))
         throw new IllegalArgumentException("Invalid relative path segment");
@@ -74,6 +99,7 @@ public final class OwnedMediaConfig {
   public static final class Builder {
     private final String namespace;
     private String editRelativePath, editNamePrefix, captureRelativePath, captureNamePrefix;
+    private String videoEditRelativePath, videoEditNamePrefix;
 
     private Builder(String namespace) {
       if (namespace == null || !NAMESPACE.matcher(namespace).matches())
@@ -90,6 +116,12 @@ public final class OwnedMediaConfig {
     public Builder captures(String relativePath, String namePrefix) {
       captureRelativePath = relativePath(relativePath);
       captureNamePrefix = prefix(namePrefix);
+      return this;
+    }
+    /** Optional MediaStore RELATIVE_PATH (under Movies/ or DCIM/) and prefix for video copies. */
+    public Builder videoEdits(String relativePath, String namePrefix) {
+      videoEditRelativePath = relativePath(relativePath, "Movies", "DCIM");
+      videoEditNamePrefix = prefix(namePrefix);
       return this;
     }
     public OwnedMediaConfig build() {
