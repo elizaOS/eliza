@@ -30,6 +30,11 @@ map plane draws selectable pins and a moving-device heading, and can follow the
 position during navigation. Hosts still own location permission, voice policy,
 provider configuration and presentation.
 
+A host may supply `selectionPadding` for its own panels. The map samples it on
+updates and idle after resize, so a selected place stays visible when panels
+move. Layout changes preserve the current zoom and marker, and do not take the
+camera from a route or active position following.
+
 ## Phone Maps screen
 
 `MapsScreenController` (`./client/maps-screen`) is the phone Maps screen without
