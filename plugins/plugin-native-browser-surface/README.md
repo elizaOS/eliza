@@ -278,7 +278,10 @@ from this package with a JDK on PATH or JAVA_HOME.
 - `BrowserWebOrigin` validates HTTP(S) origins, blob owners and site matching.
 - `BrowserDownloadPolicy` limits cookies to the open source tab's exact origin,
   decodes data URLs within 64 MB on Android 26+, and excludes private downloads from saved history.
-  Saved entries survive restoration even above the limit for adding new entries.
+  A transfer the host runs itself is listed as running until it ends with its saved file or as
+  failed; running entries are never saved or restored, and `removeWhere` returns what it removed
+  so the host can stop those transfers. Saved entries survive restoration even above the limit
+  for adding new entries.
 - `BrowserSitePermissions` stores revocable camera, microphone and location choices
   per origin. Private tabs neither read nor store these choices.
 - `BrowserSessionPolicy` restores valid persistent tabs, history and complete titles.
