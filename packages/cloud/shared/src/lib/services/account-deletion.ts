@@ -747,6 +747,66 @@ function requireProcessAccountDeletionResources(
 }
 
 /**
+ * Activates requests whose recovery window has ended, or parks them for an
+ * operator. A request the run cannot decide (`account_unavailable`,
+ * `provider_work_in_flight`, `not_due`) gets no write and keeps its place at
+ * the front of the due set, so the run pages past such requests until `limit`
+ * requests were decided or the due set is exhausted.
+ */
+export async function activateExpiredRecoveryRequests(input: {
+  now: Date;
+  limit: number;
+}): Promise<{ activated: number; actionRequired: number }> {
+  const { now, limit } = input;
+  let activated = 0;
+  let actionRequired = 0;
+  const seen: string[] = [];
+  while (activated + actionRequired < limit) {
+    const requestIds = await accountDeletionRequestsRepository.findExpiredRecoveryRequestIds(
+      now,
+      limit - activated - actionRequired,
+      seen,
+    );
+    if (requestIds.length === 0) break;
+    for (const requestId of requestIds) {
+      seen.push(requestId);
+      const activation =
+        await accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion({
+          requestId,
+          exportRevocationIdempotencyKeyDigest: createHash("sha256")
+            .update(`account-deletion-export-revoke:v1:${requestId}`)
+            .digest("hex"),
+          exportRevocationNotBefore: new Date(
+            now.getTime() + EXPORT_REVOCATION_SAFETY_MILLISECONDS,
+          ),
+          now,
+        });
+      if (activation.outcome === "activated") {
+        activated++;
+        continue;
+      }
+      const activationErrorCode =
+        activation.outcome === "transfer_required"
+          ? "TRANSFER_REQUIRED"
+          : activation.outcome === "export_required"
+            ? "EXPORT_REQUIRED_BEFORE_ERASURE"
+            : activation.outcome === "identity_deactivation_required"
+              ? "STEWARD_DEACTIVATION_RECONCILIATION_REQUIRED"
+              : null;
+      if (activationErrorCode) {
+        const parked = await accountDeletionRequestsRepository.markRecoveryActionRequired({
+          requestId,
+          errorCode: activationErrorCode,
+          now,
+        });
+        if (parked) actionRequired++;
+      }
+    }
+  }
+  return { activated, actionRequired };
+}
+
+/**
  * Activates expired recovery reservations and advances one ordered, inspected
  * provider phase per request. Pre-reservation legacy rows remain on the
  * deliberate fail-closed path and never share the new saga authority.
@@ -784,42 +844,8 @@ export async function processDueAccountDeletions(
     }
   }
 
-  let activated = 0;
-  let activationActionRequired = 0;
-  for (const requestId of await accountDeletionRequestsRepository.findExpiredRecoveryRequestIds(
-    now,
-    limit,
-  )) {
-    const activation =
-      await accountDeletionRequestsRepository.activateExpiredPersonalAccountDeletion({
-        requestId,
-        exportRevocationIdempotencyKeyDigest: createHash("sha256")
-          .update(`account-deletion-export-revoke:v1:${requestId}`)
-          .digest("hex"),
-        exportRevocationNotBefore: new Date(now.getTime() + EXPORT_REVOCATION_SAFETY_MILLISECONDS),
-        now,
-      });
-    if (activation.outcome === "activated") {
-      activated++;
-      continue;
-    }
-    const activationErrorCode =
-      activation.outcome === "transfer_required"
-        ? "TRANSFER_REQUIRED"
-        : activation.outcome === "export_required"
-          ? "EXPORT_REQUIRED_BEFORE_ERASURE"
-          : activation.outcome === "identity_deactivation_required"
-            ? "STEWARD_DEACTIVATION_RECONCILIATION_REQUIRED"
-            : null;
-    if (activationErrorCode) {
-      const parked = await accountDeletionRequestsRepository.markRecoveryActionRequired({
-        requestId,
-        errorCode: activationErrorCode,
-        now,
-      });
-      if (parked) activationActionRequired++;
-    }
-  }
+  const { activated, actionRequired: activationActionRequired } =
+    await activateExpiredRecoveryRequests({ now, limit });
 
   const saga = await processIrreversibleAccountDeletionSaga({
     limit,

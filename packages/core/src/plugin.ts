@@ -331,15 +331,19 @@ async function resolvePluginsImpl(
 
 		if (!pluginMap.has(canonicalName)) {
 			pluginMap.set(canonicalName, loaded);
+		}
 
-			for (const depName of loaded.dependencies ?? []) {
+		// Queue dependencies for every plugin, not just newly added ones:
+		// Plugin objects are pre-registered in the first pass, so gating this
+		// on map membership silently dropped their dependencies.
+		// queueDependency itself dedupes via seenDependencies/pluginMap.
+		for (const depName of loaded.dependencies ?? []) {
+			queueDependency(depName, seenDependencies, pluginMap, queue);
+		}
+
+		if (isTestMode) {
+			for (const depName of loaded.testDependencies ?? []) {
 				queueDependency(depName, seenDependencies, pluginMap, queue);
-			}
-
-			if (isTestMode) {
-				for (const depName of loaded.testDependencies ?? []) {
-					queueDependency(depName, seenDependencies, pluginMap, queue);
-				}
 			}
 		}
 	}

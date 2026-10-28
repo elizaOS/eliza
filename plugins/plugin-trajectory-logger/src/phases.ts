@@ -223,7 +223,12 @@ function summarizeAction(events: UIToolEvent[]): {
   if (events.length === 0) return { status: "idle", summary: null };
   const e = events[events.length - 1];
   const name = e.actionName || e.toolName || e.name || "action";
-  if (e.type === "tool_error" || e.error || e.success === false) {
+  if (
+    e.status === "failed" ||
+    e.type === "tool_error" ||
+    e.error ||
+    e.success === false
+  ) {
     return { status: "error", summary: name };
   }
   if (
@@ -244,7 +249,7 @@ function summarizeEvaluate(
   if (events.length > 0) {
     const e = events[events.length - 1];
     const name = e.evaluatorName || e.name || "evaluator";
-    if (e.error || e.success === false) {
+    if (e.status === "failed" || e.error || e.success === false) {
       return { status: "error", summary: name };
     }
     if (e.decision)

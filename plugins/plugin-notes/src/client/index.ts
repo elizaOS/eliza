@@ -31,3 +31,4 @@ export * from "./notes-trash-actions.ts";
 export * from "./notes-trash-maintenance.ts";
 export * from "./notes-trash-policy.ts";
 export * from "./notes-trash-schedule.ts";
+export * from "./notes-trash-store.ts";

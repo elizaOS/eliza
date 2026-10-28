@@ -150,7 +150,9 @@ export const declareSubAgentCredentialScopeAction: Action = {
       `[SubAgentCreds:declare_scope] childSessionId=${childSessionId} scopeId=${scope.credentialScopeId} keys=${credentialKeys.length}`,
     );
 
-    const text = `Declared credential scope ${scope.credentialScopeId} for ${childSessionId} (${credentialKeys.length} keys).`;
+    const text = scope.sensitiveRequestFailure
+      ? `Declared credential scope ${scope.credentialScopeId} for ${childSessionId} (${credentialKeys.length} keys), but the owner request was not delivered via ${scope.sensitiveRequestFailure.target}: ${scope.sensitiveRequestFailure.message}. The child cannot receive a credential until a request reaches the owner.`
+      : `Declared credential scope ${scope.credentialScopeId} for ${childSessionId} (${credentialKeys.length} keys).`;
     if (callback) {
       // The scoped token is NEVER surfaced through the user-facing callback —
       // only the scope id and key list. Callers that need the token read it
@@ -163,16 +165,24 @@ export const declareSubAgentCredentialScopeAction: Action = {
           credentialScopeId: scope.credentialScopeId,
           expiresAt: scope.expiresAt,
           sensitiveRequestIds: [...scope.sensitiveRequestIds],
+          ...(scope.sensitiveRequestFailure
+            ? {
+                sensitiveRequestFailure: `${scope.sensitiveRequestFailure.target}: ${scope.sensitiveRequestFailure.message}`,
+              }
+            : {}),
           credentialKeys,
         },
       });
     }
 
     return {
-      success: true,
+      success: !scope.sensitiveRequestFailure,
       text,
       data: {
         actionName: "DECLARE_SUB_AGENT_CREDENTIAL_SCOPE",
+        ...(scope.sensitiveRequestFailure
+          ? { code: "SENSITIVE_REQUEST_NOT_DELIVERED" }
+          : {}),
         credentialScopeId: scope.credentialScopeId,
         scopedToken: scope.scopedToken,
         expiresAt: scope.expiresAt,

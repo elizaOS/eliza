@@ -9,17 +9,26 @@ const ALERT_REQUEST_TIMEOUT_MS = 15_000;
  * A caller-provided signal is composed with the deadline rather than
  * replacing it — a caller that cancels still aborts early, and a caller
  * whose signal never fires still cannot outlive the bound.
+ *
+ * A delivery that the channel rejects is a failed delivery: `fetch` resolves
+ * for 401/404/500, so an unchecked response would count as delivered and the
+ * alert would be lost without an error. Throwing keeps `sendSocialMediaAlert`
+ * able to report the channel as failed.
  */
-export function alertFetch(
+export async function alertFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
   timeoutMs: number = ALERT_REQUEST_TIMEOUT_MS,
 ): Promise<Response> {
   const deadline = AbortSignal.timeout(timeoutMs);
-  return fetch(input, {
+  const response = await fetch(input, {
     ...init,
     signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline,
   });
+  if (!response.ok) {
+    throw new Error(`Alert delivery rejected by the channel: HTTP ${response.status}`);
+  }
+  return response;
 }
 
 type AlertSeverity = "critical" | "high" | "medium" | "low";

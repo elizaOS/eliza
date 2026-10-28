@@ -15,6 +15,7 @@ import {
 import type { Content } from "../types/primitives.js";
 import type {
 	ConnectorPostIdentity,
+	ConnectorUnregisterOptions,
 	IAgentRuntime,
 	MessageConnector,
 	MessageConnectorCreateThreadParams,
@@ -146,13 +147,17 @@ export class RuntimeConnectorRegistry {
 		);
 	}
 
-	unregisterMessageConnector(source: string, accountId?: string): boolean {
+	unregisterMessageConnector(
+		source: string,
+		accountId?: string,
+		options?: ConnectorUnregisterOptions,
+	): boolean {
 		const normalized = typeof source === "string" ? source.trim() : "";
 		if (!normalized) return false;
 		const normalizedAccountId = normalizeConnectorAccountId(accountId);
 		let removedConnector = false;
 		let removedHandler = false;
-		if (normalizedAccountId) {
+		if (normalizedAccountId || options?.exactAccount) {
 			const routeKey = connectorRouteKey(normalized, normalizedAccountId);
 			removedConnector = this.messageConnectors.delete(routeKey);
 			removedHandler = this.sendHandlers.delete(routeKey);
@@ -232,12 +237,16 @@ export class RuntimeConnectorRegistry {
 		);
 	}
 
-	unregisterPostConnector(source: string, accountId?: string): boolean {
+	unregisterPostConnector(
+		source: string,
+		accountId?: string,
+		options?: ConnectorUnregisterOptions,
+	): boolean {
 		const normalized = typeof source === "string" ? source.trim() : "";
 		if (!normalized) return false;
 		const normalizedAccountId = normalizeConnectorAccountId(accountId);
 		let removed = false;
-		if (normalizedAccountId) {
+		if (normalizedAccountId || options?.exactAccount) {
 			removed = this.postConnectors.delete(
 				connectorRouteKey(normalized, normalizedAccountId),
 			);

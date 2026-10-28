@@ -258,7 +258,7 @@ public final class SenseListenerClient {
             });
             if (!authorized || !admitted[0]) return out;
         } catch (RuntimeException unavailable) { return out; }
-        out.putBoolean("assistant", true); out.putString("invocation", "power"); out.putBoolean("locked", false);
+        out.putBoolean("assistant", true); out.putString("invocation", SenseInvocation.POWER); out.putBoolean("locked", false);
         return out;
     }
 

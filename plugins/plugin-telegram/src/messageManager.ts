@@ -495,6 +495,24 @@ export class MessageManager {
   private activeTurnRooms = new Map<UUID, number>();
 
   /**
+   * Attachments Telegram refused for a reply, keyed by the reply content object
+   * that `sendMessageInChunks` and `persistSentMessageMemories` both receive.
+   */
+  private readonly undeliveredAttachments = new WeakMap<object, Set<Media>>();
+
+  /** The reply as the user received it: attachments Telegram refused are left out. */
+  private deliveredContent<T extends Content>(content: T): T {
+    const undelivered = this.undeliveredAttachments.get(content);
+    if (!undelivered) return content;
+    return {
+      ...content,
+      attachments: content.attachments?.filter(
+        (attachment) => !undelivered.has(attachment),
+      ),
+    };
+  }
+
+  /**
    * Constructor for creating a new instance of a BotAgent.
    *
    * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
@@ -1257,6 +1275,7 @@ export class MessageManager {
     replyToMessageId?: number,
     messageThreadId?: number,
   ): Promise<Message.TextMessage[]> {
+    const undelivered = new Set<Media>();
     if (content.attachments && content.attachments.length > 0) {
       await Promise.all(
         content.attachments.map(async (attachment: Media) => {
@@ -1303,6 +1322,8 @@ export class MessageManager {
           } catch (error) {
             // error-policy:J4 an undeliverable attachment must not drop the
             // accompanying prose; log a URL summary, never a data-URL payload.
+            // It is kept out of the reply memory (persistSentMessageMemories).
+            undelivered.add(attachment);
             logger.warn(
               {
                 src: "plugin:telegram",
@@ -1318,6 +1339,7 @@ export class MessageManager {
       );
       // Fall through to the text path below so an attachment reply never drops
       // the agent's accompanying prose (sent as a follow-up message).
+      this.undeliveredAttachments.set(content, undelivered);
     }
 
     {
@@ -1346,6 +1368,21 @@ export class MessageManager {
       // Nothing textual to send (e.g. an attachments-only reply that already
       // dispatched its media above) — don't post an empty trailing message.
       if (textToSend.trim().length === 0 && !hasKeyboardRows) {
+        const attachmentCount = content.attachments?.length ?? 0;
+        if (attachmentCount > 0 && undelivered.size === attachmentCount) {
+          // Nothing reached the user; an empty result would read as "nothing to send".
+          throw new ElizaError(
+            "Telegram refused every attachment of the reply",
+            {
+              code: "TELEGRAM_ATTACHMENTS_NOT_DELIVERED",
+              context: {
+                accountId: this.accountId,
+                chatId: String(ctx.chat?.id ?? ""),
+                attachments: attachmentCount,
+              },
+            },
+          );
+        }
         return sentMessages;
       }
 
@@ -1464,6 +1501,7 @@ export class MessageManager {
     inReplyTo: UUID;
   }): Promise<Memory[]> {
     const memories: Memory[] = [];
+    const content = this.deliveredContent(args.content);
     for (const sentMessage of args.sentMessages) {
       const responseMemory: Memory = {
         id: createUniqueUuid(
@@ -1477,7 +1515,7 @@ export class MessageManager {
         agentId: this.runtime.agentId,
         roomId: args.roomId,
         content: {
-          ...args.content,
+          ...content,
           source: "telegram",
           text: sentMessage.text,
           inReplyTo: args.inReplyTo,
@@ -3002,6 +3040,7 @@ export class MessageManager {
         !Array.isArray(content.metadata)
           ? content.metadata
           : {};
+      const delivered = this.deliveredContent(content);
       for (const sentMessage of sentMessages) {
         const memory: Memory = {
           id: createUniqueUuid(
@@ -3015,7 +3054,7 @@ export class MessageManager {
           agentId: this.runtime.agentId,
           roomId,
           content: {
-            ...content,
+            ...delivered,
             text: sentMessage.text,
             source: "telegram",
             metadata: { ...contentMetadata, accountId: this.accountId },

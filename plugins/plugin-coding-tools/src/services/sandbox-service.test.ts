@@ -223,6 +223,21 @@ describe("SandboxService default blocklist", () => {
     expect(blocked).toContain(path.join(home, "blocked-home"));
   });
 
+  it("expands a bare $HOME so the block covers the whole home directory", async () => {
+    const home = realpathSync(homedir());
+    const svc = await SandboxService.start(
+      mockRuntime({ CODING_TOOLS_BLOCKED_PATHS: "$HOME" }),
+    );
+    expect(svc.getBlockedPaths()).toContain(home);
+
+    // A configured block must cover the configured directory. A literal
+    // `$HOME` entry resolves against the process cwd instead, so the block
+    // matches no real path and the home directory stays readable.
+    const v = await svc.validatePath(undefined, path.join(home, "notes.txt"));
+    expect(v.ok).toBe(false);
+    if (!v.ok) expect(v.reason).toBe("blocked");
+  });
+
   it("rejects relative paths regardless of blocklist", async () => {
     const svc = await SandboxService.start(mockRuntime());
     const v = await svc.validatePath(undefined, "relative/path");
@@ -390,6 +405,71 @@ describe("SandboxService default blocklist", () => {
       } finally {
         rmSync(rawRoot, { recursive: true, force: true });
         rmSync(rawVictim, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itSymlink(
+    "rejects a write through a dangling workspace file symlink to an outside path",
+    async () => {
+      const rawRoot = mkdtempSync(path.join(tmpdir(), "eliza-sandbox-root-"));
+      const rawVictim = mkdtempSync(
+        path.join(tmpdir(), "eliza-sandbox-victim-"),
+      );
+      try {
+        const root = realpathSync(rawRoot);
+        const victim = realpathSync(rawVictim);
+        symlinkSync(
+          path.join(victim, "planted.txt"),
+          path.join(root, "notes.md"),
+          "file",
+        );
+        // A relative chain through a second dangling link inside the root.
+        symlinkSync(
+          path.relative(root, path.join(victim, "chained.txt")),
+          path.join(root, "hop"),
+          "file",
+        );
+        symlinkSync("hop", path.join(root, "chained.md"), "file");
+        const svc = await SandboxService.start(
+          mockRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }),
+        );
+        for (const name of ["notes.md", "chained.md"]) {
+          const result = await svc.validatePath(
+            undefined,
+            path.join(root, name),
+          );
+          expect(result.ok).toBe(false);
+          if (!result.ok) expect(result.reason).toBe("outside_allowed_roots");
+        }
+      } finally {
+        rmSync(rawRoot, { recursive: true, force: true });
+        rmSync(rawVictim, { recursive: true, force: true });
+      }
+    },
+  );
+
+  itSymlink(
+    "resolves a dangling workspace file symlink to its in-root target",
+    async () => {
+      const rawRoot = mkdtempSync(path.join(tmpdir(), "eliza-sandbox-root-"));
+      try {
+        const root = realpathSync(rawRoot);
+        symlinkSync("docs/notes.md", path.join(root, "notes.md"), "file");
+        mkdirSync(path.join(root, "docs"));
+        const svc = await SandboxService.start(
+          mockRuntime({ CODING_TOOLS_WORKSPACE_ROOTS: root }),
+        );
+        const result = await svc.validatePath(
+          undefined,
+          path.join(root, "notes.md"),
+        );
+        expect(result).toEqual({
+          ok: true,
+          resolved: path.join(root, "docs", "notes.md"),
+        });
+      } finally {
+        rmSync(rawRoot, { recursive: true, force: true });
       }
     },
   );

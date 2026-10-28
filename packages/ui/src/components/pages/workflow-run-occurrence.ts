@@ -7,7 +7,10 @@
  * completed work. A missed occurrence offers an explicit, separately confirmed
  * Run now: it starts a new manual run and never replays the missed one.
  */
-import { workflowOccurrenceNotRun } from "@elizaos/contracts/workflow-client";
+import {
+  isRecordedMissedExecution,
+  workflowOccurrenceNotRun,
+} from "@elizaos/contracts/workflow-client";
 import type { WorkflowExecution } from "../../api/client-types-chat";
 
 export interface WorkflowRunNotRun {
@@ -29,18 +32,23 @@ export interface WorkflowRunNotRun {
 export function workflowRunNotRun(
   execution: Pick<
     WorkflowExecution,
-    "status" | "finished" | "output" | "input"
+    "status" | "finished" | "output" | "input" | "missedOccurrenceAt"
   >,
   formatTime: (iso: string) => string = (iso) => new Date(iso).toLocaleString(),
   runNowAvailable = true,
 ): WorkflowRunNotRun | null {
   if (!execution.finished || execution.status !== "finished") return null;
-  // Only the agent's own scheduled admission writes these settlements, and it
-  // records the admission in the run input. A workflow whose own result merely
-  // has the same shape is a run that ran.
-  if (!scheduledAdmission(execution.input)) return null;
+  // Only the agent's own scheduled admission writes these settlements: a typed
+  // or hosted admission records itself in the run input, and a generic
+  // schedule's missed occurrence carries the engine-written missedOccurrenceAt.
+  // A workflow whose own result merely has the same shape is a run that ran.
   const settled = workflowOccurrenceNotRun(execution.output);
   if (!settled) return null;
+  if (
+    !scheduledAdmission(execution.input) &&
+    !(settled.status === "missed" && isRecordedMissedExecution(execution))
+  )
+    return null;
   const later = runNowAvailable
     ? "It is not run later; use Run now to start it once."
     : "It is not run later; it runs again only at its next scheduled time.";

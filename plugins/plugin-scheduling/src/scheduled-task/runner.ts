@@ -538,6 +538,11 @@ export interface ScheduledTaskDispatchRecord {
     message: string,
     idempotencyKey: string,
   ) => Promise<void>;
+  /**
+   * Call right before egress: throws when a user verb (dismiss, complete,
+   * snooze, delete) settled the task while the dispatcher was preparing it.
+   */
+  assertStillFired?: () => Promise<void>;
   output?: ScheduledTask["output"];
   metadata?: ScheduledTask["metadata"];
 }
@@ -3015,6 +3020,15 @@ export function createScheduledTaskRunner(
             );
           }
         },
+        assertStillFired: async () => {
+          const current = await deps.store.get(claimed.taskId);
+          if (current?.state.status !== "fired") {
+            throw new ElizaError("Scheduled task changed before delivery", {
+              code: "SCHEDULED_TASK_DISPATCH_PREPARATION_RACED",
+              context: { taskId: claimed.taskId },
+            });
+          }
+        },
       });
     } catch (error) {
       const wrapped = error instanceof Error ? error : new Error(String(error));
@@ -3038,11 +3052,19 @@ export function createScheduledTaskRunner(
             : {}),
         });
       }
+      // An in-app delivery lands in the owner's chat room; the dispatcher
+      // reports that room, and it is where the reply arrives. The target
+      // name ("in_app") would never match a reply's roomId. A room already
+      // set in the task metadata still wins inside the helper.
+      const ownerChatRoomId = dispatchResult.metadata?.ownerChatRoomId;
       const pendingPromptRoomId = claimed.completionCheck
         ? pendingPromptRoomIdForTask(claimed, {
             agentId: deps.agentId,
             channelKey: dispatchResult.channelKey ?? dispatchChannelKey,
-            target: dispatchResult.target,
+            target:
+              typeof ownerChatRoomId === "string" && ownerChatRoomId.length > 0
+                ? ownerChatRoomId
+                : dispatchResult.target,
           })
         : null;
       if (pendingPromptRoomId) {

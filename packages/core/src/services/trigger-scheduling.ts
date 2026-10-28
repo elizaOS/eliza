@@ -13,7 +13,9 @@ export const MAX_TRIGGER_INTERVAL_MS = 31 * 24 * 60 * 60 * 1000;
 export const DISABLED_TRIGGER_INTERVAL_MS = 365 * 24 * 60 * 60 * 1000;
 
 const CRON_FIELDS = 5;
-const CRON_SCAN_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
+// A leap-day schedule can be eight years apart across a non-leap century.
+const CRON_SCAN_WINDOW_MS = 8 * 366 * 24 * 60 * 60 * 1000;
+const CRON_DAY_MS = 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
 const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
 const CRON_FALLBACK_LOOKBACKS_MS = [
@@ -168,8 +170,7 @@ export function parseCronExpression(expression: string): CronSchedule | null {
 	};
 }
 
-function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
-	const candidate = new Date(candidateMs);
+function cronDateMatchesUTC(schedule: CronSchedule, candidate: Date): boolean {
 	const dayOfMonthMatches = schedule.dayOfMonth.has(candidate.getUTCDate());
 	const dayOfWeekMatches = schedule.dayOfWeek.has(candidate.getUTCDay());
 	// POSIX/Vixie cron: when BOTH day fields are restricted, a day matching
@@ -179,11 +180,15 @@ function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
 		schedule.dayOfMonthRestricted && schedule.dayOfWeekRestricted
 			? dayOfMonthMatches || dayOfWeekMatches
 			: dayOfMonthMatches && dayOfWeekMatches;
+	return dayMatches && schedule.month.has(candidate.getUTCMonth() + 1);
+}
+
+function cronMatchesUTC(schedule: CronSchedule, candidateMs: number): boolean {
+	const candidate = new Date(candidateMs);
 	return (
 		schedule.minute.has(candidate.getUTCMinutes()) &&
 		schedule.hour.has(candidate.getUTCHours()) &&
-		dayMatches &&
-		schedule.month.has(candidate.getUTCMonth() + 1)
+		cronDateMatchesUTC(schedule, candidate)
 	);
 }
 
@@ -286,26 +291,37 @@ export function computeNextCronRunAtMs(
 ): number | null {
 	const schedule = parseCronExpression(expression);
 	if (!schedule) return null;
-	// Bail on a non-representable base: scanning forward from a timestamp at/over
-	// the max Date value would build ~366 days of Invalid Dates before returning
-	// null (a ~26s pathological scan).
+	// Do not scan forward from a base at or above the maximum Date value.
 	if (!Number.isFinite(fromMs) || fromMs >= MAX_REPRESENTABLE_MS) return null;
 
 	const start = Math.floor(fromMs / CRON_MINUTE_MS) * CRON_MINUTE_MS;
 	// Cap the window at the max representable Date so a base near the ceiling
-	// scans only the representable remainder, not ~527k Invalid-Date candidates.
+	// scans only the representable remainder.
 	const cutoff = Math.min(start + CRON_SCAN_WINDOW_MS, MAX_REPRESENTABLE_MS);
-	// Hoist ONE formatter for the entire scan: a per-candidate-minute
-	// Intl.DateTimeFormat would allocate up to ~527k times across the 366-day
-	// window.
+	// Reuse one formatter for the complete scan.
 	const formatter =
 		timezone && timezone !== "UTC" ? buildTzFormatter(timezone) : null;
+	let checkedDay = Number.NaN;
+	let dayCanMatch = false;
 
 	for (
 		let candidate = start + CRON_MINUTE_MS;
 		candidate <= cutoff;
 		candidate += CRON_MINUTE_MS
 	) {
+		const day = Math.floor(candidate / CRON_DAY_MS) * CRON_DAY_MS;
+		if (day !== checkedDay) {
+			checkedDay = day;
+			// A zone's local date can be the previous or next UTC date. Only
+			// skip a whole UTC day when none of those dates can match.
+			dayCanMatch = (formatter ? [-1, 0, 1] : [0]).some((offset) =>
+				cronDateMatchesUTC(schedule, new Date(day + offset * CRON_DAY_MS)),
+			);
+		}
+		if (!dayCanMatch) {
+			candidate = day + CRON_DAY_MS - CRON_MINUTE_MS;
+			continue;
+		}
 		if (cronMatches(schedule, candidate, timezone, formatter)) {
 			return candidate;
 		}

@@ -5,8 +5,9 @@
  * devices, the `/dev/fd` descriptor namespace, and the Linux per-process and
  * per-thread descriptor entries under `/proc` (`fd`, `root`, `cwd`, `exe`, and
  * `map_files`, in their numeric-pid, `self`, `thread-self`, and `task/<tid>`
- * forms). Missing leaves realpath through the longest existing parent so
- * symlink directories cannot smuggle a write outside the workspace.
+ * forms). Missing leaves realpath through the longest existing parent, and a
+ * dangling symlink resolves through its target, so neither symlink directories
+ * nor dangling links can smuggle a write outside the workspace.
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -118,8 +119,17 @@ export function normalizeAbsolute(p: string): string {
   return path.resolve(p);
 }
 
+// Linux and macOS stop following a path's symlinks after 40 hops (ELOOP).
+const MAX_SYMLINK_HOPS = 40;
+
 export async function resolveRealPath(p: string): Promise<string> {
-  const absolute = path.resolve(p);
+  return resolveRealPathFrom(path.resolve(p), 0);
+}
+
+async function resolveRealPathFrom(
+  absolute: string,
+  hops: number,
+): Promise<string> {
   try {
     return await fs.realpath(absolute);
   } catch {
@@ -136,11 +146,32 @@ export async function resolveRealPath(p: string): Promise<string> {
       return absolute;
     }
     tail.unshift(path.basename(current));
+    let realParent: string;
     try {
-      return path.join(await fs.realpath(parent), ...tail);
+      realParent = await fs.realpath(parent);
     } catch {
       current = parent;
+      continue;
     }
+    // The first missing component can be a dangling symlink, which a create
+    // follows to its target. Resolve that target rather than the link's own
+    // name, so a dangling link cannot carry a write outside the workspace.
+    const first = path.join(realParent, tail[0]);
+    if (hops < MAX_SYMLINK_HOPS) {
+      try {
+        if ((await fs.lstat(first)).isSymbolicLink()) {
+          const target = await fs.readlink(first);
+          return await resolveRealPathFrom(
+            path.resolve(realParent, target, ...tail.slice(1)),
+            hops + 1,
+          );
+        }
+      } catch {
+        // error-policy:J3 the component is missing or unreadable; the
+        // consuming operation remains authoritative for its filesystem error.
+      }
+    }
+    return path.join(realParent, ...tail);
   }
 }
 

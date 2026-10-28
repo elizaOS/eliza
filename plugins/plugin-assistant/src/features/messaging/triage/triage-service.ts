@@ -570,6 +570,18 @@ export class TriageService {
       .get(record.source)
       ?.authorizeSend?.(runtime, requester, draftId);
     if (record.sent) return record;
+    // A scheduled draft is delivered by its durable task, which no adapter can
+    // cancel; sending it now as well would deliver it twice.
+    if (record.scheduledForMs !== undefined && record.scheduleCommit) {
+      throw new ElizaError(
+        `Draft ${draftId} is scheduled for ${new Date(record.scheduledForMs).toISOString()} and will be sent then.`,
+        {
+          code: "MESSAGE_DRAFT_ALREADY_SCHEDULED",
+          context: { draftId, scheduledForMs: record.scheduledForMs },
+          severity: "ephemeral",
+        },
+      );
+    }
     const sendKey = `${String(runtime.agentId)}:${record.source}:${draftId}`;
     const pending = this.sendsInFlight.get(sendKey);
     if (pending) {

@@ -303,11 +303,16 @@ export function walletFinancialPreview(
     case "reposition": {
       const poolClause = params.pool ? ` in pool ${params.pool}` : "";
       const verb = params.subaction === "close" ? "Close" : "Reposition";
+      // A close/reposition can remove only part of the position: Aerodrome's
+      // close accepts an LP-token amount and reposition passes one through.
+      // `amount` binds the pending key, so the owner must see the amount they
+      // are authorizing — the open prompt already names it.
+      const amountClause = params.amount ? ` with ${params.amount}` : "";
       const repositionExtras =
         params.subaction === "reposition"
           ? `${dexClause}${feeClause}${rangeClause}`
           : dexClause;
-      return `${verb} liquidity position ${params.position ?? "?"}${poolClause}${pairClause}${repositionExtras} on ${chainLabel}${slippage}? Reply yes to submit or no to cancel.`;
+      return `${verb} liquidity position ${params.position ?? "?"}${poolClause}${pairClause}${amountClause}${repositionExtras} on ${chainLabel}${slippage}? Reply yes to submit or no to cancel.`;
     }
     default:
       return `Submit wallet ${params.subaction} on ${chainLabel}? Reply yes to confirm or no to cancel.`;

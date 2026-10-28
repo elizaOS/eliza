@@ -42,7 +42,7 @@ const ORCHESTRATOR_CONTEXT_ID = "automation" as AgentContext;
 const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const TOOL_FAILURE_MARKER_RE =
-  /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exited with code|exit code [1-9]\d*|non[-\s]?zero exit|could not find|unable to find)\b/i;
+  /\b(?:command not found|permission denied|no such file or directory|timed? out|timeout|exited with code(?!\s+0\b)|exit code [1-9]\d*|non[-\s]?zero exit|could not find|unable to find)\b/i;
 const NO_RESULT_MARKER_RE =
   /\b(?:no files? found|no matching files?|no matches? found|found no files?|nothing found)\b/i;
 const POSITIVE_QUANTITATIVE_EVIDENCE_RE =
