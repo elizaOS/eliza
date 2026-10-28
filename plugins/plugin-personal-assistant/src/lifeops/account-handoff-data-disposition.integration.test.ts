@@ -364,6 +364,54 @@ describe("handoff imported-data disposition", () => {
     ).toEqual(p.previousSnapshot);
   });
 
+  it("removes the previous account's cached inbox copies with its imported mail", async () => {
+    const p = await prepared("inbox-owner");
+    const inboxCopy = (grantId: string, suffix: string) => ({
+      id: `gmail:inbox-copy-of-${suffix}`,
+      channel: "gmail" as const,
+      sender: {
+        id: `sender-of-${suffix}`,
+        displayName: "Fixture sender",
+        email: "sender@example.test",
+        avatarUrl: null,
+      },
+      subject: `Imported copy for ${suffix}`,
+      snippet: "Fixture",
+      receivedAt: "2026-09-01T00:00:00Z",
+      unread: true,
+      deepLink: null,
+      sourceRef: {
+        channel: "gmail" as const,
+        externalId: `inbox-copy-of-${suffix}`,
+      },
+      threadId: `thread-of-${suffix}`,
+      chatType: "dm" as const,
+      gmailAccountId: grantId,
+      gmailAccountEmail: "self@example.test",
+      connectorAccountId: "default",
+    });
+    await p.repo.upsertCachedInboxMessages(host.runtime.agentId, [
+      inboxCopy(p.previousGrant.id, "previous"),
+      inboxCopy(p.f.grant.id, "replacement"),
+    ]);
+    await p.service().apply(p.state.operationId, p.state.revision);
+    const remaining = await p.repo.listCachedInboxMessages(
+      host.runtime.agentId,
+      {
+        channels: ["gmail"],
+      },
+    );
+    expect(
+      remaining
+        .filter(
+          (message) =>
+            message.gmailAccountId === p.previousGrant.id ||
+            message.gmailAccountId === p.f.grant.id,
+        )
+        .map((message) => message.subject),
+    ).toEqual(["Imported copy for replacement"]);
+  });
+
   it("rejects changed ownership, accounts, and pause state before deletion", async () => {
     const p = await prepared("guard-owner");
     const unrelated = new AccountHandoffDataDisposition(
