@@ -210,4 +210,28 @@ describe("dock clearance", () => {
     expect(style.getPropertyValue("--test-dock-clearance")).toBe("");
     expect(style.getPropertyValue("--test-dock-rest")).toBe("");
   });
+
+  it("publishes an inserted dock in the same observer delivery, without waiting for a frame", async () => {
+    const { screen, dock } = dockedScreen();
+    dock.remove();
+    const frames = window.requestAnimationFrame;
+    // Frames never run here: only the same-delivery path can publish.
+    window.requestAnimationFrame = () => 1;
+    try {
+      const style = document.documentElement.style;
+      uninstall = installDockClearance({
+        screen: "[data-test-screen]",
+        docks: "[data-test-dock]",
+        clearanceProperty: "--test-dock-clearance",
+      });
+      expect(style.getPropertyValue("--test-dock-clearance")).toBe("");
+      const wrapper = document.createElement("div");
+      wrapper.append(dock);
+      screen.append(wrapper);
+      await Promise.resolve();
+      expect(style.getPropertyValue("--test-dock-clearance")).toBe("200px");
+    } finally {
+      window.requestAnimationFrame = frames;
+    }
+  });
 });

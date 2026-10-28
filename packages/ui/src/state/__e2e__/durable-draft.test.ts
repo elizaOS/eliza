@@ -377,7 +377,7 @@ describe("DurableDraftController sending", () => {
     expect(f.saved()?.text).toBe("In flight\nLater");
   });
 
-  it("keeps unsent text with its conversation when the binding changes before dispatch", async () => {
+  it("keeps unsent text with its conversation, not in the editor, when the binding is retired before dispatch", async () => {
     const f = fixture();
     f.external("Unsent words");
     await f.c.open("one");
@@ -387,9 +387,14 @@ describe("DurableDraftController sending", () => {
     f.c.retire();
     f.set("");
     f.c.release();
-    expect(f.get()).toBe("Unsent words");
+    await tick();
+    expect(f.get()).toBe("");
     expect(f.saved()?.text).toBe("Unsent words");
-    expect(f.c.state.message).toMatch(/back in the composer/);
+    expect(isSendingDurableDraft(f.saved())).toBe(false);
+    expect(f.c.state.message).toBe(DEFAULT_DURABLE_DRAFT_MESSAGES.notSentKept);
+    await f.c.open("one");
+    expect(f.get()).toBe("Unsent words");
+    expect(f.c.state.conflict).toBe(false);
   });
 
   it("queues typing as the reply arrives after the commit instead of racing it", async () => {
@@ -512,6 +517,121 @@ const savedRow = (slot: { raw: () => string | null }) =>
   JSON.parse(slot.raw() ?? "null") as DurableDraft | null;
 
 describe("DurableDraftController sending across restarts and windows", () => {
+  it("never moves a held message into another binding's editor or store when it is not dispatched", async () => {
+    // One slot per binding (owner, agent and conversation identity).
+    const slots = new Map<string, ReturnType<typeof rawSlot>>();
+    const slotFor = (binding: string) => {
+      let slot = slots.get(binding);
+      if (!slot) slots.set(binding, (slot = rawSlot()));
+      return slot;
+    };
+    let text = "";
+    const c = new DurableDraftController(
+      async (binding) => compareExchangeDraftStore(binding, slotFor(binding)),
+      () => text,
+      (value) => {
+        text = value;
+      },
+      () => {},
+    );
+    const set = (value: string) => {
+      text = value;
+      c.edit(value);
+    };
+    await c.open("one");
+    set("Meant for one");
+    await c.hold("Meant for one");
+    set("");
+    await tick();
+    await c.open("two");
+    c.settle("not-dispatched");
+    await tick();
+    await tick();
+    expect(text).toBe("");
+    expect(c.state.message).toBe(DEFAULT_DURABLE_DRAFT_MESSAGES.notSentKept);
+    expect(slotFor("two").raw()).toBeNull();
+    // The next send from "two" cannot carry "one"'s text.
+    await expect(c.hold("Meant for one")).rejects.toThrow();
+    expect(slotFor("two").raw()).toBeNull();
+    const one = savedRow(slotFor("one"));
+    expect(one?.text).toBe("Meant for one");
+    expect(isSendingDurableDraft(one)).toBe(false);
+    await c.open("one");
+    expect(text).toBe("Meant for one");
+    expect(c.state.conflict).toBe(false);
+    expect(c.state.unsettled).toBe(false);
+  });
+
+  it("does not let a release while retired leak into the next binding to open", async () => {
+    const slots = new Map<string, ReturnType<typeof rawSlot>>();
+    const slotFor = (binding: string) => {
+      let slot = slots.get(binding);
+      if (!slot) slots.set(binding, (slot = rawSlot()));
+      return slot;
+    };
+    let text = "";
+    const c = new DurableDraftController(
+      async (binding) => compareExchangeDraftStore(binding, slotFor(binding)),
+      () => text,
+      (value) => {
+        text = value;
+      },
+      () => {},
+    );
+    await c.open("owner-a");
+    text = "Owner A's words";
+    c.edit(text);
+    await c.hold(text);
+    text = "";
+    c.retire();
+    c.release();
+    await c.open("owner-b");
+    await tick();
+    expect(text).toBe("");
+    expect(slotFor("owner-b").raw()).toBeNull();
+    expect(savedRow(slotFor("owner-a"))?.text).toBe("Owner A's words");
+  });
+
+  it("reports text over the size limit as too long, not as a conflict, and recovers once shortened", async () => {
+    const slot = rawSlot();
+    let text = "";
+    const c = new DurableDraftController(
+      async (binding) =>
+        compareExchangeDraftStore(binding, slot, { textLimit: 16 }),
+      () => text,
+      (value) => {
+        text = value;
+      },
+      () => {},
+    );
+    const set = (value: string) => {
+      text = value;
+      c.edit(value);
+    };
+    await c.open("test");
+    set("Short");
+    await tick();
+    set("Far too long to be saved here");
+    await tick();
+    expect(c.state).toMatchObject({
+      conflict: false,
+      message: DEFAULT_DURABLE_DRAFT_MESSAGES.tooLarge,
+    });
+    expect(savedRow(slot)?.text).toBe("Short");
+    await expect(c.hold("Far too long to be saved here")).rejects.toThrow(
+      DEFAULT_DURABLE_DRAFT_MESSAGES.tooLarge,
+    );
+    expect(c.holding).toBe(false);
+    expect(isSendingDurableDraft(savedRow(slot))).toBe(false);
+    expect(text).toBe("Far too long to be saved here");
+    set("Shorter");
+    await tick();
+    expect(c.state.message).toBe("");
+    expect(savedRow(slot)?.text).toBe("Shorter");
+    await c.hold("Shorter");
+    expect(savedRow(slot)).toMatchObject({ text: "Shorter", sending: true });
+  });
+
   it("marks the saved copy while a send is in flight; the commit clears it unmarked", async () => {
     const slot = rawSlot();
     const run = editorRun(slot);

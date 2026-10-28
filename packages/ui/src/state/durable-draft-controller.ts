@@ -24,6 +24,17 @@
  *    the host reconciles it from history instead.
  *    {@link DurableDraftController.settle} maps an outcome to one of the two.
  *
+ * Text typed into the editor while a send is held is kept in memory only and
+ * saved when the send settles (with the release or after the commit's clear),
+ * because the binding's saved copy is the in-flight message until then. A
+ * process that dies mid-send therefore loses that newer typing; the in-flight
+ * message itself is still offered for review on the next start.
+ *
+ * If the editor moves to another binding before a send settles as not
+ * dispatched, the text stays saved, unmarked, with its own binding and is
+ * restored when that binding reopens; it is never put in the other binding's
+ * editor.
+ *
  * {@link DurableDraftController.consume} is the single-step variant for
  * forms whose own save is the effect: it clears the saved copy only while
  * the editor still holds exactly the reviewed text.
@@ -58,6 +69,13 @@ export interface DurableDraftMessages {
   changed: string;
   /** A held message was not dispatched and is back in the editor. */
   notSent: string;
+  /**
+   * A held message was not dispatched after the editor moved to another
+   * binding: it stays saved, unmarked, as the draft of its own conversation.
+   */
+  notSentKept: string;
+  /** The editor text is over the store's size limit; it is not saved. */
+  tooLarge: string;
   /** Text typed during a send was saved after the send cleared its copy. */
   savedLocally: string;
   /** The message was dispatched but its saved copy could not be cleared. */
@@ -85,6 +103,10 @@ export const DEFAULT_DURABLE_DRAFT_MESSAGES: Readonly<DurableDraftMessages> =
       "Review the message that may already have been sent before sending another.",
     changed: "The draft changed. Review it before sending.",
     notSent: "Not sent. Your message is back in the composer.",
+    notSentKept:
+      "Not sent. Your message was kept as a draft in its own conversation.",
+    tooLarge:
+      "This draft is too long to save. Shorten it before sending; your current text is retained.",
     savedLocally: "Draft saved locally.",
     clearFailed:
       "Message sent, but its saved draft could not be cleared. Review it before sending again.",
@@ -168,6 +190,9 @@ const wait = (ms: number) =>
  */
 const isSendingDurableDraft = (draft: DurableDraft | null): boolean =>
   draft?.sending === true;
+/** DurableDraftTooLarge (./durable-draft), matched by name for the same reason. */
+const isTooLarge = (error: unknown): boolean =>
+  error instanceof Error && error.name === "DurableDraftTooLarge";
 
 export class DurableDraftController<Recovery = unknown> {
   private active?: Binding<Recovery>;
@@ -409,7 +434,13 @@ export class DurableDraftController<Recovery = unknown> {
         );
         if (clearStatus && this.active === binding && binding.last === value)
           this.publish({ message: "" });
-      } catch {
+      } catch (error) {
+        // Over the size limit nothing was written and the saved copy is
+        // unchanged: not a conflict. Later (shorter) edits save normally.
+        if (isTooLarge(error)) {
+          if (this.active === binding) this.reportTooLarge();
+          return;
+        }
         binding.failed = true;
         if (this.active === binding) await this.reviewConflict(binding);
       }
@@ -424,6 +455,14 @@ export class DurableDraftController<Recovery = unknown> {
     this.queueSave(binding, () =>
       isSendingDurableDraft(binding.record) ? binding.record?.text : undefined,
     );
+  }
+
+  private reportTooLarge(): void {
+    this.publish({
+      conflict: false,
+      unsettled: false,
+      message: this.messages.tooLarge,
+    });
   }
 
   private requireStore(
@@ -549,9 +588,15 @@ export class DurableDraftController<Recovery = unknown> {
     binding.queue = marking.catch(() => {});
     try {
       await marking;
-    } catch {
+    } catch (error) {
       // Nothing was dispatched and the editor still holds the text.
       if (this.held === held) this.held = undefined;
+      if (isTooLarge(error)) {
+        // The saved copy is unchanged; the text cannot be held durably, so
+        // it is not sent. Shorter text can be saved and sent normally.
+        if (this.active === binding) this.reportTooLarge();
+        throw new Error(this.messages.tooLarge);
+      }
       binding.failed = true;
       if (this.active === binding) await this.reviewConflict(binding);
       throw new Error(this.messages.storageUnavailable);
@@ -596,13 +641,13 @@ export class DurableDraftController<Recovery = unknown> {
           ? held.peer
           : undefined;
     if (!binding) {
-      // The editor moved to another binding before dispatch. The text stays
-      // saved with its own conversation, unmarked; an empty editor also gets
-      // it back so unsent words are never only in storage.
+      // The editor moved to another binding (or none) before dispatch. The
+      // text stays saved with its own conversation, unmarked, and is restored
+      // when that binding reopens. It is never put in this editor: the next
+      // binding would adopt it as its own draft, and a binding is an owner,
+      // agent and conversation identity.
       this.unmark(held.binding);
-      if (this.text().trim()) return;
-      void this.restore(held.text);
-      this.publish({ message: this.messages.notSent });
+      this.publish({ message: this.messages.notSentKept });
       return;
     }
     const now = this.text();

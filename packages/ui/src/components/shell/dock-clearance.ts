@@ -18,7 +18,12 @@
  */
 
 export interface DockClearanceOptions {
-  /** Selector of the screen element the docks float over (the measurement origin). */
+  /**
+   * Selector of the screen element the docks float over (the measurement
+   * origin). It must be positioned (an `offsetParent` of every dock): a dock
+   * whose offset chain does not reach it measures as 0 and nothing is
+   * published for it.
+   */
   screen: string;
   /** Selector of every dock element. */
   docks: string;
@@ -94,9 +99,10 @@ export function measureDockClearance(
  * Keep the dock footprint published while the page runs. Docks appear, grow,
  * change kind and leave with the view, so the publisher watches the document,
  * the docks' sizes, the root's class/style (insets and scale arrive there),
- * window resizes and the end of the docks' own animations. A dock change is
- * published in the same observer delivery, before its new height can cover
- * controls; anything else is coalesced to the next frame. Returns the
+ * window resizes and the end of the docks' own animations. A change inside a
+ * dock, and a dock being inserted or removed, is published in the same
+ * observer delivery, before its new height can cover controls; anything else
+ * is coalesced to the next frame. Returns the
  * uninstaller, which also removes the published properties.
  */
 export function installDockClearance(
@@ -140,12 +146,19 @@ export function installDockClearance(
   const schedule = () => {
     if (!frame) frame = requestAnimationFrame(read);
   };
+  // A mutation inside a dock, or a dock inserted or removed (whose record's
+  // target is the dock's parent), is read in the same delivery.
+  const touchesDock = (node: Node): boolean =>
+    node instanceof Element &&
+    (node.matches(options.docks) || !!node.querySelector(options.docks));
   const changes = new MutationObserver((records) => {
     if (
       records.some(
         (record) =>
-          record.target instanceof Element &&
-          record.target.closest(options.docks),
+          (record.target instanceof Element &&
+            !!record.target.closest(options.docks)) ||
+          Array.from(record.addedNodes).some(touchesDock) ||
+          Array.from(record.removedNodes).some(touchesDock),
       )
     )
       readNow();
