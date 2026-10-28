@@ -1069,6 +1069,67 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
     }
   });
 
+  it("listMessages throws instead of reporting an empty mailbox when the query fails", async ({
+    skip,
+  }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+
+      // Messages.app holds a write lock while it flushes; the read-only reader
+      // then gets SQLITE_BUSY. Returning [] here made GET /api/imessage/messages
+      // answer 200 with an empty list while the mailbox still held messages.
+      const writer = openDatabase(path);
+      writer.run("BEGIN EXCLUSIVE");
+      try {
+        expect(() => reader.listMessages({ limit: 3 })).toThrow(
+          expect.objectContaining({ code: "IMESSAGE_CHATDB_READ_FAILED" })
+        );
+      } finally {
+        writer.run("ROLLBACK");
+        writer.close();
+      }
+      expect(reader.listMessages({ limit: 3 }).map((r) => r.rowId)).toEqual([
+        11, 12, 13,
+      ]);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("listChats throws instead of reporting an empty chat list when the query fails", async ({
+    skip,
+  }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+
+      const writer = openDatabase(path);
+      writer.run("BEGIN EXCLUSIVE");
+      try {
+        expect(() => reader.listChats()).toThrow(
+          expect.objectContaining({ code: "IMESSAGE_CHATDB_READ_FAILED" })
+        );
+      } finally {
+        writer.run("ROLLBACK");
+        writer.close();
+      }
+      expect(reader.listChats()).toHaveLength(2);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("returns null-text rows with empty text so the service layer can advance its cursor", async ({
     skip,
   }) => {
