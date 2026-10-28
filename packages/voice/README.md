@@ -10,6 +10,24 @@ remain in their plugins.
 From the repository root, run `bun run --cwd packages/voice build`,
 and `bun run --cwd packages/voice typecheck`.
 
+## Voice conversation session
+
+`@elizaos/voice/assistant-session` exports `VoiceAssistantSession`, the conversation-voice
+turn controller (hands-free: a finished turn is submitted automatically). Dictation, where the
+transcript becomes an editable draft the user sends, is a separate host flow and never uses it.
+The host supplies every port: one continuous capture that yields a final transcript per VAD
+segment, `send`, `speak`, an optional semantic `endpoint` and the conversation binding checks.
+The controller joins the segments of one utterance, asks `endpoint` once per utterance after a
+short gap with a bounded deadline, and always submits after the long gap: an unavailable,
+failing or late endpoint decision is never treated as complete. Resumed speech cancels a
+pending submit, and confirmed speech over echo-cancelled capture interrupts an in-flight reply
+or its playback (barge-in); only fully played sentences count as heard. Generation fencing
+drops late endpoint, reply and playback callbacks, so a submitted turn is never resent. Mute,
+stop, binding changes and owner-input pauses are handled; approvals are never given by voice.
+`ASSISTANT_TIMING_DEFAULTS` are engineering defaults, not measured or accepted values. The module
+has no DOM, storage, network or platform speech imports, and `bun run --cwd packages/voice test`
+covers it with fake ports (not microphone, recognition, playback or latency evidence).
+
 ## Browser voice capture
 
 `@elizaos/voice/browser-capture` records one MediaRecorder clip at a time. The host admits
