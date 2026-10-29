@@ -689,7 +689,18 @@ function isCloudTextModelUnavailable(runtime: AgentRuntime): boolean {
   let registrations: Array<{ modelType: string; provider: string }>;
   try {
     registrations = runtime.getModelRegistrations?.() ?? [];
-  } catch {
+  } catch (error) {
+    // error-policy:J7 An unreadable inventory is "unknown", not "no providers".
+    // The verdict below stays permissive (#30228), but collapsing the throw
+    // into `[]` made a registry that refuses to answer indistinguishable from
+    // a runtime with nothing registered.
+    runtime.logger.warn(
+      {
+        src: "health-routes",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "Cloud model inventory unavailable",
+    );
     return false;
   }
   return readiness.missing.some(({ modelType }) => {

@@ -125,3 +125,57 @@ it.each(["custom-provider", "ollama", "openai", "elizaOSCloud"])(
     expect(computeCanRespond(runtime, "stopped", null)).toBe(false);
   },
 );
+
+it("reports an unreadable model inventory instead of reading it as no providers", async () => {
+  // The catalog answered positively (the configured Cloud model is not listed)
+  // and the only thing left to learn is whether another provider could serve
+  // it. A thrown inventory read leaves that unanswered, so the permissive
+  // verdict stays (#30228) — but collapsing the throw into `[]` makes a
+  // registry that refuses to answer look exactly like a runtime with no
+  // registrations, and nothing on the status path shows the difference.
+  const runtime = await initializedRuntime("Cloud inventory fault");
+  const original = runtime.getModelRegistrations.bind(runtime);
+  try {
+    runtime.registerModel(ModelType.TEXT_LARGE, noInference, "elizaOSCloud");
+    await runtime.registerService(CloudRegistry);
+    await runtime.getServiceLoadPromise(CloudRegistry.serviceType);
+    const registry = runtime.getService<CloudRegistry>(
+      CloudRegistry.serviceType,
+    );
+    if (!registry) throw new Error("Cloud registry did not start");
+    expect(computeCanRespond(runtime, "running", null)).toBe(true);
+
+    const warnings: Array<{ context: unknown; message: unknown }> = [];
+    const logger = runtime.logger as unknown as {
+      warn: (context: unknown, message: unknown) => void;
+    };
+    logger.warn = (context: unknown, message: unknown) => {
+      warnings.push({ context, message });
+    };
+    let inventoryFault = false;
+    runtime.getModelRegistrations = () => {
+      if (inventoryFault) throw new Error("model registry unavailable");
+      return original();
+    };
+    // Arm the fault only once the catalog has answered, so the capability
+    // probe itself still completes and reaches the inventory read.
+    registry.getTextModelReadiness = () => {
+      inventoryFault = true;
+      return missingLargeModel;
+    };
+
+    expect(computeCanRespond(runtime, "running", null)).toBe(true);
+    expect(warnings).toEqual([
+      {
+        context: {
+          src: "health-routes",
+          error: "model registry unavailable",
+        },
+        message: "Cloud model inventory unavailable",
+      },
+    ]);
+  } finally {
+    runtime.getModelRegistrations = original;
+    await runtime.stop();
+  }
+});
