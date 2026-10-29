@@ -441,13 +441,15 @@ describe("NotesStore", () => {
 
   it("keeps another note when an edit by id passes through its text", async () => {
     const service = await serviceFor(await temporaryStateFile());
-    const other = await service.createNote({
-      title: "Call mom",
+    // The edited note is the older one, so the list must show it, not the
+    // other note, while both have the same text.
+    const typed = await service.createNote({
+      title: "Call",
       body: "",
       color: "yellow",
     });
-    const typed = await service.createNote({
-      title: "Call",
+    const other = await service.createNote({
+      title: "Call mom",
       body: "",
       color: "yellow",
     });
@@ -459,6 +461,7 @@ describe("NotesStore", () => {
       service.snapshot().revision,
     );
     expect(reached.consolidatedIds).toEqual([]);
+    expect(reached.snapshot.notes.map((note) => note.id)).toContain(typed.id);
     const left = await service.updateNoteWithCommit(
       typed.id,
       { title: "Call mom tomorrow" },

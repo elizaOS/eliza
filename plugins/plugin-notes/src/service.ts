@@ -137,14 +137,16 @@ function noteContentKey(note: StickyNote): string {
   );
 }
 
+/** Show one note per content key: the copy edited last, so a note the owner
+ * just edited to match another note stays visible in its editor. */
 function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {
-  const seen = new Set<string>();
-  return notes.filter((note) => {
+  const shown = new Map<string, StickyNote>();
+  for (const note of notes) {
     const key = noteContentKey(note);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const current = shown.get(key);
+    if (!current || note.updatedAt > current.updatedAt) shown.set(key, note);
+  }
+  return notes.filter((note) => shown.get(noteContentKey(note)) === note);
 }
 
 function resolveNoteIndex(
