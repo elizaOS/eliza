@@ -181,10 +181,10 @@ describe("BrowserTabSession", () => {
     ).toEqual({ cleared: true });
     expect(
       tabs.findResult({ session: S, id: "t1", index: -4, count: 1e9 }, "t1"),
-    ).toEqual({ cleared: false, index: 0, count: 100000, done: false });
+    ).toEqual({ cleared: false, index: 0, count: 1e9, done: false });
     expect(
       tabs.notice({ session: S, id: "t1", message: "x".repeat(500) }),
-    ).toHaveLength(200);
+    ).toHaveLength(500);
   });
 
   it("identifies the selected document without its address", async () => {

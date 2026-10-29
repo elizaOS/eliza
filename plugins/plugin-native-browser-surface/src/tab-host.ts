@@ -254,8 +254,6 @@ export interface BrowserTabSessionOptions {
 }
 
 const TAB_ID = /^[A-Za-z0-9_-]{1,80}$/;
-const MAX_FIND_COUNT = 100_000;
-const MAX_NOTICE = 200;
 
 /** Renderer-chosen tab ids follow the native rule (`BrowserTabHostConfig.validTabId`). */
 export function validBrowserTabId(id: unknown): id is string {
@@ -438,14 +436,14 @@ export class BrowserTabSession {
     return event.id;
   }
 
-  /** A notice for this document, bounded for display. */
+  /** A notice for this document. */
   notice(event: BrowserTabNotice): string | undefined {
     if (!this.owns(event) || typeof event.message !== "string")
       return undefined;
-    return event.message.slice(0, MAX_NOTICE);
+    return event.message;
   }
 
-  /** A find result for the tab whose find bar is open, clamped. */
+  /** A find result for the tab whose find bar is open; the index stays within the count. */
   findResult(
     event: BrowserFindResult,
     findTab: string | undefined | null,
@@ -457,7 +455,7 @@ export class BrowserTabSession {
     if (event.cleared) return { cleared: true };
     if (typeof event.count !== "number" || typeof event.index !== "number")
       return undefined;
-    const count = Math.max(0, Math.min(event.count, MAX_FIND_COUNT));
+    const count = Math.max(0, event.count);
     return {
       cleared: false,
       count,
