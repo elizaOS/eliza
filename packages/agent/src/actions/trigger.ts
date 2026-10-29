@@ -1260,7 +1260,8 @@ async function opUpdate(
       next,
       messageTimeZone,
       Date.now(),
-      metadata.trigger?.nextRunAtMs,
+      // A paused row holds the far-future parked time, not a real fire time.
+      next.enabled ? metadata.trigger?.nextRunAtMs : undefined,
     )}${next.enabled ? "" : " (paused)"}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
