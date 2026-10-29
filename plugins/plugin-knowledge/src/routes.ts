@@ -68,7 +68,7 @@ export interface DocumentRouteContext extends RouteRequestContext {
 }
 const DOCUMENTS_TABLE = "documents";
 const DOCUMENT_FRAGMENTS_TABLE = "document_fragments";
-const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1048576; // 32 MB
+export const DOCUMENT_UPLOAD_MAX_BODY_BYTES = 32 * 1048576; // 32 MB
 const MAX_BULK_DOCUMENTS = 100;
 const DOCUMENT_CONTENT_TYPE_VALIDATION_ERROR =
   "contentType must be a valid non-empty MIME type string when provided";
