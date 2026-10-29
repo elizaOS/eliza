@@ -264,6 +264,8 @@ export class ResidentRebindQueue {
         resolve = done;
         reject = fail;
       });
+      // Coalesced callers may discard this promise; awaiting callers still see the rejection.
+      promise.catch(() => {});
       this.next = { rebind, blocked, promise, resolve, reject };
     }
     this.next.rebind = rebind;
