@@ -439,6 +439,39 @@ describe("NotesStore", () => {
     );
   });
 
+  it("keeps another note when an edit by id passes through its text", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const other = await service.createNote({
+      title: "Call mom",
+      body: "",
+      color: "yellow",
+    });
+    const typed = await service.createNote({
+      title: "Call",
+      body: "",
+      color: "yellow",
+    });
+
+    // The editor saves on each keystroke: "Call" -> "Call mom" -> "Call mom tomorrow".
+    const reached = await service.updateNoteWithCommit(
+      typed.id,
+      { title: "Call mom" },
+      service.snapshot().revision,
+    );
+    expect(reached.consolidatedIds).toEqual([]);
+    const left = await service.updateNoteWithCommit(
+      typed.id,
+      { title: "Call mom tomorrow" },
+      service.snapshot().revision,
+    );
+    expect(left.consolidatedIds).toEqual([]);
+
+    expect(service.getNote(other.id)).toMatchObject({ title: "Call mom" });
+    expect(service.getNote(typed.id)).toMatchObject({
+      title: "Call mom tomorrow",
+    });
+  });
+
   it("serializes concurrent writes without losing a mutation", async () => {
     const filePath = await temporaryStateFile();
     const service = await serviceFor(filePath);

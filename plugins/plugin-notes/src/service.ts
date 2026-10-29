@@ -449,27 +449,17 @@ export class NotesService extends Service {
       !patch.textEdit || patch.textEdit.action === "append",
     );
     const updatedAt = this.now().toISOString();
-    let consolidatedIds: string[] = [];
+    // An edit by id changes only that note. The editor saves on each keystroke,
+    // so the text passes through other notes' content on the way; matching
+    // content is not the same note here. Lookup updates consolidate copies.
+    const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       assertEditRevision(draft.revision, revision);
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
       const updated = applyNotePatch(existing, patch, updatedAt);
-      const oldKey = noteContentKey(existing);
-      const updatedKey = noteContentKey(updated);
-      consolidatedIds = draft.notes
-        .filter(
-          (note, candidateIndex) =>
-            candidateIndex !== index &&
-            (noteContentKey(note) === oldKey ||
-              noteContentKey(note) === updatedKey),
-        )
-        .map((note) => note.id);
-      draft.notes = draft.notes.flatMap((note, candidateIndex) => {
-        if (candidateIndex === index) return [updated];
-        return consolidatedIds.includes(note.id) ? [] : [note];
-      });
+      draft.notes[index] = updated;
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");
