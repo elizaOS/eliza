@@ -45,14 +45,18 @@ public final class ResidentLifecycleTest {
   static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
   static final long NOW = 1_800_000_000_000L;
 
-  /** In-memory slot whose compare-exchange is exact and whose assertCurrent is the intent fence. */
+  /**
+   * In-memory slot whose compare-exchange is exact and whose assertCurrent is the intent fence. As the
+   * Store contract requires, the write itself rechecks the intent under the slot's lock.
+   */
   static final class Slot implements NativeProviderSlot.Store {
     String value;
     boolean conflict, removeIgnored;
-    Action current = () -> {};
+    Action current = () -> {}, beforeRead = () -> {};
     int writes;
 
-    public String readProvider() {
+    public String readProvider() throws Exception {
+      beforeRead.run();
       return value;
     }
 
@@ -60,7 +64,8 @@ public final class ResidentLifecycleTest {
       current.run();
     }
 
-    public String compareExchangeProvider(String previous, String selection) {
+    public synchronized String compareExchangeProvider(String previous, String selection) throws Exception {
+      current.run();
       if (conflict || !Objects.equals(previous, value)) return null;
       value = selection;
       writes++;
@@ -139,6 +144,15 @@ public final class ResidentLifecycleTest {
     int writes = slot.writes;
     refused(() -> NativeProviderSlot.saveVerifiedProvider(slot, KEY, MODEL, accept, "Product"), "superseded intent cannot save");
     check(slot.writes == writes, "superseded intent wrote nothing");
+    // A newer intent reserved after the caller's own assertCurrent (between the check and the write)
+    // is refused by the write's own fence check, so the superseded key is never committed.
+    long racing = fence.current();
+    slot.current = () -> fence.require(racing);
+    slot.beforeRead = () -> fence.reserve();
+    String kept = slot.value;
+    refused(() -> NativeProviderSlot.saveVerifiedProvider(slot, KEY, MODEL, accept, "Product"), "intent superseded mid-save cannot save");
+    check(slot.writes == writes && Objects.equals(kept, slot.value), "intent superseded mid-save wrote nothing");
+    slot.beforeRead = () -> {};
     slot.current = () -> {};
     refused(() -> NativeProviderSlot.bindDirectProvider(slot, KEY, "bad model!"), "malformed model refused");
 

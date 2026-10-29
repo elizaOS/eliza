@@ -17,7 +17,7 @@ public final class CloudConnectionPolicyTest {
   // Session checks, pair-code display and unrelated routes are not the pairing mutation.
   for(String path:new String[]{"/api/auth/me","/api/auth/pair-code","/api/auth/status","/api/auth/logout","/api/auth/pairing","/api/v1/user","/",null})check(!ROUTES.retiredPairing(path,false),"flag-off keeps "+path);
   check(!ROUTES.retiredPairing("/api/auth/pair",true),"test-mocks builds keep development pairing");
-  // #406: product builds declare nothing to a hosted or paired agent runtime over this transport.
+  // Product builds declare nothing to a hosted or paired agent runtime over this transport.
   for(String name:new String[]{"accept","content-type","authorization"}){check(CloudConnectionPolicy.admittedHeader(name,false),"flag-off admits "+name);check(CloudConnectionPolicy.admittedHeader(name,true),"test mocks admit "+name);}
   for(String name:new String[]{"x-eliza-device-id","x-eliza-device-key","x-eliza-device-capabilities","x-eliza-phone-protocol"}){check(!CloudConnectionPolicy.admittedHeader(name,false),"flag-off refuses "+name);check(CloudConnectionPolicy.admittedHeader(name,true),"test mocks keep "+name);}
   for(String name:new String[]{"cookie","x-eliza-agent-id","Authorization","X-Eliza-Phone-Protocol","",null})check(!CloudConnectionPolicy.admittedHeader(name,true)&&!CloudConnectionPolicy.admittedHeader(name,false),"header "+name);
@@ -118,7 +118,7 @@ public final class CloudConnectionPolicyTest {
   check(!ROUTES.managedService(sync+"/",null,"PATCH",true,false),"sync slash refused");
   check(!ROUTES.managedService(sync,null,"PUT",true,false),"sync PUT refused");
   check(!ROUTES.managedService("/api/v1/eliza/google/calendar/events",null,"GET",false,false),"unreviewed Google Calendar route refused");
-  // Subscription plan gate (#410): code redemption is one POST with a body; the billing snapshot is read-only; credits are retired.
+  // Subscription plan gate: code redemption is one POST with a body; the billing snapshot is read-only; credits are retired.
   check(ROUTES.managedService("/api/v1/subscription/redeem",null,"POST",true,false),"subscription code redemption allowed");
   check(!ROUTES.managedService("/api/v1/subscription/redeem",null,"POST",false,false),"redemption needs a body");
   check(!ROUTES.managedService("/api/v1/subscription/redeem","code=x","POST",true,false),"redemption never carries a query");
@@ -127,7 +127,7 @@ public final class CloudConnectionPolicyTest {
   check(ROUTES.managedService("/api/v1/billing/limits",null,"GET",false,false),"billing snapshot read allowed");
   check(!ROUTES.managedService("/api/v1/billing/limits",null,"POST",true,false),"billing snapshot write refused");
   check(!ROUTES.managedService("/api/v1/credits/balance",null,"GET",false,false),"credit balance retired");
-  // Reset Alpha data revokes only the presented key through the shared CloudKeyRevocation (tested with
+  // A product data reset revokes only the presented key through the shared CloudKeyRevocation (tested with
   // the sign-in library upstream); this transport admits exactly the same self-revocation DELETE.
   check(revoke("https","api.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,false),"production self-revocation target");
   check(revoke("https","api-staging.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,true),"staging self-revocation target in test-mocks builds");
@@ -139,7 +139,7 @@ public final class CloudConnectionPolicyTest {
   check(!ROUTES.managedService("/api/v1/user",null,"POST",true,false),"identity write refused");
   check(!ROUTES.managedService("/api/v1/user",null,"GET",true,false),"GET body refused");
   check(ROUTES.managedService("/api/agents",null,"GET",false,true),"separate development infrastructure retained");
-  // Eliza Cloud Maps (#412): exact routes; location only in a POST body, capabilities a bare GET.
+  // Eliza Cloud Maps: exact routes; location only in a POST body, capabilities a bare GET.
   check(ROUTES.managedService("/api/v1/maps/capabilities",null,"GET",false,false),"Maps capabilities read allowed");
   for(String route:new String[]{"geocode","reverse","places/search","places/details","routes"}){
    String path="/api/v1/maps/"+route;

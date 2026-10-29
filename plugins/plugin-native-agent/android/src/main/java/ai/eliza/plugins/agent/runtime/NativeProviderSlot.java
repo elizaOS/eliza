@@ -28,7 +28,13 @@ public final class NativeProviderSlot {
     /** Throws when the caller's credential intent or bridge is no longer current. */
     void assertCurrent() throws Exception;
 
-    /** Replaces previous with selection; null when the slot changed meanwhile. */
+    /**
+     * Replaces previous with selection; null when the slot changed meanwhile. The store must make the
+     * same credential-intent check as {@link #assertCurrent} under the lock that guards the write,
+     * and throw without writing when the intent is stale, so an intent superseded after the caller's
+     * own assertCurrent can never commit. The second assertCurrent in {@link
+     * #saveVerifiedProvider} only reports; it cannot undo a write.
+     */
     String compareExchangeProvider(String previous, String selection) throws Exception;
 
     /** Removes the slot (onlyIfPresent: only when it holds a value, without creating state). */

@@ -27,6 +27,9 @@ public final class OwnerRoutePolicyTest {
           + "{\"methods\":[\"POST\"],\"paths\":[\"/api/triggers/{id}/execute\"]},"
           + "{\"methods\":[\"PUT\",\"DELETE\"],\"paths\":[\"/api/triggers/{id}\"]}]},"
           + "\"approvals\":{\"prefixes\":[\"/api/approvals\"],\"routes\":[{\"methods\":[\"GET\"],\"paths\":[\"/api/approvals?state=all&limit=500\"]}]}"
+          // A deliberately permissive id pattern: only the policy itself keeps {id} out of the query.
+          + ",\"loose\":{\"prefixes\":[\"/api/loose\"],\"id\":\"^[^/]+$\","
+          + "\"routes\":[{\"methods\":[\"GET\"],\"paths\":[\"/api/loose/{id}\"]},{\"methods\":[\"POST\"],\"paths\":[\"/api/loose/{id}/execute\"]}]}"
           + "}}";
 
   public static void main(String[] args) throws Exception {
@@ -72,6 +75,9 @@ public final class OwnerRoutePolicyTest {
       check(!routes.allowed("records", path, "GET"), "normalisation bypass refused: " + path);
     check(!routes.allowed("automations", "/api/triggers/a..b", "GET"), "id pattern refuses dot-dot");
     check(!routes.allowed("automations", "/api/triggers/a/b", "GET"), "id is one segment");
+    check(routes.allowed("loose", "/api/loose/t1", "GET"), "permissive id admits one plain segment");
+    check(!routes.allowed("loose", "/api/loose/t1?x=/execute", "POST"), "{id} never spans the query into a literal tail");
+    check(!routes.allowed("loose", "/api/loose/t1?x=1", "GET"), "{id} never absorbs a query on a route without one");
     check(!routes.allowed("automations", "/api/triggers/", "GET"), "empty id refused");
     check(!routes.allowed("automations", "/api/triggers/%2e%2e", "GET"), "literal-path id is not decoded into a match");
     check(!routes.allowed("records", "/api/lifeops/calendar/events/a%2Fb?mode=local", "DELETE"), "decoded slash refused by id pattern");

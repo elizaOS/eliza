@@ -168,7 +168,8 @@ public final class OwnerRoutePolicy {
     String head = pattern.substring(0, at), tail = pattern.substring(at + 4);
     if (path.length() <= head.length() + tail.length() || !path.startsWith(head) || !path.endsWith(tail)) return null;
     String id = path.substring(head.length(), path.length() - tail.length());
-    return id.indexOf('/') < 0 ? id : null;
+    // One path segment: never a slash, and never the query of a route matched literally with it.
+    return id.indexOf('/') < 0 && id.indexOf('?') < 0 ? id : null;
   }
 
   private static List<String> strings(JSONArray values) throws JSONException {
