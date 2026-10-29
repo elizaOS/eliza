@@ -124,7 +124,7 @@ export const COMPONENTS: readonly Component[] = [
     forkPins: (fork) => forkJson<ForkPins>(fork, "tools/parakeet/pins.json"),
   },
   {
-    name: "Paradee-8M v1.1 TTS",
+    name: "Paradee-8M TTS",
     role: "tts",
     input: "paradee",
     requiredSources: [
@@ -133,10 +133,17 @@ export const COMPONENTS: readonly Component[] = [
       "config.json",
       "tokenizer.json",
     ],
-    forkPins: (fork) =>
-      forkJson<Record<string, ForkPins>>(fork, "tools/paradee/pins.json")?.[
-        "v1.1"
-      ] ?? null,
+    // The pins.json section of the release inputs.json names (v1.2).
+    forkPins: (fork) => {
+      const version = readJson<Record<string, Pin & { version?: string }>>(
+        INPUTS_PATH,
+      ).paradee?.version;
+      return version
+        ? (forkJson<Record<string, ForkPins>>(fork, "tools/paradee/pins.json")?.[
+            `v${version}`
+          ] ?? null)
+        : null;
+    },
   },
 ];
 

@@ -323,6 +323,27 @@ final class ElizaVoiceNative {
     /** UTF-8 misaki phonemes to 24 kHz mono fp32 PCM. Throws CancellationException on {@link #nativeCancelTts}. */
     static native float[] nativeParadeeSynthesizePhonemes(long ctxHandle, byte[] utf8Phonemes, float speed);
 
+    /**
+     * Paradee voice slots (ABI v20): several Paradee-family voices on one context,
+     * each named by a voice id. {@code nativeParadeeVoiceInfo} returns the slot's
+     * model as JSON (language, voice, sample_rate, validated envelope).
+     */
+    static native int nativeParadeeVoicesSupported();
+
+    static native int nativeParadeeLoadVoice(long ctxHandle, String voiceId, String gguf, String lexiconOrNull,
+            String espeakDirOrNull, String modelVoiceOrNull);
+
+    static native int nativeParadeeUnloadVoice(long ctxHandle, String voiceId);
+
+    static native String nativeParadeeVoiceInfo(long ctxHandle, String voiceId);
+
+    static native String nativeParadeePhonemizeVoice(long ctxHandle, String voiceId, byte[] utf8Text);
+
+    static native float[] nativeParadeeSynthesizeVoice(long ctxHandle, String voiceId, byte[] utf8Text, float speed);
+
+    static native void nativeParadeeSynthesizeVoiceStream(long ctxHandle, String voiceId, byte[] utf8Text, float speed,
+            Object sink);
+
     /** Stop the TTS pass running on another thread. Cancelling nothing is not an error. */
     static native int nativeCancelTts(long ctxHandle);
 

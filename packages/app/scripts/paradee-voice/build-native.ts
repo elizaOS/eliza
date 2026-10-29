@@ -3,15 +3,18 @@
  * Builds the generated inputs of the paradee-voice Android library:
  *   jniLibs/<abi>/libelizainference.so   (stage-elizavoice-lib.ts: Paradee +
  *                                         misaki G2P + eSpeak NG fallback)
- *   assets/paradee-voice/v1/...          (Paradee GGUF, misaki lexicon, English
- *                                         eSpeak NG data, Phonon-2, VAD, notices, manifest)
+ *   assets/paradee-voice/v1/...          (Paradee GGUF, misaki lexicon, Delibes
+ *                                         Spanish GGUF, English and Spanish eSpeak
+ *                                         NG data, Phonon-2, VAD, notices, manifest)
  *   build-record.json                    (SHA-256 of every file above;
  *                                         consumer.gradle checks it)
  *
- * The GGUF and the lexicon are converted in the llama.cpp fork from pinned
+ * The GGUFs and the lexicon are converted in the llama.cpp fork from pinned
  * sources: tools/paradee/convert_paradee_pt_to_gguf.py reads the PyTorch
- * weights of sahilmahendrakar/Paradee-8M-v1.0 at the revision in
- * tools/paradee/pins.json, and tools/misaki-g2p/convert_misaki_lexicon.py
+ * weights of the Paradee-8M release inputs.json names (v1.2) at the revision
+ * in tools/paradee/pins.json, tools/paradee/convert_paradee_onnx_to_gguf.py
+ * reads the fp32 ONNX graphs of lapislabsai/Delibes-8M-esES (Castilian
+ * Spanish, pins.json "delibes"), and tools/misaki-g2p/convert_misaki_lexicon.py
  * reads the misaki dictionaries in tools/misaki-g2p/pins.json. Both outputs
  * are byte-reproducible and must match paradee-voice/inputs.json, which must
  * match the fork pins.
@@ -25,7 +28,8 @@
  *
  * --models-only builds just the pinned model files into <bundle dir> (no NDK,
  * no native library, no eSpeak NG data): asr/phonon-2-fv5.gguf,
- * tts/paradee/paradee-8m-v1_1.gguf, tts/paradee/misaki-en-us.lex,
+ * tts/paradee/paradee-8m-v1_2.gguf, tts/paradee/delibes-8m-eses.gguf,
+ * tts/paradee/misaki-en-us.lex,
  * vad/silero-vad-v5.gguf and the Phonon-2 notices. Desktop hosts and the voice
  * CI matrix stage the product voice stack this way. Files already in place
  * and matching their pins are kept.
@@ -34,7 +38,11 @@
  * plugins/plugin-local-inference/native/android/native. --model-cache is
  * searched (recursively, by file name) for an already converted GGUF or
  * lexicon before converting. --python runs the converters (default python3;
- * the converters need torch, numpy, gguf-py, zstandard and librosa).
+ * the converters need torch, numpy, gguf-py, zstandard, librosa and, for the
+ * Delibes ONNX graphs, the onnx package).
+ *
+ * The manifest is eliza-paradee-voice-v2: the v1 keys plus `voices`, the other
+ * speech languages ({"es": "tts/paradee/delibes-8m-eses.gguf"}).
  */
 
 import { execFileSync } from "node:child_process";
@@ -191,8 +199,10 @@ export function forkPins() {
   if (!vad || inputs.vad.url !== vad.url)
     fail("VAD download source disagrees with the mobile voice catalog");
   const gguf = paradee.gguf?.f32;
+  const spanish = allParadee[inputs.spanish.family]?.gguf?.f32;
   const checks = [
     ["paradee GGUF", inputs.paradee, gguf?.sha256, gguf?.size],
+    ["Spanish GGUF", inputs.spanish, spanish?.sha256, spanish?.size],
     ["Phonon-2 GGUF", inputs.asr, parakeet.gguf?.sha256, parakeet.gguf?.size],
     ["Silero VAD", inputs.vad, vad.sha256, vad.bytes],
     [
@@ -215,7 +225,17 @@ export function forkPins() {
       );
     }
   }
-  return { paradee, misaki, parakeet };
+  const missingData = inputs.espeak.data.filter(
+    (relative) => !misaki.espeak_ng?.data?.includes(relative),
+  );
+  if (missingData.length)
+    fail(`eSpeak NG data not pinned by the fork: ${missingData.join(", ")}`);
+  return {
+    paradee,
+    spanish: allParadee[inputs.spanish.family],
+    misaki,
+    parakeet,
+  };
 }
 
 /** Copies a converted file from the target itself or the model cache. */
@@ -271,6 +291,43 @@ export async function buildModels(args, pins, bundle) {
         "f32",
         "--check-output",
       ]),
+    );
+  }
+
+  // Spanish (Delibes-8M-esES) GGUF from the pinned fp32 ONNX graphs.
+  const spanish = path.join(bundle, inputs.spanish.path);
+  if (!(await fromCache(inputs.spanish, spanish, args.modelCache))) {
+    const hfDir = path.join(args.workspace, "delibes-hf");
+    const { repo, revision } = pins.spanish.model;
+    for (const [file, pin] of Object.entries(pins.spanish.files)) {
+      if (file.startsWith("samples/") && !file.endsWith(".json")) continue;
+      await download(
+        `https://huggingface.co/${repo}/resolve/${revision}/${file}`,
+        { bytes: pin.size, sha256: pin.sha256 },
+        path.join(hfDir, file),
+      );
+    }
+    await convertTo(inputs.spanish, spanish, (output) =>
+      run(args.python, [
+        path.join(forkSrc, "tools/paradee/convert_paradee_onnx_to_gguf.py"),
+        "--family",
+        inputs.spanish.family,
+        "--model-dir",
+        hfDir,
+        "--output",
+        output,
+        "--check-output",
+      ]),
+    );
+  }
+  // The release's licence and notices travel with its weights.
+  for (const name of inputs.spanish.notices) {
+    const pin = pins.spanish.files[name];
+    if (!pin) fail(`Missing Delibes notice pin: ${name}`);
+    await download(
+      `https://huggingface.co/${pins.spanish.model.repo}/resolve/${pins.spanish.model.revision}/${name}`,
+      { bytes: pin.size, sha256: pin.sha256 },
+      path.join(bundle, "notices", "delibes", name),
     );
   }
 
@@ -419,10 +476,11 @@ async function main() {
     });
   }
   const manifest = {
-    format: "eliza-paradee-voice-v1",
+    format: "eliza-paradee-voice-v2",
     model: inputs.paradee.path,
     lexicon: inputs.lexicon.path,
     espeakDir: path.relative(bundle, paradeeDir),
+    voices: { [inputs.spanish.language]: inputs.spanish.path },
     files,
   };
   writeFileSync(
